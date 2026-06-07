@@ -1,0 +1,202 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% TODOs:
+% * References: GraphStar, GraphVite, GaAN
+% * Observe the differences in dataset stats. what kind of graphs does cluster-GCN fail? skewed?
+%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2020_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+%%\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+
+\usepackage{tikz}
+\usetikzlibrary{fit,backgrounds,arrows,decorations.markings,arrows.meta}
+
+\usepackage{graphicx}
+\usepackage{bm}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts,amsmath}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{multirow}
+\usepackage{algorithm}% http://ctan.org/pkg/algorithms
+\usepackage{algpseudocode}% http://ctan.org/pkg/algorithmicx
+\usepackage{mathtools}
+\usepackage[inline]{enumitem}
+\usepackage{pgfplots}
+\usepackage{relsize}
+
+\usepgfplotslibrary{groupplots}
+
+% \pgfplotsset{
+%         % define the layers you need.
+%         % (Don't forget to add `main' somewhere in that list!!)
+%         layers/my layer set/.define layer set={
+%             background,
+%             main,
+%             foreground
+%         }{
+%             % you could state styles here which should be moved to
+%             % corresponding layers, but that is not necessary here.
+%             % That is why wo don't state anything here
+%         },
+%         % activate the newly created layer set
+%         set layers=my layer set,
+%     }
+\usetikzlibrary{matrix}
+\usepackage{amsthm,bbm}
+
+% \pgfplotsset{compat=newest}
+% \usepgfplotslibrary{groupplots}
+% \usepgfplotslibrary{dateplot}
+
+% \usepackage{adjustbox}
+%%\usepackage{subfigure}
+\usepackage{subcaption}
+\usepackage{ctable}
+
+\usepackage[symbol]{footmisc}
+
+\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+%\usepackage[dvipsnames]{xcolor}
+
+\DeclarePairedDelimiterX\set[1]\lbrace\rbrace{\def\given{\;\delimsize\vert\;}#1}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{corollary}{Corollary}[theorem]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{proposition}[theorem]{Proposition}
+
+
+\newcommand{\trans}{\mathsf{T}}
+
+\newcommand{\graphsaint}{{\fontfamily{lmtt}\selectfont GraphSAINT}}
+\newcommand{\saint}{{\fontfamily{lmtt}\selectfont SAINT}}
+
+\newcommand{\sample}{{\fontfamily{lmtt}\selectfont SAMPLE}}
+\newcommand{\G}[1][]{
+    \ifthenelse{\equal{#1}{}}
+    {\mathcal{G}}
+    {\mathcal{G}}_{#1}}
+\newcommand{\V}[1][]{
+    \ifthenelse{\equal{#1}{}}
+    {\mathcal{V}}
+    {\mathcal{V}_{#1}}}
+\newcommand{\E}[1][]{
+    \ifthenelse{\equal{#1}{}}
+    {\mathcal{E}}
+    {\mathcal{E}_{#1}}}
+\newcommand{\X}[1][]{
+    \ifthenelse{\equal{#1}{}}
+    {\bm{X}}
+    {\bm{X}^{\paren{#1}}}}
+\newcommand{\Anorm}[1][]{
+    \ifthenelse{\equal{#1}{}}
+    {\widetilde{\bm{A}}}
+    {\widetilde{\bm{A}}_{#1}}}
+\newcommand{\xvl}[2]{\bm{x}_{#1}^{(#2)}}
+\newcommand{\W}[1][]{
+    \ifthenelse{\equal{#1}{}}
+    {\bm{W}}
+    {\bm{W}^{\paren{#1}}}}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+
+
+
+\newcommand{\size}[1]{\left\lvert #1 \right\rvert}
+\newcommand{\paren}[1]{\left( #1 \right)}
+
+
+\tikzset{
+    vertex/.style = {
+        circle,
+        fill            = black,
+        outer sep = 2pt,
+        inner sep = 1pt,
+    }
+}
+
+
+
+
+\title{\graphsaint: \underline{Graph Sa}mpling Based  \underline{In}ductive Learning Me\underline{t}hod}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+\author{Hanqing Zeng\thanks{Equal contribution}\\
+University of Southern California\\
+\texttt{zengh@usc.edu}\\
+\And
+Hongkuan Zhou\footnotemark[1]\\
+University of Southern California\\
+\texttt{hongkuaz@usc.edu}\\
+\And
+Ajitesh Srivastava\\
+University of Southern California\\
+\texttt{ajiteshs@usc.edu}
+\And
+Rajgopal Kannan\\
+US Army Research Lab\\
+\texttt{rajgopal.kannan.civ@mail.mil}
+\And
+Viktor Prasanna\\
+University of Southern California\\
+\texttt{prasanna@usc.edu}}
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+Graph Convolutional Networks (GCNs) are powerful models for learning representations of attributed graphs. %, thus facilitating classification and clustering tasks. 
+To scale GCNs to large graphs, state-of-the-art methods use various \emph{layer sampling} techniques to alleviate the ``neighbor explosion'' problem during minibatch training. 
+We propose {\graphsaint}, a \emph{graph sampling} based inductive learning method that improves training efficiency and accuracy in a fundamentally different way. 
+By changing perspective, {\graphsaint} constructs minibatches by sampling the training graph, rather than the nodes or edges across GCN layers. 
+%We change the viewpoint from layer sampling to graph sampling. The minibatch construction is decoupled from the forward/backward propagation in training. 
+Each iteration, a complete GCN is built from the properly sampled subgraph. Thus, we ensure fixed number of well-connected nodes in all layers. 
+We further propose normalization technique to eliminate bias, and sampling algorithms for variance reduction. 
+Importantly, we can decouple the sampling from the forward and backward propagation, and extend {\graphsaint} with many architecture variants (e.g., graph attention, jumping connection).  
+%lightweight sampling process that can be carried out even before the training starts; nodes across layers are well connected. 
+{\graphsaint} demonstrates superior performance in both accuracy and training time on five large graphs, and achieves new state-of-the-art F1 scores for PPI (0.995) and Reddit (0.970). 
+\end{abstract}
+\input{1_intro.tex}
+\input{2_related.tex}
+\input{3_method.tex}
+\input{4_discussion.tex}
+\input{5_exp.tex}
+\input{6_conclusion.tex}
+
+\subsubsection*{acknowledgement}
+This material is based on work supported
+by the Defense Advanced Research Projects Agency (DARPA) under Contract Number FA8750-17-C-0086 and National Science Foundation (NSF) under Contract Numbers CCF-1919289 and OAC-1911229. Any opinions, findings and conclusions or recommendations
+expressed in this material are those of the authors and do not necessarily reflect the views of DARPA or NSF.
+
+\bibliography{citation}
+\bibliographystyle{iclr2020_conference}
+
+\appendix
+\input{7_appendix.tex}
+
+\end{document}

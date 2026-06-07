@@ -1,0 +1,157 @@
+\section{Experiments}
+
+All of our experiments use up to 32 DGX-2H servers (a total of 512 Tesla V100 SXM3 32GB GPUs). Our infrastructure is optimized for multi-node deep learning applications, with 300 GB/sec bandwidth between GPUs inside a server via NVSwitch and 100 GB/sec of interconnect bandwidth between servers using 8 InfiniBand adapters per server.
+
+\subsection{Scaling Analysis}
+To test the scalability of our implementation, we consider GPT-2 models with four sets of parameters detailed in Table \ref{tab:params_scaling_studies}. To have consistent GEMM sizes in the self attention layer, the hidden size per attention head is kept constant at 96 while the number of heads and layers are varied to obtain configurations ranging from 1 billion to 8 billion parameters. The configuration with 1.2 billion parameters fits on a single GPU whereas the 8 billion parameter model requires 8-way model parallelism (8 GPUs). The original vocabulary size was 50,257, however, to have efficient GEMMs for the logit layer, it is beneficial for the per-GPU vocabulary size to be a multiple of 128. Since we study up to 8-way model parallelism, we pad the vocabulary such that it is divisible by $128\times 8=1024$, resulting in a padded vocabulary size of 51,200.  We study both model and model+data parallel scaling. For the model parallel scaling, a fixed batch size of 8 is used across all configurations. Data parallel scaling is necessary for training many state of the art models which typically use a much larger global batch size. To this end, for the model+data parallel cases we fix the global batch size to 512 for all experiments which corresponds to 64-way data parallelism. 
+
+\begin{table}
+\footnotesize
+\begin{center}
+\vspace{-3mm}
+\caption{Parameters used for scaling studies. Hidden size per attention head is kept constant at 96.}
+\vskip 0.15in
+\label{tab:params_scaling_studies}
+\begin{tabular}{c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c}
+\hline \hline
+ &  & Number & Number & Model & Model \\
+Hidden & Attention & of & of & parallel & +data \\
+Size & heads & layers & parameters & GPUs & parallel \\
+&  & & (billions) & & GPUs \\ \hline
+1536 &	16	& 40	& 1.2	& 1	& 64 \\
+1920	& 20	&54	&2.5&	2&	128 \\
+2304	&24	&64	&4.2	&4	&256 \\
+3072	&32	& 72	&8.3	&8	&512 \\ \hline \hline
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\vspace{-3mm}
+\end{table}
+
+\subsubsection{Model and Data Parallelism}
+Throughout this section, we will showcase weak scaling with respect to the model parameters for both model parallel and model+data parallel cases. Weak scaling is typically done by scaling the batch-size, however, this approach does not address training large models that do not fit on a single GPU and it leads to training convergence degradation for large batch sizes. In contrast, here we use weak scaling to train larger models that were not possible otherwise. The baseline for all the scaling numbers is the first configuration (1.2 billion parameters) in Table \ref{tab:params_scaling_studies} running on a single GPU. This is a strong baseline as it achieves 39 TeraFLOPS during the overall training process, which is 30\% of the theoretical peak FLOPS for a single GPU in a DGX-2H server. 
+
+\begin{figure}
+%\vspace{-2mm}
+\begin{center}
+  \includegraphics[width=\columnwidth]{./scaling.pdf}
+  \vspace{-1cm}
+  \caption{Model and model + data parallel weak scaling efficiency as a function of the number of GPUs.}
+  \label{fig:blue_green_mp}
+\end{center}
+\vspace{-2mm}
+\end{figure}
+
+
+Figure \ref{fig:blue_green_mp} shows scaling values for both model and model+data parallelism. We observe excellent scaling numbers in both settings. For example, the 8.3 billion parameters case with 8-way (8 GPU) model parallelism achieves 77\% of linear scaling. Model+data parallelism requires further communication of gradients and as a result the scaling numbers drop slightly. However, even for the largest configuration (8.3 billion parameters) running on 512 GPUs, we achieve 74\% scaling relative to linear scaling of the strong single GPU baseline configuration (1.2 billion parameters). Further scaling analysis is provided in Appendix \ref{app:scaling}
+
+
+
+\subsection{Language Modeling Results Using GPT-2}
+To demonstrate that large language models can further advance the state of the art, we consider training GPT-2 models of the sizes and configurations listed in Table \ref{tab:model_size}. The 355M model is equivalent in size and configuration of BERT-Large model \cite{devlin2018bert}. The 2.5B model is bigger than the previous largest GPT-2 model, and the 8.3B model is larger than any left-to-right transformer language model ever trained, to the best of our knowledge. To train and evaluate our language models we use the procedure described in section \ref{language_modeling}. Table \ref{tab:model_size} also lists the time it takes to advance one epoch which is equivalent to 68,507 iterations. For example, for the 8.3B model on 512 GPUs, each epoch takes around two days. Compared to the configurations used for our scaling studies in Table \ref{tab:params_scaling_studies}, the 2.5B model is the same, the 8.3B model has 24 attention heads instead of 32, and the 355M is much smaller than any seen previously while still using 64 GPUs to train, leading to the much lower time per epoch.
+
+\begin{table}
+\footnotesize
+\begin{center}
+\caption{Model configurations used for GPT-2.}
+\label{tab:model_size}
+\begin{tabular}{c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c} \hline \hline
+ &  &  &  & Hidden &  & Time \\
+Parameter & Layers & Hidden & Attn & Size & Total & per \\
+Count &  & Size & Heads & per & GPUs & Epoch \\
+ &  &  &  & Head &  & (days) \\ \hline
+355M & 24 &  1024 &	16 & 64  &  64  & 0.86  \\ 
+2.5B &  54 & 1920 & 20 & 96  &  128 & 2.27  \\ 
+8.3B & 72 & 3072 &  24 &  128 & 512 & 2.10   \\ \hline 
+\end{tabular}
+\end{center}
+\end{table}
+
+
+
+Figure \ref{fig:ppl_curve} shows validation perpelixity as a function of number of iterations. As the model size increases, the validation perpelixity decreases and reaches  a validation perplexity of 9.27 for the 8.3B model. We report the zero-shot evaluation of the trained models on the LAMBADA and WikiText103 datasets in Table \ref{tab:model_results}. For more details on evaluation methodology, see Appendix \ref{app:wikilambada}. We observe the trend that increasing model size also leads to lower perplexity on WikiText103 and higher cloze accuracy on LAMBADA. Our 8.3B model achieves state of the art perplexity on the WikiText103 test set at a properly adjusted perplexity of 10.81. At 66.51\% accuracy, the 8.3B model similarly surpasses prior cloze accuracy results on the LAMBADA task. We have included samples generated from the 8.3 billion parameters model in the Appendix \ref{app:samples}. Recently researchers from Microsoft in collaboration with NVIDIA trained a 17 billion parameter GPT-2 model called Turing-NLG \cite{TNLG} using Megatron and showed that the accuracies further improve as they scale the model, highlighting the value of larger models. 
+
+\begin{figure}
+\begin{center}
+ \includegraphics[scale=0.19]{./perpelixity_curve_mp_2.png}
+ \caption{Validation set perplexity. All language models are trained for 300k iterations. Larger language models converge noticeably faster and converge to lower validation perplexities than their smaller counterparts.}
+ \label{fig:ppl_curve}
+\end{center}
+\end{figure}
+
+\begin{table}
+%\footnotesize
+\begin{center}
+\caption{Zero-shot results. SOTA are from \cite{WIKI103SOTA} for Wikitext103 and \cite{Radford2019GPT2} for LAMBADA.}
+\label{tab:model_results}
+\begin{tabular}{c|c|c} \hline \hline
+Model & Wikitext103 & LAMBADA   \\
+ & Perplexity $\downarrow$ & Accuracy $\uparrow$  \\ \hline
+355M & 19.31 & 45.18\%  \\ 
+2.5B & 12.76 & 61.73\%  \\ 
+8.3B & \textbf{10.81} & \textbf{66.51\%}  \\ \hline 
+Previous SOTA & 15.79 & 63.24\% \\
+\end{tabular}
+\end{center}
+\end{table}
+To ensure we do not train on any data found in our test sets, we calculate the percentage of test set 8-grams that also appear in our training set as done in previous work~\cite{Radford2019GPT2}. %To calculate the overlap we also use a Bloom filter but with a more conservative false positive rate of $10^{-3}$ to save computation cost.
+The WikiText103 test set has at most $10.8\%$ overlap and the LAMBADA test set \citep{lambada} has at most $1.4\%$ overlap. We should note that the WikiText103 test set has already $9.09\%$ overlap with the WikiText103 training set \cite{Radford2019GPT2}. As these are consistent with previous work, 
+we are confident that no documents from our test data are inadvertently included in our training data.
+
+\begin{table}
+\footnotesize
+\begin{center}
+\caption{Model configurations used for BERT.}
+\label{tab:bert_model_size}
+\begin{tabular}{c|c|c|c|c} \hline \hline
+Parameter & Layers & Hidden & Attention & Total \\
+Count     &        & Size   & Heads     & GPUs  \\ \hline
+336M      & 24     & 1024   & 16        & 128   \\ 
+1.3B      & 24     & 2048   & 32        & 256   \\ 
+3.9B      & 48     & 2560   & 40        & 512   \\ \hline 
+\end{tabular}
+\end{center}
+\end{table}
+
+\begin{table*}
+\footnotesize
+\begin{center}
+\caption{Development set results for MNLI, QQP, SQuAD 1.1 and SQuAD 2.0 and test set results for RACE. The trained tokens represents consumed tokens during model pretraining (proportional to batch size times number of iterations) normalized by consumed tokens during model pretraining for our 336M model.}
+\label{tab:bert_results}
+\begin{tabular}{c|c|c|c|c|c||c} \hline \hline
+\multirow{3}{*}{Model}         & trained tokens & MNLI m/mm         & QQP       & SQuAD 1.1         & SQuAD 2.0        & RACE m/h         \\
+              & ratio        & accuracy         & accuracy  & F1 / EM            & F1 / EM          & accuracy         \\
+                  &        & (dev set)         & (dev set)  & (dev set)           & (dev set)          & (test set)         \\\hline
+RoBERTa \cite{roberta}       & 2              & 90.2 / 90.2      & 92.2      & 94.6 / 88.9        & 89.4 / 86.5      & 83.2 (86.5 / 81.8)      \\
+ALBERT \cite{ALBERT2019}        & 3              & 90.8             & 92.2      & 94.8 / 89.3        & 90.2 / 87.4      & 86.5 (89.0 / 85.5)      \\
+XLNet \cite{xlnet}       & 2              & 90.8 / 90.8      & 92.3      & 95.1 / 89.7   & 90.6 / 87.9      & 85.4 (88.6 / 84.0)      \\
+Megatron-336M & 1              & 89.7 / 90.0      & 92.3      & 94.2 / 88.0        & 88.1 / 84.8      & 83.0 (86.9 / 81.5)      \\
+Megatron-1.3B & 1              & 90.9 / 91.0      & 92.6      & 94.9 / 89.1        & 90.2 / 87.1      & 87.3 (90.4 / 86.1)      \\
+Megatron-3.9B & 1           & \bf{91.4 / 91.4} & \bf{92.7} & \bf{95.5 / 90.0} & \bf{91.2 / 88.5} & \bf{89.5 (91.8 / 88.6)} \\\hline
+ \multicolumn{3}{l}{ALBERT ensemble \cite{ALBERT2019} } & & 95.5 / 90.1 &91.4 / 88.9 & 89.4 (91.2 / 88.6)\\
+  \multicolumn{3}{l}{Megatron-3.9B ensemble} &  &  \bf{95.8 / 90.5} & \bf{91.7 / 89.0} & \bf{90.9 (93.1 / 90.0)}\\\hline 
+\end{tabular}
+\end{center}
+\end{table*}
+
+\subsection{Bi-directional Transformer Results Using BERT}
+
+In this section, we apply our methodology to BERT-style transformer models and study the effect of model scaling on several downstream tasks. Prior work \cite{ALBERT2019} found that increasing model size beyond BERT-large with 336M parameters results in unexpected model degradation. To address this degradation, the authors of that work \cite{ALBERT2019} introduced parameter sharing and showed that that their models scale much better compared to the original BERT model.
+
+We further investigated this behaviour and empirically demonstrated that rearranging the order of the layer normalization and the residual connections as shown in Figure \ref{fig:bert-residual} is critical to enable the scaling of the BERT-style models beyond BERT-Large. The architecture (b) in Figure \ref{fig:bert-residual} eliminates instabilities observed using the original BERT architecture in (a) and also has a lower training loss. To the best of our knowledge, we are the first to report such a change enables training larger BERT models. 
+
+\begin{figure}
+\vspace{-2mm}
+\begin{center}
+  \includegraphics[scale=0.13]{./res_connection_2.jpeg}
+  \vspace{-2mm}
+  \caption{Training loss for BERT model using the original architecture (a) and the rearranged architecture (b). Left figure shows the training loss for 336M and 752M BERT model. While the original architecture performs well on the 336M model, the modifications in (b) enable stable training with lower training loss.}
+  \label{fig:bert-residual}
+\end{center}
+\vspace{-6mm}
+\end{figure}
+
+Using the architecture change in Figure~\ref{fig:bert-residual}(b), we consider three different cases as detailed in Table~\ref{tab:bert_model_size}. The 336M model has the same size as BERT-large. The 1.3B is the same as the BERT-xlarge configuration that was previously shown to get worse results than the 336M BERT-large model \cite{ALBERT2019}. We further scale the BERT model using both larger hidden size as well as more layers to arrive at the 3.9B parameter case. In all cases, the hidden size per attention head is kept constant at 64. 336M and 1.3B models are trained for 2 million iterations while the 3.9B model is trained for 1.5 million iterations and is still training.
+
+On a 3\% held-out set, 336M, 1.3B, and 3.9B models achieve validation set perplexity of 1.58, 1.30, and 1.16, respectively, a monotonic decrease with the model size. We finetune the trained models on several downstream tasks including MNLI and QQP from the GLUE benchmark \cite{GLUE2019}, SQuAD 1.1 and SQuAD 2.0 from the Stanford Question answering dataset \cite{SQUAD1,SQUAD2}, and the reading comprehension RACE dataset \cite{RACE}. For finetuning, we follow the same procedure as \cite{roberta}. We first perform hyperparameter tuning on batch size and learning rate. Once we obtain the best values, we report the median development set results over 5 different random seeds for initialization. The hyperparameters used for each model and task are provided in the Appendix \ref{app:berthparams}. Table \ref{tab:bert_results} shows the development set results for MNLI, QQP, SQuAD 1.1, and SQuAD 2.0 and test set results for RACE. For the test set results of RACE, we first use the development set to find the checkpoint that gives us the median score on the 5 random seeds and we report the results from that checkpoint on the test set. We also report 5-way ensemble results for the development set of SQuAD and test set of RACE. From Table \ref{tab:bert_results} we observe that (a) as the model size increases, the downstream task performance improves in all cases, (b) our 3.9B model establishes state of the art results on the development set compared to other BERT based models, and (c) our 3.9B model achieves both single model as well as ensembled  SOTA results on RACE test set. 
+

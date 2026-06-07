@@ -1,0 +1,50 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+\begin{abstract} 
+The learning rate warmup heuristic achieves remarkable success in stabilizing training, accelerating convergence and improving generalization for adaptive stochastic optimization algorithms like RMSprop and Adam.
+Pursuing the theory behind warmup,
+we identify a problem of the adaptive learning rate -- its variance is problematically large in the early stage, and presume warmup works as a variance reduction technique.
+We provide both empirical and theoretical evidence to verify our hypothesis.
+We further propose Rectified Adam (RAdam), a novel variant of Adam, by introducing a term to rectify the variance of the adaptive learning rate.
+Experimental results on image classification, language modeling, and neural machine translation verify our intuition and demonstrate the efficacy and robustness of RAdam.\footnote{All implementations are available at: \url{https://github.com/LiyuanLucasLiu/RAdam}.}
+
+
+% Here, we study its mechanism in details. 
+% This paper presents the theoretical justification of the heuristic, showing that its effectiveness is due to the fact that it reduces the problematically large variance of the adaptive learning rate in the early stage.
+
+%Further analysis derives a reliable and concise variance approximation, and we propose Rectified Adam,
+% \XD{What RAdam refers to? rectified Adam?}
+%a new variant of the Adam algorithm which rectifies the variance of the adaptive learning rate.
+%We conduct experiments on various datasets and observe that RAdam leads to consistent improvements over the vanilla Adam, which demonstrates that the variance issue generally exists and affects training stability and model performance~\footnote{All implementations are available at: \url{https://github.com/LiyuanLucasLiu/RAdam}}.
+% \XD{Font of x-y axis is too small and hard to see. Pls make it bigger.}
+% and fixing such issues leads to better robustness and efficiency. 
+\end{abstract}
+
+% \begin{abstract}
+
+% %Adaptive stochastic optimizations like RMSprop~\citep{tieleman2012lecture} and Adam~\citep{kingma2014adam} scale gradient updates based on adaptive estimates of second-order moments, to speedup the training process.
+% %and have been viewed as the optimizer of choice in many deep learning frameworks. 
+% In state-of-the-art adaptive stochastic optimization algorithms, \eg, RMSprop~\citep{tieleman2012lecture} and Adam~\citep{kingma2014adam}, 
+% a learning rate \textit{warmup} stage is required to stabilize training, accelerate convergence and improve generalization, though the reason of its effectiveness is largely unknown.
+% %(\ie, using small learning rates in the first few epoches) to avoid instability issue. 
+% % In this work, we explain the mechanism of warmup by showing that it reduces the problematic adaptive update in the early stage. 
+% % Specifically, we suggest the problematic updates are caused by the instability of the second moment estimation inverse in the early stage, and provide both theoretical analysis and empirical evidences to verify our hypothesis.
+% In this work, we study the mechanism of warmup in details. 
+% Specifically, we explain its underlying principles by showing that it reduces the problematically large variance of the adaptive learning rate in the early stage, and provide both empirical and theoretical evidences to verify our hypothesis.
+% % We further derive a rectification term motivated by reducing the variance of the moment estimation to fix this issue. 
+% % Extensive experimental results on benchmark datasets demonstrate our proposed method is more robust than Adam and can lead to better generalization ability.
+% Further analysis derives a reliable and concise variance approximation and proposes RAdam, a new variant of the Adam algorithm which rectifies the adaptive learning rate variance.
+% % We further derive and rectify the variance of the moment estimation to fix this issue. 
+% % Extensive experimental results on benchmark datasets demonstrate our proposed method can avoid and .
+% Moreover, we conducts expeirments on various datasets and observe RAdam leads to consistent improvements over the vanilla Adam, which demonstrates that problems caused by the large variance of adaptive learning rate generally exist and hurt the performance, 
+% % and it is necessary to fix such issues. 
+% while fixing such issues leads to both robustness and efficiency. 
+
+% % Adaptive stochastic optimizations like RMSprop~\citep{tieleman2012lecture} and Adam~\citep{kingma2014adam} scale gradient updates by square roots of moving squared gradients, gain remarkable speed and have been viewed as the optimizer of choice in many deep learning frameworks. 
+% % In many applications, \eg, neural machine translation, it has been empirically observed that these algorithms require a ``warmup'' stage (\ie, using small learning rates in the first few epoches) to avoid convergence problems. 
+% % We suggest these problems are caused by the lack of robustness of the adaptive gradient in the early stage, and provide both theoretical analysis and empirical evidences to verify our hypothesis.
+% % We further derive a calibration term to constraint the magnitude of the variance and fix this issue. 
+% % Moreover, we propose to improve the adaptive gradient by replacing the uncentered variance with the moving variance.
+% % Extensive experimental results on benchmark datasets demonstrate our proposed method is more robust than Adam and can lead to better generalization ability.
+% \end{abstract}

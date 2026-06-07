@@ -1,0 +1,233 @@
+\section{Update RMS}
+\label{sec:appendix:updaterms}
+
+\paragraph{Proof of Lemma $\ref{lemma:updaterms}$}
+
+\begin{proof}
+Without loss of generality, consider the orthogonal matrices $U\in\mathbb{R}^{n\times n}$ and $V\in\mathbb{R}^{m\times m}$ where $n \geq m \geq r$. We will show that for $X=U_{[:,:r]}V_{[:r,:]}$ (the update of the Muon has the same format), the RMS value is $\sqrt{r/mn}$. From the definition of matrix multiplication:
+$$X_{i,j}=\sum_{k=1}^r U_{i,k}V_{k,j}$$
+
+The RMS can be expressed as:
+$$\begin{aligned}
+\text{RMS}(X)^2 &= \frac{1}{mn}\sum_{i=1}^n\sum_{j=1}^m \sum_{k=1}^r U_{i,k}^2V_{k,j}^2 \\
+&= \frac{1}{mn}\sum_{k=1}^r\left(\sum_{i=1}^n U_{i,k}^2\right)\left(\sum_{j=1}^m V_{k,j}^2\right) \\
+&= \frac{1}{mn}\sum_{k=1}^r 1 \\
+&= \frac{r}{mn}
+\end{aligned}$$
+
+Therefore, $\text{RMS}(X)=\sqrt{r/mn}$. For the common case where the matrices are full-rank, $r=m$, yielding $\text{RMS}(X)=\sqrt{1/n}$.
+\end{proof}
+
+
+\paragraph{Consistent Update RMS Across Muon and AdamW}
+As discussed in \ref{sec:analysis:rms}, we'd like to match the update RMS between Muon and AdamW optimizers. This is validated by experiments on small-scale models. We set Muon's Update RMS in the range of $[0.05, 0.1, 0.2, 0.4, 0.8]$ and AdamW as baseline. We reported the loss and representative weight matrix RMS at 2k steps (about 2B tokens) in the Table \ref{tab:muonrms}. From the results, we find that 0.2 RMS and 0.4 RMS performed similarly and much better than other settings. These findings are consistent with our empirical observation that AdamW's update RMS is in the range of $0.2\sim0.4$. We opted to control the update RMS of Muon to 0.2.
+
+
+\begin{table}[ht]
+\small
+\centering
+\caption{Muon Update RMS Experiments}
+\label{tab:muonrms}
+\begin{tabular}{c|c|c|c|c|c|c}
+\toprule
+Optimizer & AdamW & 0.05 RMS* & 0.1 RMS & 0.2 RMS & 0.4 RMS & 0.8 RMS\\
+\midrule
+LM training loss & 3.512 & 3.355 & 3.239 & \textbf{3.198} & 3.199 & 3.386  \\
+LM validation loss & 3.679 & 3.503 & 3.374 & 3.325 & \textbf{3.314} & 3.543 \\
+AttnQ weight RMS & 1.01e-2 & 5.74e-3 & 8.44e-3 & 1.57e-2 & 2.95e-2 & 7.23e-2 \\
+Mlp weight RMS & 1.25e-2 & 8.01e-3 & 1.27e-2 & 2.35e-2 & 4.51e-2 & 8.73e-2 \\
+\bottomrule
+\end{tabular}
+\\ \footnotesize{\small *Except the first column, all other candidates are using Muon with controlled RMS.} 
+\end{table}
+
+
+\section{AdamW Baseline Scaling Law}
+\label{sec:appendix:scaling}
+
+To ensure the fairness and accuracy of our experiments, we conducted a series of experiments on our proprietary dataset to derive scaling law parameters that are optimal for AdamW. This includes determining the optimal model size($N$), number of training tokens($D$), learning rate($\eta$), batch size($B$) under a constrained computational budget (FLOPs, $C$).~\citep{kaplan2020scalinglawsneurallanguage,hoffmann2022trainingcomputeoptimallargelanguage,bi2024deepseek} Table \ref{tab:dense_scaling_param} presents the results of our systematic parameter search process.
+
+\begin{table}[ht]
+\small
+\centering
+\caption{Empirical Relationships Between Scaling Law Parameters and Computational Budget (FLOPs)}
+\label{tab:dense_scaling_param}
+\begin{tabular}{l c|c|c|c}
+\toprule
+ & $N(C)$ & $D(C)$ & $\eta(C)$ & $B(C)$ \\
+\midrule
+ & $0.0483359 \cdot C^{0.5112684}$ & $3.4480927 \cdot C^{0.4887316}$ & $0.0127339 \cdot C^{-0.0574752} $ & $0.0065202 \cdot C^{0.4137915}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Hyper-Parameters Search} To systematically identify optimal scaling law hyper-parameters in the AdamW baseline, we adopted a multistage search protocol. First, we selected multiple computational budgets (FLOPs levels) and initialized model sizes, learning rates, and batch sizes based on empirical guidelines from prior studies. For each fixed FLOPs constraint, we varied the model size $N$ while adjusting the training token count $D$ inversely to maintain 
+$C=6ND$, thereby exploring the trade-off between model capacity and data efficiency. Each configuration was trained to convergence, and the validation loss was recorded to determine the Pareto-optimal combinations of $N$ and $D$. Subsequently, with the optimal $N-D$ pairs fixed, we refined the learning rate and batch size through grid searches, ensuring stability and convergence across configurations. To mitigate local minima and enhance robustness, this iterative procedure was repeated 2–3 times, progressively narrowing the hyper-parameter space. 
+
+The optimization process is further illustrated in Figure \ref{fig:scaling_search}, which depicts the loss landscapes as functions of training tokens, learning rate, and batch size across varying FLOPs budgets. Each bowl-shaped curve represents the loss surface for a specific FLOPs level, with a distinct global minimum corresponding to the optimal hyper-parameter configuration. 
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/scaling_search.pdf}
+    \caption{Optimization Landscapes for Scaling Law Hyper-parameters Across FLOPs Budgets} 
+    \label{fig:scaling_search} 
+\end{figure}
+
+
+
+\section{Model Architecture}
+\label{sec:appendix:modelarch}
+
+Muon is agnostic to model architectures, and we used a model similar to Deepseek-V3-Small as described in \cite{deepseekai2024deepseekv3technicalreport}, because it is a strong model with open weights as a baseline. We made several small modifications in the Moonlight model and listed them here:
+
+\paragraph{Multi-token Prediction (MTP)} MTP has not shown significant benefits to pretraining in our experiments. For simplicity, we do not introduce MTP layers into the Moonlight model.
+
+\paragraph{Auxfree Bias Update} In \cite{deepseekai2024deepseekv3technicalreport}, auxfree bias is updated by: $b_i = b_i + u \times  \text{sign}(e_i)$, where $u$ is the update ratio, $b_i$ is the bias for the ith expert, and $e_i$ is the expert's violating ratio. We slightly modified the update rule as: $b_i = b_i + u \times (\text{sign}(e_i) - \text{sign}(e).\text{mean}())$, where $\text{sign}(e).\text{mean}()$ is the average of the signs of all expert's violating ratio, in order to control the magnitude of the bias, while does not change the topk selection logic.
+
+\paragraph{Gate Scaling Factor} Deepseek-V2-Lite did not use the gate scaling factor, and Deepseek-V3 used a scaling factor of 2.5. We used a scaling factor of 2.446 to control a similar output rms like dense models. The code for calculating our gate scaling factor can be found in Figure \ref{fig:gate_scaling_code}.
+
+
+
+\lstset{
+  language=Python,                       % Language of the code
+  backgroundcolor=\color{blue!5},        % Light blue background
+  basicstyle=\footnotesize\ttfamily\color{black}, % Font and size with black text
+  keywordstyle=\color{blue!70}\bfseries,  % Keywords in medium blue with bold
+  commentstyle=\color{gray!70},          % Comments in light green
+  stringstyle=\color{red!80},             % Strings in dark red
+  numberstyle=\tiny\color{blue!60},       % Line numbers in medium blue (optional)
+  stepnumber=1,                           % Show line numbers
+  numbersep=10pt,                         % Space between numbers and code
+  breaklines=true,                        % Automatic line breaking
+  showstringspaces=false,                 % Don't highlight spaces in strings
+  escapeinside={\%*}{*)},                 % For LaTeX code inside listings (optional)
+  morekeywords={*,...}                    % Additional keywords (optional)
+}
+
+\begin{figure}[h]
+\begin{lstlisting}[frame=single,breaklines=false]
+import numpy as np
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
+
+def calc_gate_scaling_factor(num_experts: int, topk: int, iter_times: int):
+    """Calculate the gate scaling factor for MoE.
+
+    Args:
+        num_experts (int): The number of experts.
+        topk (int): The number of experts to select.
+        iter_timers (int): The number of iterations.
+
+    Returns:
+        float: The gate scaling factor.
+    """
+    factors = []
+    for _ in range(iter_times):
+
+        # mock gaussian logits
+        logits = np.random.randn(num_experts)
+        # select topk logits
+        p = np.sort(sigmoid(logits))[::-1]
+        p = p[:topk]
+        # renormalize
+        p = p / p.sum()
+        # calculate the scaling factor
+        factors.append( 1/ (p**2).sum()**0.5)
+    return np.mean(factors)
+\end{lstlisting}
+\caption{Python implementation for calculating the gate scaling factor.}
+\label{fig:gate_scaling_code}
+\end{figure}
+
+\section{Training Stability}
+\label{sec:appendix:stability}
+
+\begin{figure}[htbp]
+    \centering
+    \subfloat[Training Loss]{
+        \includegraphics[width=0.48\textwidth]{figures/moonlight_loss.pdf}
+    }
+    \subfloat[Gradient Norm]{
+        \includegraphics[width=0.48\textwidth]{figures/moonlight_grad_norm.pdf}
+    }
+    
+    \vspace{0.5em}
+    
+    \subfloat[Max Attention Logit (Layer 1)]{
+        \includegraphics[width=0.48\textwidth]{figures/moonlight_max_logits.pdf}
+    }
+    \subfloat[Large Attention Logits Ratio (Layer 1)]{
+        \includegraphics[width=0.48\textwidth]{figures/moonlight_max_logits_ratio.pdf}
+    }
+    
+    \caption{Training dynamics comparison between Moonlight and Moonlight-A}
+    \label{fig:training_dynamics}
+\end{figure}
+
+\paragraph{No Loss or Grad Norm Spike} The Moonlight training process was very smooth and we did not meet any loss spike or gradient norm spike. The loss and grad norm curve can be seen in Figure \ref{fig:training_dynamics} (Moonlight is colored in blue and Moonlight-A trained by AdamW is colored in red)
+
+
+\paragraph{Max Attention Logit} During training, we observed that while both the training loss and gradient norm remained stable throughout the process, the maximum attention logit (computed as the single largest logit value across the global batch) exhibited a distinct upward trajectory in specific layers during the initial training phase, exceeding a threshold of 100. Notably, AdamW demonstrated healthier behavior in controlling this metric compared to alternative optimizers.
+
+To further investigate the impacts of this phenomenon, we introduced the large attention logits ratio metric, defined as the proportion of attention logits exceeding 100 within a batch. As shown in Fig.\ref{fig:training_dynamics}, this ratio remained consistently low (about $10^{-4}$), indicating that extreme large logit values were sparse. Furthermore, the maximum logit values gradually decrease as training progressed, suggesting that the optimization dynamics become healthier.
+
+\paragraph{RMSNorm Gamma Weight Decay} It is noteworthy that applying weight decay to the RMSNorm gamma parameter is crucial for ensuring training stability, as it effectively prevents excessively high output RMS values in each layer.
+
+
+\section{Comparison with More Expensive Models}
+\label{sec:appendix:comparisons}
+
+
+Table \ref{tab:larger_compute} presents a comparative analysis between our Moonlight model (optimized with Muon) and publicly available models trained with greater computational resources, including \texttt{LLama3.1-8B}~\citep{grattafiori2024llama3herdmodels}, \texttt{Gemma-9B}~\citep{team2024gemma} and \texttt{Qwen2.5-7B}~\citep{qwen2.5}. Figure \ref{Fig:model_perf} illustrates the GSM8k performance benchmarks of Moonlight against comparable models in the field.
+
+\begin{table}[!ht]
+    \small
+    \centering
+    \caption{Comparison of different models on various benchmarks.}
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{}c l c || c c c@{}}
+    \toprule
+& \textbf{Benchmark (Metric)} & \textbf{Moonlight} & \textbf{LLAMA3.1-8B}  & \textbf{Gemma2-9B} & \textbf{Qwen2.5-7B}  \\
+&  &   & \multicolumn{3}{c}{Larger Training Compute Model} \\
+    \midrule
+    & Activated Param$^{\dagger}$ & 2.24B & 7.38B & 8.32B & 6.83B \\
+    & Total Params$^{\dagger}$   & 15.29B & 7.38B & 8.32B & 6.83B \\
+    & Training Tokens & 5.7T & 15T & 8T & 18T \\
+    & Optimizer  & Muon & AdamW & Unknown & Unknown \\
+    \midrule
+    \multirow{2}{*}{English} 
+    & MMLU & 70.0 & 66.7 & 71.3 & 74.2  \\
+    & MMLU-pro & 42.4 & 37.1 & 44.7 & 45.0 \\
+    & BBH & 65.2 & 57.7 & 68.2 & 70.4 \\
+    & TriviaQA$^{\ddagger}$ & 66.3 & 70.3 & - & 60.0 \\
+    %& ARC-C & & & & \\
+    \midrule
+    \multirow{2}{*}{Code} & HumanEval & 48.1 & 37.2 & 37.8 & 57.9 \\
+    & MBPP & 63.8 & 47.6 & 62.2 & 74.9 \\
+    \midrule
+    \multirow{2}{*}{Math} & GSM8K & 77.4 & 57.2 & 70.7 & 85.4 \\
+    & MATH & 45.3 & 20.3 & 37.7 & 49.8 \\
+    \bottomrule
+    \end{tabular}
+
+    \footnotesize{\small$^{\dagger}$ The reported parameter counts exclude the embedding parameters.$^{\ddagger}$ We test all listed models with the full set of TriviaQA.} 
+    \label{tab:larger_compute}
+\end{table}
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/fig_GSM8k_performance.pdf}
+    \label{fig:gsm8k}
+    \caption{The GSM8k performance of our Moonlight model optimized with Muon and other comparable models.} 
+    \label{Fig:model_perf} 
+\end{figure}
+
+
+\section{Singular Value Distributions of Weight Matrices}
+\label{sec:appendix:svd}
+We visualize the singular value distributions of weight matrices by plotting a line graph of its singular values in descending order for each matrix, normalized by the largest one. As shown in Figures \ref{fig_svd_attn} and \ref{fig_svd_ffn}, we find that, for most of the weight matrices, the singular value distributions of them optimized by Muon are more flattened than that of AdamW, which further confirms the hypothesis that Muon can provide a more diverse spectrum of updates.
+\input{figures/svd_dist_attn}
+\input{figures/svd_dist_ffn}
+

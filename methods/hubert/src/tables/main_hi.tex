@@ -1,0 +1,37 @@
+
+
+\begin{table*}[t]
+    \centering
+    \begin{tabular}{lcccccc}
+        \toprule
+        Model & Unlabeled Data & LM & dev-clean & dev-other & test-clean & test-other \\
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{Superivsed}}} \\
+        Conformer L~\cite{gulati2020conformer} & - & LSTM & - & - & 1.9 & 3.9 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{Self-Training}}} \\
+        IPL~\cite{xu2020iterative} & LL-60k & 4-gram + Transformer & 1.85 & 3.26 & 2.10 & 4.01 \\
+        Noisy Student~\cite{park2020improved} & LV-60k & LSTM & 1.6 & 3.4 & 1.7 & 3.4 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{Pre-Training}}} \\
+        wav2vec 2.0 \textsc{Large}~\cite{baevski2020wav2vec} & LL-60k & Transformer & 1.6 & 3.0 & 1.8 & 3.3 \\
+        pre-trained Conformer XXL~\cite{zhang2020pushing} & LL-60k & LSTM & 1.5 & 3.0 & 1.5 & 3.1 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{Pre-Training + Self-Training}}} \\
+        wav2vec 2.0 + self-training~\cite{xu2020self} & LL-60k & Transformer & 1.1 & 2.7 & 1.5 & 3.1\\
+        pre-trained Conformer XXL + Noisy Student~\cite{zhang2020pushing} & LL-60k & LSTM & 1.3 & 2.6 & 1.4 & 2.6 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{This work (Pre-Training)}}} \\
+        HUBERT \textsc{Large}   & LL-60k & Transformer & 1.5 & 3.0 & 1.9 & 3.3 \\
+        % HUBERT \textsc{X-Large} & LL-60k & Transformer & 1.6 & 2.6 & 1.8 & 3.0 \\ % old number
+        HUBERT \textsc{X-Large} & LL-60k & Transformer & 1.5 & 2.5 & 1.8 & 2.9 \\
+        
+        \bottomrule
+    \end{tabular}
+    \caption{Comparison with the literature on high resource setups using all 960 hours of labeled LibriSpeech data.}
+    \label{tab:main_hi}
+\end{table*}

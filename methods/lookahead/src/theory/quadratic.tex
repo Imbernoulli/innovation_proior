@@ -1,0 +1,25 @@
+\subsection{Quadratic Convergence}
+
+Quadratic functions provide a simple setting to analyze the convergence of optimization algorithms. In this section, we will focus on Lookahead with classical momentum \citep{polyak1964some} acting as the inner-loop optimizer. See \citet{goh2017why} for a good review of classical momentum. Without loss of generality, we may restrict our attention to quadratic functions with diagonal Hessians with minima at the origin.\footnote{To see this, note that classical momentum's iterates are invariant to translations and rotations (see e.g. \citet{sutskever2013importance}) and Lookahead's linear interpolation is also invariant to such changes.} Thus we are concerned with optimizing functions of the form,
+\[ f(\btheta) = \frac{1}{2}\sum_{i=1}^{n} \lambda_i \theta^2_i,\]
+where $\lambda_i$ are the eigenvalues of the quadratic. Given initial point $\btheta_0$, we wish to measure the convergence rate of the Lookahead optimizer, that is, the rate of contraction $||\btheta_t||$. We follow the approach of \citep{o2015adaptive} and model the optimization of this function as a linear dynamical system. Details are in Appendix \ref{app:quadratic}.
+
+
+\begin{wrapfigure}{r}{0.6 \textwidth}
+    \centering
+    \vspace{-0.2cm}
+    \includegraphics[width=0.56 \textwidth]{images/quad_convergence.png}
+    \vspace{-0.2cm}
+    \caption{Quadratic convergence rates of classical momentum versus Lookahead wrapping classical momentum. For Lookahead, we fix $k=20$ lookahead steps and $\alpha=0.5$ for the interpolation coefficient. Lookahead is able to significantly improve on the convergence rate in the underdamped regime where oscillations are observed.}
+    \label{fig:quad_convergence}
+\end{wrapfigure}  
+
+% In order to compute this rate, we model the optimization of the quadratic function as a linear dynamical system. See \citet{o2015adaptive} for a good summary of this approach applied to classical momentum. For the Lookahead optimizer with classical momentum we can also represent the progression of the fast weights ($\btheta$) as a linear dynamical system. See the appendix for details on the computation of the iterate matrix for this system. By computing the eigenvalues of this matrix we get tight bounds on the contraction rate of the linear system.
+
+As in \citet{lucas2018aggregated}, to better understand the sensitivity of Lookahead to misspecified conditioning we fix the momentum coefficient of classical momentum and explore the convergence rate over varying condition number under the optimal learning rate. While closed form solutions exist for the optimal classical momentum learning rate, we were unable to find such solutions for the Lookahead dynamical system. Therefore, we perform a fine-grained grid search over learning rates to estimate the best rate. We plot the corresponding convergence rates in Figure~\ref{fig:quad_convergence}.
+
+As expected, Lookahead has slightly worse convergence in the overdamped regime where momentum is set too low and CM is slowly, monotonically converging to the optimum. In this case, interpolation leads to a strictly worse parameter setting. However, when the system is underdamped (and oscillations occur) Lookahead is able to significantly improve the convergence rate by skipping to a better parameter setting during oscillation. We believe this is the more common regime for neural networks that attain high validation accuracy, as higher initial learning rates are used to overcome the short-term horizon bias \citep{wu2018understanding}.
+
+
+
+

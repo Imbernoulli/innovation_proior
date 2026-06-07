@@ -1,0 +1,197 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%% ICML 2016 EXAMPLE LATEX SUBMISSION FILE %%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Use the following line _only_ if you're still using LaTeX 2.09.
+%\documentstyle[icml2016,epsf,natbib]{article}
+% If you rely on Latex2e packages, like most moden people use this:
+\documentclass{article}
+
+% use Times
+\usepackage{times}
+% For figures
+\usepackage{graphicx} % more modern
+%\usepackage{epsfig} % less modern
+\usepackage{subfigure}
+
+% For citations
+\usepackage{natbib}
+
+% For algorithms
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% As of 2011, we use the hyperref package to produce hyperlinks in the
+% resulting PDF.  If this breaks your system, please commend out the
+% following usepackage line and replace \usepackage{icml2016} with
+% \usepackage[nohyperref]{icml2016} above.
+\usepackage[draft]{hyperref}
+
+% Packages hyperref and algorithmic misbehave sometimes.  We can fix
+% this with the following command.
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Employ the following version of the ``usepackage'' statement for
+% submitting the draft version of the paper for review.  This will set
+% the note in the first column to ``Under review.  Do not distribute.''
+% \usepackage{icml2016}
+
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{wrapfig}
+\usepackage{amsmath,amssymb,amsthm}
+
+% Employ this version of the ``usepackage'' statement after the paper has
+% been accepted, when creating the final version.  This will set the
+% note in the first column to ``Proceedings of the...''
+\usepackage[accepted]{icml2016}
+
+\usepackage[algo2e, ruled, noline]{algorithm2e}
+\providecommand{\SetAlgoLined}{\SetLine}
+\providecommand{\DontPrintSemicolon}{\dontprintsemicolon}
+\DontPrintSemicolon
+\makeatletter
+\newcommand{\pushline}{\Indp}% Indent
+\newcommand{\popline}{\Indm}
+\makeatother
+
+
+\setlength{\bibsep}{0.5em}
+
+% The \icmltitle you define below is probably too long as a header.
+% Therefore, a short form for the running title is supplied here:
+\icmltitlerunning{Dueling Network Architectures for Deep Reinforcement Learning}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+%\iclrfinalcopy % Uncomment for camera-ready version
+
+\input{mydef}  % Macros from Kevin Murphy's book.
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Dueling Network Architectures for Deep Reinforcement Learning}
+
+% from ICLR
+%\author{Ziyu Wang, Nando de Freitas \& Marc Lanctot\\
+% \thanks{ Use footnote for providing further information
+% about author (webpage, alternative address)---\emph{not} for acknowledging
+% funding agencies.  Funding acknowledgements go at the end of the paper.} \\
+%Google DeepMind\\
+%London, UK\\
+%\texttt{\{ziyu,nandodefreitas,lanctot\}@google.com} \\
+%}
+
+% It is OKAY to include author information, even for blind
+% submissions: the style file will automatically remove it for you
+% unless you've provided the [accepted] option to the icml2016
+% package.
+\icmlauthor{Ziyu Wang}{ziyu@google.com}
+% \icmladdress{Google DeepMind, London, UK}
+\icmlauthor{Tom Schaul}{schaul@google.com}
+% \icmladdress{Google DeepMind, London, UK}
+\icmlauthor{Matteo Hessel}{mtthss@google.com}
+% \icmladdress{Google DeepMind, London, UK}
+\icmlauthor{Hado van Hasselt}{hado@google.com}
+% \icmladdress{Google DeepMind, London, UK}
+\icmlauthor{Marc Lanctot}{lanctot@google.com}
+% \icmladdress{Google DeepMind, London, UK}
+\icmlauthor{Nando de Freitas}{nandodefreitas@gmail.com}
+\icmladdress{Google DeepMind, London, UK}
+
+
+% You may provide any keywords that you
+% find helpful for describing your paper; these are used to populate
+% the "keywords" metadata in the PDF but will not be shown in the document
+\icmlkeywords{}
+
+\vskip 0.3in
+]
+
+\begin{abstract}
+In recent years there have been many successes of using deep representations in reinforcement learning. Still, many of these applications use conventional architectures, such as convolutional networks, LSTMs, or auto-encoders. In this paper, we present a new neural network architecture for model-free reinforcement learning. Our dueling network represents two separate estimators: one for the state value function and one for the state-dependent action advantage function. The main benefit of this factoring is to generalize learning across actions without imposing any change to the underlying reinforcement learning algorithm. Our results show that this architecture leads to better policy evaluation in the presence of many similar-valued actions. Moreover, the dueling architecture enables our RL agent to outperform the state-of-the-art on the Atari 2600 domain. 
+%Double DQN method of~\citet{vanHasselt:2015} in 46 out of 57 Atari games.
+\end{abstract}
+
+
+\section{Introduction}
+\label{sec:introduction}
+
+\input{intro.tex}
+
+\section{Background}
+\label{sec:DRL}
+
+\input{background.tex}
+
+\section{The Dueling Network Architecture}
+\label{sec:dueling}
+
+\input{dueling.tex}
+
+\section{Experiments}
+\label{sec:experiments}
+
+
+\input{experiments.tex}
+
+
+\section{Discussion}
+\label{sec:discussion}
+The advantage of the dueling architecture lies partly in its ability to learn the state-value function efficiently.
+With every update of the $Q$ values in the dueling architecture,
+the value stream ${V}$ is updated -- this contrasts with the updates in a single-stream architecture where only the value for one of the actions is updated, the values for all other actions remain untouched. This more frequent updating of the value stream in our approach allocates more resources to $V$, and thus allows for better approximation of the state values, which in turn need to be accurate for temporal-difference-based methods like Q-learning to work~\cite{SuttonBarto:1998}.
+This phenomenon is reflected in the experiments, where the advantage of the dueling architecture over single-stream 	$Q$ networks grows when the number of actions is large.
+
+Furthermore, the differences between $Q$-values for a given state are often very small relative to the magnitude of $Q$.
+For example, after training with DDQN on the game of Seaquest, the average action gap (the gap between the $Q$ values of the best and the second best action in a given state) across visited states is roughly $0.04$, whereas the average state value across those states is about $15$.
+This difference in scales can lead to small amounts of noise in the updates can lead to reorderings of the actions, and thus make the nearly greedy policy switch abruptly.
+The dueling architecture with its separate advantage stream is robust to such effects.
+
+
+% Max vs. Mean
+
+
+\section{Conclusions}
+\label{sec:conclusion}
+
+We introduced a new neural network architecture that decouples value and advantage in deep $Q$-networks, while sharing a common feature learning module. The new dueling architecture, in combination with some algorithmic improvements, leads to dramatic improvements over existing approaches for deep RL in the challenging Atari domain. The results presented in this paper are the new state-of-the-art in this popular domain. 
+
+% Add after accepted
+%\subsubsection*{Acknowledgments}
+%We would like to thank Hado van Hasselt, Arthur Guez, Vlad Mnih, Nicolas Hess, Marc Bellemare, Georg Ostrovski, Tom Schaul and all the folks at Google DeepMind for making this possible.
+
+
+\bibliography{deeprl}
+\bibliographystyle{icml2016}
+
+\appendix
+
+\onecolumn
+\section{Double DQN Algorithm}
+\label{sec:ddqn_alg}
+\input{ddqn_appendix.tex}
+
+\input{appendix.tex}
+% %\newpage
+% \section{Score Tables}
+% \input{small_appendix.tex}
+
+
+\end{document}
+
+
+% This document was modified from the file originally made available by
+% Pat Langley and Andrea Danyluk for ICML-2K. This version was
+% created by Lise Getoor and Tobias Scheffer, it was slightly modified
+% from the 2010 version by Thorsten Joachims & Johannes Fuernkranz,
+% slightly modified from the 2009 version by Kiri Wagstaff and
+% Sam Roweis's 2008 version, which is slightly modified from
+% Prasad Tadepalli's 2007 version which is a lightly
+% changed version of the previous year's version by Andrew Moore,
+% which was in turn edited from those of Kristian Kersting and
+% Codrina Lauth. Alex Smola contributed to the algorithmic style files.

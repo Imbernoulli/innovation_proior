@@ -1,0 +1,173 @@
+\documentclass[letterpaper,10pt,journal,twoside]{IEEEtran}  % Use this command for final RAL version
+%\documentclass[a4paper, 10pt, conference]{ieeeconf}      % Use this line for a4 paper 
+
+% \IEEEoverridecommandlockouts                              % This command is only needed if
+                                                          % you want to use the \thanks command
+
+%\overrideIEEEmargins % Needed to meet printer requirements.
+
+% \usepackage{etex}
+
+%\overrideIEEEmargins
+% numbers option provides compact numerical references in the text.
+%\usepackage[numbers]{natbib}
+\usepackage{multicol}
+\usepackage[colorlinks=true, allcolors=blue]{hyperref}
+% \usepackage[colorlinks=true]{hyperref}
+% \usepackage{epstopdf}
+
+% \pdfminorversion=4
+\usepackage{amsmath,amsfonts,amssymb,amsthm} 
+% \usepackage{float}
+% \usepackage{bm}
+%To get support for eps figures
+\usepackage{graphicx}
+% \usepackage{epstopdf}
+% \usepackage{epsfig}
+\usepackage{xspace}
+%% Language and font encodings
+% \usepackage[english]{babel}
+% \usepackage[utf8x]{inputenc} 
+% \usepackage[T1]{fontenc}
+\usepackage{multirow}
+% \usepackage{hhline}
+% \usepackage[export]{adjustbox}
+% \usepackage{csvsimple}
+
+%% Sets page size and margins
+% \usepackage[a4paper,top=3cm,bottom=2cm,left=3cm,right=3cm,marginparwidth=1.75cm]{geometry}
+
+%% Useful packages
+\usepackage{graphicx}
+% \usepackage[colorinlistoftodos]{todonotes}
+% \newcommand{\journalVersion}[1]{}
+\usepackage{xr}
+%\usepackage{titlesec}
+%\usepackage{refcheck}
+\graphicspath{{./}}
+
+% \renewcommand{\baselinestretch}{0.92}
+
+\input{preamble_packages.tex}
+\input{preamble_symbols.tex}
+\input{shortcuts.tex}
+
+% \titlespacing*{\section}{0pt}{4mm}{2mm}
+% \titlespacing*{\subsection}{0pt}{2mm}{2mm}
+
+\newcommand{\omitted}[2]{#2}
+\newcommand{\shorten}[2]{#2}
+\newcommand{\bnb}{BnB\xspace}
+\newcommand{\myParagraph}[1]{{\bf #1.}}
+
+\newcommand{\isExtended}[2]{#2} % #2 : short RAL version
+
+% \titlespacing*{\section}{0pt}{4mm}{2mm}
+% \titlespacing*{\subsection}{0pt}{2mm}{2mm}
+
+% Spatial Perception
+% 
+\title{\huge{Graduated Non-Convexity for Robust Spatial Perception: \\ From Non-Minimal Solvers to Global Outlier Rejection}}
+
+% Paper headers
+\markboth{
+}
+{Yang \MakeLowercase{\textit{et al.}}: Graduated Non-Convexity for Robust Spatial Perception}
+% Use only for final RAL version
+
+\author{Heng Yang, Pasquale Antonante, Vasileios Tzoumas, Luca Carlone
+% \thanks{Manuscript received: September 10, 2019; 
+% Revised: November 29, 2019; 
+% Accepted: January 6, 2020.
+% }
+% \thanks{This paper was recommended for publication by Editor Eric Marchand upon evaluation of the Associate Editor and Reviewers' comments.~\finalize{The authors would like to thank the anonymous reviewers for their thorough comments.}} 
+
+\thanks{This work was partially funded by ARL DCIST CRA W911NF-17-2-0181, ONR RAIDER N00014-18-1-2828, and Lincoln Laboratory's Resilient Perception in Degraded Environments program.}
+
+\thanks{
+The authors are with the Laboratory for 
+Information \& Decision Systems (LIDS), Massachusetts Institute of Technology, Cambridge, USA, 
+{\tt\scriptsize \{hankyang,antonap,vtzoumas,lcarlone\}@mit.edu}}
+% \thanks{Digital Object Identifier (DOI): see top of this page.}
+  \vspace{-1cm}
+}
+ 
+\begin{document}
+
+\maketitle
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{tikzpicture}[overlay, remember picture]
+\path (current page.north east) ++(-4.2,-0.2) node[below left] { 
+This paper has been accepted for publication in the IEEE Robotics and Automation Letters.
+};
+\end{tikzpicture}
+\begin{tikzpicture}[overlay, remember picture]
+\path (current page.north east) ++(-5.3,-0.6) node[below left] {
+Please cite the paper as: H. Yang, P. Antonante, V. Tzoumas, and L. Carlone,
+};
+\end{tikzpicture}
+\begin{tikzpicture}[overlay, remember picture]
+\path (current page.north east) ++(-2.3,-1) node[below left] {
+``Graduated Non-Convexity for Robust Spatial Perception: From Non-Minimal Solvers to Global Outlier Rejection'',
+};
+\end{tikzpicture}
+\begin{tikzpicture}[overlay, remember picture]
+\path (current page.north east) ++(-7.3,-1.4) node[below left] {
+ \emph{IEEE Robotics and Automation Letters (RA-L)}, 2020.
+};
+\end{tikzpicture}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+% \isExtended{
+% %%%%%%%%%%%%%%%% LONG VERSION!!!
+% \input{abstract}
+% \input{introduction}
+% \input{relatedWork}
+% \input{BRdualityAndGNC}
+% 	\input{BlackRangarajanDuality}
+% 	\input{graduatedNonConvexity}
+% \input{GNCalgorithm}
+% 	\input{GNC-algorithm-overview}
+% 	\input{fig-pointCloudRegistration}
+% 	\input{fig-meshRegistration} 
+% 	\input{GNC-GM-TLS}
+% 	%\input{convergence}
+% \input{applications}
+% \input{conclusions}
+% }{
+%%%%%%%%%%%%%%%% SHORT VERSION!!!
+\input{abstract}
+\input{introduction}
+\input{relatedWork-short}
+\input{BRdualityAndGNC}
+	\input{BlackRangarajanDuality}
+	\input{graduatedNonConvexity}
+\input{GNCalgorithm}
+	\input{GNC-algorithm-overview}
+	\input{fig-pointCloudRegistration}
+	\input{fig-meshRegistration} 
+	\input{GNC-GM-TLS}
+\input{applications}
+\input{conclusions}	
+% }
+
+\clearpage
+
+\begin{center}
+\large{{\bf Supplementary Material}}
+\end{center}
+
+
+\renewcommand{\theequation}{A\arabic{equation}}
+% \renewcommand{\thetable}{A\arabic{table}}
+% \renewcommand{\thefigure}{A\arabic{figure}
+% \appendix
+\input{app-proof-GNCGM}
+\input{app-proof-GNCTLS}
+\input{app-proof-quaternionSOS}
+
+% Bibliography
+\bibliographystyle{IEEEtran}
+\bibliography{refs,myRefs}
+\end{document}

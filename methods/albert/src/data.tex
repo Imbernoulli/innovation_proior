@@ -1,0 +1,26 @@
+% DO NOT WRITE HERE, this content has been moved to the models_experiments.tex file
+\section{Experimental Setup}
+
+\subsection{Pretraining}
+
+Following \bert\citep{devlin2018bert}, we use \textsc{BookCorpus}~\citep{zhu2015aligning} and English Wikipedia for pretraining baseline models, which consist of 16GB uncompressed text. In particular, we format input as ``\textsc{[CLS]} $x_1$ \textsc{[SEP]} $x_2$ \textsc{[SEP]}'', where $x_1=x_{1,1},x_{1,2}\cdots$ and $x_2=x_{1,1},x_{1,2}\cdots$ are two segments.\footnote{A segment is usually comprised of more than one natural sentence, which has been shown to benefit performances in \cite{liu2019roberta}.} Unlike \bert, we always limit the maximum input length to be 512 and randomly generate input sequences shorter than 512 with a probability of 10\%. We use a vocabulary size of 30,000, tokenized by SentencePiece~\citep{kudo-richardson-2018-sentencepiece}. For our best model, we also use additional training data from~\cite{liu2019roberta} and~\cite{yang2019xlnet}. When generating masked inputs, we use n-gram masking, similar to~\cite{joshi2019spanbert} where the length of each n-gram mask is selected randomly. The probability for the length $n$ is
+
+
+\begin{align}
+    p(n) &= \frac{1/n}{\sum_1^N{1/k}}
+\end{align}
+
+We set the maximum length of n-gram (i.e. $N$) to be 3 as empirically it gives the best performance.
+
+All the models are pretrained with a batch size of 4096 using \textsc{Lamb} optimizer~\citep{you2019reducing}, and the learning rate is set to be 0.00176 ~\citep{you2019reducing}. All of our models are trained 125,000 steps unless specified. 
+
+
+\subsection{Evaluation}
+
+\subsubsection{Downstream Evaluation}
+
+Following \citep{yang2019xlnet,liu2019roberta}, we evaluate our models on three popular benchmarks: The General Language Understanding Evaluation (GLUE) benchmark~\citep{wang-etal-2018-glue}, The Stanford Question Answering Dataset (\squad;~\citealp{rajpurkar-etal-2016-squad,rajpurkar-etal-2018-know}) and The ReAding Comprehension from Examinations (RACE;~\citealp{lai2017race}). Please see the detailed description of these benechmarks in Appendix \ref{downstream_detailed_description}. Similar to \cite{liu2019roberta}, we perform early stopping on the development sets.
+
+\subsubsection{Intrinsic Evaluation}
+
+To monitor the training progress, we create a development set based on the development sets from \squad and RACE. We follow the same procedures that we use for creating training set. We report accuracies for both masked LM and sentence classification tasks. 

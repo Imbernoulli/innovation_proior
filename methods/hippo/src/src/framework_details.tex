@@ -1,0 +1,284 @@
+\documentclass[../hippo.tex]{subfiles}
+
+\begin{document}
+
+\section{General HiPPO Framework}
+\label{sec:hippo-framework-details}
+
+
+
+We present the general HiPPO framework, as described in \cref{sec:framework}, in
+more details.
+We also generalize it to include bases other than polynomials.
+
+Given a time-varying measure family $\mu^{(t)}$ supported on $(-\infty, t]$,
+a sequence of basis functions $\mathcal{G} = \mathrm{span} \{g_n^{(t)}\}_{n \in [N]}$,
+and a continuous function $f \colon \mathbb{R}_{\geq 0} \to \mathbb{R}$,
+HiPPO defines an operator that maps $f$ to the optimal projection coefficients
+$c: \R_{\geq 0} \to \R^N$, such that
+\begin{equation*}
+  g^{(t)} \defeq \mathrm{argmin}_{g \in \mathcal{G}} \norm{f_{\leq t} - g}_{\mu^{(t)}},
+  \qquad \text{and} \qquad
+  g^{(t)} = \sum_{n=0}^{N-1} c_n(t) g_n^{(t)}.
+\end{equation*}
+The first step refers to the $\proj_t$ operator and the second the $\coef_t$
+operator in \cref{def:hippo}.
+
+We focus on the case where the coefficients $c(t)$ has the form of a linear
+ODE satisfying $\frac{d}{dt} c(t) = A(t) c(t) + B(t) f(t)$ for some
+$A(t) \in \R^{N \times N}$, $B(t) \in \R^{N \times 1}$.
+
+We first describe the parameters of the $\hippo$ operator (a measure and basis) in more detail in \cref{sec:hippo-measure}.
+We define the projection $\proj_t$ and coefficient $\coef_t$ operators in \cref{sec:hippo-calculation}.
+Then we give a general strategy to calculate these coefficients $c(t)$, by deriving a differential equation that governs the coefficient dynamics (\cref{sec:hippo-dynamics}).
+Finally we discuss how to turn the continuous $\hippo$ operator into a discrete
+one that can be applied to sequence data (\cref{sec:framework-discretization}).
+
+\subsection{Measure and Basis}
+\label{sec:hippo-measure}
+
+We describe and motivate the ingredients of HiPPO in more detail here.
+Recall that the high level goal is online function approximation;
+this requires both a set of valid approximations and a notion of approximation quality.
+
+\textbf{Approximation Measures}
+At every $t$, the approximation quality is defined with respect to a measure $\mu^{(t)}$ supported on $(-\infty, t]$.
+We seek some polynomial $g^{(t)}$ of degree at most $N-1$ that minimizes the
+error $\|f_{x \leq t} - g^{(t)}\|_{L_2(\mu^{(t)})}$.
+Intuitively, this measure $\mu^{(t)}$ governs how much to weigh every time in the past.
+For simplicity, we assume that the measures $\mu^{(t)}$ are sufficiently smooth across their domain as well as in time;
+in particular, they have densities $\omega(t, x) := \frac{\dd \mu^{(t)}}{\dd \lambda}(x)$
+with respect to the Lebesgue measure $\dd \lambda(x) \defeq \dd x$
+such that $\omega$ is $C^1$ almost everywhere.
+Thus integrating against $\dd \mu^{(t)}(x)$ can be rewritten as integrating against
+$\omega(t, x) \dd x$.
+
+We also assume for simplicity that the measures $\mu^{(t)}$ are normalized to be probability measures;
+arbitrary scaling does not affect the optimal projection.
+
+\textbf{Orthogonal polynomial basis}
+Let $\{P_n\}_{n \in \N}$ denote a sequence of orthogonal polynomials with respect to some base measure $\mu$.
+Similarly define $\{ P_n^{(t)} \}_{n \in \mathbb{N}}$ to be a sequence of
+orthogonal polynomials with respect to the time-varying measure $\mu^{(t)}$.
+Let $p_n^{(t)}$ be the normalized version of $P_n^{(t)}$ (i.e., have norm 1),
+and define
+\begin{equation}
+  \label{eq:framework-p}
+  p_n(t, x) = p_n^{(t)}(x).
+\end{equation}
+Note that the $P_n^{(t)}$ are not required to be normalized, while the
+$p_n^{(t)}$ are.
+
+
+\textbf{Tilted measure and basis}
+Our goal is simply to store a compressed representation of functions, which can use any basis, not necessarily OPs.
+For any scaling function
+\begin{equation}
+  \label{eq:framework-chi}
+  \chi(t, x) = \chi^{(t)}(x)
+  ,
+\end{equation}
+the functions $p_n(x) \chi(x)$ are orthogonal with respect to the density $\omega / \chi^2$ at every time $t$.
+Thus, we can choose this alternative basis and measure to perform the projections.
+
+To formalize this tilting with $\chi$, define $\nu^{(t)}$ to be the normalized measure with density proportional to $\omega^{(t)} / (\chi^{(t)})^2$.
+
+We will calculate the normalized measure and the orthonormal basis for it.
+Let
+\begin{equation}
+  \label{eq:framework-zeta}
+  \zeta(t) = \int \frac{\omega}{\chi^2} = \int \frac{\omega^{(t)}(x)}{(\chi^{(t)}(x))^2} \dd x
+\end{equation}
+be the normalization constant,
+so that $\nu^{(t)}$ has density $\frac{\omega^{(t)}}{\zeta(t) (\chi^{(t)})^2}$.
+If $\chi(t, x) = 1$ (no tilting), this constant is $\zeta(t) = 1$.
+In general, we assume that $\zeta$ is constant for all $t$; if not, it can
+be folded into $\chi$ directly.
+
+Next, note that (dropping the dependence on $x$ inside the integral for shorthand)
+\begin{align*}
+  \left\| \zeta(t)^{\frac{1}{2}} p_n^{(t)} \chi^{(t)} \right\|^2_{\nu^{(t)}}
+  &= \int \left( \zeta(t)^{\frac{1}{2}} p_n^{(t)} \chi^{(t)} \right)^2 \frac{\omega^{(t)}}{\zeta(t) (\chi^{(t)})^2}
+  \\
+  &= \int (p_n^{(t)})^2 \omega^{(t)}
+  \\
+  &= \left\| p_n^{(t)} \right\|^2_{\mu^{(t)}} = 1.
+\end{align*}
+
+Thus we define the orthogonal basis for $\nu^{(t)}$
+\begin{align}
+  \label{eq:framework-g}
+  g_n^{(t)} &= \lambda_n \zeta(t)^{\frac{1}{2}} p_n^{(t)} \chi^{(t)}, \quad n \in \mathbb{N}
+  .
+\end{align}
+We let each element of the basis be scaled by a $\lambda_n$ scalar, for reasons discussed soon,
+since arbitrary scaling does not change orthogonality:
+\begin{align*}
+  \langle g_n^{(t)},\ g_m^{(t)} \rangle_{\nu^{(t)}} &= \lambda_n^2 \delta_{n, m}
+\end{align*}
+Note that when $\lambda_n = \pm 1$, the basis $\{g_n^{(t)}\}$ is an orthonormal basis with respect to the measure $\nu^{(t)}$,
+at every time $t$.
+Notationally, let $g_n(t, x) := g_n^{(t)}(x)$ as usual.
+
+
+
+We will only use this tilting in the case of Laguerre (\cref{sec:derivation-lagt} and Chebyshev (\cref{sec:derivation-chebyshev}).
+
+Note that in the case $\chi = 1$ (i.e., no tilting),
+we also have $\zeta = 1$ and $g_n = \lambda_n p_n$ (for all $t, x$).
+
+
+\subsection{The Projection and Coefficients}
+\label{sec:hippo-calculation}
+
+
+Given a choice of measures and basis functions, we next see how the coefficients
+$c(t)$ can be computed.
+
+\paragraph{Input: Function}
+We are given a $C^1$-smooth function $f: [0, \infty) \to \R$ which is seen \emph{online}, for which we wish to maintain a compressed representation of its history $f(x)_{\le t} = f(x)_{x \le t}$ at every time $t$.
+
+\paragraph{Output: Approximation Coefficients}
+The function $f$ can be approximated by storing its coefficients with respect to the basis $\{g_n\}_{n < N}$.
+For example, in the case of no tilting $\chi = 1$, this encodes the optimal polynomial approximation of $f$ of degree less than $N$.
+In particular, at time $t$ we wish to represent $f_{\leq t}$ as a linear combination of polynomials $g_n^{(t)}$.
+Since the $g_n^{(t)}$ are orthogonal with respect to the Hilbert
+space defined by $\langle \cdot, \cdot \rangle_{\nu^{(t)}}$, it suffices to calculate coefficients
+
+\begin{equation}
+  \label{eq:coefficient}
+  \begin{aligned}
+    c_n(t) &= \langle f_{\leq t}, g_n^{(t)} \rangle_{\nu^{(t)}}
+    \\
+    &= \int f g_n^{(t)} \frac{\omega^{(t)}}{\zeta(t) (\chi^{(t)})^2}
+    \\
+    &= \zeta(t)^{-\frac{1}{2}} \lambda_n \int f p_n^{(t)} \frac{\omega^{(t)}}{\chi^{(t)}}
+    .
+  \end{aligned}
+\end{equation}
+
+\paragraph{Reconstruction}
+At any time $t$, $f_{\leq t}$ can be explicitly reconstructed as
+\begin{equation}
+  \label{eq:reconstruction}
+  \begin{aligned}
+    f_{\leq t} \approx g^{(t)}
+    &\defeq \sum_{n=0}^{N-1} \langle f_{\leq t}, g_n^{(t)} \rangle_{\nu^{(t)}} \frac{g_n^{(t)}}{\| g_n^{(t)} \|_{\nu^{(t)}}^2}
+    \\
+    &= \sum_{n=0}^{N-1} \lambda_n^{-2} c_n(t) g_n^{(t)}
+    \\
+    &= \sum_{n=0}^{N-1} \lambda_n^{-1} \zeta^{\frac{1}{2}} c_n(t) p_n^{(t)} \chi^{(t)}
+    .
+  \end{aligned}
+\end{equation}
+
+
+Equation~\eqref{eq:reconstruction} is the $\proj_t$ operator;
+given the measure and basis parameters, it defines the optimal approximation of $f_{\leq t}$.
+
+
+The $\coef_t$ operator simply extracts the vector of coefficients $c(t) = (c_n(t))_{n \in [N]}$.
+
+
+\subsection{Coefficient Dynamics: the $\hippo$ Operator}
+\label{sec:hippo-dynamics}
+
+For the purposes of end-to-end models consuming an input function $f(t)$, the coefficients $c(t)$ are enough to encode information about the history of $f$ and allow online predictions.
+Therefore, defining $c(t)$ to be the vector of $c_n(t)$ from equation~\eqref{eq:coefficient},
+our focus will be on how to calculate the function $c : \R_{\ge 0} \to \mathbb{R}^N$ from the input function $f : \mathbb{R}_{\ge 0} \to \mathbb{R}$.
+
+In our framework, we will compute these coefficients over time by viewing them as a dynamical system.
+Differentiating \eqref{eq:coefficient},
+\begin{equation}
+  \label{eq:coefficient-dynamics}
+  \begin{aligned}
+    \ddt c_n(t)
+    &= \zeta(t)^{-\frac{1}{2}} \lambda_n \int f(x) \left(\ppt p_n(t, x)\right) \frac{\omega}{\chi}(t, x) \dd x
+    \\
+    &\quad + \int f(x) \left( \zeta^{-\frac{1}{2}} \lambda_n p_n(t, x) \right) \left(\ppt \frac{\omega}{\chi}(t, x)\right) \dd x
+    .
+  \end{aligned}
+\end{equation}
+Here we have made use of the assumption that $\zeta$ is constant for all $t$.
+
+Let $c(t) \in \R^{N-1}$ denote the vector of all coefficients $(c_n(t))_{0 \le n < N}$.
+
+
+The key idea is that if $\ppt P_n$ and $\ppt \frac{\omega}{\chi}$ have closed forms that can be related back to the polynomials $P_k$, then an ordinary differential equation can be written for $c(t)$.
+This allows these coefficients $c(t)$ and hence the optimal polynomial approximation to be computed online.
+Since $\ddt P_n^{(t)}$ is a polynomial (in $x$) of degree $n-1$, it can be written as linear
+combinations of $P_0, \dots, P_{n-1}$, so the first term in
+\cref{eq:coefficient-dynamics} is a linear combination of $c_0, \dots, c_{n-1}$.
+For many weight functions $\omega$, we can find scaling function $\chi$ such that $\ppt \frac{\omega}{\chi}$ can also be written in terms of $\frac{\omega}{\chi}$
+itself, and thus in those cases the second term of \cref{eq:coefficient-dynamics} is also
+a linear combination of $c_0, \dots, c_{N-1}$ and the input $f$.
+Thus this often yields a closed-form linear ODE for $c(t)$.
+
+
+
+\paragraph{Normalized dynamics}
+
+Our purpose of defining the free parameters $\lambda_n$ was threefold.
+\begin{enumerate}%
+  \item First, note that the orthonormal basis is not unique, up to a $\pm 1$ factor per element.
+  \item Second, choosing $\lambda_n$ can help simplify the derivations.
+  \item Third, although choosing $\lambda_n = \pm 1$ will be our default, since projecting onto an orthonormal basis is most sensible, the LMU~\citep{voelker2019legendre} used a different scaling. \cref{sec:derivation-legt} will recover the LMU by choosing different $\lambda_n$ for the LegT measure.
+\end{enumerate}
+
+
+Suppose that equation~\eqref{eq:coefficient-dynamics} reduced to dynamics of the form
+\begin{align*}
+  \ddt c(t) &= -A(t) c(t) + B(t) f(t).
+\end{align*}
+
+Then, letting $\Lambda = \diag_{n \in [N]} \{\lambda_n\}$,
+\begin{align*}
+  \ddt \Lambda^{-1} c(t) &= -\Lambda^{-1} A(t) \Lambda \Lambda^{-1} c(t) + \Lambda^{-1} B(t) f(t).
+\end{align*}
+
+Therefore, if we reparameterize the coefficients ($\Lambda^{-1} c(t) \to c(t)$) then the
+\emph{normalized} coefficients projected onto the orthonormal basis satisfy dynamics
+and associated reconstruction
+\begin{align}
+  \label{eq:coefficient-dynamics-normalized}
+  \ddt c(t) &= -(\Lambda^{-1} A(t) \Lambda) c(t) + (\Lambda^{-1} B(t)) f(t)
+  \\
+  \label{eq:reconstruction-normalized}
+  f_{\leq t} \approx g^{(t)}
+  &= \sum_{n=0}^{N-1} \zeta^{\frac{1}{2}} c_n(t) p_n^{(t)} \chi^{(t)}
+\end{align}
+These are the $\hippo$ and $\proj_t$ operators.
+
+
+
+
+
+
+
+
+\subsection{Discretization}
+\label{sec:framework-discretization}
+
+
+As defined here, $\hippo$ is a map on continuous functions.
+However, as $\hippo$ defines a closed-form ODE of the coefficient dynamics,
+standard ODE discretization methods (\cref{sec:discretization-full}) can be applied to turn this into discrete memory updates.
+Thus we overload these operators, i.e.\ $\hippo$ either defines an ODE
+of the form
+\begin{align*}
+  \frac{d}{dt} c(t) = A(t) c(t) + B(t) f(t)
+\end{align*}
+or a recurrence
+\begin{align*}
+  c_{t} = A_t c_{t-1} + B_t f_t,
+\end{align*}
+whichever is clear from context.
+
+\cref{subsec:function_approx} validates the framework by applying \eqref{eq:coefficient-dynamics} and \eqref{eq:reconstruction} to approximate a synthetic function.
+
+
+
+
+
+\end{document}
+

@@ -1,0 +1,259 @@
+\section{Experiments}
+\label{sec:experiments}
+We investigate the performance of IMPALA under multiple settings.
+For data efficiency, computational performance and effectiveness of the off-policy correction we look at the learning behaviour of IMPALA agents trained on individual tasks.
+For multi-task learning we train agents---each with one set of weights for all tasks---on a newly introduced collection of 30 DeepMind Lab tasks and on all 57 games of the Atari Learning Environment \cite{bellemare13arcade}.
+
+
+
+For all the experiments we have used two different model architectures: a shallow model similar to \cite{A3C2016} with an LSTM before the policy and value (shown in Figure~\ref{model_single} (left)) and a deeper residual model \cite{he2016identity} (shown in Figure~\ref{model_dmlab30} (right)). For tasks with a language channel we used an LSTM with text embeddings as input.
+
+
+\begin{figure}
+    \includegraphics[width=.42\columnwidth]{figures/small_arch}
+    \hfill
+    \includegraphics[width=.56\columnwidth]{figures/large_arch}
+    \caption{Model Architectures. {\bf Left:} Small architecture, $2$ convolutional layers and $1.2$ million parameters. 
+    {\bf Right:} Large architecture, $15$ convolutional layers and $1.6$ million parameters.}
+    \label{model_single}
+    \label{model_dmlab30}
+\end{figure}
+
+
+
+
+
+\subsection{Computational Performance}
+
+\begin{table}[t]
+\small
+  \begin{center}
+  \begin{threeparttable}
+  \begin{tabular}{l@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}}
+    \toprule
+    \textbf{Architecture} & \textbf{CPUs} &  \textbf{GPUs\tnote{1}}  & \multicolumn{2}{c}{\textbf{FPS\tnote{2}}} \\
+    \midrule
+    \textbf{Single-Machine} &               &                 & \scriptsize Task 1   & \scriptsize Task 2 \\
+    \midrule
+      A3C \scriptsize 32 workers                                     & 64  & 0 & 6.5K  & 9K   \\
+      Batched A2C\scriptsize\ (sync step)         & 48  & 0 & 9K & 5K   \\
+      Batched A2C\scriptsize\ (sync step)         & 48  & 1 & 13K & 5.5K   \\
+      Batched A2C\scriptsize\ (sync traj.)         & 48  & 0 & 16K & 17.5K   \\
+      Batched A2C \scriptsize (dyn. batch)              & 48  & 1 & 16K & 13K  \\
+      IMPALA \scriptsize 48 actors             & 48  & 0 & 17K & 20.5K  \\
+      IMPALA \scriptsize (dyn. batch) 48 actors\tnote{3}             & 48  & 1 & 21K & 24K  \\
+      \midrule
+      \textbf{Distributed} \\
+      \midrule
+      A3C                         & 200 & 0 & 46K & 50K  \\
+      IMPALA \scriptsize                        & 150 & 1 & \multicolumn{2}{c}{80K}  \\
+      IMPALA \scriptsize (optimised)            & 375 & 1 & \multicolumn{2}{c}{200K} \\
+      IMPALA \scriptsize (optimised) batch 128           & 500 & 1 & \multicolumn{2}{c}{250K} \\
+      \bottomrule
+  \end{tabular}
+  \tiny $^1$ Nvidia P100 $^2$  In frames/sec (4 times the agent steps due to action repeat). $^3$ Limited by amount of rendering possible on a single machine.
+  \end{threeparttable}
+  \end{center}
+\caption{Throughput on \texttt{seekavoid\_arena\_01} (task 1) and \texttt{rooms\_keys\_doors\_puzzle} (task 2) with the shallow model in Figure~\ref{model_single}. The latter has variable length episodes and slow restarts. Batched A2C and IMPALA use batch size 32 if not otherwise mentioned.}
+\label{speed_single}
+\end{table}
+
+High throughput, computational efficiency and scalability are among the main design goals of IMPALA.
+To demonstrate that IMPALA outperforms current algorithms in these metrics we compare A3C~\cite{A3C2016}, batched A2C variations and IMPALA variants with various optimisations. For single-machine experiments using GPUs, we use dynamic batching in the forward pass to avoid several batch size 1 forward passes. Our dynamic batching module is implemented by specialised TensorFlow operations but is conceptually similar to the queues used in GA3C.
+Table~\ref{speed_single} details the results for single-machine and multi-machine versions with the shallow model from Figure~\ref{model_single}.
+In the single-machine case, IMPALA achieves the highest performance on both tasks, ahead of all batched A2C variants and ahead of A3C.
+However, the distributed, multi-machine setup is where IMPALA can really demonstrate its scalability. With the optimisations from Section~\ref{sec:efficiency_optimizations} to speed up the GPU-based learner, the IMPALA agent achieves a throughput rate of 250,000 frames/sec or $21$ billion frames/day.
+Note, to reduce the number of actors needed per learner, one can use auxiliary losses, data from experience replay or other expensive learner-only computation.
+
+
+\subsection{Single-Task Training}
+
+To investigate IMPALA's learning dynamics, we employ the single-task scenario where we train agents individually on 5 different DeepMind Lab tasks. The task set consists of a planning task, two maze navigation tasks, a laser tag task with scripted bots and a simple fruit collection task.
+
+We perform hyperparameter sweeps over the weighting of \textit{entropy regularisation}, the \textit{learning rate} and the \textit{RMSProp epsilon}. For each experiment we use an identical set of 24 pre-sampled hyperparameter combinations from the ranges in Appendix~\ref{tab:hyperparameter_ranges}
+. The other hyperparameters were fixed to values specified in Appendix~\ref{tab:fixed_model_hyperparameters}
+.
+
+\subsubsection{Convergence and Stability}
+
+
+Figure~\ref{single_level_learning_curves} shows a comparison between IMPALA, A3C and batched A2C with the shallow model in Figure~\ref{model_single}.
+In all of the 5 tasks, either batched A2C or IMPALA reach the best final average return and in all tasks but \texttt{seekavoid\_arena\_01} they are ahead of A3C throughout the entire course of training. IMPALA outperforms the synchronous batched A2C on 2 out of 5 tasks while achieving much higher throughput (see Table~\ref{speed_single}).
+We hypothesise that this behaviour could stem from the V-trace off-policy correction acting similarly to generalised advantage estimation \cite{schulman2015high} and asynchronous data collection yielding more diverse batches of experience.
+
+\begin{figure*}
+    \includegraphics[width=1.0\textwidth]{figures/single_level_stability/IMPALA_vs_a3c_single_level_legend}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_curves/IMPALA_vs_a3c_single_level_rooms_watermaze}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_curves/IMPALA_vs_a3c_single_level_rooms_keys_doors_puzzle}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_curves/IMPALA_vs_a3c_single_level_lasertag_three_opponents_small}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_curves/IMPALA_vs_a3c_single_level_explore_goal_locations_small}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_curves/IMPALA_vs_a3c_single_level_seekavoid_arena_01}
+    \\
+    \includegraphics[width=0.19\textwidth]{figures/single_level_stability/IMPALA_vs_a3c_single_level_rooms_watermaze}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_stability/IMPALA_vs_a3c_single_level_rooms_keys_doors_puzzle}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_stability/IMPALA_vs_a3c_single_level_lasertag_three_opponents_small}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_stability/IMPALA_vs_a3c_single_level_explore_goal_locations_small}
+    \includegraphics[width=0.19\textwidth]{figures/single_level_stability/IMPALA_vs_a3c_single_level_seekavoid_arena_01}
+    
+    \caption{\textbf{Top Row:} Single task training on 5 DeepMind Lab tasks. Each curve is the mean of the best 3 runs based on final return. IMPALA achieves better performance than A3C. \textbf{Bottom Row:} Stability across hyperparameter combinations sorted by the final performance across different hyperparameter combinations. IMPALA is consistently more stable than A3C.}
+    \label{single_level_learning_curves}
+    \label{stability_vs_a3c}
+\end{figure*}
+
+In addition to reaching better final performance, IMPALA is also more robust to the choice of hyperparameters than A3C. Figure~\ref{stability_vs_a3c} compares the final performance of the aforementioned methods across different hyperparameter combinations, sorted by average final return from high to low. Note that IMPALA achieves higher scores over a larger number of combinations than A3C.
+
+\subsubsection{V-trace Analysis}
+\label{sec:vtrace_variants}
+
+
+\begin{table}[t]
+\small
+  \begin{center}
+  \begin{threeparttable}
+  \begin{tabular}{l@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}c@{\hspace{.22cm}}}
+  \toprule
+  & \scriptsize Task 1 & \scriptsize Task 2 & \scriptsize Task 3 & \scriptsize Task 4 & \scriptsize Task 5 \\
+  \midrule
+  \textbf{Without Replay} \\
+  \midrule
+  V-trace        &         46.8    &         32.9      & \textbf{31.3}              & \textbf{229.2}  & \textbf{43.8}   \\   
+  1-Step         & \textbf{51.8}   & \textbf{35.9}     &         25.4               &         215.8   &         43.7    \\   
+  $\eps$-correction           &         44.2    &         27.3      &         4.3                &         107.7   &         41.5    \\   
+  No-correction  &         40.3    &         29.1      &         5.0                &         94.9    &         16.1    \\
+  \midrule
+  \textbf{With Replay} \\
+  \midrule
+  V-trace        &         47.1    & \textbf{35.8}     & \textbf{34.5}              & \textbf{250.8}  & \textbf{46.9} \\
+  1-Step         & \textbf{54.7}   &         34.4      &         26.4               &         204.8   &         41.6  \\
+  $\eps$-correction           &         30.4    &         30.2      &         3.9                &         101.5   &         37.6  \\
+  No-correction  &         35.0    &         21.1      &         2.8                &         85.0    &         11.2  \\
+  \bottomrule
+  \end{tabular}
+  \begin{flushleft}
+  \tiny Tasks: \texttt{rooms\_watermaze}, \texttt{rooms\_keys\_doors\_puzzle}, \texttt{lasertag\_three\_opponents\_small}, \texttt{explore\_goal\_locations\_small}, \texttt{seekavoid\_arena\_01}
+  \end{flushleft}
+  \end{threeparttable}
+  \end{center}
+  \caption{Average final return over 3 best hyperparameters for different off-policy correction methods on 5 DeepMind Lab tasks. When the lag in policy is negligible both V-trace and 1-step importance sampling perform similarly well and better than $\epsilon$-correction/No-correction. However, when the lag increases due to use of experience replay, V-trace performs better than all other methods in $4$ out $5$ tasks.}
+  \label{tab:vtrace_analysis}
+\end{table}
+
+To analyse V-trace we investigate four different algorithms:\\
+    \textbf{1. No-correction} - No off-policy correction.\\
+    \textbf{2.\hspace{.1cm}$\epsilon$-correction} - Add a small value ($\epsilon = 1e\mbox{-}6$) during gradient calculation to prevent $\log \pi(a)$ from becoming very small and leading to numerical instabilities, similar to~\cite{babaeizadeh2016ga3c}.\\
+    \textbf{3. 1-step importance sampling} - No off-policy correction when optimising $V(x)$. For the policy gradient, multiply the advantage at each time step by the corresponding importance weight. This variant is similar to V-trace without ``traces" and is included to investigate the importance of ``traces" in V-trace.\\
+    \textbf{4. V-trace} as described in Section~\ref{sec:v-trace}.
+
+For V-trace and 1-step importance sampling we clip each importance weight $\rho_t$ and $c_t$ at $1$ (i.e. $\bar c = \bar \rho = 1)$. This reduces the variance of the gradient estimate but introduces a bias. Out of $\bar\rho\in [1, 10, 100]$ we found that $\bar\rho = 1$ worked best.
+
+We evaluate all algorithms on the set of 5 DeepMind Lab tasks from the previous section. We also add an experience replay buffer on the learner to increase the off-policy gap between $\pi$ and $\mu$. In the experience replay experiments we draw 50\% of the items in each batch uniformly at random from the replay buffer.
+Table~\ref{tab:vtrace_analysis} shows the final performance for each algorithm with and without replay respectively. In the no replay setting, V-trace performs best on 3 out of 5 tasks, followed by 1-step importance sampling, $\eps$-correction and No-correction.
+Although 1-step importance sampling performs similarly to V-trace in the no-replay setting, the gap widens on 4 out 5 tasks when using experience replay. This suggests that the cruder 1-step importance sampling approximation becomes insufficient as the target and behaviour policies deviate from each other more strongly. Also note that V-trace is the only variant that consistently benefits from adding experience replay.
+$\eps$-correction improves significantly over No-correction on two tasks but lies far behind the importance-sampling based methods, particularly in the more off-policy setting with experience replay. Figure~\ref{fig:policy_lag_analysis}
+shows results of a more detailed analysis.
+Figure~\ref{stability_variants}
+shows that the importance-sampling based methods also perform better across all hyperparameters and are typically more robust.
+
+
+\subsection{Multi-Task Training}
+
+IMPALA's high data throughput and data efficiency allow us to train not only on one task but on multiple tasks in parallel with only a minimal change to the training setup. Instead of running the same task on all actors, we allocate a fixed number of actors to each task in the multi-task suite. Note, the model does not know which task it is being trained or evaluated on.
+
+\subsubsection{DMLab-30}
+
+\begin{table}[t]
+\small
+  \begin{center}
+  \begin{tabular}{l@{\hspace{.22cm}}c@{\hspace{.22cm}}}
+    \toprule
+    \textbf{Model} &  \textbf{Test score}  \\ \midrule
+      A3C, deep & 23.8\% \\
+      IMPALA, shallow & 37.1\% \\
+      IMPALA-Experts, deep & 44.5\% \\
+      IMPALA, deep & 46.5\% \\
+      IMPALA, deep, PBT & \textbf{49.4\%} \\
+      IMPALA, deep, PBT, 8 learners & 49.1\% \\
+      \bottomrule
+  \end{tabular}
+  \end{center}
+\caption{Mean capped human normalised scores on DMLab-30. All models were evaluated on the test tasks with 500 episodes per task. The table shows the best score for each architecture.}
+\label{dmlab30_table}
+\end{table}
+
+To test IMPALA's performance in a multi-task setting we use DMLab-30, a set of 30 diverse tasks built on DeepMind Lab. Among the many task types in the suite are visually complex environments with natural-looking terrain, instruction-based tasks with grounded language~\cite{hermann2017grounded}, navigation tasks, cognitive~\cite{leibo2018psychlab} and first-person tagging tasks featuring scripted bots as opponents. A detailed description of DMLab-30 and the tasks are available at \href{https://github.com/deepmind/lab}{github.com/deepmind/lab} and
+\href{https://deepmind.com/dm-lab-30}{deepmind.com/dm-lab-30}.
+
+We compare multiple variants of IMPALA with a distributed A3C implementation. Except for agents using population-based training (PBT) \cite{jaderberg2017pbt}, all agents are trained with hyperparameter sweeps across the same range given in Appendix~\ref{sec:hyperparameters}
+. We report mean capped human normalised score where the score for each task is capped at 100\% (see Appendix~\ref{sec:ref_scores}
+). Using mean capped human normalised score emphasises the need to solve multiple tasks instead of focusing on becoming super human on a single task. For PBT we use the mean capped human normalised score as fitness function and tune entropy cost, learning rate and RMSProp $\epsilon$. See Appendix~\ref{sec:pbt}
+for the specifics of the PBT setup.
+
+
+In particular, we compare the following agent variants. 
+\textit{A3C, deep}, a distributed implementation with 210 workers (7 per task) featuring the deep residual network architecture (Figure~\ref{model_dmlab30} (Right)). \textit{IMPALA, shallow} with 210 actors and \textit{IMPALA, deep} with 150 actors both with a single learner. \textit{IMPALA, deep, PBT}, the same as \textit{IMPALA, deep}, but additionally using the PBT \cite{jaderberg2017pbt} for hyperparameter optimisation. Finally \textit{IMPALA, deep, PBT, 8 learners}, which utilises 8 learner GPUs to maximise learning speed. We also train IMPALA agents in an expert setting, \textit{IMPALA-Experts, deep}, where a separate agent is trained per task. In this case we did \textit{not} optimise hyperparameters for each task separately but instead across all tasks on which the 30 expert agents were trained.
+
+
+Table~\ref{dmlab30_table} and Figure~\ref{dmlab30_model_vs_a3c_experts} show all variants of IMPALA performing much better than the deep distributed A3C. Moreover, the deep variant of IMPALA performs better than the shallow network version not only in terms of final performance but throughout the entire training. Note in Table~\ref{dmlab30_table} that \textit{IMPALA, deep, PBT, 8 learners}, although providing much higher throughput, reaches the same final performance as the 1 GPU \textit{IMPALA, deep, PBT} in the same number of steps.
+Of particular importance is the gap between the \textit{IMPALA-Experts} which were trained on each task individually and \textit{IMPALA, deep, PBT} which was trained on all tasks at once.
+As Figure~\ref{dmlab30_model_vs_a3c_experts} shows, the multi-task version is outperforms \textit{IMPALA-Experts} throughout training and the breakdown into individual scores in Appendix~\ref{sec:ref_scores}
+shows positive transfer on tasks such as language tasks and laser tag tasks.
+
+Comparing A3C to IMPALA with respect to wall clock time (Figure \ref{dmlab30_model_vs_a3c_experts_wallclock}) further highlights the scalability gap between the two approaches. IMPALA with 1 learner takes only around 10 hours to reach the same performance that A3C approaches after 7.5 days. Using 8 learner GPUs instead of 1 further speeds up training of the deep model by a factor of 7 to 210K frames/sec, up from 30K frames/sec.
+
+\begin{figure}[t]
+    \centering
+    \caption{Performance of best agent in each sweep/population during training on the DMLab-30 task-set wrt. data consumed across all environments. IMPALA with multi-task training is not only faster, it also converges at higher accuracy with better data efficiency across all 30 tasks. The x-axis is data consumed by one agent out of a hyperparameter sweep/PBT population of 24 agents, total data consumed across the whole population/sweep can be obtained by multiplying with the population/sweep size.}
+    \label{dmlab30_model_vs_a3c_experts}
+    \includegraphics[width=0.85\columnwidth, trim={0 0 0 3.5cm},clip]{figures/dmlab30_model_vs_a3c_experts}
+
+    \includegraphics[width=0.85\columnwidth]{figures/dmlab30_model_vs_a3c_experts_wallclock}
+    \caption{Performance on DMLab-30 wrt. wall-clock time. All models used the deep architecture (Figure~\ref{model_dmlab30}). The high throughput of IMPALA results in orders of magnitude faster learning.}
+    \label{dmlab30_model_vs_a3c_experts_wallclock}
+\end{figure}
+
+
+
+
+
+
+\subsubsection{Atari}
+
+The Atari Learning Environment (ALE) \cite{bellemare2013arcade} has been the testing ground of most recent deep reinforcement agents. Its 57 tasks pose challenging reinforcement learning problems including exploration, planning, reactive play and complex visual input. Most games feature very different visuals and game mechanics which makes this domain particularly challenging for multi-task learning.
+
+We train IMPALA and A3C agents on each game individually and compare their performance using the deep network (without the LSTM) introduced in Section~\ref{sec:experiments}. We also provide results using a shallow network that is equivalent to the feed forward network used in \cite{A3C2016} which features three convolutional layers. The network is provided with a short term history by stacking the 4 most recent observations at each step. For details on pre-processing and hyperparameter setup please refer to Appendix~\ref{appendix:atari_experiments}
+.
+
+In addition to individual per-game experts, trained for 200 million frames with a fixed set of hyperparameters, we train an IMPALA Atari-57 agent---one agent, one set of weights---on all 57 Atari games at once for 200 million frames per game or a total of 11.4 billion frames. For the Atari-57 agent, we use population based training with a population size of 24 to adapt entropy regularisation, learning rate, RMSProp $\epsilon$ and the global gradient norm clipping threshold throughout training.
+
+\begin{table}[ht]
+\small
+  \begin{center}
+  \begin{tabular}{l@{\hspace{.22cm}}r@{\hspace{.22cm}}r@{\hspace{.22cm}}}
+    \toprule
+        \textbf{Human Normalised Return}         &  \textbf{Median}   & \textbf{Mean} \\
+        \midrule
+        A3C, shallow, experts           & 54.9\%             & 285.9\%    \\
+        A3C, deep, experts              & 117.9\%            & 503.6\%    \\
+        \midrule
+        Reactor, experts                     & 187\%            & N/A    \\
+        \midrule
+        IMPALA, shallow, experts        & 93.2\%             & 466.4\%    \\
+        IMPALA, deep, experts           & 191.8\%            & 957.6\%    \\
+        \midrule
+        IMPALA, deep, multi-task        & 59.7\%             & 176.9\%    \\
+      \bottomrule
+  \end{tabular}
+  \end{center}
+\caption{Human normalised scores on Atari-57. Up to 30 no-ops at the beginning of each episode. For a level-by-level comparison to ACKTR~\cite{acktr} and Reactor see~Appendix~\ref{tab:atari_individual_games}
+.}
+\label{atari57_table}
+\end{table}
+
+
+We compare all algorithms in terms of median human normalised score across all 57 Atari games. Evaluation follows a standard protocol, each game-score is the mean over 200 evaluation episodes, each episode was started with a random number of no-op actions (uniformly chosen from [1, 30]) to combat the determinism of the ALE environment.
+
+As table~\ref{atari57_table} shows, IMPALA experts provide both better final performance and data efficiency than their A3C counterparts in the deep and the shallow configuration. As in our DeepMind Lab experiments, the deep residual network leads to higher scores than the shallow network, irrespective of the reinforcement learning algorithm used. Note that the shallow IMPALA experiment completes training over 200 million frames in less than one hour.
+
+We want to particularly emphasise that \textit{IMPALA, deep, multi-task}, a single agent trained on all 57 ALE games at once, reaches 59.7\% median human normalised score. Despite the high diversity in visual appearance and game mechanics within the ALE suite, IMPALA multi-task still manages to stay competitive to \textit{A3C, shallow, experts}, commonly used as a baseline in related work. ALE is typically considered a hard multi-task environment, often accompanied by negative transfer between tasks \cite{rusu2016progressive}. To our knowledge, IMPALA is the first agent to be trained in a multi-task setting on all 57 games of ALE that is competitive with a standard expert baseline.
+
+

@@ -1,0 +1,140 @@
+%!TEX root = main.tex
+
+\subsection{Overview: \GNC Algorithm with Non-minimal Solvers} % Alternation of }
+% \subsection{Overview: GNC Algorithm with Non-minimal Solvers}
+\label{sec:GNC-algorithm-overview}
+
+We start by providing an overview of the proposed algorithm, then we delve into technical details and 
+tailor the approach to two specific robust cost functions (Section~\ref{sec:GNC-GM-TLS}).  
+Instead of optimizing directly\revise{~the robust estimation problem}~\eqref{eq:generalEstimation}, we use \GNC and, 
+at each \emph{outer} iteration, we fix a $\mu$ and optimize: 
+%
+\bea \label{eq:GNCestimation}
+\min_{\vxx \in \calX} \sumAllPointsi \rho_\mu( r(\vy_i,\vxx) ).
+\eea 
+%
+Since non-minimal solvers cannot be used directly to solve~\eqref{eq:GNCestimation}, 
+%the surrogate function is difficult to solve globally 
+we use the Black-Rangarajan duality and rewrite~\eqref{eq:GNCestimation} using the corresponding outlier process:
+%
+\bea \label{eq:GNC-outlierProcess}
+\min_{\vxx \in \calX, w_i \in [0,1]} \sumAllPointsi  \left[ w_i r^2(\vy_i,\vxx) + \Phi_{\rho_\mu}(w_i) \right].
+\eea 
+%
+As discussed in Section~\ref{sec:GNC-GM-TLS} and~\cite{Black96ijcv-unification}, it is easy to compute the penalty terms $\Phi_{\rho_\mu}(\cdot)$ even for the surrogate function $\rho_\mu(\cdot)$. 
+
+Finally, we solve~\eqref{eq:GNC-outlierProcess} by alternating optimization, where  
+ at each \emph{inner} iteration we first optimize over the $\vxx$ (with fixed $w_i$), and 
+ then we optimize over $w_i$, $i=1,\ldots,N$ (with fixed $\vxx$).  % which admits a closed-form solution.
+ In particular, at inner iteration $t$, we perform the following:
+ %we alternate the following update steps:
+ %each iteration alternates the following update steps:
+
+\begin{enumerate}
+\item {\bf Variable update}: minimize~\eqref{eq:GNC-outlierProcess} with respect to $\vxx$ with fixed weights $w\at{t-1}_i$:
+% Solve the weighted least squares optimization with fixed weights $w_i$:
+\bea \label{eq:variableUpdate}
+\vxx\at{t} = \argmin_{\vxx \in \calX} \sumAllPointsi w\at{t-1}_i r^2(\vy_i, \vxx),
+\eea
+where we dropped the second term in~\eqref{eq:GNC-outlierProcess} which does not depend on $\vxx$. 
+Problem~\eqref{eq:variableUpdate} is simply a weighted version of the outlier-free problem~\eqref{eq:leastSquares}, 
+ hence it can be solved globally using certifiably optimal non-minimal solvers.  
+% and obtain the estimated residuals $\hat{r}_i = r(\vy_i, \vxx^\star )$. This step can be solved with certifiable optimality using global solvers.
+
+\item {\bf Weight update}: minimize~\eqref{eq:GNC-outlierProcess} with respect to $w_i$ ($i=1,\ldots,N$) 
+with fixed $\vxx\at{t}$:
+% Update the weights with estimated residuals $\hat{r}_i$:
+\bea \label{eq:weightUpdate}
+\vw\at{t} = \argmin_{w_i \in [0,1]} \sumAllPointsi \left[ w_i r^2(\vy_i, \vxx\at{t})  + \Phi_{\rho_\mu}(w_i)\right],
+\eea
+where $r^2(\vy_i, \vxx\at{t})$ is a constant for fixed $\vxx$, and the expression of $\Phi_{\rho_\mu}(\cdot)$ depends on the choice of robust cost function. As we discuss in Section~\ref{sec:GNC-GM-TLS}, the weight update can be typically solved in closed form. 
+\end{enumerate}
+
+ % The pseudo-code of the \GNC algorithm is given in Algorithm~\ref{}.
+ % \LC{Hank: please add pseudocode of algorithm \vspace{5cm}}
+The process is then repeated for changing values of $\mu$, where each change of $\mu$ increases the amount of non-convexity. 
+% The algorithm terminates when \LC{....} 
+% \LC{something that remains unclear is how many inner iterations we need..}
+\setcounter{theorem}{1}
+\begin{remark}[Teaching an Old Dog New Tricks]
+While the combination of \GNC and Black-Rangarajan duality has been investigated in related works~\cite{Black96ijcv-unification,Zhou16eccv-fastGlobalRegistration}, its applicability has been limited by the lack of global solvers for the variable update in~\eqref{eq:variableUpdate}. 
+For instance,~\cite{Zhou16eccv-fastGlobalRegistration} focuses on a specific problem (point cloud registration) where~\eqref{eq:variableUpdate} can be solved in closed form~\cite{Arun87pami,Horn87josa},  
+%using Horn's or Arun's methods~\cite{Arun87pami,Horn87josa}, 
+while~\cite{Black96ijcv-unification} focuses on a Markov Random Field formulation for which global solvers and heuristics exist~\cite{Hu19ral-fuses}.
+ One of the main insights behind our approach is that modern non-minimal solvers (developed over the last 5 years) 
+ allow solving~\eqref{eq:variableUpdate} globally for a broader class of problems,  
+ % largely expand the domain of application of \GNC, 
+ including spatial perception problems such as SLAM, mesh registration, and object localization from images.
+ %which can be effectively used in complex 
+% and uses a heuristic approach. 
+\end{remark}
+
+\isExtended{
+\begin{remark}[Generality]
+The algorithm described in this section
+%~Section~\ref{sec:GNC-algorithm-overview} 
+is applicable to any estimation problem and robust 
+cost function as long as: (i) we can develop a surrogate function $\rho_\mu$ for \GNC and find an analytic penalty function $\Phi_{\rho_\mu}$, % to obtain the outlier process in eq.~\eqref{eq:GNC-outlierProcess},  
+(ii) we have an efficient way to solve the variable update~\eqref{eq:variableUpdate}, and 
+(iii) we have an efficient way to solve the weight update~\eqref{eq:weightUpdate}.
+Condition (i) is relatively mild and~\cite{Black96ijcv-unification} already provides analytic expressions for the most common robust costs. Condition (iii) is also mild since the optimization splits into $N$ scalar optimizations, whose solution can be typically computed in closed form. 
+Therefore, the only ``stringent'' requirement is the availability of non-minimal solver for~\eqref{eq:variableUpdate}. 
+Luckily, non-minimal solvers exist for several key spatial perception applications as the ones considered in Section~\ref{sec:applications}. 
+% a global solver for the variable update~\eqref{eq:variableUpdate}: however, we have already observed that the variable update has the same form of the outlier free 
+\end{remark}
+}{}
+
+% \red{
+% \begin{remark}[Generality]
+% The algorithm described in this section
+% %~Section~\ref{sec:GNC-algorithm-overview} 
+% is applicable to any estimation problem and robust 
+% cost function as long as: (i) we can develop a surrogate function $\rho_\mu$ for \GNC, 
+% (ii) we can find an analytic penalty function $\Phi_{\rho_\mu}$ to obtain the outlier process in eq.~\eqref{eq:GNC-outlierProcess},  
+% (iii) we have an efficient way to solve the variable update~\eqref{eq:variableUpdate}, and 
+% (iv) we have an efficient way to solve the weight update~\eqref{eq:weightUpdate}.
+% Conditions (i) and (ii) are relatively mild and~\cite{Black96ijcv-unification} already provides analytic expressions for the most common robust costs. Condition (iv) is also mild since the optimization splits into $N$ scalar optimizations, whose solution can be typically computed in closed form. 
+% Therefore, the only ``stringent'' requirement is the availability of non-minimal solver for~\eqref{eq:variableUpdate}. 
+% Luckily, non-minimal solvers exist for several key spatial perception applications as the ones considered in Section~\ref{sec:applications}. 
+% % a global solver for the variable update~\eqref{eq:variableUpdate}: however, we have already observed that the variable update has the same form of the outlier free 
+% \end{remark}
+% }
+% With the outlier process $\Phi(w_i)$, Black-Rangarajan duality ensures problem~\eqref{eq:optiOutlierProcess} has the same solution as the original problem~\eqref{eq:generalEstimation}, but explicitly allows for solving the optimization by alternatively updating the unknown variable $\vxx$ and the weight $w_i$ for each measurement.
+% \begin{proposition}[Primal-dual Solution for Outlier Process] \label{prop:primalDualOutlierProcess}
+% A local minimum of the robust line process optimization problem~\eqref{eq:optiOutlierProcess} can be found in two steps:
+% \begin{enumerate}
+% \item {\bf Primal}: Solve the weighted least squares optimization with fixed weights $w_i$:
+% \bea \label{eq:variableUpdate}
+% \vxx^\star = \argmin_{\vxx \in \calX} \sumAllPointsi w_i r^2(\vy_i, \vxx) 
+% \eea
+% and obtain the estimated residuals $\hat{r}_i = r(\vy_i, \vxx^\star )$. This step can be solved with certifiable optimality using global solvers.
+
+% \item {\bf Dual}: Update the weights with estimated residuals $\hat{r}_i$:
+% \bea \label{eq:weightUpdate}
+% \vw^\star = \argmin_{w_i \in [0,1]} \sumAllPointsi \hat{r}_i^2 w_i + \Phi(w_i)
+% \eea
+% This step can be solved in closed form given the form of $\Phi(w_i)$.
+% \end{enumerate}
+% \end{proposition}{}
+% Decreasing $\mu$ increases the non-convexity (see Fig.~\ref{fig:GNCplots}(a)). The outlier process for $\rho_{\mu}(x)$ is:
+% \bea \label{eq:outlierProcessGNCGM}
+% \Phi(w_i) = \mu(\sqrt{w_i} - 1)^2
+% \eea
+% and the dual weight update rule is:
+% \bea \label{eq:dualWeightUpdateGNCGM}
+% w_i^\star = \left( \frac{\mu}{\hatr_i^2 + \mu} \right)^2
+% \eea
+
+
+% Increasing $\mu$ increases the non-convexity (see Fig.~\ref{fig:GNCplots}(b)). The outlier process for $\rho_{\mu}(x)$ is:
+% \bea \label{eq:outlierProcessGNCTLS}
+% \Phi(w_i) = \frac{\mu (1-w_i)}{ \mu + w_i} \barcsq
+% \eea
+% and the dual weight update rule is:
+% \bea \label{eq:dualWeightUpdateGNCTLS}
+% w_i^\star = \begin{cases}
+% 0 & \hatr_i^2 \in \left[ \frac{\mu+1}{\mu}\barcsq, +\infty \right] \\
+% \frac{\barc}{\hatr_i}\sqrt{\mu(\mu+1)} - \mu & \hatr_i^2 \in \left[ \frac{\mu}{\mu+1}\barcsq ,\frac{\mu+1}{\mu}\barcsq \right] \\
+% 1 & \hatr_i^2 \in \left[ 0,\frac{\mu}{\mu+1}\barcsq \right]
+% \end{cases}
+% \eea

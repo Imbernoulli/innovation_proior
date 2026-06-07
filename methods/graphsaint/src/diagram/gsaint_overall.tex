@@ -1,0 +1,144 @@
+% blue
+% \definecolor{c0}{HTML}{e1f5fe}
+% \definecolor{c1}{HTML}{b3e5fc}
+% \definecolor{c2}{HTML}{4fc3f7}
+% \definecolor{c3}{HTML}{4fc3f7}
+% \definecolor{c4}{HTML}{0288d1}
+
+% grey
+\definecolor{c0}{HTML}{f5f5f5}
+\definecolor{c1}{HTML}{e0e0e0}
+\definecolor{c2}{HTML}{9e9e9e}
+\definecolor{c3}{HTML}{616161}
+\definecolor{c4}{HTML}{424242}
+
+\tikzset{
+    % nodegray/.style={circle,draw,fill=c1!10},
+    archnode/.style={thick,circle,c4,draw=c4,fill=c0},
+    % archnode/.style={circle,draw,fill=grey!20}
+    % nodeblue/.style={circle,draw,fill=c3},
+}
+\begin{tikzpicture}[
+outer/.style={draw=gray,dashed,fill=green!1,thick},
+>={Stealth[inset=0pt,
+length=4pt,angle'=45,round]},scale=1.,
+sty edge sel/.style={ultra thick,color=c4},
+sty node sel/.style={ultra thick,circle,c4,draw=c4,fill=c0,minimum size=\sizenode},
+sty node unsel/.style={circle,c2,draw=c2,fill=c0,minimum size=\sizenode},
+sty edge unsel/.style={color=c2},
+]
+
+\def\sizenode{10};
+
+\node[sty node sel] (0) at (1,1) {0};
+\node[sty node sel] (1) at (0,0) {1};
+\node[sty node sel] (2) at (1,-1) {2};
+\node[sty node sel] (3) at (2,0.2) {3};
+\node[sty node unsel] (4) at (3.0,0.9) {4};
+\node[sty node sel] (5) at (2.8,-0.7) {5};
+\node[sty node unsel] (6) at (3.9,0.1) {6};
+\node[sty node unsel] (8) at (4.9,0.8) {8};
+\node[sty node unsel] (9) at (5.6,-0.2) {9};
+\node[sty node sel] (7) at (4.5,-1) {7};
+
+\def\gcnx{8.25};
+\def\gcny{-1.1};
+\def\offsetx{1};
+\def\offsety{1};
+\def\sizenodegcn{6};
+\def\scalegcn{0.9};
+
+% layer 1
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g00) at (\gcnx,\gcny) {0};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g01) at (\gcnx+\offsetx,\gcny) {1};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g02) at (\gcnx+2*\offsetx,\gcny) {2};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g03) at (\gcnx+3*\offsetx,\gcny) {3};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g05) at (\gcnx+4*\offsetx,\gcny) {5};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g07) at (\gcnx+5*\offsetx,\gcny) {7};
+
+% layer 2
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g10) at (\gcnx,\gcny+\offsety) {0};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g11) at (\gcnx+\offsetx,\gcny+\offsety) {1};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g12) at (\gcnx+2*\offsetx,\gcny+\offsety) {2};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g13) at (\gcnx+3*\offsetx,\gcny+\offsety) {3};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g15) at (\gcnx+4*\offsetx,\gcny+\offsety) {5};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g17) at (\gcnx+5*\offsetx,\gcny+\offsety) {7};
+
+% layer 3
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g20) at (\gcnx,\gcny+2*\offsety) {0};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g21) at (\gcnx+\offsetx,\gcny+2*\offsety) {1};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g22) at (\gcnx+2*\offsetx,\gcny+2*\offsety) {2};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g23) at (\gcnx+3*\offsetx,\gcny+2*\offsety) {3};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g25) at (\gcnx+4*\offsetx,\gcny+2*\offsety) {5};
+\node[archnode,minimum size=\sizenodegcn,scale=\scalegcn] (g27) at (\gcnx+5*\offsetx,\gcny+2*\offsety) {7};
+
+% 1-2 link
+\draw [-latex,c4,fill=c4] (g00.north) -- (g10.south);
+\draw [-latex,c4,fill=c4] (g00.north) -- (g11.south);
+\draw [-latex,c4,fill=c4] (g00.north) -- (g13.south);
+\draw [-latex,c4,fill=c4] (g01.north) -- (g11.south);
+\draw [-latex,c4,fill=c4] (g01.north) -- (g10.south);
+\draw [-latex,c4,fill=c4] (g01.north) -- (g12.south);
+\draw [-latex,c4,fill=c4] (g01.north) -- (g13.south);
+\draw [-latex,c4,fill=c4] (g02.north) -- (g11.south);
+\draw [-latex,c4,fill=c4] (g02.north) -- (g12.south);
+\draw [-latex,c4,fill=c4] (g02.north) -- (g13.south);
+\draw [-latex,c4,fill=c4] (g03.north) -- (g10.south);
+\draw [-latex,c4,fill=c4] (g03.north) -- (g11.south);
+\draw [-latex,c4,fill=c4] (g03.north) -- (g12.south);
+\draw [-latex,c4,fill=c4] (g03.north) -- (g13.south);
+\draw [-latex,c4,fill=c4] (g03.north) -- (g15.south);
+\draw [-latex,c4,fill=c4] (g05.north) -- (g13.south);
+\draw [-latex,c4,fill=c4] (g05.north) -- (g15.south);
+\draw [-latex,c4,fill=c4] (g05.north) -- (g17.south);
+\draw [-latex,c4,fill=c4] (g07.north) -- (g15.south);
+\draw [-latex,c4,fill=c4] (g07.north) -- (g17.south);
+
+% 2-3 link
+\draw [-latex,c4,fill=c4] (g10.north) -- (g20.south);
+\draw [-latex,c4,fill=c4] (g10.north) -- (g21.south);
+\draw [-latex,c4,fill=c4] (g10.north) -- (g23.south);
+\draw [-latex,c4,fill=c4] (g11.north) -- (g21.south);
+\draw [-latex,c4,fill=c4] (g11.north) -- (g20.south);
+\draw [-latex,c4,fill=c4] (g11.north) -- (g22.south);
+\draw [-latex,c4,fill=c4] (g11.north) -- (g23.south);
+\draw [-latex,c4,fill=c4] (g12.north) -- (g21.south);
+\draw [-latex,c4,fill=c4] (g12.north) -- (g22.south);
+\draw [-latex,c4,fill=c4] (g12.north) -- (g23.south);
+\draw [-latex,c4,fill=c4] (g13.north) -- (g20.south);
+\draw [-latex,c4,fill=c4] (g13.north) -- (g21.south);
+\draw [-latex,c4,fill=c4] (g13.north) -- (g22.south);
+\draw [-latex,c4,fill=c4] (g13.north) -- (g23.south);
+\draw [-latex,c4,fill=c4] (g13.north) -- (g25.south);
+\draw [-latex,c4,fill=c4] (g15.north) -- (g23.south);
+\draw [-latex,c4,fill=c4] (g15.north) -- (g25.south);
+\draw [-latex,c4,fill=c4] (g15.north) -- (g27.south);
+\draw [-latex,c4,fill=c4] (g17.north) -- (g25.south);
+\draw [-latex,c4,fill=c4] (g17.north) -- (g27.south);
+
+
+\path
+    (1) [bend left] edge [sty edge sel] node [right] {} (0)
+    (0) [bend left] edge [sty edge sel] node [right] {} (3)
+    (1) [bend right] edge [sty edge sel] node [right] {} (2)
+    (2) [bend right] edge [sty edge sel] node [right] {} (3)
+    (1) [bend right=10] edge [sty edge sel] node [right] {} (3)
+    (3) [bend left] edge [sty edge unsel] node [right] {} (4)
+    (4) [bend left=20] edge [sty edge unsel] node [right] {} (8)
+    (8) [bend left] edge [sty edge unsel] node [right] {} (9)
+    (7) [bend right] edge [sty edge unsel] node [right] {} (9)
+    (3) [bend right] edge [sty edge sel] node [right] {} (5)
+    (5) [bend right] edge [sty edge sel] node [right] {} (7)
+    (4) [bend right] edge [sty edge unsel] node [right] {} (6)
+    (6) [bend right] edge [sty edge unsel] node [right] {} (8)
+    (8) [bend left=15] edge [sty edge unsel] node [right] {} (7);
+
+% text and arrow
+\node[] at (2.8,-1.9) {$\G[s]=\mbox{\sample}(\G)$};
+\node[] at (\gcnx+2.5*\offsetx,-1.9) {Full GCN on $\G[s]$};
+% \draw[->,>=latex,blue!20!white,line width=3pt,bend left=70] (6,0.3) to (7.7,0.3);
+% \draw[->,>=latex,blue!20!white,line width=3pt,bend left=70] (7.7,-0.3) to (6,-0.3);
+\draw[-to,line width=2pt,c4] (6.9,0.1)+(170:0.75) arc(170:20:0.75);
+\draw[-to,line width=2pt,c4] (6.9,-0.1)+(-10:0.75) arc(-10:-160:0.75);
+
+\end{tikzpicture}

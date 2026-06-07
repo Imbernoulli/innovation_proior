@@ -1,0 +1,85 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\usepackage{iccv}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amssymb}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{subfigure}
+\usepackage{lib}
+%\usepackage{multirow}
+\usepackage{makecell}
+%\usepackage{threeparttable}
+\usepackage{booktabs}
+%\usepackage{stfloats}
+
+
+%\usepackage[font=small,labelfont=bf,skip=5pt]{caption}
+
+% Include other packages here, before hyperref.
+
+% If you comment hyperref and then uncomment it, you should delete
+% egpaper.aux before re-running latex.  (Or just hit 'q' on the first latex
+% run, let it finish, and you should be clear).
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+
+\iccvfinalcopy % *** Uncomment this line for the final submission
+
+\def\iccvPaperID{1698} % *** Enter the ICCV Paper ID here
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+% LOCAL COMMANDS
+\newcommand{\X}{$\times$\xspace}
+\newcommand{\pool}[1]{$\textrm{pool}_{#1}$\xspace}
+\newcommand{\conv}[1]{$\textrm{conv}_{#1}$\xspace}
+\newcommand{\maxp}[1]{$\textrm{max}_{#1}$\xspace}
+\newcommand{\fc}[1]{$\textrm{fc}_{#1}$\xspace}
+\newcommand{\vggsixteen}{VGG16\xspace}
+\newcommand{\roi}{RoI\xspace}
+\newcommand{\Sm}{{\bf S}\xspace}
+\newcommand{\Med}{{\bf M}\xspace}
+\newcommand{\Lg}{{\bf L}\xspace}
+\newcommand{\ZF}{{\bf ZF}\xspace}
+\newcommand{\ms}{ms\xspace}
+\newcolumntype{x}{>\small c}
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+%%%%%%%%%%%%%%%%
+
+\pagestyle{empty}
+
+\begin{document}
+
+%%%%%%%%% TITLE
+\title{Fast R-CNN}
+
+\author{Ross Girshick\\
+Microsoft Research\\
+{\tt\small rbg@microsoft.com}
+}
+
+\maketitle
+\thispagestyle{empty}
+
+\input{abs}
+\input{intro}
+\input{method}
+\input{mainresults}
+\input{coreexp}
+\input{conclusion}
+
+\paragraph{Acknowledgements.}
+I thank Kaiming He, Larry Zitnick, and Piotr Doll{\'a}r for helpful discussions and encouragement.
+
+{\small
+\bibliographystyle{ieee}
+\bibliography{main}
+}
+
+\end{document}

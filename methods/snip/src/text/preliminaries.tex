@@ -1,0 +1,61 @@
+%\section{Neural Network Pruning}
+%\NOTE{need better section title}
+\section{Neural network pruning}\label{sec:prelim}
+%: in conjunction with learning (something related to learning; interwoven with learning)}
+The main hypothesis behind the neural network pruning literature is that neural networks are usually overparametrized, and comparable performance can be obtained by a much smaller network~(\cite{reed1993pruning}) while improving generalization~(\cite{arora2018stronger}).
+To this end, the objective is to learn a sparse network while maintaining the accuracy of the standard reference network.
+%Let us first formulate neural network pruning as an optimization problem and briefly discuss existing methods and their limitations.
+%This would later allow us to explain our approach.
+Let us first formulate neural network pruning as an optimization problem. %, which would later allow us to explain our approach.
+
+Given a dataset $\gD = \{(\rvx_i, \rvy_i)\}_{i=1}^n$, and a desired sparsity level $\kappa$ (\ie, the number of non-zero weights) neural network pruning can be written as the following constrained optimization problem:
+\begin{align}\label{eq:nn}
+\min_{\rvw} L(\rvw;\gD) &= \min_{\rvw} \frac{1}{n} \sum_{i=1}^n \ell(\rvw; (\rvx_i, \rvy_i))\
+,\\\nonumber 
+\text{s.t.}\quad\rvw &\in \R^m,\quad \|\rvw\|_0 \le \kappa\ .
+\end{align}
+Here, $\ell(\cdot)$ is the standard loss function (\eg, cross-entropy loss), $\rvw$ is the set of parameters of the neural network, $m$ is the total number of parameters and $\|\cdot\|_0$ is the standard $L_0$ norm.
+%
+%Note that, in a neural network, each parameter can be thought of as the weight of the corresponding connection, and setting it to zero means the connection is removed from the network.
+
+The conventional approach to optimize the above problem is by adding sparsity enforcing penalty terms~(\cite{chauvin1989back, weigend1991generalization, ishikawa1996structural}).
+Recently,~\cite{Carreira-Perpiñán_2018_CVPR} attempts to minimize the above constrained optimization problem using the stochastic version of projected gradient descent (where the projection is accomplished by pruning).
+However, these methods often turn out to be inferior to saliency based methods in terms of resulting sparsity and require heavily tuned hyperparameter settings to obtain comparable results.
+
+On the other hand, saliency based methods treat the above problem as selectively removing redundant parameters (or connections) in the neural network.
+In order to do so, one has to come up with a good criterion to identify such redundant connections.
+Popular criteria include magnitude of the weights, \ie, weights below a certain threshold are redundant~(\cite{han2015learning,guo2016dynamic}) and Hessian of the loss with respect to the weights, \ie, the higher the value of Hessian, the higher the importance of the parameters~(\cite{lecun1990optimal,hassibi1993optimal}), defined as follows:
+\begin{equation}
+    s_j =
+    \begin{cases}
+    |w_j|\ , & \text{for magnitude based} \\[1ex]
+    \frac{w^{2}_{j}H_{jj}}{2}\;\;\; \text{or}\;\; \frac{w^{2}_{j}}{2H^{-1}_{jj}}         & \text{for Hessian based}\;.
+    \end{cases}
+\end{equation}
+Here, for connection $j$, $s_j$ is the saliency score, $w_j$ is the weight, and $H_{jj}$ is the value of the Hessian matrix, where the Hessian $\rmH = \partial^{2}L/\partial\rvw^{2} \in \sR^{m \times m}$.
+Considering Hessian based methods, the Hessian matrix is neither diagonal nor positive definite in general, approximate at best, and intractable to compute for large networks.
+
+Despite being popular, both of these criteria depend on the scale of the weights and in turn require pretraining and are very sensitive to the architectural choices.
+For instance, different normalization layers affect the scale of the weights in a different way, and this would non-trivially affect the saliency score.
+Furthermore, pruning and the optimization steps are alternated many times throughout training, resulting in highly expensive {\em prune -- retrain cycles}.
+Such an exorbitant requirement hinders the use of pruning methods in large-scale applications and raises questions about the credibility of the existing pruning criteria.
+
+In this work, we design a criterion which directly measures the connection importance in a data-dependent manner.
+This alleviates the dependency on the weights and enables us to prune the network once at the beginning, and then the training can be performed on the sparse pruned network.
+Therefore, our method eliminates the need for the expensive prune -- retrain cycles, and in theory, it can be an order of magnitude faster than the standard neural network training as it can be implemented using software libraries that support sparse matrix computations.
+
+%\subsection{Existing approaches and their limitations}
+%\NOTE{refine this section after related work}
+%Essentially, there are two different approaches to optimize the above problem: 1) directly treating it as a constrained optimization problem~\cite{Carreira-Perpiñán_2018_CVPR}; 2) treating it as selectively removing redundant parameters (or connections) in the neural network~\cite{han2015learning,lecun1990optimal}. 
+%Former category methods include the stochastic version of projected gradient descent (where projection is obtained by pruning) and sparsity enforcing regularization (\eg, adding $L_0$ or $L_1$ norm on the weights) methods. 
+%However, these methods are less successful compared to the latter category and highly sensitive to the choice of hyperparameters. 
+%
+%On the other hand, while treating pruning as selectively removing redundant connections, one has to come up with a good criterion to obtain such redundant connections.
+%Popular criteria include magnitude of the weights~\cite{han2015learning,guo2016dynamic} (\ie, weights below a certain threshold are redundant) and Hessian of the loss with respect to the weights~\cite{lecun1990optimal,hassibi1993optimal,dong2017learning} (\ie, higher the value of Hessian, the higher the importance of the parameters).
+%Despite being popular, both of these criteria depends on the scale of the weights and in turn require pretraining and very sensitive to architectural choices (\eg, normalization layers). 
+%Furthermore, once pruned, the network has to be retrained to maintain high accuracy, thus, the algorithm has to go through many expensive {\em prune -- retrain cycles}. 
+%Such an exorbitant requirement hinders the use of pruning methods in large-scale applications~\NOTE{make sure this is true} and raises questions about the credibility of the existing pruning criteria.
+%
+%In this work, we design a criterion which directly measures the connection importance in a data-dependent manner.
+%This alleviates the dependency on the weights and enables us to prune the network once at the beginning, and then the training can be performed on the sparse pruned network.
+%Therefore, our method eliminates the need for the expensive prune -- retrain cycles, and in theory, it can be an order of magnitude faster than standard neural network training as it can be implemented using sparse software libraries.

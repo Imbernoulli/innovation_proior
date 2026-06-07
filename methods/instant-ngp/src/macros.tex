@@ -1,0 +1,429 @@
+
+\usepackage{booktabs} % For formal tables
+\usepackage{tabularx}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+\usepackage{xargs}
+\usepackage{microtype}
+\usepackage[prologue,table]{xcolor}
+\usepackage[binary-units]{siunitx}
+\DeclareSIUnit{\nothing}{\relax}
+\DeclareSIUnit{\fps}{FPS}
+\DeclareSIUnit{\px}{px}
+
+\usepackage{overpic}
+\usepackage{stmaryrd}
+\usepackage{makecell}
+\usepackage{wrapfig}
+
+
+\usepackage{enumitem}
+
+\usepackage{multirow}
+\usepackage{pgfplots}
+\DeclareUnicodeCharacter{2212}{−}
+\usepgfplotslibrary{groupplots,dateplot}
+\usetikzlibrary{patterns,shapes.arrows}
+\pgfplotsset{compat=newest}
+
+
+\usepackage{pifont}% http://ctan.org/pkg/pifont
+\newcommand{\cmark}{\textcolor{green}{\ding{51}}}%
+\newcommand{\xmark}{\textcolor{red}{\ding{55}}}%
+
+
+
+\DeclareMathOperator*{\ubigvee}{\underline{\bigvee}}
+
+\input{comment-settings}
+
+\ifnum\commentType=0
+    \newcommandx{\customComment}[3]{}
+    \newcommandx{\customTODO}[3]{}
+\fi
+\ifnum\commentType=1
+    \newcommandx{\customComment}[3]{\textcolor{#2}{\textsl{#1: #3}}}
+    \newcommandx{\customTODO}[3]{\textcolor{#2}{\textsl{#1: #3}}}
+\fi
+\ifnum\commentType=2
+    \usepackage{pdfcomment}
+    \newcommandx{\customComment}[3]{\pdfcomment[icon=Comment,opacity=0.5,color=#2,author=#1]{#3}}
+    \newcommandx{\customTODO}[3]{\pdfcomment[icon=Note,opacity=0.5,color=#2,author=#1]{#3}}
+\fi
+\ifnum\commentType=3
+    \usepackage{pdfcomment} % somehow this helps avoiding an error
+    \addtolength{\paperwidth}{2in}
+    \addtolength{\oddsidemargin}{1in}
+    \addtolength{\evensidemargin}{1in}
+    \setlength{\marginparwidth}{1.1in}
+    \setlength{\marginparsep}{.4in}
+    \usepackage{todonotes} % Use [disable] argument to disable todonotes.
+    \usepackage{silence}
+    \WarningFilter*{latex}{Marginpar on page \thepage\space moved}
+    \newcommandx{\customComment}[3]{\todo[color=#2!40,size=\small]{\textbf{#1:} #3}}
+    \newcommandx{\customTODO}[3]{\todo[color=#2!40,size=\small]{\textbf{#1:} #3}}
+\fi
+
+\let\originalleft\left % chktex 43
+\let\originalright\right % chktex 43
+\renewcommand{\left}{\mathopen{}\mathclose\bgroup\originalleft} % chktex 43
+\renewcommand{\right}{\aftergroup\egroup\originalright} % chktex 43
+
+\definecolor{amber}{rgb}{1.0, 0.49, 0.0}
+\definecolor{darkgreen}{rgb}{0.0, 0.5, 0.0}
+\newcommandx{\All}[1]{\customComment{All}{red}{#1}}
+\newcommandx{\AlexKeller}[1]{\customComment{AKeller}{blue}{#1}}
+\newcommandx{\AlexEvans}[1]{\customComment{AEvans}{amber}{#1}}
+\newcommandx{\Thomas}[1]{\customComment{Thomas}{darkgreen}{#1}}
+\newcommandx{\Christoph}[1]{\customComment{Christoph}{orange}{#1}}
+
+
+\newcommandx{\TODO}[1]{\customTODO{TODO}{red}{#1}}
+\newcommandx{\AlexKellerTODO}[1]{\customTODO{AKeller}{blue}{#1}}
+\newcommandx{\AlexEvansTODO}[1]{\customTODO{AEvans}{amber}{#1}}
+\newcommandx{\ThomasTODO}[1]{\customTODO{Thomas}{darkgreen}{#1}}
+\newcommandx{\ChristophTODO}[1]{\customTODO{Christoph}{orange}{#1}}
+
+\newcommand{\IGNORE}[1]{}
+
+
+\newcommand{\REMOVE}[1]{} % for final version
+\newcommand{\ADD}[1]{#1} % for final version
+\newcommand{\REPLACE}[2]{#2} % for final version
+
+\newcommand{\MARK}[1]{{\color{red}\textbf{#1}}}  % for work in progress
+
+\newcommand{\useAnimations}{}
+
+\def\figureautorefname{Figure}
+\def\tableautorefname{Table}
+\def\partautorefname{Part}
+\def\sectionautorefname{Section}
+\def\subsectionautorefname{Section}
+\def\subsubsectionautorefname{Section}
+\def\appendixautorefname{Appendix}
+\def\equationautorefname~#1\null{%
+  Equation~(#1)\null
+}
+
+\def\approxprop{%
+  \def\p{%
+    \setbox0=\vbox{\hbox{$\propto$}}%
+    \ht0=0.6ex \box0 }%
+  \def\s{%
+    \vbox{\hbox{$\sim$}}%
+  }%
+  \mathrel{\raisebox{0.7ex}{%
+      \mbox{$\underset{\s}{\p}$}%
+    }}%
+}
+
+\def\approxlt{%
+  \def\p{%
+    \setbox0=\vbox{\hbox{$<$}}%
+    \ht0=0.6ex \box0 }%
+  \def\s{%
+    \vbox{\hbox{$\sim$}}%
+  }%
+  \mathrel{\raisebox{0.7ex}{%
+      \mbox{$\underset{\s}{\p}$}%
+    }}%
+}
+
+\def\approxgt{%
+  \def\p{%
+    \setbox0=\vbox{\hbox{$>$}}%
+    \ht0=0.6ex \box0 }%
+  \def\s{%
+    \vbox{\hbox{$\sim$}}%
+  }%
+  \mathrel{\raisebox{0.7ex}{%
+      \mbox{$\underset{\s}{\p}$}%
+    }}%
+}
+
+\newcommand{\Domain}{\mathcal{D}}
+\newcommand{\DomainZ}{{\mathcal{P}}}
+\newcommand{\Volumes}{\mathcal{V}}
+\newcommand{\Surfaces}{{\partial\mathcal{V}}}
+\newcommand{\Space}{\mathcal{M}}
+\newcommand{\Paths}{{\mathcal{P}}}
+\newcommand{\Sphere}{{S^2}}
+\newcommand{\PrimarySS}{{\mathcal{U}}}
+\newcommand{\Uniform}{{\mathcal{U}}}
+
+\newcommand{\Diff}[1]{\,\mathrm{d}#1}
+
+\newcommand{\integers}{\mathbb{N}}
+
+\newcommand{\pdf}{p}
+\newcommand{\PdfGt}{p}
+\newcommand{\PdfData}{p}
+\newcommand{\PdfMC}{p}
+\newcommand{\PdfPoly}{q}
+\newcommand{\PdfOptimized}{q}
+\newcommand{\PdfNIS}{p_{\NIS}}
+\newcommand{\PdfUniSphere}{p_{\Sphere}}
+\newcommand{\PdfBSDF}{p_{\bsdf}}
+\newcommand{\PdfUniform}{p_{\mathcal{U}}}
+\newcommand{\PdfSamples}{q_\mathrm{s}}
+\newcommand{\PdfVarEst}{q}
+
+\newcommand{\OneBlob}{\text{ob}}
+\newcommand{\PosEnc}{\text{freq}}
+\newcommand{\Spherical}{\text{sph}}
+\newcommand{\Identity}{\text{id}}
+\newcommand{\StopGradient}{\text{sg}}
+
+\newcommand{\cv}{g}
+\newcommand{\CV}{G}
+\newcommand{\selectionProb}{c}
+\newcommand{\acv}{\hat{\cv}}
+\newcommand{\aCV}{\hat{\CV}}
+\newcommand{\cvCoef}{\alpha}
+\newcommand{\cvShape}{\bar{\cv}}
+\newcommand{\Params}{\theta}
+\newcommand{\cvParams}{\Params_{\cv}}
+\newcommand{\CVParams}{\Params_{\CV}}
+\newcommand{\acvParams}{\Params_{\acv}}
+\newcommand{\aCVParams}{\Params_{\aCV}}
+\newcommand{\pdfParams}{\Params_{\PdfMC}}
+\newcommand{\selectionProbParams}{\Params_{\selectionProb}}
+\newcommand{\nisParams}{\Params_{\NIS}}
+\newcommand{\cvShapeParams}{\Params_{\cvShape}}
+\newcommand{\cvCoefParams}{\Params_{\cvCoef}}
+\newcommand{\NIS}{\mathrm{NIS}}
+\newcommand{\conditionals}{y}
+\newcommand{\auxConditionals}{\kappa}
+
+\newcommand{\JacobianProduct}{J}
+
+\newcommand{\GenericParams}{\phi}
+
+\newcommand{\GradParams}{\nabla_{\!\Params}}
+\newcommand{\GradCV}{\nabla_{\!\cvParams}}
+
+\newcommand{\cvc}{\alpha}
+\newcommand{\cvh}{h}
+\newcommand{\CVH}{H}
+
+\newcommand{\numAuxDims}{E}
+\newcommand{\auxDims}{\mathbf{\xi}}
+\newcommand{\enc}{\mathrm{enc}}
+\newcommand{\encOut}{\mathbf{y}}
+\newcommand{\interpWeight}{\mathbf{w}}
+\newcommand{\nn}{m}
+\newcommand{\hash}{h}
+\newcommand{\primeNumber}{\pi}
+\newcommand{\smoothstep}{S_1}
+
+\newcommand{\entriesPerLevel}{T}
+\newcommand{\entry}{t}
+\newcommand{\featuresPerEntry}{F}
+\newcommand{\feature}{f}
+\newcommand{\levels}{L}
+\newcommand{\level}{l}
+\newcommand{\resolution}{N}
+\newcommand{\minResolution}{N_\mathrm{min}}
+\newcommand{\maxResolution}{N_\mathrm{max}}
+\newcommand{\perLevelScale}{b}
+
+\newcommand{\dataV}{x}
+\newcommand{\dataSpace}{\mathcal{X}}
+\newcommand{\latentV}{z}
+\newcommand{\latentSpace}{\mathcal{L}}
+\newcommand{\xSpace}{\mathcal{X}}
+\newcommand{\ySpace}{\mathcal{Y}}
+\newcommand{\map}{h}
+\newcommand{\mapIn}{x_i}
+\newcommand{\mapOut}{x_{i+1}}
+\newcommand{\reverseMap}{\bar{h}}
+\newcommand{\compoundMap}{\widehat{\map}}
+\newcommand{\cmap}{C}
+
+\newcommand{\warp}{h}
+\newcommand{\warpIn}{x}
+\newcommand{\warpInSpace}{\mathcal{X}}
+\newcommand{\warpOut}{x^\prime}
+\newcommand{\warpOutSpace}{\mathcal{X^\prime}}
+
+\newcommand{\partitionA}{A}
+\newcommand{\partitionB}{B}
+
+\newcommand{\ldb}{\mathopen{\lbrack{} \! \lbrack{}}}
+\newcommand{\rdb}{\mathclose{\rbrack{} \! \rbrack{}}}
+
+\newcommand{\nlayers}{L}
+\newcommand{\width}{M}
+\newcommand{\batchSize}{N}
+\newcommand{\inputWidth}{\width_\mathrm{in}}
+\newcommand{\networkWidth}{\width_\mathrm{hidden}}
+\newcommand{\outputWidth}{\width_\mathrm{out}}
+\newcommand{\layerIn}{x}
+\newcommand{\layerOut}{y}
+\newcommand{\softmax}{\sigma}
+\newcommand{\dimId}{i}
+\newcommand{\binId}{j}
+\newcommand{\containingBinId}{b}
+
+\newcommand{\matQ}{Q}
+\newcommand{\matW}{W}
+\newcommand{\matH}{H}
+\newcommand{\matV}{V}
+\newcommand{\raw}[1]{{\widehat{#1}}}
+\newcommand{\expFunc}[1]{{\exp\left(#1\right)}}
+\newcommand{\lerpFunc}[3]{{\mathrm{lerp}{({#1},{#2},{#3})}}}
+
+\newcommand{\nbins}{K}
+
+\newcommand{\binWidth}{w}
+\newcommand{\binWidthRaw}{\overline{\binWidth}}
+\newcommand{\vertHeight}{v}
+\newcommand{\vertHeightRaw}{\overline{\vertHeight}}
+\newcommand{\unitVec}{\hat{\mathbf{1}}}
+
+\newcommand{\fracfunc}{\mathrm{frac}}
+
+\newcommand{\MakePath}[1]{\overline{#1}}
+\newcommand{\Path}{\MakePath{x}}
+\newcommand{\PathY}{\MakePath{\posy}}
+\newcommand{\PSSVector}{z}
+\newcommand{\PathConstructionMap}{\rho}
+\newcommand{\BigO}{\mathcal{O}}
+
+
+\newcommand{\pos}{\mathbf{x}}
+\newcommand{\posy}{\mathbf{y}}
+\newcommand{\dir}{\omega}
+\newcommand{\diro}{\omega}
+\newcommand{\diri}{\omega_\mathrm{i}}
+\newcommand{\diriRV}{\Omega}
+\newcommand{\normal}{\mathbf{n}}
+
+\newcommand{\cam}{\mathrm{C}}
+\newcommand{\camRot}{\mathrm{R}_\cam}
+\newcommand{\camPos}{\pos_\cam}
+\newcommand{\origin}{\mathrm{o}}
+\newcommand{\originDir}{\mathrm{d}}
+
+\newcommand{\radiance}{L}
+\newcommand{\inRadiance}{\radiance_{\mathrm{i}}}
+\newcommand{\emittedRadiance}{\radiance_{\mathrm{e}}}
+\newcommand{\reflectedRadiance}{\radiance_{\mathrm{s}}}
+\newcommand{\reflectedIndirectRadiance}{\radiance_{\mathrm{si}}}
+\newcommand{\cachedReflectedRadiance}{\widehat{\radiance}_{\mathrm{s}}}
+\newcommand{\cachedReflectedIndirectRadiance}{\hat{\radiance}_{\mathrm{si}}}
+
+\newcommand{\phase}{f_{\mathrm{p}}}
+\newcommand{\brdf}{f_{\mathrm{r}}}
+\newcommand{\bsdf}{f_{\mathrm{s}}}
+
+\newcommand{\roughness}{r}
+\newcommand{\albedo}{\alpha}
+\newcommand{\specAlbedo}{\beta}
+\newcommand{\vertexIdx}{k}
+
+\newcommand{\obenc}[1]{\tilde{#1}}
+
+\newcommand{\fsangle}{\theta}
+\newcommand{\fsanglei}{\fsangle_\mathrm{i}}
+
+\newcommand{\Albedo}{\alpha}
+\newcommand{\ExtCoeff}{\sigma_t}
+\newcommand{\ScatterCoeff}{\sigma_s}
+\newcommand{\OptD}{\tau}
+\newcommand{\FFTau}{p_\tau}
+\newcommand{\FFDist}{p_s}
+\newcommand{\Trans}{\mathrm{Tr}}
+\newcommand{\TKernel}{T}
+\newcommand{\Phase}{\rho^m}
+
+
+\newcommand{\EdgeThroughput}{E}
+\newcommand{\CasedSigma}{\Sigma}
+\newcommand{\Scatter}{\rho}
+\newcommand{\Vis}{V}
+\newcommand{\Geom}{G}
+\newcommand{\Fore}{D}
+
+\newcommand{\AreaHeuristic}{a}
+
+\newcommand{\Measurement}{I}
+\newcommand{\Importance}{W}
+\newcommand{\Contrib}{f}
+\newcommand{\ContribAdj}{\Contrib^*}
+\newcommand{\PathThroughput}{T}
+
+\newcommand{\MakeClassic}[1]{#1_\text{c}}
+\newcommand{\ScatterClassic}{\MakeClassic{\Scatter}}
+\newcommand{\PathThroughputClassic}{\MakeClassic{\PathThroughput}}
+
+\newcommand{\Sample}{X}
+
+\newcommand{\Loss}{\mathcal{L}}
+
+\newcommand{\MC}[1]{{\langle {#1} \rangle}}
+\newcommand{\bigMC}[1]{{\big\langle {#1} \big\rangle}}
+\newcommand{\BigMC}[1]{{\Big\langle {#1} \Big\rangle}}
+\newcommand{\LRMC}[1]{{\left\langle {#1} \right\rangle}}
+
+
+\newcommand{\PSSTree}{T}
+
+\newcommand{\Div}{D}
+\newcommand{\KlDiv}{\Div_{\text{KL}}}
+\newcommand{\ChiDiv}{\Div_{\chi^2}}
+\newcommand{\CrossEntropy}{H}
+\newcommand{\Expectation}{\mathbb{E}}
+\newcommand{\Variance}{\mathbb{V}}
+\newcommand{\Entropy}{H}
+\newcommand{\Deriv}[2]{\frac{\Diff{#1}}{\Diff{#2}}}
+\newcommand{\Var}{\mathrm{Var}}
+\newcommand{\Cov}{\mathrm{Cov}}
+
+\newcommand{\Estimate}[1]{\langle{} #1 \rangle{}}
+
+\newcommand{\Real}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Scal}{\mathcal{S}}
+
+\newcommand{\ZeroDay}{\textsc{Zero Day}\xspace}
+\newcommand{\Classroom}{\textsc{Classroom}\xspace}
+\newcommand{\BistroExterior}{\textsc{Bistro}\xspace}
+\newcommand{\Attic}{\textsc{Attic}\xspace}
+\newcommand{\HorseRoom}{\textsc{Horse Room}\xspace}
+\newcommand{\Burger}{\textsc{Burger Restaurant}\xspace}
+\newcommand{\LivingRoom}{\textsc{Living Room}\xspace}
+\newcommand{\PinkRoom}{\textsc{Pink Room}\xspace}
+
+\newcommand{\FLIP}{\reflectbox{F}LIP\xspace}
+
+
+\newcommand{\NarrowArrow}{\! \! \rightarrow{} \!}
+\newcommand{\NarrowArrowL}{\! \! \leftarrow{} \!}
+
+\newcommand{\tikzcircle}[2][red,fill=red]{\tikz[baseline=-0.7ex]\draw[#1,radius=#2] (0,0) circle ;}%
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,572 @@
+\section{Appendix}
+\label{sec:appendix}
+%\subsection{Implementation of \DecoderName}
+%\label{imp-emd}
+% BERT \citep{devlin2018bert} adopt transformer $encoder$ to learn bi-directional representation for natural language with Masked Language Model(MLM) objective. For a given sequence $\bm{X}=\left\{x_i \right\}$, with a portion of it randomly corrupted as $\left\{\tilde{x}_i \right\}$. We denote the corrupted sequence as $\bm{\tilde{X}}$. The MLM objective is to reconstruct corrupted tokens $\{\tilde{x}_i\}$ from $\bm{\tilde{X}}$,
+% \begin{equation}
+% \label{mlm}
+% \begin{split}
+%       \max_{\theta} \text{log} p_{\theta}(\bm{X}|\bm{\tilde{X}}) &= \sum_{i\in K}{\text{log}  p_{\theta}(\tilde{x}_i=x_i|\bm{\tilde{X}})} \\ 
+%       &=\sum_{i \in K}{\text{log}{\frac{e^{f_{MLM}(h^{o}_i)\cdot e_i }}{\sum_{j}{e^{f_{MLM}(h^{o}_i) \cdot e_j}}}}} \\
+%       f_{MLM}(h_i^o) &= LayerNorm(Linear(h_i^o))
+% \end{split}
+% \end{equation}
+% Where $K$ is the set of indices of masked tokens in the sequence. $e_i$ is the embedding of $i$th token in the sequence. $e_j$ is the embedding of $j$th token in the whole vocabulary. $h^{o}_i$ is the hidden state of the $i$th masked token in the output of last transformer layer. $f_{MLM}$ is an additional layer for MLM task only.
+
+%BERT \citep{devlin2018bert} proposed to keep a portion of the masked tokens unchanged, e.g. 10\%, to mitigate the discrepancy between training and fine-tuning. However, even this small portion will encourage the self-attention to peek at itself, as shown in figure \ref{fig:att-map} that the attention matrix is highlighted on the diagonal line . To alleviate this leaking issue, we propose to replace the content embedding of unchanged mask tokens with their positional embedding, so that there is no way to peek at the content itself directly. The prediction of this portion of tokens can be written as:
+%\begin{equation}
+%$\label{p-mlm}
+%    $p_{\theta}(\tilde{x}_i=x_i|\bm{\tilde{X}}-x_i, P_i)$
+%\end{equation}
+%,in which $P_i$ is the absolute position of token $i$ in the sequence.
+
+%To make prediction of $p_{\theta}$ with the consideration of position $P_i$ but without the content itself, one feasible solution is to adopt a two-stream attention as XLNet\citep{yang2019xlnet}. However, this will increase memory consumption and computational complexity.  Instead, we use a different approach to solve this problem without introducing eligible cost.  
+%another $decoder$ component as the $encoder-decoder$ structure in \citepp{vaswani2017attention} or adopt  However, that will . 
+
+
+%We start with a different view of a $L$-layer encoder in Transformer. We separate these $L$ layers into two separate roles. We still treat the first $L-1$ layers as encoding layers, denoted as $\mbox{E-Encoder}$. However, we first regard the last layer as a $1$-layer $decoder$, denoted as $\mbox{E-Decoder}$, whose focus is to decode the masked tokens based on $\mbox{E-Encoder}$. The vanilla $\mbox{E-Decoder}$ is a simple \textit{softmax} layer. This is similar to the $encoder-decoder$ structure in \citepp{vaswani2017attention}. 
+%Inspired by the $encoder-decoder$ structure in \citepp{vaswani2017attention}, the last layer of transformer $encoder$ in BERT can be viewed as a $1$-layer $decoder$, denoted as $\mbox{E-Decoder}$, to reconstruct the masked tokens based on the contextual representations from previous $L-1$-layer transformer $encoder$, denoted as $\mbox{E-Encoder}$.   
+%$\mbox{E-Decoder}$ follows the $decoder$ in the $encoder-decoder$ structure but without the self-attention block. Instead of using the target embedding as the input of the $decoder$ layer, $\mbox{E-Decoder}$ uses the output of $\mbox{E-Encoder}$ as the input as long as the token is contaminated, e.g. masked out or replaced with another token, otherwise it uses the position embedding as the input. Moreover, we can extend $\mbox{E-Decoder}$ from a single layer to multiple layers to improve the MASK decoding performance, in which the $\bm{K}$ and $\bm{V}$ are always taken from the last layer in $\mbox{E-Encoder}$ while the output of each $\mbox{E-Decoder}$ layer will be used as a new $\bm{Q}$ to calculate the self-attention in next layer or reconstruct the masked tokens. This is exactly the same as the $encoder-decoder$ structure in \citepp{vaswani2017attention}. It is worth noting this is different from layer-wise parameter sharing proposed by \citep{lan2019albert}, since the $K$ and $V$ are staled in each decoding steps. The parameters of each $\mbox{E-Decoder}$ layer can be either shared or separated.  We empirically notice ineligible performance difference for the choice between these two options. In other words, we reuse the weight of the last transformer $encoder$ layer. Putting all together, we call this new masking decoder Enhanced Masking Decoder ($\DecoderName$) with more details of $\mbox{E-Decoder}$ shown in \eqref{de-layer}.
+
+% The implementation of \DecoderName \  was shown in \eqref{de-layer}. For each layer in \DecoderName \ there are three input vectors, i.e. $\bm{Q}, \bm{K}, \bm{V}$. The output from $encoder$ will be used as $\bm{K}$ and $\bm{V}$ for all layers in \DecoderName \  which is similar to the $encoder-decoder$ structure. For the first layer of \DecoderName, the $\bm{Q}$ will be the corresponding hidden state from the output of $encoder$ if the masked token was corrupted, e.g. replaced with either \texttt{[MASK]} or other tokens, else it will be the absolute position embedding of the unchanged masked token, as shown in \eqref{de-input}. Then the output from the first decoder layer will be used to construct a new $\bm{Q}$ for next decoder layer. The output of last layer in  \DecoderName \ will be used to decode the masked token via a softmax layer.
+
+% \begin{equation}\label{de-layer}
+%     \begin{split}
+%     \bm{Q^{s-1}} &= \bm{H^{s-1}_{de}} \\
+%     \bm{\bar{O}^s} &= \text{Attention}(\bm{Q^{s-1}W^{L-1}_q}, \bm{O^{En}W^{L-1}_k}, \bm{O^{En}W^{L-1}_v}) \\
+%     \bm{O^{s}} &= \text{LayerNorm}(\text{Linear}(\bm{\bar{O}^{s}})+\bm{Q^{s-1}}) \\
+%     \bm{H^{s}_{de}} &= \text{LayerNorm}(\text{PosFNN}(\bm{O^{s}})+\bm{O^{s}}) 
+%     \end{split}
+% \end{equation} 
+% Where $\bm{H^{s}_{de}}=\{h^{s}_{de}{_i}\}_{i\in K}$ is the output of decoding layer $s$, $\bm{O}^{En} = \{o_i^{En}\}$ is the output of encoding layer. When $s=0$,
+% \begin{equation}
+% \label{de-input}
+%     h^0_{de}{_i}=\left\{ \begin{array}{rcl}
+%         o_i^{En}    & if  &x_i \neq \tilde{x}_i \\
+%         P_i    & if  &x_i=\tilde{x}_i \\
+%     \end{array}\right.
+% \end{equation}
+
+%During pre-training, we set the decoding layers to 2 with consideration of the trade off between performance and complexity. Given a 2-layer decoder, we can use either the first or the second layer for the fine-tuning of downstream tasks.  We observe there is no significant difference between this choice after we share the parameters between these two layers. Therefore, we choose to use the first layer and discard the second layer in the fine-tuning stage, which makes it  have the same number of layers as the BERT or RoBERTa models.
+
+\subsection{Dataset}
+\begin{table*}[!htb]
+	\begin{center}
+		\begin{tabular}{l|l|c|c|c|c|c}
+			\toprule 
+			\bf Corpus &Task& \#Train & \#Dev & \#Test   & \#Label &Metrics\\ \hline \hline
+			\multicolumn{6}{@{\hskip1pt}r@{\hskip1pt}}{\textbf{General Language Understanding Evaluation (GLUE})} \\ \hline
+			%\multicolumn{6}{@{\hskip1pt}r@{\hskip1pt}}{Single-Sentence Classification} \\ \hline
+			CoLA & Acceptability&8.5k & 1k & 1k & 2 & Matthews corr\\ \hline
+			SST & Sentiment&67k & 872 & 1.8k & 2 & Accuracy\\ \hline
+			%\multicolumn{6}{@{\hskip1pt}r@{\hskip1pt}}{Pairwise Text Classification} \\ \hline
+			MNLI & NLI& 393k& 20k & 20k& 3 & Accuracy\\ \hline
+            RTE & NLI &2.5k & 276 & 3k & 2 & Accuracy \\ \hline
+            WNLI & NLI &634& 71& 146& 2 & Accuracy \\ \hline
+			QQP & Paraphrase&364k & 40k & 391k& 2 & Accuracy/F1\\ \hline
+            MRPC & Paraphrase &3.7k & 408 & 1.7k& 2&Accuracy/F1\\ \hline
+			QNLI & QA/NLI& 108k &5.7k&5.7k&2& Accuracy\\ \hline 
+		%	\multicolumn{5}{@{\hskip1pt}r@{\hskip1pt}}{Text Similarity} \\ \hline
+			STS-B & Similarity &7k &1.5k& 1.4k &1 & Pearson/Spearman corr\\ \hline \hline
+		%	\multicolumn{4}{@{\hskip1pt}r@{\hskip1pt}}{\textbf{Question Answering}} \\ \hline
+			\multicolumn{6}{@{\hskip1pt}c@{\hskip1pt}}{\textbf{SuperGLUE}} \\ \hline
+			WSC & Coreference& 554k & 104 & 146 & 2 & Accuracy\\ \hline
+			%\multicolumn{6}{@{\hskip1pt}r@{\hskip1pt}}{Pairwise Text Classification} \\ \hline
+			BoolQ & QA& 9,427 & 3,270 & 3,245 & 2 & Accuracy\\ \hline
+            COPA & QA &400k & 100 & 500 & 2 & Accuracy \\ \hline
+			CB & NLI& 250 & 57 & 250 & 3 & Accuracy/F1\\ \hline
+            RTE & NLI &2.5k & 276 & 3k & 2 & Accuracy \\ \hline
+            WiC & WSD &2.5k & 276 & 3k & 2 & Accuracy \\ \hline
+			ReCoRD & MRC&  101k& 10k&10k &-& Exact Match (EM)/F1\\ \hline 
+
+			%\multicolumn{4}{@{\hskip1pt}r@{\hskip1pt}}{Ranking} \\ \hline
+			MultiRC & Multiple choice&  5,100& 953&1,800 &-& Exact Match (EM)/F1\\ \hline \hline
+			\multicolumn{5}{@{\hskip1pt}r@{\hskip1pt}}{Question Answering} \\ \hline 
+			SQuAD v1.1 & MRC&  87.6k& 10.5k&9.5k &-& Exact Match (EM)/F1\\ \hline 
+			SQuAD v2.0 & MRC& 130.3k &11.9k& 8.9k&-& Exact Match (EM)/F1\\ \hline 			
+			%\multicolumn{4}{@{\hskip1pt}r@{\hskip1pt}}{Ranking} \\ \hline
+			%ReCoRD & MRC&  101k& 10k&10k &-& Exact Match (EM)/F1\\ \hline 
+			RACE & MRC&  87,866& 4,887&4,934 &4& Accuracy\\ \hline
+			SWAG & Multiple choice&  73.5k& 20k&20k &4& Accuracy\\ \hline \hline
+			\multicolumn{4}{@{\hskip1pt}r@{\hskip1pt}}{\textbf{Token Classification}} \\ \hline 
+			CoNLL 2003 & NER&  14,987& 3,466& 3,684 &8& F1\\
+			
+			\bottomrule
+
+		\end{tabular}
+	\end{center}
+	\caption{Summary information of the NLP application benchmarks.
+	}
+	\label{tab:datasets}
+\end{table*}
+\noindent $\bullet$ \textbf{GLUE}. The General Language Understanding Evaluation (GLUE) benchmark is a collection of nine natural language understanding (NLU) tasks. As shown in Table~\ref{tab:datasets},
+it includes question answering~\citep{squad1}, linguistic acceptability~\citep{cola2018}, sentiment analysis~\citep{sst2013}, text similarity~\citep{sts-b2017}, paraphrase detection~\citep{mrpc2005}, and natural language inference (NLI)~\citep{rte1,rte2,rte3,rte5,winograd2012,mnli2018}. The diversity of the tasks makes GLUE very suitable for evaluating the generalization and robustness of NLU models. 
+
+%\noindent $\bullet$ \textbf{ReCoRD}  is a commonsense Question Answering dataset. Each example consists of a news article, drawn from CNN and DailyMail, and a Cloze-style question about the article in which one entity is masked out \citep{zhang2018record}.
+
+\noindent $\bullet$ \textbf{SuperGLUE}. SuperGLUE is an extension of the GLUE benchmark, but more difficult, which is a collection of eight NLU tasks. It covers a various of tasks including question answering \citep{zhang2018record,clark2019boolq,khashabi2018multirc}, natural language inference \citep{rte1,rte2,rte3,rte5,de2019cb}, coreference resolution \citep{winograd2012} and word sense disambiguation \citep{pilehvar2019wic}.
+
+\noindent $\bullet$ \textbf{RACE}  is a large-scale machine reading comprehension dataset, collected from English examinations in China, which are designed for middle school and high school students \citep{lai2017race}. 
+
+\noindent $\bullet$ \textbf{SQuAD v1.1/v2.0} is the Stanford Question
+Answering Dataset (SQuAD) v1.1 and v2.0 \citep{squad1,squad2} are popular machine reading comprehension benchmarks. Their passages come from approximately 500 Wikipedia articles and the questions and answers are obtained by crowdsourcing. The SQuAD v2.0 dataset includes unanswerable questions about the same paragraphs.
+
+\noindent $\bullet$ \textbf{SWAG} is a large-scale adversarial dataset for the task of grounded commonsense inference, which unifies natural language inference and physically grounded reasoning \citep{zellers2018swag}. SWAG consists of 113k multiple choice questions about grounded situations.
+
+\noindent $\bullet$ \textbf{CoNLL 2003}  is an English dataset consisting of text from a wide variety of sources. It has 4 types of named entity.
+
+\subsection{Pre-training Dataset}
+\label{appendix:pre-train}
+For DeBERTa pre-training, we use Wikipedia (English Wikipedia dump\footnote{https://dumps.wikimedia.org/enwiki/}; 12GB), BookCorpus \citep{bookcorpus} \footnote{https://github.com/butsugiri/homemade\_bookcorpus} (6GB), OPENWEBTEXT (public Reddit content \citep{Gokaslan2019OpenWeb}; 38GB) and STORIES\footnote{https://github.com/tensorflow/models/tree/master/research/lm\_commonsense} (a subset of CommonCrawl \citep{trinh2018simple}; 31GB). The total data size after data deduplication\citep{shoeybi2019megatron} is about 78GB. For pre-training, we also sample 5\% training data as the validation set to monitor the training process. Table~\ref{tab:data-comp} compares datasets used in different pre-trained models.
+
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip1pt}l@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt} c@{\hskip3pt}|@{\hskip3pt} c@{\hskip3pt}|@{\hskip3pt} c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}|@{\hskip3pt}c@{\hskip3pt}} 
+    \toprule
+        \bf Model&  Wiki+Book & OpenWebText & Stories & CC-News&Giga5&ClueWeb&Common Crawl  \\
+                 & 16GB & 38GB & 31GB & 76GB & 16GB &19GB & 110GB         \\ \hline
+       BERT& \checkmark & & & & &\\ \hline
+       XLNet& \checkmark & & & &\checkmark &\checkmark&\checkmark\\ \hline
+       RoBERTa& \checkmark & \checkmark& \checkmark& \checkmark& &\\ \hline
+       DeBERTa&  \checkmark & \checkmark& \checkmark& & &\\ 
+       DeBERTa$_{1.5B}$&  \checkmark & \checkmark& \checkmark& \checkmark & &\\ 
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Comparison of the pre-training data.
+    }
+    \label{tab:data-comp}
+\end{table*}
+
+\subsection{Implementation Details}
+\label{subsec:details}
+%For the pre-training, we use a batch size of 2048. The learning rate is set as 2e-4, with the number of warm-up steps as 10000. 
+Following RoBERTa \citep{liu2019roberta}, we  adopt dynamic data batching. We also include span masking~\citep{joshi2019spanbert} as an additional masking strategy with the span size up to three. 
+%For a single complete training of DeBERTa$_{large}$, we use 6 DGX-2 machines with 96 V100 GPUs to train the model for 1M steps and it takes about 20 days. 
+We list the detailed hyperparameters of pre-training in Table~\ref{tbl:hyper-pre-train}. For pre-training, we use Adam \citep{kingma2014adam} as the optimizer with weight decay \citep{loshchilov2018fixing}. For fine-tuning, even though we can get better and robust results with RAdam\citep{liu2019radam} on some tasks, e.g. CoLA, RTE and RACE, we use Adam\citep{kingma2014adam} as the optimizer for a fair comparison.
+For fine-tuning, we train each task with a hyper-parameter search procedure, each run takes about 1-2 hours on a DGX-2 node. All the hyper-parameters are presented in Table~\ref{tbl:hyper-ft}. The model selection is based on the performance on the task-specific development sets. 
+
+Our code is implemented based on Huggingface Transformers\footnote{https://github.com/huggingface/transformers}, FairSeq\footnote{https://github.com/pytorch/fairseq} and Megatron \citep{shoeybi2019megatron}\footnote{https://github.com/NVIDIA/Megatron-LM}.
+
+%pick the best model according to the performance on the task-specific dev sets. 
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip3pt}l@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}}
+        \toprule
+          Hyper-parameter & DeBERTa$_{1.5B}$& DeBERTa$_{large}$ &  DeBERTa$_{base}$ &DeBERTa$_{base-ablation}$\\
+        \midrule
+        Number of Layers& 48& 24 &12 &12\\
+        Hidden size&1536 &1024 &768 &768\\
+        FNN inner hidden size & 6144& 4096 & 3072& 3072 \\
+        Attention Heads &24 & 16 & 12 & 12\\
+        Attention Head size &64 & 64 & 64& 64 \\
+        Dropout & 0.1& 0.1 & 0.1& 0.1 \\
+        Warmup Steps & 10k & 10k & 10k & 10k\\
+        Learning Rates & 1.5e-4& 2e-4& 2e-4& 1e-4 \\
+        Batch Size & 2k& 2k & 2k & 256\\
+        Weight Decay & 0.01& 0.01 & 0.01& 0.01 \\
+        Max Steps & 1M& 1M & 1M & 1M\\
+        Learning Rate Decay & Linear& Linear & Linear& Linear \\
+        Adam $\epsilon$ & 1e-6& 1e-6 & 1e-6& 1e-6 \\
+        Adam $\beta_1$ & 0.9& 0.9 & 0.9& 0.9 \\
+        Adam $\beta_2$ & 0.999& 0.999 & 0.999& 0.999 \\
+        Gradient Clipping & 1.0& 1.0 & 1.0& 1.0 \\ \hline
+        Number of DGX-2 nodes & 16& 6 & 4 &1 \\
+        Training Time & 30 days& 20 days & 10 days & 7 days \\
+        \bottomrule
+        \end{tabular}
+    \caption{    Hyper-parameters for pre-training DeBERTa. }
+    \label{tbl:hyper-pre-train}
+\end{table*}
+
+\begin{table*}[htb!]
+   
+    \centering
+    \begin{tabular}{@{\hskip3pt}l@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}}
+        \toprule
+          Hyper-parameter & DeBERTa$_{1.5B}$& DeBERTa$_{large}$ &  DeBERTa$_{base}$\\
+        \midrule
+        Dropout of task layer & \{0,0.15,0.3\}& \{0,0.1,0.15\} & \{0,0.1,0.15\} \\
+        Warmup Steps & \{50,100,500,1000\}& \{50,100,500,1000\} & \{50,100,500,1000\} \\
+        Learning Rates & \{1e-6, 3e-6, 5e-6\}& \{5e-6, 8e-6, 9e-6, 1e-5\} & \{1.5e-5,2e-5, 3e-5, 4e-5\} \\
+        Batch Size & \{16,32,64\}& \{16,32,48,64\} & \{16,32,48,64\} \\
+        Weight Decay & 0.01 & 0.01 \\
+        Maximun Training Epochs & 10& 10 & 10 \\
+        Learning Rate Decay & Linear & Linear & Linear \\
+        Adam $\epsilon$ & 1e-6 & 1e-6 & 1e-6 \\
+        Adam $\beta_1$ & 0.9 & 0.9 & 0.9 \\
+        Adam $\beta_2$ & 0.999 & 0.999 & 0.999 \\
+        Gradient Clipping & 1.0 & 1.0 & 1.0 \\
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Hyper-parameters for fine-tuning DeBERTa on down-streaming tasks. 
+    }
+     \label{tbl:hyper-ft}
+\end{table*}
+
+\subsubsection{Pre-training Efficiency}
+\label{subse:eff}
+To investigate the efficiency of model pre-training, we plot the performance of the fine-tuned model on downstream tasks 
+as a function of the number of pre-training steps. 
+As shown in Figure~\ref{fig:conv}, for RoBERTa-ReImp$_{base}$ and {\ModelName}$_{base}$, we dump a checkpoint every 150K pre-training steps, and then fine-tune the checkpoint on two representative downstream tasks, MNLI and SQuAD v2.0, and then report the accuracy and F1 score, respectively.  
+As a reference, we also report the final model performance of both the original RoBERTa$_{base}$~\citep{liu2019roberta} and XLNet$_{base}$~\citep{yang2019xlnet}. 
+% and plot them as flat dot lines.  
+The results show that {\ModelName}$_{base}$ consistently outperforms RoBERTa-ReImp$_{base}$ during the course of pre-training.
+\begin{figure}[htb!]
+\centering  
+\subfloat[Results on MNLI development]{
+\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v3.png}
+%\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+
+}
+\hfill
+%\subfigure[Results on SQuAD v2.0 development]{\includegraphics[width=0.49\linewidth]{figures/deberta_squad_v2.png}}
+\subfloat[Results on SQuAD v2.0 development]{\includegraphics[width=0.49\linewidth]{figures/deberta_squad_v3.png}}
+	\caption{Pre-training performance curve between {\ModelName} and its counterparts on the MNLI and SQuAD v2.0 development set.}
+\label{fig:conv}
+\end{figure}
+
+\subsection{Main Results on Generation Tasks}
+\label{subsec:generation}
+In addition to NLU tasks, DeBERTa can also be extended to handle NLG tasks.
+%to verify the impacts of the disentangled attention thoroughly in both settings. 
+To allow DeBERTa operating like an auto-regressive model for text generation, we use a triangular matrix for self-attention and set the upper triangular part of the self-attention mask to $-\infty$, following~\cite{dong2019unilm}. 
+
+We evaluate DeBERTa on the task of auto-regressive language model (ARLM) using Wikitext-103~\citep{merity2016pointer}. 
+To do so, we train a new version of DeBERTa, denoted as DeBERTa-MT. 
+It is jointly pre-trained using the MLM and ARLM tasks as in UniLM \citep{dong2019unilm}. 
+The pre-training hyper-parameters follows that of DeBERTa$_{base}$ except that we use fewer training steps (200k). For comparison, we use RoBERTa as baseline, and include GPT-2 and Transformer-XL as additional references.  
+DeBERTa-AP is a variant of DeBERTa where absolute position embeddings are incorporated in the input layer as RoBERTa. 
+For a fair comparison, all these models are base models pre-trained in a similar setting.
+%is the model with the same structure as RoBERTa base model except training with auto-regressive attention mask to enable left-to-right language model. Similarly, 
+%DeBERTa$_{base}$ is the model with the same model sturcture as DeBERTa base model. 
+%In addition, DeBERTa-MT$_{base}$ is the model similar to DeBERTa$_{base}$ except jointly training with MLM and ARLM. RoBERTa$_{base}$, DeBERTa$_{base}$ and DeBERTa-MT$_{base}$ all share the same training hyper-parameter as DeBERTa base model except for we only training with 200k steps. One difference between our model with Transformer-XL is that we use the vocabulary of GPT instead of build vocabulary on Wikitext-103 training data.
+
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip2pt}l|@{\hskip2pt} c @{\hskip2pt}|@{\hskip2pt} c @{\hskip2pt}| c@{\hskip2pt} |@{\hskip2pt}c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt}c @{\hskip2pt}}
+        \toprule
+        {\bf Model} &{RoBERTa}& {DeBERTa-AP} & {DeBERTa} & {DeBERTa-MT} &{GPT-2} &{Transformer-XL}  \\ 
+        \midrule
+        Dev PPL & 21.6 & 20.7 & 20.5 & \textbf{19.5} & -& 23.1  \\ \hline
+        Test PPL & 21.6 & 20.0 & 19.9 & \textbf{19.5} &  37.50& 24  \\
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Language model results in perplexity (lower is better) on Wikitext-103 . 
+    }
+    \label{tab:wiki}
+ %   \vspace{-3mm}
+\end{table*}
+Table~\ref{tab:wiki} summarizes the results on Wikitext-103. 
+We see that {\ModelName}\textsubscript{base} obtains lower perplexities on both dev and test data, and joint training using MLM and ARLM reduces perplexity further. %, showing the effectiveness of {\ModelName}. 
+That DeBERTa-AP is inferior to DeBERTa indicates that it is more effective to incorporate absolute position embeddings of words in the decoding layer as the EMD in DeBERTa than in the input layer as RoBERTa.
+
+\subsection{Handling long sequence input}
+With relative position bias, we choose to truncate the maximum relative distance to $k$ as  in \eqref{dist}. Thus in each layer, each token can attend directly to at most $2(k-1)$ tokens and itself. By stacking Transformer layers, each token in the $l-$th layer can attend to at most $(2k-1)l$ tokens implicitly. Taking {\ModelName}$_{large}$ as an example, where $k=512, L=24$, in theory, the maximum sequence length that can be handled is 24,528. This is a byproduct benefit of our design choice and we find it beneficial for the RACE task. 
+A comparison of long sequence effect on the RACE task is shown in Table~\ref{tab:race-long}.
+
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip2pt}l@{\hskip3pt}|@{\hskip2pt} c@{\hskip2pt}| @{\hskip2pt}c@{\hskip2pt}| @{\hskip2pt}c@{\hskip2pt}}
+        \toprule
+        Sequence length& Middle &High &Accuracy \\
+        \midrule
+        512 & 88.8 & 85.0 & 86.3 \\
+        768 & 88.7 & 86.3 & 86.8 \\
+        \bottomrule
+    \end{tabular}
+    \caption{
+    The effect of handling long sequence input for RACE task with DeBERTa
+    }
+    \label{tab:race-long}
+\end{table*}
+
+Long sequence handling is an active research area. There have been a lot of studies where the Transformer architecture is extended for long sequence handling\citep{beltagy2020longformer, kitaev2020reformer, child2019generating, dai2019transformer}.  
+One of our future research directions is to extend {\ModelName} to deal with extremely long sequences.
+% and compare it with existing approaches.  
+%While the capability of long sequence handling  of \ModelName \ needs further study on broader tasks, we believe \ModelName\ can be a good base for future research work on long sequence processing.
+
+\subsection{Performance improvements of different model scales}
+\label{subsec:scale}
+In this subsection, we study the effect of different model sizes  applied to large models on GLUE. Table \ref{tab:xxlarge} summarizes the results,  showing that larger models can obtain a better result and SiFT also improves the model performance consistently.
+%We progressively add each component on the top of the DeBERTa model. The results are summarized in Table~\ref{tab:xxlarge}. We observe that 1) sharing the projection matrix between different layers obtains a similar performance to the one without sharing, and reduces 14M parameters; 2) adding Convolutional neural network 
+%To study the performance improvements of different models scales, in addition to the 1.5B model, we also train a 900M model with the same settings as the 1.5B model except that the 900M model only has 24 layers. We compare the model performance with GLUE benchmark. The results are shown in Table \ref{tab:xxlarge}.
+
+
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip3pt}l@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}| @{\hskip2pt}c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}}
+        \toprule
+        \multirow{2}{*}{\bf Model} & {CoLA} &{QQP} &{MNLI-m/mm} &SST-2 &STS-B&QNLI&RTE&MRPC& Avg.\\ 
+        & Mcc & Acc & Acc & Acc &Corr&Acc&Acc&Acc\\
+        \midrule
+        {\ModelName}$_{large}$ &70.5 & 92.3 & 91.1/91.1 & 96.8 & 92.8 &95.3&88.3& 91.9 &90.00\\
+        {\ModelName}$_{900M}$ &71.1 & 92.3 & 91.7/91.6 & \textbf{97.5} & 92.0 & 95.8 &93.5& 93.1 &90.86\\
+        {\ModelName}$_{1.5B}$ &72.0 & 92.7 & 91.7/91.9 & 97.2 & 92.9 &96.0 &93.9& 92.0 &91.17\\
+        \hline
+        {\ModelName}$_{1.5B}$+SiFT &\textbf{73.5} & \textbf{93.0} & \textbf{92.0/92.1} & 97.5 & \textbf{93.2} &\textbf{96.5} &\textbf{96.5}& \textbf{93.2} &\textbf{91.93}\\
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Comparison results of DeBERTa models with different sizes on the GLUE development set. 
+    }
+    \label{tab:xxlarge}
+\end{table*}
+
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip1pt}l|c| c| c| c}
+    \toprule
+        \bf Model&Parameters &{MNLI-m/mm}& {SQuAD v1.1} &{SQuAD v2.0} \\ 
+          &\ &  Acc& F1/EM & F1/EM  \\ \hline
+        
+        RoBERTa-ReImp$_{base}$ & 120M & 84.9/85.1 & 91.1/84.8 &79.5/76.0  \\ 
+        \hline
+        DeBERTa$_{base}$ & 134M& 86.3/86.2 &92.1/86.1 & 82.5/79.3  \\
+        + ShareProjection & 120M & 86.3/86.3 &92.2/86.2 & 82.3/79.5  \\
+        + Conv & 122M & 86.3/86.5 &92.5/86.4 & 82.5/79.7  \\
+        + 128k Vocab & 190M & 86.7/86.9 &93.1/86.8 & 83.0/80.1  \\
+       \bottomrule
+        \end{tabular}
+    \caption{
+    Ablation study of the additional modifications in DeBERTa$_{1.5B}$ and DeBERTa$_{900M}$ models. Note that we progressively add each component on the top of DeBERTa\textsubscript{base}. 
+    }
+    \label{tab:v2}
+    %\vspace{-3mm}
+\end{table*}
+
+\subsection{Model complexity}
+With the disentangled attention mechanism, we introduce three additional sets of parameters $\bm{W_{q,r}},\bm{W_{k,r}} \in R^{d \times d}$ and $\bm{P} \in R^{2k \times d}$. The total increase in model parameters is $2L\times d^2 + 2k\times d$. For the large model $(d=1024,L=24,k=512)$, this amounts to about $49M$ additional parameters, an increase of $13\%$. 
+For the base model$(d=768,L=12,k=512)$, this amounts to $14M$ additional parameters, an increase of $12\%$. 
+However, by sharing the projection matrix between content and position embedding, i.e.  $\bm{W_{q,r}}=\bm{W_{q,c}},\bm{W_{k,r}}=\bm{W_{k,c}}$, the number of parameters of DeBERTa is the same as RoBERTa. 
+Our experiment on base model shows that the results are almost the same, as in Table~\ref{tab:v2}. 
+%Due to limited computer resource, we didn't run this setting with large model and 
+
+
+
+The additional computational complexity is $O(Nkd)$ due to the calculation of the additional \textit{position-to-content} and \textit{content-to-position} attention scores. 
+Compared with BERT or RoBERTa, this increases the computational cost by $30\%$. 
+Compared with XLNet which also uses relative position embedding, the increase of computational cost is about $15\%$. 
+A further optimization by fusing the attention computation kernel can significantly reduce this additional cost. 
+For $\DecoderName$, since the decoder in pre-training only reconstructs the masked tokens, it does not introduce additional computational cost for unmasked tokens. 
+%used as the query in multi-step language model head, which is
+In the situation where $15\%$ tokens are masked and we use only two decoder layers, 
+the additional cost is $0.15 \times 2/L$ which results in an additional computational cost of only $3\%$ for base model($L=12$) and $2\%$ for large model($L=24$) in EMD. 
+%The total increased computation cost of our model is acceptable and 
+
+\subsection{Additional Details of Enhanced Mask Decoder}
+
+The structure of EMD is shown in Figure~\ref{fig:emd-b}. There are two inputs for EMD, % $\DecoderName$, 
+(i.e., $I, H$).  
+$H$ denotes the hidden states from the previous Transformer layer, and $I$ can be any necessary information for decoding, e.g., $H$, absolute position embedding or output from previous EMD layer. 
+$n$ denotes $n$ stacked layers of EMD where the output of each EMD layer will be the input $I$ for next EMD layer and the output of last EMD layer will be fed to the language model head directly. 
+The $n$ layers can share the same weight. 
+In our experiment we share the same weight for $n=2$ layers to reduce the number of parameters and use absolute position embedding as $I$ of the first EMD layer. 
+When $I=H$ and $n=1$, EMD is the same as the BERT decoder layer. 
+However, EMD is more general and flexible as it can take various types of input information for decoding.
+
+\begin{figure}[]
+\centering  
+\subfloat[BERT decoding layer]{
+    \includegraphics[trim={0.5mm 0.5mm 0.5mm 0.5mm},clip,width=0.35\linewidth]{figures/Model_BERT_S.pdf}
+    \label{fig:bert-a}
+}
+\hfill
+\subfloat[Enhanced Mask Decoder]{
+    \includegraphics[trim={0.5mm 0.5mm 0.5mm 0.5mm},clip,width=0.58\linewidth]{figures/Model_EMD_S.pdf}
+    \label{fig:emd-b}
+}
+
+\caption{Comparison of the decoding layer.}
+\label{fig:emd}
+\end{figure}
+
+\subsection{Attention Patterns}
+\label{subsec:attention}
+%\subsubsection{Attention Patterns}
+
+\begin{figure}[htb!]
+\centering 
+\includegraphics[width=1\linewidth]{figures/attention_map_02_v3_1.png}
+\caption{Comparison  of attention patterns of the last layer among DeBERTa, RoBERTa and  DeBERTa variants (i.e., DeBERTa without EMD, C2P and P2C respectively). }
+\label{fig:att-map}
+\end{figure}
+
+To visualize how DeBERTa operates differently from RoBERTa, we present in Figure~\ref{fig:att-map} the attention patterns (taken in the last self-attention layers) of RoBERTa, DeBERTa and three DeBERTa variants.
+%in the last self-attention layer , where
+%we also depict the attention patterns of the three DeBERTa variants %RoBERTa\textsubscript{base}, {\ModelName}\textsubscript{base} and its three variants 
+%for comparison. 
+%We also compare the attention patterns of {\ModelName} and RoBERTa.  As shown in 
+%Comparing RoBERTa with {\ModelName}, 
+We observe two differences. 
+First, RoBERTa has a clear diagonal line effect for a token  attending to itself. But this effect is not very visible in {\ModelName}. 
+%This can be attributed to the use of EMD, in which the vectors of the masked but unchanged tokens are replaced with their position embeddings,
+This can be attributed to the use of EMD, in which the absolute position embedding is added to the hidden state of content as the query vector,
+%rather than the original content embedding. 
+% Another similar observation comes from 
+as verified by the attention pattern of DeBERTa-EMD where the diagonal line effect is more visible  
+%more brilliant 
+than that of the original {\ModelName}. 
+Second, we observe vertical strips in the attention patterns of RoBERTa, which are mainly caused by high-frequent functional words or tokens (e.g., ``a'', ``the'', and punctuation). 
+For {\ModelName}, the strip only appears in the first column, which represents the \texttt{[CLS]} token. 
+We conjecture that a dominant emphasis on \texttt{[CLS]} is desirable since the feature vector of \texttt{[CLS]} is often used as a contextual representation of the entire input sequence in downstream tasks. 
+%On the other hand, if we look at the patterns the three RoBERTa variants, 
+We also observe that the vertical strip effect is quite obvious in the patterns of the three {\ModelName} variants. 
+
+%To better understand the effect of our two changes to the transformer structure, we visualize and compare the attention patterns of DeBERTa and RoBERTa in figure \ref{fig:att-01}. We found there are two obvious differences:
+%\begin{itemize}
+%    \item Self-exclusion pattern. Unlike RoBERTa, the attention weights at the diagonal line of DeBERTa are very small which is similar to XLNet\citep{yang2019xlnet}. We think this pattern is due to our modification on the MLM objective for unchanged tokens which encourages the model to leverage global context to decode the tokens instead of itself. 
+%    \item Strips-suppression pattern. RoBERTa has obvious strips patterns which are often at some functional tokens, however, most of down-streaming NLU tasks only use $[CLS]$ as the representation of the sequence. On the contrast, most of the attention weight in DeBERTa are distributed at the $[CLS]$ token and tokens aside to diagonal which supresses the strips pattern. This means DeBERTa are better at building contextual encoding via $[CLS]$ tokens which is often used in down-streaming NLU tasks.
+%\end{itemize}
+%
+%Further by comparing the attention patterns of DeBERTa with different components in figure \ref{fig:att}, we found the self-exclusion pattern are due to the introduce of \DecoderName. The content strips pattern will occur if we remove any of the components, e.g. $P2C$, $C2P$, $\DecoderName$, this demonstrates that our combination of these three components works together to improve the contextual representation built upon $[CLS]$ tokens which improves the performance on down-streaming NLU tasks as a result.
+We present three additional examples to illustrate the different attention patterns of {\ModelName} and RoBERTa in Figures~\ref{fig:att-01} and~\ref{fig:att}.  
+\begin{figure}[htb!]
+\centering 
+\subfloat[]{
+\includegraphics[width=0.65\linewidth]{figures/attention_map_02_1.png}
+%\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+}
+\vfill
+\subfloat[]{
+\includegraphics[width=0.65\linewidth]{figures/attention_map_04_1.png}
+%\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+}
+\vfill
+\subfloat[]{
+\includegraphics[width=0.65\linewidth]{figures/attention_map_03_1.png}
+%\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+}
+\caption{Comparison  on attention patterns of the last layer between DeBERTa and RoBERTa.   }
+\label{fig:att-01}
+\end{figure}
+
+\clearpage
+
+\begin{figure}[htb!]
+\centering 
+\subfloat[]{
+\includegraphics[width=0.98\linewidth]{figures/attention_map_06_1.png}
+\label{a1}
+}
+\vfill
+\subfloat[]{
+\includegraphics[width=0.98\linewidth]{figures/attention_map_07_1.png}
+\label{a2}
+}
+\vfill
+\subfloat[]{
+\includegraphics[width=0.98\linewidth]{figures/attention_map_05_1.png}
+\label{a3}
+%\subcaption{$Q^{*}$}
+}
+\caption{Comparison  on attention patterns of last layer between DeBERTa and its variants (i.e. DeBERTa without EMD, C2P and P2C respectively).}
+\label{fig:att}
+\end{figure}
+
+
+\subsection{Account for the Variance in Fine-Tuning}
+Accounting for the variance of different runs of fine-tuning, in our experiments, we always follow ~\citep{liu2019roberta} to report the results on downstream tasks by averaging over five runs with different random initialization seeds, and perform significance test when comparing results.  
+As the examples shown in Table~\ref{tab:var}, DeBERTa$_{base}$ significantly outperforms RoBERTa$_{base}$ ($p$-value < 0.05).
+
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{l | c | c | c}
+    \toprule
+    Model & MNLI-matched (Min/Max/Avg)&  SQuAD v1.1 (Min/Max/Avg) & $p$-value\\ \hline
+    RoBERTa$_{base}$ &84.7/85.0/84.9 &90.8/91.3/91.1 & 0.02\\ \hline      
+    DeBERTa$_{base}$ &86.1/86.5/86.3 &91.8/92.2/92.1 & 0.01\\
+    \bottomrule
+    \end{tabular}
+    \caption{Comparison of DeBERTa and RoBERTa on MNLI-matched and SQuAD v1.1. }
+    \label{tab:var}
+\end{table}
+% 	DeBERTa base(Min/max/avg)	RoBERTa-ReImp base(Min/max/avg)	p-value of t-tests
+% MNLI-matched(Acc)	86.1/86.5/86.3	84.7/85.0/84.9	0.02
+% SQUADv1.1(F1)	91.8/92.2/92.1	90.8/91.3/91.1	0.01
+
+
+% \begin{figure}[htb!]
+% \ContinuedFloat
+% \centering 
+% \setcounter{subfigure}{2}
+% \subfigure[]{
+% \includegraphics[width=0.95\linewidth]{figures/attention_map_07_1.png}
+% \label{a3}
+% %\subcaption{$Q^{*}$}
+% }
+% \caption{Comparison the attention map of last layer of DeBERTa with different components.}
+% \label{fig:att}
+% \end{figure}
+
+
+%\xiaodl{How about: efficient DeBERTa as subsection?}
+\subsection{Further improve the model efficiency}
+In addition to scaling up transformer models with billions or trillions of parameters \citep{raffel2019t5,brown2020language,fedus2021switch}, it is important to improve model's parameter efficiency \citep{Kanakarajan2021SmallBenchNB}. In \ref{subse:eff} we have shown that DeBERTa is more parameter efficient than BERT and RoBERTa. 
+In this section, we show further improvements in terms of parameter efficiency.
+
+%\xiaodl{I'm not sure if we can call it RTD? Or we just keep it simple, e.g., ele short for electra. You can use this new term for the new paper.}
+Replaced token detection (RTD) is a new pre-training objective introduced by ELECTRA \citep{clark2020electra}. It has been shown to be more effective than masked language model (MLM)  \citep{devlin2018bert, liu2019roberta}. 
+In DeBERTa, we replace the MLM objective with the RTD objective, and denote the new variant as DeBERTa$_{RTD}$. 
+We pre-train DeBERTa$_{RTD}$ using small, base and large settings with the same 160GB data as DeBERTa$_{1.5B}$. Following \citep{meng2021coco}, we set the width of the generator the same as that of the discriminator, but set its depth only half of the  discriminator's depth. 
+Other hyper-parameters remain the same as DeBERTa$_{base}$ or DeBERTa$_{large}$. For the new member DeBERTa$_{RTD_{small}}$, it has 6 layers with the same width as DeBERTa$_{RTD_{base}}$. We evaluate our models on MNLI and SQuAD v2 datasets.
+Table~\ref{tab:delectra} summarizes the results.
+%and report the numbers on their development sets in table \ref{tab:delectra}. 
+We observe that both DeBERTa$_{RTD_{base}}$ and DeBERTa$_{RTD_{large}}$ significantly outperform other models. For example, DeBERTa$_{RTD_{large}}$ obtains 0.9 absolute improvement over DeBERTa\textsubscript{Large} (the previous SoTA model) on MNLI and SQuAD v2.0, respectively.
+%By replacing MLM with RTD, both DeBERTa$_{RTD_{base}}$ and DeBERTa$_{RTD_{large}}$ significantly outperform previous models with a similar structure by about 2 points on these tasks. 
+It is worth noting that DeBERTa$_{RTD_{large}}$ is on-par with DeBERTa$_{1.5B}$ while has only 1/3 parameters of DeBERTa$_{1.5B}$.
+%Simultaneously, 
+Furthermore, DeBERTa$_{RTD_{small}}$ even outperforms BERT$_{large}$ by a large margin.
+All these demonstrate the efficiency of DeBERTa$_{RTD}$ models and clearly show a huge potential to further improve model's parameter efficiency. Our work lays the base for future studies on far more parameter-efficient pre-trained language models. %\citep{Kanakarajan2021SmallBenchNB}.
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{l | c  | c}
+    \toprule
+    Model & MNLI(m/mm Acc)&  SQuAD v2.0 (F1/EM) \\ 
+    \hline
+    BERT$_{RTD_{small}}$ &88.2/87.9 & 82.9/80.4\\ \hline \hline 
+    BERT$_{base}$ &84.3/84.7 & 76.3/73.7\\ 
+    RoBERTa$_{base}$ &87.6/- & 83.7/80.5\\ 
+    ELECTRA$_{base}$ &88.8/- &83.3/80.5\\ \hline 
+    DeBERTa$_{base}$ &88.8/88.5 & 86.2/83.1 \\ 
+    DeBERTa$_{RTD_{base}}$ &\textbf{90.6/90.8} & \textbf{88.4/85.4} \\ \hline \hline   
+    BERT$_{large}$ &86.6/- &81.8/79.0 \\ 
+    RoBERTa$_{large}$ &90.2/90.2 & 89.4/86.5 \\
+    ELECTRA$_{large}$ &90.9/- & 90.6/88.0\\ \hline 
+    DeBERTa$_{large}$ &91.1/91.1 & 90.7/88.0 \\ 
+    DeBERTa$_{RTD_{large}}$ &\textbf{92.0/91.9} & \textbf{91.5/89.0} \\ \hline \hline 
+    DeBERTa$_{1.5B}$ &91.7/91.9 & 92.2/89.7 \\
+    \bottomrule
+    \end{tabular}
+    \caption{Comparison of different variants of DeBERTa models on MNLI and SQuAD 2.0.}
+%    \caption{Further improve the efficiency of DeBERTa with RTD objective}
+    \label{tab:delectra}
+\end{table}
+
+\iffalse
+\begin{table}[ht]
+    \centering
+    \begin{tabular}{l | c | c | c}
+    \toprule
+    Model & MNLI(m/mm Acc)&  SQuAD v1.1 (F1/EM) & SQuAD v2.0 (F1/EM) \\ 
+    \hline
+    BERT$_{RTD_{small}}$ &88.2/87.9 &91.2/84.6 & 82.9/80.4\\ \hline \hline 
+    BERT$_{base}$ &84.3/84.7 &88.5/81.0 & 76.3/73.7\\ 
+    RoBERTa$_{base}$ &87.6/- &91.5/84.6 & 83.7/80.5\\ 
+    ELECTRA$_{base}$ &88.8/- &90.8/84.5 &83.3/80.5\\ \hline 
+    DeBERTa$_{base}$ &88.8/88.5 &93.1/87.2 & 86.2/83.1 \\ 
+    DeBERTa$_{RTD_{base}}$ &\textbf{90.6/90.8} &\textbf{93.9/88.4} & \textbf{88.4/85.4} \\ \hline \hline   
+    BERT$_{large}$ &86.6/- &90.9/84.1 &81.8/79.0 \\ 
+    RoBERTa$_{large}$ &90.2/90.2 &94.6/88.9 & 89.4/86.5 \\
+    ELECTRA$_{large}$ &90.9/- &94.9/89.7 & 90.6/88.0\\ \hline 
+    DeBERTa$_{large}$ &91.1/91.1 &\textbf{95.5/90.1} & 90.7/88.0 \\ 
+    DeBERTa$_{RTD_{large}}$ &\textbf{92.0/91.9} &95.2/89.7 & \textbf{91.5/89.0} \\ \hline \hline 
+    DeBERTa$_{1.5B}$ &91.7/91.9 &96.1/91.4 & 92.2/89.7 \\
+    \bottomrule
+    \end{tabular}
+    \caption{Further improve the efficiency of DeBERTa with RTD objective}
+    \label{tab:delectra}
+\end{table}
+\fi

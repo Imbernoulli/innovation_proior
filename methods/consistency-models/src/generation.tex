@@ -1,0 +1,52 @@
+\section{Training Consistency Models in Isolation}\label{sec:generation}
+Consistency models can be trained without relying on any pre-trained diffusion models. This differs from existing diffusion distillation techniques, making consistency models a new independent family of generative models.
+\begin{algorithm}[tb]
+    \caption{Consistency Training (CT)}
+        \label{alg:dtct}
+        \begin{algorithmic}
+        \STATE {\bfseries Input:} dataset $\mcal{D}$, initial model parameter $\vtheta$, learning rate $\eta$, step schedule $N(\cdot)$, EMA decay rate schedule $\mu(\cdot)$, $d(\cdot, \cdot)$, and $\lambda(\cdot)$
+        \STATE $\vtheta^- \gets \vtheta$ and $k \gets 0$
+        \REPEAT
+        \STATE Sample $\rvx \sim \mcal{D}$, and $n \sim \mcal{U}\llbracket 1,N(k)-1 \rrbracket$
+        \STATE Sample $\rvz \sim \mcal{N}(\bm{0}, \mI)$
+        \STATE $\begin{multlined}
+            \mcal{L}(\vtheta, \vtheta^{-}) \gets \\
+            \lambda(t_n) d(\vf_\vtheta(\rvx + t_{n+1} \rvz, t_{n+1}),\vf_{\vtheta^-}(\rvx + t_n \rvz, t_n))
+        \end{multlined}$
+        \STATE $\vtheta \gets \vtheta - \eta \nabla_\vtheta \mcal{L}(\vtheta, \vtheta^{-})$
+        \STATE $\vtheta^- \gets \operatorname{stopgrad}(\mu(k) \vtheta^- + (1-\mu(k)) \vtheta)$
+        \STATE $k \gets k + 1$
+        \UNTIL{convergence}
+    \end{algorithmic}
+\end{algorithm}
+
+Recall that in consistency distillation, we rely on a pre-trained score model $\vs_\vphi(\rvx, t)$ to approximate the ground truth score function $\nabla \log p_t(\rvx)$. It turns out that we can avoid this pre-trained score model altogether by leveraging the following unbiased estimator (\cref{lem:grad_log_p_t} in \cref{app:proof}):
+\begin{align*}
+    \nabla \log p_t(\rvx_t) = -\mbb{E}\left[ \frac{\rvx_t - \rvx}{t^2} \mathrel\bigg| \rvx_t \right],
+\end{align*}
+where $\rvx\sim p_\text{data}$ and $\rvx_t \sim \mcal{N}(\rvx; t^2 \mI)$. That is, given $\rvx$ and $\rvx_t$, we can estimate $\nabla \log p_t(\rvx_t)$ with $-(\rvx_t-\rvx)/t^2$.
+
+This unbiased estimate suffices to replace the pre-trained diffusion model in consistency distillation when using the Euler method as the ODE solver in the limit of $N\to\infty$, as justified by the following result.
+\begin{theorem}\label{thm:ct}
+    Let $\Delta t \coloneqq \max_{n \in \llbracket 1, N-1\rrbracket}\{|t_{n+1} - t_{n}|\}$. Assume $d$ and $\vf_{\vtheta^{-}}$ are both twice continuously differentiable with bounded second derivatives, the weighting function $\lambda(\cdot)$ is bounded, and $\mbb{E}[\norm{\nabla \log p_{t_n}(\rvx_{t_{n}})}_2^2] < \infty$. Assume further that we use the Euler ODE solver, and the pre-trained score model matches the ground truth, \ie, $\forall t\in[\epsilon, T]: \vs_{\vphi}(\rvx, t) \equiv \nabla \log p_t(\rvx)$. Then,
+    \begin{align}
+       \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) = \mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) + o(\Delta t),\label{eq:cd2}
+    \end{align}
+    where the expectation is taken with respect to $\rvx \sim p_\text{data}$, $n \sim \mcal{U}\llbracket 1,N-1 \rrbracket$, and $\rvx_{t_{n+1}} \sim \mcal{N}(\rvx; t_{n+1}^2 \mI)$. The consistency training objective, denoted by $\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-})$, is defined as
+    \begin{align}
+        \resizebox{0.87\linewidth}{!}{$\displaystyle
+        \mbb{E}[\lambda(t_n) d(\vf_\vtheta(\rvx + t_{n+1}\rvz, t_{n+1}), \vf_{\vtheta^{-}}(\rvx + t_n\rvz, t_n))]$},\label{eq:dtct}
+    \end{align}
+    where $\rvz \sim \mcal{N}(\bf{0}, \mI)$. Moreover, $\mcal{L}_\text{CT}^N(\vtheta, \vtheta^{-}) \geq O(\Delta t)$ if $\inf_N \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) > 0$.
+\end{theorem}
+\begin{proof}
+    The proof is based on Taylor series expansion and properties of score functions (\cref{lem:grad_log_p_t}). A complete proof is provided in \cref{app:proof_ct}.
+\end{proof}
+
+We refer to \cref{eq:dtct} as the \emph{consistency training} (CT) loss. Crucially, $\mcal{L}(\vtheta, \vtheta^{-})$ only depends on the online network $\vf_\vtheta$, and the target network $\vf_{\vtheta^{-}}$, while being completely agnostic to diffusion model parameters $\vphi$. The loss function $\mcal{L}(\vtheta, \vtheta^{-}) \geq O(\Delta t)$ decreases at a slower rate than the remainder $o(\Delta t)$ and thus will dominate the loss in \cref{eq:cd2} as $N\to\infty$ and $\Delta t \to 0$.
+
+For improved practical performance, we propose to progressively increase $N$ during training according to a schedule function $N(\cdot)$. The intuition (\cf, \cref{fig:ct_adaptive}) is that the consistency training loss has less ``variance'' but more ``bias'' with respect to the underlying consistency distillation loss (\ie, the left-hand side of \cref{eq:cd2}) when $N$ is small (\ie, $\Delta t$ is large), which facilitates faster convergence at the beginning of training. On the contrary, it has more ``variance'' but less ``bias'' when $N$ is large (\ie, $\Delta t$ is small), which is desirable when closer to the end of training. For best performance, we also find that $\mu$ should change along with $N$, according to a schedule function $\mu(\cdot)$. The full algorithm of consistency training is provided in \cref{alg:dtct}, and the schedule functions used in our experiments are given in \cref{app:exp}.
+
+Similar to consistency distillation, the consistency training loss $\mcal{L}_\text{CT}^N (\vtheta, \vtheta^{-})$ can be extended to hold in continuous time (\ie, $N \to \infty$) if $\vtheta^{-} = \operatorname{stopgrad}(\vtheta)$, as shown in \cref{thm:ctct}. This continuous-time loss function does not require schedule functions for $N$ or $\mu$, but requires forward-mode automatic differentiation for efficient implementation. %
+Unlike the discrete-time CT loss, there is no undesirable ``bias'' associated with the continuous-time objective, as we effectively take $\Delta t \to 0$ in \cref{thm:ct}. We relegate more details to \cref{sec:ctct}.
+

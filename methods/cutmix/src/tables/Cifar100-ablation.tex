@@ -1,0 +1,20 @@
+
+\begin{table}[]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+\multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}PyramidNet-200 ($\Tilde{\alpha}$=240) \\ ($\#$ params: 26.8 M)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-1 \\ Error (\%)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-5 \\ Error (\%)\end{tabular}} \\  & & \\ \midrule
+Baseline                                      & 16.45               & 3.69         \\
+Proposed (CutMix)                                    & 14.47               & 2.97         \\ \midrule
+Center Gaussian CutMix                        & 15.95               & 3.40         \\
+Fixed-size CutMix                           &   14.97               &  3.15 \\ 
+One-hot CutMix                              &  15.89             &  3.32             \\
+Scheduled CutMix                             & 14.72               & 3.17         \\
+Complete-label CutMix                           & 15.17               & 3.10         \\
+\toprule                                                     
+\end{tabular}
+\vspace{-0.2cm}
+\caption{Performance of CutMix variants on CIFAR-100.}
+\vspace{-0.4cm}
+\label{table:ablation}
+\end{table}

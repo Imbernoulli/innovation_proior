@@ -1,0 +1,8 @@
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width=\textwidth]{figures/ft-results-short.pdf}
+    \caption{Inference latency (top) and memory usage (bottom) of the FasterTransformer implementation on NVIDIA A100-80GB GPUs. For smaller models, the latency can be significantly reduced with \method-O3 by up to 1.56x compared to FP16.
+        For the bigger models (OPT-66B and 175B), we can achieve similar or even faster inference using only \textbf{half} number of GPUs.
+        Memory footprint is almost halved compared to FP16.}
+    \label{fig:ft-results}
+\end{figure*}

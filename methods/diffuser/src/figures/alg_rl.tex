@@ -1,0 +1,30 @@
+%% http://www.phy.ohio.edu/~hadizade/blog_files/latex_algorithm.html
+\def\NoNumber#1{{\def\alglinenumber##1{}\STATE #1}\addtocounter{ALG@line}{-1}}
+
+{\centering
+\begin{figure}[t]
+% \scalebox{0.73}{
+\begin{minipage}{\linewidth}
+  \begin{algorithm}[H]
+    \caption{Guided Diffusion Planning}
+    \label{alg:rl}
+    \begin{algorithmic}[1]
+    \STATE \textbf{Require} Diffuser $\mu_\theta$, guide $\mathcal{J}$, scale $\alpha$, covariances $\Sigma^i$ \\
+    \WHILE{not done}
+        \STATE Observe state $\bs$; initialize plan  $\btau{N} \sim \mathcal{N}(\bm{0}, \bm{I})$ \\
+        \FOR{$i = N, \ldots, 1$}
+            \STATE \small{\color{gray}\te{// parameters of reverse transition}} \\
+            \STATE $\mu \gets \mu_\theta(\btau{i})$ \\
+            \STATE \small{\color{gray}\te{// guide using gradients of return}} 
+            \STATE $\btau{i-1} \sim \mathcal{N}(\mu + \alpha \Sigma \nabla \mathcal{J}(\mu), \Sigma^i)$\\
+            \STATE \small{\color{gray}\te{// constrain first state of plan}}
+            \STATE $\btau{i-1}_{\vs_0} \gets \vs$ \hspace{0.15cm} \\
+        \ENDFOR
+        \STATE Execute first action of plan $\btau{0}_{\ba_0}$
+    \ENDWHILE
+    \end{algorithmic}
+  \end{algorithm}
+\end{minipage}
+\vspace{-.2cm}
+\end{figure}
+}

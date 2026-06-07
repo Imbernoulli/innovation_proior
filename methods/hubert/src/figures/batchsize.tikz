@@ -1,0 +1,19 @@
+\begin{tikzpicture}
+\begin{axis}[
+  xlabel={\small \#GPUs},
+  ylabel={\small WER (\%)},
+  ymin=15,
+  ymax=40,
+  xtick=data,
+  width=\linewidth,
+  height=2.5cm,
+  ymajorgrids=true,
+  grid style=dashed,
+  ylabel near ticks,
+  xlabel near ticks,
+  ticklabel style={font=\scriptsize},
+]
+\addplot table [y=km100_100k, x=ngpu]{figures/batchsize.tex};
+% \addlegendentry{C=100}
+\end{axis}
+\end{tikzpicture}

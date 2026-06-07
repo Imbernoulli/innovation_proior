@@ -1,0 +1,53 @@
+\section{Related Work}
+
+In practice, neural networks tend to be dramatically overparameterized.
+Distillation~\citep{do-deep, distilling} and pruning~\citep{brain-damage, han-pruning}
+rely on the fact that parameters can be reduced while preserving accuracy. Even with
+sufficient capacity to memorize training data, networks naturally learn simpler functions~\citep{rethinking, in-search, closer}.
+Contemporary experience~\citep{convex, distilling, rethinking} and Figure \ref{fig:random} suggest
+that overparameterized networks are easier to train.
+We show that
+dense networks contain sparse subnetworks capable of learning on their own starting from their original
+initializations.
+Several other research directions aim to train small or sparse networks.
+
+\textbf{Prior to training.} 
+Squeezenet~\citep{squeezenet} and MobileNets~\citep{mobilenets}
+are specifically engineered image-recognition networks that are an order of magnitude smaller
+than standard architectures. 
+\citet{denil} represent weight matrices as products of lower-rank factors. 
+\citet{intrinsic} restrict optimization
+to a small, randomly-sampled subspace of the parameter space (meaning all parameters can still be updated); they successfully train networks under this restriction.
+We show that one need not even update
+all parameters to optimize a network, and we find {\kernels} through a principled
+search process involving pruning. 
+Our contribution to this class of approaches is to demonstrate that sparse, trainable networks exist within larger networks.
+
+\textbf{After training.} Distillation~\citep{do-deep, distilling} trains small networks to mimic the behavior of large networks; small networks are
+easier to train in this paradigm.
+Recent pruning work compresses large models to run with limited resources (e.g., on mobile devices).
+Although pruning is central to our experiments, we study
+why training needs the overparameterized networks that make pruning possible.
+\citet{brain-damage} and \citet{brain-surgeon} first explored pruning based on second derivatives.
+More recently, \citet{han-pruning} showed per-weight magnitude-based
+pruning substantially reduces the size of image-recognition networks.
+\citet{network-surgery} restore pruned connections as they become relevant again. \citet{dsd}
+and \citet{skinny-deep} restore pruned connections to increase network capacity after small weights have been pruned and surviving weights fine-tuned.
+Other proposed pruning heuristics include pruning based
+on activations~\citep{prune-activation}, redundancy~\citep{diversity-nets, data-free-pruning}, per-layer second derivatives~\citep{obs2},
+and energy/computation efficiency~\citep{prune-energy}
+(e.g., pruning convolutional filters~\citep{pruning-filters, pruning-resource-efficient, thinet} or channels~\citep{channel-pruning}).
+\citet{randomout} observe that convolutional filters are sensitive to initialization (``The Filter Lottery''); throughout training, they randomly reinitialize
+unimportant filters.
+
+\textbf{During training.}
+\citet{deepr} train with sparse networks and replace weights that reach zero with new random connections.
+\citet{sparse-neural-networks} and \citet{l0-reg} learn gating variables that minimize the number of nonzero parameters.
+\citet{exploring} integrate magnitude-based pruning into training.
+\citet{bayesian-dropout} show that dropout approximates Bayesian inference in Gaussian processes.
+Bayesian perspectives on dropout learn dropout probabilities during training~\citep{concrete-dropout, variational-dropout, generalized-dropout}.
+Techniques that learn per-weight, per-unit~\citep{generalized-dropout}, or structured dropout probabilities
+naturally~\citep{variational-sparsifies, structured-bayesian-pruning}
+or explicitly~\citep{bayesian-compression, learning-architectures} prune and sparsify networks during training as dropout probabilities for some weights
+reach 1. In contrast, we train networks at least once to find {\kernels}. These techniques might also find
+{\kernels}, or, by inducing sparsity, might beneficially interact with our methods.

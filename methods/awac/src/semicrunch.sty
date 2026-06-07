@@ -1,0 +1,22 @@
+\makeatletter
+\def\smallg@p{0.3ex plus 0.2ex minus 0.1ex}
+
+%% Reduce gap around enumerate and itemize
+%%
+% enumerate
+\def\enumerate{\ifnum \@enumdepth >3 \@toodeep\else
+      \advance\@enumdepth \@ne
+      \edef\@enumctr{enum\romannumeral\the\@enumdepth}\list
+      {\csname label\@enumctr\endcsname}{%
+        \topsep \smallg@p \partopsep 0pt \itemsep \smallg@p \parsep 0pt
+        \usecounter{\@enumctr}\def\makelabel##1{\hss\llap{##1}}}\fi}
+\let\endenumerate =\endlist
+
+% itemize
+\def\itemize{\ifnum \@itemdepth >3 \@toodeep\else \advance\@itemdepth \@ne
+\edef\@itemitem{labelitem\romannumeral\the\@itemdepth}%
+\list{\csname\@itemitem\endcsname}%
+ {\topsep \smallg@p \partopsep 0pt \itemsep \smallg@p \parsep 0pt%
+  \def\makelabel##1{\hss\llap{##1}}}\fi}
+\let\enditemize =\endlist
+\makeatother

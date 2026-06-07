@@ -1,0 +1,123 @@
+\documentclass[../../hippo]{subfiles}
+\begin{document}
+
+\subsection{Derivation for Fourier Bases}
+\label{sec:derivation-fourier}
+
+In the remainder of \cref{sec:derivations}, we consider some additional bases which are analyzable under the HiPPO framework.
+These use measures and bases related to various forms of the Fourier transform.
+
+\subsubsection{Translated Fourier}
+
+Similar to the LMU, the sliding Fourier measure also has a fixed window length
+$\theta$ parameter and slides it across time.
+
+\paragraph{Measure}
+The Fourier basis $e^{2\pi i n x}$ (for $n = 0, \dots, N-1$) can be seen as an
+orthogonal polynomials basis $z^n$ with respect to the uniform measure on the
+unit circle $\{ z \colon \abs{z} = 1 \}$.
+By a change of variable $z \to e^{2\pi i x}$ (and thus changing the domain from the unit
+circle to $[0, 1]$), we obtain the usual Fourier basis $e^{2\pi i n x}$.
+The complex inner product $\langle f, g \rangle$ is defined as
+$\int_{0}^{1} f(x) \overline{g(x)} \d x$.
+Note that the basis $e^{2\pi i n x}$ is orthonormal.
+
+For each $t$, we will use a sliding measure uniform on $[t - \theta, t]$ and rescale
+the basis as $e^{2\pi i n \frac{t - x}{\theta}}$ (so they are still orthonormal, i.e.,
+have norm 1):
+\begin{align*}
+  \omega(t, x) &= \frac{1}{\theta} \mathbb{I}_{[t-\theta, t]}
+  \\
+  p_n(t, x) &= e^{2\pi in \frac{t-x}{\theta}}.
+\end{align*}
+We sue no tilting (i.e., $\chi(t, x) = 1$).
+
+\paragraph{Derivatives}
+\begin{align*}
+  \ppt \omega(t, x) &= \frac{1}{\theta} \delta_t - \frac{1}{\theta} \delta_{t-\theta}
+  \\
+  \ppt p_n(t, x) &= \frac{2\pi in}{\theta} e^{2\pi in \frac{t-x}{\theta}} = \frac{2 \pi in}{\theta} p_n(t, x).
+\end{align*}
+
+\paragraph{Coefficient Updates}
+Plugging into equation~\eqref{eq:coefficient-dynamics} yields
+\begin{align*}
+  \ddt c_n(t)
+  &= \frac{2\pi in}{\theta} c_n(t) + \frac{1}{\theta} f(t) p_n(t, t) - \frac{1}{\theta} f(t-\theta) p_n(t, t-\theta) \\
+  &= \frac{2\pi in}{\theta} c_n(t) + \frac{1}{\theta} f(t) - \frac{1}{\theta} f(t-\theta).
+\end{align*}
+Note that $p_n(t, t) = p_n(t, t-\theta) = 1$.
+Additionally, we no longer have access to $f(t-\theta)$ at time $t$, but this is
+implicitly represented in our compressed representation of the function:
+$f = \sum_{k=0}^{N-1} c_k(t) p_k(t)$.
+Thus we approximate $f(t-\theta)$ by $\sum_{k=0}^{N-1} c_k(t) p_k(t, t-\theta) = \sum_{k=0}^{N-1} c_k(t)$.
+Finally, this yields
+\begin{align*}
+  \ddt c_n(t) &= \frac{2\pi in}{\theta} c_n(t) + \frac{1}{\theta} f(t) - \frac{1}{\theta} \sum_{k=0}^{N-1} c_k(t).
+\end{align*}
+Hence $\ddt c(t) = A c(t) + B f(t)$
+where
+\begin{align*}
+  A_{nk} =
+  \begin{cases}
+    -1/\theta & \mbox{if } k \neq n \\
+    (2\pi in-1)/\theta & \mbox{if } k = n
+  \end{cases},
+  \qquad
+  B_n = \frac{1}{\theta}.
+\end{align*}
+
+\paragraph{Reconstruction}
+
+At every time step $t$, we have
+\begin{align*}
+  f(x) \approx \sum_n c_n(t) p_n(t, x) = \sum_{n} c_n(t) e^{2\pi i \frac{t - x}{\theta}}.
+\end{align*}
+
+\subsubsection{Fourier Recurrent Unit}
+
+Using the HiPPO framework, we can also derive the Fourier Recurrent Unit (FRU)~\citep{zhang2018learning}.
+\paragraph{Measure}
+For each $t$, we will use a sliding measure uniform on $[t - \theta, t]$ and the
+basis $e^{2\pi i n \frac{x}{\theta}}$:
+\begin{align*}
+  \omega(t, x) &= \frac{1}{\theta} \mathbb{I}_{[t-\theta, t]}
+  \\
+  p_n(t, x) &= e^{2\pi in \frac{x}{\theta}}.
+\end{align*}
+In general the basis is not orthogonal with respect to the measure $\omega(t, x)$, but
+orthogonality holds at the end where $t = \theta$.
+
+\paragraph{Derivatives}
+\begin{align*}
+  \ppt \omega(t, x) &= \frac{1}{\theta} \delta_t - \frac{1}{\theta} \delta_{t-\theta}
+  \\
+  \ppt p_n(t, x) &= 0.
+\end{align*}
+
+\paragraph{Coefficient Updates}
+Plugging into equation~\ref{eq:coefficient-dynamics} yields
+\begin{align*}
+  \ddt c_n(t)
+  &= \frac{1}{\theta} f(t) p_n(t, t) - \frac{1}{\theta} f(t-\theta) p_n(t, t-\theta) \\
+  &= \frac{1}{\theta} e^{2\pi i n \frac{t}{\theta}} f(t) - \frac{1}{\theta}  e^{2\pi i n \frac{t}{\theta}} f(t-\theta).
+\end{align*}
+We no longer have access to $f(t-\theta)$ at time $t$, but we can approximate by
+ignoring this term (which can be justified by assuming that the function $f$ is
+only defined on $[0, \theta]$ and thus $f(x)$ can be set to zero for $x < 0$).
+Finally, this yields
+\begin{align*}
+  \ddt c_n(t) &= \frac{e^{2\pi i n \frac{t}{\theta}}}{\theta} f(t).
+\end{align*}
+Applying forward Euler discretization (with step size = 1), we obtain:
+\begin{equation*}
+  c_n(k+1) = c_{n}(k) + \frac{e^{2\pi i n \frac{t}{\theta}}}{\theta} f(t).
+\end{equation*}
+Taking the real parts yields the Fourier Recurrent Unit updates~\citep{zhang2018learning}.
+
+Note that the recurrence is independent in each $n$, so we don't have the pick
+$n = 0, 1, \dots, N - 1$.
+We can thus pick random frequencies $n$ as done in~\citet{zhang2018learning}.
+
+\end{document}
+

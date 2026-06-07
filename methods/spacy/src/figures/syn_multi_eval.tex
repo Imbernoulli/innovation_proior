@@ -1,0 +1,47 @@
+
+
+% \begin{table}[!h] % Force the table to appear "here"
+%     \centering
+%     \begin{tabular}{|c|c|c|c|}
+%         \hline
+%         SCM, Mapping & SPACY & Mapped-PCMCI & TensorPCA-PCMCI \\ \hline
+%         Linear, Linear& $0.656\pm 0.09$ & $0.334$ & $0.127$ \\ \hline
+%         Linear, Non-linear & $0.596\pm 0.12$ & $0.389$ & $0.102$\\ \hline
+%         Non-linear, Linear & $0.461\pm 0.04$ & $0.105$ & $0.032$\\ \hline
+%         Non-linear, Non-linear & $0.509\pm 0.06$ & $0.170$ & $0.039$\\ \hline
+%     \end{tabular}
+%     \caption{Results on different configurations of the multi-variate synthetic datasets. We report the F1 scores for latent dimension $D = 10$. Average over 5 runs reported}
+%     \label{tab:syn_multi_eval}
+% \end{table}
+
+
+\begin{table}[!h]
+\centering
+\begin{tabular}{ccccc}
+\toprule
+\textbf{Setting} & \textbf{Method} & \textbf{F1} & \textbf{MCC}\\
+\midrule
+\multirow{3}{*}{\makecell{Linear SCM,\\Linear $g_\ell$}} 
+ & M-PCMCI  & 0.334 & \textbf{0.969}\\
+ & T-PCMCI  & 0.127 & 0.670\\
+ & \textbf{SPACY} & \textbf{0.656}$_{\pm0.0}$ & 0.920$_{\pm0.1}$\\
+\midrule
+\multirow{3}{*}{\makecell{Linear SCM,\\Non-linear $g_\ell$}}
+ & M-PCMCI & 0.387 & \textbf{0.924}\\
+ & T-PCMCI & 0.115 & 0.660 \\
+ & \textbf{SPACY} & \textbf{0.596}$_{\pm0.1}$ & 0.834$_{\pm0.0}$\\
+ \midrule
+\multirow{3}{*}{\makecell{Non-linear SCM,\\Linear $g_\ell$}}
+ & M-PCMCI & 0.178 & 0.883\\
+ & T-PCMCI & 0.032 & 0.644 \\
+ & \textbf{SPACY} & \textbf{0.461}$_{\pm0.0}$ & \textbf{0.895}$_{\pm0.1}$\\
+ \midrule
+\multirow{3}{*}{\makecell{Non-linear SCM,\\Non-linear $g_\ell$}}
+ & M-PCMCI & 0.170 & 0.807\\
+ & T-PCMCI & 0.039 & 0.573 \\
+ & \textbf{SPACY} & \textbf{0.509}$_{\pm0.1}$ & \textbf{0.825}$_{\pm0.1}$\\
+\bottomrule
+\end{tabular}
+\caption{Results on different configurations of the multi-variate synthetic datasets. M-PCMCI and T-PCMCI are the respective baselines Mapped-PCMCI \citep{xavi2022teleconnection} and TensorPCA-PCMCI \citep{babii2023tensorprincipalcomponentanalysis}. We report the F1 and MCC scores for latent dimension $D = 10$. Average over 5 runs reported}
+\label{tab:syn_multi_eval}
+\end{table}

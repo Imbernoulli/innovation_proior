@@ -1,0 +1,211 @@
+\section{Training details \& ablation}
+\label{sec:training}
+
+
+\begin{table*}[t]
+    \centering
+    \scalebox{0.85}
+    {\small
+    \begin{tabular}{c|cc|cccc|ccccc|cc}
+
+\multicolumn{12}{c}{~} & \multicolumn{2}{c}{top-1 accuracy} \\  
+    \cmidrule(lr){13-14} 
+    
+    Ablation on $\downarrow$
+    & \rotatebox{90}{Pre-training}
+    & \rotatebox{90}{Fine-tuning}
+    & \rotatebox{90}{Rand-Augment}
+    & \rotatebox{90}{AutoAug}
+    & \rotatebox{90}{Mixup}
+    & \rotatebox{90}{CutMix}
+    
+    & \rotatebox{90}{Erasing}
+    & \rotatebox{90}{Stoch. Depth}
+    & \rotatebox{90}{Repeated Aug.} 
+    & \rotatebox{90}{Dropout} 
+    & \rotatebox{90}{Exp. Moving Avg.} 
+    
+    & \rotatebox{90}{pre-trained $224^2$}
+    & \rotatebox{90}{fine-tuned $384^2$}  \\
+    
+    \toprule
+    none: \oursbase  & adamw & adamw & \cmark & \xmark &  \cmark & \cmark & \cmark & \cmark & \cmark & \xmark & \xmark & 81.8\stdminus{0.2} & 83.1\stdminus{0.1} \\
+    \midrule
+
+        
+    \multirow{2}{*}{\rotatebox{0}{optimizer}}
+                      & SGD & \adamwg & \cmarkg & \xmarkg &  \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmarkg & \xmarkg & 74.5   &  77.3\\ 
+                      & \adamwg & SGD & \cmarkg & \xmarkg &  \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmarkg & \xmarkg & 81.8  & 83.1 \\ 
+    \midrule
+    
+    \multirow{6}{*}{\rotatebox{0}{\makebox{\begin{minipage}{2cm}\centering data\\ augmentation \\ ~\end{minipage}}}}
+                      & \adamwg & \adamwg & \xmark  & \xmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmarkg  & \xmarkg & 79.6  & 80.4 \\ 
+                      & \adamwg & \adamwg & \xmark  & \cmark  & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmarkg  & \xmarkg & 81.2  & 81.9 \\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \xmark  & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmarkg  & \xmarkg & 78.7  & 79.8 \\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \cmarkg & \xmark  & \cmarkg & \cmarkg & \cmarkg & \xmarkg  & \xmarkg & 80.0  & 80.6 \\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \xmark  & \xmark  & \cmarkg & \cmarkg & \cmarkg & \xmarkg  & \xmarkg & 75.8  & 76.7 \\ 
+    \midrule
+    \multirow{5}{*}{\rotatebox{0}{regularization}}
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \cmarkg & \cmarkg & \xmark & \cmarkg & \cmarkg & \xmarkg & \xmarkg & \pzo4.3*  &  \pzo0.1\\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \cmarkg & \cmarkg & \cmarkg & \xmark & \cmarkg &  \xmarkg & \xmarkg & \pzo3.4*  & \pzo0.1 \\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmark &  \xmarkg & \xmarkg & 76.5   & 77.4 \\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmark & \xmarkg & 81.3  & 83.1\\ 
+                      & \adamwg & \adamwg & \cmarkg & \xmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \cmarkg & \xmarkg & \cmark & 81.9 & 83.1\\     \bottomrule
+    \end{tabular}}
+    \caption{Ablation study on training methods on ImageNet~\cite{Russakovsky2015ImageNet12}. The top row ("none") corresponds to our default configuration employed for \ours. The symbols \cmark and \xmark indicates that we use and do not use the corresponding method, respectively.  
+    We report the accuracy scores (\%) after the initial training at resolution 224$\times$224, and after fine-tuning %
+    at resolution 384$\times$384. 
+    The hyper-parameters are fixed according to Table~\ref{tab:comp_hyperparameters}, and may be suboptimal.\newline 
+    {\footnotesize * indicates that the model did not train well, possibly because hyper-parameters are not adapted.} 
+    }
+    \label{tab:ablation}
+\end{table*}
+
+In this section we discuss the \ours training strategy to learn vision transformers in a data-efficient manner. 
+We build upon PyTorch~\cite{paszke2019pytorch} and the timm library~\cite{pytorchmodels}\footnote{The timm implementation already included a training procedure that improved the accuracy of ViT-B from 77.91\% to 79.35\% top-1, and trained  on Imagenet-1k with a 8xV100 GPU machine.}.
+We provide hyper-parameters as well as an ablation study in which we analyze the impact of each choice. 
+
+\paragraph{Initialization and hyper-parameters.}
+
+Transformers are relatively sensitive to initialization. After testing several options in preliminary experiments, some of them not converging, we follow the recommendation of Hanin and Rolnick~\cite{hanin2018start} to initialize the weights with a truncated normal distribution. 
+
+Table~\ref{tab:comp_hyperparameters} indicates the hyper-parameters that we use by default at training time for all our experiments, unless stated otherwise. 
+% 
+For distillation we follow the recommendations from Cho et al.~\cite{Cho2019OnTE} to select the parameters $\tau$ and $\lambda$. 
+We take the typical values $\tau=3.0$ and $\lambda=0.1$ for the usual (soft) distillation.
+%
+
+
+
+\begin{table}[t]
+\centering
+\scalebox{0.9}
+{
+\begin{tabular}{lccc}
+\toprule
+Methods & ViT-B~\cite{dosovitskiy2020image}  & DeiT-B \\
+\midrule
+Epochs   & 300 & 300     \\
+\midrule
+Batch size & 4096 & 1024\\
+Optimizer & AdamW & AdamW\\
+     learning rate       & 0.003 &   $0.0005\times \frac{\textrm{batchsize}}{512} $  \\
+     Learning rate decay & cosine & cosine  \\
+     Weight decay        & 0.3    & 0.05    \\
+     Warmup epochs  & 3.4 & 5       \\
+\midrule
+     Label smoothing $\varepsilon$ & \xmark & 0.1     \\
+     Dropout      & 0.1 & \xmark     \\
+     Stoch. Depth & \xmark & 0.1 \\
+     Repeated Aug & \xmark & \cmark \\
+     Gradient Clip. & \cmark & \xmark \\
+\midrule
+     Rand Augment  & \xmark        & 9/0.5 \\
+     Mixup prob.  & \xmark & 0.8     \\
+     Cutmix prob.   & \xmark & 1.0    \\
+     Erasing prob.    & \xmark & 0.25    \\
+ \bottomrule
+\end{tabular}}
+\vspace{-8pt}
+\caption{
+ Ingredients and hyper-parameters for our method and Vit-B.
+\label{tab:comp_hyperparameters}}
+\end{table}
+
+
+
+\paragraph{Data-Augmentation.}
+
+
+Compared to models that integrate more priors (such as convolutions), transformers require a larger amount of data.
+Thus, in order to train with datasets of the same size, we rely on extensive data augmentation.
+% 
+We evaluate different types of strong data augmentation, with the objective to reach a data-efficient training regime.  
+
+Auto-Augment~\cite{Ekin2018AutoAugment}, Rand-Augment
+~\cite{Cubuk2019RandAugmentPA}, and random erasing~\cite{Zhong2020RandomED} improve the results. For the two latter we use the timm~\cite{pytorchmodels} customizations, and after ablation we choose Rand-Augment instead of AutoAugment. 
+Overall our experiments confirm that transformers require a strong data augmentation: almost all the data-augmentation methods that we evaluate prove to be useful. One exception is dropout, which we exclude from our training procedure. 
+
+
+\paragraph{Regularization \& Optimizers.}
+
+
+We have considered different optimizers and cross-validated different learning rates and weight decays. 
+Transformers are sensitive to the setting of optimization hyper-parameters. %
+Therefore, during cross-validation, we tried 3 different learning rates ($5.10^{-4}, 3.10^{-4}, 5.10^{-5}$) and 3 weight decay ($0.03$, $0.04$, $0.05$).
+We scale the learning rate according to the batch size with the formula:
+$\mathrm{lr}_{\mathrm{scaled}}=\frac{\mathrm{lr}}{512} \times \mathrm{batch size}$, similarly to Goyal et al.~\cite{Goyal2017AccurateLM} except that we use 512 instead of 256 as the base value.
+
+The best results use the AdamW optimizer with the same learning rates as ViT~\cite{dosovitskiy2020image} but with a much smaller weight decay, as the weight decay reported in the paper hurts the convergence in our setting.
+
+We have employed stochastic depth~\cite{Huang2016DeepNW}, which facilitates the convergence of transformers, especially deep ones~\cite{fan2019reducing,fan2020training}. For vision transformers, they were first adopted in the training procedure by Wightman~\cite{pytorchmodels}. 
+Regularization like Mixup~\cite{Zhang2017Mixup} and Cutmix~\cite{Yun2019CutMix} improve performance. We also use repeated augmentation~\cite{berman2019multigrain,hoffer2020augment}, which provides a significant boost in performance and is one of the key ingredients of our proposed training procedure. 
+
+\paragraph{Exponential Moving Average (EMA).} 
+We evaluate the EMA of our network obtained after training. 
+There are small gains, which vanish after fine-tuning: the EMA model has an edge of is 0.1 accuracy points, but when fine-tuned the two models reach the same (improved) performance.
+
+\paragraph{Fine-tuning at different resolution.}  
+
+
+%
+We adopt the fine-tuning procedure from Touvron et al.~\cite{Touvron2020FixingTT}: 
+our schedule, regularization and optimization procedure are identical to that of FixEfficientNet but we keep the training-time data augmentation (contrary to the dampened data augmentation of Touvron et al.~\cite{Touvron2020FixingTT}).
+% 
+We also interpolate the positional embeddings:  
+%
+In principle any classical image scaling technique, like bilinear interpolation, could be used. 
+% 
+However, a bilinear interpolation of a vector from its neighbors reduces its $\ell_2$-norm compared to its neighbors.
+%
+These low-norm vectors are not adapted to the pre-trained transformers and we observe a significant drop in accuracy if we employ use directly without any form of fine-tuning.
+% 
+Therefore we adopt a bicubic interpolation that approximately preserves the norm of the vectors, before fine-tuning the network with either AdamW~\cite{Loshchilov2017AdamW} or SGD. These optimizers have a similar performance for the fine-tuning stage, see Table~\ref{tab:ablation}. 
+%
+
+
+%
+By default and similar to ViT~\cite{dosovitskiy2020image} we train \ours models with at resolution $224$ and we fine-tune at resolution $384$.
+We detail how to do this interpolation in Section~\ref{sec:position_encoding}. 
+However, in order to measure the influence of the resolution we have finetuned \ours at different resolutions. 
+% 
+We report these results in Table~\ref{tab:res_finetune}.
+
+ \begin{table}[t]
+    \centering
+    \scalebox{0.955}
+    {\small 
+    \begin{tabular}{c@{\ }c|c@{\ }|c@{\ }|c@{\ }}
+    \toprule
+             image       & throughput & \multicolumn{1}{c}{Imagenet~\cite{Russakovsky2015ImageNet12}} & \multicolumn{1}{|c|}{Real~\cite{Beyer2020ImageNetReal}}& \multicolumn{1}{c}{V2~\cite{Recht2019ImageNetv2}}\\ 
+     size & (image/s) &  acc. top-1 &  acc. top-1 &  acc. top-1\\
+    \toprule
+
+     $160^{2}$ & 609.31   & 79.9 &   84.8   & 67.6 \\
+     $224^{2}$ & 291.05    & 81.8 & 86.7 & 71.5 \\
+     $320^{2}$ & 134.13 & 82.7 &  87.2 & 71.9 \\
+     $384^{2}$ & \pzo85.87 & 83.1 & 87.7 & 72.4 \\
+
+    \bottomrule
+    \end{tabular}}
+    \caption{Performance of \ours trained at size $224^{2}$ for varying finetuning sizes on ImageNet-1k, ImageNet-Real and ImageNet-v2 matched frequency. 
+    \label{tab:res_finetune}}
+\end{table}
+
+
+
+\paragraph{Training time. }
+
+A typical training of 300 epochs takes 37 hours with 2 nodes or 53 hours on a single node for the \ours-B.%  
+As a comparison point, a similar training with a RegNetY-16GF~\cite{Radosavovic2020RegNet} (84M parameters) is 20\% slower.
+\ours-S and \ourstiny are trained in less than 3 days on 4 GPU.
+Then, optionally we fine-tune the model at a larger resolution. This takes 20 hours on a single node (8 GPU) to produce a \oursfix model at resolution 384$\times$384, which corresponds to 25 epochs.
+% 
+Not having to rely on batch-norm allows one to reduce the batch size without impacting performance, which makes it easier to train larger models.
+% 
+% 
+Note that, since we use repeated augmentation~\cite{berman2019multigrain,hoffer2020augment} with 3 repetitions, we only see one third of the images during a single epoch\footnote{Formally it means that we have 100 epochs, but each is 3x longer because of the repeated augmentations. We prefer to refer to this as 300 epochs in order to have a direct comparison on the effective training time with and without repeated augmentation.}.
+
+
+
+

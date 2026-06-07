@@ -1,0 +1,70 @@
+
+\vspace*{-5pt}
+
+\section{Preliminaries}
+\label{sec:preliminary}
+
+We begin by summarizing some of the most common GNN models and, along the way, introduce our notation. Let $G = \left(V, E \right)$ denote a graph with node feature vectors $X_v$ for $v \in V$. There are two tasks of interest: (1) {\em Node classification}, where each node $v \in V$ has an associated label $y_v$ and the goal is to learn a representation vector $h_v$ of $v$ such that $v$'s label can be predicted as $y_v=f(h_v)$;
+(2) {\em Graph classification}, where, given a set of graphs $ \{G_1, ..., G_N\} \subseteq \mathcal{G}$ and their labels $\{y_1, ..., y_N \} \subseteq \mathcal{Y}$, we aim to learn a representation vector $h_G$ that helps predict the label of an entire graph, $y_G=g(h_G)$.
+
+{\bf Graph Neural Networks.}  GNNs use the graph structure and node features $X_v$ to learn a representation vector of a node, $h_v$, or the entire graph, $h_G$.
+Modern GNNs follow a 
+neighborhood aggregation strategy, where we iteratively update the representation of a node by aggregating representations of its neighbors. After $k$ iterations of aggregation, a node's representation captures the structural information within its $k$-hop network neighborhood. Formally, the $k$-th layer of a GNN is 
+\begin{align}
+            %\label{eq:neighbor_agg}
+                \label{eq:combine}      
+    a_v^{(k)} & = \text{AGGREGATE}^{(k)} \left( \left\lbrace h_u^{(k-1)}  : u \in \mathcal{N}(v) \right\rbrace \right), \quad  %\\
+    %    \label{eq:combine}
+    h_v^{(k)}   = \text{COMBINE}^{(k)} \left( h_v^{(k-1)}, a_v^{(k)} \right),
+\end{align}
+where $h_v^{(k)}$ is the feature vector of node $v$ at the $k$-th iteration/layer. We initialize $h_v^{(0)} = X_v$, and $\mathcal{N}(v)$ is a set of nodes adjacent to $v$. 
+%
+The choice of AGGREGATE$^{(k)} (\cdot)$ and COMBINE$^{(k)} (\cdot)$ in GNNs is crucial. A number of architectures for AGGREGATE have been proposed. 
+In the pooling variant of GraphSAGE~\citep{hamilton2017inductive}, AGGREGATE has been formulated as
+\begin{align} \label{eq:graphsage-agg}
+    a_v^{(k)} =   {\rm MAX}\left( \left\{ {\rm ReLU} \left(W \cdot h_u^{(k-1)} \right), \  \forall u \in \mathcal{N}(v) \right\}\right),
+\end{align} 
+where $W$ is a learnable matrix, and MAX represents an element-wise max-pooling.
+%In the pooling variant of GraphSAGE~\citep{hamilton2017inductive}, the mean operation in~\refeq{eq:gcn-agg} is replaced by an element-wise max-pooling. 
+The COMBINE step could be a concatenation followed by a linear mapping $W \cdot \left[ h_v^{(k-1)}, a_v^{(k)}  \right]$ as in GraphSAGE. 
+In Graph Convolutional Networks (GCN)~\citep{kipf2016semi}, the element-wise \emph{mean} pooling is used instead, and the AGGREGATE and COMBINE steps are integrated as follows: 
+\begin{align} \label{eq:gcn-agg}
+h_v^{(k)} =   {\rm ReLU} \left(W \cdot {\rm MEAN} \left\{h_u^{(k-1)},\ \forall u \in \mathcal{N}(v) \cup \{v\} \right\} \right).
+\end{align}
+Many other GNNs can be represented similarly to \refeq{eq:combine} \citep{xu2018representation, gilmer2017neural}.
+
+For node classification, the node representation $h_v^{(K)}$ of the final iteration is used for prediction. For graph classification, the READOUT function aggregates node features from the final iteration to obtain the entire graph's representation $h_G$:
+\begin{align}
+    \label{eq:graph_pool}
+    h_{G} = {\rm READOUT} \big(\big\lbrace h_v^{(K)} \ \big\vert \ v \in G \big\rbrace \big).
+\end{align}
+READOUT can be a simple permutation invariant function such as summation or a more sophisticated graph-level pooling function~\citep{ying2018hierarchical,zhang2018end}.
+%
+%\begin{figure}[t]
+% \vspace{-0.25in}
+%    \centering
+%    \begin{subfigure}[b]{0.45\textwidth}
+%        \includegraphics[width=\textwidth]{WL2.pdf}    \vspace{-0.2in}
+%        \vspace{-0.1in}
+%        \label{fig:wl1}
+%    \end{subfigure}   \hspace{0.05\textwidth}
+%    \begin{subfigure}[b]{0.45\textwidth}
+%        \includegraphics[width=\textwidth]{WL.pdf}     \vspace{-0.2in}
+%        \vspace{-0.1in}
+%        \label{fig:wl2}
+%    \end{subfigure}   \hspace{0.1\textwidth}
+%    \caption{Subtree structures at the blue nodes in Weisfeiler-Lehman graph isomorphism test. Two WL iterations can capture and distinguish the structure of rooted subtrees of height 2. \jure{change this figure to be a nice overview of the theoretical framework. Panel (a): show the graph; Panel (b) show a GNN for a node; Panel (c) 
+%    illustrate how neighborhood aggregation is a multiset function and argue how the function needs to preserve the multiset in order to maintain its representative power.}}
+%\label{fig:wl-trees}
+% \vspace{-0.15in}
+%\end{figure}
+
+
+
+{\bf Weisfeiler-Lehman test.} The graph isomorphism problem asks whether two graphs are topologically identical. This is a challenging problem: no polynomial-time algorithm is known for it yet~\citep{garey1979guide, garey2002computers, babai2016graph}.
+Apart from some corner cases~\citep{cai1992optimal}, the Weisfeiler-Lehman (WL) test of graph isomorphism~\citep{weisfeiler1968reduction} is an effective and computationally efficient test that distinguishes a broad class of graphs \citep{babai1979canonical}. Its 1-dimensional form, ``na\"ive vertex refinement'', is analogous to neighbor aggregation in GNNs.
+%
+The WL test iteratively (1) aggregates the labels of nodes and their neighborhoods, and (2) hashes the aggregated labels into \textit{unique} new labels. The algorithm decides that two graphs are non-isomorphic if at some iteration %their node labels are different. 
+the labels of the nodes between the two graphs differ.
+
+Based on the WL test, \citet{shervashidze2011weisfeiler} proposed the WL subtree kernel that measures the similarity between graphs. The kernel uses the counts of node labels at different iterations of the WL test as the feature vector of a graph. Intuitively, a node's label at the $k$-th iteration of WL test represents a subtree structure of height $k$ rooted at the node (Figure~\ref{fig:wl-trees}). Thus, the graph features considered by the WL subtree kernel are essentially counts of different rooted subtrees in the graph.

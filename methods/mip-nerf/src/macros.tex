@@ -1,0 +1,159 @@
+\definecolor{yellow}{rgb}{1,1, 0.6}
+\definecolor{lightyellow}{rgb}{1,1, 0.8}
+\definecolor{orange}{rgb}{1, 0.8, 0.6}
+\definecolor{red}{rgb}{1, 0.6, 0.6}
+
+\definecolor{wincolor}{rgb}{0.85, 0.0, 0.0}
+% \definecolor{wincolor}{rgb}{0.415, 0.658, 0.309}
+
+\definecolor{darkyellow}{rgb}{0.8, 0.8, 0.5}
+\definecolor{darkred}{rgb}{0.7, 0.3, 0.3}
+\definecolor{darkgreen}{rgb}{0.3, 0.7, 0.3}
+\definecolor{blue}{rgb}{0, 0, 1.0}
+\definecolor{green}{rgb}{0, 1.0, 0}
+\definecolor{pink}{rgb}{1, 0.4, 0.7}
+
+\newcommand{\barron}[1]{{\color{blue} barron: #1}}
+\newcommand{\ricardo}[1]{{\color{darkgreen} ricardo: #1}}
+\newcommand{\todo}[1]{{\color{pink} TODO: #1}}
+
+
+\newcommand{\mbf}[1]{{\mathbf{#1}}}
+
+\let\originalleft\left
+\let\originalright\right
+\renewcommand{\left}{\mathopen{}\mathclose\bgroup\originalleft}
+\renewcommand{\right}{\aftergroup\egroup\originalright}
+
+% \DeclarePairedDelimiterX{\norm}[1]{\left\lVert}{\right\rVert}{#1}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+%\DeclarePairedDelimiterX{\abs}[1]{\left\lvert}{\right\rvert}{#1}
+
+\newcommand{\expo}[1]{\exp\left(#1\right)}
+% \newcommand{\expo}[1]{e^{#1}}
+
+\newcommand{\modeltheta}{\mathrm{\Theta}}
+\newcommand{\absrp}{\sigma}
+
+\newcommand{\numsamples}{N}
+\newcommand{\numsamplescoarse}{N_c}
+\newcommand{\numsamplesfine}{N_f}
+\newcommand{\timenear}{t_n}
+\newcommand{\timefar}{t_f}
+% \newcommand{\deltatime}{\Delta t}
+\newcommand{\deltatime}{\delta}
+
+\newcommand{\posxy}{xy}
+\newcommand{\posxyz}{xyz}
+\newcommand{\angletheta}{\theta}
+\newcommand{\anglephi}{\phi}
+\newcommand{\posall}{\posxyz\angletheta\anglephi}
+
+\newcommand{\numfrequencies}{L}
+
+\newcommand{\Ltrain}{\mathcal{L}}
+\newcommand{\raybatch}{\mathcal{R}}
+\newcommand{\Ccoarse}{\hat{C}_c(\ray)}
+\newcommand{\Cfine}{\hat{C}_f(\ray)}
+\newcommand{\Ctrue}{C(\ray)}
+\newcommand{\pweight}{w}
+\newcommand{\normpweight}{\hat{w}}
+
+\newcommand{\scenename}[1]{\textit{#1}}
+
+\newcommand{\shortpara}[1]{{\bf #1}}
+
+\newcommand{\longmodelname}{\emph{multum in parvo} NeRF\xspace}
+\newcommand{\shortmodelname}{Mip-NeRF\xspace}
+\newcommand{\shortmodelnamelower}{mip-NeRF\xspace}
+
+%%% TITLE PLAYGROUND
+% Unified Scale Space Neural Radiance Fields (USS-NeRF)
+% LOD-NeRF
+% Antialiased Neural Radiance Fields AA(aaaaa)-NeRF
+% Blurred Neural Radiance Fields (Blurf/Blerf/blarf)
+% Perf
+% Blurf/Blerf/blarf
+% HMS Nerf
+% Nerf force one
+% nerfilter
+% mipmlp/multum in nerfo/nipmap
+% anti nerfias
+% Snarf
+% 
+% 
+
+\newcommand{\featurename}{integrated positional encoding\xspace}
+\newcommand{\shortfeaturename}{IPE\xspace}
+
+\newcommand{\posenc}{positional encoding\xspace}
+\newcommand{\shortposenc}{PE\xspace}
+
+\newcommand{\numhidden}{n}
+
+\newcommand{\posencfun}{\gamma}
+\newcommand{\coordenc}{\gamma(\mathbf{x})}
+
+\newcommand{\rayorigin}{\mathbf{o}}
+\newcommand{\raydir}{\mathbf{d}}
+\newcommand{\transpose}{{\operatorname{T}}}
+
+\newcommand\submissionjunk[1]{ #1 }
+
+\newcommand\estimate[1]{\hat{#1}}
+\newcommand{\ray}{\mathbf{r}}
+% \newcommand{\normsq}[1]{\big\lVert#1\big\rVert^2_2}
+\newcommand{\normsq}[1]{\left\lVert#1\right\rVert^2_2}
+\newcommand{\position}{\mathbf{x}}
+\newcommand{\col}{\mathbf{c}}
+\newcommand{\Col}{\mathbf{C}}
+\newcommand{\trueCol}{\mathbf{C}^*}
+% \newcommand{\vieworigin}{\mathbf{o}}
+% \newcommand{\viewdir}{\mathbf{d}}
+% \newcommand{\posenc}{\gamma_{\position}}
+% \newcommand{\viewenc}{\gamma_{\viewdir}}
+\newcommand{\mlp}{\operatorname{MLP}}
+\newcommand{\modelweights}{\Theta}
+% \newcommand{\image}{\mathcal{I}}
+% \newcommand{\camera}{\mathbf{p}}
+\newcommand\decay[1]{\alpha \left( #1 \right)}
+\newcommand{\basis}{\mathbf{P}}
+
+\newcommand{\density}{\tau}
+\newcommand{\baseradius}{\dot r}
+\newcommand{\baseangle}{\theta}
+% \newcommand{\approximate}[1]{#1}
+\newcommand{\conefun}{\operatorname{F}}
+\newcommand{\zval}{t}
+\newcommand{\zvec}{\mathbf{\zval}}
+
+
+\newcommand{\textpyr}[5]{
+	\begin{overpic}[width=1.3in]{figures/multiblender_pyrs/#1}
+	\put (67,2) {\tiny \sethlcolor{white}\hl{$#2$}}
+	\put (84,29) {\tiny \sethlcolor{white}\hl{$#3$}}
+	\put (84,18) {\tiny \sethlcolor{white}\hl{$#4$}}
+	\put (76,10) {\tiny \sethlcolor{white}\hl{$#5$}}
+    \end{overpic}
+}
+
+\newcommand{\flatim}[1]{
+    \includegraphics[width=0.9in]{figures/multiblender_pyrs/#1}
+}
+
+\newcommand{\myparagraph}[1]{\noindent {\bf #1}\,\,\,}
+
+\newcommand{\zc}{\zval_\mu}
+\newcommand{\zd}{\zval_\delta}
+
+\newcommand{\dirichlet}{\alpha}
+\newcommand{\lossmult}{\lambda}
+
+\newcommand{\numsteps}{n}
+\newcommand{\learnrate}{\eta}
+
+\newcommand{\thousand}{K}
+\newcommand{\million}{M}
+
+\newcommand{\covmat}{\boldsymbol{\Sigma}}
+

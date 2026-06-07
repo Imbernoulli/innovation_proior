@@ -1,0 +1,110 @@
+\documentclass{article}
+
+\usepackage{neurips_2019_author_response}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{wrapfig}
+\input{macros.tex}
+\begin{document}
+
+Thank you for all the helpful comments. Several related works were raised by the reviewers which we discuss here.
+
+\textbf{Time-Delay Momentum:}
+% We will add and discuss this reference in the main paper. 
+% They break the optimization problem into a sequence of regularized sub-problems to be solved in-turn. 
+We note that the authors have marked their ArXiv submission as containing errors.
+While their algorithm also utilizes an inner-outer loop structure, it differs significantly from ours in motivation and implementation. Each of their inner loops uses SGD to solve the \emph{distance-regularized} objectives. We instead allow arbitrary optimization algorithms in the inner-loop and solve the \emph{original objective}. Our main contribution is introducing interpolation to update both the slow and fast weights. This is a critical difference which leads to an exponential moving average (EMA) with advantages such as variance reduction [Martens 2014, Polyak and Juditsky, 1992].\footnote{Citations not in references below are in the original manuscript.}
+%\JB{It would help if we can say that our main contribution is to introduce the interpolation between slow and fast weights. } \JL{You could make the case that Time-Delay momentum adds distance regularization to momentum restarting (Candes paper) while we add linear interpolation (we also vary the inner optimizer).} \JB{I like this distinction and we should highlight such difference in the contributions.} \\
+% \citep{martens2014new, polyak1992acceleration} (See Proposition 2).\\
+\textbf{SWA:} 
+% Both SWA and Lookahead feature a moving average of check-pointed parameters (an idea which has been long utilized [Polayk and Juristsky, 1992]. Despite this, Lookahead has prominent differences to SWA. 
+While both SWA and Lookahead average network weights, we believe they serve different purposes and are complementary. First, we use the EMA of slow weights to adjust the training parameters during optimization. Compared to using the EMA at inference, this gives much faster convergence via variance reduction along the trajectory (see comparison to Polyak averaging in Figure 5). 
+% Second, our scheme is not dependent on specific choices of the learning rate schedule (unlike SWA we do not require a fixed or cyclical learning rate schedule). MZ: I'd exclude this, SWA is fine with different learning rate schedule
+Second, SWA is applied near convergence, whereas Lookahead is applied throughout training. This removes the challenge of deciding when to start iterate averaging. 
+% Finally, we provide theoretical analysis which works towards explaining the success of Lookahead, without difficult interpretations of DNN geometry [CITE Bengio paper criticizing wide minima], and a thorough empirical evaluation. [MZ:do you think we need this to convince Reviewer 6?]
+We include an evaluation with SWA in Figure \ref{fig:swa-comparison}. We use 3 random seeds with publicly available code and hyperparameters\footnote{200 epochs of training with SWA initalized from epoch 161, initial LR 0.1, SWA LR 0.05 and weight decay of $5\times10^{-4}$} from Izmailov et al. to show that Lookahead and SWA are complementary. Lookahead wrapped around SGD dominates SGD in performance during training and improves the weight averaged network.\footnote{Note that we do not tune the learning rate schedule for Lookahead and follow the schedule proposed by Izmailov et al. The learning rate is higher than is typical at the end of training, which explains the large gap to the non-SWA performance.} We observe similar behavior on ResNet-110 and VGG-16.
+% \JB{Why is ensemble curve look so strange where the performance only shots up in the end? This looks very suspecious.}
+% \JB{The final performance improvement in the table looks very marginal. Can we get better numbers to show case LA when combined with SWA? We are doing better at each iteration so we should have a faster ensemble performance convergence?} \MZ{We tried different LR schedules and experiments with VGG and normal ResNets as well..these are the most convincing results}\JB{I meant the presentation of these results. Showing these final numbers is just not sexy enough to change someone's mind in 2 seconds.}
+
+\begin{wrapfigure}[19]{R}{.35\linewidth}
+\vskip -0.2in
+\centering
+\includegraphics[width=.98\linewidth]{images/wrn_accuracy.pdf}
+\includegraphics[width=.98\linewidth]{images/wrn_accuracy_swa.pdf}
+% \begin{sc}
+% \begin{small}
+% \begin{tabular}{l c c }
+% \toprule
+% LA(SGD) + SWA & SGD + SWA    \\
+% \midrule
+% 82.50 $\pm$ .10 & 82.17 $\pm$ .24  \\
+% \bottomrule
+% \end{tabular}
+% \end{small}
+% \end{sc}
+\vskip -0.1in
+\caption{Test Accuracy on CIFAR-100 with SWA and Lookahead (Wide ResNet-28-10). Following Izmailov et al., SWA is started at epoch 161.}
+\vskip -0.1in
+\label{fig:swa-comparison}
+\end{wrapfigure}
+
+% \begin{figure}
+% \centering
+% \begin{minipage}{0.48\linewidth}
+% \includegraphics[width=\linewidth]{images/wrn_accuracy.pdf}
+% \end{minipage}%
+% \begin{minipage}{0.48\linewidth}
+%  \centering
+% \begin{center}
+% \begin{sc}
+% \begin{tabular}{l c c }
+% \toprule
+% LA(SGD) + SWA & SGD + SWA    \\
+% \midrule
+% 82.50 $\pm$ .10 & 82.17 $\pm$ .24  \\
+% \bottomrule
+% \end{tabular}
+% \end{sc}
+% \end{center}
+% % \caption{Final Test Accuracy ($\%$)}
+% \vskip -0.1in
+% \end{minipage}
+%\end{figure}
+
+\textbf{Reviewer 3} \hspace{0.1cm}
+% \paragraph{Reviewer 3}
+% \JB{We should quote or find a few keywords regarding the concerns. The number system asks the reviewers to go back to their original review panel which is very painful to do in CMT...}
+\textbf{Adaptive Learning Rate Result} We believe this is an interesting result but agree that it is not critical and do not mind excluding it.\\
+\textbf{SUM Framework} Yan et al. prove results for non-convex stochastic losses. Furthermore, Lookahead does not fit into their SUM framework. We do not believe that this work is relevant to Section 3.2 or otherwise strongly related to our own.\\
+\textbf{Strength of empirical results} We respectfully disagree. It is difficult to improve on the convergence and final performance of the carefully tuned baseline methods, which is why they have remained the primary choices for so long. Despite this, we show significant wins in terms of convergence and final performance over a range of different tasks. For language modelling we provide $1.5$ perplexity improvement with much faster convergence (Table 3). On image classification tasks we are consistently able to achieve better final performance in fewer update steps. We also show that Lookahead is very robust to different inner-optimizer settings (Figure 8). 
+% Notably, in all cases Lookahead strictly improves on the baseline optimizer --- we did not find any tasks for which Lookahead performed significantly worse (unlike adaptive vs. non-adaptive gradient-based optimizers). 
+A method that reduces hyperparameter tuning, improves convergence, and strictly\footnote{We did not find tasks for which Lookahead performed worse than its inner optimizer, unlike adaptive vs non-adaptive gradient-based optimizers.} improves final performance is useful for the community, especially to resource-constrained groups.
+
+\textbf{Reviewer 5} \hspace{0.1cm}
+% \JB{What was the concern?}\MZ{They thought our numbers were too high} 
+We used the ResNet-18 architecture, which was designed for ImageNet but has been used for CIFAR in work such as \citet{devries2017improved}, with which our numbers agree. %You are correct in stating that the architecture is wider than other deeper ResNets.
+
+\textbf{Reviewer 6} \hspace{0.1cm} We have corrected typos in Proposition 1 and Algorithm 1 and fixed other minor mistakes.\\
+\textbf{On NQM model}: This model has been studied in prior work [Martens 2014, Wu et al., 2018, Lucas et al., 2018] and \textbf{is} equivalent to general stochastic convex quadratics under the studied schemes (see Sutskever et al. 2013, Proposition 6.1). This system is \textbf{not} equivalent to decoupled 1-D problems as the learning rate is shared over all dimensions. Furthermore, \citep{zhang2019algorithmic} recently showed that insights from this NQM capture many essential features of neural net training. \\
+\textbf{LA inner learning rate for CIFAR:} We used $0.1$ in the reported results except Figure 8. \\
+\textbf{Rate of contraction}: We will replace this with the decrease in the loss though the same conclusions apply. The linear dynamical system admits a unique fixed point at the minima (origin) for both lookahead and CM --- thus the rate of contraction is a valid measure of convergence (see Lessard et al., 2014).\\
+\textbf{SWA multiple networks}: We mean that different neural network weights are added to the moving average during training and this is interpreted (loosely) as ensembling. We will fix the wording here, thank you. \\
+\textbf{Additional references:} Terrance DeVries and Graham W Taylor. Improved regularization of convolutional neural networks with cutout. \textit{arXiv preprint arXiv:1708.04552}, 2017. \\
+Guodong Zhang, Lala Li, Zachary Nado, James Martens, Sushant Sachdeva, George E Dahl, Christopher J Shallue, and Roger Grosse. Which algorithmic choices matter at which batch sizes? insights from a noisy quadratic model. \textit{arXiv preprint arXiv:1907.04164}, 2019.
+
+% NOTE: This can only be 1 page. I edited the style file to disable this for now.
+% TODOs: reveiwer 5 asks about smooth non-convex setting, 
+
+\bibliography{references}
+\bibliographystyle{plainnat}
+\end{document}

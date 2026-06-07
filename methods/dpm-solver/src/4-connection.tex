@@ -1,0 +1,51 @@
+\section{Comparison with Existing Fast Sampling Methods}
+
+Here, we discuss the relationship and highlight the difference between DPM-Solver and existing ODE-based fast sampling methods for DPMs. We further briefly discuss the advantage of training-free samplers over those training-based ones. 
+
+\subsection{DDIM as DPM-Solver-1}
+\label{sec:ddim}
+
+Denoising Diffusion Implicit Models (DDIM)~\citep{song2020denoising} design a deterministic method for fast sampling from DPMs. For two adjacent time steps $t_{i-1}$ and $t_{i}$, assume that we have a solution $\tilde\x_{t_{i-1}}$ at time $t_{i-1}$, then a single step of DDIM from time $t_{i-1}$ to time $t_i$ is
+\begin{equation}
+\label{eqn:ddim}
+    \tilde\x_{t_i} = \frac{\alpha_{t_i}}{\alpha_{t_{i-1}}}\tilde\x_{t_{i-1}} - \alpha_{t_i}\left(\frac{\sigma_{t_{i-1}}}{\alpha_{t_{i-1}}} - \frac{\sigma_{t_i}}{\alpha_{t_i}}\right)\epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1}).
+\end{equation}
+Although motivated by entirely different perspectives, we show that the updates of DPM-Solver-1 and Denoising Diffusion Implicit Models (DDIM)~\citep{song2020denoising} are identical. 
+By the definition of $\lambda$, we have $\frac{\sigma_{t_{i-1}}}{\alpha_{t_{i-1}}}=e^{-\lambda_{t_{i-1}}}$ and $\frac{\sigma_{t_{i}}}{\alpha_{t_{i}}}=e^{-\lambda_{t_{i}}}$. Plugging these and $h_i= \lambda_{t_i} - \lambda_{t_{i-1}}$ to Eq.~\eqref{eqn:ddim}
+results in exactly a step of DPM-Solver-1 in Eq.~\eqref{eqn:1st}.
+However, the semi-linear ODE formulation of DPM-Solver allows for principled  generalization to higher-order solvers and convergence order analysis. 
+
+
+
+Recent work~\citep{salimans2022progressive} also show that DDIM is a first-order discretization of diffusion ODEs by differentiating  both sides of Eq.~\eqref{eqn:ddim}. However, they cannot explain the difference between DDIM and the first-order Euler discretization of diffusion ODEs. 
+In contrast, by showing that DDIM is a special case of DPM-Solver, we reveal that DDIM makes full use of the semi-linearity of diffusion ODEs, which explains its superiority over traditional Euler methods.
+
+
+
+
+
+
+
+\subsection{Comparison with Traditional Runge-Kutta Methods}
+
+
+One can obtain a high-order solver by directly applying traditional explicit Runge-Kutta (RK) methods to the diffusion ODE in Eq.~\eqref{eqn:diffusion_ode}.
+Specifically, RK methods write the solution of Eq.~\eqref{eqn:diffusion_ode} in the following integral form:
+\begin{equation}
+    \x_t = \x_s + \int_s^t \hv_\theta(\x_\tau,\tau)\dd\tau = \x_s + \int_s^t \left( f(\tau)\x_{\tau} + \frac{g^2(\tau)}{2\sigma_{\tau}}\epsilonv_\theta(\x_{\tau},\tau) \right) \dd\tau,
+\end{equation}
+and use some intermediate time steps between $[t, s]$ and combine the evaluations of $\hv_\theta$ at these time steps to approximate the whole integral. 
+The approximation error of explicit RK methods depends on $\hv_\theta$, which consists of the error corresponding to both the linear term $f(\tau)\x_\tau$ and the nonlinear noise prediction model $\epsilonv_\theta$. However, the error of the linear term may increase exponentially because the exact solution of the linear term has an exponential coefficient (as shown in Eq.~\eqref{eqn:variation_of_constants}). There are many empirical evidence~\citep{hochbruck2010exponential,hochbruck2005explicit} showing that directly using explicit RK methods for semi-linear ODEs may suffer from unstable numerical issues for large step size. We also demonstrate the empirical difference of the proposed DPM-Solver and the traditional explicit RK methods in Sec.~\ref{sec:exp_continuous}, which shows that DPM-Solver have smaller discretization errors than the RK methods with the same order.
+
+
+
+
+
+
+
+
+
+\subsection{Training-based Fast Sampling Methods for DPMs}
+Samplers that need extra training or optimization include knowledge distillation~\citep{salimans2022progressive,luhman2021knowledge}, learning the noise level or variance~\citep{san2021noise,nichol2021improved,bao2022estimating}, and learning the noise schedule or sample trajectory~\citep{lam2021bilateral,watson2021learning}. Although the progressive distillation method~\citep{salimans2022progressive} can obtain a fast sampler within 4 steps, it needs further training costs and loses part of the information in the original DPM (e.g., after distillation, the noise prediction model cannot predict the noise (score function) at every time step between $[0,T]$). In contrast, training-free samplers can keep all the information of the original model, and thereby can be directly extended to the conditional sampling by combining the original model and an external classifier~\citep{dhariwal2021diffusion} (e.g. see Appendix~\ref{appendix:implementation} for the conditional sampling with classifier guidance).
+
+Beyond directly designing fast samplers for DPMs, several works also propose novel types of DPMs which supports faster sampling. For instance, defining a low-dimensional latent variable for DPMs~\citep{vahdat2021score}; designing special diffusion processes with bounded score functions~\citep{dockhorn2021score}; combining GANs with the reverse process of DPMs~\citep{xiao2021tackling}. The proposed DPM-Solver may also be suitable for accelerating the sampling of these DPMs, and we leave them for future work.

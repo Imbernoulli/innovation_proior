@@ -1,0 +1,324 @@
+\section{Single-shot network pruning based on connection sensitivity}
+Given a neural network and a dataset, our goal is to design a method that can selectively prune redundant connections for the given task in a data-dependent way even before training.
+To this end, we first introduce a criterion to identify important connections and then discuss its benefits.
+
+%To this end, let us first provide the neural network optimization problem and then explain how it can be modified to measure the sensitivity of each connection.
+%This data-dependent connection sensitivity can then be used as a robust measure to identify redundant connections which can effectively be pruned given the desired sparsity level.
+
+\SKIP{
+Given a dataset $\gD = \{(\rvx_i, \rvy_i)\}_{i=1}^n$, training a neural network can be written as the following optimization problem:
+\begin{align}\label{eq:nn}
+\min_{\rvw} L(\rvw) &= \min_{\rvw} \frac{1}{n} \sum_{i=1}^n \ell_i(\rvw)\
+,\\\nonumber 
+\text{s.t.}\quad\rvw &\in \R^m\ .
+\end{align}\NOTE{do we want to add the pruning constraint here?}
+Here, $\ell_i(\cdot)$ represents the loss function associated with each data point $(\rvx_i, \rvy_i)\in\gD$ and $\rvw$ is the set of parameters of the neural network.
+%
+Note that, in a neural network, each parameter can be thought of as the weight of the corresponding connection, and setting it to zero means the connection is removed from the network. 
+
+The main hypothesis behind the neural network pruning literature is that modern networks are usually overparametrized (in fact $m$ is in the order of millions), and the same performance can be obtained by a much smaller network~\cite{?}.
+Majority of the pruning works have been devoted to finding a good criterion to obtain redundant connections (\eg, magnitude based~\cite{han2015learning,guo2016dynamic} or Hessian based~\cite{lecun1990optimal,hassibi1993optimal,dong2017learning}), however, all of them require pretrained networks and go through many expensive prune -- retrain cycles.
+Such an exorbitant requirement hinders the use of pruning methods in large-scale applications~\NOTE{make sure this is true} and raises questions about the credibility of the previous pruning criteria.
+
+In this work, we attempt to measure the importance of each connection directly in a data-dependent manner.
+This enables us to prune the network once at the beginning, and then the training can be performed on the sparse pruned network.
+Therefore, our method alleviates the expensive prune -- retrain cycles, and in theory, it can be an order of magnitude faster than standard neural network training as it can be implemented using sparse software libraries.
+}
+
+\subsection{Connection sensitivity: architectural perspective}
+%Note that, each parameter of a neural network can be thought of as the weight of the corresponding connection, and setting it to zero means the connection is removed from the network.
+%Since we intend to measure the importance (or sensitivity) of each connection independently of its weight, we introduce auxiliary indicator variables $\rvc\in\{0,1\}^m$ representing the presence of each connection.
+Since we intend to measure the importance (or sensitivity) of each connection independently of its weight, we introduce auxiliary indicator variables $\rvc\in\{0,1\}^m$ representing the connectivity of parameters $\rvw$.\footnote{Multiplicative coefficients (similar to $\rvc$) were also used for subset regression in \cite{breiman1995better}.}
+Now, given the sparsity level $\kappa$,~\Eqref{eq:nn} can be correspondingly modified as:
+\vspace{-1mm}
+\begin{align}\label{eq:nnc}
+\min_{\rvc,\rvw} L(\rvc \odot\rvw; \gD) &= \min_{\rvc,\rvw} \frac{1}{n} \sum_{i=1}^n
+\ell(\rvc \odot\rvw; (\rvx_i, \rvy_i))\ ,\\[-1mm]\nonumber 
+\text{s.t.}\quad\rvw &\in \R^m \ ,\\\nonumber
+\rvc &\in \{0,1\}^m, \quad \|\rvc\|_0 \le \kappa\ ,
+\end{align}
+where $\odot$ denotes the Hadamard product. 
+Compared to~\Eqref{eq:nn}, we have doubled the number of learnable parameters in the network and directly optimizing the above problem is even more difficult.
+However, the idea here is that since we have separated the weight of the connection ($\rvw$) from whether the connection is present or not ($\rvc$), we may be able to determine the importance of each connection by measuring its effect on the loss function.
+
+For instance, the value of $c_j$ indicates whether the connection $j$ is active ($c_j = 1$) in the network or pruned ($c_j =0$).
+Therefore, to measure the effect of connection $j$ on the loss, one can try to measure the difference in loss when $c_j=1$ and $c_j=0$, keeping everything else constant.
+Precisely, the effect of removing connection $j$ can be measured by,
+\begin{align}\label{eq:csd}
+\Delta L_j(\rvw;\gD) &= L(\bfone \odot\rvw;\gD) - L((\bfone - \rve_j) \odot\rvw;\gD)\ ,
+\end{align}
+where $\rve_j$ is the indicator vector of element $j$ (\ie, zeros everywhere except at the index $j$ where it is one) and $\bfone$ is the vector of dimension $m$.
+%Here, it is important to make sure that the scale of $\rvw$ remains in a reasonable range, which is ensured in standard weight initialization schemes.\NOTE{add more and refine this}
+
+Note that computing $\Delta L_j$ for each $j\in\allweights$ is prohibitively expensive as it requires $m+1$ (usually in the order of millions) forward passes over the dataset.
+In fact, since $\rvc$ is binary, $L$ is not differentiable with respect to $\rvc$, and it is easy to see that $\Delta L_j$ attempts to measure the influence of connection $j$ on the loss function in this discrete setting.
+%In fact, it is easy to see that $\Delta L_j$ attempts to measure the influence of connection $j$ on the loss function. 
+%Even though, having or not having a connection is a non-differentiable operation, one can try to approximate $\Delta L_j$ by the partial derivatives.
+Therefore, by relaxing the binary constraint on the indicator variables $\rvc$, $\Delta L_j$ can be approximated by the derivative of $L$ with respect to $c_j$, which we denote $g_j(\rvw;\gD)$.
+Hence, the effect of connection $j$ on the loss can be written as:
+\begin{align}\label{eq:csc}
+\Delta L_j(\rvw;\gD) &\approx g_j(\rvw;\gD) = \left.\frac{\partial L(\rvc\odot\rvw;\gD)}{\partial c_j}\right|_{\rvc=\bfone} = \left.\lim_{\delta\to 0} \frac{L(\rvc
+\odot\rvw;\gD) - L((\rvc - \delta\,\rve_j) \odot\rvw;\gD)}{\delta}\right|_{\rvc=\bfone}\
+.\\[-7mm]\nonumber
+\end{align}
+In fact, ${\partial L}/{\partial c_j}$ is an infinitesimal version of $\Delta L_j$, that measures the rate of change of $L$ with respect to an infinitesimal change in $c_j$ from $1 \to 1-\delta$. 
+This can be computed efficiently in one forward-backward pass using automatic differentiation, for all $j$ at once.
+Notice, this formulation can be viewed as perturbing the weight $w_j$ by a multiplicative factor $\delta$ and measuring the change in loss. 
+%Similar idea is used to understand the effect of perturbing the input in~\cite{koh2017understanding,ren2018learning} however we use it to measure the sensitivity of network connections.\NOTE{refine this}
+This approximation is similar in spirit to~\cite{koh2017understanding} where they try to measure the influence of a datapoint to the loss function.
+Here we measure the influence of connections.
+Furthermore, ${\partial L}/{\partial c_j}$ is not to be confused with the gradient with respect to the weights $\left({\partial L}/{\partial w_j}\right)$, where the change in loss is measured with respect to an additive change in weight $w_j$.
+
+Notably, our interest is to discover important (or sensitive) connections in the architecture, so that we can prune unimportant ones in single-shot, disentangling the pruning process from the iterative optimization cycles.
+To this end, we take the magnitude of the derivatives $g_j$ as the saliency criterion. 
+Note that if the magnitude of the derivative is high (regardless of the sign), it essentially means that the connection $c_j$ has a considerable effect on the loss (either positive or negative), and it has to be preserved to allow learning on $w_j$. 
+Based on this hypothesis, we define connection sensitivity as the normalized magnitude of the derivatives:
+\vspace{-2mm}
+\begin{equation}\label{eq:sens}
+s_j = \frac{\left|g_j(\rvw;\gD)\right| }{\sum_{k=1}^m
+\left|g_k(\rvw;\gD)\right|}\ .% = \frac{\left|g_j(\rvw;\gD)\right|}{\|\rvg(\rvw;\gD)\|_1}\ ,
+\end{equation}
+%where $\rvg(\rvw;\gD)$ denotes the vector $\{g_j(\rvw;\gD)\mid j\in \allweights\}$ and $\|\cdot\|_1$ is the standard $L_1$ norm.
+Once the sensitivity is computed, only the top-$\kappa$ connections are retained, where $\kappa$ denotes the desired number of non-zero weights.
+Precisely, the indicator variables $\rvc$ are set as follows:
+\begin{equation}
+c_j =\I[s_j - \tilde{s}_{\kappa} \ge 0]\ ,\quad \forall\,j\in \allweights\ ,
+\end{equation}
+where $\tilde{s}_{\kappa}$ is the $\kappa$-th largest element in the vector $\rvs$ and $\I[\cdot]$ is the indicator function. 
+Here, for exactly $\kappa$ connections to be retained, ties can be broken arbitrarily.
+
+%We would like to clarify that the above criterion (\Eqref{eq:sens}) is different from the sensitivity measure used in the early work by~\cite{karnin1990simple} which does not entirely capture the connection sensitivity.
+%In particular, their sensitivity depends on the gradient of the loss with respect to the weights (not connections), and it is designed to be incorporated in the learning process.
+%This suffers from the same drawbacks as the magnitude based and the Hessian based methods discussed in~\Secref{sec:prelim}.
+%%As mentioned earlier, this does not capture the importance of the connection, making it unusable for single-shot pruning.
+%
+%%In addition to the loss function, our sensitivity score depends on the dataset $\gD$ and the value of weights $\rvw$ used to evaluate the derivative.
+%In the next section, we discuss how our sensitivity measure can be used to prune networks prior to training while maintaining comparable performance to the reference network.  
+We would like to clarify that the above criterion (\Eqref{eq:sens}) is different from the criteria used in early works by~\cite{NIPS1988_119} or~\cite{karnin1990simple} which do not entirely capture the connection sensitivity.
+The fundamental idea behind them is to identify elements (\eg weights or neurons) that least degrade the performance when removed.
+%This means that their saliency criteria (\ie $-{\partial L}/{\partial \rvw}$ or $-{\partial L}/{\partial {\boldsymbol{\alpha}}}$; $\boldsymbol{\alpha}$ refers to neurons), in fact, depend on the loss value before pruning, which in turn, require the network to be pre-trained and iterative optimization cycles to ensure minimal loss in performance.
+This means that their saliency criteria (\ie $-{\partial L}/{\partial \rvw}$ or $-{\partial L}/{\partial {\boldsymbol{\alpha}}}$; $\boldsymbol{\alpha}$ refers to the connectivity of neurons), in fact, depend on the loss value before pruning, which in turn, require the network to be pre-trained and iterative optimization cycles to ensure minimal loss in performance.
+%They also suffer from the same drawbacks as the magnitude based and the Hessian based methods as discussed in~\Secref{sec:prelim}.
+%In contrast, our saliency criterion (\Eqref{eq:sens}) is designed to measure the sensitivity as to how much influence elements have on the loss function regardless of whether it is positive or negative.
+%This criterion alleviates the dependency on the value of the loss, thereby eliminating the need for pre-training.
+They also suffer from the same drawbacks as the magnitude and Hessian based methods as discussed in~\Secref{sec:prelim}.
+In contrast, our saliency criterion (\Eqref{eq:sens}) is designed to measure the sensitivity as to how much influence elements have on the loss function regardless of whether it is positive or negative.
+This criterion alleviates the dependency on the value of the loss, eliminating the need for pre-training.
+These fundamental differences enable the network to be pruned at single-shot prior to training, which we discuss further in the next section.
+
+
+
+
+
+\subsection{Single-shot pruning at initialization}
+\label{sec:single-random}
+
+%%%%%%%%%%%%%%%% prune %%%%%%%%%%%%%
+\begin{algorithm}[t]
+% \setlength{\textfloatsep}{0pt}
+% \setlength{\floatsep}{0pt}
+\caption{SNIP: Single-shot Network Pruning based on Connection Sensitivity}
+\label{alg:prune}
+\begin{algorithmic}[1]
+    \REQUIRE Loss function $L$, training dataset $\mathcal{D}$, sparsity level $\kappa$ \tikzmark{right}
+    \COMMENT{Refer~\Eqref{eq:nnc}}
+    \ENSURE $\|\rvw^*\|_0 \le \kappa$
+
+    %\STATE $\rvw \gets \text{VarianceScalingInitialization}\ ,\quad \rvc \gets \bfone$ \tikzmark{top-one}
+    \STATE $\rvw \gets \text{VarianceScalingInitialization}$
+    \COMMENT{Refer~\Secref{sec:single-random}}
+
+    \STATE $\gD^{b} = \{\left( \rvx_i, \rvy_i \right)\}^{b}_{i=1} \sim \mathcal{D}$
+    \COMMENT{Sample a mini-batch of training data}
+
+    %\STATE $\forall j$\;, $\rvs_j \gets \text{norm} \big( \left|{\partial L}/{\partial c_j}\right| \big)$
+    %FOR{$j \gets \allweights$}
+    %\STATE $s_j \gets \frac{\left|g_j(\rvw;\gD^{b})\right|}{\|\rvg(\rvw;\gD^{b})\|_1}\ ,\quad \forall j\in \allweights$
+    \STATE $s_j \gets \frac{\left|g_j(\rvw;\gD^{b})\right|}{\sum_{k=1}^m \left|g_k(\rvw;\gD^b)\right|}\ ,\quad \forall j\in \allweights$    
+    \COMMENT{Connection sensitivity}
+    %\ENDFOR
+
+	%\STATE Set $\rvc$ such that top-$\kappa$ connections are retained based on the sensitivity score $\rvs$\NOTE{refine}
+	\STATE $\tilde{\rvs} \gets \text{SortDescending}(\rvs)$ 
+	\STATE $c_j \gets \I[s_j - \tilde{s}_{\kappa} \ge 0]\ ,\quad \forall\,j\in \allweights$
+	\COMMENT{Pruning: choose top-$\kappa$ connections}
+%     \STATE Sort $\rvc$ such that $s_1 \ge \ldots\ge s_m$
+%     \COMMENT{Pruning}
+%     \FOR{$j \gets \allweights$}
+%     \STATE $c_j \gets \I[\max\{s_j - s_{\kappa}, 0\} > 0]$
+%     \ENDFOR
+    
+    %\STATE\IfThenElse{$j\le \kappa$}{$\rvc_j \gets 1$}{$\rvc_j \gets 0$}
+     
+    
+    %and set $c_j=1$ if , otherwise $c_j=0$ \tikzmark{bottom-one}
+    
+
+%     \FOR{$t \gets \titers$} \tikzmark{top-two}\COMMENT{Regular training}
+%     \STATE $\rvw_{t+1} \gets \text{OptimizationStep}(\rvw_{t})$
+%     \ENDFOR \tikzmark{bottom-two}
+    \STATE $\rvw^* \gets \argmin_{\rvw\in\R^m}L(\rvc \odot\rvw; \gD)$
+    \COMMENT{Regular training}
+    \STATE $\rvw^* \gets \rvc \odot \rvw^*$
+\end{algorithmic}
+%\AddNote{top-one}{bottom-one}{right}{\quad pruning}
+%\AddNote{top-two}{bottom-two}{right}{\quad Regular training}
+\end{algorithm}
+
+%We defined a new saliency measure in \Eqref{eq:sens} and showed that it identifies important (or sensitive) connections in the architecture.
+Note that the saliency measure defined in~\Eqref{eq:sens} depends on the value of weights $\rvw$ used to evaluate the derivative as well as the dataset $\gD$ and the loss function $L$.
+In this section, we discuss the effect of each of them and show that it can be used to prune the network in single-shot with initial weights $\rvw$. 
+
+%Firstly, since we intend to measure the importance of each connection regardless of its weight, it is important to choose these weights carefully so that it has minimal impact on the derivatives $\partial L / \partial c_j$.
+Firstly, in order to minimize the impact of weights on the derivatives $\partial L / \partial c_j$, we need to choose these weights carefully.
+% To this end, considering a connection $j$, the derivative can be written as:
+% \begin{equation}
+% \frac{\partial L}{\partial c_j} = \frac{\partial L}{\partial u_j} \frac{\partial u_j}{\partial c_j} = \frac{\partial L}{\partial u_j} w_j\ ,
+% \end{equation}
+% where $u_j = c_j w_j$.
+%To ensure this, we identify two required properties on the weights: 1) the weights should be in a sensible range; 2) the scale of the weights should not vary a lot.
+For instance, if the weights are too large, the activations after the non-linear function (\eg, sigmoid) will be saturated, which would result in uninformative gradients.
+%On the other hand, if the scale of the weights vary a lot which would 
+Therefore, the weights should be within a sensible range.
+In particular, there is a body of work on neural network initialization~(\cite{goodfellow2016deep}) that ensures the gradients to be in a reasonable range, and our saliency measure can be used to prune neural networks at any such initialization. 
+%Importantly, notice that all the standard initialization methods of neural networks satisfy this property 
+
+Furthermore, we are interested in making our saliency measure robust to architecture variations.
+%Note that initializing neural networks is a random process, typically done using normal distribution with zero mean and a fixed variance.
+%However, even if the initial weights have a fixed variance, the signal passing through each layer no longer guarantees to have the same variance. 
+Note that initializing neural networks is a random process, typically done using normal distribution.
+However, if the initial weights have a fixed variance, the signal passing through each layer no longer guarantees to have the same variance, as noted by~\cite{LeCun1998fficient}.
+This would make the gradient and in turn our saliency measure, to be dependent on the architectural characteristics.
+Thus, we advocate the use of variance scaling methods~(\eg,~\cite{glorot2010understanding}) to initialize the weights, such that the variance remains the same throughout the network. 
+By ensuring this, we empirically show that our saliency measure computed at initialization is robust to variations in the architecture.
+
+Next, since the dataset and the loss function defines the task at hand, by relying on both of them, our saliency criterion in fact discovers the connections in the network that are important to the given task.
+However, the practitioner needs to make a choice on whether to use the whole training set, or a mini-batch or the validation set to compute the connection saliency.
+Moreover, in case there are memory limitations (\eg, large model or dataset), one can accumulate the saliency measure over multiple batches or take an exponential moving average. 
+In our experiments, we show that using only one mini-batch of a reasonable number of training examples can lead to effective pruning.
+  
+
+% Next, our objective is to find the subset of connections that are important for the given task where the task is defined by the loss function and the dataset.
+% From~\Eqref{eq:csc} and~\ref{eq:sens}, our method determines the importance connections in the architecture depending on the given data.
+% In other words, depending on the provided data, the connection importance changes and result in architectures prunded differently.
+% Here, the practitioner need to make a choice on whether to use the whole training set, or a mini-batch or the validation set to compute the connection saliency.
+% For example, in case there are memory limits (\eg large model or dataset), one can accumulate the saliency measures over multiple batches or take an exponential moving average. 
+% We show that using only one mini-batch of reasonable number of training examples can lead to effective pruning (\ie single-shot).
+
+Finally, in contrast to the previous approaches, our criterion for finding redundant connections is simple and directly based on the sensitivity of the connections.
+This allows us to effectively identify and prune redundant connections in a single step even before training.
+Then, training can be performed on the resulting pruned (sparse) network.
+%Our complete algorithm is given in~\Algref{alg:prune}.
+We name our method \snip{} for Single-shot Network Pruning, and the complete algorithm is given in~\Algref{alg:prune}.
+%Now, given the desired number of connections $\kappa$ (sparsity level), one can use a greedy approach (\eg sorting) to find important connections using the sensitivity score defined in~\Eqref{eq:sens}.
+%Then the sparsity mask $\rvc$ can be set accordingly.
+%Our complete algorithm is given in~\Algref{alg:prune}.
+
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\SKIP{
+Suppose $f(\cdot; \rvw)$ a neural network $f: \sR^{\text{in}} \rightarrow \sR^{\text{out}}$ parametrized by $\rvw \in \sR^{n}$.
+Given a dataset $\mathcal{D}$ of inputs $\rvx$ and corresponding labels $\rvy$ and a loss function $\mathcal{L}$, the objective in a supervised learning setting is to find the optimal weights $\rvx^{*}$ that minimize the empirical risk:
+\begin{equation}
+    \rvw^{*} = \argmin_{\rvw} \mathcal{L}\big(f(\rvx ; \rvw), \rvy\big),
+\end{equation}
+which is often solved by gradient descent optimization algorithms.
+Since the number of parameters or weights (\ie $n$) in modern deep networks can be considerably large, it typically requires a large memory space as well as computation time during both training and inference phases.
+
+In network pruning, it is hypothesized that a network is often highly overparametrized and there are unimportant parameters that can be eliminated; by pruning redundant parameters (or connections), it will save memory space and computation time, simplify the model and improve generalization.
+Assuming that parameters (or weights $\rvw$) have some importance scores $\mathcal{I}(\rvw)$, those considered unimportance based on some criteria are simply set to be $0$ to be pruned.
+Then, the important question is how to define the importance function $\mathcal{I}(\cdot)$.
+
+
+\subsection{Standard approaches}
+\label{sec:standard}
+
+The majority of pruning works take the magnitude of weights as the importance measure: remove weights that are below a certain threshold (\ie $\rvw_i = 0$ if $\rvw_i < \eta$).
+The idea behind is that lower valued weights will transmit less meaningful information than higher valued ones; thus the formers are less important and may be pruned.
+This approach turns out to work quite well, however, it is highly heuristic and has several disadvantages.
+Depending on the learning policy (\eg learning rate) and/or architectural choices (\eg normalization layer), for example, the weights to be pruned can vary exceedingly.
+Related to this, the magnitude based pruning needs to be performed arbitrary number of times (typically many), which brings into questions the reliability of criterion.
+
+In this work, we take a different approach to standard network pruning.
+The basic idea is to use some gradient information to determine the importance of network parameters.
+Since gradients indicate the rate of changes in some quantities with respect to some other changes, it is reasonable to view connections causing less changes as relatively less important than the others.
+
+Not surprisingly, early pruning works suggested to use the second order gradient information for network pruning (OBD and OBS from \cite{lecun1990optimal} and \cite{hassibi1993optimal} respectively).
+Starting from the functional Taylor series of the loss with respect to weights,
+\begin{equation}
+    \delta L = (\frac{\partial L}{\partial \rvw})^\mathsf{T} \cdot \delta \rvw + \frac{1}{2} \delta \rvw^\mathsf{T} \cdot \rmH \cdot \delta \rvw + \mathcal{O}(||\delta\rvw ||^{3})
+    \label{eq:error-taylor}
+\end{equation}
+where $\rmH \equiv \partial^{2}L/\partial\rvw^{2}$ is the Hessian matrix containing all second order derivatives, the goal is to find a set of parameters that cause the least increase of loss $L$ when removed.
+By assuming the network is converged to a (local) minima and ignoring the third and higher order terms, all terms except for the second term in Eq.~\ref{eq:error-taylor} vanish.
+Depending on whether to consider only diagonal or all elements in $\rmH$, this eventually leads OBD and OBS to the solutions of $\rvw^{2}_{i}\rmH_{ii}/2$ and ${\rvw^{2}_{i}}/{2\rmH^{-1}_{ii}}$ respectively for $\mathcal{I}(\rvw_i)$.
+Although more principled in theory than the magnitude based approach, several assumptions made in this approach make it infeasible to be employed in practice;
+Hessian matrix is neither diagonal or positive definite, approximate at best and expensive to compute; \eg OBS re-computes the inverse Hessian every time a single weight is removed.
+
+
+\subsection{Proposed approach}
+
+Let us introduce auxiliary varibles $\rvc \in \sR^{n}$ representing the connectivity of neural connections in the network and construct a new neural network $g$ by the Hadamard product with the network parameters $\rvw$.
+With $\rvc$ becoming sparse and binary, \ie $\rvc: \rvc_i \in \{0, 1\}$ by $\mathcal{I}(\rvw_i)$ for all $i=1,..,n$, the objective can be newly formulated as solving a constrained optimization problem as the following:
+\begin{equation}
+    \begin{aligned}
+        & \underset{\rvc, \rvw}{\text{minimize}} & & \mathcal{L}\big( g(\rvx; \rvc \odot \rvw), \rvy \big) \\
+        & \text{subject to} & & \rvc \in \{0, 1\}^{n}.
+    \end{aligned}
+\end{equation}
+Treating $\rvc$ as hyperparameters formualtes a nested optimization problem, however, it becomes quickly prohibitive to solve directly as the number of hyperparmeters grows (\cite{hazan2017hyperparameter}).
+
+Instead, we suggest an alternative based on perturbing the connectivity parameters and measure the sensitivity of connections.
+The idea is that if a connection is highly responsive or relatively more responsive to some changes than others, it means to be structurally important thus should survive from pruning.
+Recently, similar ideas were presented for other purposes; using influence functions to understand model behavior by \cite{koh2017understanding} and re-weighting noisy and unbalanced examples by \cite{ren2018learning} to name a few.
+Here, we use the simliar idea for network pruning.
+Also we directly perturb the network's internal parameters rather than inputs/outputs to/from the network.
+
+Consider taking the analytical gradients of the loss from the network $g$ with respect to $\rvc$:
+\begin{equation}
+    \begin{aligned}
+        \nabla_{\rvc} L_g = \frac{\partial L_g}{\partial \rvc} & = \lim_{\delta \to 0} \frac{\mathcal{L}\big( g(\cdot; (\rvc + \delta) \odot \rvw) \big) - \mathcal{L}\big(g(\cdot; \rvc \odot \rvw)\big)}{\delta} \\
+        & = \lim_{\delta \to 0} \frac{\mathcal{L}\big( g(\cdot; \rvc \odot \rvw + \delta \odot \rvw) \big) - \mathcal{L}\big(g(\cdot; \rvc \odot \rvw)\big)}{\delta},
+    \end{aligned}
+    \label{eq:grad-wrt-c}
+\end{equation}
+where we omit $\rvx$ and $\rvy$ in the loss function $\mathcal{L}$ to remove notational clutters.
+In essence, this measures the rate of change in the loss when each connection or parameter is perturbed by $\delta \rvw_i$.
+By taking only the magnitude of this gradients and normalizing them, we define new importance function:
+\begin{equation}
+    \mathcal{I}(\rvw_i) \coloneqq \frac{\big| \frac{\partial L_g}{\partial \rvc_i} \big|}{\sum_{i} \big| \frac{\partial L_g}{\partial \rvc_i} \big|},
+    \label{eq:importance-func}
+\end{equation}
+which means that the importance of a network connection is relatievely defined by how large the perturbation makes an impact to the network thereby how important the connection is.
+The sparse and binary mask $\rvc$ is created by sorting the weights based on their importance scores using Eq.~\ref{eq:importance-func} and binarize them given a sparsity level $\kappa$. 
+
+%\textbf{Comparison to regular gradients}.
+\textbf{Single-shot purning at cold start}.
+Recall that in Hessian based approaches, the first order gradients are set to be zeros (the first term in Eq.~\ref{eq:error-taylor}) assuming that the network is trained to a local minimum in error.
+This condition demands the requirement that the network needs to be pre-trained, which is why in most cases pruning has been done as a post-processing after training the reference network.
+A few works attempted to perform pruning without pre-training or during training, however, magnitude-based importance scores can be highly disorienting and susceptible to erroneous pruning if computed before the weights reach to its optimal (if it can) or there are architectural matters as pointed out earlier in Sec.~\ref{sec:standard}.
+Note that in practice a moderately large network will hardly produce zero loss.
+
+However, we are interested in pruning a network without pre-training and only once.
+To find out why our importance function in Eq.~\ref{eq:importance-func} allow us to achieve this goal, let us compare $\nabla_{\rvc} L_g$ in Eq.~\ref{eq:grad-wrt-c} with the analytical gradients of the standard network $f$ in the following,
+\begin{equation}
+    \nabla_{\rvw} L_f = \frac{\partial L_f}{\partial \rvw} = \lim_{\delta \to 0} \frac{\mathcal{L}\big( g(\cdot; \rvw + \delta) \big) - \mathcal{L}\big(g(\cdot; \rvw)\big)}{\delta}. \\
+    \label{eq:grad-wrt-w}
+\end{equation}
+At first, as opposed to $\nabla_{\rvc} L_g$, $\nabla_{\rvw} L_f$ in Eq.~\ref{eq:grad-wrt-w} measures the rate of change in loss by the same perturbation $\delta$ in isolation from the current weight $\rvw$.
+In other words, it is not desirable to take $\nabla_{\rvw} L_f$ as the importance measure since weights (regardless of whether they are optimal) are not evenly distributed in scale with respect to $\delta$.
+Conversely, notice that $\nabla_{\rvc} L_g$ does not limit the weights to be optimal or pre-trained because the perturbation $\delta$ is scaled proportionally to the current weghts $\rvw$.
+This means that the importance scores can be computed regardless of $\rvw$ optimality, which further allows us to measure the importance of network weights even at random initialization.
+Without no architectural restrictions made so far, this leads us to the following pruning scheme: given a neural network (model agnostic), we prune the architecture only once (single-shot) before any procedures using the perturbation gradients computed from the randomly initialized network (cold gradient) and begin training the sparsified network as normal training.
+%In short, we prune only once (single-shot) using the perturbation gradients computed from randomly initialized network (cold gradients) and begin the training as nomal.
+
+\textbf{Accumulate gradients over multiple mini-batches}.
+
+\textbf{Algorithm table}.
+
+\clearpage
+}

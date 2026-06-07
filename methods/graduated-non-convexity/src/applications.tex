@@ -1,0 +1,266 @@
+%!TEX root = main.tex
+
+\section{Applications and Experiments}
+\label{sec:applications}
+
+\isExtended{This section shows that the proposed robust non-minimal solvers 
+are robust to {70-80\%} outliers, 
+%across applications, 
+outperform \ransac, 
+are more accurate than specialized \emph{local} solvers, and 
+faster than specialized \emph{global} solvers. 
+ We showcase our approach in 
+% outperform general-purpose methods, 
+% such as \ransac, and are much faster or more robust than specialized techniques, across 
+three spatial perception applications: point and mesh registration (Section~\ref{sec:REG}),
+ pose graph optimization (Section~\ref{sec:PGO}), and 
+ shape alignment (Section~\ref{sec:SA}).}
+ {
+We showcase our robust non-minimal solvers in 
+% outperform general-purpose methods, 
+% such as \ransac, and are much faster or more robust than specialized techniques, across 
+three spatial perception applications: point cloud and mesh registration (Section~\ref{sec:REG}),
+ pose graph optimization (Section~\ref{sec:PGO}), and 
+ shape alignment (Section~\ref{sec:SA}).
+ }
+% The proposed solvers are fast and general-purpose, are robust to at least \red{70-80\%} of outliers, are superior and more broadly applicable than existing general-purpose methods (\eg{ }\ransac), \red{and perform {comparably to specialized methods.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{3D Point Cloud and Mesh Registration}
+\label{sec:REG}
+
+\myParagraph{Setup} In generalized 3D registration, given a set of 3D points 
+$\va_i \in \Real{3}$, $i=1,\ldots,N$, 
+%$\{\va_i\}_{i=1}^N, \va_i \in \Real{3}$ 
+and a set of primitives $\MP_i$, $i=1,\ldots,N$ 
+%$\{P_i\}_{i=1}$ 
+(being points, lines and/or planes) with putative correspondences 
+$\va_i \leftrightarrow \MP_i$ (potentially including outliers), 
+the goal is to find the best 
+%pose $\vxx \in \SEthree \doteq \{(\MR,\vt)|\MR \in \SOthree, \vt \in \Real{3}\}$ 
+rotation $\MR \in \SOthree$ and translation $\vt \in \Real{3}$
+that align the point cloud to the 3D primitives. The residual error is 
+$r(\MR,\vt) = d(\MP_i,\MR \va_i + \vt)$, 
+% $r((\va_i,P_i),(\MR,\vt)) = d_{\MOmega_i}(P_i,\MR \va_i + \vt)$, 
+where $d(\cdot)$ denotes the distance between a primitive $\MP_i$ and a 
+point $\va_i$ after the transformation $(\vt,\MR)$ is applied. 
+The formulation can also accommodate weighted distances to account for heterogeneous and anisotropic measurement noise. 
+%across the points.
+% For instance, 
+% which denotes the normalized (shortest) distance from the primitive $P_i$ to the point $\va_i$ after transformation, where $\MOmega_i$ is the information matrix describing the noise distribution of the $i$-th measurement. For example, if $P_i = \vb_i$ is a point primitive, then the distance is the Euclidean distance $d_{\MOmega_i}(\vb_i,\MR \va_i + \vt) = \| \vb_i - \MR \va_i - \vt \|_{\MOmega_i}$. 
+In the outlier-free case, Horn's method~\cite{Horn87josa} gives a closed-form solution when all the 3D primitives are points and the noise is isotropic, and~\cite{Briales17cvpr-registration} develops a certifiably optimal relaxation when the 3D primitives include points, lines, and planes and the noise is anisotropic. 
+We now show that, using the \GNCGM and \GNCTLS solvers,
+%the GNC algorithm with \GNCGM and \GNCTLS cost functions, 
+we can efficiently robustify these non-minimal solvers. 
+We benchmark our algorithms against state-of-the-art techniques in point cloud registration and mesh registration.
+% \vspace{-0mm}
+
+\input{fig-poseGraphOptimization}
+
+\myParagraph{Point Cloud Registration Results} We use the \bunny dataset from the Stanford 3D Scanning Repository~\cite{Curless96siggraph}. We first scale the \bunny point cloud to be inside a unit cube, and then \finalize{at each Monte Carlo run we} apply a random rotation and translation to get a transformed copy of the \bunny. $N=100$ correspondences are randomly chosen, where we add zero-mean Gaussian noise with standard deviation $\sigma=0.01$ to the inliers, while corrupt the outliers with randomly generated points as in~\cite{Yang19rss-teaser}. We benchmark the performance of \GNCGM and \GNCTLS against (i) \ransac with \revise{1000} maximum iterations~\finalize{and $99\%$ confidence} using Horn's 3-point minimal solver~\cite{Horn87josa},\revise{~plus refinement using the maximum consensus set of inliers,} (ii) \adapt~\cite{Tzoumas19iros-outliers}, and (iii) \TEASER~\cite{Yang19rss-teaser}. % under $10$-$95\%$ outlier rates. 
+% \footnote{\revise{The expected number of iterations for \ransac is $p=\omega^{-d}$~\cite{Fischler81}, where $\omega$ is the inlier ratio and $d=3$ is the number of points used in the minimal solver. When $\omega=20\%$ (outlier ratio $80\%$), $p=125$, and when $\omega=10\%$ (outlier ratio $90\%$), $p=1000$.}}
+
+Fig.~\ref{fig:pointCloudRegistration} reports the statistics for $60\%$-$95\%$ outlier rates (all methods work well below $60\%$). 
+ % under 20 Monte Carlo runs . 
+ Fig.~\ref{fig:pointCloudRegistration}(a)-(b) show the rotation and translation errors for increasing outliers. 
+\revise{\ransac, \GNCGM, \GNCTLS, and \adapt all break at 90\% outliers and achieve similar estimation accuracy at outlier ratio below 90\%.} 
+\TEASER is a specialized robust \emph{global} solver and outperforms all other techniques; 
+ unfortunately, it currently does not scale to large problem instances\revise{~(>5min runtime)} and does not extend to other registration problems (\eg mesh registration); \revise{Fig.~\ref{fig:pointCloudRegistration}(c) plots the number of inner iterations 
+  used by \ransac, \GNCGM, \GNCTLS, and \adapt (\TEASER has no outlier iterations). With respect to the outlier rates, the number of iterations grows very fast for \ransac, grows linearly for \adapt and is almost constant for \GNCGM and \GNCTLS. At $80\%$ outliers, the average runtimes for \ransac, \GNCGM, and \GNCTLS are $218$, $22$ and $23$ms, respectively, showing that \GNC can be much faster than \ransac.}
+ % While \GNCGM, \GNCTLS, and \adapt achieve similar errors, 
+ % \GNCGM and \GNCTLS require roughly a constant number of iterations, while \adapt's iterations increase with the number of outliers as shown in Fig.~\ref{fig:pointCloudRegistration}(c). 
+ % Since these three techniques have a similar per-iteration complexity,  \GNCGM and \GNCTLS are remarkably 
+ % faster. % in practice. % for large outlier ratios.
+ % We omit time comparisons for this application, since \ransac is implemented in C++ and the other techniques are implemented in Matlab, making a fair comparison challenging\revise{~(all methods have <1 sec run time)}. 
+ % Note that \GNCGM is similar to the approach of 
+ %  we use a C++ implementation of \ransac 
+ % and a Matlab implementation of the other techniques, making timing
+% but cannot scale to large problem instances. 
+%  is not robust with a reasonable number of iterations
+%  Results show that the specialized solver \TEASER performs best in terms of accuracy and robustness (robust against 95\% outliers), while \adapt, \GNCGM and \GNCTLS break at 90\% outlier ratio (Fig.~\ref{fig:pointCloudRegistration} left and middle panels). \ransac is not robust with a reasonable number of iterations (higher than the number of iterations taken by \adapt, \GNCGM and \GNCTLS). With a fixed continuation factor, \GNCGM and \GNCTLS have constant time complexity, while \adapt has linear time complexity, as shown by Fig.~\ref{fig:pointCloudRegistration} right panel. 
+% specialized methods are best (TEASER)
+% RANSAC is not very robust with a reasonable number of iterations
+% GM, TSL and ADAPT have similar performance and break at 90\%
+% ADAPT iterations are larger than GNC iterations, because ...
+ For point cloud registration, \GNCGM is essentially the same as Fast Global Registration~\cite{Zhou16eccv-fastGlobalRegistration}, while below we show that the use of non-minimal solvers allows extending 
+ \GNC to other spatial perception applications.
+
+\myParagraph{Mesh Registration Results} We apply \GNCGM and \GNCTLS to register a point cloud to a mesh, 
+ using the non-minimal solver~\cite{Briales17cvpr-registration}. 
+ % to the registration of a point cloud to a mesh model, for which there is no specialized solver. 
+ We use the ``car-2'' mesh model from the \PASCALplus dataset~\cite{Xiang2014WACV-PASCAL+}. \finalize{At each Monte Carlo run}, we generate a point cloud from the mesh by randomly sampling points lying on the vertices, edges and faces of the mesh model, and then apply a random transformation and add Gaussian noise with $\sigma=0.05$. We establish 40 point-to-point, 80 point-to-line and 80 point-to-plane correspondences, and create outliers by adding 
+%where an outlier correspondences is generated by adding 
+ incorrect point to point/line/plane 
+correspondences (Fig.~\ref{fig:meshRegistration}{(d)}). 
+%
+We benchmark \GNCGM and \GNCTLS against (i) \ransac with 10,000 maximum iterations~\finalize{and $99\%$ confidence} using the 12-point minimal solver in~\cite{Khoshelham16jprs-ClosedformSolutionPlaneCorrespondences} and (ii) \adapt~\cite{Tzoumas19iros-outliers}. 
+
+Fig.~\ref{fig:meshRegistration}{(a)-(c)} show the errors and iterations for each technique. \GNCGM, \GNCTLS, and \adapt are robust against 80\% outliers, while \ransac breaks at 50\% outliers. The number of iterations of \adapt grows linearly with the number of outliers, while \GNCGM's and \GNCTLS's iterations remain constant. 
+% have fixed runtime. 
+Fig.~\ref{fig:meshRegistration}{(e)} shows a successful registration with \GNCTLS and 
+Fig.~\ref{fig:meshRegistration}{(f)} shows an incorrect registration from \ransac, 
+% failed registration by \ransac 
+both obtained in a test with 70\% outliers. 
+% this can be merged with previous section
+% no we do not have specialized methods..
+% same results as point cloud registration
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Pose Graph Optimization}
+\label{sec:PGO}
+
+% \LC{CSAIL middle figure not very visible,we might want to rearrange vertical grid}
+\myParagraph{Setup} \PGO is one of the most common estimation engines for SLAM~\cite{Cadena16tro-SLAMsurvey}. 
+ \PGO estimates a set of poses $(\vt_i,\MR_i)$, $i=1,\ldots,n$ (typically sampled along the robot trajectory) 
+from pairwise relative pose measurements $(\tldvt_{ij},\tldMR_{ij})$ (potentially corrupted with outliers). 
+% \label{sec:exp_poseGraphOptimization}
+% In a directed graph $\calG = (\calV, \calE)$ where each vertex $i \in \calV$ represents an unknown pose $(\MR_i,\vt_i) \in \SE{d}$ and each edge $e = i \rightarrow j$ represents a pairwise noisy measurement $(\tldvt_{ij}, \tldMR_{ij})$ (potentially outliers), pose graph optimization (\PGO) seeks to estimate the unknown poses given corrupted measurements. 
+The residual error is the distance 
+between the expected relative pose and the measured one: 
+\bea
+% r(\MR_i,\MR_j,\vt_i,\vt_j)) 
+r(\{\MR_i,\vt_i\}) \!
+= \!\sqrt{\kappa_{ij} \| \MR_j - \MR_i \tldMR_{ij} \|_F^2 + \tau_{ij} \| \vt_j - \vt_i - \MR_i \tldvt_{ij} \|^2_2},
+\nonumber
+\eea 
+where $\kappa_{ij}$ and $\tau_{ij}$ are known parameters describing the measurement noise distribution, 
+and $\|\cdot\|_F$ denotes the Frobenious norm. \sesync~\cite{Rosen18ijrr-sesync} 
+ is a fast non-minimal solver for \PGO.
+% provides the global certifiably optimal solution to \PGO.
+
+\myParagraph{PGO Results} 
+We test \GNCGM and \GNCTLS on two standard benchmarking datasets: \intel and \csail, described in~\cite{Rosen18ijrr-sesync}. In each dataset, we preserve the odometry measurements, but~\finalize{at each Monte Carlo run} we spoil loop closures with random outliers. 
+To create outliers, we sample random pairs of poses and add a random measurement between them.
+We benchmark \GNCGM and \GNCTLS against (i) \gtwoo~\cite{Kuemmerle11icra}, 
+(ii) \emph{dynamic covariance scaling} (\dcs)~\cite{Agarwal13icra}, 
+(iii) \emph{pairwise consistent measurement set maximization} (\pcm)~\cite{Mangelson18icra}, 
+and (iv) \adapt~\cite{Tzoumas19iros-outliers}.
+ % with 10,000 maximum iterations using the 12-point minimal solver i
+\dcs and \pcm are fairly sensitive to the choice of parameters: 
+% : 
+%  \dcs requires tuning a parameter $\Phi$, 
+%  % (default is $\Phi=1$~\cite{Agarwal13icra}), 
+%  while $\pcm$ requires tuning a threshold we call $\tau$.
+  we tested parameters $\Phi =\{1,10,100\}$ for \dcs, and thresholds $\tau = \{5\%,10\%,15\%\}$ for \pcm, 
+  and, for the sake of clarity, we only reported the choice of parameters ensuring the best performance.
+
+Fig.~\ref{fig:PGO}(a) shows the average trajectory errors for the \intel dataset. 
+\gtwoo is not a robust solver and performs poorly across the spectrum. 
+\dcs and \pcm are specialized robust local solvers, 
+% are designed to filter out outliers, 
+but their errors gradually increase with the percentage 
+of outliers. 
+% 1.4
+\GNCGM, \GNCTLS, and \adapt are insensitive to up to $40\%$ outliers and preserve an acceptable performance 
+till $70-80\%$ of outliers; 
+% , while their errors slowly increase 
+%  for higher outlier rates; 
+ \GNCTLS dominates the others. 
+ Fig.~\ref{fig:PGO}(b) reports the results on the \csail dataset. Also in this case, 
+  % \GNCGM, \GNCTLS, and \adapt perform well till $40\%$ outliers, and
+ \GNCTLS dominates the other techniques and is robust to 90\% outliers. 
+ %The results are qualitatively similar to \intel () These results are confirms th
+Fig.~\ref{fig:PGO}(c) reports the CPU times required by the techniques to produce a solution on \csail; 
+in this case, all techniques are implemented in C++. 
+ % we report the CPU times since all techniques are implemented in C++. 
+\isExtended{While \adapt becomes impractical for problem with many outliers, 
+\GNCTLS is fast and requires a time comparable to \dcs and \pcm, while affording improved robustness.}
+% while it largely outperforms specialized solvers such as \dcs and \pcm.
+% Fig (a) and (b)
+% PCM and DCS: we pick the best parameters among ....
+% a bit more performance differences, with TLS being best
+% \LC{maybe time on log scale and only average time?}
+% Fig (c)
+% Similar to the case of 3D registration, we show that we can use \sesync under the hood of \GNCGM and \GNCTLS to achieve favorable robustness compared with state-of-the-art techniques.
+
+
+\input{fig-shapeAlignment}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{Shape Alignment}
+\label{sec:SA} %Image-based Object Pose Estimation}
+% \LC{this figure is too dense}
+%\label{sec:exp_shapeEstimation}
+
+\myParagraph{Setup} 
+% In image-based object pose estimation (or \emph{shape alignment}),
+In shape alignment, given 2D features $\vz_i \in \Real{2}, i=1,\ldots,N$, on a single image and 3D points $\MB_i \in \Real{3}, i=1,\ldots,N$,
+% $\{\MB_i\}_{i=1}^N,\MB_i \in \Real{3}$ 
+% of an object with putative correspondences $\vz_i \leftrightarrow \MB_i$ (potentially including outliers), the goal is to find the best scale $s >0$, rotation and translation $\vxx \in \{(s,\MR,\vt) | s >0, \MR \in \SOthree, \vt \in \Real{2} \}$ that projects the 3D shape to the 2D image under orthographic projection. The residual function is $r((\vz_i,\MB_i),(s,\MR,\vt)) = \| \vz_i - s\Pi\MR \MB_i - \vt \|_{\MOmega_i}$, where $\Pi \in \Real{2 \times 3}$ is the orthographic projection matrix by taking the first two rows of a $3 \times 3$ identity matrix and $\MOmega_i$ is the information matrix for the $i$-th measurement. When the depth of the 3D object itself is much smaller compared to the depth of the object in the camera frame, the scale $s$ is approximately the inverse of the depth of the object in the camera frame. Therefore, we use $\MT = [\vt\tran, 1/s]\tran \in \Real{3}$ to approximate the 3D translation of the object.
+of an object with putative correspondences $\vz_i \leftrightarrow \MB_i$ (potentially including outliers), the goal is to find the best scale $s >0$, rotation $\MR$, and translation $\vt$ of the object, %such that the points $\MR_i$ project onto the features $\vz_i$
+ that projects the 3D shape to the 2D image under weak perspective projection. The residual function is $r(s,\MR,\vt) = \| \vz_i - s\Pi\MR \MB_i - \vt \|$, where $\Pi \in \Real{2 \times 3}$ is the weak perspective projection matrix (equal to the first two rows of a $3\!\times\!3$ identity matrix). %, and $\MOmega_i$ is the information matrix for the $i$-th measurement. 
+ Note that $\vt$ is a 2D translation, but under weak perspective projection one can extrapolate a 3D translation 
+ (\ie recover the distance of the camera to the object) using the scale $s$. 
+ % and compute its 3D position.
+ %approximate 
+ % When the depth of the 3D object itself is much smaller compared to the depth of the object in the camera frame, the scale $s$ is approximately the inverse of the depth of the object in the camera frame. Therefore, we use $\MT = [\vt\tran, 1/s]\tran \in \Real{3}$ to approximate the 3D translation of the object.
+
+\myParagraph{A Non-minimal Solver for Shape Alignment} 
+ The literature is missing a global solver for shape alignment, even in the outlier-free case. Therefore, we start by proposing a 
+ non-minimal solver for (weighted) outlier-free shape alignment: % problem: 
+ % To this end, let $\MOmega_i = (1/\sigma_i^2) \eye_2$, where we assume the $i$-th measurement noise follows isotropic Gaussian distribution with standard deviation $\sigma_i$, then the outlier-free (weighted) shape alignment problem is:
+\begin{equation} \label{eq:shapeAlignment}
+\min_{s>0, \MR \in \SOthree, \vt \in \Real{2}} \textstyle{\sumAllPointsi} w_i \| \vz_i - s\Pi\MR \MB_i - \vt \|^2, %\tag{\shape}.
+\end{equation}
+where $w_i$ are constant weights.
+The next proposition states that the global minimizer of problem~\eqref{eq:shapeAlignment} can be obtained by solving a quaternion-based unconstrained optimization.
+
+\begin{proposition}[Quaternion-based Shape Alignment] \label{prop:quaternionRotationShapeAlignment}
+Define the non-unit quaternion $\vv \doteq \sqrt{s}\vq \in \Real{4}$, where $\vq$ is the unit-quaternion corresponding to $\MR$ and $s$ is the unknown scale.
+ Moreover, if $\vv = [v_1, v_2, v_3, v_4]\tran$, define $[\vv]_2 \doteq [v_1^2,v_2^2,v_3^2,v_4^2,v_1v_2,v_1v_3,v_1v_4,v_2v_3,v_2v_4,v_3v_4]\tran \in \Real{10}$ as the vector of degree-2 monomials in $\vv$.
+  Then the globally optimal solutions ($s^\star, \MR^\star, \vt^\star$) of problem~\eqref{eq:shapeAlignment} can be obtained from the  solution $\vv^\star$ of the following optimization:
+\begin{equation} \label{eq:quaternionRotationShapeAlignment}
+\min_{\vv \in \Real{4}} f(\vv) \doteq [\vv]_2\tran \MQ [\vv]_2 - 2 \vg\tran [\vv]_2 + h, %\tag{\qShape}
+\end{equation}
+where $\MQ \in \Real{10\times10}$, $\vg \in\Real{10}$, and $h>0$ are known quantities, whose expression is given in the supplementary material~\cite{Yang20tr-GNC}.
+% In particular, ($s^\star, \MR^\star, \vt^\star$) can be computed from $\vv^\star$ as:
+% \bea
+% \begin{cases}
+% s^\star = \| \vv^\star \|^2 \\
+% \MR^\star = \calR \left( \frac{\vv^\star}{\| \vv^\star \|} \right) \doteq \emph{\text{mat}} \left( \MA \left[\frac{\vv^\star}{\| \vv^\star \|}\right]^2 \right)\\
+% \vt^\star = \barvz_{w} - s^\star \Pi \MR^\star \barMB_{w}
+% \end{cases},
+% \eea
+% where $\calR(\cdot)$ converts a unit-quaternion to a rotation matrix by multiplying the constant matrix $\MA \in \Real{9 \times 10}$ with the degree-2 monomials of $\vv^\star /\| \vv^\star \|$ and converting the product to a matrix; %$\zeta_i \doteq w_i / \sigma_i^2$
+%  and $\barvz_{\zeta} \doteq (\sumAllPointsi w_i \vz_i)/(\sumAllPointsi w_i)$, $\barMB_{\zeta} \doteq (\sumAllPointsi w_i \MB_i)/(\sumAllPointsi w_i)$ are the weighted centroids of the 2D features and 3D points. In problem~\eqref{eq:quaternionRotationShapeAlignment}, $\MQ \in \Real{10\times10}$, $\vg \in \Real{10}$ and $h \in \Real{}$ are calculated by:
+% \bea
+% \begin{cases}
+% \MQ = \MA\tran \left( \sumAllPointsi  \tldMB_i \tldMB_i\tran \kron \Pi\tran \Pi \right) \MA \\
+% \vg = \MA\tran \left( \sumAllPointsi \vectorize{\Pi\tran \tldvz_i \tldMB_i\tran} \right) \\
+% h = \sumAllPointsi \| \tldvz_i \|^2
+% \end{cases},
+% \eea
+% where $\tldvz_i = \sqrt{\zeta_i}(\vz_i - \barvz_{\zeta})$ and $\tldMB_i = \sqrt{\zeta_i} (\MB_i - \barMB_{\zeta})$.
+\end{proposition}
+
+Problem~\eqref{eq:quaternionRotationShapeAlignment} requires minimizing  a degree-4 polynomial $f(\vv)$ in 4 variables; 
+to this end, we apply SOS relaxation and relax~\eqref{eq:quaternionRotationShapeAlignment} to the following SOS optimization:
+\bea \label{eq:sosqShapeAlign}
+\min_{ \vv \in \Real{4}, \gamma \in \Real{} }  & -\gamma \quad , \quad \text{s.t.}\quad f(\vv) - \gamma \text{ is SOS},
+\eea
+which can be readily converted to an SDP and solved with certifiable optimality~\cite{Blekherman12Book-sdpandConvexAlgebraicGeometry}. We use the \gPoly~\cite{henrion2009optimmethodsoftw-gloptipoly3} package in Matlab to solve problem~\eqref{eq:sosqShapeAlign} and found that empirically the relaxation is always exact. 
+ Solving the SDP takes about 80 ms on a desktop computer.
+
+% Define $\zeta_i = w_i / \sigma_i^2$ as the scaled $i$-th weight, and $\barvz_{\zeta} = (\sumAllPointsi \zeta_i \vz_i)/(\sumAllPointsi \zeta_i)$, $\barMB_{\zeta} = (\sumAllPointsi \zeta_i \MB_i)/(\sumAllPointsi \zeta_i)$ as the scaled weighted center of 2D landmarks and 3D keypoints, then the optimal translation can be solved in closed form:
+% \bea \label{eq:shapeAlignmentSolutiont}
+% \vt^\star = \barvz_{\zeta} - s^\star \Pi \MR^\star \barMB_{\zeta}
+% \eea
+% and $s^\star$ and $\MR^\star$ are solutions to the following rotation-only optimization:
+% \begin{equation} \label{eq:rotationShapeAlignment}
+% \min_{s>0, \MR \in \SOthree} \sumAllPointsi \| \tldvz_i - s\Pi\MR \tldMB_i \|^2, \tag{\RShape}
+% \end{equation}
+% where $\tldvz_i = \sqrt{\zeta_i}(\vz_i - \barvz_{\zeta})$ and $\tldMB_i = \sqrt{\zeta_i} (\MB_i - \barMB_{\zeta})$. To globally solve problem~\eqref{eq:rotationShapeAlignment}, we first show that it can be converted to an unconstrained optimization in \emph{non-unit quaternion}. 
+
+\myParagraph{Shape Alignment Results} 
+We test the performance of \GNCGM and \GNCTLS, together with our SOS solver on the \FGCar dataset~\cite{Lin14eccv-modelFitting}, where we use the ground-truth 3D shape model as $\MB$ and the ground-truth 2D landmarks as $\vz$. 
+To generate outliers~\finalize{for each image}, we set random incorrect correspondences between 3D points and 2D features. % (Fig.~\ref{fig:shapeAlignment}(b)). 
+We benchmark \GNCGM and \GNCTLS against (i) Zhou's method~\cite{Zhou17pami-shapeEstimationConvex}, (ii) \ransac with 100 maximum iterations~\finalize{and $99\%$ confidence} using a 4-point minimal solver (we use our SOS solver as minimal solver), and (iii) \adapt~\cite{Tzoumas19iros-outliers}. 
+% Fig~\ref{fig:shapeAlignment}(a) shows the statistics in 20 Monte Carlo runs. The performance of Zhou's methods degrades quickly with increasing outlier rates and \ransac breaks at 60\% outlier rate, even with higher number of iterations than \GNC. \GNCGM, \GNCTLS and \adapt are robust against 70\% outlier ratio, while \GNCGM and \GNCTLS have constant running time.
+% \input{fig-mainExperiments}
+
+Fig~\ref{fig:shapeAlignment}(a)-(c) show translation errors, rotation errors, and number of iterations for all compared techniques. 
+ Statistics are computed over all 600 images in the \FGCar dataset. The performance of Zhou's method degrades quickly with increasing outliers.
+  \ransac breaks at 60\% outliers. %, even with higher number of iterations than \GNC. 
+  \GNCGM, \GNCTLS, and \adapt are robust against 70\% outliers, while \GNCGM and \GNCTLS require a roughly constant number of iterations. %running time.
+  Qualitative results for \GNCGM, \ransac, and Zhou's approach are given in Fig.~\ref{fig:shapeAlignment}(d)-(f), respectively.

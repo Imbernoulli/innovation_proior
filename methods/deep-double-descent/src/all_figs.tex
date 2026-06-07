@@ -1,0 +1,64 @@
+\documentclass{article} % For LaTeX2e
+%\usepackage{iclr2020_conference,times}
+
+\input{math_commands.tex}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{style}
+\usepackage{tikz}
+\usepackage{fullpage}
+
+\title{All Auto-figures}
+\date{}
+
+\begin{document}
+\maketitle
+
+\foreach \fname in {%
+{cifar10-mcnn-noaug-adam_0_dyn},
+{cifar10-mcnn-noaug-adam_0_ocean},
+{cifar10-mcnn-noaug-adam_1_dyn},
+{cifar10-mcnn-noaug-adam_1_ocean},
+{cifar10-mcnn-noaug-adam_2_dyn},
+{cifar10-mcnn-noaug-adam_2_mdd},
+{cifar10-mcnn-noaug-adam_2_ocean},
+{cifar10-mcnn-p10-sgd_0_dyn},
+{cifar10-mcnn-p10-sgd_0_ocean},
+{cifar10-mcnn-p10-sgd_1_dyn},
+{cifar10-mcnn-p10-sgd_1_ocean},
+{cifar10-mcnn-p10-sgd_2_dyn},
+{cifar10-mcnn-p10-sgd_2_mdd},
+{cifar10-mcnn-p10-sgd_2_ocean},
+{cifar10-mcnn-p20-sgd_0_dyn},
+{cifar10-mcnn-p20-sgd_0_ocean},
+{cifar10-mcnn-p20-sgd_1_dyn},
+{cifar10-mcnn-p20-sgd_1_ocean},
+{cifar10-mcnn-p20-sgd_2_dyn},
+{cifar10-mcnn-p20-sgd_2_mdd},
+{cifar10-mcnn-p20-sgd_2_ocean},
+{cifar10-resnet18k-50k-adam_0_dyn},
+{cifar10-resnet18k-50k-adam_0_ocean},
+{cifar10-resnet18k-50k-adam_1_dyn},
+{cifar10-resnet18k-50k-adam_1_ocean},
+{cifar10-resnet18k-50k-adam_2_dyn},
+{cifar10-resnet18k-50k-adam_2_mdd},
+{cifar10-resnet18k-50k-adam_2_ocean},
+{cifar100-resnet18k-50k-adam_0_dyn},
+{cifar100-resnet18k-50k-adam_0_ocean},
+{cifar100-resnet18k-50k-adam_1_dyn},
+{cifar100-resnet18k-50k-adam_1_ocean},
+{cifar100-resnet18k-50k-adam_2_dyn},
+{cifar100-resnet18k-50k-adam_2_mdd},
+{cifar100-resnet18k-50k-adam_2_ocean}}
+{
+    \begin{figure}[h]
+        \centering
+        \includegraphics[width=\textwidth]{auto_figs/\fname}
+        %\caption{\begin{verbatim}\fname\end{verbatim}}
+    \end{figure}
+}
+
+\end{document}

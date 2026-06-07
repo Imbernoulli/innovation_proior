@@ -1,0 +1,29 @@
+\section*{Appendix: Details of SENet-154} \label{app:senet154}
+
+SENet-154 is constructed by incorporating SE blocks into a modified version of the 64$\times$4d ResNeXt-152 which extends the original ResNeXt-101 \cite{xie_cvpr2017resnext} by adopting the block stacking strategy of ResNet-152 \cite{he_cvpr2016resnet}. Further differences to the design and training of this model (beyond the use of SE blocks) are as follows:
+(a) The number of the first $1\times1$ convolutional channels for each bottleneck building block was halved to reduce the computational cost of the model with a minimal decrease in performance.
+(b) The first $7\times7$ convolutional layer was replaced with three consecutive $3\times3$ convolutional layers.
+(c) The $1\times1$ down-sampling projection with stride-$2$ convolution was replaced with a $3\times3$ stride-$2$ convolution to preserve information.
+(d) A dropout layer (with a dropout ratio of $0.2$) was inserted before the classification layer to reduce overfitting.
+(e) Label-smoothing regularisation (as introduced in \cite{szegedy_cvpr2016inceptionv3}) was used during training.
+(f) The parameters of all BN layers were frozen for the last few training epochs to ensure consistency between training and testing.
+(g) Training was performed with 8 servers (64 GPUs) in parallel to enable large batch sizes (2048).  The initial learning rate was set to $1.0$.
+
+\begin{figure}[t]
+\begin{center}
+\subfigure[goldfish]{\includegraphics[height=16mm]{figures/goldfish.JPEG}}  \hspace{0.5mm}
+\subfigure[pug]{\includegraphics[height=16mm]{figures/pug.JPEG}} 
+    \hspace{0.5mm}
+\subfigure[plane]{\includegraphics[height=16mm]{figures/plane.JPEG}} 
+    \hspace{0.5mm}
+\subfigure[cliff]{\includegraphics[height=16mm]{figures/cliff.JPEG}}
+    \hspace{0.5mm}
+\end{center}
+\vspace{-1.5em}
+\caption{Sample images from the four classes of ImageNet used in the experiments described in Sec.~7.2.%~\ref{subsection:role-of-excitation}.
+}
+\label{fig:sample-ims}
+\end{figure}
+
+
+

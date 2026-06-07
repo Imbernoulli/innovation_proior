@@ -1,0 +1,265 @@
+\section{Ablations}
+
+% , we use a simplified version of the network presented in the Method section.
+% without multi-crop augmentations
+For all ablation studies, \AlgoName{} was trained for 300 epochs instead of 1000 epochs in the previous section. A linear evaluation on ImageNet of this baseline model yielded a $71.4\%$ top-1 accuracy and a $90.2\%$ top-5 accuracy. For all the ablations presented we report the top-1 and top-5 accuracy of training linear classifiers on the $2048$ dimensional \texttt{res5} features using the ImageNet train set.
+
+
+\paragraph{Loss Function Ablations} 
+We alter our loss function (eqn. \ref{eq:lossBarlow}) in several ways to test the necessity of each term of the loss function, and to experiment with different practices popular in other loss functions for SSL, such as \textsc{infoNCE}.  Table \ref{tab:abl-loss} recapitulates the different loss functions tested along with their results on a linear evaluation benchmark of Imagenet. First we find that removing the invariance term (on-diagonal term) or the redundancy reduction term (off-diagonal term) of our loss function leads to worse/collapsed solutions, as expected. We then study the effect of different normalization strategies. We first try to normalize the embeddings along the feature dimension so that they lie on the unit sphere, as it is common practice for losses measuring a cosine similarity \cite{chen2020simple,grill2020bootstrap,wang_understanding_2020}. Specifically, we first normalize the embeddings along the batch dimension (with mean subtraction), then normalize the embeddings along the feature dimension (without mean subtraction), and finally we measure the (unnormalized) covariance matrix instead of the (normalized) cross-correlation matrix in eqn. \ref{eq:crosscorr}. The performance is slightly reduced. Second, we try to remove batch-normalization operations in the two hidden layers of the projector network MLP. The performance is barely affected. Third, in addition to removing the batch-normalization in the hidden layers, we replace the cross-correlation matrix in eqn. \ref{eq:crosscorr} by the cross-covariance matrix (which means the features are no longer normalized along the batch dimension). The performance is substantially reduced. We finally try a cross-entropy loss with temperature, for which the on-diagonal term and off-diagonal term is controlled by a temperature hyperparameter $\tau$ and coefficient $\lambda$: 
+$\mathcal{L} = -\log\sum_i\exp(\mathcal{C}_{ii}/\tau) + \lambda \log\sum_i\sum_{j\neq i}\exp(\max(\mathcal{C}_{ij}, 0)/\tau)$. The performance is reduced.
+%In both cases, our method derives slightly lower accuracy. 
+%We experiment with removing \textsc{batchnorm} in the hidden layers of the MLP projector network (but not in the encoder ResNet backbone). We find that our method is robust and gets 71.3\% accuracy on ImageNet linear evaluation.
+
+%We then replace our simple linear loss function with the popular cosine loss or contrastive loss. Specifically, the cosine loss applies extra normalization to the representation on the channel dimension before calculating cross-correlation loss.
+%\IM{would not add torch notation here}
+%i.e. $z = \mathrm{torch.norm}(z, dim=1)$. 
+
+%\SD{I think that in the infoNCE loss, the sum over batch elements is taken before the log, see eqn in 5.1 and https://paperswithcode.com/method/infonce (expectation over batch elements appears before the log). Also this loss should not be called infoNCE because it is not computed on samples but on feature dimensions. Maybe cross-entropy something?} \IM{I agree, it is best to call this cross entropy loss with temperature}
+
+\begin{table}[ht]
+\caption{\textbf{Loss function explorations}. We ablate the invariance and redundancy terms in our proposed loss and observe that both terms are necessary for good performance. We also experiment with different normalization schemes and a cross-entropy loss and observe reduced performance.}
+\label{tab:abl-loss}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{l c c}
+\toprule
+Loss function & Top-$1$ & Top-$5$ \\
+\midrule
+    Baseline & 71.4 & 90.2 \\
+\midrule
+    Only invariance term (on-diag term)  & 57.3 & 80.5 \\ 
+    Only red. red. term (off-diag term)  & 0.1 & 0.5 \\
+    \midrule
+    Normalization along feature dim. & 69.8 & 88.8 \\
+    No BN in MLP & 71.2 & 89.7 \\
+    No BN in MLP + no Normalization & 53.4 & 76.7 \\
+    \midrule
+    Cross-entropy with temp. & 63.3 & 85.7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table}
+
+\paragraph{Robustness to Batch Size} 
+The \textsc{infoNCE} loss that draws negative examples from the minibatch suffer performance drops when the batch size is reduced (e.g. \textsc{SimCLR} \cite{chen2020simple}).  We thus sought to test the robustness of \AlgoName{} to small batch sizes. In order to adapt our model to different batch sizes, we performed a grid search on LARS learning rates for each batch size. We find that, unlike \textsc{SimCLR}, our model is robust to small batch sizes (Fig. \ref{fig:fig_batch}), with a performance almost unaffected for a batch as small as 256. In comparison the accuracy for SimCLR drops about $4$ p.p. for batch size 256. This robustness to small batch size, also found in non-contrastive methods such as \textsc{BYOL}, further demonstrates that our method is not only conceptually (see Discussion) but also empirically different than the \textsc{infoNCE} objective.
+%Smaller batch sizes prefers larger learning rates \JZ{This sentence is a bit confusing, since you are probably talking about the *base* learning rate, which is then multiplied by the batch size to get the actual learning rate. Since the actual learning rate is smaller for smaller batches (is it?) I would just drop this sentence}
+
+\begin{figure}[h!]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+\centerline{\includegraphics[width=8cm]{fig_batch2_rev.pdf}}
+\caption{Effect of batch size. To compare the effect of the batch size across methods, for each method we report the difference between the top-1 accuracy at a given batch size and the best obtained accuracy among all batch size tested. \textsc{BYOL}: best accuracy is 72.5\% for a batch size of 4096 (data from \cite{grill2020bootstrap}  fig. 3A). \textsc{SimCLR}: best accuracy is 67.1\% for a batch size of 4096 (data from \cite{chen2020simple} fig. 9, model trained for 300 epochs). \AlgoName{}: best accuracy is 71.7\% for a batch size of 1024.}
+\label{fig:fig_batch}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+\paragraph{Effect of Removing Augmentations} 
+We find that our model is not robust to removing some types of data augmentations, like \textsc{SimCLR} but unlike \textsc{BYOL} (Fig. \ref{fig:fig_augm}).  While this can be seen as a disadvantage of our method compared to \textsc{BYOL}, it can also be argued that the representations learned by our method are better controlled by the specific set of distortions used, as opposed to \textsc{BYOL} for which the invariances learned seem generic and intriguingly independent of the specific distortions used.
+%The behavior of \textsc{BYOL} is quite intriguing in its robustness to the removal of data augmentations.
+
+\begin{figure}[h!]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+\centerline{\includegraphics[width=8cm]{fig_augm.pdf}}
+\caption{Effect of progressively removing data augmentations. Data for \textsc{BYOL} and \textsc{SimCLR} (repro) is from \cite{grill2020bootstrap} fig 3b. }
+\label{fig:fig_augm}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+
+
+%\begin{table}[h!]
+%    \centering
+%    \begin{tabular}{ccc}
+%    \toprule
+%Batch Size & Top-$1$ & Top-$5$ \\
+%\midrule
+%256 & $70.7$ & $89.8$ \\
+%512 & $71.4$ & $90.2$ \\
+%1024 & $71.1$ & $89.8$ \\
+%2048 & $71.4$ & $90.2$ \\
+%4096 & $70.7$ & $89.3$ \\
+%\bottomrule
+%    \end{tabular}
+%    \caption{Effect of batch sizes.}
+%    \label{tab:abl-bs}
+%\end{table}
+
+%\begin{table}[h]
+%\centering
+%\begin{tabular}{l c c}
+%\toprule
+%Image augmentation & Top-$1$ & Top-$5$ \\
+%\midrule
+%Baseline & $71.2$ & $89.6$ \\
+%Remove flip & $71.4$ & $89.5$ \\
+%Remove blur & $68.5$ & $88.3$ \\
+%Remove color jittering and grayscale & $49.3$ & $73.5$ \\
+%Remove color jittering & $68.6$ & $88.3$ \\
+%Remove grayscale & $64.6$ & $85.5$ \\
+%Remove blur in $\mathcal T'$ & $71.3$ & $89.7$ \\
+%Remove solarize in $\mathcal T'$ & $71.0$ & $89.3$ \\
+%Remove blur and solarize in $\mathcal T'$ & $70.7$ & $89.5$ \\
+%Symmetric blurring/solarization & $71.0$ & $89.5$ \\
+%Crop only & $41.8$ & $66.3$ \\
+%Crop and flip only & $42.0$ & $66.6$ \\
+%Crop and color only & $68.0$ & $87.9$ \\
+%Crop and blur only & $47.8$ & $72.0$ \\
+%\bottomrule
+%\end{tabular}
+%\caption{Robustness to augmentations. @ PRELIMINARY RESULTS @ \SD{I should probably make this table a figure, with a comparison with SimCLR and BYOL. It seems that our method is *not* robust to augmentation removal, like SimCLR. Interesting...}}
+%\label{tbl:augmentations}
+%\end{table}
+
+
+\paragraph{Projector Network Depth \& Width} For other SSL methods, such as \textsc{BYOL} and \textsc{SimCLR}, the projector network drastically reduces the dimensionality of the ResNet output. In stark contrast, we find that \AlgoName{} performs better when the dimensionality of the projector network output is very large. Other methods rapidly saturate when the dimensionality of the output increases, but our method keeps improving with all output dimensionality tested (Fig. \ref{fig:fig_projdim}). This result is quite surprising because the output of the ResNet is kept fixed to 2048, which acts as a dimensionality bottleneck in our model and sets the limit of the intrinsic dimensionality of the representation. In addition, similarly to other methods, we find that our model performs better when the projector network has more layers, with a saturation of the performance for 3 layers.
+
+\begin{figure}[h!]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+\centerline{\includegraphics[width=8cm]{fig_projdim.pdf}}
+\caption{Effect of the dimensionality of the last layer of the projector network on performance. The parameter $\lambda$ is kept fix for all dimensionalities tested. Data for \textsc{SimCLR} is from \cite{chen2020simple} fig 8; Data for \textsc{BYOL} is from \cite{grill2020bootstrap} Table 14b.}
+\label{fig:fig_projdim}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+
+
+
+% \begin{table}[h]
+% \centering
+% \begin{tabular}{c c c}
+% \toprule
+% Projector depth & Top-$1$ & Top-$5$ \\
+% \midrule
+% 1 & $56.9$ & $80.1$ \\
+% 2 & $70.4$ & $89.3$ \\
+% 3 & $71.1$ & $89.6$ \\
+% 4 & $70.5$ & $88.8$ \\
+% \bottomrule
+% \end{tabular}
+% \caption{Effect of the number of linear layers in the projector network. \SD{The baseline for 3 layers in this experiment is lower than the baseline in table 7. Should we remove this table for now?}}
+% \label{tab:numlayproj}
+% \end{table}
+
+%Since all these methods are simply maximizing mutual information between positive pairs (i.e. representations of the same image from two different views), it is 
+
+%Vs SIMCLR, BYOL  => Jure, if possible also play with head size on SIMCLR and BYOL
+
+
+% \paragraph{Importance of \textsc{batchnorm}} 
+% We experiment with removing \textsc{batchnorm} in the hidden layers of the MLP projector network (but not in the encoder ResNet backbone). We find that our method is robust and gets 71.3\% accuracy on ImageNet linear evaluation.
+% \SD{With the new equations for the loss (eqn 1 and 2), which incorporates the normalization operation, it does not make sense anymore to talk about the batchnorm of the last layer. Needs to be rephrased. Maybe the normalization of the loss should be added to the Loss Ablation section, and the batchnorm in the predictor experiment should be removes (BYOL and SIMCLR are both robust to removing batchnorm in the predictor anyways.)}
+
+% \begin{table}[h!]
+%     \centering
+%     \begin{tabular}{c|cc|cc}
+% \toprule
+% case & hidden BN & \SD{loss norm.} & Top-$1$ & Top-$5$ \\
+% \midrule
+% baseline & \checkmark & \checkmark & 71.4 & 90.2 \\
+% (a) & - & \checkmark & $71.2$ & $89.7$ \\
+% (b) & - & - & TBD & TBD \\
+% \bottomrule
+% \end{tabular}
+%     \caption{Effect of batch normalization in the projector MLP network.}
+%     \label{tab:abl-bn}
+% \end{table}
+
+\paragraph{Breaking Symmetry} Many SSL methods (e.g. \textsc{BYOL}, \textsc{SimSiam}, \textsc{SwAV}) rely on different symmetry-breaking mechanisms to avoid trivial solutions. Our loss function avoids these trivial solutions by construction, even in the case of symmetric networks. It is however interesting to ask whether breaking symmetry can further improve the performance of our network. Following \textsc{SimSiam} and \textsc{BYOL}, we experiment with adding a predictor network composed of 2 fully connected layers of size 8192 to one of the network (with batch normalization followed by a ReLU nonlinearity in the hidden layer) and/or a stop-gradient mechanism on the other network. We find that these asymmetries slightly decrease the performance of our network (see Table \ref{tab:abl-sym}). 
+
+\begin{table}[h!]
+\caption{Effect of asymmetric settings}
+\label{tab:abl-sym}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{ccccc}
+\toprule
+case & stop-gradient & predictor & Top-$1$ & Top-$5$ \\
+\midrule
+Baseline & - & - & 71.4 & 90.2 \\
+\midrule
+(a) & \checkmark & - & $70.5$ & $89.0$ \\
+(b) & - & \checkmark & $70.2$ & $89.0$ \\
+(c) & \checkmark & \checkmark & $61.3$ & $83.5$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table}
+
+
+\textbf{BYOL with a larger projector/predictor/embedding} For a fair comparison with BYOL, we also evaluated BYOL with a wider and/or deeper projector head (3-layer MLP), a wider and/or deeper predictor head, and a larger dimensionality of the embedding. BYOL did not improve under these conditions (see Table \ref{tab:BYOL_MLP3}).
+
+%\vspace{-9pt}
+\begin{table}[h!]
+\caption{Wider and/or deeper projector and predictor heads and larger dimensionality of the embedding did not improve the performance of BYOL.\\}
+\tiny
+    \centering
+    \begin{tabular}{l|l|c|l}
+\hline
+Projector&	Predictor&	Acc1	& Description \\
+\hline
+4096-256 &	4096-256 & 74.1\% &		baseline \\
+4096-4096-256 &	4096-256 & 74.0\% &		3 layer proj,
+2 layer pred,  256-d repr. \\
+4096-4096-256	& 4096-4096-256	& 73.2\% &	3 layer proj, 3 layer pred, 256-d repr. \\
+4096-4096-512 &	4096-512	& 73.7\% &	3 layer proj, 2 layer pred, 512-d repr. \\
+4096-4096-512	& 4096-4096-512 & 73.2\% &		3 layer proj, 3 layer pred, 512-d repr. \\
+8192-8192-8192	& 8192-8192 & 72.3\% &	same proj as BT, 2 layer pred, 8192-d repr. \\
+% 8192-8192-8192	& 8192-8192-8192	&  &	same proj as BT, 3 layer pred, 8192-d repr. \\
+\hline
+    \end{tabular}
+    \label{tab:BYOL_MLP3}
+\end{table}
+
+
+\textbf{Sensitivity to $\lambda$.} We also explored the sensitivity of \AlgoName{} to the hyperparameter $\lambda$, which trades off the desiderata of invariance and informativeness of the embeddings. We find that \AlgoName{} is not very sensitive to this hyperparameter (Fig. \ref{fig:fig_lambda}).
+
+\begin{figure}[h!]
+\vskip 0.2in
+\begin{center}
+%\columnwidth
+\centerline{\includegraphics[width=8cm]{fig_lambda.pdf}}
+\caption{Sensitivity of \AlgoName{} to the hyperparameter $\lambda$}
+\label{fig:fig_lambda}
+\end{center}
+\vskip -0.2in
+\end{figure}
+
+
+% \paragraph{Wide-ResNet} We next study how \AlgoName{}'s performance scales with wider networks. The ResNet-50 backbone is replaced with a WideResNet-50 (x2) or a WideResNet-50 (x4). The linear evaluation on ImageneNet @SCALES COMPARABLY@ with other popular SSL methods, such as \textsc{SwAV}, \textsc{SimCLR} and \textsc{BYOL}. 
+
+% %Vs SIMCLR, BYOL and \textsc{SwAV} => Li, for other models refer to papers
+
+% \begin{table}[h!]
+%     \centering
+%     \begin{tabular}{lccc}
+%     \toprule
+%     Method  &  Architecture & Param & acc. (\%) \\
+%     \midrule
+%     MoCo & ResNet-50 (4x) & 375M & 68.6 \\
+%     SimCLR & ResNet-50 (4x) & 375M & 76.5 \\
+%     SwAV & ResNet-50 (2x) & 188M & 77.3 \\
+%     BYOL & ResNet-50 (2x) & 94M & 77.4 \\
+%     SwAV & ResNet-50 (4x) & 375M & 77.9 \\
+%     BYOL & ResNet-50 (4x) & 375M & 78.6 \\
+%     \AlgoName{} & ResNet-50 (2x) & 94M & TBD \\
+%     \AlgoName{} & ResNet-50 (4x) & 375M & TBD \\
+%     \bottomrule
+%     \end{tabular}
+%     \caption{Larger ResNet encoder architecture.}
+%     \label{tab:abl-wrn}
+% \end{table}
+
+
+
+

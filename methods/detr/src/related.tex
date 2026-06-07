@@ -1,0 +1,64 @@
+
+\section{Related work}
+
+Our work build on prior work in several domains: bipartite matching losses for set prediction, encoder-decoder architectures based on the transformer, parallel decoding, and object detection methods.
+
+\subsection{Set Prediction} There is no canonical deep learning model to directly predict sets. The basic set prediction task is multilabel classification (see e.g., \cite{rezatofighi2017deepsetnet,pineda2019ElucidatingIP} for references in the context of computer vision) for which the baseline approach, one-vs-rest, does not apply to problems such as detection where there is an underlying structure between elements (i.e., near-identical boxes). The first difficulty in these tasks is to avoid near-duplicates. Most current detectors use postprocessings such as non-maximal suppression to address this issue, but direct set prediction are postprocessing-free. They need global inference schemes that model interactions between all predicted elements to avoid redundancy. For constant-size set prediction, dense fully connected networks \cite{erhan2014scalable} are sufficient but costly. A general approach is to use auto-regressive sequence models such as recurrent neural networks \cite{vinyals2016order}. In all cases, the loss function should be invariant by a permutation of the predictions. The usual solution is to design a loss  based on the Hungarian algorithm \cite{Kuhn1955TheHM}, to find a bipartite matching between ground-truth and prediction. This enforces permutation-invariance, and guarantees that each target element has a unique match. We follow the bipartite matching loss approach. In contrast to most prior work however, we step away from autoregressive models and use transformers with parallel decoding, which we describe below.
+
+\subsection{Transformers and Parallel Decoding}
+Transformers were introduced by Vaswani \etal~\cite{Vaswani2017AttentionIA} as a new attention-based building block for machine translation. Attention mechanisms \cite{bahdanau2015neural} are neural network layers that aggregate information from the entire input sequence. Transformers introduced self-attention layers, which, similarly to Non-Local Neural Networks \cite{Wang2017NonlocalNN}, scan through each element of a sequence and update it by aggregating information from the whole sequence. One of the main advantages of attention-based models is their global computations and perfect memory, which makes them more suitable than RNNs on long sequences. Transformers are now replacing RNNs in many problems in natural language processing, speech processing and computer vision ~\cite{Devlin2019BERTPO,Lscher2019RWTHAS,synnaeve2019end,Radford2019LanguageMA,Parmar2018ImageT}.
+
+
+Transformers were first used in auto-regressive models, following early sequence-to-sequence models \cite{sutskever2014sequence}, generating output tokens one by one. However, the prohibitive inference cost (proportional to output length, and hard to batch) lead to the development of parallel sequence generation, in the domains of audio \cite{oord2017parallel}, machine translation \cite{Gu2017NonAutoregressiveNM,ghazvininejad2019constant}, word representation learning \cite{Devlin2019BERTPO}, and more recently speech recognition \cite{chan2020imputer}. We also combine transformers and parallel decoding for their suitable trade-off between computational cost and the ability to perform the global computations required for set prediction.
+
+
+
+\subsection{Object detection}
+
+Most modern object detection methods make predictions relative to some initial guesses. Two-stage detectors~\cite{Ren2015FasterRT,Cai2019CascadeRH} predict boxes \wrt proposals, whereas single-stage methods make predictions \wrt anchors~\cite{Lin2017FocalLF} or a grid of possible object centers~\cite{Zhou2019objects,tian2019fcos}. Recent work~\cite{Zhang2019bridging} demonstrate that the final performance of these systems heavily depends on the exact way these initial guesses are set. In our model we are able to remove this hand-crafted process and streamline the detection process by directly predicting the set of detections with absolute box prediction \wrt the input image rather than an anchor.
+
+\subsubsection{Set-based loss.} 
+Several object detectors~\cite{erhan2014scalable,Liu2016SSDSS,redmon2016you} used the bipartite matching loss. However, in these early deep learning models, the relation between different prediction was modeled with convolutional or fully-connected layers only and a hand-designed NMS post-processing can improve their performance. More recent detectors~\cite{Ren2015FasterRT,Lin2017FocalLF,Zhou2019objects} use non-unique assignment rules between ground truth and predictions together with an NMS.
+
+
+Learnable NMS methods~\cite{Hosang2017LearningNS,Bodla2017SoftNMSI} and relation networks~\cite{Hu2017RelationNF} explicitly model relations between different predictions with attention. Using direct set losses, they do not require any post-processing steps. However, these methods employ additional hand-crafted context features like proposal box coordinates to model relations between detections efficiently, while we look for solutions that reduce the prior knowledge encoded in the model.
+
+\subsubsection{Recurrent detectors.} 
+Closest to our approach are end-to-end set predictions for object detection  \cite{Stewart2015EndtoEndPD} and instance segmentation \cite{RomeraParedes2015RecurrentIS,Park2015LearningTD,ren2017end,Salvador2017RecurrentNN}. Similarly to us, they use bipartite-matching losses with encoder-decoder architectures based on CNN activations to directly produce a set of bounding boxes. These approaches, however, were only evaluated on small datasets and not against modern baselines. In particular, they are based on autoregressive models (more precisely RNNs), so they do not leverage the recent transformers with parallel decoding.
+
+
+\iffalse
+
+\section{Related Work}
+
+Our model builds on three main technical features:  direct set prediction losses, transformers and parallel decoding for sequence prediction. We describe these three components first, and then put our work in the context of existing object detection approaches.
+
+\subsection{Set Prediction} Learning with sets in machine learning has mostly been addressed when sets are inputs, searching for models that are permutation-invariant \cite{zaheer2017deep,lee2018set} or permutation-equivariant \cite{ravanbakhsh2016deep,qi2017pointnet++}. Attention layers are themselves invariant to permutations of their inputs, only the positional encodings (see Section \ref{sec:mha}) make them order-sensitive. Predicting sets is a more difficult problem that appears primarily in multi-label classification (see e.g., \cite{rezatofighi2017deepsetnet,pineda2019ElucidatingIP} and references therein). Outside multi-label classification, most end-to-end deep learning approaches use either set-embedding approaches \cite{zhang2019fspool,Zhang2019DeepSP}, or treat the ordering as a latent variable \cite{rezatofighi2018deep}, or use a permutation-invariant loss where here each ground truth element is uniquely matched with predictions during training \cite{vinyals2016order}. Our approach uses permutation-invariant losses, similarly to most works in the computer vision community that we discuss below. 
+
+
+\subsection{Transformers and Parallel Decoding}
+
+Transformers were introduced by Vaswani \etal~\cite{Vaswani2017AttentionIA} as a new attention-based building block for the sequence-to-sequence task of machine translation.  %
+It is based on self-attention, which consists 
+in weighting the input by an attention over itself. 
+Since then, transformers were impactful in multiple other tasks~\cite{Devlin2019BERTPO,Lscher2019RWTHAS,Radford2019LanguageMA}, including vision tasks like image generation~\cite{Parmar2018ImageT}. Attention mechanisms were used in many approaches for object detection. For instance, Wang \etal~\cite{Wang2017NonlocalNN} showed that non-local block inside a backbone improves final performance. The authors did not explore a set-based loss and an NMS was applied instead. We note, that non-local block in the backbone is closely related to the self-attention in our encoder blocks. Similarly, Bello~\etal~\cite{Bello2019AttentionAC} extend ResNets with attention augmented convolutions and showed gains in vision in classification and detection.
+\gab{todo finish / redo a pass}
+
+Transformers were first used in auto-regressive models, following early sequence-to-sequence models \cite{sutskever2014sequence}, generating output tokens one by one. However, the prohibitive inference cost (proportional to output length) lead to the development of parallel sequence generation, in the domains of audio \cite{oord2017parallel}, machine translation \cite{Gu2017NonAutoregressiveNM,ghazvininejad2019constant}, language modeling/word representation learning \cite{Devlin2019BERTPO}, and more recently speech recognition \cite{chan2020imputer}. Here, we also adopt a parallel decoding approach, and unlike many natural language processing (NLP) tasks, the set of predicted detections has no natural order. With parallel decoding \detr demonstrates competitive run-time speed.
+
+\subsection{Object detection}
+
+Most modern object detection methods make predictions relative to some initial guesses. Two-stage detectors~\cite{Ren2015FasterRT,Cai2019CascadeRH} predict boxes \wrt proposals, whereas single-stage methods make predictions \wrt anchors~\cite{Lin2017FocalLF} or a grid of possible object centers~\cite{Zhou2019objects,tian2019fcos}. Recent work~\cite{Zhang2019bridging} demonstrated that the final performance of these systems heavily depends on the exact way this initial guesses are set. In our model we are able to remove this hand-crafted process and streamline the detection process by directly predicting the set of detections with absolute box prediction \wrt the input image rather than an anchor.
+
+\subsubsection{Set-based loss and attention.} 
+Several object detectors~\cite{erhan2014scalable,Liu2016SSDSS,redmon2016you} used the permutation-invariant loss. However, in these early deep learning models, the relation between different prediction was modeled with convolutional or fully-connected layers only and a hand-designed NMS post-processing can improve their performance. More recent detectors~\cite{Ren2015FasterRT,Lin2017FocalLF,Zhou2019objects} use non-unique assignment rules between ground truth and predictions together with an NMS.
+
+
+Learnable NMS methods~\cite{Hosang2017LearningNS,Bodla2017SoftNMSI} and Relation networks~\cite{Hu2017RelationNF} explicitly model relations between different predictions with attention. Using direct set losses, they do not require any post-processing steps. However, these methods employ additional hand-crafted context features like proposal box coordinates to model relations between detections efficiently. In our work we show that an attention-based approach can model object relations without supplementary hand-designed features.
+
+\subsubsection{Recurrent detectors.} 
+Closest to our approach are end-to-end set predictions for object detection  \cite{Stewart2015EndtoEndPD} and instance segmentation \cite{RomeraParedes2015RecurrentIS,Park2015LearningTD,ren2017end,Salvador2017RecurrentNN}. Similarly to us, they use encoder-decoder architectures based on CNN activations to directly produce a set of bounding boxes, without iterating through proposals or object centers. All these approaches use \emph{autoregressive decoding} (more precisely, recurrent neural networks) to produce boxes or segmentation masks one-by-one. These works, however, were only evaluated on small datasets and not against modern baselines. 
+
+
+
+\fi

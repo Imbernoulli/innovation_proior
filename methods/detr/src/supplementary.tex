@@ -1,0 +1,135 @@
+\section{Appendix}
+
+
+\input{preliminaries}
+
+\subsection{Detailed architecture}\label{sec:detailed_arch}
+The detailed description of the transformer used in \detr, with positional encodings passed at every attention layer, is given in Fig.~\ref{fig:transformer}.
+Image features from the CNN backbone are passed
+through the transformer encoder, together with spatial positional encoding
+that are added to queries and keys at every multi-head self-attention layer.
+Then, the decoder receives queries (initially set to zero),
+output positional encoding (object queries), and encoder memory, and produces the final
+set of predicted class labels and bounding boxes through multiple
+multi-head self-attention and decoder-encoder attention.
+The first self-attention layer in the first decoder layer can be skipped.
+\oldnew{We use \detr-256 with 8 heads, and \detr-512 with 16 heads.}{}
+
+\begin{figure}
+    \centering\small
+    \includegraphics[clip, trim=0cm 0cm 0cm 0cm, width=0.75\columnwidth]{figures/transformer}
+    \caption{Architecture of \detr's transformer. Please, see Section \ref{sec:detailed_arch} for details.
+    }
+    \label{fig:transformer}
+\end{figure}
+
+\subsubsection{Computational complexity}
+Every self-attention in the encoder has complexity $\mathcal{O}(\dmodel^2 HW+\dmodel(HW)^2)$: $\mathcal{O}(\dk \dmodel)$ is the cost of computing a single query/key/value embeddings (and $M\dk = \dmodel$), while $\mathcal{O}(\dk(HW)^2)$ is the cost of computing the attention weights for one head. Other computations are negligible. In the decoder, each self-attention is in $\mathcal{O}(\dmodel^2 N+\dmodel N^2)$, and cross-attention between encoder and decoder is in $\mathcal{O}(\dmodel^2(N+HW) + \dmodel NHW)$, which is much lower than the encoder since $N \ll HW$ in practice.
+\subsubsection{FLOPS computation}
+Given that the FLOPS for Faster R-CNN depends on the number of proposals in the image, we report the average number of FLOPS for the first 100 images in the COCO 2017 validation set.
+We compute the FLOPS with the tool \texttt{flop\_count\_operators} from Detectron2 \cite{wu2019detectron2}. We use it without modifications for Detectron2 models, and extend it to take batch matrix multiply (\texttt{bmm}) into account for \detr models.
+
+
+\subsection{Training hyperparameters}
+\label{sec:hyperparameters}
+We train \detr using AdamW~\cite{Loshchilov2017DecoupledWD} with improved weight
+decay handling, set to $10^{-4}$.
+We also apply gradient clipping, with a maximal gradient norm of $0.1$.
+The backbone and the transformers are treated slightly differently, we now discuss the details for both.
+\subsubsection{Backbone}
+ImageNet pretrained backbone ResNet-50 is imported from Torchvision, discarding the last classification layer.
+Backbone batch normalization weights and statistics are frozen during training,
+following widely adopted practice in object detection.
+We fine-tune the backbone using learning rate of $10^{-5}$. We observe that having the backbone learning rate roughly an order of magnitude smaller than the rest of the network is important to stabilize training, especially in the first few epochs.
+\subsubsection{Transformer}
+We train the transformer with a learning rate of $10^{-4}$.
+Additive dropout of $0.1$ is applied after every multi-head attention and FFN before layer normalization.
+The weights are randomly initialized with Xavier initialization.
+\subsubsection{Losses} We use linear combination of $\ell_1$ and GIoU losses for bounding box regression with $\lambda_{\rm L1} = 5$ and $\lambda_{\rm iou} = 2$ weights respectively. All models were trained with $N=100$ decoder query slots.
+\subsubsection{Baseline} Our enhanced Faster-RCNN+ baselines use GIoU~\cite{Rezatofighi_2018_CVPR} loss along with the standard $\ell_1$ loss for bounding box regression. We performed a grid search to find the best weights for the losses and the final models use only GIoU loss with weights $20$ and $1$ for box and proposal regression tasks respectively. For the baselines we adopt the same data augmentation as used in \detr and train it with 9$\times$ schedule (approximately 109 epochs). All other settings are identical to the same models in the Detectron2 model zoo~\cite{wu2019detectron2}.
+
+\subsubsection{Spatial positional encoding}
+
+Encoder activations are associated with corresponding spatial positions of image features. In our model we use a fixed absolute encoding to represent these spatial positions. We adopt a generalization of the original Transformer~\cite{Vaswani2017AttentionIA} encoding to the 2D case~\cite{Parmar2018ImageT}. Specifically, for both spatial coordinates of each embedding we independently use $\frac{d}{2}$ sine and cosine functions with different frequencies. We then concatenate them to get the final $d$ channel positional encoding.
+
+
+
+\subsection{Additional results}
+
+\iffalse
+Qualitative results of bounding box prediction \detr-512-DC5 model (odd rows) and
+Faster R-CNN R50-FPN+ model (even rows) can be found on Fig.~\ref{fig:bbox_qualitative_0}-\ref{fig:bbox_qualitative_1}.
+The models achieve comparable AP on COCO val set, 42.5 and 42 AP respectively.
+We show results on the last 65 COCO validation images, without cherry-picking.
+In the case of \detr results, we supplement the image with the attention from the decoder, color coded for each instance.
+We threshold Faster R-CNN predictions at 0.5 confidence and \detr predictions at 0.7 confidence.
+\fi
+
+Some extra qualitative results for the panoptic prediction of the \detr-R101 model are
+shown in Fig.\ref{fig:pano_quali_supl}.
+\begin{figure}[t!]
+    \centering
+     \begin{subfigure}[t]{\textwidth}
+       \centering
+       \includegraphics[width=.32\textwidth]{figures/Panoptic/1113_gt.jpg}
+       \includegraphics[width=.32\textwidth]{figures/Panoptic/1113_panopticfpn.jpg}
+       \includegraphics[width=.32\textwidth]{figures/Panoptic/1113_detr_R101.jpg}
+       
+       
+       \caption{Failure case with overlapping objects. PanopticFPN misses one
+         plane entirely, while \detr fails to accurately segment 3 of them.}
+     \end{subfigure}
+    \ \\
+    \begin{subfigure}[t]{\textwidth}
+        \centering
+        \includegraphics[width=.32\textwidth]{figures/Panoptic/3485_gt.jpg}
+        \includegraphics[width=.32\textwidth]{figures/Panoptic/3485_panopticfpn.jpg}
+        \includegraphics[width=.32\textwidth]{figures/Panoptic/3485_detr_R101.jpg}
+        
+        
+        \caption{\texttt{Things} masks are predicted at full resolution, which allows sharper boundaries than PanopticFPN}
+    \end{subfigure}%
+\caption{Comparison of panoptic predictions. From left to right: Ground truth, PanopticFPN with ResNet 101, DETR with ResNet 101}
+\label{fig:pano_quali_supl}
+\end{figure}
+
+\subsubsection{Increasing the number of instances}
+\begin{figure}
+    \centering\small
+    \includegraphics[ width=.6\columnwidth]{figures/nbr_inst_fig.pdf}
+    \caption{Analysis of the number of instances of various classes missed by \detr depending on how many are present in the image. We report the mean and the standard deviation. As the number of instances gets close to 100, \detr starts saturating and misses more and more objects}
+    \label{fig:instances}
+\end{figure}
+By design, \detr cannot predict more objects than it has query slots, i.e. 100 in our experiments. In this section, we analyze the behavior of \detr when approaching this limit. We select a canonical square image of a given class, repeat it on a $10\times 10$ grid, and compute the percentage of instances that are missed by the model. To test the model with less than 100 instances, we randomly mask some of the cells.
+This ensures that the absolute size of the objects is the same no matter how many are visible. To account for the randomness in the masking, we repeat the experiment 100 times with different masks. The results are shown in Fig.\ref{fig:instances}. The behavior is similar across classes, and while the model detects all instances when up to 50 are visible, it then starts saturating and misses more and more instances. Notably, when the image contains all 100 instances, the model only detects 30 on average, which is less than if the image contains only 50 instances that are all detected. The counter-intuitive behavior of the model is likely because the images and the detections are far from the training distribution. 
+
+Note that this test is a test of generalization out-of-distribution by design, since there are very few example images with a lot of instances of a single class. It is difficult to disentangle, from the experiment, two types of out-of-domain generalization: the image itself vs the number of object per class. But since few to no COCO images contain only a lot of objects of the same class, this type of experiment represents our best effort to understand whether query objects overfit the label and position distribution of the dataset. Overall, the experiments suggests that the model does not overfit on these distributions since it yields near-perfect detections up to 50 objects.
+
+
+
+\subsection{PyTorch inference code}
+
+To demonstrate the simplicity of the approach, we include inference code
+with PyTorch and Torchvision libraries in Listing~\ref{listing:code}.
+The code runs with Python 3.6+, PyTorch 1.4 and Torchvision 0.5. Note that it does not support batching, hence it is suitable only for inference or training with DistributedDataParallel with one image per GPU. Also note that for clarity, this code uses learnt positional encodings in the encoder instead of fixed, and positional encodings are  added to the input only instead of at each transformer layer. Making these changes requires going beyond PyTorch implementation of transformers, which hampers readability. The entire code to reproduce the experiments will be made available before the conference.
+
+\begin{listing}[ht]
+\inputminted[fontsize=\scriptsize, linenos=true, python3=true]{python}{python/detr.py}
+\caption{DETR PyTorch inference code. For clarity it uses learnt positional encodings in the encoder instead of fixed, and positional encodings are  added to the input only instead of at each transformer layer. Making these changes requires going beyond PyTorch implementation of transformers, which hampers readability. The entire code to reproduce the experiments will be made available before the conference.}
+\label{listing:code}
+\end{listing}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,124 @@
+% !TEX root = main.tex
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Discussion / Ablation study %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Discussion}
+
+The current standard for the evaluation of an unsupervised method involves the use of an AlexNet architecture trained on ImageNet and tested on class-level tasks.
+To understand and measure the various biases introduced by this pipeline on \OURS, we consider a different training set, a different architecture and an instance-level recognition task.
+
+\begin{table}[t!]
+  \centering
+  \begin{tabular}{@{}lc cc cc c cc c cc@{}}
+    \toprule
+                      &~~~~&            &~~~~& \multicolumn{2}{c}{Classification} &~~& \multicolumn{2}{c}{Detection} &~~& \multicolumn{2}{c}{Segmentation} \\
+                      \cmidrule{5-6} \cmidrule{8-9} \cmidrule{11-12}
+    Method    && Training set && \textsc{fc6-8}& \textsc{all}   && \textsc{fc6-8}& \textsc{all}  && \textsc{fc6-8}& \textsc{all} \\
+                      \midrule
+    Best competitor &&ImageNet&&  $~63.0~$ & $~67.7~$ && $~43.4^{\dagger}$ & $~53.2~$ && $~35.8^{\dagger}$ & $~37.7~$ \\
+                      \midrule
+    \OURS&& ImageNet   && $~72.0~$  & $~73.7~$  && $~51.4~$ & $~55.4~$ && $~43.2~$ & $~45.1~$ \\
+    \OURS&& YFCC100M   && $~67.3~$  & $~69.3~$  && $~45.6~$ & $~53.0~$ && $~39.2~$ & $~42.2~$ \\
+    \bottomrule
+  \end{tabular}
+  \vspace{\soustable}
+  \caption{
+    Impact of the training set on the performance of \OURS measured on the \textsc{Pascal} VOC transfer tasks as described in Sec.~\ref{sec:pascal}.
+    We compare ImageNet with a subset of $1$M images from YFCC100M~\cite{thomee2015new}.
+    Regardless of the training set, \OURS outperforms the best published numbers on most tasks.
+  Numbers for other  methods produced by us are marked with a ${\dagger}$
+  }
+  \label{tab:flickr}
+\end{table}
+
+\subsection{ImageNet versus YFCC100M}
+
+ImageNet is a dataset designed for a fine-grained object classification challenge~\cite{russakovsky2015imagenet}.
+It is object oriented, manually annotated and organised into well balanced object categories.
+By design, \OURS favors balanced clusters and, as discussed above, our number of cluster $k$ is somewhat comparable with the number of labels in ImageNet.
+This may have given an unfair advantage to \OURS over other unsupervised approaches when trained on ImageNet.
+To measure the impact of this effect, we consider a subset of randomly-selected $1$M images from the YFCC100M dataset~\cite{thomee2015new} for the pre-training.
+Statistics on the hashtags used in YFCC100M suggests that the underlying ``object classes'' are severly unbalanced~\cite{joulin2016learning},
+leading to a data distribution less favorable to \OURS.
+
+Table~\ref{tab:flickr} shows the difference in performance on \textsc{Pascal} VOC of \OURS pre-trained on YFCC100M compared to ImageNet.
+As noted by Doersch~\etal~\cite{doersch2015unsupervised}, this dataset is not object oriented, hence the performance are expected to drop by a few percents.
+However, even when trained on uncured Flickr images, \OURS outperforms the current state of the art by a significant margin on most tasks (up to $+4.3\%$ on classification and $+4.5\%$ on semantic segmentation).
+We report the rest of the results in the supplementary material with similar conclusions.
+This experiment validates that \OURS is robust to a change of image distribution, leading
+to state-of-the-art general-purpose visual features even if this distribution is not favorable to its design.
+
+\subsection{AlexNet versus VGG}
+
+In the supervised setting, deeper architectures like VGG or ResNet~\cite{he2015delving} have a much higher accuracy on ImageNet than AlexNet.
+We should expect the same improvement if these architectures are used with an unsupervised approach.
+Table~\ref{tab:vocVGG} compares a VGG-16 and an AlexNet trained with \OURS on ImageNet and tested on the \textsc{Pascal} VOC 2007 object detection task with fine-tuning.
+We also report the numbers obtained with other unsupervised approaches~\cite{doersch2015unsupervised,wang2017transitive}.
+Regardless of the approach, a deeper architecture leads to a significant improvement in performance on the target task.
+Training the VGG-16 with \OURS gives a performance above the state of the art, bringing us to only $1.4$ percents below the supervised topline.
+Note that the difference between unsupervised and supervised approaches remains in the same ballpark for both architectures (\ie $1.4\%$).
+Finally, the gap with a random baseline grows for larger architectures,
+justifying the relevance of unsupervised pre-training for complex architectures when little supervised data is available.
+
+\begin{table}[t!]
+  \parbox[c][16em][t]{.45\linewidth}{
+    \centering
+    \begin{tabular}{@{}l c c c c@{}}
+      \toprule
+      Method &~~~& AlexNet && VGG-16 \\
+      \midrule
+      ImageNet labels                 && $56.8$ && $67.3$ \\
+      Random                          && $47.8$ && $39.7$ \\
+      \midrule
+      Doersch~\etal~\cite{doersch2015unsupervised}  && $51.1$ && $61.5$ \\
+      Wang and Gupta~\cite{wang2015unsupervised}    && $47.2$ && $60.2$ \\
+      Wang~\etal~\cite{wang2017transitive}          && --   && $63.2$ \\
+      \midrule
+      \OURS                           && $\textbf{55.4}$ && $\textbf{65.9}$ \\
+      \bottomrule
+    \end{tabular}
+    \vspace{\soustable}
+    \caption{
+      \textsc{Pascal} VOC 2007 object detection with AlexNet and VGG-16.
+      Numbers are taken from Wang~\etal~\cite{wang2017transitive}.
+    }
+    \label{tab:vocVGG}
+  }
+  \hfill
+  \parbox[c][16em][t]{.45\linewidth}{
+    \centering
+    \begin{tabular}{@{}lc c c c@{}}
+      \toprule
+      Method &~~~& Oxford$5$K && Paris$6$K \\
+      \midrule
+      ImageNet labels              && $72.4$ && $81.5$  \\
+      Random                       && $~6.9$  && $22.0$ \\
+      \midrule
+      Doersch~\etal~\cite{doersch2015unsupervised}  && $35.4$ && $53.1$ \\
+      Wang~\etal~\cite{wang2017transitive}          && $42.3$ && $58.0$ \\
+      \midrule
+      \OURS                           && $\textbf{61.0}$  && $\textbf{72.0}$ \\
+      \bottomrule
+    \end{tabular}
+    \vspace{\soustable}
+    \caption{
+      mAP on instance-level image retrieval on Oxford and Paris dataset with a VGG-16.
+      We apply R-MAC with a resolution of $1024$ pixels and $3$ grid levels~\cite{tolias2015particular}.
+    }
+    \label{tab:retrieval}
+  }
+\end{table}
+
+\subsection{Evaluation on instance retrieval}
+
+The previous benchmarks measure the capability of an unsupervised network to capture class level information.
+They do not evaluate if it can differentiate images at the instance level.
+To that end, we propose image retrieval as a down-stream task.
+We follow the experimental protocol of Tolias~\etal~\cite{tolias2015particular} on two datasets, \ie, Oxford Buildings~\cite{Philbin07} and Paris~\cite{Philbin08}.
+Table~\ref{tab:retrieval} reports the performance of a VGG-16 trained with different approaches obtained with Sobel filtering, except for Doersch~\etal~\cite{doersch2015unsupervised} and Wang~\etal~\cite{wang2017transitive}.
+This preprocessing improves by $5.5$ points the mAP of a supervised VGG-16 on the Oxford dataset, but not on Paris.
+This may translate in a similar advantage for \OURS, but it does not account for the average differences of $19$ points.
+Interestingly, random convnets perform particularly poorly on this task compared to pre-trained models.
+This suggests that image retrieval is a task where the pre-training is essential and studying it as a down-stream task could give further insights about the quality of the features produced by unsupervised approaches.

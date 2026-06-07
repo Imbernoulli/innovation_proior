@@ -1,0 +1,89 @@
+% !TeX root = ../eccv2016submission.tex
+\input{tex/results_table}
+
+We empirically demonstrate the effectiveness of \name{} on a series of benchmark data sets: CIFAR-10, CIFAR-100~\cite{krizhevsky2009learning}, SVHN~\cite{netzer2011reading}, and ImageNet~\cite{deng2009imagenet}.
+
+\paragraph{\textbf{Implementation details.}}
+For all data sets we compare the results of ResNets with our proposed \name{} and the original constant depth, and other most competitive benchmarks. We set $p_\ell$ with the linear decay rule of $p_0\!=\!1$ and $p_L\!=\!0.5$ throughout. In all experiments we report the test error from the epoch with the lowest validation error.
+For best comparisons we use the same construction scheme (for constant and \name{}) as described by He et al.~\cite{he2015deep}. In the case of CIFAR-100 we use the same 110-layer ResNet used by He et al. \cite{he2015deep} for CIFAR-10, except that the network has a 100-way softmax output. Each model contains three groups of residual blocks that differ in number of filters and feature map size, and each group is a stack of 18 residual blocks. The numbers of filters in the three groups are 16, 32 and 64, respectively. For the transitional residual blocks, i.e. the first residual block in the second and third group, the output dimension is larger than the input dimension. Following He et al. \cite{he2015deep}, we replace the identity connections in these blocks by an average pooling layer followed by zero paddings to match the dimensions.
+Our implementations are in Torch 7 \cite{collobert2011torch7}. The code to reproduce the results is publicly available on GitHub at {\tt https://github.com/yueatsprograms/Stochastic\char`_Depth}.
+
+\begin{figure*}[t]
+	\begin{center}
+		\centerline{
+			\includegraphics[width=0.5\columnwidth]{figures/cifar10_110.eps}
+			\includegraphics[width=0.5\columnwidth]{figures/cifar100_110.eps}}
+		\vspace{-2ex}
+		\caption{Test error on CIFAR-10 (\textit{left}) and CIFAR-100 (\textit{right}) during training,  with data augmentation, corresponding to results in the first two columns of Table~\ref{table.error}.}
+		\vspace{-8ex}
+		\label{figure.cifar}
+	\end{center}
+\end{figure*}
+
+\paragraph{\textbf{CIFAR-10.}}
+CIFAR-10 \cite{krizhevsky2009learning} is a dataset of 32-by-32 color images, representing 10 classes of natural scene objects. The training set and test set contain 50,000 and 10,000 images, respectively. We hold out 5,000 images as validation set, and use the remaining 45,000 as training samples. Horizontal flipping and translation by 4 pixels are the two standard data augmentation techniques adopted in our experiments, following the common practice \cite{goodfellow2013maxout,icml2013_wan13,lin2013network,lee2014deeply,springenberg2014striving,agostinelli2014learning,lee2015generalizing}.
+
+The baseline ResNet is trained with SGD for 500 epochs, with a mini-batch size 128. The initial learning rate is 0.1, and is divided by a factor of 10 after epochs 250 and 375. We use a weight decay of 1e-4, momentum of 0.9, and Nesterov momentum \cite{sutskever2013importance} with 0 dampening, as suggested by \cite{blogpostresnet}. For \name{}, the network structure and all optimization settings are exactly the same as the baseline. All settings were chosen to match the setup of He et al.~\cite{he2015deep}.
+
+The results are shown in Table~\ref{table.error}. ResNets with constant depth result in a competitive 6.41\% error on the test set. ResNets trained with \name{} yield a further relative improvement of $18\%$ and result in 5.25\% test error.
+To our knowledge this is significantly lower than the best existing single model performance ($6.05\%$)~\cite{lee2015generalizing} on CIFAR-10 prior to our submission, without resorting to massive data augmentation~\cite{graham2014fractional,springenberg2014striving}.\footnote{The only model that performs even better is the 1202-layer ResNet with \name{}, discussed later in this section. }
+Fig.~\ref{figure.cifar} (\textit{left}) shows the test error as a function of epochs. The point selected by the lowest validation error is circled for both approaches. We observe that ResNets with \name{} yield lower test error but also slightly higher fluctuations (presumably due to the random depth during training).
+
+\paragraph{\textbf{CIFAR-100.}}
+Similar to CIFAR-10, CIFAR-100~\cite{krizhevsky2009learning} contains 32-by-32 color images with the same train-test split, but from 100 classes. For both the baseline and our method, the experimental settings are exactly the same as those of CIFAR-10. The constant depth ResNet yields a test error of 27.22\%, which is already the state-of-the-art in CIFAR-100 with standard data augmentation. Adding \name{} drastically reduces the error to 24.98\%, and is again the best published single model performance to our knowledge (see Table~\ref{table.error} and Fig.~\ref{figure.cifar} \textit{right}).
+
+We also experiment with CIFAR-10 and CIFAR-100 without data augmentation. ResNets with constant depth obtain 13.63\% and 44.74\% on CIFAR-10 and CIFAR-100 respectively. Adding \name{} yields consistent improvements of about 15\% on both datasets, resulting in test errors of 11.66\%  and 37.8\% respectively.
+
+\begin{figure*}[t]
+	\begin{center}
+		\centerline{\includegraphics[width=0.5\columnwidth]{figures/svhn_152_new.eps} \includegraphics[width=0.5\columnwidth]{figures/cifar10_1202.eps}}
+		\caption{Left: Test error on SVHN, corresponding to results on column three in Table~\ref{table.error}. \textit{right}: Test error on CIFAR-10 using 1202-layer ResNets. The points of lowest validation errors are highlighted in each case.}
+		\vspace{-8ex}
+		\label{figure.svhn_cifar1202}
+	\end{center}
+\end{figure*}
+
+\paragraph{\textbf{SVHN.}}
+The format of the Street View House Number (SVHN)~\cite{netzer2011reading} dataset that we use contains 32-by-32 colored images of cropped out house numbers from Google Street View. The task is to classify the digit at the center. There are 73,257 digits in the training set, 26,032 in the test set and 531,131 easier samples for additional training. Following the common practice, we use all the training samples but do not perform data augmentation. For each of the ten classes, we randomly select 400 samples from the training set and 200 from the additional set, forming a validation set with 6,000 samples in total. We preprocess the data by subtracting the mean and dividing the standard deviation. Batch size is set to 128, and validation error is calculated every 200 iterations.
+
+Our baseline network has 152 layers. It is trained for 50 epochs with a beginning learning rate of 0.1, divided by 10 after epochs 30 and 35. The depth and learning rate schedule are selected by optimizing for the validation error of the baseline through many trials. This baseline obtains a competitive result of 1.80\%. However, as seen in Fig.~\ref{figure.svhn_cifar1202}, it starts to overfit at the beginning of the second phase with learning rate 0.01, and continues to overfit until the end of training. With \name{}, the error improves to 1.75\%, the second-best published result on SVHN to our knowledge after~\cite{lee2015generalizing}.
+
+\paragraph{\textbf{Training time comparison.}}
+\input{tex/training_time}
+We compare the training efficiency of the constant depth and \name{} ResNets used to produce the previous results. Table 2 shows the training (clock) time under both settings with the linear decay rule $p_L=0.5$. Stochastic depth consistently gives a 25\% speedup, which confirms our analysis in Section~\ref{sec_method}. See Fig.~\ref{figure.deathRate} and the corresponding section on hyper-parameter sensitivity for more empirical analysis. 
+
+\begin{wrapfigure}{r}{0.5\textwidth}
+	\vspace{-15ex}
+	\begin{center}
+		\includegraphics[width=0.45\textwidth]{figures/1202_bar.eps}
+	\end{center}
+	\vspace{-10ex}
+	\caption{With \name{}, the 1202-layer ResNet still significantly improves over the 110-layer one.}
+	\vspace{-4ex}
+	\label{figure.1202compare}
+\end{wrapfigure}
+
+\paragraph{\textbf{Training with a 1202-layer ResNet.}}
+He et al.~\cite{he2015deep} tried to learn CIFAR-10 using an aggressively deep ResNet with 1202 layers. As expected, this extremely deep network overfitted to the training set: it ended up with a test error of 7.93\%, worse than their 110-layer network. We repeat their experiment on the same 1202-layer network, with constant and stochastic depth. We train for 300 epochs, and set the learning rate to 0.01 for the first 10 epochs to ``warm-up" the network and facilitate initial convergence, then restore it to 0.1, and divide it by 10 at epochs 150 and 225.
+
+The results are summarized in Fig.~\ref{figure.svhn_cifar1202} (\textit{right}) and Fig.~\ref{figure.1202compare}. Similar to He et al.~\cite{he2015deep}, the ResNets with constant depth of 1202 layers yields a test error of 6.67\%, which is worse than the 110-layer constant depth ResNet. In contrast, if trained with \name{}, this extremely deep ResNet performs remarkably well. We want to highlight two trends: 1) Comparing the two 1202-layer nets shows that training with \name{} leads to a 27\% relative improvement; 2) Comparing the two networks trained with \name{}  shows that increasing the architecture from 110 layers to 1202 yields a further improvement on the previous record-low 5.25\%, to a 4.91\% test error without sign of overfitting, as shown in Fig.~\ref{figure.svhn_cifar1202} (\textit{right}) \footnote{We do not include this result in Table \ref{table.error} since this architecture was only trained on one of the datasets.}.
+
+To the best of our knowledge, this is the lowest known test error on CIFAR-10 with moderate image augmentation and the first time that a network with more than 1000 layers has been shown to \emph{further reduce} the test error \footnote{This is, until early March, 2016, when this paper was submitted to ECCV. Many new developments have further decreased the error on CIFAR-10 since then (and some are based on this work).}. We consider these findings highly encouraging and hope that training with \name{} will enable researchers to leverage extremely deep architectures in the future.
+
+\begin{wrapfigure}{t}{0.5\textwidth}
+	\begin{center}
+		\vspace{-8ex}
+		\centerline{\includegraphics[width=0.5\columnwidth]{figures/imagenet_152_120.eps}}
+		\vspace{-2ex}
+		\caption{Validation error on ILSVRC 2012 classification.}
+		\vspace{-8ex}
+		\label{figure.imagenet}
+	\end{center}
+\end{wrapfigure}
+
+\paragraph{\textbf{ImageNet.}}
+The ILSVRC 2012 classification dataset consists of 1000 classes of images, in total 1.2 million for training, 50,000 for validation, and 100,000 for testing. Following the common practice, we only report the validation errors. We follow He et al.~\cite{he2015deep} to build a 152-layer ResNet with 50 bottleneck residual blocks. When input and output dimensions do not match, the skip connection uses a learned linear projection for the mismatching dimensions, and an identity transformation for the other dimensions. Our implementation is based on the github repository {\tt fb.resnet.torch\footnote{\tt https://github.com/facebook/fb.resnet.torch}}~\cite{blogpostresnet}, and the optimization settings are the same as theirs, except that we use a batch size of 128 instead of 256 because we can only spread a batch among 4 GPUs (instead of 8 as they did).
+
+We train the constant depth baseline for 90 epochs (following He et al. and the default setting in the repository) and obtain a final error of 23.06\%. With stochastic depth, we obtain an error of 23.38\% at epoch 90, which is slightly higher. We observe from Fig.\ref{figure.imagenet} that the downward trend of the validation error with stochastic depth is still strong, and from our previous experience, could benefit from further training. Due to the 25\% computational saving, we can add 30 epochs (giving 120 in total, after decreasing the learning rate to 1e-4 at epoch 90), and still finish in almost the same total time as 90 epochs of the baseline. This reaches a final error of 21.98\%. We have also kept the baseline running for 30 more epochs. This reaches a final error of 21.78\%. 
+
+Because ImageNet is a very complicated and large dataset, the model complexity required could potentially be much more than that of the 152-layer ResNet~\cite{he2016identity}. In the words of an anonymous reviewer, the current generation of models for ImageNet are still in a different regime from those of CIFAR. Although there seems to be no immediate benefit from applying stochastic depth on this particular architecture, it is possible that stochastic depth will lead to improvements on ImageNet with larger models, which the community might soon be able to train as GPU capacities increase.

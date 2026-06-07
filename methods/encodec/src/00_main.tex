@@ -1,0 +1,78 @@
+\pdfoutput=1
+\documentclass[10pt]{article} % For LaTeX2e
+\usepackage[preprint]{tmlr}
+% If accepted, instead use the following line for the camera-ready submission:
+% \usepackage[accepted]{tmlr}
+% To de-anonymize and remove mentions to TMLR (for example for posting to preprint servers), instead use the following:
+%\usepackage[preprint]{tmlr}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+% \input{math_commands}
+
+\include{01_decl}
+\include{definitions}
+
+% \title{Hifi Audio Compression}
+% \title{Squashing Bits and Artifacts for Audio Compression}
+% \title{Squashing Bits and Artifacts for \\ Neural Audio Compression}
+\title{High Fidelity Neural Audio Compression}
+% \title{High Fidelity Albums on a Floppy Disk}
+% Neural Audio Compression using Differential Activation Quantization
+% On End-to-End Neural Audio Compression Models
+% Let It Bit: Neural Audio Compression using Learnable Quantization
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{\name Alexandre D\'efossez\thanks{,$^{\dagger}$Equal contribution.} \email defossez@meta.com \\
+      \addr Meta AI, FAIR Team, Paris, France
+      \AND
+      \name Jade Copet$^{*}$ \email jadecopet@meta.com \\
+      \addr Meta AI, FAIR Team, Paris, France
+      \AND
+      \name Gabriel Synnaeve$^{\dagger}$ \email gab@meta.com\\
+      \addr Meta AI, FAIR Team, Paris, France
+      \AND
+      \name Yossi Adi$^{\dagger}$ \email adiyoss@meta.com \\
+      \addr Meta AI, FAIR Team, Tel-Aviv, Israel
+}
+\def\month{mm}  % Insert correct month for camera-ready version
+\def\year{yyyy} % Insert correct year for camera-ready version
+\def\openreview{\url{https://openreview.net/forum?id=??????}} % Insert correct link to
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We introduce a state-of-the-art real-time, high-fidelity, audio codec leveraging neural networks. It consists in a streaming encoder-decoder architecture with quantized latent space trained in an end-to-end fashion.
+We simplify and speed-up the training by using a single multiscale spectrogram adversary that efficiently reduces artifacts and produce high-quality samples.
+We introduce a novel loss balancer mechanism to stabilize training: the \emph{weight} of a loss
+now defines the fraction of the overall gradient it should represent, thus decoupling the choice of this
+hyper-parameter from the typical scale of the loss. Finally, we study how lightweight Transformer models
+can be used to further compress the obtained representation by up to 40\%, while staying faster than real time.
+We provide a detailed description of the key design choices of the proposed model including: training objective, architectural changes and a study of various perceptual loss functions. We present an extensive subjective evaluation (MUSHRA tests) together with an ablation study for a range of bandwidths and audio domains, including speech, noisy-reverberant speech, and music. Our approach is superior to the baselines methods across all evaluated settings, considering both 24 kHz monophonic and 48 kHz stereophonic audio. Code and models are available at \href{https://github.com/facebookresearch/encodec}{github.com/facebookresearch/encodec}.
+
+
+\end{abstract}
+
+\input{01_intro}
+\input{05_related.work}
+\input{03_model} 
+\input{04_experiments}
+\input{06_conclusion}
+\clearpage
+
+\bibliographystyle{tmlr}
+\bibliography{refs}
+
+\clearpage
+\input{07_appendix}
+
+
+\end{document}

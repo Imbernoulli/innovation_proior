@@ -1,0 +1,246 @@
+
+\section{Proof of Theorem~\ref{thrm:order}}
+\label{appendix:proof}
+\subsection{Assumptions}
+\label{appendix:assumptions}
+Throughout this section, we denote $\x_s$ as the solution of the diffusion ODE Eq.~\eqref{eqn:diffusion_ode} starting from $\x_T$.
+For DPM-Solver-$k$ we make the following assumptions:
+\begin{assumption}
+\label{ass:taylor}
+The total derivatives $\frac{\dd^j \hat\epsilonv_\theta(\hat\x_\lambda,\lambda)}{\dd\lambda^j}$ (as a function of $\lambda$) exist and are continuous for $0 \leq j \leq k + 1$.
+\end{assumption}
+\begin{assumption}
+\label{ass:lip}
+The function $\epsilonv_\theta(\x, s)$ is Lipschitz w.r.t. to its first parameter $\x$.
+\end{assumption}
+\begin{assumption}
+\label{ass:tech-step}
+$h_{max} = \Oc(1 / M)$.
+\end{assumption}
+
+We note that the first assumption is required by Taylor's theorem Eq.~\eqref{eqn:k-th-expansion}, and the second assumption is used to replace $\epsilon_\theta(\tilde \x_s, s)$ with $\epsilon_\theta(\x_s, s) + \Oc( \x_s - \tilde \x_s )$ so that the Taylor expansion w.r.t. $\lambda_s$ is applicable.
+The last one is a technical assumption to exclude a significantly large step-size.
+
+
+\subsection{General Expansion of the Exponentially Weighted Integral}
+\label{appendix:general_expansion}
+Firstly, we derive the Taylor expansion of the exponentially weighted integral. Let $t<s$ and then $\lambda_t>\lambda_s$. Denote $h\coloneqq \lambda_t-\lambda_s$, and the $k$-th order total derivative $\hat\epsilonv_\theta^{(k)}(\hat\x_\lambda,\lambda)\coloneqq \frac{\dd^k \hat\epsilonv_\theta(\hat\x_\lambda,\lambda)}{\dd\lambda^k}$. For $n\geq 0$, the $n$-th order Taylor expansion of $\hat\epsilonv_\theta(\hat\x_{\lambda},\lambda)$ w.r.t. $\lambda$ is
+\begin{equation}
+    \label{eqn:taylor-epsilonv}
+    \hat\epsilonv_\theta(\hat\x_\lambda, \lambda) = \sum_{k=0}^n \frac{(\lambda-\lambda_s)^k}{k!} \hat\epsilonv_\theta^{(k)}(\hat\x_{\lambda_s},\lambda_s)+\Oc(h^{n+1}).
+\end{equation}
+To expand the exponential integrator, we further define~\citep{hochbruck2005explicit}:
+\begin{equation}
+    \varphi_k(z)\coloneqq\int_0^1 e^{(1-\delta)z}\frac{\delta^{k-1}}{(k-1)!}\dm\delta,\quad\quad \varphi_0(z)=e^z
+\end{equation}
+and it satisfies $\varphi_k(0)=\frac{1}{k!}$ and a recurrence relation $\varphi_{k+1}(z)=\frac{\varphi_k(z)-\varphi_k(0)}{z}$. By taking the Taylor expansion of $\hat\epsilonv_\theta(\hat\x_\lambda,\lambda)$, the exponential integrator can be rewritten as
+\begin{equation}
+    \int_{\lambda_s}^{\lambda_t} e^{-\lambda}\hat\epsilonv_\theta(\hat\x_{\lambda},\lambda)\dd\lambda = \frac{\sigma_t}{\alpha_t}\sum_{k=0}^n h^{k+1}\varphi_{k+1}(h)\hat\epsilonv_\theta^{(k)}(\hat\x_{\lambda_s},\lambda_s)+\Oc(h^{n+2}).
+\end{equation}
+So the solution of $\x_t$ in Eq.~\eqref{eqn:analytic_solution} can be expanded as
+\begin{equation}
+\label{eqn:analytic_expansion}
+    \x_t = \frac{\alpha_t}{\alpha_s}\x_s - \sigma_t\sum_{k=0}^n h^{k+1}\varphi_{k+1}(h)\hat\epsilonv_\theta^{(k)}(\hat\x_{\lambda_s},\lambda_s)+\Oc(h^{n+2}).
+\end{equation}
+
+Finally, we list the closed-forms of $\varphi_k$ for $k = 1, 2, 3$:
+\begin{align}
+\varphi_1(h) &= \frac{e^h - 1}{h}, \\
+\varphi_2(h) &= \frac{e^h - h - 1}{h^2}, \\
+\varphi_3(h) &= \frac{e^h - \nicefrac{h^2}{2} - h - 1}{h^3}.
+\end{align}
+
+
+
+
+
+\subsection{Proof of Theorem~\ref{thrm:order} when $k=1$}
+\label{app:proof-k1}
+\begin{proof}
+Taking $n = 0, t = t_i, s = t_{i-1}$ in Eq.~\eqref{eqn:analytic_expansion}, we obtain
+\begin{equation}
+\label{eqn:analytic_expansion_n0}
+    \x_{t_i} = \frac{\alpha_{t_i}}{\alpha_{t_{i-1}}}\x_{t_{i-1}} 
+    - \sigma_t (e^{h_i} - 1)\epsilonv_\theta(\x_{t_{i-1}},{t_{i-1}})
+    +\Oc(h_i^{2}).
+\end{equation}
+By Assumption~\ref{ass:lip} and Eq.~\eqref{eqn:1st}, it holds that
+\[ \begin{aligned}
+    \tilde\x_{t_i} 
+    &= \frac{\alpha_{t_i}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} - \sigma_{t_i} (e^{h_i} - 1)\epsilonv_\theta(\tilde\x_{t_{i-1}},t_{i-1}) \\
+    &= \frac{\alpha_{t_i}}{\alpha_{t_{i-1}}} \tilde\x_{t_{i-1}} - \sigma_{t_i} (e^{h_i} - 1) \left ( \epsilonv_\theta(\x_{t_{i-1}},t_{i-1}) + \Oc(\tilde \x_{t_{i-1}} - \x_{t_{i-1}} ) \right ) \\
+    &= \frac{\alpha_{t_i}}{\alpha_{t_{i-1}}} \x_{t_{i-1}} - \sigma_{t_i} (e^{h_i} - 1) \epsilonv_\theta(\x_{t_{i-1}},t_{i-1}) + \Oc(\tilde \x_{t_{i-1}} - \x_{t_{i-1}} )  \\
+    &= \x_{t_i} + \Oc(h_{max}^2) + \Oc(\tilde \x_{t_{i-1}} - \x_{t_{i-1}} ).
+\end{aligned} \]
+Repeat this argument, we find that
+\[ \tilde \x_{t_M} = \x_{t_0} + \Oc( M h_{max}^2 ) = \x_{t_0} + \Oc(h_{max}), \]
+and thus completes the proof.
+\end{proof}
+
+\subsection{Proof of Theorem~\ref{thrm:order} when $k=2$}
+\label{appendix:proof_2nd}
+We prove the discretization error of the general form of DPM-Solver-2 in Algorithm~\ref{alg:dpm-solver-2-appendix}.
+\begin{proof}
+First, we consider the following update for $0 < t < s < T, h := \lambda_t - \lambda_s$.
+\begin{subequations}
+\begin{align}
+    s_{1} &= t_{\lambda}\left(\lambda_s + r_1 h\right), \\
+    \bar \uv &= \frac{\alpha_{s_1}}{\alpha_{s}} \x_{s} - \sigma_{s_1}\left(e^{r_1h} - 1\right)\epsilonv_\theta(\x_s, s), \\
+    \bar \x_{t} &= \frac{\alpha_{t}}{\alpha_{s}} \x_s - \sigma_{t}\left(e^{h} - 1\right)\epsilonv_\theta(\x_s,s)
+    - \frac{\sigma_t}{2r_1} (e^{h} - 1) (\epsilonv_\theta(\bar \uv, s_1) - \epsilonv_\theta(\x_s, s)).
+\end{align}
+\end{subequations}
+Note that the above update is the same as a single step of DPM-Solver-2 with $s = t_{i-1}$ and $t = t_i$, except that $\tilde x_{t_{i-1}}$ is replaced with the exact solution $\x_{t_{i-1}}$.
+Once we have proven that $\bar \x_t = \x_t + \Oc(h^3)$, we can show that $\tilde \x_{t_i} = \x_{t_i} + \Oc(h_{max}^3) + \Oc(\tilde \x_{t_{i-1}} - \x_{t_{i-1}})$ by a similar argument as in Appendix~\ref{app:proof-k1}, and therefore completes the proof.
+
+In this remaining part we prove that $\bar \x_t = \x_t + \Oc(h^3)$.
+
+Taking $n = 1$ in Eq.~\eqref{eqn:analytic_expansion}, we obtain
+\begin{equation}
+\label{eqn:analytic_expansion_n1}
+    \x_t = \frac{\alpha_t}{\alpha_s}\x_s 
+    - \sigma_t h\varphi_{1}(h)\epsilonv_\theta(\x_s,s)
+    - \sigma_t h^{2}\varphi_{2}(h)\hat\epsilonv_\theta^{(1)}(\hat\x_{\lambda_s},\lambda_s)
+    +\Oc(h^{3}).
+\end{equation}
+
+From Eq.~\eqref{eqn:taylor-epsilonv}, we have
+\[
+\begin{aligned}
+\bar \x_{t} &= 
+    \frac{\alpha_t}{\alpha_s} \x_s 
+       - \sigma_{t} \left ( e^{h} - 1\right ) \epsilonv_\theta(\x_s, s) 
+     - \frac{\sigma_t}{2r_1} (e^{h} - 1) (\epsilonv_\theta(\bar \uv, s_1) - \epsilonv_\theta(\x_s, s))  \\
+    &= 
+    \frac{\alpha_t}{\alpha_s} \x_s 
+       - \sigma_{t} \left ( e^{h} - 1\right ) \epsilonv_\theta(\x_s, s) 
+          -   \frac{\sigma_t}{2r_1}  \left ( e^{h} - 1\right )  \left [ 
+       \epsilonv_\theta(\bar \uv, s_1) 
+       - \epsilonv_\theta(\x_{s_1}, s_1) 
+      \right ] \\
+     &\phantom{{}={}} - \frac{\sigma_{t}}{2r_1} \left ( e^{h} - 1\right ) 
+      \left [ (\lambda_{s_1} - \lambda_s)\hat\epsilonv_\theta^{(1)}(\hat\x_{\lambda_s},\lambda_s)
+       + \Oc(h^2)
+      \right ].
+\end{aligned}
+\]
+Note that by the Lipschitzness of $\epsilonv_\theta$ w.r.t. $\x$ (Assumption~\ref{ass:lip}),
+\[
+       \| \epsilonv_\theta(\bar \uv, s_1) 
+       - \epsilonv_\theta(\x_{s_1}, s_1)  \|
+       =
+       \Oc(\| \bar \uv - \x_{s_1} \|) = \Oc(h^2),
+\]
+where the last equation follows from a similar argument in the proof of $k=1$. Since $e^h - 1 = \Oc(h)$, the second term of the above display is $\Oc(h^3)$.
+
+As $\lambda_{s_1} - \lambda_s = r_1h$, $\varphi_i(h) = (e^h - 1) / h$ and $\varphi_2(h) =  (e^h - h - 1) / h^2$, we find
+\[
+\begin{aligned}
+\x_t - \bar \x_t
+&= \sigma_t \left [ h^2 \varphi_2(h) - (e^h - 1)\frac{ \lambda_{s_1} - \lambda_s}{2r_1} \right ] \hat\epsilonv_\theta^{(1)} (\hat \x_{\lambda_s}, \lambda_s)
++ \Oc(h^3).
+\end{aligned}
+\]
+Then, the proof is completed by noticing that 
+\[ h^2\varphi_2(h) - (e^h - 1) \frac{\lambda_{s_1} - \lambda_s}{2r_1} = (2e^h - h - 2 - he^h) / 2 = \Oc(h^3). \]
+\end{proof}
+
+
+\subsection{Proof of Theorem~\ref{thrm:order} when $k=3$}
+\label{appendix:proof_3rd}
+\begin{proof}
+As in Appendix~\ref{appendix:proof_2nd}, it suffices to show that the following update has error $\bar \x_t = \x_t + \Oc(h^4)$ for $0 < t < s < T$ and $h = \lambda_s - \lambda_t$.
+\begin{subequations}
+\begin{align}
+    s_{1} &= t_\lambda\left(\lambda_s + r_1 h\right),\quad s_{2} = t_\lambda\left(\lambda_{s} + r_2 h\right), \\
+    \bar \uv_{1} &=\frac{\alpha_{s_{1}}}{\alpha_{s}} \x_{s} - \sigma_{s_{1}}\left(e^{r_1 h} - 1\right)\epsilonv_\theta( \x_{s},s), \\
+    \Dv_{1} &= \epsilonv_\theta(\bar \uv_{1},s_{1}) - \epsilonv_\theta(\x_{s},s), \\
+    \bar \uv_{2} &= \frac{\alpha_{s_{2}}}{\alpha_{s}} \x_{s}  
+    - \sigma_{s_{2}}\left(e^{r_2 h} - 1\right)\epsilonv_\theta(\x_{s},s) - \frac{\sigma_{s_{2}}r_2}{r_1}\left( \frac{e^{r_2 h} - 1}{r_2 h} - 1\right)\Dv_{1}, \\
+    \Dv_{2} &= \epsilonv_\theta(\bar \uv_{2},s_{2}) - \epsilonv_\theta(\x_{s},s), \\
+    \bar \x_{t} &= \frac{\alpha_{t}}{\alpha_{s}} \x_{s}
+        - \sigma_{t}\left(e^{h} - 1\right)\epsilonv_\theta(\x_{s},s) - \frac{\sigma_{t}}{r_2}\left( \frac{e^{h} - 1}{h} - 1\right)\Dv_{2}.
+\end{align}
+\end{subequations}
+
+First, we prove that
+\begin{equation}
+    \bar \uv_2 = \x_{s_2} + \Oc(h^3).
+\end{equation}
+Similar to the proof in Appendix~\ref{appendix:proof_2nd}, since $\frac{e^{r_2h - 1}}{r_2h} - 1 = \Oc(h)$ and $\bar \uv_1 =\x_{s_1} + \Oc(h^2)$, then
+\[ \begin{aligned}
+\bar \uv_2
+&= \frac{\alpha_{s_2}}{\alpha_s} \x_s - \sigma_{s_2} \left ( e^{r_2h} - 1 \right ) \epsilonv_\theta(\x_s, s)
+\\
+&\phantom{{}={}} - \sigma_{s_2} \frac{r_2}{r_1} \left (\frac{e^{r_2h} - 1}{r_2h} - 1 \right ) \left ( \epsilonv_\theta(\x_{s_1}, s_1) - \epsilonv_\theta(\x_s, s) \right ) + \Oc(h^3) \\
+&= \frac{\alpha_{s_2}}{\alpha_s} \x_s - \sigma_{s_2} \left ( e^{r_2h} - 1 \right ) \epsilonv_\theta(\x_s, s)
+\\ 
+& \phantom{{}={}} - \sigma_{s_2} \frac{r_2}{r_1} \left (\frac{e^{r_2h} - 1}{r_2h} - 1 \right ) \epsilonv^{(1)}_\theta(\x_{s}, s) (\lambda_{s_1} - \lambda_s) + \Oc(h^3).
+\end{aligned} \]
+Let $h_2 = r_2h$, then following the same line of arguments in the proof of Appendix~\ref{appendix:proof_2nd}, it suffices to check that 
+\[
+\begin{aligned}
+   \varphi_1(h_2) h_2 &= e^{h_2} - 1, \\
+   \varphi_2(h_2) h_2^2 &= 
+  \frac{r_2}{r_1} \left (\frac{e^{h_2} - 1}{h_2} - 1 \right ) (\lambda_{s_1} - \lambda_s) + \Oc(h^3), \\
+\end{aligned}
+\]
+which holds by applying Taylor expansion.
+
+Using $\bar \uv_2 = \x_{s_2} + \Oc(h^3)$ and $\lambda_{s_2} - \lambda_s = r_2h = \frac{2}{3}h$, we find that
+\[ \begin{aligned}
+    \bar\x_{t} 
+    &= \frac{\alpha_{t}}{\alpha_s} \x_s
+        - \sigma_{t}\left(e^h - 1\right)\epsilonv_\theta(\x_s,s)
+        - \sigma_{t}\frac{1}{r_2}\left( \frac{e^{h} - 1}{h} - 1\right)
+          \big(\epsilonv_\theta(\bar\uv_2,s_2) - \epsilonv_\theta(\x_{s},s)\big) \\
+    &= \frac{\alpha_{t}}{\alpha_s} \x_s
+        - \sigma_{t}\left(e^h - 1\right)\epsilonv_\theta(\x_s,s)
+        - \sigma_{t}\frac{1}{r_2}\left( \frac{e^{h} - 1}{h} - 1\right)
+          \big(\epsilonv_\theta(\x_{s_2},s_2) - \epsilonv_\theta(\x_{s},s)\big) + \Oc(h^4) \\
+    &= \frac{\alpha_{t}}{\alpha_s} \x_s
+        - \sigma_{t}\left(e^h - 1\right)\epsilonv_\theta(\x_s,s)
+   \\
+   &\phantom{{}={}} - \sigma_{t}\frac{1}{r_2}\left( \frac{e^{h} - 1}{h} - 1\right)
+          \big(\epsilonv^{(1)}_\theta(\x_{s},s) r_2h + \frac{1}{2}\epsilonv^{(2)}_\theta(\x_{s},s) r_2^2h^2 \big) + \Oc(h^4).
+  \end{aligned} \]
+
+Comparing with the Taylor expansion in Eq.~\eqref{eqn:analytic_expansion} with $n = 2$:
+    \[ \x_t = \frac{\alpha_t}{\alpha_s}\x_s 
+    - \sigma_t h\varphi_{1}(h)\epsilonv_\theta(\x_s,s)
+    - \sigma_t h^{2}\varphi_{2}(h)\epsilonv_\theta^{(1)}(\x_{s},s)
+    - \sigma_t h^{3}\varphi_{3}(h)\epsilonv_\theta^{(2)}(\x_{s},s)
+    +\Oc(h^{4}), \]
+we need to check the following conditions:
+\[
+\begin{aligned}
+h\varphi_1(h) &= e^h - 1, \\
+h^2\varphi_2(h) &= \left ( \frac{e^h - 1}{h} - 1\right ) h, \\
+h^3\varphi_3(h) &= \left ( \frac{e^h - 1}{h} - 1\right ) \frac{r_2h^2}{2} + \Oc(h^4).
+\end{aligned}
+\]
+The first two conditions are clear. The last condition follows from
+\[ \begin{aligned}
+h^3 \varphi_3(h) &= e^h  - 1 - h - \frac{h^2}{2} = \frac{h^3}{6} + \Oc(h^4) = 
+ \left ( \frac{e^h - 1}{h} - 1\right ) \frac{r_2h^2}{2}.
+\end{aligned}
+\]
+Therefore, $\bar \x_t = \x_t + \Oc(h^4)$.
+\end{proof}
+
+
+
+
+\subsection{Connections to Explicit Exponential Runge-Kutta (expRK) Methods}
+\label{appendix:expRK}
+Assume we have an ODE with the following form:
+\begin{equation*}
+    \frac{\dd\x_{t}}{\dd t} = \alpha \x_t + \Nv(\x_t,t),
+\end{equation*}
+where $\alpha\in \R$ and $\Nv(\x_t,t)\in\R^D$ is a non-linear function of $\x_t$. Given an initial value $\x_t$ at time $t$, for $h>0$, the true solution at time $t+h$ is
+\begin{equation*}
+    \x_{t+h} = e^{\alpha h}\x_t
+        + e^{\alpha h}\int_0^h e^{-\alpha\tau}\Nv(\x_{t+\tau},t+\tau)\dm\tau.
+\end{equation*}
+The exponential Runge-Kutta methods~\cite{hochbruck2010exponential,hochbruck2005explicit} use some intermediate points to approximate the integral $\int e^{-\alpha\tau}\Nv(\x_{t+\tau},t+\tau)\dm\tau$. Our proposed DPM-Solver is inspired by the same technique for approximating the same integral with $\alpha=1$ and $\Nv=\tilde\epsilonv_\theta$. 
+However, DPM-Solver is different from the expRK methods, because their linear term $e^{\alpha h}\x_t$ is different from our linear term $\frac{\alpha_{t+h}}{\alpha_t}\x_t$. In summary, DPM-Solver is inspired by the same technique of expRK for deriving high-order approximations of the exponentially weighted integral, but the formulation of DPM-Solver is different from expRK, and DPM-Solver is customized for the specific formulation of diffusion ODEs.

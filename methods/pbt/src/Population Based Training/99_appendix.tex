@@ -1,0 +1,191 @@
+\begin{appendices}
+
+
+
+
+\newpage
+\section{Population Based Training of Neural Networks Appendix}\label{sec:appendix}
+
+\subsection{Practical implementations}\label{sec:practicum}
+
+In this section, we describe at a high level how one might concretely implement PBT on a commodity training platform.
+%
+Relative to a standard setup in which multiple hyperparameter configurations are searched in parallel
+(\eg~grid/random search), a practitioner need only add the ability for population members to read and write to a shared data-store (\eg~a key-value store, or a simple file-system). Augmented with such a setup, there are two main types of interaction required: 
+
+
+(1)  Members of the population interact with this data-store to update their current performance and can also use it to query the recent performance of other population members.
+
+(2)  Population members periodically checkpoint themselves, and when they do so they write their performance to the shared data-store. In the exploit-and-explore process, another member of the population may elect to restore its weights from the checkpoint of another population member (\ie~exploiting), and would then modify the restored hyperparameters (\ie~exploring) before continuing to train.
+
+As a final comment, although we present and recommend PBT as an asynchronous parallel algorithm, it could also be executed  semi-serially or with partial synchrony. 
+%
+Although it would obviously result in longer training times than running fully asynchronously in parallel, one would still gain the performance-per-total-compute benefits of PBT relative to random-search. This execution mode may be attractive to researchers who wish to take advantage of commodity compute platforms at cheaper, but less reliable, preemptible/spot tiers.
+%
+As an example of an approach with partial synchrony, one could imagine the following procedure: each member of the population is advanced in parallel (but without synchrony) for a fixed number of steps;  once all (or some large fraction) of the population has advanced, one would call the exploit-and-explore procedure; and then repeat. This partial locking would be forgiving of different population members running at widely varying speeds due to preemption events, etc.
+
+\subsection{Detailed Results: RL}\label{sec:detailed_results_RL}
+
+
+\subsubsection*{FuN - Atari}
+
+Table \ref{tab:FuN_DetailedResults} shows the breakdown of results per game for FuN on the Atari domain, with and without PBT for different population sizes. The initial hyperparameter ranges for the population in both the FuN and PBT-FuN settings were the same as those used for the corresponding games in the original Feudal Networks paper ~\citep{vezhnevets2017feudal}, with the exception of intrinsic-reward cost (which was sampled in the range $[0.25, 1]$ , rather than $[0,1]$ -- since we have found that very low intrinsic reward cost weights are rarely effective). We used fixed discounts of $0.95$ in the worker and $0.99$ in the manager since, for the games selected, these were shown in the original FuN paper to give good performance. The subset of games were themselves chosen as ones for which the hierarchical abstractions provided by FuN give particularly strong performance improvements over a flat A3C agent baseline. In these experiments, we used \emph{Truncation} as the exploitation mechanism, and \emph{Perturb} as the exploration mechanism. Training was performed for $2.5\times 10^8$ agent-environmnent interactions, corresponding to $1\times 10^9$ total environment steps (due to use of action-repeat of $4$). Each experiment condition was repeated $3$ times, and the numbers in the table reflect the mean-across-replicas of the single best performing population member at the end of the training run.
+
+\begin{table}[h]
+\scriptsize
+    \begin{center}
+    \begin{tabular}
+    {lcccccccc}
+    %{|l||c|c|c|c|c|c|c|c|}
+    \toprule
+      %\textbf{Game}  & \multicolumn{2}{c|}{\textbf{Pop $=$ 10 }} &\multicolumn{2}{c|}{\textbf{Pop $=$ 20 }} & \multicolumn{2}{c|}{\textbf{Pop $=$ 40 }} & \multicolumn{2}{c|}{\textbf{Pop $=$ 80 }} \\
+      \textbf{Game}  & \multicolumn{2}{c}{\textbf{Pop $=$ 10 }} &\multicolumn{2}{c}{\textbf{Pop $=$ 20 }} & \multicolumn{2}{c}{\textbf{Pop $=$ 40 }} & \multicolumn{2}{c}{\textbf{Pop $=$ 80 }} \\ 
+    \midrule
+    & \textbf{FuN} & \textbf{PBT-FuN}  & \textbf{FuN} & \textbf{PBT-FuN}  & \textbf{FuN} & \textbf{PBT-FuN}  & \textbf{FuN} & \textbf{PBT-FuN} \\ 
+    
+    %\hline 
+    amidar & 1742 {\tiny $\pm$174} & 1511 {\tiny $\pm$400} & 1645 {\tiny $\pm$158} & 2454 {\tiny $\pm$160} & 1947 {\tiny $\pm$80} & 2752 {\tiny $\pm$81} & 2055 {\tiny $\pm$113} & 3018 {\tiny $\pm$269} \\ 
+    %\hline 
+    gravitar & 3970 {\tiny $\pm$145} & 4110 {\tiny $\pm$225} & 3884 {\tiny $\pm$362} & 4202 {\tiny $\pm$113} & 4018 {\tiny $\pm$180} & 4481 {\tiny $\pm$540} & 4279 {\tiny $\pm$161} & 5386 {\tiny $\pm$306} \\
+    %\hline 
+    ms-pacman & 5635 {\tiny $\pm$656} & 5509 {\tiny $\pm$589} & 5280 {\tiny $\pm$349} & 5714 {\tiny $\pm$347} & 6177 {\tiny $\pm$402} & 8124 {\tiny $\pm$392} & 6506 {\tiny $\pm$354} & 9001 {\tiny $\pm$711} \\
+    %\hline 
+    enduro & 1838 {\tiny $\pm$37} & 1958 {\tiny $\pm$81} & 1881 {\tiny $\pm$63} & 2213 {\tiny $\pm$6} & 2079 {\tiny $\pm$9} & 2228 {\tiny $\pm$77} & 2166 {\tiny $\pm$34} & 2292 {\tiny $\pm$16} \\
+    \bottomrule
+
+    \end{tabular}
+    \end{center}
+    \caption{\footnotesize Per game results for Feudal Networks (FuN) with and without PBT for different population sizes (Pop). }
+    \label{tab:FuN_DetailedResults}
+\end{table}
+
+
+\subsubsection*{UNREAL - DM Lab}
+
+Table \ref{tab:UNREAL_DetailedResults} shows the breakdown on results per level for UNREAL and PBT-UNREAL on the DM Lab domain. The following three hyperparameters were randomly sampled for both methods and subsequently perturbed in the case of PBT-UNREAL: the learning rate was sampled in the log-uniform range [0.00001, 0.005], the entropy cost was sampled in the log-uniform range [0.0005, 0.01], and the unroll length was sampled uniformly between 5 and 50 steps. Other experimental details were replicated from \cite{jaderberg2016reinforcement}, except for pixel control weight which was set to 0.1.
+
+
+\begin{table}[h]
+\scriptsize
+    \begin{center}
+    \begin{tabular}
+    {lcc|cccc}
+    \toprule
+      \textbf{Game}  & \multicolumn{2}{c}{\textbf{Pop $=$ 40 }} &  \multicolumn{4}{c}{\textbf{Pop $=$ 20}}\\ 
+    \midrule
+    & \textbf{UNREAL} & \textbf{PBT-UNREAL} &  \textbf{UNREAL} & \textbf{PBT-Hypers-UNREAL} & \textbf{PBT-Weights-UNREAL} & \textbf{PBT-UNREAL}\\
+    
+    emstm\_non\_match & 66.0 & 66.0 & 42.6 & 14.5 & 56.0 & 53.2 \\
+    emstm\_watermaze & 39.0 & 36.7 & 27.9 & 33.2 & 34.6 & 36.8 \\
+    lt\_horse\_shoe\_color & 75.4 & 90.2 & 77.4 & 44.2 & 56.3 & 87.5\\
+    nav\_maze\_random\_goal\_01 & 114.2 & 149.4 & 82.2 & 81.5 & 74.2 & 96.1\\
+    lt\_hallway\_slope & 90.5 & 109.7 \\
+    nav\_maze\_all\_random\_01 & 59.6 & 78.1 \\
+    nav\_maze\_all\_random\_02 & 62.0 & 92.4 \\
+    nav\_maze\_all\_random\_03 & 92.7 & 115.3 \\
+    nav\_maze\_random\_goal\_02 & 145.4 & 173.3 \\
+    nav\_maze\_random\_goal\_03 & 127.3 & 153.5 \\
+    nav\_maze\_static\_01 & 131.5 & 133.5 \\
+    nav\_maze\_static\_02 & 194.5 & 220.2 \\
+    nav\_maze\_static\_03 & 588.9 & 594.8 \\
+    seekavoid\_arena\_01 & 42.5 & 42.3 \\
+    stairway\_to\_melon\_01 & 189.7 & 192.4 \\
+    \bottomrule
+
+    \end{tabular}
+    \end{center}
+    \caption{\footnotesize Per game results for UNREAL with and without PBT.}
+    \label{tab:UNREAL_DetailedResults}
+\end{table}
+
+
+\subsubsection*{A3C - StarCraft II}
+
+Table \ref{tab:UNREAL_DetailedResults} shows the breakdown on results per level for UNREAL on the DM Lab domain, with and without PBT for different population sizes. We take the baseline setup of \cite{vinyals2017starcraft} with feed-forward network agents, and sample the learning rate from the log-uniform range [0, 0.001].
+
+
+\begin{table}[h]
+\scriptsize
+    \begin{center}
+    \begin{tabular}
+    {lcc}
+    \toprule
+      \textbf{Game}  & \multicolumn{2}{c}{\textbf{Pop $=$ 30 }} \\ 
+    \midrule
+    & \textbf{A3C} & \textbf{PBT-A3C} \\
+    
+    CollectMineralShards & 93.7 & 100.5 \\
+    FindAndDefeatZerglings & 46.0 & 49.9 \\
+    DefeatRoaches & 121.8 & 131.5 \\
+    DefeatZerglingsAndBanelings & 94.6 & 124.7 \\
+    CollectMineralsAndGas & 3345.8 & 3345.3 \\
+    BuildMarines & 0.17 & 0.37 \\
+    \bottomrule
+
+    \end{tabular}
+    \end{center}
+    \caption{\footnotesize Per game results for A3C on StarCraft II with and without PBT.}
+    \label{tab:SC_DetailedResults}
+\end{table}
+
+\subsection{Detailed Results: GAN}
+\label{sec:gan_details}
+
+This section provides additional details of and results from our GAN experiments introduced in~\sref{sec:gans}.
+\figref{fig:gan_samples} shows samples generated by the best performing generators with and without PBT.
+In Table~\ref{tab:ganresults}, we report GAN Inception scores with and without PBT.
+
+\begin{figure}
+\centering
+
+\includegraphics[width=0.75\textwidth,trim={0 2.296cm 0 0},clip]{figures/gan_samples_baseline.png} \\
+Baseline GAN
+\\
+\vspace{1cm}
+\includegraphics[width=0.75\textwidth,trim={0 2.296cm 0 0},clip]{figures/gan_samples_pbt.png} \\
+PBT-GAN
+\caption{CIFAR GAN samples generated by the best performing generator of the Baseline GAN (top) and PBT-GAN (bottom).}
+\label{fig:gan_samples}
+\end{figure}
+
+\paragraph{Architecture and hyperparameters}
+
+The architecture of the discriminator and the generator are similar to those proposed in DCGAN~\citep{dcgan}, but with $4\times4$ convolutions (rather than $5\times5$), and a smaller generator with half the number of feature maps in each layer.
+Batch normalisation is used in the generator, but not in the discriminator, as in~\citet{improvedwgan}.
+Optimisation is performed using the Adam optimiser~\citep{adam}, with $\beta_1=0.5$, $\beta_2=0.999$, and $\epsilon=10^{-8}$.
+The batch size is 128.
+
+
+\begin{table}
+%\scriptsize
+    \begin{center}
+    \begin{tabular}{lccc}
+    \toprule
+                                  & \bf{GAN}           & \bf{PBT-GAN (TS)}  & \bf{PBT-GAN (BT)}  \\
+    \midrule
+    CIFAR Inception               & 6.38$\pm$0.03 & 6.80$\pm$0.01 & 6.77$\pm$0.02          \\
+    ImageNet Inception (by CIFAR) & 6.45$\pm$0.05 & 6.89$\pm$0.04 & 6.74$\pm$0.05 \\
+    ImageNet Inception (peak)     & 6.48$\pm$0.05 & 7.02$\pm$0.07 & 6.81$\pm$0.04 \\
+    \bottomrule
+    \end{tabular}
+    \end{center}
+    \caption{CIFAR and ImageNet Inception scores for GANs trained with and without PBT, using the \emph{truncation selection} (TS) and \emph{binary tournament} (BT) exploitation strategies.
+    The \emph{ImageNet Inception (by CIFAR)} row reports the ImageNet Inception score for the best generator (according to the CIFAR Inception score) after training is finished, while \emph{ImageNet Inception (peak)} gives the best scores (according to the ImageNet Inception score) obtained by any generator at any point during training.}
+    \label{tab:ganresults}
+\end{table}
+
+\paragraph{Baseline selection}
+To establish a strong and directly comparable baseline for GAN PBT, we extensively searched over and chose the best by CIFAR Inception score among many learning rate annealing strategies used in the literature.
+For each strategy, we trained for a total of $2N$ steps, where learning rates were fixed to their initial settings for the first $N$ steps, then for the latter $N$ steps either (a) exponentially decayed to $10^{-2}$ times the initial setting, or (b) linearly decayed to $0$,
+searching over $N=\{0.5, 1, 2\}\times10^5$.
+(Searching over the number of steps $N$ is essential due to the instability of GAN training: performance often degrades with additional training.)
+In each training run to evaluate a given combination of annealing strategy and choice of training steps $N$,
+we used the same number of independent workers ($45$) and initialised the learning rates to the same values used in PBT.
+The best annealing strategy we found using this procedure was exponential decay with $N=1\times10^5$ steps.
+For the final baseline, we then extended this strategy to train for the same number of steps as used in PBT ($10^6$) by continuing training for the remaining $8\times10^5$ steps with constant learning rates fixed to their final values after exponential decay.
+
+\subsection{Detailed Results: Machine Translation}
+\label{sec:mt_baseline}
+We used the open-sourced implementation of the Transformer framework\footnote{https://github.com/tensorflow/tensor2tensor} with the provided \texttt{transformer\_base\_single\_gpu} architecture settings. This model has the same number of parameters as the base configuration that runs on 8 GPUs ($6.5\times10^7$), but sees, in each training step, $\frac{1}{16}$ of the number of tokens ($2048$ vs. $8 \times 4096$) as it uses a smaller batch size. For both evolution and the random-search baseline, we searched over learning rate, and dropout values applied to the attention softmax activations, the outputs of the ReLU units in the feed-forward modules, and the output of each layer. We left other hyperparameters unchanged and made no other changes to the implementation. For evaluation, we computed BLEU score based on auto-regressive decoding with beam-search of width 4. We used \textit{newstest2012} and \textit{newstest2013} respectively as the evaluation set used by PBT, and as the test set for monitoring. At the end of training, we report tokenized BLEU score on \textit{newstest2014} as computed by \texttt{multi-bleu.pl} script\footnote{https://github.com/moses-smt/mosesdecoder/blob/master/scripts/generic/multi-bleu.perl}. We also evaluated the original hyperparameter configuration trained for the same number of steps and obtained the BLEU score of $21.23$, which is lower than both our baselines and PBT results.
+
+\end{appendices}

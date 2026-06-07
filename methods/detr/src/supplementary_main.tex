@@ -1,0 +1,172 @@
+
+\documentclass[runningheads]{llncs}
+\usepackage{graphicx}
+\usepackage{comment}
+\usepackage{amsmath,amssymb} %
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\captionsetup{compatibility=false}
+
+\usepackage{bm}
+\usepackage{xspace}
+\usepackage{dsfont}
+\usepackage{minted}
+
+\usepackage{textcomp}
+
+
+\usepackage{ruler}
+\usepackage[width=122mm,left=12mm,paperwidth=146mm,height=193mm,top=12mm,paperheight=217mm]{geometry}
+
+
+\newcommand{\chk}{{\centering\checkmark}}
+\newcommand{\detr}{DETR\xspace}
+\newcommand{\nico}[1]{{\color{blue} #1}}
+\newcommand{\francisco}[1]{{\color{orange} [Francisco] #1}}
+\newcommand{\alcinos}[1]{{\color{green} [alcinos] #1}}
+\newcommand{\alex}[1]{{\color{red}[alex: #1]}}
+\newcommand{\gab}[1]{{\color{purple} gab: #1}}
+\newcommand{\sergey}[1]{{\color{violet} #1}}
+\newcommand{\noobject}{\varnothing}
+
+\makeatletter
+\renewcommand\subsubsection{\@startsection{subsubsection}{4}{\z@}%
+  {.5em \@plus1ex \@minus.1ex}%
+  {-.5em}%
+  {\normalfont\normalsize\bfseries}}
+\makeatother
+
+\include{math_commands}
+
+\newcommand{\AP}[1]{AP\textsubscript{#1}}
+
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+
+\def\eg{\emph{e.g}\onedot} \def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot} \def\Ie{\emph{I.e}\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{\emph{etc}\onedot} \def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot} \def\dof{d.o.f\onedot}
+\def\etal{\emph{et al}\onedot}
+\renewcommand\maketitle{\newpage
+\phantomsection
+  \refstepcounter{chapter}%
+  \stepcounter{section}%
+  \setcounter{section}{0}%
+  \setcounter{subsection}{0}%
+  \setcounter{figure}{0}
+  \setcounter{table}{0}
+  \setcounter{equation}{0}
+  \setcounter{footnote}{0}%
+  \begingroup
+    \parindent=\z@
+    \renewcommand\thefootnote{\@fnsymbol\c@footnote}%
+    \if@twocolumn
+      \ifnum \col@number=\@ne
+        \@maketitle
+      \else
+        \twocolumn[\@maketitle]%
+      \fi
+    \else
+      \newpage
+      \global\@topnum\z@   %
+      \@maketitle
+    \fi
+    \thispagestyle{empty}\@thanks
+    \def\\{\unskip\ \ignorespaces}\def\inst##1{\unskip{}}%
+    \def\thanks##1{\unskip{}}\def\fnmsep{\unskip}%
+    \instindent=\hsize
+    \advance\instindent by-\headlineindent
+    \if@runhead
+       \if!\the\titlerunning!\else
+         \edef\@title{\the\titlerunning}%
+       \fi
+       \global\setbox\titrun=\hbox{\small\rm\unboldmath\ignorespaces\@title}%
+       \ifdim\wd\titrun>\instindent
+          \typeout{Title too long for running head. Please supply}%
+          \typeout{a shorter form with \string\titlerunning\space prior to
+                   \string\maketitle}%
+          \global\setbox\titrun=\hbox{\small\rm
+          Title Suppressed Due to Excessive Length}%
+       \fi
+       \xdef\@title{\copy\titrun}%
+    \fi
+    \if!\the\tocauthor!\relax
+      {\def\and{\noexpand\protect\noexpand\and}%
+       \def\inst##1{}%
+       \def\orcidID##1{}%
+      \protected@xdef\toc@uthor{\@author}}%
+    \else
+      \def\\{\noexpand\protect\noexpand\newline}%
+      \protected@xdef\scratch{\the\tocauthor}%
+      \protected@xdef\toc@uthor{\scratch}%
+    \fi
+    \if@runhead
+       \if!\the\authorrunning!
+         \value{@inst}=\value{@auth}%
+         \setcounter{@auth}{1}%
+       \else
+         \edef\@author{\the\authorrunning}%
+       \fi
+       \global\setbox\authrun=\hbox{\def\inst##1{}%
+                                    \def\orcidID##1{}%
+                                    \small\unboldmath\@author\unskip}%
+       \ifdim\wd\authrun>\instindent
+          \typeout{Names of authors too long for running head. Please supply}%
+          \typeout{a shorter form with \string\authorrunning\space prior to
+                   \string\maketitle}%
+          \global\setbox\authrun=\hbox{\small\rm
+          Authors Suppressed Due to Excessive Length}%
+       \fi
+       \xdef\@author{\copy\authrun}%
+       \markboth{\@author}{\@title}%
+     \fi
+  \endgroup
+  \setcounter{footnote}{\fnnstart}%
+  \clearheadinfo}
+
+
+  \def\tableofcontents{\section*{\contentsname\@mkboth{{\contentsname}}%
+      {{\contentsname}}}
+    \def\authcount##1{\setcounter{auco}{##1}\setcounter{@auth}{1}}
+    \def\lastand{\ifnum\value{auco}=2\relax
+      \unskip{} \andname\
+      \else
+      \unskip \lastandname\
+      \fi}%
+    \def\and{\stepcounter{@auth}\relax
+      \ifnum\value{@auth}=\value{auco}%
+      \lastand
+      \else
+      \unskip,
+      \fi}%
+    \@starttoc{toc}\if@restonecol\twocolumn\fi}
+
+\makeatother
+
+
+\begin{document}
+\pagestyle{headings}
+\mainmatter
+\def\ECCVSubNumber{832}  %
+
+\title{End-to-End Object Detection with Transformers:\\Supplementary material}
+
+\titlerunning{ECCV-20 submission ID \ECCVSubNumber} 
+\authorrunning{ECCV-20 submission ID \ECCVSubNumber} 
+\author{Anonymous ECCV submission}
+\institute{Paper ID \ECCVSubNumber}
+
+\maketitle
+\setcounter{tocdepth}{2}
+\tableofcontents
+\input{supplementary}
+
+\bibliography{detection_transformer}
+\bibliographystyle{splncs04}
+
+\end{document}

@@ -1,0 +1,18 @@
+\begin{table}[]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+PyramidNet-200 ($\Tilde{\alpha}$=240)  & Top-1 Error (\%) \\ 
+\midrule
+Baseline                                                                & 3.85  \\
++ Cutout                                                            & 3.10   \\
++ Mixup ($\alpha$=1.0)                                                 & 3.09  \\
++ Manifold Mixup ($\alpha$=1.0)                                     &  3.15 \\
++ CutMix                                                                & \textbf{2.88} \\  \toprule
+\end{tabular}
+\vspace{-0.1cm}
+\caption{Impact of CutMix on CIFAR-10. 
+}
+\label{table:cifar-10}
+\vspace{-0.3cm}
+\end{table}

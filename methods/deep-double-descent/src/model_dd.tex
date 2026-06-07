@@ -1,0 +1,228 @@
+\section{Model-wise Double Descent}
+\label{sec:model-dd}
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[t]{.47\textwidth}
+        \centering
+          \includegraphics[width=\textwidth]{cifar100_resnet_pVar}
+          \caption[width=0.8\linewidth]{{\bf CIFAR-100.}
+          There is a peak in test error even with no label noise.
+          } \label{fig:resnet-cifar-left}
+    \end{subfigure}\hfill
+    \begin{subfigure}[t]{.47\textwidth}
+        \centering
+          \includegraphics[width=\textwidth]{cifar10_resnet_pVar}
+          \caption[width=0.8\linewidth]{{\bf CIFAR-10.}
+        There is a ``plateau'' in test error around the interpolation point with no label noise,
+        which develops into a peak for added label noise.
+          }
+    \end{subfigure}
+    \caption{{\bf Model-wise double descent for
+    ResNet18s.} Trained on CIFAR-100 and CIFAR-10, with varying label noise. Optimized using Adam with LR $0.0001$ for 4K epochs, and data-augmentation.
+    }
+    \label{fig:resnet-cifar}
+\end{figure}
+
+In this section, we study the test error of models of increasing size,
+when training to completion (for a fixed large number of optimization steps). 
+We demonstrate model-wise double descent across different architectures,
+datasets, optimizers, and training procedures.
+The critical region exhibits distinctly different test behavior
+around the interpolation point and there is often a peak in test error that becomes more prominent in settings with label noise.
+
+For the experiments in this section (Figures~\ref{fig:resnet-cifar}, \ref{fig:cnn-cifar},
+\ref{fig:more-mdd1appendix},
+\ref{fig:mcnn_cf100},
+\ref{fig:more-mdd2}), notice that all modifications which increase the interpolation threshold
+(such as adding label noise, using data augmentation, and increasing the number of train samples)
+also correspondingly shift the peak in test error towards larger models.
+Additional plots showing the early-stopping behavior of these models,
+and additional experiments showing double descent
+in settings with no label noise (e.g. Figure~\ref{fig:app-cifar100-clean})
+are in Appendix~\ref{subsec:appendix_model}.
+We also observed model-wise double descent for adversarial training,
+with a prominent robust test error peak even in settings without label noise.
+See Figure~\ref{fig:adv_training} in Appendix~\ref{subsec:appendix_model}.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{.47\textwidth}
+        \centering
+  \includegraphics[width=\textwidth]{cifar10_mcnn_noaug_pVar}
+        \caption{Without data augmentation.}
+    \end{subfigure}\hfill
+    \begin{subfigure}{.47\textwidth}
+        \centering
+  \includegraphics[width=\textwidth]{cifar10_mcnn_aug_pVar_trunc}
+        \caption{With data augmentation.}
+    \end{subfigure}
+    \caption{{\bf Effect of Data Augmentation.}
+    5-layer CNNs on CIFAR10, with and without data-augmentation.
+    Data-augmentation shifts the interpolation threshold to the right,
+    shifting the test error peak accordingly.
+    \SGDTxt~
+     See Figure~\ref{fig:mcnn_aug_large} for larger models.
+    }\label{fig:cnn-cifar}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\captionsetup{calcwidth=.9\linewidth}
+\begin{minipage}[t]{0.47\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{cifar10_mcnn_sgd_adam}
+  \caption[width=0.8\linewidth]{{\bf SGD vs. Adam.}
+  5-Layer CNNs on CIFAR-10 with no label noise, and no data augmentation.
+  Optimized using SGD for 500K gradient steps, and Adam for 4K epochs.}\label{fig:more-mdd1appendix}
+\end{minipage}\hfill
+\begin{minipage}[t]{.47\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{cifar100_mcnn_noaug}
+    \caption{{\bf Noiseless settings.} 
+    5-layer CNNs on CIFAR-100 with no label noise;
+    note the peak in test error.
+    Trained with SGD and no data augmentation.
+    See Figure~\ref{fig:app-cifar100-clean-sgd}
+    for the early-stopping behavior of these models.
+    }
+    \label{fig:mcnn_cf100}
+\end{minipage}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    \begin{minipage}[c]{0.5\textwidth}
+        \includegraphics[width=\textwidth]{nlp_de_en_fr}
+    \end{minipage}\hfill
+    \begin{minipage}[c]{0.45\textwidth}
+      \caption[0.9\textwidth]{{\bf Transformers on language translation tasks:} Multi-head-attention encoder-decoder Transformer model trained for 80k gradient steps with labeled smoothed cross-entropy loss on \iwslt\ German-to-English (160K sentences) and WMT`14 English-to-French (subsampled to 200K sentences) dataset. Test loss is measured as per-token perplexity.}
+      \label{fig:more-mdd2}
+    \end{minipage}
+\end{figure}
+
+
+% \begin{figure}
+% \centering
+% \begin{minipage}[t]{.5\textwidth}
+% \captionsetup{width=.9\linewidth}
+%   \centering
+%   \includegraphics[width=\textwidth]{nlp_de_en_fr}
+%       \caption{{\bf Transformers on language translation tasks:} Multi-head-attention encoder-decoder Transformer model trained for 80k gradient steps with labeled smoothed cross-entropy loss on \iwslt\ German-to-English (160K sentences) and WMT`14 English-to-French (subsampled to 200K sentences) dataset. Test loss is measured as per-token perplexity.}
+%       \label{fig:more-mdd2}
+% \end{minipage}%
+% \begin{minipage}[t]{.5\textwidth}
+% \captionsetup{width=.9\linewidth}
+%   \centering
+%   \includegraphics[width=\textwidth]{cifar100_mcnn_noaug}
+%     \caption{Model-wise double descent for 5-layer CNNS on CIFAR-100,
+%     and no label noise.
+%     Note the peak in test error occurs even with no label noise.
+%     Trained with SGD for 1e6 steps, and no data augmentation.
+%     See Figure~\ref{fig:app-cifar100-clean-sgd}
+%     for the early-stopping behavior of these models.
+%     }
+%     \label{fig:mcnn_cf100}
+% \end{minipage}
+% \end{figure}
+
+
+
+
+
+
+\paragraph{Discussion.}
+Fully understanding the mechanisms behind model-wise double descent
+in deep neural networks remains an important open question.
+However, an analog of model-wise double descent occurs even
+for linear models. A recent stream of theoretical works
+analyzes this setting
+(\cite{bartlett2019benign,muthukumar2019harmless,belkin2019two,mei2019generalization,hastie2019surprises}).
+We believe similar mechanisms may be at work in deep neural networks.
+
+Informally, our intuition is that for model-sizes at the interpolation threshold, there is effectively
+only one model that fits the train data and this interpolating model is very sensitive
+to noise in the train set and/or model mis-specification.
+%That is, these models have ``high variance'' in the classical sense.
+That is, since the model is just barely able to fit the train data,
+forcing it to fit even slightly-noisy or mis-specified
+labels will destroy its global structure, and result in high test error.
+(See Figure~\ref{fig:ens_resnet} in the Appendix for an experiment
+demonstrating this noise sensitivity, by showing that ensembling helps significantly
+in the critically-parameterized regime).
+However for over-parameterized models,
+there are many interpolating models that fit the train set,
+and SGD is able to find one that ``memorizes''
+(or ``absorbs'') the noise while still performing well on the distribution.
+
+The above intuition is theoretically justified for linear models.
+In general, this situation manifests even without label noise for linear models
+(\cite{mei2019generalization}),
+and occurs whenever there is \emph{model mis-specification}
+between the structure of the true distribution and the model family.
+We believe this intuition extends to deep learning as well,
+and it is consistent with our experiments.
+
+% Overparameterized models, however, have the capacity to ``memorize the noise'',
+% without affecting their global structure as much.
+% Moreover, SGD (through unexplained means) manages to find such a minima.
+% For overparameterized models, there are many minima which fit the train data,
+% an
+% and SGD (through unexplained means) is able to ``memorize the noise''
+% without destroying the global structure of the model.
+
+
+\iffalse
+\textcolor{blue}{ {\bf Omit this paragraph? --Preetum.}
+The situation for linear models is most clear with added label noise.
+Here, the fundamental reason why there is high test error
+at the interpolation threshold is: when the number of samples $n$
+is equal to the dimension $d$ of the linear model,
+then there is exactly one model which fits the train set--- and this 
+interpolating model is very sensitive
+to noise in the train set.
+That is, since the linear model is just barely able to fit the train data,
+forcing it to fit even slightly-noisy
+labels will destroy its global structure, and result in high test error.
+However for ``overparameterized'' linear models, when $d \gg n$,
+there are many interpolating models that fit the train set,
+and selecting the minimum-norm one will often
+achieve good test performance\footnote{Note that for linear problems,
+the minimum-norm solution is the one found by gradient descent from $0$ initialization.}.
+That is, overparameterized linear models are able to
+fit the label noise, while maintaining good performance on the distribution.
+In general, this situation manifests even without label noise, whenever there is
+\emph{model mis-specification} between the structure of the true distribution, and the
+linear model family.
+}
+
+%% This section follows the linear regression
+%%
+We believe similar mechanisms may be at work in deep neural networks.
+Informally, our intuition is:
+for model-sizes at the interpolation threshold, there is effectively
+only one model that fits the train data.
+This model is very sensitive to [noise in] the specific train samples.
+%That is, these models have ``high variance'' in the classical sense.
+Overparameterized models, however, have the capacity to ``memorize the noise'',
+without affecting their global structure as much.
+Moreover, SGD (through unexplained means) manages to find such a minima.
+For overparameterized models, there are many minima which fit the train data,
+an
+and SGD (through unexplained means) is able to ``memorize the noise''
+without destroying the global structure of the model.
+\fi
+
+% The setting of kernel regression is roughly:
+% We draw $n$ samples $(x_i \in \mathcal{X}, y_i \in \R)$
+% from a distribution,
+% and fix a $d$-dimensional feature map
+% $\phi: \mathcal{X} \to \R^d$.
+% We want to learn a regressor $f_w(x) := \langle w, \phi(x) \rangle$.
+% We pick $\hat{w}$ by minimizing the mean-squared-error over the train samples,
+% selecting the minimum norm solution when multiple minima exist.
+% That is, $\hat{w} := \phi(X)^\dagger y$
+% where $\phi(X)_{i, j} = \phi(x_i)_j$.
+% Now, when 
+% The test loss of $f_{\hat w}$ 
+

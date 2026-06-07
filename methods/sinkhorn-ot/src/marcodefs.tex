@@ -1,0 +1,297 @@
+\newcommand{\BIGT}[1]{\vfill\newpage\oursection{}\vfill\BC\LARGE{\bf \ORG{#1}}\EC\vfill}
+\newcommand{\FIRST}[4]{\vfill\BC\Large{\textbf{#1\\ \vskip .4in \ORG{#2}}}\\\vskip 1in\large{\textbf{#3}}\\\vskip 2cm #4\EC\vfill}
+\usepackage{dsfont}
+
+
+\definecolor{puorange}{rgb}{0.70,0.15,0}
+\definecolor{bluegray}{rgb}{0.05,0,0.8}
+\definecolor{greengray}{rgb}{0.05,0.50,0.15}
+\definecolor{darkbrown}{rgb}{0.40,0.2,0.05}
+\definecolor{darkcyan}{rgb}{0,0.4,1}
+\definecolor{black}{rgb}{0,0,0}
+
+\newcommand{\EBGE}[1]{\boldsymbol{\textcolor{bluegray}{#1}}}
+\newcommand{\EORG}[1]{\boldsymbol{\textcolor{puorange}{#1}}} 
+\newcommand{\ECYA}[1]{\boldsymbol{\textcolor{darkcyan}{#1}}} 
+\newcommand{\ECCYA}[1]{\boldsymbol{\textcolor{cyan}{#1}}} 
+
+\newcommand{\EDBW}[1]{\boldsymbol{\textcolor{darkbrown}{#1}}} 
+\newcommand{\EGGE}[1]{\boldsymbol{\textcolor{greengray}{#1}}} 
+
+\newcommand{\EW}[1]{\textcolor{white}{#1}} 
+
+\newcommand{\boxedeqnstar}[1]{%
+  \[\fbox{%
+      \addtolength{\linewidth}{-2\fboxsep}%
+      \addtolength{\linewidth}{-2\fboxrule}%
+      \begin{minipage}{\linewidth}%
+      \[#1\]%
+      \end{minipage}%
+    }\]%
+}
+
+
+\def\ba{\mathbf{a}}
+\def\bm{\mathbf{m}}
+\def\bw{\mathbf{w}}
+\def\bff{\mathbf{f}}
+\def\bd{\mathbf{d}}
+\def\bs{\mathbf{s}}
+\def\bhC{\mathbf{h}^C}
+\def\bk{\mathbf{k}}
+
+
+\def\bA{\mathbf{A}}
+\def\bX{\mathbf{X}}
+\def\bY{\mathbf{Y}}
+
+\def\bb{\mathbf{b}}
+\def\bx{\mathbf{x}}
+\def\bc{\mathbf{c}}
+\def\bu{\mathbf{u}}
+\def\be{\mathbf{e}}
+\def\bv{\mathbf{v}}
+\def\by{\mathbf{y}}
+\def\br{\mathbf{r}}
+\def\bz{\mathbf{z}}
+\def\bI{\mathbf{I}}
+\def\bJ{\mathbf{J}}
+\def\bT{\mathbf{T}}
+
+\def\bU{\mathbf{U}}
+\def\bD{\mathbf{D}}
+
+
+\def\bg{\mathbf{g}}
+
+\def\bO{\mathbf{O}}
+\def\balpha{\mathbf{\alpha}}
+\def\bbeta{\mathbf{\beta}}
+\def\blambda{\mathbf{\lambda}}
+\def\bmu{\mathbf{\mu}}
+
+\def\bzero{\boldsymbol{0}}
+
+\def\Hcz{H_{\bc,z}}
+\def\Rn{\reals^n}
+\def\Rm{\reals^m}
+\def\Rd{\reals^d}
+\def\Rnn{\reals^{n\times n}}
+\def\Sym{\mathbf{Sym}_n}
+\def\Symr{\mathbf{Sym}_r}
+\def\ball{B_r(\bx_0)}
+\def\cball{\overline{\ball}}
+
+%\newtheorem{definition}{Definition}
+%\newtheorem{theorem}{Theorem}
+%\newtheorem{corollary}{Corollary}
+%\newtheorem{lemma}{Lemma}
+%\newtheorem{proposition}{Proposition}
+%\newtheorem{example}{Example}
+
+\DeclareMathOperator{\ldet}{logdet} 
+
+\newcommand{\dotprod}[2]{\ensuremath{\langle #1 , #2\,\rangle}}
+
+\newcommand{\Mysection}[1]{\vfill\newpage\oursection{#1}\vfill}
+\newcommand{\pstexinput}[2]{\BC\scalebox{#1}{\input{#2}}\EC}
+
+\newcommand{\nintegers}{{\mbox{\bf N}}}
+
+\usepackage{enumitem}
+\usepackage{enumerate}
+\usepackage{amsmath}
+
+\newcommand{\smallmat}[1]{\left[\begin{smallmatrix}#1\end{smallmatrix}\right]}
+\newcommand{\smallmatp}[1]{\left(\begin{smallmatrix}#1\end{smallmatrix}\right)}
+\newcommand{\bigmatp}[1]{\begin{pmatrix}#1\end{pmatrix}}
+
+\def\betamac{\beta_\text{mac}}
+\def\betabt{\beta_\text{BT}}
+\def\tildebetabt{\tilde{\beta}_\text{BT}}
+
+\def\L{{\cal L}}
+
+\def\E{\mathbb{E}}
+
+\def\RR{\mathbb{R}}
+\def\QQ{\mathbb{Q}}
+\def\ZZ{\mathbb{Z}}
+\def\NN{\mathds{N}}
+\def\GG{\mathbf{G}}
+
+\def\undemi{\frac{1}{2}}
+\def\tundemi{\tfrac{1}{2}}
+
+\def\Ecal{\mathcal{E}}
+\def\Wcal{\mathcal{W}}
+\def\Dcal{\mathcal{D}}
+\def\Scal{\mathcal{S}}
+\def\Xcal{\mathcal{X}}
+\def\Ccal{\mathcal{C}}
+\def\Acal{\mathcal{A}}
+\def\Rcal{\mathcal{R}}
+\def\Ucal{\mathcal{U}}
+\def\Vcal{\mathcal{V}}
+\def\Fcal{\mathcal{F}}
+\def\mcal{\mathcal{M}}
+%\def\Mcal{M_+^b(\Xcal)}
+\def\Mcal{\mathcal{M}}
+\def\Mpcal{M_+^1(\Xcal)}
+\def\MHcal{M_+^h(\Xcal)}
+\def\Mvcal{M_+^V(\Xcal)}
+\def\Mscal{M_+^s(\Xcal)}
+\def\Mtcal{M_\Tcal(\Xcal)}
+\def\Pcal{\mathcal{P}}
+\def\Gcal{\mathcal{G}}
+\def\Ncal{\mathcal{N}}
+\def\Hcal{\mathcal{H}}
+\def\hcal{\mathcal{h}}
+\def\Hcalk{\Hcal_k}
+\def\Lcal{\mathcal{L}}
+\def\Zcal{\mathcal{Z}}
+\def\Ical{\mathcal{I}}
+\def\Kcal{\mathcal{K}}
+
+
+\def\Jcal{\mathcal{J}}
+\def\Bcal{\mathcal{B}}
+\def\Ycal{\mathcal{Y}}
+\def\Tcal{\mathcal{T}}
+\def\Isc{\mathbf{a}}
+\def\Jsc{\mathbf{b}}
+\def\Ksc{\mathbf{c}}
+
+\def\Ekn{\textbf{E}_{k_n}}
+\def\Ep{\textbf{E}_{p}}
+
+\def\phitr{\varphi_{\text{tr}}}
+\def\phigv{\varphi_{\text{gv}}}
+
+\def\Xt{\tilde{X}}
+\def\hcal{h}
+\def\DEL{\Delta_\gamma}
+%\def\psd{{\mathbf{S}_n^+}}
+\def\psd{\mbox{\bf S}_n^+}
+\def\psdd{\mbox{\bf S}_d^+}
+\def\psdr{\mbox{\bf S}_r^+}
+\def\psdm{\mbox{\bf S}_m^+}
+\def\psdN{\mbox{\bf S}_N^+}
+%\def\pd{{\mathbf{P}_n^+}}
+\def\Kappa{\mathcal{K}}
+\def\onesn{\mathds{1}_{n,n}}
+\def\one{\mathds{1}}
+\def\Kn{\textbf{K}_n}
+\def\In{\textbf{I}_n}
+
+
+
+\def\MolQ{\mol_+^\QQ(\Xcal)}
+\def\MolQX{\mol_+^\QQ(X)}
+
+\def\Molnn{\mol_+(\Xcal)}
+\def\Mol{\mol_+^1(\Xcal)}
+\def\MolY{\mol_+^1(\Ycal)}
+\def\MolXi{\mol_+^1(\Xi)}
+\def\MolUp{\mol_+^1(\Upsilon)}
+\def\XcalN{\Xcal^{\NN}}
+
+\def\Cnreg{C_{n,\,{\epsilon_n}}}
+\def\Creg{C_{\epsilon_n}}
+\def\sqCnreg{\Cnreg^{-\frac{1}{2}}}
+\def\sqCreg{\Creg^{-\frac{1}{2}}}
+
+\def\fbt{\hat{f}_{\text{BT}}}
+\def\fosv{\hat{f}_{\text{ocSVM}}}
+\newcommand{\To}{\longrightarrow}
+
+\def\myWeightedlist{\left\{(x_1,a_1),(x_2,a_2),\ldots,(x_d,a_d)\right\}}
+
+\def\OMIT#1{}
+\def\INC#1{#1}
+
+\newcommand {\PAR}[1]{\left(#1\right)}
+\def\PP{P}
+\def\KK{\kappa}
+
+\DeclareMathOperator{\card}{card} \DeclareMathOperator{\kl}{kl}
+\DeclareMathOperator{\Id}{Id} \DeclareMathOperator{\supp}{supp}
+\DeclareMathOperator{\spa}{span} 
+\DeclareMathOperator{\reg}{reg} 
+%\DeclareMathOperator{\corr}{corr}
+%\DeclareMathOperator{\cov}{cov}
+\newcommand{\corr}{\mathop{\bf corr}}
+\newcommand{\cov}{\mathop{\bf cov}}
+
+\DeclareMathOperator{\defi}{def}
+\DeclareMathOperator{\tr}{tr}\DeclareMathOperator{\mol}{Mol}
+\DeclareMathOperator{\suff}{suff} \DeclareMathOperator{\emp}{emp}
+\DeclareMathOperator{\defeq}{\overset{\defi}{=}}
+\DeclareMathOperator{\ins}{\in\,}
+\DeclareMathOperator{\Pred}{Pred}
+\DeclareMathOperator{\sgn}{sgn}
+\DeclareMathOperator{\mspec}{mspec}
+\DeclareMathOperator{\spec}{spec}
+%\DeclareMathOperator{\var}{var}
+%\DeclareMathOperator{\argm}{argmax}
+%\DeclareMathOperator{\argmin}{argmin}
+%\DeclareMathOperator{\diag}{diag}
+
+\usepackage{enumerate,multirow}
+
+
+\providecommand{\abs}[1]{\lvert#1\rvert} 
+\providecommand{\norm}[1]{\lVert#1\rVert} 
+\providecommand{\Norm}[1]{\left\lVert#1\right\rVert} 
+
+\newcommand{\boxedeqn}[1]{%
+  \[\fbox{%
+      \addtolength{\linewidth}{-2\fboxsep}%
+      \addtolength{\linewidth}{-2\fboxrule}%
+      \begin{minipage}{\linewidth}%
+      \begin{equation}#1\end{equation}%
+      \end{minipage}%
+    }\]%
+}
+
+\def\alloperators{\left\{\begin{smallmatrix}<,>\\\;\\=\\\;\\\leq,\geq\end{smallmatrix}\right\}}
+\def\alloperatorseq{\left\{\begin{smallmatrix}=\\\;\\\leq,\geq\end{smallmatrix}\right\}}
+
+\def\RRs{\RR_n^\star}
+
+\usepackage{tabularx}
+
+\makeatletter
+\newif\if@borderstar
+\def\bordermatrix{\@ifnextchar*{%
+  \@borderstartrue\@bordermatrix@i}{\@borderstarfalse\@bordermatrix@i*}%
+}
+\def\@bordermatrix@i*{\@ifnextchar[{%
+  \@bordermatrix@ii}{\@bordermatrix@ii[()]}
+}
+\def\@bordermatrix@ii[#1]#2{%
+  \begingroup
+    \m@th\@tempdima8.75\p@\setbox\z@\vbox{%
+      \def\cr{\crcr\noalign{\kern 2\p@\global\let\cr\endline }}%
+      \ialign {$##$\hfil\kern 2\p@\kern\@tempdima & \thinspace %
+      \hfil $##$\hfil && \quad\hfil $##$\hfil\crcr\omit\strut %
+      \hfil\crcr\noalign{\kern -\baselineskip}#2\crcr\omit %
+      \strut\cr}}%
+    \setbox\tw@\vbox{\unvcopy\z@\global\setbox\@ne\lastbox}%
+    \setbox\tw@\hbox{\unhbox\@ne\unskip\global\setbox\@ne\lastbox}%
+    \setbox\tw@\hbox{%
+      $\kern\wd\@ne\kern -\@tempdima\left\@firstoftwo#1%
+        \if@borderstar\kern2pt\else\kern -\wd\@ne\fi%
+      \global\setbox\@ne\vbox{\box\@ne\if@borderstar\else\kern 2\p@\fi}%
+      \vcenter{\if@borderstar\else\kern -\ht\@ne\fi%
+        \unvbox\z@\kern-\if@borderstar2\fi\baselineskip}%
+        \if@borderstar\kern-2\@tempdima\kern2\p@\else\,\fi\right\@secondoftwo#1 $%
+    }\null \;\vbox{\kern\ht\@ne\box\tw@}%
+  \endgroup
+}
+\makeatother
+
+\def\etp{& + &}
+\def\etm{& - &}
+\def\ete{& = &}
+\def\invBi{B^{-1}_\bI}

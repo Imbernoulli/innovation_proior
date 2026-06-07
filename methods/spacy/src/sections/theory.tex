@@ -1,0 +1,77 @@
+\section{Identifiability Analysis}
+\label{sec:identifiability}
+
+
+% We analyze the identifiability of the spatiotemporal generative model from Section \ref{sec:forward_model}. Identifiability ensures that the latent variables can be uniquely recovered from observations, up to permutation and scaling. While previous research in temporal settings by \citep{yao2021learning, yao2022temporally, lachapelle2024nonparametric} has established identifiability for nonlinear invertible mixing, these results rely on restrictive assumptions about the latent process, including no instantaneous effects, sparse causal graphs, or sufficient variability conditions. We show that such assumptions are not necessary in the spatiotemporal setting, by explicitly leveraging spatial correlations to strengthen identifiability guarantees. The key insight is that the problem's overdetermined nature—where spatial locations outnumber latent dimensions—enables us to establish identifiability under minimal assumptions about the latent process.
+
+We analyze the identifiability of the spatiotemporal generative model from Section \ref{sec:forward_model}. Identifiability ensures that the latent variables can be uniquely recovered from observations, up to permutation and scaling. Prior work, such as \citep{yao2021learning, yao2022temporally, lachapelle2024nonparametric}, establishes identifiability in temporal settings with nonlinear invertible mixing but uses restrictive assumptions about the latent process, like the absence of instantaneous effects, sparsity of the causal graph, or sufficient variability. In contrast, we demonstrate identifiability in our spatiotemporal setting, \change{where the observations are a nonlinear function of the product of latent time series and spatial factors,} without relying on such assumptions, by explicitly leveraging spatial correlations. This is made possible by the overdetermined nature of the problem, where the number of spatial locations exceeds the latent dimension, allowing for identifiability with minimal assumptions about the latent process.
+
+Specifically, we generalize the discrete grid $\mathcal{G}$ to a continuous spatial domain with infinite spatial resolution. This generalization allows us to the prove identifiability condition using tools from real analysis.  Specifically, for every point $\ell$ in the $K$-dimensional spatial domain $\mathcal{G} = (0,1)^K$, we observe a corresponding time series $\mathbf{X}(\ell)$, representing a $T$-dimensional random variable. We model the spatial factors as function evaluations of a family of linearly independent functions. Notably, the family of RBF functions is one such family of functions \citep{smola1998learning}. We introduce the notion of a spatial factor process (SFP), and mathematically describe the identifiability of SFPs.
+\begin{definition}[Spatial Factor Process]
+    \label{def:spatial_factor_process}
+    Let $\mathcal{G} = (0,1)^K$ be a $K-$dimensional spatial domain, and let $\{\Zt\}_{t=1}^T$ denote the latent causal process, where $\Zt \in \mathbb{R}^D$. Let $\mathcal{F} = \left\{F_{\psi_1}, ..., F_{\psi_D} \right\}$ be a finite linearly independent family of functions defined on $\mathcal{G}$, and $\mathscr{G} = \big\{ g_{\ell} \colon \mathbb{R} \to \mathbb{R} \ \big| \ \ell \in \mathcal{G} \big\}$ be a family of functions defined for each point $\ell$ on the grid $\mathcal{G}$. Let $p_{\varepsilon_{\ell}^{(t)}}$ be a zero-mean noise distribution. The Spatial Factor Process $\displaystyle \text{SFP}\left(\left\{\Zt\right\}_{t=1}^T, \mathcal{F}, \mathscr{G}, p_{\varepsilon_{\ell}^{(t)}} \right)$, denoted by $\mathbf{X}$, is defined as follows: For each location $\ell \in \mathcal{G}$ on the grid and $t \in [T]$,
+\begin{equation} \Xt (\ell) = g_{\ell} \left (\Fx^\top \Zt \right) + \varepsilon_{\ell}^{(t)}, \label{eqn:x_eqn_2}
+    \end{equation}
+    where
+    \begin{equation*}
+        \Fx = \begin{bmatrix}
+            F_{\psi_1}(\ell), \ldots, F_{\psi_D}(\ell)
+        \end{bmatrix}^\top.
+    \end{equation*}
+\end{definition}
+We can define the identifiability of such SFPs as below:
+\begin{definition}[Identifiability of SFPs]
+  Let $\mathbf{X}$ denote the true generative SFP, specified by $\displaystyle \left(\left\{\Zt\right\}_{t=1}^T, \left\{ F_{\psi_i} \right\}_{i=1}^D , \{ g_{\ell} \mid \ell \in \mathcal{G}\}, p_{\varepsilon_{\ell}^{(t)}} \right)$  with observational distribution $\displaystyle p(\Xt | \Zt; \mathbf{F})$, where 
+  \begin{equation}
+      \Xt(\ell) = g_{\ell} \left( \Fx^\top \Zt \right) + \varepsilon_{\ell}^{(t)}, \label{eqn:xt1_main}
+  \end{equation} 
+  with $\varepsilon_{\ell}^{(t)} \sim p_{\varepsilon_{\ell}^{(t)}}$ for some zero-mean noise distribution $p_{\varepsilon_{\ell}^{(t)}}$. Suppose we have a learned SFP $\displaystyle \widehat{\mathbf{X}}$, specified by $\displaystyle \left(\left\{\hatZt \right\}_{t=1}^T, \left\{ F_{\widehat{\psi}_i} \right\}_{i=1}^D, \{ \widehat{g}_{\ell} \mid \ell \in \mathcal{G}\}, \change{p_{{\varepsilon}_{\ell}}^{(t)}} \right)$
+  with observational distribution $\displaystyle p( \hatXt | \hatZt; \widehat{\mathbf{F}})$, where
+  \begin{equation}
+  \displaystyle \hatXt(\ell) = \widehat{g}_{\ell} \left( \hatFx^\top \hatZt \right) + \widehat{\varepsilon}_{\ell}^{(t)}, \label{eqn:hatxt1_main}   
+  \end{equation}
+  with $\widehat{\varepsilon}_{\ell}^{(t)} \sim \change{p_{{\varepsilon}_{\ell}^{(t)}}}$. The latent process $\{\Zt\}$ is said to be \textit{identifiable} upto permutation and scaling, if:
+  \begin{align*}
+    p \left(\Xt(\ell) | \Zt; \Fx \right) = p \left( \hatXt(\ell) | \hatZt; \hatFx \right)&, \change{\forall \ell \in \mathcal{G}, t \in [T]} \\
+    \implies \widehat{\mathbf{Z}}_t = PS \Zt, \text{ and } \left\{ F_{\psi_i}\right\}_{i=1}^D = &\left\{ F_{\widehat{\psi}_i}\right\}_{i=1}^D,
+  \end{align*}
+  for some permutation matrix $P$ and scaling matrix $S$.
+\end{definition}
+
+We first prove the identifiability of SFPs in the absence of nonlinearity, ($g_\ell = \text{Id}$) by leveraging the linear independence of the spatial factors $\mathcal{F}$. We then extend the proof to the general setting with nonlinear, invertible mapping, with real analytic spatial factor functions.
+
+\setcounter{theorem}{0}
+
+\begin{theorem}[Identifiability of Linear SFPs] \label{thm:linear_identifiability}
+    Suppose we are given two SFPs $\mathbf{X} = \text{SFP}\left(\mathbf{Z}, \mathcal{F}, \left\{ g_{\ell} \mid \ell \in \mathcal{G} \right\}, p_{\varepsilon_{\ell}^{(t)}} \right)$ and $\widehat{\mathbf{X}} = \text{SFP}\left(\widehat{\mathbf{Z}}, \widehat{\mathcal{F}}, \left\{\widehat{g}_{\ell} \mid \ell \in \mathcal{G} \right\}, \change{p_{{\varepsilon}_{\ell}^{(t)}}} \right)$ specified by Equations \ref{eqn:xt1_main} and \ref{eqn:hatxt1_main} respectively, such that both $\mathcal{F}$ and $\widehat{\mathcal{F}}$ belong to the same (potentially infinite) family of linearly independent functions. Further, suppose that the following conditions are satisfied: 
+    \begin{enumerate}[noitemsep, topsep=0pt]
+        \item \textbf{Linearity:} For all $\ell \in \mathcal{G}$, $\displaystyle g_{\ell} = \widehat{g}_{\ell} = \text{Id}$, where $\text{Id}$ is the identity function.
+        \item \textbf{Non-degenerate latent processes:} For all $d \in [D]$,  $\exists \,  t_0 \in [T]$ such that $\mathbf{Z}^{(t_0)}_d \neq 0$, that is, none of the time series is trivially zero. A similar condition holds for $\widehat{\mathbf{Z}}$.
+        \item \change{\textbf{Characteristic function of the noise:} For all $\ell \in \mathcal{G}$ and $t \in [T]$, the set $\displaystyle \left\{ {x} \in \mathbb{R} \mid \varphi_{\varepsilon_\ell^{(t)}} ({x}) = 0\right\}$ has measure zero where $\varphi_{\varepsilon_\ell^{(t)}}$ represents the characteristic function of the density $p_{\varepsilon_\ell^{(t)}}$}.
+    \end{enumerate}
+     If $p(\Xt(\ell) | \Zt ; \Fx) = p \left(\hatXt(\ell)| \hatZt; \hatFx \right)$ for every $\ell \in \mathcal{G}$ and $t \in [T]$, then $\mathbf{Z} = P\tilde{\mathbf{Z}}$ and $\mathcal{F} = \widehat{\mathcal{F}}$ for some permutation matrix $P$. \label{thm:linear_sfp_identifiability}
+    % \vspace{-17pt}
+\end{theorem}
+We now consider the general case where the functions $g_\ell$ may be nonlinear. When the spatial factors are analytic-meaning they can be represented by power series everywhere— we can construct invertible maps between $\Zt$ and $\hatZt$. Notably, these maps can be shown to have Jacobian matrices that are permutation and scaling matrices.
+
+\begin{theorem}[Identifiability of General SFPs] \label{thm:nonlinear_identifiability}
+    Suppose we are given two SFPs $\mathbf{X} = \text{SFP}\left(\mathbf{Z}, \mathcal{F}, \left\{ g_{\ell} \mid \ell \in \mathcal{G} \right\}, p_{\varepsilon_{\ell}^{(t)}} \right)$ and $\widehat{\mathbf{X}} = \text{SFP}\left(\widehat{\mathbf{Z}}, \widehat{\mathcal{F}}, \left\{\widehat{g}_{\ell} \mid \ell \in \mathcal{G} \right\}, \change{p_{{\varepsilon}_{\ell}^{(t)}}} \right)$ specified by Equations \ref{eqn:xt1_main} and \ref{eqn:hatxt1_main} respectively, such that both $\mathcal{F}$ and $\widehat{\mathcal{F}}$ belong to the same (potentially infinite) family of linearly independent functions. Further, suppose that the following conditions are satisfied: 
+    \begin{enumerate}[noitemsep, topsep=0pt]
+        \item \textbf{Diffeomorphisms:} For all $\ell \in \mathcal{G}$, $\displaystyle g_{\ell}, \widehat{g}_{\ell}$ are diffeomorphisms, that is, $g_{\ell}, \widehat{g}_{\ell}$ are invertible and continuously differentiable, and their inverses are also continuously differentiable.
+        \item \textbf{Real analytic functions:} All the functions $F_{\psi_i} \in \mathcal{F}, F_{\widehat{\psi}_i} \in \widehat{\mathcal{F}}$ are real analytic. 
+        \item \textbf{Non-degenerate latent processes:} For all $d \in [D]$,  $\exists \,  t_0 \in [T]$ such that $\mathbf{Z}^{(t_0)}_d \neq 0$, that is, none of the time series is trivially zero. A similar condition holds for $\widehat{\mathbf{Z}}$.
+        \item \change{\textbf{Characteristic function of the noise:} For all $\ell \in \mathcal{G}$ and $t \in [T]$, the set $\displaystyle \left\{ {x} \in \mathbb{R} \mid \varphi_{\varepsilon_\ell^{(t)}} ({x}) = 0\right\}$ has measure zero where $\varphi_{\varepsilon_\ell^{(t)}}$ represents the characteristic function of the density $p_{\varepsilon_\ell^{(t)}}$}.
+    \end{enumerate}
+     If $p(\Xt(\ell) | \Zt ; \Fx) = p \left(\hatXt(\ell)| \hatZt; \hatFx \right)$ for every $\ell \in \mathcal{G}$ and $t \in [T]$, then $\mathbf{Z} = PS\tilde{\mathbf{Z}}$ and $\mathcal{F} = \widehat{\mathcal{F}}$ for some permutation matrix $P$ and scaling matrix $S$. \label{thm:sfp_identifiability}
+\end{theorem}
+The detailed mathematical statements and proofs for these results are provided in Appendix \ref{app:identifiability}. 
+
+
+
+\input{figures/syn_eval}
+
+\textbf{Applicability to finite grids.} While our identifiability theory assumes a continuous spatial domain, the key insights apply to finite grids if the discretization is dense, that is, the number of grid points is sufficiently high. If the number of grid points $L >> D$, the system is overdetermined, and the redundancy can be used to uniquely identify the latent factors. Measure-zero pathologies \change{which prevent identifiability in the continuous case}, remain probabilistically unlikely in finite grids. Our experiments confirm these insights, showing accurate recovery of latent factors in practice.
+
+\change{
+\textbf{Recovery of the causal graph.} Theorems \ref{thm:linear_identifiability} and \ref{thm:nonlinear_identifiability} establish the identifiability of the latent variables from observational data, up to permutation and scaling. Once these latent processes are recovered, we can apply causal discovery algorithms with identifiability guarantees—such as Rhino, which we use in this work—to infer the causal graph among the latent variables, provided that the algorithm’s identifiability conditions are met. This is possible because the causal relationships are encoded in the conditional independence relationships of the latent time series. For completeness, we list the assumptions of Rhino in Appendix \ref{sec:theory_assumptions_for_rhino}. 
+}

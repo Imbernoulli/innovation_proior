@@ -1,0 +1,33 @@
+\section{Introduction}
+\label{sec:introduction}
+
+Deep reinforcement learning methods have recently mastered a wide variety of domains through trial and error learning \cite{mnih15human,silver2017mastering,silver2016alphago, zoph2017learning, lillicrap2015continuous, maron2018distributional}. While the improvements on tasks like the game of Go \cite{silver2017mastering} and Atari games \cite{horgan2018distributed} have been dramatic, the progress has been primarily in single task performance, where an agent is trained on each task separately. We are interested in developing new methods capable of mastering a diverse set of tasks simultaneously as well as environments suitable for evaluating such methods.
+
+One of the main challenges in training a single agent on many tasks at once is scalability. Since the current state-of-the-art methods like A3C \cite{A3C2016} or UNREAL \cite{jaderberg2016reinforcement} can require as much as a billion frames and multiple days to master a single domain, training them on tens of domains at once is too slow to be practical.
+
+We propose the \textbf{Imp}ortance Weighted \textbf{A}ctor-\textbf{L}earner \textbf{A}rchitecture (IMPALA) shown in Figure~\ref{fig:impala_architecture}. IMPALA is capable of scaling to thousands of machines without sacrificing training stability or data efficiency.
+Unlike the popular A3C-based agents,
+in which workers communicate gradients with respect to the parameters of the policy to a central parameter server,
+IMPALA actors communicate trajectories of experience (sequences of states, actions, and rewards) to a centralised learner.
+Since the learner in IMPALA has access to full trajectories of experience we use a GPU to perform updates on mini-batches of trajectories while aggressively parallelising all time independent operations. This type of decoupled architecture can achieve very high throughput. However, because the policy used to generate a trajectory can lag behind the policy on the learner by several updates at the time of gradient calculation, learning becomes off-policy. Therefore, we introduce the {\em V-trace} off-policy actor-critic algorithm to correct for this harmful discrepancy.
+
+
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=.3]{figures/Single_worker.pdf}
+    \hfill
+    \vrule
+    \hfill
+    \includegraphics[scale=.3]{figures/Multi_worker.pdf}
+    \caption {{\bf Left: Single Learner.} Each \emph{actor} generates trajectories and sends them via a queue to the \emph{learner}. Before starting the next trajectory, \emph{actor} retrieves the latest policy parameters from \emph{learner}. {\bf Right: Multiple Synchronous Learners.} Policy parameters are distributed across multiple \emph{learners} that work synchronously.}
+    \label{multiple_learners}
+    \label{single_learner}
+    \label{fig:impala_architecture}
+\end{figure}
+
+
+With the scalable architecture and V-trace combined, IMPALA achieves exceptionally high data throughput rates of 250,000 frames per second, making it over 30 times faster than single-machine A3C.
+Crucially, IMPALA is also more data efficient than A3C based agents and more robust to hyperparameter values and network architectures, allowing it to make better use of deeper neural networks.
+We demonstrate the effectiveness of IMPALA by training a single agent on multi-task problems using DMLab-30, a new challenge set which consists of 30 diverse cognitive tasks in the 3D DeepMind Lab \cite{beattie2016dmlab} environment and by training a single agent on all games in the Atari-57 set of tasks.
+

@@ -1,0 +1,38 @@
+\section{Illustration of the Difference between Conventional SDE and Slow SDE}\label{app:illustration}
+
+In this section, we illustrate the difference between conventional SDE and slow SDE. In \Cref{fig:slow-sde-intro}, let $\Gamma$ denotes a 1D manifold, then the discrete iteration of the optimization process can be seen as successive steps (orange, \Cref{fig:intro-a}) that starts from $A$, first converge to some point $B$ in $\Gamma$ and then move along $\Gamma$ to $C$. 
+
+
+\begin{figure}[htbp]
+  \centering
+  %
+  \begin{subfigure}[b]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig/iteration.png}\caption{}
+    \label{fig:intro-a}
+  \end{subfigure}%
+  \hfill
+  \begin{subfigure}[b]{0.33\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig/conventional_sde.png}\caption{}
+    \label{fig:intro-b}
+  \end{subfigure}%
+  \hfill
+  \begin{subfigure}[b]{0.32\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{fig/slow-sde-fixed.png}
+    \caption{}\label{fig:intro-c}
+  \end{subfigure}
+
+  \caption{Comparison of conventional SDE and slow SDE.}
+  \label{fig:slow-sde-intro}
+\end{figure}
+
+The main intuition behind slow SDE is that the whole process $A \to B \to C$ can actually be decomposed into two motions: a convergence motion $A \to H$ (dashed, \Cref{fig:intro-c}) and an implicit regularization motion $H \to B \to C$. The convergence motion is fast and dominates the dymanics during the convergence phase, but it fades out as soon as convergence phase ends; meanwhile the slow, implicit regularization motion starts to dominate.
+
+
+The conventional SDE approximates the convergence phase only, whose unit time corresponds to $\tilde{O}(\eta^{-1})$ steps (\Cref{fig:intro-b}). In contrast, slow SDE manages to separate the slow implicit regularization motion from the fast convergence, and approximate the implicit regularization near manifold only (\Cref{fig:intro-c}). 
+
+\begin{remark}
+    The projection method (which projects $A\to B\to C$ to $H \to B \to C$) varies in the analysis of different optimizers. Intuitively, the projection should reflect the converging direction driven by a clean (without noise) and continuous version of the optimizer. In SGD the projection is gradient flow; but in Adam we need to consider the preconditioning effect caused by $1/\left(\sqrt{\vv}+\epsilon\right)$, so we add an SDE to track the preconditioner, and define a preconditioned gradient flow for projection.
+\end{remark}

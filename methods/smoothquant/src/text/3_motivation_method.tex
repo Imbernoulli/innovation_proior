@@ -1,0 +1,76 @@
+\section{Preliminaries}
+\label{sec:quantization}
+\textbf{Quantization} maps a high-precision value into discrete levels. 
+We study integer uniform quantization~\cite{jacob2018quantization} (specifically INT8) for better hardware support and efficiency. The quantization process can be expressed as:
+\begin{equation}
+    \label{eqn:quantizer}
+    \bar{\mathbf{X}}^{\text{INT8}} =  \lceil\frac{\mathbf{X^{\text{FP16}}}}{\Delta}\rfloor, \quad \Delta=\frac{\max(|\mathbf{X}|)}{2^{N-1}-1},
+\end{equation}
+where $\mathbf{X}$ is the floating-point tensor, $\bar{\mathbf{X}}$ is the quantized counterpart, $\Delta$ is the quantization step size, $\lceil\cdot\rfloor$ is the rounding function, and $N$ is the number of bits (8 in our case). Here we assume the tensor is \emph{symmetric} at 0 for simplicity; the discussion is similar for asymmetric cases (\eg, after ReLU) by adding a zero-point~\cite{jacob2018quantization}.
+
+Such quantizer uses the maximum absolute value to calculate $\Delta$ so that it preserves the outliers in activation, which are found to be important for accuracy~\cite{dettmers2022llmint8}. We can calculate $\Delta$ offline with the activations of some calibration samples, what we call \textbf{static quantization}. We can also use the runtime statistics of activations to get $\Delta$, what we call \textbf{dynamic quantization}.
+\input{fig_text/fig_quantize_notation.tex}
+As shown in Figure~\ref{fig:quantize_notation}, quantization has different granularity levels. The \textbf{per-tensor} quantization uses a single step size for the entire matrix. We can further enable finer-grained quantization by using different quantization step sizes for activations associated with each token (\textbf{per-token} quantization) or each output channel of weights (\textbf{per-channel} quantization). A coarse-grained version of per-channel quantization is to use different quantization steps for different channel groups, called \textbf{group-wise} quantization~\cite{shen2020q,zeroquant}.
+
+For a linear layer in Transformers~\cite{vaswani2017attention}
+$\mathbf{Y}=\mathbf{X}\cdot \mathbf{W}, \mathbf{Y}\in\mathbb{R}^{T\times C_o}, \mathbf{X}\in\mathbb{R}^{T\times C_i}, \mathbf{W}\in\mathbb{R}^{C_i\times C_o}$,
+where  $T$ is the number of tokens, $C_i$ is the input channel, and $C_o$ is the output channel (see Figure~\ref{fig:quantize_notation}, we omit the batch dimension for simplicity), we can reduce the storage by half compared to FP16 by quantizing the weights to INT8. However, to speed up the inference, we need to quantize both weights and activations into INT8 (\ie, W8A8) to utilize the integer kernels (\eg, INT8 \texttt{GEMM}), which are supported by a wide range of hardware (\eg, NVIDIA GPUs, Intel CPUs, Qualcomm DSPs, \etc).
+\input{fig_text/fig_aw_dist.tex}
+\section{Review of Quantization Difficulty}
+LLMs are notoriously difficult to quantize due to the outliers in the activations~\citep{dettmers2022llmint8,outlier_suppression,bondarenko2021understanding}.
+We first review the difficulties of activation quantization and look for a pattern amongst outliers.
+We visualize the input activations and the weights of a linear layer that has a large quantization error in Figure~\ref{fig:aw-dist} (left). We can find several patterns that motivate our method:
+
+\textbf{1. Activations are harder to quantize than weights. } The weight distribution is quite uniform and flat, which is easy to quantize. Previous work has shown that quantizing the weights of LLMs with INT8 or even with INT4 does not degrade accuracy~\cite{dettmers2022llmint8,zeroquant,zeng2022glm}, which echoes our observation.
+
+\textbf{2. Outliers make activation quantization difficult.} The scale of outliers in activations is $\sim 100\times$ larger than most of the activation values.
+In the case of per-tensor quantization (\eqn{eqn:quantizer}), the large outliers dominate the maximum magnitude measurement, leading to low \emph{effective quantization bits/levels} (Figure~\ref{fig:intuition}) for non-outlier channels:
+suppose the maximum magnitude of channel $i$ is $m_i$, and the maximum value of the whole matrix is $m$, the effective quantization levels of channel $i$ is $2^8 \cdot m_i/m$. For non-outlier channels, the effective quantization levels would be very small (2-3), leading to large quantization errors.
+
+\textbf{3. Outliers persist in fixed channels. } Outliers appear in a small fraction of the \emph{channels}. If one channel has an outlier, it persistently appears in all tokens (Figure \ref{fig:aw-dist}, red).
+The variance amongst the channels for a given token is large (the activations in some channels are very large, but most are small), but the variance between the magnitudes of a given channel across tokens is small (outlier channels are consistently large).
+\input{fig_text/tab_per_channel.tex}
+Due to the persistence of outliers and the small variance inside each channel, if we could perform \emph{per-channel} quantization~\cite{bondarenko2021understanding} of the activation (\ie, using a different quantization step for each channel), the quantization error would be much smaller compared to \emph{per-tensor} quantization, while \emph{per-token} quantization helps little.
+In Table~\ref{tab:per-feature}, we verify the assumption that \textit{simulated} per-channel activation quantization successfully bridges the accuracy with the FP16 baseline, which echos the findings of \citeauthor{bondarenko2021understanding}.
+
+However, per-channel activation quantization does not map well to hardware-accelerated \texttt{GEMM} kernels, that rely on a sequence of operations executed at a high throughput (\eg, Tensor Core MMAs) and do not tolerate the insertion of instructions with a lower throughput (\eg, conversions or CUDA Core FMAs) in that sequence. In those kernels, scaling can only be performed along the outer dimensions of the matrix multiplication (\ie, token dimension of activations $T$, output channel dimension of weights $C_o$, see Figure~\ref{fig:quantize_notation}), which can be applied after the matrix multiplication finishes:
+\begin{equation}
+    \mathbf{Y} = \text{diag}(\mathbf{\Delta}_{\mathbf{X}}^{\text{FP16}}) \cdot (\mathbf{\bar{X}}^{\text{INT8}}\cdot \mathbf{\bar{W}}^{\text{INT8}}) \cdot \text{diag}(\mathbf{\Delta}_{\mathbf{W}}^{\text{FP16}})
+\end{equation}
+Therefore, previous works all use per-token activation quantization for linear layers~\cite{dettmers2022llmint8, zeroquant}, although they cannot address the difficulty of activation quantization (only slightly better than per-tensor).
+
+\section{\method}
+Instead of per-channel activation quantization (which is infeasible), we propose to ``smooth'' the input activation by dividing it by a per-channel smoothing factor $\mathbf{s}\in\mathbb{R}^{C_i}$. To keep the mathematical equivalence of a linear layer, we scale the weights accordingly in the reversed direction:
+\begin{equation}
+    \mathbf{Y} = (\mathbf{X}\text{diag}(\mathbf{s})^{-1}) \cdot(\text{diag}(\mathbf{s})\mathbf{W}) = \hat{\mathbf{X}} \hat{\mathbf{W}}
+\end{equation}
+Considering input $\mathbf{X}$ is usually produced from previous linear operations (\eg, linear layers, layer norms, \etc), we can easily fuse the smoothing factor into previous layers' parameters \textit{offline}, which doe not incur kernel call overhead from an extra scaling. For some other cases, when the input is from a residual add, we can add an extra scaling to the residual branch similar to~\citet{outlier_suppression}.
+
+\myparagraph{Migrate the quantization difficulty from activations to weights. }
+We aim to choose a per-channel smoothing factor $\mathbf{s}$ such that $\hat{\mathbf{X}}=\mathbf{X}\text{diag}(\mathbf{s})^{-1}$ is easy to quantize.
+To reduce the quantization error, we should \emph{increase the effective quantization bits}
+for all the channels. The total effective quantization bits would be largest when all the channels have the same maximum magnitude. Therefore, a straight-forward choice is $\mathbf{s}_j = \max(|\mathbf{X}_j|), j=1,2,..., C_i$, where $j$ corresponds to $j$-th input channel. This choice ensures that after the division, all the activation channels will have the same maximum value, which is easy to quantize.
+Note that the range of activations is dynamic; it varies for different input samples. Here, we estimate the scale of activations channels using calibration samples from the pre-training dataset~\cite{jacob2018quantization}.
+However, this formula pushes \emph{all} the quantization difficulties to the weights. We find that, in this case, the quantization errors would be large for the weights (outlier channels are migrated to weights now), leading to a large accuracy degradation (see \fig{fig:alpha}).
+On the other hand, we can also push all the quantization difficulty from weights to activations by choosing $\mathbf{s}_j = 1/\max(|\mathbf{W}_j|)$. Similarly, the model performance is bad due to the activation quantization errors.
+Therefore, we need to \emph{split} the quantization difficulty between weights and activations so that they are both easy to quantize.
+\input{fig_text/fig_transform}
+
+Here we introduce a hyper-parameter, migration strength $\alpha$, to control how much difficulty we want to migrate from activation to weights, using the following equation:
+\begin{equation} \label{eq:s_sqrt}
+    \mathbf{s}_j =  \max(|\mathbf{X}_j|)^{\alpha} / \max(|\mathbf{W}_j|) ^{1-\alpha}
+\end{equation}
+We find that for most of the models, \eg, all OPT~\cite{opt} and BLOOM~\cite{scao2022bloom} models, $\alpha=0.5$ is a well-balanced point to evenly split the quantization difficulty, especially when we are using the same quantizer for weights and activations (\eg, per-tensor, static quantization). The formula ensures that the weights and activations at the corresponding channel share a similar maximum value, thus sharing the same quantization difficulty.
+\fig{fig:transform} illustrates the smoothing transformation when we take $\alpha=0.5$.
+For some other models where activation outliers are more significant (\eg, GLM-130B~\cite{zeng2022glm} has $\sim$30\% outliers, which are more difficult for activation quantization), we can choose a larger $\alpha$ to migrate more quantization difficulty to weights (like 0.75).
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.9\linewidth]{figures/quantization-flow.pdf}
+    \caption{\method's precision mapping for a Transformer block. All compute-intensive operators like linear layers and batched matmul (\texttt{BMM}s) use INT8 arithmetic.
+    }
+    \label{fig:quantization-flow}
+\end{figure}
+
+\myparagraph{Applying \method to Transformer blocks. } Linear layers take up most of the parameters and computation of LLM models. By default, we perform scale smoothing for the input activations of self-attention and feed-forward layers and quantize all linear layers with W8A8. We also quantize \texttt{BMM} operators in the attention computation.
+We design a quantization flow for transformer blocks in Figure~\ref{fig:quantization-flow}. We quantize the inputs and weights of compute-heavy operators like linear layers and \texttt{BMM} in attention layers with INT8, while keeping the activation as FP16 for other lightweight element-wise operations like ReLU, Softmax, and LayerNorm. Such a design helps us to balance accuracy and inference efficiency.

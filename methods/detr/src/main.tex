@@ -1,0 +1,161 @@
+
+\documentclass[runningheads]{llncs}
+\usepackage{graphicx}
+\usepackage{comment}
+\usepackage{amsmath,amssymb} %
+\usepackage{color}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage[colorlinks=true]{hyperref}
+\captionsetup{compatibility=false,font=small}
+
+\usepackage{bm}
+\usepackage{xspace}
+\usepackage{dsfont}
+\usepackage[frozencache]{minted}
+\usepackage{graphics}
+
+\usepackage{textcomp}
+
+
+\usepackage[width=122mm,left=12mm,paperwidth=146mm,height=193mm,top=12mm,paperheight=217mm]{geometry}
+
+
+\newcommand{\chk}{{\centering\checkmark}}
+\newcommand{\detr}{DETR\xspace}
+\newcommand{\nico}[1]{{\color{blue} #1}}
+\newcommand{\francisco}[1]{{\color{orange} [Francisco] #1}}
+\newcommand{\alcinos}[1]{{\color{green} [alcinos] #1}}
+\newcommand{\alex}[1]{{\color{red}[alex: #1]}}
+\newcommand{\gab}[1]{{\color{purple} gab: #1}}
+\newcommand{\sergey}[1]{{\color{violet} #1}}
+\newcommand{\noobject}{\varnothing}
+\newcommand{\oldnew}[2]{#2}
+
+\makeatletter
+\renewcommand\subsubsection{\@startsection{subsubsection}{4}{\z@}%
+  {.5em \@plus1ex \@minus.1ex}%
+  {-.5em}%
+  {\normalfont\normalsize\bfseries}}
+\makeatother
+
+\include{math_commands}
+
+\newcommand{\AP}[1]{AP\textsubscript{#1}}
+
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+
+\def\eg{\emph{e.g}\onedot} \def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot} \def\Ie{\emph{I.e}\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{\emph{etc}\onedot} \def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot} \def\dof{d.o.f\onedot}
+\def\etal{\emph{et al}\onedot}
+\makeatother
+
+\makeatletter
+\newcommand{\printfnsymbol}[1]{%
+  \textsuperscript{\@fnsymbol{#1}}%
+}
+\makeatother
+
+
+\begin{document}
+\pagestyle{headings}
+\mainmatter
+
+\title{End-to-End Object Detection with Transformers}
+
+\titlerunning{End-to-End Object Detection with Transformers}
+\authorrunning{Carion et al.}
+\author{
+Nicolas Carion\thanks{Equal contribution} \and Francisco Massa\printfnsymbol{1}  \and Gabriel Synnaeve \and Nicolas Usunier \and Alexander Kirillov \and Sergey Zagoruyko}
+\institute{Facebook AI}
+
+\maketitle
+
+\begin{abstract}
+	We present a new method that views object detection as a direct set prediction problem. Our approach streamlines the detection pipeline, effectively removing the need for many hand-designed components like a non-maximum suppression procedure or anchor generation that explicitly encode our prior knowledge about the task. The main ingredients of the new framework, called DEtection TRansformer or \detr, are a set-based global loss that forces unique predictions
+	 via bipartite matching, %
+	 and a transformer encoder-decoder architecture. Given a fixed small set of learned object queries, \detr reasons about the relations of the objects and the global image context to directly output the final set of predictions in parallel. 
+	The new model is conceptually simple and does not require a specialized library, unlike many other modern detectors.
+	\detr %
+	demonstrates accuracy and run-time performance on par with the
+  well-established and highly-optimized Faster R-CNN baseline on the challenging
+  COCO object detection dataset. 
+  Moreover, \detr can be easily generalized to produce panoptic segmentation in a unified manner. We show that it significantly outperforms competitive baselines.
+  Training code and pretrained models are available at \url{https://github.com/facebookresearch/detr}.
+  
+
+
+
+
+
+
+
+\end{abstract}
+
+\section{Introduction}
+
+The goal of object detection is to predict a set of  bounding boxes and category labels for each object of interest.
+Modern detectors address this set prediction task in an indirect way, by defining surrogate regression and classification problems on a large set of proposals~\cite{Ren2015FasterRT,Cai2019CascadeRH}, anchors~\cite{Lin2017FocalLF}, or window centers~\cite{Zhou2019objects,tian2019fcos}.
+Their performances are significantly influenced by postprocessing steps to collapse near-duplicate predictions, by the design of the anchor sets and by the heuristics that assign target boxes to anchors~\cite{Zhang2019bridging}.
+To simplify these pipelines, we propose a direct set prediction approach to bypass the surrogate tasks. 
+This end-to-end philosophy has led to significant advances in complex structured prediction tasks such as machine translation or speech recognition, but not yet in object detection: previous attempts \cite{Stewart2015EndtoEndPD,Hosang2017LearningNS,Bodla2017SoftNMSI,rezatofighi2018deep} either add other forms of prior knowledge, or have not proven to be competitive with strong baselines on challenging benchmarks. This paper aims to bridge this gap.
+
+We streamline the training pipeline by viewing object detection as a direct set prediction problem. We adopt an encoder-decoder architecture based on transformers \cite{Vaswani2017AttentionIA}, a popular architecture for sequence prediction. The self-attention mechanisms of transformers, which explicitly model all pairwise interactions between elements in a sequence, make these architectures particularly suitable for specific constraints of set prediction such as removing duplicate predictions. 
+
+Our DEtection TRansformer (\detr, see Figure~\ref{fig:teaser}) predicts all objects at once, and is trained end-to-end with a set loss function which performs bipartite matching between predicted and ground-truth objects.
+\detr simplifies the detection pipeline by dropping multiple hand-designed components that encode prior knowledge, like spatial anchors or non-maximal suppression. 
+Unlike most existing detection methods, \detr doesn't require any customized layers, and thus can be reproduced easily in any framework that contains standard CNN and transformer classes.\footnote{In our work we use standard implementations of Transformers~\cite{Vaswani2017AttentionIA} and ResNet~\cite{He2015DeepRL} backbones from standard deep learning libraries.}.
+
+Compared to most previous work on direct set prediction, the main features of \detr are the conjunction of the bipartite matching loss and transformers with (non-autoregressive) parallel decoding \cite{oord2017parallel,Gu2017NonAutoregressiveNM,ghazvininejad2019constant,Devlin2019BERTPO}. In contrast, previous work focused on autoregressive decoding with RNNs \cite{Stewart2015EndtoEndPD,RomeraParedes2015RecurrentIS,Park2015LearningTD,ren2017end,Salvador2017RecurrentNN}. Our matching loss function uniquely assigns a prediction to a ground truth object, and is invariant to a permutation of predicted objects, so we can emit them in parallel. 
+
+\begin{figure}[t]
+    \centering\small
+    \includegraphics[width=1.0\columnwidth]{figures/DETR_fig1_seagulls}
+    \caption{\detr directly predicts (in parallel)
+    the final set of detections by combining a common CNN with a transformer architecture. During training, bipartite matching uniquely assigns predictions with ground truth boxes. Prediction with no match should yield a ``{\tt no object}'' ($\noobject$) class prediction.}
+    \label{fig:teaser}
+\end{figure}
+
+We evaluate \detr on one of the most popular object detection datasets, COCO~\cite{Lin2014coco}, against a very competitive Faster R-CNN baseline~\cite{Ren2015FasterRT}. Faster R-CNN has undergone many design iterations and its performance was greatly improved since the original publication. Our experiments show that our new model
+achieves comparable performances. More precisely, \detr demonstrates significantly better performance on large objects, a result likely enabled by the non-local computations of the transformer. It obtains, however, lower performances on small objects. We expect that future work will improve this aspect in the same way the development of FPN~\cite{lin2017feature} did for Faster R-CNN. 
+
+
+Training settings for \detr differ from standard object detectors in multiple ways. The new model requires extra-long training schedule and benefits from auxiliary decoding losses in the transformer.
+We thoroughly explore what components are crucial for the demonstrated performance.
+
+The design ethos of \detr easily extend to more complex tasks. In our
+experiments, we show that a simple segmentation head trained on top of a
+pre-trained \detr outperfoms competitive baselines on Panoptic Segmentation~\cite{Kirillov2019panoptic}, a challenging pixel-level recognition task that has recently gained popularity.
+
+
+
+\input{related}
+\input{method}
+\input{experiments}
+
+\section{Conclusion}
+
+We presented \detr, a new design for object detection systems based on transformers and bipartite matching loss for direct set prediction. The approach achieves comparable results to an optimized Faster R-CNN baseline on the challenging COCO dataset. \detr is straightforward to implement and has a flexible architecture that is easily extensible to panoptic segmentation, with competitive results. In addition, it achieves significantly better performance on large objects than Faster R-CNN, likely thanks to the processing of global information performed by the self-attention.
+
+This new design for detectors also comes with new challenges, in particular regarding training, optimization and performances on small objects. Current detectors required several years of improvements to cope with similar issues, and we expect future work to successfully address them for \detr.
+
+
+
+\section{Acknowledgements}
+
+We thank Sainbayar Sukhbaatar, Piotr Bojanowski, Natalia Neverova, David Lopez-Paz, Guillaume Lample, Danielle Rothermel, Kaiming He, Ross Girshick, Xinlei Chen and the whole Facebook AI Research Paris team for discussions and advices without which this work would not be possible.
+
+\bibliography{detection_transformer}
+\bibliographystyle{splncs04}
+
+\appendix
+\newpage
+\input{supplementary}
+
+\end{document}

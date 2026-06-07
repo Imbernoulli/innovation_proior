@@ -1,0 +1,531 @@
+
+===== page 1 [pdftotext] =====
+Pattern generators with sensory feedback for the control of quadruped
+                              locomotion
+                                               Ludovic Righetti and Auke Jan Ijspeert
+
+
+   Abstract— Central Pattern Generators (CPGs) are becoming               amplitude and coupling between the oscillators have to be
+a popular model for the control of locomotion of legged                   chosen to generate high dimensional coordinated policies.
+robots. Biological CPGs are neural networks responsible for the           Finally, since these methods are model free, they are well
+generation of rhythmic movements, especially locomotion. In
+robotics, a systematic way of designing such CPGs as artificial           adapted to the locomotion in unknown environments. This
+neural networks or systems of coupled oscillators with sensory            approach has been applied for the control of both simulated
+feedback inclusion is still missing.                                      [4] and real biped robots [1], [3], snake and salamander
+   In this contribution, we present a way of designing CPGs               robots where one CPG was able to control both walking
+with coupled oscillators in which we can independently control            and swimming [5] and quadruped robots [2] to cite a few
+the ascending and descending phases of the oscillations (i.e. the
+swing and stance phases of the limbs). Using insights from                successful examples. However, a major drawback in the CPG
+dynamical system theory, we construct generic networks of                 approach is the lack of design methodologies. Despite some
+oscillators able to generate several gaits under simple parameter         attempts to provide generic tools for building CPGs [7], [8],
+changes. Then we introduce a systematic way of adding sensory             most of the time they are tailor-made for specific applications
+feedback from touch sensors in the CPG such that the controller           and very few design principles are available, especially for
+is strongly coupled with the mechanical system it controls.
+   Finally we control three different simulated robots (iCub,
+                                                                          the integration of feedback in such systems.
+Aibo and Ghostdog) using the same controller to show the                     In a recent contribution [8], we presented a simple way
+effectiveness of the approach. Our simulations prove the impor-           to independently control the duration of swing and stance
+tance of independent control of swing and stance duration. The            phases during locomotion (i.e. controlling the duration of the
+strong mutual coupling between the CPG and the robot allows               ascending and descending phases of the oscillators), which
+for more robust locomotion, even under non precise parameters
+and non-flat environment.
+                                                                          allowed also to control the shape of the control signal. We
+                                                                          used the theory of symmetric coupled cells networks [9]
+                      I. INTRODUCTION                                     to design a generic coupling architecture for our CPG and
+                                                                          showed how it could be applied to the control of a crawling
+   The control of locomotion of legged robots is a great
+                                                                          humanoid robot.
+challenge that has not yet been completely solved. Recently,
+                                                                             In this contribution, we continue our previous attempt to
+taking inspiration from the way nature solves the problem,
+                                                                          provide design methodologies. We present a generic network
+researchers have proposed the concept of Central Pattern
+                                                                          of coupled oscillators able to generate different gaits (walk,
+Generators (CPGs) to generate control policies for the loco-
+                                                                          trot, bound and pace) and we integrate sensory feedback in
+motion of robots [1]–[5]. In biology, a CPG is a distributed
+                                                                          the CPG in a systematic manner. Several other contributions
+neural network, located in the spinal cord of vertebrates,
+                                                                          have proposed ways to integrate sensory feedback in CPGs,
+able to generate complex high dimensional signals for the
+                                                                          most of them are based on the idea of using the sensory input
+control of coordinated periodic movements [6]. These CPGs
+                                                                          either to reset the phase of the oscillators when the feet touch
+are activated by simple tonic signals from higher part of
+                                                                          the ground [1], or by using the entrainment properties of
+the brain and they are strongly coupled with the body they
+                                                                          the oscillators [2]–[4]. Other feedback pathways have been
+control and the environment, via sensory feedback.
+                                                                          designed in [2], however these are specific to a particular
+   In robotics, these CPGs are often modeled as coupled
+                                                                          robot and oscillator model and it is not clear how to use
+dynamical systems, mostly oscillators. The advantage of
+                                                                          the same controller for other robots. The novelty of this
+using such controllers is their stability properties (limit cycle
+                                                                          contribution compared to other works is threefold: first it
+behavior), where transient perturbations are rapidly forgotten.
+                                                                          proposes generic networks of oscillators to generate gaits
+Another advantage is that oscillators have intrinsic properties
+                                                                          independently of the chosen oscillators, second the oscillator
+of synchronization that allow strong coupling with the robot
+                                                                          model is specifically designed for locomotion and allows for
+and its environment. Moreover, using such systems for gen-
+                                                                          independent control of swing and stance durations, third we
+erating the control policies reduces the dimensionality of the
+                                                                          include sensory feedback by explicitly shaping the phase
+control problem, since only simple parameters as frequency,
+                                                                          space of the oscillators such that we can control precisely
+   This work was supported by the European Commission’s Cognition Unit,   the behavior of our system. A great advantage of such an
+project no. IST-2004-004370: RobotCub (L.R.) and by a grant from the      approach is that the resulting controller is simpler compared
+Swiss National Science Foundation (L.R. and A.I.).                        to [2] and can easily be used to control very different robots.
+   School of Communication and Computer Science, Ecole Polytech-
+nique Fédérale de Lausanne (EPFL), 1015 Lausanne, Switzerland           We show the genericity of our approach by testing this CPG
+ludovic.righetti@a3.epfl.ch, auke.ijspeert@epfl.ch                        on three different simulated quadruped robots (iCub, Aibo
+
+===== page 2 [pdftotext] =====
+and Ghostdog), using several gaits, on different terrains.        the limbs comes as an intrinsic property of the system and
+                                                                  moreover they are stable against perturbations (limit cycle
+  II. A SSUMPTIONS AND NECESSARY FEATURES FOR A                   behavior). Using such an approach is interesting for sensory
+                LOCOMOTION CONTROLLER
+                                                                  feedback integration, because we can view the CPG as a
+   We first define a set of desirable features for our locomo-    system that is controlled by the sensory information, i.e. this
+tion controller and we make some assumptions on the form          information, depending on the state of the CPG, will change
+of the controller, in order to constrain our design space.        the form of its phase space. We use the term “controlled by
+                                                                  sensory information” because of the strong coupling that can
+A. Features                                                       completely change the internal dynamics of the CPG.
+   A controller for quadruped locomotion should be able              As a summary we make the following assumptions:
+to generate several different gaits into a single controller         • Independent control of swing and stance duration
+(via appropriate simple parameters change). Indeed it is             • CPGs encode the control policies in phase space
+quite obvious that different gaits are suitable for different        • Strong coupling with the mechanical system
+speeds. At slow speeds, one would prefer statically stable             (the CPG controls and is “controlled” by the mechanics)
+gaits such as a walk and at high speeds dynamically stable           • Sensory feedback modulates the onset of swing and
+gaits such as bound or gallop. From the control point of               stance phases
+view, the system should generate smooth control policies
+with the possibility to modulate smoothly these policies in                III. L OCOMOTION CONTROLLER DESIGN
+amplitude and frequency by simple parameter change. We               We present the central pattern generator (CPG) that gen-
+would also like the system to be stable against perturbation      erates the control policies for locomotion, including the
+in order to allow integration of sensory feedback. Suitable       properties and assumptions described in the previous section.
+feedback pathways should make the locomotion more robust
+in unknown environment. Finally the architecture of the           A. Feedforward trajectory generator
+CPG should be simple and generic enough to be applied to             1) Oscillator model: We need an oscillator in which we
+different kinds of robots and to allow integration of higher      can independently control the swing and stance durations
+controls (e.g. precise feet placement) or more stereotyped        (i.e. the ascending and descending phases of the oscillation).
+reflexes (e.g. moving the foot higher when hitting an object      To do so we use a modified Hopf oscillator that has a
+in the middle of swing).                                          phase-dependent frequency. It is based on the oscillator we
+   In summary, the required features are                          designed in [8], but normalized such that the limit cycle has
+   • Generation of several gaits                                  an invariant shape for different frequencies. Its equation is
+   • Stability of the controller to allow feedback integration
+                                                                                   ẋ   = α(µ − r 2 )x − ωy                    (1)
+   • Smooth policies modulated by simple parameter change
+                                                                                   ẏ   = β(µ − r 2 )y + ωx                    (2)
+   • Robust locomotion by feedback integration
+                                                                                           ωstance      ωswing
+   • Genericity of the architecture (applied to several robots)                   ω     =            +                         (3)
+                                                                                          e−by + 1 eby + 1
+   • Framework that allows more complex behavior                               p
+                                                                  where r = x2 + y 2 , ω is the frequency of oscillations in
+B. Assumptions                                                                √
+                                                                  rad · s−1 , µ is the amplitude of oscillations. ωswing and
+   It is well known in biology that the speed of locomotion       ωstance are the frequencies of the swing and stance phases
+in quadruped animals is controlled by the duration of the         respectively. α and β are positive constants that control the
+stance phase (there exists a linear relation between inverse      speed of convergence to the limit cycle. Using different
+of stance duration and speed). On the other hand the duration     speeds of convergence for the x and y variables allows to
+of the swing is almost constant for any gait and has no           control more precisely the generation of the control policy.
+relation with the speed of locomotion, certainly for stability    For example in the following we use µ = 1, α = 5 and
+issues. We assume that it might be the same for robots, so        β = 50, so the convergence is faster on the y axis than on
+we need to independently control the durations of swing           the x axis. We thus have strong convergence properties, while
+and stance in our CPG. We also know that force sensing            having a limited derivative for the control policy generated
+under the feet has a very important role in the behavior          by x. We motivate this choice of oscillator because the Hopf
+of biological CPGs [6]. Indeed it strongly modulates the          oscillator has a harmonic limit cycle that is structurally stable
+onset of the swing and stance phases. In our system one           and the shape of the limit cycle is independent of the choice
+limb should stay in swing phase as long as the foot does          of the frequency parameters. Moreover we can explicitly
+not touch the ground, if the foot touches the ground sooner       and independently control the frequencies of the ascending
+than expected, then the controller should switch to stance        and descending phases of the oscillation as well as their
+phase. We expect the opposite behavior to happen for the          amplitude with ωswing , ωstance and µ.
+stance phase. From a control point of view, we assume that           The control policy is the x variable and represents joint
+the CPG is a network of coupled oscillators that encode in        angle of the most proximal joint in the sagittal plane of a limb
+their phase space the locomotion policy of each limb. One         in our experiments. However it can be noted that x could
+advantage of using oscillators is that the coordination of        easily represent any other quantity (position of the hand,
+
+===== page 3 [pdftotext] =====
+torque, etc...). The policy of the other joints is a function
+                                                                                         1                    2         1                      2
+of x and is discussed in Sec. IV.                                                       Left                Right     Left                   Right
+
+    2) Network structure: We now couple the oscillators     PSfraginreplacements
+                                                                       or-           forelimbPSfrag replacements
+                                                                                                          forelimb  forelimb               forelimb
+
+
+der to generate the desired gaits. Here we extend our previous
+work [8] to have a network able to generate walk, trot, pace
+and bound. To define the generic coupling architecture, we
+use results from the theory of symmetric coupled cells [10].                            3                    4         3                      4
+                                                                                       Left                Right      Left                  Right
+This theory gives conditions on the existence of symmetric                          hindlimb             hindlimb  hindlimb               hindlimb
+
+periodic solutions in networks of coupled dynamical systems.
+The interest of such a theory is that the design of the
+                                                                                     (a) Trot Pace Bound Net.               (b) Walk Net.
+network structure can be made independent of the internal
+dynamics of the cells. The design of such a network relies
+                                                                           Fig. 1. Generic coupling structure for the 4-cell networks. Same coupling
+only on algebraic arguments, which makes the design of the between cells is shown by arrows of the same type, this also shows how
+network easier and scalable to more complex networks (e.g. the network is constrained by the required gaits.
+for hexapod locomotion). Moreover it is then possible to
+                                                                           Z2 . It can easily be calculated that the pace and bound gaits
+calculate the other possible periodic solutions of the network
+                                                                           have the same group of symmetries and that generically in a
+and make sure that only the desired ones are stable.
+                                                                           system of 4 coupled cells having the same symmetry, all the
+    The symmetries present in a network of coupled cells
+                                                                           3 gaits will co-exist (since the subgroups of the network
+induce the existence of periodic solutions possessing the
+                                                                           are {I, ((12)(34))}, {I, ((13)(24))} and {I, ((14)(23))}).
+same symmetries. A symmetry in the network is defined
+                                                                           It has indeed already been shown that these solutions are
+by a permutation of the cells that preserves the coupling
+                                                                           conjugate in a 4 cell network [10]. However, since the
+architecture (we assume here that all the cells have the
+                                                                           stability of these conjugate solutions can be determined by
+same internal dynamics). Given a network, we can define
+                                                                           an appropriate choice of coupling parameters, we can make
+a coupling matrix A whose entries describe the coupling
+                                                                           sure that only the desired pattern is stable. From a control
+between the cells. Then we say that a linear transformation
+                                                                           point of view, this is satisfactory, since unstable solutions
+γ is a symmetry of the network if γA = A (i.e. the network
+                                                                           cannot be reached. For the walking gait, the generator of the
+structure is invariant under the transformation)1 .
+                                                                           group is ((1423), 41 ) and the symmetry group is isomorphic
+    The spatial symmetries of a periodic solution x(t) of a
+                                                                           to Z4 . Figure 1 shows the minimal structure of networks for
+system of differential equations are the symmetries γ such
+                                                                           supporting walk, pace, trot and bound. The hypotheses of
+that x(t) = γx(t), for all t. The spatio-temporal symmetries
+                                                                           the H/K Theorem (H/K cyclic and K isotropy subgroup)
+σ of a periodic solution x(t) are the symmetries that preserve
+                                                                           can easily be checked to be true. Then it is also possible to
+the orbit of the solution, i.e. the symmetries that induce a
+                                                                           calculate the other possible periodic solutions by calculating
+phase shift, ψ, in the solution such that σx(t) = x(t + ψ).
+                                                                           the subgroups of the symmetry group of the network.
+    The main result we use is the H/K Theorem from [9],                       We now couple the oscillators according to generic cou-
+    Theorem 1: H/K Theorem Let Γ be the symmetry group pling matrices such that the desired gaits are stable. Their
+of a coupled cell network in which all cells are coupled and stability was verified by numerical simulations. The equa-
+the internal dynamics of each cell is at least two-dimensional. tions for the CPG are now
+Let K ⊂ H ⊂ Γ be a pair of subgroups. Then there exist
+                                                                                          ẋi = α(µ − ri2 )xi − ωi yi                               (4)
+periodic solutions to some coupled cell systems with spatio-                                                                    X
+                                                                                                                2
+temporal symmetries H and spatial symmetries K if and only                                 y˙i = β(µ − ri )yi + ωi xi +              kij yj         (5)
+if H/K is cyclic and K is an isotropy subgroup. Moreover, the k being defined by the coupling matrices. The other
+                                                                                  ij
+the system can be chosen so that the periodic solution is parameters are defined as before. Figure 2 shows the coupling
+asymptotically stable.                                                     matrices and the resulting gaits. Note that the type of gait
+    Knowing the symmetries of a desired gait, we can now is determined by the coupling matrix and is not affected by
+construct a network that can generically support this gait the swing-stance durations.
+by calculating the constraints on the coupling matrix that
+the symmetry imposes. The trot gait is a gait in which the B. Feedback modulation
+diagonal legs move in synchrony and half a period out of                      In this section we show how to integrate sensory feedback
+phase with the contralateral legs. Thus, using permutation from the touch sensors on the extremities of the limbs in
+notation, if we number the limbs as in Fig 1, we have order to modulate the onset of swing and stance phases. The
+one spatial symmetry ((14)(23), 0) (the 0 means no phase idea is to explicitly change the phase space of the oscillator
+shift after the permutation) and 2 additional spatio-temporal according to their current state and the sensor values. First
+symmetries ((12)(34), 12 ) and ((13)(24), 12 ). The symmetry we rewrite the oscillator equations, where we add a control
+group generated by these symmetries is isomorphic to Z2 × input u as
+                                                                                     ẋi = α(µ − ri2 )xi − ωi yi                                    (6)
+   1 Rigorous mathematical definitions and technical hypotheses such as Γ-                                                    X
+                                                                                                           2
+equivariance of the ODEs can be found in [9]                                          y˙i = β(µ − ri )yi + ωi xi +               kij yj + ui        (7)
+
+===== page 4 [pdftotext] =====
+                                                                 PSfrag replacements
+                                                                                                     y
+ X1                                   X1
+                                                                                                  stance
+                                                                                                                            x
+ X2                                   X2
+
+
+
+ X3                                   X3
+                                                                                                                   x
+
+ X4                                   X4
+
+
+   0        0.5          1      1.5    0        0.5          1      1.5
+                                                                                                                                                  t
+                  Time                                Time                                                                      swing    stance
+                                                                                                  swing
+      0      −1 −1           1           0      −1    1          −1
+   2                           3      2                            3
+   6 −1      0     1         −1 7     6 −1      0    −1          1 7
+   4 −1      1     0         −1 5     4 1       −1    0          −1 5
+       1     −1 −1           0             −1   1    −1          0             Fig. 3. Phase space of an oscillator (left fig.) with its activation zone for
+                                                                               the feedback (light gray for transition and dark gray for the stop controls).
+              Trot                                Pace                         Correspondence with the x variable of the oscillator shown on the right.
+
+ X1                                   X1
+
+
+
+ X2                                   X2                     PSfrag replacements
+ X3                                   X3
+
+
+
+ X4                                   X4                                                                                                              P
+                                                                                       ui = 0                    ui = ±F           ui = −ωi xi −          kij yj
+   0        0.5          1      1.5    0        0.5          1      1.5
+                  Time                                Time
+   2
+      0       1   −1         −1
+                                3     2
+                                         0      −1    1          −1
+                                                                    3          Fig. 4. Schematic oscillator phase plot for the different types of feedback.
+   6 1        0   −1         −1 7     6 −1      0    −1          1 7
+                                                                               vectors ( −ω
+                                                                                         2αµ , 1) and (1, 0). Thus the stable manifold around
+   4 −1      −1    0         1 5      4 −1      1     0          −1 5                       i
+
+       −1    −1    1         0             1    −1 −1            0
+                                                                               the fixed points is tangent to the x axis and the flow cannot
+              Bound                               Walk
+                                                                               cross the x axis and converges automatically to the fixed
+Fig. 2. Coupling matrices and examples of gait generation for the 4 gaits.                                 √                        √
+                                                                               points. It converges to − µ when y > 0 and to µ when
+ωstance = 2ωswing for the trot and pace gaits. ωstance = 4ωswing for
+the walking gait and ωswing = 2ωstance for the bound.                          y < 0, thus it stops before transition, but once the Ox line
+                                                                               crossed it cannot come back.
+We decide to add the feedback on the yi variables rather than                     2) Fast transitions: We want a fast transition from one
+xi for 2 reasons. First this is the variable that defines if we                phase to the other in two cases: during stance when the
+are in stance (yi > 0) or swing phase (yi < 0) as is shown in                  weight under the foot becomes low and during swing when
+Figure 3. Second, since we use the xi variables as the policy                  the foot touches the ground. To accelerate the transition, what
+for the trajectories of the limbs, adding the control on the yi                we need to do is to make the y variable go to 0, thus the
+variables assures that the xi variables will always produce a                  control for this case becomes u = F , the sign of F depending
+smooth output.                                                                 on the direction of transition. Using this control, we can
+   1) Stopping before transition: We want the oscillator to                    know the time delay before transition that will occur in the
+stop in two cases, during swing to stance transition when the                  system. Indeed, during transition (we consider the transition
+limb is not yet in contact with the ground and during stance                   much faster than the oscillation), we will have x ≃ cte
+to swing transition when the limb still supports significant                   and thus the speed of convergence to y = 0 is given by
+body weight (i.e. to avoid premature lifting of the limbs).                    ẏ = α(µ − x2 )y − αy 2 + ωi x + F and since F is bigger than
+   The stopping behavior is obtained by temporarily     activat-               the other terms, we have approximately ẏ ≃ F . Thus the
+                                                                                                                             )
+                                                                               delay before transition will be y(ttransition
+                                                 P
+ing the following control signal: ui = −ωi xi − kij yj . This                                                          F       seconds, where
+choice is motivated by the fact that we want the oscillator to                 ttransition denotes the time when the transition starts.
+stop at the transition, i.e. when y = 0 we want ẋ = ẏ = 0.                      The interest of using such a control instead of directly
+Thus we get α(µ − x2i − yi2 )xi − ωi yi = 0 which implies                      resetting y to 0 is that we can explicitly control the delay
+                                        √
+that the fixed point is at xi = ± µ (the oscillator stops                      before the transition actually occurs. Of course, resetting
+when xi reaches its maximum). Note that it is possible to                      after some delay would be equivalent, but should be made
+change the stopping position  P by changing µ. For the second                  explicitly outside the equations. In the following we use
+equation, we get ωi xi +        kPij yj + ui = 0 which gives                   F = 300, which corresponds to a transition of ≃ 3.3 ms.
+us the control ui = −ωi xi − kij yj . This control in fact                        The activation of the feedback for an oscillator depends
+erases the coupling from the other oscillators and removes                     on its phase and on the pressure sensors information of the
+the oscillating term of the yi variables.                                      corresponding foot as is shown in Figure 3. The phase space
+   Linearizing the equation with the new control, we can                       of the oscillator in function of the feedback is shown in
+                                                   √
+deduce the stability of the fixed points (at x = ± µ, y = 0).                  Figure 4. In summary the feedback goes as
+The Jacobian matrix at these points is                                                      
+                                                                                           −sign(yi )F            fast transitions
+                              −2αµ −ωi                                                ui =
+                                                                                                          P
+                                                                                                −ωi xi − kij yj stop transition            (9)
+                   Df =                                      (8)
+                                0         0                                                 
+                                                                                                0                    otherwise
+its eigenvalues are 0 and −2αµ with corresponding eigen-
+
+===== page 5 [pdftotext] =====
+                                                                                   8                                    8                                    8
+                        IV. E XPERIMENTS
+                                                                                   6                                    6                                    6
+                                                                           swing                                swing                                swing
+   We performed experiments2 on three different simulated                 ω                                     ω                                    ω
+                                                                                   4                                    4                                    4
+quadruped robots having very different mechanic properties
+(iCub, Aibo and Ghostdog). We used Webots [11], a software                             1   2
+                                                                                               ω
+                                                                                                   3
+                                                                                               stance
+                                                                                                        4   5               1   2
+                                                                                                                                    ω
+                                                                                                                                        3
+                                                                                                                                    stance
+                                                                                                                                             4   5               1   2
+                                                                                                                                                                         ω
+                                                                                                                                                                             3
+                                                                                                                                                                         stance
+                                                                                                                                                                                  4   5
+
+for the physic simulation of robots based on ODE, a library
+for the simulation of rigid body dynamics.                                Fig. 5.     Speed characterization of the iCub robot for different values
+                                                                          of ωstance and ωswing . Left graph: without feedback, middle one: with
+A. Experimental setup                                                     feedback and without coupling and right one: with both feedback and
+                                                                          coupling enabled. The right bar shows the color legend for the speed
+   For all the robots, the CPG generates the joints angles                (m · s−1 ), maximum speed is approx. equivalent to 0.6 body length · s−1
+of the hip and/or shoulder joints in the sagittal plane. The
+trajectories for the knees (or elbows) are functions of the xi            without feedback, a wrong choice of swing duration implies
+variables of the CPG and are defined such that they bend                  a strong degradation in performance. On the other hand, we
+during swing and do not move during stance, to keep the                   find a clear correlation between speed of locomotion and
+movement as simple as possible.                                           stance duration, as in mammals. This result is quite important
+   We used the simulated iCub robot, which is an infant-                  because it proves that the assumption we made in Section
+like humanoid robot currently under construction for the                  II made sense and also shows that ωstance can be used as a
+RobotCub project [12]. The robot has the size of a 2-year                 control parameter for the speed of locomotion.
+old infant. It locomotes on the ground on its hand and knees,                The second observation is that without feedback, an incor-
+thus 2 DOFs in the sagittal plane are available for the fore              rect swing parameter could lead to an impressive decrease of
+limbs (shoulder and elbow) while there is only one for the                performance, while when the feedback is enabled (with or
+hind limbs (hip). For this robot, we also control the stiffness           without coupling between the oscillators), the performance
+of the elbow joint to allow a smooth landing of the hands (i.e.           does not degrade. This observation shows that the feedback
+we reduce the gains of the PID controller of the elbow when               structure makes the controller more robust to parameter
+the hand touches the ground). This is a very naive approach               choice. This makes sense since the feedback regulates the
+but it is suitable for our current experiments. We will use               timing of each phases, correcting thus bad parameters choice.
+                                                                             It must also be noted that it is only when both the feedback
+more advanced force control techniques for the elbow in
+                                                                          and the coupling are enabled that the system makes its
+future experiments. For this robot we tested a trot gait as
+                                                                          best performance. It shows that trying to explicitly keep
+real infants do. The second tests were done on a simulation
+                                                                          a correct coordination between the limbs of the robot is
+of the Aibo robot. Here walk and trot were tested. Contrary
+                                                                          important and that a reflex-based controller that would only
+to the iCub robot, we can use the knees of the hind limbs.
+                                                                          react to the sensory feedback might not be as efficient as
+The final robot is called Ghostdog, which is a simulated
+                                                                          our CPG. For the bound gait of the Ghostdog, the results are
+robot available in the Webots software. It is a dog-like robot,
+                                                                          a bit different. Indeed, we did not manage to find a correct
+having motors in the hips and knees. In addition there is
+                                                                          locomotion speed without the feedback. However, when we
+a spring in series with the knee joint, which gives to the
+                                                                          enable the feedback, then the robot moves at high speed
+robot some passive dynamics, which is interesting to test
+                                                                          (ranging between 0.2 to 0.6 m·s−1 or equivalently from 0.36
+dynamically stable gaits such as bound. We tested walk and
+                                                                          to 1.08 body length · s−1 ) for a large range of parameters.
+bound on this robot.
+                                                                          This shows that sensory information combined with the CPG
+B. Flat ground experiments                                                can successfully stabilize a gait that is not intrinsically stable.
+                                                                             Another observation is that the feedback structure strongly
+   The first set of experiments was done on flat terrain.
+                                                                          couples the CPG with the robot it controls. In Figure 6,
+We systematically tested the locomotion of the robots for
+                                                                          we show typical trajectories generated with and without
+different values of ωswing and ωstance . We used the speed of
+                                                                          feedback by the CPG during walking for the Aibo, the strong
+locomotion as a performance criterion. We tested the robots
+                                                                          entrainment of the system is clear, it makes the controller
+with and without feedback, we also tested them without inter-
+                                                                          closer to the intrinsic dynamics of the robot, even if the
+oscillator coupling but with feedback to test the significance
+                                                                          parameters are not perfectly chosen. This entrainment is even
+of a controller with only reflexes and no explicit coordination
+                                                                          more obvious on the phase space plot, where it is clear that
+between the limbs. In Figure 5 we show for the iCub
+                                                                          the stance phase is strongly shortened. For certain parameter
+the speed of locomotion for the different experiments as a
+                                                                          values, typically faster stance, the walking gait even change
+function of the stance and swing parameters. The results
+                                                                          into a trot gait by the feedback coupling, showing that the
+for the other robots at slow speeds (walk and trot) are
+                                                                          system is able to adapt its gait to the specificity of the robot it
+qualitatively the same.
+                                                                          controls. Figure 6 shows also typical sensor values from the
+   We first observe that for the three experiments, the dura-
+                                                                          foot of the Aibo. We clearly notice that the swing and stance
+tion of the swing has almost no influence in the speed of
+                                                                          phases become more regular when the feedback is enabled.
+locomotion (vertical stripes in the figures), but it seems that
+                                                                          This finally shows the mutual entrainment of both the CPG
+  2 Refer to the attached video to see typical results of the different   and the robot, due to the strong coupling. We observe the
+experiments described in the article.                                     same qualitative results for all the robots, this coupling being
+
+===== page 6 [pdftotext] =====
+                      40
+
+
+
+    Touch force [N]
+                                                                                                 the feedback structure. The controller is tightly coupled with
+                                                                  1
+                      20                                                                         the intrinsic dynamics of the robots. Our simulations also
+                       0
+                                                                 0.5                             showed that the swing duration was important for stability
+                        0   10   20    30    40   50   60
+                                      Time                  Y     0
+                                                                                                 and performance while the stance duration could be used
+                       1                                                                         as a parameter to control the speed of locomotion. This
+                                                                −0.5
+    X                  0
+                                                                                                 finding is very interesting because it is closely related to
+                                                                 −1
+                                                                                                 observations made in mammal locomotion and it supports
+                      −1
+                        0   10   20    30    40   50   60              −1   −0.5   0   0.5   1   the design assumptions we made in Section II.
+                                      Time                                         X
+                                                                                                    However there are still many challenges to design a com-
+Fig. 6. On the left graphs we show the typical fore left leg foot sensor                         plete locomotion controller, posture and stability problems
+values and CPG output for the Aibo during walking. From t= 0 to t= 30s                           are not yet completely solved. Nevertheless we believe that
+there is no feedback in the system. After t= 30 feedback is enabled. The
+right graph shows the corresponding state space of the oscillator controlling
+                                                                                                 our framework is suitable to include more complex behavior
+the left fore leg (dotted line without feedback and plain line with feedback).                   and control. For example it could be easily integrated in a
+                                                                                                 more general controller for precise hand placement during
+even more important during bound of the Ghostdog (see                                            locomotion [13]. Moreover we could use advanced adaptive
+attached video).                                                                                 control techniques to fine tune the frequency parameters of
+                                                                                                 the oscillators, using for example methods from [14].
+C. Uneven terrain experiments                                                                       Future work will include integration of more complex
+   Finally we performed experiments with the three robots on                                     sensory feedback and stereotyped reflexes. We will also study
+non-flat terrains. The robots went up and down terrains with a                                   how to integrate more advanced force control techniques to
+slope (up to 10 degrees of slope for the iCub and Ghostdog,                                      control the individual joints of the robot, using the CPG as
+5 degrees for the Aibo). In this case again, the feedback                                        a policy generator.
+was able to stabilize the robots and adapt the phase timing                                                               R EFERENCES
+according to the terrain. We also made the robots go down                                         [1] S. Aoi and K. Tsuchiya, “Locomotion control of a biped robot using
+stairs of up to 10cm high (for the iCUb and Ghostdog). The                                            nonlinear oscillators,” Autonomous Robots, vol. 19, pp. 219–232, 2005.
+                                                                                                  [2] Y. Fukuoka, H. Kimura, and A. Cohen, “Adaptive dynamic walking of
+feedback improved the locomotion in this case too, however                                            a quadruped robot on irregular terrain based on biological concepts,”
+it happened that the robots fell. One major reason of these                                           The International Journal of Robotics Research, vol. 3–4, pp. 187–
+falls is that sometimes the robots put their feet on the edges                                        202, 2003.
+                                                                                                  [3] J. Morimoto, G. Endo, J. Nakanishi, D. Bentivegna, and C. Atkeson,
+of the stairs, making them slip and fall. Since our feedback                                          “Modulation of simple sinusoidal patterns by a coupled oscillator
+relies only on sensory information from the feet pressure                                             model for biped walking,” in Proceedings of the 2006 IEEE Inter-
+sensors and only modulates the swing and stance phases,                                               national Conference on Robotics and Automation, 2006.
+                                                                                                  [4] G. Taga, “Emergence of bipedal locomotion through entrainment
+it cannot cope with such events. Stereotyped reflexes and a                                           among the neuro-musculo-skeletal system and the environment,” Phys-
+higher level balance controller should be developed to cope                                           ica D: Nonlinear Phenomena, vol. 75, no. 1–3, pp. 190–208, 1994.
+with such obstacles. Adding vision to the robot would also                                        [5] A. Ijspeert, A. Crespi, D. Ryczko, and J.-M. Cabelguen, “From
+                                                                                                      swimming to walking with a salamander robot driven by a spinal cord
+help planning the robot trajectory and avoid such problems.                                           model,” Science, vol. 315, no. 5817, pp. 1416–1420, 2007.
+                                                                                                  [6] S. Frigon and S. Rossignol, “Experiments and models of sensorimotor
+                                       V. CONCLUSION                                                  interactions during locomotion,” Biological Cybernetics, vol. 95, no. 6,
+                                                                                                      pp. 607–627, 2006.
+   In this contribution we have presented a way of designing                                      [7] A. Ijspeert, J. Nakanishi, and S. Schaal, “Movement imitation with
+CPGs and including feedback in them. We use an oscillator                                             nonlinear dynamical systems in humanoid robots,” in Proceedings
+designed for locomotion control, in which we can indepen-                                             of the IEEE International Conference on Robotics and Automation
+                                                                                                      (ICRA2002), 2002, pp. 1398–1403.
+dently control the duration of swing and stance phases. We                                        [8] L. Righetti and A. Ijspeert, “Design methodologies for central pattern
+showed how insight from dynamical system theory could be                                              generators: an application to crawling humanoids,” in Proceedings of
+used to design the network architecture of the CPG in a                                               Robotics: Science and Systems, 2006, pp. 191–198.
+                                                                                                  [9] M. Golubitsky and I. Stewart, “Nonlinear dynamics of network: the
+simple and scalable manner.                                                                           groupoid formalism,” Bulletin of the American Mathematical Society,
+   Our major contribution was the integration of sensory                                              vol. 43, pp. 305–364, 2006.
+feedback in the CPG in a manner such that we control                                             [10] M. Golubitsky, I. Stewart, P.-L. Buono, and J. Collins, “A modular
+                                                                                                      network for legged locomotion,” Physica D, vol. 115, pp. 56–72, 1998.
+explicitly the behavior of the system and we can change its                                      [11] O. Michel, “Webots: Professional mobile robot simulation,” Interna-
+properties using simple parameter changes. This CPG is able                                           tional Journal of Advanced Robotic Systems, vol. 1, no. 1, pp. 39–42,
+to modulate online the trajectory generation for the control                                          2004.
+                                                                                                 [12] G. Sandini, G. Metta, and D. Vernon, “Robotcub: an open framework
+of locomotion. We based our design on the assumption that                                             for research in embodied cognition,” 2004, paper presented at the
+the CPG and the mechanical system were strongly coupled                                               IEEE-RAS/RJS International Conference on Humanoid Robotics.
+in both ways. Thus we could think of the CPG as being                                            [13] S. Degallier, L. Righetti, and A. Ijspeert, “Hand placement during
+                                                                                                      quadruped locomotion in a humanoid robot: A dynamical system ap-
+“controlled” by the sensory feedback, changing the state                                              proach,” in IEEE-RAS International Conference on Intelligent Robots
+space of the oscillators accordingly.                                                                 and Systems (IROS07), 2007, accepted.
+   Finally we showed the generality of our method by ap-                                         [14] J. Buchli, F. Iida, and A. Ijspeert, “Finding resonance: Adaptive
+                                                                                                      frequency oscillators for dynamic legged locomotion,” in Proceedings
+plying the same controller to three very different robots. The                                        of the IEEE/RSJ International Conference on Intelligent Robots and
+resulting locomotion is generally faster and more stable with                                         Systems (IROS), 2006, pp. 3903–3909.

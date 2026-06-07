@@ -1,0 +1,40 @@
+% Results table for Experiments section
+% Note that for FIDs we might just report e.g. "6.34 (\pm .21)" instead of (\pm0.21) to save space (can't fit that tasty leading zero =(
+\begin{table}[tbp]
+\small
+\begin{center}\begin{tabular}{c|c|c|c|c|c} 
+\hline
+        Model & Res. &    FID/IS   & (min FID) / IS & FID / (valid IS) & FID / (max IS) \\
+        % Model &     Resolution &    FID/IS   & FID/ISv1 & FID/ISv2  \\
+
+\hline SN-GAN & 128 & 27.62 / 36.80 & N/A & N/A & N/A \\
+
+\hline SA-GAN & 128 & 18.65 / 52.52 & N/A & N/A & N/A \\
+
+%IS of valid data at 128x128 is 165.126312 +/- 8.106392
+
+% Iterations over rounding to make this table fit
+% \hline BigGAN & 128$\times$128 & $8.73 (\pm .45)$/$98.76 (\pm 2.84)$ & $7.74 (\pm .04)$ / $126.51 (\pm .04)$  & $9.57 (\pm .39)$/$166.34 (\pm .68)$  & values\\
+% \hline BigGAN & 128 & $8.73$ / $98.76$ & $7.74$ / $126.51$  & $9.57$ / $166.34$ & N/A \\
+% \hline BigGAN & 128$\times$128 & $8.73\pm.55$/$98.8\pm2.8$ & $7.74\pm.04$/$126.5\pm.04$  & $9.57\pm.4$/$166.3\pm .7$ & values  \\
+\hline BigGAN & 128 & $8.7\pm.6$/$98.8\pm2.8$ & $7.7\pm.1$/$126.5\pm.1$  & $9.6\pm.4$/$166.3\pm1$ & $25\pm2/206\pm2$ \\
+
+
+
+% IS of valid data at 256x256 is 230.667938 +/- 10.150323
+% These numbers here are for a single run, not averaged
+% \hline BigGAN & 256 & $8.40 $ / $150.34$  & $7.65$ / $184.30$  & $9.26$ / $231.86$ & values \\
+\hline BigGAN & 256 & $8.2\pm.2$/$154\pm2.5$ & $7.7\pm.1$/$178\pm5$ & $9.3\pm.3$/$233\pm1$ & $25\pm5$/$295\pm4$ \\
+% \hline BigGAN & 256$\times$256 & $0.0 (\pm 0.0)$/$0.0 (\pm 0.0)$  & $0.0 (\pm 0.0)$/$0.0 (\pm 0.0)$  & $0.0 (\pm 0.0)$/$0.0 (\pm 0.0)$  \\
+
+% IS of valid data for IHQ400 is 240.021454 +/- 15.395828
+% \hline BigGAN & 512 & $10.86$ / $154.876$  & $9.34$ / $202.5$  & $10.88$ / $241.36$ & values \\
+\hline BigGAN & 512 & $10.9$ / $154.9$  & $9.3$ / $202.5$  & $10.9$ / $241.4$ & $24.4$/$275$ \\
+% \hline BigGAN & 512$\times$512 & $0.0 (\pm 0.0)$/$0.0 (\pm 0.0)$  & $0.0 (\pm 0.0)$/$0.0 (\pm 0.0)$  & $0.0 (\pm 0.0)$/$0.0 (\pm 0.0)$  \\
+
+\hline
+\end{tabular}
+\end{center}
+
+\caption{\label{results_table} Evaluation of models at different resolutions. We report scores without truncation (Column 3), scores at the best FID (Column 4), scores at the IS of validation data (Column 5), and scores at the max IS (Column 6). Standard deviations are computed over at least three random initializations.}
+\end{table}

@@ -1,0 +1,200 @@
+\subsection{Weak Approximation}
+\label{sec:weak-approximation}
+After we get the first and second moment changes within a giant step, we now utilize the moment calculation to prove the SDE approximation part of \Cref{thm:formal-main-result}. First, we recall our slow SDE for AGMs
+\begin{align*}
+    \left\{\begin{array}{l}
+         \dd \vzeta(t) = P_{\vzeta,\mS(t)}\left(\mSigma_{\parallel}^{1/2}(\vzeta(t); \mS(t))\dd \mW_t- \frac{1}{2}\mS(t)\nabla^3\cL(\vzeta)\left[\mSigma_{\diamond}(\vzeta(t); \mS(t))\right]\dd t\right), \\
+         \dd \vv(t) = c \left(V(\mSigma(\vzeta)) - \vv\right) \dd t.
+         % \dd \vzeta(t) = \partial\Phi_{\mS_t}(\vzeta)\mSigma^{1/2}_{\mS_t}(\vzeta)\dd \mW_t + \frac{1}{2} \partial^2 \Phi_{\mS_t}(\vzeta)\left[\mSigma_{\mS_t}(\vzeta)\right]\dd t
+    \end{array}\right. 
+\end{align*}
+We then open the projection mapping $P_{\vzeta,\mS(t)}$ as
+\begin{align}
+    \left\{\begin{array}{l}
+         \dd \vzeta = \mS(\vv)\partial\Phi_{\mS(\vv)}(\vzeta)\mS(\vv) \mSigma^{1/2}(\vzeta)\dd \mW_t + \frac{1}{2} \mS(\vv) \partial^2 \Phi_{\mS(\vv)}(\vzeta)\left[\mS(\vv)\mSigma(\vzeta)\mS(\vv)\right]\dd t, \\
+         \dd \vv(t) = c \left(V(\mSigma(\vzeta)) - \vv\right) \dd t.
+    \end{array}\right. \label{equ:AGMs-SDE-no-projection}
+\end{align}
+Now it suffices to prove the SDE in \Cref{equ:AGMs-SDE-no-projection} tracks the trajectory in AGMs within $\O(\frac{1}{\eta^2})$ steps in a weak approximation sense.
+
+First, we have to show that the solution of \Cref{equ:AGMs-SDE-no-projection} in close in the minimizer manifold
+\begin{lemma}\label{lmm:SDE-in-manifold}
+    Let $\mX(t) :=(\vzeta(t)^{\top},\vv(t)^{\top})^{\top}$ be the solution of \Cref{equ:AGMs-SDE-no-projection} with $\vzeta(0)\in\Gamma$, and $\vv(0)\in\R^d$, then we have that $\vzeta(t)\in\Gamma$ for all $t\ge0$.
+\end{lemma}
+\begin{proof}
+    According to \citet{filipovic2000invariant,du2006invariant}, for a closed manifold $\cM$ to be viable for the SDE $\dd \mX(t) = \mA(\mX(t))\dd \mW_t + \vb(\mX(t))\dd t$, where $\mA(\cdot):\R^{d+D} \to \R^{(d+D) \times (d+D)}$ and $\vb(\cdot):\R^{d+D} \to\R^{d+D}$ are locally Lipchitz, it suffices to show that the following Nagumo type consistency condition holds:
+    \begin{align*}
+        \mu(\vx):= \vb(\vx) - \frac{1}{2}\sum_{j}D[A_j(\vx)]A_j(\vx) \in T_{\vx}(\cM),\quad A_j(\vx)\in T_{\vx}(\cM),
+    \end{align*}
+    where $D[\cdot]$ is the Jacobian operator and $A_j(\vx)$ denotes the $j$-th column of $A(\vx)$.
+    
+    Following the argument in \citet{gu2023andwhendoeslocal}, here we also only need to show that $\mP_{\perp,\mS(\vv)}(\vx)\mu(\vx)=0$, where $\mP_{\perp,\mS(\vv)}(\vx):= \mI_d - \partial \Phi_{\mS(\vv)}(\vx)$. 
+    \begin{align*}
+        \mP_{\perp,\mS}(\vx)\sum_{j}D[A_j(\vx)]A_j(\vx) &= \mP_{\perp,\mS}(\vx) \sum_j D\left[\partial \Phi_{\mS}(\vx) \mS \mSigma^{1/2}_j\right]\partial \Phi_{\mS}(\vx) \mS \mSigma^{1/2}_j\\
+        &= \mP_{\perp,\mS}(\vx)  \mS\sum_j \partial^2 \Phi_{\mS}(\vx)[\mS \mSigma^{1/2}_j, \mS\partial \Phi_{\mS}(\vx) \mS \mSigma^{1/2}_j]\\
+        &= - \mP_{\perp,\mS}(\vx) \mS\mS^{-1} \nabla^2 \cL(\vx)^{\dagger} \partial^2 (\nabla \cL)(\vx)\left[\mS \mSigma_{\parallel}(\vx,\mS)\right].
+    \end{align*}
+    Notice that, since it is clear from the context, here we write $\mS = \mS$ for short. The last equation uses \Cref{lmm:phi-nabla-L}. Agian, applying \Cref{lmm:phi-nabla-L} gives
+    \begin{align*}
+        \mP_{\perp,\mS}(\vx) \vb(\vx) = - \frac{1}{2} \mP_{\perp,\mS}(\vx) \mS \mS^{-1} \nabla^2 \cL(\vx)^{\dagger} \partial^2 (\nabla \cL)(\vx)\left[\mS \mSigma_{\parallel}(\vx,\mS)\right].
+    \end{align*}
+    The above equation completes the proof.
+\end{proof}
+To establish \Cref{thm:formal-main-result}, we give an equivalent theorem, which captures the closeness of $\mX(t)$ and $\bar\mX_t$ in a long horizon. Also, for the proof of \Cref{thm:SDE-approximation}, it suffices to prove the following lemma, whose proof will be shown in \Aref{sec:proof-formal-SDE-approximation}.
+\begin{theorem}\label{thm:formal-SDE-approximation}
+    If $\|\vtheta^{(0)}-\phi^{(0)}\|_2 = \O(\sqrt{\eta\log \frac{1}{\eta}})$ and $\vzeta(0) = \phi^{(0)}$, $\vv(0)=\vv^{(0)}$, then for a giant step $R_{\grp} = \lfloor \frac{1}{\eta^{0.25}}\rfloor$, for every test function $g\in\cC^{3}$,
+    \begin{align*}
+            \max_{0\le n \le \lfloor\frac{T}{\eta^{0.75}}\rfloor}
+            \Bigl|\mathbb{E}\bigl[g\left(\bar\mX^{(n R_{\grp})}\right)]
+            -\mathbb{E}\bigl[g\left(\mX(n\eta^{0.75})\right)]\Bigr|
+            =C_g\eta^{0.25}(\log\frac{1}{\eta})^b,
+    \end{align*}
+    where $C_g$ is a constant independent of $\eta$ but depends on $g(\cdot)$ and $b > 0$ is a universal constant independent of $g(\cdot)$ and $\eta$.
+\end{theorem}
+
+\subsubsection{Preliminary and Additional Notations}
+We first introduce some notations and preliminary background. We consider the following stochastic gradient algorithms (SGAs)
+\begin{align*}
+    \vx_{n+1} = \vx_{n} + \eta_e \vh(\vx_n,\vxi_n),
+\end{align*}
+where $\vx_n\in \R^{d+D}$ is the parameter vector, $\eta_e$ is the effective learning rate, $\vh(\cdot,\cdot):\R^{d+D}\times \R^{d+D} \to \R^{d+D}$ depend on the current parameter vector $\vx_n$ and the noise vector $\vxi_n$ sampled from some distribution $\Xi(\vx_n)$.
+
+We also consider the Stochastic Differential Equation (SDE) of the following form:
+\begin{align*}
+    \dd \mX_t = \vb(\mX_t,t)\dd t + \vsigma(\mX_t,t)\dd \mW_t,
+\end{align*}
+where $\vb:\R^{d+D} \times \R^{+} \to \R^{d+D}$ is the drift vector function and $\vsigma:\R^{d+D} \times \R^{+} \to \R^{(d+D) \times (d+D)}$ is the diffusion matrix function.
+
+According to the moment calculations in \Cref{cly:1st-moment},\Cref{lma:2nd-moment}, \Cref{lmm:1st-moment-v}, and \Cref{lmm:2nd-moment-v}, we set $\eta_e = \eta^{1-\beta}$, and
+\begin{align*}
+    &\vb(\mX_t,t) = \left(\left(\frac{1}{2} \partial^2 \Phi_{\mS(\vv)}(\vzeta)\left[\mSigma(\vzeta,\mS(\vv))\right]\right)^{\top},c \left(V(\mSigma(\vzeta)) - \vv\right)^{\top}\right)^{\top},\\
+    &\vsigma(\mX_t,t)=\begin{pmatrix}
+        \partial\Phi_{\mS(\vv)}(\vzeta) \mSigma^{1/2}(\vzeta,\mS(\vv)),& \boldsymbol{0}\\
+         \boldsymbol{0}, & \boldsymbol{0}
+    \end{pmatrix}.
+\end{align*}
+Next, we are going to define the one giant step change of the parameter, both for SGAs and SDE.
+\begin{gather*}
+\hat{\bar\mX}^{(lR_\grp)}:=\left(\Phi_{\hat{\mS}^{(lR_\grp)}}\left(\hat{\vtheta}\right)^\top,\hat{\vv^{lR_\grp}}^\top\right)^\top\in\R^{d+D},\quad \Delta^{(n)}:=\hat{\bar\mX}^{((n+1)R_\grp)} - \hat{\bar\mX}^{(nR_\grp)},\\
+    \tilde\Delta^{(n)}:=\mX_{(n+1)\eta_e}-\hat{\bar\mX}^{(nR_\grp)},\quad \vb^{(n)}:=\vb(\hat{\bar\mX}^{(nR_\grp)}), \quad \vsigma^{(n)}:= \vsigma(\hat{\bar\mX}^{(nR_\grp)}).
+\end{gather*}
+We now give a lemma to give the approximation of the first, second, and higher-order moment change of the SDE.
+\begin{lemma}\label{lmm:SDE-Delta-bound}
+    There exists a positive constant $c_0$ independent of $\eta_e$ and $g$ such that for all $\vzeta\in\Gamma$, it holds for all $1\le i \le d$ that
+    \begin{align*}
+        \left|\E[\tilde \Delta_i(\vzeta,n)]-\eta_eb_i(\vzeta)\right| \le c_0 \eta_e^2,\\
+        \left|\E[\tilde \Delta_i(\vzeta,n)\tilde \Delta_j(\vzeta,n)]-\eta_e \sum_{l=1}^d\sigma_{i,l}(\vzeta)\sigma_{l,j}(\vzeta)\right| \le c_0 \eta_e^2,\\
+        \E\left[\left|\prod_{s=1}^6\tilde\Delta_{i_{s}}(\vzeta,n)\right|\right] \le c_0 \eta_e^3.
+    \end{align*}
+\end{lemma}
+\begin{proof}
+    (i) By \Cref{lmm:SDE-in-manifold}, the first half solution $\vzeta(t)$ in $\mX(t)$ of \Cref{equ:AGMs-SDE-no-projection} stays in the manifold almost surely when $\vzeta(0)\in\Gamma$. (ii) We assume that $\cL \in \cC^5$, so $\vb,\vsigma\in\cC^{4}$. (iii) We know that $\Gamma$ is compact by \Cref{amp:low-rank-manifold}. Then we can directly apply Lemma B.3 in \citet{malladi2022sdes} and Lemma 26 in \citet{li2019stochastic}.
+\end{proof}
+\begin{lemma}[Adaption of Lemma I.41 in~\citet{gu2023andwhendoeslocal}]\label{lmm:uniform-u}
+    Given drift term and diffusion term $\vb,\vsigma\in G^{\alpha}$ and Lipschitz. Let $s\in [0,T]$ and $g\in G^{\alpha}$. Then for $t \in [s, T]$, we can define:
+    \begin{align*}
+        u(\vx,s,t):=\E_{\mX_t \sim \cP_{X}(\vx,s,t)}[g(\mX_t)].
+    \end{align*}
+    where $\cP_{X}(\vx,s,t)$ denotes the distribution of $\mX_t$ with the initial condition $\mX(s) = \vx$. Then $u(\cdot,s,t)\in G^{\alpha}$ uniformly in $s,t$.
+\end{lemma}
+
+\subsubsection{Proof of the Approximation for Slow SDE of AGMs}
+For the giant step constant $\beta\in (0,0.5)$, we define several quantities $a_1 = \frac{1.5 -2 \beta}{1-\beta}\in(1,1.5)$, $a_2 = \frac{1}{1-\beta}\in(1,2)$, $a_3 = \frac{1.5 -1.5 \beta}{1-\beta}=1.5$, and $a_4= \frac{2-2\beta}{1-\beta} =2$. In this part, we will show that only $a_1$ and $a_2$ would impact the error bound in our approximation theorem. 
+
+The following lemma captures the difference between the SDEs' and the AGMs' first and second moment changes, as a key step to control the approximation error, utilizing the moment calculation results from the last section.
+
+\begin{lemma}\label{lmm:AGMs-Delta-SDE-bound}
+    If $\|\vtheta^{(0)}-\phi^{(0)}\|_2 = \O(\sqrt{\eta\log \frac{1}{\eta}})$, then it holds for all $0 \le n \le \lfloor T/\eta_e\rfloor$ and $1 \le i \le d$ that
+    \begin{align*}
+        \left|\E[\Delta_i^{(n)}-\tilde\Delta_i^{(n)}\mid \cE_0^{(nR_\grp)}]\right| \le c_1\left(\eta_e^{a_1}(\log\frac{1}{\eta_e})^b + \eta_e^{a_2}(\log\frac{1}{\eta_e})^b\right),\\
+        \left|\E[\Delta_i^{(n)}\Delta_j^{(n)}-\tilde\Delta_i^{(n)}\tilde\Delta_j^{(n)} \mid \cE_0^{(nR_\grp)}]\right| \le c_1\left(\eta_e^{a_1}(\log\frac{1}{\eta_e})^b + \eta_e^{a_2}(\log\frac{1}{\eta_e})^b\right),
+    \end{align*}
+    \begin{align*}
+        \E\left[\left|\prod_{s=1}^6\Delta_{i_{s}}^{(n)}\mid \cE^{(nR_\grp)}\right|\right] \le c_1^2 \eta_e^{2a_1}(\log \frac{1}{\eta_e})^{2b},\\
+        \E\left[\left|\prod_{s=1}^6\tilde\Delta_{i_{s}}^{(n)}\mid \cE^{(nR_\grp)}\right|\right] \le c_1^2 \eta_e^{2a_1}(\log \frac{1}{\eta_e})^{2b},
+    \end{align*}
+    where $c_1$ and $b$ are constants independent of $\eta_e$ and $g$.
+\end{lemma}
+\begin{proof}
+    According to \Aref{sec:iter-near-manifold}, we have that
+    \begin{align*}
+         \E\left[\left|\prod_{s=1}^6\Delta_{i_{s}}^{(n)}\mid \cE^{(nR_\grp)}\right|\right] = \O(\eta^{3-3\beta}).
+    \end{align*}
+    We can further use \Cref{cly:1st-moment}, \Cref{lma:2nd-moment}, \Cref{lmm:1st-moment-v}, and \Cref{lmm:2nd-moment-v}, which gives
+    \begin{align}
+        \left|\E[\Delta_i^{(n)}-\eta_eb_i^{(n)}]\right| \le c_2\left(\eta_e^{a_1}(\log\frac{1}{\eta_e})^b + \eta_e^{a_2}(\log\frac{1}{\eta_e})^b\right),\\
+        \left|\E[\Delta_i^{(n)}\Delta_j^{(n)}-\eta_e \sum_{l=1}^d\sigma_{i,l}^{(n)}\sigma_{l,j}^{(n)}]\right| \le c_2\left(\eta_e^{a_1}(\log\frac{1}{\eta_e})^b + \eta_e^{a_2}(\log\frac{1}{\eta_e})^b\right)\\
+\E\left[\left|\prod_{s=1}^6\Delta_{i_{s}}^{(n)}\right|\right] \le c_2^2\eta_e^{2a_1}(\log\frac{1}{\eta_e})^{2b}.
+    \end{align}
+    Notice that the above equations uses $a_1 < a_3$ and $a_2 < a_4$ for all $\beta \in (0,0.5)$. These three equations and \Cref{lmm:SDE-Delta-bound} give the Lemma.
+\end{proof}
+\begin{lemma}\label{lmm:condition-u-bound}
+    For a test function $g\in\cC^3$, and we define $u_{l,n}(\vx):=u(\vx,l\eta_e,n\eta_e)=\E_{\mX_t \sim \cP(\vx,l\eta_e,n\eta_e)}[g(\mX_t)]$. If $\|\vtheta^{(0)}-\phi^{(0)}\|_2=\O(\sqrt{\eta\log\frac{1}{\eta}})$, then for all $0 \le l \le n-1$, and $1 \le n \le \lfloor T/\eta_e\rfloor$, it holds that
+    \begin{align*}
+        \left|\E[u_{l+1,n}(\bar\mX^{(lR_\grp)}+ \Delta^{(l)})- u_{l+1,n}(\bar\mX^{(lR_\grp)}+ \tilde\Delta^{(l)})\mid \bar\mX^{(lR_\grp)}]\right| \le C_{g,3}(\eta_e^{a_1}+ \eta_e^{a_2})\log (\frac{1}{\eta_e})^b, 
+    \end{align*}
+    where $C_{g,3}$ is some positive constant independent of $\eta_e$ but can depend on $g$.
+\end{lemma}
+\begin{proof}
+    Given $g\in\cC^3$, by \Cref{lmm:uniform-u}, we have $u_{l,n}(\vx)\in \cC^3$ for all $l$ and $n$.  Which is to say that there exists a function $Q(\cdot)\in G$, such that the partial derivative of $u_{l,n}(\mX)$ with respect to $l,n,\vx$ up to the third order is bounded by $Q(\vx)$.
+    By the law of total expectation and triangle inequality,
+    \begin{align*}
+        &\left|\E[u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)}+ \Delta^{(l)})- u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)}+ \tilde\Delta^{(l)})\mid \hat{\bar\mX}^{(lR_\grp)}]\right| \\
+        \le & \underbrace{\left|\E[u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)}+ \Delta^{(l)})- u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)}+ \tilde\Delta^{(l)})\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}]\right|}_{I_1}\\
+        &+\eta^{100}\underbrace{\E[\left|u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)}+ \Delta^{(l)})\right|\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}]}_{I_2}\\
+        &+\eta^{100}\underbrace{\E[\left|u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)}+ \tilde\Delta^{(l)})\right|\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}]}_{I_3}.
+    \end{align*}
+    For $I_2$ and $I_3$, due to the compactness of $\Gamma$ and $\vv \preceq R_1$ from \Cref{amp:gradient-bound}, $Q(\vx)$ can be bounded for some constant $C_{g,4}$ independent of $\eta_e$ but could depend on test function $g$. Hence, we have that $I_2 + I_3 \le C_{g,4} \eta^{100}$.
+
+    Using the triangle inequality, we first decompose $I_1$ into several terms as
+    \begin{align*}
+        I_1 \le &\underbrace{\sum_{i=1}^d \left|\E\left[\frac{\partial u_{l,n}}{\partial X_i}(\hat{\bar\mX}^{(R_\grp)})\left(\Delta_i^{(l)}-\tilde\Delta_i^{(l)}\right)\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}\right]\right|}_{I_{1,1}}\\
+        &+\underbrace{\frac{1}{2}\sum_{1 \le i,j\le d} \left|\E\left[\frac{\partial^2 u_{l,n}}{\partial X_i\partial X_j}(\hat{\bar\mX}^{(R_\grp)})\left(\Delta_j^{(l)}\Delta_i^{(l)}-\tilde\Delta_i^{(l)}\tilde\Delta_j^{(l)}\right)\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}\right]\right|}_{I_{1,2}}\\
+        &+|\cR| + |\tilde\cR|,
+    \end{align*}
+    where the third order remainders $\cR$ and $\tilde\cR$ are 
+    \begin{align*}
+        \cR = \frac{1}{6}\sum_{1 \le i,j,k\le d} \left|\E\left[\frac{\partial^3 u_{l,n}}{\partial X_i\partial X_j\partial X_k}(\hat{\bar\mX}^{(R_\grp)} + \alpha\Delta^{(l)})\left(\Delta_j^{(l)}\Delta_i^{(l)}\Delta_k^{(l)}\right)\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}\right]\right|\\
+        \tilde\cR = \frac{1}{6}\sum_{1 \le i,j,k\le d} \left|\E\left[\frac{\partial^3 u_{l,n}}{\partial X_i\partial X_j\partial X_k}(\hat{\bar\mX}^{(R_\grp)}+ \tilde\alpha\tilde\Delta^{(l)})\left(\tilde\Delta_j^{(l)}\tilde\Delta_i^{(l)}\tilde\Delta_k^{(l)}\right)\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}\right]\right|,
+    \end{align*}
+    where $\alpha,\tilde\alpha\in(0,1)$. Again, notice that the $\Gamma$ is compact and $\ vv\preceq R_1$, thus we can bound the derivatives of $u_{l,n}(\vx)$ for any $\mX$ as
+    \begin{align}
+        \left|\frac{\partial u_{l+1,n}}{\partial \mX_i}(\mX)\right| \le C_{g,4},\;\left|\frac{\partial^2 u_{l+1,n}}{\partial \mX_i\partial \mX_j}(\mX)\right| \le C_{g,4},\;\left|\frac{\partial^3 u_{l+1,n}}{\partial \mX_i\partial \mX_j\partial \mX_k}(\mX)\right| \le C_{g,4}. \label{equ:derivative-bound}
+    \end{align}
+    For the term $I_{1,1}$ and $I_{1,2}$, by applying \Cref{lmm:AGMs-Delta-SDE-bound}, we have that
+    \begin{align*}
+        I_{1,1} \le d c_1 C_{g,4}(\eta_e^{a_1} + \eta_e^{a_2})(\log\frac{1}{\eta_e})^b,\;I_{1,2} \le \frac{d^2}{2} c_1 C_{g,4}(\eta_e^{a_1} + \eta_e^{a_2})(\log\frac{1}{\eta_e})^b.
+    \end{align*}
+    Next, we bound the remainders $\cR$ and $\tilde\cR$. By Cauchy-Schwarz inequality, 
+    \begin{align*}
+        |\cR| &\le \frac{1}{6} \sum_{1\le i,j,k \le d} \sqrt{\E\left[\left(\frac{\partial^3 u_{l,n}}{\partial X_i\partial X_j\partial X_k}(\hat{\bar\mX}^{(R_\grp)} + \alpha\Delta^{(l)})\right)^2\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}\right]}\times\\  &~~~~~~~~~~~~~~~~~~~~~~\sqrt{\E\left[\left(\Delta_j^{(l)}\Delta_i^{(l)}\Delta_k^{(l)}\right)^2\mid \hat{\bar\mX}^{(lR_\grp)},\cE_0^{(lR_\grp)}\right]}\\
+        &\le\frac{d^3}{6}C_{g,4}c_1\eta_e^{a_1}\log(\frac{1}{\eta_e})^b,
+    \end{align*}
+    where the last inequality uses \Cref{lmm:AGMs-Delta-SDE-bound} and \Cref{equ:derivative-bound}.
+
+    Similarly, we can prove that there exists a positive constant $C_{g,5}$ such that 
+    \begin{align*}
+        |\tilde\cR| \le \frac{d^3}{6}C_{g,5}c_1\eta_e^{a_1}\log(\frac{1}{\eta_e})^b.
+    \end{align*}
+    Combining the bounds for $I_1$, $I_2$, and $I_3$ gives the lemma.
+\end{proof}
+\subsection{Proof of \Cref{thm:formal-SDE-approximation}}\label{sec:proof-formal-SDE-approximation}
+Finally, we are ready to prove \Cref{thm:formal-SDE-approximation}.
+\begin{proof}[Proof of \Cref{thm:formal-SDE-approximation}]
+    For $0 \le l \le n=\lfloor\frac{T}{\eta^{0.75}}\rfloor$, we denote the random variable by $\hat{\vx}_{l,n}$ such that follows a distribution $\cP_{\mX}(\hat{\bar\mX}^{(lR_\grp)},l\eta_e,n\eta_e)$. When we set $l=n$, $\cP(\hat{\vx}_{n,n}=\hat{\bar\mX}^{(nR_\grp)})$ and setting $l=0$ gives $\hat{\vx}_{0,n} \sim \mX(n\eta_e)$. Recall the previous definition that $u(\vx,s,t)=\E_{\mX_t \sim \cP_{\mX}(\vx,s,t)}[g(\mX_t)]$, and we define that $\cT_{l+1,n}:=u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)} + \Delta^{(l)},(l+1)\eta_e,n\eta_e)-u_{l+1,n}(\hat{\bar\mX}^{(lR_\grp)} + \tilde\Delta^{(l)},(l+1)\eta_e,n\eta_e)$. Using the definition of $\vx_{l,n}$, we can rewrite the distance between AGMs and SDE measured by a test function $g$ as
+    \begin{align*}
+        &\left|\E\left[g(\bar\mX^{(nR_\grp)}) -g(\mX(n\eta_e))\right]\right|\\
+        \le& \left|\E\left[g(\vx_{n,n}) -g(\vx_{0,n})\mid \cE_0^{(nR_\grp)}\right]\right| + \O(\eta^{100}).
+    \end{align*}
+    The above equation uses the law of total expectation and the definition of $\delta$-good event $\cE_0^{(nR_\grp)}$ in \Cref{def:delta-good}. Then the Triangle inequality gives 
+    \begin{align*}
+        \left|\E\left[g(\vx_{n,n}) -g(\vx_{0,n})\mid \cE_0^{(nR_\grp)}\right]\right| &\le  \sum_{l=0}^{n-1} \left|\E\left[g(\hat{\vx}_{l+1,n}) -g(\hat{\vx}_{l,n})\mid \cE_0^{(nR_\grp)}\right]\right| + \O(\eta^{100})\\
+        &= \sum_{l=0}^{n-1} \left|\E\left[\cT_{l+1,n}\mid \cE_0^{(nR_\grp)}\right]\right|+ \O(\eta^{100})\\
+        &= \sum_{l=0}^{n-1} \left|\E\left[\E\left[\cT_{l+1,n}\mid \hat{\bar\mX}^{(lR_\grp)}, \cE_0^{(nR_\grp)}\right] \mid  \cE_0^{(nR_\grp)}\right]\right|+ \O(\eta^{100})\\
+        &\le \sum_{l=0}^{n-1} \E\left[\left|\E\left[\cT_{l+1,n}\mid \hat{\bar\mX}^{(lR_\grp)}, \cE_0^{(nR_\grp)}\right]\right| \mid  \cE_0^{(nR_\grp)}\right]+ \O(\eta^{100})\\
+        &\le n C_{g,3} (\eta_e^{a_1} + \eta_e^{a_2})\log(\frac{1}{\eta_e})^b\\
+        &\le T C_{g,3} (\eta_e^{a_1-1} + \eta_e^{a_2-1})\log(\frac{1}{\eta_e})^b.
+    \end{align*}
+    where the second last inequality uses \Cref{lmm:condition-u-bound}. Recall that $a_1 = \frac{1.5 -2 \beta}{1-\beta}$, $a_2 = \frac{1}{1-\beta}$, $\beta\in(0,0.5)$. Let $\beta = 0.25$, and we complete the proof.
+\end{proof}
+

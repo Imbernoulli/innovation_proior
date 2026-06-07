@@ -1,0 +1,85 @@
+
+\documentclass{article}
+
+\input{package}
+\input{macro}
+\input{math_commands}
+
+\icmltitlerunning{SmoothQuant: Accurate and Efficient Post-Training Quantization for Large Language Models}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{SmoothQuant: Accurate and Efficient \\ Post-Training Quantization for Large Language Models}
+
+
+\icmlsetsymbol{equal}{*}
+
+\begin{icmlauthorlist}
+\icmlauthor{Guangxuan Xiao}{equal,mit}
+\icmlauthor{Ji Lin}{equal,mit}
+\icmlauthor{Mickael Seznec}{nv}
+\icmlauthor{Hao Wu}{nv}
+\icmlauthor{Julien Demouth}{nv}
+\icmlauthor{Song Han}{mit}
+\\
+\url{https://github.com/mit-han-lab/smoothquant}
+\end{icmlauthorlist}
+
+\icmlaffiliation{mit}{Massachusetts Institute of Technology}
+\icmlaffiliation{nv}{NVIDIA}
+
+\icmlcorrespondingauthor{Guangxuan Xiao}{xgx@mit.edu}
+\icmlcorrespondingauthor{Ji Lin}{jilin@mit.edu}
+
+\icmlkeywords{Machine Learning, ICML}
+
+\vskip 0.3in
+]
+
+
+
+\newcommand{\printAffiliations}[1]{%
+\stepcounter{@affiliationcounter}%
+{\let\thefootnote\relax\footnotetext{\hspace*{-\footnotesep}\ifdefined\isaccepted #1\fi%
+\forloop{@affilnum}{1}{\value{@affilnum} < \value{@affiliationcounter}}{
+\textsuperscript{\arabic{@affilnum}}\ifcsname @affilname\the@affilnum\endcsname%
+\csname @affilname\the@affilnum\endcsname%
+\else
+{\bf AUTHORERR: Missing \textbackslash{}icmlaffiliation.}
+\fi
+}.
+\ifdefined\icmlcorrespondingauthor@text
+Correspondence to: \icmlcorrespondingauthor@text.
+\else
+{\bf AUTHORERR: Missing \textbackslash{}icmlcorrespondingauthor.}
+\fi
+}
+}
+}
+\printAffiliationsAndNotice{\icmlEqualContribution} %
+
+
+\input{text/0_abstract}
+\input{text/1_intro}
+\input{text/3_motivation_method}
+\input{text/5_experiment}
+\input{text/2_related_work}
+\input{text/6_conclusion}
+
+\section*{Acknowledgements}
+We thank MIT-IBM Watson AI Lab,  
+MIT AI Hardware Program,
+Amazon and MIT Science Hub, 
+NVIDIA Academic Partnership Award,  
+Qualcomm Innovation Fellowship, 
+Microsoft Turing Academic Program, and NSF for supporting this research. We thank Haotian Tang, Aohan Zeng, Eric Lin and Jilei Hou for the helpful discussions.
+
+
+\bibliography{main}
+\bibliographystyle{icml2023}
+
+\clearpage
+\appendix
+\input{text/7_appendix.tex}
+\end{document}

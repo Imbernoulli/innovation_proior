@@ -1,0 +1,574 @@
+
+===== page 1 [pdftotext] =====
+          A Design Principle for Hash Functions
+
+                                      Ivan Bjerre Damghdl
+
+
+Abstract
+We show that if there exists a computationally collision free function f from m bits to t bits where
+m > 1, then there exists a computationally collision free function h mapping mesaages of a&frog
+polynomial lengths to f-bit strings.
+     Let n be the length of the message. h can be constructed either such that it can be evaluated
+in time linear in n using 1 processor, or such that it takes time O(log(n)) using O(n) processors,
+counting evaluations off as one step. Finally, for any constant k and large n, a speedup by a factor
+oft over the first construction is available using 1: processors.
+     Apart from suggesting a generally sound design principle for hash functions, our results give a
+unified view of several apparently unrelated constructions of hash functions proposed earlier. It also
+suggests changes to other proposed constructions to make a proof of security potentially easier.
+     We give three concrete examples of constructions, based on modular squaring, on Wolfram’s
+pseudoranddom bit generator [wo], and on the knapsack problem.
+
+
+
+1      Introduction                   and Related                  Work
+A hash function h is called collision free, if it maps messages of any length to strings of
+some fixed length, but such that finding z, y with h(s) = h(y) is a hard problem. Note
+that we are concentrating  here on publicly computable hash functions, i.e. functions
+that are not controlled by a secret key.
+    The need for such functions to ensure data integrity, and for use with digital
+signature schemes is well known - see for example [Da], [De], [DP].
+    Several constructions of hash functions have been proposed, based for example on
+DES [Wi], [DP] or on RSA [DP], [Girl. Th e construction in [Da] was the first for which
+collision freeness could be proved, assuming security of the atomic operation on which
+it was based - one-wayness of modular squaring in that case, and more generally, the
+existence of claw free pairs of permutations.   A later example is [Gil. Unfortunately,
+this pleasant theoretical  property meant a decrease in efficiency compared to other
+proposals: the time needed for these functions is roughly equivalent to applying RSA
+to the whole message.
+     The problem of constructing    provably collision free AND fast hash functions is
+therefore still open.
+
+    ‘The author ia with Mathematical Institute, Aarhus University, Ny Munkegade, DK 8000 Aarhus
+C, Denmark.
+
+
+G. Brassard (Ed.): Advances in Cryptology - CRYPT0   ‘89, LNCS 435, pp. 416-427,   1990.
+0 Springer-Verlag Berlin Heidelberg 1990
+
+===== page 2 [pdftotext] =====
+                                          41 7
+
+
+    Many of the difficulties with giving proofs for the known constructions arise from
+the fact that things seem to get more complex as the length of the messages hashed
+increases. On the other hand, a hash function is of no use, if we are not allowed to
+hash messages of arbitrary lengths.
+    In the present paper, we show that this difficulty can be removed, if the right
+construction is used: it turns out that ability to cut just 1 bit off the length of a
+message in a collision free way implies ability to hash messages of arbitrary lengths.
+The proof suggests a basically sound design principle which can be used as a guideline
+in designing new hash functions and in revising existing ones.
+    Our construction is very similar to Merkle’s “meta-method”, discovered indepen-
+dently [Me]; in comparison, the present construction contains several extra elements
+that make a formal proof possible without any extra assumptions on the parameters
+of the functions.
+    There are also similarities with the methods used in independent work by Naor
+and Yung [NaYu]. They also prove that fixed size hash functions can be composed to
+obtain compression of arbitrary polynomial length messages. This is done, both for
+our type of hash function, and for hash functions with a somewhat weaker property:
+an enemy is allowed to choose 2, and is then given a randomly chosen instance from
+the hash function family. He can now not in polynomial time find another y such
+that f(z)= f(y). Naor and Yung construct functions of this type from any one-way
+permutation, and use them to build digital signature schemes.
+    From a practical point of view, our construction is more efficient and direct. This
+is because [NaYu] in order to make their construction work for hash functions with
+the weaker property, must choose a new independent instance of the fixed length hash
+function for each message block to process.
+    Finally, some very recent independent work by Impagliazzo and Naor [ M a ]
+should be mentioned. They prove that a hash function constructed from the knapsack
+problem in the same way as in Section 4.3 of this paper is secure in the sense of [NaYuJ
+if the knapsack used induces a one-way function.
+
+
+2     Preliminaries
+We first define the concept of a collision free function family:
+
+Definition 2.1
+A b e d size collision free hash finction family 3 is an infinite family of finite sets
+{Fm}E=l, and a function t : N + N, such that t(m)< m for all rn E N.
+   A member of F, is a function f : (0,1}” --+ (0, l]*(m),  and is called un instance
+of F of size m.
+    3 must satisfy the following:
+    1. There is a probabilistic polynomial (in rn) time algorithm 8 which, given a
+       value of n,selects an instance of 3of size m at random.
+
+===== page 3 [pdftotext] =====
+                                           41 a
+
+
+  2. For any instance f E F, and 2 E (0, l}", f(z) can be computed in polynomial
+     time.
+  3. Given an instance f E. T selected randomly as in l), it hard to find z,y E
+     (0, l}", such that f(z)= f ( y ) and z # y.
+     More formally: For any probabilistic polynomial (in m) time algorithm A, and
+     any polynomial P,consider the subset of instances f of size m for which A with
+     probability at least l/P(m) outputs z # y such that f(z) = f(y). Let ~ ( m )
+                                                                                be
+     the probability with which 0 selects one of these instances. Then as a function
+     of rn, ~(rn)vanishes faster than any polynomial fractionfl
+   Condition 1) and 2) say that 3 is useful in pratice: instances can be selected, and
+function values computed efficiently. 3) states the collision free property.
+   One basic implication of 3) is that functions in 3 have a sort of one-way property:
+
+Lemma 2.1
+Let 3 be a collision free function family, f an instance of size m. Let Pf be the
+probability distribution on {O,l}'('") generated by selecting z randomly and uniformly
+in (0,l)"' and and outputting f(z).
+    Then no algorithm inverting f on images selected according to PI succeeds with
+                             +
+probability larger than 1/2 l / P ( m ) for any polynomial P
+    If Pf is the uniform distribution over the image of f or if m - t is O ( m ) ,then no
+inversion algorithm succeeds with probability larger than l/P(m).
+
+Proof
+Assume the Lemma is false. Given an algorithm A that inverts f with probability
+             +
+at least 1/2 l / P ( n ) ,we select z uniformly and give f(z)as input to A. If A is
+successful, we are given a y, such that f(z) = f(y). Let A be the event that the
+preimage of f(z) has size at least 2. {0,1}" is at least twice as large as the image of
+f, and therefore A occurs with probability larger than 1/2. Hence, by assumption on
+A, it succeeds with probability at least l / P ( m ) when A occurs. Clearly, A's choice
+of which element in the preimage of f(z) to give us is uncorrelated to the choice of
+z (given f(z)). Hence z # y with probability at least 1/2, given that A occurs and
+that A is successful.
+    For the second statement, note that if Pj is the uniform distribution, then A's
+success is uncorrelated to occurrence of A. And if m - t = O(m), then A occurs
+with overwhelming probability. In either case, A gives us a collision with probability
+essentially 1/P(rn) O
+
+   Finally, we define the concept of a collision free hash function family:
+
+Definition 2.2
+A collision free hash finction family 31 is an iofinite family of finite sets {Hm}z=l,
+and a polynomially bounded function t : N -, N.
+
+===== page 4 [pdftotext] =====
+                                           41 9
+
+
+    A member of H,,,
+                   is a function h : {0,1}’ -+ (0,            and is called an instance
+of H of size m.
+   H must satisfy the following:
+    1. Given a value of m, there is a probabilistic polynomial (in m) time algorithm
+       0 which on input rn selects an instance of ?ofl size m at random.
+    2. For any instance h E H,,, and s E {O,l}*,    h ( z ) is easy to compute, i.e. com-
+      putable in time polynomial both in rn and IzI.
+
+    3. Given an instance h E 7-l selected randomly as in l),it hard to find z, y E (0,l)*,
+       such that h ( z ) = h(y) and z # y.
+      More formally: For any probabilistic polynomial time algorithm A, and any
+      polynomial P, consider the subset of instances h of size m for which A with
+      probability at least 1/P(rn)outputs 2 # y such that h ( s ) = h(y). Let c(m) be
+      the probability with which 8 selects one of these instances. Then as a function
+      of rn, ~ ( m )
+                  vanishes faster than any polynomial fraction0
+
+   Note that the essential difference between Definition 2.1 and 2.2 is that in 2.2,
+we do not place any restrictions on the lengths of the inputs to the functions, other
+than what follows from the obvious fact that polynomial time algorithms cannot hash
+messages of superpolynomial length.
+
+
+3      Basic Constructions
+The main result in this section is that collision free hash function families can be
+constructed from fixed size collision free hash function families:
+
+Theorem 3.1
+Let F be a fixed size collision free hash function family mapping rn bits to t(m)bits.
+Then there exists a collision free hash function family ‘H mapping strings of arbitrary
+length to t(m)-bit strings.
+    Let h be an instance in ‘H of size m Then evaluating h on input of length n can
+                                       +
+be done in at most n / ( m- t(m)+ 1) 1 steps using 1 processor (we count evaluation
+of functions in F as 1 step).
+
+Proof
+For each instance f E 3 of size n,we will construct an instance h E ‘Ff of size rn.
+Put t = t ( m ) . For bit strings a , b, we let allb denote the concatenation of a and b.
+   The constructicn will be divided into two cases: first we will discuss the case
+where rn - t > 1, and take the rn - t = 1 case later.
+   We describe how to compute the value of h on input z E {O,l}*:
+
+===== page 5 [pdftotext] =====
+                                                420
+
+
+   Split x in blocks of size m - t - 1 bits. If the last block is incomplete, it is
+padded with 0's. Let d be the number of 0's needed. Let the blocks be denoted by
+       ...,z,/I,-:-~), where n =1.1 (the length after padding).
+~ 1 , ~ 2 ,
+    We append to this sequence one extra m - t - 1-bit block x,,/(,,,-:-1)+1, which
+contains the binary representation of d , prefixed with an appropriate number of 0's.
+    Then define a sequence of t bit blocks ho, hl, ... by:
+
+
+
+                                   hi+l   = f ( h i II1II.;+I>
+Finally, put h(+)= hn/(m-t)+l.
+    Checking that 31 satisfies condition 1 and 2 in Definition 2.2 is easy. For condition
+3, assume for contradiction that we are given an algorithm A which finds 2 # x' such
+that h ( z ) = h(z').
+    Let hi, 3; (resp. h:, x:) be the intermediate results in the computation of h(s)
+(resp. h(z')).
+    If 1x1 # 12'1 mod ( m - t ) , then certainly zn/(m-t)+l# ~ h ~ / ( ~ - ~
+                                                                           so) + ~ ,h ( z ) =
+                                                                              that
+h(z') gives us immediately a collision for f. So we may now assume that 1 . 1 =
+12'1 mod (rn - t ) and without loss of generality that 12'1 2 121.
+     Consider now the equation
+
+
+
+
+and repeat the argument. Clearly this process must stop either by creating a collision
+for f,or (since x # 5') by establishing the equation
+
+
+
+which is clearly impossible.
+    Summarizing, we have now a reduction that transforms A into an algorithm that
+finds a collision for f. Suppose A takes at most T ( m )bit operations. Then z and a?
+must be of length less than T(rn).
+    Therefore the whole reduction takes time O(T(m)F(rn)),      where F ( m ) is the time
+needed to compute 1 f-value, in particular if T is a polynomial, then the whole
+reduction is in polynomial time. This finally establishes a contradiction with condition
+3 in Definition 2.1
+    Finally, we discuss the case where rn - t = 1. An easy, but not very efficient
+solution is prefix-free encode all messages before they are hashed, and then use a
+construction similar to the above, changing the definition of the h's to:
+
+                                       hl = f(0'll.l)
+
+===== page 6 [pdftotext] =====
+                                            42 1
+
+
+                                   hi+i =   f (hiIlXit1)
+Here, of course the z;’s are 1-bit blocks. This can be proved secure in much the same
+way as above.
+   If f satisfies the second condition in Lemma 2.1, there is a more efficient solution:
+we choose a t bit string yo uniformly, and define
+
+                                     hl = f(Y0114
+
+
+                                   hi+l = f(hillxi+*)
+
+this time without doing the prefix free encoding of 5 . The argument from above will
+now show that a collison for h will either give us a collision for f or a preimage of yo.
+But then we are done by Lemma 2.1. II]
+
+
+Remarks
+   0   The last version of the construction using Lemma 2.1 will not only work when
+       rn - t = 1, but w i l l work whenever Pf is (close to) the uniform distribution,
+       or rn - t = O(rn). This should be noted because this version allows hashing of
+       1 bit more per application of f than the general construction, and is therefore
+       slightly more efficient.
+   0   The trick in the proof above of appending an extra block to the message is only
+       necessary to ensure that we can recognize the difference between messages that
+       need to be padded with d O’s, and messages that simply end with d 0’s before
+       padding. In many applications, it is perfectly acceptable that trailing 0’s in
+       the last block are ignored, in which case this part of the construction can be
+       skipped.
+
+
+    Let us look at the connection between Theorem 3.1 and previously known hash
+functions. In [Da], hash functions are constructed based on claw-free pairs of per-
+mutations, i.e. pairs of permutations (fo,fi) with the same domain D , for which
+finding z # y such that f ~ ( z )= fi(y) is a hard problem. We can construct an in-
+stance in a collision free function family from the pair (fo, f l ) by defining a function
+f : D x (0,l) + D by:
+                                     f(+)     =    fbb)
+for x E D and b E ( 0 , l ) . Using Theorem 3.1 on the function family thus defined will
+yield exactly the haahfunctions presented in [Da], except that we have removed the
+need for the prefix free encoding of messages used there (Piis uniform in this case).
+    As a second example, consider one of the first ideas for constructing a hash function
+from a conventional cipher, due originally to Rabin: Let E be an encryption algorithm
+                                                                                +
+that encrypts message-s of size t bits, using a key of size k bits. Put rn = t k. We
+split the message x in blocks of size k bits x l , x2,...,x,. We then choose a fixed t bit
+block ho at random and let h;+l = Ezi+l(h;).h ( z ) is defined to be It,+*.
+
+===== page 7 [pdftotext] =====
+                                            422
+
+
+    This fits into the framework of Theorem 3.1 by letting f ( a , b) = E,(b) for a t-bit
+block b and k-bit block a. Unfortunately, this f is NOT collision free: enciphering
+any message with an arbitrary key and deciphering with a diferent key will yield
+a collision for f with high probability. This does not necessarily mean that the
+function is weak. It does mean,however, that a proof of security cannot be based
+only on properties off itself, but must depend on the global structure of the function.
+    For concrete examples of f, weaknesses have been found, however: if DES is used
+as E , such that t is only 64, it is well known that the function h constructed as above,
+permits an enemy which is given z and h ( z ) to find a y # z such that A(z) = h(y),
+using the ‘birthday patadox”. This is in fact a stronger statement than saying that
+the hash function is not collision free.
+    Within ISO,it is currently proposed to standardize a modification of this scheme,
+where f is defined as f ( a , b ) = E,(b) @ b. For this version of f , there is in fact hope
+that we can use Theorem 3.1 to prove collision freeness of the entire function by
+looking only at f: Given c, it is not easy to solve f ( a , b ) = c for a and b, if E is a
+strong encryption algorithm, and thus there good reason to believe that this version
+of f is collision free.
+
+3.1     Parallellking Hash Functions
+Based on Theorem 3.1, we can give alternative constructions that allow computation
+in parallel of a hashvalue:
+
+Theorem 3.2
+Let 3 be a collision free function family mapping m bits to t ( n )bits. Then there
+exists a collision free hash function family ‘FI mapping arbitrary strings to t(m)-bit
+strings with the following property:
+    Let h be an instance in X of size m. Put t = t(m).Then evaluating h on input of
+length n can be done in O(logz(n/t)t/(m- t ) ) steps using n/2t processors (we count
+evaluation of functions in 7 as 1 step).
+
+Proof
+We are given an instance f E 3of size m. By Theorem 3.1, we can construct a hash
+function h’, which maps 2t bits to t bits in t / ( m - t ) steps. Note, that since the
+length of the input is fixed, we do not need to append an extra input block in the
+construction of h’.
+    We then construct an instance h E 3-t as follows:
+    Let a message z of length n be given. We pad I with a number of 0’9, such that the
+resulting bit string zo has length equal to 2Jt for some j. Now construct a sequence
+zo,zi, .-.,zjby defining =;+I in terms of 2;: split I ; in blocks of length 2 t , apply h’
+to each block and concatenate the results to obtain zi+l*
+    The sequence stops at z, which has length t . We then hash the binary represen-
+tation of the length n of z using Theorem 3.1 to obtain a t bit block len,. Finally we
+
+===== page 8 [pdftotext] =====
+                                           423
+
+
+Put
+                                  h(z) = h'( zjI Ilen,).
+    The statements on the time and processors needed to compute h are trivial to
+verify.
+    As for collision freeness, suppose we could produce z # d with h(s) = h ( d ) in
+expected polynomial time.
+    If z$,Illen,j # zjlllen,, we have a collision for h', contradicting Theorem 3.1.
+Hence we may also amume that n = n', since otherwise l e n i = len, would imply a
+collision.
+    Now, s # 5' implies that we may choose an i such that zi # I:, but 2i+l = z:+~.
+This clearly implies a collision for h'a
+
+    Finally, it is also easy to see how to make a construction that allows c processors
+to cooperate in computing a hashvalue, acheiving a speed up by a factor of c for long
+messages. Loosely speaking, we split the message in c parts of roughly the same size,
+hash each part in parallel using Theorem 3.1, and finally hash the c output blocks
+using Theorem 3.1 once again. Formalizing this and proving collision freeness is left
+to the reader.
+
+
+4     Concrete Constructions
+In the following we propose three concrete constructions of collision free functions
+with fixed inputsize. These functions can then be turned into hashfunctions by a
+straightforward application of Theorem 3.1.
+
+4.1    Based on Modular Squaring
+We give first a construction based on the hardness of extracting square roots modulo
+large numbers with two prime factors. The construction bears some similarities with
+the functions considered in [Girl, but is fundamentally different in that the functions
+from [Girl do not allow for application of Theorem 3.1.
+    Let n = pq, where p and p are large primes. Let the length of n be s bits. For
+concreteness, one can think of s = 512. Next, choose I , a proper subset of the numbers
+1,2, ...,s. For any s-bit string y = y1,y2, ...,yd, let f~(y) be the concatenation of all
+yj for which j E I.
+    Finally, we can define our candidate collision free function f from m bits t o t bits
+by setting m = s - 8, t = 111,and defining
+
+
+where 3 F l z denotes the concatenation of the byte 3 F (in hex) and z. This concate-
+nation implies that all inputs to the modular squaring are less than n / 2 , but large
+enough to guarantee that modular reductions always take place. We therefore prevent
+trivial collisions implied by z2 = ( - z ) ~mod n, and also attempts to find collisions
+by choosing for example small 2-powers as input.
+
+===== page 9 [pdftotext] =====
+                                            424
+
+
+    We also need to specify choices of I that will make f secure and efficient. The
+problem of finding a collision for f can be reformulated: find numbers z # y, such
+that their squares modulo n match at the positions designated by I . Girault [Girl
+shows how to do this if I designates a reasonably small (less than 64)number of the
+least significant, or the most significant bits.
+    This suggests that we should choose the positions to be spread evenly over the
+s possible ones, since Girault’s method and related ones [GTV] will then fail. On
+the other hand there are good practical reasons for not using completely random
+positions, but at least lumping them together in bytes. Moreover, 111 should not be
+chosen too small, to prevent “birthday collisions”.
+    To be concrete, if s = 512, the above suggests that good choices would be 111 =
+128, and letting fr extract every 4’th byte.
+    This function will hash up to 376 bits pr. modular squaring, which on for example
+an IBM P/S I1 model 80 will give a speed of about 100 Kbits/sec. Special purpose
+hardware will give speeds in the Mbit/sec area.
+
+4.2    Based on Wolfram’s Pseudorandom Bit Generator
+The second suggestion bases itself on the pseudorandom bit generator proposed by
+Wolfram [Wo]. In general, a pseudorandom bit generator is an algorithm that takes
+as input a short, truely random seed, and stretches this into a long, seemingly ran-
+dom output string. It is intuitively clear that such a generator must in some sense
+implement a one-way function from its seed to its output: if the seed was easy to find
+given some part of the output, then the whole output could be predicted and hence
+be recognized as being non-random.
+    However, this one-way property does NOT in general imply collision freeness of a
+function constructed directly from the generator - an analysis of the concrete instance
+is therefore very much required.
+    Let us therefore have a look at the algorithm suggested by Wolfram: We define a
+function g from n bit strings to n bit strings: let x = xo,22, ..., x,,-~,then the i’th bit
+of g(x) is
+                              g(5)i = zi-1@ (z; V x i + * ) ,
+where addition and subtraction of 1 are modulo n. One can think of this as a register
+R in which the bits are updated in parallel by setting R := g(R). This is known as a
+one-dimensional cellular automat.
+   To use this for pseudorandom bit generation, one does the following:
+   1. Choose z at random.
+
+   2. z:=g(z).
+   3. Output 5 0 . GO to 2.
+
+    In [Wo], this pseudorandom bitgenerator is analyzed, and results of a large number
+of statistical tests are given. Its security is proved against enemies restricted to
+certain types of computations, but its ability to fail arbitrary polynomial time enemies
+
+===== page 10 [pdftotext] =====
+                                                  425
+
+
+remains a conjecture. All the known evidence, however, indicates that the generator
+is in fact very strong.
+    Let the bits produced by the algorithm on input z be denoted by h(z),h(z),....
+    The natural way to use this to construct a collision free function is to choose two
+natural numbers c < d, and let a function fo be defined by
+
+                            fO(z)= b c ( z ) , bc+1(5), * - - Y b d ( Z ) .
+    There are two possible flaws in this idea, which must be taken care of
+    First, a natural demand to a function like this is that all output bits depend on
+all input bits. It is easy to see that changing 1 bit of z will eventually after many
+executions of z := g(z) affect all of z - but the effect only propagates slowly through
+the register: 1 bit to the right, and about .25 bit to the left pr. application of g No].
+Hence choosing c too small will clearly be dangerous. A natural minimum value of c
+would therefore be one that guaranties that all output bits depend on all input bits.
+    The second problem is that g itself is not collision free: for example, g(1”) =
+g(0”) = On. And clearly, g(z) = g(y) implies fo(z) = fo(y). More generally, if
+g”(5) = g”(y) for small tl, then there is at least a nonnegligible chance that fo(z) =
+fo(Y)*
+    One natural way to get rid of this difficulty is to restrict f to a subset of the n-bit
+strings, thereby lowering the chance that pairs 3,y of the above form exist, or at least
+making them harder to find. One concrete possibility is to restrict to strings of the
+form zllz, where z is a randomly chosen constant string in (0,l)‘, r < n.
+    Thus we will define our final candidate f so that it maps an n - r bit string z to
+
+
+   The following lemma provides evidence in favor of this approach:
+
+Lemma 5.1
+If g”(z)= g”(y) = z , and 2v consecutive bits of z and y are equal, then I = y.
+
+Proof
+Let j be the index of the position immediately to the right of the 2v bits we know to
+be equal. Each bit of t depends on at most 2v + 1 bits of z(or y). Let I be chosen such
+that ZI is a function of bits j, ...,j + 2v of z(or y). Now, since inverting zj will invert
+2 1 , our assumptions imply that xj = yj. We can now “slide” the same argument one
+position to the right0
+
+    This provides good evidence that choosing a relatively large r will make “trivial”
+collisions more sparse and harder to find.
+    As a concrete example, suppose we choose n = 512, r = 256, c = 257 and
+d = 384. The resulting f will map 256-bit strings to 128-bit strings, and thus the
+hash function constructed from f by Theorem 3.1 will hash messages in blocks of 128
+bits, and produce 128 bit outputs.
+
+===== page 11 [pdftotext] =====
+                                            426
+
+
+   This function will be extremely well suited for a hardware implementation: in
+VLSI, we can compute g by updating all bits in parallel, and thus one application of
+g would only take 1 or 2 clock cycles, independently of n. This will produce speeds in
+the Mbit/sec area even with quite modest clock speeds. Moreover such a hardware
+implementation would be extremely easy and cheap to build.
+
+4.3    Based on the Knapsack Problem
+Although the knapsack problem is NP-complete, and therefore probably very hard in
+the worst cases, making use of this hardness in cryptography is not easy, as shown by
+the fate of many public-key systems based on this problem.
+    The difficulty, however, is largely due to the fact that an encryption function
+must be invertible, and that the knapsacks used must therefore have some built-in
+structures, which in many cases turn out to be useful to a cryptanalyst. A hash func-
+tion, on the other hand, never has to be inverted, and therefore completely randomly
+generated knapsacks can be used.
+    The naive way of doing this is to choose at random numbers a l , ...,a , in the interval
+1..M, where s is the maximal length of a message to be expected. We can then hash
+the binary message rnl, rnz, ...,rnb to
+                                                    .
+    As shown in [GC], this is completely insecure for large s, more precisely when
+M C -              To solve this, we propose to fix s to something reasonably small
+compared to M , and use Theorem 3.1 to construct the actual hash function. As an
+example, one could choose s to be about 2Zog(M), which implies that f compresses
+s bits blocks to 9/2 bit blocks, and that the condition of [GC] is very far from being
+satisfied.
+    Concrete choices could be 8 = 256 and M = 2lZ0 - 1. This would give an output
+from the final hash function of length 128 bits. On an IBM P/S I1 Model 80, this
+version will run at a speed of about 250 Kbits/sec.
+    To specify the function one needs to specify about 4 Kbytes of data. On e.g. a PC
+with 640K of RAM, this does not seem excessive. But in situations with a smaller
+memory, one can trade time for memory and generate the a’s pseudorandomly in
+stead of remembering all of them.
+    The result of [ImNa] is a strong indication that this function is indeed collision
+free, although the security property proved is weaker than what we need here (see
+Section 1).
+    Another indication of the strength of the function is the fact that the problem of
+deciding in general whether a given knapsack induces an injective mapping is co-NP
+complete. A collision is of course a witness of non- injectiveness (the decision problem
+is clearly trivial if the knapsack compresses its input, but this does not imply that a
+witness is easy to find).
+    We remark that even knapsacks that expand their input slightly (and therefore
+cannot be used by (ImNa]) can be used to build hash functions secure in the sense
+
+===== page 12 [pdftotext] =====
+                                         427
+
+
+of [NaYu], if one is willing to assume that they induce collision free mappings. This
+seems reasonable in view of the co-NP completeness of the problem involved and the
+fact that the decision problem is non trivial in this case. The construction and proof
+can be obtained by adapting the techniques of [NaYu].
+
+
+References
+[Da] Damgbrd: “Collision Free Hash Functions and Public Key Signature Schemes”,
+     Proceedings of EuroCrypt 87, Springer.
+
+[De] D. Denning: “Digital Signatures with RSA and other Public Key Cryptosys-
+     terns”, CACM, ~01.27, 1984, pp.441-448.
+
+[DP] Davis and Price: “The Application of Digital Signatures Based on Public Key
+     Crypto-Systems” , Proc. of CompCon 1980, pp.525-530.
+
+[GC] Godlewski and Camion: “Manipulation and Errors, Localization and Detec-
+    tion”, Proceedings of EuroCrypt 88, Springer.
+
+[Gi] Gibson: “A Collision Free Hash Function and the Discrete Logarithm Problem
+     for a Composite Modulus”, Manuscript, 1/10/88, London, England.
+
+[Girl Girault: “Hash Functions Using Modulo-n Operations”, Proceedings of Euro-
+      Crypt 87, Springer.
+
+[GTV] Girault, T o 5 and Vallk: “Computation of Approximate G t h Roots Mod-
+   ulo n and Application to Cryptography”, Proceedings of Crypto 88, Springer.
+
+b N a ] Impagliazzo and Nmr: “Efficient Cryptographic Schemes Provably as Secure
+     as Subset Sum”, Proc. of FOCS 89.
+
+[Me] Merkle: “One Way Hash Functions and DES”, these proceedings.
+[NaYu] Naar and Yung: “Universal One-way Hash Functions”, Proc. of STOC 89.
+pi]Winternitz: “Producing a one-way Hash Function from DES”, Proceedings of
+      Crypto 83, Springer.
+
+[Wo] Wolfram: “Random Sequence Generation by Cellular Automata”, Adv. Appl.
+    Math., vol 7, 123-169, 1986.

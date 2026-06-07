@@ -1,0 +1,112 @@
+\section{Epoch-wise Double Descent}
+\label{sec:epoch-dd}
+
+%In this section, we provide evidence for the generality of our notion of EMC by studying the interaction between training epochs and test error. We present a novel form of double-descent with respect to training epochs.
+
+
+%In this section, we study the interaction between train epochs, model size, and test error.
+
+%First, we consider the evolution of test error of a fixed, large architecture as training progresses.
+%Increasing train epochs increases effective model complexity in our framework -- and thus a sufficiently large model transitions from underparameterized to overparameterized over the course of training.
+% Indeed, consistent with our generalized double-descent hypothesis, we observe
+% an ``epoch-wise'' double descent for large models:
+% test error first decreases (at the beginning of training), then increases (around the interpolation threshold), then decreases once more (at the end of training).
+
+
+In this section, we demonstrate a novel form of double-descent with respect to training epochs, which is consistent with our unified view of effective model complexity (EMC) and the generalized double descent hypothesis.
+Increasing the train time increases the EMC---and thus a sufficiently large model transitions from under- to over-parameterized over the course of training.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[t]{.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{epochDD_regimes}
+    \end{subfigure}
+    \begin{subfigure}[t]{.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{epochDD_ocean_plot}
+    \end{subfigure}
+    \caption{
+    {\bf Left: } 
+    Training dynamics for models in three regimes.
+    Models are ResNet18s on CIFAR10 with 20\% label noise,
+    trained using Adam with learning rate $0.0001$, and data augmentation.
+    {\bf Right:} Test error over (Model size $\x$ Epochs).
+    Three slices of this plot are shown on the left.
+    }
+    \label{fig:epochDD-three-regimes}
+\end{figure}
+
+As illustrated in Figure~\ref{fig:epochDD-three-regimes}, 
+sufficiently large models can
+undergo
+a ``double descent'' behavior where test error first decreases then increases near the interpolation
+threshold, and then decreases again.
+In contrast, for ``medium sized'' models, for which training to completion will only barely reach $\approx 0$ error, the
+test error as a function of training time will follow a classical U-like curve where it is better to stop early.
+Models that are too small to reach the approximation threshold will remain in the ``under parameterized'' regime where increasing
+train time monotonically decreases test error.
+Our experiments
+(Figure~\ref{fig:epochDD-noise-dataset-arch}) show that many settings
+of dataset and architecture exhibit epoch-wise double descent, in the presence of label noise.
+Further, this phenomenon
+is robust across optimizer variations and learning rate schedules (see additional experiments in Appendix \ref{subsec:appendix_epoch}).
+As in model-wise double descent, the test error peak is accentuated with label noise. 
+
+\iffalse
+
+Indeed, we observe three distinct train-time behaviors
+depending on the model size and label noise (Figure~\ref{fig:epochDD-three-regimes}):
+\begin{enumerate}
+    \item Small models (which are under-parameterized throughout training):
+    Test error decreases monotonically throughout training. 
+    \item Intermediate-size models
+    (which transition from under- to critically parameterized over training): Test error decreases but starts diverging close to interpolation (conventional understanding of when over-fitting sets in).
+    \item Large models (which transition from under- to over-parameterized throughout training):
+    Test error decreases, increases or plateaus near the interpolation threshold, then decreases again.\todo{added "or plateaus"--Boaz}
+\end{enumerate}
+
+\fi
+
+%These behaviors are consistent with our generalized double descent hypothesis.
+
+%We demonstrate this phenomenon for a variety of natural models, datasets, and optimizers.
+%Epoch-wise double-descent is most prominent in settings where model-wise double-descent
+%is prominent.
+
+% This manifests most prominently as a ``double-descent'' in test error in settings with label noise -- here,
+
+% Here, we provide further evidence of a double-descent in test error with the number of epochs. 
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{epochDD_cf10_labelnoise_train_test}
+        \caption{ResNet18 on CIFAR10.}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{epochDD_cf100_labelnoise_train_test}
+        \caption{ResNet18 on CIFAR100.}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{epochDD_cf10_mcnn_labelnoise_train_test}
+        \caption{5-layer CNN on CIFAR 10.}
+    \end{subfigure}
+    \caption{{\bf Epoch-wise double descent} for ResNet18 and CNN (width=128).
+    ResNets trained using Adam with learning rate $0.0001$,
+    and CNNs trained with SGD with inverse-squareroot learning rate.
+    }
+    \label{fig:epochDD-noise-dataset-arch}
+\end{figure}
+
+
+Conventional wisdom suggests that training is split into two phases: (1) In the first phase, the network learns a function with a small generalization gap (2) In the second phase, the network starts to over-fit the data leading to an increase in test error.
+Our experiments suggest that this is not the complete picture---in some regimes, the test error decreases again and may achieve a lower value at the end of training as compared to the first minimum (see Fig \ref{fig:epochDD-noise-dataset-arch} for 10\% label noise).
+
+% A practical suggestion from this is that you don't want to stop just when test error starts to diverge.
+
+
+% Conventional wisdom is that when you train, you start to over-fit at some point (where you should early stop). 

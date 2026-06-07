@@ -1,0 +1,127 @@
+\documentclass{article}
+
+
+
+\PassOptionsToPackage{numbers, compress}{natbib}
+\usepackage[final]{neurips_2022}
+
+
+
+
+
+
+
+
+\usepackage[utf8]{inputenc} %
+\usepackage[T1]{fontenc}    %
+\usepackage{hyperref}       %
+\usepackage{url}            %
+\usepackage{booktabs}       %
+\usepackage{amsfonts}       %
+\usepackage{nicefrac}       %
+\usepackage{microtype}      %
+\usepackage{xcolor}         %
+
+\usepackage{minitoc}
+\renewcommand \thepart{}
+\renewcommand \partname{}
+
+\usepackage{colortbl}
+\usepackage{multirow}
+\usepackage{mathcommand}
+\usepackage{amsmath,amsthm,amssymb,mathtools}
+\usepackage{physics}
+
+\usepackage{stackengine}
+\usepackage{rotating}
+\usepackage{tabularx}
+\usepackage{soul}
+\usepackage{algpseudocode, algorithm}
+\usepackage{graphicx}
+\usepackage{subcaption}
+
+\usepackage{cleveref}
+
+\input{common}
+\numberwithin{equation}{section}
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem*{remark}{Remark}
+\newenvironment{proof-sketch}{\noindent{\textit{Sketch of proof.}}\hspace*{1em}}{\qed\bigskip}
+
+\newcommand{\fan}[1]{{\color{purple}{[[\textbf{fan: }#1]]}}}
+\newcommand{\cx}[1]{{\color{green}{[[\textbf{CX: }#1]]}}}
+
+\newcommand{\junz}[1]{{\color{red}{[\textbf{jz: }#1]}}}
+
+\title{DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps}
+
+
+
+\author{Cheng Lu$^\dag$, Yuhao Zhou$^\dag$, Fan Bao$^\dag$, Jianfei Chen$^{\dag*}$, Chongxuan Li$^\ddag$, Jun Zhu$^\dag$\thanks{Corresponding Author.} \\
+$^\dag$Dept. of Comp. Sci. \& Tech., Institute for AI, BNRist Center, THBI Lab \\
+$^\dag$Tsinghua-Bosch Joint ML Center, Tsinghua University, Beijing, 100084 China \\
+$^\ddag$Gaoling School of Artificial Intelligence, Renmin University of China, \\
+$^\ddag$Beijing Key Laboratory of Big Data Management and Analysis Methods, Beijing, China \\
+\texttt{\{lucheng.lc15, yuhaoz.cs\}@gmail.com};\quad \texttt{bf19@mails.tsinghua.edu.cn} \\
+\texttt{chongxuanli@ruc.edu.cn};\quad \texttt{\{jianfeic, dcszj\}@tsinghua.edu.cn} \\
+}
+
+
+
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+Diffusion probabilistic models (DPMs) are emerging powerful generative models. Despite their high-quality generation performance, DPMs still suffer from their slow sampling as they generally need hundreds or thousands of sequential function evaluations (steps) of large neural networks to draw a sample. Sampling from DPMs can be viewed alternatively as solving the corresponding diffusion ordinary differential equations (ODEs). In this work, we propose an exact formulation of the solution of diffusion ODEs. The formulation analytically computes the linear part of the solution, rather than leaving all terms to black-box ODE solvers as adopted in previous works. By applying change-of-variable, the solution can be equivalently simplified to an exponentially weighted integral of the neural network. Based on our formulation, we propose \textit{DPM-Solver}, a fast dedicated high-order solver for diffusion ODEs with the convergence order guarantee. DPM-Solver is suitable for both discrete-time and continuous-time DPMs without any further training. Experimental results show that DPM-Solver can generate high-quality samples in only 10 to 20 function evaluations on various datasets. We achieve 4.70 FID in 10 function evaluations and 2.87 FID in 20 function evaluations on the CIFAR10 dataset, and a $4\sim 16\times$ speedup compared with previous state-of-the-art training-free samplers on various datasets.\footnote{Code is available at \url{https://github.com/LuChengTHU/dpm-solver}}
+
+
+
+
+\end{abstract}
+
+\doparttoc
+\faketableofcontents
+
+
+\input{1-intro}
+\input{2-background}
+\input{3-solver}
+\input{4-connection}
+\input{6-experiments}
+
+
+\section{Conclusions}
+\label{sec:conclusion}
+We tackle the problem of fast and training-free sampling from DPMs. 
+We propose DPM-Solver, a fast dedicated training-free solver of diffusion ODEs for fast sampling of DPMs in around 10 steps of function evaluations. DPM-Solver leverages the semi-linearity of diffusion ODEs and it directly approximates a simplified formulation of exact solutions of diffusion ODEs, which consists of an exponentially weighted integral of the noise prediction model. Inspired by numerical methods for exponential integrators, we propose first-order, second-order and third-order DPM-Solver to approximate the exponentially weighted integral of noise prediction models with theoretical convergence guarantee. We propose both handcrafted and adaptive step size schedule, and apply DPM-Solver for both continuous-time and discrete-time DPMs. Our experimental results show that DPM-Solver can generate high-quality samples in around 10 function evaluations on various datasets, and it can achieve $4\sim 16\times$ speedup  compared with previous state-of-the-art training-free samplers.
+
+
+\textbf{Limitations and broader impact}\quad Despite the promising speedup performance, DPM-Solver is designed for fast sampling, which may be not suitable for accelerating the likelihood evaluations of DPMs. Besides, compared to the commonly-used GANs, diffusion models with DPM-Solver are still not fast enough for real-time applications. In addition, like other deep generative models, DPMs may be used to generate adverse fake contents, and the proposed solver may further amplify the potential undesirable influence of deep generative models for malicious applications.
+
+\section*{Acknowledgements}
+
+
+This work was supported by National Key Research and Development Project of China (No. 2021ZD0110502); NSF of China Projects (Nos. 62061136001, 61620106010, 62076145, U19B2034, U1811461, U19A2081, 6197222, 62106120); Beijing NSF Project (No. JQ19016); Beijing Outstanding Young Scientist Program NO. BJJWZYJH012019100020098; a grant from Tsinghua Institute for Guo Qiang; the NVIDIA NVAIL Program with GPU/DGX Acceleration; the High Performance Computing Center, Tsinghua University; the Fundamental Research Funds for the Central Universities, and the Research Funds of Renmin University of China (22XNKJ13). J.Z is also supported by the XPlorer Prize.
+
+\bibliography{ref}
+\bibliographystyle{IEEEtranN}
+
+\input{checklist}
+
+\newpage
+\appendix
+\input{appendix}
+
+\end{document}

@@ -1,0 +1,25 @@
+\section{Related Work}
+
+\noindent\textbf{Specialized semantic segmentation architectures} typically treat the task as a per-pixel classification problem. FCN-based architectures~\cite{long2015fully} independently predict a category label for every pixel. Follow-up methods find context to play an important role for  precise per-pixel classification and focus on designing customized context modules~\cite{deeplabV2,deeplabV3,zhao2017pspnet} or self-attention variants~\cite{wang2018non,fu2019dual,yuan2018ocnet,huang2019ccnet,zheng2021rethinking,strudel2021segmenter}.
+
+\noindent\textbf{Specialized instance segmentation architectures} are typically based upon ``mask classification.'' They predict a set of binary masks each associated with a single class label. The pioneering work, Mask R-CNN~\cite{he2017mask}, generates masks from detected bounding boxes. Follow-up methods either focus on detecting more precise bounding boxes~\cite{cai2018cascade,chen2019hybrid}, or finding new ways to generate a dynamic number of masks, \eg, using dynamic kernels~\cite{tian2020conditional,wang2020solov2,yolact-plus-arxiv2019} or clustering algorithms~\cite{kirillov2016instancecut,cheng2020panoptic}. Although the performance has been advanced in each task, these specialized innovations lack the flexibility to generalize from one to the other, leading to duplicated research effort. For instance, although multiple approaches have been proposed for building feature pyramid representations~\cite{lin2016feature}, as we show in our experiments,
+BiFPN~\cite{tan2020efficientdet} performs better for instance segmentation while FaPN~\cite{fapn} performs better for semantic segmentation.
+
+
+\noindent\textbf{Panoptic segmentation} has been proposed to unify both semantic and instance segmentation tasks~\cite{kirillov2017panoptic}. Architectures for panoptic segmentation either combine the best of specialized semantic and instance segmentation architectures into a single framework~\cite{xiong19upsnet,kirillov2019panopticfpn,cheng2020panoptic,li2021fully} or design novel objectives that equally treat semantic regions and instance objects~\cite{detr,wang2021max}. Despite those new architectures, researchers continue to develop specialized architectures for different image segmentation tasks~\cite{strudel2021segmenter,QueryInst}.
+We find panoptic architectures usually only report performance on a single panoptic segmentation task~\cite{wang2021max}, which does not guarantee good performance on other tasks (\figref{fig:teaser}). For example, panoptic segmentation does not measure architectures' abilities to rank predictions as instance segmentations. Thus, we refrain from referring to architectures that are only evaluated for panoptic segmentation as universal architectures. Instead, here, we evaluate our \modelname on all studied tasks to guarantee generalizability.
+
+\noindent\textbf{Universal architectures} have emerged with DETR~\cite{detr} and show that mask classification architectures with an end-to-end set prediction objective are general enough for any image segmentation task. 
+MaskFormer~\cite{cheng2021maskformer} shows that mask classification based on DETR not only performs well on panoptic segmentation but also achieves state-of-the-art on semantic segmentation. K-Net~\cite{zhang2021knet} further extends set prediction to instance segmentation. Unfortunately, these architectures fail to replace specialized models as their performance on particular tasks or datasets is still worse than the best specialized architecture (\eg, MaskFormer~\cite{cheng2021maskformer} cannot segment instances well). To our knowledge, \modelname is the first
+architecture that outperforms state-of-the-art specialized architectures on all considered tasks and datasets. %
+
+
+
+
+
+
+
+
+
+
+

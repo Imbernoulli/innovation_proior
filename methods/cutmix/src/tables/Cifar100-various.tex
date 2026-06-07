@@ -1,0 +1,19 @@
+
+\begin{table}[]
+\small
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\multirow{2}{*}{Model}  & \multirow{2}{*}{\# Params} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-1 \\ Err (\%)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-5 \\ Err (\%)\end{tabular}} \\
+                        &                       &                          & \\ \midrule
+PyramidNet-110 ($\Tilde{\alpha}=64$)~\cite{pyramidnet}    &    1.7 M & 19.85  & 4.66    \\
+PyramidNet-110 + CutMix &                1.7 M     &  \textbf{17.97}      &     \textbf{3.83}    \\ \midrule
+ResNet-110~\cite{resnet}              &     1.1 M           & 23.14          & 5.95    \\
+ResNet-110 + CutMix     &     1.1 M            & \textbf{20.11}          & \textbf{4.43}    \\ 
+\toprule
+\end{tabular}
+\vspace{-0.2cm}
+\caption{Impact of CutMix on lighter architectures on CIFAR-100.}
+\vspace{-0.3cm}
+\label{table:cifar-various}
+\end{table}

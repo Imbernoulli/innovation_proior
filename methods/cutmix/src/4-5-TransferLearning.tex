@@ -1,0 +1,60 @@
+
+\subsection{Transfer Learning of Pretrained Model}
+\label{sec:transfer}
+
+ImageNet pre-training is de-facto standard practice for many visual recognition tasks.
+We examine whether CutMix pre-trained models leads to better performances in certain downstream tasks based on ImageNet pre-trained models.
+As CutMix has shown superiority in localizing less discriminative object parts, we would expect it to lead to boosts in certain recognition tasks with localization elements, such as object detection and image captioning.
+We evaluate the boost from CutMix on those tasks by replacing the backbone network initialization with other ImageNet pre-trained models using Mixup~\cite{zhang2017mixup}, Cutout~\cite{devries2017cutout}, and CutMix.
+ResNet-50 is used as the baseline architecture in this section. 
+
+\noindent\textbf{
+Transferring to Pascal VOC object detection: 
+}
+Two popular detection models, SSD~\cite{liu2016ssd} and Faster RCNN~\cite{fasterrcnn}, are considered.
+Originally the two methods have utilized VGG-16 as backbones, but we have changed it to ResNet-50.
+The ResNet-50 backbone is initialized with various ImageNet-pretrained models and then fine-tuned on Pascal VOC 2007 and 2012~\cite{pascalvoc} \texttt{trainval} data. Models are evaluated on VOC 2007 \texttt{test} data using the mAP metric.
+We follow the fine-tuning strategy of the original methods~\cite{liu2016ssd,fasterrcnn}; implementation details are in Appendix~\ref{appendix:Detection}. 
+Results are shown in Table~\ref{table:imagenet-detection}. 
+Pre-training with Cutout and Mixup has failed to improve the object detection performance over the vanilla pre-trained model. 
+However, the pre-training with CutMix improves the performance of both SSD and Faster-RCNN. 
+Stronger localizability of the CutMix pre-trained models leads to better detection performances.
+
+\begin{figure*}[ht!]
+    \centering
+    \begin{subfigure}[]{0.495\linewidth}
+        \begin{subfigure}[ht!]{0.495\linewidth}
+            \includegraphics[width=\linewidth]{robustness_occlusion.pdf}
+        \end{subfigure}
+        \begin{subfigure}[ht!]{0.495\linewidth}
+            \includegraphics[width=\linewidth]{robustness_boundary_occlusion.pdf}
+        \end{subfigure}
+        \caption{Analysis for occluded samples}
+        \label{fig:robustness_occ}
+    \end{subfigure}
+    \begin{subfigure}[]{0.495\linewidth}
+        \begin{subfigure}[ht!]{0.495\linewidth}
+            \includegraphics[width=\linewidth]{robustness_mixup_v3.pdf}
+        \end{subfigure}
+        \begin{subfigure}[ht!]{0.495\linewidth}
+            \includegraphics[width=\linewidth]{robustness_cutmix_v3.pdf}
+        \end{subfigure}
+        \caption{Analysis for in-between class samples}
+        \label{fig:robustness_inbetween}
+    \end{subfigure}
+    \vspace{-0.1cm}
+    \caption{Robustness experiments on the ImageNet validation set.}
+    \label{fig:robustness}
+    \vspace{-0.3cm}
+\end{figure*}
+
+
+\noindent\textbf{
+Transferring to MS-COCO image captioning: 
+}
+We used Neural Image Caption (NIC)~\cite{vinyals2015show} as the base model for image captioning experiments. We have changed the backbone network of encoder from GoogLeNet~\cite{vinyals2015show} to ResNet-50.
+The backbone network is initialized with various ImageNet pre-trained models, and then trained and evaluated on MS-COCO dataset~\cite{lin2014microsoft}.
+Implementation details and evaluation metrics (METEOR, CIDER, etc.) are in Appendix~\ref{appendix:captioning}.
+Table~\ref{table:imagenet-detection} shows the results.
+CutMix outperforms Mixup and Cutout in both \texttt{BLEU1} and  \texttt{BLEU4} metrics. 
+Simply replacing backbone network with our CutMix pre-trained model gives performance gains for object detection and image captioning tasks at no extra cost.

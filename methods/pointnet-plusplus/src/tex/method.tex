@@ -1,0 +1,199 @@
+%\todo{In charge: Charles, Hao. First pass by Charles due May 16 4PM. Adding Figures due May 16 11:59PM. Final pass due May 17 10PM.}
+\begin{figure}[ht!]
+    \vspace{-0.3cm}
+    \centering
+    \includegraphics[width=0.9\linewidth]{fig/pnpp}
+    \caption{Illustration of our hierarchical feature learning architecture and its application for set segmentation and classification using points in 2D Euclidean space as an example. Single scale point grouping is visualized here. For details on density adaptive grouping, see Fig.~\ref{fig:multiscale}}
+    \label{fig:pnpp}
+    \vspace{-0.5cm}
+\end{figure}
+
+
+Our work can be viewed as an extension of PointNet~\cite{qi2016pointnet} with added hierarchical structure. %In addition, PointNet is used as a basic building block in our PointNet++. 
+We first review PointNet (Sec.~\ref{sec:pointnet}) and then introduce a basic extension of PointNet with hierarchical structure (Sec.~\ref{sec:pointnet2}). Finally, we propose our PointNet++ that is able to robustly learn features even in non-uniformly sampled point sets (Sec.~\ref{sec:pointnet2++}).
+
+\vspace{-0.3cm}
+\subsection{Review of PointNet~\cite{qi2016pointnet}: A Universal Continuous Set Function Approximator}
+\label{sec:pointnet}
+
+Given an unordered point set $\{x_1, x_2, ..., x_n\}$ with $x_i \in \mathbb{R}^d$, one can define a set function $f: \mathcal{X} \rightarrow \mathbb{R}$ that maps a set of points to a vector:
+%Here $\mathcal{X}=\{S: S\subseteq [0,1]^m ~\text{and}~ |S|=n\}$.
+\vspace{-0.3cm}
+\begin{equation}
+    f(x_1, x_2, ..., x_n) = \gamma\left(\underset{i=1,...,n}{\mbox{MAX}}\left\{h(x_i)\right\}\right)
+    \label{eq:pointnet}
+\end{equation}
+where $\gamma$ and $h$ are usually multi-layer perceptron (MLP) networks.
+
+The set function $f$ in Eq.~\ref{eq:pointnet} is invariant to input point permutations and can arbitrarily approximate any continuous set function~\cite{qi2016pointnet}. Note that the response of $h$ can be interpreted as the spatial encoding of a point (see \cite{qi2016pointnet} for details). %The basic structure is shown in Fig.~\ref{fig:pointnet_layer}.
+
+% \begin{figure}[h]
+% \centering
+% \includegraphics[width=0.5\linewidth]{./fig/pointnet}
+% \caption{[draft figure] Basic architecture of PointNet~\cite{qi2016pointnet} classification network.}
+% \label{fig:pointnet}
+% \end{figure}
+
+% To learn a global set feature, we can train a collection of set functions $f$ with different weights.
+% To learn a feature for each individual point, \cite{qi2016pointnet} directly concatenates the global feature of a point set with the spatial encoding of the point and use MLP to output a context-aware point feature.
+
+% \begin{wrapfigure}{R}{6cm}
+%   \begin{center}
+%     \includegraphics[width=6cm]{./fig/pointnet_layer.pdf}
+%   \end{center}  \vspace{-10pt}
+%   \caption{Structure of a PointNet.}
+%   \label{fig:pointnet_layer}
+% \end{wrapfigure}
+
+PointNet achieved impressive performance on a few benchmarks. However, it lacks the ability to capture local context at different scales. We will introduce a hierarchical feature learning framework in the next section to resolve the limitation.    
+% \rqi{Under the setting that input is a scene of multiple objects: The point here is that if there are multiple objects in a scene, they can be translated and rotated independently such that they will form exponential number of scene configurations, which makes global XYZ based method perform very bad in generalizability. Input dependent transformation won't help much as well since the transformation is global rather than per-object based.}
+%First, there is no local context at different scales in learning -- intermediate features learned are either for a single point or for the global set. Every point is processed independently at first and then concatenated directly with the global feature for per-point feature learning. Second, 
+% Since there is no local context used in learning, generalizability of the learned features relies on global normalization of points: (1) if points are translated as a whole (distances between points remain the same) the features are completely changed, resulting in no translation invariance. Even though a spatial transformer network has been added in order to align the input to a canonical space, this component may fail if the initial translation is too big; \hao{rewording} (2) if the point set is of a unfamiliar configuration (such as a new scene in 3D point cloud), the global feature may have a hard time to summarize local details and may introduce artifacts in segmentation tasks (see Fig.~\ref{fig:sceneseg_vis}).
+
+
+%\rqi{maybe we can use a very simple example for illustration. Translation invariance can be alleviated by a translator network -- the prominent problem is for ``scenes'' -- when multiple geometrically special instances appear.}
+
+% \begin{figure}[h]
+% \centering
+% \includegraphics[width=0.5\linewidth]{./fig/placeholder}
+% \caption{v1 vs v2.}
+% \label{fig:v1_vs_v2}
+% \end{figure}
+
+
+\vspace{-0.3cm}
+\subsection{Hierarchical Point Set Feature Learning}
+\label{sec:pointnet2}
+%\hao{first talk about pointnet: a single step for abstraction, big jump. we need a hierarchy, for each level, we use pointnet.}
+
+While PointNet uses a single max pooling operation to aggregate the whole point set, our new architecture builds a hierarchical grouping of points and progressively abstract larger and larger local regions along the hierarchy. %The new architecture is a \emph{superset} of the original PointNet. When there is only one hierarchy level, our new architecture degenerates to PointNet.
+
+Our hierarchical structure is composed by a number of \emph{set abstraction} levels (Fig.~\ref{fig:pnpp}). At each level, a set of points is processed and abstracted to produce a new set with fewer elements. The set abstraction level is made of three key layers: \emph{Sampling layer}, \emph{Grouping layer} and \emph{PointNet layer}. The \emph{Sampling layer} selects a set of points from input points, which defines the centroids of local regions. \emph{Grouping layer} then constructs local region sets by finding ``neighboring'' points around the centroids. \emph{PointNet layer} uses a mini-PointNet to encode local region patterns into feature vectors.
+
+%applied on point sets in each local region so that each local region is represented by a feature vector. After a level of abstraction, the input point set $\{x_1, x_2, ..., x_n\}$ with $x_i \in \mathbb{R}^{d+C}$ ($d$-dim coordinate and $C$-dim feature) are abstracted by a subsampled points with local features as $\{x_{i_1}, x_{i_2}, ..., x_{i_m}\}$ where $x_{j} \in \mathbb{R}^{d+C'}$ where $C'$ is the dimension of local region feature. 
+
+%The set abstraction level is similar to a convolutional layer (with stride or pooling) in common CNNs in a few perspectives: higher layer has less points/pixels but larger receptive field; kernel weights are shared across space (translation invariant). However, there exist fundamental differences in neighborhood search (metric distance v.s. index based) and kernel function (set function v.s. convolution).
+
+A set abstraction level takes an $N \times (d+C)$ matrix as input that is from $N$ points with $d$-dim coordinates and $C$-dim point feature. It outputs an $N' \times (d+C')$ matrix of $N'$ subsampled points with $d$-dim coordinates and new $C'$-dim feature vectors summarizing local context. We introduce the layers of a set abstraction level in the following paragraphs.
+
+%From input output perspective, a set abstraction layer takes $N \times (d+C)$ input of $N$ points with $d$-dim coordinates and point feature vectors such as normal and curvature of dimension $C$. The layer output a subsampled point set of size $M \times (d+D)$ of $M$ points with $d$-dim coordinates and new feature vectors of dimension $D$ that summarize properties of local regions of the subsampled points. Specifically we use farthest point sampling to choose the abstracted $M$ points from the input $N$ points. We then sample local points around each of the $M$ points and use a trainable mini neural network to extract features for each local region. The mini neural network is shared across different locations and is designed to be invariant to input point orders.
+
+% talk about similarity and difference between CNN and PointNet++
+
+%and show how they fit well for end-for-end learning. 
+
+\vspace{-0.3cm}
+\paragraph{Sampling layer.}
+%This layer chooses regions of interest by selecting a set of subsampled points from inputs.
+Given input points $\{x_1, x_2, ..., x_n\}$, we use iterative farthest point sampling (FPS) to choose a subset of points $\{x_{i_1}, x_{i_2}, ..., x_{i_m}\}$, such that $x_{i_j}$ is the most distant point (in metric distance) from the set $\{x_{i_1}, x_{i_2},...,x_{i_{j-1}}\}$ with regard to the rest points. %Given a point set, farthest point sampling is completely determined by the first sampled point, which is randomly picked in our case. 
+Compared with random sampling, it has better coverage of the entire point set given the same number of centroids. In contrast to CNNs that scan the vector space agnostic of data distribution, our sampling strategy generates receptive fields in a data dependent manner. % While random sampling is data independent, the latter two are both data dependent.
+
+%Random sampling randomly select $m$ points from the $n$ input points with uniform probability. Its sampling result is data independent -- sampled points' indices are the same regardless of locations and features of the specific input points, given a fixed random seed.
+
+% There are also other options to select centroids such as detecting and using a set of key points, which however requires a robust task-dependent keypoint detection algorithm. Unless otherwise noted, we will use farthest point sampling for our sampling layer.
+%Key point sampling depends on point features that indicate ``importance'' and ``discriminativeness'' of points. 
+%\todo{try baselines using different sampling strategies..}
+
+%In farthest point sampling, we firstly randomly pick a point from input set $S$ and add it to the subsampled set $S'$. Then we repeatedly find the point in $S \ S'$ that has the farthest metric distance to the closest point in $S'$. The process is terminated until we reached $M$ points in $S'$.
+% The indices of selected seed points will be used for forward pass and backward pass of \emph{Grouping layer}.
+\vspace{-0.3cm}
+\paragraph{Grouping layer.}
+The input to this layer is a point set of size $N \times (d+C)$ and the coordinates of a set of centroids of size $N' \times d$. The output are groups of point sets of size $N' \times K \times (d+C)$, where each group corresponds to a local region and $K$ is the number of points in the neighborhood of centroid points. Note that $K$ varies across groups but the succeeding \emph{PointNet layer} is able to convert flexible number of points into a fixed length local region feature vector.
+
+In convolutional neural networks, a local region of a pixel consists of pixels with array indices within certain Manhattan distance (kernel size) of the pixel. In a point set sampled from a metric space, the neighborhood of a point is defined by metric distance.
+
+Ball query finds all points that are within a radius to the query point (an upper limit of $K$ is set in implementation). %The set of points in the ball forms a local neighborhood. 
+An alternative range query is $K$ nearest neighbor (kNN) search which finds a fixed number of neighboring points. Compared with kNN, ball query's local neighborhood guarantees a fixed region scale thus making local region feature more generalizable across space, which is preferred for tasks requiring local pattern recognition (e.g. semantic point labeling).
+
+%There are two standard ways of defining a neighborhood: ball query and $k$ nearest neighbor search. In contrast, $k$ nearest neighbor search 
+
+
+%However, in higher dimensional space, nearly all points are far away from each other --- and in order to capture reasonable amount of points in a local neighborhood, one has to set a very large ball query radius. A large query radius can result in very uneven number of samples in each region and might lead to very global feature learning in the end. In this case, $k$ nearest neighbor based search is more applicable. \rqi{currently we don't have experiments on higher dimensional spaces.}
+
+%Gradients of output points are back propagated to input points depending on the grouping indices. \todo{add gradient formula here.}
+\vspace{-0.3cm}
+\paragraph{PointNet layer.}
+In this layer, the input are $N'$ local regions of points with data size $N' \times K \times (d+C)$. Each local region in the output is abstracted by its centroid and local feature that encodes the centroid's neighborhood. Output data size is $N' \times (d+C')$.
+
+The coordinates of points in a local region are firstly translated into a local frame relative to the centroid point: $x_{i}^{(j)} = x_{i}^{(j)} - \hat{x}^{(j)}$ for $i = 1,2,...,K$ and $j = 1,2,...,d$ where $\hat{x}$ is the coordinate of the centroid. We use PointNet~\cite{qi2016pointnet} as described in Sec.~\ref{sec:pointnet} as the basic building block for local pattern learning. By using relative coordinates together with point features we can capture point-to-point relations in the local region.
+
+% While the original PointNet work also uses transformation networks to enhance rotation invariance of the network, the orientations of point set features may not be neglected in our hierarchical learning case. % For example in 3D recognition, a mirror symmetric pair of corners form a chair back.
+
+% is passed through a few neural network kernels, where each kernel is a function that maps a set of points to a scalar value: $f: \mathcal{X} \rightarrow \mathbb{R}$ as in Eq.~\ref{eq:pointnet}.   
+\vspace{-0.3cm}
+\subsection{Robust Feature Learning under Non-Uniform Sampling Density}
+\label{sec:pointnet2++}
+
+\begin{wrapfigure}{R}{4cm}
+  \vspace{-10pt}
+  \begin{center}
+    \includegraphics[width=4cm]{./fig/multiscale.pdf}
+  \end{center}  \vspace{-15pt}
+  \caption{(a) Multi-scale grouping (MSG); (b) Multi-resolution grouping (MRG).}
+  \label{fig:multiscale}
+\end{wrapfigure}
+
+%Usually it's not guaranteed that a point set is sampled with uniform density.
+As discussed earlier, it is common that a point set comes with non-uniform density in different areas. Such non-uniformity introduces a significant challenge for point set feature learning. Features learned in dense data may not generalize to sparsely sampled regions. Consequently, models trained for sparse point cloud may not recognize fine-grained local structures.
+%If the sampling is uniform we can choose from a bank of models trained for different data sparsity according to specific test data. However, if sampling is non-uniform, such method would have to use the most sparse model which would lose detailed information in densely sampled regions.
+
+Ideally, we want to inspect as closely as possible into a point set to capture finest details in densely sampled regions. However, such close inspect is prohibited at low density areas because local patterns may be corrupted by the sampling deficiency. In this case, we should look for larger scale patterns in greater vicinity. To achieve this goal we propose density adaptive PointNet layers (Fig.~\ref{fig:multiscale}) that learn to combine features from regions of different scales when the input sampling density changes.
+%We will present three design options (Fig.~\ref{fig:multiscale}) with different trade-offs in the following paragraphs.
+We call our hierarchical network with density adaptive PointNet layers as \emph{PointNet++}.
+
+
+%\subsubsection{Multi-Scale PointNet Layer}
+Previously in Sec.~\ref{sec:pointnet2}, each abstraction level contains grouping and feature extraction of a single scale.
+%While higher levels use larger scales, scale of patterns captured in each level is fixed.
+In PointNet++, each abstraction level extracts multiple scales of local patterns and combine them intelligently according to local point densities. In terms of grouping local regions and combining features from different scales, we propose two types of density adaptive layers as listed below.%a few variations as listed below.
+%In experiment section (Sec.~\ref{sec:exp}), multi-scale grouping in single level (MSG) is used in default.
+\vspace{-0.3cm}
+\paragraph{Multi-scale grouping (MSG).} As shown in Fig.~\ref{fig:multiscale} (a), a simple but effective way to capture multi-scale patterns is to apply grouping layers with different scales followed by according PointNets to extract features of each scale. Features at different scales are concatenated to form a multi-scale feature.% representing the local context of a centroid point. Following non-linear layers will consume the concatenated feature vector for their best uses.
+
+We train the network to learn an optimized strategy to combine the multi-scale features. This is done by randomly dropping out input points with a randomized probability for each instance, which we call \emph{random input dropout}. Specifically, for each training point set, we choose a dropout ratio $\theta$ uniformly sampled from $[0,p]$ where $p\leq1$. For each point, we randomly drop a point with probability $\theta$. In practice we set $p=0.95$ to avoid generating empty point sets. In doing so we present the network with training sets of various sparsity (induced by $\theta$) and varying uniformity (induced by randomness in dropout). During test, we keep all available points.
+
+\vspace{-0.3cm}
+\paragraph{Multi-resolution grouping (MRG).} The MSG approach above is computationally expensive since it runs local PointNet at large scale neighborhoods for every centroid point. In particular, since the number of centroid points is usually quite large at the lowest level, the time cost is significant. % An alternative to the above method is to collect features of multiple resolutions, since higher levels already inspect over larger extent of space. In this manner, we restrict the receptive field at each level to be at a single scale but still preserve the ability to adaptively aggregate information according to the distributional properties of points, in particular, sampling density.%  thus avoid redundant inspections into regions of the same scale at different levels as in MSG. 
+
+Here we propose an alternative approach that avoids such expensive computation but still preserves the ability to adaptively aggregate information according to the distributional properties of points.
+In Fig.~\ref{fig:multiscale} (b), features of a region at some level $L_i$ is a concatenation of two vectors. One vector (left in figure) is obtained by summarizing the features at each subregion from the lower level $L_{i-1}$ using the set abstraction level. The other vector (right) is the feature that is obtained by directly processing all raw points in the local region using a single PointNet. 
+
+When the density of a local region is low, the first vector may be less reliable than the second vector, since the subregion in computing the first vector contains even sparser points and suffers more from sampling deficiency. In such a case, the second vector should be weighted higher. On the other hand, when the density of a local region is high, the first vector provides information of finer details since it possesses the ability to inspect at higher resolutions recursively in lower levels.
+
+% While input region sizes could be the same at two levels, their pattern granularity is different.  In comparison, feature from the lower level $L_{i-1}$ will use point features summarized from level $L_{i-2}$ or use raw point features if there are no levels below. We use the same random input dropout training in order to teach the network to learn how to combine multi-scale features.
+
+Compared with MSG, this method is computationally more efficient since we avoids the feature extraction in large scale neighborhoods at lowest levels. % While MSG is achieving large scale feature extraction with large search radius (thus more points in local region and more computation), MRG can achieve similar effect by using the same medium search radius but extract features across levels.
+
+%\paragraph{Adaptive multi-scale grouping across levels (Adap-MSG-XL).} Both of the above methods require input data dropout during training. In contrast, this one will not depend on input dropout. Instead of concatenating features as in MSG-XL, this adaptive method will select a certain scale from a few candidates for a region of interest. Again the regions are selected from different levels as MSG-XL with lower levels according to more coarse patterns. At training time, we randomly turn a switch with uniform probability for scale selection such that the network can learn to use either fine or coarse region features for the end task. To encourage feature consistency across different scales, we also add a regularization loss $L_{reg} = \gamma \left|f_1 - f_2\right|^2$ where $f_1$ and $f_2$ are local features from two different scales. At test time, we use heuristic based method to select which scale to use based on point densities in local regions. Trained on dense and uniform point set, the method will be able to adapt to non-uniform and sparse point set at test time.
+
+
+%\subsubsection{Random Input Dropout.}
+%While ideally we want training data with the same non-uniformity distributions as the test case, we can also have random input dropout -- for each input point set we randomly decide a dropout ratio and then for each point in the set we randomly drop the point based on the dropout ratio. By randomly dropping out input points with random dropout ratio, we achieved a training set with varying densities. By optimizing network parameters to perform well on sets with varying densities, the network learns to optimally weight features from different scales depending on particular scale's patterns. 
+
+% \begin{comment}
+% \subsubsection{Adaptive-scale network.}
+% In this design the network adaptively chooses the scales for feature extraction in local regions with different sparsity.
+
+% Each point (no matter which layer it is at) now carries a ``score'' indicating sampling density in its local neighborhood. If the point is original input point, it's density score is 1, otherwise the score is number of points in a ball region divided by the volume of the ball. \emph{Note: it's simplified here. actually the score is a boolean as 0 or 1. If there are more than $threshold$ number of points with score 1, we use branch A and only use those points with score 1. Otherwise we use branch B and use all the points.}
+
+% In each set abstraction layer, there are two branches: one is the same as the original one proposed in previous section with a small modification (branch A); the other branch neglecting point features and only uses point coordinates and raw point features (the features in the original points) in the local regions (branch B). At test time the network will compute a density score for the local region to decide which branch to use. If the local region density is passing some threshold we will use branch A so as to use detailed information in the region; otherwise we will use branch B that relies less on small scale patterns therefore is more robust to sparse data.
+
+% \paragraph{Training strategy I.}
+% During training time we only use densely sampled point sets but randomly switch on and off for the two branches. Since points from branch A and branch B are considered together by the next layer, their extracted local region feature must be consistent and comparable. We add a regularization loss to push the output of the two branches be close to each other in L2 distance. At test time we choose branch by the density in the local region.
+
+% \paragraph{Training strategy II.}
+% Another training strategy is a two-step training. We firstly train the network with branch A using densely sampled point sets. Then we fix parameters in branch A and train branch B with sparsely sampled points and make sure features from branch B is similar to that in branch A by adding the same regularization loss as above. This training strategy guarantees that in densely sampled cases the network parameters are optimized since branch A is trained first.
+% \end{comment}
+
+\vspace{-0.3cm}
+\subsection{Point Feature Propagation for Set Segmentation}
+In set abstraction layer, the original point set is subsampled. However in set segmentation task such as semantic point labeling, we want to obtain point features for \emph{all} the original points. One solution is to always sample all points as centroids in all set abstraction levels, which however results in high computation cost. Another way is to propagate features from subsampled points to the original points.
+
+We adopt a hierarchical propagation strategy with distance based interpolation and across level skip links (as shown in Fig.~\ref{fig:pnpp}). In a \emph{feature propagation} level, we propagate point features from $N_l \times (d+C)$ points to $N_{l-1}$ points where $N_{l-1}$ and $N_l$ (with $N_l \leq N_{l-1}$) are point set size of input and output of set abstraction level $l$. We achieve feature propagation by interpolating feature values $f$ of $N_{l}$ points at coordinates of the $N_{l-1}$ points. Among the many choices for interpolation, we use inverse distance weighted average based on $k$ nearest neighbors (as in Eq.~\ref{eq:idw}, in default we use $p=2$, $k=3$). The interpolated features on $N_{l-1}$ points are then concatenated with skip linked point features from the set abstraction level. Then the concatenated features are passed through a ``unit pointnet'', which is similar to one-by-one convolution in CNNs. A few shared fully connected and ReLU layers are applied to update each point's feature vector. The process is repeated until we have propagated features to the original set of points.
+
+\vspace{-0.3cm}
+\begin{equation}
+    f^{(j)}(x) = \frac{\sum_{i=1}^{k}w_i (x) f_i^{(j)}}{\sum_{i=1}^k w_i (x)}
+    \quad \text{where}\quad w_i(x) = \frac{1}{d(x,x_i)^p},\; j=1,...,C
+    \label{eq:idw}
+\end{equation}

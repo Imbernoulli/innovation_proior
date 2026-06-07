@@ -1,0 +1,51 @@
+\begingroup
+\setlength{\tabcolsep}{1.5pt}
+\newcommand{\centerme}[1]{\multicolumn{1}{c}{#1}}
+\newcommand{\centermewithrightbar}[1]{\multicolumn{1}{c|}{#1}}
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{l lc cl cl rc rc lc}
+    \toprule
+     & & & & & & & \multicolumn{6}{c}{FLAN 137B} \\
+     \cmidrule(lr){8-13}
+     & & & \multicolumn{2}{c}{\baselm{}} &  \multicolumn{2}{c}{GPT-3 175B} & \multicolumn{2}{c}{zero-shot} & \multicolumn{3}{c}{few-shot}\\
+     \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-12}
+     & Metric & \makecell[c]{\scriptsize Supervised\vspace{-0.6mm}\\\scriptsize Model} & \makecell[c]{zero-\vspace{-0.6mm}\\ shot} & \makecell[c]{few-\vspace{-0.6mm}\\ shot {\tiny [$k$]}} & \makecell[c]{zero-\vspace{-0.6mm}\\ shot} & \makecell[c]{few-\vspace{-0.6mm}\\ shot {\tiny [$k$]}} & \makecell[c]{\scriptsize average \vspace{-0.6mm}\\ \scriptsize template}  & \makecell[c]{\scriptsize best dev \vspace{-0.6mm}\\ \scriptsize template} &  \makecell[c]{\scriptsize average \vspace{-0.6mm}\\ \scriptsize template}  & \makecell[c]{\scriptsize best dev \vspace{-0.6mm}\\ \scriptsize template} & {\tiny [$k$]} & {\scriptsize \#$t$} \\
+    \midrule
+    \tasktype{Translation} \\
+    WMT '14 En$\rightarrow$Fr & BLEU & 35.0$^d$     \baselmvala{11.2}{31.5}{5} \gptvala{25.2}{32.6}{[64]} \flanvala{32.9}{1.1}{33.9} \flanvala{33.9}{0.2}{33.8} & \fewk{9} & \tiny{5} \\
+    WMT '14 Fr$\rightarrow$En & BLEU & 45.6$^c$     \baselmvala{7.2}{34.7}{5} \gptvala{21.2}{39.2}{[64]} \flanvala{35.5}{1.3}{35.9} \flanvala{38.0}{0.1}{37.9} & \fewk{9} & \tiny{3} \\
+    WMT '16 En$\rightarrow$De & BLEU & 38.6$^f$     \baselmvala{7.7}{26.7}{5} \gptvala{24.6}{29.7}{[64]} \flanvala{25.4}{1.8}{27.0} \flanvala{26.8}{0.4}{26.1} & \fewk{11} & \tiny{5} \\
+    WMT '16 De$\rightarrow$En & BLEU & 41.2$^e$     \baselmvala{20.8}{36.8}{5} \gptvala{27.2}{40.6}{[64]} \flanvala{38.9}{0.3}{38.9} \flanvala{40.6}{0.1}{40.7} & \fewk{11} & \tiny{3} \\
+    WMT '16 En$\rightarrow$Ro & BLEU & 39.9$^g$     \baselmvala{3.5}{22.9}{5} \gptvala{14.1}{21.0}{[64]} \flanvala{16.7}{1.6}{18.9} \flanvala{20.5}{0.1}{20.5} & \fewk{9} & \tiny{5} \\
+    WMT '16 Ro$\rightarrow$En & BLEU & 38.5$^g$     \baselmvala{9.7}{37.5}{5} \gptvala{19.9}{39.5}{[64]} \flanvala{36.8}{0.5}{37.3} \flanvala{38.2}{0.1}{38.1} & \fewk{9} & \tiny{3} \\
+    \midrule
+    \tasktype{Struct to Text} \\
+    CommonGen & Rouge-1 & \tfiveval{64.0}   \baselmvala{3.9}{56.7}{3} \gptvala{\na}{\na}{} \flanvala{54.6}{2.3}{56.3} \flanvala{56.6}{0.3}{56.4} & \fewk{16} & \tiny{6} \\
+     & Rouge-2 & \tfiveval{29.4}            \baselmvala{1.5}{29.6}{3} \gptvala{\na}{\na}{} \flanvala{28.8}{2.4}{27.6} \flanvala{30.9}{0.7}{29.9} & \fewk{16} & \tiny{6} \\
+     & Rouge-L & \tfiveval{54.5}            \baselmvala{3.2}{48.5}{3} \gptvala{\na}{\na}{} \flanvala{48.4}{1.9}{48.7} \flanvala{50.7}{0.2}{51.0} & \fewk{16} & \tiny{6} \\
+    DART & Rouge-1 & \na                    \baselmvala{11.3}{56.0}{3} \gptvala{\na}{\na}{} \flanvala{45.5}{4.2}{48.9} \flanvala{57.9}{1.6}{59.2} & \fewk{11} & \tiny{7} \\
+     & Rouge-2 & \na                        \baselmvala{1.5}{29.6}{3} \gptvala{\na}{\na}{} \flanvala{25.0}{3.7}{30.0} \flanvala{35.8}{1.0}{36.2} & \fewk{11} & \tiny{7} \\
+     & Rouge-L & \na                        \baselmvala{3.2}{48.5}{3} \gptvala{\na}{\na}{} \flanvala{38.4}{3.8}{43.4} \flanvala{48.5}{0.9}{48.2} & \fewk{11} & \tiny{7} \\
+    E2ENLG & Rouge-1 & \tfiveval{72.6}      \baselmvala{6.2}{56.7}{3} \gptvala{\na}{\na}{} \flanvala{44.8}{3.9}{51.4} \flanvala{59.1}{1.3}{59.7} & \fewk{12} & \tiny{9} \\
+     & Rouge-2 & \tfiveval{47.5}            \baselmvala{2.5}{31.4}{3} \gptvala{\na}{\na}{} \flanvala{24.2}{3.6}{30.1} \flanvala{33.2}{1.1}{33.6} & \fewk{12} & \tiny{9} \\
+     & Rouge-L & \tfiveval{56.4}            \baselmvala{4.9}{41.1}{3} \gptvala{\na}{\na}{} \flanvala{37.0}{3.5}{42.4} \flanvala{44.9}{0.8}{45.1} & \fewk{12} & \tiny{9} \\
+    WebNLG & Rouge-1 & \tfiveval{83.5}      \baselmvala{13.9}{68.3}{3} \gptvala{\na}{\na}{} \flanvala{50.6}{4.7}{57.7} \flanvala{68.5}{2.2}{71.2} & \fewk{10} & \tiny{8} \\
+     & Rouge-2 & \tfiveval{63.6}            \baselmvala{6.9}{46.0}{3} \gptvala{\na}{\na}{} \flanvala{29.8}{4.2}{35.4} \flanvala{48.0}{1.5}{49.8} & \fewk{10} & \tiny{8} \\
+     & Rouge-L & \tfiveval{71.0}            \baselmvala{11.8}{56.5}{3} \gptvala{\na}{\na}{} \flanvala{43.4}{4.5}{49.7} \flanvala{58.8}{1.1}{60.2} & \fewk{10} & \tiny{8} \\
+    \bottomrule
+    \end{tabular}
+    \caption{
+    Results for translation and struct-to-text tasks.
+    \explainkt
+    $^{a}$T5-11B,
+    $^c$\citet{edunov-etal-2018-understanding},
+    $^d$\citet{durrani-etal-2014-edinburghs},
+    $^e$\citet{wang2019multi},
+    $^f$\citet{sennrich-etal-2016-edinburgh},
+    $^g$\citet{liu-etal-2020-multilingual-denoising}.
+    }
+    \label{tab:nlg_table}
+\end{table}
+\endgroup

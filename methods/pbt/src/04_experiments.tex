@@ -1,0 +1,151 @@
+\section{Experiments}\label{sec:exp}
+
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{cccc}
+\includegraphics[width=1.0\textwidth]{figures/pbtshowstopper.png}
+\end{tabular}
+\caption{\small The results of using PBT over random search on different domains. \emph{DM Lab:} We show results for training UNREAL with and without PBT, using a population of 40 workers, on 15 DeepMind Lab levels, and report the final human-normalised performance of the best agent in the population averaged over all levels. \emph{Atari:} We show results for Feudal Networks with and without PBT, using a population of 80 workers on each of four games: Amidar, Gravitar, Ms-Pacman, and Enduro, and report the final human-normalised performance of the best agent in the population averaged over all games. \emph{StarCraft II:} We show the results for training A3C with and without PBT, using a population of 30 workers, on a suite of 6 mini-game levels, and report the final human-normalised performance of the best agent in the population averaged over all levels. \emph{Machine Translation:} We show results of training Transformer networks for machine translation on WMT 2014 English-to-German. We use a population of 32 workers with and without PBT, optimising the population to maximise BLEU score. \emph{GAN:} We show results for training GANs with and without PBT using a population size of 45, optimising for Inception score. Full results on all levels can be found in \sref{sec:detailed_results_RL}.
+}
+\label{fig:showstopper}
+\end{figure}
+
+In this section we will apply Population Based Training to different learning problems. We describe the specific form of PBT for deep reinforcement learning in \sref{sec:deeprl} when applied to optimising UNREAL~\citep{jaderberg2016reinforcement} on DeepMind Lab 3D environment tasks~\citep{beattie2016deepmind}, Feudal Networks~\citep{vezhnevets2017feudal} on the Atari Learning Environment games~\citep{bellemare2013arcade}, and the StarCraft II environment baseline agents~\citep{vinyals2017starcraft}. In \sref{sec:language} we apply PBT to optimising state-of-the-art language models, transformer networks~\citep{vaswani2017attention}, for machine translation task. Next, in \sref{sec:gans} we apply PBT to the optimisation of Generative Adversarial Networks~\citep{goodfellowgan}, a notoriously unstable optimisation problem. In all these domains we aim to build upon the strongest baselines, and show improvements in training these state-of-the-art models by using PBT. Finally, we analyse the design space of Population Based Training with respect to this rich set of experimental results to draw practical guidelines for further use in \sref{sec:analysis}.
+
+\subsection{Deep Reinforcement Learning}\label{sec:deeprl}
+In this section we apply Population Based Training to the training of neural network agents with reinforcement learning (RL)
+%
+where we aim to find a policy $\pi$ to maximise expected episodic return $\mathbb{E}_\pi[R]$ within an environment. 
+%
+We first focus on A3C-style methods~\cite{mnih2016asynchronous} to perform this maximisation, along with some state-of-the-art extensions: UNREAL~\citep{jaderberg2016reinforcement} and Feudal Networks (FuN)~\citep{vezhnevets2017feudal}.
+
+These algorithms are sensitive to hyperparameters, which include learning rate, entropy cost, and auxiliary loss weights, as well as being sensitive to the reinforcement learning optimisation process which can suffer from local minima or collapse due to the insufficient or unlucky policy exploration. PBT therefore aims to stabilise this process.
+
+\subsubsection{PBT for RL}\label{sec:pbtforrl}
+
+We use population sizes between 10 and 80, where each member of the population is itself a distributed asynchronous actor critic (A3C) style agent~\citep{mnih2016asynchronous}. 
+\vspace{-0.5em}\paragraph{Hyperparameters}We allow PBT to optimise the learning rate, entropy cost, and unroll length for UNREAL on DeepMind Lab, learning rate, entropy cost, and intrinsic reward cost for FuN on Atari, and learning rate only for A3C on StarCraft~II. 
+\vspace{-0.5em}\paragraph{Step}Each iteration does a step of gradient descent with RMSProp~\citep{tieleman2012lecture} on the model weights, with the gradient update provided by vanilla A3C, UNREAL or FuN.
+\vspace{-0.5em}\paragraph{Eval}We evaluate the current model with the last 10 episodic rewards during training.
+\vspace{-0.5em}\paragraph{Ready} A member of the population is deemed ready to go through the exploit-and-explore process using the rest of the population when between $1\times10^6$ to $10\times10^6$ agent steps have elapsed since the last time that population member was ready.
+\vspace{-0.5em}\paragraph{Exploit}We consider two exploitation strategies. (a) \emph{T-test selection} where we uniformly sample another agent in the population, and compare the last 10 episodic rewards using Welch's t-test~\citep{welch1947generalization}. If the sampled agent has a higher mean episodic reward and satisfies the t-test, the weights and hyperparameters are copied to replace the current agent. (b) \emph{Truncation selection} where we rank all agents in the population by episodic reward. If the current agent is in the bottom 20\% of the population, we sample another agent uniformly from the top 20\% of the population, and copy its weights and hyperparameters. 
+\vspace{-0.5em}\paragraph{Explore}We consider two exploration strategies in hyperparameter space. (a) \emph{Perturb}, where each hyperparameter independently is randomly perturbed by a factor of 1.2 or 0.8. (b) \emph{Resample}, where each hyperparameter is resampled from the original prior distribution defined with some probability.
+
+\subsubsection{Results}
+
+\begin{figure}[htb]
+\centering
+\begin{tabular}{ll}
+\includegraphics[width=0.45\textwidth]{figures/dmlabind.png}&
+\includegraphics[width=0.45\textwidth]{figures/dmlabind2.png}\\
+\includegraphics[width=0.45\textwidth]{figures/atariind.png}&
+\includegraphics[width=0.45\textwidth]{figures/sc2ind.png}\\
+\includegraphics[width=0.45\textwidth]{figures/ganind.png}&
+\includegraphics[width=0.45\textwidth]{figures/mtind.png}
+\end{tabular}
+\caption{\small Training curves of populations trained with PBT (blue) and without PBT (black) for individual levels on DeepMind Lab (DM Lab), Atari, and Starcraft~II (SC2), as well as GAN training on CIFAR-10 (CIFAR-10 Inception score is plotted as this is what is optimised for by PBT). Faint lines represent each individual worker, while thick lines are an average of the top five members of the population at each timestep. The hyperparameter populations are displayed to the right, and show how the populations' hyperparameters adapt throughout training, including the automatic discovery of learning rate decay and, for example, the discovery of the benefits of large unroll lengths on DM Lab.
+}
+\label{fig:curves}
+\end{figure}
+
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{cccc}
+\includegraphics[width=0.8\textwidth]{figures/ablation.png}
+\end{tabular}
+\caption{\small A highlight of results of various ablation studies on the design space of PBT, reported as improvement over the equivalent random search baseline. (a)~\emph{Population size:} We evaluate the effect of population size on the performance of PBT when training FuN on Atari. In general we find that a smaller population sizes leads to higher variance and suboptimal results, however using a population of 20 and over achieves consistent improvements, with diminishing returns for larger populations. (b)~\emph{Exploiter:} We compare the effect of using different \pbtexploit functions -- binary tournament and truncation selection. When training GANs, we find truncation selection to work better. (c)~\emph{PBT over:} We show the effect of removing parts of PBT when training UNREAL on DeepMind Lab, in particular only performing PBT on hyperparameters (so model weights are not copied between workers during \pbtexploit), and only performing PBT on model weights (so hyperparameters are not copied between workers or explored). We find that indeed it is the combination of optimising hyperparameters as well as model selection which leads to best performance. (d)~\emph{Hyperparameters:} Since PBT allows online adaptation of hyperparameters during training, we evaluate how important the adaptation is by comparing full PBT performance compared to using the set of hyperparameters that PBT found by the end of training. When training UNREAL on DeepMind Lab we find that the strength of PBT is in allowing the hyperparameters to be adaptive, not merely in finding a good prior on the space of hyperparameters.
+}
+\label{fig:ablation}
+\end{figure}
+
+The high level results are summarised in \figref{fig:showstopper}. On all three domains -- DeepMind Lab, Atari, and StarCraft~II -- PBT increases the final performance of the agents when trained for the same number of steps, compared to the very strong baseline of performing random search with the same number of workers. 
+
+On DeepMind Lab, when UNREAL is trained using a population of 40 workers, using PBT increases the final performance of UNREAL from 93\% to 106\% human performance, when performance is averaged across all levels. This represents a significant improvement over an already extremely strong baseline, with some levels such as $\mathrm{nav\_maze\_random\_goal\_01}$ and $\mathrm{lt\_horse\_shoe\_color}$ showing large gains in performance due to PBT, as shown in \figref{fig:curves}. PBT seems to help in two main ways: first is that the hyperparameters are clearly being focused on the best part of the sampling range, and adapted over time. For example, on $\mathrm{lt\_horse\_shoe\_color}$ in \figref{fig:curves} one can see the learning rate being annealed by PBT as training progresses, and on $\mathrm{nav\_maze\_random\_goal\_01}$ in \figref{fig:curves} one can see the unroll length -- the number of steps the agent (a recurrent neural network) is unrolled before performing N-step policy gradient and backpropagation through time -- is gradually increased. This allows the agent to learn to utilise the recurrent neural network for memory, allowing it to obtain superhuman performance on $\mathrm{nav\_maze\_random\_goal\_01}$ which is a level which requires memorising the location of a goal in a maze, more details can be found in~\citep{jaderberg2016reinforcement}. Secondly, since PBT is copying the weights of good performing agents during the exploitation phase, agents which are lucky in environment exploration are quickly propagated to more workers, meaning that all members of the population benefit from the exploration luck of the remainder of the population.
+
+When we apply PBT to training FuN on 4 Atari levels, we similarly see a boost in final performance, with PBT increasing the average human normalised performance from 147\% to 181\%. On particular levels, such as $\mathrm{ms\_pacman}$ PBT increases performance significantly from 6506 to 9001 (\figref{fig:curves}), which represents state-of-the-art for an agent receiving only pixels as input. 
+
+Finally on StarCraft II, we similarly see PBT improving A3C baselines from 36\% huamn performance to 39\% human performance when averaged over 6 levels, benefiting from automatic online learning rate adaptation and model selection such as shown in \figref{fig:curves}.
+
+More detailed experimental results, and details about the specific experimental protocols can be found in Appendix \ref{sec:detailed_results_RL}.
+
+
+
+\subsection{Machine Translation}\label{sec:language}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.475\textwidth]{figures/fullphylo.png}
+\includegraphics[width=0.475\textwidth]{figures/fullphylofun.png}
+\caption{\small Model development analysis for GAN (left) and Atari (right) experiments -- full phylogenetic tree of entire training. Pink dots represent initial agents, blue ones the final ones. Branching of the graph means that the exploit operation has been executed (and so parameters were copied), while paths represent consecutive updates using the step function. Colour of the edges encode performance, from black (weak model) to cyan (strong model).
+}
+\label{fig:trees}
+\end{figure}
+
+As an example of applying PBT on a supervised learning problem, we look at training neural machine translation models. In this scenario, the task is to encode a source sequence of words in one language, and output a sequence in a different target language. We focus on English to German translation on the WMT 2014 English-to-German dataset, and use a state-of-the-art model, Transformer networks~\citep{vaswani2017attention}, as the baseline model to apply PBT to. Crucially, we also use the highly optimised learning rate schedules and hyperparameter values for our baselines to compare to -- these are the result of a huge amount of hand tuning and Bayesian optimisation.
+
+\subsubsection{PBT for Machine Translation}
+We use a population size of 32 workers, where each member of the population is a single GPU optimising a Transformer network for $400\times10^3$ steps. 
+\vspace{-0.5em}\paragraph{Hyperparameters}We allow PBT to optimise the learning rate, attention dropout, layer dropout, and ReLU dropout rates. 
+\vspace{-0.5em}\paragraph{Step}Each step does a step of gradient descent with Adam~\citep{adam}. 
+\vspace{-0.5em}\paragraph{Eval}We evaluate the current model by computing the BLEU score on the WMT \textit{newstest2012} dataset. This allows us to optimise our population for BLEU score, which usually cannot be optimised for directly. 
+\vspace{-0.5em}\paragraph{Ready}A member of the population is deemed ready to exploit and explore using the rest of the population every $2\times10^3$ steps. 
+\vspace{-0.5em}\paragraph{Exploit}We use the \emph{t-test selection} exploitation method described in \sref{sec:pbtforrl}. \vspace{-0.5em}\paragraph{Explore}We explore hyperparameter space by the \emph{perturb} strategy described in~\sref{sec:pbtforrl} with 1.2 and 0.8 perturbation factors.
+
+\subsubsection{Results}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\textwidth]{figures/evolr.png}\\
+\includegraphics[width=0.8\textwidth]{figures/mtlin.png}
+\caption{\small Agent development analysis for GAN (top) and machine translation (bottom) experiments -- lineages of hyperparameters changes for the final agents after given amount of training. Black lines show the annealing schedule used by the best baseline run.
+}
+\label{fig:lineages}
+\end{figure}
+
+When we apply PBT to the training of Transformer networks, we find that PBT actually results in models which exceed the performance of this highly tuned baseline model: BLEU score on the validation set (\textit{newstest2012}) is improved from 23.71 to 24.23, and on the test set of WMT 2014 English-to-German is improved from 22.30 to 22.65 using PBT (here we report results using the small Transformer network using a reduced batch size, so is not representative of state of the art). PBT is able to automatically discover adaptations of various dropout rates throughout training, and a learning rate schedule that remarkably resembles that of the hand tuned baseline: very initially the learning rate starts small before jumping by three orders of magnitude, followed by something resembling an exponential decay, as shown in the lineage plot of \figref{fig:lineages}. We can also see from \figref{fig:curves} that the PBT model trains much faster.
+
+\subsection{Generative Adversarial Networks}\label{sec:gans}
+\input{gan}
+
+\subsection{Analysis}\label{sec:analysis}
+
+In this section we analyse and discuss the effects of some of the design choices in setting up PBT, as well as probing some aspects of why the method is so successful.
+
+
+
+\paragraph{Population Size}\label{sec:analysis_pop_size}
+
+In \figref{fig:ablation}~(a) we demonstrate the effect of population size on the performance of PBT when training FuN on Atari. In general, we find that if the population size is too small (10 or below) we tend to encounter higher variance and can suffer from poorer results -- this is to be expected as PBT is a greedy algorithm and so can get stuck in local optima if there is not sufficient population to maintain diversity and scope for exploration. However, these problems rapidly disappear as population size increases and we see improved results as the population size grows. In our experiments, we observe that a population size of between $20$ and $40$ is sufficient to see strong and consistent improvements; larger populations tend to fare even better, although we see diminishing returns for the cost of additional population members.
+
+
+\paragraph{Exploitation Type}\label{sec:analysis_exploit}
+
+In \figref{fig:ablation}~(b) we compare the effect of using different \pbtexploit functions -- binary tournament and truncation selection. For GAN training, we find truncation selection to work better. Similar behaviour was seen in our preliminary experiments with FuN on Atari as well.
+Further work is required to fully understand the impact of different \pbtexploit mechanisms, however it appears that truncation selection is a robustly useful choice.
+
+
+\paragraph{PBT Targets}\label{sec:analysis_pbt_targets}
+
+In \figref{fig:ablation}~(c) we show the effect of only applying PBT to subsets of parameters when training UNREAL on DM Lab. In particular, we contrast (i) only performing exploit-and-explore on hyperparameters (so model weights are not copied between workers during \pbtexploit); and (ii) only performing exploit-and-explore on model weights (so hyperparameters are not copied between workers or explored). Whilst there is some increase in performance simply from the selection and propagation of good model weights, our results clearly demonstrate that in this setting it is indeed the \emph{combination} of optimising hyperparameters as well as model selection that lead to our best performance.
+
+\paragraph{Hyperparameter Adaptivity}\label{sec:analysis_hyper_adapt}
+
+In \figref{fig:ablation}~(d) we provide another demonstration that the benefits of PBT go beyond simply finding a single good fixed hyperparameter combination. Since PBT allows online adaptation of hyperparameters during training, we evaluate how important the adaptation is by comparing full PBT performance compared to using the set of hyperparameters that PBT found by the end of training. When training UNREAL on DeepMind Lab we find that the strength of PBT is in allowing the hyperparameters to be adaptive, not merely in finding a good prior on the space of hyperparameters
+
+
+\paragraph{Lineages}\label{sec:analysis_lineage}
+
+\figref{fig:lineages} shows hyperparameter sequences for the final agents in the population for GAN and Machine Translation (MT) experiments. We have chosen these two examples as the community has developed very specific learning rate schedules for these models. In the GAN case, the typical schedule involves linearly annealed learning rates of both generator and discriminator in a synchronised way. As one can see, PBT discovered a similar scheme, however the discriminator annealing is much more severe, while the generator schedule is slightly less aggressive than the typical one. 
+
+As mentioned previously, the highly non-standard learning rate schedule used for machine translation has been to some extent replicated by PBT -- but again it seems to be more aggressive than the hand crafted version. Quite interestingly, the dropout regime is also non-monotonic, and follows an even more complex path -- it first increases by almost an order of magnitude, then drops back to the initial value, to slowly crawl back to an order of magnitude bigger value. These kind of schedules seem easy to discover by PBT, while at the same time are beyond the space of hyperparameter schedules considered by human experts.
+
+
+
+\paragraph{Phylogenetic trees}\label{sec:analysis_phylogenetic}
+
+Figure \ref{fig:trees} shows a phylogenetic forest for the population in the GAN and Atari experiments. A property made noticeable by such plots is that all final agents are descendants of the same, single initial agent. This is on one hand a consequence of the greedy nature of specific instance of PBT used, as \pbtexploit only uses a single other agent from the population. In such scenario, the number of original agents can only decrease over time, and so should finally converge to the situation observed. On the other hand one can notice that in both cases there are quite rich sub-populations which survived for a long time, showing that the PBT process considered multiple promising solutions before finally converging on a single winner -- an exploratory capability most typical optimisers lack.
+
+One can also note the following interesting qualitative differences between the two plots: in the GAN example, almost all members of the population enjoy an improvement in score relative to their parent; however, in the Atari experiment we note that even quite late in learning there can be exploration steps that result in a sharp drop in cumulative episode reward relative to the parent. This is perhaps indicative of some instability of neural network based RL on complex problems -- an instability that PBT is well positioned to correct.
+

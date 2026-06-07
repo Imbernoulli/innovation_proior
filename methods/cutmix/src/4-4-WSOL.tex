@@ -1,0 +1,33 @@
+
+\subsection{Weakly Supervised Object Localization}
+\label{sec:wsol}
+
+\input{tables/WSOL2.tex}
+\input{tables/ImageNet-detection.tex}
+
+Weakly supervised object localization (WSOL) task aims to train the classifier to localize target objects by using only the class labels. 
+To localize the target well, it is important to make CNNs extract cues from full object regions and not focus on small discriminant parts of the target.
+Learning spatially distributed representation is thus the key for improving performance on WSOL task. 
+CutMix guides a classifier to attend to broader sets of cues to make decisions; we expect CutMix to improve WSOL performances of classifiers. 
+To measure this, we apply CutMix over baseline WSOL models.
+We followed the training and evaluation strategy of existing WSOL methods \cite{zhang2018ACOL, zhang2018SPG,choe2019attention} with
+VGG-GAP and ResNet-50 as the base architectures.
+The quantitative and qualitative results are given in Table~\ref{table:WSOL} and Figure~\ref{fig:WSOL}, respectively.
+Full implementation details are in Appendix~\ref{appendix:wsol}. 
+
+\noindent\textbf{Comparison against Mixup and Cutout: }
+CutMix outperforms Mixup~\cite{zhang2017mixup} on localization accuracies by $+5.51\%$ and $+1.41\%$ on CUB200-2011 and ImageNet, respectively. 
+Mixup degrades the localization accuracy of the baseline model; it tends to make a classifier focus on small regions as shown in Figure~\ref{fig:WSOL}. 
+{As we have hypothesized in Section~\ref{sec:cutmix_discussion}, more ambiguity in Mixup samples make a classifier focus on even more discriminative parts of objects, leading to decreased localization accuracies.}
+Although Cutout~\cite{devries2017cutout} improves the accuracy over the baseline, it is outperformed by CutMix: $+2.03\%$ and $+0.56\%$ on CUB200-2011 and ImageNet, respectively. 
+
+CutMix also achieves comparable localization accuracies on CUB200-2011 and ImageNet, even when compared against the dedicated state-of-the-art WSOL methods~\cite{zhou2016CAM,singh2017hide,zhang2018ACOL,zhang2018SPG,choe2019attention} that focus on learning spatially dispersed representations. 
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{WSOL2.pdf}
+    \caption{Qualitative comparison of the baseline (ResNet-50), Mixup, Cutout, and CutMix for weakly supervised object localization task on CUB-200-2011 dataset. Ground truth and predicted bounding boxes are denoted as red and green, respectively.
+    }
+    \label{fig:WSOL}
+    \vspace{-0.2cm}
+\end{figure}

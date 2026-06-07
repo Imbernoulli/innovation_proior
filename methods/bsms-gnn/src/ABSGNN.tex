@@ -1,0 +1,146 @@
+%%%%%%%% ICML 2023 EXAMPLE LATEX SUBMISSION FILE %%%%%%%%%%%%%%%%%
+\documentclass{article}
+\usepackage{xcolor}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{booktabs} % for professional tables
+
+% hyperref makes hyperlinks in the resulting PDF.
+% If your build breaks (sometimes temporarily if a hyperlink spans a page)
+% please comment out the following usepackage line and replace
+% \usepackage{icml2023} with \usepackage[nohyperref]{icml2023} above.
+\usepackage{hyperref}
+
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+\usepackage{url}
+\usepackage{wrapfig}
+\usepackage{multirow}
+\usepackage{array}
+\newcolumntype{L}[1]{>{\raggedright\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+\definecolor{color1}{HTML}{1b9e77}
+\definecolor{color2}{HTML}{d95f02}
+\definecolor{color3}{HTML}{7570b3}
+\definecolor{color4}{HTML}{a6761d}
+\definecolor{color5}{HTML}{66a61e}
+\definecolor{color6}{HTML}{e6ab02}
+\definecolor{color7}{HTML}{386cb0}
+\definecolor{color8}{HTML}{e7298a}
+% Use the following line for the initial blind version submitted for review:
+% \usepackage{ABSGNN}
+% If accepted, instead use the following line for the camera-ready submission:
+\usepackage[accepted]{ABSGNN}
+
+% For theorems and such
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{amsthm}
+
+% if you use cleveref..
+\usepackage[capitalize,noabbrev]{cleveref}
+
+\usepackage{enumitem}
+\setlist{nosep}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% THEOREMS
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}[theorem]{Assumption}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% Todonotes is useful during development; simply uncomment the next line
+%    and comment out the line below the next line to turn off comments
+%\usepackage[disable,textsize=tiny]{todonotes}
+\usepackage[textsize=tiny]{todonotes}
+
+% Convenient macros by Authors
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\newcommand{\question}[1]{\textcolor{cyan}{Q: #1}}
+% \newcommand{\todo}[1]{\textcolor{red}{TODO: #1}}
+\newcommand{\menglei}[1]{\textcolor{orange}{Menglei: #1}}
+\newcommand{\mc}[1]{\textcolor{green}{Minchen: #1}}
+\newcommand{\propose}[1]{\textcolor{blue}{Propose: #1}}
+
+\newcommand{\revision}[1]{#1}
+
+\newcommand{\bsmsgnn}{\textsc{BSMS-GNN}}
+\newcommand{\cylinder}{\textsc{CylinderFlow}}
+\newcommand{\plate}{\textsc{DeformingPlate}}
+\newcommand{\airfoil}{\textsc{Airfoil}}
+\newcommand{\fonts}{\textsc{InflatingFont}}
+\newcommand{\GUN}{\textsc{GraphUNets}}
+\newcommand{\flatGNN}{\textsc{MeshGraphNets}}
+\newcommand{\linoGNN}{\textsc{MS-GNN-Grid}}
+\newcommand{\ours}{\textsc{BSMS-GNN}}
+
+\icmltitlerunning{Efficient Learning of Mesh-Based Physical Simulation with BSMS-GNN}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Efficient Learning of Mesh-Based Physical Simulation with\\ Bi-Stride Multi-Scale Graph Neural Network}
+\icmlsetsymbol{equal}{*}
+
+\icmlsetsymbol{snap-cv}{\dag}
+\begin{icmlauthorlist}
+\icmlauthor{Yadi Cao}{ucla-cs,snap-cv}
+\icmlauthor{Menglei Chai}{google-ar,snap-cv}
+\icmlauthor{Minchen Li}{ucla-math}
+\icmlauthor{Chenfanfu Jiang}{ucla-math}
+\end{icmlauthorlist}
+
+\icmlaffiliation{ucla-cs}{Department of Computer Science, UCLA, Los Angeles, USA}
+\icmlaffiliation{google-ar}{AR Perception, Google, Los Angeles, USA}
+\icmlaffiliation{ucla-math}{Department of Mathematics, UCLA, Los Angeles, USA}
+
+\icmlcorrespondingauthor{Chenfanfu Jiang}{cffjiangmath.ucla.edu}
+\icmlkeywords{Machine Learning, ICML}
+
+\vskip 0.3in
+]
+
+% this must go after the closing bracket ] following \twocolumn[ ...
+
+% This command actually creates the footnote in the first column
+% listing the affiliations and the copyright notice.
+% The command takes one argument, which is text to display at the start of the footnote.
+% The \icmlEqualContribution command is standard text for equal contribution.
+% Remove it (just {}) if you do not need this facility.
+
+\printAffiliationsAndNotice{\textsuperscript{\dag}Work partially done at Snap Inc.}
+% \printAffiliationsAndNotice{\icmlEqualContribution} % otherwise use the standard text.
+
+\input{s_abstract.tex}
+\vspace{-10pt}
+\input{s_introduction.tex}
+% \input{s_related_work.tex}
+\input{s_method.tex}
+\input{s_experiment.tex}
+\input{s_related_work.tex}
+\input{s_conclusion.tex}
+\newpage
+\input{s_ack}
+\bibliography{ABSGNN.bib}
+\bibliographystyle{ABSGNN}
+\input{s_appendix.tex}
+
+\end{document}

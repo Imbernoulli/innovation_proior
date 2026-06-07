@@ -1,0 +1,1243 @@
+
+===== page 1 [pdftotext] =====
+ ORSA Journal on Comput~ng                                                                                                    0899-1499/90/0201-0004 $0 1.25
+ Vol. 2, No. I , W ~ n t e r1990                                                                                O 1990 Operations Research Society of America
+
+
+
+
+ Tabu Search-Part I1
+ FRED GLOVER               US WEST Chair in Systems Science, Centerfor Applied Artificial Intelligence, Graduate School of
+                           Business, Box 419, University of Colorado, Boulder, Colorado 80309-0419,
+                           ARPANET: glover-f@cubldr.colorado.edu
+ (Received: May 1989; final revision received: November 1989; accepted: November 1989)
+
+
+This is the second half of a two part series devoted to the tabu search metastrategy for optimization problems.
+Part I introduced the fundamental ideas of tabu search as an approach for guiding other heuristics to overcome
+the limitations of local optimality, both in a deterministic and a probabilistic framework. Part I also reported
+successful applications from a wide range of settings, in which tabu search frequently made it possible to obtain
+higher quality solutions than previously obtained with competing strategies, generally with less computational
+effort. Part 11, in this issue, examines refinements and more advanced aspects of tabu search. Following a brief
+review of notation, Part I1 introduces new dynamic strategies for managing tabu lists, allowing fuller exploitation
+of underlying evaluation functions. In turn, the elements of staged search and structured move sets are characterized,
+which bear on the issue of finiteness. Three ways of applying tabu search to the solution of integer programming
+problems are then described, providing connections also to certain nonlinear programming applications. Finally,
+the paper concludes with a brief survey of new applicationsof tabu search that have occurred since the developments
+reported in Part I. Together with additional comparisons with other methods on a wide body of problems, these
+include results of parallel processing implementations and the use of tabu search in settings ranging from
+telecommunications to neural networks.
+
+
+A s a prelude to the considerations of this paper, we
+briefly review some of the basic notation introduced in                                                SIMPLE TABU SEARCH
+Part 1.'' l1 An optimization problem will be represented                                  1. Select an initial x E X and let x * := x. Set the
+in the following form:                                                                          iteration counter k = 0 and begin with T
+                                                                                                empty.
+(P) Minimize c(x): x € X
+                                                                                          2. If S(x) - T is empty, go to Step 4.
+where x C R,. The objective function c(x) may be                                             Otherwise, set k := k + 1 and select sk € S(x) -
+linear or nonlinear, and may incorporate penalty func-                                          T such that s ~ ( x )= OPTIMUM(s(x):
+tion components to drive toward satisfying certain types                                        s E S(X) - T).
+of constraints. The condition x E X summarizes con-                                       3. Let x := sk(X). If C(X)< c(x*), where x * denotes
+straining conditions which, except in special strategic                                         the best solution currently found, let x * := x.
+variations, will be maintained at each step of the search,                                4. If a chosen number of iterations has elapsed
+and in many contexts of interest will require specified                                         either in total or since x* was last improved,
+components of x to receive discrete values.                                                     or if S(x) = 0 upon reaching this step directly
+     A move s that leads from one trial solution (se-                                           from Step 2, stop. Otherwise, update T (as
+lected x E X) to another may be viewed as a mapping                                             identified in Part I) and return to Step 2.
+defined on a subset X(s) of X:
+                                                                                              To provide a basis for understanding the extensions
+                                                                                         of ideas to be developed here, we briefly comment on
+Associated with x E X is the set S(x) which consists of                                  the character of the foregoing process, which rests on
+those moves s E S that can be applied to x; i.e., S(x) =                                 the way the tabu set T is defined and treated.
+{sE S: x E X(s)) (and hence X(s) = {xE X: s E S(X))).                                         A key concept in the management of T is to
+     To complete the notation relevant to later sections                                 constrain the search in a manner that allows latitude in
+of Part 11, we reiterate the description of a simple form                                selecting "best" (highest evaluation) moves with the
+of tabu search used as a starting point in Part I, based                                 OPTIMUM function, while undertaking to assure the
+on creating a set T of tabu moves and an evaluator                                       method will not re-visit a previous solution except by
+function denoted by OPTIMUM.                                                             following a trajectory not traveled before. This is ac-
+
+Subject classrjicatron   Programming: integer, heunstlc.
+
+                                                                                  4
+
+
+
+
+                                                              Copyright O 2001 All Rights Reserved
+
+===== page 2 [pdftotext] =====
+                                                                                                Tabu Search. I1         5
+
+complished by introducing tabu restrictions (or penal-        1. Dynamic Tabu List Processes
+ties) which discourage the reversal, and in some cases        The effectiveness of simple rules for constructing and
+repetition, of selected moves. In the simplest imple-         managing tabu lists leads to consideration of extending
+mentations, an attribute or set of attributes is identified   those rules to provide more general "dynamic" list
+which, if prevented from occurring in a future move,          handling processes. Such processes can have an impor-
+will assure the present move cannot be reversed. The          tant influence on which moves are available to be
+attributes which are classified as forbidden (tabu) are       selected at a given iteration, and hence can also affect
+recorded on a tabu list, where they reside for a specified    the determination of appropriate aspiration criteria.
+number of iterations and then are removed, freeing            More particularly, a primary goal of such processes is
+them from their tabu status.                                  by the evaluation functions to be embodied in OPTI-
+      This short-term memory function of tabu search          MUM (and, by means of approaches such as target
+is customarily handled by treating the tabu list as a         analysis, to promote the development of evaluation
+circular list, adding elements in sequence in positions       functions that enable this freedom to be applied more
+ 1 through t, where t is the list size, and then starting      effectively).
+over at position 1 again. The addition of each element              In the following development we focus not only
+thus erases the element recorded in its position t itera-     on general procedures but also on data structures which
+tions ago. Empirical results have indicated that a robust     are essential for efficient implementation. A number of
+range o f t values exists for which such a simple tabu list    relationships are developed that are subject to a more
+performs very effectively for driving the search beyond        formal theorem-proof characterization, but we under-
+local optima and obtaining progressively improved              take to provide sufficient explanation within the nar-
+solutions (in a nonmonotonic sequence).                        ration to allow the main assertions to be substantiated
+      Longer-term memory processes are incorporated            by the reader without difficulty. Our treatment is in-
+as a means to intensify and diversify the search, as           tended to provide useful details for those interested in
+elaborated in Part I. The guiding theme in these pro-          practical aspects of design and execution.
+cesses is to endow the memory structures with a flexi-
+bility to choose the "most attractive" moves by evalu-        1.1. Tabu List Strategies for Single Attribute
+ation functions that are determined to be most effective.          Moves
+Such effectiveness generally requires evaluations that
+                                                              We let TL denote the tabu list that implicitly defines
+are based not only on objective function change, but
+                                                              the set T of tabu moves, i.e., TL is a vector of attributes
+on the state of search. Thus, beyond its simplest forms,
+                                                              which impart a tabu classification to moves that contain
+tabu search does not restrict evaluations to measures of
+                                                              these attributes.
+"ascent" and "descent," but employs more adaptive
+                                                                   As a starting point, consider TL to be given in the
+and varied measures. The use of target analy~is''~,'~]  has
+                                                              following form
+proved instrumental in determining the form these
+measures should take (and the conditions under which
+they should be modified).
+      In the short-term memory process, the flexibility       We suppose the elements (attributes) are indexed by
+to take advantage of such measures is enhanced by             iteration, identifying the point at which they were added
+ means of aspiration criteria which allow a move to be        to the list, and q is the index of the current iteration.
+ selected regardless of its tabu status. This creates a       For convenience TL is depicted as a list that progres-
+ pattern of removing moves (attributes) from the tabu         sively enlarges as q increases, although we implicitly
+ list on a basis not entirely related to the sequence         allow for earlier elements to be discarded by reference
+ in which they were added. The identification of appro-       to a selected limiting size for TL as in customary
+ priate aspiration criteria can have an important ef-         tabu list processes (e.g., treating TL as a circular list).
+ fect on the performance of the short-term memory             Correspondingly, we may identify the list of solutions
+proc-ss.111,17~201                                            (x(l), x(2), . . . , x(q)) such that, for each i, e(i) is the
+     Beyond this brief review of basic ideas, which           attribute associated with the move applied to x ( i ) to
+provides a background for understanding most of the           prevent this move from being reversed to return to x(i).
+material that follows in Part 11, a more complete famil-           We will depart slightly from usual notation in the
+iarity with the concepts and strategies of tabu search,       following development by supposing that it is not the
+including strategic oscillation, representation of the        attributes e(i) themselves which are tabu, but rather
+search by a digraph, and probabilistic tabu search, will      their inverse (or complementary) attributes P ( i ) . By this
+prove additionally useful as a foundation for later            means, e(i) may directly refer to the move applied
+sections.                                                     to x(i) rather than to its reversal. For example, in a
+
+
+
+
+                                        Copyright O 2001 All Rights Reserved
+
+===== page 3 [pdftotext] =====
+6     Glover
+
+ zero-one integer programming context, if x(i) is trans-      of tabu status. In each of these, an attribute P(i) is not
+ formed into x(i + 1) by a move that sets x, = 1, then        automatically tabu as a result of the membership of e(i)
+ e(i) may be taken to represent this assignment, and          in TL, but only potentially tabu. In spite of this relax-
+ hence the attribute t ( i ) represents the tabu assignment   ation of customary tabu status, TL will be treated in a
+ x, = 0 that transforms x(i + 1) into x(i). (In this case,    manner that assures no solution will be duplicated
+ the move attribute completely identifies the associated      within the span of moves subjected to consideration,
+ move. However, when a move is defined more broadly           except where aspiration criteria or the absence of
+ to include reference to the solution to which it is          admissible alternatives may lead to selecting a move
+ applied, additional attributes can be included such as       designated to be tabu.
+ objective function values, linear combinations of se-
+ lected variables, and so forth.)                             1.2. Tabu Status Based on Cancellation
+        In general we will assume, as in the preceding             Sequences
+example, that the move attributes satisfy a suficiency        We associate with the tabu list TL an active tabu list,
+property, which specifies that no two solutions, x(h)         ATL, which consists only of the elements of TL that
+and x(k), for h < k, can be the same unless there exists      have not been canceled, and represent ATL in the same
+a matching of the elements e(h), . . . , e(k) such that,      general form as TL, i.e.,
+ for each pair e(r), e(s) of the matching, P(r) = e(s).
+        It is useful for our subsequent purposes to state
+this property in a different fashion, based on a process      ATL is understood to be a subsequence of TL, which
+ of "successive cancellation." We assume for conven-          contains the same last element e(q) (derived from the
+ience that the attributes e(i) are defined so that no e       move that transforms x(q) into the solution x(q + 1)).
+can appear twice on TL unless 2 appears in an inter-          We assume that a buffer of the tb most recent elements
+mediate position. (For example, x, = 1 cannot occur           e(i) (i.e., for i > q - tb) is created which serves a
+twice unless x, = 0 intervenes.) In the sequence e(p),        purpose similar to that of a standard tabu list by auto-
+. . . , e(q), if any e(r) is followed by an element e(s)      matically defining the associated elements 2 ( i ) to be
+such that e(r) = C(s) then e(r) is said to be canceled        tabu. (Such a buffer will appropriately be somewhat
+by the first such e(s) (i.e., the e(s) indexed by the least   smaller than the size of a standard tabu list, however.)
+s > r) which exhibits this property. Consider all maxi-            To understand the way that ATL will be managed,
+mal subsequences, beginning with a canceled element           consider a step in which an element e(q + 1) is added
+that does not cancel any previous element, where each         to ATL, where e(q + 1) # P(q) (under the assumption
+successive element in the subsequence cancels the ele-        tb 3 I), and suppose that e(q + 1) cancels an earlier
+ment that precedes it in the subsequence. (Hence, the         element e(i) of ATL as a result of e(q + 1) = P ( i ) . (Since
+last element is uncanceled.) All such subsequences can        ATL consists only of uncanceled elements, the identi-
+be identified by a single pass through the elements e(p),     fication of e(i) is unique.) The structure of ATL, upon
+. . . , e(q), checking whether each element encountered       adding e(q + l), but before dropping the element e(i)
+cancels an earlier element, and if so, adding it to the       canceled by e(q + I), may be depicted as follows:
+appropriate subsequence (and also adding the element
+it cancels if the earlier element is the start of the
+subsequence). Then the sufficiency property states that       The elements e(h) and e(j) are respectively the imme-
+these subsequences contain all the elements e(p), . . . ,     diate predecessor and the immediate successor of e(i)
+e(q), and every such subsequence has an even number           on the list ATL. The element e(j) may be the same as
+of elements.                                                  e(q), and e(i) may be the same as e(p) (in which case
+       Note that if each e(i) consists of setting the value   the predecessor e(h) of e(i) does not exist or is not in
+of a selected variable to 0 or 1 (in a zero-one IP            ATL).
+application), or consists of adding or deleting a selected         If the addition of e(q + 1) constitutes the first time
+element from a set (in an optimal set membership              that any element cancels a previous element (hence
+application), then these elements satisfy the sufficiency     ATL and TL are the same to this point) then the
+property, and in addition satisfy a corresponding neces-      sufficiency property implies that no two solutions gen-
+sity property, which stipulates that x ( p ) = x(q) will      erated so far can be the same. Moreover the solution
+result whenever a matching (or collection of subse-           x(i) cannot be duplicated by the solution resulting from
+quences) exists which has the form used to define the         any sequence of future moves unless every element in
+sufficiency property.                                         the nonempty sequence e(j), . . . , e(q) is canceled. We
+       The goal of this section will be to focus on two       call this sequence which lies between the canceling
+different ways of managing TL to provide a more               element e(q + 1) and the canceled element e(i) the
+dynamic (time and event dependent) characterization           Cancellation Sequence, or C-Sequence. Given that we
+
+
+
+                                            Copyright O 2001 All Rights Reserved
+
+===== page 4 [pdftotext] =====
+                                                                                                    Tabu Search. I1         7
+
+prevent the cancellation of e(q) by e(q + I), if we can                         ATL Before Cancellation
+
+insure that at least one element in each successive C-
+Sequence will remain uncanceled, then no solution can
+ever repeat. (This is a sufficient but not a necessary
+condition to avoid repetition of solutions.)
+      This means of avoiding a duplication of an earlier
+solution can be assured by specifying an attribute 2(i)
+to be tabu if and only if the associated element e(i) of
+ATL is the last remaining member of some C-Sequence,
+once all other members have been canceled. To enforce
+                                                                                 ATL After Cancellation
+this condition successfully, a way must be afforded to
+remove each canceled element from every C-Sequence
+to which it belongs, and to identify when one or more
+of these sequences has been reduced to a single element.
+      An efficient method for accomplishing this can be
+based on the observation that whenever one sequence
+lies within another, the larger sequence is dominated
+by the smaller and may be discarded, since retaining
+an element in the smaller sequence assures that one               Figure I. Creation of C-sequence by cancellation.
+is also retained in the larger. (This observation is also
+central to establishing the sufficiency of nonempty
+                                                                               New C-Sequence Dominated by Old
+C-Sequences to avoid duplicate solutions, as long as                             (Hence New 1s Not Recorded)
+                                                                                                                     New
+moves exist that permit this condition to be main-                                                                 Element
+tained.) Specifically, we introduce a data structure
+consisting of two arrays, startseq(e) and endseq(e),
+defined for each element e on the active tabu list ATL,
+where startseq(e) denotes the element f on ATL that
+starts the C-Sequence terminated by e (where f = void,
+                                                                                 Old   C-Sequence
+                                                                                 New C-Sequence                    I
+a dummy element, if e does not terminate such a
+sequence), and endseq(e) denotes the element g on ATL
+                                                                          Later ATL Before Creatina Tabu Element
+that ends the C-Sequence initiated by e (where g = void
+                                                                            (Remalning C-Sequence Accentuated)
+if e does not initiate such a sequence). The dominance                                                                   New
+                                                                                                                       Element
+property implies that these two values are uniquely
+defined for each e on ATL (i.e., of two contending
+values for f or g, the element which is closer to e on
+ATL takes precedence). Moreover, the condition in
+which e is the only element of a C-Sequence is identified
+by startseq(e) = endseq(e) = e.
+      The use of these arrays and the role of dominance
+                                                                           Later ATL After Creating Tabu Element
+is illustrated in Figures 1 and 2. Figure 1 shows the
+                                                                            (Remalning C-Sequence Accentuated)
+creation of a C-Sequence as a result of a cancellation
+step, together with the associated startseq and endseq
+assignments. Figure 2 provides an example of domi-
+nance, and of the creation of tabu status. (It may be                            startseq(4) = endseq(4) = 4
+noted in Figure 2 that the "old C-Sequence" will also                                (Element T 1s tabu)
+dominate the new if the canceled element occurs as               Figure 2. Domination and creation of tabu status.
+early in the ATL list as the starting element of the old
+C-Sequence, since the form of this sequence after the
+cancellation will still lie inside the new C-Sequence.)     list, i.e., first-dummy precedes the first (oldest) element
+      To complete the basis for identifying and updating    and last-dummy succeeds the last (most recent) ele-
+the C-Sequences, we introduce the two arrays predeces-      ment. Finally, we define iteration(e) = the iteration e
+sor(e) and successor(e), which respectively identify the    was added to ATL, letting this value equal 0 if e is not
+elements that precede and succeed e on ATL. Also,           on ATL. Then for two elements e and f on ATL,
+we introduce two elements, first-dummy and last-            iteration(e) < iteration(f) indicates that e appears be-
+dummy, which respectively begin and end the ATL             fore f. The iteration array will be used to determine
+
+
+
+
+                                        Copyright O 2001 All Rights Reserved
+
+===== page 5 [pdftotext] =====
+8     Glover
+
+whether a newly created C-Sequence is dominated by
+an earlier C-Sequence. This determination is made by                                     CANCEL(v)
+reference to a special variable, last-start, which identi-          This cancels the element identified by v (entering
+fies largest value of iteration (e) such that e is the starting     argument).
+element of a C-Sequence; i.e., such that endseq(e) #                1. Set u := predecessor(v); w := successor(v).
+void. Then iff denotes the element that starts the new              2. IF startseq(v) # void THEN update C-Sequence
+C-Sequence, this C-Sequence will be dominated by an                      that ends with v (and which necessarily
+earlier one if and only if last-start 2 iteration (f).                   dominates any C-Sequence that ends with
+      The procedure for managing the tabu list, based                    its predecessor, u):
+on the use of cancellation sequences, is indicated as                    Set f := startseq(u); endseq(f) := void;
+follows. We refer to e(q + I), the new element to be                        startseq(u) := startseq(v).
+added to ATL, and to e(q), the previous last element of                  IF startseq(u) = u and iteration(u) 2 least-
+ATL, without altering notation (though these elements                       cut-off, THEN make u tabu. (u became the
+do not represent indexed members of a list in the                           only element in a C-Sequence).
+procedure). The most important part of this procedure               3. IF endseq(v) # void THEN update (v starts a C-
+is the update of preexisting C-Sequences made possible                   Sequence that dominates any C-Sequence
+by the dominance property when a cancellation occurs.             I      that starts with its successor, w):
+                                                                         Set g := endseq(w); startseq(g) := void;
+                                                                            endseq(w) := endseq(v).
+                                                                         IF endseq(w) = w and iteration(w) 2 least-
+              C-SEQUENCE METHOD                                             cut-off, THEN make w tabu. (w became the
+                                                                  I
+ This is the main sequence of steps. The data                               only element in a C-Sequence).
+ structure includes elemental lists: iteration, startseq,                Set last-start := maximum(1ast-start,
+ and endseq defined over elements (e); and, ATL                             iteration (w)].
+ (Active Tabu List), which is dynamic (limited by a                 4. IF last-start < iteration (w) THEN create new,
+ maximum size), defined by predecessor and                               undominated C-Sequence:
+ successor lists.                                                        last-start := iteration(w); startseq(w) := e(q);
+ 1. Initialize:                                                             endseq(e(q)):= w.
+       For all elements (e), set iteration(e) := 0;                 5. Re-link u to w and drop v from ATL:
+         startseq(e) := void; endseq(e) := void.                         Set predecessor(w) := u; successor(u) := w;
+       Set last -start := 0; predecessor(1ast -dummy)                       iteration(v) := 0.
+          := first-dummy; successor(first-dummy)                    6. Free e from its tabu status if it is tabu, and
+          := last-dummy.                                                 return.
+ 2. Iterate until stopping rule is satisfied (q denotes
+      iteration number):
+       Set e(q) := predecessor(1ast-dummy); v :=                       Several aspects of the foregoing procedure may be
+         complement of e(q + 1).                                  noted. First, the operations involving the updates of
+       IF iteration(v) # 0 THEN perform Cancel(v).                C-Sequences by the dominance principles are very ef-
+       Insert e(q + I) on ATL:                                    ficient, involving no loops or searches. Second, when u
+                                                                  or w becomes the only element of a C-Sequence, and
+          predecessor(e(q + I)) := e(q);                          qualifies to become tabu, it is allowed to escape its tabu
+            successor(e(q)) := e(q + 1);                          status if it has resided on ATL long enough (has a small
+          predecessor(1ast-dummy) := e(q + 1);                    enough value of iteration(u) or iteration(w)). This cut-
+            successor(e(q + 1)) = last -dummy.                    off value involving residence on ATL is a parameter
+       Set iteration (e(q + I)) = q + 1 and complete              different from the limit t, which governs the number of
+          update of other relevant tabu conditions:               iterations an element is kept tabu after receiving a tabu
+          Add e(q + 1) to the starting buffer of tabu             classification. One of these two parameters may be
+             elements, and remove the oldest element              disregarded, if desired. However, if t is retained, intui-
+             if the addition of e(q + 1) causes the               tion suggests that t + tb should not greatly exceed the
+             buffer to contain more than tb elements.             tabu list sizes found to be effective in standard imple-
+          If a tabu element (excluding those on the               mentations. (In any event, tb should be relatively small,
+             starting buffer) has been tabu for more              perhaps only 1 .)
+             than t iterations, release it from its tabu               Third, memory savings are possible due to the fact
+             status.                                              that an arbitrary element e and its complement 2 cannot
+                                                                  appear on ATL simultaneously. Hence the arrays that
+
+
+
+                                               Copyright 0 2001 All Rights Reserved                 -
+
+===== page 6 [pdftotext] =====
+                                                                                                    Tabu Search. I1         9
+
+use these elements as arguments can be halved in size            ciated with e(q), only if n(i) = 0, and this becomes an
+by means of an appropriate external flag (which intro-           if and only if condition provided the necessity assump-
+duces at most one half-sized array). However, if the             tion also holds. Moreover, if n(i) = 1 and e denotes the
+number of such elements is still large, then predecessor,        unique element belonging to the associated Residual
+successor, startseq, endseq and iteration can instead            C-Sequence, then under the same assumptions the
+name positions on a circular TL list, which contains             new solution produced by the move associated with
+the elements of only as many iterations as are chosen            e(q + 1) will duplicate x(i) only if (or if and only i f )
+to be relevant (essentially twice the number of iterations       e(q + 1) = 2.Thus, the rule to prevent the new solution
+an element is allowed to reside on TL before being               from duplicating any preceding solution is to make C
+considered ineligible to receive tabu status, noting that        (and the moves associated with it) tabu at each point
+elements beyond this age may still define relevant C-            of the reverse trace where such an element is found, as
+Sequences since TL is not the same as ATL). In this              signaled by n(i) = 1.
+case, iteration(e) can be inferred from the position on               Generally, of course, since the size of q can become
+the TL list rather than maintained as a separate array.          large, it is appropriate to limit the size of TL as in
+                                                                 customary tabu search applications, conducting a re-
+                                                                 verse trace of the sequence e(p), . . . , e(q) for a selected
+1.3. Tabu List Management by the Reverse                         p 3 1. Similarly, a buffer may be maintained which
+     Elimination Method                                          imparts temporary tabu status to the last tb elements of
+The second dynamic process for managing tabu lists is            the list, as in the C-Sequence method. The rule that
+based on generating move restrictions implied by C-              classifies elements of TL tabu by the Reverse Elimina-
+Sequences of a more general form, whose boundaries               tion Method does not change under these conditions.
+can expand as well as contract. The appropriateness of                The data structure requirements of the method are
+expanding the boundaries of a C-Sequence derives from            very simple, making use of the same predecessor and
+the fact that the addition of a new element to ATL               successor arrays used by the C-Sequence approach.
+protects against the return to solutions otherwise               However, these arrays do not identify the composition
+"guarded by" some C-Sequences, and thus should be                of the ATL list, but instead successively identify the
+included among these sequences. There is an obstacle             elements of each Residual C-Sequence generated during
+to doing this, however, because the new element is not           the reverse trace of TL. Beyond this, the method re-
+adjacent to the previous elements, and generally no way          quires only the TL array itself. The value n(i) can be
+exists to rearrange elements and boundaries so that              treated simply as a number n, since we are only inter-
+these expanded C-Sequences can be defined by the                 ested in its current value as it changes from step to step.
+convenient types of data structures introduced for                    To characterize the method, we indicate that
+handling ordinary C-Sequences.                                   an element e is absent from the current Residual
+     The approach we propose to overcome this obsta-             C-Sequence by introducing a dummy element absent
+cle operates by successively eliminating elements of the         and setting successor(e) = absent. The first element of
+TL list, not by the sequence of steps that occurs in             the current Residual C-Sequence (associated with the
+keeping ATL updated at each iteration, but by the                earliest iteration) will be denoted by the variable first-
+reverse sequence, hence producing what we call the               e. As before, first-dummy precedes the first element of
+Reverse Elimination Method. After a new element is               each linked sequence and last-dummy follows the last
+added to TL, becoming the new e(q) in the sequence               (associated with the most recent iteration).
+TL = (e(l), . . . , e(q)), a trace is initiated applying rules        An important departure from the C-Sequence
+for eliminating elements that are slightly different from        Method, in addition to tracing in the reverse direction,
+those used to produce ATL. Specifically, as each e(i) is         is that the elimination operation not only removes a
+visited in turn (in the process of tracing backward from         previously canceled element but also omits the new
+e(q) to e(l)), a Residual Cancellation Sequence from             element, that causes the cancellation, from the se-
+e(i) through e(q) is identified, along with the num-             quence. Before presenting the details of the procedure,
+ber n(i) of elements in this sequence. A Residual                we provide an illustration of how it operates in Figure
+C-Sequence is defined to be a subsequence that remains           3, tracing the TL list back to the first iteration ( p = 1).
+after removing a maximum number of pairs of mu-                  For simplicity no buffer is employed. (In contrast to
+tually canceling elements, i.e., pairs of the form (e, P),       the C-Sequence Method, tb = 0 is always possible with
+where each member of the sequence is allowed to                  the Reverse Elimination Method.) The array structures
+belong to only one such pair.                                    used for implementation are also not shown, though
+     When the suficiency assumption holds, it is not             the processes involved should be clear by reference to
+difficult to see that the solution x(i) will be the same         the effect of each successively examined e(i) of TL on
+as x(q + l), the solution produced by the move asso-             the composition of the Residual C-Sequence.
+
+
+
+
+                                           Copyright O 2001 All Rights Reserved
+
+===== page 7 [pdftotext] =====
+10        Glover
+
+                                                                            begin
+                                                                              e := e(i)
+                                                                              if successor(C) = absent then
+                                                                              begin
+                                                                                 comment:
+                                                                                    Expansion Step: C is not in the current
+                                                                                       residual C-Sequence, hence e becomes
+                                                                                       the new first element of this sequence.
+     i              Residual C-Sequence               n     Tabu Status          successor(e) := first-e
+                                                                                 predecessor (first-e) := e
+     8                    3                           1     3 Tabu
+                                                                                 first-e := e
+     7               5, 5                             2
+                                                                                 predecessor(e) = first-dummy
+     6         4,    5, 7                             3
+                                                                                 n:=n+ 1
+     5               4,   5   (5 and 5 cancel)        2
+                                                                                 if n = 1 then make C tabu
+     4                    4   ( 3 and 3 cancel)       1     i Tabu            else begin
+     3
+     2
+
+     1
+                     2.
+
+
+
+                     6, 2
+                          4
+
+                          2   ( i and 4 cancel)   1         5 Tabu
+                                                                                 comment:
+                                                                                    Elimination Step: P is in the current residual
+                                                                                       C-Sequence. Hence e is not added and
+                                                                                       C is eliminated.
+             Figure 3. Reverse elimination method.                               f := predecessor(2)
+                                                                                 g := successor(2)
+     It is interesting to observe that the tabu classifica-                      successor(f) := g
+tions produced by the method for this example are the                            predecessor(g) := f
+same as those produced by the more restrictive C-                                 successor(^) := absent
+Sequence Method when the latter employs a minimum                                if P = first-e then first-e := g
+buffer size of tb = 1. However, with the addition of the                         n:=n- 1
+element e(9) = '5 to TL, the Reverse Elimination                                 if n = 1 then make the complement of first-e
+Method continues to generate a set of restrictions which                            tabu
+is exactly necessary and sufficient to prevent duplica-                          comment:
+tions, while the C-Sequence Method produces two ad-                                 if n = 0, the solutions x(i) and x(q + 1) are
+ditional (unnecessary) tabu restrictions.                                              the same
+     The precise details of the method that generates                         end;
+the sequences and tabu classifications shown in Figure                        comment:
+3 are as follows.                                                                create automatic tabu status for elements of
+                                                                                    the buffer
+                                                                              if i > q - tb then make C tabu
+     REVERSE ELIMINATION METHOD AT                                          end;
+             EACH ITERATION
+ comment:
+   The following local initialization is implemented
+     after selecting the move whose associated                             Reducing Effort and Related Strategic Considerations
+     attribute is e(q).                                                    The foregoing procedure evidently requires more work
+ For each element e: designate e to be "not tabu"                          than the C-Sequence procedure, since it traces the TL
+, and set                                                                  list at each iteration. However, some shortcuts are
+                       successor(e) := absent                              possible at the expense of more memory. For example,
+         predecessor(1ast-dummy) := first-dummy                            there is no need to continue the trace after adding an
+           successor(first-dummy) := last -dummy                           element on the Expansion Step which does not contain
+                             first-e := last-dummy                         a complement among earlier elements of TL (a condi-
+                                                                           tion easily recorded).
+ n := 0                                                                         A process that may achieve greater savings is the
+ comment:                                                                  following. On a given iteration, record a value least (n)
+   Select the current size of TL by choosingp < q,                         for each value of n from 0 to a selected cut-off n*,
+      and select the buffer size tb. Then trace                            which identifies the smallest value of i for which a
+      the TL list in reverse order, as follows.                            Residual C-Sequence has a size of n(i) = n. This value
+ for i := q until p do                                                     may be determined automatically by starting with
+
+
+
+
+                                                          Co~vriahtO 2001 All Riahts Reserved                -
+
+===== page 8 [pdftotext] =====
+                                                                                                     Tabu Search. I1     11
+
+
+leasr(n) = q for all n, followed by setting least(n) = i,        added to the current Residual C-Sequence, and n is
+where n = n(i), for each i in the reverse sequence from          increased by 1, set min-n(e) := Minimum(min-n(e),
+i = q to p. Then, given that n(i) cannot decrease by             n). On an Elimination Step, when 2 is eliminated and
+more than 1 on the next iteration, it is unnecessary at          the resulting n is at most n *, trace the successive pred-
+that point to trace earlier than a value of = Mini-              ecessors f of 2, and set min-n(f) := Minimum(min-
+mum(1east (O), least ( 1), least (2)), and in general it is      n(f), n) for each of these predecessors encountered.
+unnecessary on the next r iterations to trace earlier than       (These are the only members of the Residual C-
+a value of i = Minimum(least(k): k = 0, . . . , r + I). A        Sequence that may receive a smaller assigned value
+simple auxiliary means to save effort is to identify tabu        than previously.) At the completion of the reverse trace,
+status by setting tabu(e) := q, the current iteration value,     each element e thus receives a penalty (or is classified
+thereby avoiding the need to change or erase previous            tabu) according to the size of min-n(e).
+array values at the start of each new iteration.                       It is to be noted that situations may arise where no
+     The allowance for choosing p anew at each itera-            move exists that will avoid duplicating a previous so-
+tion, instead of giving it a fixed relationship to q, reflects   lution. The number of such situations can be strategi-
+a strategic property of the Reverse Elimination Method           cally reduced by approaches that penalize rather than
+not shared by other tabu list approaches. Specifically,          categorically forbid infeasible moves, but it is still pos-
+there is no "danger" in choosing p too small (i.e., in           sible to become walled off with no recourse except to
+making TL too large), except for considerations of               repeat an earlier solution. Under such circumstances
+computational effort. In other tabu list procedures, if          (i.e., where each available move contains an attribute
+TL grows beyond a certain size, the selection of new             made tabu by the Reverse Elimination Method), a
+moves becomes restricted too severely, and solution              reasonable choice is to select the tabu attribute e(i) with
+quality suffers. With the Reverse Elimination Method,            the smallest i value. To make this choice accurately,
+however, the only restriction caused by creating tabu            the method should keep track for each e of the first
+status (except for elements in the buffer, which may             (hence largest) i for which e is made tabu. We conjecture
+allowably be empty) is to prevent returning to an earlier        that such a choice has implications for finiteness in the
+solution. Assuming the existence of multiple paths to            zero-one IP and optimal set membership examples,
+the neighbors of such solutions, this restriction is likely      provided infeasible moves are penalized rather than
+to be benign. (In the event that it is not, appropriately        strictly removed from consideration.
+designed aspiration criteria may permit tabu status to
+be overridden and thereby return to an attractive                An Alternate Characterizationof Residual C-Sequences
+region.) Consequently, to exploit the fact that a fuller         Before progressing to more advanced considerations,
+examination of TL is generally advantageous, the                 we note that it is possible to characterize the Residual
+Reverse Elimination Method can employ a strategy of              C-Sequence associated with each e(i) of TL, which we
+periodically tracing TL to a deeper level than chosen            denote by RCS(i), in an alternate way that does not
+for "customary" iterations, persisting until generating          require the application of the Reverse Elimination
+some number of solutions that are verified to provide            Method. Specifically, for each h s q define
+no duplication at that level. However, it is probably              cancel(h) = Maximum(k: k < h and e(k) = C(h))
+unnecessary in most applications to trace back much
+earlier than a first local optimum, since solutions en-          where cancel(h) = 0 if no e(k) of the specified form
+countered before such a point are unlikely to be revis-          exists. The index i = cancel(h) thus identifies the ele-
+ited in any event.                                               ment e(i) that is canceled by e(h) in the progressive
+     The Reverse Elimination Method also creates an              construction of ATL, at the point where e(h) is added
+appealing opportunity for diversifying the search pro-           as the new element of ATL (and e(i) accordingly is
+cess, as accomplished by the use of long-term memory             dropped). Then, associated with the sequence e(i), . . . ,
+functions in other versions of tabu search. In particular,       e(q), which represents the attributes of the moves that
+rather than making a move attribute tabu only when               collectively transform x(i) into x(q + I), the Residual
+n = 1, it is additionally possible to penalize, or condi-        C-Sequence RCS(i) is given by
+tionally avoid, the choice of attributes associated with             RCS(i) = (e(h): i s h s q and cancel(h) < i).
+low n values, e.g., for n s n*.
+     This can be accomplished by creating a record                    By reference to this characterization, the change in
+min-n(e) which identifies the smallest value n(i) value          RCS(i) each time a new element e(q) is added to TL is
+for any Residual C-Sequence that contains element e.             easily specified. By convention, treat RCS(q) as empty
+To determine this value, start each iteration by setting         before e(q) is added, and let the symbols "+" and "-"
+min-n(e) := n* + 1 (a value for n that receives no               denote the operations of adding and deleting elements
+penalty). On the Expansion Step, when element e is               from sequences (effectively treated as sets). Then the
+
+
+
+                                           Copyright O 2001 All Rights Reserved
+
+===== page 9 [pdftotext] =====
+12      Glover
+
+change in RCS(i) is given by                                 Bounded Variable Specialization of the Reverse Elimination Method
+     RCS(i) := RCS(i) + e(q) for cancel(q) < i a q           We first consider how the Reverse Elimination Method
+                                                            can be adapted to the bounded variable setting. This
+and, letting k := cancel(q), if cancel(q) > 0, set          adaptation is considerably simpler than the one for the
+     RCS(i) := RCS(i) - e(k) for cancel(k) < i a k.         C-Sequence Method, and allows a convenient means
+                                                             for introducing considerations basic to both procedures.
+Repeating this process, we let h := cancel(k) take the            Move attributes that satisfy the sufficiency and
+role of q (provided cancel(k) > O), and hence in turn        necessity conditions discussed earlier result by the nat-
+let k := cancel(h), thereby identifying successive inter-   ural device of creating an attribute to represent the
+vals of i indexes in which RCS(i) either adds the ele-      increase or decrease of each integer variable to a specific
+ment e(h) or drops the element e(k), where e(h) = e(q)      value. For example, by selecting an attribute e to rep-
+and e(k) = P(q). Accordingly, the value of n(i) increases    resent increasing x, from 7 to 8, the complement 2
+or decreases by 1 over these intervals.                     represents decreasing x, from 8 to 7. In principle, the
+     These relationships may be susceptible to exploi-       Reverse Elimination Method in the form previously
+tation by intermediate level procedures that combine        described can be applied directly to this representation
+aspects of the C-Sequence and Reverse Elimination           of move attributes. However, this unfortunately creates
+Method. For example, a "shadow ATL" may be main-             an attribute for every value to which x, can be increased
+tained that encompasses the elements e(h) for h =           or decreased, producing 2UJ attributes for every variable
+cancel(i), associated with each e(i) on ATL, noting that    x, where U, is the upper bound for x,. Thus, a 500
+updates involving ATL and its shadow can be handled         variable IP problem where each variable is constrained
+more efficiently than those involving TL, and can gen-      to lie between 0 and 100 gives rise to about 1,000,000
+erate tabu conditions that are sufficient to prevent        elements, and hence requires a corresponding dimen-
+repetition of solutions.                                    sion for each of the predecessor and successor arrays.
+                                                                  There is a simple way to organize the Reverse
+1.4. Adaptations for Bounded Variable Integer               Elimination Method by the use of a different data
+     Programs                                               structure that will reduce this component of memory
+Integer programming problems with general upper             by a factor of more than 30. In general, instead of
+bounds are often disregarded in treatments of combi-        requiring array space of 2(C U,), this alternative data
+natorial optimization, under the supposition that pro-      structure requires an array space of only 3m, where m
+cedures which apply to zero-one problems apply to the       is the total number of variables-essentially introducing
+general upper bounded case as well. Though theoreti-        a single array of m elements beyond the two arrays of
+cally accurate, this assessment disregards the fact that    m elements required by the zero-one problem.
+considerable inefficiency and excessive demands on                The approach is based on the fact that it is not the
+memory may result by "direct adaptations." Conse-           sequence of elements in the Residual C-Sequences that
+quently, we undertake to show how the foregoing             is important, but only their identity. Thus the predeces-
+procedures can be adapted in a more effective man-          sor and successor arrays serve only as a convenient
+ner to treat IP problems with general upper bounds, re-     means for tracking this identity (and indeed, by the use
+femng specifically to the class of moves that consists      of bit string coding, and efficient routines for identifying
+of changing the value of a selected variable to an adja-    bits that are "on," the zero-one case can be handled
+cent value.                                                 with less memory as well).
+     Perhaps surprisingly, standard techniques to trans-          The specialization of the Reverse Elimination Pro-
+form the problem into one with zero-one variables are       cedure to the zero-one IP example allows a simple
+not only inefficient, but fail to work in this context.     interpretation for the elements of the Residual C-Se-
+For example, if a variable x, is represented by a binary    quence that are linked by the predecessor and successor
+expansion as XI, + 2x2, + 4x3] + 8x4,, . . . , then to      arrays. In particular, at the point where the element
+change the value of x, from 7 to 8 involves a composite     e(i) is either added to the sequence or used to eliminate
+move that changes XI,,x2, and x3, from 1 to 0, and x4,      its complement, the residual C-Sequence elements iden-
+from 0 to 1. Other representations of xJ as a linear        tify precisely the variables xJ whose values in x(i) differ
+combination of zero-one variables require the use of a      from their values in the current solution x(q).
+composite move that changes the value of one variable             By extension, to track the corresponding infor-
+from 1 to 0 and another variable from 0 to 1. Such          mation for the general upper bound case, we use a
+moves belong to the class of paired attribute moves         deviation array which identifies the vector difference
+which require more complex rules and memory struc-          x(i) - x(q), i.e., deviation(j) = xJ(i) - xJ(q). The
+tures, and whose treatment is indicated in Section 1.5.     specialization of the Reverse Elimination Procedure to
+
+
+
+
+                                           Copvriaht O 2001 All Riahts Reserved                                                  -   -
+
+===== page 10 [pdftotext] =====
+                                                                                                    Tabu Search. I1        13
+
+
+this setting occurs by starting with all entries of the             is highly efficient and which achieves an economical
+deviation array equal to 0. Each e(h) encountered dur-              use of memory.
+ing the reverse trace from e(q) to e(i) in TL records the                 As a basis for this specialization we introduce an
+information that a particular xJ was increased or de-               array ATLrecord, which is dimensioned to the maxi-
+creased, and on the basis of this information the cor-              mum size to be allotted to the ATL list, and which
+responding value of deviation(j) is changed in the                  contains the elements of this list without specifying the
+opposite direction. The value of n in the Reverse Elim-             order in which they appear. The order is provided by
+ination Procedure accordingly represents the sum of                 altering the function of the predecessor and successor
+the absolute values of the deviation array entries in this          arrays to link ATLrecord indexes. Specifically for h =
+specialization. The predecessor and successor arrays are            predecessor(i) and j = successor(i), the entries ATLrec-
+given a changed role, which consists of linking the                 ord(h), and ATLrecord(j) identify the elements that
+indexes of nonzero entries of the deviation array.                  immediately precede and follow the element ATL-
+Hence, when n = 1, the only element remaining linked                record(i) on the ATL list. Correspondingly, the array
+by these arrays is the unique index J such that devia-              entries startseq(i) and endseq(i) name the positions in
+t i o n ( ~ )= 1 or -1, indicating that xJ appropriately            ATLrecord of the elements that start and end the C-
+becomes tabu to be increased or decreased, respectively,            Sequences that the element ATLrecord(i) ends and
+in the current solution. The resulting specialization of            starts, respectively. Similarly, the iteration array is
+the Reverse Elimination Method to the bounded vari-                 keyed to positions of ATLrecord.
+able IP setting thus becomes both straightforward and                     We will show by means of this data structure, and
+easy to execute.                                                    two additional arrays, that the C-Sequence Method can
+       The process which incorporates this specialization           be specialized in a way that permits the associated
+is illustrated in Figure 4.                                         component of memory to be reduced by a factor
+                                                                    roughly equivalent to that achieved for the Reverse
+Bounded Variable Specialization of the C-Sequence Method            Elimination Method. To describe how this occurs, we
+The handling of general bounded IP problems with the                first stipulate that the predecessor and successor arrays
+more efficient (though more restrictive) C-Sequence                 must initially link two different sets of indexes (each
+Method requires a different type of approach. The                   beginning and ending with its own fixed dummy in-
+dominance property once again leads to a process that               dexes), one which consists of the positions on ATLrec-
+                                                                    ord where elements of ATL currently are found, and
+              &eclalizazion   for Bounded Variable IP               the other which consists of "free" positions. When an
+                                                                    element is canceled, its ATLrecord index goes on
+                          TL Llst Code
+                    j means Increase x . by 1
+                                                                    the linked list of free positions. Once ATLrecord is
+                   -j means decrease x i by 1                       full, however, and no free positions remain, the
+                                                                    current element added to ATL goes in the position of
+                                                                    ATLrecord occupied by the element canceled on this
+                                                                    step, or by the oldest (earliest) element if no element is
+                                                                    canceled, and this position is relinked to become the
+                                                                    new "last" position.
+                     Reverse Eli3ination Trace
+                                                                          The elements recorded on ATLrecord embody
+                                                                    three pieces of information: the variable xJwhose value
+        I       devration ( j )           I                         was changed on a given iteration, the new value as-
+                                                                    signed to this variable, and whether the change was an
+                                                                    increase or decrease. The first of the two additional
+                                                                    arrays for exploiting this representation effectively has
+                                                                    the purpose of identifying the location of each e on
+                                                                    ATLrecord, and will be denoted location (e). Instead of
+                                                                    defining this array over elements recorded in ATLrec-
+                                                                     ord, however, we specify that the elements accessed by
+                                                                    location(e) are "reduced elements" that indicate only
+                                                                    the identity of specific xJvariables and whether they are
+                                                                    increased or decreased (without reference to the value
+                                                                    attained). This results in much less memory than would
+                                                                    otherwise be required, but entails that location(e) points
+            Figure 4. Reverse elimination method.                   only to a subset of the elements on ATLrecord. To
+
+
+
+
+                                                 Copyright O 2001 All Rights Reserved
+
+===== page 11 [pdftotext] =====
+14     Glover
+
+                                                                        P a r t i a l Data Structures f o r Bounded Variable I P
+compensate for this, the second additional array, de-
+noted pre(i), links positions of ATLrecord which loca-
+tion(e) temporarily omits. Specifically, for each element
+ATLrecord(i), pre(i) names the position h such that
+ATLrecord(h) contains the most recent earlier appear-
+                                                                        Note:     ATLrecord 1 s assumed to have the same
+ance of the same variable x, and the same direction of                            order as ATL (hence predecessor(1) = 1-1)
+
+change recorded in ATLrecord(i). (A dummy position
+is named if ATLrecord contains no such entry.) Then
+location(e) identifies precisely the latest position (asso-
+ciated with the largest iteration value) that a given
+variable x, was changed in a given direction.
+     The ability to restrict location(e) in this way derives
+from the fact that this entry names the only position in
+ATLrecord which is currently of interest (for the asso-
+ciated "reduced" e)-i.e., it identifies the only element
+that currently can be canceled by a new move that
+changes x, in the direction opposite to that indicated by
+e. Upon cancellation, the new position to be named
+by location(e) is determined by the value of pre(i), for
+i = location(e).
+     To complete the process, when the attributes of                            Figure 5. C-Sequence method.
+the new moves are recorded in ATLrecord(h), then
+location(e) (for e identifying the appropriately reduced
+subset of these same attributes) gives the proper entry        is unnecessary to identify them separately to determine
+for pre(h), and location (e) is reset by location(e) := h.     the "true order" of ATLrecord. We note that this type
+Indeed, by these observations, the use of the location         of data structure and the rules for its management can
+and pre arrays makes it possible to record attributes in       be adapted to a variety of other settings involving large
+reduced form (identifying only a variable x,and a given        numbers of elements, where these elements belong to
+direction of change) within ATLrecord itself, provided         ordered classes in which each member (other than the
+current values of the variables are stored separately,         first) can occur in a solution only if its "class predeces-
+and we assume this henceforth.                                 sor" does also.
+     It remains only to designate how tabu status can
+be recognized and enforced. As a result of the foregoing       1.5. Dynamic Tabu Lists for Paired Attribute Moves
+process, the condition startseq(i) = i, which identifies       A wide range of procedures for optimization problems
+the element ATLrecord(i) to be tabu, can only be               operate by means of moves that may be represented by
+relevant for the current solution in the situation where       a pair of attributes (e, f). Such paired attribute moves
+location(e) = i. Thus, whenever a change results in            are exemplified by a variety of "add/drop" operations,
+setting startseq(i) = endseq(i) = i, the attribute e =         such as adding and dropping elements from a set, edges
+ATLrecord(i) is checked to determine whether loca-             from a graph, or variables from a basis. Rather than
+tion(e) = i, and similarly, when location(e) is updated        treat the attributes of such moves as ordered pairs, we
+to name a new position i, the condition startseq(i) = i        explicitly consider an element used in two different
+can be checked. Since location(e) identifies the index         ways to be two different move attributes; hence, in one
+of the only move for x, (in the given direction) that is       move e may represent adding a given element and in
+relevant to be considered tabu, all tabu moves can be          another move g may represent dropping the same ele-
+identified by flagging location(e) negative for those          ment (in which case, we may also write g = 2).
+elements e that currently identify a tabu move in this              Such paired attribute moves can also include single
+manner.                                                        attribute moves by the use of "null attributes" a and d,
+     An illustration of how the ATLrecord array is             which respectively take the place of the operations of
+linked by the location and pre arrays is provided in           adding and dropping "ordinary" elements. Thus if e
+Figure 5. For convenience, this illustration assumes the       represents the attribute of adding a given edge to a
+elements of ATLrecord occur in the same order as in            graph, the pair (e, d ) represents the move consisting of
+ATL (hence, appearing in the order of their iteration          adding this edge without dropping another (i.e., drop-
+values, for the subset of iterations encompassed by            ping instead the null attribute d). By the convention
+ATL). By this means, the predecessor and successor             that d = ~3the subsequent development can be applied
+arrays refer to successive indexes of ATLrecord and it         consistently to this type of representation. In the case
+
+===== page 12 [pdftotext] =====
+                                                                                                Tabu Search. I1       15
+
+where each element is eligible for membership only in           no change. However, there is an important distinction
+one specific set, it is preferable to create a different pair   concerning the manner in which the attributes of TL
+of null elements for each set. (Otherwise, moves that           are processed. The identity of each block of attributes
+cannot occur may unnecessarily be identified as tabu.)          that corresponds to a single move is maintained
+     The importance of paired attribute moves is en-            throughout all operations, enabling C-Sequences to take
+hanced by the fact that a variety of methods for discrete       a more general form that depends on this identity. (This
+and nonlinear optimization are based on the use of              fact may allow memory savings in certain settings.)
+basis exchange operations, whose moves fall naturally           Correspondingly, the array iteration(e) continues to
+into this category. (We examine a mixed integer pro-            refer to the iteration when element e was added to ATL,
+gramming method of this type in a later section.) An-           thereby automatically identifying members of a com-
+other area of application for such moves occurs in              mon block by the shared value of location(e).
+"multiple choice" problems, where zero-one variables                 The more general form of the C-Sequence Method
+belong to sets, and are governed by the provision that          that occurs for paired attribute moves may be charac-
+exactly (or at most) one of the variables in a given set        terized as follows. Assume that e(q + 1) and e(q + 2)
+can receive the value 1. (The introduction of zero-one          constitute the block of elements newly added, and let e
+slack variables converts the "at most one" case to the          denote each of these elements in succession. If 2 belongs
+"exactly one" case.) The relevant paired attribute moves        to ATL, and hence is canceled by e, then the resulting
+for these problems take the form of setting x, = 1 and          C-Sequence ends with the predecessor of e, as before.
+xJ = 0, where x, and xJ belong to the same set.                 However, the C-Sequence does not necessarily begin
+     A variety of moves that do not seem at first to be         with the successor of 2, but rather with the element f
+paired attribute moves can be expressed in the context          which is the other member of the block to which 2
+of multiple choice problems. For example, moves that            belongs, unless f has previously been canceled. This
+allow variables to "jump" to nonadjacent values can be          follows from the fact that the solution which was trans-
+viewed in this setting (conceiving the range of values          formed by the block consisting of 2 and f (i.e., by the
+for a variable to be a multiple choice set). Operations         move associated with this block) cannot be repeated,
+that transfer a job between machines, which appear to           under the sufficiency condition, unless both attributes
+involve several attributes (e.g., the identity of the job,      of the block are canceled. The C-Sequence applicable
+the machines affected by the transfer, and the sequence         to the single attribute case, where each block consists
+position of the job on each machine), likewise can be           of just one element, also obeys this rule, since the
+viewed as multiple choice moves. In this case, the              cancellation of an element eliminates "all members" of
+multiple choice set derives from the collection of posi-        the block and thus excludes it from the C-Sequence.
+tions and machines to which the job may be assigned,                 The newly added block of elements is not similarly
+since the job can be placed in at most one position on          encompassed by the C-Sequence, since a C-Sequence
+at most one machine. In addition to their pervasiveness,        does not permissibly include an attribute which can-
+multiple choice moves have the attractive feature of            cels another. However, the process for creating a C-
+permitting an economical data structure for recording           Sequence acquires a new feature, due to the ability to
+tabu status in both the C-Sequence and Reverse Elim-            consider the members of the added block in any order,
+ination Methods, as will be shown.                              which allows either one of the new attributes to be
+                                                                designated e(q + l), and the remaining attribute to be
+Handling Paired Attribute Moves by the C-Sequence Method        designated e(q + 2). Different ordering yield different
+As in the single attribute case, we will represent the          outcomes, and it is possible to identify an ordering that
+tabu list TL for paired attribute moves by                      guarantees the best (least restrictive) collection of C-
+                                                                Sequences from the alternatives available.
+                                                                     The rule to generate the preferable ordering is as
+However, e(i) no longer refers to a move attribute              follows. Choose e(q + l), the "first" member of the new
+associated with iteration i. Instead, two attributes e(i)       attribute pair, to be an attribute which does not cancel
+and e(i + I), for i odd, are generated at each iteration        an attribute currently recorded on ATL, or which can-
+k (where k = (i + 1)/2). The value q is then twice the          cels an attribute recorded earlier than the attribute
+value of the current iteration. By this convention the          canceled by the other member of the new pair. If neither
+sufficiency and necessity properties for TL can be de-          member cancels an earlier element, or if both members
+fined exactly as earlier, noting that solutions are asso-       cancel elements from the same block, then their order
+ciated only with odd valued i indexes.                          is immaterial. (In the latter case, regardless of order,
+      Similarly, this convention allows the active tabu         the dominance condition for C-Sequences results in
+list, ATL, to be given the same representation as before.       creating only one C-Sequence, which ends immediately
+The predecessor and successor arrays also operate with          before the first member and hence excludes them both.)
+
+
+
+
+                                           Copyright O 2001 All Rights Reserved
+
+===== page 13 [pdftotext] =====
+16         Glover
+
+This stipulation is accompanied by the requirement                        by a matrix representation M(r, s) which refers to
+that the tabu buffer must contain at least one attribute                  adding an element indexed r and dropping an element
+of the last preceding move, i.e., the added elements                      indexed s, where M(r, s ) is assigned a positive value for
+e(q + 1) and e(q + 2) are not permitted to cancel both                    a tabu pair. However, it is generally possible to do better
+members of the immediately preceding block (consist-                      than this. The positive M(r, s) matrix entries are likely
+ing of e(q) and e(q - I)).                                                to be a very small fraction of the total, and hence a
+     The application of this rule for creating C-                         linked list may be maintained for each index r (or s)
+Sequences is illustrated in Figure 6.                                     that identifies its associated tabu pairs. Only a small
+     To determine tabu status by the application of the                   search is required to identify tabu status under this
+preceding rule, null add and drop attributes are disre-                   scheme.
+garded, and effectively dropped out of the C-Sequence                          In the multiple choice context this approach can
+representation. It is possible on a given step for a C-                   be made additionally effective, and can be implemented
+Sequence to be reduced to consist of one or two ele-                      without a need for search. An addldrop pair indexed
+ments. Once a C-Sequence shrinks to a single element,                     by (r, s) can eliminate reference to the "drop index" s
+then the complement of this element is made tabu as                       and still recover its identity from knowledge of the
+before, thus rendering any move that contains this                        associated multiple choice set. Specifically, tabu status
+complement tabu. However, whenever a C-Sequence is                        can be established by a single list tabu(r), where tabu(r)
+reduced to consist of two elements, the complements                       > 0 signifies that the move associated with the pair (r,
+of these elements are made tabu as a single pair, rather                  s) is tabu, and s is the unique element such that x, = 1
+than separately. (The tabu classification is unnecessary,                 in the multiple choice set that contains x,.
+of course, if the pair does not correspond to an existing                      For problems outside the multiple choice context,
+move. For example, in an addldrop context it is possi-                    an alternative approach can be employed to reduce
+ble that two remaining elements will both represent                       memory, based on assigning numerical "tabu values"
+"drop attributes," in which case no corresponding move                    to different attributes recorded on ATL. A move is then
+exists.)                                                                  treated as tabu if the sum of the tabu values of its
+     The creation of tabu status can be handled for such                  attributes is at least I. Specifically, when a C-Sequence
+pairs by coding them as single entities-as, for example,                  shrinks to one element, the tabu value of the comple-
+                                                                          ment of this element is set equal to 1, assuring that any
+                                                                          move which contains this attribute will be tabu. By
+                            An. Before Cancellation
+                                                                          extension, when a C-Sequence shrinks to two elements,
+                                                      Newly Added
+                                                                          the tabu value of each complement is set to one-half.
+       7      3      2        1       4       6         6      3          This approach can render a larger number of moves
+                                                                          tabu and hence constitutes a more restrictive means of
+(1)   7 cancels an earlier element than 6, hence interchange 6 and ? to   creating tabu status than the approach that codes (r, s)
+      put 3 first before cancellrng.                                      pairs as single entities.
+                                                                          Handling Paired Attribute Moves by the Reverse
+                                                                          Elimination Method
+                                                                          The Reverse Elimination Method allows a more rigor-
+                                                  -     -                 ous treatment of paired attribute moves, although at
+      -
+      New: endseq ( 7 ) =           startseq (6) = 7
+(2) Carry out remaining cancellation. (Uncancelled member of pair         the expense of greater computational effort. The TL list
+    starts new C-Sequence. Perform standakd update of startseq and
+    endseq. )                                                             is represented with the same conventions indicated for
+                                                                          the C-Sequence Method, where the paired attributes for
+                                                                          successive moves are recorded in blocks of the form
+                                                                          e(i), e(i + 1) for odd values of i.
+                                                                               The operations of adding and eliminating elements
+                                                                          occur by the same rules that apply to the situation
+                                                                          where each e(i) is created by a separate move. However,
+                                                                          during the reverse trace tabu status is only assigned at
+                            An.   M t e r Cancellation
+                                                                          the conclusion of examining both members of a block.
+
+       I
+       ;,,
+         .,.      C-Sequence #1
+
+
+
+                                          C-Sequence Y 2
+                                                                          Null add and drop elements are not extracted from the
+                                                                          sequences (except as they cancel each other), but are an
+                                                                          integral part of the process. Further, tabu status applies
+                                                                          only to pairs of attributes defining specific moves, rather
+      Figure 6. C-Sequence creation-paired attribute moves.               than to single attributes, and does not depend on
+
+===== page 14 [pdftotext] =====
+                                                                                                     Tabu Search. I1                17
+
+whether both members of the pair belong to the same          designate all such moves tabu. (When the associated
+block.                                                       solutions should in fact be reconsidered, tabu search
+      In particular, after every second element examined     typically allows these solutions to be encountered by a
+in the reverse trace, the value of n is checked to see if    more roundabout circuit, which may be shortened by
+it equals 2. (This value will always be even at this         the use of appropriately designed aspiration criteria. We
+point.) If so, the two attributes that are linked by the     note that structured move sets of the type discussed in
+predecessor and successor arrays identify the comple-        Section 2 can allow earlier alternatives to be visited
+mentary pair of attributes to be made tabu. A pair that      more directly than by such roundabout move se-
+does not represent a move accessible to the current          quences.)
+solution can be disregarded.) In an add/drop context,             The strategic oscillation approach characterized in
+it is assured that one member of the tabu pair will          Section 7 of Part I likewise serves as a means of supple-
+represent an element previously added and one will           menting local diversification. The number of steps that
+represent an element previously dropped. The M(r, s)         are selected in this approach for continuing beyond a
+matrix coding and the "numerical value" approach for         boundary, before permitting the search to return (and
+creating tabu status can be employed as with the C-          thereby to meet and cross the boundary from the op-
+Sequence Method. Similarly, a single tabu(r) array can       posite direction), will generally have a direct effect on
+be used to achieve an economical use of memory in            the degree of diversification. An appropriate depth for
+the multiple choice problem setting.                         penetrating such boundaries is likely to be greater for
+      To apply a diversification strategy, pursuing the      paired attribute moves than for single attribute moves,
+goal of avoiding moves that belong to small sequences        for the reasons already suggested.
+(i.e., which separate the current solution from a pre-            Apart from the diversification issue, the implemen-
+vious solution by a small number of steps), the rules        tation of the Reverse Elimination Method for paired
+become somewhat more complex than in the single              attribute moves is a straightforward adaptation of the
+attribute case. In the add/drop context, every possible      form of the method for single attribute moves, and the
+pairing of "add" and "drop" attributes contained in the      implications of the sufficiencyand necessity conditions
+sequence identifies a potential move whose reversal          in avoiding duplicate solutions are the same as in the
+should be avoided, provided the move currently exists.       simpler case.
+(These two types of attributes will occur in equal num-           An illustration of the Reverse Elimination Method
+bers, in no specific order, and will respectively belong     for paired attribute moves is given in Figure 7. The
+and not belong to the current solution.) Thus a diver-       Residual C-Sequences generated in this example dis-
+sification strategy based on the Reverse Elimination         close that the add and drop attributes do not necessarily
+Method will reasonably restrict attention to sequences
+of only a few such attributes. This limitation may be
+avoided, at the risk of penalizing more moves than                               paired Attribute wolree
+necessary, by a diversification strategy based on assign-
+                                                                                        TL L i s t Code
+ing numerical tabu values to attributes.
+      A tabu buffer that automatically assigns a tabu
+status to the complements of the tb most recent attri-
+butes on TL also achieves a degree of "local diversifi-
+cation." Such a buffer is probably more important for
+paired attribute moves than for single attribute moves.
+In the paired attribute case, there are often more paths
+between solutions and more opportunities to follow a                            Reverse B l M n a t i o n Trace
+
+trajectory that remains in the vicinity of a solution        1 , i-1      Resldual C-Sequence              n      Tabu Status
+recently visited. This can create a significant overlap in
+                                                              18, 17                     6, 5               2     Tabu (2, 6)
+the solutions implicitly evaluated by examining alter-
+                                                             16, 15              1, 5, 6 ,   5              4
+native moves. For example, in a multiple choice prob-
+                                                              14, 13             4 , 1, j,   5              4
+lem, if a tabu buffer is not used to encourage diversity,
+                                                             12, 11                     4,   3              2     Tabu ( 3 ,   i)
+a move that sets x, = 1 and x, = 0 may reasonably be         10,    9                   i 4                 2     Tabu(7.i)
+followed by a move that sets x, = 0 and xu = 1. Yet the        8.   7            5,   a, 7, 4               4
+solutions reached by all moves of the latter type, for         6,   5            8,   a, 7, 4               4
+u # s, were previously accessible by the moves that set
+                                                              4,    3                    8, a               2     Tabu(9,i)
+x, = 0 and xu = 1 on the preceding iteration. Unless           2,   1                                       0     Duplication
+there is comvellinn reason to reconsider these alterna-
+tives, a localhiver~ificationpolicy would appropriately                 Figure7. Reverse elimination method.
+
+
+
+
+                                          Copyright O 2001 All Rights Reserved
+
+===== page 15 [pdftotext] =====
+18     Glover
+
+alternate as they do on the original TL list, and that       classify the complements of all elements on the list tabu
+tabu moves may derive their attributes from different        (instead of merely potentially tabu), give an opportunity
+blocks of TL. A duplicated solution is also illustrated,     to exploit tradeoffs between intensifying and diversify-
+depicting the type of situation that may occur when all      ing the search. Intensification strategies, which reinforce
+currently accessible moves are tabu, or when TL is           attribute combinations characteristic of a particular
+traced to greater depths on some iterations than on          region (or combinations historically found good), seem
+others.                                                      inherently opposed to diversification strategies, which
+                                                             seek to drive the search into new regions. However,
+1.6. Extensions to Multiattribute Moves                      these two strategies are not always mutually exclusive,
+Optimization procedures sometimes employ moves               and sometimes can be handled more effectively by
+that involve more than two attributes. For example, it       seeking a balance, rather than an alternating domi-
+is common in the traveling salesmen setting to employ        nance, between the two.
+"four-attribute moves" that drop two edges and add                 A notable illustration of this occurs in the setting
+two others. The ideas we have presented for handling         of add/drop moves, as in the edge swapping moves for
+paired attribute moves can be extended more generally        transforming one tree into another or one traveling
+to multiattribute moves, provided a few special condi-       salesman tour into another (in the latter case, adding
+tions are heeded.                                            and dropping pairs of edges at a time). Experimental
+      For both the C-Sequence and Reverse Elimination        evidence suggests that it is better to maintain a tabu list
+Methods, the TL list does not alter its representation,      to prevent dropped elements from being added back
+although the blocks of attributes that correspond to         than it is to maintain such a list to prevent added
+moves now consist of an increased number of elements.        elements from being dropped. Such findings also sug-
+In the C-Sequence approach, when an attribute of a           gest that the best sizes for the first type of list should be
+newly added block cancels an attribute of an earlier         somewhat smaller than for the second.[201Intuition
+block, all uncanceled elements in the earlier block are      supports both of these outcomes. The difference in tabu
+included in the C-Sequence that results. The preferred       list sizes derives from the fact that the number of edges
+ordering of the attributes of the newly added block          that lie in a tree (or tour) is typically much smaller than
+arises by choosing attributes that do not cancel earlier     the number that lie outside. Under such circumstances,
+attributes on ATL to appear first. Then, of the attributes   a tabu condition that locks an edge into a tree is much
+remaining, those which cancel earlier attributes on ATL      more restrictive than one that keeps an edge out of the
+appear before those that cancel later attributes on ATL.     tree, and a list that accomplishes the former result
+Numerical tabu values may appropriately be employed          should be smaller than one that accomplishes the latter
+by assigning a value of l/k to each attribute in a C-        result. At the same time, the general superiority of the
+Sequence of size k, restricting attention to C-Sequences     list that prevents dropped elements from being added
+that do not exceed the size of a block.                      back seems reasonable from the standpoint of flexibil-
+      The Reverse Elimination Procedure examines all         ity. Although such a list may be larger, and therefore
+members of each successive block before considering          render more elements tabu, it still generally allows a
+the assignment of tabu status. A tabu move is identified     larger number of moves to be constructed from non-
+when the linked elements are exactly equal in number         tabu elements, giving the search more degree of free-
+to the size of a block. These elements can be fewer in       dom. (Of course, these arguments are not relevant to
+number without implying that a move should be iden-          the more advanced dynamic tabu list strategies.)
+tified as tabu. (An exception may occur if a type of               Additional useful insight into the tradeoffs between
+move that contains such a smaller number of attributes       the two types of lists can be gained by considering their
+is admissible.)                                              effects on intensifying and diversifying the search. Two
+      Except for these changes, the multiattribute setting   perspectives appear relevant. From the first perspective,
+is handled by the same data structures and processing        a restriction that locks an edge into a tree has an
+rules previously described.                                  intensification role by focusing the search in the sub-
+                                                             space where the tabu portion of the tree remains rela-
+1.7. lntensification/DiversificationTradeoffs and            tively invariant (changing by one edge each iteration),
+     Frequency-Based Tabu List Management                    while a tabu restriction that keeps a dropped edge from
+In contrast to the approaches of the preceding sections,     being added back to a tree has a diversification role by
+which organize all attributes on a single tabu list, there   assuring that new edges will thereby be added to the
+are occasions where the use of different tabu lists for      tree. From the second perspective, locking an edge into
+different types of attributes is warranted. Multiple tabu    a tree also has a diversification role, because it assures
+lists, which can be based on the simpler structures that     that edges of the tree which are not tabu will change
+
+===== page 16 [pdftotext] =====
+                                                                                                 Tabu Search. 11        19
+
+their identities, while preventing a dropped edge from           based on iterations rather than numbers of elements.
+being added back has an intensification role by limiting         For example, a group may consist of elements that were
+the search to the moves that incorporate the remaining           added between h and k iterations ago, and hence which
+non-tree edges.                                                  may contain fewer than k + 1 - h elements as cancel-
+      This complementarity of the intensification and            lations occur.) A common approach for accomplishing
+diversification strategies suggests the value of not simply      such a progressive relaxation of tabu status is to apply
+using a tabu list for a single type of attribute (when           successively smaller penalties to the elements in older
+simpler lists are used), but of maintaining multiple lists       groups, which often produces an effect similar to that
+whose sizes reflect the relative restrictiveness of their        of making all penalties uniform. By contrast, the ap-
+associated tabu conditions (as influenced by the relative        proach adopted here allows elements of the groups to
+number of choices available in different categories; e.g.,       fully escape their tabu status, according to certain fre-
+non-tree versus tree edges). To date, applications in-           quencies that increase with the age of the groups. Thus,
+volving multiple tabu lists have focused on creating             rather than being subjected to diminishing penalties,
+different lists for different components or stages of            elements are periodically allowed to be chosen freely,
+search, or for preventing repetitions as well as reversals.      which requires the determination of an appropriate
+By contrast, the use of multiple lists that incorporate          form of frequency measure and an associated means
+different types of attributes has been largely unexplored,       for implementing it.
+and the issue of exploiting tradeoffs between intensifi-
+cation and diversification by this means remains open            The Tabu Cycle Method
+to investigation.
+                                                                 The first of the two frequency-based procedures we
+      Such considerations, which invite a closer look at
+                                                                 propose is based on the use of iteration intervals called
+the standard tabu list structures, also invite examination
+                                                                 tabu cycles, which are made smaller for older groups
+of different types of dynamic strategies that maintain
+                                                                 than for younger groups. Specifically, if Group k has a
+these structures. Accordingly, to conclude the treatment
+                                                                 tabu cycle of TC(k) iterations, then at each occurrence
+of dynamic tabu list strategies, we propose two alter-
+                                                                 of this many iterations, on average, the elements of
+native procedures that rely on the organization and
+                                                                 Group k escape their tabu status and are free to be
+processing techniques of standard tabu list implemen-
+                                                                 chosen. To illustrate, suppose there are three groups
+tations, but which introduce frequency criteria for de-
+                                                                 (each older than the preceding), whose tabu cycles are
+termining the current tabu status of attributes on the
+                                                                 4, 3 and 2. Then, roughly speaking, an element could
+list. In spirit, these procedures are related to those
+                                                                 be selected from the first group once in every 4 itera-
+of probabilistic tabu search described in Section 9 of
+                                                                 tions, from the second group once in every 3 iterations
+Part I, and the second procedure provides a natural
+                                                                 and the third group once in every 2 iterations. (A buffer
+accompaniment to a probabilistic tabu search
+                                                                 group whose elements never escape tabu status has an
+approach.
+                                                                 implicit tabu cycle of infinity.)
+      To describe
+               -   the first frequency-based method, con-
+                                                                      However, the process is not quite as simple as the
+sider the list ATL, which consists of the complements
+                                                                                                -elements in the man-
+                                                                 illustration suggests. By selecting
+of the elements of ATL (hence consists of those ele-
+                                                                 ner indicated, an element of ATL could escape its tabu
+ments that are potentially tabu in the C-Sequence
+                                                                 status on virtually every iteration: e.g., by picking an
+Method). We may either consider the full set of such
+                                                                 element of Group 3 on iteration 2, an element of Group
+complements, or more-      restrictively, by the use of mul-
+                                                                 2 on iteration 3, then an element either of Group 3 or
+tiple tabu lists, allow ATL to represent a subset that
+                                                                 Group 1 on iteration 4, and so on. Moreover, there is
+corresponds to attributes of a particular -    classification.
+                                                                 no clear provision of how to handle the situation where
+In the latter case, more than one such ATL may be
+                                                                 no element is chosen from Group k for a duration of
+handled simultaneously, selecting appropriate-       parame-
+                                                                 several tabu cycles, given that the goal is to allow an
+ters for each. The basic idea is to partition ATL into
+                                                                 element to be selected, on average, once every cycle.
+groups, bracketed according to the ages of their mem-
+                                                                      To take care of the preceding considerations, we
+bers, where tabu status for younger groups is main-
+                                                                 introduce a cycle count, CC(k), for Group k. Initially,
+tained more stringently than for older groups. For
+                                                                 CC(k) starts at 1 and is incremented by 1 at every
+example, the-  first group may consist of the 3 youngest
+                                                                 iteration. Each group has three states, OFF, ON and
+elements of ATL, which are required to maintain their
+                                                                 FREE. We define Group k to be:
+tabu status without exception, the second-       group may
+consist of the next 5 youngest elements of ATL, which                  OFF  if CC(k) < TC(k)
+are strongly but not invariably required to maintain                   ON   if CC(k) a TC(k)
+their tabu status, and so on. (These divisions may be                  FREE if Group h is ON for all h a k.
+
+
+
+
+                                             Copyright O 2001 All Rights Reserved
+
+===== page 17 [pdftotext] =====
+20      Glover
+
+An element is allowed to be chosen from Group k only
+if it is FREE, hence only if its cycle count equals or
+exceeds its tabu cycle value (qualifying the group as
+ON), and only if this same condition holds for all older
+groups. The ON and FREE states are equivalent for the
+oldest group. As implied by our earlier discussion, we
+assume TC(k) < TC(k - 1) for all k > 1.
+      The definition of the FREE state derives from the
+fact that each CC(k) value should appropriately be
+interpreted as applying to the union of Group k with
+all groups younger than itself. Accordingly, once an
+element is selected from Group k, the cycle count CC(k)
+is re-set by the operation
+       CC(h) := CC(h) - TC(h) for all h 3 k,                    Figurel. Tabu cycle method illustrated. (*New element is
+                                                                selected from the indicated group.)
+ whereupon the cycle counts are incremented again by
+ 1 at each succeeding iteration. By this rule, if Group k
+becomes FREE as soon as it is ON, and if an element             to allow the method, on average, to choose an element
+ is chosen from Group k at that point, then CC(k) is            from Group k once every 3.5 iterations (hence twice
+ re-set to 0 (which gives it a value 1 the iteration after it   every 7 iterations). The rules remain exactly as speci-
+ receives the value TC(k)). On the other hand, if no            fied. A slight elaboration of the rules is required, how-
+ element is selected from Group k (or any younger               ever, to handle a situation that may occur if no element
+ group) until CC(k) is somewhere between TC(k) and              is selected from Group k or any younger group for a
+ 2TC(k) iterations, the rule for re-setting CC(k) assures       relatively large number of iterations. In this case, CC(k)
+that Group k will again become ON when the original             may attain a value which is several times that of TC(k),
+(unadjusted) cycle count reaches 2TC(k) itera-                  causing Group k to remain continuously ON, and
+tions. Thus, on the average, this allows the possibility        hence potentially FREE, until a sufficient number of
+ of choosing an element from Group k once during                its elements (or of younger groups) are chosen to bring
+every TC(k) iteration.                                          its value back below TC(k). This leads to the possibility
+      This process is illustrated in Figure 8. An additional    that a series of iterations will occur where elements are
+buffer group ("Group 0") may be assumed to be in-               repeatedly selected from Group k. (The frequency of
+cluded, although not shown, whose elements are never            selection will be limited however, by the cycle count
+allowed to escape tabu status, hence which is always            values of older groups. Hence the greatest risk of inap-
+OFF. For convenience, a sequence of iterations is               propriate behavior occurs
+                                                                                      - when elements are selected
+shown starting from a point where all cycle counts have         entirely outside of ATL for a fairly high number of
+been re-set to 1 (iteration 6 1 in the illustration). Since     iterations.) Such a "statistically exceptional" outcome
+a group is OFF until its cycle count reaches its tabu           can be guarded against by bounding the value of CC(k),
+cycle value, each group begins in the OFF state. A              preventing CC(k) from being incremented once it
+group that is both ON and FREE is shown as FREE,                reaches a specified multiple of TC(k)-for example,
+and a FREE group from which an element is selected              upon reaching some fraction f of the number of ele-
+is indicated by an asterisk.                                    ments assigned to Group k. Similarly, CC(k) should
+      Figure 8 discloses how the choice of an element           initially be bounded by (fy + l)TC(k) until Group k
+from a FREE group affects the cycle counts, and hence           has acquired y elements. (The multiple fy + I allows
+the states, of each group. Thus, for example, on iteration      Group k to be ON, and hence permits elements to be
+64 the choice of an element from Group 2 reduces the            selected from younger groups, during the initial period
+cycle counts of both Group 2 and Group 3 by the rule            where y = 0.) It should be noted for the case of multiple
+                                                                tabu lists that the definition of "iteration" may need to
+                                                                be varied for different lists, if not all types of attributes
+                                                                are present in each move.
+Hence on iteration 65, where these counts are again             The Conditional Probability Method
+incremented by 1, their values are shown as CC(2) = 2           The second frequency-based tabu list approach has an
+and CC(3) = 1.                                                  orientation similar to the first, but chooses elements
+     There are a few additional features of this process        from different groups by establishing a probability P(k)
+to emphasize. First the tabu cycles do not have to be           that Group k will be FREE on a given iteration. The
+integers. A value such as TC(k) = 3.5 can be selected           probability assigned to Group k may be viewed concep-
+
+
+
+                                            C   m    t 0 7n111 All W t 4 R P ~ P ~ , P ~
+
+===== page 18 [pdftotext] =====
+                                                                                            Tabu Search. I1       21
+
+tually as the inverse of the tabu cycle value TC(k), i.e.,   will generally fall below P(k), without any compensat-
+P(k) = l/TC(k). As with the treatment of cycle counts        ing increase in freedom to choose elements from these
+in the Tabu Cycle Method, the appropriate treatment          groups (which would potentially allow the average per
+of probabilities in the Conditional Probability Method       iteration to come closer to P(k)). Moreover, the same
+is based on interpreting each P(k) as applicable to the      result will occur if for some number of iterations no
+union of Group k with all groups younger than itself.        element is selected from a group as young as Group k.
+Also, Group k can only be FREE by implicitly requiring            To handle this, the original P(k) values may be
+all older groups likewise to be FREE.                        replaced by "substitute probabilities" P*(k) in the
+     Under the assumption P(k) > P(k - 1) for all k >        determination of CP(k). These substitute probabilities
+ 1, we generate a conditional probability, CP(k), as a       make use of the same cycle count values CC(k) used in
+means of determining whether Group k can be desig-           the Tabu Cycle Method, invoking the relationship
+nated as FREE. (We may again suppose the existence           TC(k) = l/P(k). To begin, P*(k) = P(k) until CC(k)
+of a buffer, Group 0, which admits no choice of its          exceeds TC(k) (bounding CC(k) in early iterations
+elements, hence for which P(0) = 0.) The rule for            as specified previously). Then P*(k) is allowed to
+generating CP(k) is as follows:                              exceed P(k) as an increasing function of the quantity
+                                                             CC(k)/TC(k). In contrast to the Tabu Cycle Method,
+                                                             a negative value can result for CC(k) in this ap-
+                  P(k) - P(k - 1)                            proach, as a result of the update CC(k) := CC(k) -
+        CP(k) =                   for k > 1.                 TC(k) (which occurs whenever an element is selected
+                   1 - P ( k - 1)
+                                                             from a Group h, for h =S k).
+Then at each iteration, the process for determining the            A variation with an interesting interpretation re-
+state of each group starts at k = 1, and proceeds to         sets the cycle count CC(k) to 0 instead of decrementing
+larger values in succession, designating Group k to be       it by TC(k). Then CC(k) counts consecutive iterations
+FREE with probability CP(k). If Group k is designated        where no element is chosen from any Group h, h 6 k,
+FREE, then all groups with larger k values are also          an event which may be (loosely) construed as occuning
+designated FREE and the process stops. Otherwise, the        with probability (1 - P(k))', for r = CC(k). Then the
+next larger k is examined until all groups have been         substitute probability P*(k) on the following iteration
+considered.
+                                                             may be established by setting
+     The derivation of CP(k) is based on the following
+argument. By interpretation, P(k) represents the prob-                     P*(k) = 1 - (1 - P(k))'+'
+ability that Group k or some younger group is the first
+                                                             (Note this gives P*(k) = P(k) when r = 0.)
+FREE group, while CP(k) designates the probability
+                                                                 Finally, to provide a valid basis for computing
+that Group k is the first FREE group but no younger
+                                                             CP(k), we require P*(k) 2 P*(k - 1) for k > 1. Hence,
+group is FREE- The               CP(l) = P(l) is appro-      beginning with the largest k and working backward, we
+priate since it is not possible for any group younger
+                                                             bC L
+than Group 1 to be FREE. In general, for larger values
+of k, the event that Group k or a younger group is                  P*(k - 1) := Minimum(P*(k - I), P*(k)).
+FREE derives from the two exclusive events (assumed
+                                                             The substitute probability approach has the advantage
+independent) where either (1) Group k - 1 or some
+                                                             of increasing the probability of choosing elements of
+younger group is the first FREE group, which occurs
+                                                             neglected groups as long as they remain neglected. The
+                     -
+with probability P(k l), or (2) this is not the case and
+                                                             variation that re-sets CC(k) = 0 on the update step also
+Group k is the first FREE group. This gives rise to the
+                                                             automatically avoids the creation of inappropriately
+formula
+                                                             high probabilities for the type of situation handled in
+                                                             the Tabu Cycle Method by capping CC(k).
+                                                                  By assigning numerical values to tabu attributes,
+and solving for CP(k) gives the value specified.
+                                                             with an associated limit on the sum (or other function)
+     Consideration of the rationale underlying the Tabu      of these values to determine the tabu status of a move,
+Cycle Method described earlier, however, shows that          both the Tabu Cycle Method and the Conditional Prob-
+an appropriate characterization of the CP(k) probabil-       ability Method can be applied to multiple attribute
+ities is not yet complete. Designating Group k to be         moves as readily as to single attribute moves.
+FREE does not imply an element will be selected from
+this group.- For some number of iterations, elements
+outside of ATL may be accepted regardless                    2. Structured Move Sets and Staged Tabu Search
+                                      -of the FREE
+state of groups of elements within ATL. When this            The dynamic tabu list strategies described in the pre-
+occurs, the expected number of elements per iteration        ceding sections offer a variety of opportunities for
+chosen from groups no older than any given Group k           tailoring methods to particular problem settings by
+
+
+
+                                            Copyright O 2001 All Rights Reserved

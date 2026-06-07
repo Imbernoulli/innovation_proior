@@ -1,0 +1,719 @@
+\newpage
+\appendix
+\setcounter{section}{0}
+\setcounter{equation}{0}
+\setcounter{theorem}{0}
+\setcounter{table}{0}
+\setcounter{figure}{0}
+\setcounter{algocf}{0}
+\allowdisplaybreaks
+\section*{{\LARGE Appendix}}
+\section*{A. Detailed Algorithm of AdaBelief}
+\paragraph{Notations} By the convention in \cite{kingma2014adam}, we use the following notations:
+\begin{itemize}[topsep=0pt,parsep=0pt,partopsep=0pt]
+\item $f(\theta) \in \mathbb{R}, \theta \in \mathbb{R}^d$: $f$ is the loss function to minimize, $\theta$ is the parameter in $\mathbb{R}^d$
+    %\item $t$: Number of iterations
+\item $g_t$: the gradient and step $t$
+    \item $\alpha, \epsilon$: $\alpha$ is the learning rate, default is $10^{-3}$; $\epsilon$ is a small number, typically set as $10^{-8}$
+    \item $\beta_1, \beta_2$: smoothing parameters, typical values are $\beta_1=0.9, \beta_2=0.999$
+    \item $m_t$: exponential moving average (EMA) of $g_t$
+    \item $v_t, s_t$: $v_t$ is the EMA of $g_t^2$, $s_t$ is the EMA of $(g_t - m_t)^2$
+    \item $\prod_{\mathcal{F},M}(y) = \mathrm{argmin}_{x \in \mathcal{F}} \vert \vert M^{1/2} (x-y) \vert \vert$
+\end{itemize}
+\begin{algorithm}{}
+%\TitleOfAlgo { \textbf{AMSBelief}, ours, adaptive variance optimizer} \\
+\textbf{Initialize} $\theta_0$ \\
+\hspace{16mm} $m_0 \leftarrow 0$ , $s_0 \leftarrow 0$, $t \leftarrow 0$ \\
+\textbf{While} $\theta_t$ not converged \\
+\hspace{16mm} $t \leftarrow t + 1 $ \\
+\hspace{16mm} $g_t \leftarrow \nabla_{\theta}f_t(\theta_{t-1})$ \\
+\hspace{16mm} $m_t \leftarrow \beta_1 m_{t-1} + (1 - \beta_1) g_t$ \\
+\hspace{16mm} $s_t \leftarrow \beta_2 s_{t-1} + (1 - \beta_2) {\color{black}(g_t - m_t)^2}$ \\
+\hspace{16mm} \textbf{If} $AMSGrad$ \\
+\hspace{24mm} ${\color{black}{s_t \leftarrow \operatorname{max}(s_t, s_{t-1})}}$ \\
+\hspace{16mm} \textbf{Bias Correction} \\
+\hspace{24mm} $\widehat{m_t} \leftarrow m_t /( 1 - \beta_1^t)$, \hspace{8mm} $\widehat{s_t} \leftarrow (s_t {\color{black}+\epsilon} )/ ( 1 - \beta_2 ^t)$ \\
+\hspace{16mm} \textbf{Update} \\
+\hspace{24mm} $\theta_t \leftarrow \prod_{\mathcal{F},\sqrt{s_t}} \Big( \theta_{t-1} - \widehat{m_t} \frac{\alpha}{ \sqrt{\widehat{s_t}} +\epsilon} \Big)$
+\caption{\textbf{AdaBelief}}
+\label{supalgo:amsbelief}
+\end{algorithm}
+
+\FloatBarrier
+\section*{B. Convergence analysis in convex online learning case (Theorem 2.1 in main paper)}
+For the ease of notation, we absorb $\epsilon$ into $s_t$. Equivalently, $s_t \geq c > 0, \forall t \in [T]$. For simplicity, we omit the debiasing step in theoretical analysis as in \cite{reddi2019convergence}. Our analysis can be applied to the de-biased version as well. 
+\begin{lemma}{\cite{mcmahan2010adaptive}}
+\label{suplemma:1}
+For any $Q \in S^d_{+}$ and convex feasible set $\mathcal{F} \subset \mathbb{R}^d$, suppose $u_1 = \operatorname*{min}_{x \in \mathcal{F}} \Big \vert \Big \vert Q^{1/2}(x-z_1) \Big \vert \Big \vert$ and $u_2 = \operatorname*{min}_{x \in \mathcal{F}} \Big \vert \Big \vert Q^{1/2}(x - z_2) \Big \vert \Big \vert$, then we have $ \Big \vert \Big \vert Q^{1/2}(u_1 - u_2)  \Big \vert \Big \vert \leq \Big \vert \Big \vert Q^{1/2} (z_1 - z_2)  \Big \vert \Big \vert$.
+\end{lemma}
+
+\begin{theorem}
+\label{suptheorem:1}
+Let $\{\theta_t\}$ and $\{s_t\}$ be the sequence obtained by the proposed algorithm, let $0 \leq \beta_2 < 1,\alpha_t = \frac{\alpha}{\sqrt{t}}$, $\beta_{11} = \beta_1$, $0 \leq \beta_{1t} \leq \beta_1 < 1, s_{t-1} \leq s_t, \forall t \in [T]$. % and $\gamma = \frac{\beta_1}{ \sqrt{\beta_2}}<1$. 
+Let $\theta \in \mathcal{F}$, where $\mathcal{F} \subset \mathbb{R}^d$ is a convex feasible set with bounded diameter $D_{\infty}$. Assume $f(\theta)$ is a convex function and $ \vert  \vert  g_t  \vert  \vert_\infty \leq G_\infty / 2$ (hence $ \vert  \vert  g_t - m_t  \vert  \vert_\infty \leq G_\infty$) and $s_{t,i} \geq c > 0, \forall t \in [T], \theta \in \mathcal{F}$. Denote the optimal point as $\theta^*$. For $\theta_t$ generated with Algorithm~\ref{supalgo:amsbelief}, we have the following bound on the regret: \\
+\begin{align*}
+\sum_{t=1}^T f_t(\theta_t) - f_t(\theta^*) & \leq \frac{D_\infty^2 \sqrt{T}}{2 \alpha (1-\beta_1)} \sum_{i=1}^d s_{T,i}^{1/2}
++  \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 \nonumber \\
+&+ \frac{D_\infty^2}{2 (1-\beta_{1})} \sum_{t=1}^T \sum_{i=1}^d \frac{\beta_{1t} s_{t,i}^{1/2} }{\alpha_t} 
+\end{align*}
+\end{theorem} 
+%\hspace{-4mm}
+\textbf{\textit{Proof:}}
+\begin{equation*}
+    \theta_{t+1} = \prod_{\mathcal{F}, \sqrt{s_t}}(\theta_t - \alpha_t s_t^{-1/2} m_t) = \operatorname*{min}_{\theta \in \mathcal{F}} \Big \vert \Big \vert s_t^{1/4}[\theta - (\theta_t - \alpha_t s_t^{-1/2}m_t)] \Big \vert \Big \vert
+\end{equation*}
+Note that $\prod_{\mathcal{F}, \sqrt{s_t}}(\theta^*) = \theta^*$ since $\theta^* \in \mathcal{F}$. Use $\theta^*_i$ and $\theta_{t,i}$ to denote the $i$th dimension of $\theta^*$ and $\theta_t$ respectively.
+From lemma \eqref{suplemma:1}, using $u_1 = \theta_{t+1}$ and $u_2 = \theta^*$, we have:
+\begin{align}
+\label{supeq:1}
+    \Big \vert \Big \vert s_t^{1/4}(\theta_{t+1} - \theta^*) \Big \vert \Big \vert^2 & \leq \Big \vert \Big \vert s_t^{1/4}(\theta_t - \alpha_t s_t^{-1/2}m_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+    & =  \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 + \alpha_t^2 \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 - 2 \alpha_t \langle m_t, \theta_t - \theta^* \rangle \nonumber \\
+    &= \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 + \alpha_t^2 \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 \nonumber \\
+    &- 2 \alpha_t \langle \beta_{1t}m_{t-1} + (1 - \beta_{1t}) g_t, \theta_t - \theta^* \rangle
+\end{align}
+Note that $\beta_1 \in [0,1)$ and $\beta_2 \in [0,1)$, rearranging inequality \eqref{supeq:1}, we have:
+\begin{align}
+\label{supeq:2}
+    \langle g_t, \theta_t - \theta^* \rangle & \leq \frac{1}{2 \alpha_t (1 - \beta_{1t})} \Big [ \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*)\Big \vert \Big \vert^2 - \Big \vert \Big \vert s_t^{1/4} (\theta_{t+1} - \theta^*) \Big \vert \Big \vert^2 \Big ] \nonumber \\
+    &+ \frac{\alpha_t}{2(1-\beta_{1t})} \Big \vert \Big \vert s_t^{-1/4} m_t\Big \vert \Big \vert^2 - \frac{\beta_{1t}}{1 - \beta_{1t}} \langle m_{t-1}, \theta_t - \theta^* \rangle \nonumber \\
+    & \leq \frac{1}{2 \alpha_t (1 - \beta_{1t})} \Big [ \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*)\Big \vert \Big \vert^2 - \Big \vert \Big \vert s_t^{1/4} (\theta_{t+1} - \theta^*) \Big \vert \Big \vert^2 \Big ] \nonumber \\
+    &+ \frac{\alpha_t}{2(1-\beta_{1t})} \Big \vert \Big \vert s_t^{-1/4} m_t\Big \vert \Big \vert^2 \nonumber \\
+    &+ \frac{\beta_{1t}}{2(1-\beta_{1t})} \alpha_t \Big \vert \Big \vert s_t^{-1/4} m_{t-1} \Big \vert \Big \vert^2 +
+    \frac{\beta_{1t}}{2 \alpha_t (1 - \beta_{1t})} \Big \vert \Big \vert s_t^{1/4} (\theta_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+    &\Big (\textit{Cauchy-Schwartz and Young's inequality: } ab \leq \frac{a^2 \epsilon}{2} + \frac{b^2}{ 2 \epsilon}, \forall \epsilon > 0 \Big )
+\end{align}
+By convexity of $f$, we have:
+\begin{align}
+\label{supeq:3}
+\sum_{t=1}^T f_t(\theta_t) - f_t(\theta^*) & \leq \sum_{t=1}^T\langle g_t, \theta_t - \theta^* \rangle \nonumber \\
+& \leq \sum_{t=1}^T \Big \{ \frac{1}{2 \alpha_t (1- \beta_{1t})} \Big[ \Big \vert \Big \vert s_t^{1/4} (\theta_t - \theta^*)\Big \vert \Big \vert^2 - \Big \vert \Big \vert s_t^{1/4}(\theta_{t+1} - \theta^*) \Big \vert \Big \vert^2 \Big] \nonumber \\
+&+ \frac{1}{2(1-\beta_{1t})} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + \frac{\beta_{1t}}{2(1-\beta_{1t})} \alpha_t \Big \vert \Big \vert s_t^{-1/4} m_{t-1} \Big \vert \Big \vert^2 \nonumber \\
+&+ \frac{\beta_{1t}}{2 \alpha_t (1-\beta_{1t})} \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 \Big \} \nonumber \\
+&\Big( By\  formula ~\eqref{supeq:2} \Big) \nonumber \\
+& \leq \frac{1}{2 (1 - \beta_1)} \frac{\Big \vert \Big \vert s_1^{1/4}(\theta_{1} - \theta^*) \Big \vert \Big \vert^2} {\alpha_1} \nonumber \\
+& + \frac{1}{2 (1-\beta_1)} \sum_{t=2}^T \Big[ \frac{\Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2}{\alpha_t} - \frac{\Big \vert \Big \vert s_{t-1}^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2}{\alpha_{t-1}}  \Big ] \nonumber \\
+&+ \sum_{t=1}^T \Big [ \frac{1}{2 (1 - \beta_1)} \alpha_t \Big \vert \Big \vert s_t^{-1/4} m_t \Big \vert \Big \vert^2 \Big] + \sum_{t=2}^T \Big[ \frac{\beta_1}{2 (1 - \beta_1)} \alpha_{t-1} \Big \vert \Big \vert s_{t-1}^{-1/4} m_{t-1} \Big \vert \Big \vert^2 \Big ] \nonumber \\
+& + \sum_{t=1}^T \frac{\beta_{1t}}{2 \alpha_t (1-\beta_{1t})} \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+& \Big( 0\leq s_{t-1} \leq s_t, 0 \leq \alpha_t \leq \alpha_{t-1}, 0 \leq \beta_{1t} \leq \beta_1 < 1 \Big) \nonumber \\
+&\leq \frac{1}{2 (1 - \beta_1)} \frac{\Big \vert \Big \vert s_1^{1/4}(\theta_{1} - \theta^*) \Big \vert \Big \vert^2} {\alpha_1} + \frac{1}{2(1-\beta_1)} \sum_{t=2}^T \Big \vert \Big \vert \theta_t - \theta^* \Big \vert \Big \vert^2 \Big[ \frac{s_t^{1/2}}{\alpha_t} - \frac{s_{t-1}^{1/2}}{\alpha_{t-1}} \Big] \nonumber \\
+&+ \frac{1+\beta_1}{2(1-\beta_1)} \sum_{t=1}^T \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 \nonumber \\
+& + \sum_{t=1}^T \frac{\beta_{1t}}{2 \alpha_t (1-\beta_{1t})} \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+& \leq \frac{1}{2 (1 - \beta_1)} \frac{\Big \vert \Big \vert s_1^{1/4}(\theta_{1} - \theta^*) \Big \vert \Big \vert^2} {\alpha_1} + \frac{1}{2(1-\beta_1)} \sum_{t=2}^T \Big \vert \Big \vert \theta_t - \theta^* \Big \vert \Big \vert^2 \Big[ \frac{s_t^{1/2}}{\alpha_t} - \frac{s_{t-1}^{1/2}}{\alpha_{t-1}} \Big] \nonumber \\
+&+ \frac{1+\beta_1}{2(1-\beta_1)} \sum_{t=1}^T \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 \nonumber \\
+& + \frac{1}{2 (1-\beta_{1})} \sum_{t=1}^T \frac{\beta_{1t}}{\alpha_t} \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+& \Big( \textit{since\ } 0 \leq \beta_{1t} \leq \beta_1 < 1 \Big)
+\end{align}
+Now bound $\sum_{t=1}^T \alpha_t \vert \vert s_t^{-1/4}m_t \vert  \vert^2$ in Formula ~\eqref{supeq:3}, assuming $0 < c \leq s_t, \forall t \in [T]$.
+\begin{align}
+\label{supeq:4}
+    \sum_{t=1}^T \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 &= \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + \alpha_T \Big \vert \Big \vert s_T^{-1/4}m_T \Big \vert \Big \vert^2 \nonumber \\
+    & \leq \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + {\color{black} \frac{\alpha_T}{\sqrt{c}} \Big \vert \Big \vert m_T \Big \vert \Big \vert^2} \nonumber \\
+    &= \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + \frac{\alpha}{\sqrt{cT}} \sum_{i=1}^d \Big( \sum_{j=1}^T (1-\beta_{1,j}) g_{j,i} \prod_{k=1}^{T-j} \beta_{1, T-k+1}  \Big )^2 \nonumber \\
+    &\Big(\textit{since\ } m_T = \sum_{j=1}^T (1-\beta_{1,j}) g_{j,i} \prod_{k=1}^{T-j} \beta_{1, T-k+1} \Big) \nonumber \\
+    & \leq  \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + {\color{black}\frac{\alpha}{\sqrt{cT}} \sum_{i=1}^d \Big( \sum_{j=1}^T  g_{j,i} \prod_{k=1}^{T-j} \beta_1 \Big)^2} \nonumber \\
+    &(\textit{since \ } 0<\beta_{1,j} \leq \beta_1 < 1) \nonumber \\
+    & =  \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + {\color{black} \frac{\alpha}{\sqrt{cT}} \sum_{i=1}^d \Big( \sum_{j=1}^T \beta_1^{T-j}  g_{j,i} \Big)^2} \nonumber \\ 
+    & \leq \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + {\color{black} \frac{\alpha}{\sqrt{cT}} \sum_{i=1}^d \Big( \sum_{j=1}^T \beta_1^{T-j} \Big ) \Big( \sum_{j=1}^T \beta_1^{T-j}  g_{j,i}^2 \Big) } \nonumber \\
+    & \Big( Cauchy-Schwartz, \langle u,v \rangle^2 \leq \Big \vert \Big \vert u \Big \vert \Big \vert^2 \Big \vert \Big \vert v \Big \vert \Big \vert^2, u_j = \sqrt{\beta_1^{T-j}}, v_j = \sqrt{\beta_1^{T-j}} g_{j,i}\Big) \nonumber \\
+    & = \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + {\color{black} \frac{\alpha}{\sqrt{cT}} \sum_{i=1}^d \frac{1-\beta_1^T}{1-\beta_1} \sum_{j=1}^T \beta_1^{T-j} g_{j,i}^2} \nonumber \\
+    & \leq \sum_{t=1}^{T-1} \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 + \frac{\alpha}{\sqrt{c}(1-\beta_1)} \sum_{i=1}^d \sum_{j=1}^T \beta_1^{T-j} g_{j,i}^2 \frac{1}{\sqrt{T}} \nonumber \\
+    & \Big( \textit{since\ }1 - \beta_1^T < 1 \Big ) \nonumber \\
+    & \leq \frac{\alpha}{\sqrt{c} (1 - \beta_1)} \sum_{i=1}^d \sum_{t=1}^T \sum_{j=1}^t \beta_1^{t-j} g_{j,i}^2 \frac{1}{\sqrt{t}} \nonumber \\
+    &\Big( \textit{Recursively\ bound\ each\ term\ in\ the\ sum\ }\sum_{t=1}^T *  \Big) \nonumber \\
+    & = \frac{\alpha}{\sqrt{c} (1 - \beta_1)} \sum_{i=1}^d \sum_{t=1}^T g_{t,i}^2 \sum_{j=t}^T  \frac{\beta_1^{j-t}}{\sqrt{j}} \nonumber \\
+    & \leq \frac{\alpha}{\sqrt{c} (1 - \beta_1)} \sum_{i=1}^d \sum_{t=1}^T g_{t,i}^2 \sum_{j=t}^T  \frac{\beta_1^{j-t}}{\sqrt{t}} \nonumber \\
+    & \leq \frac{\alpha}{\sqrt{c} (1 - \beta_1)^2} \sum_{i=1}^d \sum_{t=1}^T g_{t,i}^2 \frac{1}{\sqrt{t}} \nonumber \\
+    &\Big( \textit{since \ } \sum_{j=t}^T \beta_1^{j-t} = \sum_{j=0}^{T-t} \beta_1^{j} = \frac{1 - \beta_1^{T-t+1}}{1 - \beta_1} \leq \frac{1}{1 - \beta_1}\Big) \nonumber \\
+    & \leq \frac{\alpha}{{\color{black}\sqrt{c}} (1 - \beta_1)^2} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^{{\color{black}2}} \Big \vert \Big \vert_2 \sqrt{\sum_{t=1}^T \frac{1}{t}} \nonumber \\
+    &\Big(Cauchy-Schwartz, \langle u,v \rangle  \leq \Big \vert \Big \vert u \Big \vert \Big \vert \Big \vert \Big \vert v \Big \vert \Big \vert, u_t = g_{t,i}^2, v_t = \frac{1}{\sqrt{t}} \Big) \nonumber \\
+    & \leq \frac{\alpha \sqrt{1 + \log T}}{{\color{black}\sqrt{c}} (1 - \beta_1)^2} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^{{\color{black} 2}} \Big \vert \Big \vert_2 \ \ \Big( \textit{since\ } \sum_{t=1}^T \frac{1}{t} \leq 1 + \log T \Big)
+\end{align}
+Apply formula~\eqref{supeq:4} to~\eqref{supeq:3}, we have:
+\begin{align}
+\label{supeq:5}
+\sum_{t=1}^T f_t(\theta_t) - f_t(\theta^*) & \leq \frac{1}{2 (1 - \beta_1)} \frac{\Big \vert \Big \vert s_1^{1/4}(\theta_{1} - \theta^*) \Big \vert \Big \vert^2} {\alpha_1} + \frac{1}{2(1-\beta_1)} \sum_{t=2}^T \Big \vert \Big \vert \theta_t - \theta^* \Big \vert \Big \vert^2 \Big[ \frac{s_t^{1/2}}{\alpha_t} - \frac{s_{t-1}^{1/2}}{\alpha_{t-1}} \Big] \nonumber \\
+&+ \frac{1+\beta_1}{2(1-\beta_1)} \sum_{t=1}^T \alpha_t \Big \vert \Big \vert s_t^{-1/4}m_t \Big \vert \Big \vert^2 \nonumber \\
+& + \frac{1}{2 (1-\beta_{1})} \sum_{t=1}^T \frac{\beta_{1t}}{\alpha_t} \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+& \leq \frac{1}{2 (1 - \beta_1)} \frac{\Big \vert \Big \vert s_1^{1/4}(\theta_{1} - \theta^*) \Big \vert \Big \vert^2} {\alpha_1} + \frac{1}{2(1-\beta_1)} \sum_{t=2}^T \Big \vert \Big \vert \theta_t - \theta^* \Big \vert \Big \vert^2 \Big[ \frac{s_t^{1/2}}{\alpha_t} - \frac{s_{t-1}^{1/2}}{\alpha_{t-1}} \Big] \nonumber \\
+&+ {\color{black} \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2}  \nonumber \\
+& + \frac{1}{2 (1-\beta_{1})} \sum_{t=1}^T \frac{\beta_{1t}}{\alpha_t} \Big \vert \Big \vert s_t^{1/4}(\theta_t - \theta^*) \Big \vert \Big \vert^2 \nonumber \\
+& \Big( \textit{By \ formula ~\eqref{supeq:4}}\Big) \nonumber \\
+& \leq \frac{1}{2 (1 - \beta_1)} \sum_{i=1}^d \frac{s_{1,i}^{1/2} D_\infty^2}{\alpha_1} + \frac{1}{2(1-\beta_1)} \sum_{t=2}^T \sum_{i=1}^d D_\infty^2 \Big[ \frac{s_{t,i}^{1/2}}{\alpha_t} - \frac{s_{t-1,i}^{1/2}}{\alpha_{t-1}} \Big] \nonumber \\
+&+ {\color{black} \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 } \nonumber \\
+& + \frac{D_\infty^2}{2 (1-\beta_{1})} \sum_{t=1}^T \sum_{i=1}^d \frac{\beta_{1t} s_{t,i}^{1/2} }{\alpha_t} \nonumber \\
+& \Big( \textit{since\ } x\in \mathcal{F}, \textit{with\ bounded\ diameter\ } D_\infty, \textit{and\ } \frac{s_{t,i}^{1/2}}{\alpha_t} \geq \frac{s_{t-1,i}^{1/2}}{\alpha_{t-1}} \textit{\ by\ assumption.} \Big) \nonumber \\
+& \leq \frac{D_\infty^2 \sqrt{T}}{2 \alpha (1-\beta_1)} \sum_{i=1}^d s_{T,i}^{1/2} + {\color{black}
+\frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 } \nonumber \\
+&+ \frac{D_\infty^2}{2 (1-\beta_{1})} \sum_{t=1}^T \sum_{i=1}^d \frac{\beta_{1t} s_{t,i}^{1/2} }{\alpha_t} \nonumber \\
+& \Big( \alpha_t \geq \alpha_{t+1} \textit{\ and\ perform\ telescope\ sum} \Big)
+\end{align} \hfill \qedsymbol
+
+\begin{corollary}
+Suppose $\beta_{1,t} = \beta_1 \lambda^t,\ \ 0<\lambda<1$ in Theorem  \eqref{suptheorem:1}, then we have:
+\begin{align}
+\sum_{t=1}^T f_t(\theta_t) - f_t(\theta^*) & \leq \frac{D_\infty^2 \sqrt{T}}{2 \alpha (1-\beta_1)} \sum_{i=1}^d s_{T,i}^{1/2}
++  \frac{(1+\beta_1 )\alpha \sqrt{1 + \log T}}{2 \sqrt{c} (1 - \beta_1)^3} \sum_{i=1}^d \Big \vert \Big \vert g_{1:T,i}^2 \Big \vert \Big \vert_2 \nonumber \\
+&+ \frac{D_\infty^2 \beta_1 G_\infty}{2 (1-\beta_{1}) (1-\lambda)^2 \alpha} \end{align}
+\end{corollary}
+\textbf{ \textit{Proof:\ }} By sum of arithmetico-geometric series, we have:
+\begin{align}
+\label{supeq:geometric}
+    \sum_{t=1}^T \lambda^{t-1}\sqrt{t} \leq \sum_{t=1}^T\lambda^{t-1} t \leq \frac{1}{(1-\lambda)^2}
+\end{align}
+Plugging~\eqref{supeq:geometric} into~\eqref{supeq:5}, we can derive the results above. 
+\hfill \qedsymbol
+
+\section*{C. Convergence analysis for non-convex stochastic optimization (Theorem 2.2 in main paper)}
+\subsubsection*{Assumptions}
+\begin{itemize}
+    \item A1, $f$ is differentiable and has $L-Lipschitz$ gradient, $ \vert  \vert \nabla f(x) - \nabla f(y)  \vert  \vert \leq L  \vert  \vert x-y  \vert  \vert,\ \forall x,y$. $f$ is also lower bounded.
+    \item A2, at time $t$, the algorithm can access a bounded noisy gradient, the true gradient is also bounded. $i.e.\ \  \vert  \vert \nabla f(\theta_t ) \vert  \vert \leq H,\  \vert  \vert g_t \vert  \vert \leq H,\ \ \forall t > 1$.
+    \item A3, The noisy gradient is unbiased, and has independent noise. $i.e.\ g_t = \nabla f(\theta_t ) + \zeta_t, \mathbb{E} \zeta_t = 0, \zeta_t \bot \zeta_j, \ \forall j,t \in \mathbb{N}, t \neq j$
+\end{itemize}
+\begin{theorem} \cite{chen2018convergence}
+\label{suptheorem:adam_type}
+Suppose assumptions A1-A3 are satisfied, $\beta_{1,t}$ is chosen such that $0 \leq \beta_{1,t+1} \leq \beta_{1,t} < 1, 0 < \beta_2 < 1,  \forall t>0$. For some constant $G$, $\Big \vert \Big \vert \alpha_t \frac{m_t}{\sqrt{s_t}} \Big \vert \Big \vert \leq G, \forall t$. Then Adam-type algorithms yield 
+\begin{align}
+\label{supeq:theorem_adam}
+&\mathbb{E} \Big[ \sum_{t=1}^T \alpha_t \langle \nabla f(\theta_t), \nabla f(\theta_t) / \sqrt{s_t} \rangle \Big] \leq \nonumber \\ &\mathbb{E} \Bigg[ C_1 \sum_{t=1}^T \Big \vert \Big \vert \alpha_t g_t/ \sqrt{s_t} \Big \vert \Big \vert^2 
+    + C_2 \sum_{t=1}^T \Bigg \vert \Bigg \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{ \sqrt{ s_{t-1}}} \Bigg \vert \Bigg \vert_1 + C_3 \sum_{t=1}^T \Bigg \vert \Bigg \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Bigg \vert \Bigg \vert^2 \Bigg] + C_4
+\end{align}
+where $C_1, C_2, C_3$ are constants independent of $d$ and $T$, $C_4$ is a constant independent of $T$, the expectation is taken $w.r.t$ all randomness corresponding to $\{g_t\}$. \\
+Furthermore, let $\gamma_t \coloneqq \operatorname*{min}_{j \in [d]} \operatorname*{min}_{\{g_i\}_{i=1}^t} \alpha_i / (\sqrt{s_i})_j$ denote the minimum possible value of effective stepsize at time $t$ over all possible coordinate and past gradients $\{g_i\}_{i=1}^t$. The convergence rate of Adam-type algorithm is given by 
+\begin{align}
+\label{supeq:theorem_adam2}
+    \operatorname{min}_{t \in [T]} \mathbb{E} \Bigg[ \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Bigg] = O \Bigg(\frac{s_1(T)}{s_2(T)} \Bigg)
+\end{align}
+where $s_1(T)$ is defined through the upper bound of RHS of~\eqref{supeq:theorem_adam}, and $\sum_{t=1}^T \gamma_t = \Omega (s_2(T))$
+\end{theorem}
+\textbf{ \textit{Proof: }} We provide the proof from \cite{chen2018convergence} in next section for completeness. \hfill \qedsymbol
+\begin{theorem}
+\label{suptheorem:adabelief_stochastic}
+Assume $\operatorname*{min}_{j \in [d]} (s_1)_j \geq c > 0$, noise in gradient has bounded variance, $\mathrm{Var} (g_t) = \sigma_t^2 \leq \sigma^2, \forall t \in \mathbb{N}$, then the AdaBelief algorithm satisfies: %which is natural because we add $\epsilon$ to $s_t$ to avoid division by 0.
+\begin{align*}
+\operatorname*{min}_{t \in [T]} \mathbb{E} \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 &\leq \frac{H}{\sqrt{T} \alpha} \Big[ \frac{C_1 \alpha^2 (H^2 + \sigma^2)(1+\log T)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Big] \nonumber \\
+& = \frac{1}{\sqrt{T}} (Q_1 + Q_2 \log T)
+\end{align*}
+where 
+\begin{align*}
+Q_1&= \frac{H}{\alpha} \Big[ \frac{C_1 \alpha^2 (H^2 + \sigma^2)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Big] \\
+Q_2&= \frac{H C_1 \alpha (H^2 + \sigma^2)}{c}
+\end{align*}
+\end{theorem}
+\textbf{ \textit{Proof: }} We first derive an upper bound of the RHS of formula~\eqref{supeq:theorem_adam}, then derive a lower bound of the LHS of~\eqref{supeq:theorem_adam}. 
+% \begin{align}
+% \label{supeq:bound1}
+% \mathbb{E}\Big[ \sum_{t=1}^T \Big \vert \Big \vert \alpha_t g_t/ \sqrt{s_t} \Big \vert \Big \vert^2 \Big] & \leq \mathbb{E} \Big[ \sum_{t=1}^T \Big \vert \Big \vert \alpha_t g_t / \sqrt{c} \Big \vert \Big \vert^2 \Big] \ \ \Big( \textit{since } s_t \geq c\Big) \nonumber \\ 
+% &= \alpha^2 \mathbb{E}\Big[ \sum_{t=1}^T \frac{1}{ct} \Big \vert \Big \vert g_t \Big \vert \Big \vert^2 \Big] \nonumber \\
+% & \leq \alpha^2 \mathbb{E} \Big[ \sum_{t=1}^T \frac{1}{ct} H^2 \Big] \ \ \Big( \textit{since\ } \Big \vert \Big \vert g_t \Big \vert \Big \vert \leq H \Big) \nonumber \\
+% & \leq \frac{\alpha^2 H^2}{c} (1 + \log T) \ \ \Big( \textit{since\ } \sum_{t=1}^T \frac{1}{t} \leq 1 + \log T \Big)
+% \end{align}
+
+\begin{align}
+\label{supeq:bound1}
+\mathbb{E} \Big[ \sum_{t=1}^T  \Big \vert \Big \vert \alpha_t g_t / \sqrt{s_t} \Big \vert \Big \vert^2 \Big] &\leq \frac{1}{c} \mathbb{E} \Big[ \sum_{t=1}^T \sum_{i=1}^d (\alpha_{t,i} g_{t,i})^2 \Big] \ \ \Big( \textit{since\ }0<c\leq s_t, \forall t \in [T] \Big) \nonumber \\
+& = \frac{1}{c} \sum_{i=1}^d \sum_{t=1}^T \alpha_{t}^2 \mathbb{E}(g_{t,i})^2 \nonumber \\
+&= \frac{1}{c}  \sum_{t=1}^T  \alpha_{t}^2 \mathbb{E} \Big[ {\color{black} \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 + \Big \vert \Big \vert \sigma_t \Big \vert \Big \vert^2} \Big]
+\end{align}
+
+\begin{align}
+\label{supeq:bound2}
+\mathbb{E} \Big[ \sum_{t=1}^T \Big \vert \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big \vert \Big \vert_1 \Big] &= \mathbb{E} \Big[ \sum_{i=1}^d \sum_{t=1}^T  \frac{\alpha_{t-1}}{\sqrt{s_{t-1,i}}} - \frac{\alpha_t}{\sqrt{s_t,i}} \Big] \nonumber \\ 
+&\Big( \textit{since\ } \alpha_t \leq \alpha_{t-1}, s_{t,i} \geq s_{t-1, i} \Big) \nonumber \\
+&= \mathbb{E} \Big[ \sum_{i=1}^d \frac{\alpha_1}{\sqrt{s_{1,i}}} - \frac{\alpha_T}{\sqrt{s_{T,i}}} \Big] \nonumber \\
+&\leq \mathbb{E} \Big[ \sum_{i=1}^d \frac{\alpha_1}{\sqrt{s_{1,i}}} \Big] \nonumber \\
+& \leq \frac{d \alpha}{\sqrt{c}}\ \ \Big( \textit{since\ } 0<c\leq s_t, 0 \leq \alpha_t \leq \alpha_1 = \alpha, \forall t \Big)
+\end{align} 
+
+\begin{align}
+\label{supeq:bound3}
+\mathbb{E} \Big[ \sum_{t=1}^T  \Big \vert \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}}\Big \vert \Big \vert^2 \Big] &= \mathbb{E} \Big[ \sum_{t=1}^T \sum_{i=1}^d   \Big( \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big)_i^2 \Big] \nonumber \\
+&\leq \mathbb{E} \Big[\sum_{t=1}^T \sum_{i=1}^d   \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big \vert_i \frac{\alpha}{\sqrt{c}} \Big] \nonumber \\ 
+& \Big( \textit{Since\ } \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big \vert =  \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} - \frac{\alpha_t}{\sqrt{s_t}} \leq \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \leq \frac{\alpha}{\sqrt{c}}\Big) \nonumber \\
+&\leq \frac{d \alpha^2}{c} \ \ \Big( \textit{By ~\eqref{supeq:bound2}}  \Big)
+\end{align}
+
+Next we derive the lower bound of LHS of~\eqref{supeq:theorem_adam}.
+\begin{align}
+\label{supeq:bound4}
+\mathbb{E}\Big[ \sum_{t=1}^T \alpha_t \langle \nabla f(\theta_t ), \frac{\nabla f(\theta_t )}{\sqrt{s_t}} \rangle \Big] & \geq \frac{1}{H} \mathbb{E} \Big[ \sum_{t=1}^T \alpha_t \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Big] \geq \frac{\alpha \sqrt{T}}{H} \operatorname*{min}_{t \in [T]} \mathbb{E} \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2
+\end{align}
+Combining ~\eqref{supeq:bound1}, ~\eqref{supeq:bound2}, ~\eqref{supeq:bound3} and ~\eqref{supeq:bound4} to ~\eqref{supeq:theorem_adam}, we have:
+\begin{align}
+%&\frac{1}{H} \mathbb{E} \Big[ \sum_{t=1}^T \alpha_t \Big \vert \Big \vert \nabla f(x)_t \Big \vert \Big \vert^2 \Big]
+&\frac{\alpha \sqrt{T}}{H} \operatorname*{min}_{t \in [T]} \mathbb{E} \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2
+\leq
+\mathbb{E}\Big[ \sum_{t=1}^T \alpha_t \langle \nabla f(\theta_t ), \frac{\nabla f(\theta_t )}{\sqrt{s_t}} \rangle \Big] \nonumber \\
+&\leq \mathbb{E} \Big[ C_1 \sum_{t=1}^T \Big \vert \Big \vert \alpha_t g_t/ \sqrt{s_t} \Big \vert \Big \vert^2 
++ C_2 \sum_{t=1}^T \Big \vert \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{ \sqrt{ s_{t-1}}} \Big \vert \Big \vert_1 + C_3 \sum_{t=1}^T \Big \vert \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big \vert \Big \vert^2 \Big] + C_4 \nonumber \\
+& \leq \frac{C_1}{c} \sum_{t=1}^T \mathbb{E} \Big[{\color{black} \alpha_t^2 \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 + \alpha_t ^2 \Big \vert \Big \vert \sigma_t \Big \vert \Big \vert^2} \Big] + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \label{supeq:sigma_bound} \\
+& \leq \frac{C_1}{c} \sum_{t=1}^T \mathbb{E} \Big[{\color{black} \alpha_t^2 (H^2 + \sigma^2)} \Big] + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \nonumber \\
+& \leq \frac{C_1 {\color{black} \alpha^2 (H^2 + \sigma^2)}(1+\log T)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4  \label{supeq:bound5} \\
+& \Big( \textit{since\ } \alpha_t = \frac{\alpha}{\sqrt{t}},\ \  \sum_{t=1}^T \frac{1}{t} \leq 1 + \log T \Big) \nonumber
+\end{align} 
+Re-arranging above inequality, we have
+\begin{align}
+\label{supeq:bound6}
+\operatorname*{min}_{t \in [T]} \mathbb{E} \Big \vert \Big \vert \nabla f(\theta_t )  \Big \vert \Big \vert^2 &\leq \frac{H}{\sqrt{T} \alpha} \Big[ \frac{C_1 \alpha^2 (H^2 + \sigma^2)(1+\log T)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Big] \nonumber \\
+&= \frac{1}{\sqrt{T}} (Q_1 + Q_2 \log T)
+\end{align}
+where 
+\begin{align}
+Q_1&= \frac{H}{\alpha} \Big[ \frac{C_1 \alpha^2 (H^2 + \sigma^2)}{c} + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Big] \\
+Q_2&= \frac{H C_1 \alpha (H^2 + \sigma^2)}{c}
+\end{align}
+\hfill \qedsymbol
+
+\begin{corollary}
+If $c > C_1 H$ and assumptions for Theorem~\ref{suptheorem:adam_type} are satisfied, we have:
+\begin{equation}
+\frac{1}{T}\sum_{t=1}^T \mathbb{E} \Big[ \alpha_t^2 \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Big] \leq \frac{1}{T} \frac{1}{\frac{1}{H} - \frac{C_1}{c}} \Bigg[ \frac{C_1 \alpha^2 \sigma^2}{c} \big(1+\log T \big) + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Bigg] %= O(\frac{\log T}{T})   
+\end{equation}
+\end{corollary}
+
+\textbf{ \textit{Proof: }}
+From~\eqref{supeq:bound4} and~\eqref{supeq:sigma_bound}, we have
+\begin{align}
+\label{supeq:bound7}
+\frac{1}{H} \mathbb{E}\Big[ \sum_{t=1}^T \alpha_t \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Big] &\leq \mathbb{E} \Big[ \sum_{t=1}^T \alpha_t \langle \nabla f(\theta_t ), \frac{\nabla f(\theta_t )}{\sqrt{s_t}} \rangle \Big] \nonumber \\
+& \leq \frac{C_1}{c} \sum_{t=1}^T \mathbb{E} \Big[ \alpha_t^2 \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 + \alpha_t ^2 \Big \vert \Big \vert \sigma_t \Big \vert \Big \vert^2 \Big] + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4
+\end{align}
+By re-arranging, we have
+\begin{align}
+\label{supeq:bound8}
+\big( \frac{1}{H} - \frac{C_1}{c} \big) \sum_{t=1}^T \mathbb{E} \Big[ \alpha_t^2 \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Big] 
+&\leq \frac{C_1}{c} \sum_{t=1}^T \mathbb{E} \Big[ \alpha_t^2 \Big \vert \Big \vert \sigma_t \Big \vert \Big \vert^2 \Big] + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \nonumber \\
+&\leq \frac{C_1 \alpha^2 \sigma^2}{c} \big(1+\log T \big) + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4
+\end{align}
+By assumption, $\frac{1}{H} - \frac{C_1}{c} > 0$, then we have
+\begin{align}
+\label{supeq:bound9}
+\sum_{t=1}^T \mathbb{E} \Big[ \alpha_t^2 \Big \vert \Big \vert \nabla f(\theta_t ) \Big \vert \Big \vert^2 \Big] \leq \frac{1}{\frac{1}{H} - \frac{C_1}{c}} \Bigg[ \frac{C_1 \alpha^2 \sigma^2}{c} \big(1+\log T \big) + C_2 \frac{d \alpha}{\sqrt{c}} + C_3 \frac{d \alpha^2}{c} + C_4 \Bigg]
+\end{align} \hfill \qedsymbol
+
+\section*{D. Proof of Theorem~\ref{suptheorem:adam_type}} 
+\begin{lemma} \cite{chen2018convergence}
+\label{suplemma:6.1}
+Let $\theta_0 \triangleq \theta_1$ in the Algorithm, consider the sequence
+\begin{equation*}
+    z_t = \theta_t + \frac{\beta_{1,t}}{1-\beta_{1,t}} (\theta_t - \theta_{t-1}), \forall t \geq 2
+\end{equation*}
+The following holds true:
+\begin{align}
+    z_{t+1} - z_t &= - \Big( \frac{\beta_{1,t+1}}{1-\beta_{1, t+1}} - \frac{\beta_{1,t}}{1-\beta_{1, t}} \Big) \frac{\alpha_t m_t}{\sqrt{s_t}} \nonumber \\
+    &- \frac{\beta_{1,t}}{1 - \beta_{1,t}} \Big( \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big) m_{t-1} - \frac{\alpha_t g_t}{\sqrt{s_t}}, \forall t > 1
+\end{align}
+and 
+\begin{equation}
+    z_2 - z_1 = -\Big( \frac{\beta_{1,2}}{1 - \beta_{1,2}} - \frac{\beta_{1,1}}{1 - \beta_{1,1}} \Big) \frac{\alpha_1 m_1}{\sqrt{v_1}} - \frac{\alpha_1 g_1}{\sqrt{v_1}} 
+\end{equation}
+\end{lemma}
+
+\begin{lemma}
+\cite{chen2018convergence}
+\label{suplemma:6.2}
+Suppose that the conditions in Theorem~\eqref{suptheorem:adam_type} hold, then 
+\begin{equation}
+    \mathbb{E}\Big[ f(z_{t+1} - f(z_t)) \Big] \leq \sum_{i=1}^6 T_i
+\end{equation}
+where
+\begin{align}
+T_1 &= - \mathbb{E}\Big[ \sum_{i=1}^t \langle \nabla f(z_i), \frac{\beta_{1,i}}{1-\beta_{1,i}} \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big) m_{i-1} \rangle \Big] \label{supeq:T1} \\
+T_2 &= - \mathbb{E} \Big[ \sum_{i=1}^t \alpha_i \langle \nabla f(z_i), \frac{g_i}{\sqrt{v_i}} \rangle \Big] \label{supeq:T2} \\
+T_3 &= - \mathbb{E} \Big[ \sum_{i=1}^t \langle \nabla f(z_i), \Big( \frac{\beta_{1,i+1}}{1 - \beta_{1,i+1}} - \frac{\beta_i}{1-\beta_i} \Big) \frac{\alpha_i m_i}{\sqrt{v_i}} \rangle  \Big] \label{supeq:T3}  \\
+T_4 &= \mathbb{E} \Big[ \sum_{i=1}^t \frac{3L}{2} \Big \vert \Big \vert \Big( \frac{\beta_{1,i+1}}{1-\beta_{1,i+1}} - \frac{\beta_{1,i}}{1-\beta_{1,i}} \Big) \frac{\alpha_i m_i}{ \sqrt{v_i}} \Big \vert \Big \vert^2 \Big] \label{supeq:T4} \\
+T_5 &= \mathbb{E} \Big[ \sum_{i=1}^t \frac{3L}{2} \Big \vert \Big \vert \frac{\beta_{1,i}}{1-\beta_{1,i}} \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)m_{i-1} \Big \vert \Big \vert^2  \Big]  \label{supeq:T5} \\
+T_6 &= \mathbb{E} \Big[ \sum_{i=1}^t \frac{3L}{2} \Big \vert \Big \vert \frac{\alpha_i g_i}{\sqrt{v_i}} \Big \vert \Big \vert^2 \Big] \label{supeq:T6} 
+\end{align}
+\end{lemma}
+
+\begin{lemma} \cite{chen2018convergence}
+\label{suplemma:6.3}
+Suppose that the condition in Theorem~\ref{suptheorem:adam_type} hold, $T_1$ in~\eqref{supeq:T1} can be bounded as:
+\begin{align}
+\label{supeq:T1_bound}
+    T_1 &= - \mathbb{E}\Big[ \sum_{i=1}^t \langle \nabla f(z_i), \frac{\beta_{1,i}}{1-\beta_{1,i}} \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big) m_{i-1} \rangle \Big] \nonumber \\
+    & \leq H^2 \frac{\beta_1}{1-\beta_1} \mathbb{E} \Bigg[ \sum_{i=2}^t \sum_{j=1}^d \Big \vert \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)_j \Big \vert \Bigg]
+\end{align}
+\end{lemma}
+
+\begin{lemma} \cite{chen2018convergence}
+\label{suplemma:6.4}
+Suppose the conditions in Theorem~\ref{suptheorem:adam_type} are satisfied, then $T_3$ in~\eqref{supeq:T3} can be bounded as
+\begin{align}
+\label{supeq:T3_bound}
+T_3 &= - \mathbb{E} \Big[ \sum_{i=1}^t \langle \nabla f(z_i), \Big( \frac{\beta_{1,i+1}}{1 - \beta_{1,i+1}} - \frac{\beta_i}{1-\beta_i} \Big) \frac{\alpha_i m_i}{\sqrt{v_i}} \rangle  \Big] \nonumber \\
+& \leq \Big( \frac{\beta_1}{1-\beta_1} - \frac{\beta_{1,t+1}}{1-\beta_{1,t+1}}\Big) (H^2+G^2)
+\end{align}
+\end{lemma}
+
+\begin{lemma} \cite{chen2018convergence}
+\label{suplemma:6.5}
+Suppose assumptions in Theorem~\ref{suptheorem:adam_type} are satisfied, then $T_4$ in~\eqref{supeq:T4} can be bounded as:
+\begin{align}
+\label{supeq:T4_bound}
+T_4 &= \mathbb{E} \Big[ \sum_{i=1}^t \frac{3L}{2} \Big \vert \Big \vert \Big( \frac{\beta_{1,i+1}}{1-\beta_{1,i+1}} - \frac{\beta_{1,i}}{1-\beta_{1,i}} \Big) \frac{\alpha_i m_i}{ \sqrt{v_i}} \Big \vert \Big \vert^2 \Big] \nonumber \\
+& \leq \frac{3L}{2}\Big( \frac{\beta_1}{1-\beta_1} - \frac{\beta_{1,t+1}}{1-\beta_{1,t+1}} \Big)^2G^2
+\end{align}
+\end{lemma}
+
+\begin{lemma} \cite{chen2018convergence}
+\label{suplemma:6.6}
+Suppose the assumptions in Theorem~\ref{suptheorem:adam_type} are satisfied, then $T_5$ in~\eqref{supeq:T5} can be bounded as:
+\begin{align}
+\label{supeq:T5_bound}
+T_5 &= \mathbb{E} \Big[ \sum_{i=1}^t \frac{3L}{2} \Big \vert \Big \vert \frac{\beta_{1,i}}{1-\beta_{1,i}} \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)m_{i-1} \Big \vert \Big \vert^2  \Big] \nonumber \\
+& \leq \frac{3L}{2} \Big( \frac{\beta_1}{1-\beta_1} \Big)^2 H^2 \mathbb{E} \Bigg[ \sum_{i=2}^t \sum_{j=1}^d \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)^2_j \Bigg]
+\end{align}
+\end{lemma}
+
+\begin{lemma} \cite{chen2018convergence}
+\label{suplemma:6.7}
+Suppose the assumptions in Theorem~\ref{supeq:theorem_adam} are satisfied, then $T_2$ in~\eqref{supeq:T2} are bounded as:
+\begin{align}
+\label{supeq:T2_bound}
+T_2 &= - \mathbb{E} \Big[ \sum_{i=1}^t \alpha_i \langle \nabla f(z_i), \frac{g_i}{\sqrt{v_i}} \rangle \Big] \nonumber \\
+&\leq \mathbb{E} \sum_{i=2}^t \frac{1}{2} \Big \vert \Big \vert \frac{\alpha_i g_i}{\sqrt{v_i}} \Big \vert \Big \vert^2 + L^2 \Big( \frac{\beta_1}{1-\beta_1} \Big)^2 \Big( \frac{1}{1-\beta_1} \Big)^2 \mathbb{E} \Bigg[ \sum_{j=1}^d \sum_{i=2}^{t-1} \Big( \frac{\alpha_i g_i}{ \sqrt{v_i}} \Big)^2_j \Bigg] \nonumber \\
+&+ L^2 H^2 \Big( \frac{\beta_1}{1-\beta_1} \Big)^4 \Big( \frac{1}{1-\beta_1} \Big)^2 \mathbb{E} \Bigg[ \sum_{j=1}^d \sum_{i=2}^{t-1} \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)^2_j \Bigg] \nonumber \\
+&+ 2H^2\mathbb{E} \Bigg[ \sum_{j=1}^d \sum_{i=2}^t \Bigg \vert \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)_j \Bigg \vert \Bigg] \nonumber \\
+&+ 2H^2 \mathbb{E} \Bigg[ \sum_{j=1}^d \Big( \frac{\alpha_1}{\sqrt{v_1}} \Big)_j \Bigg] \nonumber \\
+&- \mathbb{E} \Bigg[ \sum_{i=1}^t \alpha_i \langle \nabla f(x_i), \nabla f(x_i) / \sqrt{v_i} \rangle \Bigg]
+\end{align}
+\end{lemma}
+
+\subsection*{Proof of Theorem~\ref{suptheorem:adam_type}}
+We provide the proof from~\cite{chen2018convergence} for completeness. We combine Lemma~\ref{suplemma:6.1},~\ref{suplemma:6.2},~\ref{suplemma:6.3},~\ref{suplemma:6.4},~\ref{suplemma:6.5},~\ref{suplemma:6.6} and~\ref{suplemma:6.7} to bound the objective.
+\begin{align}
+\mathbb{E} \Big[ f(z_{t+1}) - f(z_t) \Big] &\leq \sum_{i=1}^6 T_i \nonumber \\
+&\leq H^2 \frac{\beta_1}{1-\beta_1} \mathbb{E} \Bigg[ \sum_{i=2}^t \sum_{j=1}^d \Big \vert \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)_j \Big \vert \Bigg] \nonumber \\
+&+ \Big( \frac{\beta_1}{1-\beta_1} - \frac{\beta_{1,t+1}}{1-\beta_{1,t+1}}\Big) (H^2+G^2) \nonumber \\
+&+ \frac{3L}{2}\Big( \frac{\beta_1}{1-\beta_1} - \frac{\beta_{1,t}}{1-\beta_{1,t}} \Big)^2G^2 \nonumber \\
+&+ \frac{3L}{2} \Big( \frac{\beta_1}{1-\beta_1} \Big)^2 H^2 \mathbb{E} \Bigg[ \sum_{i=2}^t \sum_{j=1}^d \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)^2_j \Bigg] \nonumber \\
+&+ \mathbb{E} \sum_{i=2}^t \frac{1}{2} \Big \vert \Big \vert \frac{\alpha_i g_i}{\sqrt{v_i}} \Big \vert \Big \vert^2 + L^2 \Big( \frac{\beta_1}{1-\beta_1} \Big)^2 \Big( \frac{1}{1-\beta_1} \Big)^2 \mathbb{E} \Bigg[ \sum_{j=1}^d \sum_{i=2}^{t-1} \Big( \frac{\alpha_i g_i}{ \sqrt{v_i}} \Big)^2_j \Bigg] \nonumber \\
+&+ L^2 H^2 \Big( \frac{\beta_1}{1-\beta_1} \Big)^4 \Big( \frac{1}{1-\beta_1} \Big)^2 \mathbb{E} \Bigg[ \sum_{j=1}^d \sum_{i=2}^{t-1} \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)^2_j \Bigg] \nonumber \\
+&+ 2H^2\mathbb{E} \Bigg[ \sum_{j=1}^d \sum_{i=2}^t \Bigg \vert \Big( \frac{\alpha_i}{\sqrt{v_i}} - \frac{\alpha_{i-1}}{\sqrt{v_{i-1}}} \Big)_j \Bigg \vert \Bigg] \nonumber \\
+&+ 2H^2 \mathbb{E} \Bigg[ \sum_{j=1}^d \Big( \frac{\alpha_1}{\sqrt{v_1}} \Big)_j \Bigg] \nonumber \\
+&- \mathbb{E} \Bigg[ \sum_{i=1}^t \alpha_i \langle \nabla f(x_i), \nabla f(x_i) / \sqrt{v_i} \rangle \Bigg] \nonumber \\
+&\leq \mathbb{E} \Big[ C_1 \sum_{t=1}^T \Big \vert \Big \vert \alpha_t g_t/ \sqrt{s_t} \Big \vert \Big \vert^2 
+    + C_2 \sum_{t=1}^T \Big \vert \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{ \sqrt{ s_{t-1}}} \Big \vert \Big \vert_1 \nonumber \\
+    &+ C_3 \sum_{t=1}^T \Big \vert \Big \vert \frac{\alpha_t}{\sqrt{s_t}} - \frac{\alpha_{t-1}}{\sqrt{s_{t-1}}} \Big \vert \Big \vert^2 \Big] + C_4
+\end{align}
+The constants are defined below:
+\begin{align}
+\label{supeq:constants}
+C_1 & \triangleq \frac{3}{2} L + \frac{1}{2} + L^2 \frac{\beta_1}{1-\beta_1} \big( \frac{1}{1-\beta_1} \big)^2 \\
+C_2 & \triangleq H^2 \frac{\beta_1}{ 1 - \beta_1} + 2H^2 \\
+C_3 & \triangleq \Big[ 1 + L^2 \big(\frac{1}{1-\beta_1}\big)^2 \big( \frac{\beta_1}{1-\beta_1} \big) \Big]H^2 \big( \frac{\beta_1}{1 - \beta_1} \big)^2 \\
+C_4 &\triangleq \big( \frac{\beta_1}{ 1 - \beta_1} \big) (H^2 + G^2) + \big( \frac{\beta_1}{1 - \beta_1} \big)^2 G^2 + 2H^2 \mathbb{E}\big[  \vert  \vert \alpha_1 / \sqrt{v_1}  \vert      \vert_1 \big] + \mathbb{E} [f(z_1) - f(z^*)]
+\end{align} \hfill \qedsymbol
+
+\section*{E. Bayesian interpretation of AdaBelief} We analyze AdaBelief from a Bayesian perspective.
+\label{subsec:natural}
+%In this section, we demonstrate the connection between AdaBelief and NAG when $\mathbf{Var}g_t$ is not negligible compared to $g_t$.
+
+%We analyze AdaBelief in a Bayesian setting. 
+\begin{theorem}
+\label{theorem:NAG}
+Assume the gradient follows a Gaussian prior with uniform diagonal covariance, $\Tilde{g} \sim \mathcal{N}(0, \sigma^2 I)$; assume the observed gradient follows a Gaussian distribution, $g \sim \mathcal{N}(\Tilde{g}, C)$, where $C$ is some covariance matrix. Then the posterior is:\ \ 
+$
+\label{eq:posterior}
+\Tilde{g} \big \vert g, C \sim \mathcal{N} \Big( (I + \frac{C}{\sigma^2})^{-1} g, (\frac{I}{\sigma^2} + C^{-1})^{-1} \Big)
+$
+\end{theorem}
+We skip the proof, which is a direct application of the Bayes rule in the Gaussian distribution case as in \cite{roux2008topmoumoute}. If $g$ is averaged across a batch of size $n$, we can replace $C$ with $\frac{C}{n}$.
+%Note that for AdaBelief, if the learning rate small and the update history is long, after the bias correction as in Adam, we have:
+% \begin{equation}
+%     m_t \approx \mathbb{E} g_t, \ \ s_t \approx \mathbb{E}[g_t^2]= (\mathbb{E} g_t)^2 + \mathbf{Var} g_t,\ \ v_t \approx \mathbb{E}[ (g_t - m_t)^2 ] \approx \mathbb{E}[ (g_t - \mathbb{E} g_t)^2 ] = \mathbf{Var} g_t
+% \end{equation}
+% hence $v_t$ can be viewed as an approximation to the diagonal elements of $C$.
+
+According to Theorem~\ref{eq:posterior}, the gradient descent direction with maximum expected gain is:
+\begin{equation}
+\label{eq:expectation}
+    \mathbb{E}\big[ \Tilde{g} \big \vert g, C \big] = (I + \frac{C}{\sigma^2})^{-1} g = \sigma^2 (\sigma^2 I + C)^{-1} g \propto (\sigma^2 I + C)^{-1} g
+\end{equation}
+Denote $\epsilon = \sigma^2$, then adaptive optimizers update in the direction $(\epsilon I + C)^{-1} g$; considering the noise in $g_t$, in practice most optimizers replace $g_t$ with its EMA $m_t$, hence the update direction is $(\epsilon I + C)^{-1} m_t$. In practice, adaptive methods such as Adam and AdaGrad replace $(\epsilon I + C)^{-1/2} (\epsilon I + C)^{-1/2} m_t$ with $\alpha I (\epsilon I + C)^{-1/2} m_t$ for numerical stability, where $\alpha$ is some predefined learning rate. Both Adam and AdaBelief take this form; their difference is in the estimate of $C$: Adam uses an \textit{uncentered} approximation $C_{Adam}\approx \operatorname{EMA} \operatorname{diag} (g_t g_t^\top)$, while AdaBelief uses a \textit{centered} approximation $C_{AdaBelief} \approx \operatorname{EMA} \operatorname{diag}[ (g_t - \mathbb{E}g_t)(g_t - \mathbb{E}g_t) ^\top]$. Note that the definition of $C$ is the \textit{covariance} hence it is \textit{centered}. Note that for the $i$th parameter, $\mathbb{E} (g_t^i)^2 = (\mathbb{E}g_t^i)^2 + \operatorname{Var}(g_t^i)$, so when $\operatorname{Var}g_t^i \ll \vert \vert \mathbb{E}g_t^i \vert \vert$, we have $C_{AdaBelief}^i < C_{Adam}^i$, and AdaBelief behaves closer to the ideal and takes a larger step than Adam because $C$ is in the denominator. 
+
+From a practical perspective, $\epsilon$ can be interpreted as a numerical term to avoid division by 0; from the Bayesian perspective, $\epsilon$ represents our prior on $g_t$, with a larger $\epsilon$ indicating a larger $\sigma^2$. Note that %since $\theta_t$ evolves with step $t$, the prior might also evolve: 
+%during early phases, we expect $g_t$ to be small and centered around 0 because the weights are typically independently randomly initialized and centered around 0; 
+as the network evolves with training, the distribution of the gradient is distorted (an example with Adam is shown in Fig.~2 of \cite{liu2019variance}), hence the Gaussian prior might not match the true distribution.
+%as the distribution of $g_t$ evolves with training.
+%; furthermore, the gradient suffers from a large variance due to lack of samples in early phases\cite{liu2019variance}, hence a stronger prior might help to stabilize the training in early phases. 
+To solve the mismatch between prior and the true distribution, it might be reasonable to use a weak prior during late stages of training (e.g., let $\sigma^2$ grow at late training phases, and when $\sigma^2 \rightarrow \infty$ reduces to a uniform prior). We only provide a Bayesian perspective here, and leave the detailed discussion to future works.
+
+\FloatBarrier
+\newpage
+\section*{F. Experimental Details}
+\subsection*{1. Image classification with CNNs on Cifar}
+We performed experiments based on the official implementation\footnote{\url{https://github.com/Luolc/AdaBound}} of AdaBound \cite{luo2019adaptive}, and exactly replicated the results of AdaBound as reported in \cite{luo2019adaptive}. We then experimented with different optimizers under the same setting: for all experiments, the model is trained for 200 epochs with a batch size of 128, and the learning rate is multiplied by 0.1 at epoch 150. We performed extensive hyperparameter search as described in the main paper. In the main paper we only report test accuracy; here we report both training and test accuracy in Fig.~\ref{supfig:Cifar10} and Fig.~\ref{supfig:Cifar100}. AdaBelief not only achieves the highest test accuracy, but also a smaller gap between training and test accuracy compared with other optimizers such as Yogi.
+{
+\begin{figure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_cifar10_vgg_conf.svg}
+\caption{\small{
+VGG11 on Cifar10
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_cifar10_resnet_conf.svg}
+\caption{\small{
+ResNet34 on Cifar10
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_cifar10_densenet_conf.svg}
+\caption{\small{
+DenseNet121 on Cifar10
+}}
+\end{subfigure} \\
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar10_vgg_conf.svg}
+\caption{\small{
+VGG11 on Cifar10
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar10_resnet_conf.svg}
+\caption{\small{
+ResNet34 on Cifar10
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar10_densenet_conf.svg}
+\caption{\small{
+DenseNet121 on Cifar10
+}}
+\end{subfigure}
+\caption{Training (top row) and test (bottom row) accuracy of CNNs on Cifar10 dataset. We report confidence interval $[\mu \pm \sigma]$ of 3 independent runs.}
+\label{supfig:Cifar10}
+\end{figure}
+\begin{figure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includegraphics[width=\linewidth]{experiments/Train_cifar100_vgg_conf.png}
+\caption{\small{
+VGG11 on Cifar100
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_cifar100_resnet_conf.svg}
+\caption{\small{
+ResNet34 on Cifar100
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_cifar100_densenet_conf.svg}
+\caption{\small{
+DenseNet121 on Cifar100
+}}
+\end{subfigure} \\
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar100_vgg_conf.svg}
+\caption{\small{
+VGG11 on Cifar100
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar100_resnet_conf.svg}
+\caption{\small{
+ResNet34 on Cifar100
+}}
+\end{subfigure}
+\begin{subfigure}[b]{0.33\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_cifar100_densenet_conf.svg}
+\caption{\small{
+DenseNet121 on Cifar100
+}}
+\end{subfigure}
+\caption{Training (top row) and test (bottom row) accuracy of CNNs on Cifar10 dataset. We report confidence interval $[\mu \pm \sigma]$ of 3 independent runs.}
+\label{supfig:Cifar100}
+\end{figure}
+}
+\begin{figure}
+\centering
+    \begin{subfigure}[b]{0.405\textwidth}
+    \includesvg[width=\linewidth]{experiments/Train_imagenet_resnet18_top1.svg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.4\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_imagenet_resnet18_top1.svg}
+    \end{subfigure}
+    \caption{Training and test accuracy (top-1) of ResNet18 on ImageNet.}
+    \label{supfig:imagenet}
+\end{figure}
+\subsection*{2. Image Classification on ImageNet}
+We experimented with a ResNet18 on ImageNet classication task. For SGD, we use the same learning rate schedule as \cite{he2016deep}, with an initial learning rate of 0.1, and multiplied by 0.1 at epoch 30 and 60; for AdaBelief, we use an initial learning rate of 0.001, and decayed it at epoch 70 and 80. Weight decay is set as $10^{-4}$ for both cases. To match the settings in \cite{loshchilov2018fixing} and \cite{liu2019variance}, we use decoupled weight decay. As shown in Fig.~\ref{supfig:imagenet}, AdaBelief achieves an accuracy very close to SGD, closing the generalization gap between adaptive methods and SGD. Meanwhile, when trained with a large learning rate (0.1 for SGD, 0.001 for AdaBelief), AdaBelief achieves faster convergence than SGD in the initial phase.
+\begin{figure}[]
+\centering
+    \begin{subfigure}[b]{0.420\textwidth}
+    \includesvg[width=\linewidth]{experiments/Train_cifar10_resnet_adabelief_eps.svg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.420\textwidth}
+    \includesvg[width=\linewidth]{experiments/Train_cifar10_resnet_adam_eps.svg}
+    \end{subfigure}\\
+    \begin{subfigure}[b]{0.407\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_cifar10_resnet_adabelief_eps.svg}
+    \end{subfigure}
+    %\caption{From left to right: training and test accuracy of ResNet34 on Cifar10, trained with AdaBelief with different values od $\epsilon$.}
+    \begin{subfigure}[b]{0.407\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_cifar10_resnet_adam_eps.svg}
+    \end{subfigure}
+    \caption{Training (top row) and test (bottom row) accuracy of ResNet34 on Cifar10, trained with AdaBelief (left column) and Adam (right column) using different values of $\epsilon$. Note that AdaBelief achieves an accuracy above $94\%$ for all $\epsilon$ values, while Adam's accuracy is consistently below $94\%$.}
+    \label{supfig:adabelief_eps}
+\end{figure}
+\begin{figure}[]
+\centering
+    \begin{subfigure}[b]{0.420\textwidth}
+    \includesvg[width=\linewidth]{experiments/Train_cifar10_vgg_adabelief_lr.svg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.420\textwidth}
+    \includesvg[width=\linewidth]{experiments/Train_cifar10_vgg_adam_lr.svg}
+    \end{subfigure}\\
+    \begin{subfigure}[b]{0.420\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_cifar10_vgg_adabelief_lr.svg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.420\textwidth}
+    \includesvg[width=\linewidth]{experiments/Test_cifar10_vgg_adam_lr.svg}
+    \end{subfigure}
+    \caption{Training (top row) and test (bottom row) accuracy of VGG on Cifar10, trained with AdaBelief (left column) and Adam (right column) using different values of learning rate.}
+    \label{supfig:adabelief_lr}
+\end{figure}
+\subsection*{3. Robustness to hyperparameters}
+\paragraph{Robustness to $\epsilon$} We test the performances of AdaBelief and Adam with different values of $\epsilon$ varying from $10^{-4}$ to $10^{-9}$ in a log-scale grid. We perform experiments with a ResNet34 on Cifar10 dataset, and summarize the results in Fig.~\ref{supfig:adabelief_eps}. Compared with Adam, AdaBelief is slightly more sensitive to the choice of $\epsilon$, and achieves the highest accuracy at the default valiue $\epsilon=10^{-8}$; AdaBelief achieves accuracy higher than $94\%$ for all $\epsilon$ values, consistently outperforming Adam which achieves an accuracy around $93\%$.
+\paragraph{Robustness to learning rate} We test the performance of AdaBelief with different learning rates. We experiment with a VGG11 network on Cifar10, and display the results in Fig.~\ref{supfig:adabelief_lr}. For a large range of learning rates from $5\times 10^{-4}$ to $3 \times 10^{-3}$, compared with Adam, AdaBelief generates higher test accuracy curve, and is more robust to the change of learning rate.
+\subsection*{4. Experiments with LSTM on language modeling}
+We experiment with LSTM models on Penn-TreeBank dataset, and report the results in Fig.~\ref{supfig:lstm}. Our experiments are based on this implementation \footnote{\url{https://github.com/salesforce/awd-lstm-lm}}. Results $[\mu \pm \sigma]$ are measured across 3 runs with independent initialization. For completeness, we plot both the training and test curves.
+
+We use the default parameters $\alpha=0.001, \beta_1=0.9, \beta_2=0.999, \epsilon = 10^{-8}$ for 2-layer and 3-layer models; for 1-layer model we set $\epsilon=10^{-12}$ and set other parameters as default. For simple models (1-layer LSTM), AdaBelief's perplexity is very close to other optimizers; on complicated models, AdaBelief achieves a significantly lower perplexity on the test set.
+\begin{figure}
+\centering
+\begin{subfigure}[b]{0.32\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_lstm_1layer_conf.svg}
+\caption{1-layer LSTM}
+\end{subfigure}
+\begin{subfigure}[b]{0.32\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_lstm_2layer_conf.svg}
+\caption{2-layer LSTM}
+\end{subfigure}
+\begin{subfigure}[b]{0.32\textwidth}
+\includesvg[width=\linewidth]{experiments/Train_lstm_3layer_conf.svg}
+\caption{3-layer LSTM}
+\end{subfigure}\\
+\begin{subfigure}[b]{0.32\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_lstm_1layer_conf.svg}
+\caption{1-layer LSTM}
+\end{subfigure}
+\begin{subfigure}[b]{0.32\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_lstm_2layer_conf.svg}
+\caption{2-layer LSTM}
+\end{subfigure}
+\begin{subfigure}[b]{0.32\textwidth}
+\includesvg[width=\linewidth]{experiments/Test_lstm_3layer_conf.svg}
+\caption{3-layer LSTM}
+\end{subfigure}
+\caption{Training (top row) and test (bottom row) perplexity on Penn-TreeBank dataset, lower is better.}
+\label{supfig:lstm}
+\end{figure}
+\subsection*{5. Experiments with GAN}
+\begin{table}[]
+\caption{Structure of GAN}
+\label{suptable:gan_struct}
+\scalebox{0.65}{
+\begin{tabular}{c|c}
+\hline
+Generator                                                                         & Discriminator                                                       \\ \hline \hline
+ConvTranspose ({[}inchannel = 100, outchannel = 512, kernel = 4$\times$4, stride = 1{]}) & Conv2D({[}inchannel=3, outchannel=64, kernel = 4$\times$4, stride=2{]})    \\ \hline
+BN-ReLU                                                                           & LeakyReLU                                                           \\ \hline
+ConvTranspose ({[}inchannel = 512, outchannel = 256, kernel = 4$\times$4, stride = 2{]}) & Conv2D({[}inchannel=64, outchannel=128, kernel = 4$\times$4, stride=2{]})  \\ \hline
+BN-ReLU                                                                           & BN-LeakyReLU                                                        \\ \hline
+ConvTranspose ({[}inchannel = 256, outchannel = 128, kernel = 4$\times$4, stride = 2{]}) & Conv2D({[}inchannel=128, outchannel=256, kernel = 4$\times$4, stride=2{]}) \\ \hline
+BN-ReLU                                                                           & BN-LeakyReLU                                                        \\ \hline
+ConvTranspose ({[}inchannel = 128, outchannel = 64, kernel = 4$\times$4, stride = 2{]})  & Conv2D({[}inchannel=256, outchannel=512, kernel = 4$\times$4, stride=2{]}) \\ \hline
+BN-ReLU                                                                           & BN-LeakyReLU                                                        \\ \hline
+ConvTranspose ({[}inchannel = 64, outchannel = 3, kernel = 4$\times$4, stride = 2{]})    & Linear(-1, 1)                                                       \\ \hline
+Tanh                                                                              &                                                                     \\ \hline
+\end{tabular}
+}
+\end{table}
+We experimented with a WGAN \cite{arjovsky2017wasserstein} and WGAN-GP \cite{gulrajani2017improved}. The code is based on several public github repositories \footnote{\url{https://github.com/pytorch/examples}},\footnote{\url{https://github.com/eriklindernoren/PyTorch-GAN}}. We summarize network structure in Table~\ref{suptable:gan_struct}. For WGAN, the weight of discriminator is clipped within $[-0.01, 0.01]$; for WGAN-GP, the weight for gradient-penalty is set as 10.0, as recommended by the original implementation. For each optimizer, we perform 5 independent runs. We train the model for 100 epochs, generate 64,000 fake samples (60,000 real images in Cifar10), and measure the Frechet Inception Distance (FID) \cite{heusel2017gans} between generated samples and real samples. Our implementation on FID heavily relies on an open-source implementation\footnote{\url{https://github.com/mseitzer/pytorch-fid}}. We report the FID scores in the main paper, and demonstrate fake samples in Fig.~\ref{supfig:gan-sample} and Fig.~\ref{supfig:gan-gp-sample} for WGAN and WGAN-GP respectively.
+
+We also experimented with Spectral Normalization GAN based on a public repository \footnote{\url{https://github.com/POSTECH-CVLab/PyTorch-StudioGAN}}. For this experiment, we set $\epsilon=10^{-16}$ and use the rectification technique as in RAdam. Other hyperparamters and training schemes are the same as in the repository.
+\begin{figure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/adabelief_wgan1.png}
+    \caption{AdaBelief}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/rmsprop.png}
+    \caption{RMSProp}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/adam.png}
+    \caption{Adam}
+    \end{subfigure}\\
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/radam.png}
+    \caption{RAdam}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/yogi.png}
+    \caption{Yogi}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/fromage.png}
+    \caption{Fromage}
+    \end{subfigure}\\
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/msvag.png}
+    \caption{MSVAG}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/adabound.png}
+    \caption{AdaBound}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/sgd.png}
+    \caption{SGD}
+    \end{subfigure}
+    \caption{Fake samples from WGAN trained with different optimizers.}
+    \label{supfig:gan-sample}
+\end{figure}
+
+\begin{figure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/adabelief.png}
+    \caption{AdaBelief}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/rmsprop.png}
+    \caption{RMSProp}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/adam.png}
+    \caption{Adam}
+    \end{subfigure}\\
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/radam.png}
+    \caption{RAdam}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/yogi.png}
+    \caption{Yogi}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/fromage.png}
+    \caption{Fromage}
+    \end{subfigure}\\
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/msvag.png}
+    \caption{MSVAG}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN-GP/adabound.png}
+    \caption{AdaBound}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+    \includegraphics[width=\linewidth]{GAN/sgd.png}
+    \caption{SGD}
+    \end{subfigure}
+    \caption{Fake samples from WGAN-GP trained with different optimizers.}
+    \label{supfig:gan-gp-sample}
+\end{figure}

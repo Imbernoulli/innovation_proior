@@ -1,0 +1,17 @@
+\begin{table}
+    \setlength{\tabcolsep}{5pt}
+    \small
+    \centering
+    \begin{tabular}{llccccccc}
+      \toprule
+        \textbf{OPT (PPL}$\downarrow$) & 1.3B & 2.7B & 6.7B  & 13B & 30B   \\  \midrule
+      FP16 & 14.62 & 12.47 & 10.86 & 10.13	& 9.56 \\ \midrule
+      RTN & 119.47 & 298.00 & 23.54 & 46.04	& 18.80	 \\
+       1\% FP16 & 16.91 & 13.69 & \textbf{11.39} & \textbf{10.43} & 9.85 \\
+       $s=2$ & 18.63 & 14.94 & 11.92 & 10.80 & 10.32 \\
+       \methodshort  &  \textbf{16.32} & \textbf{13.58} &\textbf{11.39} & 10.56 & \textbf{9.77}	\\
+      \bottomrule
+    \end{tabular}
+    \caption{\methodshort protects salient weights and reduces quantization error by using a scaling-based method. It consistently outperforms Round-to-nearest quantization (RTN) and achieves comparable performance as mixed-precision (1\% FP16) while being more hardware-friendly. We use 3-bit quantization with group size 128.}
+    \label{tab:opt_ppl}
+\end{table}

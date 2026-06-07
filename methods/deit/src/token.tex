@@ -1,0 +1,71 @@
+\section{Distillation through attention}
+\label{sec:distillation} 
+
+In this section we assume we have access to a strong image classifier as a teacher model.
+It could be a convnet, or a mixture of classifiers.
+We address the question of how to learn a transformer by exploiting this teacher.
+% 
+As we will see in Section~\ref{sec:experiments} by comparing the trade-off between accuracy and image throughput, 
+it can be beneficial to replace a convolutional neural network by a transformer. 
+%
+This section covers two axes of distillation: hard distillation versus soft distillation, and classical distillation versus the distillation token.
+
+\begin{figure}[t]
+\centering \includegraphics[width=0.5\linewidth]{figs/transformer.pdf}
+\caption{Our distillation procedure: 
+we simply include a new \emph{distillation token}. It interacts with the class and patch tokens through the self-attention layers. This distillation token is employed in a similar fashion as the class token, except that on output of the network its objective is to reproduce the (hard) label predicted by the teacher, instead of true label. Both the class and distillation tokens input to the transformers are learned by back-propagation. 
+\label{fig:distillation}}
+\end{figure}
+
+
+\paragraph{Soft distillation}  
+%
+\cite{Hinton2015DistillingTK,Wei2020CircumventingOO} minimizes the Kullback-Leibler divergence between the softmax of the teacher and the softmax of the student model. 
+
+Let $Z_\mathrm{t}$ be the logits of the teacher model, $Z_\mathrm{s}$ the logits of the student model.
+We denote by $\tau$ the temperature for the distillation, $\lambda$ the coefficient balancing the Kullback–Leibler divergence loss ($\mathrm{KL}$) and the cross-entropy ($\mathcal{L}_\mathrm{CE}$) on ground truth labels $y$, and $\psi$ the softmax function.
+The distillation objective is
+
+\begin{equation}
+    \mathcal{L}_\mathrm{global} = (1-\lambda) \mathcal{L}_\mathrm{CE}(\psi(Z_\mathrm{s}),y) + \lambda  \tau^2 \mathrm{KL}(\psi(Z_\mathrm{s}/\tau),\psi(Z_\mathrm{t}/\tau)).
+\end{equation}
+
+\paragraph{Hard-label distillation.} % 
+%
+We introduce a variant of distillation where we take the hard decision of the teacher as a true label.
+%
+Let $y_\mathrm{t}=\mathrm{argmax}_c Z_\mathrm{t}(c)$ be the hard decision of the teacher, the objective associated with 
+this hard-label distillation is: %
+%
+\begin{equation}
+    \mathcal{L}_\mathrm{global}^\mathrm{hard Distill} =  \frac{1}{2}\mathcal{L}_\mathrm{CE}(\psi(Z_s),y) +  \frac{1}{2}\mathcal{L}_\mathrm{CE}(\psi(Z_s),y_\mathrm{t}).
+\end{equation}
+
+
+For a given image, the hard label associated with the teacher may change depending on the specific data augmentation. 
+We will see that this choice is better than the traditional one, while being parameter-free and conceptually simpler: The teacher prediction $y_\mathrm{t}$ plays the same role as the true label $y$.
+
+Note also that the hard labels can also be converted into soft labels with label smoothing~\cite{Szegedy2016RethinkingTI}, where the true label is considered to have a probability of $1-\varepsilon$, and the remaining $\varepsilon$ is shared across the remaining classes. We fix this parameter to $\varepsilon=0.1$ in our all experiments that use true labels.  
+
+%\input{fig_distillation_temperature}
+\paragraph{Distillation token.} 
+We now focus on our proposal, which is illustrated in Figure~\ref{fig:distillation}. 
+We add a new token, the distillation token, to the initial embeddings (patches and class token).
+Our distillation token is used similarly as the class token: it interacts with other embeddings through self-attention, and is output by the network after the last layer.
+Its target objective is given by the distillation component of the loss. 
+% 
+The distillation embedding allows our model to learn from the output of the teacher, as in a regular distillation, while remaining complementary to the class embedding.
+% 
+
+Interestingly, we observe that the learned class and distillation tokens converge towards different vectors: the average cosine similarity between these tokens equal to 0.06. As the class and distillation embeddings are computed at each layer, they gradually become more similar through the network, all the way through the last layer at which their similarity is high (cos=0.93), but still lower than 1. This is expected since as they aim at producing targets that are similar but not identical. 
+
+We verified that our distillation token adds something to the model, compared to simply adding an additional class token associated with the same target label:  instead of a teacher pseudo-label, we experimented with a transformer with two class tokens. Even if we initialize them randomly and independently, during training they converge towards the same vector (cos=0.999), and the output embedding are also quasi-identical.  This additional class token does not bring anything to the classification performance. 
+% 
+In contrast, our distillation strategy provides a significant improvement over a vanilla distillation baseline, as validated by our experiments in Section~\ref{sec:distillation_results}.  
+
+\paragraph{Fine-tuning with distillation.} 
+We use both the true label and teacher prediction during the fine-tuning stage at higher resolution. We use a teacher with the same target resolution, typically obtained from the lower-resolution teacher by the method of Touvron et al~\cite{Touvron2019FixRes}. We have also tested with true labels only but this reduces the benefit of the teacher and leads to a lower performance. 
+
+
+\paragraph{Classification with our approach: joint classifiers.} 
+At test time,  both the class or the distillation embeddings produced by the transformer are associated with linear classifiers and able to infer the image label. Yet our referent method is the late fusion of these two separate heads, for which we add the softmax output by the two classifiers to make the prediction. We evaluate these three options in Section~\ref{sec:experiments}. 

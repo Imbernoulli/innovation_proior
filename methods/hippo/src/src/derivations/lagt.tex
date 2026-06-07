@@ -1,0 +1,171 @@
+\documentclass[../../hippo]{subfiles}
+\begin{document}
+
+\subsection{Derivation for Translated Laguerre (HiPPO-LagT)}
+\label{sec:derivation-lagt}
+
+We consider measures based on the generalized \emph{Laguerre} polynomials.
+For a fixed $\alpha \in \mathbb{R}$, these polynomials $L^{(\alpha)}(t-x)$ are
+orthogonal with respect to the measure $x^{\alpha} e^{-x}$ on $[0, \infty)$
+(cf.\ \cref{sec:laguerre-properties}).
+This derivation will involve tilting the measure governed by another parameter $\beta$.
+
+The result in \cref{thm:legt-lagt} for HiPPO-LagT is for the case $\alpha = 0, \beta = 1$,
+corresponding to the basic Laguerre polynomials and no tilting.
+
+\paragraph{Measure and Basis}
+We flip and translate the generalized Laguerre weight function and polynomials from $[0, \infty)$ to $(-\infty, t]$.
+The normalization is found using equation~\eqref{eq:laguerre}.
+\begin{align*}
+  \omega(t, x) &=
+  \begin{cases}
+    (t-x)^\alpha e^{x-t} & \mbox{if } x \le t \\
+    0 & \mbox{if } x > t
+  \end{cases}
+  \quad
+  \\
+  &= (t-x)^\alpha e^{-(t-x)} \mathbb{I}_{(-\infty, t]}
+  \\
+  p_n(t, x)
+  &= \frac{\Gamma(n+1)^{\frac{1}{2}}}{\Gamma(n+\alpha+1)^{\frac{1}{2}}} L^{(\alpha)}_n(t-x)
+\end{align*}
+
+
+\paragraph{Tilted Measure}
+
+
+We choose the following tilting $\chi$
+\begin{align*}%
+  \chi(t, x) &= (t-x)^\alpha \exp\left( -\frac{1-\beta}{2} (t-x) \right) \mathbb{I}_{\Rn{t}} \\
+\end{align*}
+for some fixed $\beta \in \mathbb{R}$.
+The normalization is (constant across all $t$)
+\begin{align*}%
+  \zeta &= \int \frac{\omega}{\chi^2} = \int (t-x)^{-\alpha} e^{-\beta(t-x)} \mathbb{I}_{\Rn{t}} \dd x
+  \\
+  &= \Gamma(1-\alpha) \beta^{\alpha-1}
+  ,
+\end{align*}
+so the tilted measure has density
+\begin{align*}%
+  \zeta(t)^{-1} \frac{\omega^{(t)}}{(\chi^{(t)})^2} &= \Gamma(1-\alpha)^{-1} \beta^{1-\alpha} (t-x)^{-\alpha} \exp\left( -\beta(t-x) \right) \mathbb{I}_{\Rn{t}}
+  .
+\end{align*}
+
+We choose
+\begin{align*}
+  \lambda_n = \frac{\Gamma(n+\alpha+1)^{\frac{1}{2}}}{\Gamma(n+1)^{\frac{1}{2}}}
+\end{align*}
+to be the norm of the generalized Laguerre polynomial $L_n^{(\alpha)}$,
+so that $\lambda_n p_n^{(t)} = L_n^{(\alpha)}(t-x)$,
+and (following equation~\eqref{eq:framework-g}) the basis for $\nu^{(t)}$ is
+\begin{equation}%
+  \begin{aligned}
+    g_n^{(t)} &= \lambda_n \zeta^{\frac{1}{2}} p_n^{(t)} \chi^{(t)}
+    \\
+    &= \zeta^{\frac{1}{2}} \chi^{(t)} L_n^{(\alpha)}(t-x)
+  \end{aligned}
+\end{equation}
+
+
+
+\paragraph{Derivatives}
+
+We first calculate the density ratio
+\begin{align*}%
+  \frac{\omega}{\chi}(t, x) &= \exp \left( -\frac{1+\beta}{2} (t-x) \right) \mathbb{I}_{\Rn{t}}
+  .
+\end{align*}
+and its derivative
+\begin{align*}
+  \ppt \frac{\omega}{\chi}(t, x)
+  &= -\left( \frac{1+\beta}{2} \right)\frac{\omega}{\chi}(t, x) + \exp\left( -\left( \frac{1+\beta}{2} \right)(t-x) \right) \delta_t
+  .
+\end{align*}
+
+The derivative of Laguerre polynomials can be expressed as linear combinations of
+other Laguerre polynomials (cf.\ \cref{sec:laguerre-properties}).
+\begin{align*}
+  \ppt \lambda_n p_n(t, x)
+  &= \ppt L^{(\alpha)}_n(t-x)
+  \\
+  &= -L^{(\alpha)}_0(t-x) - \dots - L^{(\alpha)}_{n-1}(t-x)
+  \\
+  &= -\lambda_0 p_0(t, x) - \dots - \lambda_{n-1} p_{n-1}(t, x)
+\end{align*}
+
+
+\paragraph{Coefficient Dynamics}
+Plugging these derivatives into equation~\eqref{eq:coefficient-dynamics} (obtained from differentiating the coefficient equation~\eqref{eq:coefficient}), where we suppress the dependence on $x$ for convenience:
+\begin{align*}
+  \ddt c_n(t)
+  &= \zeta^{-\frac{1}{2}} \int f \cdot \left(\ppt \lambda_n p_n^{(t)}\right) \frac{\omega^{(t)}}{\chi^{(t)}}
+  \\&\quad + \int f \cdot \left( \zeta^{-\frac{1}{2}} \lambda_n p_n^{(t)} \right) \left( \ppt \frac{\omega^{(t)}}{\chi^{(t)}} \right)
+  \\
+  &= -\sum_{k=0}^{n-1} \int f \cdot \left( \zeta^{-\frac{1}{2}} \lambda_k p_k^{(t)} \chi^{(t) }\right) \frac{\omega^{(t)}}{(\chi^{(t)})^2}
+  \\&\quad - \left( \frac{1+\beta}{2} \right) \int f \cdot \left( \zeta^{-\frac{1}{2}} \lambda_n p_n^{(t)} \right) \frac{\omega^{(t)}}{\chi^{(t)}} + f(t) \cdot \zeta^{-\frac{1}{2}} L_n^{(\alpha)}(0)
+  \\
+  &= -\sum_{k=0}^{n-1} c_k(t) - \left( \frac{1+\beta}{2} \right) c_n(t) + \Gamma(1-\alpha)^{-\frac{1}{2}} \beta^{\frac{1-\alpha}{2}} \binom{n+\alpha}{n} f(t).
+\end{align*}
+
+We then get
+\begin{equation}
+  \begin{aligned}
+    \ddt c(t)
+    &= -A c(t) + B f(t)
+    \\
+    A &=
+    \begin{bmatrix}
+      \frac{1+\beta}{2} & 0 & \dots & 0 \\
+      1 & \frac{1+\beta}{2} & \dots & 0 \\
+      \vdots & & \ddots & \\
+      1 & 1 & \dots & \frac{1+\beta}{2}
+    \end{bmatrix}
+    \\
+    B &= \zeta^{-\frac{1}{2}} \cdot \begin{bmatrix} \binom{\alpha}{0} \\ \vdots \\ \binom{N-1+\alpha}{N-1} \end{bmatrix}
+  \end{aligned}
+\end{equation}
+
+\paragraph{Reconstruction}
+By equation~\eqref{eq:reconstruction}, at every time $t$, for $x \leq t$,
+\begin{align*}
+  f(x) \approx g^{(t)}(x)
+  &= \sum_{n=0}^{N-1} \lambda_n^{-1} \zeta^{\frac{1}{2}} c_n(t) p_n^{(t)} \chi^{(t)}
+  \\
+  &= \sum_n \frac{n!}{(n+\alpha)!} \zeta^{\frac{1}{2}} c_n(t) \cdot L^{(\alpha)}_n(t-x) \cdot (t-x)^\alpha e^{\left( \frac{\beta-1}{2} \right)(t-x)}.
+\end{align*}
+
+\paragraph{Normalized Dynamics}
+Finally, following equations~\eqref{eq:coefficient-dynamics-normalized} and \eqref{eq:reconstruction-normalized} to convert these to dynamics on the orthonormal basis of the normalized (probability) measure $\nu^{(t)}$ leads to the following $\hippo$ operator
+\begin{equation}
+  \begin{aligned}
+    \ddt c(t)
+    &= -A c(t) + B f(t)
+    \\
+    A &=
+    -\Lambda^{-1}
+    \begin{bmatrix}
+      \frac{1+\beta}{2} & 0 & \dots & 0 \\
+      1 & \frac{1+\beta}{2} & \dots & 0 \\
+      \vdots & & \ddots & \\
+      1 & 1 & \dots & \frac{1+\beta}{2}
+    \end{bmatrix}
+    \Lambda
+    \\
+    B &= \Gamma(1-\alpha)^{-\frac{1}{2}} \beta^{\frac{1-\alpha}{2}} \cdot \Lambda^{-1}
+    \begin{bmatrix} \binom{\alpha}{0} \\ \vdots \\ \binom{N-1+\alpha}{N-1} \end{bmatrix}
+    \\
+    \Lambda &= \diag_{n \in [N]} \left\{ \frac{\Gamma(n+\alpha+1)^{\frac{1}{2}}}{\Gamma(n+1)^{\frac{1}{2}}} \right\}
+  \end{aligned}
+\end{equation}
+and correspondingly a $\proj_t$ operator:
+\begin{equation}
+  f(x) \approx g^{(t)}(x)
+  = \Gamma(1-\alpha)^{\frac{1}{2}} \beta^{-\frac{1-\alpha}{2}}
+  \sum_n c_n(t) \cdot \frac{\Gamma(n+1)^{\frac{1}{2}}}{\Gamma(n+\alpha+1)^{\frac{1}{2}}} \cdot L^{(\alpha)}_n(t-x) \cdot (t-x)^\alpha e^{\left( \frac{\beta-1}{2} \right)(t-x)}.
+\end{equation}
+
+
+
+\end{document}
+

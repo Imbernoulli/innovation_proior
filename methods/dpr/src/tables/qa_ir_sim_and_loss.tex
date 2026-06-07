@@ -1,0 +1,19 @@
+\begin{table}[t!]
+    \setlength\tabcolsep{4pt}
+    \centering
+    \begin{tabular}{ll|cccc}
+    \toprule
+    \tf{Sim} & \tf{Loss} & \multicolumn{4}{c}{\tf{Retrieval Accuracy}} \\ 
+    & & Top-1 & Top-5 & Top-20 & Top-100 \\ \midrule
+    \multirow{2}{*}{DP} & NLL & \tf{44.9} & \tf{66.8} & \tf{78.1} & \tf{85.0} \\
+    & Triplet & 41.6 & 65.0 & 77.2 & 84.5 \\
+    \midrule
+    \multirow{2}{*}{L2} & NLL & 43.5 & 64.7 & 76.1 & 83.1 \\
+    & Triplet & 42.2 & 66.0 & \tf{78.1} & 84.9 \\ 
+    \bottomrule
+    \end{tabular}
+     \caption{Retrieval Top-$k$ accuracy on the development set of Natural Questions using different similarity and loss functions.} 
+
+    \label{tab:qa_ir_sim_and_loss}
+\end{table}
+\setlength{\tabcolsep}{6pt} %

@@ -1,0 +1,128 @@
+% last updated in April 2002 by Antje Endemann
+
+% Based on CVPR 07 and LNCS, with modifications by DAF, AZ and elle, 2008 and AA, 2010, and CC, 2011; TT, 2014; AAS, 2016
+
+\documentclass[runningheads]{llncs}
+
+\usepackage[dvips]{graphicx}
+
+\usepackage{amsmath,amssymb} % define this before the line numbering.
+
+%\usepackage{ruler}
+% for the line numbering
+\usepackage{color}
+
+\usepackage{footnote}
+
+\definecolor{mygray}{gray}{0.4}
+
+\usepackage[width=122mm,left=12mm,paperwidth=146mm,height=193mm,top=12mm,paperheight=217mm]{geometry}
+
+
+
+\usepackage{array}
+
+\usepackage{wrapfig}
+
+\usepackage[numbers,sort]{natbib}
+
+\newcommand{\eat}[1]{}
+
+
+
+\begin{document}
+
+\pagestyle{headings}
+
+\mainmatter
+
+\def\ECCV16SubNumber{1641}  % Insert your submission number here
+
+\newcommand{\name}{stochastic depth}
+
+
+
+\title{Deep Networks with Stochastic Depth}
+
+
+
+\titlerunning{Deep Networks with Stochastic Depth}
+
+\authorrunning{Gao Huang*, Yu Sun*, Zhuang Liu, Daniel Sedra, Kilian Q. Weinberger}
+
+\author{{Gao Huang*, Yu Sun*, Zhuang Liu$^\dagger$, Daniel Sedra, Kilian Q. Weinberger}}
+\institute{
+* Authors contribute equally\\
+\url{\texttt{\{gh349, ys646, dms422, kqw4\}@cornell.edu}}, Cornell University\\
+$^\dagger$ \url{\texttt{liuzhuang13@mails.tsinghua.edu.cn}}, Tsinghua University
+}
+
+
+\maketitle
+
+
+
+\begin{abstract}
+
+\input{tex/abstract}
+
+%\keywords{Image Classification, Deep Residual Learning, Deep Learning}
+
+\end{abstract}
+
+
+
+\section{Introduction}
+
+\label{sec_intro}
+
+\input{tex/introduction}
+
+
+
+\section{Background}
+
+\label{sec_related}
+
+\input{tex/background}
+
+
+
+\section{Deep Networks with Stochastic Depth}
+
+\label{sec_method}
+
+\input{tex/method}
+
+
+
+\section{Results}
+
+\label{sec_results}
+
+\input{tex/results}
+
+
+
+\section{Analytic Experiments}
+
+\label{sec_analysis}
+
+\input{tex/analytic}
+
+
+
+\section{Conclusion}
+
+\label{sec_conclusion}
+
+\input{tex/conclusion}
+
+
+
+\bibliographystyle{splncs}
+
+\bibliography{egbib}
+
+\end{document}
+

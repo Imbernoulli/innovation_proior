@@ -1,0 +1,1032 @@
+
+===== page 1 [pdftotext] =====
+ORSA Journal on Computing                                                                                                   0899-1 499/89/0103-0190$01.25
+Vol. 1, No. 3, Summer 1989                                                                                     O 1989 Operations Research Society of America
+
+
+
+
+Tabu Search-Part I
+FRED GLOVER                      U.S. West Chair in Systems Science, Centerfor Applied Artificial Intelligence, Graduate
+                                 School of Business, Box 419, University of Colorado, Boulder, CO 80309-0419, BITNET:
+                                fglover@colorado
+(Received: June 1988; final revision received November 1988; accepted February 1989)
+
+
+This paper presents the fundamental principles underlying tabu search as a strategy for combinatorial optimization
+problems. Tabu search has achieved impressive practical successes in applications ranging from scheduling and
+computer channel balancing to cluster analysis and space planning, and more recently has demonstrated its value
+in treating classical problems such as the traveling salesman and graph coloring problems. Nevertheless, the
+approach is still in its infancy, and a good deal remains to be discovered about its most effective forms of
+implementation and about the range of problems for which it is best suited. This paper undertakes to present the
+major ideas and findings to date, and to indicate challenges for future research. Part I of this study indicates the
+basic principles, ranging from the short-term memory process at the core of the search to the intermediate and
+long term memory processes for intensifying and diversifying the search. Included are illustrative data structures
+for implementing the tabu conditions (and associated aspiration criteria) that underlie these processes. Part I
+concludes with a discussion of probabilistic tabu search and a summary of computational experience for a variety
+of applications. Part I1 of this study (to appear in a subsequent issue) examines more advanced considerations,
+applying the basic ideas to special settings and outlining a dynamic move structure to insure finiteness. Part I1
+also describes tabu search methods for solving mixed integer programming problems and gives a brief summary
+of additional practical experience, including the use of tabu search to guide other types of processes, such as those
+of neural networks.
+
+
+T a b u search is a strategy for solving combinatorial                                  1. Background and Notation
+optimization problems whose applications range from                                     To describe the workings of tabu search, we represent
+graph theory and matroid settings to general pure and                                   a combinatorial optimization problem in the following
+mixed integer programming problems. It is an adaptive                                   form.
+procedure with the ability to make use of many other
+methods, such as linear programming algorithms and                                      (p)        Minimize c(x): x € X in R,.
+specialized heuristics, which it directs to overcome the
+limitations of local optimality.                                                        The objective function c(x) may be linear or nonlinear,
+     Tabu search has its origins in combinatorial pro-                                  and the condition x E X is assumed to constrain spec-
+cedures applied to nonlinear covering problems in the                                   ified components of x to discrete values. In some
+late 1970~,[~1  and subsequently applied to a diverse                                   settings (P) may represent a modified form of some
+collection of problems ranging from scheduling and                                      original problem, as where X is a superset of the vectors
+computer channel balancing to cluster analysis and                                      that normally qualify as feasible, and c(x) is a penalty
+space planning.'3.4,6.71Latest research and computa-                                    function, designed to assure that optimal solutions to
+tional comparisons involving traveling salesman, graph                                  (P) likewise are optimal for the problem from which it
+coloring, job shop flow sequencing, integrated circuit                                  derived.
+design and time tabling problems have likewise dis-                                          A wide range of procedures, heuristic and optimal,
+closed the ability of tabu search to obtain high quality                                for solving various problems capable of being written
+solutions with modest computational effort, generally                                   in the form (P) can be characterized conveniently by
+dominating alternative methods tested.['. 12- 13.      A                                reference to sequences of moves that lead from one trial
+recent independent development of several of its                                        solution (selected x E X) to another. We will define a
+ideas[lolalso has been applied successfully to maximum                                  move s to consist of a mapping defined on a subset
+satisfiability problems.[''] Such applications, for prob-                               X(s) of X:
+lems ranging in size from hundreds to millions of
+variables, are elaborated in Section 10.
+
+Subject classrfica~ron~
+                      Programming: integer, heuristic.
+                                                                                  190
+
+===== page 2 [pdftotext] =====
+                                                                                              Tabu Search. I         191
+
+
+     Associated with x E Xis the set S(x) which consists      term memory function that provides "strategic forget-
+of those moves s E S that can be applied to x ; i.e.,         ting." Later sections introduce elaborations of the basic
+S(x) = {sE S: x E X(s)l (and we may thus also write           procedure, exposing the dual relationship between tabu
+X(s) = {xE X: s E S(x))). The set S(x) can be viewed          restrictions and aspiration criteria as means for con-
+as a "neighborhood function" (see, e.g. [19, 201).            straining and guiding the search process, and introduc-
+                                                              ing the use of intermediate and long term memory
+Common Examples of Moves                                      functions that operate in counterpoint to the function
+As a prelude to the main concerns of this paper, it is        of short term memory.
+useful to elaborate briefly the nature of moves that are           It is convenient to start by reference to the familiar
+relevant to the contexts we will be examining. In many        class of approaches known as hill climbing heuristics,
+applications of interest, if x' and x" are distinct ele-      which undertake to progress unidirectionally from their
+ments of the set X(s), then s(xf) # s(x"); i.e., it is        starting point to a local optimum. (In the present min-
+convenient to classify moves so that distinct trial solu-     imization context, the hill is "inverted" so that the
+tions are transformed into new trial solutions that are       direction of climbing is downward.)
+also distinct. A simple example is the set of moves
+between adjacent vertices of the zero-one unit hyper-
+                                                                  HILL CLIMBING HEURISTIC FOR (P)
+cube, as illustrated by the move s(x) = x + el, where eJ
+is the unit n-vector with a 1 in position j. (If X denotes     1. Select an initial x E X.
+the set of all such vertices, then the appropriate form        2. Select some s E S(x) such that
+of X(s) in this case is given by X(s) = (x E X: xJ = 01.)
+Another example is the common move in graph theory
+and matroid settings that consists of an augmentation             If no such s exists, x is a local optimum
+step defined relative to an alternating path. In a nonlin-        and the method stops. Otherwise,
+ear optimization context, a standard move is s(x) =            3. Let x := s(x)
+x + ud, where d is a specified direction vector, such as          and return to Step 2.
+a generalized gradient, and u is a scalar step size. This
+latter type of move can map distinct trial solutions into           While conceptually simple in general outline, such
+the same vector unless its classification is made to          hill climbing heuristics can have useful (and sometimes
+depend on the identity of both u and d.                       subtle) characteristics, and in fact encompass a variety
+     An important type of move from mixed integer             of elegant mathematical algorithms. If X is the set of
+programming is the familiar composite move that in-           feasible extreme points for a linear program and S(x)
+crements or decrements the value of one of the integer        is the set of moves that lead from x to an adjacent
+variables, and then determines the values of the contin-      extreme point, then the simplex method (employing
+uous variables by solving the resulting linear program.       implicit or explicit perturbation to avoid degeneracy) is
+Notationally, for this case we write x = (xI, x,), where      such a hill climbing procedure. Similarly, if X is the
+XI and x, respectively are the vectors of integer and         dual feasible region for a linear program, and S(x) is
+continuous variables, and let X = (x: AIXI + Acx, = b,        the set of moves that determines an improving gradient
+x 2 0 and x1 integer]. The composite move for mixed           vector by mapping x into the point (1, I , . . . , I), and
+integer programming may then be expressed as a map-           then chooses a step size that selects a new point about
+ping from x' to X" given by s(xI1, x C f )= (xIt', x,"),      0.9 (preferably) of the distance from x to the dual
+where xl" = s1(xI1)and xc" is an optimal solution to          feasible boundary, then the Karmarkar dual affine lin-
+                                                              ear programming method likewise is such a hill climb-
+         Minimize c(xIU,x,): (xI", x,) E X.
+                                                              ing procedure. Combinatorial search strategies are well
+In particular, xl" = sI(xI') represents a component           advised, therefore, to heed the potentialities that reside
+mapping of the form xI" = xI' + e, or xI" = xIf - e,;         within such methods.
+and the condition (xI", x,) E X identifies x, as an                 The chief limitation of a hill climbing procedure
+element of the set {x,: A,x, = b - AlxIW,xc 2 01. We          in a combinatorial problem setting is that the local
+will refer again to this type of move in Part 11.             optimum obtained at its stopping point, when no im-
+                                                              proving moves are possible, may not be a global opti-
+2. A Simple Form of Tabu Search                               mum. Tabu search guides such a heuristic to continue
+We first present tabu search in a simple form that            exploration without becoming confounded by an ab-
+discloses two of its key elements: that of constraining       sence of improving moves, and without falling back
+the search by classifying certain of its moves as forbid-     into a local optimum from which it previously emerged.
+den (i.e., tabu), and that of freeing the search by a short   From its ability to incorporate and guide another
+
+
+
+
+                                         Copyright O 2001 All Rights Reserved
+
+===== page 3 [pdftotext] =====
+192     Glover
+
+procedure, in amended form as a subroutine, tabu            function is given by selecting s ~ ( x )SO that
+search may be viewed as a metastrategy for combina-
+                                                                 c(sk(x))= Minimum(c(s(x)): s E S(x) - T).
+torial problem solving.
+      The operation of the procedure in simplified form     In cases where exclusion from T can be expressed as a
+may be described as follows. A subset T of S is created     requirement to satisfy a set of inequality constraints
+whose elements are called tabu moves. The elements of       (such as bounds on variables), and the set S(x) can be
+T are determined by a non-Markovian function that           similarly characterized, the solution s(x) obtained from
+utilizes historical information from the search process,    defining OPTIMUM in this fashion may represent the
+extending up to t iterations in the past, where t can be    outcome of solving an auxiliary optimization problem.
+fixed or variable depending on the application or stage     (Such a possibility is directly relevant to integer pro-
+of search. Membership in T is by means of an itemized       gramming applications using a linear programming
+list or by reference to a set of tabu conditions (e.g.,     method as a heuristic subroutine, as elaborated in
+linear inequalities or logical relationships) expressed     Part 11.)
+indirectly in terms of a current trial solution x; for           By the preceding form of OPTIMUM, each exe-
+example, by letting T take the form T(x) = (sE S: s(x)      cution of Step 2 moves from the current x to an s ( ~ )
+violates the tabu conditions). For an appropriately de-     that yields the greatest improvement-or, lacking the
+termined T and an evaluator function denoted by             possibility of improvement, the least disimprove-
+OPTIMUM, subsequently identified in greater detail,         ment-in the objective c(x), subject to the restriction
+the procedure may be described as follows.                  that only non-tabu moves are allowed. In cases where
+                                                            the set S(x) - T may be large, and processed by
+                                                            itemization rather than auxiliary solution, it is appro-
+             SIMPLE TABU SEARCH
+                                                            priate for the OPTIMUM function to be based on a
+ 1. Select an initial x E X and let x* := x. Set            strategy for sampling this region, shrinking S(x) - T
+    the iteration counter k = 0 and begin with T            for the purpose of identifying the minimum c(s(x)).
+    empty.                                                  Picking the first s such that c(s(x)) < c(x), if one exists,
+ 2. If S(x) - T is empty, go to Step 4.                     provides one instance of such a sampling strategy, but
+    Otherwise, set k := k + 1 and select skE                tabu search generally proceeds more aggressively. This
+    S(x) - T such that sk(x) = OPTIMUM(s(x):                approach contrasts with methods that undertake to
+    s E S(x) - T ) .                                        progress slowly to a local optimum, such as the simu-
+ 3. Let x := sk(x).If C(X)< ~ ( x * ) ,where x* denotes     lated annealing methods based on Metropolis (or "cool-
+    the best solution currently found, let x* := x.         ing") strategies, which rely on the premise that a slow
+ 4. If a chosen number of iterations has elapsed            descent, appropriately regulated, will make the local
+    either in total or since x* was last improved,          optimum more nearly a global one. (There nevertheless
+    or if S(x) - T = 0 upon reaching this step directly     may be advantages for integrating tabu search with such
+    from Step 2, stop.                                      methods, as subsequently noted.)
+    Otherwise, update T (as subsequently identified)             The rationale underlying the aggressive orientation
+    and return to Step 2.                                   of tabu search derives from two considerations. First is
+                                                            that many optimization problems can be solved opti-
+     Three aspects of this version deserve emphasis:        mally by making a "best available move" at each step,
+(1) the use of T provides the "constrained search"          a phenomenon that goes beyond the well known results
+element of the approach, and hence the solutions gen-       for greedy algorithms. Minimum cost network flow
+erated depend critically on the composition of T and        problems and weighted matroid intersection problems,
+the way it is updated at Step 4; (2) the method makes       for example, can be solved by moves based on succes-
+no reference to the condition of local optimality, except   sively identified best (shortest) paths. Choosing moves
+implicitly where a local optimum improves on the best       other than best ones can lead to inferior solutions for
+solution previously found; (3) a "best" move (rather        these methods, while other methods for these problems,
+than an improving move) is chosen at each step, em-         which do not require best moves at each step, are not
+ploying the criteria embedded in the OPTIMUM func-          injured (and are often accelerated) by choices with the
+tion.                                                       highest evaluations.
+     After a preliminary discussion of these issues, an          The second consideration underlying the aggres-
+example will be provided to make the discussion con-        sive orientation of tabu search stems from the proce-
+crete and to indicate data structures convenient for        dural organization by which local optimality does not
+implementing the procedure.                                 present a barrier, and hence offers less compelling rea-
+     First we consider some of the forms of OPTIMUM         sons for delaying the approach to it. Rather than spend
+and the tabu set T. A natural choice for the OPTIMUM        proportionately more time in regions whose solutions
+
+===== page 4 [pdftotext] =====
+                                                                                                Tabu Search. I        193
+
+are proportionately less attractive, tabu search under-         MUM finds preferable. An empirical discovery from
+takes to devote the larger share of its effort to exploring     the application of tabu search methods is that t has a
+regions where solutions are good. (In situations where          highly stable range of values that both prevent cycling
+slow descent strategies appear valuable,['4,''I they may        and lead to remarkably good solutions. A challenge to
+be used to provide an initial point of departure.)              research would be the development of theory to explain
+     The simple rule that selects the minimum c(s(x)),          this phenomenon.
+subject to the tabu restrictions, has in fact proved                  Indeed, in practice, T rarely takes the form previ-
+successful in a variety of applications. When the mini-         ously indicated, for two reasons. First, in some settings,
+mum is expensive to compute, an approximation to it             when the move s is chosen from S(x), the tabu condi-
+may be chosen as an alternative to reducing the sample          tion that prevents s-' from being selected also must
+region.                                                         prevent a larger set of moves, dominated by s-', from
+     A similarly straightforward but likewise effective         being selected. (Issues concerning "dominated" and
+form for the set T is given by                                  "deficient" moves are treated in Section 6.) Second, for
+                                                                considerations of memory conservation and ease of
+            T = Is-': s = sh for h > k - t )
+                                                                processing, it is often desirable to record less than the
+where k is the iteration index and s-I is the inverse           full range of attributes required to characterize a move,
+of the move s; i.e., s - ' ( ~ ( x ) )= x. In words, T is the   or the solution to which it is applied, and hence a
+set of those moves that would "reverse" (or "undo")             partial range of attributes is recorded instead (which
+one of the moves made in the t most recent iterations           potentially may be shared by other moves or solutions).
+of the search process. Thus, the operation of updating          Under these circumstances, a tabu list T does not
+such a Tat Step 3 of the tabu search procedure in effect        consist simply of the moves sh-I for h > k - t, but of
+consists of setting T := T - sif., + sk-'. (The minus           collections Ch of moves, where each Ch defines its
+and plus signs indicate the operations of deleting and          membership by certain attributes, embodied in its tabu
+adding elements to a set.) By convention, when k < t            conditions, which cause it to contain sh-' and other
+the reference to s><is disregarded.                             moves that likewise satisfy these conditions. Thus, more
+      The indicated form for the tabu set is based on the       generally, T characteristically takes the form
+assumption that the likelihood of cycling, i.e., of follow-
+                                                                      T = u Ch: h > k - t (where sh-' E Ch).
+ing a sequence of moves that leads back to a solution
+visited in the past, is inversely related to the distance of    The sets Ch also may be allowed to contain elements
+the current trial solution x from that previous solution.       other than sh-' for strategic regions related to the pre-
+If distance is measured in terms of the number of moves         vention of cycling, as will be indicated in Part I1 of this
+taken (hence the number of iterations made) since the           study in the context of mixed integer programming.
+previous solution was visited, subject to the stipulation             One additional important aspect concerning the
+that no intervening move is allowed to reverse one of           management of T deserves mention. In the case where
+its predecessors, then T is designed to counter cycling         S(x) - T is empty in Step 2 of the Simple Tabu Search
+according to the stipulated assumption.                         procedure, the update of T a t Step 4 departs from the
+      Within the structure of certain choice rules and          update of T implicit in the preceding discussion (which
+tabu conditions, the goal more generally is to avoid            in effect drops the tabu restriction recorded t iterations
+returning to a previous solution state, e.g., to a previ-       ago) by creating a prioritization equivalent to basing
+ously visited solution where the best available (non-           the choice on dropping the smallest number of elements
+tabu) move for leaving that solution is the same as             from T, in the sequence from oldest to youngest, that
+before. In this case, T more appropriately takes the            will enable some move(s) to regain a non-tabu status.
+form T = TI U T2, where TI = (sh-I: h => k - t l ) and          Such a prioritization can be shown to lead to an opti-
+T2= (sh:h > k - t2).                                            mum in a finite number of steps in simple settings if t
+      Thus, conjecturally, by preventing the choice of a        is allowed to grow with the iteration k, although this
+move that represents the reverse of any taken during a          priority scheme potentially allows superfluous moves
+sequence of t iterations, the procedure moves progres-          that can be avoided by refinement. (An example where
+sively away from all solution states of the previous t          finiteness is assured occurs in the case where giving a
+iterations (in a sense determined by the nature of the          tabu label to a move reversal corresponds to giving
+moves in S), and for t appropriately large, the likelihood      a tabu label to the solution reached by this reversal-
+of return effectively vanishes. It does not follow, how-        provided the number of solutions is finite and there
+ever, that the objective of tabu search is to choose t          exists a sequence of moves leading from the starting
+large. From a competing perspective, the smaller the            solution to an optimal solution.) In practice, for appli-
+value oft, the greater the latitude of choice the method        cations examined thus far, neither such refinements in
+has to drive toward solutions that the function OPTI-           priorities nor a growing t value have proven necessary.
+
+
+
+
+                                            Copyright O 2001 All Rights Reserved
+
+===== page 5 [pdftotext] =====
+194      Glover
+
+An Example                                                       principles involving equivalent and deficient moves
+Consider a problem of creating an optimal partition of           as discussed in a later section.
+a set of elements E into sets El, i E N = ( I , . . . , n ] .         The attributes (i, w(el)) and ( j , w(e, )) are used in
+Each element e in E has a weight w(e), and each set El           this example to code the tabu restriction that forbids a
+has a target weight W,. Define w(E,) to be the weight            move if it adds either an element of weight w(el) to set
+of the elements of E assigned to El, that is, w(E,) =            El or an element of weight w(e,) to set El. It is impor-
+C (w(e): e E El), where w(E,) = 0 if El is empty. Then          tant to observe that the same set of attributes can
+the goal is to minimize the sum of absolute deviations          be used to code other tabu restrictions. For instance,
+of the weights w(E,) from the target weights W,:                (i, w(e,)) and ( j , w(e, )) could instead be used to forbid
+                                                                 moves that drop an element of weight w(eJ) from set
+        Minimize         ( 1 w(El) - W , 1 : i E N)             E, or an element of weight w(e,) from set E,. (By
+                                                                contrast, forbidding a move that drops an element of
+      A reasonable set of moves to embed within tabu            weight w(e,) from set El or of weight w(eJ) from set EJ
+search for this problem arises by starting with some            would block a move repetition rather than a move
+arbitrary assignment of elements to the sets, and using         reversal.) These same attributes could also be used to
+exchanges that swap an element el currently in set El           prevent moves that both add and drop the indicated
+with an element e, currently in set E,. We allow the            elements to create a move reversal. This latter type of
+special case where one of el or e, is a "null" element of       tabu condition is less restrictive (i.e., it forbids a smaller
+zero weight, which provides a partial exchange that             collection of moves) than those previously specified.
+simply moves an element from one set to another.                      The TABUSTATE array has the role of making
+      The OPTIMUM function can take the form of                 the tabu restrictions easy to implement. For our ex-
+prescribing the swap that yields the most favorable             ample, suppose that the elements to be partitioned
+change in the minimization objective (whether an in-            have r distinct weights, w,, q = 1, . . . , r. Then we let
+crease or decrease), restricting attention to moves that        TABUSTATE take the form of an n x r matrix
+do not qualify as tabu. At a corresponding level of             TABUSTATE(i, q), where TABUSTATE(i, q) has a
+simplicity, the tabu set Tis given the role of preventing       positive value if an element of weight wq is forbidden
+the reversal of moves made during the most recent               to be added to set E,, and TABUSTATE(& q) has a
+t iterations.                                                   zero value otherwise. For reasons subsequently ex-
+      To accomplish the prevention of move reversals,           plained, a positive TABUSTATE(i, q) value names the
+and implicitly to define T, we employ two arrays,               most recent position p on TABULIST where the attri-
+TABULIST and TABUSTATE. (Analogous arrays are                   bute (i, q ) is recorded (with the purpose of prohibiting
+useful for a wide range of applications of tabu search.)        an element of weight wq from being added to set El).
+TABULIST(p), p = 1, . . . , t records the attributes                  The full implementation of tabu search for our
+selected to provide a shorthand, or coding, to embody           example problem then becomes as follows. TABU-
+the tabu restrictions applicable to associated moves.           LIST(p), which in our example stores two ordered
+Such attributes can be expressed at varying levels of           pairs for each value of p = 1, . . . , t, is treated as a
+detail. At an extreme, the entire composition of the sets       circular list. To do this, the value p is updated by
+E,, . . . , Encould be recorded before and after a move,        p := p + 1 when the iteration counter is updated
+and this record then used to check the corresponding            by k := k + 1, except that p is reset to 1 whenever its
+composition for a proposed future move to see if it             value would be increased from t to t + 1. Attributes
+qualifies as tabu. A simpler set of attributes appropri-        recorded at position p of TABULIST automatically
+ate to our example consists of the two ordered pairs            erase the attributes stored there previously. When this
+(i, w(e,)) and ( j , w(e,)). These suffice to identify the      erasure occurs, the TABUSTATE array (which begins
+fact that the associated swap consists of transferring an       with all entries 0) is modified so that the entries (i, q)
+element of weight w(e,) from set El to set E,, and              such that TABUSTATE(& q) = p are reset to yield
+an element of weight w(e, ) from set E, to El.                  TABUSTATE(i, q) = 0.
+     Note that the precise elements el and e, are not                 The ordered pairs (i, q) that identify these entries
+identified as part of these attributes, only their weights.     of TABUSTATE which are slated to be reset to 0 are
+Such a reduced level of specificity can have strategic          precisely the two ordered pairs recorded as attributes
+value. In particular, preventing the reverse swap of the        on TABULIST(p). There is one exception: it is possible
+weights is more appropriate in the present context than         that after setting TABUSTATE(&q) = p (when (i, q) is
+simply preventing the reverse swap of the elements.             recorded on TABULIST(p)),a later iteration may again
+Moreover, a sensible implementation of tabu search              involve dropping an element of weight w, from set El,
+will additionally forbid a move such that w(e,) = w(e, ).       thus resetting TABUSTATE(1, q) to a new value. Thus,
+These observations represent instances of broader               it suffices simply to check whether a pair (i, q) stored
+
+===== page 6 [pdftotext] =====
+                                                                                              Tabu Search. I        195
+
+
+on TABULIST(p) yields TABUSTATE(&q) = p, and                  the move s has been applied to x before; (3) the move
+if not, the operation of assigning TABUSTATE(i, q) a          s-' has been applied to s(x) before.
+0 value is bypassed. A parallel step can be used to                Although (1) is the only criterion for preventing a
+facilitate processing of aspiration levels, as subsequently   solution-specificmove that fully assures cycling will not
+discussed in Section 4.                                       occur, the process of checking whether the tabu status
+     By means of these updating rules, at each point          of a move can be overridden on the basis of ( I ) generally
+where a swap of elements e, and e, is to be evaluated as      requires more memory and greater effort than is con-
+a candidate for the best move of the current iteration,       venient to employ. If a tabu move is allowed to be
+the array elements TABUSTATE(& w(e,)) and TA-                 made provided only that condition (2) fails, then it is
+BUSTATE(j, w(e, )) disclose at once whether the move          possible to reverse a move as soon as it is made, going
+is tabu (according to whether at least one of the two         back to a solution just visited. Experiments have shown
+elements is positive). This check of the TABUSTATE            that tabu lists thus designed to prevent repetition rather
+array to see if a move is tabu is postponed until after       than reversal of moves typically do not work well, for
+the first local optimum is attained, though such a            reasons that are not difficult to imagine. Condition (3),
+conditional override or tabu status is achieved auto-         however, is compatible with the tabu list structure. By
+matically with the usp of aspiration criteria.                using the check for (3) to avoid cycling, and allowing a
+     One item remains to be resolved: the updating that       tabu move that leads from x to s(x) to be made unless
+occurs when all available moves of the current iteration      the solution-specific move from s(x) to x had occurred
+are classed as tabu (i.e., when Step 4 of the Simple Tabu     earlier, the attempt to prevent a return to a previously
+Search Procedure is reached immediately after discov-         generated solution clearly will be supported more effec-
+ering S(x) - T is empty in Step 2). The prioritization        tively than by relying on condition (2). Adding condi-
+of tabu moves previously mentioned may be accom-              tion (2) to condition (3) serves to strengthen the ap-
+plished by reference to the values of the entries in the      proximation of meeting condition (I).
+TABUSTATE array, where the prescribed move be-                     The relevance of these observations for creating an
+comes the one that produces the best change in the            effective aspiration level function can be clarified by a
+minimization objective subject to being among those           concrete example, as follows. Define A(s, x) = the best
+moves with highest priority. Each nonzero entry of            (smallest) value of c(x') that could be achieved by
+TABUSTATE implicitly identifies an associated itera-          reversing a previous solution-specific move from some
+tion value k, and hence by allowing entries associated        X' to some s'(x') such that c(s'(xl)) = c(s(x)).
+with smaller k values to impart higher priorities, the             Although the definition appears somewhat forbid-
+effect can be achieved of choosing a best move subject        ding, the underlying concept is quite simple, and such
+to discarding only the oldest tabu restrictions.              an aspiration level function is easy to record and up-
+                                                              date. Suppose that possible values for c(x), for different
+3. Uses of Aspiration Levels                                  x vectors, are given by the integers q = 1, 2,. . . , U,
+An important element of tabu search is the incorpora-         and let BEST(q) = the minimum (best) c(x) value that
+tion of an aspiration level function A(s, x), alluded to      could have been attained by reversing a previous move
+earlier, whose value depends on a specified move s            that produced c(s(x)) = q. Initially, set BEST(q) =
+and/or vector x. We say that the aspiration level is          U + 1. Then when a solution-specific move from x to
+attained if                                                   s(x) is made, update BEST(q), for q = c(s(x)), by the
+                                                              rule BEST(q) = Min(BEST(q), ~ ( ( x ) ) .Subsequently
+                                                              the aspiration level may be allowed to override a tabu
+The role of A(s, x) is to provide added flexibility to        move that leads from (a different) x to s(x) if
+choose good moves by allowing the tabu status of a
+move to be overridden if the aspiration level is attained.
+The goal is to do this in a manner that retains the
+ability to avoid cycling.                                     This particular type of aspiration is an instance of
+     To discuss a way to achieve this goal, we will refer     checking condition (3).
+to a move in a second (narrower) sense as a particular             The corresponding form of (2) in this setting is
+instance of a mapping, e.g., speaking of a move "from         given by defining A(s, x ) = the best (smallest) value of
+x to s(x)." Such a move, whose identity depends on x          c(sf(x')) achieved for all previous solution-specific
+as well as s, will be called a solution-specificmove.         moves from some x' to some sl(x'), where c(xl) =
+     There are three strategic levels for avoiding cycling,   c(x). This alternative aspiration level function can be
+which involve preventing the solution-specific move           handled by initializing BEST(q) as before, but when a
+from x to s(x) if: (1) s(x) has been visited before; (2)      solution-specific move from x to s(x) is made BEST(q)
+
+
+
+
+                                           Copyright O 2001 All Rights Reserved
+
+===== page 7 [pdftotext] =====
+196     Glover
+
+is updated for q = c(x), setting                              for any particular ordering or can differentiate the edges
+                                                              more precisely-e.g., in the approach of [ 5 ] , a,@, x)
+          BEST( q) = Min(BEST(q), c(s(x)).
+                                                              identifies the longer of the two added edges and
+The condition for overriding a tabu move that leads           az(s, x) identifies the shorter (with a corresponding
+from (a different) x to s(x) is identical to that given       differentiation of the dropped edges).
+before; i.e.,                                                        To implement these attribute functions, let E de-
+                                                              note the set of all elements that may be identified as
+                                                              attributes of moves. In the traveling salesman example,
+Conditions (2) and (3) are therefore readily combined         E consists of the set of all edges of the graph. It is of
+by making both updates of BEST(q) previously indi-            course possible also to identify other relevant attributes
+cated, since the check to override tabu status is the         of moves in this example that make the nature of E
+same for these cases.                                         more complex; e.g., we may introduce a5(s, x) and
+     Other aspiration level functions that can be easily      a6(s,x) to refer to the values c(x) and c(s(x)), in which
+checked and updated are derived by maintaining simi-          case E would consist not only of edges but also of tour
+lar records of other attributes of a move-for example,        lengths. More generally, in such cases E should be
+defining a value BEST(q) where q denotes the index of         treated as a collection of sets that contain elements for
+a variable that is incremented or decremented. Using          different classes of attributes. (It may be noted that the
+multiple "BEST" lists increases the likelihood that a         identification of a&, x) and a6(s, x ) indicated here
+tabu move will be allowed to escape its tabu status (by       corresponds more closely to the development of the
+the requirement that at least one of the associated           type of aspiration level criteria discussed in Section 3.)
+inequalities holds), although entailing greater effort for    Aspiration levels are then defined relative to the ele-
+checking and recording. An interesting alternative is to      ments of E, and governed by the same tenure structure
+define A(s, x) only in relation to moves that are cur-        previously indicated for creating and maintaining tabu
+rently tabu, which leads to the considerations of the         lists.
+next section.                                                        In particular, a different tabu list T,, p = 1, . . . ,g,
+                                                              is created for each attribute a,@, x), defining
+4. Integrated Tabu Restrictions and Aspiration
+   Level Criteria
+The tabu restrictions and aspiration level criteria of        where s h and xh refer to the move s and vector x at
+tabu search play a dual role in constraining and guiding      iteration h. In the traveling salesman setting this cor-
+the search process. Tabu restrictions allow a move to         responds to creating a separate tabu list for each edge
+be regarded admissible if they do not apply, while            of the 2-OPT swap, and giving each list T, its own
+aspiration criteria allow a move to be regarded as            length t,. (The shorter of the two edges dropped from
+admissible if they do apply (i.e., if they are satisfied).    a tour may reasonably be given a shorter tenure on a
+This complementarity of the notions underlying the            tabu list than the longer, for example, to allow it to be
+tabu restrictions and aspiration criteria enables them to     added back more quickly.)
+be integrated into a common framework.                              Tabu status, or equivalently "aspiration status," is
+      To describe this framework, it is appropriate to        now defined by linking these tabu lists with an aspira-
+introduce notation for the attributes of moves that are       tion function A(e) defined on the elements e of E.
+used to define tabu status. Specifically, let a,(& x), p =    Thus, when an element e = a,(s, x) is an attribute of
+1, . . . , g, be a set of functions that identify selected    the move from x to s(x) (as for example, where e is one
+attributes of move s applied to a solution x. To illus-       of the edges added to the tour represented by x), the
+trate, we will refer to an approach used to integrate         value A(e) is updated according to criteria analogous
+aspiration criteria and tabu restrictions for the traveling   to those indicated in Section 3, e.g., A(e) = Min(A(e),
+salesman problem,[51based on using the familiar 2-OPT         c(x)) or A(e) = Min(A(e), c(x), c(s(x))), etc. A ( e )
+moves[16' that delete two nonadjacent edges of a tour         initially is assigned a large ("infinite") value for each e
+and add back the unique two edges that create a new           in E, and is subsequently again assigned this value
+tour. Attribute functions for this application are defined    whenever e does not belong to any of the tabu lists.
+in a straightforward way by letting a,@,x ) and a&, x)             The tabu status, or aspiration status, of a move
+identify the two added edges and letting a&, x) and           overall then can be made a function of the status of its
+a&, x) identify the two dropped edges (taking g = 4).         attributes. Given that a candidate move s applied to x
+      The degree of specificity in identifying such attri-    will produce an objective value c(s(x)), it is natural to
+butes of moves can vary. For example, a,(& x) and             assign an attribute of this move a passing status (indi-
+az(s, x ) can refer to the added edges without concern        cating that it passes the aspiration test) if c(s(x)) is
+
+===== page 8 [pdftotext] =====
+                                                                                              Tabu Search. I         197
+
+smaller than the aspiration value for the indicated           node x, i.e., that take x as their initial endpoint, is
+attribute. Specifically, an attribute a&, x) receives a       ((x, ~ ( x ) )s: E S(X)].We note that G is symmetric, since
+passing status if c(s(x)) < A(e) for e = a,(& x). All         for each arc (x, s(x)))there is an arc (s(x), x), obtained
+elements e not on a tabu list therefore automatically         by applying the move s-' to node s(x).
+receive a passing status. Others receive a passing status          A sequence of trial solutions obtained by applying
+if the move to which they contribute produces an              a succession of moves to a given starting trial solution,
+objective value superior to the aspiration value recorded     hence a sequence of the form x', x2, . . . , xr, whereXI+'
+
+when such elements became tabu. The move s, or more           = s(xl) for some s E S(xi), i = 1, . . . , r, identifies a
+precisely the transition from x to s(x), therefore may        path in G whose arcs are the ordered pairs (xi, s(xl)).
+be assigned a passing status if all, or a selected number     Thus, a series of iterations of tabu search traces a path
+of its attributes receive a passing status. (Related alter-   in G. By reference to the iteration counter k, the suc-
+natives might include, for example, assigning a move a        cessive arcs of this path have the form (x, s~(x))for
+passing status if an attribute of sufficient importance       consecutive values of k. By these conventions, a tabu
+receives a passing status.)                                   list T of the form T = (sh-I: h > k - t), or of the form
+      By this development, it is apparent that the repre-     T = U Ch: h > k - t (where sh-' E Ch), consists of
+sentation of the tabu set T as a collection of moves (i.e.,   collections of arcs that include each arc (sh(x), x ) which
+as a subset of S) in the Simple Tabu Search Procedure         is the symmetric counterpart of the arc (x, sh(x))gen-,
+of Section 2 is not adequate for broader concerns. In         erated during one of the last t iterations of the method.
+general, T may be viewed as a collection of pairs (s, x),     Thus, in particular, T includes as a subset the arcs of
+hence of solution-specific moves, characterized by a          the path that visits the nodes sh(x), for h 3 k - t, in
+selected set of attributes. The specification s E S(x) -      reverse order.
+T thus becomes replaced by the specification s E S(x)              From a theoretical standpoint, analysis of the effect
+and (s, x) 4 T. (In the case where the pairs (s, x) of T      of T on the sequence of solutions generated depends
+are capable of identifying solutions, without reference       both on the nature of the moves in S and on the
+to the moves applied to them, the exclusion of (s, x)         attributes of these moves which are used to identify the
+from T may be interpreted more simply as excluding            collections Ch. A potentially appealing starting point
+s(x) from T.)                                                 for such an analysis is the simple digraph that results
+      In sum, aspiration criteria and tabu restrictions can   for pure zero-one integer programming problems when
+be made subject to a common organizational frame-             Xis the set of vertices of the zero-one unit hypercube,
+work, and viewed as different aspects of the same             c(x) is a penalty function defined over this set (e.g., to
+conceptual principle. At an extreme, as aspiration A(e)       assure that constraints such as Ax a b are satisfied at
+that is set smaller than any possible c(x) value corre-       optimality), and S is the set of moves that transition
+sponds to a preemptive tabu status. The motive under-         among adjacent vertices (i.e., each move has the form
+lying this form of integration of aspiration criteria and     s(x) = x + e, or s(x) = x - e, for some j = I , . . . , n).
+tabu restrictions is the hypothesis that different attri-     Then S and X respectively have 2n and 2" elements,
+butes of moves indeed can have relatively different           every x has exactly n arcs leaving it, and every s is a
+influences on the quality of solutions generated, and         collection of 2"-' arcs. The implications of applying a
+thus should be subject to different tenures of tabu status    simple version of tabu search to such a graph G, under
+(i.e., should be recorded on tabu lists of different          various assumptions about c(x) and the relation of t
+lengths) and be governed by different levels of aspira-       and n, may provide a useful foundation for understand-
+tion-both of which can be achieved by the same                ing the behavior of more advanced versions of the
+general mechanism.                                            procedure in more complex settings.
+5. Representation of the Search by a Directed                 6. The Role of Dominant and Deficient Moves
+   Graph                                                      Dominance and equivalence operate somewhat differ-
+The tabu search process as described this far can be          ently in tabu search than in usual optimization contexts
+viewed conveniently from a graph theory perspective.          by requiring reference to the nature of the move em-
+Let G = (N, A) be a diagraph whose node set N is the          ployed. To illustrate, consider a zero-one knapsack
+set X of trial solutions, and whose arc set A is the set of   problem of the following form
+all ordered pairs (x, s(x)); that is, the arcs of G consist
+of all solution-specific moves obtained by applying the       Maximize
+moves of S to the elements of X. Thus, a particular
+move s corresponds to the collection of arcs ((x, s(x)):
+x E X(s)]. The set of arcs in the forward star of a given
+
+
+
+
+                                          Copyright O 2001 All Rights Reserved
+
+===== page 9 [pdftotext] =====
+198      Glover
+
+ If a tabu condition prevents a move that replaces xl =       geous in certain applications, as where constraints may
+ 0 by xl = 1, then by apparent dominance considerations       confine feasible solutions to a fairly narrow region, to
+ it should also prevent the move that replaces x2= 0 by       use additional tabu lists to induce strategic oscillation
+ x2 = 1. In the reverse direction, a tabu condition that      of other parameters. To illustrate, one problem suc-
+ prevents a move replacing x2= 1 by x2= 0 should also         cessfully approached in this matter was a lock box
+ prevent the move from xl = 1 to xl = 0. Note that such       application modeled as a p-median problem with p
+ dominance, characterized relative to moves, is not the       fixed. A second tabu list was created for this problem
+ same as the type of dominance that implies a variable        that compelled successive moves to climb or descend
+ will be zero in an optimal solution. (Here, possibly both    to alternating depths on each side of the fixed p value,
+ xl and x2may equal 1.)                                       keeping track of the best candidate solution each time
+       In the case where x2 has coefficients identical to     the value p was reached at the point of crossing. A
+ those of XI, so that their corresponding moves are           similar approach clearly could be applied to problems
+ viewed as equivalent, similar extensions of tabu restric-    where p is variable.
+tions apply. Equivalence operates differently from strict          The use of strategic oscillation of this type has
+dominance, however, in that a move is not allowed if a        several advantages. First, it permits the execution of
+ strictly dominating alternative is available. (E.g., the     moves that are less complex than might otherwise be
+ move from xl = 1 to xl = 0 will not be allowed if x2=        required. In the lock box application, for example,
+ 1 in the current trial solution.) Equivalent moves carry     moves lead that directly from one solution to another
+no corresponding limitation, though they may be               while enforcing no deviation from the fixed p value
+ranked arbitrarily in order to be treated in the same         involve exchanges that are combinatorially more nu-
+manner as strictly dominating moves.                          merous (and that require more effort to evaluate) than
+      Since tabu search prevents certain moves from           the moves that allow variations around p. A second
+occurring, it may well be that employing the evaluation       advantage is that moving outside of a boundary and
+criteria of a standard heuristic within OPTIMUM may           returning from different directions uncovers opportu-
+lead to selecting as "best" a move that should not be         nities for improvement that are not readily attainable
+made. For example, in the knapsack problem one heu-           when the search is more narrowly confined. Such pro-
+ristic is to swap variables in the solution as long as        cedures also encourage the use of a function for evalu-
+feasibility is maintained, replacing x, = 1 by x, = 1 for     ating the attractiveness of moves that varies depending
+a specified pair i, j, and evaluating the swap based on       on the location and direction of search (see, e.g., [3]).
+its contribution to the objective function. The heuristic          From a more general standpoint, many types of
+operates without complication when employed as a hill         heuristic search procedures have "mirror opposites," as
+climbing procedure, but new circumstances arise when          exemplified by the dichotomous classifications of meth-
+the heuristic is embedded within the OPTIMUM func-            ods as "constructive or destructive," "interior or exte-
+tion. The evaluation of the heuristic must then be            rior," "feasible or infeasible," "primal or dual," and so
+modified as a result of the ability of tabu search to         forth. Rather than selecting only one type of search
+encounter conditions not met during hill climbing.            from such a classification, a wider range of opportunity
+Specifically, in the preceding knapsack problem exam-         is opened by alternating between them. Opposing strat-
+ple, the swap that replaces xl = 1 by x2= 1 can be seen       egies typically can be organized so that each point
+to have a higher evaluation, i.e., yield a better objective   of crossing from one to the other represents a point of
+function change, than the swap that replaces xl = 1 by        local optimality (relative to a given search orientation).
+X, = 1. (Note that both represent nonimproving moves.)        Tabu lists that do not simply prohibit certain move
+Tabu search, however, classifies the former move as a         reversals, but compel such crossings and returns, offer
+deficient move, because it allows no possibility of an        an effective way to avoid the suboptimal entrapment
+improved solution. Such moves are excluded from con-          of standard searches.
+sideration by OPTIMUM regardless of the fact that                  An example of this latter type occurs for a mul-
+they may receive higher evaluations than other moves          tidimensional knapsack problem from a capital
+by a standard hill climbing heuristic.                        budgeting application, where the boundaries between
+                                                              feasibility and infeasibility can be crossed in either
+7. Tabu Lists and Strategic Oscillation                       direction by successively incrementing or successively
+A major aspect of tabu search derives from inducing           decrementing variables. (Heuristics based on locally
+search behavior that compounds the types of patterns          best increments and decrements are easily specified for
+produced by a single tabu list. One of the effects of such    this problem because the coefficients of its inequality
+a tabu list is to create a succession of solutions in which   constraints are all nonnegative.) Thus these heuristics
+the objective function value oscillates. It is advanta-       can be readily embedded in an oscillating tabu search
+
+===== page 10 [pdftotext] =====
+                                                                                              Tabu Search. I         199
+
+procedure that compels a specified number, say k, of          search. Features that are common to all or a compelling
+moves beyond the feasible boundary in a given direc-          majority of these solutions (such as values received by
+tion before permitting a return. In one variant, k starts     particular variables) are taken to be a regional attribute
+at 1 and is successively incremented to a maximum, m ,        of good solutions. The method then seeks new solutions
+then successively decremented back to 1. Another var-         that exhibit these features, by correspondingly restrict-
+iant allows rn + 1 - k iterations for each value of k,        ing or penalizing available moves during a subsequent
+thus focusing more heavily on moves closer to the             period of regional search intensification. Instances of
+boundary. In addition to the conditions compelling this       this strategy have been applied in early heuristic ap-
+oscillation, two tabu lists are employed to prevent cy-       proaches to the traveling salesman problem (see, e.g.,
+cling, one list governing reversal of increments and one      [g, 161).
+governing reversal of decrements. (Such an approach                To illustrate, the structure of tabu search leads at
+can of course be used to rebound to alternate depths          once to one type of intensification strategy that is useful
+from a boundary rather than to cross it.)                     for solving large problems. Because the search strongly
+     Another advantage of an oscillating strategy is to       tends to focus on generating solutions that are good, it
+permit the discovery of good solutions for perturbed          also tends generally to incorporate only a subset of
+conditions, where constraints may be slightly relaxed         decision elements (variables, edges, etc.) into these so-
+or tightened. Knowledge of solutions that are inside          lutions. For example, in the traveling salesman context,
+and outside feasibility boundaries can be useful to a         for moderately dense graphs the number of different
+variety of analyses. As in the case of the type of tabu       edges incorporated into the tours on any given solution
+conditions that prevents move reversals, the conditions       pass is generally only a fraction of the total edges. Thus,
+that compel oscillation can be based on graduated             after some initial number of iterations, the method can
+penalties rather than preemptive stipulations. Oscilla-       discard all edges not yet incorporated into any tour and
+tions then are driven by a pendulum function, which           then devote itself to the resulting smaller problem.
+redistributes weights associated with satisfying specified    Because iterations are now much faster to execute, the
+sets of constraints (treated hierarchically or in parallel)   search can examine many more alternatives in a given
+and with improving the objective function value. The          span of time, as well as focus on possibilities that are
+redistribution causes the search to reverse direction at      likely to be attractive.
+selected, possibly variable, distances (or numbers of              More advanced uses of intermediate-term memory
+moves) from a boundary. The pattern of behavior               involve creating a network of good solutions as a matrix
+relative to a given set of constraints may be viewed as       for generating other solutions with good properties. In
+roughly analogous to that associated with a sine wave.        particular, a collection of good solutions is used to
+An inviting avenue of research, not yet explored, is to       define a subregion of the search space that contains
+impose constraints on alternative "harmonics" that are        these points (and others nearby or reachable by convex
+coordinated to bring their points of boundary crossing        combinations, etc.) to provide a focus for intensified
+progressively closer until they at last converge (before      search, and for launching explorations into neighboring
+separating again at the next swing of the pendulum).          regions. Such an approach can be augmented by the
+Such a strategy may be employed to provide good               use of advanced forms of discrimination analysis, which
+solutions to problems whose constraints may otherwise         seek to generate a parsimonious collection of inequali-
+be difficult to handle.                                       ties or logical conditions of two types: ( I ) to encompass
+                                                              good solutions; (2) to separate good solutions from bad.
+8. Intermediate and Long-Term Memory Functions                In combinatorial settings, such conditions will com-
+Intermediate and long-term memory functions are               monly be based on discrimination functions involving
+employed within tabu search to achieve regional inten-        both hierarchical (conditional) structures and separat-
+sification and global diversification of the search. Com-     ing hyperplane structures.
+bined with the short-term memory functions fulfilled               An interesting avenue for research is to seek to
+by the tabu lists, the intermediate and long-term func-       characterize patterns for good solutions that can be
+tions provide an interplay between "learning" and "un-        expressed as trajectories; e.g., that specify transitions
+learning." We comment only briefly on their form here,        among good solutions by reference to inferred differ-
+providing an additional specific illustration of how they     ence equations. A simple example is the following.
+can be employed in the context of the mixed integer           Tabu search itself provides a trajectory that links good
+programming problem in Part I1 of this study.                 solutions, but this trajectory can be streamlined by
+      Intermediate term memory operates by recording          creating a smallest set of moves to go from each im-
+and comparing features of a selected number of best           proved solution to the next, and reordered (e.g., fanning
+trial solutions generated during a particular period of       out from one or more central points, or inward from
+
+
+
+
+                                          Copyright O 2001 All Rights Reserved
+
+===== page 11 [pdftotext] =====
+200     Glover
+
+ peripheral points) to give a basis for extending the        recognition component, thereby refining and nesting
+trajectory into additional regions. Moves then can be        the concept of "regions" to which intensification and
+ chosen that most nearly match directional vectors           diversification of search is applied. Ample opportunity
+ established by such trajectories or that extrapolate        exists for parallel processing that pursues paths from
+ systematic changes in values of variables in going from     divergent starting points, then pulls back and weeds out
+one solution to another.                                     the best outcomes, as a means of expanding the base
+       The long-term memory function, whose goal is to       of possibilities.
+ diversify the search, employs principles that are roughly        Another application of these ideas occurs in set-
+the reverse of those for intermediate-term memory.           tings where local optima are strong attractors, or "mini
+Instead of inducing the search to focus more intensively     black holes" that can be left behind, once visited, only
+ on regions that contain (or that can be extrapolated        by an especially strong effort. For example, preliminary
+ from) good solutions previously found, the long-term        experimentation may disclose that under certain con-
+ memory function guides the process to regions that          ditions-as when a local optimum is reached by a fairly
+ markedly contrast with those examined thus far. The         long or steep descent-the path away from the local
+ approach differs from those methods that seek diversity     optimum consists of a slow and irregular upward climb.
+by generating a series of random starting points, and        In such cases, a faster and more direct withdrawal from
+hence which afford no opportunity to learn from the          a local optimum may be desirable.
+past. The objective is to create evaluation criteria that         Three strategies appear relevant to an accelerated
+can be used by a heuristic search process which is           retreat, drawing on a mix of intensification and diver-
+specifically designed to produce a new starting point,       sification ideas. First is to impose more restrictive tabu
+thus generating such a point by purposeful instead of        conditions, which may include the use of attributes to
+random means. (Uses of restricted randomization by           characterize tabu status that exclude larger sets of moves
+means of probability assignments are discussed in Sec-       than usual from consideration. Second is to use the
+tion 9.) These evaluation criteria penalize the features     history of the first part of the upward climb to project
+that long-term memory finds to be prevalent in pre-          where the process is heading, and then to favor moves
+vious executions of the search process.                      that lead in the direction thus established. Third is to
+      A traveling salesman application again provides a      invoke a strategy that penalizes moves based on the
+convenient illustration. A simple form of long-term          number of iterations their identifying attributes have
+memory in this setting is a count of the number of           been included in solutions of the past, for a chosen
+times each edge appears in the tours generated. Penal-       horizon. After the retreat from the local optimum has
+izing each edge on the basis of this count favors the        progressed sufficiently (by a measure experimentally
+generation of "good" starting tours (according to the        established for the application), the strategy is relaxed
+heuristic chosen for producing such tours) that tend to      and the method resumes its normal operation.
+avoid those edges most commonly used in the past.                 The process of invoking and relaxing such a strat-
+(This sort of approach can be viewed as using frequency      egy of retreat, based on the contour of the solution
+based tabu criteria in contrast to recency based tabu        path, can also be used to invoke and relax ordinary
+criteria.) One way to implement such a long-term strat-      tabu conditions in response to the solution trajectory.
+egy is by means of a long-term tabu list, periodically       The use of a dynamic aspiration level, drawing on the
+activated, which may employ tabu conditions of in-           ideas sketched earlier, may in fact be viewed as one
+creased stringency to drive the solution process into        means for pursuing such an objective. Conceptually,
+unexplored territory.                                        the goal in all of these processes, as in the simplest types
+      The diversity achieved by this criterion can be        of tabu search schemes, is to obtain a useful estimate
+increased by retaining the penalties for a period after      of an escape distance from a local optimum, as a
+transferring to the (possibly different) heuristic incor-    way to determine which moves should be considered
+porated within tabu search, and using the tabu search        legitimate.
+procedure to seek improved solutions. Afterward, the
+penalties are dropped and tabu search proceeds accord-       9. Probabilistic Tabu Search
+ing to its normal evaluation criteria. This same type of     The incorporation of a probabilistic element within
+procedure can be used to continue directly from the          tabu search offers an auxiliary means of pursuing its
+present point of search to a new region without going        basic strategic goals. Basing choices of moves on the
+back to generate a new solution from scratch.                assignment of probabilities yields several interesting
+      Over a wider time frame, the intermediate and          trade-offs between different forms of control and differ-
+long-term functions can be layered in additional, poten-     ent sources of efficiency. On one level, control is gained
+tially overlapping levels. An inviting avenue of research    by the inclusion of new search parameters (i.e., the
+is to join such a layered memory strategy with a pattern     weights which determine the probabilities assigned),
+
+===== page 12 [pdftotext] =====
+                                                                                              Tabu Search. I        20 1
+
+while on another level control is lost by the recourse to     diminishing their chance for consideration at later
+randomization that a more systematic approach would           stages. Likewise, tabu search does not specify that the
+avoid. We propose the view that randomization is a            process should start with a solution far from optimality
+means for achieving diversity without reliance on mem-        or that the best solution is to be identified by the local
+ory. (Diversity in this context ranges from the local         optimum reached at the conclusion of an eventual
+type provided by the operations of a tabu list, to the        undeviating descent. Such strongly contrasting strategic
+global type provided by the long-term memory ap-              frameworks are likely to have similarly contrasting
+proaches of the preceding section.) By this view, the use     effects. (Effects that lead to different types of solution
+of randomization, via assigned probabilities, allows a        paths do not necessarily imply differences in solution
+gain in efficiencyby obviating extensive record keeping       quality. However, it is predicted in [3] that efforts to
+and evaluation operations that a more systematic pur-         improve simulated annealing will lead to replacing its
+suit of diversity may require. At the same time, it entails   rules with those more closely resembling the prescrip-
+a loss in efficiency by allowing duplications and poten-      tions of tabu search-a prediction that appears to gain
+tially unproductive wandering that a more systematic          support from recent s t u d i e ~ . [ ' ~ ~ ] )
+approach would seek to eliminate.                                  The embodiment of the preceding first-order strat-
+      Three strategic principles of tabu search stand out     egy considerations of tabu search in a probabilistic
+among those that lend themselves to a probabilistic           approach is entirely straightforward. The probabilities
+treatment. In summary, they may be expressed as fol-          governing the acceptance of moves from a specified
+lows: (1) more attractive moves, yielding smaller c(x)        candidate set derive from three sources, extracted di-
+values under minimization, have a higher status (and          rectly from the three strategy considerations indicated.
+thus should receive higher probability of acceptance);        These sources are: (Sl) move attractiveness, related
+(2) the status of a move is diminished (entailing a lower     to changes induced in c(x); (S2) tabu status, related to
+probability of acceptance) if it belongs to a class that      tenure on a tabu list; (S3) aspiration level, related
+includes the reversal or, alternatively, repetition of a      to the value of c(x) achieved in relation to a historical
+move recently made; (3) thresholds of aspiration, based       standard (possibly maintained as an inverse form of
+on previous performance, can override an otherwise            tabu status).
+diminished status, yielding a reinforced or even a                 Consider first the source (Sl). By our orientation,
+preemptive basis for selection (acceptance with proba-        the introduction of probabilities has the role of lessening
+bility 1). For problems with large numbers of alterna-        dependence on memory (i.e., the element of randomi-
+tives, these principles operate within the context of         zation makes it possible to be different from the past
+restricting attention to candidate sets of moves.             without remembering the past). Accordingly, we can
+      As a basis for comparing a probabilistic version of     pose an extreme, or "degenerate," form of probabilistic
+tabu search with another probabilistic strategy, it may       tabu search based on (Sl) alone. For this extreme (and
+be noted that these principles are markedly different         also for versions incorporating considerations from
+from those underlying simulated annealing. In simu-           other sources) the determination of probabilities can be
+lated annealing, for example, all improving moves have        made in both a nonsequential and a sequential manner.
+the same status, as reflected in the stipulation that any          In the nonsequential approach, consider a positive-
+improving move encountered in a random sequence               valued weight function w(s) which reflects the relative
+of examination will be accepted automatically. Non-           attractiveness of applying the move s to the current
+improving moves in simulated annealing have a status          solution x ; e.g., w(sf ) > w ( s n )if c(sr(x))< c(sn(x)).
+which starts relatively high when c(x) is high (though        (The function w may depend on x in ways other than
+the change induced in c(x) also plays a role) and             determined by the objective function value.) Then, if
+gradually diminishes in successive stages until the prob-     S*(x) is a candidate set of moves taken from S(x), we
+ability of acceptance is extinguished. In accordance with     may choose a move s r from S*(x) by constructing a
+this, a starting solution is selected which is far from       sample of size 1 from the uniform distribution with the
+optimality, to allow the process to operate for an ex-        probability P(s ' ) given by
+tended time at stages where c(x) takes on larger values,
+and (presumably) to assure that the local optimum
+to which the process ultimately descends will be a
+good one.
+      The elements that underlie the assignment of prob-           A sequential approach can be based on an approx-
+abilities for tabu search, by contrast, maintain the dis-     imation of the foregoing probability assignment (e.g.,
+tinction between relative attractiveness of alternative       by starting with a small sample of moves from S*(x)
+moves at all stages, without giving unimproving moves         as a first guess for the denominator of P(sl)), or can
+higher status at the beginning and without progressively      take a somewhat different form. One set of alternatives
+
+
+
+                                           Copyright O 2001 All Rights Reserved
+
+===== page 13 [pdftotext] =====
+202      Glover
+
+arises by viewing the choice of a move as the outcome         for sequential examination using (Sl), adjustments can
+of duels between successive contestants. Each duel pro-       be made to offset the bias against a tabu move selected
+duces a winner (which begins with an arbitrary move           as a winner earlier in the sequence. Such tabu proba-
+from the set). As each move in succession competes            bilities can also be used in a nonsequential choice
+with the previous winner, the better of the two contest-      process by multiplying them by the weights w(s),
+ants (the one that yields a smaller value of c(x)) is         s E S*(x), to produce amended weights for an assign-
+selected with a prescribed probability. For example, in       ment of probabilities under (Sl).
+a very simple type of strategy, the better of two moves             Finally, the use of (S3) in producing probabilities
+may be chosen as the new winner with probability 0.8,         is similarly straightforward. Aspiration levels can offset
+0.7, or 0.6 according to whether: (a) only one of the         the diminished chance of acceptance produced by tabu
+two contestants is an improving move, (b) both are            probabilities, and can also amend probabilities that are
+nonimproving or (c) both are improving. Such a se-            assigned without reference to tabu status. Based on the
+quential strategy creates a bias against earlier moves in     stringency and tenure of an aspiration level, a move
+the sequence, and hence it is appropriate to compensate       whose probability of acceptance is determined by cri-
+for this by adjusting the indicated probabilities to start    teria based on either (Sl) or (S2) may have this proba-
+higher and decay through the sequence.                        bility elevated part or all of the way to 1.
+      Next consider the source (S2). The use of proba-              Clearly it is possible to mix the probabilistic and
+bilities based on this source yields a strategy that more     nonprobabilistic elements of tabu search in a variety of
+closely resembles the form of constrained search that         ways. For example, a tabu list can be divided into
+occurs in the nonprobabilistic case. Whether used in          probabilistic and nonprobabilistic components, where
+conjunction with (Sl) or in isolation, (S2) has the effect    a specified number of elements most recently added
+of altering the choice process by introducing a proba-        receive a tabu status in the ordinary way. Equivalently,
+bility of acceptance based on tabu status, where tabu         these elements may be given a tabu probability equal
+moves with shorter residence on a tabu list (i.e., which      to 0 in the type of implementation illustrated for (S2).
+have become tabu more recently) receive a lower prob-         Similarly, moves that exceed other thresholds can be
+ability of acceptance than those of longer residence. We      given acceptance probabilities of 0 to 1 as a means
+illustrate how this operates in the sequential mode of        of blending the probabilistic and nonprobabilistic
+examination. On a tabu list of length 10, for example,        elements.
+we may define "tabu probabilities" assigned to moves                The foregoing proposed uses of probabilities can
+from shortest to longest residence as the elements from       easily be controlled to assure an optimal solution will
+a sequence such as                                            be found with probability 1 as the number of iterations
+                                                              is allowed to grow indefinitely. Such a result occurs
+                                                              even if (Sl) is the only source of the probabilities,
+                                                              provided S*(x) is taken to be S(x) (or a nonempty
+                                                              random sample of S(x)) and all assigned probabilities
+                                                              are bounded from below by a positive constant, given
+or some combination of the two. (Any monotonic                that elements are examined in a random order for the
+sequence that begins with a fraction and ends with the        sequential case. Then it is only necessary to assume
+value 1 is appropriate.) In reality, the length of the tabu   that the digraph G of Section 5 is finite, and a directed
+list fur this example is effectively 9, since the tenth       path exists from each node of G to each other node.
+element is accepted for consideration with probability        We sketch an informal proof as follows. Under the
+ 1. All non-tabu moves, similarly, are regarded to have       indicated assumptions, each time a node of G is visited
+tabu probabilities equal to 1.                                by the method, there is a positive probability of choos-
+      In comparing two moves, whether incorporating           ing each arc that leaves the node. (This probability is
+probabilities based on (Sl) or not, the move normally         bounded from below by a constant which is some
+selected as the winner will be accepted as the new            fraction of the positive constant of the assumptions.)
+incumbent with a probability which is the ratio of its        Suppose that a particular node (e.g., corresponding to
+tabu probability to that of its competitor, bounding this     an optimal solution) is never visited. Then after an
+ratio above by 1. For example, a winner which is not a        initial finite number of iterations, there are two subsets
+tabu move will be accepted automatically. If the winner       of nodes, N' and N", where each node in N' will be
+is a tabu move with tabu probability '/6 and its com-         visited an infinite number of times and each node in
+petitor is a tabu move with tabu probability '/3, then        N" will never again be visited. At least one node of N'
+the winner will be accepted as the "true winner" only         must have an arc that leads to a node of N". The
+with probability l/z (= '/6 + '/3). By analogy to the case    probability of not choosing this arc is bounded above
+
+===== page 14 [pdftotext] =====
+                                                                                                  Tabu Search. I                203
+
+by a constant less than 1. Thus, the probability that N'     with objective function values less than half as large as
+does not contain the associated node of N" goes to 0         other methods tested, and required 10 to 20 seconds
+as the number of iterations goes to infinity, which          CPU time per problem on the CDC 6600 computer.
+establishes the assertion that the initial excluded node          2. A computer channel balancing problem for as-
+will be visited with probability 1.                          signing loads to channels to minimize deviations from
+     Probability assignments based on incorporating          targets, constituting a generalized multidimensional bin
+(S2) and (S3) similarly can easily be controlled to assure   packing p r ~ b l e m . [ ~ . ~ ]
+                                                                                       Problems corresponding to zero-
+the same outcome will hold. Aspiration levels that           one MIPS involving 106 to 1000 variables were solved
+elevate probabilities of selecting moves that produce        in less than 1 minute on a Honeywell DPS-8 computer.
+new solutions can locally override the stipulation that      The resulting solutions were dramatically superior to
+no move in S*(x) receives a probability smaller than a       those obtained by the commercial MPS system, which
+positive constant. It is also permissible to periodically    was allowed to run up to 15 minutes and consumed
+allow the probabilities to be more nearly uniform for a      from 9 to 150 times as much CPU time as tabu search
+selected number of steps-a strategy analogous to purg-       per problem. For the goal of minimizing deviations,
+ing the tabu list in the nonprobabilistic version. It is     the smallest, median and largest of the "minimized"
+noteworthy that the assurance of finding an optimal          deviations for 20 problems were as follows[41:
+solution does not depend on the heuristic power of
+skewing the probabilities to conform with the principles                                             Deviations
+of tabu search. This fact encourages the orientation that                                  -     -                -    -
+
+
+
+probabilities operate as an escape hatch to hedge against            Method            Smallest       Median          Largest
+persistent wrong moves in the absence of reliable                Commercial
+knowledge (or a more perceptive strategy) to guide                 MPS program            60           7327       Infinitya
+the search.                                                      Tabu search               0             10          18
+     Analogous incorporation of probabilistic elements           " No feasible solution found.
+in intermediate and long-term memory functions of
+tabu search are likewise possible. In each case, incor-            3. A subset criterion and clustering problem used
+porating a randomized element introduces trade-offs in       in space planning and architectural design. Problems
+memory capacity and efficiency of processing. (For           corresponding to zero-one MIPS with over 25,000 vari-
+example, increased reliance on a random factor in (Sl)       ables and 50,000 constraints were solved in less than
+should decrease the effective length of a tabu list, while   one minute on a V77 minicomputer. (The software is
+increased reliance on a random factor in (S2) should         incorporated in the SPDS system used by commercial
+have the opposite effect.) Experimentation to charac-        space planning firms, as reported in [6].)
+terize the relative effects of these trade-offs remains to         4. A large scale employee scheduling problem to
+be undertaken.                                               assign employees to work stations and duty rosters,
+                                                             while satisfying restrictions imposed by time period
+10. Practical Applications and Future Directions             demands, employee availabilities, union rules and com-
+Tabu search originated as a method for solving real          pany policy.[71The integration of tabu search with
+world combinatorial problems in scheduling and cov-          pattern recognition and decomposition strategies suc-
+ering. Its adaptability to solving other types of combi-     ceeded in solving problems corresponding to zero-one
+natorial problems by changing the definition of a move,      MIPS with 1,000,000 to 4,000,000 variables and 3,400
+and by modifying the definition of OPTIMUM and the           to 9,000 constraints to within 98% of optimality in
+composition of the tabu lists, brought about its appli-      22-24 minutes on an IBM PC microcomputer.
+cation to additional problem settings. Some of the                 In addition to such practical applications, experi-
+practical problems to which it has been applied are          ments are currently in progress applying tabu search
+as follows.                                                  to classical combinatorial problems. A preliminary
+     1. A scheduling problem for distributing work-          exploration of the traveling salesman problem[lS1has
+loads among machines to assure all processing demands        tested seven problems, the first three ranging from 25
+are adequately met over the time horizon. This problem       to 57 cities with known optimal solutions, and the last
+was one of the first tabu search appli~ations,'~] formu-     four ranging from 50 to 110 cities, representing "small
+lated as a nonlinear (quadratic) generalized covering        but hard" problems from the study by               whose
+problem involving 300 to 500 integer variables and           optimal solutions are unknown.
+approximately 100 constraints with positive right hand             Using the standard moves of the 2-OPT heuris-
+sides. Using the strategic oscillation approach of Sec-      tic,[I6'and employing the simple tabu list and aspiration
+tion 7, tabu search succeeded in obtaining solutions         level structure suggested for the traveling salesman
+
+
+
+
+                                          Copyright O 2001 All Rights Reserved
+
+===== page 15 [pdftotext] =====
+204       Glover
+
+problem in [3], tabu search easily found the known                    TABU SEARCH -- 75 NODE T S P
+optimal solutions for each of the first three problems,           566 7
+requiring an average of 5 minutes (depending on the
+randomly generated starting tour) for the largest prob-
+lem (57 cities) on an IBM AT microcomputer. The
+four "hard" problems each were subjected to 16 solu-
+tion attempts, employing four different starting
+solutions and four different tabu list sizes (ranging from
+n/4 to n). The best solutions generated by tabu search
+for all but the 1 10 city problem typically were found in
+less than one minute on a VAX 111780 and in all but
+5 of the 64 runs these solutions were superior to the
+previous best solutions reported for these problems
+(matching the previous best for all but 2 of the remain-
+ing runs). The 110 city problem lived up to its reputa-
+tion in difficulty, requiring from 4 minutes to nearly
+                                                                          Figure 2. Typical run for 75 node problem.
+20 minutes to find the best solutions for a given run,
+though in each case this solution was superior to the
+best previously found.                                        obtained by multiple solution attempts using a refine-
+      Figures 1 and 2 show the results of two typical runs    ment of the 3-OPT heuristic, which is somewhat more
+for a 75 node problem from the "hard group. The               powerful than the 2-OPT heuristic incorporated into
+horizontal line in these figures identifies the tour length   the tabu search implementation. The outcome illus-
+of 553 previously conjectured to be optimal. The              trates the ability of tabu search to guide a relatively
+graphed points in the figures identify the subset of          simple heuristic in a manner that allows it to outper-
+solutions generated by tabu search that consisted of          form procedures that are normally superior. Such an
+those "local optima" (generated subject to the tabu           ability can be advantageous in applications where,
+conditions) which were strictly better than all their         unlike the traveling salesman setting, the problem does
+predecessors. (Thus, other local optima were generated        not have a simple structure susceptible to highly spe-
+but not shown. The method does not keep track of              cialized procedures, and the state-of-the-art is unable
+these or note their "local optimality" character.) The        to benefit from years of study on sophisticated ways to
+first point in each figure therefore represents the local     exploit such structure.
+optimum found by making 2-OPT moves before the                      Further insights into the performance of tabu
+tabu search procedure is activated. In each case tabu         search are provided by Figures 3 and 4, which show the
+search goes well beyond this first point, and also beyond     pattern of solutions generated over a subsequence of
+the best previously known tour length.                        iterations for the "easy" 42 city problem. Figure 3 shows
+      An interesting feature of this comparison is that       the first 500 iterations, starting from an evidently very
+the previous best solutions from the study of [2 11 were      poor initial tour, and Figure 4 shows the sequence from
+                                                              iteration 30 to iteration 130 in greater detail. This latter
+                                                              figure gives a clearer indication of the variability of tour
+R     E   A    R    C    H   -- 7 5 NODE T S p                lengths produced. (The optimum tour was found on
+                                                              iteration 83.) At the same time, it is clear that many of
+                                                              the tours generated are "good tours." This additional
+                                                              characteristic of tabu search-the tendency to produce
+                                                              a variety of solutions that fall in an attractive range-
+                                                              can be useful in situations where a mathematical model
+                                                              is used to generate candidate solutions that must then
+                                                              be evaluated further on the basis of external criteria.
+                                                                    An incidental finding of interest from this prelim-
+                                                              inary study concerns the appropriate magnitude of tabu
+                                                              list sizes. Previous applications had found effective tabu
+                                                              list sizes to lie in the range from 5 to 12, clustered
+                                                              around 7, a finding that appeared to be independent of
+                                                              problem size and structure. The much larger tabu list
+                                                              sizes for the traveling salesman problem, and their
+          Figure 1. Typical run for 75 node problem.          dependency on problem size, show that the choice of a
+
+===== page 16 [pdftotext] =====
+                                                                                                 Tabu Search. I        205
+
+             TABU SEARCH - 42 CITY TSP                            strategy, patterned after that discussed in Section 8.
+                                                                  Malek reports the ability to obtain optimal solutions to
+                                                                  the test problems with substantially greater frequency
+                                                                  using tabu search than simulated annealing, while con-
+                                                                  suming only '/3 to '/25 the computational effort. The
+                                                                  related work of Hansen and Jaumard,["] based on the
+                                                                  independent development of Han~en,~"]likewise de-
+                                                                  serves mention in this regard, obtaining results superior
+                                                                  to the simulated annealing for maximum satisfiability
+                                                                  problems. On the other hand, the study by Guruswany,
+                                                                  Owens and PandyaIg1suggests there may be value to
+                                                                  combining simulated annealing and tabu search in a
+                                                                  parallel processing environment.
+                                                                        Studies comparing tabu search to more specialized
+                                                                  methods also have recently appeared. A study by
+                                                                  Widmer and                compares tabu search to six
+          Figure 3. Tabu search, first 500 iterations.            alternative approaches to the flow shop sequencing
+                                                                  problem. Using an iteration cutoff rule that keeps tabu
+            TABU SEARCH - 42 CITY TSP                             search from running longer than 12 minutes on an IBM
+                                                                  PC Computer, for problems involving 20 jobs and 20
+                                                                  machines, the authors find that tabu search obtains
+                                                                  solutions superior to all other methods in 80% of the
+                                                                  cases. Doubling the cutoff limit produces superior so-
+                                                                  lutions in 90% of the cases. A sequel to this study by
+                                                                  Hertz, de Werra and Widmerr131reports comparisons
+                                                                  for time tabling and layout problems, disclosing that
+                                                                  tabu search methods gives better results than any other
+                                                                  method tested. Interestingly, these latter two implemen-
+                                                                  tations of tabu search, and the one cited previously for
+                                                                  the graph coloring problem, make no use of aspiration
+                                                                  level criteria or of the strategic elements described in
+                                                                  the sections following Section 2.
+                                                                        These outcomes offer encouraging evidence that
+                                                                  tabu search may have a useful place among the tools
+                                                                  for solving combinatorial optimization problems. At
+Figure 4. Tabu search, detail of iteration 30 to iteration 130.
+                                                                  the same time, it must be acknowledged that the poten-
+                                                                  tial and limitations of this class of methods remain less
+good tabu list size is more subtle than previous empir-           than fully charted, and many aspects of tabu search-
+ical outcomes had suggested.                                      both theoretical and applied-remain to be discovered.
+     Studies have recently appeared that compare tabu             Possibilities for merging with other procedures (includ-
+search to simulated annealing. The study by Hertz and             ing, for example, alternative search strategies derived
+de Werra[lZ1conducts experimental comparisons for                 from neural networks, genetic algorithms and simu-
+graph coloring problems ranging from 100 to 1000                  lated annealing) likewise offer intriguing avenues for
+nodes, demonstrating that tabu search obtains solutions           exploration.
+of significantly higher quality than simulated annealing
+in this setting, while expending less computational ef-                                 REFERENCES
+fort. An investigation by Bhasin, Carreras and Tara-
+                                                                   [ l ] B. BHASIN,C. CARRERAS   and G. TARAPOREVALA,  1988.
+porevola[ll examines methods for cell layout problems                    Global Router for Standard Cell Layout Designs, De-
+in integrated circuit design. Adopting the objective of               partment of Electrical and Computer Engineering, The
+minimizing channel density, the authors similarly find                University of Texas, Austin.
+that tabu search gives better results than simulated              [2] F. GLOVER,   1977. Heuristics for Integer Programming
+annealing and while requiring a significantly lower run               Using Surrogate Constraints, Decision Sciences 8:1,
+                                                                      156-166.
+time. A study by Malek1181 involves computational com-            [3] F. GLOVER, 1986. Future Pathsfor Integer Programming
+parisons for the traveling salesman problem, applying                 and Links to Artificial Intelligence, Computers and
+tabu search with a long-term memory diversification                   Operations Research 13:5, 533-549.
+
+
+
+
+                                               Copyright O 2001 All Rights Reserved
+
+===== page 17 [pdftotext] =====
+206      Glover
+
+  [4] F. GLOVER,1987. Tabu Search Methods in Artificial                   International Symposium on Mathematical Program-
+        Intelligence and Operations Research, ORSA Artificial             ming, Tokyo, Japan.
+        Intelligence Newsletter 1:2,6.                               [14] S. KIRKPATRICK,       GELATT,JR. and M.P. VECCHI,
+  [5] F. GLOVER,1988. TABU-SEARCH, Version 11.0, An-                       1983. Optimization by Simulated Annealing, Science
+        notated Experimental Computer Code for Traveling                  220:4598,67 1-680.
+        Salesman Problems (April) (available from the author         [15] J. KNOX,1988. An Application of Tabu Search to the
+        on request).                                                      Symmetric Traveling Salesman Problem, Ph.D. thesis
+  [6] F. GLOVER,     C. MCMILLAN     and B. NOVICK,1985. Inter-           (in progress), Center for Applied Artificial Intelligence,
+        active Decision Software and Computer Graphics for                University of Colorado, Boulder.
+        Architectural and Space Planning, Annals of Operations       [16] E.L. LAWLER,    J.K. LENSTRA   and A.H.G. RINNOOY    KAN,
+        Research 5: 557-573.                                              (eds.), 1985. The Traveling Salesman Problem, North-
+  [7] F. GLOVER      and C. MCMILLAN,     1986. The General Em-           Holland, Amsterdam.
+        ployee Scheduling Problem: An Integration of Manage-         [17] M. LUNDYand A. MEES, 1986. Convergence of an
+         ment Science and Artificial Intelligence, Computers and          Annealing Algorithm, Mathematical Programming 34,
+        Operations Research 13:5, 563-593.                                 111-124.
+  [8] B.L. GOLDENand W.R. STEWART,           1985. The Empirical     [18] M. MALEK,1988. Search Methods for Traveling Sales-
+        Analysis of TSP Heuristics, in E.L. Lawler, J. K. Lenstra,        man Problems, Department of Electrical and Computer
+        and A.H.G. Rinnooy Kan (eds.), The Traveling Sales-               Engineering, The University of Texas, Austin.
+        man Problem, North-Holland, Amsterdam.                       [19] S. SAVAGE,1976. Some Theoretical Implications of
+  [9] M. GURUSWAMY,         H. OWENSand M. PANDYA,          1988.         Local Optimization, Mathematical Programming 10,
+        TSP MIXER, Department of Electrical and Computer                  354-366.
+        Engineering, The University of Texas, Austin.                [20] S. SAVAGE,   P. WEINERand A. BACCHI,1976. Neighbor-
+[lo] P. HANSEN,1986. The Steepest Ascent Mildest Descent                  hood Search Algorithms for Guaranteeing Optimal Trav-
+        Heuristic for Combinatorial Programming, presented at             eling Salesman Tours Must Be Ineflcient, Journal of
+        the Congress on Numerical Methods in Combinatorial                Computer and System Sciences 12:1, 25-35.
+        Optimization, Capri, Italy.                                  [21] W.R. STEWART,     JR., 1987. Accelerated Branch Exchange
+[ l l ] P. HANSEN    and B. JAUMARD,    1987. Algorithms for the          Heuristics for Symmetric Traveling Salesman Problems,
+        Maximum Satisfiability Problem, RUTCOR Research                   Networks 17,423-437 (to appear in the European Jour-
+        Report RR#43-87, Rutgers, New Brunswick, NJ.                      nal of Operations Research).
+1121 A. HERTZand D. DE WERRA,1987. Using Tabu Search                 [22] M. WIDMER     and A. HERTZ,1987. A New Approach for
+        Techniquesfor Graph Coloring, Computing 29,345-35 1.              Solving the Flow Sequencing Problem, ORWP 87/15,
+[13] A. HERTZ,D. DE WERRAand M. WIDMER,               1988. Some          Department of Mathematics, University of Lausanne
+        New Applications of Tabu Search, presented at the 13th            (August).

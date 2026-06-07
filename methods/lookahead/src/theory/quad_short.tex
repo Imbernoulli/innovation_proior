@@ -1,0 +1,27 @@
+\subsection{Deterministic quadratic convergence}
+
+In the previous section we showed that on the noisy quadratic model, Lookahead is able to improve convergence of the SGD optimizer under setting with equivalent convergent risk. Here we analyze the quadratic model without noise using gradient descent with momentum \citep{polyak1964some, goh2017why} and show that when the system is under-damped, Lookahead is able to improve on the convergence rate.
+
+As before, we restrict our attention to diagonal quadratic functions (which in this case is entirely without loss of generality). Given an initial point $\btheta_0$, we wish to find the rate of contraction, that is, the smallest $\rho$ satisfying $||\btheta_t - \btheta^*|| \leq \rho^t ||\btheta_{0} - \btheta^*||$. We follow the approach of \citep{o2015adaptive} and model the optimization of this function as a linear dynamical system allowing us to compute the rate exactly. Details are in Appendix \ref{app:quadratic}.
+
+\begin{wrapfigure}{r}{0.6 \textwidth}
+    \centering
+    \vspace{-0.2cm}
+    \includegraphics[width=0.9 \linewidth]{images/quad_convergence.png}
+    \vspace{-0.2cm}
+    \caption{Quadratic convergence rates ($1-\rho$) of classical momentum versus Lookahead wrapping classical momentum. For Lookahead, we fix $k=20$ lookahead steps and $\alpha=0.5$ for the slow weights step size. Lookahead is able to significantly improve on the convergence rate in the under-damped regime where oscillations are observed.}
+    \label{fig:quad_convergence}
+\end{wrapfigure}
+
+As in \citet{lucas2018aggregated}, to better understand the sensitivity of Lookahead to misspecified conditioning we fix the momentum coefficient of classical momentum and explore the convergence rate over varying condition number under the optimal learning rate.
+As expected, Lookahead has slightly worse convergence in the over-damped regime where momentum is set too low and CM is slowly, monotonically converging to the optimum. However, when the system is under-damped (and oscillations occur) Lookahead is able to significantly improve the convergence rate by skipping to a better parameter setting during oscillation.
+
+% We perform a fine-grained grid search over Lookahead learning rates to estimate the best rate and use the analytic best rate for classical momentum. We plot the corresponding convergence rates in Figure~\ref{fig:quad_convergence}.
+
+%We believe this is the more common regime for neural networks that attain high validation accuracy, as higher initial learning rates are used to optimize low curvature directions and overcome the short-horizon bias \citep{wu2018understanding}. 
+
+
+
+
+
+

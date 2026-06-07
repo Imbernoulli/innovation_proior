@@ -1,0 +1,66 @@
+%% generate with:
+%%      python plotting/read_results.py {L9 mode = 'maze2d'}
+%%      on branch models-antmaze-temporal
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular*}{\columnwidth}{@{\extracolsep{\fill}}lrrrrr}
+\toprule
+\multicolumn{1}{c}{\bf Environment} &
+    \multicolumn{1}{c}{\bf MPPI} &
+    \multicolumn{1}{c}{\bf CQL} &
+    \multicolumn{1}{c}{\bf IQL} &
+    \multicolumn{1}{c}{\bf \method} \\
+\midrule
+Maze2D~~~~U-Maze &
+    $33.2$ &
+    $5.7$ &
+    $47.4$ &
+    \highlight{\color{highlight}113.9} \scriptsize{\raisebox{1pt}{$\pm 3.1$}} \\ 
+Maze2D~~~~Medium &
+    $10.2$ &
+    $5.0$ &
+    $34.9$ &
+    \highlight{\color{highlight}121.5} \scriptsize{\raisebox{1pt}{$\pm 2.7$}} \\ 
+Maze2D~~~~Large &
+    $5.1$ &
+    $12.5$ &
+    $58.6$ &
+    \highlight{\color{highlight}123.0} \scriptsize{\raisebox{1pt}{$\pm 6.4$}} \\
+\midrule
+\multicolumn{1}{c}{\bf Single-task Average} & 16.2 & 7.7 & 47.0 & \highlight{\color{highlight}119.5} \hspace{.58cm} \\
+\vspace{-.2cm} \\
+%%%%%%%%
+\toprule
+Multi2D~~~~U-Maze & 
+    $41.2$ &
+    - &
+    $24.8$ &
+    \highlight{\color{highlight}128.9} \scriptsize{\raisebox{1pt}{$\pm 1.8$}} \\ 
+Multi2D~~~~Medium &
+    $15.4$ &
+    - &
+    $12.1$ &
+    \highlight{\color{highlight}127.2} \scriptsize{\raisebox{1pt}{$\pm 3.4$}} \\ 
+Multi2D~~~~Large &
+    $8.0$ &
+    - &
+    $13.9$ &
+    \highlight{\color{highlight}132.1} \scriptsize{\raisebox{1pt}{$\pm 5.8$}} \\
+\midrule
+\multicolumn{1}{c}{\bf Multi-task Average} & 21.5 & - & 16.9 & \highlight{\color{highlight}129.4} \hspace{.58cm} \\ 
+\bottomrule
+\end{tabular*}
+% \vspace{-5pt}
+\caption{
+    \textbf{(Long-horizon planning)}
+    The performance of \method{} and prior model-free algorithms in the Maze2D environment, which tests long-horizon planning due to its sparse reward structure.
+    The Multi2D setting refers to a multi-task variant with goal locations resampled at the beginning of every episode.
+    \method{} substantially outperforms prior approaches in both settings.
+    Appendix~\ref{app:baselines} details the sources for the scores of the baseline algorithms.
+}
+% \vspace{-.1cm}
+\label{table:maze2d}
+% \vspace{-15pt}
+\end{table}

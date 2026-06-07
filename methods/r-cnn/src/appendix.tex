@@ -1,0 +1,494 @@
+\section{Object proposal transformations}
+\seclabel{altwarp}
+The convolutional neural network used in this work requires a fixed-size input of $227 \times 227$ pixels.
+For detection, we consider object proposals that are arbitrary image rectangles.
+We evaluated two approaches for transforming object proposals into valid CNN inputs.
+
+The first method (``tightest square with context'') encloses each object proposal inside the tightest square and then scales (isotropically) the image contained in that square to the CNN input size.
+\figref{crops} column (B) shows this transformation.
+A variant on this method (``tightest square without context'') excludes the image content that surrounds the original object proposal.
+\figref{crops} column (C) shows this transformation.
+The second method (``warp'') anisotropically scales each object proposal to the CNN input size.
+\figref{crops} column (D) shows the warp transformation.
+
+For each of these transformations, we also consider including additional image context around the original object proposal.
+The amount of context padding ($p$) is defined as a border size around the original object proposal in the transformed input coordinate frame.
+\figref{crops} shows $p = 0$ pixels in the top row of each example and $p = 16$ pixels in the bottom row.
+In all methods, if the source rectangle extends beyond the image, the missing data is replaced with the image mean (which is then subtracted before inputing the image into the CNN).
+A pilot set of experiments showed that warping with context padding ($p = 16$ pixels) outperformed the alternatives by a large margin (3-5 mAP points).
+Obviously more alternatives are possible, including using replication instead of mean padding.
+Exhaustive evaluation of these alternatives is left as future work.
+\begin{figure}[t!]
+\centering
+\includegraphics[width=1\linewidth]{supp/crop/crops.pdf}
+\vspace{-1em}
+\caption{\textbf{Different object proposal transformations.}
+(A) the original object proposal at its actual scale relative to the transformed CNN inputs; (B) tightest square with context; (C) tightest square without context; (D) warp.
+Within each column and example proposal, the top row corresponds to $p = 0$ pixels of context padding while the bottom row has $p = 16$ pixels of context padding.}
+\figlabel{crops}
+\end{figure}
+
+\section{Positive \vs negative examples and softmax}
+\seclabel{posneg}
+Two design choices warrant further discussion.
+The first is: Why are positive and negative examples defined differently for fine-tuning the CNN versus training the object detection SVMs?
+To review the definitions briefly, for fine-tuning we map each object proposal to the ground-truth instance with which it has maximum IoU overlap (if any) and label it as a positive for the matched ground-truth class if the IoU is at least 0.5.
+All other proposals are labeled ``background'' (\ie, negative examples for all classes).
+For training SVMs, in contrast, we take only the ground-truth boxes as positive examples for their respective classes and label proposals with less than 0.3 IoU overlap with all instances of a class as a negative for that class.
+Proposals that fall into the grey zone (more than 0.3 IoU overlap, but are not ground truth) are ignored.
+
+Historically speaking, we arrived at these definitions because we started by training SVMs on features computed by the ImageNet pre-trained CNN, and so fine-tuning was not a consideration at that point in time.
+In that setup, we found that our particular label definition for training SVMs was optimal within the set of options we evaluated (which included the setting we now use for fine-tuning).
+When we started using fine-tuning, we initially used the same positive and negative example definition as we were using for SVM training.
+However, we found that results were much worse than those obtained using our current definition of positives and negatives.
+
+Our hypothesis is that this difference in how positives and negatives are defined is not fundamentally important and arises from the fact that fine-tuning data is limited.
+Our current scheme introduces many ``jittered'' examples (those proposals with overlap between 0.5 and 1, but not ground truth), which expands the number of positive examples by approximately 30x.
+We conjecture that this large set is needed when fine-tuning the \emph{entire} network to avoid overfitting.
+However, we also note that using these jittered examples is likely suboptimal because the network is not being fine-tuned for precise localization.
+
+This leads to the second issue: Why, after fine-tuning, train SVMs at all?
+It would be cleaner to simply apply the last layer of the fine-tuned network, which is a 21-way softmax regression classifier, as the object detector.
+We tried this and found that performance on VOC 2007 dropped from 54.2\% to 50.9\% mAP.
+This performance drop likely arises from a combination of several factors including that the definition of positive examples used in fine-tuning does not emphasize precise localization and the softmax classifier was trained on randomly sampled negative examples rather than on the subset of ``hard negatives'' used for SVM training.
+
+This result shows that it's possible to obtain close to the same level of performance without training SVMs after fine-tuning.
+We conjecture that with some additional tweaks to fine-tuning the remaining performance gap may be closed.
+If true, this would simplify and speed up R-CNN training with no loss in detection performance.
+
+\section{Bounding-box regression}
+\seclabel{bboxreg}
+We use a simple bounding-box regression stage to improve localization performance.
+After scoring each selective search proposal with a class-specific detection SVM, we predict a new bounding box for the detection using a class-specific bounding-box regressor.
+This is similar in spirit to the bounding-box regression used in deformable part models \cite{lsvm-pami}.
+The primary difference between the two approaches is that here we regress from features computed by the CNN, rather than from geometric features computed on the inferred DPM part locations.
+
+The input to our training algorithm is a set of $N$ training pairs $\{(P^i, G^i)\}_{i = 1,\ldots,N}$, where $P^i = (P_x^i, P_y^i, P_w^i, P_h^i)$ specifies the pixel coordinates of the center of proposal $P^i$'s bounding box together with $P^i$'s  width and height in pixels.
+Hence forth, we drop the superscript $i$ unless it is needed.
+Each ground-truth bounding box $G$ is specified in the same way: $G = (G_x, G_y, G_w, G_h)$.
+Our goal is to learn a transformation that maps a proposed box $P$ to a ground-truth box $G$.
+
+We parameterize the transformation in terms of four functions $d_x(P)$, $d_y(P)$, $d_w(P)$, and $d_h(P)$.
+The first two specify a scale-invariant translation of the center of $P$'s bounding box, while the second two specify log-space translations of the width and height of $P$'s bounding box.
+After learning these functions, we can transform an input proposal $P$ into a predicted ground-truth box $\hat{G}$ by applying the transformation
+\begin{align}
+\hat{G}_x &= P_w d_x(P) + P_x \\
+\hat{G}_y &= P_h d_y(P) + P_y \\
+\hat{G}_w &= P_w \exp(d_w(P)) \\
+\hat{G}_h &= P_h \exp(d_h(P)).
+\end{align}
+
+Each function $d_\star(P)$ (where $\star$ is one of $x,y,h,w$) is modeled as a linear function of the \pool{5} features of proposal $P$, denoted by $\bphi_5(P)$.
+(The dependence of $\bphi_5(P)$ on the image data is implicitly assumed.) 
+Thus we have $d_\star(P) = \bfw_\star^\trn \bphi_5(P)$, where $\bfw_\star$ is a vector of learnable model parameters.
+We learn $\bfw_\star$ by optimizing the regularized least squares objective (ridge regression):
+\begin{align}
+\bfw_\star = \argmin_{\hat{\bfw}_\star} \sum_i^N (t^i_\star - \hat{\bfw}_\star^\trn \bphi_5(P^i))^2 + \lambda \norm{\hat{\bfw}_\star}^2.
+\end{align}
+The regression targets $t_\star$ for the training pair $(P, G)$ are defined as
+\begin{align}
+t_x &= (G_x - P_x) / P_w \\
+t_y &= (G_y - P_y) / P_h \\
+t_w &= \log(G_w / P_w) \\
+t_h &= \log(G_h / P_h).
+\end{align}
+As a standard regularized least squares problem, this can be solved efficiently in closed form.
+
+We found two subtle issues while implementing bounding-box regression.
+The first is that regularization is important: we set $\lambda = 1000$ based on a validation set.
+The second issue is that care must be taken when selecting which training pairs $(P,G)$ to use.
+Intuitively, if $P$ is far from all ground-truth boxes, then the task of transforming $P$ to a ground-truth box $G$ does not make sense.
+Using examples like $P$ would lead to a hopeless learning problem.
+Therefore, we only learn from a proposal $P$ if it is \emph{nearby} at least one ground-truth box.
+We implement ``nearness'' by assigning $P$ to the ground-truth box $G$ with which it has maximum IoU overlap (in case it overlaps more than one) if and only if the overlap is greater than a threshold (which we set to 0.6 using a validation set).
+All unassigned proposals are discarded.
+We do this once for each object class in order to learn a set of class-specific bounding-box regressors.
+
+At test time, we score each proposal and predict its new detection window only once.
+In principle, we could iterate this procedure (\ie, re-score the newly predicted bounding box, and then predict a new bounding box from it, and so on).
+However, we found that iterating does not improve results.
+
+\section{Additional feature visualizations}
+\seclabel{extravis}
+\figref{vis21} shows additional visualizations for 20 \pool{5} units.
+For each unit, we show the 24 region proposals that maximally activate that unit out of the full set of approximately 10 million regions in all of VOC 2007 test.
+
+We label each unit by its (y, x, channel) position in the $6 \times 6 \times 256$ dimensional \pool{5} feature map.
+Within each channel, the CNN computes exactly the same function of the input region, with the (y, x) position changing only the receptive field.
+
+\section{Per-category segmentation results}
+\seclabel{segperclass}
+In \tableref{voc2011valsupp} we show the per-category segmentation accuracy on VOC 2011 val for each of our six segmentation methods in addition to the \OtwoP method~\cite{o2p}. These results show which methods are strongest across each of the 20 PASCAL classes, plus the background class.
+
+\begin{table*}[t!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}l|c|r*{19}{c}|c@{}}
+\textbf{VOC 2011 val} & bg & aero      & bike      & bird      & boat      & bottle     & bus        & car        & cat        & chair      & cow        & table      & dog        & horse      & mbike      & person     & plant      & sheep      & sofa       & train      & tv         & mean \\
+\hline
+\OtwoP \cite{o2p} &
+\textbf{84.0} &
+\textbf{69.0} & 21.7 & 47.7 & 42.2 & 42.4 & \textbf{64.7} & \textbf{65.8} & 57.4 & \textbf{12.9} & 37.4 &
+20.5 & 43.7 & 35.7 & 52.7 & 51.0 & \textbf{35.8} & \textbf{51.0} & 28.4 & 59.8 & 49.7 &
+46.4 \\
+\hline
+\textit{full} R-CNN \fc{6} &
+81.3 &
+56.2 & 23.9 & 42.9 & 40.7 & 38.8 & 59.2 & 56.5 & 53.2 & 11.4 & 34.6 &
+16.7 & 48.1 & 37.0 & 51.4 & 46.0 & 31.5 & 44.0 & 24.3 & 53.7 & 51.1 &
+43.0 \\
+\textit{full} R-CNN \fc{7} &
+81.0 &
+52.8 & \textbf{25.1} & 43.8 & 40.5 & 42.7 & 55.4 & 57.7 & 51.3 & \phz8.7 & 32.5 &
+11.5 & 48.1 & 37.0 & 50.5 & 46.4 & 30.2 & 42.1 & 21.2 & 57.7 & \textbf{56.0} &
+42.5 \\
+\hline
+\textit{fg} R-CNN \fc{6} &
+81.4 &
+54.1 & 21.1 & 40.6 & 38.7 & \textbf{53.6} & 59.9 & 57.2 & 52.5 & \phz9.1 & 36.5 &
+\textbf{23.6} & 46.4 & 38.1 & 53.2 & 51.3 & 32.2 & 38.7 & \textbf{29.0} & 53.0 & 47.5 &
+43.7 \\
+\textit{fg} R-CNN \fc{7} &
+80.9 &
+50.1 & 20.0 & 40.2 & 34.1 & 40.9 & 59.7 & 59.8 & 52.7 & \phz7.3 & 32.1 &
+14.3 & 48.8 & 42.9 & 54.0 & 48.6 & 28.9 & 42.6 & 24.9 & 52.2 & 48.8 &
+42.1 \\
+\hline
+\textit{full+fg} R-CNN \fc{6} &
+83.1 &
+60.4 & 23.2 & 48.4 & \textbf{47.3} & 52.6 & 61.6 & 60.6 & \textbf{59.1} & 10.8 & \textbf{45.8} &
+20.9 & \textbf{57.7} & 43.3 & \textbf{57.4} & \textbf{52.9} & 34.7 & 48.7 & 28.1 & 60.0 & 48.6 &
+\textbf{47.9} \\
+\textit{full+fg} R-CNN \fc{7} &
+82.3 &
+56.7 & 20.6 & \textbf{49.9} & 44.2 & 43.6 & 59.3 & 61.3 & 57.8 & \phz7.7 & 38.4 &
+15.1 & 53.4 & \textbf{43.7} & 50.8 & 52.0 & 34.1 & 47.8 & 24.7 & \textbf{60.1} & 55.2 &
+45.7 \\
+\end{tabular}
+}
+\vspace{0.1em}
+\caption{Per-category segmentation accuracy (\%) on the VOC 2011 validation set.
+}
+\tablelabel{voc2011valsupp}
+%\vspace{-1em}
+\end{table*}
+
+\section{Analysis of cross-dataset redundancy}
+One concern when training on an auxiliary dataset is that there might be redundancy between it and the test set.
+Even though the tasks of object detection and whole-image classification are substantially different, making such cross-set redundancy much less worrisome, we still conducted a thorough investigation that quantifies the extent to which PASCAL test images are contained within the ILSVRC 2012 training and validation sets.
+Our findings may be useful to researchers who are interested in using ILSVRC 2012 as training data for the PASCAL image classification task.
+
+We performed two checks for duplicate (and near-duplicate) images.
+The first test is based on exact matches of flickr image IDs, which are included in the VOC 2007 test annotations (these IDs are intentionally kept secret for subsequent PASCAL test sets).
+All PASCAL images, and about half of ILSVRC, were collected from flickr.com.
+This check turned up 31 matches out of 4952 (0.63\%).
+
+The second check uses GIST \cite{GIST} descriptor matching, which was shown in \cite{douze2009evaluation} to have excellent performance at near-duplicate image detection in large ($>$ 1 million) image collections.
+Following \cite{douze2009evaluation}, we computed GIST descriptors on warped $32 \times 32$ pixel versions of all ILSVRC 2012 trainval and PASCAL 2007 test images.
+
+Euclidean distance nearest-neighbor matching of GIST descriptors revealed 38 near-duplicate images (including all 31 found by flickr ID matching).
+The matches tend to vary slightly in JPEG compression level and resolution, and to a lesser extent cropping.
+These findings show that the overlap is small, less than 1\%.
+For VOC 2012, because flickr IDs are not available, we used the GIST matching method only.
+Based on GIST matches, 1.5\% of VOC 2012 test images are in ILSVRC 2012 trainval.
+The slightly higher rate for VOC 2012 is likely due to the fact that the two datasets were collected closer together in time than VOC 2007 and ILSVRC 2012 were.
+
+\begin{table*}[t]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}lr|lr|lr|lr|lr@{}}
+\textbf{class} & \textbf{AP} &
+\textbf{class} & \textbf{AP} &
+\textbf{class} & \textbf{AP} &
+\textbf{class} & \textbf{AP} &
+\textbf{class} & \textbf{AP} \\
+\hline
+accordion & 50.8 & centipede & 30.4 & hair spray & 13.8 & pencil box & 11.4 & snowplow & 69.2 \\
+airplane & 50.0 & chain saw & 14.1 & hamburger & 34.2 & pencil sharpener & 9.0 & soap dispenser & 16.8 \\
+ant & 31.8 & chair & 19.5 & hammer & 9.9 & perfume & 32.8 & soccer ball & 43.7 \\
+antelope & 53.8 & chime & 24.6 & hamster & 46.0 & person & 41.7 & sofa & 16.3 \\
+apple & 30.9 & cocktail shaker & 46.2 & harmonica & 12.6 & piano & 20.5 & spatula & 6.8 \\
+armadillo & 54.0 & coffee maker & 21.5 & harp & 50.4 & pineapple & 22.6 & squirrel & 31.3 \\
+artichoke & 45.0 & computer keyboard & 39.6 & hat with a wide brim & 40.5 & ping-pong ball & 21.0 & starfish & 45.1 \\
+axe & 11.8 & computer mouse & 21.2 & head cabbage & 17.4 & pitcher & 19.2 & stethoscope & 18.3 \\
+baby bed & 42.0 & corkscrew & 24.2 & helmet & 33.4 & pizza & 43.7 & stove & 8.1 \\
+backpack & 2.8 & cream & 29.9 & hippopotamus & 38.0 & plastic bag & 6.4 & strainer & 9.9 \\
+bagel & 37.5 & croquet ball & 30.0 & horizontal bar & 7.0 & plate rack & 15.2 & strawberry & 26.8 \\
+balance beam & 32.6 & crutch & 23.7 & horse & 41.7 & pomegranate & 32.0 & stretcher & 13.2 \\
+banana & 21.9 & cucumber & 22.8 & hotdog & 28.7 & popsicle & 21.2 & sunglasses & 18.8 \\
+band aid & 17.4 & cup or mug & 34.0 & iPod & 59.2 & porcupine & 37.2 & swimming trunks & 9.1 \\
+banjo & 55.3 & diaper & 10.1 & isopod & 19.5 & power drill & 7.9 & swine & 45.3 \\
+baseball & 41.8 & digital clock & 18.5 & jellyfish & 23.7 & pretzel & 24.8 & syringe & 5.7 \\
+basketball & 65.3 & dishwasher & 19.9 & koala bear & 44.3 & printer & 21.3 & table & 21.7 \\
+bathing cap & 37.2 & dog & 76.8 & ladle & 3.0 & puck & 14.1 & tape player & 21.4 \\
+beaker & 11.3 & domestic cat & 44.1 & ladybug & 58.4 & punching bag & 29.4 & tennis ball & 59.1 \\
+bear & 62.7 & dragonfly & 27.8 & lamp & 9.1 & purse & 8.0 & tick & 42.6 \\
+bee & 52.9 & drum & 19.9 & laptop & 35.4 & rabbit & 71.0 & tie & 24.6 \\
+bell pepper & 38.8 & dumbbell & 14.1 & lemon & 33.3 & racket & 16.2 & tiger & 61.8 \\
+bench & 12.7 & electric fan & 35.0 & lion & 51.3 & ray & 41.1 & toaster & 29.2 \\
+bicycle & 41.1 & elephant & 56.4 & lipstick & 23.1 & red panda & 61.1 & traffic light & 24.7 \\
+binder & 6.2 & face powder & 22.1 & lizard & 38.9 & refrigerator & 14.0 & train & 60.8 \\
+bird & 70.9 & fig & 44.5 & lobster & 32.4 & remote control & 41.6 & trombone & 13.8 \\
+bookshelf & 19.3 & filing cabinet & 20.6 & maillot & 31.0 & rubber eraser & 2.5 & trumpet & 14.4 \\
+bow tie & 38.8 & flower pot & 20.2 & maraca & 30.1 & rugby ball & 34.5 & turtle & 59.1 \\
+bow & 9.0 & flute & 4.9 & microphone & 4.0 & ruler & 11.5 & tv or monitor & 41.7 \\
+bowl & 26.7 & fox & 59.3 & microwave & 40.1 & salt or pepper shaker & 24.6 & unicycle & 27.2 \\
+brassiere & 31.2 & french horn & 24.2 & milk can & 33.3 & saxophone & 40.8 & vacuum & 19.5 \\
+burrito & 25.7 & frog & 64.1 & miniskirt & 14.9 & scorpion & 57.3 & violin & 13.7 \\
+bus & 57.5 & frying pan & 21.5 & monkey & 49.6 & screwdriver & 10.6 & volleyball & 59.7 \\
+butterfly & 88.5 & giant panda & 42.5 & motorcycle & 42.2 & seal & 20.9 & waffle iron & 24.0 \\
+camel & 37.6 & goldfish & 28.6 & mushroom & 31.8 & sheep & 48.9 & washer & 39.8 \\
+can opener & 28.9 & golf ball & 51.3 & nail & 4.5 & ski & 9.0 & water bottle & 8.1 \\
+car & 44.5 & golfcart & 47.9 & neck brace & 31.6 & skunk & 57.9 & watercraft & 40.9 \\
+cart & 48.0 & guacamole & 32.3 & oboe & 27.5 & snail & 36.2 & whale & 48.6 \\
+cattle & 32.3 & guitar & 33.1 & orange & 38.8 & snake & 33.8 & wine bottle & 31.2 \\
+cello & 28.9 & hair dryer & 13.0 & otter & 22.2 & snowmobile & 58.8 & zebra & 49.6 \\
+\end{tabular}
+}
+\caption{Per-class average precision (\%) on the ILSVRC2013 detection \test set.}
+\tablelabel{classaps}
+\end{table*}
+
+\begin{figure*}[t]
+\begin{center}
+\def \sz {1in}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1056.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1097.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1301.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1345.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1432.pdf}
+% end row 1
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1439.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1509.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-152.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1664.pdf}
+% end row 2
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1798.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1609.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1643.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1805.pdf}
+% end row 3
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1815.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-1859.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2269.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2312.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2369.pdf}
+%end row 4
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2368.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2382.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2570.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2607.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3009.pdf}
+% end row 5
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2608.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-2915.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3086.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3331.pdf}
+% end row 6
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3466.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3478.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3623.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3641.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3954.pdf}
+% end row 7
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3842.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3968.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-3981.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4118.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-424.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4266.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4282.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4382.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4389.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4437.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4464.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-46.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4783.pdf}
+\end{center}
+\caption{Example detections on the \valb set from the configuration that achieved 31.0\% mAP on \valb.
+Each image was sampled randomly (these are \emph{not} curated).
+All detections at precision greater than 0.5 are shown.
+Each detection is labeled with the predicted class and the precision value of that detection from the detector's precision-recall curve.
+Viewing digitally with zoom is recommended.
+}
+\figlabel{examples1}
+\end{figure*}
+
+\begin{figure*}[t]
+\begin{center}
+\def \sz {0.99in}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4826.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4842.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-490.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-4995.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5016.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5068.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5240.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5331.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5381.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-6144.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7325.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5666.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5433.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5728.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7201.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-589.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-6150.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-6374.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-6830.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-6388.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-6482.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7413.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-774.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7804.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-750.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-5967.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7623.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7667.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7877.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7669.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-7912.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-798.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8029.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8080.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8085.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8086.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8178.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-831.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-836.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8426.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/dets/ilsvrc13_val2-8590.pdf}
+\end{center}
+\caption{More randomly selected examples. See \figref{examples1} caption for details.
+Viewing digitally with zoom is recommended.
+}
+\figlabel{examples2}
+\end{figure*}
+
+\begin{figure*}[t]
+\begin{center}
+\def \sz {1in}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1022.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1048.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1086.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1103.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1185.pdf}
+% r1
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1356.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-137.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1516.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1882.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1957.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2062.pdf}
+% r2
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-1965.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2434.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2559.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2340.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2049.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3033.pdf}
+% r3
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2408.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2589.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-264.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2665.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2743.pdf}
+% r4
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3366.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2681.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-2808.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-309.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3283.pdf}
+% r5
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3896.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3422.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3449.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3545.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-373.pdf}
+% r6
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7579.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-412.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-689.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6939.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7555.pdf}
+% r7
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3735.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7673.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7733.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7743.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-9901.pdf}
+\end{center}
+\caption{Curated examples. Each image was selected because we found it impressive, surprising, interesting, or amusing.
+Viewing digitally with zoom is recommended.
+}
+\figlabel{cexamples1}
+\end{figure*}
+
+\begin{figure*}[t]
+\begin{center}
+\def \sz {0.95in}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-4184.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-4538.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-4567.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-4649.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-4792.pdf}
+% r1
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-4963.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5040.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5108.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5242.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5262.pdf}
+% r2
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-3005.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5388.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5456.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5545.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5655.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5705.pdf}
+% r3
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5744.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5990.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5775.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-578.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5788.pdf}
+% r4
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5790.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-5907.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6060.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6624.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6092.pdf}
+% r5
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6225.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6413.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6417.pdf}
+% r7
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6634.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6729.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6788.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-6884.pdf}
+% r8
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7785.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-7984.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-8013.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-8089.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-8100.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-8158.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-8210.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-8343.pdf}
+%
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-884.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-964.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-9719.pdf}
+\includegraphics[height=\sz]{figures/ilsvrc/curated_dets/ilsvrc13_val2-9845.pdf}
+\end{center}
+\caption{More curated examples. See \figref{cexamples1} caption for details.
+Viewing digitally with zoom is recommended.
+}
+\figlabel{cexamples2}
+\end{figure*}
+
+\input{supp_vis}

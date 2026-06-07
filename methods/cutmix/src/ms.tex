@@ -1,0 +1,86 @@
+\documentclass[10pt,twocolumn, letterpaper]{article}
+
+\usepackage{iccv}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{kotex}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{dsfont}
+\usepackage{xcolor}
+\usepackage{subcaption}
+\usepackage{pifont}
+\usepackage{algorithm,algorithmicx,algpseudocode}
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+
+\iccvfinalcopy 
+
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+\definecolor{darkergreen}{RGB}{21, 152, 56}
+\definecolor{red2}{RGB}{252, 54, 65}
+\newcommand\redp[1]{\textcolor{red2}{(#1)}}
+\newcommand\greenp[1]{\textcolor{darkergreen}{(#1)}}
+
+\ificcvfinal\pagestyle{empty}\fi
+\pagenumbering{gobble}
+\begin{document}
+
+%%%%%%%%% TITLE
+\title{CutMix: Regularization Strategy to Train Strong Classifiers \\ with Localizable Features}
+
+\author{
+Sangdoo Yun$^1$~~~~~~~~~Dongyoon Han$^1$~~~~~~~~~Seong Joon Oh$^2$~~~~~~~~~Sanghyuk Chun$^1$\\ 
+Junsuk Choe$^{1,3}$~~~~~~~~Youngjoon Yoo$^1$\\ 
+~\\
+$^1$Clova AI Research, NAVER Corp.\\
+$^2$Clova AI Research, LINE Plus Corp.\\
+$^3$Yonsei University \\
+}
+
+
+
+\maketitle
+
+\input{0-Abstract}
+\input{1-Introduction}
+\input{2-Relatedworks}
+\input{3-Method}
+\input{4-Experiments}
+\input{4-1-ImageClassification.tex}
+\input{4-2-CIFARClassification.tex}
+\input{4-3-Ablation.tex}
+\input{4-4-WSOL.tex}
+\input{4-5-TransferLearning.tex}
+\input{4-6-Robustness.tex}
+\input{5-Conclusion}
+
+\section*{Acknowledgement}
+We would like to thank Clova AI Research team, especially Jung-Woo Ha and Ziad Al-Halah for their helpful feedback and discussion.
+
+%%%%%%%%% BODY TEXT
+
+{\small
+\bibliographystyle{ieee_fullname}
+\bibliography{ms}
+}
+
+\clearpage
+\setcounter{table}{0}
+\renewcommand{\thetable}{A\arabic{table}}
+\renewcommand{\thefigure}{A\arabic{figure}}
+\renewcommand{\thealgorithm}{A\arabic{algorithm}}
+
+
+\appendix
+
+\input{supplementary/supp1_Algorithm.tex}
+\input{supplementary/supp2_WSOL_details.tex}
+\input{supplementary/supp3_Detection_details.tex}
+\input{supplementary/supp4_Captioning_details.tex}
+\input{supplementary/supp5_Robustness.tex}
+
+\end{document}

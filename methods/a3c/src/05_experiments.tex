@@ -1,0 +1,310 @@
+%
+\vspace{-0.1cm}
+\section{Experiments}
+\label{sec:experiments}
+\begin{figure*}[t]
+\begin{center}
+\includegraphics[width=\textwidth]{figures/speed}
+\caption{\label{fig-speed} Learning speed comparison for DQN and the new asynchronous algorithms on five Atari 2600 games. DQN was trained on a single Nvidia K40 GPU while the asynchronous methods were trained using 16 CPU cores. The plots are averaged over 5 runs.  In the case of DQN the runs were for different seeds with fixed hyperparameters.  For asynchronous methods we average over the best 5 models from 50 experiments with learning rates sampled from $LogUniform(10^{-4},10^{-2})$ and all other hyperparameters fixed.}
+\end{center}
+\vspace{-0.45cm}
+\end{figure*}
+
+%
+%
+We use four different platforms for assessing the properties of the proposed framework.
+We perform most of our experiments using the Arcade Learning Environment~\citep{bellemare-ale}, which provides a simulator for Atari 2600 games.
+This is one of the most commonly used benchmark environments for RL algorithms.
+We use the Atari domain to 
+compare against state of the art results~\cite{hado2015doubledqn,wang2015dueling,schaul2015prioritized,nair2015gorila,mnih-dqn-2015},
+as well as to carry out a detailed stability and scalability analysis of the proposed methods.
+We performed further comparisons using the TORCS 3D car racing simulator~\citep{wymann-torcs}.
+%
+%
+We also use two additional domains to evaluate only the A3C algorithm -- Mujoco and Labyrinth.  MuJoCo~\citep{todorov-mujoco} is a physics simulator for evaluating agents on continuous motor control tasks with contact dynamics.
+Labyrinth is a new 3D environment where the agent must learn to find rewards in randomly generated mazes from a visual input.
+The precise details of our experimental setup can be found in Supplementary Section~\ref{sec:experimental-setup}. 
+%
+
+%
+
+\subsection{Atari 2600 Games}
+
+We first present results on a subset of Atari 2600 games to demonstrate the training speed of the new methods.
+Figure~\ref{fig-speed} compares the learning speed of the DQN algorithm trained on an Nvidia K40 GPU with the asynchronous methods trained using 16 CPU cores on five Atari 2600 games.
+The results show that all four asynchronous methods we presented can successfully train neural network controllers on the Atari domain.
+The asynchronous methods tend to learn faster than DQN, with significantly faster learning on some games, while training on only 16 CPU cores.
+Additionally, the results suggest that n-step methods learn faster than one-step methods on some games.
+Overall, the policy-based advantage actor-critic method significantly outperforms all three value-based methods.
+
+We then evaluated asynchronous advantage actor-critic on 57 Atari games.
+In order to compare with the state of the art in Atari game playing, we largely followed the training
+and evaluation protocol of~\cite{hado2015doubledqn}.
+Specifically, we tuned hyperparameters (learning rate and amount of gradient norm clipping) using a search on six Atari games (Beamrider, Breakout, Pong, Q*bert, Seaquest and Space Invaders) and then fixed all hyperparameters for all 57 games.
+We trained both a feedforward agent with the same architecture as~\citep{mnih-dqn-2015,nair2015gorila,hado2015doubledqn} as well as a recurrent agent with an additional 256 LSTM cells after the final hidden layer.
+We additionally used the final network weights for evaluation to make the results more comparable to the original results from~\cite{bellemare-ale}.
+We trained our agents for four days using 16 CPU cores, while the other agents were trained for 8 to 10 days on Nvidia K40 GPUs.
+Table~\ref{fig-atari-stats} shows the average and median human-normalized scores obtained by our agents trained by asynchronous advantage actor-critic (A3C) as well as
+the current state-of-the art. Supplementary Table~\ref{fig-atari-full} shows the scores on all games.
+A3C significantly improves on state-of-the-art the average score over 57 games
+in half the training time of the other methods while using only 16 CPU cores and no GPU.
+Furthermore, after just one day of training, A3C matches the average human normalized score of Dueling Double DQN and almost reaches the median human normalized score of Gorila. We note that many of the improvements that are presented in Double DQN~\citep{hado2015doubledqn} and Dueling Double DQN~\citep{wang2015dueling} can be incorporated to 1-step Q and n-step Q methods presented in this work with similar potential improvements.
+
+\begin{table}
+\small
+\begin{center}
+\begin{tabular}{ | l | c | c | c | }
+\hline
+Method & Training Time & Mean & Median \\
+\hline\hline
+%
+%
+%
+%
+%
+%
+%
+\input{data/stat_file.tex}
+\hline
+\end{tabular}
+\caption{\label{fig-atari-stats}
+    Mean and median human-normalized scores on 57 Atari games using the human starts evaluation metric.  Supplementary Table~S\ref{fig-atari-full} shows the raw scores for all games.
+}
+\end{center}
+\vspace{-0.45cm}
+\end{table}
+
+\subsection{TORCS Car Racing Simulator}
+
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+We also compared the four asynchronous methods on the TORCS 3D car racing game~\citep{wymann-torcs}.
+TORCS not only has more realistic graphics than Atari 2600 games, but also requires the agent to learn the dynamics of the car it is controlling.
+At each step, an agent received only a visual input in the form of an RGB image of the current frame as well as a reward proportional to the agent's velocity along the center of the track at the agent's current position.
+%
+We used the same neural network architecture as the one used in the Atari experiments specified in Supplementary Section~\ref{sec:experimental-setup}.
+We performed experiments using four different settings -- the agent controlling a slow car with and without opponent bots, and the agent controlling a fast car with and without opponent bots.
+Full results can be found in Supplementary Figure~\ref{fig-torcs}.
+%
+%
+%
+A3C was the best performing agent, reaching between roughly $75\%$ and $90\%$ of the score obtained by a human tester on all four game configurations in about 12 hours of training.
+%
+A video showing the learned driving behavior of the A3C agent can be found at \url{https://youtu.be/0xo1Ldx3L5Q}.
+%
+
+%
+
+\subsection{Continuous Action Control Using the MuJoCo Physics Simulator}
+We also examined a set of tasks where the action space is continuous.
+In particular, we looked at a set of rigid body physics domains with contact dynamics
+where the tasks include many examples of manipulation and locomotion.
+These tasks were simulated using the Mujoco physics engine.
+We evaluated only the asynchronous advantage actor-critic algorithm since, unlike the value-based methods, it is easily extended to continuous actions.
+In all problems, using either the physical state or pixels as input, Asynchronous Advantage-Critic found good solutions in less than 24 hours of training and typically in under a few hours.
+%
+Some successful policies learned by our agent can be seen in the following video \url{https://youtu.be/Ajjc08-iPx8}.
+Further details about this experiment can be found in Supplementary Section~\ref{sec:mujoco}.
+
+\subsection{Labyrinth}
+
+%
+%
+%
+%
+%
+%
+
+We performed an additional set of experiments with A3C on a new 3D environment called Labyrinth.
+The specific task we considered involved the agent learning to find rewards in randomly generated mazes.
+At the beginning of each episode the agent was placed in a new randomly generated maze consisting of rooms and corridors.
+Each maze contained two types of objects that the agent was rewarded for finding -- apples and portals.
+Picking up an apple led to a reward of $1$.  Entering a portal led to a reward of $10$ after which the agent was respawned in a new random location in the maze and all previously collected apples were regenerated.
+An episode terminated after 60 seconds after which a new episode would begin.
+The aim of the agent is to collect as many points as possible in the time limit and the optimal strategy involves first finding the portal and then repeatedly going back to it after each respawn.
+This task is much more challenging than the TORCS driving domain because the agent is faced with a new maze in each episode and must learn a general strategy for exploring random mazes.
+
+We trained an A3C LSTM agent on this task using only $84\times 84$ RGB images as input.
+%
+The final average score of around 50 indicates that the agent learned a reasonable strategy for exploring random 3D maxes using only a visual input.
+%
+A video showing one of the agents exploring previously unseen mazes is included at \url{https://youtu.be/nMR5mjCFZCw}.
+
+%
+\subsection{Scalability and Data Efficiency}
+
+\begin{table}[t]
+\small
+\begin{center}
+\begin{tabular}{ | l | c | c | c | c | c | }
+\hline
+& \multicolumn{5}{|c|}{Number of threads} \\ \hline
+Method & 1 & 2 & 4 & 8 & 16 \\
+\hline
+1-step Q & 1.0 & \textbf{3.0} & \textbf{6.3} & \textbf{13.3} & \textbf{24.1} \\ \hline
+1-step SARSA & 1.0 & \textbf{2.8} & \textbf{5.9} & \textbf{13.1} & \textbf{22.1} \\ \hline
+n-step Q & 1.0 & \textbf{2.7} & \textbf{5.9} & \textbf{10.7} & \textbf{17.2} \\ \hline
+A3C & 1.0 & 2.1 & 3.7 & 6.9 & 12.5 \\ \hline
+\end{tabular}
+\caption{\label{fig-scalability} The average training speedup for each method and number of threads averaged over seven Atari games.
+To compute the training speed-up on a single game we measured the time to required reach a fixed reference score using each method and number of threads.
+The speedup from using $n$ threads on a game was defined as the time required to reach a fixed reference score using one thread divided the time required to reach the reference score using $n$ threads.
+The table shows the speedups averaged over seven Atari games (Beamrider, Breakout, Enduro, Pong, Q*bert, Seaquest, and Space Invaders).
+%
+%
+}
+\end{center}
+\vspace{-0.45cm}
+\end{table}
+
+\begin{figure*}[ht]
+\centerline{\includegraphics[width=0.95\textwidth]{figures/stability_ac_nw}}
+\vspace{-0.25cm}
+\caption{\label{fig-stability-ac} Scatter plots of scores obtained by asynchronous advantage actor-critic on five games (Beamrider, Breakout, Pong, Q*bert, Space Invaders) for $50$ different learning rates and random initializations. On each game, there is a wide range of learning rates for which all random initializations acheive good scores.  This shows that A3C is quite robust to learning rates and initial random weights.}
+\vspace{-0.45cm}
+\end{figure*}
+
+%
+We analyzed the effectiveness of our proposed framework by looking at how the training time and data efficiency changes with the number of parallel actor-learners.
+When using multiple workers in parallel and updating a shared model, one would expect that in an ideal case, for a given task and algorithm, the number of training steps to achieve a certain score would remain the same with varying numbers of workers.
+Therefore, the advantage would be solely due to the ability of the system to consume more data in the same amount of wall clock time and possibly improved exploration.
+Table~\ref{fig-scalability} shows the training speed-up achieved by using increasing numbers of parallel actor-learners averaged over seven Atari games.
+These results show that all four methods achieve substantial speedups from using multiple worker threads, with $16$ threads leading to at least an order of magnitude speedup.
+This confirms that our proposed framework scales well with the number of parallel workers, making efficient use of resources.
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+
+
+Somewhat surprisingly, asynchronous one-step Q-learning and Sarsa algorithms exhibit superlinear speedups that cannot be explained by purely computational gains.
+We observe that one-step methods (one-step Q and one-step Sarsa) often require less data to achieve a particular score when using more parallel actor-learners.
+We believe this is due to positive effect of multiple threads to reduce the bias in one-step methods.
+These effects are shown more clearly in Figure~\ref{fig-scalability-data}, which shows plots of the average score against the total number of training frames for different numbers of actor-learners and training methods on five Atari games, and Figure~\ref{fig-scalability-time}, which shows plots of the average score against wall-clock time.
+%
+%
+%
+%
+%
+
+\subsection{Robustness and Stability}
+Finally, we analyzed the stability and robustness of the four proposed asynchronous algorithms.
+For each of the four algorithms we trained models on five games (Breakout, Beamrider, Pong, Q*bert, Space Invaders) using $50$ different learning rates and random initializations.
+Figure~\ref{fig-stability-ac} shows scatter plots of the resulting scores for A3C, while Supplementary Figure~\ref{fig-stability-lr} shows plots for the other three methods.
+There is usually a range of learning rates for each method and game combination that leads to good scores, indicating that all methods are quite robust to the choice of learning rate and random initialization.
+The fact that there are virtually no points with scores of $0$ in regions with good learning rates indicates that the methods are stable and do not collapse or diverge once they are learning.
+%
+%
+%
+
+%
+
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+\begin{figure*}
+    \centerline{\includegraphics[width=0.94\textwidth]{figures/steps_vs_score__q_nw}}
+    %
+    \centerline{\includegraphics[width=0.94\textwidth]{figures/steps_vs_score__msq_nw}}
+    \centerline{\includegraphics[width=0.94\textwidth]{figures/steps_vs_score__ac_nw}}
+    \caption{\label{fig-scalability-data} Data efficiency comparison of different numbers of actor-learners for three asynchronous methods on five Atari games. The x-axis shows the total number of training epochs where an epoch corresponds to four million frames (across all threads).  The y-axis shows the average score. Each curve shows the average over the three best learning rates. Single step methods show increased data efficiency from more parallel workers. Results for Sarsa are shown in Supplementary Figure~\ref{fig-scalability-data-sarsa}.}
+\vspace{-0.6cm}
+\end{figure*}
+\begin{figure*}
+    \centerline{\includegraphics[width=0.94\textwidth]{figures/time_vs_score__q_nw}}
+    %
+    \centerline{\includegraphics[width=0.94\textwidth]{figures/time_vs_score__msq_nw}}
+    \centerline{\includegraphics[width=0.94\textwidth]{figures/time_vs_score__ac_nw}}
+    \caption{\label{fig-scalability-time} Training speed comparison of different numbers of actor-learners on five Atari games. The x-axis shows training time in hours while the y-axis shows the average score.  Each curve shows the average over the three best learning rates. All asynchronous methods show significant speedups from using greater numbers of parallel actor-learners.  Results for Sarsa are shown in Supplementary Figure~\ref{fig-scalability-time-sarsa}.}
+\vspace{-0.6cm}
+\end{figure*}

@@ -1,0 +1,129 @@
+\documentclass[../../hippo]{subfiles}
+\begin{document}
+
+\subsection{Derivation for Scaled Legendre (HiPPO-LegS)}
+\label{sec:derivation-legs}
+
+As discussed in \cref{sec:theory_legs},
+the scaled Legendre is our only method that uses a measure with varying width.
+
+\paragraph{Measure and Basis}
+We instantiate the framework in the case
+\begin{align}
+  \omega(t, x) &= \frac{1}{t} \mathbb{I}_{[0, t]}
+  \label{eq:scale-legendre-weight} \\
+  g_n(t, x) &= p_n(t, x) = (2n+1)^{\frac{1}{2}} P_n\left( \frac{2x}{t} - 1 \right)
+  \label{eq:scale-legendre-p}
+\end{align}
+
+Here, $P_n$ are the basic Legendre polynomials (\cref{sec:legendre-properties}).
+We use no tilting, i.e.\ $\chi(t, x) = 1$, $\zeta(t) = 1$, and $\lambda_n=1$ so that
+the functions $g_n(t, x)$ are an orthonormal basis.
+
+\paragraph{Derivatives}
+
+We first differentiate the measure and basis:
+\begin{align*}
+  \ppt \omega(t, \cdot)   &= -t^{-2}\mathbb{I}_{[0,t]} + t^{-1}\delta_t = t^{-1} (-\omega(t) + \delta_t)
+  \nonumber \\
+  \ppt g_n(t, x)
+  &= -(2n+1)^{\frac{1}{2}} 2xt^{-2} P_n'\left( \frac{2x}{t} - 1 \right)
+  \nonumber \\
+  &= -(2n+1)^{\frac{1}{2}} t^{-1} \left(\frac{2x}{t} - 1 + 1\right) P_n'\left( \frac{2x}{t} - 1 \right)
+  .
+\end{align*}
+Now define $z = \frac{2x}{t} - 1$ for shorthand and apply the properties of derivatives of Legendre polynomials (equation~\eqref{eq:legendre-xd}).
+\begin{align*}
+  \ppt g_n(t, x)
+  &= -(2n+1)^{\frac{1}{2}} t^{-1} (z+1) P_n'\left( z \right)
+  \\
+  &= - (2n+1)^{\frac{1}{2}} t^{-1} \left[n P_n\left( z \right) + (2n-1)P_{n-1}(z) + (2n-3)P_{n-2}(z) + \dots \right]
+  \nonumber \\
+  &= -t^{-1} (2n+1)^{\frac{1}{2}} \left[ n (2n+1)^{-\frac{1}{2}} g_n(t, x) + (2n-1)^{\frac{1}{2}} g_{n-1}(t, x) + (2n-3)^{\frac{1}{2}}g_{n-2}(t, x) + \dots \right]
+  \nonumber
+\end{align*}
+
+\paragraph{Coefficient Dynamics}
+
+Plugging these into~\eqref{eq:coefficient-dynamics}, we obtain
+\begin{align*}
+  \frac{d}{dt} c_n(t)
+  &= \int f(x) \left( \ppt g_n(t, x) \right) \omega(t, x) \dd x
+  + \int f(x) g_n(t, x) \left( \ppt \omega(t, x) \right) \dd x
+  \\
+  &= -t^{-1} (2n+1)^{\frac{1}{2}}\left[ n(2n+1)^{-\frac{1}{2}}c_n(t) + (2n-1)^{\frac{1}{2}}c_{n-1}(t) + (2n-3)^{\frac{1}{2}}c_{n-2}(t) + \dots \right]
+  \\
+  &\qquad - t^{-1} c_n(t) + t^{-1} f(t)g_n(t,t)
+  \\
+  &= -t^{-1} (2n+1)^{\frac{1}{2}} \left[ (n+1)(2n+1)^{-\frac{1}{2}}c_n(t) + (2n-1)^{\frac{1}{2}} c_{n-1}(t) + (2n-3)^{\frac{1}{2}}c_{n-2}(t) + \dots \right]
+  \\
+  &\qquad + t^{-1} (2n+1)^{\frac{1}{2}} f(t) 
+\end{align*}
+where we have used $g_n(t, t) = (2n+1)^{\frac{1}{2}} P_n(1) = (2n+1)^{\frac{1}{2}}$.
+Vectorizing this yields equation~\eqref{eq:scaled-legendre-dynamics}:
+\begin{align}
+  \ddt c(t) &= -\frac{1}{t} A c(t) + \frac{1}{t} B f(t)
+  \label{eq:scaled-legendre-dynamics-details}
+  \\
+  A_{nk}
+  &=
+  \begin{cases}
+    (2n+1)^{1/2}(2k+1)^{1/2} & \mbox{if } n > k \\
+    n+1 & \mbox{if } n = k \\
+    0 & \mbox{if } n < k
+  \end{cases},
+  \nonumber \\
+  B_n &= (2n+1)^{\frac{1}{2}} \nonumber
+\end{align}
+
+Alternatively, we can write this as
+\begin{equation}
+  \ddt c(t) = -t^{-1} D
+  \left[
+    M D^{-1}
+    c(t)
+    +
+    \mathbf{1}
+    f(t)
+  \right]
+  ,
+\end{equation}
+where
+$D := \diag \left[ (2n+1)^{\frac{1}{2}} \right]_{n=0}^{N-1}$,
+$\mathbf{1}$ is the all ones vector, and the state matrix $M$ is
+\begin{align*}%
+  M
+  =
+  \begin{bmatrix}
+    1 & 0 & 0 & 0 & \dots & 0 \\
+    1 & 2 & 0 & 0 & \dots & 0 \\
+    1 & 3 & 3 & 0 & \dots & 0 \\
+    1 & 3 & 5 & 4 & \dots & 0 \\
+    \vdots & \vdots & \vdots & \vdots & \ddots & \vdots \\
+    1 & 3 & 5 & 7 & \dots & N \\
+  \end{bmatrix},
+  \quad \text{that is, } \quad
+  M_{nk} =
+  \begin{cases}
+    2k+1 & \mbox{if } k < n \\
+    k+1 & \mbox{if } k = n \\
+    0 & \mbox{if } k > n
+  \end{cases}
+\end{align*}
+
+
+Equation~\eqref{eq:scaled-legendre-dynamics-details} is a linear dynamical system, except dilated by a time-varying factor $t^{-1}$, which arises from the scaled measure.
+
+\paragraph{Reconstruction}
+
+
+By equation~\eqref{eq:reconstruction}, at every time $t$ we have
+\begin{align*}
+  f(x) \approx g^{(t)}(x)
+  &= \sum_n c_n(t) g_n(t, x).
+  \\
+  &= \sum_n c_n(t) (2n+1)^{\frac{1}{2}} P_n\left( \frac{2x}{t} - 1 \right).
+\end{align*}
+
+\end{document}
+

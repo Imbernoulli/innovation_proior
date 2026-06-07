@@ -1,0 +1,96 @@
+% \section{Matrix Factorization: Adam Implicitly Regularizes Sharpness Differently}
+% In the diagonal net experiments in the last section, where the implicit bias of adam induces stronger sparcity on the solution, we show that the sparcity makes Adam generalize better than SGD in the diagonal net setting. 
+
+% In this section, we consider another controllable experiment setting: the matrix factorization task, where we could observe that Adam does have the regularization term $\mathrm{tr}(\mathrm{diag(\mH)^{1/2}})$ rather than $\mathrm{tr}(\mH)$. Utilizing the vast theoretical results in the matrix factorization task, we expect that when training is sufficient, Adam generalizes worse than Vanilla SGD when both are appled with label noise. And our empirical results support this claim.
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=0.75\textwidth]{fig/matrix_factorization/matrix-factorization--traceH-loss.png}
+%     \caption{The comparison between Adam and SGD with label noise, the top-left figure and top-right figure are under the metrics $\tr(\mH)$ and $\tr(\diag(\mH))$. The bottom-left and bottom-right figures show training loss and test loss.}
+%     \label{fig:matrix-fac-trH-loss}
+% \end{figure}
+
+% \subsection{Deep Matrix Factorization with label noise}
+% Consider a $L$-layer linear network, whose parameters $\mW$ is a concatenation defined as $\mW:=(\mW_1,\dots,\mW_L)$, where $\mW_i\in \R^{d_i \times d_{i-1}}$ for all $i\in[L]$. We require that $d_i\geq \min(d_0,d_L)$ for all $i\in[L]$. We further consider the following training process. Suppose $\mathbf{M}^*\in \R^{d_L \times d_{0}}$ is the ground truth matrix, and we observe $n$ linear measurements $\mA_i\in \R^{d_L \times d_{0}}$. The corresponding label $b_i$ for each $\mA_i$ is generated as $b_i = \inp{\mA_i}{\mM^*}$. The training loss of $\mW$ is the mean-squared error (MSE) between the model output $\inp{\mA_i}{\mW_L \mW_{L-1}\dots\mW_1}$ and the observation $b_i$:
+% \begin{align*}
+%     \cL(W) := \frac{1}{n}\sum_{i=1}^{n}(\inp{\mA_i}{\mW_L \mW_{L-1}\dots\mW_1} -b_i)^2.
+% \end{align*}
+% In this section, we consider training with label noise and mini batch size $B$, then the training loss can be written as
+% \begin{align*}
+%     \cL_t(W) := \frac{1}{B}\sum_{i\in \cB_t}(\inp{\mA_i}{\mW_L \mW_{L-1}\dots\mW_1} -b_i + \xi_{t,i})^2,
+% \end{align*}
+% where $\cB_t$ is the batch of size $B$ independently sampled at step $t$ and $\xi_t\in\R^d$ are $i.i.d$ multivariate zero-mean Gaussian random variable with identical covariance matrix. 
+
+% It is known that vanilla SGD with label noise, with a small learning rate, implicitly minimizes the trace of Hessian matrix of the loss, after reaching the zero-loss manifold. In this matrix factorization task, \citet{gatmiry2023inductive} proved that the minimization of the trace of Hessian is roughly equivalent to the minimization of the nuclear norm of $\mW^*$. Futher, when $\mM^*$ itself has a low rank nature, the minimization of nuclear norm can induces better genralization. Hence, Adam, whose regularization term is $\tr(\diag(\mH)^{1/2})$ rather than $\mathrm{tr}(\mH)$, should converge the a solution different from that of SGD vonverges to. And the solution found by Adam should have a larger trace of Hessian, but a smaller trace of the square root of the diagonal Hessian than the solution of SGD. We could also observe a generalization performance degradation of Adam.
+
+% \subsection{Experiment Verification}
+% In these experiments, for SGD training, we follow the setups of Section 7 in \citep{gatmiry2023inductive}. We add label noise $\xi\sim \gN(0,\mI)\in\R^d$ to both SGD and Adam. For Adam, we use a standard setting with $\beta_1 = 0.9$, $\beta_2 = 0.999$, and with a learning rate $0.001$. Other setups for Adam training is the same as the SGD.
+
+% We verify our theory results by plotting the trace of Hessian, trace of square root of diagonal Hessian, training loss, and test loss in \Cref{fig:matrix-fac-trH-loss}. As the first line in the figure illustrates, Adam and SGD converges to two solutions with different trace of the Hessian and trace of the square root of the diagonal Hessian. The solution founded by Adam has a smaller trace of the square root of the diagonal Hessian. Also, for Adam, the curve of $\tr(\mH)$ is not Monotonically decreasing over steps, and the final $\tr(\diag(\mH))$ of Adam solution is much smaller than that of SGD, which serve as strong evidences that Adam does not minimize trace of Hessian, but trace of square root of the diagonal Hessian. The second line in \Cref{fig:matrix-fac-trH-loss} shows that the implicit bias of Adam in Matrix Factorization has a negative effect, making it generalizable worse than SGD.
+
+\section{Matrix Factorization: Adam Implicitly Regularizes Sharpness Differently}\label{sec:matrix}
+
+The diagonal net experiments in \cref{sec:diag} showed that Adam’s implicit bias towards \emph{sparsity} improves generalization relative to SGD.  
+We now turn to supply the potentially negative impact of Adam's implicit bias in another controlled setting: \textbf{deep matrix factorization with label noise}, where the relevant implicit regularizers are analytically tractable.  
+
+In this task, Adam is expected to minimize
+\(\tr(\Diag(\mH)^{1/2})\) rather than \(\tr(\mH)\).  Leveraging existing theory, we therefore predict that (i) Adam will converge to a solution with larger \(\tr(\mH)\), whose \(\tr(\Diag(\mH)^{1/2})\), however, smaller than SGD’s solution, and (ii) once Adam reaches a solution with larger $\tr(\mH)$, supported by\citet{gatmiry2023inductive}, it will \emph{generalize worse} than vanilla SGD in the presence of label noise. Our experiments confirm both predictions (\Cref{fig:matrix-fac-trH-loss} and \Cref{fig:matrix-fac-trH-loss-L5}).
+
+\begin{figure}[h]
+    \centering
+    % \vspace{-0.5in}
+    \includegraphics[width=0.8\textwidth]{fig/matrix_factorization/new-Adam-SGD-w-noise_L2_n100_combined_hessian_trace_large.pdf}
+    \caption{\textbf{Deep matrix factorization with label noise with deepth $L =2$.}  
+    Adam and SGD are trained on identical data and noise realizations.  
+    \emph{Top:} evolution of \(\tr(\mH)\) and \(\tr(\Diag(\mH)^{1/2})\).  
+    \emph{Bottom:} training and test MSE.  
+    Adam converges to a point with larger $\tr(\mH)$ but smaller $\tr(\Diag(\mH)^{1/2})$, and exhibits higher test error.}
+    \label{fig:matrix-fac-trH-loss}
+    % \vspace{-0.2in}
+\end{figure}
+
+\begin{figure}[h]
+    \centering
+    % \vspace{-0.5in}
+    \includegraphics[width=0.85\textwidth]{fig/matrix_factorization/new-Adam-SGD-w-noise_L5_n100_combined_hessian_trace_large.pdf}
+    \caption{\textbf{Deep matrix factorization with label noise with deepth $L =5$.}}
+    \label{fig:matrix-fac-trH-loss-L5}
+    % \vspace{-0.2in}
+\end{figure}
+
+\subsection{Problem setup}
+We consider an \(L\)-layer linear network with parameters  
+\(\mW = (\mW_{1},\dots,\mW_{L})\), where \(\mW_{i}\!\in\!\R^{d_{i}\times d_{i-1}}\) and  
+\(d_{i}\!\ge\!\min\{d_{0},d_{L}\}\) for all \(i\).  
+We let \(\mM^{\!*}\!\in\!\R^{d_{L}\times d_{0}}\) be a rank-\(r\) ground truth matrix and observe the \(n\) i.i.d. linear measurements \(\{(\mA_{i},b_{i})\}_{i=1}^{n}\) generated by
+\(b_{i}= \langle \mA_{i},\mM^{\!*}\rangle\).  
+With label noise and mini-batch size \(B\), the empirical loss at step \(t\) is: 
+\[
+\cL_{t}(\mW)=\frac{1}{B}\sum_{i\in\cB_{t}}
+  \!\bigl(\, \langle \mA_{i},\mW_{L}\!\cdots\!\mW_{1}\rangle-b_{i}
+  +\xi_{t,i}\bigr)^{2},
+\]
+where \(\cB_{t}\) stands for a fresh batch of size $B$, and the label noise 
+\(\xi_{t,i}{\sim}\cN(0,\sigma^{2})\) are independent to each other for both different $t$ and $i$.
+
+% \paragraph{Expected outcome.}
+% Recall that SGD with label noise implicitly regularizes $\mathrm{tr}(\mH)$ on the minimizer manifold. On this matrix factorization task, \citet{gatmiry2023inductive} proved that minimizing $\mathrm{tr}(\mH)$ is roughly equivalent to minimizing the nuclear norm of $\mW^*$, which is connected to generalization improvement when $\mM^*$ possesses the low-rank property. In contrast, our theoretical analysis suggests that Adam implicitly regularizes $\mathrm{tr}(\mathrm{diag}(\mH)^{1/2})$ rather than $\mathrm{tr}(\mH)$, inducing a different bias that does not necessarily favor low-rank solutions. Consequently, Adam is expected to converge to solutions with smaller $\mathrm{tr}(\mathrm{diag}(\mH)^{1/2})$, larger $\mathrm{tr}(\mH)$ and worse generalization compared to SGD. In the following experiments, we empirically verify this hypothesis.
+
+% Hence Adam, whose regularization term is $\tr(\diag(\mH)^{1/2})$ rather than $\mathrm{tr}(\mH)$, should converge to a solution different from that of SGD converges to. And the solution found by Adam should have a larger trace of Hessian, but a smaller trace of the square root of the diagonal Hessian than the solution of SGD. We could also observe a generalization performance degradation of Adam.
+\subsection{Results}
+Our setups for SGD optimizer follows Section 7 of \citet{gatmiry2023inductive}.  
+For Adam, we use the standard hyperparameters  
+\(\beta_{1}=0.9\), \(\beta_{2}=0.999\), and learning rate \(10^{-3}\); all other settings are identical to SGD.
+
+\Cref{fig:matrix-fac-trH-loss} and \Cref{fig:matrix-fac-trH-loss-L5} (top rows in the figures) show the evolution of sharpness metrics and the training/test losses for layer depth $L=2,5$.  
+Adam drives \(\tr(\Diag(\mH)^{1/2})\) sharply downward while \(\tr(\mH)\) remains high and even non-monotone, confirming that Adam does \emph{not} target Hessian trace.  
+Correspondingly, the bottom rows in these two figures show that Adam attains a higher test loss despite similar training error, which is an evidence that Adam's implicit bias is detrimental in this setting.
+
+Recall that SGD with label noise implicitly regularizes $\mathrm{tr}(\mH)$ on the minimizer manifold. On this matrix factorization task, \citet{gatmiry2023inductive} proved that minimizing $\mathrm{tr}(\mH)$ is roughly equivalent to minimizing the nuclear norm of $\mW^*$, which is connected to generalization improvement when $\mM^*$ possesses the low-rank property. In contrast, our theoretical analysis suggests that Adam implicitly regularizes $\mathrm{tr}(\mathrm{diag}(\mH)^{1/2})$ rather than $\mathrm{tr}(\mH)$, inducing a different bias that does not necessarily favor low-rank solutions. Consequently, Adam is expected to converge to solutions with smaller $\mathrm{tr}(\mathrm{diag}(\mH)^{1/2})$, larger $\mathrm{tr}(\mH)$ and worse generalization compared to SGD. 
+
+\paragraph{Takeaway.}
+% In deep matrix factorization with label noise, \citet{gatmiry2023inductive} proved that minimizing $\mathrm{tr}(\mH)$ is roughly equivalent to minimizing the nuclear norm of $\mW^*$, which is connected to generalization improvement when $\mM^*$ possesses the low-rank property. 
+% In contrast, Adam’s preference for minimizing $\tr(\Diag(\mH)^{1/2})$ leads it to different solutions, which are less generalizable than the solutions found by SGD, reflecting that Adam’s implicit regularization differs qualitatively from SGD’s and can hurt performance in certain tasks like matrix factorization.
+In deep matrix factorization with label noise, Adam’s tendency to minimize $\tr(\Diag(\mH)^{1/2})$ drives it towards solutions different from those found by SGD and exhibits worse recovery of the low-rank ground truth. This highlights that Adam's implicit regularization can be detrimental for  certain tasks.
+
+%, which are less generalizable than the solutions found by SGD, reflecting that Adam’s implicit regularization differs qualitatively from SGD’s and can hurt performance in certain tasks like matrix factorization.

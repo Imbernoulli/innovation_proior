@@ -1,0 +1,29 @@
+
+\begin{table}[t]
+    \centering
+    \small
+    \begingroup
+    \setlength{\tabcolsep}{0.70\tabcolsep}
+    \begin{tabular}{@{}l l c cc c c @{}} \toprule
+    \tf{Type} & \tf{\#N} & \tf{IB} & \tf{Top-5} & \tf{Top-20} & \tf{Top-100} \\ \midrule
+    Random & 7 & $\xmark$ & 47.0 & 64.3 & 77.8 \\
+    BM25 & 7 & $\xmark$ & 50.0 & 63.3 & 74.8\\
+    Gold & 7 & $\xmark$ & 42.6 & 63.1 & 78.3\\
+    \midrule
+    Gold & 7 & $\cmark$ & 51.1 & 69.1 & 80.8 \\
+    Gold & 31 & $\cmark$ & 52.1 & 70.8 & 82.1 \\
+    Gold & 127 & $\cmark$ & 55.8 & 73.0 & 83.1\\
+    \midrule
+    G.+BM25$^{(1)}$ & 31+32 & $\cmark$ & 65.0 & 77.3 & 84.4 \\
+    {G.+BM25}$^{(2)}$ & 31+64 & $\cmark$ & 64.5 & 76.4 & 84.0 \\
+    G.+BM25$^{(1)}$ & 127+128 & $\cmark$ & \tf{65.8} & \tf{78.0} & \tf{84.9} \\
+    \bottomrule
+    \end{tabular}
+    \endgroup
+    \caption{Comparison of different training schemes, measured as top-$k$ retrieval accuracy on Natural Questions (development set).  \#N: number of negative examples, IB: in-batch training. G.+BM25$^{(1)}$ and {G.+BM25}$^{(2)}$ denote in-batch training with 1 or 2 additional BM25 negatives, which serve as negative passages for all questions in the batch.} 
+    
+    
+
+
+    \label{tab:ir-ablation}
+\end{table}

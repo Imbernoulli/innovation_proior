@@ -1,0 +1,14 @@
+\section{Related Work}
+\myparagraph{Large language models (LLMs).}
+Pre-trained language models have achieved remarkable performance on various benchmarks by \emph{scaling up}.
+GPT-3~\cite{brown2020language} is the first LLM beyond 100B parameters and achieves impressive few-shot/zero-shot learning results. Later works~\cite{rae2021scaling,smith2022using,du2022glam,chowdhery2022palm}  continue to push the frontier of scaling, going beyond 500B parameters.
+However, as the language model gets larger, serving such models for inference becomes expensive and challenging. In this work, we show that our proposed method can quantize the three largest, openly available LLMs: OPT-175B~\cite{opt}, BLOOM-176B~\cite{scao2022bloom} and GLM-130B~\cite{zeng2022glm}, and even MT-NLG 530B~\cite{smith2022using} to reduce the memory cost and accelerate inference.
+
+\myparagraph{Model quantization.}
+Quantization is an effective method for reducing the model size and accelerating inference. It proves to be effective for various convolutional neural works (CNNs)~\cite{han2016deep,  jacob2018quantization, nagel2019data, wang2019haq, lin2020mcunet} and transformers~\cite{shen2020q, kim2021bert, liu2021post,spatten,bondarenko2021understanding}. Weight equalization~\cite{nagel2019data} and channel splitting~\cite{zhao2019improving} reduce quantization error by suppressing the outliers in weights. However, these techniques cannot address the activation outliers, which are the major quantization bottleneck for LLMs~\cite{dettmers2022llmint8}.
+
+\myparagraph{Quantization of LLMs. }
+GPTQ~\cite{frantar2022gptq} applies quantization only to weights but not activations (please find a short discussion in \sectapp{sec:supp_gptq_compare}).
+ZeroQuant~\cite{zeroquant} and nuQmm~\cite{park2022nuqmm} use a per-token and group-wise quantization scheme for LLMs, which requires customized CUDA kernels. Their largest evaluated models are 20B and 2.7B, respectively and fail to maintain the performance of LLMs like OPT-175B.
+\texttt{LLM.int8()}~\cite{dettmers2022llmint8} uses mixed INT8/FP16 decomposition to address the activation outliers. However, such implementation leads to large latency overhead, which can be even slower than FP16 inference. Outlier Suppression~\cite{outlier_suppression} uses the non-scaling LayerNorm and token-wise clipping to deal with the activation outliers. However, it only succeeds on small language models such as BERT~\cite{bert} and BART~\cite{lewis2019bart} and fails to  maintain the accuracy for LLMs (Table \ref{tab:different_models}).
+Our algorithm preserves the performance of LLMs (up to 176B, the largest open-source LLM we can find) with an efficient per-tensor, static quantization scheme without retraining, allowing us to use off-the-shelf INT8 \texttt{GEMM} to achieve high hardware efficiency.

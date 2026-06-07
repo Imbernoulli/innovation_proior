@@ -1,0 +1,17 @@
+%!TEX root = main.tex
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+We proposed a general-purpose approach for robust estimation that leverages modern non-minimal solvers. 
+The approach allows extending the applicability of Black-Rangarajan duality and Graduated Non-convexity (\GNC) 
+to several spatial perception problems, ranging from mesh registration and shape alignment to pose graph optimization.
+We believe the proposed approach can be a valid replacement for \ransac. 
+While \ransac requires a minimal solver, our \GNC approach requires a \emph{non-minimal} solver. 
+ Our approach is deterministic, resilient to a large number of outliers, 
+ and significantly faster than specialized solvers. 
+ As a further contribution, we presented a non-minimal solver for shape alignment.
+ % \revise{Finally, we remark that both \emph{a priori} and \emph{a posterior} guarantees of when \GNC converges to the global optima remain open.}
+  \revise{Future work includes investigating \emph{a priori} and \emph{a posterior} conditions that 
+  guarantee convergence of \GNC to globally optimal solutions.}
+% We demonstrate the resulting robust non-minimal solver in applications, including point cloud and mesh registration, pose graph optimization, and image-based object pose estimation. The solver is robust to 70-80% of outliers, outperforms and is more broadly applicable than existing general-purpose methods (e.g., RANSAC), and compares favorably against specialized methods, while being significantly faster. We also extend the literature on non-minimal solvers by proposing a certifiably optimal SOS solver for image-based object pose estimation.

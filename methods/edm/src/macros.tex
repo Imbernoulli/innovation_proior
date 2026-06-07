@@ -1,0 +1,172 @@
+\definecolor{olive}{rgb}{0.5, 0.5, 0.0}
+\definecolor{maroon}{rgb}{0.69, 0.19, 0.38}
+\definecolor{celestialblue}{rgb}{0.29, 0.59, 0.82}
+\definecolor{darkgreen}{rgb}{0.0, 0.6, 0.0}
+\definecolor{grey}{rgb}{0.5,0.5,0.5}
+\definecolor{darkblue}{rgb}{0.19, 0.19, 0.62}
+\definecolor{silver}{rgb}{0.7,0.7,0.7}
+\definecolor{darkcyan}{rgb}{0.0, 0.55, 0.55}
+
+\newcommand{\TODO}[1]{{\color{red}TODO: #1}}
+\newcommand{\Todo}[1]{{\color{red}TODO: #1}}
+\newcommand{\TBD}[1]{{\color{red}#1}}
+\newcommand{\WEAK}[1]{\color{silver}{#1}}
+\newcommand{\FINAL}[1]{#1}
+
+\def\clap#1{\hbox to 0pt{\hss #1\hss}}%
+\def\initials#1{\protect\clap{\smash{\raisebox{1.4ex}{\tiny{\textsf{\textit{#1}}}}}}}%
+\newcommand{\EDIT}[4][]{\strut{\color{#3}{\hspace{0pt}\initials{#2}{\color{red}\sout{#1}}{#4}}}}
+\newcommand{\TK}[2][]{\protect\EDIT[#1]{TK}{olive}{#2}}
+\newcommand{\TA}[2][]{\protect\EDIT[#1]{TA}{maroon}{#2}}
+\newcommand{\JL}[2][]{\protect\EDIT[#1]{JL}{celestialblue}{#2}}
+\newcommand{\SL}[2][]{\protect\EDIT[#1]{SL}{darkgreen}{#2}}
+\newcommand{\MA}[2][]{\protect\EDIT[#1]{MA}{darkblue}{#2}}
+
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\abs}[1]{\lvert#1\rvert}
+\newcommand{\real}{\mathbb{R}}
+\newcommand{\integer}{\mathbb{Z}}
+\newcommand{\low}[1]{\raisebox{0pt}[0pt][0pt]{#1}}
+\newcommand{\lowsqrt}[1]{\low{$\sqrt{#1}$}}
+
+\newcommand{\xx}{\boldsymbol{x}}
+\newcommand{\XX}{\boldsymbol{X}}
+\newcommand{\xxt}{\boldsymbol{\tilde x}}
+\newcommand{\xxh}{\boldsymbol{\hat x}}
+\newcommand{\zz}{\boldsymbol{z}}
+
+\newcommand{\conv}{\ast}
+\newcommand{\mult}{\odot}
+
+\newcommand{\config}[1]{config~{\sc #1}}
+
+\newcommand\undefcolumntype[1]{\expandafter\let\csname NC@find@#1\endcsname\relax}
+\newcommand\forcenewcolumntype[1]{\undefcolumntype{#1}\newcolumntype{#1}}
+
+\newcommand{\s}{\hphantom{0}}
+
+\newcommand{\plusplus}{\raisebox{0.15ex}[0pt][0pt]{\scalebox{0.9}{++}}}
+\newcommand{\ddpm}{DDPM}
+\newcommand{\ddpmpp}{DDPM\plusplus}
+\newcommand{\ncsnpp}{NCSN\plusplus}
+
+\newcommand{\boldzero}{\mathbf{0}}
+\newcommand{\boldi}{\mathbf{I}}
+\newcommand{\sigmamax}{\sigma_{\text{max}}}
+\newcommand{\odetime}{t}
+\newcommand{\scale}{s}
+\newcommand{\diff}{\mathrm{d}}
+\newcommand{\signal}{\boldsymbol{y}}
+\newcommand{\signalvar}{\boldsymbol{\hat y}^2}
+\newcommand{\noise}{\boldsymbol{n}}
+\newcommand{\noisevar}{\sigma^2}
+\newcommand{\wproc}{\omega_\odetime}
+\newcommand{\churn}{\beta}
+\newcommand{\dd}{\boldsymbol{d}}
+\newcommand{\ddt}{\boldsymbol{\tilde d}}
+\newcommand{\ddp}{{\boldsymbol{d}\mathrlap{\hspace*{.075em}'}}}
+\newcommand{\ddh}{\boldsymbol{\hat{d}}}
+\newcommand{\pdata}{p_\text{data}}
+\newcommand{\pdatahat}{\hat{p}_\text{data}}
+\newcommand{\lte}{\boldsymbol{\tau}}
+\newcommand{\gte}{\boldsymbol{e}}
+\newcommand{\ptrain}{p_\text{train}}
+\newcommand{\loss}{\mathcal{L}}
+\newcommand{\nablaxx}{\nabla_{\hspace{-0.5mm}\xx}}
+\newcommand{\Deltaxx}{{\Delta_{\xx}}}
+
+\DeclareMathOperator{\argmin}{arg\,min}
+\DeclareMathOperator{\argmax}{arg\,max}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator{\Cov}{Cov}
+\DeclareMathOperator{\score}{score}
+
+\newcommand{\stext}[1]{\text{\raisebox{0pt}[0pt][0pt]{#1}}}
+\newcommand{\smin}{\sigma_\stext{min}}
+\newcommand{\smax}{\sigma_\stext{max}}
+\newcommand{\sdyn}{\sigma_\stext{d}}
+\newcommand{\tmin}{\odetime_\stext{min}}
+\newcommand{\tmax}{\odetime_\stext{max}}
+\newcommand{\bmin}{\beta_\text{min}}
+\newcommand{\bmax}{\beta_\text{max}}
+\newcommand{\bdyn}{\beta_\text{d}}
+\newcommand{\sdata}{\sigma_\text{data}}
+\newcommand{\cskip}{c_\text{skip}}
+\newcommand{\cout}{c_\text{out}}
+\newcommand{\cin}{c_\text{in}}
+\newcommand{\cnoise}{c_\text{noise}}
+
+\newcommand{\origT}[1]{u_{#1}}
+\newcommand{\origTsup}[2]{u_{#1}^{#2}}
+\newcommand{\origN}{M}
+
+\newcommand{\Schurn}{S_\text{churn}}
+\newcommand{\Stmin}{S_\text{tmin}}
+\newcommand{\Stmax}{S_\text{tmax}}
+\newcommand{\Snoise}{S_\text{noise}}
+\newcommand{\StminStmax}{S_\text{tmin,tmax}}
+\newcommand{\StminStmaxSnoise}{S_\text{tmin,tmax,noise}}
+
+\newcommand{\confhdr}[1]{\makebox[1em]{\textsc{#1}}}
+
+\newcommand{\vparagraph}[1]{\vspace*{-1mm}\paragraph{#1}}
+
+\newcommand{\pd}{q}
+\newcommand{\condu}{\kappa}
+\newcommand{\freq}{\boldsymbol{\nu}}
+\newcommand{\fp}{r}
+\newcommand{\ff}{\boldsymbol{f}}
+\newcommand{\gb}{\boldsymbol{g}}
+\newcommand{\Fargs}{\scalebox{0.85}{$\cin(\sigma) (\signal {+} \noise); \cnoise(\sigma)$}}
+
+\pgfplotsset{xtick style={draw=none}}
+\pgfplotsset{ytick style={draw=none}}
+\pgfplotsset{major grid style={gray!40}}
+\pgfplotsset{every axis plot/.style={thick, mark size=1.5pt}}
+\pgfplotsset{legend image code/.code={\draw[mark repeat=2, mark phase=2] plot coordinates {(0cm, 0cm) (0.2cm, 0cm) (0.4cm, 0cm)};}} %
+
+\definecolor{C0}{rgb}{0.121569, 0.466667, 0.705882}
+\definecolor{C1}{rgb}{1.000000, 0.498039, 0.054902}
+\definecolor{C2}{rgb}{0.172549, 0.627451, 0.172549}
+\definecolor{C3}{rgb}{0.839216, 0.152941, 0.156863}
+\definecolor{C4}{rgb}{0.580392, 0.403922, 0.741176}
+\definecolor{C5}{rgb}{0.549020, 0.337255, 0.294118}
+\definecolor{C6}{rgb}{0.890196, 0.466667, 0.760784}
+\definecolor{C7}{rgb}{0.498039, 0.498039, 0.498039}
+\definecolor{C8}{rgb}{0.737255, 0.741176, 0.133333}
+\definecolor{C9}{rgb}{0.090196, 0.745098, 0.811765}
+
+\newcommand{\fillbetween}[3][]{\addplot+[name path=A, draw=none, mark=none, forget plot] #2; \addplot+[name path=B, draw=none, mark=none, forget plot] #3; \addplot[#1] fill between[of=A and B]}
+
+\newcommand{\cs}{}
+\newcommand{\hh}{0mm}
+\newcommand{\hhh}{0mm}
+\newcommand{\hhhh}{0mm}
+\newcommand{\vv}{0mm}
+\newcommand{\vvv}{0mm}
+\newcommand{\vvvv}{0mm}
+
+\newcommand{\vlabel}[3]{\makebox[0mm][l]{\rotatebox{90}{\makebox[#2][c]{#3}}}\hspace{#1}}
+\newcommand{\hrlabel}[1]{\hfill\makebox[0mm]{#1}\hfill}
+\newcommand{\vrlabel}[1]{\vfill\makebox[0mm]{#1}\vfill}
+
+\newcommand{\tickYtop}[1]{\raisebox{0ex}[1ex][1ex]{#1}}
+\newcommand{\tickYtopD}[1]{\raisebox{-1.5ex}[0ex][0ex]{#1}}
+\newcommand{\tickFID}{\tickYtopD{FID}}
+\newcommand{\tickLoss}{\tickYtopD{loss}}
+\newcommand{\tickTau}{\tickYtopD{$\lVert\lte\rVert$}}
+\newcommand{\tickNFE}[1]{\smash{NFE$=$}{$#1$}\hspace*{1em}}
+\newcommand{\tickSchurn}[1]{$\mathllap{\smash{\Schurn{=}}}{#1}$}
+\newcommand{\tickSchurnB}[1]{\smash{$\Schurn{=}$}{$#1$}\hspace*{2em}}
+\newcommand{\tickRho}[1]{$\mathllap{\smash{\rho{=}}}{#1}$}
+\newcommand{\tickSigma}[1]{$\mathllap{\smash{\sigma{=}}}{#1}$}
+
+\newcommand{\atphantom}{\vphantom{${}^2$}}
+\newcommand{\AProcedure}[2]{\Procedure{\smash{#1}}{\smash{#2}}}
+\newcommand{\AComment}[1]{\Comment{\smash{#1}}}
+\newcommand{\AState}[1]{\State{\smash{#1}}}
+\newcommand{\AFor}[1]{\For{\smash{#1}}}
+\newcommand{\AIf}[1]{\If{\smash{#1}}}
+\newcommand{\DState}[1]{\State{#1 \vphantom{$\displaystyle\Bigg)$}}}
+\newcommand{\MState}[1]{\State\raisebox{0mm}[3.2ex][1.8ex]{#1}}
+

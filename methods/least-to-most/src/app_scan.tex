@@ -1,0 +1,621 @@
+\section{SCAN}
+\label{app:scan}
+\subsection{Prompt contexts}
+\label{app:scan-prompts}
+In this section we present the prompt contexts used for the SCAN benchmark in Section~\ref{sec:compositional_generalization}. It includes one context for each of standard prompting, least-to-most prompting, and chain-of-thought prompting.
+
+\subsubsection{Standard prompting}
+The context for standard prompting consist of a set of commands together with the corresponding action sequences.
+
+\prompt{Q: ``turn left'' \\
+A: ``TURN\_LEFT'' \\
+ \\
+Q: ``turn right'' \\
+A: ``TURN\_RIGHT'' \\
+ \\
+Q: ``jump left'' \\
+A: ``TURN\_LEFT'' + ``JUMP'' \\
+ \\
+Q: ``run right'' \\
+A: ``TURN\_RIGHT'' + ``RUN'' \\
+ \\
+Q: ``look twice'' \\
+A: ``LOOK'' * 2 \\
+ \\
+Q: ``run and look twice'' \\
+A: ``RUN'' + ``LOOK'' * 2 \\
+ \\
+Q: ``jump right thrice'' \\
+A: (``TURN\_RIGHT'' + ``JUMP'') * 3 \\
+ \\
+Q: ``walk after run'' \\
+A: ``RUN'' + ``WALK'' \\
+ \\
+Q: ``turn opposite left'' \\
+A: ``TURN\_LEFT'' * 2 \\
+ \\
+Q: ``turn around left'' \\
+A: ``TURN\_LEFT'' * 4 \\
+ \\
+Q: ``turn opposite right'' \\
+A: ``TURN\_RIGHT'' * 2 \\
+ \\
+Q: ``turn around right'' \\
+A: ``TURN\_RIGHT'' * 4 \\
+ \\
+Q: ``walk opposite left'' \\
+A: ``TURN\_LEFT'' * 2 + ``WALK'' \\
+ \\
+Q: ``walk around left'' \\
+A: (``TURN\_LEFT'' + ``WALK'') * 4
+}
+
+\subsubsection{Least-to-most prompting}
+For least-to-most prompting, we need 2 different prompt contexts: one to decompose commands into a sequence of components and one to map commands to actions.
+
+\textbf{Command mapping.}
+The command mapping prompt context consists of a set of commands together with the corresponding action sequences and explanations of how they were obtained. 
+
+\prompt{Q: ``turn left'' \\
+A: ``turn left'' outputs ``TURN\_LEFT''. \\
+ \\
+Q: ``turn right'' \\
+A: ``turn right'' outputs ``TURN\_RIGHT''. \\
+ \\
+Q: ``jump left'' \\
+A: The output of ``jump left'' concatenates: the output of ``turn left'', the output of ``jump''. ``turn left'' outputs ``TURN\_LEFT''. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn left'' and the output of ``jump'' leads to ``TURN\_LEFT'' + ``JUMP''. So the output of ``jump left'' is ``TURN\_LEFT'' + ``JUMP''. \\
+ \\
+Q: ``run right'' \\
+A: The output of ``run right'' concatenates: the output of ``turn right'', the output of ``run''. ``turn right'' outputs ``TURN\_RIGHT''. ``run'' outputs ``RUN''. So concatenating the output of ``turn right'' and the output of ``run'' leads to ``TURN\_RIGHT'' + ``RUN''. So the output of ``run right'' is ``TURN\_RIGHT'' + ``RUN''. \\
+ \\
+Q: ``look twice'' \\
+A: The output of ``look twice'' concatenates: the output of ``look'', the output of ``look''. ``look'' outputs ``LOOK''. So repeating the output of ``look'' two times leads to ``LOOK'' * 2. So the output of ``look twice'' is ``LOOK'' * 2. \\
+ \\
+Q: ``run and look twice'' \\
+A: The output of ``run and look twice'' concatenates: the output of ``run'', the output of ``look twice''. ``run'' outputs ``RUN''. ``look twice'' outputs ``LOOK'' * 2. So concatenating the output of ``run'' and the output of ``look twice'' leads to ``RUN'' + ``LOOK'' * 2. So the output of ``run and look twice'' is ``RUN'' + ``LOOK'' * 2. \\
+ \\
+Q: ``jump right thrice'' \\
+A: The output of ``jump right thrice'' concatenates: the output of ``jump right'', the output of ``jump right'', the output of ``jump right''. ``jump right'' outputs ``TURN\_RIGHT'' + ``JUMP''. So repeating the output of ``jump right'' three times leads to (``TURN\_RIGHT'' + ``JUMP'') * 3. So the output of ``jump right thrice'' is (``TURN\_RIGHT'' + ``JUMP'') * 3. \\
+ \\
+Q: ``walk after run'' \\
+A: The output of ``walk after run'' concatenates: the output of ``run'', the output of ``walk''. ``run'' outputs ``RUN''. ``walk'' outputs ``WALK''. So concatenating the output of ``run'' and the output of ``walk'' leads to ``RUN'' + ``WALK''. So the output of ``walk after run'' is ``RUN'' + ``WALK''. \\
+ \\
+Q: ``turn opposite left'' \\
+A: The output of ``turn opposite left'' concatenates: the output of ``turn left'', the output of ``turn left''. ``turn left'' outputs ``TURN\_LEFT''. So repeating the output of ``turn left'' twice leads to ``TURN\_LEFT'' * 2. So the output of ``turn opposite left'' is ``TURN\_LEFT'' * 2. \\
+ \\
+Q: ``turn around left'' \\
+A: The output of ``turn around left'' concatenates: the output of ``turn left'', the output of ``turn left'', the output of ``turn left'', the output of ``turn left''. ``turn left'' outputs ``TURN\_LEFT''. So repeating the output of ``turn left'' four times leads to ``TURN\_LEFT'' * 4. So the output of ``turn around left'' is ``TURN\_LEFT'' * 4. \\
+ \\
+Q: ``turn opposite right'' \\
+A: The output of ``turn opposite right'' concatenates: the output of ``turn right'', the output of ``turn right''. ``turn right'' outputs ``TURN\_RIGHT''. So repeating the output of ``turn right'' twice leads to ``TURN\_RIGHT'' * 2. So the output of ``turn opposite right'' is ``TURN\_RIGHT'' * 2. \\
+ \\
+Q: ``turn around right'' \\
+A: The output of ``turn around right'' concatenates: the output of ``turn right'', the output of ``turn right'', the output of ``turn right'', the output of ``turn right''. ``turn right'' outputs ``TURN\_RIGHT''. So repeating the output of ``turn right'' four times leads to ``TURN\_RIGHT'' * 4. So the output of ``turn around right'' is ``TURN\_RIGHT'' * 4. \\
+ \\
+Q: ``walk opposite left'' \\
+A: The output of ``walk opposite left'' concatenates: the output of ``turn opposite left'', the output of ``walk''. ``turn opposite left'' outputs ``TURN\_LEFT'' * 2. ``walk'' outputs ``WALK''. So concatenating the output of ``turn opposite left'' and the output of ``walk'' leads to ``TURN\_LEFT'' * 2 + ``WALK''. So the output of ``walk opposite left'' is ``TURN\_LEFT'' * 2 + ``WALK''. \\
+ \\
+Q: ``walk around left'' \\
+A: The output of ``walk around left'' concatenates: the output of ``walk left'', the output of ``walk left'', the output of ``walk left'', the output of ``walk left''. ``walk left'' outputs ``TURN\_LEFT'' + ``WALK''. So repeating the output of ``walk around left'' four times leads to (``TURN\_LEFT'' + ``WALK'') * 4. So the output of ``walk around left'' is (``TURN\_LEFT'' + ``WALK'') * 4.
+}
+
+\textbf{Command decomposition.}
+The command decomposition prompt context consists of a set of commands together with the corresponding sequence of decomposed commands.
+
+\prompt{Q: ``look right after look twice'' \\
+A: ``look right after look twice'' can be solved by: ``look right'', ``look twice''. \\
+ \\
+Q: ``jump opposite right thrice and walk'' \\
+A: ``jump opposite right thrice'' can be solved by: ``jump opposite right'', ``jump opposite right thrice''. ``walk'' can be solved by: ``walk''. So, ``jump opposite right thrice and walk'' can be solved by: ``jump opposite right'', ``jump opposite right thrice'', ``walk''. \\
+ \\
+Q: ``run left twice and run right'' \\
+A: ``run left twice'' can be solved by: ``run left'', ``run left twice''.  ``run right'' can be solved by ``run right''. So, ``run left twice and run right'' can.be solved by: ``run left'', ``run left twice'', ``run right''. \\
+ \\
+Q: ``run opposite right'' \\
+A: ``run opposite right'' can be solved by ``run opposite right''. \\
+ \\
+Q: ``look opposite right thrice after walk'' \\
+A: ``look opposite right thrice'' can be solved by: ``look opposite right'', ``look opposite right thrice''. ``walk'' can be solved by ``walk''. So, ``look opposite right thrice after walk'' can be solved by: ``look opposite right'', ``look opposite right thrice'', ``walk''. \\
+ \\
+Q: ``jump around right'' \\
+A: ``jump around right'' can be solved by: ``jump right'', ``jump around right''. So, ``jump around right'' can be solved by: ``jump right'', ``jump around right''. \\
+ \\
+Q: ``look around right thrice and walk'' \\
+A: ``look around right thrice'' can be solved by: ``look right'', ``look around right'', ``look around right thrice''. ``walk'' can be solved by ``walk''. So, ``look around right thrice and walk'' can be solved by: ``look right'', ``look around right'', ``look around right thrice'', ``walk''. \\
+ \\
+Q: ``turn right after run right thrice'' \\
+A: ``turn right'' can be solved by: ``turn right''. ``run right thrice'' can be solved by: ``run right'', ``run right thrice''. So, ``turn right after run right thrice'' can be solved by: ``turn right'', ``run right'', ``run right thrice''.
+}
+
+\noindent
+\subsubsection{Chain-of-thought prompting}
+\noindent
+We reuse the command mapping prompt context from least-to-most prompting shown above.
+
+\input{app_scan_error_analysis}
+
+\subsection{Example outputs from code-davinci-002}
+\label{app:scan-outputs}
+
+In this section, we present 5 examples of successes and failures of the \texttt{code-davinci-002} model for chain-of-thought prompting and least-to-most prompting.
+
+\subsubsection{Chain-of-thought prompting: Success}
+\prompt{\noindent
+\textbf{``jump around left twice after walk opposite left thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT TURN\_LEFT WALK TURN\_LEFT TURN\_LEFT WALK TURN\_LEFT TURN\_LEFT WALK TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP \\
+\\
+\textbf{Solution:} \\
+Q: ``jump around left twice after walk opposite left thrice'' \\
+A: The output of ``jump around left twice after walk opposite left thrice'' concatenates: the output of ``walk opposite left thrice'', the output of ``jump around left twice''. ``walk opposite left thrice'' outputs (``TURN\_LEFT'' * 2 + ``WALK'') * 3. ``jump around left twice'' outputs (``TURN\_LEFT'' + ``JUMP'') * 4 * 2. So concatenating the output of ``walk opposite left thrice'' and the output of ``jump around left twice'' leads to (``TURN\_LEFT'' * 2 + ``WALK'') * 3 + (``TURN\_LEFT'' + ``JUMP'') * 4 * 2. So the output of ``jump around left twice after walk opposite left thrice'' is (``TURN\_LEFT'' * 2 + ``WALK'') * 3 + (``TURN\_LEFT'' + ``JUMP'') * 4 * 2. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``walk around left twice and turn around right thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT TURN\_RIGHT \\
+\\
+\textbf{Solution:} \\
+Q: ``walk around left twice and turn around right thrice'' \\
+A: The output of ``walk around left twice and turn around right thrice'' concatenates: the output of ``walk around left'', the output of ``walk around left'', the output of ``turn around right'', the output of ``turn around right'', the output of ``turn around right''. ``walk around left'' outputs (``TURN\_LEFT'' + ``WALK'') * 4. ``turn around right'' outputs ``TURN\_RIGHT'' * 4. So concatenating the output of ``walk around left'', the output of ``walk around left'', the output of ``turn around right'', the output of ``turn around right'', the output of ``turn around right'' leads to (``TURN\_LEFT'' + ``WALK'') * 4 + (``TURN\_LEFT'' + ``WALK'') * 4 + ``TURN\_RIGHT'' * 4 + ``TURN\_RIGHT'' * 4 + ``TURN\_RIGHT'' * 4. So the output of ``walk around left twice and turn around right thrice'' is (``TURN\_LEFT'' + ``WALK'') * 4 + (``TURN\_LEFT'' + ``WALK'') * 4 + ``TURN\_RIGHT'' * 4 + ``TURN\_RIGHT'' * 4 + ``TURN\_RIGHT'' * 4. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``jump around right thrice after run left thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP \\
+\\
+\textbf{Solution:} \\
+Q: ``jump around right thrice after run left thrice'' \\
+A: The output of ``jump around right thrice after run left thrice'' concatenates: the output of ``run left thrice'', the output of ``jump around right thrice''. ``run left thrice'' outputs (``TURN\_LEFT'' + ``RUN'') * 3. ``jump around right thrice'' outputs (``TURN\_RIGHT'' + ``JUMP'') * 12. So concatenating the output of ``run left thrice'' and the output of ``jump around right thrice'' leads to (``TURN\_LEFT'' + ``RUN'') * 3 + (``TURN\_RIGHT'' + ``JUMP'') * 12. So the output of ``jump around right thrice after run left thrice'' is (``TURN\_LEFT'' + ``RUN'') * 3 + (``TURN\_RIGHT'' + ``JUMP'') * 12. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``run around left twice and walk around left thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK \\
+\\
+\textbf{Solution:} \\
+Q: ``run around left twice and walk around left thrice'' \\
+A: The output of ``run around left twice and walk around left thrice'' concatenates: the output of ``run around left twice'', the output of ``walk around left thrice''. ``run around left twice'' outputs (``TURN\_LEFT'' + ``RUN'') * 4 * 2. ``walk around left thrice'' outputs (``TURN\_LEFT'' + ``WALK'') * 4 * 3. So concatenating the output of ``run around left twice'' and the output of ``walk around left thrice'' leads to (``TURN\_LEFT'' + ``RUN'') * 4 * 2 + (``TURN\_LEFT'' + ``WALK'') * 4 * 3. So the output of ``run around left twice and walk around left thrice'' is (``TURN\_LEFT'' + ``RUN'') * 4 * 2 + (``TURN\_LEFT'' + ``WALK'') * 4 * 3. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``jump around left thrice after turn around left thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP \\
+\\
+\textbf{Solution:} \\
+Q: ``jump around left thrice after turn around left thrice'' \\
+A: The output of ``jump around left thrice after turn around left thrice'' concatenates: the output of ``turn around left thrice'', the output of ``jump around left thrice''. ``turn around left thrice'' outputs ``TURN\_LEFT'' * 4 * 3. ``jump around left thrice'' outputs (``TURN\_LEFT'' + ``JUMP'') * 4 * 3. So concatenating the output of ``turn around left thrice'' and the output of ``jump around left thrice'' leads to ``TURN\_LEFT'' * 4 * 3 + (``TURN\_LEFT'' + ``JUMP'') * 4 * 3. So the output of ``jump around left thrice after turn around left thrice'' is ``TURN\_LEFT'' * 4 * 3 + (``TURN\_LEFT'' + ``JUMP'') * 4 * 3. \\
+}
+
+
+\subsubsection{Chain-of-thought prompting: Failure}
+\prompt{\noindent
+\textbf{``look around right and look around right thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK TURN\_RIGHT LOOK \\
+\\
+\textbf{Solution:} \\
+Q: ``look around right and look around right thrice'' \\
+A: The output of ``look around right and look around right thrice'' concatenates: the output of ``look around right'', the output of ``look around right thrice''. ``look around right'' outputs ``TURN\_RIGHT'' * 4 + ``LOOK''. ``look around right thrice'' outputs (``TURN\_RIGHT'' * 4 + ``LOOK'') * 3. So concatenating the output of ``look around right'' and the output of ``look around right thrice'' leads to ``TURN\_RIGHT'' * 4 + ``LOOK'' + (``TURN\_RIGHT'' * 4 + ``LOOK'') * 3. So the output of ``look around right and look around right thrice'' is ``TURN\_RIGHT'' * 4 + ``LOOK'' + (``TURN\_RIGHT'' * 4 + ``LOOK'') * 3. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``run around left thrice and run left twice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN \\
+\\
+\textbf{Solution:} \\
+Q: ``run around left thrice and run left twice'' \\
+A: The output of ``run around left thrice and run left twice'' concatenates: the output of ``run around left thrice'', the output of ``run left twice''. ``run around left thrice'' outputs (``TURN\_LEFT'' + ``RUN'') * 3. ``run left twice'' outputs ``TURN\_LEFT'' + ``RUN'' * 2. So concatenating the output of ``run around left thrice'' and the output of ``run left twice'' leads to (``TURN\_LEFT'' + ``RUN'') * 3 + ``TURN\_LEFT'' + ``RUN'' * 2. So the output of ``run around left thrice and run left twice'' is (``TURN\_LEFT'' + ``RUN'') * 3 + ``TURN\_LEFT'' + ``RUN'' * 2. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``walk and walk around left thrice''} \\
+\\
+\textbf{Golden:} \\
+WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK \\
+\\
+\textbf{Solution:} \\
+Q: ``walk and walk around left thrice'' \\
+A: The output of ``walk and walk around left thrice'' concatenates: the output of ``walk'', the output of ``walk around left thrice''. ``walk'' outputs ``WALK''. ``walk around left thrice'' outputs (``TURN\_LEFT'' + ``WALK'') * 4. So concatenating the output of ``walk'' and the output of ``walk around left thrice'' leads to ``WALK'' + (``TURN\_LEFT'' + ``WALK'') * 4. So the output of ``walk and walk around left thrice'' is ``WALK'' + (``TURN\_LEFT'' + ``WALK'') * 4. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``jump around right thrice after turn opposite left twice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP \\
+\\
+\textbf{Solution:} \\
+Q: ``jump around right thrice after turn opposite left twice'' \\
+A: The output of ``jump around right thrice after turn opposite left twice'' concatenates: the output of ``turn opposite left twice'', the output of ``jump around right thrice''. ``turn opposite left twice'' outputs ``TURN\_LEFT'' * 2. ``jump around right thrice'' outputs (``TURN\_RIGHT'' + ``JUMP'') * 4. So concatenating the output of ``turn opposite left twice'' and the output of ``jump around right thrice'' leads to ``TURN\_LEFT'' * 2 + (``TURN\_RIGHT'' + ``JUMP'') * 4. So the output of ``jump around right thrice after turn opposite left twice'' is ``TURN\_LEFT'' * 2 + (``TURN\_RIGHT'' + ``JUMP'') * 4. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``run opposite right after walk around right thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT TURN\_RIGHT RUN \\
+\\
+\textbf{Solution:} \\
+Q: ``run opposite right after walk around right thrice'' \\
+A: The output of ``run opposite right after walk around right thrice'' concatenates: the output of ``walk around right thrice'', the output of ``run opposite right''. ``walk around right thrice'' outputs (``TURN\_RIGHT'' + ``WALK'') * 3. ``run opposite right'' outputs ``TURN\_RIGHT'' * 2 + ``RUN''. So concatenating the output of ``walk around right thrice'' and the output of ``run opposite right'' leads to (``TURN\_RIGHT'' + ``WALK'') * 3 + ``TURN\_RIGHT'' * 2 + ``RUN''. So the output of ``run opposite right after walk around right thrice'' is (``TURN\_RIGHT'' + ``WALK'') * 3 + ``TURN\_RIGHT'' * 2 + ``RUN''. \\
+}
+
+\subsubsection{Least-to-most prompting: Success}
+\prompt{\noindent
+\textbf{``jump around left thrice and walk opposite right''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_RIGHT TURN\_RIGHT WALK \\
+\\
+\textbf{Decomposition:} \\
+Q: ``jump around left thrice and walk opposite right'' \\
+A: ``jump around left thrice'' can be solved by: ``jump left'', ``jump around left'', ``jump around left thrice''. ``walk opposite right'' can be solved by: ``walk opposite right''. So, ``jump around left thrice and walk opposite right'' can be solved by: ``jump left'', ``jump around left'', ``jump around left thrice'', ``walk opposite right''. \\
+\\
+\textbf{Solution:} \\
+Q: ``jump left'' \\
+A: The output of ``jump left'' concatenates: the output of ``turn left'', the output of ``jump''. ``turn left'' outputs ``TURN\_LEFT''. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn left'' and the output of ``jump'' leads to ``TURN\_LEFT'' + ``JUMP''. So the output of ``jump left'' is ``TURN\_LEFT'' + ``JUMP''. \\
+\\
+Q: ``jump around left'' \\
+A: The output of ``jump around left'' concatenates: the output of ``jump left'', the output of ``jump left'', the output of ``jump left'', the output of ``jump left''. ``jump left'' outputs ``TURN\_LEFT'' + ``JUMP''. So repeating the output of ``jump around left'' four times leads to (``TURN\_LEFT'' + ``JUMP'') * 4. So the output of ``jump around left'' is (``TURN\_LEFT'' + ``JUMP'') * 4. \\
+\\
+Q: ``jump around left thrice'' \\
+A: The output of ``jump around left thrice'' concatenates: the output of ``jump around left'', the output of ``jump around left'', the output of ``jump around left''. ``jump around left'' outputs (``TURN\_LEFT'' + ``JUMP'') * 4. So repeating the output of ``jump around left'' three times leads to (``TURN\_LEFT'' + ``JUMP'') * 4 * 3. So the output of ``jump around left thrice'' is (``TURN\_LEFT'' + ``JUMP'') * 4 * 3. \\
+\\
+Q: ``walk opposite right'' \\
+A: The output of ``walk opposite right'' concatenates: the output of ``turn opposite right'', the output of ``walk''. ``turn opposite right'' outputs ``TURN\_RIGHT'' * 2. ``walk'' outputs ``WALK''. So concatenating the output of ``turn opposite right'' and the output of ``walk'' leads to ``TURN\_RIGHT'' * 2 + ``WALK''. So the output of ``walk opposite right'' is ``TURN\_RIGHT'' * 2 + ``WALK''. \\
+\\
+Q: ``jump around left thrice and walk opposite right'' \\
+A: The output of ``jump around left thrice and walk opposite right'' concatenates: the output of ``jump around left thrice'', the output of ``walk opposite right''. ``jump around left thrice'' outputs (``TURN\_LEFT'' + ``JUMP'') * 4 * 3. ``walk opposite right'' outputs ``TURN\_RIGHT'' * 2 + ``WALK''. So concatenating the output of ``jump around left thrice'' and the output of ``walk opposite right'' leads to (``TURN\_LEFT'' + ``JUMP'') * 4 * 3 + ``TURN\_RIGHT'' * 2 + ``WALK''. So the output of ``jump around left thrice and walk opposite right'' is (``TURN\_LEFT'' + ``JUMP'') * 4 * 3 + ``TURN\_RIGHT'' * 2 + ``WALK''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``turn around left thrice after run around right thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT \\
+\\
+\textbf{Decomposition:} \\
+Q: ``turn around left thrice after run around right thrice'' \\
+A: ``turn around left thrice'' can be solved by: ``turn left'', ``turn around left'', ``turn around left thrice''. ``run around right thrice'' can be solved by: ``run right'', ``run around right'', ``run around right thrice''. So, ``turn around left thrice after run around right thrice'' can be solved by: ``turn left'', ``turn around left'', ``turn around left thrice'', ``run right'', ``run around right'', ``run around right thrice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``turn around left'' \\
+A: The output of ``turn around left'' concatenates: the output of ``turn left'', the output of ``turn left'', the output of ``turn left'', the output of ``turn left''. ``turn left'' outputs ``TURN\_LEFT''. So repeating the output of ``turn left'' four times leads to ``TURN\_LEFT'' * 4. So the output of ``turn around left'' is ``TURN\_LEFT'' * 4. \\
+\\
+Q: ``turn around left thrice'' \\
+A: The output of ``turn around left thrice'' concatenates: the output of ``turn around left'', the output of ``turn around left'', the output of ``turn around left''. ``turn around left'' outputs ``TURN\_LEFT'' * 4. So repeating the output of ``turn around left'' three times leads to (``TURN\_LEFT'' * 4) * 3. So the output of ``turn around left thrice'' is (``TURN\_LEFT'' * 4) * 3. \\
+\\
+Q: ``run right'' \\
+A: The output of ``run right'' concatenates: the output of ``turn right'', the output of ``run''. ``turn right'' outputs ``TURN\_RIGHT''. ``run'' outputs ``RUN''. So concatenating the output of ``turn right'' and the output of ``run'' leads to ``TURN\_RIGHT'' + ``RUN''. So the output of ``run right'' is ``TURN\_RIGHT'' + ``RUN''. \\
+\\
+Q: ``run around right'' \\
+A: The output of ``run around right'' concatenates: the output of ``run right'', the output of ``run right'', the output of ``run right'', the output of ``run right''. ``run right'' outputs ``TURN\_RIGHT'' + ``RUN''. So repeating the output of ``run right'' four times leads to (``TURN\_RIGHT'' + ``RUN'') * 4. So the output of ``run around right'' is (``TURN\_RIGHT'' + ``RUN'') * 4. \\
+\\
+Q: ``run around right thrice'' \\
+A: The output of ``run around right thrice'' concatenates: the output of ``run around right'', the output of ``run around right'', the output of ``run around right''. ``run around right'' outputs (``TURN\_RIGHT'' + ``RUN'') * 4. So repeating the output of ``run around right'' three times leads to ((``TURN\_RIGHT'' + ``RUN'') * 4) * 3. So the output of ``run around right thrice'' is ((``TURN\_RIGHT'' + ``RUN'') * 4) * 3. \\
+\\
+Q: ``turn around left thrice after run around right thrice'' \\
+A: The output of ``turn around left thrice after run around right thrice'' concatenates: the output of ``run around right thrice'', the output of ``turn around left thrice''. ``run around right thrice'' outputs ((``TURN\_RIGHT'' + ``RUN'') * 4) * 3. ``turn around left thrice'' outputs (``TURN\_LEFT'' * 4) * 3. So concatenating the output of ``run around right thrice'' and the output of ``turn around left thrice'' leads to ((``TURN\_RIGHT'' + ``RUN'') * 4) * 3 + (``TURN\_LEFT'' * 4) * 3. So the output of ``turn around left thrice after run around right thrice'' is ((``TURN\_RIGHT'' + ``RUN'') * 4) * 3 + (``TURN\_LEFT'' * 4) * 3. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``turn left after look around left thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT LOOK TURN\_LEFT \\
+\\
+\textbf{Decomposition:} \\
+Q: ``turn left after look around left thrice'' \\
+A: ``turn left'' can be solved by: ``turn left''. ``look around left thrice'' can be solved by: ``look left'', ``look around left'', ``look around left thrice''. So, ``turn left after look around left thrice'' can be solved by: ``turn left'', ``look left'', ``look around left'', ``look around left thrice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``look left'' \\
+A: The output of ``look left'' concatenates: the output of ``turn left'', the output of ``look''. ``turn left'' outputs ``TURN\_LEFT''. ``look'' outputs ``LOOK''. So concatenating the output of ``turn left'' and the output of ``look'' leads to ``TURN\_LEFT'' + ``LOOK''. So the output of ``look left'' is ``TURN\_LEFT'' + ``LOOK''. \\
+\\
+Q: ``look around left'' \\
+A: The output of ``look around left'' concatenates: the output of ``look left'', the output of ``look left'', the output of ``look left'', the output of ``look left''. ``look left'' outputs ``TURN\_LEFT'' + ``LOOK''. So repeating the output of ``look left'' four times leads to (``TURN\_LEFT'' + ``LOOK'') * 4. So the output of ``look around left'' is (``TURN\_LEFT'' + ``LOOK'') * 4. \\
+\\
+Q: ``look around left thrice'' \\
+A: The output of ``look around left thrice'' concatenates: the output of ``look around left'', the output of ``look around left'', the output of ``look around left''. ``look around left'' outputs (``TURN\_LEFT'' + ``LOOK'') * 4. So repeating the output of ``look around left'' three times leads to ((``TURN\_LEFT'' + ``LOOK'') * 4) * 3. So the output of ``look around left thrice'' is ((``TURN\_LEFT'' + ``LOOK'') * 4) * 3. \\
+\\
+Q: ``turn left after look around left thrice'' \\
+A: The output of ``turn left after look around left thrice'' concatenates: the output of ``look around left thrice'', the output of ``turn left''. ``look around left thrice'' outputs ((``TURN\_LEFT'' + ``LOOK'') * 4) * 3. ``turn left'' outputs ``TURN\_LEFT''. So concatenating the output of ``look around left thrice'' and the output of ``turn left'' leads to ((``TURN\_LEFT'' + ``LOOK'') * 4) * 3 + ``TURN\_LEFT''. So the output of ``turn left after look around left thrice'' is ((``TURN\_LEFT'' + ``LOOK'') * 4) * 3 + ``TURN\_LEFT''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``turn around left thrice and jump around left thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP TURN\_LEFT JUMP \\
+\\
+\textbf{Decomposition:} \\
+Q: ``turn around left thrice and jump around left thrice'' \\
+A: ``turn around left thrice'' can be solved by: ``turn left'', ``turn around left'', ``turn around left thrice''. ``jump around left thrice'' can be solved by: ``jump left'', ``jump around left'', ``jump around left thrice''. So, ``turn around left thrice and jump around left thrice'' can be solved by: ``turn left'', ``turn around left'', ``turn around left thrice'', ``jump left'', ``jump around left'', ``jump around left thrice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``turn around left'' \\
+A: The output of ``turn around left'' concatenates: the output of ``turn left'', the output of ``turn left'', the output of ``turn left'', the output of ``turn left''. ``turn left'' outputs ``TURN\_LEFT''. So repeating the output of ``turn left'' four times leads to ``TURN\_LEFT'' * 4. So the output of ``turn around left'' is ``TURN\_LEFT'' * 4. \\
+\\
+Q: ``turn around left thrice'' \\
+A: The output of ``turn around left thrice'' concatenates: the output of ``turn around left'', the output of ``turn around left'', the output of ``turn around left''. ``turn around left'' outputs ``TURN\_LEFT'' * 4. So repeating the output of ``turn around left'' three times leads to (``TURN\_LEFT'' * 4) * 3. So the output of ``turn around left thrice'' is (``TURN\_LEFT'' * 4) * 3. \\
+\\
+Q: ``jump left'' \\
+A: The output of ``jump left'' concatenates: the output of ``turn left'', the output of ``jump''. ``turn left'' outputs ``TURN\_LEFT''. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn left'' and the output of ``jump'' leads to ``TURN\_LEFT'' + ``JUMP''. So the output of ``jump left'' is ``TURN\_LEFT'' + ``JUMP''. \\
+\\
+Q: ``jump around left'' \\
+A: The output of ``jump around left'' concatenates: the output of ``jump left'', the output of ``jump left'', the output of ``jump left'', the output of ``jump left''. ``jump left'' outputs ``TURN\_LEFT'' + ``JUMP''. So repeating the output of ``jump left'' four times leads to (``TURN\_LEFT'' + ``JUMP'') * 4. So the output of ``jump around left'' is (``TURN\_LEFT'' + ``JUMP'') * 4. \\
+\\
+Q: ``jump around left thrice'' \\
+A: The output of ``jump around left thrice'' concatenates: the output of ``jump around left'', the output of ``jump around left'', the output of ``jump around left''. ``jump around left'' outputs (``TURN\_LEFT'' + ``JUMP'') * 4. So repeating the output of ``jump around left'' three times leads to ((``TURN\_LEFT'' + ``JUMP'') * 4) * 3. So the output of ``jump around left thrice'' is ((``TURN\_LEFT'' + ``JUMP'') * 4) * 3. \\
+\\
+Q: ``turn around left thrice and jump around left thrice'' \\
+A: The output of ``turn around left thrice and jump around left thrice'' concatenates: the output of ``turn around left thrice'', the output of ``jump around left thrice''. ``turn around left thrice'' outputs (``TURN\_LEFT'' * 4) * 3. ``jump around left thrice'' outputs ((``TURN\_LEFT'' + ``JUMP'') * 4) * 3. So concatenating the output of ``turn around left thrice'' and the output of ``jump around left thrice'' leads to (``TURN\_LEFT'' * 4) * 3 + ((``TURN\_LEFT'' + ``JUMP'') * 4) * 3. So the output of ``turn around left thrice and jump around left thrice'' is (``TURN\_LEFT'' * 4) * 3 + ((``TURN\_LEFT'' + ``JUMP'') * 4) * 3. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``walk around right twice after walk around right twice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK \\
+\\
+\textbf{Decomposition:} \\
+Q: ``walk around right twice after walk around right twice'' \\
+A: ``walk around right twice'' can be solved by: ``walk right'', ``walk around right'', ``walk around right twice''. ``walk around right twice'' can be solved by: ``walk right'', ``walk around right'', ``walk around right twice''. So, ``walk around right twice after walk around right twice'' can be solved by: ``walk right'', ``walk around right'', ``walk around right twice'', ``walk right'', ``walk around right'', ``walk around right twice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``walk right'' \\
+A: The output of ``walk right'' concatenates: the output of ``turn right'', the output of ``walk''. ``turn right'' outputs ``TURN\_RIGHT''. ``walk'' outputs ``WALK''. So concatenating the output of ``turn right'' and the output of ``walk'' leads to ``TURN\_RIGHT'' + ``WALK''. So the output of ``walk right'' is ``TURN\_RIGHT'' + ``WALK''. \\
+\\
+Q: ``walk around right'' \\
+A: The output of ``walk around right'' concatenates: the output of ``walk right'', the output of ``walk right'', the output of ``walk right'', the output of ``walk right''. ``walk right'' outputs ``TURN\_RIGHT'' + ``WALK''. So repeating the output of ``walk around right'' four times leads to (``TURN\_RIGHT'' + ``WALK'') * 4. So the output of ``walk around right'' is (``TURN\_RIGHT'' + ``WALK'') * 4. \\
+\\
+Q: ``walk around right twice'' \\
+A: The output of ``walk around right twice'' concatenates: the output of ``walk around right'', the output of ``walk around right''. ``walk around right'' outputs (``TURN\_RIGHT'' + ``WALK'') * 4. So repeating the output of ``walk around right'' twice leads to (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. So the output of ``walk around right twice'' is (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. \\
+\\
+Q: ``walk around right twice after walk around right twice'' \\
+A: The output of ``walk around right twice after walk around right twice'' concatenates: the output of ``walk around right twice'', the output of ``walk around right twice''. ``walk around right twice'' outputs (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. So repeating the output of ``walk around right twice'' twice leads to (``TURN\_RIGHT'' + ``WALK'') * 4 * 2 * 2. So the output of ``walk around right twice after walk around right twice'' is (``TURN\_RIGHT'' + ``WALK'') * 4 * 2 * 2. \\
+}
+
+\subsubsection{Least-to-most prompting: Failure}
+\prompt{\noindent
+\textbf{``jump opposite right twice and jump around right thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT TURN\_RIGHT JUMP TURN\_RIGHT TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP \\
+\\
+\textbf{Decomposition:} \\
+Q: ``jump opposite right twice and jump around right thrice'' \\
+A: ``jump opposite right twice'' can be solved by: ``jump opposite right'', ``jump opposite right twice''. ``jump around right thrice'' can be solved by: ``jump right'', ``jump around right'', ``jump around right thrice''. So, ``jump opposite right twice and jump around right thrice'' can be solved by: ``jump opposite right'', ``jump opposite right twice'', ``jump right'', ``jump around right'', ``jump around right thrice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``jump opposite right'' \\
+A: The output of ``jump opposite right'' concatenates: the output of ``turn opposite right'', the output of ``jump''. ``turn opposite right'' outputs ``TURN\_RIGHT'' * 2. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn opposite right'' and the output of ``jump'' leads to ``TURN\_RIGHT'' * 2 + ``JUMP''. So the output of ``jump opposite right'' is ``TURN\_RIGHT'' * 2 + ``JUMP''. \\
+\\
+Q: ``jump opposite right twice'' \\
+A: The output of ``jump opposite right twice'' concatenates: the output of ``jump opposite right'', the output of ``jump opposite right''. ``jump opposite right'' outputs ``TURN\_RIGHT'' * 2 + ``JUMP''. So repeating the output of ``jump opposite right'' twice leads to (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. So the output of ``jump opposite right twice'' is (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. \\
+\\
+Q: ``jump right'' \\
+A: The output of ``jump right'' concatenates: the output of ``turn right'', the output of ``jump''. ``turn right'' outputs ``TURN\_RIGHT''. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn right'' and the output of ``jump'' leads to ``TURN\_RIGHT'' + ``JUMP''. So the output of ``jump right'' is ``TURN\_RIGHT'' + ``JUMP''. \\
+\\
+Q: ``jump around right'' \\
+A: The output of ``jump around right'' concatenates: the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right''. ``jump right'' outputs ``TURN\_RIGHT'' + ``JUMP''. So repeating the output of ``jump around right'' four times leads to (``TURN\_RIGHT'' + ``JUMP'') * 4. So the output of ``jump around right'' is (``TURN\_RIGHT'' + ``JUMP'') * 4. \\
+\\
+Q: ``jump around right thrice'' \\
+A: The output of ``jump around right thrice'' concatenates: the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right''. ``jump right'' outputs ``TURN\_RIGHT'' + ``JUMP''. So repeating the output of ``jump around right'' eight times leads to (``TURN\_RIGHT'' + ``JUMP'') * 8. So the output of ``jump around right thrice'' is (``TURN\_RIGHT'' + ``JUMP'') * 8. \\
+\\
+Q: ``jump opposite right twice and jump around right thrice'' \\
+A: The output of ``jump opposite right twice and jump around right thrice'' concatenates: the output of ``jump opposite right twice'', the output of ``jump around right thrice''. ``jump opposite right twice'' outputs (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. ``jump around right thrice'' outputs (``TURN\_RIGHT'' + ``JUMP'') * 8. So concatenating the output of ``jump opposite right twice'' and the output of ``jump around right thrice'' leads to (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2 + (``TURN\_RIGHT'' + ``JUMP'') * 8. So the output of ``jump opposite right twice and jump around right thrice'' is (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2 + (``TURN\_RIGHT'' + ``JUMP'') * 8. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``walk around left thrice after walk around right twice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK \\
+\\
+\textbf{Decomposition:} \\
+Q: ``walk around left thrice after walk around right twice'' \\
+A: ``walk around left thrice'' can be solved by: ``walk left'', ``walk around left'', ``walk around left thrice''. ``walk around right twice'' can be solved by: ``walk right'', ``walk around right'', ``walk around right twice''. So, ``walk around left thrice after walk around right twice'' can be solved by: ``walk left'', ``walk around left'', ``walk around left thrice'', ``walk right'', ``walk around right'', ``walk around right twice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``walk left'' \\
+A: The output of ``walk left'' concatenates: the output of ``turn left'', the output of ``walk''. ``turn left'' outputs ``TURN\_LEFT''. ``walk'' outputs ``WALK''. So concatenating the output of ``turn left'' and the output of ``walk'' leads to ``TURN\_LEFT'' + ``WALK''. So the output of ``walk left'' is ``TURN\_LEFT'' + ``WALK''. \\
+\\
+Q: ``walk around left'' \\
+A: The output of ``walk around left'' concatenates: the output of ``walk left'', the output of ``walk left'', the output of ``walk left'', the output of ``walk left''. ``walk left'' outputs ``TURN\_LEFT'' + ``WALK''. So repeating the output of ``walk around left'' four times leads to (``TURN\_LEFT'' + ``WALK'') * 4. So the output of ``walk around left'' is (``TURN\_LEFT'' + ``WALK'') * 4. \\
+\\
+Q: ``walk around left thrice'' \\
+A: The output of ``walk around left thrice'' concatenates: the output of ``walk around left'', the output of ``walk around left'', the output of ``walk around left''. ``walk around left'' outputs (``TURN\_LEFT'' + ``WALK'') * 4. So repeating the output of ``walk around left'' three times leads to (``TURN\_LEFT'' + ``WALK'') * 4 * 3. So the output of ``walk around left thrice'' is (``TURN\_LEFT'' + ``WALK'') * 4 * 3. \\
+\\
+Q: ``walk right'' \\
+A: The output of ``walk right'' concatenates: the output of ``turn right'', the output of ``walk''. ``turn right'' outputs ``TURN\_RIGHT''. ``walk'' outputs ``WALK''. So concatenating the output of ``turn right'' and the output of ``walk'' leads to ``TURN\_RIGHT'' + ``WALK''. So the output of ``walk right'' is ``TURN\_RIGHT'' + ``WALK''. \\
+\\
+Q: ``walk around right'' \\
+A: The output of ``walk around right'' concatenates: the output of ``walk right'', the output of ``walk right'', the output of ``walk right'', the output of ``walk right''. ``walk right'' outputs ``TURN\_RIGHT'' + ``WALK''. So repeating the output of ``walk around right'' four times leads to (``TURN\_RIGHT'' + ``WALK'') * 4. So the output of ``walk around right'' is (``TURN\_RIGHT'' + ``WALK'') * 4. \\
+\\
+Q: ``walk around right twice'' \\
+A: The output of ``walk around right twice'' concatenates: the output of ``walk around right'', the output of ``walk around right''. ``walk around right'' outputs (``TURN\_RIGHT'' + ``WALK'') * 4. So repeating the output of ``walk around right'' twice leads to (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. So the output of ``walk around right twice'' is (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. \\
+\\
+Q: ``walk around left thrice after walk around right twice'' \\
+A: The output of ``walk around left thrice after walk around right twice'' concatenates: the output of ``walk around left thrice'', the output of ``walk around right twice''. ``walk around left thrice'' outputs (``TURN\_LEFT'' + ``WALK'') * 4 * 3. ``walk around right twice'' outputs (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. So concatenating the output of ``walk around left thrice'' and the output of ``walk around right twice'' leads to (``TURN\_LEFT'' + ``WALK'') * 4 * 3 + (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. So the output of ``walk around left thrice after walk around right twice'' is (``TURN\_LEFT'' + ``WALK'') * 4 * 3 + (``TURN\_RIGHT'' + ``WALK'') * 4 * 2. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``run around left thrice after run around right twice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_RIGHT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN TURN\_LEFT RUN \\
+\\
+\textbf{Decomposition:} \\
+Q: ``run around left thrice after run around right twice'' \\
+A: ``run around left thrice'' can be solved by: ``run left'', ``run around left'', ``run around left thrice''. ``run around right twice'' can be solved by: ``run right'', ``run around right'', ``run around right twice''. So, ``run around left thrice after run around right twice'' can be solved by: ``run left'', ``run around left'', ``run around left thrice'', ``run right'', ``run around right'', ``run around right twice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``run left'' \\
+A: The output of ``run left'' concatenates: the output of ``turn left'', the output of ``run''. ``turn left'' outputs ``TURN\_LEFT''. ``run'' outputs ``RUN''. So concatenating the output of ``turn left'' and the output of ``run'' leads to ``TURN\_LEFT'' + ``RUN''. So the output of ``run left'' is ``TURN\_LEFT'' + ``RUN''. \\
+\\
+Q: ``run around left'' \\
+A: The output of ``run around left'' concatenates: the output of ``run left'', the output of ``run left'', the output of ``run left'', the output of ``run left''. ``run left'' outputs ``TURN\_LEFT'' + ``RUN''. So repeating the output of ``run around left'' four times leads to (``TURN\_LEFT'' + ``RUN'') * 4. So the output of ``run around left'' is (``TURN\_LEFT'' + ``RUN'') * 4. \\
+\\
+Q: ``run around left thrice'' \\
+A: The output of ``run around left thrice'' concatenates: the output of ``run around left'', the output of ``run around left'', the output of ``run around left''. ``run around left'' outputs (``TURN\_LEFT'' + ``RUN'') * 4. So repeating the output of ``run around left'' three times leads to (``TURN\_LEFT'' + ``RUN'') * 4 * 3. So the output of ``run around left thrice'' is (``TURN\_LEFT'' + ``RUN'') * 4 * 3. \\
+\\
+Q: ``run right'' \\
+A: The output of ``run right'' concatenates: the output of ``turn right'', the output of ``run''. ``turn right'' outputs ``TURN\_RIGHT''. ``run'' outputs ``RUN''. So concatenating the output of ``turn right'' and the output of ``run'' leads to ``TURN\_RIGHT'' + ``RUN''. So the output of ``run right'' is ``TURN\_RIGHT'' + ``RUN''. \\
+\\
+Q: ``run around right'' \\
+A: The output of ``run around right'' concatenates: the output of ``run right'', the output of ``run right'', the output of ``run right'', the output of ``run right''. ``run right'' outputs ``TURN\_RIGHT'' + ``RUN''. So repeating the output of ``run around right'' four times leads to (``TURN\_RIGHT'' + ``RUN'') * 4. So the output of ``run around right'' is (``TURN\_RIGHT'' + ``RUN'') * 4. \\
+\\
+Q: ``run around right twice'' \\
+A: The output of ``run around right twice'' concatenates: the output of ``run around right'', the output of ``run around right''. ``run around right'' outputs (``TURN\_RIGHT'' + ``RUN'') * 4. So repeating the output of ``run around right'' twice leads to (``TURN\_RIGHT'' + ``RUN'') * 4 * 2. So the output of ``run around right twice'' is (``TURN\_RIGHT'' + ``RUN'') * 4 * 2. \\
+\\
+Q: ``run around left thrice after run around right twice'' \\
+A: The output of ``run around left thrice after run around right twice'' concatenates: the output of ``run around left thrice'', the output of ``run around right twice''. ``run around left thrice'' outputs (``TURN\_LEFT'' + ``RUN'') * 4 * 3. ``run around right twice'' outputs (``TURN\_RIGHT'' + ``RUN'') * 4 * 2. So concatenating the output of ``run around left thrice'' and the output of ``run around right twice'' leads to (``TURN\_LEFT'' + ``RUN'') * 4 * 3 + (``TURN\_RIGHT'' + ``RUN'') * 4 * 2. So the output of ``run around left thrice after run around right twice'' is (``TURN\_LEFT'' + ``RUN'') * 4 * 3 + (``TURN\_RIGHT'' + ``RUN'') * 4 * 2. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``jump opposite right twice after jump around right thrice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT JUMP TURN\_RIGHT TURN\_RIGHT JUMP TURN\_RIGHT TURN\_RIGHT JUMP \\
+\\
+\textbf{Decomposition:} \\
+Q: ``jump opposite right twice after jump around right thrice'' \\
+A: ``jump opposite right twice'' can be solved by: ``jump opposite right'', ``jump opposite right twice''. ``jump around right thrice'' can be solved by: ``jump right'', ``jump around right'', ``jump around right thrice''. So, ``jump opposite right twice after jump around right thrice'' can be solved by: ``jump opposite right'', ``jump opposite right twice'', ``jump right'', ``jump around right'', ``jump around right thrice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``jump opposite right'' \\
+A: The output of ``jump opposite right'' concatenates: the output of ``turn opposite right'', the output of ``jump''. ``turn opposite right'' outputs ``TURN\_RIGHT'' * 2. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn opposite right'' and the output of ``jump'' leads to ``TURN\_RIGHT'' * 2 + ``JUMP''. So the output of ``jump opposite right'' is ``TURN\_RIGHT'' * 2 + ``JUMP''. \\
+\\
+Q: ``jump opposite right twice'' \\
+A: The output of ``jump opposite right twice'' concatenates: the output of ``jump opposite right'', the output of ``jump opposite right''. ``jump opposite right'' outputs ``TURN\_RIGHT'' * 2 + ``JUMP''. So repeating the output of ``jump opposite right'' twice leads to (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. So the output of ``jump opposite right twice'' is (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. \\
+\\
+Q: ``jump right'' \\
+A: The output of ``jump right'' concatenates: the output of ``turn right'', the output of ``jump''. ``turn right'' outputs ``TURN\_RIGHT''. ``jump'' outputs ``JUMP''. So concatenating the output of ``turn right'' and the output of ``jump'' leads to ``TURN\_RIGHT'' + ``JUMP''. So the output of ``jump right'' is ``TURN\_RIGHT'' + ``JUMP''. \\
+\\
+Q: ``jump around right'' \\
+A: The output of ``jump around right'' concatenates: the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right''. ``jump right'' outputs ``TURN\_RIGHT'' + ``JUMP''. So repeating the output of ``jump around right'' four times leads to (``TURN\_RIGHT'' + ``JUMP'') * 4. So the output of ``jump around right'' is (``TURN\_RIGHT'' + ``JUMP'') * 4. \\
+\\
+Q: ``jump around right thrice'' \\
+A: The output of ``jump around right thrice'' concatenates: the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right'', the output of ``jump right''. ``jump right'' outputs ``TURN\_RIGHT'' + ``JUMP''. So repeating the output of ``jump around right'' eight times leads to (``TURN\_RIGHT'' + ``JUMP'') * 8. So the output of ``jump around right thrice'' is (``TURN\_RIGHT'' + ``JUMP'') * 8. \\
+\\
+Q: ``jump opposite right twice after jump around right thrice'' \\
+A: The output of ``jump opposite right twice after jump around right thrice'' concatenates: the output of ``jump around right thrice'', the output of ``jump opposite right twice''. ``jump around right thrice'' outputs (``TURN\_RIGHT'' + ``JUMP'') * 8. ``jump opposite right twice'' outputs (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. So concatenating the output of ``jump around right thrice'' and the output of ``jump opposite right twice'' leads to (``TURN\_RIGHT'' + ``JUMP'') * 8 + (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. So the output of ``jump opposite right twice after jump around right thrice'' is (``TURN\_RIGHT'' + ``JUMP'') * 8 + (``TURN\_RIGHT'' * 2 + ``JUMP'') * 2. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``walk around left thrice after walk right twice''} \\
+\\
+\textbf{Golden:} \\
+TURN\_RIGHT WALK TURN\_RIGHT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK TURN\_LEFT WALK \\
+\\
+\textbf{Decomposition:} \\
+Q: ``walk around left thrice after walk right twice'' \\
+A: ``walk around left thrice'' can be solved by: ``walk left'', ``walk around left'', ``walk around left thrice''. ``walk right twice'' can be solved by: ``walk right'', ``walk right twice''. So, ``walk around left thrice after walk right twice'' can be solved by: ``walk left'', ``walk around left'', ``walk around left thrice'', ``walk right'', ``walk right twice''. \\
+\\
+\textbf{Solution:} \\
+Q: ``walk left'' \\
+A: The output of ``walk left'' concatenates: the output of ``turn left'', the output of ``walk''. ``turn left'' outputs ``TURN\_LEFT''. ``walk'' outputs ``WALK''. So concatenating the output of ``turn left'' and the output of ``walk'' leads to ``TURN\_LEFT'' + ``WALK''. So the output of ``walk left'' is ``TURN\_LEFT'' + ``WALK''. \\
+\\
+Q: ``walk around left'' \\
+A: The output of ``walk around left'' concatenates: the output of ``walk left'', the output of ``walk left'', the output of ``walk left'', the output of ``walk left''. ``walk left'' outputs ``TURN\_LEFT'' + ``WALK''. So repeating the output of ``walk around left'' four times leads to (``TURN\_LEFT'' + ``WALK'') * 4. So the output of ``walk around left'' is (``TURN\_LEFT'' + ``WALK'') * 4. \\
+\\
+Q: ``walk around left thrice'' \\
+A: The output of ``walk around left thrice'' concatenates: the output of ``walk around left'', the output of ``walk around left'', the output of ``walk around left''. ``walk around left'' outputs (``TURN\_LEFT'' + ``WALK'') * 4. So repeating the output of ``walk around left'' three times leads to (``TURN\_LEFT'' + ``WALK'') * 4 * 3. So the output of ``walk around left thrice'' is (``TURN\_LEFT'' + ``WALK'') * 4 * 3. \\
+\\
+Q: ``walk right'' \\
+A: The output of ``walk right'' concatenates: the output of ``turn right'', the output of ``walk''. ``turn right'' outputs ``TURN\_RIGHT''. ``walk'' outputs ``WALK''. So concatenating the output of ``turn right'' and the output of ``walk'' leads to ``TURN\_RIGHT'' + ``WALK''. So the output of ``walk right'' is ``TURN\_RIGHT'' + ``WALK''. \\
+\\
+Q: ``walk right twice'' \\
+A: The output of ``walk right twice'' concatenates: the output of ``walk right'', the output of ``walk right''. ``walk right'' outputs ``TURN\_RIGHT'' + ``WALK''. So repeating the output of ``walk right'' twice leads to (``TURN\_RIGHT'' + ``WALK'') * 2. So the output of ``walk right twice'' is (``TURN\_RIGHT'' + ``WALK'') * 2. \\
+\\
+Q: ``walk around left thrice after walk right twice'' \\
+A: The output of ``walk around left thrice after walk right twice'' concatenates: the output of ``walk around left thrice'', the output of ``walk right twice''. ``walk around left thrice'' outputs (``TURN\_LEFT'' + ``WALK'') * 4 * 3. ``walk right twice'' outputs (``TURN\_RIGHT'' + ``WALK'') * 2. So concatenating the output of ``walk around left thrice'' and the output of ``walk right twice'' leads to (``TURN\_LEFT'' + ``WALK'') * 4 * 3 + (``TURN\_RIGHT'' + ``WALK'') * 2. So the output of ``walk around left thrice after walk right twice'' is (``TURN\_LEFT'' + ``WALK'') * 4 * 3 + (``TURN\_RIGHT'' + ``WALK'') * 2.
+}
+
+
+\subsection{Expanding Python expressions using prompting}
+\label{app:scan_expanding_expressions}
+
+In Section~\ref{sec:compositional_generalization}, we mention that expanding the Python expressions that we use as an intermediate representation can be done either with a simple postprocessing script or by prompting a language model. In the following, we present a prompt that achieves 99.7\% accuracy on a random sample of 1000 Python expressions that are outputted by our solution (using the \texttt{code-davinci-002} model). This demonstrates that the L2M method can solve SCAN with a combined accuracy more than 99\% (99.7\% accuracy for generating the intermediate Python expressions and 99.7\% for expanding these expressions), even if we do not use the Python executor and instead perform the expansion of the intermediate representation via prompting.
+
+\prompt{Q: ``JUMP'' * 3 \\
+Rewrite: ``JUMP'' * 3 \\
+A: 1 JUMP 2 JUMP 3 JUMP \\
+ \\
+Q: ``RUN'' * 4 * 2 \\
+Rewrite: ``RUN'' * 8 \\
+A: 1 RUN 2 RUN 3 RUN 4 RUN 5 RUN 6 RUN 7 RUN 8 RUN \\
+\\
+Q: ``TURN\_RIGHT'' + ``WALK'' \\
+Rewrite: ``TURN\_RIGHT'' + ``WALK'' \\
+A: TURN\_RIGHT WALK \\
+\\
+Q: (``TURN\_LEFT'' + ``LOOK'') * 2 + ``TURN\_LEFT'' + ``LOOK'' \\
+Rewrite: (``TURN\_LEFT'' + ``LOOK'') * 2 + ``TURN\_LEFT'' + ``LOOK'' \\
+A: 1 (TURN\_LEFT LOOK) 2 (TURN\_LEFT LOOK) TURN\_LEFT LOOK \\
+\\
+Q: (``TURN\_RIGHT'' * 2 + ``JUMP'') * 4 \\
+Rewrite: (``TURN\_RIGHT'' * 2 + ``JUMP'') * 4 \\
+A: 1 (1 TURN\_RIGHT 2 TURN\_RIGHT JUMP) 2 (1 TURN\_RIGHT 2 TURN\_RIGHT JUMP) 3 (1 TURN\_RIGHT 2 TURN\_RIGHT JUMP) 4 (1 TURN\_RIGHT 2 TURN\_RIGHT JUMP) \\
+\\
+Q: ``TURN\_LEFT'' * 2 + (``TURN\_RIGHT'' + ``WALK'') * 4 * 2 \\
+Rewrite: ``TURN\_LEFT'' * 2 + (``TURN\_RIGHT'' + ``WALK'') * 8 \\
+A: 1 TURN\_LEFT 2 TURN\_LEFT 1 (TURN\_RIGHT WALK) 2 (TURN\_RIGHT WALK) 3 (TURN\_RIGHT WALK) 4 (TURN\_RIGHT WALK) 5 (TURN\_RIGHT WALK) 6 (TURN\_RIGHT WALK) 7 (TURN\_RIGHT WALK) 8 (TURN\_RIGHT WALK) \\
+}
+
+\paragraph{Discussion.}
+The prompt consists of 6 examples, each of which illustrates part of the knowledge needed for this task. Note that we add numbers and parentheses when we unfold multiplication to make it easier for the model to keep track of the repetitions.
+
+\begin{enumerate}
+    \item Multiplication
+    \item Sequential multiplication
+    \item Addition
+    \item Avoid commutativity / associativity in addition
+    \item Nested multiplication
+    \item Addition of two multiplications
+\end{enumerate}

@@ -1,0 +1,102 @@
+\documentclass{article}
+\pdfoutput=1
+% if you need to pass options to natbib, use, e.g.:
+% \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading nips_2017
+%
+% to avoid loading the natbib package, add option nonatbib:
+%\usepackage[nonatbib]{nips_2017}
+
+%\usepackage{nips_2017}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+\usepackage[final]{nips_2017}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{subfigure} % subfigure environment
+%\setcitestyle{square} % use square bracket for citation
+\usepackage{wrapfig} % wrap text around figure
+\usepackage{amsmath}
+\usepackage{comment}
+\usepackage{multirow}
+
+\title{PointNet++: Deep Hierarchical Feature Learning on Point Sets in a Metric Space}
+% \title{Multi-Scale and Hierarchical Feature Learning in Point Sets Sampled from Metric Spaces}
+
+% The \author macro works with any number of authors. There are two
+% commands used to separate the names and addresses of multiple
+% authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to
+% break the lines. Using \AND forces a line break at that point. So,
+% if LaTeX puts 3 of 4 authors names on the first line, and the last
+% on the second line, try using \AND instead of \And before the third
+% author name.
+
+\author{
+  Charles R. Qi~~~~~Li Yi~~~~~Hao Su~~~~~Leonidas J. Guibas \\
+  Stanford University
+  %% examples of more authors
+  %% \And
+  %% Coauthor \\
+  %% Affiliation \\
+  %% Address \\
+  %% \texttt{email} \\
+}
+
+\newcommand{\hao}[1]{{\textcolor{red}{[\emph{HS}: #1]}}}
+\newcommand{\rqi}[1]{{\textcolor{blue}{[\emph{CQ}: #1]}}}
+\newcommand{\eric}[1]{{\textcolor{green}{[\emph{EY}: #1]}}}
+\newcommand{\todo}[1]{{\textcolor{red}{[\emph{TODO}: #1]}}}
+
+
+\begin{document}
+% \nipsfinalcopy is no longer used
+
+\maketitle
+
+%%%%%%%%% ABSTRACT
+\begin{abstract}
+  \input{./tex/abstract}
+\end{abstract}
+
+%%%%%%%%% BODY TEXT
+\section{Introduction}
+\input{./tex/intro}
+
+
+\section{Problem Statement}
+\input{./tex/problem}
+
+\section{Method}
+\input{./tex/method}
+
+\section{Experiments}
+\input{./tex/exp}
+
+\vspace{-0.1cm}
+\section{Related Work}
+\input{./tex/related}
+
+\vspace{-0.1cm}
+\section{Conclusion}
+\input{./tex/conclusion}
+\vspace{-0.1cm}
+% \section*{References}
+% \input{./tex/reference}
+{\small
+\bibliographystyle{ieee}
+\bibliography{pcl}
+}
+\newpage
+\input{./tex/supp}
+\end{document}

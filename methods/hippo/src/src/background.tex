@@ -1,0 +1,348 @@
+\documentclass[../hippo.tex]{subfiles}
+\begin{document}
+
+\section{Technical Preliminaries}
+\label{sec:background}
+
+We collect here some technical background that will be used in presenting the
+general HiPPO framework and in deriving specific HiPPO update rules.
+
+\subsection{Orthogonal Polynomials}
+\label{sec:op}
+Orthogonal polynomials are a standard tool for working with function spaces~\cite{chihara,szego}.
+Every measure $\mu$ induces a unique (up to a scalar) sequence of \emph{orthogonal polynomials} (OPs) $P_0(x), P_1(x), \dots$ satisfying $\mathrm{deg}(P_i) = i$ and
+$ \langle P_i, P_j \rangle_{\mu} \defeq \int P_i(x) P_j(x) \d \mu(x) = 0 $ for all $i \neq j$.
+This is the sequence found by orthogonalizing the monomial basis $\{x^i\}$ with Gram-Schmidt with respect to $\langle \cdot, \cdot \rangle_\mu$.
+The fact that OPs form an orthogonal basis is useful because the optimal polynomial $g$ of degree $\deg(g) < N$
+that approximates a function $f$ is then given by
+\begin{align*}%
+  \sum_{i=0}^{N-1} c_i P_i(x)/\|P_i\|_\mu^2 \qquad \text{where } c_i = \langle f, P_i \rangle_\mu = \int f(x) P_i(x) \d \mu(x).
+\end{align*}
+Classical OPs families comprise Jacobi (which include Legendre and Chebyshev
+polynomials as special cases), Laguerre, and Hermite polynomials.
+The Fourier basis can also be interpreted as OPs on the unit circle in the
+complex plane.
+
+
+
+\subsubsection{Properties of Legendre Polynomials}
+\label{sec:legendre-properties}
+
+\paragraph{Legendre polynomials}
+
+Under the usual definition of the canonical Legendre polynomial $P_n$, they are
+orthogonal with respect to the measure $\omega^{\mathrm{leg}} = \mathbf{1}_{[-1,1]}$:
+\begin{equation}
+  \label{eq:legendre}
+  \frac{2n+1}{2} \int_{-1}^1 P_n(x)P_m(x) \dd x = \delta_{nm}
+\end{equation}
+
+Also, they satisfy
+\begin{align*}%
+  P_n(1) &= 1 \\
+  P_n(-1) &= (-1)^{n}
+  .
+\end{align*}
+
+\paragraph{Shifted and Scaled Legendre polynomials}
+We will also consider scaling the Legendre polynomials to be orthogonal on the
+interval $[0, t]$.
+A change of variables on \eqref{eq:legendre} yields
+\begin{align*}
+  (2n+1) \int_0^t P_n\left( \frac{2x}{t}-1 \right) P_m \left( \frac{2x}{t} - 1 \right) \frac{1}{t} \dd x
+  &=
+  (2n+1) \int P_n\left( \frac{2x}{t}-1 \right) P_m \left( \frac{2x}{t} - 1 \right) \omega^{\mathrm{leg}}\left( \frac{2x}{t}-1 \right) \frac{1}{t} \dd x
+  \\
+  &=
+  \frac{2n+1}{2} \int P_n(x) P_m(x) \omega^{\mathrm{leg}}(x) \dd x
+  \\
+  &= \delta_{nm}
+  .
+\end{align*}
+Therefore, with respect to the measure $\omega_t = \mathbf{1}_{[0,t]}/t$ (which is a probability measure for all $t$),
+the normalized orthogonal polynomials are
+\begin{align*}
+  (2n+1)^{1/2} P_n\left( \frac{2x}{t}-1 \right)
+  .
+\end{align*}
+
+Similarly, the basis
+\begin{align*}
+  (2n+1)^{1/2} P_n\left( 2\frac{x-t}{\theta} + 1 \right)
+\end{align*}
+is orthonormal for the uniform measure $\frac{1}{\theta}\mathbb{I}_{[t-\theta, t]}$.
+
+In general, the orthonormal basis for any uniform measure
+consists of $(2n+1)^{\frac{1}{2}}$ times the corresponding linearly shifted version of $P_n$.
+
+\paragraph{Derivatives of Legendre polynomials}
+
+We note the following recurrence relations on Legendre polynomials (\citep[Chapter~12]{arfken2005mathematical}):
+\begin{align*}
+  (2n+1)P_n &= P_{n+1}' - P_{n-1}' \\
+  P_{n+1}' &= (n+1)P_n + xP_n'
+\end{align*}
+The first equation yields
+\begin{equation}%
+  P_{n+1}' = (2n+1)P_n + (2n-3)P_{n-2} + \dots,
+\end{equation}
+where the sum stops at $P_0$ or $P_1$.
+
+These equations directly imply
+\begin{align}
+  P_{n}' &= (2n-1)P_{n-1} + (2n-5)P_{n-3} + \dots
+  \label{eq:legendre-d}
+\end{align}
+and
+\begin{align}
+  (x+1)P_n'(x) &= P_{n+1}' + P_n' - (n+1)P_n
+  \nonumber \\
+  &= nP_n + (2n-1)P_{n-1} + (2n-3)P_{n-2} + \dots
+  .
+  \label{eq:legendre-xd}
+\end{align}
+These will be used in the derivations of the HiPPO-LegT and HiPPO-LegS updates, respectively.
+
+\subsubsection{Properties of Laguerre Polynomials}
+\label{sec:laguerre-properties}
+
+The standard Laguerre polynomials $L_n(x)$ are defined to be orthogonal with
+respect to the weight function $e^{-x}$ supported on $[0, \infty)$, while the
+generalized Laguerre polynomials (also called associated Laguerre polynomials)
+$L_n^{(\alpha)}$ are defined to be orthogonal with respect to the weight function
+$x^{\alpha} e^{-x}$ also supported on $[0, \infty)$:
+\begin{equation}
+  \label{eq:laguerre}
+  \int_{0}^{\infty} x^\alpha e^{-x} L_n^{(\alpha)}(x) L_m^{(\alpha)}(x) \d x = \frac{(n+\alpha)!}{n!} \delta_{n, m}.
+\end{equation}
+Also, they satisfy
+\begin{equation}%
+  \label{eq:laguerre-endpoint}
+  L_n^{(\alpha)}(0) = \binom{n + \alpha}{n} = \frac{\Gamma(n+\alpha+1)}{\Gamma(n+1)\Gamma(\alpha+1)}.
+\end{equation}
+
+The standard Laguerre polynomials correspond to the case of $\alpha = 0$ of
+generalized Laguerre polynomials.
+
+\paragraph{Derivatives of generalized Laguerre polynomials}
+
+We note the following recurrence relations on generalized Laguerre polynomials (\citep[Chapter~13.2]{arfken2005mathematical}):
+\begin{align*}
+  \frac{\d}{\d x} L_n^{(\alpha)}(x) &= -L_{n-1}^{(\alpha+1)} (x) \\
+  L_{n}^{(\alpha+1)}(x) &= \sum_{i=0}^{n} L_i^{(\alpha)}(x).
+\end{align*}
+These equations imply
+\begin{equation*}
+  \ddt L_n^{(\alpha)}(x) = - L_{0}^{(\alpha)}(x) - L_{1}^{(\alpha)} (x) - \dots - L_{n-1}^{(\alpha)}(x).
+\end{equation*}
+
+\subsubsection{Properties of Chebyshev polynomials}
+\label{sec:chebyshev-properties}
+
+Let $T_n$ be the classical Chebyshev polynomials (of the first kind), defined to
+be orthogonal with respect to the weight function $(1-x^2)^{1/2}$ supported on
+$[-1, 1]$,
+and let $p_n$ be the normalized version of $T_n$ (i.e, with norm 1):
+\begin{align*}
+  \omega^{\mathrm{cheb}} &= (1-x^2)^{-1/2} \mathbb{I}_{(-1, 1)},
+  \\
+  p_n(x) &= \sqrt{\frac{2}{\pi}} T_n(x) \qquad \text{for } n \geq 1,
+  \\
+  p_0(x) &= \frac{1}{\sqrt\pi}.
+\end{align*}
+Note that $\omega^{\mathrm{cheb}}$ is not normalized (it integrates to $\pi$).
+
+
+\paragraph{Derivatives of Chebyshev polynomials}
+The chebyshev polynomials satisfy
+\begin{align*}
+  2T_n(x) = \frac{1}{n+1} \frac{d}{d x} T_{n+1}(x) - \frac{1}{n-1} \frac{d}{dx} T_{n-1}(x) \qquad n = 2, 3, \dots
+  .
+\end{align*}
+By telescoping this series, we obtain
+\begin{equation}
+  \label{eq:chebyshev-derivative}
+  \frac{1}{n} T_n' =
+  \begin{cases}
+    2(T_{n-1} + T_{n-3} + \dots + T_2) + T_0  & n \mbox{ odd}
+    \\
+    2(T_{n-1} + T_{n-3} + \dots + T_1) & n \mbox{ even}
+  \end{cases}
+  .
+\end{equation}
+
+
+
+\paragraph{Translated Chebyshev polynomials}
+We will also consider shifting and scaling the Chebyshev polynomials to be orthogonal on the
+interval $[t-\theta, t]$ for fixed length $\theta$.
+
+The normalized (probability) measure is
+\begin{align*}%
+  \omega(t, x) &= \frac{2}{\theta\pi} \omega^{\mathrm{cheb}}\left( \frac{2(x-t)}{\theta} + 1 \right)
+  = \frac{1}{\theta\pi} \left( \frac{x-t}{\theta} + 1 \right)^{-1/2} \left( -\frac{x-t}{\theta} \right)^{-1/2}
+  \mathbb{I}_{(t-\theta, t)}
+  .
+\end{align*}
+The orthonormal polynomial basis is
+\begin{align*}%
+  p_n(t, x) &= \sqrt\pi p_n\left( \frac{2(x-t)}{\theta} + 1 \right)
+  .
+\end{align*}
+In terms of the original Chebyshev polynomials, these are
+\begin{align*}%
+  p_n(t, x) &= \sqrt{2} T_n\left( \frac{2(x-t)}{\theta} + 1 \right) \qquad \text{for } n \geq 1,
+  \\
+  p_0^{(t)} &= T_0\left( \frac{2(x-t)}{\theta} + 1 \right).
+\end{align*}
+
+
+\subsection{Leibniz Integral Rule}
+As part of our standard strategy for deriving HiPPO update rules (\cref{sec:hippo-framework-details}),
+we will differentiate through integrals with changing limits.
+For example, we may wish to differentiate with respect to $t$ the expression
+$\int f(t, x) \mu(t, x) \dd x = \int_0^t f(t, x) \frac{1}{t} \d x$
+when analyzing the scaled Legendre (LegS) measure.
+
+Differentiating through such integrals can be formalized by the Leibniz integral rule,
+the basic version of which states that
+\[
+  \frac{\partial}{\partial t} \int_{\alpha(t)}^{\beta(t)} f(x, t) \dd x
+  = \int_{\alpha(t)}^{\beta(t)} \frac{\partial}{\partial t} f(x, t) \dd x
+  - \alpha'(t) f(\alpha(t), t) + \beta'(t) f(\beta(t), t).
+\]
+
+We elide over the formalisms in our derivations (\cref{sec:derivations}) and
+instead use the following trick.
+We replace integrand limits with an indicator function;
+and using the Dirac delta function $\delta$ when differentiating (i.e., using the formalism
+of distributional derivatives).
+For example, the above formula can be derived succinctly with this trick:
+\begin{align*}%
+  \frac{\partial}{\partial t} \int_{\alpha(t)}^{\beta(t)} f(x, t) \dd x
+  &= \frac{\partial}{\partial t} \int f(x, t) \mathbb{I}_{[\alpha(t), \beta(t)]}(x) \dd x
+  \\
+  &= \int \frac{\partial}{\partial t} f(x, t) \mathbb{I}_{[\alpha(t), \beta(t)]}(x) \dd x
+  + \int f(x, t) \frac{\partial}{\partial t} \mathbb{I}_{[\alpha(t), \beta(t)]}(x) \dd x
+  \\
+  &= \int \frac{\partial}{\partial t} f(x, t) \mathbb{I}_{[\alpha(t), \beta(t)]}(x) \dd x
+  + \int f(x, t) (\beta'(t) \delta_{\beta(t)}(x) - \alpha'(t) \delta_{\alpha(t)})(x) \dd x
+  \\
+  &= \int_{\alpha(t)}^{\beta(t)} \frac{\partial}{\partial t} f(x, t) \dd x
+  - \alpha'(t) f(\alpha(t), t) + \beta'(t) f(\beta(t), t)
+  .
+\end{align*}
+
+
+\subsection{ODE Discretization}
+\label{sec:discretization-full}
+
+In our framework, time series inputs will be modeled with a continuous function and then discretized.
+Here we provide some background on ODE discretization methods,
+including a new discretization that applies to a specific type of ODE that our new method encounters.
+
+The general formulation of an ODE is $\frac{d}{dt} c(t) = f(t, c(t))$.
+We will also focus on the linear time-invariant ODE of the form $\frac{d}{dt} c(t) = A c(t) + Bf(t)$
+for some input function $f(t)$, as a special case.
+The general methodology for discretizing the ODE, for step size $\Delta t$, is to
+rewrite the ODE as
+\begin{equation}
+  \label{eq:ode-rhs}
+  c(t + \Delta t) - c(t) = \int_t^{t+\Delta t} f(s, c(s)) \dd s,
+\end{equation}
+then approximate the RHS integral.
+
+Many ODE discretization methods corresponds to different ways to
+approximate the RHS integral:
+
+\paragraph{Euler (aka forward Euler).}
+To approximate the RHS of equation~\eqref{eq:ode-rhs}, keep the left endpoint
+$\Delta t f(t, c(t))$.
+For the linear ODE, we get:
+\begin{equation*}
+  c(t + \Delta t) = (I + \Delta t A) c(t)+ \Delta t B f(t).
+\end{equation*}
+
+
+\paragraph{Backward Euler.}
+To approximate the RHS of equation~\eqref{eq:ode-rhs}, keep the right endpoint
+$\Delta t f(t+\Delta t, c(t+\Delta t))$.
+For the linear ODE, we get the linear equation and the update:
+\begin{align*}
+  c(t + \Delta t) - \Delta t A c(t + \Delta t) &= c(t)+ \Delta t B f(t) \\
+  c(t + \Delta t) &= (I - \Delta t A)^{-1} c(t) + \Delta t (I - \Delta t A)^{-1} B f(t).
+\end{align*}
+
+\paragraph{Bilinear (aka Trapezoid rule, aka Tustin's method).}
+To approximate the RHS of equation~\eqref{eq:ode-rhs}, average the endpoints
+$\Delta t \frac{f(t, c(t))+f(t+\Delta t, c(t+\Delta t))}{2}$.
+For the linear ODE, again we get a linear equation and the update:
+\begin{align*}
+  c(t + \Delta t) - \frac{\Delta t}{2} A c(t + \Delta t) &= (I + \Delta t/2 A) c(t) + \Delta t B f(t) \\
+  c(t + \Delta t) &= (I - \Delta t/2 A)^{-1}(I + \Delta t/2 A) c(t) + \Delta t (I - \Delta t/2 A)^{-1} B f(t).
+\end{align*}
+
+\paragraph{Generalized Bilinear Transformation (GBT).}
+This method~\citep{zhang2007performance} approximates the RHS of
+equation~\eqref{eq:ode-rhs} by taking a weighted average of the endpoints
+$\Delta t [(1 - \alpha) f(t, c(t)) + \alpha f(t+\Delta t, c(t+\Delta t))]$, for some parameter $\alpha \in [0, 1]$.
+For the linear ODE, again we get a linear equation and the update:
+\begin{align}
+  c(t + \Delta t) - \Delta t \alpha A c(t + \Delta t) &= (I + \Delta t (1 - \alpha) A) c(t) + \Delta t B f(t) \nonumber \\
+  c(t + \Delta t) &= (I - \Delta t \alpha A)^{-1}(I + \Delta t (1 - \alpha) A) c(t) + \Delta t (I - \Delta t \alpha A)^{-1} B f(t).
+  \label{eq:gbt}
+\end{align}
+GBT generalizes the three methods mentioned above: forward Euler corresponds to
+$\alpha = 0$, backward Euler to $\alpha = 1$, and bilinear to $\alpha = 1/2$.
+
+We also note another method called \emph{Zero-order Hold}
+(ZOH)~\citep{decarlo1989linear} that specializes to linear ODEs.
+The RHS of equation~\eqref{eq:ode-rhs} is calculated in closed-form assuming
+constant input $f$ between $t$ and $t + \Delta t$.
+This yields the update
+$c(t + \Delta t) = e^{\Delta t A} c(t) + \left( \int_{\tau=0}^{\Delta t} e^{\tau A} \d \tau \right) B f(t)$.
+If $A$ is invertible, this can be simplified as
+$c(t + \Delta t) = e^{\Delta t A} c(t) + A^{-1} (e^{\Delta t A} - I) B f(t)$.
+
+
+
+
+\paragraph{HiPPO-LegS invariance to discretization step size.}
+In the case of HiPPO-LegS, we have a linear ODE of the form
+$\frac{d}{dt} c(t) = \frac{1}{t} A c(t) + \frac{1}{t} Bf(t)$.
+Adapting the GBT discretization (which generalizes forward/backward Euler and
+bilinear) to this linear ODE, we obtain:
+\begin{align*}
+  c(t + \Delta t) - \Delta t \alpha \frac{1}{t + \Delta t} A c(t + \Delta t) &= \left(I + \Delta t (1 - \alpha) \frac{1}{t} A\right) c(t) + \Delta t \frac{1}{t} B f(t) \\
+  c(t + \Delta t) &= \left(I - \frac{\Delta t}{t + \Delta t}\alpha A\right)^{-1}\left(I + \frac{\Delta t}{t} (1 - \alpha) A\right) c(t)
+               + \frac{\Delta t}{t} \left(I - \frac{\Delta t}{t + \Delta t} \alpha A\right)^{-1} B f(t).
+\end{align*}
+We highlight that this system is invariant to the discretization step size
+$\Delta t$.
+Indeed, if $c^{(k)} \defeq c(k \Delta t)$ and $f_k \defeq f(k \Delta t)$ then we have the recurrence
+\begin{equation*}
+  c^{(k+1)} = \left(I - \frac{1}{k+1}\alpha A\right)^{-1}\left(I + \frac{1}{k} (1 - \alpha) A\right) c^{(k)}
+  + \frac{1}{k} \left(I - \frac{1}{k+1} \alpha A\right)^{-1} B f_k,
+\end{equation*}
+which does not depend on $\Delta t$.
+
+\paragraph{Ablation: comparison between different discretization methods}
+To understand the impact of approximation error in discretization, in
+\cref{fig:discretization_error}, we show the absolute error for the HiPPO-LegS
+updates in function approximation (\cref{sec:exp-hippo-ablations})
+for different discretization methods: forward Euler, backward Euler,
+and bilinear.
+The bilinear method generally provide sufficiently accurate approximation.
+We will use bilinear as the discretization method for the LegS updates
+for the experiments.
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.5\linewidth]{figures/legs_function_approx_error}
+  \caption{Absolute error for different discretization methods. Forward and
+    backward Euler are generally not very accurate, while bilinear
+  yields more accurate approximation.}
+  \label{fig:discretization_error}
+\end{figure}
+
+\end{document}
+

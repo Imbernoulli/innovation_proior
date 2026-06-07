@@ -1,0 +1,32 @@
+\definecolor{mylightgray}{rgb}{0.8, 0.8,0.8}
+\newcommand{\hidegray}[1]{{{#1}}}
+\renewcommand \arraystretch{0.95}
+\begin{table}
+    \setlength{\tabcolsep}{1pt}
+    \small
+    \centering
+    \caption{\method works for different LLMs. We can quantize the 3 largest, openly available LLM models into INT8 without degrading the accuracy. For OPT-175B and BLOOM-176B, we show the average accuracy on WinoGrande, HellaSwag, PIQA, and LAMBADA. For GLM-130B we show the average accuracy on LAMBADA, MMLU, MNLI, and QNLI. {*}Accuracy is not column-wise comparable due to different datasets. }
+    \label{tab:different_models}
+    \begin{tabular}{lccc}
+        \toprule
+        Method                & OPT-175B          & BLOOM-176B        & GLM-130B{*}       \\
+        \midrule
+        FP16                  & 71.6\%            & 68.2\%            & 73.8\%            \\
+        \midrule
+        W8A8                  & 32.3\%            & 64.2\%            & 26.9\%            \\
+
+        ZeroQuant             & 31.7\%            & 67.4\%            & 26.7\%            \\
+
+        \hidegray{\texttt{LLM.int8()}} & \hidegray{71.4\%} & \hidegray{68.0\%} & \hidegray{73.8\%} \\
+
+        Outlier Suppression   & 31.7\%            & 54.1\%            & 63.5\%            \\
+        \midrule
+        \method-O1            &\textbf{71.2}\%            & 68.3\%            & \textbf{73.7\%}   \\
+
+        \method-O2            & 71.1\%   & \textbf{68.4}\%   & 72.5\%            \\
+
+        \method-O3            & 71.1\%            & 67.4\%            & 72.8\%            \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+

@@ -1,0 +1,297 @@
+\vspace{-0.8pt}
+\subsection{State-of-the-art image generation} \label{sec:sota}
+\vspace{-0.8pt}
+
+\para{Setup.}
+We test VAR models with depths 16, 20, 24, and 30 on ImageNet 256$\times$256 and 512$\times$512 conditional generation benchmarks and compare them with the state-of-the-art image generation model families.
+Among all VQVAE-based AR or VAR models, VQGAN~\cite{vqgan} and ours use the same architecture (CNN) and training data (OpenImages \cite{openimages}) for VQVAE, while ViT-VQGAN~\cite{vit-vqgan} uses a ViT autoencoder, and both it and RQTransformer~\cite{rq} trains the VQVAE directly on ImageNet.
+The results are summaried in \tabref{tab:main} and \tabref{tab:512}.
+
+
+\para{Overall comparison.}
+In comparison with existing generative approaches including generative adversarial networks (GAN), diffusion models (Diff.), BERT-style masked-prediction models (Mask.), and GPT-style autoregressive models (AR), our visual autoregressive (VAR) establishes a new model class.
+As shown in \tabref{tab:main}, VAR not only achieves the best FID/IS but also demonstrates remarkable speed in image generation.
+VAR also maintains decent precision and recall, confirming its semantic consistency.
+These advantages hold true on the 512$\times$512 synthesis benchmark, as detailed in \tabref{tab:512}.
+Notably, VAR significantly advances traditional AR capabilities. To our knowledge, this is the \textit{first time} of autoregressive models outperforming Diffusion transformers, a milestone made possible by VAR's resolution of AR limitations discussed in Section~\ref{sec:method}.
+
+
+\begin{wraptable}[14]{r}{0.49\textwidth}
+\renewcommand\arraystretch{1.06}
+% \setlength{\abovecaptionskip}{4pt}
+% \setlength{\belowcaptionskip}{0pt}
+\centering
+% \setlength{\tabcolsep}{2.5mm}{}
+\small
+{
+\vspace{-12pt}
+\caption{\smallcaption
+\textbf{ImageNet 512$\times$512 conditional generation.}
+$\dag$: quoted from MaskGIT~\cite{maskgit}. ``-s'': a single shared AdaLN layer is used due to resource limitation.
+}\label{tab:512}
+\vspace{5pt}
+% \scalebox{0.98}
+{
+\begin{tabular}{c|l|ccc}%|cc}
+\toprule
+Type & Model          & FID$\downarrow$ & IS$\uparrow$   & Time \\
+\midrule
+GAN   & BigGAN~\cite{biggan}            & 8.43  & 177.9  & $-$ \\
+\midrule
+Diff. & ADM~\cite{adm}                  & 23.24 & 101.0  & $-$ \\
+Diff. & DiT-XL/2~\cite{dit}             & 3.04  & 240.8  & 81 \\
+\midrule
+Mask. & MaskGIT~\cite{maskgit}          & 7.32  & 156.0  & 0.5$^\dag$ \\
+\midrule
+AR    & VQGAN~\cite{vqgan}              & 26.52 & 66.8   & 25$^\dag$ \\
+% \midrule
+VAR   & VAR-$d36$-s    & \textbf{2.63}  & \textbf{303.2} & 1 \\
+\bottomrule
+\end{tabular}
+}
+\vspace{-3pt}
+}
+\end{wraptable}
+    
+    
+\para{Efficiency comparison.}
+Conventional autoregressive (AR) models~\cite{vqgan,vqvae2,vit-vqgan,rq} suffer a lot from the high computational cost, as the number of image tokens is quadratic to the image resolution.
+A full autoregressive generation of $n^2$ tokens requires $\mathcal{O}(n^2)$ decoding iterations and $\mathcal{O}(n^6)$ total computations.
+In contrast, VAR only requires $\mathcal{O}(\log(n))$ iterations and $\mathcal{O}(n^4)$ total computations.
+The wall-clock time reported in \tabref{tab:main} also provides empirical evidence that VAR is around 20 times faster than VQGAN and ViT-VQGAN even with more model parameters, reaching the speed of efficient GAN models which only require 1 step to generate an image.
+
+
+\vspace{1pt}
+\para{Compared with popular diffusion transformer.}
+% \footnote{\cite{dit} do not report DiT-L/2's performance with CFG so we use official code to reproduce it.}
+The VAR model surpasses the recently popular diffusion models Diffusion Transformer (DiT), which serves as the precursor to the latest Stable-Diffusion 3~\cite{stable-diffusion3} and SORA~\cite{sora}, in multiple dimensions:
+1) In image generation diversity and quality (FID and IS), VAR with 2B parameters consistently performs better than DiT-XL/2~\cite{dit}, L-DiT-3B, and L-DiT-7B~\cite{dit-github}. VAR also maintains comparable precision and recall.
+2) For inference speed, the DiT-XL/2 requires 45$\times$ the wall-clock time compared to VAR, while 3B and 7B models~\cite{dit-github} would cost much more.
+3) VAR is considered more data-efficient, as it requires only 350 training epochs compared to DiT-XL/2's 1400.
+4) For scalability, \figref{fig:cmp} and \tabref{tab:main} show that DiT only obtains marginal or even negative gains beyond 675M parameters.
+In contrast, the FID and IS of VAR are consistently improved, aligning with the scaling law study in \secref{sec:law}.
+These results establish \textit{VAR as potentially a more efficient and scalable model for image generation than models like DiT}.
+
+
+
+\vspace{4pt}
+\begin{figure}[th]
+\begin{center}
+\includegraphics[width=\linewidth]{fig/P.pdf}
+\end{center}
+\vspace{-2pt}
+\caption{\small
+\textbf{Scaling laws with VAR transformer size $N$}, with power-law fits (dashed) and equations (in legend).
+Small, near-zero exponents $\alpha$ suggest a smooth decline in both test loss $L$ and token error rate $Err$ when scaling up VAR transformer.
+Axes are all on a logarithmic scale.
+The Pearson correlation coefficients near $-0.998$ signify a strong linear relationship between $log(N)$ \textit{vs.} $log(L)$ or $log(N)$ \textit{vs.} $log(Err)$.
+\vspace{-6pt}
+}
+\label{fig:P}
+\end{figure}
+
+
+% \vspace{-3pt}
+\vspace{4pt}
+\subsection{Power-law scaling laws} \label{sec:law}
+% \vspace{-2pt}
+
+\firstpara{Background.}
+Prior research~\cite{scalinglaw,scalingar,chinchilla,gpt4} have established that scaling up autoregressive (AR) large language models (LLMs) leads to a predictable decrease in test loss $L$.
+This trend correlates with parameter counts $N$, training tokens $T$, and optimal training compute $C_\text{min}$, following a power-law:\vspace{1pt}
+\begin{align}
+    L = (\beta \cdot X)^{\alpha},
+\end{align}
+where $X$ can be any of $N$, $T$, or $C_\text{min}$.
+The exponent $\alpha$ reflects the smoothness of power-law, and $L$ denotes the reducible loss normalized by irreducible loss $L_{\infty}$~\cite{scalingar}\footnote{See~\cite{scalingar} for some theoretical explanation on scaling laws on negative-loglikelihood losses.}.
+A logarithmic transformation to $L$ and $X$ will reveal a linear relation between $\log(L)$ and $\log(X)$:\vspace{1pt}
+\begin{align}
+    \log(L) = \alpha \log (X) + \alpha \log\beta.
+\end{align}
+An appealing phenomenon is that both \cite{scalinglaw} and \cite{scalingar} never observed deviation from these linear relationships at the higher end of $X$, although flattening is inevitable as the loss approaches zero.
+% \vspace{4pt}
+
+These observed scaling laws~\cite{scalinglaw,scalingar,chinchilla,gpt4} not only validate the scalability of LLMs but also serve as a predictive tool for AR modeling, which facilitates the estimation of performance for larger AR models based on their smaller counterparts, thereby saving resource usage by large model performance forecasting.
+Given these appealing properties of scaling laws brought by LLMs, their replication in computer vision is therefore of significant interest.
+
+
+\vspace{4pt}
+\para{Setup of scaling VAR models.}
+Following the protocols from~\cite{scalinglaw,scalingar,chinchilla,gpt4}, we examine whether our VAR model complies with similar scaling laws.
+We trained models across 12 different sizes, from 18M to 2B parameters, on the ImageNet training set~\cite{imagenet} containing 1.28M images (or 870B image tokens under our VQVAE) per epoch.
+For models of different sizes, training spanned 200 to 350 epochs, with a maximum number of tokens reaching 305 billion.
+Below we focus on the scaling laws with model parameters $N$ and optimal training compute $C_\text{min}$ given sufficient token count $T$.
+
+
+\vspace{4pt}
+\para{Scaling laws with model parameters $N$.}
+We first investigate the test loss trend as the VAR model size increases.
+The number of parameters $N(d)=73728\,d^3$ for a VAR transformer with depth $d$ is specified in \eqref{eq:param}.
+We varied $d$ from $6$ to $30$, yielding 12 models with 18.5M to 2.0B parameters. We assessed the final test cross-entropy loss $L$ and token prediction error rates $Err$ on the ImageNet validation set of 50,000 images~\cite{imagenet}.
+We computed $L$ and $Err$ for both the last scale (at the last next-scale autoregressive step), as well as the global average.
+Results are plotted in \figref{fig:P}, where we
+
+\vspace{-5pt}
+\begin{figure}[th]
+\begin{center}
+\includegraphics[width=\linewidth]{fig/C.pdf}
+\end{center}
+\vspace{-4pt}
+\caption{\small
+\textbf{Scaling laws with optimal training compute $C_\text{min}$.}
+Line color denotes different model sizes.
+Red dashed lines are power-law fits with equations in legend.
+Axes are on a logarithmic scale.
+Pearson coefficients near $-0.99$ indicate strong linear relationships between $\log(C_\text{min})$ \textit{vs.} $\log(L)$ or $\log(C_\text{min})$ \textit{vs.} $\log(Err)$.
+}
+\vspace{-4pt}
+\label{fig:C}
+\end{figure}
+
+observed a clear power-law scaling trend for $L$ as a function of $N$, as consistent with~\cite{scalinglaw,scalingar,chinchilla,gpt4}. The power-law scaling laws can be expressed as:
+\begin{align}
+    &L_\text{last} = (2.0 \cdot N)^{-0.23} \quad \text{and} \quad L_\text{avg} = (2.5 \cdot N)^{-0.20}.
+\end{align}
+
+Although the scaling laws are mainly studied on the test loss, we also empirically observed similar power-law trends for the token error rate $Err$:\vspace{4pt}
+\begin{align}
+    &Err_\text{last} = (4.9 \cdot 10^2 N)^{-0.016} \quad \text{and} \quad Err_\text{avg} = (6.5 \cdot 10^2 N)^{-0.010}.
+\end{align}\vspace{-12pt}
+
+These results verify the strong scalability of VAR, by which scaling up VAR transformers can continuously improve the model's test performance.
+
+
+\para{Scaling laws with optimal training compute $C_\text{min}$.}
+We then examine the scaling behavior of VAR transformers when increasing training compute $C$.
+For each of the 12 models, we traced the test loss $L$ and token error rate $Err$ as a function of $C$ during training quoted in PFlops ($10^{15}$ floating-point operations per second).
+The results are plotted in \figref{fig:C}.
+Here, we draw the Pareto frontier of $L$ and $Err$ to highlight the optimal training compute $C_\text{min}$ required to reach a certain value of loss or error.
+
+The fitted power-law scaling laws for $L$ and $Err$ as a function of $C_\text{min}$ are:
+% \begin{align}
+%     &L_\text{last} = (2.2 \cdot 10^{-5} C_\text{min})^{-0.13} &&\text{and} ~ L_\text{avg} = (1.5 \cdot 10^{-5} C_\text{min})^{-0.16}, \label{equ:claw1} \\
+%     &Err_\text{last} = (8.1 \cdot 10^{-2} C_\text{min})^{-0.0067} &&\text{and} ~ Err_\text{avg} = (4.4 \cdot 10^{-2} C_\text{min})^{-0.011}. \label{equ:claw2}
+% \end{align}
+\begin{align}
+    &L_\text{last} = (2.2 \cdot 10^{-5} C_\text{min})^{-0.13} \\
+    &L_\text{avg} = (1.5 \cdot 10^{-5} C_\text{min})^{-0.16}, \label{equ:claw1} \\
+    &Err_\text{last} = (8.1 \cdot 10^{-2} C_\text{min})^{-0.0067} \\
+    &Err_\text{avg} = (4.4 \cdot 10^{-2} C_\text{min})^{-0.011}. \label{equ:claw2}
+\end{align}
+
+These relations (\ref{equ:claw1}, \ref{equ:claw2}) hold across 6 orders of magnitude in $C_\text{min}$, and our findings are consistent with those in~\cite{scalinglaw,scalingar}: when trained with sufficient data, larger VAR transformers are more compute-efficient because they can reach the same level of performance with less computation.
+
+
+
+\subsection{Visualization of scaling effect} \label{sec:viss}
+To better understand how VAR models are learning when scaled up, we compare some generated $256\times256$ samples from VAR models of 4 different sizes (depth 6, 16, 26, 30) and 3 different training stages (20\%, 60\%, 100\% of total training tokens) in \figref{fig:9grid}.
+To keep the content consistent, a same random seed and teacher-forced initial tokens are used.
+The observed improvements in visual fidelity and soundness are consistent with the scaling laws, as larger transformers are thought able to learn more complex and fine-grained image distributions.
+
+
+
+
+\begin{figure}[!th]
+\begin{center}
+\includegraphics[width=\linewidth]{fig/9grid_text.jpg}
+\end{center}
+\vspace{-6pt}
+\caption{\small
+\textbf{Scaling model size $N$ and training compute $C$ improves visual fidelity and soundness.}
+Zoom in for a better view.
+Samples are drawn from VAR models of 4 different sizes and 3 different training stages.
+9 class labels (from left to right, top to bottom) are: flamingo \texttt{130}, arctic wolf \texttt{270}, macaw \texttt{88}, Siamese cat \texttt{284}, oscilloscope \texttt{688}, husky \texttt{250}, mollymawk \texttt{146}, volcano \texttt{980}, and catamaran \texttt{484}.
+}
+\label{fig:9grid}
+\end{figure}
+
+
+
+
+
+
+\begin{figure}[tbh]
+\begin{center}
+    \includegraphics[width=0.95\linewidth]{fig/zero.pdf}
+\end{center}
+\vspace{-8pt}
+\caption{\small
+\textbf{Zero-shot evaluation in downstream tasks} containing in-painting, out-painting, and class-conditional editing.
+The results show that VAR can generalize to novel downstream tasks without special design and finetuning. Zoom in for a better view.
+}
+\vspace{-10pt}
+\label{fig:zeroshot}
+\end{figure}
+
+
+\section{Zero-shot task generalization} \label{sec:zero}
+
+% \keyu{refer to MaskGIT: We show that without modifications to the architecture or any task-specific training, MaskGIT is capable of generating very compelling results on all three applications. Furthermore, MaskGIT obtains comparable performance to dedicated models on both inpainting and outpainiting, even though it is not designed specifically for either task.}
+
+\para{Image in-painting and out-painting.}
+VAR-$d$30 is tested.
+For in- and out-painting, we teacher-force ground truth tokens outside the mask and let the model only generate tokens within the mask.
+No class label information is injected into the model.
+The results are visualized in \figref{fig:zeroshot}.
+Without modiﬁcations to the network architecture or tuning parameters, VAR has achieved decent results on these downstream tasks, substantiating the generalization ability of VAR.
+
+
+\para{Class-conditional image editing.}
+Following MaskGIT~\cite{maskgit} we also tested VAR on the class-conditional image editing task.
+Similar to the case of in-painting, the model is forced to generate tokens only in the bounding box conditional on some class label.
+\Figref{fig:zeroshot} shows the model can produce plausible content that fuses well into the surrounding contexts, again verifying the generality of VAR.
+
+
+\begin{table}[b]
+\renewcommand\arraystretch{1.06}
+% \setlength{\abovecaptionskip}{4pt}
+% \setlength{\belowcaptionskip}{0pt}
+\centering
+\setlength{\tabcolsep}{2.5mm}{}
+\small
+{
+\caption{\smallcaption
+\textbf{Ablation study of VAR.} The first two rows compare GPT-2-style transformers trained under AR or VAR algorithm without any bells and whistles.
+Subsequent lines show the influence of VAR enhancements.
+``AdaLN'': adaptive layernorm.
+``CFG'': classifier-free guidance.
+``Attn. Norm.'': normalizing $q$ and $k$ to unit vectors before attention.
+``Cost'': inference cost relative to the baseline.
+% ``FID'': Fréchet inception distance, lower is better.
+``$\Delta$'': FID reduction to the baseline.
+% \Ablaref{5} is our final setting on .
+}\label{tab:abla}
+% \vspace{5pt}
+% \scalebox{0.95}
+{\begin{tabular}{ll|ccccc|ccc}
+\toprule
+    $\ $  & Description       & Para. & Model & AdaLN & Top-$k$ & CFG  & Cost & FID$\downarrow$  & $\Delta$ \\
+\midrule
+\graycell{1}& AR~\cite{vqgan}  & 227M  & AR  & \cha   & \cha    & \cha  & 1 & 18.65 & $~~~$0.00     \\
+\ablanum{2} & AR to VAR          & 207M  & VAR-$d$16  & \cha  & \cha    & \cha  & 0.013 & 5.22 & $-$13.43  \\
+\midrule
+\ablanum{3} & $+$AdaLN           & 310M  & VAR-$d$16  & \gou  & \cha  & \cha  & 0.016 & 4.95 & $-$13.70 \\
+\ablanum{4} & $+$Top-$k$         & 310M  & VAR-$d$16  & \gou  & 600   & \cha  & 0.016 & 4.64 & $-$14.01 \\
+\ablanum{5} & $+$CFG             & 310M  & VAR-$d$16  & \gou  & 600   & 2.0   & 0.022 & 3.60 & $-$15.05 \\
+\ablanum{5} & $+$Attn. Norm.     & 310M  & VAR-$d$16  & \gou  & 600   & 2.0   & 0.022 & 3.30 & $-$15.35 \\
+\midrule
+\ablanum{6} & $+$Scale up        & 2.0B  & VAR-$d$30  & \gou  & 600   & 2.0   & 0.052 & 1.73 & $-$16.85 \\
+% \graycell{7}& \graycell{(validation data)}   & $-$ & $-$ & $-$ & $-$ & $-$ & $-$ & \graycell{1.78} & \graycell{-16.87}
+\bottomrule
+\end{tabular}}
+}
+\vspace{-2pt}
+\end{table}
+    
+
+
+\section{Ablation Study} \label{sec:abla}
+
+In this study, we aim to verify the effectiveness and efficiency of our proposed VAR framework.
+Results are reported in \tabref{tab:abla}.
+
+\firstpara{Effectiveness and efficiency of VAR.} Starting from the vanilla AR transformer baseline implemented by \cite{maskgit}, we replace its methodology with our VAR and keep other settings unchanged to get \ablaref{2}. VAR achieves a way more better FID (18.65 \textit{vs.} 5.22) with only 0.013$\times$ inference wall-clock cost than the AR model, which demonstrates a leap in visual AR model's performance and efficiency.
+
+\para{Component-wise ablation.} We further test some key components in VAR. By replacing the standard Layer Normalization (LN) with Adaptive Layer Normalization (AdaLN), VAR starts yielding better FID than baseline. By using the top-$k$ sampling similar to the baseline, VAR's FID is further improved. By using the classifier-free guidance (CFG) with ratio $2.0$ and normalizing $q$ and $k$ to unit vectors before attention, we reach the FID of 3.30, which is 15.35 lower to the baseline, and its inference speed is still 45 times faster. We finally scale up VAR size to 2.0B and achieve an FID of 1.73. This is 16.85 better than the baseline FID.
+
+    

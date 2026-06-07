@@ -1,0 +1,184 @@
+%!TEX root = main.tex
+
+\section{Related Work}
+\label{sec:relatedWork}
+% \red{We review the literature on outlier-free and robust estimation,
+% with focus on 
+% %the robotics and computer vision applications of 
+% \PCR, \GReg, \PGO and \shape.}
+%We also mention notable results from other fields and applications when necessary.
+% \vspace{-4mm}
+
+\subsection{Outlier-free Estimation}
+\label{sec:rw_outlierFree}
+{\bf Minimal Solvers.} Minimal solvers use the smallest number of measurements necessary to estimate $\vxx$.
+%, typically by deriving closed-form solutions or solving systems of polynomial equations. 
+%Notable closed-form solutions include 
+Examples include the 2-point solver for the Wahba problem (a rotation-only variant of \PCR)~\cite{
+%	wahba1965siam-wahbaProblem,Schonemann66psycho,
+Markley14book-fundamentalsAttitudeDetermine}, the 3-point solver for \PCR~\cite{Horn87josa}, and the 12-point solver~\cite{Khoshelham16jprs-ClosedformSolutionPlaneCorrespondences} for \GReg with point-to-plane correspondences.
+%8-point solver for relative pose estimation~\cite{Ma04book}. 
+%Algebraic techniques for solving systems of polynomial equations, such as \emph{Gr\"obner basis} and \emph{resultant}, have enabled minimal solvers for a growing number of estimation problems~\cite{Kukelova13thesis-algebraicTechniquesinCV,Kukelova2008ECCV-automaticGeneratorofMinimalProblemSolvers}. For example, Nist\'er~\cite{Nister04pami} proposed the 5-point method for the relative pose problem, Ramalingam and Taguchi~\cite{Ramalingam2013IJCV-Minimal3DPoint2PlaneRegistration}~proposed a set of minimal solvers for \GReg with several configurations of point-to-plane correspondences.
+Notably, the approach~\cite{Kukelova13thesis-algebraicTechniquesinCV} enables minimal solvers for a growing number of estimation problems. 
+\isExtended{For a more exhaustive list of minimal solvers, we refer the reader to~\cite{PajdlaXXwebsite-minimalProblemsInVision}.}{}
+
+{\bf Non-minimal Solvers.} Minimal solvers do not leverage data redundancy, and, consequently, can be sensitive to measurement noise. Therefore, non-minimal solvers have been developed. Typically, %they 
+non-minimal solvers 
+assume Gaussian measurement noise, which results in a {least squares} optimization framework. 
+In some cases, the resulting optimization problems can be solved in closed form,  %easily (e.g., by solving a system of equations):
+% in closed-form,~\eg~
+% for example, see 
+\eg Horn's method~\cite{Horn87josa} for~\PCR, or
+%; Lee's method~\cite{Lee2019ICCV-closedFormTwoViewTriangulation} for two-view triangulation or by 
+%In others, by solving systems of polynomial equations,~\eg
+%~UPnP~\cite{Kneip2014ECCV-UPnP}~and OPnP~\cite{Zheng2013ICCV-revisitPnP}~for the absolute pose estimation,
+ PLICP~\cite{Censi08icra}~for~\GReg.
+% with point-to-line correspondences. 
+Generally, however, the resulting optimization problems are hard\revise{~and only locally optimal solutions can be obtained~\cite{Kuemmerle11icra}}. For global optimization, researchers have developed exponential-time methods, such as \emph{Branch and Bound} (BnB). 
+Hartley and Kahl~\cite{Hartley09ijcv-globalRotationRegistration} introduce a BnB search over the rotation space to globally solve several vision problems. Olsson \etal~\cite{Olsson09pami-bnbRegistration} develop optimal solutions for \GReg.
+% with point-to-point, point-to-line and point-to-plane correspondences based on BnB. 
+Recently, \emph{Semidefinite Programing} (SDP) and \emph{Sums of Squares} (SOS) relaxations~\cite{Blekherman12Book-sdpandConvexAlgebraicGeometry}
+% ~\cite{Lasserre07siam-sos,Parrilo00thesis,Boyd04book} 
+have been used to develop
+% 	Luo2010SP-sdpRelaxationQuadratic,Lasserre01siopt-LasserreHierarchy,Blekherman12Book-sdpandConvexAlgebraicGeometry,
+% are also used, resulting to 
+polynomial-time %global optimization 
+algorithms with certifiable optimality guarantees. 
+Briales and Gonzalez-Jimenez~\cite{Briales17cvpr-registration}
+% , and Zhao~\cite{Zhao19arxiv-efficientTwoView} 
+solve~\GReg using SDP.
+%  relaxations based on Lagrangian duality;
+% The relative pose estimation problem and absolute pose estimation problem have also been solved by SDP relaxations~\cite{Briales18cvpr-global2view,Zhao19arxiv-efficientTwoView,Agostinho2019arXiv-cvxpnpl} and SOS relaxation~\cite{Schweighofer2008bmvc-SOSforPnP}. 
+Carlone~\etal~\cite{Carlone16tro-duality2D,Carlone15iros-duality3D} use Lagrangian duality and SDP relaxations for \PGO.
+ Rosen~\etal~\cite{Rosen18ijrr-sesync} develop \sesync, a fast solver for the relaxation in~\cite{Carlone16tro-duality2D,Carlone15iros-duality3D}.
+ %extended the latter relaxation and improved its scalability, by designing a low-rank SDP solver
+ % \sesync; recently, 
+ Mangelson~\etal~\cite{Mangelson19icra-PGOwithSBSOS} apply the sparse bounded-degree variant of 
+ \isExtended{SOS relaxation~\cite{Weisser18mpc-SBSOS},}{SOS relaxation,} also for \PGO. 
+ Currently, there are no certifiably optimal non-minimal solvers for shape alignment; 
+ Zhou~\etal~\cite{Zhou17pami-shapeEstimationConvex} propose a convex relaxation to obtain an approximate solution for \shape.
+%  an the 
+%   \red{for \shape.
+% , Zhou~\etal~\cite{Zhou17pami-shapeEstimationConvex} proposed a convex relaxation
+% %, where the Stiefel manifold constraint is relaxed to the spectral-norm ball
+%  (where, however, optimality cannot be certified).}
+% \vspace{-4mm}
+
+\subsection{Robust Estimation}
+\label{sec:rw_robust}
+%In the presence of outliers, the former methods can be brittle, resulting to inaccurate estimation.  Hence, robust methods have been developed, to protect the estimation against outliers.
+%Robust estimation methods instead aims to tolerate large amount of large-scale measurement errors that are in gross disagreement with the observation model,~\ie~\emph{outliers}.
+
+{\bf Global Methods.} 
+{We refer to a robust method as \textit{global}, if it does not require an initial guess. % to look for an estimate.  
+% \revise{~(not necessarily achieves \emph{global optimality})}
+% Towards this end, 
+% Li09cvpr-robustFitting
+Several global methods adopt the framework of \emph{consensus maximization}~\cite{Chin18ECCV-robustFittingMaxCon,Chin17slcv-maximumConsensusAdvances}, which looks for an estimate  that maximizes the number of measurements that are explained within a prescribed estimation error. Consensus maximization is NP-hard~\cite{Chin18ECCV-robustFittingMaxCon,Tzoumas19iros-outliers}, and 
+related work investigates both approximations and exact algorithms.
+% for its solution both approximation and exact algorithms have been developed.
+% (towards fast, practical solutions) and exponential time algorithms (towards optimal solutions).
+%, is the most popular paradigm for estimation with outliers.
+% For example, the general-purpose 
+\ransac~\cite{Fischler81} is a widely used \isExtended{heuristic~\cite{Meer91ijcv-robustVision,Hartley04book},}{heuristic,} applicable when a \textit{minimal} solver exists.
+% with the aim to find a solution to the problem and has enabled several early applications in vision and robotics. 
+But \ransac provides no optimality guarantees, and its running time grows exponentially with the outlier ratio~\cite{Bustos18pami-GORE}. 
+ Tzoumas~\etal~\cite{Tzoumas19iros-outliers} develop the general-purpose \emph{Adaptive Trimming} (\adapt) algorithm, that has linear running time, and, instead, is applicable when a \textit{non-minimal} solver exists.
+% Besides, exact solutions for consensus maximization usually arise from 
+Mangelson~\etal~\cite{Mangelson18icra} propose a graph-theoretic method to prune outliers in \PGO.
+Exact solutions for consensus maximization are based on
+BnB~\cite{Chin17slcv-maximumConsensusAdvances}:
+% and therefore has exponential worst case complexity,
+ see~\cite{Bazin12accv-globalRotSearch}~for the Wahba problem, and~\cite{Bustos18pami-GORE} 
+ %Yang16pami-goicp,Gelfand2005SGP-robustGlobalRegistration
+ for \PCR. 
+% ; and for relative pose estimation~\cite{Yang2014ECCV-optimalEssentialEstimationBnBConsensusMax}. 
+% Additional  algorithmic advances on consensus maximization are discussed in~\cite{Chin17slcv-maximumConsensusAdvances}.
+} 
+%Contrary to consensus maximization, \emph{outlier minimization} seeks to find the best parameter set that minimizes the number of outliers.  
+
+Another framework for global methods is \emph{M-estimation}, which resorts to robust cost functions.
+% adopted by global methods is that of \emph{robust cost} functions.  
+% For example, 
+Enqvist~\etal~\cite{Enqvist12eccv-robustFitting} use a \textit{truncated least squares} (TLS) cost, and propose an approach that scales, however, exponentially with
+the dimension of the parameter space. 
+%Besides the two paradigms mentioned above, 
+More recently, \emph{SDP relaxations} have also been used to optimize robust costs.  
+% Their focus has been on \emph{specialized} methods for  \PGO and \PCR.
+%and it has been shown to produce good approximations (or even exact solutions) to the original non-convex problems. 
+ Carlone and Calafiore~\cite{Carlone18ral-robustPGO2D} develop convex relaxations for \PGO with $\ell_1$-norm and Huber loss functions. Lajoie~\etal~\cite{Lajoie19ral-DCGM} adopt a TLS cost for \PGO. 
+%and relaxed the non-convex optimization into an SDP. 
+Yang and Carlone~\cite{Yang19rss-teaser,Yang19iccv-QUASAR} develop an SDP relaxation for the Wahba and \PCR problem, also adopting a TLS cost. Currently, the poor scalability of the state-of-the-art SDP solvers limits these algorithms to only small-size problems.  
+
+Finally, \textit{graduated non-convexity} (\GNC) methods have also been employed to optimize robust costs~\cite{Blake1987book-visualReconstruction}. 
+Rather than directly optimizing a non-convex robust cost, 
+these methods 
+%optimize  the robust costs indirectly 
+%(a direct optimization can be challenging, since high non-convexity of the costs, \eg TLS, can lead to bad local optima). 
+% Instead, they 
+sequentially optimize a sequence of surrogate functions, which start from a convex approximation of the original cost, but then gradually become non-convex, converging eventually to the original cost. 
+%\GNC is also deeply related to \emph{deterministic annealing}~\cite{Rose1998IEEE-deterministicAnnealing,Gold1998pr-DAforPointMatching}. 
+Despite \GNC's success in early computer vision applications~\cite{Black96ijcv-unification,Gold98}, its broad applicability has remain limited due to the lack of {non-minimal} solvers. Indeed, only a few specialized methods for spatial perception have used \GNC.
+%been recently proposed.  
+Particularly, Zhou~\etal~\cite{Zhou16eccv-fastGlobalRegistration} develop a method for \PCR, {using Horn's or Arun's methods~\cite{Horn87josa,Arun87pami}}.
+% (see also~\cite{Choi15cvpr-robustReconstruction}).
+% In this paper, we employ \GNC together with recently developed non-minimal solvers, and provide a \emph{general-purpose} approach that extends \GNC's application domain to several robotics and computer vision problems, such \mbox{as \PCR, \GReg, \PGO and \shape.}
+% \marginpar{\HY{Maybe we do not need to mention our contribution of GNC again here?}}
+% observe superior performance (both on outlier rejection performance, and running time) on several robotics and computer vision applications.
+
+{\bf Local Methods.} In contrast to global methods, local methods require an initial guess. 
+In the context of M-estimation, these methods iteratively optimize a robust cost function till they converge to a local minimum~\cite{Bosse17fnt}.
+% Zach17tr-iteratedLifting
+ Zach \etal~\cite{Zach14eccv} include auxiliary variables and propose an 
+ iterative  optimization approach that alternates updates on the estimates and the auxiliary variables; 
+ the approach still requires an initial guess.
+ % substitute the cost functions with equivalent minimization problems of surrogate functions with respect to some auxiliary variables $\vw$.  That way, they transform eq.~\eqref{eq:generalEstimation} to a joint optimization problem on $(\vxx,\vw)$, and propose an iterative optimization approach for its solution, requiring an initial guess.
+% the non-convex problem using 
+% Typically, they replace the least squares cost with a robust cost, and solve the resulting optimization problem using 
+% nonlinear optimization~\cite{Bosse17fnt,Zach14eccv}. 
+%provide an extensive review of M-estimation. 
+Bouaziz~\etal~\cite{Bouaziz13acmsig-sparseICP} propose  
+% For example, see the 
+robust variants of the \emph{iterative closest point} algorithm for \PCR. 
+S\"{u}nderhauf and Protzel~\cite{Sunderhauf12iros}, Olson and Agarwal~\cite{Olson12rss}, Agarwal~\etal~\cite{Agarwal13icra}, Pfingsthorn and Birk~\cite{Pfingsthorn16ijrr}
+ propose local methods for \PGO. 
+ Wang~\etal~\cite{Wang14cvpr-robustShapeEstimationL1} 
+ % and Zhou~\etal~\cite{Zhou17pami-shapeEstimationConvex} 
+ investigate local methods for shape alignment.
+% , and {\emph{pairwise consistent measurement set maximization} (\pcm)} for  \PGO; and~\cite{
+% %	Rogers2002ECCV-RobustActiveShapeModelSearch-MEst,
+% 	Wang14cvpr-robustShapeEstimationL1}
+% % applied Huber losses, 
+% and~\cite{Zhou17pami-shapeEstimationConvex} for~\shape.
+% assumed outlier sparsity and applied a \emph{Dantzig selector}~\cite{Candes2007stat-dantzig}.
+%\vspace{-4mm}
+%\subsection{Graduated Non-Convexity}
+%Our work is inspired by the \emph{Graduated Non-Convexity} (\GNC) concept introduced for early vision applications~\cite{Black96ijcv-unification,Blake1987book-visualReconstruction,Gold96}, which proposed to use continuation methods to sequentially solve a family of objective functions governed by a control parameter. \GNC is also deeply related to \emph{deterministic annealing}~\cite{Rose1998IEEE-deterministicAnnealing,Gold1998pr-DAforPointMatching}. Recently, Zhou~\etal~\cite{Zhou16eccv-fastGlobalRegistration} applied \GNC to \PCR and demonstrated state-of-art robustness and efficiency. We extend \GNC to be used together with global non-minimal solvers and show superior performance on several vision and robotics applications.
+% \grayout{
+% \begin{itemize}
+% 	\item Outlier-free
+% 	\begin{itemize}
+% 		\item Minimal solver
+% 		\item Non-minimal solvers
+% 		\begin{itemize}
+% 			\item Closed-form solution
+% 			\item Solve systems of polynomials
+% 			\item SDP/SOS relaxation
+% 			\item Maybe branch and bound
+% 		\end{itemize}
+% 	\end{itemize}
+% 	\item Robust
+% 	\begin{itemize}
+% 		\item Global methods (no initial guess)
+% 		\begin{itemize}
+% 			\item RANSAC (no optimality guarantee)
+% 			\item Maximum Consensus with Branch and Bound/Mixed Integer (guarantee)
+% 			\item Specialized SDP/SOS relaxation (L1 norm and TLS, DCGM, TEASER, QUASAR) (guarantee)
+% 		\end{itemize}
+% 		\item Local methods (with initial guess)
+% 		\begin{itemize}
+% 			\item M-estimation
+% 		\end{itemize}
+% 	\end{itemize}
+% \end{itemize}
+% }

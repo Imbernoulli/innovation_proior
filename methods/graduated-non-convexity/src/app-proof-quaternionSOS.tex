@@ -1,0 +1,88 @@
+%!TEX root = main.tex
+
+\section{Proof of Proposition~\ref{prop:quaternionRotationShapeAlignment}}
+In the main document, we claim that the optimal solutions $(s^\star, \MR^\star, \vt^\star)$ for the shape alignment problem
+\begin{equation} \label{eq:shapeAlignmentSupp}
+\min_{s>0, \MR \in \SOthree, \vt \in \Real{2}} \textstyle{\sumAllPointsi} w_i \| \vz_i - s\Pi\MR \MB_i - \vt \|^2 %\tag{\shape}.
+\end{equation}
+can be obtained from the optimal solution $\vv^\star$ of the quaternion-based unconstrained optimization:
+\begin{equation} \label{eq:quaternionShapeAlignmentSupp}
+\min_{\vv \in \Real{4}} f(\vv) \doteq [\vv]_2\tran \MQ [\vv]_2 - 2 \vg\tran [\vv]_2 + h. %\tag{\qShape}
+\end{equation}
+Here we prove this proposition, and provide a formula to compute $\MQ \in \Real{10 \times 10}$, $\vg \in \Real{10}$ and $h$, as well as construct $(s^\star, \MR^\star, \vt^\star)$ from $\vv^\star$.  Particularly, we complete the proof in two steps: (i) we marginalize out the translation $\vt$ and convert problem~\eqref{eq:shapeAlignmentSupp} into an equivalent translation-free problem; (ii) we reparametrize the rotation matrix using unit-quaternion and then arrive at the unconstrained optimization~in~\eqref{eq:quaternionShapeAlignmentSupp}.  The two steps follow in more detail below:
+
+{\bf (i) Translation-free Shape Alignment.} To this end, we develop the objective function of~\eqref{eq:shapeAlignmentSupp}:
+\bea
+& \sumAllPointsi w_i \| \vz_i - s\Pi \MR \MB_i - \vt \|^2  \nonumber \\
+& = \sumAllPointsi w_i \vt\tran \vt - 2w_i (\vz_i\tran - s\MB_i\tran \MR\tran \Pi\tran) \vt \nonumber \\
+&+  \sumAllPointsi \| \vz_i - s\Pi \MR \MB_i\|^2,
+\eea
+whose partial derivative \wrt $\vt$ is:
+\bea \label{eq:derivativet}
+2\sumAllPointsi w_i \vt - 2\left(\sumAllPointsi  w_i \vz_i - s \Pi \MR  \sumAllPointsi w_i \MB_i \right).
+\eea
+By setting the derivative~\eqref{eq:derivativet} to zero, we derive $\vt^\star$ in closed form as:
+% from $(s^\star$ and $\MR^\star)$:
+\bea \label{eq:closedFormt}
+\vt^\star = \bar{\vz}_w - s^\star \Pi \MR^\star \bar{\MB}_w,
+\eea
+where
+\bea
+\bar{\vz}_w = \frac{\sumAllPointsi w_i \vz_i}{ \sumAllPointsi w_i },\quad \bar{\MB}_w = \frac{\sumAllPointsi w_i \MB_i}{ \sumAllPointsi w_i }.
+\eea
+By inserting eq.~\eqref{eq:closedFormt} back to the original problem~\eqref{eq:shapeAlignmentSupp}, we obtain an optimization only involving the scale and rotation:
+\bea \label{eq:rotationOnlyShapeAlignmentSupp}
+\min_{s>0, \MR \in \SOthree} \sumAllPointsi \| \tldvz_i - s\Pi\MR \tldMB_i \|^2,
+\eea
+where:
+\bea
+\tldvz_i = \sqrt{w_i}(\vz_i - \barvz_{w}),\quad \tldMB_i = \sqrt{w_i} (\MB_i - \barMB_{w}).
+\eea
+
+{\bf (ii) Quaternion-based Translation-free Problem.} We now show that the translation-free shape alignment problem~\eqref{eq:rotationOnlyShapeAlignmentSupp} can be converted to the quaternion-based unconstrained shape alignment problem~\eqref{eq:quaternionShapeAlignmentSupp}. To this end, we denote $\vq \in \Real{4}, \| \vq \| =1$ as the unit-quaternion corresponding to the rotation matrix $\MR$.  It can be verified by inspection that $\MR$ is a linear function of $[\vq]_2 \in \Real{10}$, the vector of all degree-2 monomials of $\vq$:
+\bea \label{eq:Rfromq}
+\MR = \calR(\vq) \doteq \text{mat} ( \MA [\vq]_2 ),
+\eea
+where $\MA \in \Real{9 \times 10}$ is a constant matrix, and $\text{mat}(\cdot)$ converts a vector to a matrix with proper dimension (in this case a $3 \times 3$ matrix). The expression of the matrix $\MA$ is as follows:
+\bea
+\hspace{-4mm} \MA = \left[ \begin{array}{cccccccccc}
+1 & -1 & -1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 2 & 0 & 0 & 0 & 0 & 2 \\
+0 & 0 & 0 & 0 & 0 & 2 & 0 & 0 & -2 & 0 \\
+0 & 0 & 0 & 0 & 2 & 0 & 0 & 0 & 0 & -2 \\
+-1 & 1 & -1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & 2 & 2 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 2 & 0 & 0 & 2 & 0 \\
+0 & 0 & 0 & 0 & 0 & 0 & -2 & 2 & 0 & 0 \\
+-1 & -1 & 1 & 1 & 0 & 0 & 0 & 0 & 0 & 0
+\end{array} \right].
+\eea
+Using the notation in~\eqref{eq:Rfromq} and developing the squares in the objective function of problem~\eqref{eq:rotationOnlyShapeAlignmentSupp}\revise{~(denoting $\vr = \vectorize{\MR}$)}:
+\bea
+\hspace*{6mm}& \displaystyle \sumAllPointsi \| \tldvz_i - s\Pi\MR\tldMB_i \|^2 \nonumber \\
+& = \displaystyle \sumAllPointsi  \| \tldvz_i \|^2 - 2 s\; \tldvz_i\tran \Pi \MR \tldMB_i + s^2 \tldMB_i\tran \MR\tran \Pi\tran \Pi \MR \tldMB_i \nonumber \\
+& \hspace{-8mm} = \displaystyle \sumAllPointsi \| \tldvz_i \|^2 - 2s \; \trace{\tldMB_i\vz_i\tran\Pi \MR} + s^2 \trace{\tldMB_i\tldMB_i\tran \MR\tran \Pi\tran \Pi \MR} \nonumber \\
+& \hspace{-10mm} = \displaystyle \sumAllPointsi \|\tldvz_i\|^2 - 2s\; \vectorize{\Pi\tran \tldvz_i \tldMB_i\tran}\tran \vr + s^2 \vr\tran (\tldMB_i\tldMB_i\tran \kron \Pi\tran\Pi) \vr \nonumber \\
+& = \displaystyle \sumAllPointsi \|\tldvz_i\|^2 - 2s \; \vf_i\tran \MA [\vq]_2 + s^2 [\vq]_2\tran \MA\tran \MF_i \MA [\vq]_2 \nonumber \\
+& = \displaystyle \sumAllPointsi \| \vz_i \|^2 - 2s \; \vg_i\tran [\vq]_2 + s^2 [\vq]_2\tran \MQ_i [\vq]_2 \nonumber \\
+& = s^2 [\vq]_2\tran \MQ [\vq]_2 - 2s\; \vg\tran [\vq]_2 + h, \label{eq:developedObjFunc}
+\eea
+where the $\MQ$, $\vg$, and $h$ can be computed by:
+\bea \label{eq:Qgh}
+\begin{cases}
+\MQ = \MA\tran \left( \sumAllPointsi  \tldMB_i \tldMB_i\tran \kron \Pi\tran \Pi \right) \MA; \\
+\vg = \MA\tran \left( \sumAllPointsi \vectorize{\Pi\tran \tldvz_i \tldMB_i\tran} \right); \\
+h = \sumAllPointsi \| \tldvz_i \|^2.
+\end{cases}
+\eea
+Now, since $s>0$, we define $\vv \doteq \sqrt{s} \vq$ and it is straightforward to verify that $[\vv]_2 = s[\vq]_2$, and therefore the objective function in~\eqref{eq:developedObjFunc} is equal to the objective function of problem~\eqref{eq:quaternionShapeAlignmentSupp}. In addition, because $\vv \doteq \sqrt{s} \vq$, there is no constraint on $\vv$, because the unit-norm constraint of the quaternion $\vq$ disappears. 
+
+After we solve problem~\eqref{eq:quaternionShapeAlignmentSupp}, we can recover the optimal solution $(s^\star, \MR^\star, \vt^\star)$ of the original constrained optimization~\eqref{eq:shapeAlignmentSupp} from the optimal solution $\vv^\star$ of problem~\eqref{eq:quaternionShapeAlignmentSupp} using the following formula:
+\bea \label{eq:recoversRt}
+\begin{cases}
+s^\star = \| \vv^\star \|^2; \\
+\MR^\star = \calR \left( \frac{\vv^\star}{\| \vv^\star \|} \right); \\
+\vt^\star = \barvz_{w} - s^\star \Pi \MR^\star \barMB_{w}.
+\end{cases}
+\eea 
+In summary, to solve the outlier-free (weighted) shape alignment problem~\eqref{eq:shapeAlignmentSupp}, we first calculate $\MQ$, $\vg$, $h$ using eq.~\eqref{eq:Qgh}, solve the unconstrained optimization~\eqref{eq:quaternionShapeAlignmentSupp} (using SOS relaxation as discussed in the main document), and then recover the optimal scale, rotation, translation using eq.~\eqref{eq:recoversRt}.

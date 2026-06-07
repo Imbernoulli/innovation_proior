@@ -1,0 +1,20 @@
+\section{Experimental Setup}
+\label{sec:experimental-setup}
+The experiments performed on a subset of Atari games (Figures~\ref{fig-speed}, \ref{fig-scalability-data}, \ref{fig-scalability-time} and Table~\ref{fig-scalability}) as well as the TORCS experiments (Figure~\ref{fig-torcs}) used the following setup.  Each experiment used 16 actor-learner threads running on a single machine and no GPUs.
+All methods performed updates after every 5 actions ($t_{max}=5$ and $I_{Update}=5$) and shared RMSProp was used for optimization.
+The three asynchronous value-based methods used a shared target network that was updated every 40000 frames.
+The Atari experiments used the same input preprocessing as~\cite{mnih-dqn-2015} and an action repeat of 4.
+The agents used the network architecture from~\cite{mnih-atari-2013}.
+The network used a convolutional layer with 16 filters of size $8\times 8$ with stride 4, followed by a convolutional layer with with 32 filters of size $4\times 4$ with stride 2, followed by a fully connected layer with 256 hidden units.
+All three hidden layers were followed by a rectifier nonlinearity.
+The value-based methods had a single linear output unit for each action representing the action-value.
+The model used by actor-critic agents had two set of outputs -- a softmax output with one entry per action representing the probability of selecting the action, and a single linear output representing the value function.
+All experiments used a discount of $\gamma=0.99$ and an RMSProp decay factor of $\alpha=0.99$.
+
+The value based methods sampled the exploration rate $\epsilon$ from a distribution taking three values $\epsilon_1, \epsilon_2, \epsilon_3$ with probabilities $0.4, 0.3, 0.3$.
+The values of $\epsilon_1, \epsilon_2, \epsilon_3$ were annealed from $1$ to $0.1, 0.01, 0.5$ respectively over the first four million frames.
+Advantage actor-critic used entropy regularization with a weight $\beta=0.01$ for all Atari and TORCS experiments.
+We performed a set of $50$ experiments for five Atari games and every TORCS level, each using a different random initialization and initial learning rate.
+The initial learning rate was sampled from a $LogUniform(10^{-4}, 10^{-2})$ distribution and annealed to $0$ over the course of training.
+%
+Note that in comparisons to prior work (Tables~\ref{fig-atari-stats} and \ref{fig-atari-full}) we followed standard evaluation protocol and used fixed hyperparameters.

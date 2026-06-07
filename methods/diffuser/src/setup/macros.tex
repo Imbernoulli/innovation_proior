@@ -1,0 +1,20 @@
+
+\newcommand{\xpar}[1]{\noindent\textbf{#1}\ \ }
+\newcommand{\vpar}[1]{\vspace{3mm}\noindent\textbf{#1}\ \ }
+
+
+
+%% notations
+\newcommand{\sect}[1]{Section~\ref{#1}}
+\newcommand{\ssect}[1]{\S~\ref{#1}}
+\newcommand{\eqn}[1]{Equation~\ref{#1}}
+\newcommand{\fig}[1]{Figure~\ref{#1}}
+\newcommand{\tbl}[1]{Table~\ref{#1}}
+\newcommand{\myparagraph}[1]{{\bf #1}\quad}
+
+\DeclarePairedDelimiterX{\infdivx}[2]{(}{)}{%
+  #1\;\delimsize|\delimsize|\;#2%
+}
+\newcommand{\kldiv}[2]{\ensuremath{\text{KL}\infdivx{#1}{#2}}\xspace}
+
+\newcommand{\method}{Diffuser\xspace}

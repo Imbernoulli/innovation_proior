@@ -1,0 +1,358 @@
+\section{Shampoo Optimizer as an AGM}\label{app:shampoo}
+% \kaifeng{explain this here!!}
+% Since the shampoo optimizer is designed to optimize matrix parameters such as $\Theta \in \R^{d_1 \times d_2}$. 
+
+\subsection{A brief introduction to Shampoo}
+
+Shampoo, unlike most conventional stochastic first-order optimization methods, utilizes the fact that many model parameters in practice are tensor-like, and can lead to faster convergence in optimization. In this paper, we consider the case where the parameter is a matrix (2-dimensional tensor) with shape $d_1 \times d_2$. In this case, the Shampoo algorithm can be expressed as follows: 
+\begin{algorithm}[H]
+\caption{Shampoo with matrix-like parameters}
+\begin{algorithmic}[1]
+\Require horizon $K$, learning rate $\eta>0$, stabilizing constant $\epsilon > 0$.
+\State Initialize $\mTheta_0 \in \R^{d_1\times d_2}$; $\mS_{1,0} \in \R^{d_1 \times d_1}$; $\mS_{2,0} \in \R^{d_2 \times d_2}$
+\For{$k=1$ to $K$}
+  \State Receive loss function $\ell_k:\mathbb{R}^{d_1\times d_2}\to\mathbb{R}$
+  \State $\mG_k \gets \nabla \ell_k(\mTheta_k)\in\mathbb{R}^{d_1 \times d_2}$ 
+  \State Update $\mS_{1,k+1}$ with $\mS_{1,k}$ and $\mG_k \mG_k^\top$
+  \State Update $\mS_{2,k+1}$ with $\mS_{2,k}$ and $\mG_k^\top \mG_k$
+  \State $\mTheta_{k+1} \gets \mTheta_k - \eta \left(\mS_{1,k+1}+\epsilon \mI_{d_1}\right)^{-\lambda}\mG_k\left(\mS_{2,k+1}+\epsilon\mI_{d_2}\right)^{-\lambda}$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+Here, $\lambda$ is a constant that equals $1/4$ when Shampoo was originally proposed by \citet{gupta2018shampoo}, while later works
+\citep{anil2020scalable,shi2023distributed,morwani2024new} suggests switching to $\lambda = 1/2$. We incorporate the constant $\epsilon$ here, being consistent with \citet{gupta2018shampoo} and the practical need to stabilize training. There are multiple choices for the update rule in Lines 5 and 6. Originally, \citet{gupta2018shampoo} simply sum up the past terms to maintain $\mS_1$ and $\mS_2$. Later in practice~\citep{morwani2024new,lin2025understanding}, this was replaced by an Exponential Moving Average (EMA):
+\begin{align}
+    \mS_{1,k+1}=\beta_2\,\mS_{1,k}+(1-\beta_2)\,\mG_k\mG_k^\top,\qquad
+\mS_{2,k+1}=\beta_2\,\mS_{2,k}+(1-\beta_2)\,\mG_{k}^\top\mG_k.\label{equ:shampoo-update}
+\end{align}
+We adopt the update rule \eqref{equ:shampoo-update} for Lines 5 and 6 in Algorithm 1, which aligns with practical implementations and naturally fits within our AGM framework; We use $\lambda = 1/2$ to stick with the latest result, but the following analysis actually holds for any constant $\lambda \geq 0$. 
+
+
+\subsection{Shampoo under the AGM Framework}
+
+In Shampoo the parameter takes a matrix form, while our AGM framework requires a vector, so we need to define some reshaping rules to view Shampoo seamlessly as an AGM.  
+
+First, we define the vectorization of matrices $\mathrm{vec}(\cdot): \R^{p \times q} \rightarrow \R^{pq}$ as
+\begin{align*}
+    \mX \mapsto \vx, \quad \text{where}\quad  x_{iq+j} = X_{i,j}, \ \forall\;0 \leq i < p, 0 \leq j < q. 
+\end{align*}
+We introduce the \emph{Kronecker product}, a matrix operation that generalizes the outer product to matrices.
+Given any $\mA\in\R^{p\times q}$ and $\mB\in\R^{r\times s}$, their Kronecker product
+$\mA\otimes\mB \in \R^{pr\times qs}$ is defined as the block matrix obtained by multiplying each entry of $\mA$ by the entire matrix $\mB$. 
+It satisfies several useful properties:
+\begin{align}
+    \mathrm{vec}(\mA\mX\mB^\top) &= (\mB \otimes \mA)\,\mathrm{vec}(\mX), \quad \text{for any }\mX \in \R^{q \times s}, \label{equ:kron-property-comb}\\
+    (\mA^t \otimes \mB^t) &= (\mA \otimes \mB)^t, \quad \text{for any $\mA \in \mathbb{S}^{p}_{++},\mB \in \mathbb{S}^{r}_{++},t \in R$,} \label{equ:kron-property-power}
+\end{align}
+% \eqref{equ:kron-property-comb}, \eqref{equ:kron-property-power}
+where $\mathbb{S}^{p}_{++}$, $\mathbb{S}^{r}_{++}$ denote the set of positive definite matrices in $\R^{p \times p}$ and $\R^{r \times r}$ respectively. For any step $k \in [0, K-1]$, we define $\vtheta_k:=\mathrm{vec}(\mTheta_k)$ and $\vg_k := \mathrm{vec}(\mG_k)$. Let $d = d_1 d_2$, then $\vtheta_k, \vg_k \in \R^d$. The Shampoo update (Line 7, Algorithm 1) can now be rewritten as
+\begin{align}\label{equ:shampoo-update-rewritten}
+    \vtheta_{k+1} = \vtheta_k - \eta \left(\left(\mS_{2,k+1}+\epsilon \mI_{d_2}\right)^\top \otimes \left(\mS_{1,k+1}+\epsilon \mI_{d_1}\right)\right)^{-1/2}\vg_k.
+\end{align}
+Next, for any $\mM \in \R^{d\times d}$, 
+we introduce a new indexing scheme that represents $\mM$ as a 4-dimensional tensor by decomposing each row and column index into two sub-indices. Specifically, for all $0 \le i,j < d_1$ and $ 0 \le l,r < d_2$, we use 
+\begin{align*}M_{i,l,r,j}\end{align*}
+as an alternative representation of
+\begin{align*}M_{i d_2 + l,\; j d_2 + r}.\end{align*}
+Then we define two functions $V_L: \R^{d\times d} \rightarrow \R^{d_1 \times d_1}, V_R: \R^{d \times d} \rightarrow \R^{d_2 \times d_2}$ as: 
+\begin{align*}
+    \left[V_L(\mM)\right]_{i,j} &= \sum_s M_{i,s,s,j}, \\
+    \left[V_R(\mM)\right]_{i,j} &= \sum_s M_{s,i,j,s}.
+\end{align*}
+Note that for any step $k \in [1, K]$,\begin{align}
+    \left[V_L(\vg_k \vg_k^\top)\right]_{i,j} = \sum_s \left[\vg_k \vg_k^\top\right]_{i,s,s,j} = \sum_s [\mG_k]_{i, s} [\mG_k^\top]_{s, j} = \left[\mG_k\mG_k^\top\right]_{i,j}, \label{equ:vl}\\
+    \left[V_R(\vg_k \vg_k^\top)\right]_{i,j} = \sum_s \left[\vg_k \vg_k^\top\right]_{s,i,j,s} = \sum_s [\mG_k^\top]_{i, s} [\mG_k]_{s, j} = \left[\mG_k^\top\mG_k\right]_{i,j}.\label{equ:vr}
+\end{align}
+
+Now we are ready to rewrite the Shampoo optimizer in the AGM form.
+\begin{definition}[Shampoo, written in the AGM form]\label{def:shampoo-agm}
+    \begin{align}
+        \mV_{k+1} &:= \beta_2 \mV_{k} + (1-\beta_2) V\!\left(\vg_{k}\vg_{k}^\top\right) \label{equ:shampoo-agm-v}\\
+    \vtheta_{k+1} &:= \vtheta_{k} - \eta S(\mV_{k+1}) \vg_{k}. \label{equ:shampoo-agm-theta}
+\end{align}
+\end{definition}
+Here, each $\mV_k \in \R^{d_1 \times d_1} \times \R^{d_2 \times d_2}$ is a tuple of two matrices with shape $d_1 \times d_1$ and $d_2 \times d_2$ respectively; The functions $V$ and $S$ are defined as \begin{align*}
+    V: \R^{d \times d} \rightarrow \R^{d_1 \times d_1} \times \R^{d_2 \times d_2}, & \quad \mM \mapsto \left(V_L(\mM), V_R(\mM)\right), \\
+    S: \R^{d_1 \times d_1} \times \R^{d_2 \times d_2} \rightarrow \R^{d \times d}, & \quad \left(V_1, V_2\right) \mapsto \left(\left
+    (V_2+\epsilon \mI_{d_2}\right)^\top \otimes \left(V_1+\epsilon \mI_{d_1}\right)\right)^{-1/2}.
+\end{align*}
+With \eqref{equ:vl} and \eqref{equ:vr}, it is straightforward to verify that \eqref{equ:shampoo-agm-v} recovers \eqref{equ:shampoo-update}
+and that $\mV_k = (\mS_{1,k}, \mS_{2,k})$; Hence \eqref{equ:shampoo-agm-theta} recovers \eqref{equ:shampoo-update-rewritten} as well.
+
+
+% \xinghan{the following are materials for writing.}
+
+% Inspired by the matrix form of the parameter instead of the vector form, the Shampoo optimizer was proposed for faster convergence in optimization~\citep{gupta2018shampoo}. 
+
+% \paragraph{Setup.} Let $\mTheta\in\mathbb{R}^{d_1\times d_2}$ be the parameter matrix with gradient $\mG\in\mathbb{R}^{d_1\times d_2}$ at an iteration. Denote $\vtheta=\mathrm{vec}(\mTheta)\in\mathbb{R}^{d}$ and $\vg=\mathrm{vec}(\mG_k)\in\mathbb{R}^{d}$ with $d=d_1d_2$, where $\mathrm{vec}(\cdot)$ denotes the vectorization function mapping a matrix to a vector. We adopt the standard column-major convention for $\mathrm{vec}(\cdot)$. And we use the identity
+% \begin{align}
+%     \mathrm{vec}(\mA\mX\mB^\top)=(\mB\otimes \mA)\,\mathrm{vec}(\mX).\label{equ:identity-KP}
+% \end{align}
+% Inspired by the matrix form of the parameter instead of the vector form, the Shampoo optimizer was proposed for faster convergence in optimization~\citep{gupta2018shampoo}. The original Shampoo considers a Kronecker-factored approximation $(\mS_1)^{2p} \otimes (\mS_2)^{2p}$ with some positive exponent $p$ for the second moment for the flattened gradient $\E\left[\vg\vg^\top\right]$, where $\mS_1 :=\E[\mG\mG^\top]$, $\mS_2 :=\E[\mG^\top\mG]$, and the operator $\otimes$ represents the Kronecker product. 
+
+% In practice, we often approximate the second moment $\E[\vg\vg^\top]$ with an exponentially moving average (EMA) on the outer product~\citep{morwani2024new,lin2025understanding}. And for the exponent $p$, the original Shampoo uses $p = 1/4$ and later works~\citep{anil2020scalable,shi2023distributed,morwani2024new} suggest using $p =1/2$. Here, we consider the most practically used version of Shampoo. Specifically, Shampoo maintains left/right second-moment states
+% \begin{align}
+%     \mS_{1,k+1}=\beta_2\,\mS_{1,k}+(1-\beta_2)\,\mG_k\mG_k^\top,\qquad
+% \mS_{2,k+1}=\beta_2\,\mS_{2,k}+(1-\beta_2)\,\mG_{k}^\top\mG_k,\label{equ:shampoo-update}
+% \end{align}
+% and updates the parameter by
+% \begin{align*}
+%     \mTheta_{k+1}\;=\;\mTheta_k-\eta\,(\mS_{1,k+1})^{-p}\,
+% \mG_k\,(\mS_{2,k+1})^{-p},
+% \end{align*}
+% where $\beta_2\in[0,1)$ is the EMA coefficient. 
+
+
+% And by the identity in \Cref{equ:identity-KP}, the vectorized Shampoo update can be written as
+% \begin{gather*}
+%     \vtheta_{k+1} = \vtheta_k - \eta (\mS_{2,k+1} \otimes \mS_{1,k+1})^{-p}\vg_k.
+% \end{gather*}
+
+% Now we slightly generalize the notation in the AGM framework to the case with matrix parameter, and write out the functions $S$ and $V$ for Shampoo in the following generalized notations.
+% %Combining the above results of $S$ and $V$,
+
+
+
+% The generalized AGM framework for matrix parameter with respect to the second moment and the training parameter after vectorization reads
+
+
+
+% First, for step $k$, we rewrite $\vg_k\vg_k^\top \in \R^{d \times d}$ as a $4$-dimensional state tensor $\mM_k\in\R^{d_1 \times d_2\times d_2\times d_1}$, defined as
+% \begin{align*}
+%     (\mM_k)_{i,j,r,\ell} := (\mG_k)_{i,j}(\mG_k)_{\ell,r}, 
+%     %= \left(\vg\vg^{\top}\right)_{id_2+j,kd_1+\ell},
+% \end{align*}
+% where $0\le i,j \le d_1-1$, $0\le r,\ell\le d_2-1$. We then use $\mM$ to generate the left matrix $V_L(\mM_k)\in\R^{d_1 \times d_1}$ and the right matrix $V_R(\mM_k)\in\R^{d_2\times d_2}$ as
+% \begin{align*}
+%     \left[V_L(\mM_k)\right]_{i,j} = \sum_sM_{i,s,s,j},\quad\left[V_R(\mM_k)\right]_{i,j} = \sum_s M_{s,i,j,s}.
+% \end{align*}
+% By the definition of $\mM_k$, we have
+% \begin{align*}
+%     \left[V_L(\mM_k)\right]_{i,j} = \sum_s M_{i,s,s,j} =\sum_s(\mG_k)_{i,s}(\mG_k)_{j,s} = \left(\mG_k\mG_k^\top\right)_{i,j},
+% \end{align*}
+% Similar calculation gives $\left[V_R(\mM_k)\right] = \mG_k^\top\mG_k$.
+% Then we can define the function $V$, which maps a $4$-dimensional tensor to a matrix
+% \begin{align*}
+%     V(\mM_k) := (V_L(\mM_k),V_R(\mM_k)) \in \R^{d_1 \times d_1} \times \R^{d_2 \times d_2}.
+% \end{align*}
+% This is the natural matrix-parameter analogue of the vector-form AGM map $V(\vg\vg^\top)$, which maps the second-moment matrix $\vg\vg^\top\in\R^{d\times d}$ to the state vector. We can compactly write it as
+% \begin{align*}
+%     V(\mM_k) = (V_L(\mM_k),V_R(\mM_k)).
+% \end{align*}
+% Finally, for the preconditioner matrix $\mS$, we generalize it to a Kronecker product of matrices as
+% \begin{align*}
+%     S(\mV) := S(V(\mM_k)) = S(\mV_L,\mV_R) = \left(\mV_R^\top\otimes \mV_L\right)^{-p}.
+% \end{align*}
+% % Notice that for the state matrix $\mV_k$ at the $k$-th iteration can also be expressed as $\mV_k = \left(\mV_{k}^{(L)},\mV_{k}^{(R)}\right)$ similar to the expression of $V(\mM_k)$. And we evolution of $\mV$, 
+% We define the AGM state matrix pair $\mV_k = \left(\mV_{k}^{(L)},\mV_{k}^{(R)}\right)$. Following our definitions, this state updates as
+% \begin{align*}
+%     \mV_{k+1}^{(L)} &= \beta_2\mV_{k}^{(L)} + (1-\beta_2)V_L(\mM_k),\\
+%     \mV_{k+1}^{(R)} &= \beta_2\mV_{k}^{(R)} + (1-\beta_2)V_R(\mM_k).
+% \end{align*}
+% Together with $V_L(\mM_k) = \mG_k\mG_k^\top,V_R(\mM_k) = \mG_k^\top\mG_k$, comparing the above equations with the updates of $\mS_1$ and $\mS_2$ in \Cref{equ:shampoo-update} gives $\mV_{k}^{(L)} = \mS_{1,k}$ and $\mV_{k}^{(R)} = \mS_{2,k}$.
+
+
+
+
+
+
+\subsection{Vectorized AGM form}
+It is worth noting that in \Cref{def:shampoo-agm}, we slightly generalized the definition of $S$ and $V$ so that $\mV_k$ is not a plain vector now, but a tuple of two matrices. This is only for a simplification of the expression of functions $S$ and $V$ which makes them easy to understand. In this subsection, we establish a form of Shampoo that is slightly more complicated, but rigorously fit in the shape required by AGM, and we will use this form in the next subsection to analyze why Shampoo's bias on the manifold cannot be written using an explicit regularizer.
+
+% , since a simple vectorization of $\mV_k$ can compress it back to a  not go beyond our original AGM framework. By vectorizing the matrix form, Shampoo can be expressed within the AGM framework. 
+
+For two specific shapes of matrices: $d_1 \times d_1$ and $d_2 \times d_2$, we define functions that inverse the vectorization effect:
+\begin{align*}
+    \mathrm{mat}_L: \R^{d_1^2} \rightarrow \R^{d_1 \times d_1}, &\quad  \left[\mathrm{mat}_L(\vv)\right]_{i,j} = v_{id_1 + j}, \forall 0 \leq i, j < d_1, \\
+    \mathrm{mat}_R: \R^{d_2^2} \rightarrow \R^{d_2 \times d_2}, &\quad \left[\mathrm{mat}_R(\vv)\right]_{i,j} = v_{id_2 + j}, \forall 0 \leq i, j < d_2. 
+\end{align*}
+
+% \xinghan{bookmark 10/31 17:04.}
+For any vector $\vv \in \R^{d_1^2 + d_2^2}$, we write $(\vv_L, \vv_R)$ and $\vv$ interchangeably so that $\vv_L$ represent the first $d_1^2$ entries and $\vv_R$ represent the rest. Now we present a vectorized version of \Cref{def:shampoo-agm}.
+
+\begin{definition}[Shampoo, written in the vectorized AGM form]\label{def:shampoo-vectorized-agm}
+    \begin{align*}
+        \vv_{k+1} &:= \beta_2 \vv_{k} + (1-\beta_2) V\!\left(\vg_{k}\vg_{k}^\top\right) \\
+    \vtheta_{k+1} &:= \vtheta_{k} - \eta S(\vv_{k+1}) \vg_{k}. 
+\end{align*}
+\end{definition}
+Here, each $\vv_k \in \R^{D}$ where $D = d_1^2 + d_2^2$, and the functions $V$ and $S$ are defined as \begin{align*}
+    V: \R^{d \times d} \rightarrow \R^{D}, & \quad \mM \mapsto \left(\mathrm{vec}\left(V_L(\mM)\right), \mathrm{vec}\left(V_R(\mM)\right)\right), \\
+    S: \R^{D} \rightarrow \R^{d \times d}, & \quad \vv \mapsto \left(\left(\mathrm{mat}_R(\vv_R)+\epsilon \mI_{d_2}\right)^\top \otimes \left(\mathrm{mat}_L(\vv_L)+\epsilon \mI_{d_1}\right)\right)^{-1/2}.
+\end{align*}
+
+% In our standard AGM template for vector, the state is $\vv_k=(\mathrm{vec}(\mS_{1,k});\mathrm{vec}(\mS_{2,k}))\in\mathbb{R}^{D}$, where $D =d_1^2+d_2^2$. The moment mapping $V(\cdot)$ and preconditioner $S(\cdot)$ are:
+% \begin{align}
+% V(\vg\vg^\top) &:= 
+% \bigl(\,\mathrm{vec}(\mG\mG^\top)\;;\;\mathrm{vec}(\mG^\top\mG_k)\,\bigr),
+% \label{eq:V-shampoo}\\[2pt]
+% S(\vv) &:= \bigl(\mS_2^\top\otimes \mS_1\bigr)^{-p}.
+% \label{eq:S-shampoo}
+% \end{align}
+% With these definitions, the AGM recursion reads
+% \begin{align*}
+% \vv_{k+1} &=
+% \beta_2\,\vv_k + (1-\beta_2)\,V\!\bigl(\vg_k\vg_k^\top\bigr),\\
+% \vtheta_{k+1} &=
+% \vtheta_k - \eta\,S(\vv_{k+1})\,\vg_k.
+% \end{align*}
+% Using $\mathrm{vec}(\mA\mX\mB^\top)=(\mB\otimes\mA)\,\mathrm{vec}(\mX)$, \Cref{eq:S-shampoo} implies
+% \[
+% S(\vv_{k+1})\,\vg_k \;=\;
+% \mathrm{vec}\bigl(\mS_{1,k+1}^{-p}\,\mG_k\,\mS_{2,k+1}^{-p}\bigr),
+% \]
+% which recovers the matrix Shampoo update above. (When $\mS_2$ is symmetric, $\mS_2^\top=\mS_2$.)
+
+% \subsection{Vectorization of Shampoo under the AGM Framework}
+% % The original Shampoo considers a Kronecker-factored approximation $(\mS_1)^{2p} \otimes (\mS_2)^{2p}$ for the second moment for the flattened gradient $\E\left[\vg\vg^\top\right]$, where $\mS_1 :=\E[\mG\mG^\top]$, $\mS_2 :=\E[\mG^\top\mG]$, the operator $\otimes$ represents the Kronecker product, and $p$ is some positive constant. In practice, we often approximate the second moment $\E[\vg\vg^\top]$ with an exponentially moving average (EMA) on the outer product~\citep{morwani2024new,lin2025understanding}. And for the exponent $p$, the original Shampoo uses $p = 1/4$ and later works~\citep{anil2020scalable,shi2023distributed,morwani2024new} suggest using $p =1/2$. Here, we consider the most practically used version of Shampoo, whose vector version follows the update rule with EMA, and $p =1/2$:
+% % \begin{gather*}
+% %     \mS_1 \gets (1-\beta_2)\mS_1 + \beta_2 \mG\mG^\top,\quad \mS_2 \gets (1-\beta_2)\mS_2 + \beta_2 \mG^{\top}\mG,\\
+% %     \vtheta \gets \vtheta - \eta \mS^{-1/2}\vg,
+% % \end{gather*}
+% % where $\mS := \mS_1^{2p}\otimes \mS_2^{2p}$. And we recall our AGM framework with respect to the update rule for the second moment and the training parameter that
+% % \begin{align*}
+% %         \vv_{k+1} &:= \beta_2 \vv_{k} + (1-\beta_2) V\!\left(\nabla\ell_{k}(\vtheta_{k}) \nabla\ell_{k}(\vtheta_{k})^\top\right) \\
+% %     \vtheta_{k+1} &:= \vtheta_{k} - \eta S(\vv_{k+1}) \vm_{k+1}.
+% % \end{align*}
+% To leverage the results of the vector form of AGM in implicit bias, now we specify the function $V$, $S$ for the vectorization of Shampoo. First, we deifne two functions $V_1(\vg\vg^\top):= \mathrm{vec}(\mG\mG^\top)$, and $V_2(\vg\vg^\top):= \mathrm{vec}(\mG^\top\mG_k)$. Thus, we can write out $V(\vg\vg^\top)$ as
+% \begin{align}
+%     V(\vg\vg^\top) = \left(V_1(\vg\vg^\top)^\top,V_2(\vg\vg^\top)^\top\right)^\top\in\R^{d_1^2 + d_2^2}\label{equ:V-shampoo}
+% \end{align}
+% One may notice that here $\vv = (\mathrm{vec}(\mS_1)\top,\mathrm{vec}(\mS_2)\top)\top$. Then we define the function $S$
+% \begin{align*}
+%     S(\vv) := (\mS_1 \otimes \mS_2)^{-1/2}.
+% \end{align*}
+% With the vector identity $\mathrm{vec}(\mA^{-p}\mX\mB^{-p}) = (\mB\top\otimes\mA)^{-p}\mathrm{vec}(\mX)$ implying
+% \begin{align*}
+%     \mathrm{vec}(\mS_1^{-p}\mG\mS_2^{-p}) = (\mS_2\top\otimes\mS_1)^{-p}\vg.
+% \end{align*}
+
+% Finally, we define the matrix reshape function $P: \R^{d_1^2 \times d_2^2} \to \R^{d_1d_2 \times d_1d_2}$ as
+% \begin{align*}
+%     P(\mM_k)[d_1j + i, d_2j' +  i'] = \mM[d_1i + i', d_2j + j'],
+% \end{align*}
+% where ${i,i'}\in[0,1,2,\dots,m-1]$ and ${j,j'}\in[0,1,2,\dots,n-1]$, and since $P$ is a bijective by its definition, its inverse mapping $P^{-1}$ is thus well-defined. Also, one important property~\citep{morwani2024new} for the reshape function $P$ and Kronecker product is that
+% \begin{align*}
+%     \mH = \mA \otimes \mB \iff P^{-1}(\mH) = \mathrm{vec}(\mA)\mathrm{vec}(\mB)^\top
+% \end{align*}
+% Thus for $S(\vv)$, we have
+% \begin{align}
+%     S(\vv) = (\mS_1 \otimes \mS_2)^{-1/2} = P\left(\mathrm{vec}(\mS_1)\mathrm{vec}(\mS_2)^\top \right)^{-1/2}.\label{equ:S-shampoo}
+% \end{align}
+% Then we give the expressions for $V$ and $S$ via \Cref{equ:V-shampoo} and \Cref{equ:S-shampoo}.
+
+% \section{Shampoo as an AGM Instance}\label{app:shampoo}
+
+% \paragraph{Setup.}
+% Let $\Theta\in\mathbb{R}^{d_1\times d_2}$ be the parameter matrix with gradient $\mG\in\mathbb{R}^{d_1\times d_2}$ at an iterate. Denote $\vtheta=\mathrm{vec}(\Theta)\in\mathbb{R}^{d}$ and $\vg=\mathrm{vec}(\mG_k)\in\mathbb{R}^{d}$ with $d=d_1d_2$. We adopt the standard column-major convention for $\mathrm{vec}(\cdot)$ and use the identity
+% \[
+% \mathrm{vec}(\mA\mX\mB^\top)=(\mB\otimes \mA)\,\mathrm{vec}(\mX).
+% \]
+
+% \subsection{Matrix form (original Shampoo)}
+% Shampoo maintains left/right second-moment states
+% \[
+% \mS_{1,k+1}=\beta_2\,\mS_{1,k}+(1-\beta_2)\,\mG_k\mG_k^\top,\qquad
+% \mS_{2,k+1}=\beta_2\,\mS_{2,k}+(1-\beta_2)\,\mG_k^\top\mG_k,
+% \]
+% and updates the parameter by
+% \[
+% \Theta_{k+1}\;=\;\Theta_k-\eta\,(\mS_{1,k+1}+\varepsilon\mI)^{-p}\,
+% \mG_k\,(\mS_{2,k+1}+\varepsilon\mI)^{-p},
+% \]
+% where $p>0$ is the Shampoo exponent (commonly $p=\tfrac12$), $\beta_2\in[0,1)$ is the EMA coefficient, and $\varepsilon>0$ stabilizes matrix roots/inverses.
+
+% \subsection{Vectorized AGM form}
+% In our AGM template, the state is $\vv_k=(\mathrm{vec}(\mS_{1,k});\mathrm{vec}(\mS_{2,k}))\in\mathbb{R}^{d_1^2+d_2^2}$. The moment mapping $V(\cdot)$ and preconditioner $S(\cdot)$ are:
+% \begin{align}
+% V(\vg\vg^\top) &:= 
+% \bigl(\,\mathrm{vec}(\mG\mG^\top)\;;\;\mathrm{vec}(\mG^\top\mG_k)\,\bigr),
+% \label{eq:V-shampoo}\\[2pt]
+% S(\vv) &:= \bigl(\mS_2^\top\otimes \mS_1\bigr)^{-p}.
+% \label{eq:S-shampoo}
+% \end{align}
+% With these definitions, the AGM recursion reads
+% \begin{align*}
+% \vv_{k+1} &=
+% \beta_2\,\vv_k + (1-\beta_2)\,V\!\bigl(\vg_k\vg_k^\top\bigr),\\
+% \vtheta_{k+1} &=
+% \vtheta_k - \eta\,S(\vv_{k+1})\,\vg_k.
+% \end{align*}
+% Using $\mathrm{vec}(\mA\mX\mB^\top)=(\mB\otimes\mA)\,\mathrm{vec}(\mX)$, \eqref{eq:S-shampoo} implies
+% \[
+% S(\vv_{k+1})\,\vg_k \;=\;
+% \mathrm{vec}\!\bigl(\mS_{1,k+1}^{-p}\,\mG_k\,\mS_{2,k+1}^{-p}\bigr),
+% \]
+% which recovers the matrix Shampoo update above. (When $\mS_2$ is symmetric, $\mS_2^\top=\mS_2$.)
+
+% \paragraph{Optional 4th‑order view.}
+% If one prefers a tensor view, define $\mM\in\mathbb{R}^{d_1\times d_2\times d_1\times d_2}$ by
+% $\mM_{i,j,k,\ell}=G_{i,j}G_{k,\ell}$. Then
+% \[
+% \mS_1 = V_L(\mM_k),\quad [V_L(\mM_k)]_{i,j}=\sum_{t=0}^{d_2-1}\mM_{i,t,j,t},
+% \qquad
+% \mS_2 = V_R(\mM_k),\quad [V_R(\mM_k)]_{i,j}=\sum_{t=0}^{d_1-1}\mM_{t,i,t,j},
+% \]
+% so that $V(\vg\vg^\top)=(\mathrm{vec}(\mS_1);\mathrm{vec}(\mS_2))$.
+% For completeness, one can introduce the standard “reshuffle” operator $P_{d_1,d_2}$ characterized by
+% \[
+% P_{d_1,d_2}^{-1}(\mA\otimes \mB)=\mathrm{vec}(\mA)\,\mathrm{vec}(\mB)^\top,
+% \]
+% though it is not needed for the AGM equivalence.
+
+\subsection{Discussion on Shampoo's Implicit Bias under Label Noise}
+Recall that for all AGMs, under label noise, \Cref{equ:constraint-for-Phi} and \Cref{equ:constraint-for-v} hold, and we adopt the notations $\mS^*,\mP_{\parallel}^*,\mH^* $ in \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0} to write them as
+    \begin{gather*}
+        \mS^*\partial\mP_{\parallel}^* \nabla^3 \cL(\vzeta^*)[\mS^*]=0, \quad
+        \vv^* = V(\mSigma(\vzeta^*)). 
+    \end{gather*}
+Here we can expand $\mS^*$ as \begin{align*}
+    \mS^* &= S(\vv^*) \\ &= \left(\left(\mathrm{mat}_R(\vv_R^*)+\epsilon \mI_{d_2}\right)^\top \otimes \left(\mathrm{mat}_L(\vv_L^*)+\epsilon \mI_{d_1}\right)\right)^{-1/2} \\
+    &= \left(\left(V_R(\mSigma(\vzeta^*))+\epsilon \mI_{d_2}\right)^\top \otimes \left(V_L(\mSigma(\vzeta^*))+\epsilon \mI_{d_1}\right)\right)^{-1/2},
+\end{align*}
+and we further denote \begin{align*}
+    \mSigma_L^* := V_L(\mSigma(\vzeta^*))+\epsilon \mI_{d_1}, \quad 
+    \mSigma_R^* := V_R(\mSigma(\vzeta^*))+\epsilon \mI_{d_2}.
+\end{align*}
+We define a function $A: \R^d \rightarrow \R^d$ as
+\begin{align*}
+    A(\vzeta) := \nabla^3 \cL(\vzeta)\left[S(V(\mSigma(\vzeta))\right].
+\end{align*}
+Note that \begin{align}\label{equ:S-shampoo}
+    A(\vzeta^*) = \nabla^3 \cL(\vzeta^*)  \left[\mS^*\right].
+\end{align}
+We provide theoretical evidence that Shampoo may not admit any explicit regularizer under label noise by showing that \textit{the function $A$ is not a conservative vector field}, thus no potential function $\psi$ exists such that $\nabla \psi \equiv A$.
+
+
+%We argue that \emph{whether Shampoo has an explicit regularizer under label noise} is equivalent to \emph{whether the function $A$ is a conservative vector field, with some corresponding potential function $\psi$ such that $\nabla \psi \equiv A$}.
+
+To see it clearer, if such a function $\psi$ exists, then with the same techniques as \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0} we can simplify \eqref{equ:constraint-for-Phi} into
+\begin{align*}
+    \nabla_\Gamma \psi(\vzeta^*) = 0,
+\end{align*}
+so the regularizer is exactly $\psi(\vzeta^*)$, and vice versa.
+
+Unfortunately, even in a simple case, where $\mH^*$ is assumed to be diagonal (for example, the scenario of diagonal net), the potential function $\psi$ does not exist. In this case, we can assume that
+\begin{align*}
+    \mH^* = \Diag(\lambda_1,\lambda_2,\dots,\lambda_d),
+\end{align*}
+where $\lambda_i \ge 0$ for any $1\le i\le d$. Consequently, $$\mSigma(\vzeta^*) = \alpha \mH^* = \alpha\Diag(\lambda_1,\lambda_2,\dots,\lambda_d).$$ Now we have 
+\begin{align*}
+    \mSigma_L^* &= V_L(\mSigma(\vzeta^*))+\epsilon \mI_{d_1} \\
+    &= \alpha\Diag\left(\sum_{i=0}^{d_2-1}\lambda_{1+id_1},\sum_{i=0}^{d_2-1}\lambda_{2+id_1},\dots,\sum_{i=0}^{d_2-1}\lambda_{d_1+id_1}\right) +\epsilon \mI_{d_1}\\
+    &= \Diag(r_1,r_2,\dots,r_{d_1})\in\R^{d_1 \times d_1},\quad \text{ where } r_j := \alpha\sum_{i=0}^{d_2-1}\lambda_{j+id_1} + \epsilon;\\
+\mSigma_R^* &= V_R(\mSigma(\vzeta^*))+\epsilon \mI_{d_2} \\
+    &= \alpha\Diag\left(\sum_{i=0}^{d_1-1}\lambda_{1+id_2},\sum_{i=0}^{d_1-1}\lambda_{2+id_2},\dots,\sum_{i=0}^{d_1-1}\lambda_{d_2+id_2}\right) +\epsilon \mI_{d_2}\\
+    &= \Diag(l_1,l_2,\dots,l_{d_2})\in\R^{d_2 \times d_2},\quad \text{ where } l_j := \alpha\sum_{i=0}^{d_1-1}\lambda_{j+id_2} + \epsilon.
+    % \mSigma_R^* :=\E[\mG^\top\mG] &= \Diag\left(\sum_{i=0}^{d_1-1}\lambda_{1+id_2},\sum_{i=0}^{d_1-1} \lambda_{2+id_2},\dots,\sum_{i=0}^{d_1-1}\lambda_{d_2 + id_2})\right) \\
+    % &=:\Diag(l_1,l_2,\dots,l_{d_2})\in\R^{d_2 \times d_2}.
+\end{align*}
+
+Therefore, the preconditioner matrix $\mS^*$ in \Cref{equ:S-shampoo} can be written as
+\begin{align*}
+    \mS^* &= (\mSigma_R^* \otimes \mSigma_L^*)^{-1/2} \\
+    &= \Diag\left(l_1^{-1/2}\cdot (\mSigma_R^*)^{-1/2},l_2^{-1/2}\cdot (\mSigma_R^*)^{-1/2},\dots,l_{d_2}^{-1/2}\cdot (\mSigma_R^*)^{-1/2}\right).
+\end{align*}
+One can straightforwardly verify that the curl of $A$ at $\vzeta^*$: 
+$$\nabla \times A(\vzeta^*) = \nabla \times \nabla^3 \cL(\vzeta^*)  \left[\mS^*\right]$$
+is nonzero. By the Stokes-Cartan theorem  (Theorem 16.11 in \citet{lee2012introduction}), there does not exist a potential function $\psi$ such that $\nabla \psi \equiv A$. Therefore, we argue that in general, the regularization effect of Shampoo under label noise cannot be reduced to an explicit regularizer, for which the diagonal case is a counterexample.

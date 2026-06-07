@@ -1,0 +1,108 @@
+\section{FAVOR+ Mechanism \& Positive Orthogonal Random Features}
+\label{sec:algorithm}
+Below we describe in detail the FAVOR+ mechanism - the backbone of the $\mathrm{Performer's}$ architecture. We introduce a new method for estimating softmax (and Gaussian) kernels with $\textbf{positive}$ orthogonal random features which FAVOR+ leverages for the robust and unbiased estimation of regular (softmax) attention and show how FAVOR+ can be applied for other attention-kernels.
+
+\subsection{Preliminaries - regular attention mechanism}
+
+Let $L$ be the size of an input sequence of tokens. Then regular dot-product attention \citep{transformer} is a mapping which accepts matrices $\mathbf{Q}, \mathbf{K}, \mathbf{V} \in \mathbb{R}^{L \times d}$ as input where $d$ is the hidden dimension (dimension of the latent representation). Matrices $\mathbf{Q}, \mathbf{K}, \mathbf{V}$ are intermediate representations of the input and their rows can be interpreted as \textit{queries}, \textit{keys} and \textit{values} of the continuous dictionary data structure respectively. \textit{Bidirectional (or non-directional \citep{bert}) dot-product attention} has the following form, where  $\mathbf{A} \in \mathbb{R}^{L \times L}$ is the so-called \textit{attention matrix}:
+%\begin{gather}
+\begin{equation}
+\label{eq:attnorm}
+    \mathrm{Att}_\leftrightarrow (\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \mathbf{D}^{-1} \mathbf{A} \mathbf{V}, \quad %\label{eq:att} \\
+    \mathbf{A} = \exp ( \mathbf{Q} \mathbf{K}^\top / \sqrt{d}), \quad \mathbf{D} = \mathrm{diag} ( \mathbf{A} \mathbf{1}_L ). 
+\end{equation}    
+%\end{gather}
+Here $\exp (\cdot)$ is applied elementwise, $\mathbf{1}_L$ is the all-ones vector of length $L$, and $\mathrm{diag} (\cdot)$ is a diagonal matrix with the input vector as the diagonal. Time and space complexity of computing (\ref{eq:attnorm}) are $O(L^2 d)$ and $O(L^{2}+Ld)$ respectively, because $\mathbf{A}$ has to be stored explicitly. Hence, in principle, dot-product attention of type (\ref{eq:attnorm}) is incompatible with end-to-end processing of long sequences. Bidirectional attention is applied in encoder self-attention and encoder-decoder attention in Seq2Seq architectures.
+
+Another important type of attention is \textit{unidirectional dot-product attention} which has the form:
+%\begin{gather}
+\begin{equation}
+    \mathrm{Att}_\to (\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \widetilde{\mathbf{D}}^{-1} \widetilde{\mathbf{A}} \mathbf{V}, \quad %\label{eq:uatt} \\
+    \widetilde{\mathbf{A}} = \mathrm{tril} (\mathbf{A}), \quad \widetilde{\mathbf{D}} = \mathrm{diag} ( \widetilde{\mathbf{A}} \mathbf{1}_L ) , \label{eq:uattnorm}
+\end{equation}
+%\end{gather}
+where $\mathrm{tril}(\cdot)$ returns the lower-triangular part of the argument matrix including the diagonal. As discussed in \citep{transformer}, unidirectional attention is used for autoregressive generative modelling, e.g. as self-attention in generative Transformers as well as the decoder part of Seq2Seq Transformers.
+
+We will show that attention matrix $\mathbf{A}$ can be approximated up to any precision in time $O (L d^2\log(d))$. For comparison, popular methods leveraging sparsity via Locality-Sensitive Hashing (LSH) techniques \citep{reformer} have $O(L d^2 \log L)$ time complexity. 
+In the main body of the paper we will describe FAVOR+ for bidirectional attention. Completely analogous results can be obtained for the unidirectional variant via the mechanism of \textit{prefix-sums} (all details in the Appendix \ref{subsec:unidirectional}).
+
+\subsection{Generalized Kernelizable Attention}
+\label{sec:gka}
+
+FAVOR+ works for attention blocks using matrices $\mathbf{A} \in \mathbb{R}^{L \times L}$ of the form $\mathbf{A}(i,j) = \mathrm{K}(\mathbf{q}_{i}^{\top},\mathbf{k}_{j}^{\top})$, with $\mathbf{q}_{i}/\mathbf{k}_{j}$ standing for the $i^{th}/j^{th}$ query/key row-vector in $\mathbf{Q}/\mathbf{K}$ and kernel $\mathrm{K}:\mathbb{R}^{d} \times \mathbb{R}^{d} \rightarrow \mathbb{R}_{+}$ defined for the (usually randomized) mapping: $\phi: \mathbb{R}^{d} \rightarrow \mathbb{R}_{+}^{r}$ (for some $r >0$) as:
+\begin{equation}
+\label{kernel-def}
+\mathrm{K}(\mathbf{x}, \mathbf{y}) = \mathbb{E}[\phi(\mathbf{x})^{\top}\phi(\mathbf{y})].
+\end{equation}
+We call $\phi(\mathbf{u})$ a \textit{random feature map} for $\mathbf{u} \in \mathbb{R}^{d}$. 
+For $\mathbf{Q}^{\prime},\mathbf{K}^{\prime} \in \mathbb{R}^{L \times r}$ with rows given as $\phi(\mathbf{q}_{i}^{\top})^{\top}$ and $\phi(\mathbf{k}_{i}^{\top})^{\top}$ respectively,
+Equation \ref{kernel-def} leads directly to the efficient attention mechanism of the form:
+\begin{equation}
+    \widehat{\mathrm{Att}_\leftrightarrow} (\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \widehat{\mathbf{D}}^{-1} (\mathbf{Q}^{\prime}((\mathbf{K}^{\prime})^{\top} \mathbf{V})), \quad %\label{eq:att} \\
+    \quad \widehat{\mathbf{D}} = \mathrm{diag} (\mathbf{Q}^{\prime}((\mathbf{K}^{\prime})^{\top} \mathbf{1}_L) ). 
+\end{equation} 
+Here $\widehat{\mathrm{Att}_\leftrightarrow}$ stands for the approximate attention and brackets indicate the order of computations. It is easy to see that such a mechanism is characterized by space complexity $O(Lr + Ld + rd)$ and time complexity $O(Lrd)$ as opposed to $O(L^{2}+Ld)$ and $O(L^{2}d)$ of the regular attention (see also Fig. \ref{fig:avqk}).
+\vspace{-2mm}
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.99\textwidth]{img/avqk.png}
+  \caption{\small{Approximation of the regular attention mechanism $\mathbf{AV}$ (before $\mathbf{D}^{-1}$-renormalization) via (random) feature maps. Dashed-blocks indicate order of computation with corresponding time complexities attached.}}
+  \label{fig:avqk}
+\end{figure}
+
+The above scheme constitutes the FA-part of the FAVOR+ mechanism. The remaining OR+ part answers the following questions: \textbf{(1)} How expressive is the attention model defined in Equation \ref{kernel-def}, and in particular, can we use it in principle to approximate regular softmax attention ? \textbf{(2)} How do we implement it robustly in practice, and in particular, can we choose $r \ll L$ for $L \gg d$ to obtain desired space and time complexity gains? We answer these questions in the next sections.
+
+\subsection{How to and how not to approximate softmax-kernels for Attention}
+\label{howto}
+
+It turns out that by taking $\phi$ of the following form
+for functions $f_{1},...,f_{l}:\mathbb{R} \rightarrow \mathbb{R}$,
+function $g:\mathbb{R}^{d} \rightarrow \mathbb{R}$ and deterministic vectors $\omega_{i}$ or $\omega_{1},...,\omega_{m} \overset{\mathrm{iid}}{\sim} \mathcal{D}$ for some distribution $\mathcal{D} \in \mathcal{P}(\mathbb{R}^{d})$:
+\begin{equation} \label{eq:feature}
+\phi(\mathbf{x}) = \frac{h(\mathbf{x})}{\sqrt{m}}
+(f_{1}(\omega_{1}^{\top}\mathbf{x}),...,f_{1}(\omega_{m}^{\top}\mathbf{x}),...,f_{l}(\omega_{1}^{\top}\mathbf{x}),...,f_{l}(\omega_{m}^{\top}\mathbf{x})),    
+\end{equation}
+
+we can model most kernels used in practice. Furthermore, in most cases $\mathcal{D}$ is isotropic (i.e. with pdf function constant on a sphere), usually Gaussian. For example, by taking $h(\mathbf{x})=1$, $l=1$ and $\mathcal{D}=\mathcal{N}(0,\mathbf{I}_{d})$ we obtain estimators of the so-called PNG-kernels \citep{unreas} (e.g. $f_{1} = \mathrm{sgn}$ corresponds to the angular kernel).
+Configurations: $h(\mathbf{x})=1$, $l=2$, $f_{1}=\sin$, $f_{2}=\cos$ correspond to shift-invariant kernels, in particular $\mathcal{D}=\mathcal{N}(0, \mathbf{I}_{d})$ leads to the Gaussian kernel $\mathrm{K}_{\mathrm{gauss}}$ \citep{fourierapprox}. The \textit{softmax-kernel} which defines regular attention matrix $\mathbf{A}$ is given as:
+\vspace{-0.75mm}
+\begin{equation}
+\mathrm{SM}(\mathbf{x}, \mathbf{y}) \overset{\mathrm{def}}{=} \exp(\mathbf{x}^{\top}\mathbf{y}).    
+\end{equation}
+In the above, without loss of generality, we omit $\sqrt{d}$-renormalization since we can equivalently renormalize input keys and queries. Since: $\mathrm{SM}(\mathbf{x}, \mathbf{y}) = \exp(\frac{\|\mathbf{x}\|^{2}}{2})\mathrm{K}_{\mathrm{gauss}}(\mathbf{x},\mathbf{y})\exp(\frac{\|\mathbf{y}\|^{2}}{2})$, based on what we have said, we obtain random feature map unbiased approximation of $\mathrm{SM}(\mathbf{x}, \mathbf{y})$ using trigonometric functions with: $h(\mathbf{x})=\exp(\frac{\|\mathbf{x}\|^{2}}{2})$, $l=2$, $f_{1}=\sin$, $f_{2}=\cos$. We call it $\widehat{\mathrm{SM}}_{m}^{\mathrm{trig}}(\mathbf{x}, \mathbf{y})$. 
+
+There is however a caveat there. The attention module from (\ref{eq:attnorm}) constructs for each token, a convex combination of value-vectors with coefficients given as corresponding renormalized kernel scores. That is why kernels producing non-negative scores are used. Applying random feature maps with potentially negative dimension-values ($\sin/\cos$) leads to unstable behaviours, especially when kernel scores close to $0$ (which is the case for many %lots of 
+entries of $\mathbf{A}$ corresponding to low relevance tokens) are approximated by estimators with large variance in such regions. This results in abnormal behaviours, e.g. negative-diagonal-values renormalizers $\mathbf{D}^{-1}$, and consequently either completely prevents training or leads to sub-optimal models. 
+We demonstrate empirically that this is what happens for $\widehat{\mathrm{SM}}_{m}^{\mathrm{trig}}$ and provide detailed theoretical explanations showing that the variance of $\widehat{\mathrm{SM}}_{m}^{\mathrm{trig}}$ is large as approximated values tend to $0$ (see: Section \ref{sec:theory}). This is one of the main reasons why the robust random feature map mechanism for approximating regular softmax attention was never proposed.
+
+We propose a robust mechanism in this paper. Furthermore, the variance of our new unbiased positive random feature map estimator tends to $0$ as approximated values tend to $0$ (see: Section \ref{sec:theory}).
+
+\begin{lemma}[Positive Random Features (PRFs) for Softmax]
+\label{pos_random_features_lemma}
+For $\mathbf{x}, \mathbf{y} \in \mathbb{R}^{d}$, $\mathbf{z}=\mathbf{x}+\mathbf{y}$ we have:
+\begin{equation}
+\label{main_eq}
+\mathrm{SM}(\mathbf{x},\mathbf{y}) = 
+\mathbb{E}_{\omega \sim \mathcal{N}(0,\mathbf{I}_{d})}\!\Big[\mathrm{exp}\!\Big(\omega^{\top}\mathbf{x} - \frac{\|\mathbf{x}\|^{2}}{2}\Big)\mathrm{exp}\!\Big(\omega^{\top}\mathbf{y}-\frac{\|\mathbf{y}\|^{2}}{2}\Big)\Big]
+=\Lambda \mathbb{E}_{\omega \sim \mathcal{N}(0,\mathbf{I}_{d})}\cosh(\omega^{\top}\mathbf{z}),
+\end{equation}
+where $\Lambda=\exp(-\frac{\|\mathbf{x}\|^{2}+\|\mathbf{y}\|^{2}}{2})$ and $\cosh$ is hyperbolic cosine. Consequently, softmax-kernel admits a positive random feature map unbiased approximation with  $h(\mathbf{x})=\exp(-\frac{\|\mathbf{x}\|^{2}}{2})$, $l=1$, $f_{1}=\exp$ and $\mathcal{D}=\mathcal{N}(0, \mathbf{I}_{d})$ or: $h(\mathbf{x})=\frac{1}{\sqrt{2}}\exp(-\frac{\|\mathbf{x}\|^{2}}{2})$, $l=2$, $f_{1}(u)=\exp(u)$, $f_{2}(u)=\mathrm{exp}(-u)$ and the same $\mathcal{D}$ (the latter for further variance reduction).
+We call related estimators: $\widehat{\mathrm{SM}}^{+}_{m}$ and $\widehat{\mathrm{SM}}^{\mathrm{hyp+}}_{m}$.
+\end{lemma}
+% utility-final.png
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.99\textwidth]{img/utility-final2.png}
+  \caption{\small{\textbf{Left:} Symmetrized (around origin) utility function $r$ (defined as the ratio of the mean squared errors (MSEs) of estimators built on: trigonometric and positive random features) as a function of the angle $\phi$ (in radians) between input feature vectors and their lengths $l$. Larger values indicate regions of $(\phi,l)$-space with better performance of positive random features. We see that for critical regions with $\phi$ large enough (small enough softmax-kernel values) our method is arbitrarily more accurate than trigonometric random features. Plot presented for domain $[-\pi, \pi] \times [-2, 2]$.} \textbf{Right:} The slice of function $r$ for fixed $l=1$ and varying angle $\phi$. \textbf{Right Upper Corner:} Comparison of the MSEs of both the estimators in a low softmax-kernel value region.\\}
+  \label{fig:tower-function}
+\end{figure}
+In Fig. \ref{fig:tower-function} we visualize the advantages of positive versus standard trigonometric random features. In critical regions, where kernel values are small and need careful approximation, our method outperforms its counterpart. In Section \ref{sec:experiments} we further confirm our method's advantages empirically, using positive features to efficiently train softmax-based linear Transformers.
+If we replace in (\ref{main_eq}) $\omega$ with $\sqrt{d}\frac{\omega}{\|\omega\|}$, we obtain the so-called \textbf{regularized softmax-kernel} $\mathrm{SMREG}$ which we can approximate in a similar manner, simply changing $\mathcal{D}=\mathcal{N}(0,\mathbf{I}_{d})$ to $\mathcal{D} = \mathrm{Unif}(\sqrt{d}\mathcal{S}^{d-1})$, a distribution corresponding to Haar measure on the sphere of radius $\sqrt{d}$ in $\mathbb{R}^{d}$, obtaining estimator $\widehat{\mathrm{SMREG}}^{+}_{m}$. As we show in Section \ref{sec:theory}, such random features can also be used to accurately approximate regular softmax-kernel.
+
+\subsection{Orthogonal Random Features (ORFs)}
+The above constitutes the R+ part of the FAVOR+ method. It remains to explain the O-part. To further reduce the variance of the estimator (so that we can use an even smaller number of random features $r$), we entangle different random samples $\omega_{1},...,\omega_{m}$ to be \textbf{exactly} orthogonal. This can be done while maintaining unbiasedness whenever isotropic distributions $\mathcal{D}$ are used (i.e. in particular in all kernels we considered so far) by the standard Gram-Schmidt orthogonalization procedure (see \citep{unreas} for details). ORFs is a well-known method, yet it turns out that it works particularly well with our introduced PRFs for softmax. This leads to the \textbf{first theoretical results} showing that ORFs can be applied to reduce the variance of softmax/Gaussian kernel estimators \textbf{for any} dimensionality $d$ rather than just asymptotically for large enough $d$ (as is the case for previous methods, see: next section) and leads to the \textbf{first exponentially small bounds} on large deviations probabilities that are strictly smaller than for non-orthogonal methods. Positivity of random features plays a key role in these bounds. The ORF mechanism requires $m \leq d$, but this will be the case in all our experiments. The pseudocode of the entire FAVOR+ algorithm is given in Appendix \ref{appendix:main_algorithm}.
+
+Our theoretical results are tightly aligned with experiments. We show in Section \ref{sec:experiments} that PRFs+ORFs drastically improve accuracy of the approximation of the attention matrix and enable us to reduce $r$ which results in an accurate as well as space and time efficient mechanism which we call FAVOR+.
+
+
+

@@ -1,0 +1,301 @@
+% packages
+%\usepackage[colorlinks,linkcolor=blue,citecolor=blue]{hyperref}
+%\usepackage{amsmath,amsfonts,amssymb}
+%\usepackage{mathtools}
+%\usepackage{amsthm} % better to load after ams math
+%\usepackage{latexsym}
+
+%%\usepackage{baskervald}
+%\usepackage[p,theoremfont]{baskervillef}
+%\usepackage[baskervillef,smallerops,vvarbb]{newtxmath}
+%%\usepackage[cal=boondoxo]{mathalfa}
+
+%\usepackage{newtxtext}
+%\usepackage[smallerops,vvarbb]{newtxmath}
+%\usepackage[cal=boondoxo]{mathalfa}
+
+%\usepackage{mathabx}
+%\usepackage{newtxtext}
+%%\usepackage{libertine}
+%%\usepackage[libertine]{newtxmath}
+%\usepackage[noamssymbols]{newtxmath}
+%\usepackage{relsize}
+%\usepackage{thmtools,thm-restate}
+%\usepackage[amsthm]{ntheorem}
+
+\usepackage{enumitem}
+\usepackage{bm}
+\usepackage{xspace}
+\usepackage{nicefrac}
+%\usepackage{keyval}
+%\usepackage{ifthen}
+
+% allow using \bm in section titles
+\pdfstringdefDisableCommands{%
+  \renewcommand{\bm}[1]{#1}%
+}
+
+\usepackage[capitalise,nameinlink]{cleveref}
+\usepackage{xcolor}
+\usepackage{dsfont}
+
+
+% comments, etc
+\newcommand{\ignore}[1]{}
+\newcommand{\tk}[1]{\noindent{\textcolor{cyan}{\{{\bf TK:} {\em #1}\}}}}
+% for emails
+\newcommand{\email}[1]{\texttt{#1}}
+
+%% JMLR theorems adjustments
+%\setlength{\topsep}{\medskipamount}
+%
+%\newtheoremstyle{jmlrthm} % name
+%	{\topsep}		% Space above
+%	{\topsep}		% Space below
+%	{\itshape}	% Body font
+%	{}						% Indent amount
+%	{\bfseries}	% Theorem head font
+%	{}						% Punctuation after theorem head
+%	{0.33em}		% Space after theorem head
+%	{}  					% Theorem head spec (can be left empty, meaning ?normal?)
+%
+%\newtheoremstyle{jmlrdef} % name
+%	{\topsep}		% Space above
+%	{\topsep}		% Space below
+%	{}						% Body font
+%	{}						% Indent amount
+%	{\bfseries}	% Theorem head font
+%	{}						% Punctuation after theorem head
+%	{.33em}			% Space after theorem head
+%	{}  					% Theorem head spec (can be left empty, meaning ?normal?)
+%
+%\renewcommand\qedsymbol{\BlackBox}
+%%\renewenvironment{proof}[1][Proof]{\par\noindent{\bfseries\upshape #1\ }}{\hfill\BlackBox\\[\medskipamount]}
+%\renewenvironment{proof}[1][Proof]{\par\noindent{\bfseries\upshape #1\ }}{\hfill\BlackBox\\}
+
+% wrap algorithm
+\newcommand{\wrapalgo}[2][0.9\linewidth]
+{%
+\begin{center}\setlength{\fboxsep}{5pt}\fbox{\begin{minipage}{#1}
+#2
+\end{minipage}}\end{center}
+\vspace{-0.25cm}
+}
+
+
+% smash text (for inline math)
+\newenvironment{smashbox}[1][]{%
+  \begin{minipage}{1.0\linewidth}\lineskiplimit=-\maxdimen
+}{%
+  \end{minipage}
+}
+
+
+
+% theorems
+%\theoremstyle{plain}
+%\theoremstyle{jmlrthm}
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}				% global numbering
+%\newtheorem{theorem}{Theorem}[section]		% section numbering
+
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{fact}[theorem]{Fact}
+\newtheorem{observation}[theorem]{Observation}
+
+\newtheorem*{theorem*}{Theorem}
+\newtheorem*{lemma*}{Lemma}
+\newtheorem*{corollary*}{Corollary}
+\newtheorem*{proposition*}{Proposition}
+\newtheorem*{claim*}{Claim}
+\newtheorem*{fact*}{Fact}
+\newtheorem*{observation*}{Observation}
+
+\theoremstyle{definition}
+%\theoremstyle{jmlrdef}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{example}[theorem]{Example}
+\newtheorem{question}[theorem]{Question}
+\newtheorem*{definition*}{Definition}
+\newtheorem*{remark*}{Remark}
+\newtheorem*{example*}{Example}
+\newtheorem*{question*}{Question}
+
+
+% repeated theorems
+ \theoremstyle{plain}
+%\theoremstyle{jmlrthm}
+\newtheorem*{theoremaux}{\theoremauxref}
+\gdef\theoremauxref{1}
+
+\newenvironment{repthm}[2][]{%
+  \def\theoremauxref{\cref{#2}}
+  \begin{theoremaux}[#1]
+}{%
+  \end{theoremaux}
+}
+
+%\newtheoremstyle{theoremrep}
+%	{\topsep}{\topsep}              %%% space between body and thm
+%	{\itshape}                      %%% Thm body font
+%	{}                              %%% Indent amount (empty = no indent)
+%	{\bfseries}                     %%% Thm head font
+%	{}                             %%% Punctuation after thm head
+%	{0.33em}                             %%% Space after thm head
+%	{\cref{#3}}
+%
+%\theoremstyle{theoremrep}
+%\newtheorem{repthm}{dontcare}
+
+
+
+% % old refs - use \cref{} instead!
+% \newcommand{\secref}[1]{Section~\ref{#1}}
+%\newcommand{\secref}[1]{Sec.~\ref{#1}}
+%\newcommand{\figref}[1]{Figure~\ref{#1}}
+%\renewcommand{\eqref}[1]{Eq.~(\ref{#1})}
+%\newcommand{\lemref}[1]{Lemma~\ref{#1}}
+
+% \newcommand{\thmref}[1]{Theorem~\ref{#1}}
+% \newcommand{\appref}[1]{Appendix~\ref{#1}}
+% \newcommand{\algref}[1]{Algorithm~\ref{#1}}
+
+% style defs
+%\renewcommand{\le}{\leqslant}
+%\renewcommand{\ge}{\geqslant}
+%\renewcommand{\leq}{\le}
+%\renewcommand{\geq}{\ge}
+
+% bold serif
+\DeclareMathAlphabet{\mathbfsf}{\encodingdefault}{\sfdefault}{bx}{n}
+
+% operators
+\DeclareMathOperator*{\err}{error}
+\DeclareMathOperator*{\argmin}{arg\!\min}
+\DeclareMathOperator*{\argmax}{arg\!\max}
+\DeclareMathOperator*{\conv}{conv}
+\DeclareMathOperator*{\supp}{supp}
+\DeclareMathOperator*{\trace}{Tr}
+\DeclareMathOperator*{\diag}{diag}
+%\DeclareMathOperator*{\poly}{poly}
+\let\Pr\relax
+\DeclareMathOperator{\Pr}{\mathbb{P}}
+
+% cases
+\newcommand{\mycases}[4]{{
+\left\{
+\begin{array}{ll}
+    {#1} & {\;\text{#2}} \\[1ex]
+    {#3} & {\;\text{#4}}
+\end{array}
+\right. }}
+
+\newcommand{\mythreecases}[6] {{
+\left\{
+\begin{array}{ll}
+    {#1} & {\;\text{#2}} \\[1ex]
+    {#3} & {\;\text{#4}} \\[1ex]
+    {#5} & {\;\text{#6}}
+\end{array}
+\right. }}
+
+% macros
+\newcommand{\lr}[1]{\mathopen{}\left(#1\right)}
+\newcommand{\Lr}[1]{\mathopen{}\big(#1\big)}
+\newcommand{\LR}[1]{\mathopen{}\Big(#1\Big)}
+
+\newcommand{\lrbra}[1]{\mathopen{}\left[#1\right]}
+\newcommand{\Lrbra}[1]{\mathopen{}\big[#1\big]}
+\newcommand{\LRbra}[1]{\mathopen{}\Big[#1\Big]}
+
+\newcommand{\norm}[1]{\|#1\|}
+\newcommand{\lrnorm}[1]{\mathopen{}\left\|#1\right\|}
+\newcommand{\Lrnorm}[1]{\mathopen{}\big\|#1\big\|}
+\newcommand{\LRnorm}[1]{\mathopen{}\Big\|#1\Big\|}
+
+\newcommand{\set}[1]{\{#1\}}
+\newcommand{\lrset}[1]{\mathopen{}\left\{#1\right\}}
+\newcommand{\Lrset}[1]{\mathopen{}\big\{#1\big\}}
+\newcommand{\LRset}[1]{\mathopen{}\Big\{#1\Big\}}
+
+\newcommand{\abs}[1]{|#1|}
+\newcommand{\lrabs}[1]{\mathopen{}\left|#1\right|}
+\newcommand{\Lrabs}[1]{\mathopen{}\big|#1\big|}
+\newcommand{\LRabs}[1]{\mathopen{}\Big|#1\Big|}
+
+\newcommand{\ceil}[1]{\lceil #1 \rceil}
+\newcommand{\lrceil}[1]{\mathopen{}\left\lceil #1 \right\rceil}
+\newcommand{\Lrceil}[1]{\mathopen{}\big\lceil #1 \big\rceil}
+\newcommand{\LRceil}[1]{\mathopen{}\Big\lceil #1 \Big\rceil}
+
+\newcommand{\floor}[1]{\lfloor #1 \rfloor}
+\newcommand{\lrfloor}[1]{\mathopen{}\left\lfloor #1 \right\rfloor}
+\newcommand{\Lrfloor}[1]{\mathopen{}\big\lfloor #1 \big\rfloor}
+\newcommand{\LRfloor}[1]{\mathopen{}\Big\lfloor #1 \Big\rfloor}
+
+\newcommand{\ip}[1]{\langle #1 \rangle}
+\newcommand{\lrip}[1]{\mathopen{}\left\langle#1\right\rangle}
+\newcommand{\Lrip}[1]{\mathopen{}\big\langle#1\big\rangle}
+\newcommand{\LRip}[1]{\mathopen{}\Big\langle#1\Big\rangle}
+
+\renewcommand{\t}[1]{\smash{\tilde{#1}}}
+\newcommand{\wt}[1]{\smash{\widetilde{#1}}}
+\newcommand{\wh}[1]{\smash{\widehat{#1}}}
+\renewcommand{\O}{O}
+%\renewcommand{\O}{\mathcal{O}}
+\newcommand{\OO}[1]{\O\lr{#1}}
+\newcommand{\tO}{\wt{\O}}
+\newcommand{\tTheta}{\wt{\Theta}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\EE}[1]{\E\lrbra{#1}}
+\newcommand{\var}{\mathrm{Var}}
+\newcommand{\tsum}{\sum\nolimits}
+%\newcommand{\trace}{\mathrm{tr}} % declared as mathop
+\newcommand{\ind}[1]{\mathbb{I}\lrset{#1}}
+\newcommand{\non}{\nonumber}
+\newcommand{\poly}{\mathrm{poly}}
+
+% \newcommand{\tr}{^{\mathsmaller\top}}
+\newcommand{\tr}{^{\mkern-1.5mu\scriptstyle\mathsf{T}}}
+\newcommand{\pinv}{^{\dagger}}
+\newcommand{\st}{\star}
+\renewcommand{\dag}{\dagger}
+
+%\newcommand{\kl}[2]{\mathsf{D}_\mathrm{KL}(#1,#2)}
+\newcommand{\tv}[2]{\mathsf{D}_{\mathrm{TV}}(#1,#2)}
+\newcommand{\ent}{\mathsf{H}}
+\newcommand{\info}{\mathsf{I}}
+
+\newcommand{\reals}{\mathbb{R}}
+%\newcommand{\eps}{\varepsilon}
+\newcommand{\eps}{\epsilon}
+\newcommand{\sig}{\sigma}
+\newcommand{\del}{\delta}
+\newcommand{\Del}{\Delta}
+\newcommand{\lam}{\lambda}
+\newcommand{\half}{\frac{1}{2}}
+\newcommand{\thalf}{\tfrac{1}{2}}
+
+\newcommand{\eqdef}{\stackrel{\text{def}}{=}}
+\newcommand{\eq}{~=~}
+\renewcommand{\leq}{~\le~}
+\renewcommand{\geq}{~\ge~}
+\newcommand{\lt}{~<~}
+\newcommand{\gt}{~>~}
+\newcommand{\then}{\quad\Rightarrow\quad}
+
+\let\oldtfrac\tfrac
+\renewcommand{\tfrac}[2]{\smash{\oldtfrac{#1}{#2}}}
+
+
+\let\nablaold\nabla
+\renewcommand{\nabla}{\nablaold\mkern-1mu}
+
+%\let\cdotold\cdot
+%\renewcommand{\cdot}{\mkern-2.5mu\cdotold\mkern-2.5mu}
+%\newcommand{\param}{\cdotold}
+

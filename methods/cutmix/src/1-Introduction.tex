@@ -1,0 +1,39 @@
+\section{Introduction}
+
+Deep convolutional neural networks (CNNs) have shown promising performances on various computer vision problems such as image classification~\cite{ImageNet,alexnet,resnet}, object detection~\cite{fasterrcnn,liu2016ssd}, semantic segmentation~\cite{chen2018deeplab,Long_2015_CVPR}, and video analysis~\cite{nam2016learning,simonyan2014two}. 
+To further improve the training efficiency and performance, a number of training strategies have been proposed, including data augmentation~\cite{alexnet} and regularization {techniques}~\cite{Dropout,stochasticdepth,szegedy2016rethinking_labelsm}.
+
+In particular, to prevent a CNN from focusing too much on a small set of intermediate activations or on a small region on input images, random feature removal regularizations have been proposed. Examples include dropout~\cite{Dropout} for randomly dropping hidden activations and regional dropout~\cite{devries2017cutout,zhong2017randomerase,singh2017hide,ghiasi2018dropblock,choe2019attention} for erasing random regions on the input.
+Researchers have shown that the feature removal strategies improve generalization and localization by letting a model attend not only to the most discriminative parts of objects, but rather to the entire object region~\cite{singh2017hide,ghiasi2018dropblock}.
+
+
+\input{tables/teaser.tex}
+
+
+
+While regional dropout strategies have shown improvements of classification and localization performances to a certain degree, deleted regions are usually zeroed-out~\cite{devries2017cutout,singh2017hide} or filled with random noise~\cite{zhong2017randomerase}, greatly reducing the proportion of informative pixels on training images.
+We recognize this as a severe conceptual limitation as CNNs are generally data hungry~\cite{InstagramNet}.
+How can we maximally utilize the deleted regions, while taking advantage of better generalization and localization using regional dropout?
+
+We address the above question by introducing an augmentation strategy \textbf{CutMix}. 
+Instead of simply removing pixels, we replace the removed regions with a patch from another image (See Table~\ref{tab:teaser}).
+The ground truth labels are also mixed proportionally to the number of pixels of combined images.
+{CutMix now enjoys the property that there is no uninformative pixel during training, making training efficient, while retaining the advantages of regional dropout to attend to non-discriminative parts of objects.}
+The added patches further enhance localization ability by requiring the model to identify the object from a partial view.
+The training and inference budgets remain the same.
+
+CutMix shares similarity with Mixup~\cite{zhang2017mixup} which mixes two samples by interpolating both the image and labels.  
+{While certainly improving classification performance, Mixup samples tend to be unnatural (See the mixed image in Table~\ref{tab:teaser}).
+CutMix overcomes the problem by replacing the image region with a patch from another training image.}
+
+
+Table~\ref{tab:teaser} gives an overview of Mixup~\cite{zhang2017mixup}, Cutout~\cite{devries2017cutout}, and CutMix on image classification, weakly supervised localization, and transfer learning to object detection methods.
+Although Mixup and Cutout enhance ImageNet classification, they decrease the ImageNet localization or object detection performances. 
+On the other hand, CutMix consistently achieves significant enhancements across three tasks.
+%, proving its superior classification and localization ability beyond the baseline and other augmentation methods.
+
+We present extensive evaluations of CutMix on various CNN architectures, datasets, and tasks. 
+Summarizing the key results, CutMix has significantly improved the accuracy of a baseline classifier on CIFAR-100 and has obtained the state-of-the-art top-1 error $14.47\%$. On ImageNet~\cite{ImageNet}, applying CutMix to ResNet-50 and ResNet-101~\cite{resnet} has improved the classification accuracy by $+2.28\%$ and $+1.70\%$, respectively. 
+On the localization front, CutMix improves the performance of the weakly-supervised object localization (WSOL) task on CUB200-2011~\cite{wah2011cub} and ImageNet~\cite{ImageNet} by {$+5.4\%$} and $+0.9\%$, respectively. 
+The superior localization capability is further evidenced by fine-tuning a detector and an image caption generator on CutMix-ImageNet-pretrained models; the CutMix pretraining has improved the overall detection performances on Pascal VOC~\cite{pascalvoc} by $+1$ mAP and image captioning performance on MS-COCO~\cite{lin2014microsoft} by $+2$ BLEU scores.
+{CutMix also enhances the model robustness and alleviates the over-confidence issue \cite{hendrycks2016baseline, liang2017odin} of deep networks.}

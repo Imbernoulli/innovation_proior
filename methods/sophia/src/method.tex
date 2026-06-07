@@ -1,0 +1,148 @@
+\section{Method}\label{sec:method}
+We first instantiate gradient descent (GD) and Adam on a simplified 2D problem and motivate the use of second-order information and per-coordinate clipping in Section~\ref{sec:motivation}. Then, we present \ours~in detail in Section~\ref{sec:sophia}, and the pseudo-code in Algorithm~\ref{alg:hess_opt}. We introduce two choices of estimators of diagonal Hessian used in Sophia in Section~\ref{sec:hess_estimator}. 
+
+\subsection{Motivations}\label{sec:motivation}
+
+\begin{wrapfigure}{r}{5.5cm}
+	\centering
+\includegraphics[width=0.32\columnwidth]{figures/lt.pdf}
+ \caption{Histogram of positive entries of the diagonal Hessian of a 125M-parameter GPT-2.\label{fig:lt} 
+ }
+\end{wrapfigure}
+\textbf{Heterogeneous curvatures.} The loss functions of modern deep learning problems often have different curvatures across different parameter dimensions~\citep{sagun2016eigenvalues,ghorbani2019investigation,zhang2020adaptive,yao2020pyhessian}. E.g., on a 125M-parameter GPT-2 model, Figure~\ref{fig:lt} shows that the distribution of positive diagonal entries of the Hessian is dispersed.
+
+We demonstrate the limitations of Adam and GD on heterogeneous landscapes by considering a two-dimensional loss function $L(\theta_{[1]},\theta_{[2]}) = L_1(\theta_{[1]}) + L_2(\theta_{[2]})$ where $L_1$ is much sharper than $L_2$. We plot the loss landscape of $L(\theta_{[1]},\theta_{[2]})$ in Figure~\ref{fig:toy}.\footnote{Concretely, in Figure~\ref{fig:toy}, $L_{1}(\theta_{[1]}) = 8(\theta_{[1]} - 1)^2(1.3\theta_{[1]}^2 + 2\theta_{[1]} + 1)$ and $L_2(\theta_{[2]}) = 1/2 (\theta_{[2]} - 4)^2$.}  
+For simplicity, we discuss GD and deterministic versions of Adam. Recall that GD’s update in this setting is:
+\begin{align}
+\theta_{[1]} \leftarrow \theta_{[1]} - \eta \cdot L'_1(\theta_{[1]})\ \ \textup{and}\ \ \theta_{[2]} \leftarrow \theta_{[2]} - \eta\cdot L'_2(\theta_{[2]})\,.\label{eqn:rule_gd_toy}
+\end{align}
+A common simplification of Adam that is more amenable to analysis~\citep{balles2018dissecting,bernstein2018signsgd,zhuang2020adabelief,kunstner2023noise} is SignGD, which dates back to RProp~\citep{braun1992rprop} that motivated RMSProp~\citep{hinton2012neural} and Adam. 
+Observe that without using the EMA (for both the gradient and second moments of the gradient), Adam's update is simplified to $\eta \cdot \nabla L(\theta)/|\nabla L(\theta)| = \eta\cdot \textup{sign}(\nabla L(\theta))$ (where all operations are entry-wise), which is called SignGD. Applying the update rule to our setting gives: 
+\begin{align}
+\theta_{[1]} \leftarrow \theta_{[1]} - \eta \cdot \textup{sign}(L'_1(\theta_{[1]}))\ \ \textup{and}\ \ \theta_{[2]} \leftarrow \theta_{[2]} - \eta \cdot \textup{sign}(L'_2(\theta_{[2]}))\,.
+\end{align}
+
+\textbf{Limitations of GD and SignGD (Adam).} It is well known that the optimal learning rate of GD should be proportional to the inverse of the curvature, that is, the Hessian/second derivative at the local minimum. More precisely, let $h_1$ and $h_2$ be the curvatures of $L_1$ and $L_2$  at the local minimum (and thus $h_1 \gg h_2$). The optimal learning rate for the update of $\theta_{[1]}$ in equation~\eqref{eqn:rule_gd_toy} is $\asymp 1/h_1$, which is much smaller than the optimal learning rate that the update of $\theta_{[2]}$ needs, which is $\asymp 1/h_2$. As a result, the largest shared learning rate can only be $1/h_1$; consequently, the convergence in $\theta_{[2]}$ dimension is slow as demonstrated in the brown curve in Figure~\ref{fig:toy}.
+
+The update size of SignGD is the learning rate $\eta$ in all dimensions. The same update size translates to less progress in decreasing the loss in the flat direction than in the sharp direction. As observed from the yellow curve in Figure~\ref{fig:toy}, the progress of SignGD in the flat dimension $\theta_{[2]}$ is slow because each step only decreases the loss $L_2(\theta_{[2]})$ slightly. On the other hand, along the direction $\theta_{[1]}$, the iterate quickly travels to the valley in the first three steps and then starts to bounce. To fully converge in the sharp dimension, the learning rate $\eta$ needs to decay to 0, which will exacerbate the slow convergence in the flat dimension $\theta_{[2]}$. The trajectory of Adam in this example is indeed similar to SignGD, which is also plotted as the red curve in Figure~\ref{fig:toy}.
+
+The behavior of SignGD and Adam above indicates that a more aggressive pre-conditioning is needed---sharp dimensions should have relatively smaller updates than flat dimensions so that the decrease of loss is equalized in all dimensions. As suggested by well-established literature on second-order optimization~\citep{boyd2004convex}  for convex functions, the optimal pre-conditioner should be the Hessian, which captures the curvature on each dimension; as in Newton's method, the update is the gradient divided by the Hessian in each dimension: 
+\begin{align}
+\theta_{[1]} \leftarrow \theta_{[1]} - \eta \cdot L'_1(\theta_{[1]}) / h_1\ \ \textup{and}\ \ \theta_{[2]} \leftarrow \theta_{[2]} - \eta \cdot L'_2(\theta_{[2]})/ h_2\,.
+\end{align}
+
+\textbf{Limitations of Newton's method.} Nevertheless, Newton’s method has known limitations as well. For non-convex functions, vanilla Newton’s method could converge to a global maximum when the local curvature is negative. In the blue curve of Figure~\ref{fig:toy}, Newton’s method quickly converges to a saddle point instead of a local minimum. The curvature might also change rapidly along the trajectory, making the second-order information unreliable. To address these limitations, we propose considering only pre-conditioners that capture positive curvature, and introduce a pre-coordinate clipping mechanism to mitigate the rapid change of Hessian (more detail in Section~\ref{sec:sophia}). Applying our algorithm on the toy case results in the following update: 
+\begin{align}
+\theta_{[1]} \leftarrow \theta_{[1]} - \eta \cdot \clip(\nicefrac{ L'_1(\theta_{[1]})}{\max\{h_1,\epsilon\}} ,\rho)\ \textup{and}\ \theta_{[2]} \leftarrow \theta_{[2]} - \eta \cdot \clip(\nicefrac{ L'_2(\theta_{[2]})}{\max\{h_2,\epsilon\}},\rho)\,,\label{eqn:ours_update_toy}
+\end{align}
+where $\rho$ is a constant to control the worst-case update size, $\epsilon$ is a very small constant (e.g., 1e-12), which avoids dividing by 0. When the curvature of some dimension is rapidly changing or negative and thus the second-order information is misleading and possibly leads to a huge update before clipping, the clipping mechanism kicks in and the optimizer defaults to SignGD (even though this is sub-optimal for benign situations).
+Numerous prior methods such as trust region~\citep{conn2000trust}, backtracking line search~\citep{boyd2004convex}, and cubic regularization~\citep{nesterov2006cubic} also tackle the same issue of Newton's method, but the clipping mechanism is much simpler and more efficient. 
+
+As shown in the black curve in Fig.~\ref{fig:toy}, the update in equation~\eqref{eqn:ours_update_toy} starts off similarly to SignGD due to the clipping mechanism in the non-convex region, making descent opposed to converging to a local maximum. Then, in the convex valley, it converges to the global minimum with a few steps. Compared with SignGD and Adam, it makes much faster progress in the flat dimension $\theta_{[2]}$ (because the update is bigger in dimension $\theta_{[2]}$), while avoiding boucing in the sharp dimension $\theta_{[1]}$ (because the update is significantly shrunk in the sharp dimension $\theta_{[1]}$).
+
+
+
+
+\subsection{Sophia: \textit{S}econd-\textit{o}rder Cli\textit{p}ped Stoc\textit{h}astic Opt\textit{i}miz\textit{a}tion}\label{sec:sophia}
+
+
+Section~\ref{sec:motivation} demonstrates that Adam does not sufficiently adapt to the heterogeneous curvatures. On the other hand, vanilla Newton’s method has a pre-conditioner optimal for convex functions, but is vulnerable to negative curvature and rapid change of Hessian. With these insights, we design a new optimizer, \ours, which is more adaptive to heterogeneous curvatures than Adam, more resistant to non-convexity and rapid change of Hessian than Newton's method, and also uses a low-cost pre-conditioner. 
+
+
+
+We use $\theta_t$ to denote the parameter at time step $t$. At each step, we sample a mini-batch from the data distribution and calculate the mini-batch loss, denoted by $L_t(\theta_t)$. We denote by $g_t$ the gradient of $L_t(\theta_t)$, i.e. $g_t = \nabla L_t(\theta_t)$. Let $m_t$ be the EMA of gradients, $m_{t} \leftarrow \beta_{1} m_{t-1} + (1 - \beta_{1}) g_{t}$, which is the numerator of the update. 
+
+\textbf{EMA of diagonal Hessian estimates.} \ours~uses a diagonal Hessian-based pre-conditioner, which directly adjusts the update size of different parameter dimensions according to their curvatures. We will present two options in detail in Section~\ref{sec:hess_estimator} for estimating the diagonal Hessian efficiently. 
+To mitigate the overhead, we only estimate the Hessian every $k$ steps ($k=10$ in our implementation). At time step $t$ with $t \ \mathrm{mod} \ k = 1$, the estimator returns an estimate $\hat h_t$ of the diagonal of the Hessian of the mini-batch loss. 
+
+Similar to the gradient of the mini-batch loss function, the estimated diagonal Hessian can also have large noise. Inspired by the EMA of moments of gradients in Adam, we also denoise the diagonal Hessian estimates with EMA across iterations. We update the EMA every $k$ steps, resulting in the following update rule for the diagonal Hessian estimate:
+\begin{align}
+h_t = \beta_2 h_{t-k} + (1 - \beta_2) \hat{h}_{t} \ \textup{ if } t \ \mathrm{mod} \ k = 1 ; \textup{ else } h_t = h_{t-1}\,.
+\end{align}
+
+\textbf{Per-coordinate clipping.} As discussed in Section~\ref{sec:motivation}, on nonconvex functions, vanilla Newton's method, which uses Hessian as the pre-conditioner, may converge to local maxima instead of local minima. In addition, the inaccuracy of Hessian estimates and the change of Hessian along the trajectory can make the second-order information unreliable. To this end, we (1) only consider the positive entries of the diagonal Hessian and (2) introduce per-coordinate clipping to the update. For a clipping threshold $\rho > 0$, let the clipping function be $\clip(z,\rho) = \max\{\min\{z,\rho\},-\rho\}$ where all operations are applied coordinate-wise. The update rule is written as: 
+\begin{align}
+    \theta_{t+1} \leftarrow  \theta_{t} - \eta_t \cdot \clip(m_t / \max\{\gamma \cdot h_t,\epsilon\}, 1),
+\end{align}
+where $\epsilon > 0$ is a very small constant to avoid dividing by $0$. Note that $\eta_t \cdot \clip(m_t / \max\{\gamma \cdot h_t,\epsilon\}, 1) = \left(\eta_t/\gamma\right) \cdot \clip(m_t / \max\{h_t,\epsilon/\gamma\}, \gamma)$, and thus we essentially clip the original update $m_t/h_t$ by $\gamma$ coordinate-wise, and then re-adjust the final update size by a factor of $\gamma$. The re-adjustment makes the scale of the update less dependent on $\gamma$, because now $\gamma$ only controls the fraction of clipped entries but all clipped entries will eventually be set to $\eta_t$ in the udpate---e.g., when $\gamma$ is extremely small, all entries of $\left(\eta_t/\gamma\right) \cdot \clip(m_t / \max\{h_t,\epsilon/\gamma\}, \gamma)$ will be $\eta_t$. In practice, the choice of $\gamma$ should be tuned based on the the fraction of clipped entries (See Section~\ref{sec:exp_setup} for details). 
+We present the pseudo-code of the \ours~in Algorithm~\ref{alg:hess_opt}.
+
+When any entry of $h_t$ is negative, e.g., $h_t[i] < 0$, the corresponding entry in the pre-conditioned gradient $m_t[i]/\max\{\gamma \cdot h_t[i],\epsilon\} = m_t[i]/\epsilon$ is extremely large and has the same sign as $m_t[i]$, and thus $\eta\cdot \clip(m_t[i] / \max\{\gamma\cdot h_t[i],\epsilon\},1) = \eta\cdot \textup{sign}(m_t[i])$, which is the same as stochastic momentum SignSGD.
+In other words, Sophia uses stochastic momentum SignSGD as a backup when the Hessian is negative (or mistakenly estimated to be negative or very small.)  We also note that the clipping mechanism controls the worst-case size of the updates in all parameter dimensions to be at most $\rho$, which also improves the stability (which could be a severe issue for second-order methods). Moreover, because for many parameter dimensions, the clipping is not activated and the update is automatically adjusted, our worst-case update size $\eta\rho$ can be chosen to be larger than the worst update size $\eta$ in stochastic momentum SignSGD. 
+
+
+Several previous works~\citep{becker1988improving, chapelle2011improved,schaul2013no}, including the recent work AdaHessian~\citep{yao2021adahessian}, use diagonal Hessian as a pre-conditioner in optimizers for training neural networks. However, they use more frequent Hessian estimations, which leads to significant per-step computation overhead (more than two gradient computations), most likely because of the lack of the clipping mechanism that safeguards against inaccurate and changing Hessian. In general, to the best of our knowledge, there has not been previous reports that showed second-order optimizers achieve a speed-up on decoder-only large language models in wall-clock time or total compute (see more related work and discussions in Section~\ref{sec:rw}). 
+
+
+\subsection{Diagonal Hessian Estimators}\label{sec:hess_estimator}
+ We introduce two diagonal Hessian estimators, both of which have memory and run-time costs similar to computing a gradient (up to constant factors).  
+
+
+\textbf{Option 1: Hutchinson's unbiased estimator.} For any loss function $\ell(\theta)$ on parameters $\theta\in \R^d$,  the Hutchinson's estimator  ~\citep{hutchinson1989stochastic,roosta2015improved,yao2021adahessian} first draws $u\in \R^d$ from the spherical Gaussian distribution $\mathcal{N}(0,\mathrm{I}_d)$, and then outputs $\hat{h} = u \odot (\nabla^2 \ell(\theta) u)$, where $\odot$ denotes the element-wise product, and $\nabla^2 \ell(\theta) u$ is the product of the Hessian with the vector $u$. The Hutchinson's estimator is an unbiased estimator for the diagonal of the Hessian, because
+\begin{align}
+\mathbb{E}[\hat h] = \mathrm{diag}(\nabla^2 \ell(\theta))\,.
+\end{align}
+The estimator only requires a Hessian-vector product (i.e., $\nabla^2 \ell(\theta) u$), which have efficient implementations in PyTorch and JAX, instead of the full Hessian matrix. 
+
+\newcommand{\ce}{\ell_{\textup{ce}}}
+\textbf{Option 2: Gauss-Newton-Bartlett (GNB) estimator.} We leverage the structure of the loss to design a biased stochastic estimator for the diagonal Hessian, following~\citet{schraudolph2002fast,martens2020new,wei2020implicit}. Suppose $\ell(\theta, (x,y))$ is a loss function on an example $(x,y)$ of the form $\ell(\theta, (x,y)) = \ce(f(\theta,x), y)$ where $\ce$ is the cross-entropy loss and $f(\theta, x)\in \R^{V}$ is the logits, and $V$ is the number of items/classes in a multi-class classification problem (e.g., the vocabulary size in LLMs). First, the Hessian of $\ell(\theta, (x,y))$ (w.r.t to variable $\theta$) has the well-known Gauss-Newton decomposition~\citep{ortega2000iterative,schraudolph2002fast} (which is a simple consequence of the chain rule), 
+\begin{align}
+    \nabla_\theta^2~\ell(\theta) = J_\theta f(\theta,x) \cdot S \cdot  J_\theta f(\theta, x)^\top + J_{\theta\theta}f(\theta, x)[q] \label{eqn:GN}
+\end{align}
+where $J_\theta f(\theta,x)$ is the Jacobian of $f$ w.r.t to $\theta$ viewed as a matrix in $\R^{d\times V}$,  $S = \frac{\partial^2 \ce(t,y)}{\partial t^2}\Big\vert_{t=f(\theta, x)}\in \R^{V\times V}$ is the second-order derivatives of the loss w.r.t to the logits, $q = \frac{\partial \ce(t,y)}{\partial t}\Big\vert_{t=f(\theta, x)} \in \R^V$ is the first-order derivatives of the loss w.r.t to the logits, and $J_{\theta\theta}f(\theta,x)$ is the second-order derivatives of the multi-variate function $f(\theta, x)$ w.r.t $\theta$, viewed as a linear map from $\R^{V}$ to $\R^{d \times d}$, where $d$ is the dimension of the parameter $\theta$.
+
+In the context of neural networks, past works have found that the second term $J_{\theta\theta}f(\theta, x)[q]$ in \Cref{eqn:GN} is often relative smaller than the first term $J_\theta f(\theta,x) \cdot S \cdot  J_\theta f(\theta, x)^\top$~\citep{sankar2021deeper}, which is often referred to as the Gauss-Newton matrix~\citep{dennis1996numerical,ortega2000iterative,schraudolph2002fast,chen2011hessian} and used as pre-conditioners in second-order optimizers~\citep{botev2017practical,martens2020new,gargiani2020promise}. 
+Following this line of work, we build an unbiased estimator for \textit{the diagonal} of the Gauss-Newton matrix, which is a biased estimator for the diagonal of the Hessian. 
+
+We first claim that $S$ only depends $f(\theta, x)$ but not $y$, even though the loss depends on $y$.\footnote{Denote by $p(\theta,x)=\textup{softmax}(f(\theta,x))\in \R^V$ the probability vector obtained by applying softmax on the logits. Indeed, a simple derivation shows that $S = \textup{diagonal}(p(\theta,x)) - p(\theta,x)p(\theta,x)^\top$, where $\textup{diagonal}(p(\theta,x))$ is the matrix with the vector $p(\theta,x)$ residing on the diagonal. In fact, this is a general property of exponential families---the Hessian of the negative log-likelihood of any exponential family distribution only depends on the parameters of that exponential family, but not on the example on which the likelihood is evaluated.} 
+Thus, $S = \frac{\partial^2 \ce(t,\hat{y})}{\partial t^2}\Big\vert_{t=f(\theta, x)}$ for any $\hat{y} \in \{1,\dots, V\}$, which implies that
+$S = \mathbb{E}_{\hat{y}\sim p(\theta,x)}\left[\frac{\partial^2 \ce(t,\hat{y})}{\partial t^2}\Big\vert_{t=f(\theta, x)}\right].$ Because $\ce(t,y)$ is the negative log-probability of the probabilistic model defined by the categorical distribution $\Cat(t)$ with parameter $t$, by Bartlett's second identity~\citep{bartlett1953approximate}, we have that, 
+\begin{align}
+S = \mathop{\mathbb{E}}_{\hat{y}\sim \Cat(t)}\left[\frac{\partial^2 \ce(t,\hat{y})}{\partial t^2}\right] = \mathop{\mathbb{E}}_{\hat{y}\sim \Cat(t)}\left[\frac{\partial \ce(t,\hat{y})}{\partial t}\frac{\partial \ce(t,\hat{y})}{\partial t}^\top\right]\,,
+\end{align}
+where the first equality holds for $t = f(\theta,x)$ and the second equality holds for all $t$ by Bartlett's second identity.
+Therefore, the Gauss-Newton matrix satisfies 
+
+
+\begin{align}
+    J_\theta f(\theta,x) \cdot S \cdot  J_\theta f(\theta, x)^\top & =  \mathop{\mathbb{E}}_{\hat{y}\sim \Cat(t)}\left[J_\theta f(\theta,x) \frac{\partial \ce(t,\hat{y})}{\partial t}\frac{\partial \ce(t,\hat{y})}{\partial t}^\top J_\theta f(\theta, x)^\top\right]   \nonumber\\
+    & = \mathop{\mathbb{E}}_{\hat{y}\sim \Cat(t)}\left[
+        \nabla_\theta \ce(f(\theta,x),\hat{y})   \nabla_\theta \ce(f(\theta,x),\hat{y})^\top 
+    \right], \label{eqn:24}
+\end{align}
+which implies that $\textup{diag}(J_\theta f(\theta,x) \cdot S \cdot  J_\theta f(\theta, x)^\top) = \mathop{\mathbb{E}}_{\hat{y}\sim \Cat(t)}\left[
+        \nabla_\theta \ce(f(\theta,x),\hat{y}) \odot  \nabla_\theta \ce(f(\theta,x),\hat{y})
+    \right]$. Hence, the quantity $\ce(f(\theta,x),\hat{y}) \odot  \nabla_\theta \ce(f(\theta,x),\hat{y})$ is an unbiased estimator of the Gauss-Newton matrix for the Hessian of a one-example loss $\ell(f(\theta,x),y)$. 
+
+\textit{Mini-batch version.} Given a mini-batch of inputs $\{(x_b, y_b)\}_{b=1}^B$. The most natural way to build an estimator for the diagonal of the Gauss-Newton matrix for the Hessian of the mini-batch loss is using 
+\begin{align}
+\frac{1}{B}\sum_{b=1}^B \nabla \ce(f(\theta,x_b),\hat{y}_b) \odot  \nabla_\theta \ce(f(\theta,x_b),\hat{y}_b)\,, \label{eqn:23}
+\end{align}
+where $\hat{y}_b$'s are labels sampled from the model on inputs $x_b$'s respectively. However, as noted by~\citet{grosse2022neural}, implementing this estimator is inconvenient under the current auto-differentiation frameworks, where the users only have access to the average gradient over a mini-batch (as opposed to the individual ones). Fortunately, by the Bartlett's first identity~\citep{bartlett1953approximate} (which generally holds for the negative log-likelihood loss of any probabilistic model), we have:
+\begin{align}
+\forall b, ~~\mathbb{E}_{\hat{y}_b}\nabla \ce(f(\theta,x_b),\hat{y}_b) = 0\,.
+\end{align}
+Let $\widehat L(\theta) = \frac{1}{B}\sum_{b=1}^B \ce(f(\theta, x_b), \hat{y}_b)$ be the mini-batch loss on the \textit{sampled} labels (as opposed to the original labels). 
+Observing that $\hat{y}_b$'s are independent with each other, we have
+\begin{align}
+\mathbb{E}_{\hat{y}_b's} \left[B \cdot \nabla_\theta \widehat L(\theta) \odot \nabla_\theta \widehat L(\theta)\right] & = 
+\mathbb{E}_{\hat{y}_b's} \left[\frac{1}{B} \sum_{b=1}^B \nabla \ce(f(\theta,x_b),\hat{y}_b) \odot \sum_{b=1}^B \nabla \ce(f(\theta,x_b),\hat{y}_b)\right] \nonumber \\
+& = \mathbb{E}_{\hat{y}_b's} \left[\frac{1}{B} \sum_{b=1}^B \nabla \ce(f(\theta,x_b),\hat{y}_b) \odot \nabla \ce(f(\theta,x_b),\hat{y}_b)\right]\,.\label{eqn:20}
+\end{align}
+Note that the RHS of \Cref{eqn:20} is the same as the expectation of \Cref{eqn:23}, which, by \Cref{eqn:24}, also equals to the diagonal of the Gauss-Newton matrix for the mini-batch loss.
+Hence, we use $B \cdot \nabla_\theta \widehat L(\theta) \odot \nabla_\theta \widehat L(\theta)$ as the estimator.
+
+\textit{GNB estimator for exponential family.} If $y$ is drawn from an exponential family $p(y;\eta)$ where the natural parameter $\eta$ is set to be $f(\theta, x)$ and the loss function $\ell(f(\theta, x), y)$ is the negative log-likelihood loss for the corresponding probabilistic distribution, then all the derivations above still follow because (1) $S$ still only depends on $f(\theta, x)$ but not $y$, and (2) both the first and second Bartlett's identities still hold. 
+
+\textit{GNB estimator for squared loss.} When $y, f(\theta,x)\in \R$ and $\ell(f(\theta, x), y)= \frac{1}{2}(f(\theta,x)-y)^2$, the $S$ matrix is identity, and thus one can simply use 
+$J_\theta f(\theta, x) J_\theta f(\theta,x)^\top$ as the estimator.\footnote{One can verify that the GNB estimator gives the same quantity in expectation if we use a probabilistic model $y \sim \mathcal{N}(f(\theta, x), \sigma^2)$ and go through the derivation of the GNB estimator.}
+
+
+
+
+To the best of our knowledge, ~\cite{wei2020implicit} is the first paper that uses this estimator of Gauss-Newton matrix. Given the use Bartlett's first and second identities that are central to the estimator, we call it Gauss-Newton-Bartlett (GNB) estimator. 
+
+
+
+\textbf{Comparisons of Hessian estimators.}
+The Hutchinson's estimator does not assume any structure of the loss, but requires a Hessian-vector product. The GNB estimator only estimates the Gauss-Newton term but always gives a positive semi-definite (non-negative) diagonal Hessian estimate. The PSDness ensures that the pre-conditioned update is always a descent direction~\citep{dennis1996numerical}. The GNB estimator can also be easily extended to the negative log-likelihood loss of any exponential family distribution, and be adapted to estimating the trace of the Gauss-Newton matrix as in~\citet{wei2020implicit} or efficiently implementing the product of Gauss-Newton matrix with a vector. The authors suspect the GNB estimator has a smaller variance than the Hutchinson's estimator, but more empirical and theoretical investigation are needed to support the hypothesis.  

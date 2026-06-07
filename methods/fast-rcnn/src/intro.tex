@@ -1,0 +1,79 @@
+\section{Introduction}
+
+Recently, deep ConvNets \cite{krizhevsky2012imagenet,lecun89e} have significantly improved image classification \cite{krizhevsky2012imagenet} and object detection \cite{girshick2014rcnn,overfeat} accuracy.
+Compared to image classification, object detection is a more challenging task that requires more complex methods to solve.
+Due to this complexity, current approaches (\eg, \cite{girshick2014rcnn,he2014spp,overfeat,Zhu2015segDeepM}) train models in multi-stage pipelines that are slow and inelegant.
+
+Complexity arises because detection requires the accurate localization of objects, creating two primary challenges.
+First, numerous candidate object locations (often called ``proposals'') must be processed.
+Second, these candidates provide only rough localization that must be refined to achieve precise localization.
+Solutions to these problems often compromise speed, accuracy, or simplicity.
+%In order to make ConvNet-based detection efficient, convolutional features are shared between candidates \cite{he2014spp,overfeat,lecun94}.
+%Candidate location refinement is often implemented as a post-hoc regression of true object bounds given noisy candidates \cite{girshick2014rcnn,overfeat}.
+%While \cite{he2014spp} shares features, the convolutional layers of the network remain fixed during training, which limits accuracy.
+%For refinement, previous processes \cite{girshick2014rcnn,overfeat} use a separate learning stage, increasing training complexity.
+
+In this paper, we streamline the training process for state-of-the-art ConvNet-based object detectors \cite{girshick2014rcnn,he2014spp}.
+We propose a single-stage training algorithm that jointly learns to classify object proposals and refine their spatial locations.
+%Our method for sharing convolutional features during training allows for the full back-propagation of errors through the network, leading to increased accuracy relative to previous approaches \cite{he2014spp}.
+%Several improvements are also made to increase runtime efficiency, such as the use of truncated SVD, which is particularly effective for object detection.
+
+The resulting method can train a very deep detection network (\vggsixteen \cite{simonyan2015verydeep}) 9\X faster than R-CNN \cite{girshick2014rcnn} and 3\X faster than SPPnet \cite{he2014spp}.
+At runtime, the detection network processes images in 0.3s (excluding object proposal time) while achieving top accuracy on PASCAL VOC 2012 \cite{Pascal-IJCV} with a mAP of 66\% (vs. 62\% for R-CNN).\footnote{All timings use one Nvidia K40 GPU overclocked to 875 MHz.}
+
+%In this paper, we make R-CNN \cite{girshick2014rcnn} \emph{clean and fast}.
+%We unify training with a multi-task loss, removing unnecessary steps (separate SVM and bounding-box regression training).
+%Our training algorithm updates \emph{all} network layers unlike previous R-CNN acceleration methods (SPPnet \cite{he2014spp}).
+%Our system trains \vggsixteen \cite{simonyan2015verydeep} for PASCAL VOC \cite{PASCAL-ijcv} detection in 9.5 hours (9x faster than R-CNN), processes images in 0.22s ($>$200x faster than R-CNN), and achieves higher mAP than R-CNN (66\% vs. 62\% mAP on VOC12 test).
+
+\subsection{R-CNN and SPPnet}
+The Region-based Convolutional Network method (R-CNN) \cite{girshick2014rcnn} achieves excellent object detection accuracy by using a deep ConvNet to classify object proposals.
+R-CNN, however, has notable drawbacks:
+\begin{enumerate}
+\itemsep0em
+\item {\bf Training is a multi-stage pipeline.}
+R-CNN first fine-tunes a ConvNet on object proposals using log loss.
+Then, it fits SVMs to ConvNet features.
+These SVMs act as object detectors, replacing the softmax classifier learnt by fine-tuning.
+In the third training stage, bounding-box regressors are learned.
+\item {\bf Training is expensive in space and time.}
+For SVM and bounding-box regressor training, features are extracted from each object proposal in each image and written to disk.
+With very deep networks, such as \vggsixteen, this process takes 2.5 GPU-days for the 5k images of the VOC07 trainval set.
+These features require hundreds of gigabytes of storage.
+%These features are cached to disk for later use in SVM and regressor training.
+%The cached features occupy hundreds of gigabytes and training can suffer from high IO latency when using network disks.
+\item {\bf Object detection is slow.}
+At test-time, features are extracted from each object proposal in each test image.
+Detection with \vggsixteen takes 47s / image (on a GPU).
+%(K40 GPU, excludes object proposal time).
+\end{enumerate}
+
+R-CNN is slow because it performs a ConvNet forward pass for each object proposal, without sharing computation.
+Spatial pyramid pooling networks (SPPnets) \cite{he2014spp} were proposed to speed up R-CNN by sharing computation.
+%In the SPPnet method, computation is reorganized so that all object proposals share a significant portion of the overall computation.
+The SPPnet method computes a convolutional feature map for the entire input image and then classifies each object proposal using a feature vector extracted from the shared feature map.
+Features are extracted for a proposal by max-pooling the portion of the feature map inside the proposal into a fixed-size output (\eg, $6 \times 6$).
+Multiple output sizes are pooled and then concatenated as in spatial pyramid pooling \cite{Lazebnik2006}.
+SPPnet accelerates R-CNN by 10 to 100\X at test time.
+Training time is also reduced by 3\X due to faster proposal feature extraction.
+
+SPPnet also has notable drawbacks.
+Like R-CNN, training is a multi-stage pipeline that involves extracting features, fine-tuning a network with log loss, training SVMs, and finally fitting bounding-box regressors.
+Features are also written to disk.
+%since they are used twice, once for training SVMs and again for training bounding-box regression.
+But unlike R-CNN, the fine-tuning algorithm proposed in \cite{he2014spp} cannot update the convolutional layers that precede the spatial pyramid pooling.
+Unsurprisingly, this limitation (fixed convolutional layers) limits the accuracy of very deep networks.
+
+\subsection{Contributions}
+We propose a new training algorithm that fixes the disadvantages of R-CNN and SPPnet, while improving on their speed and accuracy.
+We call this method \emph{Fast R-CNN} because it's comparatively fast to train and test.
+The Fast R-CNN method has several advantages:
+\begin{enumerate}
+  \itemsep0em
+  \item Higher detection quality (mAP) than R-CNN, SPPnet
+  \item Training is single-stage, using a multi-task loss
+  \item Training can update all network layers
+  \item No disk storage is required for feature caching
+\end{enumerate}
+
+Fast R-CNN is written in Python and C++ (Caffe \cite{jia2014caffe}) and is available under the open-source MIT License at \url{https://github.com/rbgirshick/fast-rcnn}.

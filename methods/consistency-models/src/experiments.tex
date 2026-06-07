@@ -1,0 +1,280 @@
+\section{Experiments}\label{sec:experiments}
+We employ consistency distillation and consistency training to learn consistency models on real image datasets, including CIFAR-10 \cite{krizhevsky2009learning}, ImageNet $64\times 64$ \cite{deng2009imagenet}, LSUN Bedroom $256\times 256$, and LSUN Cat $256\times 256$ \cite{yu2015lsun}. Results are compared according to Fr\'echet Inception Distance (FID, \citet{heusel2017gans}, lower is better), Inception Score (IS, \citet{salimans2016improved}, higher is better), Precision (Prec., \citet{kynkaanniemi2019improved}, higher is better), and Recall (Rec., \citet{kynkaanniemi2019improved}, higher is better). Additional experimental details are provided in \cref{app:exp}.
+
+\begin{figure*}
+    \centering
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/cd_vs_norms.jpg}
+        \caption{Metric functions in CD.}\label{fig:cd_compare}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/solver_and_n.jpg}
+        \caption{Solvers and $N$ in CD.}\label{fig:cd_solver}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/varying_n.jpg}
+        \caption{$N$ with Heun solver in CD.}\label{fig:cd_n}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/ct_fixed_vs_adaptive.jpg}
+        \caption{Adaptive $N$ and $\mu$ in CT.}\label{fig:ct_adaptive}
+    \end{subfigure}
+    \caption{Various factors that affect consistency distillation (CD) and consistency training (CT) on CIFAR-10. The best configuration for CD is LPIPS, Heun ODE solver, and $N=18$. Our adaptive schedule functions for $N$ and $\mu$ make CT converge significantly faster than fixing them to be constants during the course of optimization.}
+    \label{fig:cd_ablation}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/dtcd_cifar10.jpg}
+        \caption{CIFAR-10}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/dtcd_imagenet.jpg}
+        \caption{ImageNet $64\times 64$}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/dtcd_bedroom.jpg}
+        \caption{Bedroom $256\times 256$}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.25\textwidth}
+        \includegraphics[width=\textwidth]{figures/dtcd_cat.jpg}
+        \caption{Cat $256\times 256$}
+    \end{subfigure}
+    \caption{Multistep image generation with consistency distillation (CD). CD outperforms progressive distillation (PD) across all datasets and sampling steps. The only exception is single-step generation on Bedroom $256\times 256$.}
+    \label{fig:iterative_sampling}
+\end{figure*}
+
+
+\subsection{Training Consistency Models}
+We perform a series of experiments on CIFAR-10 to understand the effect of various hyperparameters on the performance of consistency models trained by consistency distillation (CD) and consistency training (CT). We first focus on the effect of the metric function $d(\cdot, \cdot)$, the ODE solver, and the number of discretization steps $N$ in CD, then investigate the effect of the schedule functions $N(\cdot)$ and $\mu(\cdot)$ in CT.
+
+To set up our experiments for CD, we consider the squared $\ell_2$ distance $d(\rvx, \rvy) = \|\rvx - \rvy\|^2_2$, $\ell_1$ distance $d(\rvx, \rvy) = \|\rvx-\rvy\|_1$, and the Learned Perceptual Image Patch Similarity (LPIPS, \citet{zhang2018perceptual}) as the metric function. For the ODE solver, we compare Euler's forward method and Heun's second order method as detailed in \citet{karras2022edm}. For the number of discretization steps $N$, we compare $N \in \{9, 12, 18, 36, 50, 60, 80, 120\}$. All consistency models trained by CD in our experiments are initialized with the corresponding pre-trained diffusion models, whereas models trained by CT are randomly initialized.
+
+As visualized in \cref{fig:cd_compare}, the optimal metric for CD is LPIPS, which outperforms both $\ell_1$ and $\ell_2$ by a large margin over all training iterations. This is expected as the outputs of consistency models are images on CIFAR-10, and LPIPS is specifically designed for measuring the similarity between natural images. Next, we investigate which ODE solver and which discretization step $N$ work the best for CD. As shown in \cref{fig:cd_solver,fig:cd_n}, Heun ODE solver and $N=18$ are the best choices. Both are in line with the recommendation of \citet{karras2022edm} despite the fact that we are training consistency models, not diffusion models. Moreover, \cref{fig:cd_solver} shows that with the same $N$, Heun's second order solver uniformly outperforms Euler's first order solver. This corroborates with \cref{thm:convergence}, which states that the optimal consistency models trained by higher order ODE solvers have smaller estimation errors with the same $N$. The results of \cref{fig:cd_n} also indicate that once $N$ is sufficiently large, the performance of CD becomes insensitive to $N$. Given these insights, we hereafter use LPIPS and Heun ODE solver for CD unless otherwise stated. For $N$ in CD, we follow the suggestions in \citet{karras2022edm} on CIFAR-10 and ImageNet $64\times 64$. We tune $N$ separately on other datasets (details in \cref{app:exp}).
+
+Due to the strong connection between CD and CT, we adopt LPIPS for our CT experiments throughout this paper. Unlike CD, there is no need for using Heun's second order solver in CT as the loss function does not rely on any particular numerical ODE solver. As demonstrated in \cref{fig:ct_adaptive}, the convergence of CT is highly sensitive to $N$---smaller $N$ leads to faster convergence but worse samples, whereas larger $N$ leads to slower convergence but better samples upon convergence. This matches our analysis in \cref{sec:generation}, and motivates our practical choice of progressively growing $N$ and $\mu$ for CT to balance the trade-off between convergence speed and sample quality. As shown in \cref{fig:ct_adaptive}, adaptive schedules of $N$ and $\mu$ significantly improve the convergence speed and sample quality of CT. In our experiments, we tune the schedules $N(\cdot)$ and $\mu(\cdot)$ separately for images of different resolutions, with more details in \cref{app:exp}.
+
+\begin{table*}
+    \begin{minipage}[t]{0.49\linewidth}
+	\caption{Sample quality on CIFAR-10. $^\ast$Methods that require synthetic data construction for distillation.}\label{tab:results}
+	\centering
+	{\setlength{\extrarowheight}{1.5pt}
+	\begin{adjustbox}{max width=\linewidth}
+	\begin{tabular}{lccc}
+        \Xhline{3\arrayrulewidth}
+	    METHOD & NFE ($\downarrow$) & FID ($\downarrow$) & IS ($\uparrow$) \\
+        \\[-2ex]
+        \multicolumn{4}{l}{\textbf{Diffusion + Samplers}}\\\Xhline{3\arrayrulewidth}
+        DDIM \cite{song2020denoising}
+        & 50 & 4.67\\
+        DDIM \cite{song2020denoising}
+        & 20 & 6.84\\
+        DDIM \cite{song2020denoising}
+        & 10 & 8.23\\
+        DPM-solver-2 \cite{lu2022dpm}
+        & 10 & 5.94\\
+        DPM-solver-fast \cite{lu2022dpm}
+        & 10 & 4.70 \\
+        3-DEIS \cite{zhang2022fast}
+        & 10 & \textbf{4.17}\\
+        \\[-2ex]
+        \multicolumn{4}{l}{\textbf{Diffusion + Distillation}}\\\Xhline{3\arrayrulewidth}
+        Knowledge Distillation$^\ast$ \cite{luhman2021knowledge}
+         & 1 & 9.36 &  \\
+        DFNO$^\ast$ \cite{zheng2022fast}
+        & 1 & 4.12 & \\
+        1-Rectified Flow (+distill)$^\ast$ \cite{liu2022flow}
+         & 1 & 6.18 & 9.08\\
+        2-Rectified Flow (+distill)$^\ast$ \cite{liu2022flow}
+         & 1 & 4.85 & 9.01\\
+        3-Rectified Flow (+distill)$^\ast$ \cite{liu2022flow}
+         & 1 & 5.21 & 8.79\\
+        PD \cite{salimans2022progressive} & 1 & 8.34 & 8.69 \\
+        \textbf{CD} & 1 & \textbf{3.55} & \textbf{9.48} \\
+        \hline
+        PD \cite{salimans2022progressive}  & 2 & 5.58 & 9.05 \\
+        \textbf{CD}  & 2 & \textbf{2.93} & \textbf{9.75} \\
+        \\[-3ex]
+        \multicolumn{4}{l}{\textbf{Direct Generation}}\\\Xhline{3\arrayrulewidth}
+        BigGAN \cite{brock2018large} & 1 & 14.7 & 9.22\\
+         Diffusion GAN \cite{xiao2022tackling} & 1 & 14.6 & 8.93\\
+         AutoGAN \cite{gong2019autogan} & 1 & 12.4 & 8.55\\
+         E2GAN \cite{tian2020off} & 1 & 11.3 & 8.51\\
+        ViTGAN \cite{lee2021vitgan}
+         & 1 & 6.66 & 9.30 \\
+         TransGAN \cite{jiang2021transgan} & 1 & 9.26 & 9.05 \\
+        StyleGAN2-ADA \cite{karras2020analyzing}
+         & 1 & 2.92 & \textbf{9.83}\\
+        StyleGAN-XL \cite{sauer2022stylegan} & 1 & \textbf{1.85} & \\
+        \hline
+        Score SDE \cite{song2021scorebased} & 2000 & 2.20 & \textbf{9.89}\\
+        DDPM \cite{ho2020denoising} & 1000 & 3.17 & 9.46\\
+        LSGM \cite{vahdat2021score} & 147 & 2.10 & \\
+        PFGM \cite{xu2022poisson} & 110 & 2.35 & 9.68\\
+        EDM \cite{karras2022edm}
+         & 35 & \textbf{2.04} & 9.84 \\
+         \hline
+        1-Rectified Flow \cite{liu2022flow}
+         & 1 & 378 & 1.13\\
+        Glow \cite{kingma2018glow}
+         & 1 & 48.9 & 3.92 \\
+        Residual Flow \cite{chen2019residual} & 1 & 46.4\\
+        GLFlow \cite{xiao2019generative} & 1 & 44.6 & \\
+        DenseFlow \cite{grcic2021densely} & 1 & 34.9 & \\
+        DC-VAE \cite{parmar2021dual} & 1 & 17.9 & 8.20 \\
+        \textbf{CT} & 1 & \textbf{8.70} & \textbf{8.49} \\
+        \hline
+        \textbf{CT}  & 2 & \textbf{5.83} & \textbf{8.85} \\
+	\end{tabular}
+    \end{adjustbox}
+	}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.49\linewidth}
+	\caption{Sample quality on ImageNet $64\times 64$, and LSUN Bedroom \& Cat $256\times 256$. $^\dagger$Distillation techniques. }\label{tab:results2}
+	\centering
+	{\setlength{\extrarowheight}{1.5pt}
+	\begin{adjustbox}{max width=\linewidth}
+	\begin{tabular}{lcccc}
+	    \Xhline{3\arrayrulewidth}
+        METHOD & NFE ($\downarrow$) & FID ($\downarrow$) & Prec. ($\uparrow$) & Rec. ($\uparrow$) \\
+        \\[-2ex]
+        \multicolumn{5}{l}{\textbf{ImageNet $\bm{64\times 64}$}}\\
+        \Xhline{3\arrayrulewidth}
+        PD$^\dagger$ \cite{salimans2022progressive} & 1 & 15.39 & 0.59 & 0.62\\
+        DFNO$^{\dagger}$ \cite{zheng2022fast} & 1 & 8.35 & & \\
+        \textbf{CD}$^\dagger$ & 1 & 6.20 & 0.68 & 0.63\\
+        PD$^\dagger$ \cite{salimans2022progressive} & 2 & 8.95  & 0.63 & \textbf{0.65}\\
+        \textbf{CD}$^\dagger$ & 2 & \textbf{4.70} & \textbf{0.69} & 0.64\\
+        \hline
+        ADM
+        \cite{dhariwal2021diffusion}
+        & 250 & \textbf{2.07} & 0.74 & 0.63 \\
+        EDM
+        \cite{karras2022edm}
+        & 79 & 2.44 & 0.71 & \textbf{0.67} \\
+        BigGAN-deep
+        \cite{brock2018large}
+        & 1 & 4.06 & \textbf{0.79} & 0.48 \\
+        \textbf{CT} & 1 & 13.0 & 0.71 & 0.47\\
+        \textbf{CT} & 2 & 11.1 & 0.69 & 0.56\\
+        \\[-2ex]
+        \multicolumn{5}{l}{\textbf{LSUN Bedroom $\bm{256\times 256}$}}\\
+        \Xhline{3\arrayrulewidth}
+        PD$^\dagger$ \cite{salimans2022progressive} & 1 & 16.92 & 0.47 & 0.27\\
+        PD$^\dagger$ \cite{salimans2022progressive} & 2 & 8.47 & 0.56 & \textbf{0.39} \\
+        \textbf{CD}$^\dagger$ & 1 & 7.80 & 0.66 & 0.34\\
+        \textbf{CD}$^\dagger$ & 2 & \textbf{5.22} & \textbf{0.68} & \textbf{0.39}\\
+        \hline
+        DDPM
+        \cite{ho2020denoising}
+        & 1000 & 4.89 & 0.60 & 0.45\\
+        ADM
+        \cite{dhariwal2021diffusion}
+        & 1000 & \textbf{1.90} & 0.66 &\textbf{0.51} \\
+        EDM
+        \cite{karras2022edm}
+        & 79 & 3.57 & 0.66 & 0.45 \\
+        PGGAN \cite{karras2018progressive} & 1 & 8.34 & &  \\
+        PG-SWGAN \cite{wu2019sliced} & 1 & 8.0 & &  \\
+        TDPM (GAN) \cite{zheng2023truncated} & 1 & 5.24 & & \\
+        StyleGAN2 \cite{karras2020analyzing} & 1 & 2.35 & 0.59 & 0.48 \\
+        \textbf{CT} & 1 & 16.0 & 0.60 & 0.17\\
+        \textbf{CT} & 2 & 7.85 & \textbf{0.68} & 0.33\\
+        \\[-2ex]
+        \multicolumn{5}{l}{\textbf{LSUN Cat $\bm{256\times 256}$}}\\
+        \Xhline{3\arrayrulewidth}
+        PD$^\dagger$ \cite{salimans2022progressive} & 1 & 29.6 & 0.51 & 0.25 \\
+        PD$^\dagger$ \cite{salimans2022progressive} & 2 & 15.5 & 0.59 & 0.36 \\
+        \textbf{CD}$^\dagger$ & 1 & 11.0 & 0.65 & 0.36 \\
+        \textbf{CD}$^\dagger$ & 2 & \textbf{8.84} & \textbf{0.66} & \textbf{0.40} \\
+        \hline
+        DDPM
+        \cite{ho2020denoising}
+        & 1000 & 17.1 & 0.53 & 0.48 \\
+        ADM
+        \cite{dhariwal2021diffusion}
+        & 1000 & \textbf{5.57} & 0.63 & \textbf{0.52} \\
+        EDM
+        \cite{karras2022edm}
+        & 79 & 6.69 & \textbf{0.70} & 0.43 \\
+        PGGAN \cite{karras2018progressive} & 1 & 37.5 & & \\
+        StyleGAN2 \cite{karras2020analyzing} & 1 & 7.25 & 0.58 & 0.43\\
+        \textbf{CT} & 1 & 20.7 & 0.56 & 0.23 \\
+        \textbf{CT} & 2 & 11.7 & 0.63 & 0.36
+	\end{tabular}
+    \end{adjustbox}
+    }
+\end{minipage}
+\end{table*}
+
+\subsection{Few-Step Image Generation}
+\textbf{Distillation}~ In current literature, the most directly comparable approach to our consistency distillation (CD) is progressive distillation (PD, \citet{salimans2022progressive}); both are thus far the only distillation approaches that \emph{do not construct synthetic data before distillation}. In stark contrast, other distillation techniques, such as knowledge distillation \cite{luhman2021knowledge} and DFNO \cite{zheng2022fast}, have to prepare a large synthetic dataset by generating numerous samples from the diffusion model with expensive numerical ODE/SDE solvers. We perform comprehensive comparison for PD and CD on CIFAR-10, ImageNet $64\times 64$, and LSUN $256\times 256$, with all results reported in \cref{fig:iterative_sampling}. All methods distill from an EDM \cite{karras2022edm} model that we pre-trained in-house. We note that across all sampling iterations, \emph{using the LPIPS metric uniformly improves PD compared to the squared $\ell_2$ distance in the original paper of \citet{salimans2022progressive}}. Both PD and CD improve as we take more sampling steps. We find that CD uniformly outperforms PD across all datasets, sampling steps, and metric functions considered, except for single-step generation on Bedroom $256\times 256$, where CD with $\ell_2$ slightly underperforms PD with $\ell_2$. As shown in \cref{tab:results}, CD even outperforms distillation approaches that require synthetic dataset construction, such as Knowledge Distillation \cite{luhman2021knowledge} and DFNO \cite{zheng2022fast}.
+
+\begin{figure*}
+    \centering
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet_edm_lite.png}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_edm_lite.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_edm_lite.jpg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet_gen_1_lite.png}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_gen_1_lite.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_gen_1_lite.jpg}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/imagenet_gen_2_lite.png}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/bedroom_gen_2_lite.jpg}
+    \end{subfigure}\hfill
+    \begin{subfigure}[b]{0.33\textwidth}
+        \includegraphics[width=\textwidth]{figures/cat_gen_2_lite.jpg}
+    \end{subfigure}
+    \caption{Samples generated by EDM (\emph{top}), CT + single-step generation (\emph{middle}), and CT + 2-step generation (\emph{Bottom}). All corresponding images are generated from the same initial noise.}
+    \label{fig:samples}
+\end{figure*}
+
+
+\begin{figure*}
+    \centering
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=0.11\textwidth]{figures/bedroom_gray_lite_2.jpg}\hfill
+        \includegraphics[width=0.77\textwidth]{figures/bedroom_colorization_lite_2.jpg}\hfill
+        \includegraphics[width=0.11\textwidth]{figures/bedroom_gt_lite_2.jpg}
+        \caption{\emph{Left}: The gray-scale image. \emph{Middle}: Colorized images. \emph{Right}: The ground-truth image.}
+        \label{fig:bedroom_colorization_lite}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=0.11\textwidth]{figures/bedroom_subsampled_lite.jpg}\hfill
+        \includegraphics[width=0.77\textwidth]{figures/bedroom_superres_lite.jpg}\hfill
+        \includegraphics[width=0.11\textwidth]{figures/bedroom_superres_gt_lite.jpg}
+        \caption{\emph{Left}: The downsampled image ($32\times 32$). \emph{Middle}: Full resolution images ($256\times 256$). \emph{Right}: The ground-truth image ($256\times 256$).}
+        \label{fig:bedroom_superres_lite}
+    \end{subfigure}
+    \begin{subfigure}[b]{\textwidth}
+        \includegraphics[width=0.1105\textwidth]{figures/bedroom_sdedit_stroke_lite.jpg}\hfill
+        \includegraphics[width=0.884\textwidth]{figures/bedroom_sdedit_lite.jpg}
+        \caption{\emph{Left}: A stroke input provided by users. \emph{Right}: Stroke-guided image generation.}
+        \label{fig:bedroom_sdedit_lite}
+    \end{subfigure}
+    \caption{Zero-shot image editing with a consistency model trained by consistency distillation on LSUN Bedroom $256\times 256$.}
+\end{figure*}
+
+
+\textbf{Direct Generation}~ In \cref{tab:results,tab:results2}, we compare the sample quality of consistency training (CT) with other generative models using one-step and two-step generation. We also include PD and CD results for reference. Both tables report PD results obtained from the $\ell_2$ metric function, as this is the default setting used in the original paper of \citet{salimans2022progressive}. For fair comparison, we ensure PD and CD distill the same EDM models. In \cref{tab:results,tab:results2}, we observe that CT outperforms existing single-step, non-adversarial generative models, \ie, VAEs and normalizing flows, by a significant margin on CIFAR-10.
+Moreover, \emph{CT achieves comparable quality to one-step samples from PD without relying on distillation}. In \cref{fig:samples}, we provide EDM samples (top), single-step CT samples (middle), and two-step CT samples (bottom). In \cref{app:samples}, we show additional samples for both CD and CT in \cref{fig:cifar10_full_cd,fig:imagenet64_full_cd,fig:bedroom_full_cd,fig:cat_full_cd,fig:cifar10_full,fig:imagenet64_full,fig:bedroom_full,fig:cat_full}. Importantly, \emph{all samples obtained from the same initial noise vector share significant structural similarity}, even though CT and EDM models are trained independently from one another. This indicates that CT is less likely to suffer from mode collapse, as EDMs do not.
+
+
+\subsection{Zero-Shot Image Editing}\label{sec:zeroshot}
+Similar to diffusion models, consistency models allow zero-shot image editing by modifying the multistep sampling process in \cref{alg:sampling}. We demonstrate this capability with a consistency model trained on the LSUN bedroom dataset using consistency distillation. In \cref{fig:bedroom_colorization_lite}, we show such a consistency model can colorize gray-scale bedroom images at test time, even though it has never been trained on colorization tasks. In \cref{fig:bedroom_superres_lite}, we show the same consistency model can generate high-resolution images from low-resolution inputs. In \cref{fig:bedroom_sdedit_lite}, we additionally demonstrate that it can generate images based on stroke inputs created by humans, as in SDEdit for diffusion models \cite{meng2021sdedit}. Again, this editing capability is zero-shot, as the model has not been trained on stroke inputs. In \cref{app:editing}, we additionally demonstrate the zero-shot capability of consistency models on inpainting (\cref{fig:bedroom_inpainting}), interpolation (\cref{fig:bedroom_interp}) and denoising (\cref{fig:bedroom_denoising}), with more examples on colorization (\cref{fig:bedroom_colorization}), super-resolution (\cref{fig:bedroom_superres}) and stroke-guided image generation (\cref{fig:bedroom_sdedit}).

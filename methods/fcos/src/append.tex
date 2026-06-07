@@ -1,0 +1,100 @@
+
+%
+\section*{Appendix}
+
+
+
+
+%
+
+\section{Class-agnostic Precision-recall Curves}
+\begin{table}[!h]
+\centering 
+\small
+\begin{tabular}{ l| c | c c c }
+Method & AP & AP$_{50}$ & AP$_{75}$ & AP$_{90}$ \\
+\Xhline{2\arrayrulewidth}
+Orginal RetinaNet \cite{lin2017focal} & 39.5 & 63.6 & 41.8 & 10.6 \\
+RetinaNet w/ GN \cite{wu2018group} & 40.0 & 64.5 & 42.2 & 10.4 \\
+\Ours & \textbf{40.5} & \textbf{64.7}  & \textbf{42.6} & \textbf{13.1} \\
+\hline
+& & +0.2 & +0.4 & +2.7
+\end{tabular}
+\vspace{0.2cm}
+\caption{The class-agnostic detection performance for RetinaNet and \Ours. \Ours\ has better performance than RetinaNet. Moreover, the improvement over RetinaNet becomes larger with a stricter IOU threshold. The results are obtained with the same models in Table 4 of our main paper.}
+\label{table:detection_performance}
+\end{table}
+
+In Fig.~\ref{fig:pr_iou_50}, Fig.~\ref{fig:pr_iou_75} and Fig.~\ref{fig:pr_iou_90}, we present class-agnostic precision-recall curves on split $\tt minival$
+at IOU thresholds being 0.50, 0.75 and 0.90, respectively. Table \ref{table:detection_performance} shows APs corresponding to the three curves.
+
+As shown in Table \ref{table:detection_performance}, our \Ours\ achieves better performance than its anchor-based counterpart RetinaNet. Moreover, it worth noting that with a stricter IOU threshold, \Ours\ enjoys a larger improvement over RetinaNet, which suggests that \Ours\ has a better bounding box regressor to detect objects more accurately. One of the reasons should be that \Ours\ has the ability to leverage more foreground samples to train the regressor as mentioned in our main paper.
+
+Finally, as shown in all precision-recall curves, the best recalls of these detectors in the precision-recall curves are much lower than $90\%$. It further suggests that the small gap ($98.40\%$ vs. $99.23\%$) of \textit{best possible recall (BPR)} between \Ours\ and RetinaNet hardly harms the final detection performance.
+
+\begin{figure}[t!]
+\begin{center}
+\includegraphics[width=\linewidth]{latex/figures/pr_iou_at_50.pdf}
+\end{center}
+   \caption{Class-agnostic precision-recall curves at IOU $= 0.50$.}
+\label{fig:pr_iou_50}
+\end{figure}
+
+\begin{figure}[t!]
+\begin{center}
+\includegraphics[width=\linewidth]{latex/figures/pr_iou_at_75.pdf}
+\end{center}
+   \caption{Class-agnostic precision-recall curves at IOU $= 0.75$.}
+\label{fig:pr_iou_75}
+\end{figure}
+
+\begin{figure}
+\begin{center}
+\includegraphics[width=\linewidth]{latex/figures/pr_iou_at_90.pdf}
+\end{center}
+   \caption{Class-agnostic precision-recall curves at IOU $= 0.90$.}
+\label{fig:pr_iou_90}
+\end{figure}
+
+
+
+\section{Visualization for Center-ness}
+\begin{figure*}[t!]
+\begin{center}
+    \includegraphics[width=.8\linewidth]{latex/figures/centerness-append.pdf}
+\end{center}
+   \caption{Without (left) or with (right) the proposed center-ness. A point in the figure denotes a detected bounding box. The dashed line is the line $y = x$. As shown in the figure (right), after multiplying the classification scores with the center-ness scores, the low-quality boxes (under the line $y=x$) are pushed to the left side of the plot. It suggests that the scores of these boxes are reduced substantially.}
+\label{fig:centerness}
+\end{figure*}
+As mentioned in our main paper, by suppressing low-quality detected bounding boxes, the proposed center-ness branch improves the detection performance by a large margin. In this section, we confirm this. 
+%
+
+We expect that the center-ness can down-weight the scores of low-quality bounding boxes such that these bounding boxes can be filtered out in following post-processing such as non-maximum suppression (NMS). A detected bounding box is considered as a low-quality one if it has a low IOU score with its corresponding ground-truth bounding box. 
+A bounding box with low IOU but  a high confidence score  is likely to become a false positive and harm the precision.
+
+In Fig.~\ref{fig:centerness}, we consider a detected bounding box as a 2D point $(x, y)$ with $x$ being its score and $y$ being the IOU with its corresponding ground-truth box. As shown in Fig.~\ref{fig:centerness} (left), before applying the center-ness, there are a large number of low-quality bounding boxes but with a high confidence score (i.e., the points under the line $y=x$). Due to their high scores, these low-quality bounding boxes cannot be eliminated in post-processing and result in 
+%
+lowering the precision of the detector.
+%
+%
+After multiplying the classification score with the center-ness score, these points are pushed to %
+the left side of the plot
+(i.e., their scores are reduced), as shown in Fig.~\ref{fig:centerness} (right). As a result, these low-quality bounding boxes are much more likely to be filtered out in post-processing and the final detection performance can be improved.
+%
+
+
+\section{Qualitative Results}
+\begin{figure*}
+\begin{center}
+\includegraphics[width=\linewidth]{latex/figures/results.pdf}
+\end{center}
+   \caption{Some detection results on $\tt minival$ split. ResNet-50 is used as the backbone. As shown in the figure, \Ours\ works well with a wide range of objects including crowded, occluded, highly overlapped, extremely small and very large objects.}
+\label{fig:visualization_results}
+\end{figure*}
+Some qualitative results are shown in Fig. \ref{fig:visualization_results}. As shown in the figure, our proposed \Ours\ can detect a wide range of objects including crowded, occluded, highly overlapped, extremely small and very large objects.
+
+
+
+
+
+

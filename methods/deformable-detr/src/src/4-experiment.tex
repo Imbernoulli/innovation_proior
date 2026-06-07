@@ -1,0 +1,129 @@
+\section{Experiment}
+
+\textbf{Dataset.~} We conduct experiments on COCO 2017 dataset~\citep{lin2014microsoft}. Our models are trained on the train set, and evaluated on the val set and test-dev set.
+
+\textbf{Implementation Details.~} 
+ImageNet~\citep{deng2009imagenet} pre-trained ResNet-50~\citep{he2016deep} is utilized as the backbone for ablations. Multi-scale feature maps are extracted without FPN~\citep{lin2017feature}.
+$M = 8$ and $K = 4$ are set for deformable attentions by default.
+Parameters of the deformable Transformer encoder are shared among different feature levels.
+Other hyper-parameter setting and training strategy mainly follow DETR~\citep{carion2020end}, except that Focal Loss~\citep{lin2017focal} with loss weight of 2 is used for bounding box classification, and the number of object queries is increased from 100 to 300.  
+We also report the performance of DETR-DC5 with these modifications for a fair comparison, denoted as DETR-DC5$^+$. By default, models are trained for 50 epochs and the learning rate is decayed at the 40-th epoch by a factor of 0.1. Following DETR\citep{carion2020end}, we train our models using Adam optimizer~\citep{kingma2014adam} with base learning rate of $2 \times 10^{-4}$, $\beta_1=0.9$, $\beta_2=0.999$, and weight decay of $10^{-4}$. 
+Learning rates of the linear projections, used for predicting object query reference points and sampling offsets, are multiplied by a factor of 0.1.
+Run time is evaluated on NVIDIA Tesla V100 GPU.
+
+\subsection{Comparison with DETR}
+
+As shown in Table~\ref{table:main}, compared with Faster R-CNN + FPN, DETR requires many more training epochs to converge, and delivers lower performance at detecting small objects. Compared with DETR, Deformable DETR achieves better performance (especially on small objects) with 10$\times$ less training epochs. Detailed convergence curves are shown in Fig.~\ref{fig:curve}. With the aid of iterative bounding box refinement and two-stage paradigm, our method can further improve the detection accuracy.
+
+Our proposed Deformable DETR has on par FLOPs with Faster R-CNN + FPN and DETR-DC5. But the runtime speed is much faster (1.6$\times$) than DETR-DC5, and is just 25\% slower than Faster R-CNN + FPN. The speed issue of DETR-DC5 is mainly due to the large amount of memory access in Transformer attention. Our proposed deformable attention can mitigate this issue, at the cost of unordered memory access. Thus, it is still slightly slower than traditional convolution. 
+
+\vspace{-1em}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{table}[ht]
+\caption{Comparision of Deformable DETR with DETR on COCO 2017 val set. DETR-DC5$^+$ denotes DETR-DC5 with Focal Loss and 300 object queries.}
+\label{table:main}
+\begin{center}
+\small
+\resizebox{1.0\linewidth}{!}{
+    \begin{tabular}{l|c|cccccc|cccc}
+    \Xhline{2\arrayrulewidth}  
+    Method & Epochs & AP & AP$_\text{50}$ & AP$_\text{75}$ & AP$_\text{S}$ & AP$_\text{M}$ & AP$_\text{L}$ & params & FLOPs & \tabincell{c}{Training\\GPU hours} & \tabincell{c}{Inference\\FPS} \\
+    \hline
+    Faster R-CNN + FPN & 109 & 42.0 & 62.1 & 45.5 & 26.6 & 45.4 & 53.4  & 42M & 180G & 380 & 26 \\
+    DETR & 500 & 42.0 & 62.4 & 44.2 & 20.5 & 45.8 & 61.1 & 41M & 86G & 2000 & 28 \\
+    DETR-DC5 & 500 & 43.3 & 63.1 & 45.9 & 22.5 & 47.3 & 61.1 & 41M & 187G & 7000 & 12 \\
+    \hline
+    DETR-DC5 & 50 & 35.3 & 55.7 & 36.8 & 15.2 & 37.5 & 53.6 & 41M & 187G & 700 & 12 \\
+    DETR-DC5$^+$ & 50 & 36.2 & 57.0 & 37.4 & 16.3 & 39.2 & 53.9 & 41M & 187G & 700 & 12 \\
+    \hline
+    Deformable DETR & 50 & 43.8 & 62.6 & 47.7 & 26.4 & 47.1 & 58.0 & 40M & 173G & 325 & 19\\
+    + iterative bounding box refinement & 50 & 45.4 & 64.7 & 49.0 & 26.8 & 48.3 & 61.7 & 40M & 173G & 325 & 19 \\
+    ++ two-stage Deformable DETR & 50 & 46.2 & 65.2 & 50.0 & 28.8 & 49.2& 61.7& 40M & 173G & 340 & 19 \\
+    \Xhline{2\arrayrulewidth}
+    \end{tabular}
+}
+\end{center}
+\vspace{-1.0em}
+\end{table}
+
+\begin{figure}[ht]
+\begin{center}
+  \includegraphics[width=0.65\linewidth]{fig/convergence_curve.pdf}
+\end{center}
+\vspace{-1.0em}
+\caption{Convergence curves of Deformable DETR and DETR-DC5 on COCO 2017 val set. For Deformable DETR, we explore different training schedules by varying the epochs at which the learning rate is reduced (where the AP score leaps).}
+\label{fig:curve}
+\end{figure}
+
+
+\subsection{Ablation Study on Deformable Attention}
+\label{sec:ablation}
+
+Table~\ref{table:ablation} presents ablations for various design choices of the proposed deformable attention module. Using multi-scale inputs instead of single-scale inputs can effectively improve detection accuracy with $1.7\%$ AP, especially on small objects with $2.9\%$ AP$_\text{S}$. Increasing the number of sampling points $K$ can further improve $0.9\%$ AP. Using multi-scale deformable attention, which allows information exchange among different scale levels, can bring additional $1.5\%$ improvement in AP. Because the cross-level feature exchange is already adopted, adding FPNs will not improve the performance. When multi-scale attention is not applied, and $K=1$, our (multi-scale) deformable attention module degenerates to deformable convolution, delivering noticeable lower accuracy.
+
+
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{table}[ht]
+\caption{Ablations for deformable attention on COCO 2017 val set. ``MS inputs'' indicates using multi-scale inputs. ``MS attention'' indicates using multi-scale deformable attention. $K$ is the number of sampling points for each attention head on each feature level.}
+\label{table:ablation}
+\begin{center}
+\small
+\resizebox{0.85\linewidth}{!}{
+    \begin{tabular}{ccc|c|cccccc}
+    \Xhline{2\arrayrulewidth}  
+    MS inputs & MS attention & K & FPNs & AP    &  AP$_\text{50}$ & AP$_\text{75}$ & AP$_\text{S}$ & AP$_\text{M}$ & AP$_\text{L}$ \\
+    \hline
+    $\checkmark$ & $\checkmark$ & 4 & FPN~\citep{lin2017feature} & 43.8 & 62.6 & 47.8 & 26.5 & 47.3 & 58.1 \\
+    $\checkmark$ & $\checkmark$ & 4 & BiFPN~\citep{tan2020efficientdet} & 43.9 &  62.5 & 47.7 & 25.6 & 47.4 & 57.7  \\
+    \hline
+                 &              & 1 & \multirow{4}{*}{w/o} & 39.7 & 60.1 & 42.4 & 21.2 & 44.3 & 56.0 \\
+    $\checkmark$ &              & 1 &       & 41.4 & 60.9 & 44.9 & 24.1 & 44.6 & 56.1 \\
+    $\checkmark$ &              & 4 &       & 42.3 & 61.4 & 46.0 & 24.8 & 45.1 & 56.3 \\
+    $\checkmark$ & $\checkmark$ & 4 &       & 43.8 & 62.6 & 47.7 & 26.4 & 47.1 & 58.0 \\
+    \Xhline{2\arrayrulewidth}
+    \end{tabular}
+}
+\end{center}
+\vspace{-1em}
+\end{table}
+
+
+
+
+
+\subsection{Comparison with State-of-the-art Methods}
+Table~\ref{table:sota} compares the proposed method with other state-of-the-art methods. Iterative bounding box refinement and two-stage mechanism are both utilized by our models in Table~\ref{table:sota}. With ResNet-101 and ResNeXt-101~\citep{xie2017aggregated}, our method achieves 48.7 AP and 49.0 AP without bells and whistles, respectively. By using ResNeXt-101 with DCN~\citep{zhu2019deformable}, the accuracy rises to 50.1 AP. With additional test-time augmentations, the proposed method achieves 52.3 AP.
+
+\vspace{-1em}
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.2}
+\begin{table}[ht]
+\caption{Comparison of Deformable DETR with state-of-the-art methods on COCO 2017 test-dev set. ``TTA'' indicates test-time augmentations including horizontal flip and multi-scale testing.}
+\label{table:sota}
+\begin{center}
+\small
+\resizebox{0.9\linewidth}{!}{
+    \begin{tabular}{l|cc|cccccc}
+    \Xhline{2\arrayrulewidth}  
+    Method                            & Backbone         & TTA &  AP & AP$_\text{50}$ & AP$_\text{75}$ & AP$_\text{S}$ & AP$_\text{M}$ & AP$_\text{L}$ \\
+    \hline
+    FCOS~\citep{tian2019fcos}                    & ResNeXt-101       &              & 44.7 & 64.1 & 48.4 & 27.6 & 47.5 & 55.6 \\
+    ATSS~\citep{zhang2020bridging}               & ResNeXt-101 + DCN & $\checkmark$ & 50.7 & 68.9 & 56.3 & 33.2 & 52.9 & 62.4 \\
+    TSD~\citep{song2020revisiting}               & SENet154 + DCN    & $\checkmark$ & 51.2 & 71.9 & 56.0 & 33.8 & 54.8 & 64.2 \\
+    EfficientDet-D7~\citep{tan2020efficientdet}  & EfficientNet-B6   &              & 52.2 & 71.4 & 56.3 & - & - & - \\
+    \hline
+    Deformable DETR                   & ResNet-50        &              & 46.9 & 66.4 & 50.8 & 27.7 & 49.7 & 59.9  \\
+    Deformable DETR                   & ResNet-101       &              & 48.7 & 68.1 & 52.9 & 29.1 & 51.5 & 62.0 \\
+    Deformable DETR                   & ResNeXt-101      &              & 49.0 & 68.5 & 53.2 & 29.7 & 51.7 & 62.8 \\
+    Deformable DETR                   & ResNeXt-101 + DCN&              & 50.1 & 69.7 & 54.6 & 30.6 & 52.8 & 64.7 \\
+    Deformable DETR                   & ResNeXt-101 + DCN& $\checkmark$ & 52.3 & 71.9 & 58.1 & 34.4 & 54.4 & 65.6 \\
+    \Xhline{2\arrayrulewidth}
+    \end{tabular}
+}
+\end{center}
+\vspace{-0.5em}
+\end{table}
+
+

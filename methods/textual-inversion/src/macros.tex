@@ -1,0 +1,139 @@
+\usepackage{amsmath}
+\usepackage{comment}
+\usepackage{multirow,bigdelim}
+\usepackage{lipsum}
+\usepackage{array}
+\usepackage{wrapfig}
+
+\usepackage{adjustbox}
+\usepackage[percent]{overpic}
+\usepackage{makecell}
+\usepackage[normalem]{ulem}
+\usepackage{blindtext}
+\usepackage{xcolor}
+\usepackage{soul}
+\usepackage{cleveref}
+\usepackage{amsfonts}
+
+
+\makeatletter
+\newcommand{\settitle}{\@maketitle}
+\makeatother
+
+\newcolumntype{C}[1]{>{\centering\let\newline\\\arraybackslash\hspace{0pt}}m{#1}}
+
+\newcommand{\hlc}[2][color]{{\sethlcolor{#1}\hl{#2}}}
+
+\newif\ifdraft
+\drafttrue
+
+\ifdraft
+\definecolor{darkpink}{rgb}{0.561, 0.282, 0.427}
+
+\newcommand{\dcc}[1]{{\color{red}[\textbf{DC:} #1]}}
+\newcommand{\rgc}[1]{{\color{purple}[\textbf{RG:} #1]}}
+\newcommand{\opc}[1]{{\color{blue}[\textbf{OP:} #1]}}
+\newcommand{\yalc}[1]{{\color{teal}[\textbf{YAl:} #1]}}
+\newcommand{\ytc}[1]{{\color{darkpink}[\textbf{YAt} #1]}}
+\newcommand{\gal}[1]{{\color{orange}[\textbf{GC:} #1]}}
+\newcommand{\abc}[1]{{\color{green}[\textbf{AB:} #1]}}
+\newcommand{\galrm}[1]{\sout{{\color{orange}#1}}}
+
+\newcommand{\dc}[1]{{\color{red}#1}}
+\newcommand{\rg}[1]{{\color{purple}#1}}
+\newcommand{\op}[1]{{\color{blue}#1}}
+\newcommand{\yal}[1]{{\color{teal}#1}}
+\newcommand{\yat}[1]{{\color{darkpink}#1}}
+\newcommand{\gc}[1]{{\color{orange}#1}}
+\newcommand{\ab}[1]{{\color{green}#1}}
+
+
+\newcommand{\rev}[1]{{\color{brown}#1}}
+
+\newcommand{\drop}[1]{}
+
+
+
+\newcommand{\cradd}[1]{{\color{black}#1}}
+\newcommand{\crmv}[1]{{\color{black}#1}}
+
+\else
+\newcommand{\dcc}[1]{}
+\newcommand{\rgc}[1]{}
+\newcommand{\opc}[1]{}
+\newcommand{\gcc}[1]{}
+\newcommand{\hmc}[1]{}
+\newcommand{\abc}[1]{}
+\newcommand{\dc}[1]{{\color{black}#1}}
+\newcommand{\rg}[1]{{\color{black}#1}}
+\newcommand{\op}[1]{{\color{black}#1}}
+\newcommand{\hm}[1]{{\color{black}#1}}
+\newcommand{\gc}[1]{{\color{black}#1}}
+\newcommand{\ab}[1]{{\color{black}#1}}
+\newcommand{\cradd}[1]{{\color{black}#1}}
+\fi
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Mi}{\hat{M}_{l-1}}
+\newcommand{\Mo}{\hat{M}_{l}}
+\newcommand{\dVi}{\Delta \hat{V}_{l-1}}
+\newcommand{\dVo}{\Delta \hat{V}_{l}}
+\newcommand{\Vi}{\hat{V}_{l-1}}
+\newcommand{\Vo}{\hat{V}_{l}}
+\newcommand{\dEo}{\Delta \hat{E}_{l}}
+\newcommand{\Ci}{\hat{C}_{l-1}}
+\newcommand{\Wo}{W_{l}}
+\newcommand{\partmesh}{PartMesh}
+
+\newcommand{\ourmethod}{StyleGAN-NADA}
+
+
+\def\naive{na\"{\i}ve\xspace}
+\def\Naive{Na\"{\i}ve\xspace}
+
+\newcommand{\w}{$\mathcal{W}$\xspace}
+\newcommand{\wplus}{$\mathcal{W}+$\xspace}
+
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+
+\def\eg{\emph{e.g}\onedot}
+\def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot}
+\def\Ie{\emph{I.e}\onedot}
+\def\etc{\emph{etc}\onedot}
+\def\etal{\emph{et al}\onedot}
+\def\pholder{$S_*$}
+\def\pholdercolor{{\color{blue}$S_*$}}
+\def\mathpholder{S_*}
+\def\mathpholdercolor{{\color{blue}S_*}}
+
+\makeatother
+
+\usepackage[bottom]{footmisc}
+\raggedbottom
+
+\usepackage{arydshln}
+
+\makeatletter
+\def\blfootnote{\xdef\@thefnmark{}\@footnotetext}
+\makeatother
+
+
+\newcommand{\ccbync}{\href{https://creativecommons.org/licenses/by-nc/4.0/legalcode}{CC BY-NC 4.0}}
+
+\newcommand{\cczero}{\href{https://creativecommons.org/publicdomain/zero/1.0/}{CC0 1.0}}
+
+\newcommand{\ccbyncsa}{\href{https://creativecommons.org/licenses/by-nc-sa/4.0/}{CC BY-NC-SA 4.0}}
+
+\newcommand{\nvsrc}{\href{https://nvlabs.github.io/stylegan2/license.html
+}{Nvidia Source Code License-NC}}
+
+\newcommand{\bsd}{\href{https://opensource.org/licenses/BSD-3-Clause}{BSD 3-Clause}}
+
+\newcommand{\mitlic}{\href{https://opensource.org/licenses/MIT}{MIT License}}
+
+\newcommand{\adblic}{\href{https://github.com/utkarshojha/few-shot-gan-adaptation/blob/main/LICENSE.txt}{Adobe Research License}}
+
+\DeclareMathOperator*{\argmin}{arg\,min}

@@ -1,0 +1,373 @@
+\appendix
+\section{Effect of hyper-parameters}
+In this section, we follow the same training protocol as in the main paper and experiment with the effect of some hyper-parameters.
+
+\textbf{New training protocol:} As mentioned in the main paper, we change the training protocol in \cite{chen2014semantic, chen2016deeplab} with three main differences: (1) larger crop size, (2) upsampling logits during training, and (3) fine-tuning batch normalization. Here, we quantitatively measure the effect of the changes. As shown in \tabref{tab:crop_size}, DeepLabv3 attains the performance of 77.21\% on the PASCAL VOC 2012 \textit{val} set \cite{everingham2014pascal} when adopting the new training protocol setting as in the main paper. When training DeepLabv3 without fine-tuning the batch normalization, the performance drops to 75.95\%. If we do not upsample the logits during training (and instead downsample the groundtruths), the performance decreases to 76.01\%. Furthermore, if we employ smaller value of crop size (\ie, 321 as in \cite{chen2014semantic, chen2016deeplab}), the performance significantly decreases to 67.22\%, demonstrating that boundary effect resulted from small crop size hurts the performance of DeepLabv3 which employs large atrous rates in the Atrous Spatial Pyramid Pooling (ASPP) module.
+
+\textbf{Varying batch size:} Since it is important to train DeepLabv3 with fine-tuning the batch normalization, we further experiment with the effect of different batch sizes. As shown in \tabref{tab:batch_size}, employing small batch size is inefficient to train the model, while using larger batch size leads to better performance.
+
+\textbf{Output stride:} The value of $\emph{output\_stride}$ determines the output feature map resolution and in turn affects the largest batch size we could use during training. In \tabref{tab:output_stride}, we quantitatively measure the effect of employing different $\emph{output\_stride}$ values during both training and evaluation on the PASCAL VOC 2012 \textit{val} set. We first fix the evaluation $\emph{output\_stride}=16$, vary the training $\emph{output\_stride}$ and fit the largest possible batch size for all the settings (we are able to fit batch size 6, 16, and 24 for training $\emph{output\_stride}$ equal to 8, 16, and 32, respectively). As shown in the top rows of \tabref{tab:output_stride}, employing training $\emph{output\_stride}=8$ only attains the performance of 74.45\% because we could not fit large batch size in this setting which degrades the performance while fine-tuning the batch normalization parameters. When employing training $\emph{output\_stride}=32$, we could fit large batch size but we lose feature map details. On the other hand, employing training $\emph{output\_stride}=16$ strikes the best trade-off and leads to the best performance. In the bottom rows of \tabref{tab:output_stride}, we increase the evaluation $\emph{output\_stride}=8$. All settings improve the performance except the one where training $\emph{output\_stride}=32$. We hypothesize that we lose too much feature map details during training, and thus the model could not recover the details even when employing $\emph{output\_stride}=8$ during evaluation.
+
+\begin{table}[!t]
+  \centering
+  \scalebox{1}{
+  \begin{tabular}{c c c | c}
+    \toprule[0.2em]
+    Crop Size & UL & BN & mIOU \\
+    \toprule[0.2em]
+    513 & \checkmark & \checkmark & 77.21 \\
+    513 & \checkmark &  & 75.95 \\
+    513 &  & \checkmark & 76.01 \\
+    321 &  & \checkmark & 67.22 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Effect of hyper-parameters during training on PASCAL VOC 2012 \textit{val} set at $\emph{output\_stride=16}$. {\bf UL}: Upsampling Logits. {\bf BN}: Fine-tuning batch normalization.}
+  \label{tab:crop_size}
+\end{table}
+
+\begin{table}[!t]
+  \centering
+  \scalebox{1}{
+  \begin{tabular}{c | c}
+    \toprule[0.2em]
+    batch size & mIOU \\
+    \toprule[0.2em]
+    4 & 64.43 \\
+    8 & 75.76 \\
+    12 & 76.49 \\
+    16 & 77.21 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Effect of batch size on PASCAL VOC 2012 \textit{val} set. We employ $\emph{output\_stride=16}$ during both training and evaluation. Large batch size is required while training the model with fine-tuning the batch normalization parameters.}
+  \label{tab:batch_size}
+\end{table}
+
+\begin{table}[!t]
+  \centering
+  \scalebox{0.9}{
+  \begin{tabular}{c c | c}
+    \toprule[0.2em]
+    train $\emph{output\_stride}$ & eval $\emph{output\_stride}$ & mIOU  \\
+    \toprule[0.2em]
+    8 & 16 & 74.45 \\
+    16 & 16 & 77.21 \\
+    32 & 16 & 75.90 \\
+    \toprule[0.1em]
+    8 & 8 & 75.62 \\
+    16 & 8 & 78.51 \\
+    32 & 8 & 75.75 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Effect of $\emph{output\_stride}$ on PASCAL VOC 2012 \textit{val} set. Employing $\emph{output\_stride=16}$ during training leads to better performance for both eval $\emph{output\_stride}=8$ and $16$.}
+  \label{tab:output_stride}
+\end{table}
+
+\section{Asynchronous training}
+
+In this section, we experiment DeepLabv3 with TensorFlow asynchronous training \cite{abadi2016tensorflow}. We measure the effect of training the model with multiple replicas on PASCAL VOC 2012 semantic segmentation dataset. Our baseline employs simply one replica and requires training time 3.65 days with a K80 GPU.
+%and 18.9 days on PASCAL VOC 2012 \cite{everingham2014pascal} and MS-COCO \cite{lin2014microsoft} datasets, respectively (30K iterations for PASCAL VOC 2012 and 150K iterations for MS-COCO).
+As shown in \tabref{tab:async_pascal}, we found that the performance of using multiple replicas does not drop compared to the baseline. However, training time with 32 replicas is significantly reduced to 2.74 hours.
+%and 13.25 hours on PASCAL VOC 2012 and MS-COCO datasets, respectively. 
+
+\begin{table}[!t]
+  \centering
+  \scalebox{1}{
+  \begin{tabular}{c | c c}
+    \toprule[0.2em]
+    num replicas & mIOU & relative training time \\
+    \toprule[0.2em]
+    1 & 77.21 & 1.00x \\
+    2 & 77.15 & 0.50x \\
+    4 & 76.79 & 0.25x \\
+    8 & 77.02 & 0.13x \\
+    16 & 77.18 & 0.06x \\
+    32 & 76.69 & 0.03x \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{Evaluation performance on PASCAL VOC 2012 \textit{val} set when adopting asynchronous training.}
+  \label{tab:async_pascal}
+\end{table}
+
+%% \begin{table}[!t]
+%%   \centering
+%%   \scalebox{0.9}{
+%%   \begin{tabular}{c c | c c}
+%%     \toprule[0.2em]
+%%     num replicas & iterations & mIOU & relative training time \\
+%%     \toprule[0.2em]
+%%     1 & 150K & 51.17 & 1.00x \\
+%%     2 & 150K & 50.79 & 0.49x \\
+%%     4 & 150K & 50.85 & 0.24x \\
+%%     8 & 150K & 51.11 & 0.12x \\
+%%     16 & 150K & 50.79 & 0.06x \\
+%%     32 & 150K & 50.69 & 0.03x \\
+%%     \bottomrule[0.1em]
+%%   \end{tabular}
+%%   }
+%%   \caption{Evaluation performance on MS-COCO semantic segmentation annotations (\textit{minival} set) when adopting asynchronous training.}
+%%   \label{tab:async_coco}
+%% \end{table}
+
+%% \section{DeepLabv3 with MobileNet}
+%% In this section, we experiment with replacing the underlying feature extractor from ResNet-v1-101 \cite{he2015deep} to MobileNet \cite{howard2017mobilenet}, a state-of-art and efficient model for mobile vision applications. We simply apply atrous convolution and add the proposed ASPP module augmented with image-level features on top of the last feature map extracted by MobileNet (original last $7\times7$ global pooling is removed). We do not adopt any multi-grid in the model. Results on PASCAL VOC 2012 \textit{val} set are summarized in \tabref{tab:mobilenet_val}. We also evaluate DeepLabv3 with MobileNet on the \textit{test} set in \tabref{tab:mobilenet_test}, which outperforms DeepLabv2 with ResNet-v1-101 post-processed by DenseCRF \cite{krahenbuhl2011efficient}.
+
+%% \begin{table}[!t]
+%%   \centering
+%%   \scalebox{0.6}{
+%%   \begin{tabular}{c c |c c c c | c c}
+%%     \toprule[0.2em]
+%%     Feature Extractor & DeepLabv3 Heads &  OS    & MS         & Flip        & COCO & mIOU & FLOPS (B)\\
+%%     \toprule[0.2em]
+%%     MobileNetv1 & ASPP(6, 12, 18)         & 16            &            &             &      & 70.10 & 28.57\\
+%%                 & $1\times1$ conv         & 16            &            &             &  \checkmark    & 75.29 & 28.57\\
+%%                 & Image Pooling           & 8             &            &             &      & 70.47 & 106.57\\
+%%                 &                         & 8 & \checkmark &             &      & 72.79 & 991.93\\
+%%                 &                         & 8 & \checkmark & \checkmark  &      & 72.97 & 1983.80\\
+%%                 &                         & 8 &  \checkmark & \checkmark  & \checkmark & 78.56 & 1983.80\\
+%%     \toprule[0.1em]
+%%     MobileNetv2 & ASPP(6, 12, 18) &  16       &            &             &              & 70.26 & 30.39\\
+%%                 & $1\times1$ conv &  16       &            &             & \checkmark   & 76.26 & 30.39\\
+%%                 & Image Pooling   &   8 &            &             &      & 70.56 & 117.01\\
+%%                 &                 &   8 & \checkmark &             &      & 72.55 & 1099.47\\
+%%                 &                 &   8 & \checkmark & \checkmark  &      & 72.66 & 2198.87\\
+%%                 &                 &   8 & \checkmark & \checkmark  & \checkmark & 79.10 & 2198.87\\
+%%     \toprule[0.1em]
+%%     MobileNetv2* & ASPP(6, 12, 18) & 16    &            &             &                & 70.32 & 11.67 \\
+%%                  & $1\times1$ conv & 16    &            &             & \checkmark     & 75.70 & 11.67 \\ 
+%%                  & Image Pooling   &       8 &            &             &      & 70.51 & 42.30 \\
+%%                  &                 &       8 & \checkmark &             &      & 72.10 & 387.56 \\
+%%                  &                 &       8 & \checkmark & \checkmark  &      & 72.15 & 775.09 \\
+%%                  &                 &       8 & \checkmark & \checkmark  & \checkmark & 78.42 & 775.09 \\
+%%     \toprule[0.1em]
+%%     MobileNetv2* & $1\times1$ conv   & 32        &            &             &      & 68.76 & 3.23 \\
+%%                  & Image Pooling     & 32        &            &             & \checkmark     & 71.16 & 3.23 \\
+%%                  &                   & 16        &            &             &      & 69.94 & 5.50 \\
+%%                  &                   & 16        &            &             & \checkmark     & 75.32 & 5.50 \\
+%%                  &                   &  8 &            &             &      & 70.07 & 17.70 \\
+%%                  &                   &  8 & \checkmark &             &      & 71.40 & 152.60 \\
+%%                  &                   &  8 & \checkmark & \checkmark  &      & 71.54 & 305.18 \\
+%%                  &                   &  8 & \checkmark & \checkmark  & \checkmark & 77.33 & 305.18\\
+%%                  &                   & 16             & 0.5        &             &      & 56.45 & 1.46 \\
+%%                  &                   & 16            & 0.5        &             & \checkmark     & 61.42 & 1.46 \\
+%%                  &                   & 16             & 0.75        &             &      & 67.29 & 3.15 \\
+%%                  &                   & 16            & 0.75        &             & \checkmark     & 71.96 & 3.15 \\
+%%                  &                   & 16             & DM 0.5        &             &      & 64.73 & 1.74 \\
+%%                  &                   & 16             & DM 0.5        &             & \checkmark     & ? & 1.74 \\
+%%                  &                   & 16            & DM 0.25        &             &      & 53.00 & 0.74 \\
+%%     \toprule[0.1em]
+%%     MobileNetv2* & $1\times1$ conv  & 32      &            &             &      & 62.33 & 3.11 \\
+%%                  &                  & 16      &            &             &      & 62.96 & 5.04 \\
+%%     \toprule[0.1em]
+%%     \toprule[0.1em]
+%%     ResNet-v1-101 & ASPP(6, 12, 18) &  16        &            &             &      & 77.21 & 162.04 \\
+%%                   & $1\times1$ conv &  16        &            &             &  \checkmark    & 80.49 & 162.04 \\
+%%                   & Image Pooling   &  8        &            &              &      & 78.51 & 552.35 \\
+%%                   &                 &  8 & \checkmark &  &  & 79.45 & 4870.74 \\
+%%                   &                 &  8 & \checkmark & \checkmark &  & 79.77 & 9741.18 \\
+%%                   &                 &  8 & \checkmark & \checkmark & \checkmark & 82.70 & 9741.18 \\
+%%     \bottomrule[0.1em]
+%%   \end{tabular}
+%%   }
+%%   \caption{MobileNet + DeepLabv3 inference strategy on the PASCAL VOC 2012 \textit{val} set. {\bf MobileNetv2*}: Second last feature map is used for DeepLabv3 heads, including (1) ASPP with three different rates, (2) $1\times1$ convolution, and (3) image-level feature.. {\bf ASPP}: Atrous spatial pyramid pooling. {\bf OS}: \emph{output\_stride}. {\bf MS}: Multi-scale inputs during test. {\bf Flip}: Adding left-right flipped inputs. {\bf COCO}: Model pretrained on MS-COCO.}
+%%   \label{tab:mobilenet_val}
+%% \end{table}
+
+
+%% \begin{table}[!th]
+%%   \centering
+%%   \addtolength{\tabcolsep}{2.5pt}
+%%   \begin{tabular}{l | c}
+%%     \toprule[0.2 em]
+%%     {\bf Method} & {\bf mIOU} \\
+%%     \toprule[0.2 em]
+%%     DeepLabv2-CRF \cite{chen2016deeplab} & 79.7 \\
+%%     \midrule
+%%     \href{http://host.robots.ox.ac.uk:8080/anonymous/6TUQRI.html}{DeepLabv3 (MobileNetv1)} & 80.9 \\
+%%     \href{http://host.robots.ox.ac.uk:8080/anonymous/EGZFFR.html}{DeepLabv3 (ResNet-v1-101)} & 85.7 \\
+%%     \bottomrule[0.1 em]
+%%   \end{tabular}
+%%   \caption{Performance on PASCAL VOC 2012 {\it test} set.}
+%%   \label{tab:mobilenet_test}
+%% \end{table}
+
+
+\section{DeepLabv3 on Cityscapes dataset}
+Cityscapes \cite{Cordts2016Cityscapes} is a large-scale dataset containing high quality pixel-level annotations of 5000 images (2975, 500, and 1525 for the training, validation, and test sets respectively) and about 20000 coarsely annotated images. Following the evaluation protocol \cite{Cordts2016Cityscapes}, 19 semantic labels are used for evaluation without considering the void label.
+
+We first evaluate the proposed DeepLabv3 model on the validation set when training with only 2975 images (\ie, \textit{train\_fine} set). We adopt the same training protocol as before except that we employ 90K training iterations, crop size equal to 769, and running inference on the whole image, instead of on the overlapped regions as in \cite{chen2016deeplab}. As shown in \tabref{tab:cityscapes_val}, DeepLabv3 attains the performance of 77.23\% when evaluating at $\emph{output\_stride}=16$. Evaluating the model at $\emph{output\_stride}=8$ improves the performance to 77.82\%. When we employ multi-scale inputs (we could fit $scales=\{0.75, 1, 1.25\}$ on a K40 GPU) and add left-right flipped inputs, the model achieves 79.30\%.
+
+In order to compete with other state-of-art models, we further train DeepLabv3 on the $\textit{trainval\_coarse}$ set (\ie, the 3475 finely annotated images and the extra 20000 coarsely annotated images). We adopt more scales and finer $\emph{output\_stride}$ during inference. In particular, we perform inference with $scales=\{0.75, 1, 1.25, 1.5, 1.75, 2\}$ and evaluation $\emph{output\_stride}=4$ with CPUs, which contributes extra 0.8\% and 0.1\% respectively on the validation set compared to using only three scales and $\emph{output\_stride}=8$. In the end, as shown in \tabref{tab:cityscapes_test}, our proposed DeepLabv3 achieves the performance of 81.3\% on the test set. Some results on \textit{val} set are visualized in \figref{fig:vis_cityscapes}.
+
+\begin{table}[!t]
+  \centering
+  \scalebox{1}{
+  \begin{tabular}{c c c c | c}
+    \toprule[0.2em]
+    OS=16            & OS=8       & MS         & Flip       & mIOU \\
+    \toprule[0.2em]
+    \checkmark      &            &             &             & 77.23 \\
+                    & \checkmark &             &             & 77.82 \\
+                    & \checkmark & \checkmark  &             & 79.06 \\
+                    & \checkmark & \checkmark  & \checkmark  & 79.30 \\
+    \bottomrule[0.1em]
+  \end{tabular}
+  }
+  \caption{DeepLabv3 on the Cityscapes \textit{val} set when trained with only \textit{train\_fine} set. {\bf OS}: \emph{output\_stride}. {\bf MS}: Multi-scale inputs during inference. {\bf Flip}: Adding left-right flipped inputs.}
+  \label{tab:cityscapes_val}
+\end{table}
+
+
+\begin{table}[!th]
+  \centering
+  \addtolength{\tabcolsep}{2.5pt}
+  \begin{tabular}{l c | c}
+    \toprule[0.2 em]
+    {\bf Method} & {\bf Coarse} & {\bf mIOU} \\
+    \toprule[0.2 em]
+    DeepLabv2-CRF \cite{chen2016deeplab} & & 70.4 \\
+    Deep Layer Cascade \cite{li2017not} & & 71.1 \\
+    ML-CRNN \cite{fan2016multi} & & 71.2 \\
+    Adelaide\_context \cite{lin2015efficient} & & 71.6 \\
+    FRRN \cite{pohlen2016full} & & 71.8 \\
+    LRR-4x \cite{ghiasi2016laplacian} & \checkmark & 71.8 \\
+    RefineNet \cite{lin2016refinenet} & & 73.6 \\
+    FoveaNet \cite{li2017fovea} & & 74.1 \\
+    Ladder DenseNet \cite{kreso2017ladder} & & 74.3 \\
+    PEARL \cite{jin2017video} & & 75.4 \\
+    Global-Local-Refinement \cite{zhang2017global} & & 77.3 \\
+    SAC\_multiple \cite{zhang2017scale} & & 78.1 \\
+    SegModel \cite{shen2017semantic} & \checkmark & 79.2 \\
+    TuSimple\_Coarse \cite{wang2017understanding} & \checkmark & 80.1 \\
+    Netwarp \cite{gadde2017semantic} & \checkmark & 80.5 \\
+    ResNet-38 \cite{wu2016wider} & \checkmark & 80.6 \\
+    PSPNet \cite{zhao2016pyramid} & \checkmark & 81.2 \\
+    \midrule
+    DeepLabv3 & \checkmark & 81.3 \\
+    \bottomrule[0.1 em]
+  \end{tabular}
+  \caption{Performance on Cityscapes {\it test} set. {\bf Coarse}: Use \textit{train\_extra} set (coarse annotations) as well. Only a few top models with known references are listed in this table.}
+  \label{tab:cityscapes_test}
+\end{table}
+
+%% \begin{figure*}[!th]
+%%   \centering
+%%   \begin{tabular}{c}
+%%     \includegraphics[width=0.95\linewidth]{fig/cityscapes_results.png}\\
+%%   \end{tabular}
+%%   \caption{Visualization results on Cityscapes {\it val} set when training with only {\it train\_fine} set.}
+%%   \label{fig:vis_cityscapes}
+%% \end{figure*}
+
+
+\begin{figure*}[!t]
+  \centering
+  \begin{tabular}{c}
+    \includegraphics[width=0.95\linewidth]{fig/cityscapes_results.png} \\
+  \end{tabular}
+  \caption{Visualization results on Cityscapes {\it val} set when training with only {\it train\_fine} set.}
+  \label{fig:vis_cityscapes}
+\end{figure*}
+
+%% \begin{figure*}[!t]
+%%   \centering
+%%   \scalebox{0.85}{
+%%   \begin{tabular}{c c c c c c}
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000062_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000062_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000062_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000062_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000062_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000062_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000108_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000108_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000108_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000108_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000108_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000108_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000131_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000131_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000131_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000131_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000131_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000131_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000195_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000195_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000195_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000195_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000195_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000195_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000259_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000259_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000259_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000259_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000259_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000259_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000403_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000403_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000403_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000403_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000403_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000403_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000546_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000546_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000546_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000546_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000546_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000546_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/000639_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/000639_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/000639_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/000639_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/000639_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/000639_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/001002_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/001002_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/001002_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/001002_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/001002_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/001002_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/001239_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/001239_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/001239_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/001239_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/001239_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/001239_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/001349_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/001349_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/001349_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/001349_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/001349_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/001349_prediction.png} \\
+
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/img/001441_image.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os32_s1/001441_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s05/001441_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s075/001441_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os16_s1/001441_prediction.png} &
+%%     \includegraphics[width=0.16\linewidth]{fig/mobilenet_results/coco_aspp1_os8_s05175_flip/001441_prediction.png} \\
+
+%%     \footnotesize{Image} &
+%%     \footnotesize{OS=32, S=1} &
+%%     \footnotesize{OS=16, S=0.5} &
+%%     \footnotesize{OS=16, S=0.75} &
+%%     \footnotesize{OS=16, S=1} &
+%%     \footnotesize{OS=8, MS+F} \\
+%%   \end{tabular}
+%%   }
+%%   \caption{Semantic segmentation visualization results on PASCAL VOC 2012 {\it val} set. \textbf{OS}: $\emph{output\_stride}$. \textbf{S}: single scale input. \textbf{MS+F}: Multi-scale inputs with scales = $\{0.5, 0.75, 1, 1.25, 1.5, 1.75\}$ and left-right flipped inputs. Employing $\emph{output\_stride}=16$ and single input scale = 1 attains a good trade-off between FLOPS and accuracy.}
+%%   \label{fig:vis_mobilenetv2}
+%% \end{figure*}

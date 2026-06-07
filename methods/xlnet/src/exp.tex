@@ -1,0 +1,350 @@
+
+% \bgroup
+% \def\arraystretch{1.5}
+%\begin{table}[t]
+%  \small
+%  \centering
+%  
+%  \begin{tabular}{cccc}
+%    \toprule
+%    \bf Dataset & \bf XLNet-Large & \bf XLNet-Large & \bf BERT-Large \\
+%    & \bf (full data) & \bf -wikibooks & \bf -wikibooks \\
+%    &  &  & best of 3 variants \\
+%    \midrule
+%    SQuAD1.1 EM & 89.0 & 88.2 & 86.7 (II) \\
+%    SQuAD1.1 F1 & 94.5 & 94.0 & 92.8 (II) \\
+%    SQuAD2.0 EM & 86.1 & 85.1 & 82.8 (II) \\
+%    SQuAD2.0 F1 & 88.8 & 87.8 & 85.5 (II) \\
+%    RACE & 81.8 & 77.4 & 75.1 (II) \\
+%    MNLI & 89.8 & 88.4 & 87.3 (II) \\
+%    QNLI & 93.9 & 93.9 & 93.0 (II) \\
+%    QQP & 91.8 & 91.8 & 91.4 (II) \\
+%    RTE & 83.8 & 81.2 & 74.0 (III) \\
+%    SST-2 & 95.6 & 94.4 & 94.0 (II) \\
+%    MRPC & 89.2 & 90.0 & 88.7 (III) \\
+%    CoLA & 63.6 & 65.2 & 63.7 (II) \\
+%    STS-B & 91.8 & 91.1 & 90.2 (III) \\
+%    \bottomrule
+%  \end{tabular}
+%  \caption{\small Fair comparison with BERT. All models are trained using the same data and hyperparameters as in BERT. We use the best of 3 BERT variants for comparison; i.e., I is the original BERT, II is BERT with whole word masking, and III is BERT without next sentence prediction.}
+%  \label{tab:fair}
+%\end{table}
+
+
+% Comparison of different models. XLNet-Large (as in paper) was trained with more data and a larger batch size. For BERT, we report the best finetuning result of 3 variants for each dataset.
+
+
+
+%\begin{table}[t]
+%  \small
+%  \centering
+%  
+%  \begin{tabular}{llccccccccccc}
+%    \toprule
+%    & \bf Model & \bf Sp & \bf Ts & \bf Ns & \bf Rm & \bf Bi & \multicolumn{2}{c}{\bf RACE} & \multicolumn{2}{c}{\bf SQuAD v2} & \bf MNLI & \bf SST-2 \\
+%    & & & & & & & Acc & M/H & EM & F1 & m/mm & \\
+%    \midrule
+%    1 & XLNet-6 & \xmark & \xmark & \xmark & \cmark & \cmark & 65.03 & & 79.56 & 76.80 & 84.88/84.45 & 91.88 \\
+%    2 & XLNet-6 & \xmark & \cmark & \xmark & \cmark & \cmark & 65.95 & & 80.61 & 77.91 & 85.49/85.02 & 93.12 \\
+%    3 & XLNet-6 & \cmark & \cmark & \xmark & \cmark & \cmark & 66.66 & & 80.98 & 78.18 & 85.63/85.12 & \bf 93.35 \\
+%    4 & XLNet-6 & \cmark & \cmark & \cmark & \cmark & \cmark & \bf 66.76 & & 79.83 & 76.94 & 85.32/85.09 & 92.89 \\
+%    5 & XLNet-6 & \cmark & \cmark & \xmark & \cmark & \xmark & 66.34 & & 80.65 & 77.87 & 85.31/84.99 & 92.66 \\
+%    6 & XLNet-6 & \cmark & \cmark & \xmark & \xmark & \cmark & 65.55 & & 80.15 & 77.27 & 85.32/85.05 & 92.78 \\
+%    7 & XLNet-7 & \cmark & \xmark & \xmark & \cmark & \cmark & 65.95 & & 80.54 & 77.79 & 85.44/85.13 & 93.12 \\
+%    8 & XLNet-7 & \cmark & \cmark & \xmark & \cmark & \cmark & 66.05 & & \bf 81.33 & \bf 78.46 & \bf 85.84/85.43 & 92.66 \\
+%    9 & XLNet-7 & \cmark & \cmark & \cmark & \cmark & \cmark & 66.48 & & 80.32 & 77.34 & 85.41/84.97 & 93.23 \\
+%     & BERT & & & & & & 64.3 & 67.9/62.8 & 76.30 & 73.66 & 84.34/84.65 & 92.78 \\
+%    \bottomrule
+%  \end{tabular}
+%  \caption{\small
+%    Ablation study. All results are based on a 12-layer architecture with similar model sizes (aka BERT-Base). The results of BERT on RACE are taken from \cite{zhang2019dual}. We run BERT on the other datasets using the official implementations and the same hyperparameter search space as XLNet. The median of five runs is reported. ``Sp'', ``Ts'', ``Ns'', ``Rm'', and ``Bi'' denote using span-based prediction, twostream attention, next sentence prediction, recurrence mechanism, and bidirectional data stream. ``XLNet-$K$'' means making one prediction for every $K$ tokens. Both XLNet and BERT are pretrained using the same data.
+%  }
+%  \label{tab:ablation}
+%\end{table}
+
+
+\section{Experiments} \label{sec:exp}
+
+%We present the finetuning results of XLNet on 13 tasks in comparison with the previous state of the art.
+
+\subsection{Pretraining and Implementation}
+\label{sec:implementation}
+
+Following BERT \cite{devlin2018bert}, we use the BooksCorpus \cite{zhu2015aligning} and English Wikipedia as part of our pretraining data, which have 13GB plain text combined. In addition, we include Giga5 (16GB text) \cite{parker2011english}, ClueWeb 2012-B (extended from \cite{callan2009clueweb09}), and Common Crawl \cite{crawlcommon} for pretraining. We use heuristics to aggressively filter out short or low-quality articles for ClueWeb 2012-B and Common Crawl, which results in 19GB and 110GB text respectively. After tokenization with SentencePiece \cite{kudo2018sentencepiece}, we obtain 2.78B, 1.09B, 4.75B, 4.30B, and 19.97B subword pieces for Wikipedia, BooksCorpus, Giga5, ClueWeb, and Common Crawl respectively, which are 32.89B in total. 
+
+Our largest model XLNet-Large has the same architecture hyperparameters as BERT-Large, which results in a similar model size.
+During pretraining, we always use a full sequence length of 512.
+Firstly, to provide a fair comparison with BERT (section \ref{sec:fair}), we also trained XLNet-Large-wikibooks on BooksCorpus and Wikipedia only, where we reuse all pretraining hyper-parameters as in the original BERT.
+Then, we scale up the training of XLNet-Large by using all the datasets described above.
+Specifically, we train on 512 TPU v3 chips for 500K steps with an Adam weight decay optimizer, linear learning rate decay, and a batch size of 8192, which takes about 5.5 days. 
+It was observed that the model still underfits the data at the end of training.
+Finally, we perform ablation study (section \ref{sec:ablation}) based on the XLNet-Base-wikibooks.
+
+
+%Our largest model does not use the objective of next sentence prediction \cite{devlin2018bert} as ablation study in Section \ref{sec:ablation} does not show consistent improvement with our implementation. 
+Since the recurrence mechanism is introduced, we use a bidirectional data input pipeline where each of the forward and backward directions takes half of the batch size. 
+For training XLNet-Large, we set the partial prediction constant $K$ as 6 (see Section \ref{sec:tgt-aware}).
+Our finetuning procedure follows BERT \cite{devlin2018bert} except otherwise specified\footnote{Hyperparameters for pretraining and finetuning are in Appendix \ref{sec:hp}.}.
+We employ an idea of \textit{span-based prediction}, where we first sample a length $L \in [1, \cdots, 5]$, and then randomly select a consecutive span of $L$ tokens as prediction targets within a context of $(K L)$ tokens.
+
+We use a variety of natural language understanding datasets to evaluate the performance of our method. Detailed descriptions of the settings for all the datasets can be found in Appendix \ref{sec:datasets}.
+
+\subsection{Fair Comparison with BERT} \label{sec:fair}
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\begin{table}[!h]
+	\small
+	\centering
+	
+	\begin{tabular}{p{1.8cm}|ccccccccccc}
+		\toprule
+		\bf Model & SQuAD1.1 & SQuAD2.0 & RACE & MNLI & QNLI & QQP & RTE & SST-2 & MRPC & CoLA & STS-B \\
+		\midrule
+		BERT-Large (Best of 3)  & 86.7/92.8 & 82.8/85.5 & 75.1 & 87.3 & 93.0 & 91.4 &  74.0 & 94.0 & 88.7 & 63.7 & 90.2 \\\midrule
+		XLNet-Large-wikibooks & 88.2/94.0 & 85.1/87.8 & 77.4 & 88.4 & 93.9 & 91.8 & 81.2 & 94.4 & 90.0 & 65.2 & 91.1 \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small Fair comparison with BERT. All models are trained using the same data and hyperparameters as in BERT. We use the best of 3 BERT variants for comparison; i.e., the original BERT, BERT with whole word masking, and BERT without next sentence prediction.}
+	\label{tab:fair}
+	% \vspace{-2em}
+\end{table}
+\endgroup
+Here, we first compare the performance of BERT and XLNet in a fair setting to decouple the effects of using more data and the improvement from BERT to XLNet. In Table \ref{tab:fair}, we compare (1) best performance of three different variants of BERT and (2) XLNet trained with the same data and hyperparameters.
+As we can see, trained on the same data with an almost identical training recipe, XLNet outperforms BERT by a sizable margin on all the considered datasets.
+
+%The experiments in this section are designed for two purposes. First, we want to compare the performance of BERT and XLNet in a fair setting. Second, it is designed to decouple the effects of using 10x more data and the improvement from BERT to XLNet. In Table \ref{tab:fair}, we compare the following methods: (1) three different variants of BERT, (2) XLNet trained with the same data and hyperparameters, (3) XLNet trained with 10x more data and a larger batch size. There are a few interesting observations. First, trained on the same data with an almost identical training recipe, XLNet outperforms BERT by a sizable margin on all the considered datasets. Second, the gains of training on 10x more data are smaller than the gains of switching from BERT to XLNet on 8 out of 11 benchmarks.
+
+\subsection{Comparison with RoBERTa: Scaling Up}
+\label{sec:scale_up}
+
+\begin{table}[!h]
+	\small
+	\centering
+	\begin{tabular}{lccc|lcc}
+		\toprule
+		\bf RACE & \bf Accuracy & \bf Middle & \bf High & \bf Model & \bf NDCG@20 & \bf ERR@20 \\
+		\midrule
+		GPT \cite{radford2018improving} & 59.0 & 62.9 & 57.4 & DRMM \cite{guo2016deep} & 24.3 & 13.8 \\
+		BERT \cite{pan2019improving} & 72.0 & 76.6 & 70.1 & KNRM \cite{dai2018convolutional} & 26.9 & 14.9 \\
+		% BERT+OCN$^*$ \cite{ran2019option} & 73.5 & 78.4 & 71.5 \\
+		BERT+DCMN$^*$ \cite{zhang2019dual} & 74.1 & 79.5 & 71.8 & Conv \cite{dai2018convolutional} & 28.7 & 18.1 \\
+		RoBERTa \cite{liu2019roberta} & 83.2 & 86.5 & 81.8 & BERT$^\dagger$ & 30.53 & 18.67 \\
+		\midrule
+		XLNet & \bf 85.4 & \bf 88.6 & \bf 84.0 & XLNet & \bf 31.10 & \bf 20.28 \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small
+		Comparison with state-of-the-art results on the test set of RACE, a reading comprehension task, and on ClueWeb09-B, a document ranking task. $*$ indicates using ensembles. $\dagger$ indicates our implementations. ``Middle'' and ``High'' in RACE are two subsets representing middle and high school difficulty levels. All BERT, RoBERTa, and XLNet results are obtained with a 24-layer architecture with similar model sizes (aka BERT-Large).
+	}
+	\label{tab:race}
+	% \vspace{-1em}
+\end{table}
+
+\begin{table}[t!h]
+  \small
+  \centering
+  
+  \begin{tabular}{lcc|lcc}
+    \toprule
+    \bf SQuAD2.0 & \bf EM & \bf F1 & \bf SQuAD1.1 & \bf EM & \bf F1 \\
+    \midrule
+    \multicolumn{6}{l}{\it Dev set results (single model)} \\
+    BERT \cite{devlin2018bert} & 78.98 & 81.77 & BERT$\dagger$ \cite{devlin2018bert} & 84.1 & 90.9 \\
+    RoBERTa~\cite{liu2019roberta} & 86.5 & 89.4 & RoBERTa \cite{liu2019roberta}  & 88.9 & 94.6 \\
+    XLNet & \bf 87.9 & \bf 90.6 & XLNet & \bf 89.7 & \bf 95.1 \\
+    \midrule
+    \multicolumn{6}{l}{\it Test set results on leaderboard (single model, as of Dec 14, 2019)} \\
+    BERT~\cite{devlin2018bert} & 80.005 & 83.061 & BERT~\cite{devlin2018bert} & 85.083 & 91.835 \\
+    RoBERTa~\cite{liu2019roberta} & 86.820 & 89.795 & BERT$^*$~\cite{devlin2018bert} & 87.433 & 93.294 \\
+    XLNet & \bf 87.926 & \bf 90.689 & XLNet & \bf 89.898$\ddagger$ & \bf 95.080$\ddagger$ \\
+    \bottomrule
+  \end{tabular}
+  \caption{\small
+%    A single model XLNet outperforms human and the best ensemble by 7.6 EM and 2.5 EM on SQuAD1.1. $*$ means ensembles, 
+Results on SQuAD, a reading comprehension dataset.
+    $\dagger$ marks our runs with the official code. $*$ indicates ensembles.
+    $\ddagger$: We are not able to obtain the test results of our latest model on SQuAD1.1 from the organizers after submitting our result for more than one month, and thus report the results of an older version for the SQuAD1.1 test set.
+  }
+  \label{tab:sota-squad}
+  % \vspace{-1em}
+\end{table}
+
+\begin{table}[!h]
+  \small
+  \centering
+  
+  \begin{tabular}{lccccccc}
+    \toprule
+    \bf Model & \bf IMDB & \bf Yelp-2& \bf Yelp-5 & \bf DBpedia & \bf AG & \bf Amazon-2 & \bf Amazon-5 \\
+    \midrule
+    CNN \cite{johnson2017deep} & - & 2.90 & 32.39 & 0.84 & 6.57 & 3.79 & 36.24 \\
+    DPCNN \cite{johnson2017deep} & - & 2.64 & 30.58 & 0.88 & 6.87 & 3.32 & 34.81 \\
+    Mixed VAT \cite{sachan2018revisiting,miyato2016adversarial} & 4.32 & - & - & 0.70 & 4.95 & - & - \\
+    ULMFiT \cite{howard2018universal} & 4.6 & 2.16 & 29.98 & 0.80 & 5.01 & - & - \\
+    BERT \cite{uda2019} & 4.51 & 1.89 & 29.32 & 0.64 & - & 2.63 & 34.17 \\
+    \midrule
+    XLNet & \bf 3.20 & \bf 1.37 & \bf 27.05 & \bf 0.60 & \bf 4.45 & \bf 2.11 & \bf 31.67 \\
+    \bottomrule
+  \end{tabular}
+  \caption{\small
+    Comparison with state-of-the-art error rates on the test sets of several text classification datasets. All BERT and XLNet results are obtained with a 24-layer architecture with similar model sizes (aka BERT-Large).
+  }
+  \label{tab:txtcls}
+  % \vspace{-1em}
+\end{table}
+
+\begin{table}[!h]
+  \small
+  \centering
+  
+  \begin{tabular}{lccccccccccc}
+    \toprule
+    \bf Model & \bf MNLI & \bf QNLI & \bf QQP & \bf RTE & \bf SST-2 & \bf MRPC & \bf CoLA & \bf STS-B & \bf WNLI \\
+    \midrule
+    \multicolumn{8}{l}{\it Single-task single models on dev} \\
+    BERT \cite{anonymous2018bam} & 86.6/- & 92.3 & 91.3 & 70.4 & 93.2 & 88.0 & 60.6 & 90.0 & - \\
+    RoBERTa \cite{liu2019roberta} & 90.2/90.2 & 94.7 & 92.2 & \bf 86.6 & 96.4 & \bf 90.9 & 68.0 & 92.4 & - \\
+    XLNet & \bf 90.8/90.8 & \bf 94.9 & \bf 92.3 & 85.9 & \bf 97.0 & 90.8 & \bf 69.0 & \bf 92.5 & - \\ % QNLI 94.0
+    \midrule
+    % \multicolumn{8}{l}{\it Single-task single models on test} \\
+    % % GPT \cite{radford2018improving} & 82.1/81.4 & 88.1 & - & 56.0 & 91.3 & 82.3 & 45.4 & - \\
+    % BERT \cite{devlin2018bert} & 86.7/85.9 & 91.1 & 89.3 & 70.1 & 94.9 & 89.3 & 60.5 & 87.6 & 65.1 \\
+    % \midrule
+    % \multicolumn{8}{l}{\it Multi-task single models on test} \\
+    % BAM \cite{anonymous2018bam} & 86.5/85.8 & 93.1 & \bf 89.7 & 80.4 & 95.2 & \bf 91.3 & 61.5 & 88.6 \\
+    % XLNet & \bf 89.5/89.1$^\dagger$ & \bf 98.4$^\dagger$ & 89.6$^\dagger$ & \bf 84.2 & \bf 96.8$^\dagger$ & 91.2 & \bf 61.9 & \bf 91.0 \\
+    % \midrule
+    \multicolumn{8}{l}{\it Multi-task ensembles on test (from leaderboard as of Oct 28, 2019)} \\
+    % Snorkel$^*$ \cite{ratner2017snorkel} & 87.6/87.2 & 93.9 & 89.9 & 80.9 & 96.2 & 91.5 & 63.8 & 90.1 & 65.1 \\
+    % ALICE$^*$ & 88.2/87.9 & 95.7 & \bf 90.7 & 83.5 & 95.2 & 92.6 & \bf 68.6 & 91.1 & 80.8 \\
+    MT-DNN$^*$ \cite{liu2019multi} & 87.9/87.4 & 96.0 & 89.9 & 86.3 & 96.5 & 92.7 & 68.4 & 91.1 & 89.0 \\
+    RoBERTa$^*$ \cite{liu2019roberta} & 90.8/90.2 & 98.9 & 90.2 & 88.2 & 96.7 & 92.3 & 67.8 & 92.2 & 89.0 \\
+    XLNet$^*$ & \bf 90.9/90.9$^\dagger$ & \bf 99.0$^\dagger$ & \bf 90.4$^\dagger$ & \bf 88.5 & \bf 97.1$^\dagger$ & \bf 92.9 & \bf 70.2 & \bf 93.0 & \bf 92.5 \\
+    \bottomrule
+  \end{tabular}
+  \caption{\small
+    Results on GLUE. $*$ indicates using ensembles, and $\dagger$ denotes single-task results in a multi-task row. All dev results are the median of 10 runs. The upper section shows direct comparison on dev data and the lower section shows comparison with state-of-the-art results on the public leaderboard.
+  }
+  \label{tab:sota-glue}
+  % \vspace{-1.0em}
+\end{table}
+
+% \begin{table}[t]
+%   \small
+%   \centering
+  
+%   \begin{tabular}{lcc}
+%     \toprule
+%     \bf Model & \bf NDCG@20 & \bf ERR@20 \\
+%     \midrule
+%     DRMM \cite{guo2016deep} & 24.3 & 13.8 \\
+%     KNRM \cite{dai2018convolutional} & 26.9 & 14.9 \\
+%     Conv \cite{dai2018convolutional} & 28.7 & 18.1 \\
+%     BERT$^\dagger$ & 30.53 & 18.67 \\
+%     \midrule
+%     XLNet & \bf 31.10 & \bf 20.28 \\
+%     \bottomrule
+%   \end{tabular}
+%   \caption{\small
+%     Comparison with state-of-the-art results on the test set of ClueWeb09-B, a document ranking task. 
+%   }
+%   \label{tab:cw09}
+%   \vspace{-2.5em}
+% \end{table}
+
+After the initial publication of our manuscript, a few other pretrained models were released such as RoBERTa \cite{liu2019roberta} and ALBERT \cite{lan2019albert}. Since ALBERT involves increasing the model hidden size from 1024 to 2048/4096 and thus substantially increases the amount of computation in terms of FLOPs, we exclude ALBERT from the following results as it is hard to lead to scientific conclusions. 
+To obtain relatively fair comparison with RoBERTa, the experiment in this section is based on full data and reuses the hyper-parameters of RoBERTa, as described in section \ref{sec:implementation}.
+
+The results are presented in Tables \ref{tab:race} (reading comprehension \& document ranking), \ref{tab:sota-squad} (question answering), \ref{tab:txtcls} (text classification) and \ref{tab:sota-glue} (natural language understanding), where XLNet generally outperforms BERT and RoBERTa.
+In addition, we make two more interesting observations:
+\begin{itemize}[leftmargin=*,itemsep=0em,topsep=0em]
+	\item For explicit reasoning tasks like SQuAD and RACE that involve longer context, the performance gain of XLNet is usually larger. This superiority at dealing with longer context could come from the Transformer-XL backbone in XLNet.
+	\item For classification tasks that already have abundant supervised examples such as MNLI (>390K), Yelp (>560K) and Amazon (>3M), XLNet still lead to substantial gains.
+\end{itemize}
+
+
+% As shown in Table \ref{tab:race}, a single model XLNet outperforms the best ensemble by 7.6 points in accuracy. It is also clear that XLNet substantially outperforms other pretrained models such as BERT and GPT. Since RACE contains relatively long passages, we believe one of the reasons why XLNet obtains substantial gains on this dataset is that the integration of the Transformer-XL architecture improves the capability of modeling long text, besides the AR objective. More analysis on the sequence length is presented in Section \ref{sec:ablation}.
+
+
+% \subsection{SQuAD Dataset}
+
+% SQuAD is a large-scale reading comprehension dataset with two tasks. SQuAD1.1 \cite{rajpurkar2016squad} contains questions that always have a corresponding answer in the given passages, while SQuAD2.0 \cite{rajpurkar2018know} contains unanswerable questions. To finetune an XLNet on SQuAD2.0, we jointly apply a logistic regression loss for answerability prediction similar to classification tasks and a standard span extraction loss for question answering. Since v1.1 and v2.0 share the same answerable questions, we simply remove the answerability prediction part from the model finetuned on v2.0 for evaluation on v1.1. Since the top leaderboard entries all employ some form of data augmentation, we jointly train an XLNet on SQuAD2.0 and NewsQA \cite{trischler2016newsqa} for our leaderboard submission. As shown in Table \ref{sota-squad}, XLNet obtains the state-of-the-art single model results on the leaderboard, outperforming a series of BERT-based methods. XLNet improves the best single model and ensemble results by 2.0 and 1.5 points in EM. For direct comparison with BERT to eliminate the effects of additional tricks in leaderboard submissions, we compare XLNet against BERT on the dev set. XLNet substantially outperforms BERT by 6.8 points in F1.
+% =======
+% As shown in Table \ref{tab:sota-squad}, XLNet obtains the state-of-the-art single model results on the SQuAD leaderboard, outperforming a series of BERT-based methods. Notably, on v1.1, an XLNet single model outperforms human and the best ensemble by 7.6 and 2.5 points in EM. Finally, for direct comparison with BERT to eliminate the effects of additional tricks in leaderboard submissions, we compare XLNet against BERT on the dev set. XLNet substantially outperforms BERT by 3.6 and 7.0 points in F1 for v1.1 and v2.0.
+
+
+
+% \subsection{Text Classification}
+
+% According to Table \ref{tab:txtcls}, XLNet achieves new state-of-the-art results on all the considered text classification datasets, reducing the error rate by 16\%, 18\%, 5\%, 9\% and 5\% on IMDB, Yelp-2, Yelp-5, Amazon-2, and Amazon-5 respectively compared to BERT.
+
+
+
+
+% \vspace{-0.5em}
+% \subsection{GLUE Dataset}
+% \vspace{-0.5em}
+% A multi-task ensemble XLNet achieves the state-of-the-art results on 7 out of 9 tasks on the public leaderboard. On the most widely-benchmarked task MNLI, XLNet improves the ``matched'' and ``mismatched'' settings by 2.0 and 1.8 points respectively. Note that the leaderboard competitors employ improved techniques over BERT such as distillation, modified multi-task losses, or meta learning, but still underperform XLNet which does not employ additional tricks besides using a standard multi-task learning method. Since the leaderboard is not intended for ablation study or hyperparameter tuning, we only evaluated our best multi-task models on the test set. To obtain a direct comparison with BERT, we run a single-task XLNet on the dev set. As shown in the upper-most rows of Table \ref{tab:sota-glue}, XLNet consistently outperforms BERT, with an improvement of 13.4 points, 3.2 points, 3.0 points, 2.4 points, 1.8 points on RTE, MNLI, CoLA, SST-2, and STS-B respectively.
+
+
+
+% \subsection{ClueWeb09-B Dataset}
+
+% According to Table \ref{tab:cw09}, XLNet substantially outperforms the other methods, including a BERT model that uses the same training procedure as ours. This illustrates that XLNet learns better low-level word embeddings than BERT. Note that for fair comparison we exclude the results (19.55 in ERR@20, slightly worse than ours) in \cite{xiong2017word} as it uses additional entity-related data.
+
+
+\subsection{Ablation Study}
+\label{sec:ablation}
+ 
+We perform an ablation study to understand the importance of each design choice based on four datasets with diverse characteristics.
+Specifically, there are three main aspects we hope to study:
+\begin{itemize}[leftmargin=*,itemsep=0em,topsep=0em]
+\item The effectiveness of the permutation language modeling objective alone, especially compared to the denoising auto-encoding objective used by BERT.
+\item The importance of using Transformer-XL as the backbone neural architecture. 
+%and employing segment-level recurrence (i.e. using memory).
+\item The necessity of some implementation details including span-based prediction, the bidirectional input pipeline, and next-sentence prediction.
+\end{itemize}
+With these purposes in mind, in Table \ref{tab:ablation}, we compare 6 XLNet-Base variants with different implementation details (rows 3 - 8), the original BERT-Base model (row 1), and an additional Transformer-XL baseline trained with the denoising auto-encoding (DAE) objective used in BERT but with the bidirectional input pipeline (row 2).
+For fair comparison, all models are based on a 12-layer architecture with the same model hyper-parameters as BERT-Base and are trained on only Wikipedia and the BooksCorpus.
+All results reported are the median of 5 runs.
+
+\begin{table}[!h]
+	\small
+	\centering
+	
+	\begin{tabular}{ll|ccccc}
+		\toprule
+		\bf \# & \bf Model & \bf RACE & \multicolumn{2}{c}{\bf SQuAD2.0} & \bf MNLI & \bf SST-2 \\
+		& & & F1 & EM & m/mm &   \\
+		\midrule
+		1 & BERT-Base                 & 64.3  & 76.30 & 73.66 & 84.34/84.65 & 92.78 \\
+		2 & DAE + Transformer-XL & 65.03 & 79.56 & 76.80 & 84.88/84.45 & 92.60 \\
+		3 & XLNet-Base ($K=7$)        & 66.05 & \bf 81.33 & \bf 78.46 & \bf 85.84/85.43 & 92.66 \\
+		%\quad + next-sent pred & 66.48 & 80.32 & 77.34 & 85.41/84.97 & 93.23 \\ 
+		4 & XLNet-Base ($K=6$)        & 66.66 & 80.98 & 78.18 & 85.63/85.12 & \bf 93.35 \\
+		5 & \quad - memory             & 65.55 & 80.15 & 77.27 & 85.32/85.05 & 92.78 \\
+		6 & \quad - span-based pred    & 65.95 & 80.61 & 77.91 & 85.49/85.02 & 93.12 \\
+		7 & \quad - bidirectional data & 66.34 & 80.65 & 77.87 & 85.31/84.99 & 92.66 \\
+		8 & \quad + next-sent pred     & \bf 66.76 & 79.83 & 76.94 & 85.32/85.09 & 92.89 \\
+		\bottomrule
+	\end{tabular}
+	\caption{\small
+		The results of BERT on RACE are taken from \cite{zhang2019dual}. We run BERT on the other datasets using the official implementation and the same hyperparameter search space as XLNet. $K$ is a hyperparameter to control the optimization difficulty (see Section \ref{sec:tgt-aware}).
+	}
+	\label{tab:ablation}
+	% \vspace{-1em}
+\end{table}
+
+Examining rows 1 - 4 of Table \ref{tab:ablation}, we can see both Transformer-XL and the permutation LM clearly contribute the superior performance of XLNet over BERT.
+%Examining rows 1 - 4 of Table \ref{tab:ablation}, we see the two full XLNet-Base models trained with different values of $K$ significantly outperform both BERT and the DAE trained Transformer-XL across tasks, showing the superiority of the permutation language modeling objective.
+%Meanwhile, it is also interesting to see that the DAE trained Transformer-XL achieves better performance than BERT on tasks with long text such as RACE and SQuAD, suggesting the excellence of Transformer-XL in language modeling also benefits pretraining.
+Moreover, if we remove the memory caching mechanism (row 5), the performance clearly drops, especially for RACE which involves the longest context among the 4 tasks.
+In addition, rows 6 - 7 show that both span-based prediction and the bidirectional input pipeline play important roles in XLNet.
+Finally, we unexpectedly find the the next-sentence prediction objective proposed in the original BERT does not necessarily lead to an improvement in our setting.
+%Instead, it tends to harm the performance except for the RACE dataset. 
+%Hence, when we train XLNet-Large, we exclude the next-sentence prediction objective.
+Hence, we exclude the next-sentence prediction objective from XLNet.
+
+Finally, we also perform a qualitative study of the attention patterns, which is included in Appendix \ref{sec:qual} due to page limit.
+
+

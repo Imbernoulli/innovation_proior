@@ -1,0 +1,301 @@
+% !TEX root = main.tex
+
+In a preliminary set of experiments, we study the behavior of \OURS during training.
+We then qualitatively assess the filters learned with \OURS before comparing our approach to previous state-of-the-art models on standard benchmarks.
+
+\begin{figure}[t]
+	\centering
+	\subfloat[Clustering quality]{
+    \includegraphics[width=0.32\linewidth]{figures-figure_ratio_edge.pdf}
+		\label{fig:edges}
+	}
+	\subfloat[Cluster reassignment]{
+    \includegraphics[width=0.32\linewidth]{figures-figure_reassign.pdf}
+		\label{fig:reassing}
+	}
+	\subfloat[Influence of k]{
+    \includegraphics[width=0.32\linewidth]{figures-figure_perf_k.pdf}
+		\label{fig:choice-k}
+	}
+	\caption{
+		Preliminary studies.
+		\protect\subref{fig:edges}: evolution of the clustering quality along training epochs;
+		\protect\subref{fig:reassing}: evolution of cluster reassignments at each clustering step;
+		\protect\subref{fig:choice-k}: validation mAP classification performance for various choices of $k$.
+	}
+	\label{fig:prelim}
+\end{figure}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Preliminary experiments %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{figure}[t]
+  \centering
+  \begin{tabular}{cc}
+    \includegraphics[width=0.48\linewidth]{images-filters-rgb-large.jpg}&
+    \includegraphics[width=0.48\linewidth]{images-filters-sob-large.jpg}
+  \end{tabular}
+  \caption{Filters from the first layer of an AlexNet trained on unsupervised ImageNet on raw RGB input (left) or after a Sobel filtering (right).
+  }
+  \label{fig:filters}
+\end{figure}
+
+\subsection{Preliminary study}
+
+We measure the information shared between two different assignments $A$ and $B$ of the same data by the
+Normalized Mutual Information (NMI), defined as:
+\begin{equation*}
+\mathrm{NMI}(A;B)=\frac{\mathrm{I}(A;B)}{\sqrt{\mathrm{H}(A) \mathrm{H}(B)}}
+\end{equation*}
+where $\mathrm{I}$ denotes the mutual information and $\mathrm{H}$ the entropy. This measure can be applied to any assignment coming
+from the clusters or the true labels.
+If the two assignments $A$ and $B$ are independent, the NMI is equal to $0$.
+If one of them is deterministically predictable from the other, the NMI is equal to $1$.
+\\
+
+\noindent\textbf{Relation between clusters and labels.}
+Figure~\subref*{fig:edges} shows the evolution of the NMI between the cluster assignments and the ImageNet labels during training.
+It measures the capability of the model to predict class level information.
+Note that we only use this measure for this analysis and not in any model selection process.
+The dependence between the clusters and the labels increases over time, showing that our features progressively capture information
+related to object classes.
+\\
+
+\noindent\textbf{Number of reassignments between epochs.}
+At each epoch, we reassign the images to a new set of clusters, with no guarantee of stability.
+Measuring the NMI between the clusters at epoch $t-1$ and $t$ gives an insight on the actual
+stability of our model.
+Figure~\subref*{fig:reassing} shows the evolution of this measure during training.
+The NMI is increasing, meaning that there are less and less reassignments and the clusters are stabilizing over time.
+However, NMI saturates below $0.8$, meaning that a significant fraction of images are regularly reassigned between epochs.
+In practice, this has no impact on the training and the models do not diverge.
+\\
+
+\noindent\textbf{Choosing the number of clusters.}
+We measure the impact of the number $k$ of clusters used in $k$-means on the quality of the model.
+We report the same down-stream task as in the hyperparameter selection process, \ie mAP on the \textsc{Pascal} VOC 2007 classification validation set.
+We vary $k$ on a logarithmic scale, and report results after $300$ epochs in Figure~\subref*{fig:choice-k}.
+The performance after the same number of epochs for every $k$ may not be directly comparable, but it reflects the hyper-parameter selection process
+used in this work.
+The best performance is obtained with $k=10,000$.
+Given that we train our model on ImageNet, one would expect $k = 1000$ to yield the best results, but apparently some amount of over-segmentation is beneficial.
+
+% The last experiment that we describe in this prelimnary study, is measuring the amount of reassignments that happen along training.
+%%%%%%%%%%%%%%%%%%%%%%
+%%% Visualizations %%%
+%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Visualizations}
+\label{sec:viz}
+
+\noindent\textbf{First layer filters.}
+Figure~\ref{fig:filters} shows the filters from the first layer of an AlexNet trained with \OURS on raw RGB images and images preprocessed with a Sobel filtering.
+The difficulty of learning convnets on raw images has been noted before~\cite{bojanowski2017unsupervised,doersch2015unsupervised,noroozi2016unsupervised,paulin2015local}.
+As shown in the left panel of Fig.~\ref{fig:filters}, most filters capture only color information that typically plays a little role for object classification~\cite{van2011evaluating}.
+Filters obtained with Sobel preprocessing act like edge detectors.
+\\
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{cccccccc}
+  \multicolumn{2}{c}{\texttt{conv1}} &~~~& \multicolumn{2}{c}{\texttt{conv3}} &~~~& \multicolumn{2}{c}{\texttt{conv5}}\\
+  \includegraphics[width=0.15\linewidth]{images-filters-smlayer0-channel43.jpeg}&
+  \includegraphics[width=0.15\linewidth]{images-filters-layer0-channel43.jpeg}&&
+  \includegraphics[width=0.15\linewidth]{images-filters-smlayer2-channel5.jpeg}&
+  \includegraphics[width=0.15\linewidth]{images-filters-layer2-channel5.jpeg}&&
+  \includegraphics[width=0.15\linewidth]{images-filters-smlayer4-channel45.jpeg}&
+  \includegraphics[width=0.15\linewidth]{images-filters-layer4-channel45.jpeg}
+\\
+  \includegraphics[width=0.15\linewidth]{images-filters-smlayer0-channel46.jpeg}&
+  \includegraphics[width=0.15\linewidth]{images-filters-layer0-channel46.jpeg}&&
+  \includegraphics[width=0.15\linewidth]{images-filters-smlayer2-channel80.jpeg}&
+  \includegraphics[width=0.15\linewidth]{images-filters-layer2-channel80.jpeg}&&
+  \includegraphics[width=0.15\linewidth]{images-filters-smlayer4-channel2.jpeg}&
+  \includegraphics[width=0.15\linewidth]{images-filters-layer4-channel2.jpeg}
+\end{tabular}
+\caption{
+  Filter visualization and top $9$ activated images from a subset of $1$ million images from YFCC100M for target filters in the
+  layers \texttt{conv1}, \texttt{conv3} and \texttt{conv5} of an AlexNet trained with \OURS on ImageNet.
+  The filter visualization is obtained by learning an input image that maximizes the response to a target filter~\cite{yosinski2015understanding}.
+}
+\label{fig:activ}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{ccccccc}
+Filter $0$ && Filter $33$ && Filter $145$ && Filter $194$
+\\
+%{\itshape Piano} && {\itshape Stone arcades} && {\itshape Car} && {\itshape Dog}
+%\\
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel0.jpeg}&&
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel33.jpeg}&&
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel145.jpeg}&&
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel194.jpeg}
+\\
+Filter $97$ && Filter $116$ && Filter $119$ && Filter $182$
+\\
+%{\itshape Abstract shape} && {\itshape Drawing} && {\itshape Depth of field} && {\itshape Background blur}
+%\\
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel97.jpeg}&&
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel116.jpeg}&&
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel119.jpeg}&&
+\includegraphics[width=0.24\linewidth]{images-filters-layer4-channel182.jpeg}
+\end{tabular}
+\caption{
+  Top $9$ activated images from a random subset of $10$ millions images from YFCC100M for target filters in the last convolutional layer.
+  The top row corresponds to filters sensitive to activations by images containing objects.
+  The bottom row exhibits filters more sensitive to stylistic effects.
+  For instance, the filters $119$ and $182$ seem to be respectively excited by background blur and depth of field effects.
+}
+\label{fig:waouh}
+\end{figure}
+
+\noindent\textbf{Probing deeper layers.}
+We assess the quality of a target filter by learning an input image that maximizes its activation~\cite{erhan2009visualizing,zeiler2014visualizing}.
+We follow the process described by Yosinki~\etal~\cite{yosinski2015understanding} with a
+cross entropy function between the target filter and the other filters of the same layer.
+%Starting from Gaussian noise, we iteratively update the input to maximize the response of a target filter.
+%applying on the image a Gaussian blur every $5$ updates and a $\ell_2$ penalization.
+Figure~\ref{fig:activ} shows these synthetic images as well as the $9$ top activated images from a subset of $1$ million images
+from YFCC100M.
+As expected, deeper layers in the network seem to capture larger textural structures.
+However, some filters in the last convolutional layers seem to be simply replicating
+the texture already captured in previous layers, as shown on the second row of Fig.~\ref{fig:waouh}.
+This result corroborates the observation by Zhang~\etal~\cite{zhang2016split} that features
+from \texttt{conv3} or \texttt{conv4} are more discriminative than those from \texttt{conv5}.
+
+Finally, Figure~\ref{fig:waouh} shows the top $9$ activated images of some \texttt{conv5} filters that seem to be semantically coherent.
+The filters on the top row contain information about structures that highly corrolate with object classes.
+The filters on the bottom row seem to trigger on style, like drawings or abstract shapes.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Linear Classifiers %%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{Linear classification on activations}
+\label{sec:linear}
+
+Following Zhang~\etal~\cite{zhang2016split}, we train a linear classifier on top of different frozen convolutional layers.
+%This experiment exhibits at which layer the difference between supervised and unsupervised features.
+This layer by layer comparison with supervised features exhibits where a convnet starts to be task specific, \ie specialized in object classification.
+%To this end, we learn linear classifiers on top of the convolutional layers of an AlexNet exactly following the experimental setting of Zhang~\etal~\cite{zhang2016split}.
+We report the results of this experiment on ImageNet and the Places dataset~\cite{zhou2014learning} in Table~\ref{tab:linear}.
+We choose the hyperparameters by cross-validation on the training set.
+On ImageNet, \OURS outperforms the state of the art from \texttt{conv3} to \texttt{conv5} layers by $3-5\%$.
+%\footnote{All percentages indicated in comparisons are absolute, not relative, ie. the difference between 10\% and 12\% is 2\% not 20\%.}
+The largest improvement is observed in the \texttt{conv4} layer, while the \texttt{conv1} layer performs poorly,
+probably because the Sobel filtering discards color.
+%This loss of accuracy at low-level layers can be related to the use of a Sobel filtering of the input, discarding color information.
+Consistently with the filter visualizations of Sec.~\ref{sec:viz}, \texttt{conv3} works better than \texttt{conv5}.
+Finally, the difference of performance between \OURS and a supervised AlexNet grows significantly on higher layers:
+at layers \texttt{conv2-conv3} the difference is only around $6\%$, % bridging the gap between supervised and unsupervised approaches.
+but this difference rises to $14.4\%$ at \texttt{conv5}, marking where the AlexNet probably stores most of the class level information.
+In the supplementary material, we also report the accuracy if a MLP is trained on the last layer; \OURS outperforms the state of the art by $8\%$.
+
+\begin{table}[t]
+  \centering
+  \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{@{}l c ccccc c ccccc@{}}
+      \toprule
+            &~~~& \multicolumn{5}{c}{ImageNet} &~~~& \multicolumn{5}{c}{Places} \\
+            \cmidrule{3-7} \cmidrule{9-13}
+      Method && \texttt{conv1} & \texttt{conv2} & \texttt{conv3} & \texttt{conv4} & \texttt{conv5} && \texttt{conv1} & \texttt{conv2} & \texttt{conv3} & \texttt{conv4} & \texttt{conv5} \\
+      \midrule
+      Places labels                                     && --   & --   & --   & --   & --             && $22.1$ & $35.1$ & $40.2$ & $43.3$ & $44.6$  \\
+      ImageNet labels                                   && $19.3$ & $36.3$ & $44.2$ & $48.3$ & $50.5$           && $22.7$ & $34.8$ & $38.4$ & $39.4$ & $38.7$  \\
+      %ImageNet labels Sobel                            && $11.3$ & $29.6$ & $39.2$ & $38.2$ & $48.5$           && $16.9$ & $31.7$ & $39.1$ & $41.2$ & $39.3$  \\
+      Random                                            && $11.6$ & $17.1$ & $16.9$ & $16.3$ & $14.1$           && $15.7$ & $20.3$ & $19.8$ & $19.1$ & $17.5$  \\
+      \midrule
+      Pathak~\etal~\cite{pathak2016context}             && $14.1$ & $20.7$ & $21.0$ & $19.8$ & $15.5$           && $18.2$ & $23.2$ & $23.4$ & $21.9$ & $18.4$  \\
+      Doersch~\etal~\cite{doersch2015unsupervised}      && $16.2$ & $23.3$ & $30.2$ & $31.7$ & $29.6$           && $19.7$ & $26.7$ & $31.9$ & $32.7$ & $30.9$  \\
+      Zhang~\etal~\cite{zhang2016colorful}              && $12.5$ & $24.5$ & $30.4$ & $31.5$ & $30.3$           && $16.0$ & $25.7$ & $29.6$ & $30.3$ & $29.7$  \\
+      Donahue~\etal~\cite{donahue2016adversarial}       && $17.7$ & $24.5$ & $31.0$ & $29.9$ & $28.0$           && $21.4$ & $26.2$ & $27.1$ & $26.1$ & $24.0$  \\
+      Noroozi and Favaro~\cite{noroozi2016unsupervised} && $\textbf{18.2}$ & $28.8$ & $34.0$ & $33.9$ & $27.1$  && $23.0$ & $32.1$ & $35.5$ & $34.8$ & $31.3$  \\
+      Noroozi~\etal~\cite{noroozi2017representation}    && $18.0$ & $\textbf{30.6}$ & $34.3$ & $32.5$ & $25.7$           && $\textbf{23.3}$ & $\textbf{33.9}$ & $36.3$ & $34.7$ & $29.6$  \\
+      Zhang~\etal~\cite{zhang2016split}                 && $17.7$ & $29.3$ & $35.4$ & $35.2$ & $32.8$           && $21.3$ & $30.7$ & $34.0$ & $34.1$ & $32.5$  \\
+      \midrule
+      \OURS  && $12.9$ & $29.2$ & $\textbf{38.2}$ & $\textbf{39.8}$ & $\textbf{36.1}$ && $18.6$ & $30.8$ & $\textbf{37.0}$ & $\textbf{37.5}$ & $\textbf{33.1}$ \\
+      \bottomrule
+    \end{tabular}
+  }
+  \vspace{\soustable}
+  \caption{
+    Linear classification on ImageNet and Places using activations from the convolutional layers of an AlexNet as features.
+    We report classification accuracy on the central crop.
+    % Noroozi and Favaro~\cite{noroozi2016unsupervised} use stride $2$ instead of $4$ in the \texttt{conv1} layer.
+    Numbers for other methods are from Zhang~\etal~\cite{zhang2016split}.
+  }
+  \label{tab:linear}
+\end{table}
+
+The same experiment on the Places dataset provides some interesting insights:
+%Again, \OURS outperforms the state-of-the-art for most layers.
+like \OURS, a supervised model trained on ImageNet suffers from a decrease of performance for higher layers (\texttt{conv4} versus \texttt{conv5}).
+Moreover, \OURS yields \texttt{conv3-4} features that are comparable to those trained with ImageNet labels.
+This suggests that when the target task is sufficently far from the domain covered by ImageNet, labels are less important.
+
+
+%%%%%%%%%%%%%%%%%%%%%%
+%%% Transfer tasks %%%
+%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{\textsc{Pascal} VOC 2007}
+\label{sec:pascal}
+Finally, we do a quantitative evaluation of \OURS on image classification, object detection and semantic segmentation on \textsc{Pascal} VOC.
+The relatively small size of the training sets on \textsc{Pascal} VOC ($2,500$ images) makes this setup closer to a ``real-world'' application,
+where a model trained with heavy computational resources, is adapted to a task or a dataset with a small number of instances.
+Detection results are obtained using \texttt{fast-rcnn}\footnote{https://github.com/rbgirshick/py-faster-rcnn}; segmentation results are obtained using the code of Shelhamer~\etal\footnote{https://github.com/shelhamer/fcn.berkeleyvision.org}.
+For classification and detection, we report the performance on the test set of \textsc{Pascal} VOC 2007 and choose our hyperparameters on the validation set.
+For semantic segmentation, following the related work, we report the performance on the validation set of \textsc{Pascal} VOC 2012.
+
+\begin{table}[t]
+  \centering
+  \begin{tabular}{lc cc c cc c cc}
+    \toprule
+    &~~~~~~~~& \multicolumn{2}{c}{Classification} &~~~& \multicolumn{2}{c}{Detection} &~~~& \multicolumn{2}{c}{Segmentation} \\
+                      \cmidrule{3-4} \cmidrule{6-7} \cmidrule{9-10}
+    Method && \textsc{fc6-8}& \textsc{all} && \textsc{fc6-8}& \textsc{all} && \textsc{fc6-8} & \textsc{all} \\
+    \midrule
+    ImageNet labels                                             && $~78.9~$ & $~79.9~$ && --       & $~56.8~$ && --       & $~48.0~$ \\
+    Random-rgb                                                  && $~33.2~$ & $~57.0~$ && $~22.2~$ & $~44.5~$ && $~15.2~$ & $~30.1~$ \\
+    Random-sobel                                                && $~29.0~$ & $~61.9~$ && $~18.9~$ & $~47.9~$ && $~13.0~$ & $~32.0~$ \\
+    \midrule
+    Pathak~\etal~\cite{pathak2016context}                       && $~34.6~$ & $~56.5~$ && --   & $~44.5~$ && --   & $~29.7~$ \\
+    Donahue~\etal~\cite{donahue2016adversarial}$^*$             && $~52.3~$ & $~60.1~$ && --   & $~46.9~$ && --   & $~35.2~$ \\
+    Pathak~\etal~\cite{pathak2016learning}                      && --       & $~61.0~$ && --   & $~52.2~$ && --   & --     \\
+		Owens~\etal~\cite{owens2016ambient}$^*$                     && $~52.3~$ & $~61.3~$ && --   & --   && --   & --   \\
+    Wang and Gupta~\cite{wang2015unsupervised}$^*$              && $~55.6~$ & $~63.1~$ && $~32.8^\dagger$   & $~47.2~$ && $~26.0^\dagger$   & $~35.4^\dagger$   \\
+    Doersch~\etal~\cite{doersch2015unsupervised}$^*$            && $~55.1~$ & $~65.3~$ && --   & $~51.1~$ && --   & --   \\
+    Bojanowski and Joulin~\cite{bojanowski2017unsupervised}$^*$ && $~56.7~$ & $~65.3~$ && $~33.7^\dagger$ & $~49.4~$ && $~26.7^\dagger$ & $~37.1^\dagger$ \\ % our detection-all 49.6
+    Zhang~\etal~\cite{zhang2016colorful}$^*$                    && $~61.5~$ & $~65.9~$ && $~43.4^\dagger$ & $~46.9~$ && $~35.8^\dagger$ & $~35.6~$ \\ % our detection-all 47.6 // our sementation-all 38.8
+    Zhang~\etal~\cite{zhang2016split}$^*$                       && $~63.0~$ & $~67.1~$ && --   & $~46.7~$ && --   & $~36.0~$ \\
+    Noroozi and Favaro~\cite{noroozi2016unsupervised}           && --       & $~67.6~$ && --   & $~53.2~$ && --   & $~37.6~$  \\
+    Noroozi~\etal~\cite{noroozi2017representation}              && --       & $~67.7~$ && --   & $~51.4~$ && --   & $~36.6~$ \\
+		\midrule
+    \OURS && $\textbf{70.4}$ & $\textbf{73.7}$ && $\textbf{51.4}$ & $\textbf{55.4}$ && $\textbf{43.2}$ & $\textbf{45.1}$ \\
+    \bottomrule
+  \end{tabular}
+  \vspace{\soustable}
+  \caption{
+    Comparison of the proposed approach to state-of-the-art unsupervised feature learning on classification, detection and segmentation on \textsc{Pascal} VOC.
+    $^*$ indicates the use of the data-dependent initialization of Kr\"ahenb\"uhl~\etal~\cite{krahenbuhl2015data}.
+    Numbers for other methods produced by us are marked with a $\dagger$.
+  }
+  \label{tab:voc}
+\end{table}
+
+Table~\ref{tab:voc} summarized the comparisons of \OURS with other feature-learning approaches on the three tasks.
+As for the previous experiments, we outperform previous unsupervised methods on all three tasks, in every setting.
+The improvement with fine-tuning over the state of the art is the largest on semantic segmentation ($7.5\%$).
+On detection, \OURS performs only slightly better than previously published methods.
+Interestingly, a fine-tuned random network performs comparatively to many unsupervised methods, but performs poorly if only \textsc{fc6-8} are learned.
+For this reason, we also report detection and segmentation with \textsc{fc6-8} for \OURS and a few baselines.
+These tasks are closer to a real application where fine-tuning is not possible.
+It is in this setting that the gap between our approach and the state of the art is the greater (up to $9\%$ on classification).
+
+%Interestingly, on the classification task, the difference with the state-of-the-art is larger when finetuning the fully-connected layers ($7.9\%$) than when finetuning the whole network ($5.2\%$).
+%This suggest that reporting the performance of fully fine-tuned networks (\texttt{all}) may not be conclusive.
+%Moreover, it is worth noting that the performance of \OURS with \textsc{fc6-8} performs better ($70.9\%$) than unsupervised approaches with \texttt{all} ($67.7\%$).

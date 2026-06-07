@@ -1,0 +1,116 @@
+\documentclass{article}
+
+%\setcitestyle{authoryear,open={(},close={)}}
+
+\usepackage{natbib}
+\usepackage{arxiv}
+
+
+
+
+
+\input{macros}
+\input{math_commands}
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2023}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2023}
+
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2023}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts    % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{xcolor}         % colors
+\usepackage{subfigure}
+\usepackage{amsthm,amssymb,amsmath}
+\usepackage{listings}
+\usepackage{cancel}
+\usepackage{cleveref}
+\usepackage{tikz}
+\usepackage{bbm}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage{natbib}
+\usepackage{geometry}
+\usepackage[noend]{algorithmic}
+%\newtheorem{proposition}{Proposition}
+%\newtheorem{theorem}{Theorem}
+\geometry{left=2.5cm,right=2.5cm,top=3cm,bottom=3cm}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{wrapfig}
+
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{fact}[theorem]{Fact}
+\newtheorem{condition}[theorem]{Condition}
+\newtheorem{setting}[theorem]{Setting}
+\newtheorem{example}[theorem]{Example}
+\crefdefaultlabelformat{#2#1#3}
+\creflabelformat{equation}{#2#1#3}
+\def\shownotes{1}  %set 1 to show author notes
+\ifnum\shownotes=1
+\newcommand{\authnote}[2]{[#1: #2]}
+\else
+\newcommand{\authnote}[2]{}
+\fi
+\newcommand{\zhiyuan}[1]{{\color{cyan} \authnote{ZL}{#1}}}
+\newcommand{\tnote}[1]{{\color{red} \authnote{TM}{#1}}}
+\newcommand{\hnote}[1]{{\color{blue} \authnote{HL}{#1}}}
+
+
+\def\shownotes{0}  %set 1 to show author notes
+\ifnum\shownotes=1
+\newcommand{\authnotev}[2]{[#1: #2]}
+\else
+\newcommand{\authnotev}[2]{}
+\fi
+\newcommand{\tnotev}[1]{{\color{red} \authnotev{TM}{#1}}}
+\newcommand{\pl}[1]{{\color{purple} \authnotev{PL}{#1}}}
+
+\title{\ours: A Scalable Stochastic Second-order Optimizer for Language Model Pre-training}
+
+\author{Hong Liu$\ \ \ \ \ $Zhiyuan Li$\ \ \ \ \ $David Hall$\ \ \ \ \ $Percy Liang$\ \ \ \ \ $Tengyu Ma \\
+\\
+	Stanford University \\
+	\texttt{\{hliu99, zhiyuanli, dlwh, pliang, tengyuma\}@cs.stanford.edu}
+}
+
+
+
+\begin{document}
+\maketitle
+%\setlength\parindent{0pt}
+%\setlength{\parskip}{4pt} 
+\input{intro}
+\input{method}
+\input{experiment}
+\input{theoretical_analysis}
+\input{relatedwork}
+
+
+\bibliography{sample,all}
+\bibliographystyle{icml2021}
+
+
+\appendix
+\input{appendix}
+
+
+\end{document}

@@ -1,0 +1,7 @@
+\section{Conclusion}
+We have introduced a new highly scalable distributed agent, IMPALA, and a new off-policy learning algorithm, V-trace. 
+With its simple but scalable distributed architecture, IMPALA can make efficient use of available compute at small and large scale.
+This directly translates to very quick turnaround for investigating new ideas and opens up unexplored opportunities.
+
+V-trace is a general off-policy learning algorithm that is more stable and robust compared to other off-policy correction methods for actor critic agents. We have demonstrated that IMPALA achieves better performance compared to A3C variants in terms of data efficiency, stability and final performance. We have further evaluated IMPALA on the new DMLab-30 set and the Atari-57 set. To the best of our knowledge, IMPALA is the first Deep-RL agent that has been successfully tested in such large-scale multi-task settings and it has shown superior performance compared to A3C based agents (49.4\% vs. 23.8\% human normalised score on DMLab-30). Most importantly, our experiments on DMLab-30 show that, in the multi-task setting, positive transfer between individual tasks lead IMPALA to achieve better performance compared to the expert training setting. We believe that IMPALA provides a simple yet scalable and robust framework for building better Deep-RL agents and has the potential to enable research on new challenges.
+

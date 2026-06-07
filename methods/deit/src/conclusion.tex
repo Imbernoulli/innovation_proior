@@ -1,0 +1,16 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+In this paper, we have introduced \ours, which are image transformers that do not require very large amount of data to be trained, thanks to improved training and in particular a novel distillation procedure. 
+% 
+Convolutional neural networks have optimized, both in terms of architecture  and  optimization during almost a decade, including through extensive architecture search that is prone to overfiting, as it is the case for instance for EfficientNets~\cite{Touvron2020FixingTT}. For \ours we have started the existing data augmentation and regularization strategies pre-existing for convnets, not introducing any significant architectural beyond our novel distillation token. Therefore it is likely that research on data-augmentation more adapted or learned for transformers will bring further gains.  
+ 
+Therefore, considering our results, where image transformers are on par with convnets already, we believe that they will rapidly become a method of choice considering their lower memory footprint for a given accuracy. 
+
+
+
+We provide an open-source implementation of our method. It is available at
+\url{https://github.com/facebookresearch/deit}.
+\subsection*{Acknowledgements}
+
+Many thanks to Ross Wightman for sharing his ViT code and bootstrapping training method with the community, as well as for valuable feedback that helped us to fix different aspects of this paper. Thanks to Vinicius Reis, Mannat Singh, Ari Morcos, Mark Tygert, Gabriel Synnaeve, and  other colleagues at Facebook for brainstorming and some exploration on this axis. Thanks to Ross Girshick and Piotr Dollar for constructive comments. 

@@ -1,0 +1,64 @@
+\section{Training Consistency Models via Distillation}\label{sec:distillation}
+
+We present our first method for training consistency models based on distilling a pre-trained score model $\vs_\vphi(\rvx, t)$. Our discussion revolves around the empirical PF ODE in \cref{eq:e_pfode}, obtained by plugging the score model $\vs_\vphi(\rvx, t)$ into the PF ODE. Consider discretizing the time horizon $[\epsilon, T]$ into $N-1$ sub-intervals, with boundaries $t_1=\epsilon < t_2 < \cdots < t_{N}=T$. In practice, we follow \citet{karras2022edm} to determine the boundaries with the formula $t_i = (\epsilon^{1/\rho} + \nicefrac{i-1}{N-1} (T^{1/\rho} - \epsilon^{1/\rho}))^\rho$, where $\rho=7$. When $N$ is sufficiently large, we can obtain an accurate estimate of $\rvx_{t_n}$ from $\rvx_{t_{n+1}}$ by running one discretization step of a numerical ODE solver. This estimate, which we denote as $\hat{\rvx}_{t_n}^\vphi$, is defined by
+\begin{align}
+   \hat{\rvx}_{t_n}^\vphi \coloneqq \rvx_{t_{n+1}} + (t_n - t_{n+1})\Phi(\rvx_{t_{n+1}}, t_{n+1}; \vphi),\label{eq:odesolve}
+\end{align}
+where $\Phi(\cdots; \vphi)$ represents the update function of a one-step ODE solver applied to the empirical PF ODE. For example, when using the Euler solver, we have $\Phi(\rvx, t; \vphi) = -t \vs_\vphi(\rvx, t)$ which corresponds to the following update rule
+\begin{align*}
+    \hat{\rvx}_{t_n}^\vphi = \rvx_{t_{n+1}} - (t_n - t_{n+1}) t_{n+1} \vs_\vphi(\rvx_{t_{n+1}}, t_{n+1}).
+\end{align*}
+For simplicity, we only consider one-step ODE solvers in this work. It is straightforward to generalize our framework to multistep ODE solvers and we leave it as future work.
+
+Due to the connection between the PF ODE in \cref{eq:pfode} and the SDE in \cref{eq:sde} (see \cref{sec:diffusion}), one can sample along the distribution of ODE trajectories by first sampling $\rvx \sim p_\text{data}$, then adding Gaussian noise to $\rvx$. Specifically, given a data point $\rvx$, we can generate a pair of adjacent data points $(\hat{\rvx}_{t_n}^\vphi, \rvx_{t_{n+1}})$ on the PF ODE trajectory efficiently by sampling $\rvx$ from the dataset, followed by sampling $\rvx_{t_{n+1}}$ from the transition density of the SDE $\mcal{N}(\rvx, t_{n+1}^2 \mI)$, and then computing $\hat{\rvx}_{t_n}^\vphi$ using one discretization step of the numerical ODE solver according to \cref{eq:odesolve}. Afterwards, we train the consistency model by minimizing its output differences on the pair $(\hat{\rvx}_{t_n}^\vphi, \rvx_{t_{n+1}})$. This motivates our following \emph{consistency distillation} loss for training consistency models.
+
+\begin{definition}\label{def:loss}
+The consistency distillation loss is defined as
+\begin{multline}
+    \mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi) \coloneqq \\ \mbb{E}[\lambda(t_n) d(\vf_\vtheta({\rvx}_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n))], \label{eq:distill_obj}
+\end{multline}
+where the expectation is taken with respect to $\rvx \sim p_\text{data}$, $n \sim \mcal{U}\llbracket 1,N-1 \rrbracket$, and $\rvx_{t_{n+1}} \sim \mcal{N}(\rvx; t_{n+1}^2 \mI)$. Here $\mcal{U}\llbracket 1, N-1 \rrbracket$ denotes the uniform distribution over $\{1,2,\cdots, N-1\}$, $\lambda(\cdot) \in \mbb{R}^+$ is a positive weighting function, $\hat{\rvx}_{t_n}^\vphi$ is given by \cref{eq:odesolve}, $\vtheta^-$ denotes a running average of the past values of $\vtheta$ during the course of optimization, and $d(\cdot, \cdot)$ is a metric function that satisfies $\forall \rvx, \rvy: d(\rvx, \rvy) \geq 0$ and $d(\rvx, \rvy) = 0$ if and only if $\rvx = \rvy$.
+\end{definition}
+
+Unless otherwise stated, we adopt the notations in \cref{def:loss} throughout this paper, and use $\mbb{E}[\cdot]$ to denote the expectation over all random variables. In our experiments, we consider the squared $\ell_2$ distance $d(\rvx, \rvy) = \|\rvx - \rvy\|^2_2$, $\ell_1$ distance $d(\rvx, \rvy) = \|\rvx-\rvy\|_1$, and the Learned Perceptual Image Patch Similarity (LPIPS, \citet{zhang2018perceptual}). We find $\lambda(t_n) \equiv 1$ performs well across all tasks and datasets. In practice, we minimize the objective by stochastic gradient descent on the model parameters $\vtheta$, while updating $\vtheta^-$ with exponential moving average (EMA). That is, given a decay rate $0 \leq \mu < 1$, we perform the following update after each optimization step:
+\begin{align}
+    \vtheta^- \leftarrow \operatorname{stopgrad}(\mu \vtheta^- + (1-\mu) \vtheta).\label{eq:ema}
+\end{align}
+The overall training procedure is summarized in \cref{alg:distillation}. In alignment with the convention in deep reinforcement learning \cite{mnih2013playing,mnih2015human,lillicrap2015continuous} and momentum based contrastive learning \cite{grill2020bootstrap,he2020momentum}, we refer to $\vf_{\vtheta^-}$ as the ``target network'', and $\vf_\vtheta$ as the ``online network''. We find that compared to simply setting $\vtheta^- = \vtheta$, the EMA update and ``stopgrad'' operator in \cref{eq:ema} can greatly stabilize the training process and improve the final performance of the consistency model.
+
+\begin{algorithm}[tb]
+    \caption{Consistency Distillation (CD)}\label{alg:distillation}
+ \begin{algorithmic}
+    \STATE {\bfseries Input:} dataset $\mcal{D}$, initial model parameter $\vtheta$, learning rate $\eta$, ODE solver $\Phi(\cdot, \cdot; \vphi)$, $d(\cdot, \cdot)$, $\lambda(\cdot)$, and $\mu$
+    \STATE $\vtheta^- \gets \vtheta$
+    \REPEAT
+    \STATE Sample $\rvx \sim \mcal{D}$ and $n \sim \mcal{U}\llbracket 1,N-1 \rrbracket$
+    \STATE Sample $\rvx_{t_{n+1}} \sim \mcal{N}(\rvx; t_{n+1}^2 \mI)$
+    \STATE $\hat{\rvx}_{t_n}^\vphi \gets \rvx_{t_{n+1}} + (t_n - t_{n+1})\Phi(\rvx_{t_{n+1}}, t_{n+1}; \vphi)$
+    \vspace{0.33em}
+    \STATE $\begin{multlined}
+        \mcal{L}(\vtheta, \vtheta^{-}; \vphi) \gets \\ \lambda(t_n) d(\vf_\vtheta(\rvx_{t_{n+1}}, t_{n+1}), \vf_{\vtheta^-}(\hat{\rvx}_{t_n}^\vphi, t_n))
+    \end{multlined}
+    $
+    \vspace{0.33em}
+    \STATE $\vtheta \gets \vtheta - \eta \nabla_\vtheta \mcal{L}(\vtheta, \vtheta^{-}; \vphi)$
+    \STATE $\vtheta^- \gets \operatorname{stopgrad}(\mu \vtheta^- + (1-\mu) \vtheta$)
+    \UNTIL{convergence}
+ \end{algorithmic}
+ \end{algorithm}
+
+Below we provide a theoretical justification for consistency distillation based on asymptotic analysis.
+
+\begin{theorem}\label{thm:convergence}
+    Let $\Delta t \coloneqq \max_{n \in \llbracket 1, N-1\rrbracket}\{|t_{n+1} - t_{n}|\}$, and $\vf(\cdot,\cdot;\vphi)$ be the consistency function of the empirical PF ODE in \cref{eq:e_pfode}. Assume $\vf_\vtheta$ satisfies the Lipschitz condition: there exists $L > 0$ such that for all $t \in [\epsilon, T]$, $\rvx$, and $\rvy$, we have $\norm{\vf_\vtheta(\rvx, t) - \vf_\vtheta(\rvy, t)}_2 \leq L \norm{\rvx - \rvy}_2$. Assume further that for all $n \in \llbracket 1, N-1 \rrbracket$, the ODE solver called at $t_{n+1}$ has local error uniformly bounded by $O((t_{n+1} - t_n)^{p+1})$ with $p\geq 1$. Then, if $\mcal{L}_\text{CD}^N(\vtheta, \vtheta; \vphi) = 0$, we have
+    \begin{align*}
+        \sup_{n, \rvx}\|\vf_{\vtheta}(\rvx, t_n) - \vf(\rvx, t_n; \vphi)\|_2 = O((\Delta t)^p).
+    \end{align*}
+\end{theorem}
+\begin{proof}
+    The proof is based on induction and parallels the classic proof of global error bounds for numerical ODE solvers \cite{suli2003introduction}. We provide the full proof in \cref{app:proof_cd}.
+\end{proof}
+
+Since $\vtheta^{-}$ is a running average of the history of $\vtheta$, we have $\vtheta^{-} = \vtheta$ when the optimization of \cref{alg:distillation} converges. That is, the target and online consistency models will eventually match each other. If the consistency model additionally achieves zero consistency distillation loss, then \cref{thm:convergence} implies that, under some regularity conditions, the estimated consistency model can become arbitrarily accurate, as long as the step size of the ODE solver is sufficiently small. Importantly, our boundary condition $\vf_\vtheta(\rvx, \epsilon) \equiv \rvx$ precludes the trivial solution $\vf_\vtheta(\rvx, t) \equiv \bm{0}$ from arising in consistency model training.
+
+The consistency distillation loss $\mcal{L}_\text{CD}^N(\vtheta, \vtheta^{-}; \vphi)$ can be extended to hold for infinitely many time steps ($N \to \infty$) if $\vtheta^{-} = \vtheta$ or $\vtheta^{-} = \operatorname{stopgrad}(\vtheta)$. The resulting continuous-time loss functions do not require specifying $N$ nor the time steps $\{t_1, t_2, \cdots, t_N\}$. Nonetheless, they involve Jacobian-vector products and require forward-mode automatic differentiation for efficient implementation, which may not be well-supported in some deep learning frameworks. We provide these continuous-time distillation loss functions in \cref{thm:ctcd1,thm:ctcd_l1,thm:ctcd2}, and relegate details to \cref{sec:ctcd}.

@@ -1,0 +1,624 @@
+\section{Experiments}
+
+%We evaluate our method, named \snip{} (Single-shot Network Pruning), on \mnist{} and \cifar{} classification tasks with a variety of network architectures.
+%We evaluate our method, \snip{}, on \mnist{} and \cifar{-10} classification tasks with a variety of network architectures.
+We evaluate our method, \snip{}, on \mnist{}, \cifar{-10} and \timagenet{} classification tasks with a variety of network architectures.
+Our results show that \snip{} yields extremely sparse models with minimal or no loss in accuracy across all tested architectures, while being much simpler than other state-of-the-art alternatives.
+We also provide clear evidence that our method prunes genuinely explainable connections rather than performing blind pruning.
+
+\textbf{Experiment setup}\quad
+For brevity, we define the sparsity level to be $\bkappa = (m-\kappa)/m\cdot 100\,(\%)$, where $m$ is the total number of parameters and $\kappa$ is the desired number of non-zero weights.
+For a given sparsity level $\bkappa$, the sensitivity scores are computed using a batch of $100$ and $128$ examples for \mnist{} and \cifar{} experiments, respectively.
+After pruning, the pruned network is trained in the standard way.
+Specifically, we train the models using SGD with momentum of $0.9$, batch size of $100$ for \mnist{} and $128$ for \cifar{} experiments and the weight decay rate of $0.0005$, unless stated otherwise.
+The initial learning rate is set to $0.1$ and decayed by $0.1$ at every $25$k or $30$k iterations for \mnist{} and \cifar{}, respectively.
+Our algorithm requires no other hyperparameters or complex learning/pruning schedules as in most pruning algorithms.
+We spare $10$\% of the training data as a validation set and used only $90$\% for training.
+For \cifar{} experiments, we use the standard data augmentation (\ie, random horizontal flip and translation up to $4$ pixels) for both the reference and sparse models.
+The code can be found here:~\href{https://github.com/namhoonlee/snip-public}{https://github.com/namhoonlee/snip-public}.
+%Our algorithm is implemented using TensorFlow, and the code replicating our experiments will be released upon publication.
+
+\SKIP{
+Note that, given the desired sparsity level, our method prunes the neural network once at the random initialization, and then, the pruned network is trained in the standard way.
+To this end, it would be useful to define the sparsity level as the fraction of parameters to be pruned in the network, \ie, $\bkappa = (m-\kappa)/m$, where $m$ is the total number of parameters and $\kappa$ is the desired number of non-zero weights.
+The pruned network is then trained using SGD with momentum of $0.9$, batch size of $100$ for \mnist{} and $128$ for CIFAR experiments and the weight decay rate of $0.0005$, unless stated otherwise.
+The initial learning rate is set to $0.1$ and decayed by $0.2$ at every $25$k or $30$k iterations for \mnist{} and CIFAR, respectively.
+Our algorithm requires no other hyperparameters or complex learning/pruning schedules as in most pruning algorithms.
+We spare $10$\% of the training data as a validation set and used only $90$\% for training.
+For CIFAR experiments, we use the standard data augmentation (\ie, random horizontal flip and random translation up to $4$ pixels) for both the reference and sparse models.
+Our algorithm is implemented using TensorFlow~(\cite{tensorflow2015-whitepaper}), and the code replicating our experiments will be released upon publication.
+}
+
+\SKIP{
+We prune the network for the desired sparsity $\bkappa = (m-\kappa)/m$, single-shot at random initialization, and start training as normal.
+Unless otherwise stated, we train all models using SGD with momentum of $0.9$, batch size of $100$ for \mnist{} and $128$ for CIFAR experiments and the weight decay rate of $0.0005$.
+The initial learning rate is set $0.1$ and decays by $0.2$ at every $25$k (or $30$k) iterations.
+Our algorithm requires no other hyperparameters or complex learning/pruning schedules as in most pruning algorithms.
+We spare $10$\% of the training data as a validation set and used only $90$\% for training.
+For CIFAR experiments, we use the standard data augmentation (\ie random horizontal flip and random translation up to $4$ pixels) for both the reference and sparse models.
+We used the TensorFlow libraries~\cite{tensorflow2015-whitepaper}.
+Our algorithm is simple to implement, and yet the code replicating our experiments will be released upon publication.
+}
+
+
+
+\subsection{Pruning LeNets with varying levels of sparsity}
+
+\begin{figure*}[t]
+    \centering
+    \begin{subfigure}{.46\textwidth}
+        \includegraphics[height=38mm]{figure/lenet300_pc_varying-ts_diff-seeds.eps}
+        \vspace{-3mm}
+        \caption{\slenet{-300-100}}
+    \end{subfigure}
+    \begin{subfigure}{.46\textwidth}
+        \includegraphics[height=38mm]{figure/lenet5_pc_varying-ts_diff-seeds.eps}
+        \vspace{-3mm}
+        \caption{\slenet{-5-Caffe}}
+    \end{subfigure}
+    \caption{ 
+        Test errors of \slenet{s} pruned at varying sparsity levels $\bkappa$, where 
+        $\bkappa=0$ refers to the reference network trained without pruning.
+        Our approach performs as good as the reference network across varying sparsity levels on both the models.
+    }
+    \label{fig:varying-ts}
+\end{figure*}
+
+We first test our approach on two standard networks for pruning, \slenet{-300-100} and \slenet{-5-Caffe}.
+\slenet{-300-100} consists of three fully-connected (fc) layers with $267$k parameters and \slenet{-5-Caffe} consists of two convolutional (conv) layers and two fc layers with $431$k parameters.
+We prune the \slenet{s} for different sparsity levels $\bkappa$ and report the performance in error on the \mnist{} image classification task.
+We run the experiment $20$ times for each $\bkappa$ by changing random seeds for dataset and network initialization.
+The results are reported in Figure~\ref{fig:varying-ts}.
+
+The pruned sparse \slenet{-300-100} achieves performances similar to the reference ($\bkappa=0$), only with negligible loss at $\bkappa=90$.
+For \slenet{-5-Caffe}, the performance degradation is nearly invisible.
+%Interestingly, models at some sparsity levels display higher average accuracies than the reference model, indicating that our approach has regularization effect reducing overfitting.
+Note that our saliency measure does not require the network to be pre-trained and is computed at random initialization.
+Despite such simplicity, our approach prunes \slenet{s} quickly (single-shot) and effectively (minimal accuracy loss) at varying sparsity levels.
+
+
+
+\subsection{Comparisons to existing approaches}
+
+%\begin{table*}[t]
+%    \centering
+%    \scriptsize
+%    \begin{tabular}{l@{\hspace{.5\tabcolsep}} c c@{\hspace{.8\tabcolsep}}c c@{\hspace{.8\tabcolsep}}c c@{\hspace{.9\tabcolsep}}c@{\hspace{.8\tabcolsep}}cc}
+%        \toprule
+%        \multirow{2}{*}{Method} & \multirow{2}{*}{Criteria} & \multicolumn{2}{c}{\vlenet{-300-100}} & \multicolumn{2}{c}{\vlenet{-5-Caffe}} & pre- & prune & \multirow{2}{*}{Algo. complexities} & \multirow{2}{*}{Constraints} \\
+%         & & $\bkappa$ & err. (\%) & $\bkappa$ & err. (\%) & train & \# \\
+%        \midrule
+%        %Ref.  & --                            & --      & $1.69$ & --      & $0.86$ & --             & --               & -- & -- \\
+%        %LWC   & \multicolumn{1}{l}{magnitude} & $0.917$ & $1.59$ & $0.917$ & $0.77$ & \checkmark     & many             & \multicolumn{1}{l}{iterate pruning and re-training} & \multicolumn{1}{l}{alt. fc$\leftrightarrow$conv} \\
+%        %DNS   & \multicolumn{1}{l}{magnitude} & $0.982$ & $1.99$ & $0.991$ & $0.91$ & \checkmark     & many             & \multicolumn{1}{l}{stochastic \& manual schedule} & \multicolumn{1}{l}{alt. fc$\leftrightarrow$conv} \\
+%        %LC    & \multicolumn{1}{l}{magnitude} & $0.990$ & $3.17$ & $0.990$ & $1.06$ & \checkmark     & $\simeq30$       & \multicolumn{1}{l}{alternate L-C, $\mu$ \& $\lambda$ schedule} & \multicolumn{1}{l}{prune only $\rvw$} \\
+%        %SWS   & \multicolumn{1}{l}{Bayesian}  & $0.956$ & $1.94$ & $0.995$ & $0.97$ & \checkmark     & --               & \multicolumn{1}{l}{optimize $\rvw$, GMM $(\mu, \sigma, \pi)$} & \multicolumn{1}{l}{hyper-priors} \\
+%        %SVD   & \multicolumn{1}{l}{Bayesian}  & $0.985$ & $1.92$ & $0.996$ & $0.75$ & \checkmark     & --               & \multicolumn{1}{l}{variational inference $\mathcal{L}^{\text{SGVB}}$} & \multicolumn{1}{l}{$\alpha \rightarrow +\infty$}\\
+%        %OBD   & \multicolumn{1}{l}{Hessian}   & $0.920$ & $1.96$ & $0.920$ & $2.65$ & \checkmark     & many             & \multicolumn{1}{l}{diagonal $\rmH$ at every pruning} & \multicolumn{1}{l}{not scalable} \\
+%        %L-OBS & \multicolumn{1}{l}{Hessian}   & $0.985$ & $1.96$ & $0.990$ & $2.04$ & \checkmark     & many             & \multicolumn{1}{l}{layer-wise $\rmH^{-1}_{l}$, $\epsilon^{l}$ schedule} & \multicolumn{1}{l}{not scalable} \\
+%        %Ours  & \multicolumn{1}{l}{con.sens.} & $0.980$ & $2.43$ & $0.990$ & $1.15$ & \hlcell \xmark & \hlcell $\bm{1}$ & \multicolumn{1}{l}{\hlcell single gradient at start} & \multicolumn{1}{l}{\hlcell free} \\
+%        Ref.  & --                                  & --      & $1.7$ & --      & $0.9$ & --                               & --               & -- & -- \\
+%        LWC   & \multicolumn{1}{l}{magnitude}       & $0.917$ & $1.6$ & $0.917$ & $0.8$ & \textcolor{red}{\checkmark}      & many             & \multicolumn{1}{l}{iterate pruning and re-training} & \multicolumn{1}{l}{alt. fc$\leftrightarrow$conv} \\
+%        DNS   & \multicolumn{1}{l}{magnitude}       & $0.982$ & $2.0$ & $0.991$ & $0.9$ & \textcolor{red}{\checkmark}      & many             & \multicolumn{1}{l}{stochastic \& manual schedule} & \multicolumn{1}{l}{alt. fc$\leftrightarrow$conv} \\
+%        LC    & \multicolumn{1}{l}{magnitude}       & $0.990$ & $3.2$ & $0.990$ & $1.1$ & \textcolor{red}{\checkmark}      & $\simeq30$       & \multicolumn{1}{l}{alternate L-C, $\mu$ \& $\lambda$ schedule} & \multicolumn{1}{l}{prune only $\rvw$} \\
+%        SWS   & \multicolumn{1}{l}{Bayesian}        & $0.956$ & $1.9$ & $0.995$ & $1.0$ & \textcolor{red}{\checkmark}      & --               & \multicolumn{1}{l}{optimize $\rvw$, GMM $(\mu, \sigma, \pi)$} & \multicolumn{1}{l}{hyper-priors} \\
+%        SVD   & \multicolumn{1}{l}{Bayesian}        & $0.985$ & $1.9$ & $0.996$ & $0.8$ & \textcolor{red}{\checkmark}      & --               & \multicolumn{1}{l}{variational inference $\mathcal{L}^{\text{SGVB}}$} & \multicolumn{1}{l}{$\alpha \rightarrow +\infty$}\\
+%        OBD   & \multicolumn{1}{l}{Hessian}         & $0.920$ & $2.0$ & $0.920$ & $2.7$ & \textcolor{red}{\checkmark}      & many             & \multicolumn{1}{l}{diagonal $\rmH$ at every pruning} & \multicolumn{1}{l}{not scalable} \\
+%        L-OBS & \multicolumn{1}{l}{Hessian}         & $0.985$ & $2.0$ & $0.990$ & $2.1$ & \textcolor{red}{\checkmark}      & many             & \multicolumn{1}{l}{layer-wise $\rmH^{-1}_{l}$, $\epsilon^{l}$ schedule} & \multicolumn{1}{l}{not scalable} \\
+%        \midrule
+%        CSS \textcolor{gray}{(ours)} & \multicolumn{1}{l}{con. sens.} & $0.950$ & $1.6$ & $0.980$ & $0.8$ & \hlcell \textcolor{Green}{\xmark} & \hlcell $\bm{1}$ & \multicolumn{1}{l}{\hlcell single gradient at start} & \multicolumn{1}{l}{\hlcell free} \\
+%        CSS \textcolor{gray}{(ours)} & \multicolumn{1}{l}{con. sens.} & $0.980$ & $2.4$ & $0.990$ & $1.1$ & \hlcell \textcolor{Green}{\xmark} & \hlcell $\bm{1}$ & \multicolumn{1}{l}{\hlcell single gradient at start} & \multicolumn{1}{l}{\hlcell free} \\
+%        \bottomrule
+%    \end{tabular}
+%    \caption{
+%        Pruning results on \slenet{s} and comparisons to other approaches.
+%        Our approach is capable of pruning up to $98$\% for \slenet{-300-100} and $99$\% for \slenet{-5-Caffe} with marginal increases in error from the reference network.
+%        Notably, our approach is considerably simpler than other approaches.
+%        ``many'' refers to an unspecific large number, often in the order of total learning steps.
+%    }
+%    \label{tab:compare-pruning-lenets}
+%\end{table*}
+
+\begin{table*}[t]
+    \centering
+    \scriptsize
+    %\begin{tabular}{l@{\hspace{.5\tabcolsep}} c c@{\hspace{.8\tabcolsep}}c c@{\hspace{.8\tabcolsep}}c c@{\hspace{.9\tabcolsep}}c@{\hspace{.8\tabcolsep}}cc}
+    \begin{tabular}{l c cc cc ccc@{\hspace{.95\tabcolsep}}c@{\hspace{.95\tabcolsep}}c@{\hspace{.95\tabcolsep}}}
+        \toprule
+        \multirow{2}{*}{Method} & \multirow{2}{*}{Criterion} & \multicolumn{2}{c}{\vlenet{-300-100}} & \multicolumn{2}{c}{\vlenet{-5-Caffe}} & \multirow{2}{*}{Pretrain} & \multirow{2}{*}{\# Prune} & Additional & Augment & Arch. \\
+         & & $\bkappa$ (\%) & err. (\%) & $\bkappa$ (\%) & err. (\%) & & & hyperparam. & objective & constraints \\
+        \midrule
+        Ref.  & --                            & --     & $1.7$          & --     & $0.9$          & --         & --   & -- & -- & -- \\
+        LWC   & \multicolumn{1}{l}{Magnitude} & $91.7$ & $\mathbf{1.6}$ & $91.7$ & $\mathbf{0.8}$ & \checkmark & many & \checkmark & \xmark     & \checkmark \\  
+        DNS   & \multicolumn{1}{l}{Magnitude} & $98.2$ & $2.0$          & $99.1$ & $0.9$          & \checkmark & many & \checkmark & \xmark     & \checkmark \\ 
+        LC    & \multicolumn{1}{l}{Magnitude} & $99.0$ & $3.2$          & $99.0$ & $1.1$          & \checkmark & many & \checkmark & \checkmark & \xmark \\ 
+        SWS   & \multicolumn{1}{l}{Bayesian}  & $95.6$ & $1.9$          & $99.5$ & $1.0$          & \checkmark & soft & \checkmark & \checkmark & \xmark \\ 
+        SVD   & \multicolumn{1}{l}{Bayesian}  & $98.5$ & $1.9$          & $99.6$ & $\mathbf{0.8}$ & \checkmark & soft & \checkmark & \checkmark & \xmark \\
+        OBD   & \multicolumn{1}{l}{Hessian}   & $92.0$ & $2.0$          & $92.0$ & $2.7$          & \checkmark & many & \checkmark & \xmark     & \xmark \\ 
+        L-OBS & \multicolumn{1}{l}{Hessian}   & $98.5$ & $2.0$          & $99.0$ & $2.1$          & \checkmark & many & \checkmark & \xmark     & \checkmark \\
+        \midrule
+        \multirow{2}{*}{SNIP \textcolor{gray}{(ours)}} & \multicolumn{1}{l}{Connection} & $95.0$ & $\mathbf{1.6}$ & $98.0$ & $\mathbf{0.8}$ & \multirow{2}{*}{\xmark} & \multirow{2}{*}{ $\bm{1}$} & \multirow{2}{*}{\xmark} & \multirow{2}{*}{\xmark}& \multirow{2}{*}{\xmark} \\
+         & \multicolumn{1}{l}{sensitivity} & $98.0$ & $2.4$ & $99.0$ & $1.1$ &  &  & & \\
+        \bottomrule
+    \end{tabular}
+    \caption{
+        Pruning results on \slenet{s} and comparisons to other approaches.
+        Here, ``many'' refers to an arbitrary number often in the order of total learning steps, and ``soft'' refers to soft pruning in Bayesian based methods.
+        Our approach is capable of pruning up to $98$\% for \slenet{-300-100} and $99$\% for \slenet{-5-Caffe} with marginal increases in error from the reference network.
+        Notably, our approach is considerably simpler than other approaches, with no requirements such as pretraining, additional hyperparameters, augmented training objective or architecture dependent constraints.
+    }
+    \label{tab:compare-pruning-lenets}
+\end{table*}
+
+What happens if we increase the target sparsity to an extreme level?
+For example, would a model with only $1$\% of the total parameters still be trainable and perform well?
+We test our approach for extreme sparsity levels (\eg, up to $99$\% sparsity on \slenet{-5-Caffe}) and compare with various pruning algorithms as follows: \lwc{}~(\cite{han2015learning}), \dns{}~(\cite{guo2016dynamic}), \lc{}~(\cite{Carreira-Perpiñán_2018_CVPR}), \sws{}~(\cite{ullrich2017soft}), \svd{}~(\cite{molchanov2017variational}), \obd{}~(\cite{lecun1990optimal}), \lobs{}~(\cite{dong2017learning}).
+%We name ours \textit{\small{CSS}} for \underline{C}onnection \underline{S}ensitivity based \underline{S}ingle-shot pruning.
+The results are summarized in Table~\ref{tab:compare-pruning-lenets}.
+
+We achieve errors that are comparable to the reference model, degrading approximately $0.7$\% and $0.3$\% while pruning $98$\% and $99$\% of the parameters in \slenet{-300-100} and \slenet{-5-Caffe} respectively.
+For slightly relaxed sparsities (\ie, $95$\% for \slenet{-300-100} and $98$\% for \slenet{-5-Caffe}), the sparse models pruned by \snip{} record better performances than the dense reference network.
+%Note that we train extremely sparse networks (\eg only $1$\% on \slenet{-5-Caffe}) from scratch, which is much harder than learning from the dense (pretrained) network as done in most of other works.
+Considering $99\%$ sparsity, our method efficiently finds $1\%$ of the connections even before training, that are sufficient to learn as good as the reference network.
+%This is in stark contrast to previous methods where they have access to $100\%$ of the parameters while training. 
+%\NOTE{I used this paragraph for reporting numbers. Interpretation can come later in the last paragraph. Otherwise numbers and interpretations are mixed and will confuse. Also, if I say this here, it breaks the flow for algorithm complexity.}
+Moreover, \snip{} is competitive to other methods, yet it is unparalleled in terms of algorithm simplicity.
+
+
+To be more specific, we enumerate some key points and non-trivial aspects of other algorithms and highlight the benefit of our approach.
+First of all, the aforementioned methods require networks to be fully trained (if not partly) before pruning.
+%This is a non-trivial effort and makes the pruning process be treated as post-processing.
+These approaches typically perform many pruning operations even if the network is well pretrained, and require additional hyperparameters (\eg, pruning frequency in~\cite{guo2016dynamic}, annealing schedule in~\cite{Carreira-Perpiñán_2018_CVPR}).
+%(\cite{han2015learning}), \dns{}~(\cite{guo2016dynamic}), \lc{}~(\cite{Carreira-Perpiñán_2018_CVPR}), \sws{}~(\cite{ullrich2017soft}), \svd{}~(\cite{molchanov2017variational}), \obd{}~(\cite{lecun1990optimal}), \lobs{}~(\cite{dong2017learning}).
+Some methods augment the training objective to handle pruning together with training, increasing the complexity of the algorithm (\eg, augmented Lagrangian in~\cite{Carreira-Perpiñán_2018_CVPR}, variational inference in~\cite{molchanov2017variational}).  
+Furthermore, there are approaches designed to include architecture dependent constraints (\eg, layer-wise pruning schemes in~\cite{dong2017learning}).
+ 
+%The magnitude based approaches (\lwc{}, \dns{}, \lc{}) rely on heuristically designed learning and pruning schedules with some structural constraints.
+%The Hessian based approaches (\obd{}, \lobs{}) require to compute the (approximate) Hessian matrix or inverse of it at every pruning step, which is not scalable.
+%The Bayesian approaches (\sws{}, \svd{}) can produce a highly sparse model, however, it requires to compute the posterior distribution using Bayesian Inference or Variational method with additional hyperparameters.
+
+Compared to the above approaches, ours seems to cost almost nothing;
+it requires no pretraining or additional hyperparameters, and is applied only once at initialization.
+%This means that one can easily plug-in our pruning as a preprocessor before training neural networks.
+This means that one can easily plug-in \snip{} as a preprocessor before training neural networks.
+%Since our approach prunes the network at the beginning, we could potentially expedite the training phase by training only the survived parameters.
+%Notice that this is not possible for the aforementioned approaches as they obtain the sparse models at the end of the process.
+Since \snip{} prunes the network at the beginning, we could potentially expedite the training phase by training only the survived parameters (\eg, reduced expected FLOPs in~\cite{louizos2017learning}).
+Notice that this is not possible for the aforementioned approaches as they obtain the maximum sparsity at the end of the process.
+
+
+
+\subsection{Various modern architectures}
+
+\begin{table*}[t]
+    \centering
+    \footnotesize
+    \begin{tabular}{c@{\hspace{.7\tabcolsep}}c l c r@{\hspace{.7\tabcolsep}}c@{\hspace{.7\tabcolsep}}r r@{\hspace{.7\tabcolsep}}c@{\hspace{.7\tabcolsep}}rc}
+        \toprule
+        Architecture && \multicolumn{1}{c}{Model} & Sparsity (\%) & \multicolumn{3}{c}{\# Parameters} & \multicolumn{3}{c}{Error (\%)} & $\Delta$ \\
+        \midrule
+        \multirow{5}{*}{Convolutional}
+         && \valexnet{-s} & $90.0$ & $5.1$m  & $\rightarrow$ & $507$k & $14.12$ & $\rightarrow$ & $14.99$ & $+0.87$ \\
+         && \valexnet{-b} & $90.0$ & $8.5$m  & $\rightarrow$ & $849$k & $13.92$ & $\rightarrow$ & $14.50$ & $+0.58$ \\
+         && \vvgg{-C}     & $95.0$ & $10.5$m & $\rightarrow$ & $526$k & $6.82$  & $\rightarrow$ & $7.27$  & $+0.45$ \\
+         && \vvgg{-D}     & $95.0$ & $15.2$m & $\rightarrow$ & $762$k & $6.76$  & $\rightarrow$ & $7.09$  & $+0.33$ \\
+         && \vvgg{-like}  & $97.0$ & $15.0$m & $\rightarrow$ & $449$k & $8.26$  & $\rightarrow$ & $8.00$  & $\mathbf{-0.26}$ \\
+        \midrule
+        \multirow{3}{*}{Residual}
+        && \vwrn{-16-8}  & $95.0$ & $10.0$m & $\rightarrow$ & $548$k & $6.21$ & $\rightarrow$ & $6.63$ & $+0.42$ \\
+        && \vwrn{-16-10} & $95.0$ & $17.1$m & $\rightarrow$ & $856$k & $5.91$ & $\rightarrow$ & $6.43$ & $+0.52$ \\
+        && \vwrn{-22-8}  & $95.0$ & $17.2$m & $\rightarrow$ & $858$k & $6.14$ & $\rightarrow$ & $5.85$ & $\mathbf{-0.29}$ \\
+        \midrule
+        \multirow{4}{*}{Recurrent}
+        && \vlstm{-s} & $95.0$ & $137$k & $\rightarrow$ & $6.8$k  & $1.88$ & $\rightarrow$ & $1.57$ & $\mathbf{-0.31}$ \\
+        && \vlstm{-b} & $95.0$ & $535$k & $\rightarrow$ & $26.8$k & $1.15$ & $\rightarrow$ & $1.35$ & $+0.20$ \\
+        && \vgru{-s}  & $95.0$ & $104$k & $\rightarrow$ & $5.2$k  & $1.87$ & $\rightarrow$ & $2.41$ & $+0.54$ \\
+        && \vgru{-b}  & $95.0$ & $404$k & $\rightarrow$ & $20.2$k & $1.71$ & $\rightarrow$ & $1.52$ & $\mathbf{-0.19}$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{
+        Pruning results of the proposed approach on various modern architectures (before $\rightarrow$ after).
+        \salexnet{s}, \svgg{s} and \swrn{s} are evaluated on \cifar{-10}, and \slstm{s} and \sgru{s} are evaluated on the sequential \mnist{} classification task.
+        The approach is generally applicable regardless of architecture types and models and results in a significant amount of reduction in the number of parameters with minimal or no loss in performance.
+    }
+    \label{tab:compare-various-arch}
+\end{table*}
+
+In this section we show that our approach is generally applicable to more complex modern network architectures including deep convolutional, residual and recurrent ones.
+Specifically, our method is applied to the following models:
+\begin{tight_itemize}
+    \vspace{-2mm}
+\item \salexnet{-s} and \salexnet{-b}:
+    Models similar to \cite{krizhevsky2012imagenet} in terms of the number of layers and size of kernels.
+    We set the size of fc layers to $512$ (\salexnet{-s}) and to $1024$ (\salexnet{-b}) to adapt for \cifar{-10} and use strides of $2$ for all conv layers instead of using pooling layers.
+\item \svgg{-C}, \svgg{-D} and \svgg{-like}:
+    Models similar to the original \svgg{} models described in \cite{simonyan2014very}.
+    \svgg{-like} (\cite{zagoruyko201592}) is a popular variant adapted for \cifar{-10} which has one less fc layers.
+    For all \svgg{} models, we set the size of fc layers to $512$, remove dropout layers to avoid any effect on sparsification and use batch normalization instead.
+\item \swrn{-16-8}, \swrn{-16-10} and \swrn{-22-8}:
+    Same models as in \cite{zagoruyko2016wide}.
+\item \slstm{-s}, \slstm{-b}, \sgru{-s}, \sgru{-b}:
+    One layer \srnn{} networks with either \slstm{} (\cite{zaremba2014recurrent}) or \sgru{} (\cite{cho2014learning}) cells.
+    We develop two unit sizes for each cell type, $128$ and $256$ for \{$\cdot$\}-s and \{$\cdot$\}-b, respectively.
+    The model is adapted for the sequential \mnist{} classification task, similar to~\cite{le2015simple}.
+    Instead of processing pixel-by-pixel, however, we perform row-by-row processing (\ie, the \srnn{} cell receives each row at a time).
+    \vspace{-2mm}
+\end{tight_itemize}
+
+The results are summarized in Table~\ref{tab:compare-various-arch}.
+%We report the classification errors as well as the number of parameters before and after pruning for a given sparisty.
+Overall, our approach prunes a substantial amount of parameters in a variety of network models with minimal or no loss in accuracy ({\small $<1$\%}).
+Our pruning procedure does not need to be modified for specific architectural variations (\eg, recurrent connections), indicating that it is indeed versatile and scalable.
+%Note that prior arts that obtain the sparse model at the end of process (\ie, magnitude or Hessian based) can require considerable adjustments in their pruning schedules as per changes in the model.
+Note that prior art that use a saliency criterion based on the weights (\ie, magnitude or Hessian based) would require considerable adjustments in their pruning schedules as per changes in the model.
+
+%It is also observed that the performance increases towards modern architectures (\salexnet{}$\rightarrow$\svgg{}$\rightarrow$\swrn{}), showing that the network design indeed matters.
+%For \srnn{s}, we prune $0.95$\% of the parameters for all variants and the performance remains about the same.
+%Interestingly, the performance of \srnn{} seems to be ordered in terms of the number of parameters: an \srnn{} with more parameters achieves better performance (\ie{} \sgru{-a} $\rightarrow$ \slstm{-a} $\rightarrow$ \sgru{-b} $\rightarrow$ \slstm{-b}).
+%Without modifying the pruning procedure, one can generally use our approach to prune various network architectures for a desired level of sparsity, indicating that our approach is indeed versatile and scalable.
+%Note that approaches that obtain the sparse model at the end of process (\ie magnitude or Hessian based) can require considerable adjustments in their pruning schedules as per changes in the model.
+
+\SKIP{
+We note of a few challenges in directly comparing against others: different network specifications, learning policies, datasets and tasks.
+Nonetheless, we provide a few comparison points that we found in the literature.
+%\lwc{} prunes \salexnet{} and \svgg{-16} on ImageNet for $89\%$ and $92.5\%$ respectively, while \dns{} prunes $94\%$ of \salexnet{}.
+%\svd{} prunes \svgg{-like} on CIFAR-10 for $97.9\%$ achieving a state-of-the-art sparsity level.
+%\sws{} prunes \swrn{-16-4} on CIFAR-10 for $93.4\%$, but with non-negligible loss in accuracy of $2\%$.
+On \cifar{-10}, \svd{} prunes $97.9\%$ of the connections in \svgg{-like} with no loss in accuracy while \sws{} obtained $93.4\%$ sparsity on \swrn{-16-4} but with a non-negligible loss in accuracy of $2\%$.
+%\cite{narang2017exploring} prune $92\%$ of a \sgru{} model for speech recognition recording $2.2\%$ drop in accuracy, while \cite{see2016compression} prune a \slstm{} model for neural machine translation, but it results in about the half of performance drop (BLEU score) at $80\%$ sparsity.
+Considering RNNs, \cite{narang2017exploring} and \cite{see2016compression} attempt to prune a \sgru{} model for speech recognition and a \slstm{} model for neural machine translation, respectively.
+Even though, these methods are specifically designed to prune RNNs, the loss in performance is non-negligible in both the cases, relfecting the challenges of pruning RNNs.
+%Note, these approaches are designed solely for RNNs with manually designed pruning hyperparameters.
+To the best of our knowledge, we are the only to demonstrate on convolutional, residual and recurrent networks for extreme sparsities without requiring additional hyperparameters or modifying the pruning procedure.
+}
+
+We note of a few challenges in directly comparing against others: different network specifications, learning policies, datasets and tasks.
+Nonetheless, we provide a few comparison points that we found in the literature.
+On \cifar{-10}, \svd{} prunes $97.9\%$ of the connections in \svgg{-like} with no loss in accuracy (ours: $97\%$ sparsity) while \sws{} obtained $93.4\%$ sparsity on \swrn{-16-4} but with a non-negligible loss in accuracy of $2\%$.
+There are a couple of works attempting to prune \srnn{s} (\eg, \sgru{}~in~\cite{narang2017exploring} and \slstm{} in~\cite{see2016compression}). 
+Even though these methods are specifically designed for \srnn{s}, none of them are able to obtain extreme sparsity without substantial loss in accuracy reflecting the challenges of pruning \srnn{s}.
+%In this work, we show that with no modifications to the pruning method, we can obtain extremely sparse networks for various architectures including recurrent neural networks.
+To the best of our knowledge, we are the first to demonstrate on convolutional, residual and recurrent networks for extreme sparsities without requiring additional hyperparameters or modifying the pruning procedure.
+
+
+
+\subsection{Understanding which connections are being pruned}
+
+\begin{figure*}
+    \centering
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.1_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.2_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.3_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.4_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.5_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.6_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.7_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.8_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var/input_mask_ts-0.9_digit-9_seed-9}.eps} \\
+        \caption{\mnist{}}
+    \end{subfigure}
+    \begin{subfigure}{.49\textwidth}
+        \centering
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.1_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.2_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.3_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.4_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.5_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.6_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.7_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.8_digit-9_seed-9}.eps} \\
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-0_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-1_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-2_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-3_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-4_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-5_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-6_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-7_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-8_seed-9}.eps}
+        \includegraphics[width=5mm]{figure/{exp_visualize-input-masks_bs-100_ts-var_FasionMNIST/input_mask_bs-100_ts-0.9_digit-9_seed-9}.eps} \\
+        \caption{\fmnist{}}
+    \end{subfigure}
+    \caption{
+        Visualizations of pruned parameters of the first layer in \slenet{-300-100}; the parameters are reshaped to be visualized as an image.
+        %Each image is obtained using a batch of $100$ examples of the same class.
+        Each column represents the visualizations for a particular class obtained using a batch of $100$ examples with varying levels of sparsity $\bkappa$, from $10$ (top) to $90$ (bottom).
+        Bright pixels indicate that the parameters connected to these region had high importance scores ($\rvs$) and survived from pruning.        
+        %Each row indicates a sparsity level $\bkappa$, from $10$ (top) to $90$ (bottom). 
+        As the sparsity increases, the parameters connected to the discriminative part of the image for classification survive and the irrelevant parts get pruned.
+    }
+    \label{fig:pruned-weights}
+\end{figure*}
+
+
+So far we have shown that our approach can prune a variety of deep neural network architectures for extreme sparsities without losing much on accuracy.
+However, it is not clear yet which connections are actually being pruned away or whether we are pruning the right (\ie, unimportant) ones.
+What if we could actually peep through our approach into this inspection?
+
+Consider the first layer in \slenet{-300-100} parameterized by $\rvw_{l=1} \in \sR^{784 \times 300}$.
+This is a layer fully connected to the input where input images are of size $28 \times 28 = 784$.
+In order to understand which connections are retained, we can visualize the binary connectivity mask for this layer $\rvc_{l=1}$, by averaging across columns and then reshaping the vector into 2D matrix (\ie, $\rvc_{l=1} \in \{0, 1\}^{784 \times 300} \rightarrow \sR^{784} \rightarrow \sR^{28 \times 28}$).
+Recall that our method computes $\rvc$ using a mini-batch of examples.
+In this experiment, we curate the mini-batch of examples of the same class and see which weights are retained for that mini-batch of data.
+We repeat this experiment for all classes (\ie, digits for \mnist{} and fashion items for \fmnist{}) with varying sparsity levels $\bkappa$.
+%The results are displayed in Figure~\ref{fig:pruned-weights}.
+The results are displayed in Figure~\ref{fig:pruned-weights} (see Appendix~\ref{sec:fashion-mnist-invert} for more results).
+
+The results are significant; important connections seem to reconstruct either the complete image (\mnist{}) or silhouettes (\fmnist{}) of input class.
+When we use a batch of examples of the digit $0$ (\ie, the first column of \mnist{} results), for example, the parameters connected to the foreground of the digit $0$ survive from pruning while the majority of background is removed.
+Also, one can easily determine the identity of items from \fmnist{} results.
+This clearly indicates that our method indeed prunes the \emph{unimportant} connections in performing the classification task, receiving signals only from the most discriminative part of the input.
+This stands in stark contrast to other pruning methods from which carrying out such inspection is not straightforward.
+%Notice that this inspection does not require any training.
+%By simply computing the connection saliency, our approach can be potentially used to discover architecture characteristics.
+
+
+
+\subsection{Effects of data and weight initialization}
+
+Recall that our connection saliency measure depends on the network weights $\rvw$ as well as the given data $\mathcal{D}$ (\Secref{sec:single-random}).
+We study the effect of each of these in this section.
+
+\textbf{Effect of data.}\quad
+Our connection saliency measure depends on a mini-batch of train examples $\gD^{b}$ (see~\Algref{alg:prune}).
+To study the effect of data, we vary the batch size used to compute the saliency ($|\gD^{b}|$) and check which connections are being pruned as well as how much performance change this results in on the corresponding sparse network.
+We test with \slenet{-300-100} to visualize the remaining parameters, and set the sparsity level $\bkappa=90$.
+Note that the batch size used for training remains the same as $100$ for all cases.
+The results are displayed in~\Figref{fig:diff-batch-size}.
+
+\begin{figure*}[h]
+    \centering
+    \setlength{\tabcolsep}{1pt}
+    \begin{tabular}{cccccc|c}
+        \includegraphics[height=21mm]{figure/exp-lenet300_pc_diff-batch-size/{input_mask_bs-1_ts-0.9_digit--1_seed-9}.eps} &
+        \includegraphics[height=21mm]{figure/exp-lenet300_pc_diff-batch-size/{input_mask_bs-10_ts-0.9_digit--1_seed-9}.eps} &
+        \includegraphics[height=21mm]{figure/exp-lenet300_pc_diff-batch-size/{input_mask_bs-100_ts-0.9_digit--1_seed-9}.eps} &
+        \includegraphics[height=21mm]{figure/exp-lenet300_pc_diff-batch-size/{input_mask_bs-1000_ts-0.9_digit--1_seed-9}.eps} &
+        \includegraphics[height=21mm]{figure/exp-lenet300_pc_diff-batch-size/{input_mask_bs-10000_ts-0.9_digit--1_seed-9}.eps} & &
+        \includegraphics[height=21mm]{figure/train_images_mean.eps} \\
+        $|\gD^{b}|=1$ & $|\gD^{b}|=10$ & $|\gD^{b}|=100$ & $|\gD^{b}|=1000$ & $|\gD^{b}|=10000$ & & train set \\
+        \hlcelldegree{10}($1.94$\%) & \hlcelldegree{22}($1.72$\%) & \hlcelldegree{34}($1.64$\%) & \hlcelldegree{46}($1.56$\%) & \hlcelldegree{58}($1.40$\%) & & --
+    \end{tabular}
+    \caption{
+        The effect of different batch sizes: (top-row) survived parameters in the first layer of \slenet{-300-100} from pruning visualized as images; (bottom-row) the performance in errors of the pruned networks.
+        For $|\gD^{b}|=1$, the sampled example was $8$; our pruning precisely retains the valid connections.
+        As $|\gD^{b}|$ increases, survived parameters get close to the average of all examples in the train set (last column), and the error decreases.
+    }
+    \label{fig:diff-batch-size}
+\end{figure*}
+
+\textbf{Effect of initialization.}\quad
+Our approach prunes a network at a stochastic initialization as discussed.
+We study the effect of the following initialization methods: 1) \initrn{} (random normal), 2) \inittn{} (truncated random normal), 3) \initvsx{} (a variance scaling method using~\cite{glorot2010understanding}), and 4) \initvsh{} (a variance scaling method~\cite{he2015delving}).
+We test on \slenet{s} and \srnn{s} on \mnist{} and run $20$ sets of experiments by varying the seed for initialization.
+We set the sparsity level $\bkappa=90$, and train with Adam optimizer~(\cite{kingma2014adam}) with learning rate of $0.001$ without weight decay.
+Note that for training \initvsx{} initialization is used in all the cases.
+The results are reported in Figure~\ref{tab:various-initializer}.
+
+For all models, \initvsh{} achieves the best performance.
+The differences between initializers are marginal on \slenet{s}, however, variance scaling methods indeed turns out to be essential for complex \srnn{} models.
+This effect is significant especially for \sgru{} where without variance scaling initialization, the pruned networks are unable to achieve good accuracies, even with different optimizers.  
+Overall, initializing with a variance scaling method seems crucial to making our saliency measure reliable and model-agnostic.
+
+\begin{table}[h]
+    \centering
+    \scriptsize
+    \begin{tabular}{c cccc}
+        \toprule
+        \footnotesize Init. & \vlenet{-300-100} & \vlenet{-5-Caffe} & \vlstm{-s} & \vgru{-s} \\
+        \midrule
+        RN   & $ 1.90 \pm (0.09) $ & $ 0.89 \pm (0.04) $ & $ 2.93 \pm (0.20) $ & $ 47.61 \pm (20.49) $ \\
+        TN   & $ 1.96 \pm (0.11) $ & $ 0.87 \pm (0.05) $ & $ 3.03 \pm (0.17) $ & $ 46.48 \pm (22.25) $ \\
+        VS-X & $ 1.91 \pm (0.10) $ & $ 0.88 \pm (0.07) $ & $ 1.48 \pm (0.09) $ & $ \mathbf{1.80}  \pm (0.10 ) $ \\
+        VS-H & $ \mathbf{1.88} \pm (0.10) $ & $ \mathbf{0.85} \pm (0.05) $ & $ \mathbf{1.47} \pm (0.08) $ & $ \mathbf{1.80}  \pm (0.14 ) $ \\
+        \bottomrule
+    \end{tabular}
+    \caption{
+        The effect of initialization on our saliency score.
+        We report the classification errors ($\pm$std).
+        Variance scaling initialization (\initvsx{}, \initvsh{}) improves the performance, especially for \srnn{s}.
+    }
+    \label{tab:various-initializer}
+\end{table}
+
+
+
+\subsection{Fitting random labels}
+
+\begin{wrapfigure}{R}{0.4\textwidth}
+    \vspace{-6mm}
+    \centering
+    \includegraphics[width=0.38\textwidth]{figure/lenet5_fit-random-labels.eps}
+    \vspace{-5mm}
+    \caption{
+        The sparse model pruned by \snip{} does not fit the random labels.
+    }
+    \label{fig:fit-rand-labels}
+    \vspace{-6mm}
+\end{wrapfigure}
+
+To further explore the use cases of \snip{}, we run the experiment introduced in~\cite{zhang2016understanding} and check whether the sparse network obtained by \snip{} memorizes the dataset.
+%Specifically, we train \slenet{-5} (both the dense reference model and the pruned model with $\bkappa=99$) on \mnist{} with randomly shuffled labels.
+Specifically, we train \slenet{-5-Caffe} for both the reference model and pruned model (with $\bkappa=99$) on \mnist{} with either true or randomly shuffled labels.
+To compute the connection sensitivity, always true labels are used.
+The results are plotted in Figure~\ref{fig:fit-rand-labels}.
+%This experiment spurred some discussion in understanding the generalization capability of neural networks.
+
+Given true labels, both the reference (red) and pruned (blue) models quickly reach to almost zero training loss.
+However, the reference model provided with random labels (green) also reaches to very low training loss, even with an explicit L2 regularizer (purple), indicating that neural networks have enough capacity to memorize completely random data.
+In contrast, the model pruned by \snip{} (orange) fails to fit the random labels (high training error).
+%This indicates that \snip{} can further be used as a regularizer, by pruning architecturally unimportant connections before training, to improve generalization.
+%While the full models achieve almost zero training error indicating memorization of the dataset, the model pruned by \snip{} is unable to decrease the training error.
+The potential explanation is that the pruned network does not have sufficient capacity to fit the random labels, but it is able to classify \mnist{} with true labels, reinforcing the significance of our saliency criterion.  
+%However, the behaviour of sparse network obtained using random labels is very similar in our experiment (not shown).
+%Albeit this experiment is possible with any other pruning method, being simple, \snip{} enables us to explore the use cases of pruning easily.   
+%It is possible that this experiment can be done with other pruning methods, however, being simple, \snip{} enables such exploration much easier.   
+It is possible that a similar experiment can be done with other pruning methods (\cite{molchanov2017variational}), however, being simple, \snip{} enables such exploration much easier.
+We provide a further analysis on the effect of varying $\bkappa$ in Appendix~\ref{sec:fit-rand-label-kappa}.
+
+\SKIP{
+Recently, \cite{zhang2016understanding} spurred reconsideration in understanding the generalization capability of neural networks, by showing that standard architectures using SGD and regularization can still reach low training error on randomly labeled examples.
+We run the same experiment and check whether the sparse model pruned by \snip{} fit random labels.
+The results are plotted in Figure~\ref{fig:fit-rand-labels}.
+
+Given true labels, both the dense (red) and pruned sparse (blue) models quickly reach to almost zero training loss.
+However, the dense model provided with random labels (green) also reaches to very low training loss, even with an explicit L2 regularizer (purple), indicating that neural networks have enough capacity to memorize completely random data, and thus, generalize poorly.
+Notably, the pruned model using our method (orange) does not fit the random labels.
+This indicates that \snip{} can further be used as a regularizer, by pruning architecturally unimportant connections before training, to improve generalization.
+This result is somewhat consistent to the results presented in \cite{arora2018stronger} as well as the conventional wisdom of Occam's razor.
+}

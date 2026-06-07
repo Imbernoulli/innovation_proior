@@ -1,0 +1,27 @@
+
+\begin{table}[]
+\centering
+\tabcolsep=0.1cm
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Method             & \begin{tabular}[c]{@{}c@{}}CUB200-2011\\ Loc Acc (\%) \end{tabular} & \begin{tabular}[c]{@{}c@{}}ImageNet\\ Loc Acc (\%) \end{tabular} \\ 
+\midrule
+VGG-GAP + CAM~\cite{zhou2016CAM} & 37.12  & 42.73            \\
+VGG-GAP + ACoL*~\cite{zhang2018ACOL} & 45.92  & {45.83}    \\
+VGG-GAP + ADL*~\cite{choe2019attention}    & 52.36  & 44.92    \\
+GoogLeNet + HaS*~\cite{singh2017hide} &  -  & 45.21            \\
+InceptionV3 + SPG*~\cite{zhang2018SPG} & 46.64 & 48.60\\
+\midrule
+VGG-GAP + Mixup~\cite{zhang2017mixup}     & 41.73    & 42.54    \\
+VGG-GAP + Cutout~\cite{devries2017cutout} & 44.83    & 43.13    \\
+VGG-GAP + CutMix                    & {\textbf{52.53}}     & \textbf{43.45}    \\
+\midrule
+ResNet-50 + CAM~\cite{zhou2016CAM} & 49.41  & 46.30            \\
+ResNet-50 + Mixup~\cite{zhang2017mixup}     & 49.30    & 45.84      \\
+ResNet-50 + Cutout~\cite{devries2017cutout} & 52.78    & 46.69       \\
+ResNet-50 + CutMix                  & {\textbf{54.81}}     & \textbf{47.25}    \\ \bottomrule
+\end{tabular}
+\caption{Weakly supervised object localization results on CUB200-2011 and ImageNet. * denotes results reported in the original papers.
+}
+\label{table:WSOL} 
+\end{table}

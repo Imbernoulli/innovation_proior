@@ -1,0 +1,30 @@
+
+\begin{table*}[]
+\centering
+\begin{tabular}{@{}lccc|ccc@{}}
+\toprule
+Method   & TNR at TPR 95\% & AUROC & Detection Acc.  & TNR at TPR 95\% & AUROC & Detection Acc. \\ \midrule
+         & \multicolumn{3}{c|}{TinyImageNet} & \multicolumn{3}{c}{TinyImageNet (resize)}       \\ \midrule
+Baseline & 43.0 (0.0)    & 88.9 (0.0)   & 81.3 (0.0) & 29.8 (0.0)    & 84.2 (0.0)   & 77.0 (0.0)  \\
+Mixup    & 22.6 \redp{-20.4}  & 71.6 \redp{-17.3} & 69.8 \redp{-11.5} & 12.3 \redp{-17.5}  & 56.8 \redp{-27.4} & 61.0 \redp{-16.0} \\
+Cutout   & 30.5 \redp{-12.5}  & 85.6 \redp{-3.3}  & 79.0 \redp{-2.3}  & 22.0 \redp{-7.8}   & 82.8 \redp{-1.4}  & 77.1 \greenp{+0.1}  \\
+CutMix   & \textbf{57.1 \greenp{+14.1}}   & \textbf{92.4 \greenp{+3.5}}   & \textbf{85.0 \greenp{+3.7}}  & \textbf{55.4 \greenp{+25.6}}   & \textbf{91.9 \greenp{+7.7}}   & \textbf{84.5 \greenp{+7.5}}  \\ \midrule
+         & \multicolumn{3}{c|}{LSUN (crop)} & \multicolumn{3}{c}{LSUN (resize)}\\ \midrule
+Baseline & 34.6 (0.0)    & 86.5 (0.0)   & 79.5 (0.0) & 34.3 (0.0)    & 86.4 (0.0)   & 79.0 (0.0)  \\
+Mixup    & 22.9 \redp{-11.7}  & 76.3 \redp{-10.2} & 72.3 \redp{-7.2} & 13.0 \redp{-21.3}  & 59.0 \redp{-27.4} & 61.8 \redp{-17.2} \\
+Cutout   & 33.2 \redp{-1.4}   & 85.7 \redp{-0.8}  & 78.5 \redp{-1.0} & 23.7 \redp{-10.6}  & 84.0 \redp{-2.4}  & 78.4 \redp{-0.6} \\
+CutMix   & \textbf{47.6 \greenp{+13.0}}   & \textbf{90.3 \greenp{+3.8}}   & \textbf{82.8 \greenp{+3.3}} & \textbf{62.8 \greenp{+28.5}}   & \textbf{93.7 \greenp{+7.3}}   & \textbf{86.7 \greenp{+7.7}}  \\ \midrule
+    & &   \multicolumn{3}{c}{iSUN} \\ \midrule
+Baseline & & 32.0 (0.0)    & \multicolumn{1}{c}{85.1 (0.0}   & 77.8 (0.0)  \\
+Mixup   & & 11.8 \redp{-20.2}  & \multicolumn{1}{c}{57.0 \redp{-28.1}} & 61.0 \redp{-16.8}  \\
+Cutout  & & 22.2 \redp{-9.8}   & \multicolumn{1}{c}{82.8 \redp{-2.3}}  & 76.8 \redp{-1.0} \\
+CutMix  & & \textbf{60.1 \greenp{+28.1}}   & \multicolumn{1}{c}{\textbf{93.0 \greenp{+7.9}}}   & \textbf{85.7 \greenp{+7.9}} \\ \midrule
+         & \multicolumn{3}{c|}{Uniform} & \multicolumn{3}{c}{Gaussian} \\ \midrule
+Baseline & 0.0 (0.0)     & 89.2 (0.0)   & 89.2 (0.0) & 10.4 (0.0)    & 90.7 (0.0)   & 89.9 (0.0)   \\
+Mixup    & 0.0 (0.0)     & 0.8 \redp{-88.4}  & 50.0 \redp{-39.2} & 0.0 \redp{-10.4}   & 23.4 \redp{-67.3} & 50.5 \redp{-39.4} \\
+Cutout   & 0.0 (0.0)     & 35.6 \redp{-53.6} & 59.1 \redp{-30.1} & 0.0 \redp{-10.4}   & 24.3 \redp{-66.4} & 50.0 \redp{-39.9} \\
+CutMix   & \textbf{100.0 \greenp{+100.0}} & \textbf{99.8 \greenp{+10.6}}  & \textbf{99.7 \greenp{+10.5}}  & \textbf{100.0 \greenp{+89.6}}  & \textbf{99.7 \greenp{+9.0}}   & \textbf{99.0 \greenp{+9.1}}  \\ \bottomrule
+\end{tabular}
+\caption{Out-of-distribution (OOD) detection results on TinyImageNet, LSUN, iSUN, Gaussian noise and Uniform noise using CIFAR-100 trained models. All numbers are in percents; higher is better.}
+\label{table:ood-sup}
+\end{table*}

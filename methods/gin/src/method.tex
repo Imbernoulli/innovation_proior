@@ -1,0 +1,100 @@
+
+\section{Building powerful graph neural networks} 
+
+\label{sec:method}
+
+First, we characterize the maximum representational capacity of a general class of GNN-based models. Ideally, a maximally powerful GNN could distinguish different graph structures by mapping them to different representations in the embedding space.
+%Such discriminative power, however, would imply solving the graph isomorphism test.
+%, and (2) capture their structural similarity in the embedding space. In this paper, 
+%Here we are mainly concerned with the first part, and we will briefly discuss the second part. 
+This ability to map any two different graphs to different embeddings, however, implies solving the challenging graph isomorphism problem. That is, we want isomorphic graphs to be mapped to the same representation and non-isomorphic ones to different representations. In our analysis, we characterize the representational capacity of GNNs via a slightly weaker criterion: a powerful heuristic called {\em Weisfeiler-Lehman (WL) graph isomorphism test}, that is known to work well in general, with a few exceptions,  \revise{e.g., regular graphs \citep{cai1992optimal, douglas2011weisfeiler, evdokimov1999isomorphism}.}
+
+\begin{lemma}
+\label{theorem:upper}
+Let $G_1$ and $G_2$ be any two non-isomorphic graphs. If a graph neural network $\mathcal{A}: \mathcal{G} \rightarrow \mathbb{R}^d$ 
+%following the neighborhood aggregation scheme 
+maps $G_1$ and $G_2$ to different embeddings, the Weisfeiler-Lehman graph isomorphism test also decides $G_1$ and $G_2$ are not isomorphic. 
+\end{lemma}
+\vspace{-0.05in}
+Proofs of all Lemmas and Theorems can be found in the Appendix.
+Hence, %Lemma 2 states that
+any aggregation-based GNN is at most as powerful as the WL test in distinguishing different graphs. A natural follow-up question is whether there exist GNNs that are, in principle, as powerful as the WL test? Our answer, in Theorem 3, is yes: if the neighbor aggregation and graph-level readout functions are injective, then the resulting GNN is as powerful as the WL test.
+
+\vspace{0.05in}
+\begin{theorem} \label{theorem:condition}
+Let $\mathcal{A}: \mathcal{G} \rightarrow \mathbb{R}^d$ be a GNN. 
+%following the neighborhood aggregation scheme. 
+With a sufficient number of GNN layers, $\mathcal{A}$ maps any graphs $G_1$ and $G_2$ that the Weisfeiler-Lehman test of isomorphism decides as non-isomorphic, to different embeddings if the following conditions hold:
+%
+\vspace{-0.07in}
+\begin{itemize}[leftmargin=0.5cm]
+ \item[a)] $\mathcal{A}$ aggregates and updates node features iteratively with \label{condition-a}
+ \[h_v^{(k)} = \phi \left( h_v^{(k-1)}, f \left( \left\lbrace h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right) \right),\] %\; \text{or} \;\;\; h_v^{(k)} = f \left( \left\lbrace h_v^{(k-1)}, h_u^{(k-1)}: u\in \mathcal{N}(v)  \right\rbrace \right)  
+where the functions $f$, which operates on multisets, and $\phi$ are injective.
+ \vspace{-0.1in}
+\item[b)] $\mathcal{A}$'s graph-level readout, which operates on the multiset of node features $\left\lbrace h_v^{(k)} \right\rbrace $, is injective.
+\end{itemize}
+\end{theorem}
+ \vspace{-0.05in}
+ 
+ We prove Theorem~\ref{theorem:condition} in the appendix. \revise{For countable sets, injectiveness well characterizes whether a function preserves the distinctness of inputs. Uncountable sets, where node features are continuous, need some further considerations. In addition, it would be interesting to characterize how close together the learned features lie in a function's image. We leave these questions for future work, and focus  on the case where input node features are from a countable set (that can be a subset of an uncountable set such as $\mathbb{R}^n$).}
+%   the notion of injectiveness is weaker for discriminative power; it may be useful to, in addition, characterize how close together the learned features lie in a function's image.
+   %   further considerations may be needed, e.g., it may be useful to characterize how closely packed the learned features are in a function's image.
+%   We leave such generalizations to future work, and focus  on the case where input node features are from a countable set (that can be a subset of an uncountable set such as $\mathbb{R}^n$). Given the countability assumption on the input features, one may ask whether  countability still holds for the node features at deeper layers of a GNN? Lemma~\ref{theorem:countability} says yes, \ie, countability propagates across layers.}
+%
+%   the notions of injectiveness and discriminative power are ``weakened''. It would also be useful to characterize how closely packed the learned features are in a function's image. We let these generalizations for future work and here we focus on the case where input node features are from a countable set (that can be a subset of an uncountable set such as $\mathbb{R}^n$). Given the countability assumption on the input node features, one may ask whether  countability still holds for the node features at deeper layers of a GNN? Lemma~\ref{theorem:countability} says yes, \ie, countability can propagate across layers.}
+ \revise{
+ \begin{lemma} \label{theorem:countability}
+ Assume the input feature space $\mathcal{X}$ is countable. Let $g^{(k)}$ be the function parameterized by a GNN's $k$-th layer for $k = 1, ..., L$, where $g^{(1)}$ is defined on multisets $X \subset \mathcal{X}$ of bounded size. The range of $g^{(k)}$, \ie, the space of node hidden  features $h_v^{(k)}$, is also countable for all $k = 1, ..., L$. 
+ \end{lemma} }
+
+
+Here, it is also worth discussing an important benefit of GNNs beyond distinguishing different graphs, that is, capturing similarity of graph structures. Note that node feature vectors in the WL test are essentially one-hot encodings and thus cannot capture the
+similarity between subtrees. In contrast, a GNN satisfying the criteria in Theorem 3 generalizes
+the WL test by \textit{learning to embed} the subtrees to low-dimensional space. This enables GNNs to not
+only discriminate different structures, but also to learn to map similar graph structures to similar
+embeddings and capture dependencies between graph structures. Capturing structural similarity of the node labels is shown to be helpful for generalization particularly when the co-occurrence of subtrees is sparse across different graphs or there are noisy edges and node features~\citep{yanardag2015deep}.
+
+
+\subsection{Graph Isomorphism Network (GIN)}
+\label{subsec:gin}
+Having developed conditions for a maximally powerful GNN, we next develop a simple architecture, \textit{Graph Isomorphism Network (GIN)}, that provably satisfies the conditions in Theorem~\ref{theorem:condition}. This model generalizes the WL test and hence achieves maximum discriminative power among GNNs. %We name the resulting architecture \textit{Graph Isomorphism Network (GIN)}.
+
+To model injective multiset functions for the neighbor aggregation, we develop a theory of ``deep multisets'', \ie, parameterizing universal multiset functions with neural networks. Our next lemma states that sum aggregators can represent injective, in fact, \emph{universal} functions over multisets. 
+
+\begin{lemma}
+\label{theorem:sum}
+Assume $\mathcal{X}$ is countable. There exists a function $f:\mathcal{X}\rightarrow\mathbb{R}^n$ so that $h(X) = \sum_{x \in X} f(x)$ is unique for each multiset $X \subset \mathcal{X}$ of bounded size. Moreover, any multiset function $g$ can be decomposed as $g\left( X \right)=\phi \left(\sum_{x \in X} f(x)\right)$ for some function $\phi$. 
+\end{lemma}
+\vspace{-0.05in}
+
+We prove Lemma~\ref{theorem:sum} in the appendix. The proof extends the setting in~\citep{zaheer2017deep} from sets to multisets. An important distinction between deep multisets and sets is that certain popular injective set functions, such as the mean aggregator, are not injective multiset functions. \revise{With the mechanism for modeling universal multiset functions in Lemma~\ref{theorem:sum} as a building block, we can conceive aggregation schemes that can represent universal functions over a node and the multiset of its neighbors, and thus will satisfy the injectiveness condition (a) in Theorem~\ref{theorem:condition}. Our next corollary provides a simple and concrete formulation among many such aggregation schemes.} 
+\begin{corollary} \label{lemma:gin-wl}
+Assume $\mathcal{X}$ is countable. There exists a function $f:\mathcal{X}\rightarrow\mathbb{R}^n$ so that for infinitely many choices of $\epsilon$, including all irrational numbers, $h(c, X) = (1 + \epsilon)\cdot f(c) + \sum_{x \in X} f(x)$ is unique for each pair $(c, X)$, where $c\in \mathcal{X}$ and $X \subset \mathcal{X}$ is a multiset of bounded size. Moreover, any function $g$ over such pairs can be decomposed as $g\left(c, X \right) = \varphi \left(  \left(1 + \epsilon \right)\cdot f(c) + \sum_{x \in X} f(x)  \right)$ for some function $\varphi$.
+\end{corollary}
+
+We can use multi-layer perceptrons (MLPs) to model and learn $f$ and $\varphi$ in Corollary~\ref{lemma:gin-wl}, thanks to the universal approximation theorem~\citep{hornik1989multilayer, hornik1991approximation}.  In practice, we model $f^{(k+1)} \circ \varphi^{(k)}$ with one MLP, because  MLPs can represent the composition of functions.
+In the first iteration, we do not need MLPs before summation if input features are one-hot encodings as their summation alone is injective. \revise{We can make $\epsilon$ a learnable parameter or a fixed scalar. Then, GIN updates node representations as 
+\begin{align} \label{GIN-agg}
+h_v^{(k)} =   {\rm MLP}^{(k)}   \left(  \left( 1 + \epsilon^{(k)} \right) \cdot h_v^{(k-1)} +  \sum\nolimits_{u \in \mathcal{N}(v)} h_u^{(k-1)}\right).
+\end{align}
+Generally, there may exist many other powerful GNNs. GIN is one such example among many maximally powerful GNNs, while being simple.}
+
+\subsection{Graph-level readout of GIN}
+Node embeddings learned by GIN can be directly used for tasks like node classification and link prediction. For graph classification tasks we propose the following ``readout'' function that, given embeddings of individual nodes, produces the embedding of the entire graph.
+
+An important aspect of the graph-level readout is that node representations, corresponding to subtree structures, get more refined and global as the number of iterations increases. A sufficient number of iterations is key to achieving good discriminative power. Yet, features from earlier iterations may sometimes generalize better. To consider all structural information, we use information from all depths/iterations of the model. We achieve this by an architecture similar to Jumping Knowledge Networks~\citep{xu2018representation}, where we replace~\refeq{eq:graph_pool} with graph representations concatenated across \emph{all iterations/layers} of GIN:
+\vspace{-0.2in}
+
+\begin{align} 
+\label{eq:GIN-readout}
+h_{G} = {\rm CONCAT} \Big(  {\rm READOUT}\Big( \left\lbrace h_v^{(k)} | v \in G \right\rbrace \Big)  \  \big\vert \  k = 0, 1, \ldots, K \Big).
+\end{align}
+
+\vspace{-0.05in}
+
+
+By Theorem~\ref{theorem:condition} and Corollary~\ref{lemma:gin-wl}, if GIN replaces READOUT in~\refeq{eq:GIN-readout} with summing all node features from the same iterations (we do not need an extra MLP before summation for the same reason as in~\refeq{GIN-agg}), it provably generalizes the WL test and the WL subtree kernel. 
+
+
+ 

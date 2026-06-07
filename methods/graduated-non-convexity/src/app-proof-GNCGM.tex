@@ -1,0 +1,14 @@
+%!TEX root = main.tex
+
+\section{Proof of Proposition~\ref{prop:GNCGM}}
+%\begin{proof}
+The outlier process~\eqref{eq:outlierProcessGNCGM} is derived by following the Black-Rangarajan procedure in Fig.~10 of~\cite{Black96ijcv-unification}. Therefore, we here prove the weight update rule in eq.~\eqref{eq:dualWeightUpdateGNCGM}. To this end, we derive the gradient $g_i$ of the objective function with outlier process $\Phi_{\rho_{\mu}}(w_i) = \mu\barcsq(\sqrt{w_i} - 1)^2$ in eq.~\eqref{eq:weightUpdate} with respect to $w_i$:
+\bea\label{eq:aux_1}
+g_i = \hatr_i^2 + \mu \barcsq \left( 1 - \frac{1}{\sqrt{w_i}} \right).
+\eea
+From eq.~\eqref{eq:aux_1} we observe that if $w_i \rightarrow 0$, then $g_i \rightarrow -\infty$; and if $w_i = 1$, then $g_i = \hatr_i^2 \geq 0$. These facts, combined with the monotonicity of $g_i$ \wrt $w_i$, ensure that there exists a unique $w_i^\star$ such that the gradient $g_i$ vanishes:
+\bea \label{eq:dualUpdateGM}
+w_i^\star = \left( \frac{\mu \barcsq}{\hatr_i^2 + \mu\barcsq} \right)^2.
+\eea
+This vanishing point is the global minimizer of~\eqref{eq:weightUpdate}.
+%\end{proof}

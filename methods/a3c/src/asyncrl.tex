@@ -1,0 +1,116 @@
+\documentclass{article} %
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{natbib}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+%
+\usepackage{hyperref}
+
+%
+%
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+%
+%
+%
+%
+
+%
+%
+%
+\usepackage[accepted]{icml2016}
+\usepackage{url}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{color}
+\usepackage{afterpage}
+\usepackage{xr}
+%
+\usepackage[T1]{fontenc}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+\newcommand{\note}[1]{\textcolor{red}{\textbf{[Note: #1]}}}
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+
+\renewcommand{\topfraction}{0.95}   %
+\renewcommand{\textfraction}{0.05}  %
+
+\newcommand{\vlad}{Volodymyr Mnih}
+\newcommand{\adria}{Adri\`a Puigdom\`enech Badia}
+\newcommand{\mehdi}{Mehdi Mirza}
+\newcommand{\alex}{Alex Graves}
+\newcommand{\timl}{Timothy P. Lillicrap}
+\newcommand{\timh}{Tim Harley}
+\newcommand{\dave}{David Silver}
+\newcommand{\koray}{Koray Kavukcuoglu }
+
+%
+%
+
+%
+
+%
+%
+
+%
+%
+\icmltitlerunning{Asynchronous Methods for Deep Reinforcement Learning}
+
+\begin{document}
+\twocolumn[
+\icmltitle{Asynchronous Methods for Deep Reinforcement Learning}
+
+\icmlauthor{\vlad$^1$}{vmnih@google.com}
+\icmlauthor{\adria$^1$}{adriap@google.com}
+\icmlauthor{\mehdi$^{1,2}$}{mirzamom@iro.umontreal.ca}
+\icmlauthor{\alex$^1$}{gravesa@google.com}
+\icmlauthor{\timh$^1$}{tharley@google.com}
+\icmlauthor{\timl$^1$}{countzero@google.com}
+\icmlauthor{\dave$^1$}{davidsilver@google.com}
+\icmlauthor{\koray$^1$}{korayk@google.com}
+\icmladdress{$^1$ Google DeepMind \\ $^2$ Montreal Institute for Learning Algorithms (MILA), University of Montreal \\}
+
+%
+]
+
+%
+
+%
+
+\input{00_abstract}
+\vspace{-0.2cm}
+\input{01_intro}
+\input{02_related}
+\input{03_background}
+\input{04_method}
+\input{05_experiments}
+\input{06_conclusion}
+
+\subsubsection*{Acknowledgments}
+We thank Thomas Degris, Remi Munos, Marc Lanctot, Sasha Vezhnevets and Joseph Modayil for many helpful discussions, suggestions and comments on the paper.
+We also thank the DeepMind evaluation team for setting up the environments used to evaluate the agents in the paper.
+\clearpage
+\bibliographystyle{icml2016}
+\bibliography{asyncrl}
+
+\clearpage
+
+\renewcommand{\thealgorithm}{S\arabic{algorithm}}
+\renewcommand{\thefigure}{S\arabic{figure}}
+\renewcommand{\theequation}{S\arabic{equation}}
+\renewcommand{\thetable}{S\arabic{table}}
+
+\oddsidemargin .25in    %
+\evensidemargin .25in
+\marginparwidth 0.07 true in
+\topmargin -0.5in
+\addtolength{\headsep}{0.25in}
+\textheight 8.5 true in       %
+\textwidth 6.0 true in        %
+\onecolumn
+\input{07_supplementary}
+
+\end{document}

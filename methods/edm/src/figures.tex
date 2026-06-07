@@ -1,0 +1,621 @@
+\input{data/OdePlotNfe}
+\input{data/SdePlotNfe}
+\input{data/TrainingTable}
+\input{data/TrainingPlotLoss}
+\input{data/TrainingPlotChurn}
+\input{data/TrainingPlotImgc}
+
+\newcommand{\figDenoising}{%
+\renewcommand{\hh}{0.495\linewidth}
+\newcommand{\denhruler}{\makebox[\hh]{\scriptsize\hrlabel{$\sigma{=}$0}\hrlabel{0.2}\hrlabel{0.5}\hrlabel{1}\hrlabel{2}\hrlabel{3}\hrlabel{5}\hrlabel{7}\hrlabel{10}\hrlabel{20}\hrlabel{50}}}
+\begin{figure}[t]%
+\centering%
+\footnotesize%
+\denhruler\hfill\denhruler\\%
+\includegraphics[width=\hh, trim=0 128 0 0, clip]{denoising/cifar10u-seed84-noisy.jpg}\hfill%
+\includegraphics[width=\hh, trim=0 128 0 0, clip]{denoising/cifar10u-seed84-oracle.jpg}\\%
+\makebox[\hh]{(a) Noisy images drawn from $p(\xx; \sigma)$}\hfill%
+\makebox[\hh]{(b) Ideal denoiser outputs $D(\xx; \sigma)$}\\%
+\caption{\label{fig:denoising}%
+Denoising score matching on CIFAR-10.
+\textbf{(a)}
+Images from the training set corrupted with varying levels of additive Gaussian noise.
+High levels of noise lead to oversaturated colors; we normalize the images for cleaner visualization.
+\textbf{(b)}
+Optimal denoising result from minimizing Eq.~\ref{eq:score} analytically ({see Appendix~\ref{app:scorematching}}). With increasing noise level, the {result} approaches dataset mean.
+}%
+\vspace*{-2mm}
+\end{figure}
+}
+
+\newcommand{\eqq}[2]{\pbox[t][5ex]{\linewidth}{{#1}\\{#2}}}
+\newcommand{\eqqq}[3]{{\pbox[t][8ex]{\linewidth}{{#1}\\{#2}\\{#3}}}}
+\newcommand{\ccbox}[1]{\makebox[3.6em][l]{#1}}
+\newcommand{\csbox}[1]{\makebox[2.0em][l]{#1}}
+\newcommand{\cnbox}[2]{{#1}\hspace*{1em}\scalebox{0.9}{(note: #2)}}
+\newcommand{\cpboxa}[1]{\makebox[1.2em][l]{#1}}
+\newcommand{\cpboxb}[1]{\makebox[2.0em][l]{#1}}
+\newcommand{\cpboxc}[1]{\makebox[1.4em][l]{#1}}
+\newcommand{\cpboxd}[1]{\makebox[2em][l]{#1}}
+\newcommand{\rroot}[1]{\,{\vphantom{X}}^\rho\!\!\!\!\sqrt{#1}}
+\newcommand{\pphantom}{\vphantom{$= 1 / \sqrt{\sigma^2 + 1} \sdata^2 / \left(\sigma^2 + \sdata^2 \right)$}}
+\newcommand{\lphantom}{\vphantom{$= \frac{1}{4} / \sqrt{\sigma^2 + 1} \sdata^2 / \left(\sigma^2 + \sdata^2 \right)$}}
+\newcommand{\lfphantom}{\vphantom{$= 1 / \sqrt{\sigma^2 + 1} \sdata^2 / \left(\sigma^2 + \sdata^2 \right)_i$}}
+\newcommand{\llphantom}{\lphantom\vphantom{$\underset{i}{\argmin}$}}
+\newcommand{\titlerowww}[1]{\makebox[0mm][l]{{\bf #1}}\\}
+\newcommand{\titlerowwb}[1]{{\bf #1}\pphantom}
+
+\newcommand{\tabSpecifics}{
+\tabulinesep=0.00ex%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\caption{\label{tab:specifics}%
+Specific design choices employed by different model families.
+$N$ is the number of ODE solver iterations that we wish to execute during sampling.
+The corresponding sequence of time steps is $\{t_0, t_1, \dots, t_N\}$, where $t_N = 0$.
+If the model was originally trained for specific choices of $N$ and $\{t_i\}$, the originals are denoted by $\origN$ and $\{\origT{j}\}$, respectively.
+The denoiser is defined as \smash{$D_\theta(\xx; \sigma) = \cskip(\sigma) \xx + \cout(\sigma) F_\theta \big( \cin(\sigma) \xx; \cnoise(\sigma) \big)$}; $F_\theta$ represents the raw neural network layers.
+}
+\vspace{1.5mm}%
+
+\resizebox{\textwidth}{!}{%
+\begin{tabu}{@{}lllll@{\hspace*{-1mm}}}
+\tabucline{-}
+& {\bf VP \cite{Song2021sde}}
+& {\bf VE \cite{Song2021sde}}
+& {\bf iDDPM \cite{Nichol2021a} + DDIM \cite{Song2020ddim}}
+& {\bf {Ours (``EDM'')} \vphantom{\"O}}
+\\
+\hline\vspace*{-3.5mm}\\
+\vspace*{.1ex}\titlerowww{Sampling (Section~\protect\ref*{sec:deterministic})}
+ODE solver
+& {Euler}
+& {Euler}
+& {Euler}
+& {2\textsuperscript{nd} order Heun}\vspace*{-0.2ex}
+\vspace*{0.0mm}\\
+Time steps\hfill$t_{i<N}$
+& \low{$1 + \frac{i}{N-1}(\epsilon_\text{s} - 1)$}
+& \low{$\smax^2 \left( \smin^2 / \smax^2 \right)^{\frac{i}{N-1}}$}
+& \eqqq
+{$\origT{\lfloor j_0 + \frac{\origN - 1 - j_0}{N - 1} i + \frac{1}{2} \rfloor}$\scalebox{0.9}{, where}}
+{\scalebox{0.8}{\hspace*{.35em}\raisebox{0mm}[2ex][-0.5ex]{\makebox[2em][l]{$\origT{\origN}$}$= 0$}}}
+{\scalebox{0.8}{\hspace*{.35em}\makebox[2em][l]{$\origT{j-1}$}$= \sqrt{\frac{\origTsup{j}{2} + 1}{\max(\bar{\alpha}_{j-1} / \bar{\alpha}_j, C_1)}\!-\!1}$}}
+& \eqq
+{$\big({\smax}^\frac{1}{\rho} + {}$\vspace*{-.2ex}}
+{\hspace*{0.5em}$ \frac{i}{N-1} ( {\smin}^\frac{1}{\rho}\!-\!{\smax}^\frac{1}{\rho} ) \big)^\rho$}
+\vspace*{2mm}\\
+Schedule\hfill$\sigma(t)$\lphantom
+& {$\sqrt{e^{\frac{1}{2}\bdyn t^2 + \bmin t}\!-\!1}$}
+& \csbox{$\sqrt{t}$}
+& \csbox{$t$}
+& \csbox{$t$}
+\vspace*{0.5mm}\\
+Scaling\hfill$s(t)$\llphantom
+& \csbox{$1 \big/ \sqrt{e^{\frac{1}{2}\bdyn t^2 + \bmin t}}$}
+& \csbox{$1$}
+& \csbox{$1$}
+& \csbox{$1$}
+\vspace*{-1.0mm}\\
+\hline\vspace*{-3.5mm}\\
+\titlerowww{Network and preconditioning (Section~\protect\ref*{sec:training})}
+Architecture of $F_\theta$\lphantom
+& {\ddpmpp{}}
+& {\ncsnpp{}}
+& {\ddpm{}}
+& {(any)}
+\vspace*{0.7mm}\\
+Skip scaling\hfill$\cskip(\sigma)$\lphantom
+& \csbox{$1$}
+& \csbox{$1$}
+& \csbox{$1$}
+& \csbox{$\sdata^2 / \left(\sigma^2 + \sdata^2 \right)$}
+\vspace*{0.7mm}\\
+Output scaling \hfill$\cout(\sigma)$\lphantom
+& \csbox{$-\sigma$}
+& \csbox{$\sigma$}
+& \csbox{$-\sigma$}
+& \csbox{$\sigma \cdot \sdata / \sqrt{\sdata^2 + \sigma^2}$}
+\vspace*{0.7mm}\\
+Input scaling\hfill$\cin(\sigma)$\lphantom
+& \csbox{$1 / \sqrt{\sigma^2 + 1}$}
+& \csbox{$1$}
+& \csbox{$1 / \sqrt{\sigma^2 + 1}$}
+& \csbox{$1 / \sqrt{\sigma^2 + \sdata^2}$}
+\vspace*{0.7mm}\\
+Noise cond.\hfill$\cnoise(\sigma)$\llphantom
+& \csbox{$(\origN - 1) ~\sigma^{-1}(\sigma)$}
+& \csbox{$\ln(\frac{1}{2} \sigma)$}
+& \csbox{\scalebox{1.0}{$\origN\!-\!1\!-\!\argmin_j|\origT{j} - \sigma|$}}
+& \csbox{$\frac{1}{4} \ln(\sigma)$}
+\vspace*{-1.0mm}\\
+\hline\vspace*{-3.5mm}\\
+\titlerowww{Training (Section~\protect\ref*{sec:training})}
+Noise distribution\lphantom
+& {$\sigma^{-1}(\sigma) \sim \mathcal{U}(\epsilon_\text{t}, 1)$}
+& {$\ln(\sigma)\!\sim\!\mathcal{U}(\ln(\smin),$}
+& {$\sigma = \origT{j}, \ \  j \sim \mathcal{U}\{0, \origN\!-\!1\}$}
+& {$\ln(\sigma) \sim \mathcal{N}(P_\stext{mean}^{}, P_\stext{std}^2)$}
+\\
+&& {\hspace{4.3em}$\ln(\smax))$} &&
+\vspace*{-1.0mm}\\
+Loss weighting\hfill$\lambda(\sigma)$\llphantom\lphantom
+& {$1 / \sigma^2$}
+& {$1 / \sigma^2$}
+& \cnbox{$1 / \sigma^2$}{$^*$}
+& {$\left( \sigma^2\!+\!\sdata^2 \right) / (\sigma \cdot \sdata)^2$}
+\vspace*{-1.5mm}\\
+\tabucline{-}\\
+\vspace*{-7mm}\\
+\titlerowwb{Parameters}
+& \cpboxa{\footnotesize{$\bdyn$}}{\footnotesize{$= 19.9,  \bmin=0.1$}}
+& \cpboxb{\footnotesize{$\smin$}}{\footnotesize{$= 0.02$}}
+& \cpboxc{\footnotesize{$\bar{\alpha}_j$}}{\footnotesize{\smash{$= \sin^2( \frac{\pi}{2} \frac{j}{\origN (C_2 + 1)} )$}}}
+& \cpboxd{\footnotesize{$\smin$}}{\footnotesize{$= 0.002, \smax = 80$}}
+\\
+\pphantom
+& \cpboxa{\footnotesize{$\epsilon_\text{s}$}}{\footnotesize{$= 10^{-3}, \epsilon_\text{t} = 10^{-5}$}}
+& \cpboxb{\footnotesize{$\smax$}}{\footnotesize{$= 100$}}
+& \cpboxc{\footnotesize{$C_1$}}{\footnotesize{$= 0.001$, $C_2=0.008$}}
+& \cpboxd{\footnotesize{$\sdata$}}{\footnotesize{$= 0.5, \rho = 7$}}
+\\
+\pphantom
+& \cpboxa{\footnotesize{$\origN$}}{\footnotesize{$= 1000$}}
+&
+& \cpboxc{\footnotesize{$\origN$}}{\footnotesize{$= 1000, j_0 = 8^\dag$}}
+& \cpboxd{\footnotesize{$P_\text{mean}$}}{\footnotesize{$= -1.2$, $P_\text{std} = 1.2$}}
+\\
+\tabucline{-}
+\multicolumn{5}{l@{}}{\hfill%
+${}^*$ iDDPM also employs a second loss term $L_\text{vlb}$\hfill%
+${}^\dag$ In our tests, $j_0=8$ yielded better FID than $j_0=0$ used by iDDPM\hfill~}
+\end{tabu}}%
+\end{table}%
+}
+
+\newcommand{\figOdePlotNfe}{%
+\renewcommand{\hh}{85mm}\renewcommand{\vv}{55mm}\renewcommand{\hhh}{-5mm}%
+\begin{figure}[t]
+\centering%
+\resizebox{\textwidth}{!}{%
+\hspace*{-1mm}%
+\begin{tikzpicture}%
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={8}, xmax={1024}, xmode={log}, xtick={8, 16, 32, 64, 128, 256, 512, 1024}, xticklabels={\tickNFE{8}, $16$, $32$, $64$, $128$, $256$, $512$, $1024$},
+  ymin={1.6}, ymax={400}, ymode={log}, ytick={2, 3, 5, 10, 20, 50, 100, 200, 400}, yticklabels={$2$, $3$, $5$, $10$, $20$, $50$, $100$, $200$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend style={font=\small},
+]
+\addplot[C0]                             coordinates {\genOdePlotNfeCifaruDdpmppRepro};
+\addplot[C1]                             coordinates {\genOdePlotNfeCifaruDdpmppEmu};
+\addplot[C2]                             coordinates {\genOdePlotNfeCifaruDdpmppDHeun};
+\addplot[C3]                             coordinates {\genOdePlotNfeCifaruDdpmppSched};
+\addplot[black, dashed]                  coordinates {\genOdePlotNfeCifaruDdpmppBbox};
+\addplot[C0, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruDdpmppReproMarks};
+\addplot[C1, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruDdpmppEmuMarks};
+\addplot[C2, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruDdpmppDHeunMarks};
+\addplot[C3, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruDdpmppSchedMarks};
+\addplot[black, only marks, forget plot] coordinates {\genOdePlotNfeCifaruDdpmppBboxMarks};
+\node at (axis cs:35,3.0) [anchor={north}] {\textcolor{C3}{$35$}};
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={8}, xmax={8192}, xmode={log}, xtick={8, 32, 128, 512, 2048, 8192}, xticklabels={$8$, $32$, $128$, $512$, $2048$, $8192$},
+  ymin={1.9}, ymax={950}, ymode={log}, ytick={2, 3, 5, 10, 20, 50, 100, 200, 500, 950}, yticklabels={$2$, $3$, $5$, $10$, $20$, $50$, $100$, $200$, $500$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend style={font=\small},
+]
+\addplot[C0]                             coordinates {\genOdePlotNfeCifaruNcsnppRepro};
+\addplot[C1]                             coordinates {\genOdePlotNfeCifaruNcsnppEmu};
+\addplot[C2]                             coordinates {\genOdePlotNfeCifaruNcsnppDHeun};
+\addplot[C3]                             coordinates {\genOdePlotNfeCifaruNcsnppSched};
+\addplot[black, dashed]                  coordinates {\genOdePlotNfeCifaruNcsnppBbox};
+\addplot[C0, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruNcsnppReproMarks};
+\addplot[C1, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruNcsnppEmuMarks};
+\addplot[C2, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruNcsnppDHeunMarks};
+\addplot[C3, only marks, forget plot]    coordinates {\genOdePlotNfeCifaruNcsnppSchedMarks};
+\addplot[black, only marks, forget plot] coordinates {\genOdePlotNfeCifaruNcsnppBboxMarks};
+\node at (axis cs:27,3.8) [anchor={north}] {\textcolor{C3}{$27$}};
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={8}, xmax={1024}, xmode={log}, xtick={8, 16, 32, 64, 128, 256, 512, 1024}, xticklabels={$8$, $16$, $32$, $64$, $128$, $256$, $512$, $1024$},
+  ymin={1.9}, ymax={28}, ymode={log}, ytick={2, 3, 5, 10, 20, 28}, yticklabels={$2$, $3$, $5$, $10$, $20$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend style={font=\small},
+]
+\addplot[C0]                                coordinates {\genOdePlotNfeImgcDhariwalRepro};
+\addplot[C1]                                coordinates {\genOdePlotNfeImgcDhariwalEmu};
+\addplot[C2]                                coordinates {\genOdePlotNfeImgcDhariwalDHeun};
+\addplot[C3, dash pattern={on 6pt off 6pt}, forget plot] coordinates {\genOdePlotNfeImgcDhariwalDHeun};
+\addlegendimage{C3}
+\addplot[black, dashed]                     coordinates {\genOdePlotNfeImgcDhariwalBbox};
+\addplot[C0, only marks, forget plot]       coordinates {\genOdePlotNfeImgcDhariwalReproMarks};
+\addplot[C1, only marks, forget plot]       coordinates {\genOdePlotNfeImgcDhariwalEmuMarks};
+\addplot[C3, only marks, forget plot]       coordinates {\genOdePlotNfeImgcDhariwalDHeunMarks};
+\addplot[black, only marks, forget plot]    coordinates {\genOdePlotNfeImgcDhariwalBboxMarks};
+\node at (axis cs:79,2.6) [anchor={north}] {\textcolor{C3}{$79$}};
+\legend{
+  {Original sampler},
+  {Our reimplementation},
+  {+ Heun \& our $\{t_i\}$},
+  {+ Our $\sigma(t)$ \& $s(t)$},
+  {Black-box RK45},
+}
+\end{axis}
+\end{tikzpicture}
+}\\\hfill%
+\makebox[0.33\linewidth]{\footnotesize (a) Uncond. CIFAR-10, VP ODE}\hfill%
+\makebox[0.33\linewidth]{\hspace*{-.30em}\footnotesize (b) Uncond. CIFAR-10, VE ODE}\hfill%
+\makebox[0.33\linewidth]{\hspace*{-.15em}\footnotesize (c) Class-cond. ImageNet-64, DDIM}\hfill%
+\caption{\label{fig:OdePlotNfe}%
+Comparison of deterministic sampling methods using three pre-trained models. %
+For each curve, the dot indicates the lowest NFE whose FID is within 3\% of the lowest observed FID.
+}
+\vspace*{-4mm}
+\end{figure}
+}
+
+\newcommand{\algHeun}{%
+\begin{algorithm}[t]
+\footnotesize
+\captionof{algorithm}[heun]{\atphantom\ \ Deterministic sampling using Heun's 2\textsuperscript{nd} order method with arbitrary $\sigma(t)$ and $s(t)$.}
+\begin{spacing}{1.1}
+\begin{algorithmic}[1]
+  \AProcedure{HeunSampler}{$D_\theta(\xx;\sigma), ~\sigma(t), ~s(t), ~t_{i \in \{0, \dots, N\}}$}
+    \AState{{\bf sample} $\xx_0 \sim \mathcal{N} \big( \boldzero, ~\sigma^2(\odetime_0) ~s^2(\odetime_0) ~\boldi \big)$}
+        \AComment{Generate initial sample at $\odetime_0$}
+    \AFor{$i \in \{0, \dots, N-1\}$}
+        \AComment{Solve Eq.~\ref{eq:odescale} over $N$ time steps}
+      \DState{$\displaystyle\dd_i \gets \bigg(\frac{\dot \sigma(\odetime_i)}{\sigma(\odetime_i)} + \frac{\dot \scale(\odetime_i)}{\scale(\odetime_i)}\bigg)\xx_i - \frac{\dot\sigma(\odetime_i)\scale(\odetime_i)}{\sigma(\odetime_i)} D_\theta\bigg(\frac{\xx_i}{\scale(\odetime_i)}; \sigma(\odetime_i)\bigg)$}
+          \AComment{Evaluate $\diff\xx / \diff\odetime$ at $\odetime_i$}
+      \AState{$\xx_{i+1} \gets \xx_i + (\odetime_{i+1} - \odetime_{i}) \dd_i$}
+          \AComment{Take Euler step from $\odetime_i$ to $\odetime_{i+1}$}
+      \vspace{1mm}
+      \AIf{$\sigma(t_{i+1}) \ne 0$}
+          \AComment{Apply 2\textsuperscript{nd} order correction unless $\sigma$ goes to zero}
+        %
+        \DState{$\ddp_i \gets$ \scalebox{0.9}{$\displaystyle\bigg(\frac{\dot \sigma(\odetime_{i+1})}{\sigma(\odetime_{i+1})} + \frac{\dot \scale(\odetime_{i+1})}{\scale(\odetime_{i+1})}\bigg) \xx_{i+1}  - \frac{\dot\sigma(\odetime_{i+1})\scale(\odetime_{i+1})}{\sigma(\odetime_{i+1})} D_\theta\bigg(\frac{\xx_{i+1}}{\scale(\odetime_{i+1})}; \sigma(\odetime_{i+1})\bigg)$}}
+            \AComment{Eval. $\diff\xx / \diff\odetime$ at $\odetime_{i+1}$}
+        \AState{$\xx_{i+1} \gets \xx_i + (\odetime_{i+1} - \odetime_{i}) \big( \frac{1}{2}\dd_i + \frac{1}{2}\ddp_i \big)$}
+            \AComment{Explicit trapezoidal rule at $\odetime_{i+1}$}
+      \EndIf
+    \EndFor
+    \AState{\textbf{return} $\xx_N$}
+        \AComment{Return noise-free sample at $\odetime_N$}
+  \EndProcedure
+\end{algorithmic}
+\end{spacing}
+\label{alg:heun}
+\end{algorithm}
+}
+
+\newcommand{\slab}[1]{{\scalebox{0.7}{#1}}}
+\newcommand{\iplot}[1]{%
+\begin{tikzpicture}[inner sep=0pt, outer sep=0pt]
+ \node {\includegraphics[width=0.333\linewidth, trim=5 2 15 15, clip]{trajectories/#1.pdf}};
+ \draw (-2.0, 1.35) node {\slab{$\xx$}};
+ %
+\end{tikzpicture}}
+\newcommand{\dplot}[3]{%
+\begin{tikzpicture}[inner sep=0pt, outer sep=0pt]
+ \node {\includegraphics[width=0.333\linewidth, trim=5 2 15 15, clip]{trajectories/#1.pdf}};
+ %
+ \draw[green!50!black] (#3, 0.020)  -- (-0.3, 1.34);
+ \draw[green!50!black] (#3, -0.095) -- (-0.3, -0.21);
+ \draw (0.77, 0.50) node {\includegraphics[width=0.20\linewidth, trim=5 2 15 15, clip]{trajectories/#2.pdf}};
+ \draw (-2.05, 1.35) node {\slab{$\xx$}};
+ %
+\end{tikzpicture}}
+\newcommand{\figTrajectories}{%
+\begin{figure}[t]
+\centering
+\begin{tabular}{@{}c@{}c@{}c@{}}
+\iplot{song_vp_far} &
+\dplot{song_ve_far}{song_ve_near}{-1.78} &
+\dplot{our_far}{our_near}{-1.64} \\
+\raisebox{2.63ex}[0pt][0pt]{\hspace*{-11.8em}\slab{$t$$=$}}&%
+\raisebox{2.63ex}[0pt][0pt]{\hspace*{-11.3em}\slab{$t$$=$}}&%
+\raisebox{2.63ex}[0pt][0pt]{\hspace*{-11.3em}\slab{$t$$=$}}\vspace*{-4mm}\\
+{\footnotesize (a) Variance preserving ODE~\cite{Song2021sde}} &
+{\footnotesize (b) Variance exploding ODE~\cite{Song2021sde}} &
+{\footnotesize (c) DDIM~\cite{Song2020ddim} / Our ODE} \\
+\end{tabular}
+\caption{\label{fig:trajectories}%
+A sketch of ODE curvature in 1D where $\pdata$ is two Dirac peaks at $\xx=\pm1$.
+Horizontal $t$ axis is chosen to show $\sigma\in[0,25]$ in each plot, with insets showing $\sigma\in[0,1]$ near the data.
+Example local gradients are shown with black arrows.
+\textbf{(a)}
+Variance preserving ODE of Song et al.~\cite{Song2021sde} has solution trajectories that flatten out to horizontal lines at large $\sigma$.
+Local gradients start pointing towards data only at small $\sigma$.
+\textbf{(b)}
+Variance exploding variant has extreme curvature near data and the solution trajectories are curved everywhere.
+\textbf{(c)}
+With the schedule used by DDIM~\cite{Song2020ddim} and us, as $\sigma$ increases the solution trajectories approach straight lines that point towards the mean of data.
+As $\sigma\to0$, the trajectories become linear and point towards the data manifold.
+}%
+\end{figure}
+}
+
+\newcommand{\hsqrt}[1]{\raisebox{-.0ex}{$\sqrt{\raisebox{0pt}[1.8ex][0.3ex]{$#1$}}$}}
+\newcommand{\algStochastic}{%
+\begin{algorithm}[t]
+\footnotesize
+\captionof{algorithm}[stochastic]{\atphantom\ \ Our stochastic sampler with $\sigma(t)=t$ and $s(t)=1$.}
+\begin{spacing}{1.1}
+\begin{algorithmic}[1]
+  \AProcedure{StochasticSampler}{$D_\theta(\xx;\sigma), ~t_{i \in \{0, \dots, N\}}, ~\gamma_{i \in \{0, \dots, N-1\}}, ~\Snoise$}
+    \AState{{\bf sample} $\xx_0 \sim \mathcal{N} \big( \boldzero, ~\odetime_0^2 ~\boldi \big)$}
+    \AFor{$i \in \{0, \dots, N-1\}$}
+        \AComment{$\gamma_i = \begin{cases}\scalebox{0.9}{${\min}\Big( \frac{\Schurn}{N}, \scalebox{0.8}{$\sqrt{2}{-}1$} \Big)$} & \text{if } \scalebox{0.9}{$t_i{\in}[\Stmin{,}\Stmax]$} \\ 0 & \text{otherwise}\end{cases}$}
+      \AState{{\bf sample} $\boldsymbol{\epsilon}_i \sim \mathcal{N} \big( \boldzero, ~\Snoise^2 ~\boldi \big)$}
+      \AState{$\hat\odetime_i \gets \odetime_i + \gamma_i \odetime_i$}
+          \AComment{Select temporarily increased noise level $\hat\odetime_i$}
+      \AState{$\xxh_i \gets \xx_i + \hsqrt{\hat\odetime_i^2 - \odetime_i^2} ~\boldsymbol{\epsilon}_i$}
+          \AComment{Add new noise to move from $\odetime_i$ to $\hat\odetime_i$}
+      \AState{$\dd_i \gets \big( \xxh_i - D_\theta(\xxh_i; \hat\odetime_i) \big) / \hat\odetime_i$}
+          \AComment{Evaluate $\diff\xx / \diff\odetime$ at $\hat\odetime_i$}
+      \AState{$\xx_{i+1} \gets \xxh_i + (\odetime_{i+1} - \hat\odetime_i) \dd_i$}
+          \AComment{Take Euler step from $\hat\odetime_i$ to $\odetime_{i+1}$}
+      \AIf{$t_{i+1} \ne 0$}
+        \AState{$\ddp_i \gets \big( \xx_{i+1} - D_\theta(\xx_{i+1}; \odetime_{i+1}) \big) / \odetime_{i+1} $}
+            \AComment{Apply 2\textsuperscript{nd} order correction}
+        \AState{$\xx_{i+1} \gets \xxh_i + (\odetime_{i+1} - \hat\odetime_i) \big( \frac{1}{2}\dd_i + \frac{1}{2}\ddp_i \big)$}
+      \EndIf
+    \EndFor
+    \AState{\textbf{return} $\xx_N$}
+  \EndProcedure
+\end{algorithmic}
+\end{spacing}
+\label{alg:stochastic}
+\end{algorithm}
+}
+
+\newcommand{\figSdePlotNfe}{%
+\renewcommand{\hh}{85mm}\renewcommand{\vv}{72mm}\renewcommand{\hhh}{-3mm}%
+\begin{figure}[t]
+\centering%
+\resizebox{\textwidth}{!}{%
+\hspace*{-1mm}%
+\begin{tikzpicture}%
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={16}, xmax={2048}, xmode={log}, xtick={16, 32, 64, 128, 256, 512, 1024, 2048}, xticklabels={\tickNFE{16}, $32$, $64$, $128$, $256$, $512$, $1024$, $2048$},
+  ymin={1.61}, ymax={3.35}, ymode={linear}, ytick={1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.35}, yticklabels={$1.0$, $1.2$, $1.4$, $1.6$, $1.8$, $2.0$, $2.2$, $2.4$, $2.6$, $2.8$, $3.0$, $3.2$, \tickFID},
+  grid={major}, legend pos={south west}, legend cell align={left}, legend columns={2}, legend style={font=\small, /tikz/every even column/.append style={column sep=1.6mm}},
+]
+\fillbetween[C3, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruDdpmppOdeLo}}{coordinates {\genSdePlotNfeCifaruDdpmppOdeHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruDdpmppLambdaLo}}{coordinates {\genSdePlotNfeCifaruDdpmppLambdaHi}};
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruDdpmppPlainLo}}{coordinates {\genSdePlotNfeCifaruDdpmppPlainHi}};
+\fillbetween[C4, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruDdpmppOursLo}}{coordinates {\genSdePlotNfeCifaruDdpmppOursHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruDdpmppRangeLo}}{coordinates {\genSdePlotNfeCifaruDdpmppRangeHi}};
+\fillbetween[black, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruDdpmppReproLo}}{coordinates {\genSdePlotNfeCifaruDdpmppReproHi}};
+\addplot[C3]                             coordinates {\genSdePlotNfeCifaruDdpmppOde};
+\addplot[C1]                             coordinates {\genSdePlotNfeCifaruDdpmppLambda};
+\addplot[C2]                             coordinates {\genSdePlotNfeCifaruDdpmppPlain};
+\addplot[C4]                             coordinates {\genSdePlotNfeCifaruDdpmppOurs};
+\addplot[C0]                             coordinates {\genSdePlotNfeCifaruDdpmppRange};
+\addplot[black, dashed]                  coordinates {\genSdePlotNfeCifaruDdpmppRepro};
+\addplot[black, line width={1.7pt}, line cap={round}, dash pattern={on 0pt off 3pt}] coordinates {\genSdePlotNfeCifaruDdpmppGotta};
+\addplot[C3, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruDdpmppOdeMarks};
+\addplot[C2, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruDdpmppPlainMarks};
+\addplot[C1, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruDdpmppLambdaMarks};
+\addplot[C0, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruDdpmppRangeMarks};
+\addplot[C4, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruDdpmppOursMarks};
+\addplot[black, only marks, forget plot] coordinates {\genSdePlotNfeCifaruDdpmppReproMarks};
+\addplot[black, only marks, forget plot] coordinates {\genSdePlotNfeCifaruDdpmppGottaMarks};
+\node at (axis cs:511,2.3) [anchor={south}] {\textcolor{C4}{$2.27$}};
+\legend{
+  {Deterministic},
+  {$\StminStmax = [0, \infty]$},
+  {$\StminStmax$ + $\Snoise = 1$},
+  {Optimal settings},
+  {$\Snoise = 1$},
+  {Original sampler},
+  {\makebox[0mm][l]{Jolicoeur-Martineau~et~al.~\cite{Jolicoeur2021}}},
+}
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={16}, xmax={2048}, xmode={log}, xtick={16, 32, 64, 128, 256, 512, 1024, 2048}, xticklabels={$16$, $32$, $64$, $128$, $256$, $512$, $1024$, $2048$},
+  ymin={1.8}, ymax={4.8}, ymode={linear}, ytick={1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 4.8}, yticklabels={$1.0$, $1.5$, $2.0$, $2.5$, $3.0$, $3.5$, $4.0$, $4.5$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend style={font=\normalsize},
+]
+\fillbetween[C3, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruNcsnppOdeLo}}{coordinates {\genSdePlotNfeCifaruNcsnppOdeHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruNcsnppLambdaLo}}{coordinates {\genSdePlotNfeCifaruNcsnppLambdaHi}};
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruNcsnppPlainLo}}{coordinates {\genSdePlotNfeCifaruNcsnppPlainHi}};
+\fillbetween[C4, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruNcsnppOursLo}}{coordinates {\genSdePlotNfeCifaruNcsnppOursHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruNcsnppRangeLo}}{coordinates {\genSdePlotNfeCifaruNcsnppRangeHi}};
+\fillbetween[black, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeCifaruNcsnppReproLo}}{coordinates {\genSdePlotNfeCifaruNcsnppReproHi}};
+\addplot[C3]                             coordinates {\genSdePlotNfeCifaruNcsnppOde};
+\addplot[C1]                             coordinates {\genSdePlotNfeCifaruNcsnppLambda};
+\addplot[C2]                             coordinates {\genSdePlotNfeCifaruNcsnppPlain};
+\addplot[C4]                             coordinates {\genSdePlotNfeCifaruNcsnppOurs};
+\addplot[C0]                             coordinates {\genSdePlotNfeCifaruNcsnppRange};
+\addplot[black, dashed]                  coordinates {\genSdePlotNfeCifaruNcsnppRepro};
+\addplot[black, line width={1.7pt}, line cap={round}, dash pattern={on 0pt off 3pt}] coordinates {\genSdePlotNfeCifaruNcsnppGotta};
+\addplot[C3, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruNcsnppOdeMarks};
+\addplot[C2, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruNcsnppPlainMarks};
+\addplot[C1, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruNcsnppLambdaMarks};
+\addplot[C0, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruNcsnppRangeMarks};
+\addplot[C4, only marks, forget plot]    coordinates {\genSdePlotNfeCifaruNcsnppOursMarks};
+\addplot[black, only marks, forget plot] coordinates {\genSdePlotNfeCifaruNcsnppReproMarks};
+\addplot[black, only marks, forget plot] coordinates {\genSdePlotNfeCifaruNcsnppGottaMarks};
+\node at (axis cs:1560,2.22) [anchor={north}] {\textcolor{C4}{$2.23$}};
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={16}, xmax={2048}, xmode={log}, xtick={16, 32, 64, 128, 256, 512, 1024, 2048}, xticklabels={$16$, $32$, $64$, $128$, $256$, $512$, $1024$, $2048$},
+  ymin={1.3}, ymax={3.2}, ymode={linear}, ytick={1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2}, yticklabels={$1.0$, $1.2$, $1.4$, $1.6$, $1.8$, $2.0$, $2.2$, $2.4$, $2.6$, $2.8$, $3.0$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend style={font=\normalsize},
+]
+\fillbetween[C3, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeImgcDhariwalOdeLo}}{coordinates {\genSdePlotNfeImgcDhariwalOdeHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeImgcDhariwalLambdaLo}}{coordinates {\genSdePlotNfeImgcDhariwalLambdaHi}};
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeImgcDhariwalPlainLo}}{coordinates {\genSdePlotNfeImgcDhariwalPlainHi}};
+\fillbetween[C4, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeImgcDhariwalOursLo}}{coordinates {\genSdePlotNfeImgcDhariwalOursHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeImgcDhariwalRangeLo}}{coordinates {\genSdePlotNfeImgcDhariwalRangeHi}};
+\fillbetween[black, opacity=0.15, forget plot]{coordinates {\genSdePlotNfeImgcDhariwalReproLo}}{coordinates {\genSdePlotNfeImgcDhariwalReproHi}};
+\addplot[C3]                             coordinates {\genSdePlotNfeImgcDhariwalOde};
+\addplot[C1]                             coordinates {\genSdePlotNfeImgcDhariwalLambda};
+\addplot[C2]                             coordinates {\genSdePlotNfeImgcDhariwalPlain};
+\addplot[C4]                             coordinates {\genSdePlotNfeImgcDhariwalOurs};
+\addplot[C0]                             coordinates {\genSdePlotNfeImgcDhariwalRange};
+\addplot[black, dashed]                  coordinates {\genSdePlotNfeImgcDhariwalRepro};
+\addplot[C3, only marks, forget plot]    coordinates {\genSdePlotNfeImgcDhariwalOdeMarks};
+\addplot[C2, only marks, forget plot]    coordinates {\genSdePlotNfeImgcDhariwalPlainMarks};
+\addplot[C1, only marks, forget plot]    coordinates {\genSdePlotNfeImgcDhariwalLambdaMarks};
+\addplot[C0, only marks, forget plot]    coordinates {\genSdePlotNfeImgcDhariwalRangeMarks};
+\addplot[C4, only marks, forget plot]    coordinates {\genSdePlotNfeImgcDhariwalOursMarks};
+\addplot[black, only marks, forget plot] coordinates {\genSdePlotNfeImgcDhariwalReproMarks};
+\node at (axis cs:1023,1.54) [anchor={north}] {\textcolor{C4}{$1.55$}};
+\end{axis}
+\end{tikzpicture}
+}\\\hfill%
+\makebox[0.33\linewidth]{\footnotesize (a) Uncond. CIFAR-10, VP}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (b) Uncond. CIFAR-10, VE}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (c) Class-cond. ImageNet-64}\hfill%
+\caption{\label{fig:SdePlotNfe}%
+Evaluation of our stochastic sampler (Algorithm~\ref{alg:stochastic}).
+The purple curve corresponds to optimal choices for $\{\Schurn, \Stmin, \Stmax, \Snoise\}$; orange, blue, and green correspond to disabling the effects of $\StminStmax$ and/or $\Snoise$.
+The red curves show reference results for our deterministic sampler (Algorithm~\ref{alg:heun}), equivalent to setting $\Schurn = 0$.
+The dashed black curves correspond to the original stochastic samplers from previous work: Euler--Maruyama~\cite{Song2021sde} for VP, predictor-corrector~\cite{Song2021sde} for VE, and iDDPM~\cite{Nichol2021a} for ImageNet-64.
+The dots indicate lowest observed FID.
+}
+\vspace*{-2mm}
+\end{figure}
+}
+
+\newcommand{\tabTrainingTable}{%
+\forcenewcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{9mm}}%
+\forcenewcolumntype{y}{>{\centering\arraybackslash\hspace{0pt}}p{13mm}}%
+\newcommand{\smast}{\smash{\rlap{$^*$}}}%
+\renewcommand{\cs}{\hspace{0.5mm}}%
+\tabulinesep=0.7mm%
+\tabulinestyle{0.17mm}%
+\begin{table}[t]%
+\centering%
+\footnotesize%
+\caption{\label{tab:TrainingTable}%
+Evaluation of our training improvements.
+The starting point (config \textsc{a}) is VP \& VE using our \textbf{deterministic} sampler.
+At the end (configs \textsc{e,f}), VP \& VE only differ in the architecture of $F_\theta$.
+}
+\vspace{2mm}%
+\resizebox{\textwidth}{!}{%
+\begin{tabu}{|@{\ \ }l@{\ \ }|x@{\cs}x|x@{\cs}x|y@{\cs}y|y@{\cs}y|}
+\tabucline{2-}
+\genTrainingTable
+\tabucline{-}
+\end{tabu}%
+}%
+\vspace*{-2mm}%
+\end{table}%
+}
+
+\newcommand{\figTrainingPlots}{%
+\renewcommand{\hh}{85mm}\renewcommand{\vv}{68mm}\renewcommand{\hhh}{-1mm}%
+\begin{figure}[t]
+\centering%
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0.002}, xmax={100}, xmode={log}, xtick={0.005, 0.02, 0.1, 0.5, 1, 2, 5, 10, 20, 50}, xticklabels={\tickSigma{0.005}, $0.02$, $0.1$, $0.5$, $1$, $2$, $5$, $10$, $20$, $50$},
+  ymin={-0.1}, ymax={1.6}, ymode={linear}, ytick={0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6}, yticklabels={$0.0$, $0.2$, $0.4$, $0.6$, $0.8$, $1.0$, $1.2$, $1.4$, \tickLoss},
+  %
+  grid={major}, legend pos={north west}, legend cell align={left}, legend columns={2}, legend style={font=\normalsize, /tikz/every even column/.append style={column sep=1.6mm}},
+]
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genTrainingPlotLossCifaruDdpmppInitLo}}{coordinates {\genTrainingPlotLossCifaruDdpmppInitHi}};
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genTrainingPlotLossCifaruDdpmppPrecLo}}{coordinates {\genTrainingPlotLossCifaruDdpmppPrecHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genTrainingPlotLossFfhqDdpmppPrecLo}}{coordinates {\genTrainingPlotLossFfhqDdpmppPrecHi}};
+\addplot[C2] coordinates {\genTrainingPlotLossCifaruDdpmppInit};
+\addplot[C0] coordinates {\genTrainingPlotLossCifaruDdpmppPrec};
+\addplot[C3, dashed, domain=0.002:100, samples=256] {exp(-0.5 * ((ln(x) - (-1.2)) / (1.2))^2)};
+\addplot[C1] coordinates {\genTrainingPlotLossFfhqDdpmppPrec};
+\legend{
+  {Loss after init},
+  {CIFAR-10},
+  {Distribution of $\sigma$},
+  {FFHQ-64},
+}
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0}, xmax={100}, xmode={linear}, xtick={0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, xticklabels={\tickSchurnB{0}, $10$, $20$, $30$, $40$, $50$, $60$, $70$, $80$, $90$, $100$},
+  ymin={1.8}, ymax={4.3}, ymode={linear}, ytick={1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.3}, yticklabels={$1.0$, $1.5$, $2.0$, $2.5$, $3.0$, $3.5$, $4.0$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend columns={2}, legend style={font=\normalsize, /tikz/every even column/.append style={column sep=1.6mm}},
+]
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genTrainingPlotChurnCifaruDdpmppOrigLo}}{coordinates {\genTrainingPlotChurnCifaruDdpmppOrigHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genTrainingPlotChurnCifaruDdpmppAugmLo}}{coordinates {\genTrainingPlotChurnCifaruDdpmppAugmHi}};
+\fillbetween[C2, opacity=0.15, forget plot]{coordinates {\genTrainingPlotChurnCifaruNcsnppOrigLo}}{coordinates {\genTrainingPlotChurnCifaruNcsnppOrigHi}};
+\fillbetween[C3, opacity=0.15, forget plot]{coordinates {\genTrainingPlotChurnCifaruNcsnppAugmLo}}{coordinates {\genTrainingPlotChurnCifaruNcsnppAugmHi}};
+\addplot[C0] coordinates {\genTrainingPlotChurnCifaruDdpmppOrig};
+\addplot[C1] coordinates {\genTrainingPlotChurnCifaruDdpmppAugm};
+\addplot[C2] coordinates {\genTrainingPlotChurnCifaruNcsnppOrig};
+\addplot[C3] coordinates {\genTrainingPlotChurnCifaruNcsnppAugm};
+\legend{
+  {VP, original},
+  {VP, our model},
+  {VE, original},
+  {VE, our model},
+}
+\end{axis}
+\end{tikzpicture}
+\hspace*{\hhh}
+\begin{tikzpicture}
+\begin{axis}[
+  width=\hh, height=\vv,
+  xmin={0}, xmax={100}, xmode={linear}, xtick={0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, xticklabels={\tickSchurnB{0}, $10$, $20$, $30$, $40$, $50$, $60$, $70$, $80$, $90$, $100$},
+  %
+  ymin={1.1}, ymax={2.8}, ymode={linear}, ytick={1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8}, yticklabels={$1.2$, $1.4$, $1.6$, $1.8$, $2.0$, $2.2$, $2.4$, $2.6$, \tickFID},
+  grid={major}, legend pos={north east}, legend cell align={left}, legend columns={-1}, legend style={font=\normalsize, /tikz/every even column/.append style={column sep=1.6mm}},
+]
+\fillbetween[C0, opacity=0.15, forget plot]{coordinates {\genTrainingPlotImgcOrigLo}}{coordinates {\genTrainingPlotImgcOrigHi}};
+\fillbetween[C1, opacity=0.15, forget plot]{coordinates {\genTrainingPlotImgcOursLo}}{coordinates {\genTrainingPlotImgcOursHi}};
+\addplot[C0] coordinates {\genTrainingPlotImgcOrig};
+\addplot[C1] coordinates {\genTrainingPlotImgcOurs};
+\addplot[C0, only marks, forget plot] coordinates {(75, 1.57)}; \node at (axis cs:75,1.57) [anchor={north}] {\textcolor{C0}{$1.57$}};
+\addplot[C1, only marks, forget plot] coordinates {(40, 1.36)}; \node at (axis cs:40,1.36) [anchor={north}] {\textcolor{C1}{$1.36$}};
+\addplot[C0, only marks, forget plot] coordinates {(0, 2.66)}; \node at (axis cs:0,2.66) [anchor={west}] {\textcolor{C0}{$2.66$}};
+\addplot[C1, only marks, forget plot] coordinates {(0, 2.22)}; \node at (axis cs:0,2.22) [anchor={west}] {\textcolor{C1}{$2.22$}};
+\legend{
+  {Original},
+  {Our model},
+}
+\end{axis}
+\end{tikzpicture}
+}\\\hfill%
+\makebox[0.33\linewidth]{\footnotesize (a) Loss \& noise distribution}\hfill%
+\makebox[0.33\linewidth]{\footnotesize (b) Stochasticity on CIFAR-10}\hfill%
+\makebox[0.33\linewidth]{\footnotesize{(c) Stochasticity on ImageNet-64}}\hfill%
+\caption{\label{fig:TrainingPlots}%
+\textbf{(a)}
+Observed initial (green) and final loss per noise level, representative of the the 32$\times$32 (blue) and 64$\times$64 (orange) models considered in this paper. The shaded regions represent the standard deviation over 10k random samples. Our proposed training sample density is shown by the dashed red curve.
+\textbf{(b)}
+{Effect of $\Schurn$ on unconditional CIFAR-10 with 256 steps (NFE $=$ 511).}
+For the original training setup of Song~et~al.~\cite{Song2021sde}, stochastic sampling is highly beneficial (blue, green), while deterministic sampling ($\Schurn = 0$) leads to relatively poor FID.
+For our training setup, the situation is reversed (orange, red); stochastic sampling is not only unnecessary but harmful.
+{\textbf{(c)}
+Effect of $\Schurn$ on class-conditional ImageNet-64 with 256 steps (NFE $=$ 511).
+In this more challenging scenario, stochastic sampling turns out to be useful again.
+Our training setup improves the results for both deterministic and stochastic sampling.
+}
+}
+\vspace*{-2mm}
+\end{figure}
+}
+

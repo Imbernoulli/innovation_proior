@@ -1,0 +1,9 @@
+\section{Conclusion}
+
+We have introduced CutMix for training CNNs with strong classification and localization ability.
+CutMix is easy to implement and has no computational overhead, while being surprisingly effective on various tasks.
+On ImageNet classification, applying CutMix to ResNet-50 and ResNet-101 brings $+2.28\%$ and $+1.70\%$ top-1 accuracy improvements.
+On CIFAR classification, CutMix significantly improves the performance of  baseline by $+1.98\%$ leads to the state-of-the-art top-1 error $14.47\%$.
+On weakly supervised object localization (WSOL), CutMix substantially enhances the localization accuracy and has achieved comparable localization performances as the state-of-the-art WSOL methods. 
+Furthermore, simply using CutMix-ImageNet-pretrained model as the initialized backbone of the object detection and image captioning brings overall performance improvements.
+Finally, we have shown that CutMix results in improvements in robustness and uncertainty of image classifiers over the vanilla model as well as other regularized models.

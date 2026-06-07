@@ -1,0 +1,136 @@
+\documentclass{article}
+\usepackage{arxiv}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{lipsum}		    % Can be removed after putting your text content
+\usepackage{graphicx}
+\usepackage{doi}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{subcaption} % Ensure proper usage of subfigure captions
+\usepackage[normalem]{ulem}
+\usepackage{amsmath,amsfonts,bm}
+\usepackage{amssymb,amsthm}
+\usepackage{enumitem}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{footnote}
+\makesavenoteenv{tabular}
+\usepackage[
+    backend=biber,
+    citestyle=authoryear,
+    bibstyle=authortitle,
+    mincitenames=1,
+    maxcitenames=1,
+    maxbibnames=3,
+]{biblatex}
+\addbibresource{template.bib}
+
+\newcommand{\citep}[1]{\parencite{#1}}
+\newcommand{\ours}{{Moonlight}}
+
+\usepackage{listings}
+\lstset{
+    basicstyle=\ttfamily\small, % 字体和大小
+    commentstyle=\color{gray}, % 注释颜色
+    keywordstyle=\color{blue}, % 关键字颜色
+    stringstyle=\color{red}, % 字符串颜色
+    breaklines=true, % 自动换行
+    numbers=left, % 行号在左侧
+    numberstyle=\tiny\color{gray}, % 行号样式
+    frame=shadowbox, % 添加阴影边框
+    rulesepcolor=\color{blue}, % 边框颜色
+    xleftmargin=10pt, % 左边距
+    xrightmargin=10pt % 右边距
+}
+
+
+\newtheoremstyle{italicstyle} % 风格名称
+  {3pt} % 空白空间在定理上方
+  {3pt} % 空白空间在定理下方
+  {\itshape} % 定理内容的字体
+  {} % 缩进
+  {\itshape} % 定理标题的字体
+  {.} % 定理标题后的标点符号
+  {.5em} % 定理标题和内容之间的间距
+  {} % 定理标题后的额外内容
+\theoremstyle{italicstyle}
+\newtheorem{lemma}{Lemma}
+\newtheorem{principle}{Principle}
+
+% Define four custom colors (dark blue, dark green, dark red, dark purple as examples)
+\definecolor{darkblue}{rgb}{0.0, 0.0, 0.5}
+\definecolor{darkgreen}{rgb}{0.0, 0.5, 0.0}
+\definecolor{darkred}{rgb}{0.5, 0.0, 0.0}
+\definecolor{darkpurple}{rgb}{0.5, 0.0, 0.5}
+\newcommand{\todo}[1]{\textcolor{darkred}{[TODO]: #1}}
+\newcommand{\wyx}[1]{{\color{red}[yuxin: #1]}}
+
+\setlist[itemize,1]{leftmargin=\dimexpr 18pt}
+\setlist[enumerate,1]{leftmargin=\dimexpr 18pt}
+
+\title{
+\raisebox{-0.1\height}{\includegraphics[width=0.032\textwidth]{figures/logo.png}} %
+Muon is Scalable for LLM Training
+}
+
+
+\author{Kimi Team}
+
+% Uncomment to remove the date
+\date{}
+
+% Uncomment to override  the `A preprint' in the header
+\renewcommand{\headeright}{Technical Report}
+\renewcommand{\undertitle}{Technical Report}
+\renewcommand{\shorttitle}{\raisebox{-0.12\height}{\includegraphics[width=0.02\textwidth]{figures/logo.png}}
+Muon is Scalable for LLM Training}
+
+\author{%
+    \textbf{Jingyuan Liu}$^{1}$ \quad \textbf{Jianlin Su}$^{1}$ \quad \textbf{Xingcheng Yao}$^{2}$ \quad \textbf{Zhejun Jiang}$^{1}$ \quad \textbf{Guokun Lai}$^{1}$ \quad \textbf{Yulun Du}$^{1}$ \\
+    \textbf{Yidao Qin}$^{1}$ \quad \textbf{Weixin Xu}$^{1}$ \quad \textbf{Enzhe Lu}$^{1}$ \quad \textbf{Junjie Yan}$^{1}$ \quad \textbf{Yanru Chen}$^{1}$ \quad \textbf{Huabin Zheng}$^{1}$ \\ \quad \textbf{Yibo Liu}$^{1}$ 
+    \quad \textbf{Shaowei Liu}$^{1}$ \quad \textbf{Bohong Yin}$^{1}$ \quad \textbf{Weiran He}$^{1}$ \quad \textbf{Han Zhu}$^{1}$ \quad \textbf{Yuzhi Wang}$^{1}$ \quad \\ \textbf{Jianzhou Wang}$^{1}$ 
+    \textbf{Mengnan Dong}$^{1}$ \quad \textbf{Zheng Zhang}$^{1}$ \quad \textbf{Yongsheng Kang}$^{1}$ \quad \textbf{Hao Zhang}$^{1}$ \quad \\ \textbf{Xinran Xu}$^{1}$ 
+    \quad \textbf{Yutao Zhang}$^{1}$ \quad \textbf{Yuxin Wu}$^{1}$  \quad \textbf{Xinyu Zhou}$^{1}$ \thanks{Corresponding author: \texttt{zhouxinyu@moonshot.cn}} \quad \textbf{Zhilin Yang}$^{1} $
+    \\[2ex]
+    $^1$ Moonshot AI \quad $^2$ UCLA \quad
+}
+
+
+
+\begin{document}
+\maketitle
+
+\vspace{-10pt}
+\begin{abstract}
+
+Recently, the Muon optimizer~\citep{jordan2024muon} based on matrix orthogonalization has demonstrated strong results in training small-scale language models, but the scalability to larger models has not been proven. We identify two crucial techniques for scaling up Muon: (1) adding weight decay and (2) carefully adjusting the per-parameter update scale. These techniques allow Muon to work out-of-the-box on large-scale training without the need of hyper-parameter tuning. Scaling law experiments indicate that Muon achieves $\sim\!2\times$ computational efficiency compared to AdamW with compute optimal training.
+Based on these improvements, we introduce \ours, a 3B/16B-parameter Mixture-of-Expert (MoE) model trained with 5.7T tokens using Muon. Our model improves the current Pareto frontier, achieving better performance with much fewer training FLOPs compared to prior models.
+We open-source our distributed Muon implementation that is memory optimal and communication efficient. We also release the pretrained, instruction-tuned, and intermediate checkpoints to support future research.
+
+\end{abstract}
+
+
+
+
+
+\input{1-introduction}
+\input{2-analysis}
+\input{3-experiments}
+\input{4-discussion}
+\input{5-conclusion}
+\newpage
+\printbibliography
+\newpage
+\appendix
+\input{6-appendix}
+\end{document}

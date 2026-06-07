@@ -1,0 +1,150 @@
+% \begin{table}[h]
+% \setlength{\tabcolsep}{3pt}
+% \renewcommand{\arraystretch}{1.15}
+% \fontsize{8pt}{8pt}\selectfont
+% \centering
+% \vspace{-0.6em}
+% \caption{Benchmark configurations used by Figure~\ref{fig:mem} and~\ref{fig:speed}. We consistently follow the iso-FLOPs settings where we hold $n K$ as a constant for each model size. For each model size, we also keep $T$ and $d$ constant.}
+
+% \label{tab:config_benchmark}
+% \begin{tabular}{cccccc}
+% \toprule
+% Model Size & $T$ & $d$ & $n$ & $E$ & $K$ \\
+% \midrule
+% \multirow{3}{*}{1.4B} 
+% & 40960 & 768  & 64   & 512 & 32 \\
+% & 40960 & 768  & 256  & 128 & 8  \\
+% & 40960 & 768  & 1024 & 32  & 2  \\
+% \midrule
+% \multirow{3}{*}{7B} 
+% & 24576 & 1536 & 64   & 512 & 32 \\
+% & 24576 & 1536 & 256  & 128 & 8  \\
+% & 24576 & 1536 & 1024 & 32  & 2  \\
+% \midrule
+% \multirow{3}{*}{30B} 
+% & 32768 & 4096 & 256  & 256 & 16 \\
+% & 32768 & 4096 & 512  & 128 & 8  \\
+% & 32768 & 4096 & 1024 & 64  & 4  \\
+% \midrule
+% \multirow{3}{*}{120B} 
+% & 32768 & 4096 & 512  & 256 & 16 \\
+% & 32768 & 4096 & 1024 & 128 & 8  \\
+% & 32768 & 4096 & 2048 & 64  & 4  \\
+% \bottomrule
+% \end{tabular}
+% \end{table}
+
+\begin{table}[!ht]
+\caption{Benchmark configurations used by Figure~\ref{fig:mem}, ~\ref{fig:speed}, and~\ref{fig:B300-speed}, and all other kernel-level ablation studies on H100 and B300 GPUs.}
+% \begin{subtable}[t]{0.58\textwidth}
+% \centering
+% \setlength{\tabcolsep}{3pt}
+% \renewcommand{\arraystretch}{1}
+% \fontsize{7pt}{10pt}\selectfont
+% \caption{Benchmark configurations for memory IO cost in Figure~\ref{fig:arithmetic-intensity}.}
+% \label{tab:config_arithmetic_intensity}
+% \begin{tabular}{l!{\vrule width 0.4pt}ccccc}
+% \toprule
+% Model Size & $T$ & $d$ & $n$ & $E$ & $K$ \\
+% \midrule
+% \multirow{5}{*}{1.4B}
+% & 40960 & 768  & 64   & 512 & 32 \\
+% & 40960 & 768  & 128  & 256 & 16 \\
+% & 40960 & 768  & 256  & 128 & 8  \\
+% & 40960 & 768  & 512  & 64  & 4  \\
+% & 40960 & 768  & 1024 & 32  & 2  \\
+% \midrule
+% \multirow{5}{*}{7B}
+% & 24576 & 1536 & 64   & 512 & 32 \\
+% & 24576 & 1536 & 128  & 256 & 16 \\
+% & 24576 & 1536 & 256  & 128 & 8  \\
+% & 24576 & 1536 & 512  & 64  & 4  \\
+% & 24576 & 1536 & 1024 & 32  & 2  \\
+% \midrule
+% \multirow{5}{*}{30B}
+% & 32768 & 4096 & 64   & 1024 & 64 \\
+% & 32768 & 4096 & 128  & 512  & 32 \\
+% & 32768 & 4096 & 256  & 256  & 16 \\
+% & 32768 & 4096 & 512  & 128  & 8  \\
+% & 32768 & 4096 & 1024 & 64   & 4  \\
+% \midrule
+% \multirow{5}{*}{120B}
+% & 32768 & 4096 & 128  & 1024 & 64 \\
+% & 32768 & 4096 & 256  & 512  & 32 \\
+% & 32768 & 4096 & 512  & 256  & 16 \\
+% & 32768 & 4096 & 1024 & 128  & 8  \\
+% & 32768 & 4096 & 2048 & 64   & 4  \\
+% \bottomrule
+% \end{tabular}
+% \end{subtable}
+% --------------------- RIGHT SUBTABLE ---------------------
+\begin{subtable}[t]{0.4\textwidth}
+\centering
+\fontsize{7pt}{10pt}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.1}
+\caption{Benchmark configurations used by Figure~\ref{fig:mem} and~\ref{fig:speed}, and all other ablation studies on H100 GPUs.}
+\label{tab:config_benchmark}
+\begin{tabular}{l!{\vrule width 0.4pt}ccccc}
+\toprule
+Model Size & $T$ & $d$ & $n$ & $E$ & $K$ \\
+\midrule
+\multirow{3}{*}{1.4B}
+% & 40960 & 768  & 64   & 512 & 32 \\
+& 40960 & 768  & 256  & 128 & 8  \\
+& 40960 & 768  & 512  & 64 & 4  \\
+& 40960 & 768  & 1024 & 32  & 2  \\
+\midrule
+\multirow{3}{*}{7B}
+% & 24576 & 1536 & 64   & 512 & 32 \\
+& 24576 & 1536 & 256  & 128 & 8  \\
+& 24576 & 1536 & 512  & 64 & 4  \\
+& 24576 & 1536 & 1024 & 32  & 2  \\
+\midrule
+\multirow{3}{*}{30B}
+& 32768 & 4096 & 256  & 256 & 16 \\
+& 32768 & 4096 & 512  & 128 & 8  \\
+& 32768 & 4096 & 1024 & 64  & 4  \\
+\midrule
+\multirow{3}{*}{120B}
+& 32768 & 4096 & 512  & 256 & 16 \\
+& 32768 & 4096 & 1024 & 128 & 8  \\
+& 32768 & 4096 & 2048 & 64  & 4  \\
+\bottomrule
+\end{tabular}
+\end{subtable}
+\hfill
+\begin{subtable}[t]{0.4\textwidth}
+\centering
+\fontsize{7pt}{10pt}\selectfont
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.1}
+\caption{Benchmark configurations used by Figure~\ref{fig:B300-speed}, and all other ablation studies on B300 GPUs.}
+\begin{tabular}{l!{\vrule width 0.4pt}ccccc}
+\toprule
+Model Size & $T$ & $d$ & $n$ & $E$ & $K$ \\
+\midrule
+\multirow{3}{*}{1.4B}
+% & 40960 & 768  & 64   & 512 & 32 \\
+& 131072 & 768  & 256  & 128 & 8  \\
+& 131072 & 768  & 512  & 64 & 4  \\
+& 131072 & 768  & 1024 & 32  & 2  \\
+\midrule
+\multirow{3}{*}{7B}
+& 81920 & 1536 & 256  & 128 & 8  \\
+& 81920 & 1536 & 512  & 64 & 4  \\
+& 81920 & 1536 & 1024 & 32  & 2  \\
+\midrule
+\multirow{3}{*}{30B}
+& 32768 & 4096 & 256  & 256 & 16 \\
+& 32768 & 4096 & 512  & 128 & 8  \\
+& 32768 & 4096 & 1024 & 64  & 4  \\
+\midrule
+\multirow{3}{*}{120B}
+& 32768 & 4096 & 512  & 256 & 16 \\
+& 32768 & 4096 & 1024 & 128 & 8  \\
+& 32768 & 4096 & 2048 & 64  & 4  \\
+\bottomrule
+\end{tabular}
+\end{subtable}
+\end{table}

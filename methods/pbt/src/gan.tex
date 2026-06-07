@@ -1,0 +1,77 @@
+The Generative Adversarial Networks (GAN)~\citep{goodfellowgan} framework
+learns generative models via a training paradigm consisting of two competing modules --
+a \emph{generator} and a \emph{discriminator} (alternatively called a \emph{critic}).
+The discriminator takes as input samples from the generator and the real data distribution,
+and is trained to predict whether inputs are real or generated.
+The generator typically maps samples from a simple noise distribution to a complex data distribution (\eg~images) with the objective of maximally fooling the discriminator into classifying or scoring its samples as real.
+
+Like RL agent training, GAN training can be remarkably brittle and unstable in the face of suboptimal hyperparameter selection and even unlucky random initialisation,
+with generators often collapsing to a single mode or diverging entirely.
+%
+Exacerbating these difficulties, the presence of two modules optimising competing objectives doubles the number of hyperparameters,
+often forcing researchers to choose the same hyperparameter values for both modules.
+Given the complex learning dynamics of GANs,
+this unnecessary coupling of hyperparameters between the two modules is unlikely to be the best choice.
+
+Finally, the various metrics used by the community to evaluate the quality of samples
+produced by GAN generators are necessarily distinct from those used for the adversarial optimisation itself.
+We explore whether we can improve the performance of generators under these metrics by directly targeting them
+as the PBT meta-optimisation evaluation criteria.
+
+\subsubsection{PBT for GANs}
+We train a population of size 45 with each worker being trained for $10^6$ steps. 
+\vspace{-0.5em}\paragraph{Hyperparameters}We allow PBT to optimise the discriminator's learning rate and the generator's learning rate separately. 
+\vspace{-0.5em}\paragraph{Step}Each step consists of $K=5$ gradient descent updates of the discriminator followed by a single update of the generator
+using the Adam optimiser~\citep{adam}.
+We train using the WGAN-GP~\citep{improvedwgan} objective where the discriminator estimates the Wasserstein distance between the real and generated data distributions, with the Lipschitz constraint enforced by regularising its input gradient to have a unit norm.
+See Appendix~\ref{sec:gan_details} for additional details. 
+\vspace{-0.5em}\paragraph{Eval}We evaluate the current model by a variant of the Inception score proposed by~\citet{openaigan}
+computed from the outputs of a pretrained CIFAR classifier (as used in~\citet{mihaelaalphagan})
+rather than an ImageNet classifier,
+to avoid directly optimising the final performance metric.
+The CIFAR Inception scorer uses a much smaller network, making evaluation much faster. 
+\vspace{-0.5em}\paragraph{Ready}A member of the population is deemed ready to exploit and explore using the rest of the population every $5\times10^3$ steps. 
+\vspace{-0.5em}\paragraph{Exploit}We consider two exploitation strategies.
+(a) \emph{Truncation selection} as described in~\sref{sec:pbtforrl}.
+(b) \emph{Binary tournament} in which each member of the population randomly selects another member of the population, and copies its parameters if the other member's score is better. Whenever one member of the population is copied to another, all parameters -- the hyperparameters, weights of the generator, and weights of the discriminator -- are copied. 
+\vspace{-0.5em}\paragraph{Explore}We explore hyperparameter space by the \emph{perturb} strategy described in~\sref{sec:pbtforrl}, but with more aggressive perturbation factors of 2.0 or 0.5.
+
+\subsubsection{Results}
+We apply PBT to optimise the learning rates for a CIFAR-trained GAN discriminator and generator
+using architectures similar to those used DCGAN~\citep{dcgan}.
+For both PBT and the baseline, the population size is $45$, with learning rates initialised to
+$\{1, 2, 5\}\times10^{-4}$
+for a total of $3^2 = 9$ initial hyperparameter settings,
+each replicated $5$ times with independent random weight initialisations.
+Additional architectural and hyperparameter details can be found in Appendix~\ref{sec:gan_details}.
+The baseline utilises an exponential learning rate decay schedule, which we found to work the best among a number of hand-designed annealing strategies, detailed in Appendix~\ref{sec:gan_details}.
+
+
+
+
+In~\figref{fig:ablation} (b), we compare the \emph{truncation selection} exploration strategy with a simpler variant, \emph{binary tournament}.
+We find a slight advantage for truncation selection,
+and our remaining discussion focuses on results obtained by this strategy.
+%
+\figref{fig:curves} (bottom left) plots the CIFAR Inception scores and shows how the learning rates of the population change throughout the first half of training (both the learning curves and hyperparameters saturate and remain roughly constant in the latter half of training).
+We observe that PBT automatically learns to decay learning rates,
+though it does so dynamically, with irregular flattening and steepening, resulting in a
+learnt schedule that would not be matched by any typical exponential or linear decay protocol.
+Interestingly, the learned annealing schedule for the discriminator's learning rate closely tracks that of the best performing baseline (shown in grey), while the generator's schedule deviates from the baseline schedule substantially.
+
+In Table~\ref{tab:ganresults} (Appendix~\ref{sec:gan_details}),
+we report standard ImageNet Inception scores as our main performance measure, but use CIFAR Inception score for model selection, as optimising ImageNet Inception score directly would potentially overfit our models to the test metric.
+CIFAR Inception score is used to select the best model after training is finished both for the baseline and for PBT.
+Our best-performing baseline achieves a CIFAR Inception score of $6.39$, corresponding to an ImageNet Inception score of $6.45
+%\pm0.05
+$, similar to or better than Inception scores for DCGAN-like architectures reported in prior work~\citep{mihaelaalphagan,improvedwgan,lrgan}.
+Using PBT, we strongly outperform this baseline, achieving a CIFAR Inception score of $6.80$ and corresponding ImageNet Inception score of $6.89
+%\pm0.04
+$.
+For reference,
+Table~\ref{tab:ganresults} (Appendix~\ref{sec:gan_details}) also reports the peak ImageNet Inception scores obtained by any population member at any point during training.
+\figref{fig:gan_samples} shows samples from the best generators with and without PBT.
+
+
+
+

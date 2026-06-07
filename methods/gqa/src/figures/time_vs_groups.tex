@@ -1,0 +1,50 @@
+\begin{figure}[h]
+\centering
+        \begin{tikzpicture}[scale=1.0]
+            \begin{axis}[
+            scale only axis,
+            xmode=log,
+            width=0.85\columnwidth,
+            height=0.45\columnwidth,
+            ylabel={Time per sample (s)},
+            xlabel={\gmq groups},
+            mark=x,
+            xmin=1,
+            xmax=65,
+            xtick={1, 4, 8, 16, 32, 64},
+            xticklabels={1, 4, 8, 16, 32, 64},
+            clip=false,
+            ymajorgrids=true,
+            xmajorgrids=true,
+            xminorticks=true,
+            grid style=dashed,
+            legend columns=1,
+            legend cell align=left,
+            legend style={
+                anchor=south,
+                at={(0.2, 0.31)},
+            },
+        ]
+            \addplot[color=mhcolor,mark size=2pt,line width=3, dotted] table {
+                1 2.531
+            	64 2.531
+            };        
+            \addplot[color=gqcolor,mark=square,mark size=2pt,line width=2] table {
+                1 0.489
+                4 0.476
+                8 0.514
+                16 0.594
+                32 0.800
+                64 2.531            
+
+            };            
+            \addplot[color=mqcolor,mark size=2pt,line width=3, dotted] table {
+                1 0.489
+            	64 0.489
+            };
+            \legend{\mh, \gmq, \mq}
+            \end{axis}
+        \end{tikzpicture}
+    \caption{Time per sample for \gmq-XXL as a function of the number of \gmq groups with input length 2048 and output length 512. Going from 1 (\mq) to 8 groups adds modest inference overhead, with increasing cost to adding more groups.}
+    \label{fig:time_groups}
+\end{figure}

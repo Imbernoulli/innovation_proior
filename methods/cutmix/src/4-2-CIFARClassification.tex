@@ -1,0 +1,43 @@
+
+\subsubsection{CIFAR Classification}
+\label{sec:CIFAR-100-classification}
+We set mini-batch size to $64$ and training epochs to $300$.
+The learning rate was initially set to $0.25$ and decayed by the factor of $0.1$ at $150$ and $225$ epoch.
+To ensure the effectiveness of the proposed method, we used a strong baseline, PyramidNet-200~\cite{pyramidnet} with widening factor $\Tilde{\alpha}=240$. It has  $26.8$M parameters and achieves the state-of-the-art performance $16.45\%$ top-1 error on CIFAR-100.
+
+\input{tables/Cifar100-pyramidnet.tex}
+
+Table~\ref{table:cifar-pyramidnet} shows the performance comparison against other state-of-the-art data augmentation and regularization methods. 
+All experiments were conducted three times and the averaged best performances during training are reported.
+
+\noindent\textbf{Hyper-parameter settings:}
+We set the hole size of Cutout~\cite{devries2017cutout} to $16\times16$.
+For DropBlock~\cite{ghiasi2018dropblock}, \texttt{keep\_prob} and \texttt{block\_size} are set to $0.9$ and $4$, respectively.
+The drop rate for Stochastic Depth~\cite{stochasticdepth} is set to 0.25. 
+For Mixup~\cite{zhang2017mixup}, we tested the hyper-parameter $\alpha$ with 0.5 and 1.0.
+For Manifold Mixup~\cite{verma2018manifoldmixup}, we applied Mixup operation at a randomly chosen layer per minibatch. 
+
+\input{tables/Cifar100-various.tex}
+
+\input{tables/cifar-10.tex}
+
+\noindent\textbf{Combination of regularization methods:}
+We have evaluated the combination of regularization methods.
+Both Cutout~\cite{devries2017cutout} and label smoothing~\cite{szegedy2016rethinking_labelsm} does not improve the accuracy when adopted independently, but they are effective when used together.
+Dropblock~\cite{ghiasi2018dropblock}, the feature-level generalization of Cutout, is also more effective when label smoothing is also used.
+Mixup~\cite{zhang2017mixup} and Manifold Mixup~\cite{verma2018manifoldmixup} achieve higher accuracies when Cutout is applied on input images.
+{The combination of Cutout and Mixup tends to generate locally separated and mixed samples since the cropped regions have less ambiguity than those of the vanilla Mixup. The superior performance of Cutout and Mixup combination shows that mixing via cut-and-paste manner is better than interpolation, as much evidenced by CutMix performances.
+}
+
+{CutMix achieves $14.47\%$ top-1 classification error on CIFAR-100, $+1.98\%$ higher than the baseline performance $16.45\%$.}
+{We have achieved a new state-of-the-art performance $13.81\%$ by combining CutMix and ShakeDrop~\cite{yamada2018shakedrop}, a regularization that adds noise on intermediate features.}
+
+
+\noindent\textbf{CutMix for various models: }
+Table~\ref{table:cifar-various} shows CutMix also significantly improves the performance of the weaker baseline architectures, such as PyramidNet-110~\cite{pyramidnet} and ResNet-110.
+
+
+\noindent\textbf{CutMix for CIFAR-10: }
+We have evaluated CutMix on CIFAR-10 dataset using the same baseline and training setting for CIFAR-100.
+The results are given in Table~\ref{table:cifar-10}.
+On CIFAR-10, CutMix also enhances the classification performances by $+0.97\%$, outperforming Mixup and Cutout performances. 

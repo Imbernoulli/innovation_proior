@@ -1,0 +1,4 @@
+\section{Conclusion}
+We propose \method, an accurate and efficient post-training quantization method to enable lossless 8-bit weight and activation quantization for LLMs up to 530B parameters.
+\method enables the quantization for both weight and activations for all \texttt{GEMM}s in the LLMs, which significantly reduces the inference latency and memory usage compared with the mixed-precision activation quantization baseline. We integrate \method into PyTorch and FasterTransformer, getting up to 1.56$\times$ inference acceleration and halving the memory footprint. 
+\method democratizes the application of LLMs by offering a turnkey solution to reduce the serving cost. 

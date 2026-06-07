@@ -1,0 +1,1185 @@
+
+===== page 1 [pdftotext] =====
+                         Modeling Uncertainty
+                                                                                                             7
+
+
+Decision-makers are increasingly willing to           can be identiﬁed and quantiﬁed. These models
+consider the uncertainty associated with model        are called probabilistic or stochastic models.
+predictions of the economic, environmental, or        Most probabilistic models provide a range of
+social impacts associated with possible decisions.    possible values for each output variable along
+Information on uncertainty does not make              with their probabilities. Stochastic models
+decision-making easier, but to ignore it is to        attempt to model the random processes that occur
+ignore reality. Incorporating what is known about     over time, and provide alternative time series of
+the uncertainty of input parameters and variables     outputs along with their probabilities. In other
+used in optimization and simulation models can        cases sensitivity analyses (solving models under
+help in quantifying the uncertainty in the result-    different assumptions) can be carried out to
+ing model output. This chapter outlines and           estimate the impact of any uncertainty on the
+illustrates some approaches for doing this.           decisions being considered. In some situations
+                                                      uncertainty may not signiﬁcantly impact the
+                                                      decisions that should be made. In other situations
+7.1    Introduction                                   it will. Sensitivity analyses can help guide efforts
+                                                      needed to reduce that uncertainty. Model sensi-
+Water resource planners and managers work in          tivity and uncertainty analysis are discussed in
+an environment of change and uncertainty. Water       more detail in the next chapter.
+supplies are always uncertain, if not in the short        This chapter is divided into two main sections.
+term at least in the long term. Water demands and     The ﬁrst section introduces a number of
+the multiple purposes and objectives water serve      approaches to probabilistic optimization and
+tend to change over time, and these changes           simulation modeling. Probabilistic models will
+cannot always be predicted. Many of the               be developed and applied to some of the same
+parameters of models used to predict the multiple     water resources management problems used to
+hydrologic, economic, environmental, ecologi-         illustrate deterministic modeling in previous
+cal, and social impacts are also uncertain. Indeed,   chapters. These modeling methods could be, and
+models used to predict these impacts are, at least    have been, applied to numerous other water
+in part, based on many uncertain assumptions.         resources planning and management problems as
+This uncertainty associated with planning and         well. The purpose here, however, is simply to
+managing cannot be avoided (WWAP 2012).               illustrate some of these commonly used approa-
+   To the extent that probabilities can be inclu-     ches to probabilistic modeling and show how
+ded where appropriate in models and their inputs      they can be applied to water resources system
+at least some of the uncertainty of their outputs     design and operating problems.
+
+
+
+© The Author(s) 2017                                                                                  301
+D.P. Loucks and E. van Beek, Water Resource Systems Planning and Management,
+DOI 10.1007/978-3-319-44234-1_7
+
+===== page 2 [pdftotext] =====
+302                                                                                                 7   Modeling Uncertainty
+
+7.2     Generating Values from Known                                   Integrating this function over the entire range
+        Probability Distributions                                   of r, converts the density function to a cumula-
+                                                                    tive distribution function, FR(r*), ranging from 0
+As discussed in the previous chapter, variables                     to 1, as illustrated in Fig. 7.2.
+whose values cannot be predicted with certainty
+are called random variables. Often inputs to                             Zr
+hydrologic simulation models are observed or                                   fR ðrÞdr ¼ Prðr   RÞ ¼ FR ðr  Þ     ð7:1Þ
+synthetically generated values of rainfall or                            0
+streamflow. Other examples of such random
+variables could be evaporation losses, point and                       Given any value of p* from 0 to 1, one can
+nonpoint source wastewater discharges, demands                      ﬁnd its corresponding random variable value r*
+for water, spot prices for energy that may impact                   from the inverse of the cumulative distribution
+the amount of hydropower to produce, etc.                           function.
+Random processes are considered stationary if
+                                                                                          FR1 ðp Þ ¼ r             ð7:2Þ
+the statistical attributes of the process are not
+changing. If there is no serial correlation in the                      From the distribution shown in Fig. 7.1 it is
+spatial or temporal sequence of observed values,                    obvious that the likelihood of different values of
+then such stationary random processes can be                        the random variable varies; values in the vicinity
+characterized by single probability distributions.                  of r* are much more likely to occur than are
+These probability distributions are often based on                  values at the tails of the distribution. A uniform
+past observations of the values of the random                       distribution is one that looks like a rectangle; any
+variable. These past observations or measure-                       value of the random variable between its lower
+ments are used either to deﬁne the probability                      and upper limits is equally likely. Using Eq. 7.2,
+distribution itself or to estimate parameter values                 together with a series of uniformly distributed
+of an assumed type of distribution.                                 (all equally likely) values of p* over the range
+    Let R be a random variable whose probability                    from 0 to 1 (i.e., along the vertical axis of
+density distribution, fR(r), is as shown in Fig. 7.1.               Fig. 7.2), a corresponding series of random
+This distribution indicates the probability or                      variable values, r*, associated with any distri-
+likelihood of an observed value of the random                       bution can be generated. These random variable
+variable R being between any two values of r on                     values will have a cumulative distribution as
+the horizontal axis. For example, the probability                   shown in Fig. 7.2, and hence a density distribu-
+of an observed value of R being between 0 and r*                    tion as shown in Fig. 7.1, regardless of the
+is p*, the shaded area to the left of r* in Fig. 7.1.               types or shapes of those distributions. The mean
+The entire area under a probability density dis-                    and variance of the distributions will be
+tribution, as shown in Fig. 7.1, is 1.                              maintained.
+                                                                        The mean and variance of continuous distri-
+                                                                    butions are
+                                                                                      Z
+                                                                                          rfR ðrÞdr ¼ E½R            ð7:3Þ
+
+
+                                                                             Z
+                                                                                 ðrE½RÞ2 fR ðrÞdr ¼ Var½R          ð7:4Þ
+
+                                                                       The mean, variance and serial correlations of
+Fig. 7.1 Probability density distribution of a random               discrete distributions having possible values
+variable R. The probability that r is less than or equal r* is p*   denoted by ri with probabilities pi are
+
+===== page 3 [pdftotext] =====
+7.2 Generating Values from Known Probability Distributions                                                                  303
+
+Fig. 7.2 Cumulative
+distribution function of a
+random variable R showing
+the probability of any
+observed random value of
+R being less than or equal
+to a given value r. The
+probability of an observed
+value of R being less than
+or equal to r* is p*
+
+
+
+
+                         X                                               together with the mean of the distribution, E[R],
+                              ri pi ¼ E½R                      ð7:5Þ
+                          i
+                                                                         and the correlation coefﬁcient ρ. If there is no
+                                                                         correlation (ρ is 0), the expected value of Rt+1 is
+               X                                                         the mean of the population, E[R]. If there is
+                      ðri E½RÞ2 pi ¼ Var[R                   ð7:6Þ    perfect correlation (ρ is 1), the expected value of
+                 i                                                       Rt+1 is rt. In general, the expected value of Rt+1
+                                                                         given an observed value rt of Rt is
+   If a time series of T random variable values, rt,
+generated from the distribution of the same sta-                            E½Rt þ 1 jRt ¼ rt  ¼ E½R þ qðrt E½RÞ:     ð7:8Þ
+tionary random variable, R, exist, then the serial
+or autocorrelations of rt and rt+k in this time                             The variance of the random variable Rt+1
+series for any positive integer k are                                    depends on the variance of the distribution, Var
+            X                                      X                     [R], and the lag one correlation coefﬁcient, ρ.
+qR ðkÞ ¼             ½ðrt E½RÞðrt þ k E½RÞ=           ðrt E½RÞ2
+           t¼1;Tk                                 t¼1;T                    Var½Rt þ 1 jRt ¼ rt  ¼ Var½Rð1  q2 Þ:      ð7:9Þ
+                                                                ð7:7Þ
+                                                                            If there is perfect correlation (ρ = 1) the pro-
+   The probability density and corresponding                             cess is deterministic and there is no variance. The
+cumulative probability distributions can be of any                       value for rt+1 is rt. If there is no correlation, i.e.,
+shape, not just those named distributions com-                           serial correlation does not exist (ρ = 0), the
+monly found in probability and statistics books.                         generated value for rt+1 is its mean, E[R], plus
+   The process of generating a time sequence                             some randomly generated deviation from a nor-
+t = 1, 2, … of inputs, rt, from the probability                          mal distribution having a mean of 0 and a stan-
+distribution of a random variable R where the lag                        dard deviation of 1, denoted as N(0, 1). In this
+1 serial correlation, ρR(1) = ρ, is to be preserved                      case the value rt+1 is not dependent on rt.
+is a little more complex. The expected value of                             When the serial correlation is more than 0 but
+the random variable Rt+1 depends on the                                  less than 1, then both the correlation and the
+observed value, rt, of the random variable Rt,                           standard deviation (the square root of the
+
+===== page 4 [pdftotext] =====
+304                                                                                       7   Modeling Uncertainty
+
+
+
+
+Fig. 7.3 Diagram showing the calculation of a sequence of values of the random variable R from a multivariate normal
+distribution in a way that preserves the mean, variance and correlation of the random variable
+
+
+
+variance) influence the value of rt+1. A sequence
+of random variable values from a multivariate              7.3     Monte Carlo Simulation
+normal distribution that preserves the mean, E
+[R], overall variance, Var[R], and lag one corre-          To illustrate Monte Carlo simulation, consider
+lation ρ, can be obtained from Eq. 7.10.                   the allocation problem involving three ﬁrms,
+                                                           each of which receives a beneﬁt, Bi(xit), from the
+rt þ 1 ¼ E½R þ qðrt  E½RÞ þ Nð0; 1Þrð1  q2 Þ1=2 :      amount of water, xit, allocated to it in each period
+                                                 ð7:10Þ    t. This situation is shown in Fig. 7.4. Monte
+                                                           Carlo simulation can be used to ﬁnd the proba-
+   The term N(0, 1) in Eq. 7.10 is a random                bility distribution of the beneﬁts to each ﬁrm
+number generated from a normal distribution                associated with the ﬁrm’s allocation policy.
+having a mean of 0 and a variance of 1. The                    Suppose the policy is to keep the ﬁrst two
+process involves selecting a random number                 units of flow in the stream, to allocate the next 3
+from a uniform distribution ranging from 0 to 1,           units to Firm 3, and the next 4 units to ﬁrms 1
+and using it in Eq. 7.2 for a N(0, 1) distribution         and 2 equally. The remaining flow is to be allo-
+to obtain a value of random number for use in              cated to each of the three ﬁrms equally up to the
+Eq. 7.10. This positive or negative number is              limits desired by each ﬁrm, namely 3.0, 2.33, and
+substituted for the term N(0, 1) in Eq. 7.10 to            8.0, respectively. Any excess flow will remain in
+obtain a value rt+1. This is shown on the graph in         the stream. The plots in Fig. 7.5 illustrate this
+Fig. 7.3.                                                  policy. Each allocation plot reflects the priorities
+   Simulation models that have random inputs,              given to the three ﬁrms and the users further
+such as a series of rt values, will generally pro-         downstream.
+duce random outputs. After many simulations,                   A simulation model can now be created. In
+the probability distributions of each random               each of a series of discrete time periods t, the
+output variable value can be deﬁned. These then            flows Qt are drawn from a probability distribu-
+can be used to estimate reliabilities and other            tion, such as from Fig. 7.2 using Eq. 7.2. Once
+statistical characteristics of those output distri-        this flow is determined, each successive alloca-
+butions. This process of generating multiple               tion, xit, is computed. Once an allocation is made
+random inputs for multiple simulations to obtain           it is subtracted from the streamflow and the next
+multiple random outputs is called Monte Carlo              allocation is made based on that reduced
+simulation.                                                streamflow, in accordance with the allocation
+
+===== page 5 [pdftotext] =====
+7.3 Monte Carlo Simulation                                                                                             305
+
+
+
+
+Fig. 7.4 Stream flow allocations in each period t result in beneﬁts, Bi(xit), to each ﬁrm i. The flows, Qit, at each
+diversion site i are the random flows Qt less the upstream withdrawals, if any
+
+
+
+   (a)                                                         (b)
+
+
+
+
+   (c)                                                         (d)
+
+
+
+
+Fig. 7.5 a Water allocation policy for Firm 1 based on         based on the flow at its diversion site. This policy applies
+the flow at its diversion site. This policy applies for each   for each period t. d Streamflow downstream of site 3
+period t. b Water allocation policy for Firm 2 based on the    given the streamflow Q3t at site 3 before the diversion.
+flow at its diversion site for that ﬁrm. This policy applies   This applies for each period t
+for each period t. c Water allocation policy for Firm 3
+
+
+policy deﬁned in Fig. 7.5. After numerous time                    Having deﬁned the probability distribution of
+steps the probability distributions of the alloca-             the allocations, based on the allocation policy,
+tions to each of the ﬁrms can be deﬁned.                       one can now consider each of the allocations as
+    Figure 7.6 shows a flow chart for this simu-               random variables, X1, X2, and X3 for ﬁrms 1, 2
+lation model.                                                  and 3, respectively.
+
+===== page 6 [pdftotext] =====
+306                                                                                        7   Modeling Uncertainty
+
+
+
+
+Fig. 7.6 Monte Carlo simulation to determine probability distributions of allocations to each of three water users, as
+illustrated in Fig. 7.4. The dash lines represent information (data) flows
+
+
+                                                            time. Chance constraints specify the probability
+7.4    Chance Constrained Models                            of a constraint being satisﬁed, or the fraction of
+                                                            the time a constraint has to apply. Consider, for
+For models that include random variables it may             example, the allocation problem shown in
+be appropriate in some situations to consider               Fig. 7.4. For planning purposes, the three ﬁrms
+constraints that do not have to be satisﬁed all the         may want to set allocation targets, not expecting
+
+===== page 7 [pdftotext] =====
+7.4 Chance Constrained Models                                                                                    307
+
+to have those targets met 100% of the time. To                  the values of the three targets that maximize the
+insure, for example, that an allocation target, Ti,             total beneﬁts obtained with a reliability of, say, at
+of ﬁrm i will be met at least 90% of the time, one              least 90%.
+could write the chance constraint                                                                          
+                                                                Maximize 6T1 T12 þ 7T2  1:5T22 þ 8T3  0:5T32
+   PrfTi  Xi g  0:90        i ¼ 1; 2; and 3        ð7:11Þ                                                   ð7:13Þ
+   In this constraint, the allocation target Ti is an           Subject to:
+unknown decision variable, and Xi is a random
+variable whose distribution has just been com-                    PrfT1 þ T2 þ T3  ½Qt  minðQt ; 2Þg  0:90
+puted and is known.                                                 for all periods t
+   To include chance constraints in optimization
+                                                                                                              ð7:14Þ
+models, their deterministic equivalents must be
+deﬁned. The deterministic equivalents of these
+                                                                where Qt is the random streamflow variable
+three chance constraints in Eq. 7.11 are
+                                                                upstream of all diversion sites. If the same
+                                                                unconditional probability distribution of Qt applies
+          Ti  x0:10
+                it      i ¼ 1; 2; and 3              ð7:12Þ
+                                                                for each period t then only one Eq. 7.14 is needed.
+                                                                   Assuming the value of the streamflow, q0:10     ,
+where x0:10
+         it  is the particular value of the random                                                              t
+                                                                that is equaled or exceeded 90% of the time, is
+variable Xi that is equaled or exceeded 90% of
+                                                                greater than 2 (the amount that must remain in
+the time. This value is shown on the probability
+                                                                the stream), the deterministic equivalent of
+distribution for Xi in Fig. 7.7.
+                                                                chance constraint Eq. 7.14 is
+   To modify the allocation problem somewhat,
+assume the beneﬁt obtained by each ﬁrm is a                                                         
+                                                                  T1 þ T2 þ T3  q0:10
+                                                                                  t     min q0:10
+                                                                                              t    ;2    ð7:15Þ
+function of its target allocation and that the same
+allocation target applies in each time period
+                                                                    The value of the flow that is equaled or
+t. The equipment and labor used in the ﬁrm is
+                                                                exceeded 90% of the time, q0:10
+                                                                                             t  , can be obtained
+presumably based on the target allocations. Once
+                                                                from the cumulative distribution of flows as
+the target is set assume there are no beneﬁts
+                                                                illustrated in Fig. 7.8.
+gained by excess allocations of water. If the
+                                                                    Assume this 90% reliable flow is 8. The deter-
+beneﬁts obtained are to be based on the tar-
+                                                                ministic equivalent of the chance constraint
+get allocations, rather than the actual allocations,
+                                                                Eq. 7.14 for all periods t is simply T1 + T2 +
+then the optimization problem is one of ﬁnding
+                                                                T3 ≤ 6. The optimal solution of the chance
+
+
+
+
+Fig. 7.7 Probability density distribution of the random
+allocation Xi to ﬁrm i. The particular allocation value x0:10
+                                                         it     Fig. 7.8 Example cumulative probability distribution
+has a 90% chance of being equaled or exceeded, as               showing the particular value of the random variable,
+indicated by the shaded region                                  q0:10
+                                                                 t    , that is equaled or exceeded 90% of the time
+
+===== page 8 [pdftotext] =====
+308                                                                                 7   Modeling Uncertainty
+
+constrained target allocation model, Eqs. 7.13                      X
+                                                                    31
+and 7.15, is, as seen before, T1 = 1, T2 = 1, and       Var½Q ¼          ðqt  3:155Þ2 =31 ¼ 1:95 ð7:17Þ
+T3 = 4. The next step would be to simulate this                     t¼1
+problem to see what the actual reliabilities might
+be for various sequences of flows qt.
+                                                       Lag-one correlation coefficient ¼ q
+                                                            "                                #
+                                                             X30                                X
+                                                                                                31
+                                                         ¼       ðqt þ 1  3:155Þðqt  3:155Þ =    ðqt  3:155Þ2
+7.5    Markov Processes                                       t¼1                              t¼1
+
+       and Transition Probabilities                       ¼ 0:50
+                                                                                                      ð7:18Þ
+Time series correlations can be incorporated into
+models using transition probabilities. To illus-          The probability distribution of the flows in
+trate this process, consider the observed flow         Table 7.1 can be approximated by a histogram.
+sequence shown in Table 7.1.                           Histograms can be created by subdividing the
+    The estimated mean, variance and correlation       entire range of random variable values, e.g.,
+coefﬁcient of the observed flows shown in              flows, into discrete intervals. For example, let
+Table 7.1 can be calculated using Eqs. 7.16, 7.17      each interval be 2 units of flow. Counting the
+and 7.18.                                              number of flows in each interval and then
+                                                       dividing those interval counts by the total num-
+                 X
+                 31
+        E½Q ¼          qt =31 ¼ 3:155        ð7:16Þ   ber of counts results in the histogram shown in
+                  t¼1                                  Fig. 7.9. In this case, just to compare this with
+                                                       what will be calculated later, the ﬁrst flow, q1, is
+                                                       ignored.
+
+Table 7.1 Sequence of flows for 31 time periods t
+
+===== page 9 [pdftotext] =====
+7.5 Markov Processes and Transition Probabilities                                                                       309
+
+                                                                 number of times a flow in interval j followed a
+                                                                 flow in interval i.
+                                                                    Given an observed flow in an interval i in
+                                                                 period t, the probabilities of being in one of the
+                                                                 possible intervals j in the next period t + 1 must
+                                                                 sum to 1. Thus each number in each row of the
+                                                                 matrix in Table 7.2 can be divided by the total
+                                                                 number of flow transitions in that row (the sum of
+                                                                 the number of flows in the row) to obtain the
+                                                                 probabilities of being in each interval j in t + 1
+Fig. 7.9 Histogram showing an equal 1/3 probability              given a flow in interval i in period t. In this case
+that the values of the random variable Qt will be in any         there are 10 flows that followed each flow
+one of the three 2-flow unit intervals                           interval i, hence by dividing each number in each
+                                                                 row of the matrix by 10 deﬁnes the transition
+    Figure 7.9 shows a uniform unconditional                     probabilities Pij.
+probability distribution of the flow being in any
+of the possible discrete flow intervals. It does not                Pij ¼ PrfQt þ 1 in interval jjQt in interval ig
+show the possible dependency of the probabili-                                                                      ð7:19Þ
+ties of the random variable value, qt+1, in period
+t + 1 on the observed random variable value, qt,                     These conditional or transition probabilities,
+in period t. It is possible that the probability of              shown in Table 7.3, correspond to the number of
+being in a flow interval j in period t + 1 depends               transitions shown in Table 7.2.
+on the actual observed flow interval i in period t.                  Table 7.3 is a matrix of transition probabili-
+    To see if the probability of being in any given              ties. The sum of the probabilities in each row
+interval of flows is dependent on the past flow                  equals 1. Matrices of transition probabilities
+interval one can create a matrix. The rows of the                whose rows sum to one are also called stochastic
+matrix are the flow intervals i in period t. The                 matrices or ﬁrst-order Markov chains.
+columns are the flow intervals j in the following                    If each row’s probabilities were the same, this
+period t + 1. Such a matrix is shown in                          would indicate that the probability of observing
+Table 7.2. The numbers in the matrix are based                   any flow interval in the future is independent of
+on the flows in Table 7.1 and indicate the                       the value previous flows. Each row would have
+
+                                                                 Table 7.3 Matrix showing the probabilities Pij of having
+Table 7.2 Matrix showing the number of times a flow in
+                                                                 a flow in interval j in period t + 1 given an observed flow
+interval i in period t was followed by a flow in interval j in
+                                                                 in interval i in period t
+period t + 1
+
+===== page 10 [pdftotext] =====
+310                                                                                           7   Modeling Uncertainty
+
+the same probabilities as the unconditional dis-            interval i in period t = 2 and making a transition
+tribution shown in Fig. 7.9. In this example the            to interval j in period t = 3.
+probabilities in each row differ, showing that low
+flows are more likely to follow low flows, and              PrfQ3 in interval jg ¼ PQj;3
+                                                                X
+high flows are more likely to follow high flows.              ¼      PrfQ2 in interval ig PrfQ3 in interval jjQ2 in interval ig
+                                                                   i
+Thus the flows in Table 7.1 are positively cor-
+                                                                                                                    ð7:20Þ
+related, as indeed has already determined from
+Eq. 7.18.
+                                                               The last term in Eq. 7.20 is the transition
+    Using the information in Table 7.3, one can
+                                                            probability, from Table 7.3, that in this example
+compute the probability of observing a flow in
+                                                            remains the same for all time periods t. These
+any interval at any period on into the future given
+                                                            transition probabilities, Pr{Qt+1 in interval j | Qt
+the present flow interval. This can be done one
+                                                            in interval i} can be denoted as Pij.
+period at a time. For example assume the flow in
+                                                               Referring to Eqs. 7.19, 7.20 can be written in
+the current time period t = 1 is in interval i = 3.
+                                                            a general form as
+The probabilities, PQj,2, of being in any of the
+three intervals in the following time period t + 1                               X
+                                                                  PQj;t þ 1 ¼          PQit Pij
+are the probabilities shown in the third row of the                                i                                ð7:21Þ
+matrix in Table 7.3.                                                   for all intervals j and periods t
+    The probabilities of being in an interval j in
+the following time period t = 3 is the sum over                This operation can be continued to any future
+all intervals i of the joint probabilities of being in      time period. Table 7.4 illustrates the results of
+
+Table 7.4 Probabilities of observing a flow in any flow interval i in a future time period t given a current flow in
+interval i = 3
+
+
+
+
+These probabilities are derived using the transition probabilities Pij in Table 7.3 in Eq. 7.21 and assuming the flow
+interval observed in period 1 is in interval 3
+
+===== page 11 [pdftotext] =====
+7.5 Markov Processes and Transition Probabilities                                                       311
+
+such calculations for up to six future periods,         selected, knowing that there is some probability
+given a present period (t = 1) flow in interval         that in reality, or in a simulation model, the
+i = 3.                                                  actual flow may be less than the selected value
+    Note that as the future time period t increases,    q. Hence if the constraint x ≤ q is binding
+the flow interval probabilities are converging to       (x = q), the actual allocation may be less than the
+the unconditional probabilities, in this example        value of the allocation or diversion variable
+1/3. 1/3, 1/3, as shown in Fig. 7.9. The predicted      x produced by the optimization model.
+probability of observing a future flow in any               If the value of x affects one of the system’s
+particular interval at some time in the future          performance indicators, e.g., the net beneﬁts, B
+becomes less and less dependent on the current          (x), to the user, a more accurate estimate of the
+flow interval as the number of time periods             user’s net beneﬁts will be obtained from con-
+increases between the current period and that           sidering a range of possible allocations x,
+future time period.                                     depending on the range of possible values of the
+    When these unconditional probabilities are          random flow Q. One way to do this is to divide
+reached, PQit will equal PQi,t+1 for each flow          the known probability distribution of flows q into
+interval i. To ﬁnd these unconditional probabili-       discrete ranges, i, each range having a known
+ties directly, Eq. 7.21 can be written as               probability PQi. Designate a discrete flow qi for
+          X                                             each range. Associated with each known flow qi
+  PQj ¼        PQi Pij   for all intervals j less one   is an unknown allocation xi. Now the determin-
+           i                                            istic constraint x ≤ q can be replaced with the set
+                                               ð7:22Þ   of constraints xi ≤ qi and the term B(x) in the
+                                                        original objective function can be replaced by its
+    Equation 7.22 along with Eq. 7.23 can be                               P
+                                                        expected value, i POi Bðxi Þ.
+used to calculate all the unconditional probabil-
+                                                            Note, when dividing a continuous known
+ities PQi directly.
+                                                        probability distribution into discrete ranges, the
+                    X                                   discrete flows qi selected to represent each range
+                         PQi ¼ 1               ð7:23Þ
+                     i                                  i having a given probability PQi, should be
+                                                        selected so as to maintain at least the mean and
+   Conditional or transition probabilities can be       variance of that known distribution as deﬁned by
+incorporated into stochastic optimization models        Eqs. 7.5 and 7.6.
+of water resource systems.                                  To illustrate this consider a slightly more
+                                                        involved example involving the allocation of
+                                                        water to consumers upstream and downstream of
+7.6    Stochastic Optimization                          a reservoir. Both the policies for allocating water
+                                                        to each user and the reservoir release policy are
+To illustrate the development and use of                to be determined. This example problem is
+stochastic optimization models consider ﬁrst the        shown in Fig. 7.10.
+allocation of water to a single user. Assume the            If the allocation of water to each user is to be
+flow in the stream where the diversion takes            based on a common objective, such as the min-
+place is not regulated and can be described by a        imization of the total sum, over time, of squared
+known probability distribution based on histori-        deviations from prespeciﬁed target allocations,
+cal records. Clearly the user cannot divert more        each allocation in each time period will depend
+water than is available in the stream. A deter-         in part on the reservoir storage volume.
+ministic model would include the constraint that            Consider ﬁrst a deterministic model of the
+the diversion x cannot exceed the available water       above problem, assuming known flows Qt and
+Q. But Q is a random variable. Some discrete            upstream and downstream allocation targets UTt
+value, q, of the random variable Q will have to be      and DTt in each of T within-year periods t in a
+
+===== page 12 [pdftotext] =====
+312                                                                                 7   Modeling Uncertainty
+
+Fig. 7.10 Example water
+resource system involving
+water diversions from a
+river both upstream and
+downstream of a reservoir
+of known capacity
+
+
+
+
+year. Assume the objective is to minimize the               Allocation restrictions for each period t:
+sum of squared deviations of actual allocations,
+ut and dt, from their respective target allocations,                          ut  Qt                ð7:27Þ
+UTt and DTt in each within-year period t.
+
+                 Xn
+                 T                                   o                        dt  Rt                ð7:28Þ
+      Minimize           ðUTt ut Þ2 þ ðDTt dt Þ2
+                   t
+                                                            Equations 7.25 and 7.28 could be combined
+                                                ð7:24Þ   to eliminate the release variable Rt since in this
+                                                         problem knowledge of the total release in each
+   The constraints include:
+                                                         period t is not required. In this case Eq. 7.25
+                                                         would become an inequality.
+(a) Continuity of storage involving initial stor-
+                                                            The solution for this model, Eqs. 7.24–7.28,
+    age volumes St, net inflows Qt − ut, and
+                                                         would depend on the known variables (the tar-
+    releases Rt. Assuming no losses
+                                                         gets UTt and DTt, flows Qt and reservoir capacity
+                                                         K). It would identify the particular upstream and
+                                                         downstream allocations and reservoir releases in
+        St þ Qt  ut  Rt ¼ St þ 1                       each period t. It would not provide a policy that
+                                                ð7:25Þ   deﬁnes what allocations and releases to make for
+           for each period t; T þ 1 ¼ 1
+                                                         a range of different inflows and initial storage
+                                                         volumes in each period t. A backward-moving
+                                                         dynamic programming model can provide such a
+(b) Reservoir capacity limitations. Assuming a           policy. This policy will identify the allocations
+    known active storage capacity K,                     and releases to make based on various initial
+                                                         storage volumes, St, as well flows, Qt, as dis-
+                                                         cussed in Chap. 4.
+                                                            This deterministic discrete dynamic program-
+          St  K       for each period t        ð7:26Þ   ming allocation and reservoir operation model
+
+===== page 13 [pdftotext] =====
+7.6 Stochastic Optimization                                                                                                           313
+
+can be written for different discrete values of                                  where
+storage volumes St from 0 ≤ St ≤ capacity K as
+                                                                                                          ut  Qt                 ð7:31Þ
+                    n                                                        o
+Ftn ðSt ; Qt Þ ¼ min ðUTt  ut Þ2 þ ðDTt  dt Þ2 þ Ftn1
+                                                      þ 1 ðSt þ 1 ; Qt þ 1 Þ
+
+               ut ; Rt ; dt
+               ut  Qt
+                                                                                           dt  St þ Qt  ut  St þ 1             ð7:32Þ
+               Rt  St þ Qt  ut
+               Rt  St þ Qt  ut  K                                                This local optimization can be solved to
+               dt  Rt                                                           identify the ut and dt allocations for each feasible
+               St þ 1 ¼ St þ Qt  ut  Rt                                        combination of St and St+1 in each period t.
+                                                                 ð7:29Þ             Given these optimal allocations, the dynamic
+                                                                                 programming model can be simpliﬁed to include
+    There are three variables to be determined at                                only one discrete decision variable, either Rt or
+each stage or time period t in the above dynamic                                 St+1. If the decision variable St+1 is used in each
+programming model. These three variables are                                     period t, the releases Rt in those periods t do not
+the allocations ut and dt and the reservoir release                              need to be considered. Thus the dynamic pro-
+Rt. Each decision involves three discrete decision                               gramming model expressed by Eq. 7.29 can be
+variable values. The functions Ftn ðSt ; Qt Þ deﬁne                              written for all discrete storage volumes St from 0
+the minimum sum of squared deviations given an                                   to K and for all discrete flows Qt as
+initial storage volume St and streamflow Qt in                                                                
+                                                                                                                ðUTt ut ðSt ;St þ 1 ÞÞ þ
+                                                                                                                                       2
+
+time period or season t with n time periods                                           Ftn ðSt ; Qt Þ ¼ min
+                                                                                                                 ðDTt dt ðSt ;St þ 1 ÞÞ
+                                                                                                                                         2
+                                                                                                       St þ 1
+remaining until the end of reservoir operation.                                                       St þ 1  K
+    One can reduce this three-decision variable
+                                                                                                                                  ð7:33Þ
+model to a single variable model by realizing that
+for any ﬁxed discrete initial and ﬁnal storage
+                                                                                 where the functions ut(St, St+1) and dt(St, St+1)
+volume states, there can be a direct tradeoff
+                                                                                 have been determined using Eqs. 7.30–7.32.
+between the upstream and downstream alloca-
+                                                                                     As the total number of periods remaining, n,
+tions given the particular streamflow in each
+                                                                                 increases, the solution of this dynamic pro-
+period t. Increasing the upstream allocation will
+                                                                                 gramming model will converge to a steady or
+decrease the resulting reservoir inflow and this in
+                                                                                 stationary state. The best ﬁnal storage volume
+turn will reduce the release by the same amount.
+                                                                                 St+1 given an initial storage volume St will likely
+This reduces the amount of water available to
+                                                                                 differ for each within-year period or season t, but
+allocate to the downstream use.
+                                                                                 for a given season t it will be the same in suc-
+    Hence for this example problem involving
+                                                                                 cessive years. In addition, for each storage vol-
+these upstream and downstream allocations, a
+                                                                                 ume St, streamflow, Qt, and within-year period
+local optimization can be performed at each time
+                                                                                 t the difference between Ftn þ T ðSt ; Qt Þ and
+step t for each combination of storage states St
+                                                                                 Ftn ðSt ; Qt Þ will be the same constant regardless of
+and St+1. This optimization ﬁnds the allocation
+                                                                                 the storage volume St, flow Qt and period t. This
+decision variables ut and dt that
+                                                                                 constant is the optimal, in this case minimum,
+                                                                                 annual value of the objective function, Eq. 7.24.
+    minimizeðUTt  ut Þ2 þ ðDTt  dt Þ2                          ð7:30Þ
+                                                                                     There could be additional limits imposed on
+                                                                                 storage variables and release variables, such as for
+
+===== page 14 [pdftotext] =====
+314                                                                                       7   Modeling Uncertainty
+
+flood control storage or minimum downstream                 range of storage volume values from 0 to the
+flows, as might be appropriate in speciﬁc situations.       active reservoir capacity K. Each Skt is a discrete
+   The above deterministic dynamic program-                 storage volume that represents the range of
+ming model (Eq. 7.33) can be converted to a                 storage volumes in interval k at the beginning of
+stochastic model. Stochastic models consider                each period t.
+multiple discrete flows as well as multiple dis-                Let the index l denote different ﬁnal storage
+crete storage volumes, and their probabilities, in          volume intervals. Each Sl,t+1 is a discrete volume
+each period t. A common way to do this is to                that represents the storage volume interval l at the
+assume that the sequence of flows follow a                  end of in each period t or equivalently at the
+ﬁrst-order Markov process. Such a process                   beginning of period t + 1. As previously deﬁned,
+involves the use of transition or conditional               let the indices i and j denote the different flow
+probabilities of flows as deﬁned by Eq. 7.20.               intervals, and each discrete qit and qj,t+1 represent
+   To develop these stochastic optimization                 the flows in those flow intervals i and j in periods
+models it is convenient to introduce some addi-             t and t + 1, respectively.
+tional indices or subscripts. Let the index k de-               These subscripts and the volume or flow
+note different initial storage volume intervals.            intervals they represent are illustrated in
+These discrete intervals divide the continuous              Fig. 7.11.
+
+
+
+
+Fig. 7.11 Discretization of streamflows and reservoir storage volumes. The area within each flow interval i below the
+probability density distribution curve is the unconditional probability, PQit, associated with the discrete flow qit
+
+===== page 15 [pdftotext] =====
+7.6 Stochastic Optimization                                                                                                315
+
+    With this notation it is now possible to develop                    The sum over all flow intervals j of these
+a stochastic dynamic programming model that                         conditional             probabilities     times     the
+will identify the allocations and releases that are                                          
+                                                                    Ft þ 1 Sl;t þ 1 ; qj;t þ 1 values is the expected mini-
+                                                                       n1
+to be made given both the initial storage volume,
+                                                                    mum sum of future squared deviations from
+Skt, and the flow, qit. It follows the same structure
+                                                                    allocation targets with n − 1 periods remaining
+as the deterministic models deﬁned by Eqs. 7.30–
+                                                                    given an initial storage volume of Skt and flow of
+7.32, and 7.33.
+                                                                    qit and ﬁnal storage volume of Sl,t+1. The value
+    To identify the optimal allocations in each
+                                                                    Ftn ðSkt ; qit Þ is the expected minimum sum of
+period t for each pair of feasible initial and ﬁnal
+                                                                    squared deviations from the allocation targets
+storage volumes Skt and Sl,t+1, and inflows qit, one
+                                                                    with n periods remaining given an initial storage
+can solve Eqs. 7.34–7.36.
+                                                                    volume interval of Skt and flow interval of qit.
+                                                                    Stochastic models such as these provide expected
+ minimizeðUTt  ukit Þ2 þ ðDTt  dkilt Þ2 ð7:34Þ
+                                                                    values of objective functions.
+where                                                                   Another way to write the recursion equations
+                                                                    of this model, Eq. 7.37, is by using just the
+                 ukit  qit     for all k; i; t:         ð7:35Þ     indices k and l to denote the discrete storage
+                                                                    volume variables Skt and Sl,t+1 and indices i and
+                                                                    j to denote the discrete flow variables qit and qj,t+1:
+        dkilt  Skt þ qit  ukit  Sl;t þ 1
+                                                         ð7:36Þ
+           for all feasible k; i; l; t:                             Ftn ðk; iÞ ¼ minfðUTt  ut ðk; iÞÞ2 þ ðDTt  dt ðk; i; lÞÞ2
+                                                                                   X
+                                                                                 þ     Pt F n1 ðl; jÞg
+                                                                                      j ij t þ 1
+   The solution to these equations for each fea-
+                                                                               l such that
+sible combination of intervals k, i, l, and period
+                                                                               Sl;t þ 1  K
+t deﬁnes the optimal allocations that can be
+expressed as ut(k, i) and dt(k, i, l).                                         Sl;t þ 1  Skt þ qit
+   The stochastic version of Model 7.33, again                                                                          ð7:38Þ
+expressed in a form suitable for backward mov-
+ing discrete dynamic programming, can be                               The steady-state solution of this dynamic
+written for different discrete values of Skt from 0                 programming model will identify the preferred
+to K and for all qit as                                             ﬁnal storage volume Sl,t+1 in period t given the
+                                                                    particular discrete initial storage volume Skt and
+Ftn ðSkt ; qit Þ ¼ minfðUTt  ut ðk; iÞÞ2 þ ðDTt  dt ðk; i; lÞÞ2   flow qit. This optimal policy can be expressed as
+                     X
+                   þ     Pt F n1 ðS      ;q       Þg               a function ‘ that identiﬁes the best interval
+                        j ij t þ 1 l;t þ 1 j;t þ 1
+                                                                    l given intervals k, i and period t.
+               Sl;t þ 1
+               Sl;t þ 1  K
+                                                                                          l ¼ ‘ðk; i; tÞ                ð7:39Þ
+               Sl;t þ 1  Skt þ qit
+                                                         ð7:37Þ        All values of l given k, i, and t, deﬁned by
+                                                                    Eq. 7.39, can be expressed in a matrix, one for
+    Each Ptij in the above recursive equation is                    each period t.
+the known conditional or transition probability of                     Knowing the best ﬁnal storage volume interval
+a flow qj,t+1 within interval j in period t + 1 given               l given an initial storage volume interval k and
+a flow of qit within interval i in period t.                        flow interval i, the optimal downstream alloca-
+                                                                   tion, dt(k, i), can, like the upstream allocation, be
+Ptij ¼ Pr flow qj;t þ 1 within interval j in t þ 1jflow of qit
+                                                                    expressed in terms of only k and i in each period t.
+          within interval i in tg                                   Thus knowing the initial storage volume Skt and
+
+===== page 16 [pdftotext] =====
+316                                                                                                  7     Modeling Uncertainty
+
+flow qit is sufﬁcient to deﬁne the optimal alloca-         result in a ﬁnal volume interval l. This relation-
+tions ut(k, i) and dt(k, i), ﬁnal storage volume           ship is deﬁned by Eq. 7.39 (l = ‘(k, i, t)).
+Sl,t+1, and hence the release Rt(k, i).                        While Eq. 7.41 must apply, it is not sufﬁcient.
+                                                           The joint probability of a ﬁnal storage volume in
+   Skt þ qit  ut ðk; iÞ  Rt ðk; iÞ ¼ Sl;t þ 1            interval l in period t and an inflow j in period
+                                                  ð7:40Þ
+      8k; i; t where l ¼ ‘ðk; i; tÞ                        t + 1 must equal the joint probability of an initial
+                                                           storage volume in the same interval l and an
+                                                           inflow in the same interval j in period t + 1.
+7.6.1       Probabilities of Decisions                     Multiplying the joint probability Pkit times the
+                                                           conditional probability Ptij and then summing
+Knowing the function l = ‘(k, i, t) permits a              over all k and i that results in a ﬁnal storage
+calculation of the probabilities of the different          interval l deﬁnes the former, and the joint prob-
+discrete storage volumes, allocations, and flows.          ability Pl,j,t+1 deﬁnes the latter.
+Let                                                                        XX
+                                                            Pl;j;t þ 1 ¼                Pkit Ptij        8l; j; t    l ¼ ‘ðk; i; tÞ
+PSkt = the unknown probability of an initial                               k        i
+
+storage volume Skt being within some interval                                                                               ð7:42Þ
+k in period t.
+PQit = the steady-state unconditional probability             Once again the sums in Eq. 7.42 are over all
+of flow qit within interval i in period t.                 combinations of k and i that result in the desig-
+Pkit = the unknown probability of the upstream             nated storage volume interval l as deﬁned by the
+and downstream allocations ut(k, i) and                    policy ‘(k, i, t).
+dt(k, i) and reservoir release Rt(k, i) in period t.          Finally, the sum of all joint probabilities Pkit
+                                                           in each period t must equal 1.
+   As previously deﬁned                                                        XX
+                                                                                            Pkit ¼ 1           8t           ð7:43Þ
+                                                                                k       i
+Ptij = the known conditional or transition proba-
+bility of a flow within interval j in period t + 1            Note the similarity of Eqs. 7.42 and 7.43 to
+given a flow within interval i in period t.                the Markov steady-state flow Eqs. 7.22 and 7.23.
+                                                           Instead of only one flow interval index consid-
+    These transition probabilities Ptij can be dis-        ered in Eqs. 7.22 and 7.23, Eqs. 7.42 and 7.43
+played in matrices, similar to Table 7.3, but as a         include two indices, one for storage volume
+separate matrix (Markov chain) for each period t.          intervals and the other for flow intervals. In both
+    The joint probabilities of an initial storage          cases, one of Eqs. 7.22 and 7.42 can be omitted
+interval k, an inflow in the interval i, Pkit in each      in each period t since it is redundant with that
+period t must satisfy two conditions. Just as the          period’s Eqs. 7.23 and 7.43, respectively.
+initial storage volume in period t + 1 is the same            The unconditional probabilities PSkt and PQit
+as the ﬁnal storage volume in period t, the                can be derived from the joint probabilities Pkit.
+probabilities of these same respective discrete                                             X
+storage volumes must also be equal. Thus                                       PSkt ¼            Pkit        8k; t          ð7:44Þ
+      X                    XX                                                               i
+            Pl;j;t þ 1 ¼           Pkit   8l; t   ð7:41Þ
+        j                  k   i                                                            X
+                                                                               PQit ¼               Pkit     8i; t          ð7:45Þ
+where the sums in the right hand side of Eq. 7.41                                            k
+are over only those combinations of k and i that
+
+===== page 17 [pdftotext] =====
+7.6 Stochastic Optimization                                                                                               317
+
+
+   Each of these unconditional joint or marginal                       The constraints include
+probabilities, when summed over all their vol-
+ume and flow indices, will equal 1. For example                     (a) Continuity of storage involving initial stor-
+           X                 X                                          age volumes Skt, net inflows qit − ukit, and at
+                   PSkt ¼          PQit ¼ 1             ð7:46Þ          least partial releases dkit. Again assuming no
+               k               i                                        losses:
+
+    Note that these probabilities are determined                      Skt þ qit  ukit  dkit  Sl;t þ 1     8k; i; t
+                                                                                                                        ð7:48Þ
+based only on the relationships among flow and                           l ¼ ‘ðk; i; tÞ
+storage intervals as deﬁned by Eq. 7.39, l = ‘(k,
+i, t) in each period t, and the Markov chains                          Reservoir capacity limitations.
+deﬁning the flow interval transition or condi-
+tional probabilities, Ptij . It is not necessary to                                   Skit  K    8k; i; t              ð7:49Þ
+know the actual discrete storage values repre-
+                                                                       Allocation restrictions.
+senting those intervals. Thus assuming any rela-
+tionship among the storage volume and flow                                           ukit  qit   8k; i; t              ð7:50Þ
+interval indices, l = ‘(k, i, t) and a knowledge of
+the flow interval transition probabilities Ptij , one
+can determine the joint probabilities Pkit and their                7.6.2    A Numerical Example
+marginal or unconditional probabilities PSkt. One
+does not need to know what those storage                            A simple numerical example may help to illus-
+intervals are to calculate their probabilities.                     trate how these stochastic models can be devel-
+(Amazing, isn’t it?)                                                oped without getting buried in detail. Consider,
+    Given the values of these joint probabilities                   for simplicity, two within-year periods each year.
+Pkit, the deterministic model deﬁned by Eqs. 7.24–                  The random flows Qt in each period t are divided
+7.28 can be converted to a stochastic model to                      into two intervals. These flow intervals are rep-
+identify the best storage and allocation decision                   resented by discrete flows of 1 and 3 volume
+variable values associated with each storage                        units per second in the ﬁrst period and 3 and 6
+interval k and flow interval i in each period t.                    volume units per second in the second period.
+           XXX
+             T                 n                                o   Their transition probabilities are shown in
+Minimize                   Pkit ðUTt  ukit Þ2 þ ðDTt  dkit Þ2     Table 7.5.
+           k       i   t
+                                                                        Assuming equal within-year period durations,
+                                                        ð7:47Þ      these three discrete flow rates are equivalent to
+
+
+Table 7.5 Transition probabilities for two ranges of flows in two within-year periods
+
+===== page 18 [pdftotext] =====
+318                                                                                7   Modeling Uncertainty
+
+about 16, 47 and 95 million volume units per           particular state and season have come close to a
+period.                                                common constant value.
+    Assume the active storage volume capacity              While the differences between corresponding
+                                                         nþT
+K in the reservoir equals 50 million volume            Ft     and Ftn have not yet reached a common
+units. This capacity can be divided into different     constant value to the nearest unit deviation (they
+intervals of storage. For this simple example          range from, 3475.5 to 3497.1 for an average of
+assume three storage volume intervals repre-           3485.7), the policy has converged to that shown
+sented by 10, 25, and 40 million volume units.         in Tables 7.8 and 7.9.
+Assume the allocation targets remain the same in           Given this policy, the probabilities of being in
+each period at both the upstream and downstream        any of these volume and flow intervals can be
+sites. The upstream allocation target is approxi-      determined       by    solving     Eqs. 7.42–7.45.
+mately 2 volume units per second or 30 million         Table 7.10 shows the results of these equations
+volume units in each period. The downstream            applied to the data in Tables 7.5 and 7.8. It is
+allocation target is approximately 5 volume units      obvious that if the policy from Table 7.9 is fol-
+per second or 80 million volume units in each          lowed, the steady-state probabilities of being in
+period.                                                storage interval 1 in period 1 and in interval 3 in
+    With these data we can use Eqs. 7.34–7.36 to       period 2 are 0.
+determine the allocations that minimize the sum            Multiplying these joint probabilities by the
+of squared deviations from targets and what that       corresponding SDkit values in the last column of
+sum is, for all feasible combinations of initial and   Table 7.6 provides the annual expected squared
+ﬁnal storage volumes, and flows. Table 7.6             deviations, associated with the selected discrete
+shows the results of these optimizations. These        storage volumes and flows. This is done in
+results will be used in the dynamic programming        Table 7.11 for those combinations of k, i, and
+model to determine the best ﬁnal storage vol-          l that are contained in the optimal solution as
+umes given initial volumes and flows.                  listed in Table 7.9.
+    With the information in Tables 7.5 and 7.6,            The sum of products of the last two columns
+the dynamic programming model, Eq. 7.38 or as          in Table 7.11 for each period t equals the
+expressed in Eq. 7.51, can be solved to ﬁnd the        expected squared deviations in the period. For
+optimal ﬁnal storage volumes given an initial          period t = 1 the expected sum of squared devi-
+storage volume and flow. The iterations of the         ations are 1893.3 and for t = 2 they are 1591.0.
+recursive equation, sufﬁcient to reach a steady        The total annual expected squared deviations are
+state, are shown in Table 7.7.                         3484.3. This compares with the expected squared
+                             X                         deviations derived from the dynamic program-
+    Ftn ðk; iÞ ¼minfSDkil þ              þ 1 ðl; jÞg
+                                 Ptij Ftn1            ming model, after nine iterations, ranging from
+                                j
+                                                       3475.5 to 3497.1 (as calculated from data in
+               over all l such that                    Table 7.8).
+               Sl;t þ 1  K                                The policy for reservoir releases is a function
+               Sl;t þ 1  Skt þ Qit                    not only of the initial storage volumes, but
+                                                       also of the current inflow, i.e., the total water
+                                             ð7:51Þ
+                                                       available in the period. Reservoir release rule
+   This process can continue until a steady-state      curves now must become two-dimensional.
+policy is deﬁned. Table 7.8 summarizes the next        However, the inflow for each period usually
+ﬁve iterations. At this stage, the annual differ-      cannot be predicted at the beginning of each
+ences in the objective values associated with a        period. Thus the reservoir release policy has to be
+
+===== page 19 [pdftotext] =====
+7.6 Stochastic Optimization                                                                                         319
+
+Table 7.6 Optimal allocations associated with given initial storage, Sk, flow, Qi, and ﬁnal storage, Sl, volumes
+
+
+
+
+These allocations uki and dkil minimize the sum of squared deviations, DSkil = (30 − uki)2 + (80 − dkil)2, from upstream
+and downstream targets, 30 and 80, respectively, subject to uki ≤ flow Qi, and dkil ≤ release (Sk + Qi − uki − Sl)
+
+===== page 20 [pdftotext] =====
+320                                                                                   7   Modeling Uncertainty
+
+Table 7.7 First four iterations of dynamic programming model, Eq. 7.51, moving backward in successive periods n,
+beginning in season t = 2 with n = 1
+
+
+
+
+                                                                                                     (continued)
+
+===== page 21 [pdftotext] =====
+7.6 Stochastic Optimization          321
+
+
+Table 7.7 (continued)
+
+
+
+
+                              (continued)
+
+===== page 22 [pdftotext] =====
+322                     7   Modeling Uncertainty
+
+
+Table 7.7 (continued)
+
+
+
+
+                                      (continued)
+
+===== page 23 [pdftotext] =====
+7.6 Stochastic Optimization                                                                                 323
+
+
+Table 7.7 (continued)
+
+
+
+
+The iterations stop when the ﬁnal storage policy given any initial storage volume and flow repeats itself in two
+successive years. Initially, with no more periods remaining, F10 ðk; iÞ ¼ 0 for all k and i
+
+===== page 24 [pdftotext] =====
+324                                                                                      7   Modeling Uncertainty
+
+Table 7.8 Summary of objective function values Ftn ðk; iÞ and optimal decisions for stages n = 5–9 periods remaining
+
+
+
+
+Table 7.9 Optimal reservoir policy l = ‘(k, i, t) for the example problem
+
+===== page 25 [pdftotext] =====
+7.6 Stochastic Optimization                                                                                    325
+
+Table 7.10 Probabilities of flow and storage volume intervals associated with policy as deﬁned in Table 7.9 for the
+example problem
+
+
+
+
+expressed in a way that it can be followed                 discrete expected releases can be used to deﬁne a
+without knowledge of the current inflow. One               continuous range of releases for the continuous
+way to do this is to compute the expected value            range of storage volumes from 0 to full capacity,
+of the release for each discrete storage volume,           50. Figure 7.12 also shows the hedging that
+and show it in a release rule. This is done in             might take place as the reservoir storage volume
+Fig. 7.12. The probability of each discrete                decreases.
+release associated with each discrete river flow is           These and modiﬁcations of these policies can
+the probability of the flow itself. Thus in period 1       be simulated to determine improved release
+when the storage volume is 40, the expected                rules. Simulation modeling is the subject of the
+release is 46(0.41) + 56(0.59) = 52. These                 following chapter.
+
+===== page 26 [pdftotext] =====
+326                                                                                                  7   Modeling Uncertainty
+
+Table 7.11 The optimal operating policy and the probability of each state and decision
+
+
+                                                                                                                         E020829k
+                                                                                       sum squared         joint
+                                                                   optimal
+
+
+                                                  time period
+           initial           final     interval
+           storage   flow    storage   indices                     allocation          deviations          probability
+
+            Sk       Qi        S1       k, i, l                 ukit            dkit   SDkit               P kit
+
+            10       16        10       1,1,1         1          0.0            16.0   4996.0            0.0
+            10       47        10       1,2,1         1          0.0            47.0   1989.0            0.0
+            25       16        10      2,1,1          1          0.0            31.0   3301.0            0.2964706
+            25       47        10      2,2,1          1          6.0            56.0   1152.0            0.1270588
+            40       16        10      3,1,1          1          0.0            46.0   2056.0            0.1152941
+            40       47        25      3,2,2          1          6.0            56.0   1152.0            0.4611765
+                                                                                                sum = 1.0
+
+
+            10       47        25      1,2,2        2            0.0            32.0   3204.0            0.2851765
+            10       95        25      1,3,2        2            7.5            57.5   1012.5            0.2536471
+            25       47        25      2,2,2        2            0.0            47.0   1989.0            0.1383529
+            25       95        40      2,3,2        2           15.0            65.0    450.0            0.3228235
+            40       47        40      3,2,3        2            0.0            47.0   1989.0            0.0
+            40       95        40      3,3,3        2           22.5            72.5    112.5            0.0
+
+                                                                                                sum = 1.0
+
+
+
+
+Fig. 7.12 Reservoir release rule showing an interpolated release, increasing as storage volumes increase
+
+===== page 27 [pdftotext] =====
+7.7 Summary                                                                                                   327
+
+7.7    Summary                                        and constraints, the use of deterministic models
+                                                      for a preliminary screening of alternatives prior
+This chapter has introduced some approaches for       to a more precise probabilistic screening is often
+including risk into optimization and simulation       warranted.
+models. The discussion began with ways to
+obtain values of random variables whose proba-
+bility distributions are known. These values, for     Reference
+example streamflows or parameter values, can be
+inputs to simulation models. Monte Carlo simu-        WWAP (United Nations World Water Assessment Pro-
+lation involves the use of multiple simulations         gramme) World Water Development Report 4. (2012).
+using these random variable values to obtain the        Managing water under uncertainty and risk (867 pp).
+probability distributions of outputs, including         Paris: UNESCO.
+various system performance indicators.
+    Two methods were reviewed for introducing
+random variables along with their probabilities       Additional References
+into optimization models. One involves the use        (Further Reading)
+of chance constraints. These are constraints that
+must be met, as all constraints must be, but now      Bassson, M. S., Allen, R. B., Pegram, G. G. S., & van
+                                                          Rooyen, J. A. (1994). Probabilistic management of
+with a certain probability. As in any method there
+                                                          water resource and hydropower systems. Highlands
+are limits to the use of chance constraints. These        Ranch, CO: Water Resources Publications.
+limitations were not discussed, but in cases          Birge, J. R., & Louveaux, F. (1997). Introduction to
+where chance constraints are applicable, and if           stochastic programming. NY: Springer.
+                                                      DeGroot, M. H. (1980). Optimal statistical decisions. NY:
+their deterministic equivalents can be deﬁned,
+                                                          McGraw-Hill.
+they are probably the only method of introducing      Dempster, M. A. H. (1980). Stochastic programming.
+risk into otherwise deterministic models that do          London: Academic Press.
+not add to the model size.                            Dorfman, R., Jacoby, H. D., & Thomas, H. A., Jr. (1972).
+                                                          Models for managing regional water quality. Cam-
+    Alternatively, the range of random variable
+                                                          bridge, MA: Harvard University Press.
+values can be divided into discrete ranges. Each      Ermoliev, Y. (1970). Methods of stochastic programming.
+range can be represented by a speciﬁc or discrete         Moscow: Nauka. (in Russian).
+value of the random variable. These discrete          Ermoliev, Y., & Wets, R. (Eds.). (1988). Numerical
+                                                          techniques for stochastic optimization. Berlin:
+values and their probabilities can become part of         Springer.
+an optimization model. This was demonstrated          Heyman, D. P., & Sobel, M. J. (1984). Stochastic models
+using transition probabilities incorporated into          in operations research, Volume II. Stochastic opti-
+both linear and dynamic programming models.               mization. NY: McGraw-Hill.
+                                                      Hillier, F. S., & Lieberman, G. J. (1990). Introduction to
+    The examples used in this chapter to illustrate       stochastic models in operations research. NY:
+the development and application of stochastic             McGraw-Hill.
+optimization and simulation models are relatively     Howard, R. A. (1960). Dynamic programming and
+simple. These and similar probabilistic and               Markov processes. Cambridge, MA: MIT Press.
+                                                      Hufschmidt, M. M., & Fiering, M. B. (1966). Simulation
+stochastic models have been applied to numerous           techniques for design of water-resource systems.
+water resources planning and management                   Cambridge, MA: Harvard University Press.
+problems. They can be a much more effective           Loucks, D. P., Stedinger, J. S., & Haith, D. A. (1981).
+screening tool than deterministic models based            Water resource systems planning and analysis. Engle-
+                                                          wood Cliffs, NJ: Prentice Hall.
+on the mean or other selected values of random        Maass, A., Hufschmidt, M. M., Dorfman, R., Thomas, H.
+variables. But sometimes they are not. Clearly if         A., Jr., Marglin, S. A., & Fair, G. M. (1962). Design of
+the system being analyzed is very complex, or             water-resource systems. Cambridge, MA: Harvard
+just very big in terms of the number of variables         University Press.
+
+===== page 28 [pdftotext] =====
+328                                                                                      7   Modeling Uncertainty
+
+Prékopa, A. (1995). Stochastic programming. Dordrecht,          policy (release as a function of initial
+   NL: Kluwer Academic Publishers.                              reservoir volumes and current period’s
+Raiffa, H., & Schlaifer, R. (1961). Applied statistical
+   decision theory. Cambridge, MA: Harvard University           inflow) for the reservoir that minimizes the
+   Press.                                                       expected sum of squared deviations from
+ReVelle, C. (1999). Optimizing reservoir resources. NY:         storage and release targets. Limit the stor-
+   Wiley.                                                       age volumes to integer values that vary
+Ross, S. M. (1983). Introduction to stochastic dynamic
+   programming. NY: Academic Press.                             from 3 to 5. Assume a storage volume target
+Somlyódy, L., & Wets, R. J- B. Stochastic optimization          of 4 and a release target of 2 in each period
+   models for lake eutrophication management. Opera-            t. (Assume only integer values of all states
+   tions Research, 36, 660–681.                                 and decision variables and that each peri-
+Wets, R. J- B. (1989). Stochastic programming. In G.
+   L. Nemhauser, A. H. G. Rinnooy Kan, & M. J. Todd             od’s inflow is known at the beginning of the
+   (Eds.), Handbooks in Operations Research and Man-            period.) Find the annual expected sum of
+   agement Science (Vol. 1, pp. 573–629). North-Holland,        squared deviations from the storage and
+   Amsterdam: Elsevier Science Publishers.                      release targets.
+Wurbs, R. A. (1996). Modeling and analysis of reservoir
+   system operations. Upper Saddle River, NJ: Prentice
+   Hall.                                                   Period, t    Flows, Qit             Probabilities,
+                                                                                               Pit
+                                                                        i=1          i=2       i=1        i=2
+                                                           1            1            2         0.17       0.83
+                                                           2            3            4         0.29       0.71
+Exercises
+
+7:1 Can you modify the deterministic discrete           This is an application of Exercise 6.27 except
+    DP reservoir operating model to include the the flow probabilities are independent of the
+    uncertainty, expressed as Ptij , of the inflows, previous flow.
+    as in Exercise 6.25?
+                                                     7:3 Develop a linear model for deﬁning the
+    (Hints: The operating policy would deﬁne
+                                                         optimal joint probabilities of predeﬁned dis-
+    the release (or ﬁnal storage) in each season
+                                                         crete initial storage volumes, discrete
+    as a function of not only the initial storage
+                                                         inflows, and discrete ﬁnal storage volumes in
+    but also the inflow. If the inflow changes, so
+                                                         a reservoir in each period t. Let values of the
+    might the release or ﬁnal storage volume.
+                                                         index k represent the different discrete initial
+    Hence you need to discretize the inflows as
+                                                         storage volumes, Skt. Similarly, let the index
+    well as the storage volumes. Both storage
+                                                         i represent the inflows, Qit, and the index
+    and inflow are state variables. Assume, for
+                                                         l represent the ﬁnal storage volumes, Sl,t+1, in
+    this model, you can predict with certainty
+                                                         period t. Let the index j represent the discrete
+    the inflow in each period at the beginning of
+                                                         inflows, Qj,t+1, and m represent the discrete
+    the period. So, each node of the network
+                                                         ﬁnal storage volumes, Sm,t+2, in period t + 1.
+    represents a known initial storage and
+                                                         Let PRkilt be the unknown joint probability of
+    inflow value. You cannot predict with cer-
+                                                         a discrete initial storage, Skt, an inflow, Qit,
+    tainty the following period’s flows, only
+                                                         and a ﬁnal storage volume, Sl,t+1, in period
+    their probabilities. What does the network
+                                                         t. It is also the probability of a release asso-
+    look like now?
+                                                         ciated with a particular combination of k, i,
+7:2 Assume that there exist two possible dis-
+                                                         and l in period t. The objective is to maxi-
+    crete flows Qit into a small reservoir in each
+                                                         mize the expected net beneﬁts, however,
+    of two periods t each year having proba-
+                                                         measured. The net beneﬁts associated with
+    bilities Pit. Find the steady-state operating
+                                                         any combination represented by k, i, and l in
+
+===== page 29 [pdftotext] =====
+Exercises                                                                                            329
+
+    period t is Bkilt. These net beneﬁts and the      (a) Generate values of x that come from this
+    conditional inflow probabilities. Ptij ¼              distribution.
+                   
+    Pr Qj;t þ 1 jQit ; are known. Show how the
+    optimal operating policy can be determined           To do this you need to
+    once the values of the joint probabilities,
+    PRkilt, are known.                                • Determine the equations of the cumulative
+                                                        distribution.
+    The same policy can be found by
+                                                      • Generate uniformly distributed random val-
+    DP. Develop a DP model to ﬁnd the optimal
+                                                        ues of probabilities p.
+    operating policy.
+                                                      • For each p ﬁnd corresponding value of x. The
+7:4 Referring to Exercise 7.3, instead of deﬁning
+                                                        inverse of the cumulative probability function
+    a ﬁnal volume subscript l and m for com-
+    puting joint probabilities PRkilt, assume that      FX(x) denoted as FX1 ð pÞ.
+    subscripts d and e were used to denote dif-       • Using this inverse function, generate a series
+    ferent reservoir release volumes. How would         of 100 random variable values x that would
+    the linear programming model developed be           have a probability distribution as shown
+    altered to include d and e in place of l and m?     above.
+    How would the dynamic programming
+    recursion equation be altered?                    (b) Calculate the mean, variance, and standard
+7:5 Given joint probabilities PRkilt found from           deviation of this distribution based on the
+    Exercise 7.3, how would one derive the                random values you computed. What is the
+    probability distribution of reservoir releases        effect on these statistics of increasing the
+    and storage volumes in each period t?                 number of sample values of the random
+7:6 Assume that the streamflow Q at a particular          variable, say from 100 to 1000 to 9000?
+    site has cumulative distribution function         (c) Calculate and compare with the true mean
+    FQ(q) = q/(1 + q) for q ≥ 0. The withdrawal           and variance.
+    x at that location must satisfy a chance con-     (d) Next, suppose these random values of X are
+    straint of the form Pr[x ≥ Q] ≤ 1 − α. Write          flows entering a reservoir having a capacity
+    the deterministic equivalent for each of the          of 6. The purpose of the reservoir is to
+    following chance constraints:                         release a target flow of 5 in each time period.
+                                                          Simulate the operation of the reservoir
+       Pr½x  Q  0:90    Pr½x  Q  0:80               assuming that if there is insufﬁcient water to
+       Pr½x  Q  0:95    Pr½x  Q  0:10               meet the target release of 5, release what is
+       Pr½x  Q  0:75                                   available, leaving an empty reservoir. Find
+                                                          the mean, variance, and standard deviation of
+                                                          reservoir storage and release values.
+7:7 Monte Carlo Simulation:                           (e) Finally assume the reservoir releases are to
+    Consider the symmetric triangular probabil-           be allocated to three water users whose target
+    ity density function that ranges from 0 to 10         allocations are 3, 2.33, and 8. Actual allo-
+    whose mean and most likely value is 5                 cations should not exceed these target allo-
+                                                          cations. Make the allocations such that in
+    fX x)                                                 each time period the maximum percentage
+                                                          deﬁcit allocation is minimized. Find the
+                                                          mean, variance and standard deviation of
+            0        5          10   x                    each user’s percentage deﬁcit allocations.
+
+===== page 30 [pdftotext] =====
+330                                                                                          7   Modeling Uncertainty
+
+
+
+
+Open Access This chapter is distributed under the terms           The images or other third party material in this
+of the Creative Commons Attribution-NonCommercial             chapter are included in the work's Creative Commons
+4.0 International License (http://creativecommons.org/        license, unless indicated otherwise in the credit line; if
+licenses/by-nc/4.0/), which permits any noncommercial         such material is not included in the work’s Creative
+use, duplication, adaptation, distribution and reproduction   Commons license and the respective action is not per-
+in any medium or format, as long as you give appropriate      mitted by statutory regulation, users will need to obtain
+credit to the original author(s) and the source, provide a    permission from the license holder to duplicate, adapt or
+link to the Creative Commons license and indicate if          reproduce the material.
+changes were made.

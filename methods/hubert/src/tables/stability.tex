@@ -1,0 +1,22 @@
+\begin{table}[ht]
+    \centering
+    \resizebox{\linewidth}{!}{
+    \begin{tabular}{cc|ccc}
+        \toprule
+        \multirow{2}{*}{feature} & \multirow{2}{*}{C} 
+        & \multicolumn{3}{c}{PNMI (mean $\pm$ std) with K-means Training Size = } \\
+        & & 1h & 10h & 100h \\
+        \midrule\midrule
+        \multirow{2}{*}{MFCC}
+        & 100 & 0.251 $\pm$ 0.001 & 0.253 $\pm$ 0.001 & 0.253 $\pm$ 0.001 \\
+        & 500 & 0.283 $\pm$ 0.001 & 0.285 $\pm$ 0.000 & 0.287 $\pm$ 0.001 \\
+        \midrule
+        \multirow{2}{*}{\textsc{Base}-it1-L6}
+        & 100 & 0.563 $\pm$ 0.012 & 0.561 $\pm$ 0.012 & 0.575 $\pm$ 0.008 \\
+        & 500 & 0.680 $\pm$ 0.005 & 0.684 $\pm$ 0.003 & 0.686 $\pm$ 0.004 \\
+        \bottomrule
+    \end{tabular}
+    }
+    \caption{Stability of K-means as an unsupervised unit discovery algorithm with respect to different features, numbers of clusters, and training data sizes. PNMI stands for phone-normalized mutual information.}
+    \label{tab:stability}
+\end{table}

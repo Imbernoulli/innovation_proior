@@ -1,0 +1,80 @@
+\begin{figure*}[htbp]
+    \centering
+    \begin{minipage}{0.45\textwidth} % Reduce width to bring (a) and (b) closer
+        \centering
+        \begin{subfigure}[b]{0.45\textwidth} 
+        
+        % Increase the width of subfigure slightly to maintain size
+            \centering
+            \includegraphics[width=\linewidth]{assets/ablation_gt.png}
+            \caption{GT modes}
+            \label{fig:ablation_gt}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}[b]{0.45\textwidth} 
+        % Increase the width of subfigure slightly to maintain size
+            \centering
+            \includegraphics[width=\linewidth]{assets/ablation_over.png}
+            \caption{Inferred modes}
+            \label{fig:ablation_ov}
+        \end{subfigure}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.45\textwidth} % Increase the width to allow for a larger table
+        \centering
+        \begin{tabular}{|c|c|c|}
+            \hline
+            $D^*$ & F1 score  & F1 score  \\
+            &     $(D=D^*)$ & $(D=D^*+10)$ \\
+            \hline
+            10 & $0.623 \pm 0.06$ & $\mathbf{0.642 \pm 0.07}$ \\
+            20 & $\mathbf{0.752 \pm 0.03}$ & $0.549 \pm 0.03$\\
+            30 & $\mathbf{0.596 \pm 0.05}$ & $0.529 \pm 0.06$\\
+            \hline
+        \end{tabular}
+        \caption*{(c) Causal discovery performance of SPACY-L} % Unnumbered caption for the table
+
+        % \caption{Causal discovery performance (F1-score), average of 5 seeds reported}
+        \label{tab:ablation_metric}
+    \end{minipage}
+    \caption{Overview of the results for over-specification ablation study. (a) Visualization of the ground-truth location and scale of the spatial modes. (b) Visualization of the inferred location and scale when we over-specify the number of nodes. (c) Causal discovery performance after matching and eliminating nodes. Average over 5 seeds reported}
+    \label{fig:ablation_overspec}
+    % \vspace{-10mm}
+\end{figure*}
+
+
+% \begin{figure}[htbp]
+%     \centering
+%     \begin{minipage}{0.65\textwidth}
+%         \centering
+%         \begin{subfigure}{0.45\textwidth}
+%             \centering
+%             \includegraphics[width=\linewidth]{assets/ablation_gt.png} % Replace with your image file
+%             \caption{Ground truth modes}
+%             \label{fig:ablation_gt}
+%         \end{subfigure}
+%         \hfill
+%         \begin{subfigure}{0.45\textwidth}
+%             \centering
+%             \includegraphics[width=\linewidth]{assets/ablation_over.png} % Replace with your image file
+%             \caption{Inferred modes}
+%             \label{fig:ablation_ov}
+%         \end{subfigure}
+%     \end{minipage}
+%     \hfill
+%     \begin{minipage}{0.3\textwidth}
+%         \centering
+%         \begin{tabular}{|c|c|c|}
+%             \hline
+%             Experiment & F1-Score & MCC-Score \\
+%             \hline
+%             Regular & $0.623 \pm 0.06$ \\
+%             Over-specification & $0.642 \pm 0.09$ \\
+%             \hline
+%         \end{tabular}
+%         \caption{Causal discovery performance}
+%         \label{tab:ablation_metric}
+%     \end{minipage}
+%     \caption{Overview of the results for over-specification ablation study. a) Visualization of the ground-truth location and scale of the spatial modes. b) Visualization of the inferred location and scale when we over-specify the number of nodes. c) The causal discovery performance of regular and over-specifying experiments, after matching and eliminating nodes}
+%     % \label{fig:twofigs_and_table}
+% \end{figure}

@@ -1,0 +1,31 @@
+While most previous work has employed $\mathcal{N}(0, I)$ or $\mathcal{U}[-1, 1]$ as the prior for $z$ (the noise input to \gen{}), we are free to choose any latent distribution from which we can sample.  We explore the choice of latents by considering an array of possible designs, described below. For each latent, we provide the intuition behind its design and briefly describe how it performs when used as a drop-in replacement for  $z\sim\mathcal{N}(0, I)$ in an SA-GAN baseline. As the Truncation Trick proved more beneficial than switching to any of these latents, we do not perform a full ablation study, and employ $z\sim\mathcal{N}(0, I)$ for our main results to take full advantage of truncation. The two latents which we find to work best without truncation are  Bernoulli $\{0, 1\}$ and Censored Normal $\max\left(\mathcal{N}(0, I), 0\right)$, both of which improve speed of training and lightly improve final performance, but are less amenable to truncation. 
+
+We also ablate the choice of latent space dimensonality (which by default is $z\in \bbR^{128}$), finding that we are able to successfully train with latent dimensions as low as $z\in \bbR^{8}$, and that with $z\in \bbR^{32}$ we see a minimal drop in performance. While this is substantially smaller than many previous works, direct comparison to single-class networks (such as those in \citet{karras2018progan}, which employ a $z\in \bbR^{512}$ latent space on a highly constrained dataset with 30,000 images) is improper, as our networks have additional class information provided as input.
+
+\subsection*{Latents}
+\begin{itemize}
+\item $\mathcal{N}(0, I)$. A standard choice of the latent space which we use in the main experiments.
+
+\item $\mathcal{U}[-1, 1]$. Another standard choice; we find that it performs similarly to $\mathcal{N}(0, I)$.
+
+\item Bernoulli $\{0, 1\}$. A discrete latent might reflect our prior that underlying factors of variation in natural images are not continuous, but discrete (one feature is present, another is not). This latent outperforms $\mathcal{N}(0, I)$ (in terms of IS) by 8\% and requires 60\% fewer iterations.
+
+\item $\max\left(\mathcal{N}(0, I), 0\right)$, also called Censored Normal. This latent is designed to introduce sparsity in the latent space (reflecting our prior that certain latent features are sometimes present and sometimes not), but also allow those latents to vary continuously, expressing different degrees of intensity for latents which are active. This latent outperforms $\mathcal{N}(0, I)$ (in terms of IS) by 15-20\% and tends to require fewer iterations.
+
+
+\item Bernoulli $\{-1, 1\}$. This latent is designed to be discrete, but not sparse (as the network can learn to activate in response to negative inputs). This latent performs near-identically to $\mathcal{N}(0, I)$.
+
+\item Independent Categorical in $\{-1, 0, 1\}$, with equal probability. This distribution is chosen to be discrete and have sparsity, but also to allow latents to take on both positive and negative values. This latent performs near-identically to $\mathcal{N}(0, I)$.
+
+\item $\mathcal{N}(0, I)$  multiplied by Bernoulli $\{0, 1\}$. This distribution is chosen to have continuous latent factors which are also sparse (with a peak at zero), similar to Censored Normal but not constrained to be positive. This latent performs near-identically to $\mathcal{N}(0, I)$.
+
+\item Concatenating  $\mathcal{N}(0, I)$ and Bernoulli $\{0, 1\}$, each taking half of the latent dimensions. This is inspired by \citet{chen2016infogan}, and is chosen to allow some factors of variation to be discrete, while others are continuous. This latent outperforms $\mathcal{N}(0, I)$ by around 5\%.
+
+\item Variance annealing: we sample from $\mathcal{N}(0, \sigma I)$, where $\sigma$ is allowed to vary over training. We compared a variety of piecewise schedules and found that starting with $\sigma = 2$ and annealing towards $\sigma=1$ over the course of training mildly improved performance. The space of possible variance schedules is large, and we did not explore it in depth -- we suspect that a more principled or better-tuned schedule could more strongly impact performance.
+
+\item Per-sample variable variance: $\mathcal{N}(0, \sigma_i I)$, where $\sigma_i\sim\mathcal{U}[\sigma_l, \sigma_h]$ independently for each sample $i$ in a batch, and $(\sigma_l, \sigma_h)$ are hyperparameters. This distribution was chosen to try and improve amenability to the Truncation Trick by feeding the network noise samples with non-constant variance. This did not appear to affect performance, but we did not explore it in depth. One might also consider scheduling $(\sigma_l, \sigma_h)$, similar to variance annealing.
+
+\end{itemize}
+
+
+

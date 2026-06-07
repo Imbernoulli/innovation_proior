@@ -1,0 +1,346 @@
+% !TEX root = main.tex
+
+\begin{table}[t]
+  %\setlength{\tabcolsep}{3.5pt}
+    \caption{
+      \textbf{Linear and $k$-NN classification on ImageNet.} 
+We report top-1 accuracy for linear and $k$-NN evaluations on the validation set of ImageNet for different self-supervised methods.
+We focus on ResNet-50 and ViT-small architectures, but also report the best results obtained across architectures.
+$^*$ are run by us.
+We run the $k$-NN evaluation for models with official released weights.
+	The throughput (im/s) is calculated on a NVIDIA V100 GPU with 128 samples per forward.
+Parameters (M) are of the feature extractor.
+%: we do not count the parameters of the linear classification layer.
+}
+\centering
+\small
+  \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{@{} l l c c c c @{}}
+      \toprule
+	    Method      & Arch. & Param. & im/s & Linear & $k$-NN  \\
+      \midrule
+	    \gray{Supervised} & \gray{RN50} & \gray{23} & \gray{1237} & \gray{79.3} & \gray{79.3} \\
+	    SCLR~\cite{chen2020simple}     & RN50  & 23 & 1237 & 69.1 & 60.7 \\
+	    MoCov2~\cite{chen2020improved}   & RN50  & 23 & 1237 & 71.1 & 61.9 \\
+	    InfoMin~\cite{tian2020makes}   & RN50  & 23 & 1237 & 73.0  & 65.3 \\
+	    BarlowT~\cite{zbontar2021barlow}   & RN50  & 23 & 1237 & 73.2 & 66.0 \\
+	    OBoW~\cite{gidaris2020obow}   & RN50  & 23 & 1237 & 73.8 & 61.9 \\
+	    BYOL~\cite{grill2020bootstrap}   & RN50  & 23 & 1237 & 74.4 & 64.8 \\
+	    DCv2~\cite{caron2020unsupervised}   & RN50  & 23 & 1237 & 75.2 & 67.1 \\
+	    SwAV~\cite{caron2020unsupervised} & RN50 & 23 & 1237 & \bf 75.3 & 65.7 \\
+\rowcolor{Light}
+	    \OURS   		       & RN50 & 23 & 1237  & \bf 75.3 & \bf 67.5 \\
+\midrule
+	    \gray{Supervised} & \gray{ViT-S} & \gray{21} & \gray{1007} & \gray{79.8} & \gray{79.8} \\
+	    BYOL$^*$~\cite{grill2020bootstrap} & ViT-S & 21 & 1007 & 71.4 & 66.6 \\
+	    MoCov2$^*$~\cite{chen2020improved} & ViT-S & 21 & 1007 & 72.7 & 64.4 \\
+	    SwAV$^*$~\cite{caron2020unsupervised} & ViT-S & 21 & 1007 & 73.5 & 66.3 \\
+\rowcolor{Light}
+	    \OURS   		       & ViT-S  & 21 & 1007 & \bf 77.0 & \bf 74.5 \\
+\midrule
+\midrule
+\multicolumn{5}{@{}l}{\textit{Comparison across architectures}}\\
+	    SCLR~\cite{chen2020simple}             & RN50w4 & 375 & 117 & 76.8 & 69.3 \\
+	    SwAV~\cite{caron2020unsupervised}   & RN50w2  & 93 & 384 & 77.3 & 67.3 \\
+	    BYOL~\cite{grill2020bootstrap}   & RN50w2  & 93 & 384 & 77.4 & -- \\
+	    %SEER*~\cite{goyal2021self}   & RegNetY-256  & 1300 & -- & 77.5 & -- \\
+\rowcolor{Light}
+	    \OURS   		       & ViT-B/16  & 85 & 312 & 78.2 & 76.1 \\
+	    SwAV~\cite{caron2020unsupervised}             & RN50w5 & 586 & 76 & 78.5 & 67.1 \\
+	    BYOL~\cite{grill2020bootstrap}             & RN50w4 & 375 & 117 & 78.6 & -- \\
+	    BYOL~\cite{grill2020bootstrap}   & RN200w2  & 250 & 123 & 79.6 & 73.9 \\
+\rowcolor{Light}
+	    \OURS   		       & ViT-S/8  & 21 & 180 & 79.7 & \bf 78.3 \\
+	    SCLRv2~\cite{chen2020big}  & RN152w3+SK & 794 & 46 & 79.8 & 73.1 \\
+\rowcolor{Light}
+	    \OURS   		       & ViT-B/8  & 85 & 63 & \bf 80.1 & 77.4 \\
+      \bottomrule
+ \end{tabular}
+    \label{tab:sota}
+\end{table}
+
+
+\section{Main Results}
+We first validate the \OURS framework used in this study with the standard self-supervised benchmark on ImageNet.
+We then study the properties of the resulting features for retrieval, object discovery and transfer-learning.
+
+\subsection{Comparing with SSL frameworks on ImageNet}
+We consider two different settings: comparison with the same architecture and across architectures.
+
+\paragraph{Comparing with the same architecture.}
+In top panel of Table~\ref{tab:sota}, we compare \OURS with other self-supervised methods with the same architecture, either a ResNet-50~\cite{he2016deep} or a ViT-small (which follows the design of DeiT-S~\cite{touvron2020training}).
+The choice of ViT-S is motivated by its similarity with ResNet-50 along several axes: number of parameters (21M vs 23M), throughput (1237/sec VS 1007 im/sec) and supervised performance on ImageNet with the training procedure of~\cite{touvron2020training} (79.3\% VS 79.8\%).
+We explore variants of ViT-S in Appendix~\ref{ap:ablations}.
+First, we observe that \OURS performs on par with the state of the art on ResNet-50, validating that \OURS works in the standard setting.
+When we switch to a ViT architecture, \OURS outperforms BYOL, MoCov2 and SwAV by +3.5\% with linear classification and by +7.9\% with $k$-NN evaluation.
+More surprisingly, the performance with a simple $k$-NN classifier is almost on par with a linear classifier (74.5\% versus 77.0\%).
+This property emerges only when using \OURS with ViT architectures, and does not appear with other existing self-supervised methods nor with a ResNet-50.
+
+\paragraph{Comparing across architectures.}
+On the bottom panel of Table~\ref{tab:sota}, we compare the best performance obtained across architectures.
+The interest of this setting is not to compare methods directly, but to evaluate the limits of a ViT trained with \OURS when moving to larger architectures.
+While training a larger ViT with \OURS improves the performance, reducing the size of the patches (``/8'' variants) has a bigger impact on the performance.
+While reducing the patch size do not add parameters, it still leads to a significant reduction of running time, and larger memory usage.
+Nonetheless, a base ViT with $8\times 8$ patches trained with \OURS achieves 80.1\% top-1 in linear classification and 77.4\% with a $k$-NN classifier with $10\times$ less parameters and $1.4\times$ faster run time than previous state of the art~\cite{chen2020big}.
+
+
+\subsection{Properties of ViT trained with SSL}
+
+We evaluate properties of the \OURS features in terms of nearest neighbor search, retaining information about object location and transferability to downstream tasks.
+
+\begin{table}
+\centering
+\caption{\textbf{Image retrieval.}
+We compare the performance in retrieval of off-the-shelf features pretrained with supervision or with \OURS on ImageNet and Google Landmarks v2 (GLDv2) dataset.
+We report mAP on revisited Oxford and Paris.
+Pretraining with \OURS on a landmark dataset performs particularly well.
+For reference, we also report the best retrieval method with off-the-shelf features~\cite{revaud2019learning}. 
+}\label{tab:retrieval}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l l c cc cc@{}}
+\toprule
+&& & \multicolumn{2}{c}{$\mathcal{R}$Ox} & \multicolumn{2}{c@{}}{$\mathcal{R}$Par} \\
+\cmidrule{4-5}
+\cmidrule{6-7}
+Pretrain &Arch. & Pretrain    & M & H & M & H\\
+\midrule
+%\cite{el2021training} & DeiT-S/16 & 384 & 34.5 & 15.8 & 65.8 & 42.0 \\
+%\midrule
+%Sup.~\cite{radenovic2018revisiting}  & RN101+GeM & ImNet & 45.0 & 17.7 & 70.7 & 48.7 \\
+Sup.~\cite{revaud2019learning}  & RN101+R-MAC & ImNet & 49.8 & 18.5 & 74.0 & \bf 52.1 \\
+\midrule
+Sup.  & ViT-S/16 & ImNet & 33.5 & 8.9 & 63.0 & 37.2 \\
+\rowcolor{Light}
+\OURS & ResNet-50 & ImNet & 35.4 & 11.1 & 55.9 & 27.5 \\
+\rowcolor{Light}
+\OURS & ViT-S/16 & ImNet & 41.8 & 13.7 & 63.1 & 34.4 \\
+\rowcolor{Light}
+\OURS & ViT-S/16  & GLDv2 & \bf 51.5 & \bf 24.3 & \bf 75.3 & 51.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Nearest neighbor retrieval with \OURS ViT}
+The results on ImageNet classification have exposed the potential of our features for tasks relying on nearest neighbor retrieval.
+In this set of experiments, we further consolidate this finding on landmark retrieval and copy detection tasks.
+
+\paragraph{Image Retrieval.}
+We consider the revisited~\cite{radenovic2018revisiting} Oxford and Paris image retrieval datasets~\cite{philbin2008lost}.
+They contain 3 different splits of gradual difficulty with query/database pairs.
+We report the Mean Average Precision (mAP) for the Medium (M) and Hard (H) splits.
+In Table~\ref{tab:retrieval}, we compare the performance of different \emph{off-the-shelf} features obtained with either supervised or \OURS training.
+We freeze the features and directly apply $k$-NN for retrieval.
+We observe that \OURS features outperform those trained on ImageNet with labels.
+
+An advantage of SSL approaches is that they can be trained on any dataset, without requiring any form of annotations.
+We train \OURS on the 1.2M clean set from Google Landmarks v2 (GLDv2)~\cite{weyand2020google}, a dataset of landmarks designed for retrieval purposes.
+\OURS ViT features trained on GLDv2 are remarkably good, outperforming previously published methods based on off-the-shelf descriptors~\cite{tolias2015particular,revaud2019learning}.
+
+\begin{table}
+\centering
+\caption{\textbf{Copy detection.}
+We report the mAP performance in copy detection on Copydays ``strong'' subset~\cite{douze2009evaluation}.
+For reference, we also report the performance of the multigrain model~\cite{berman2019multigrain}, trained specifically for particular object retrieval.
+}\label{tab:copy}
+\small
+%\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}l l c c c@{}}
+\toprule
+	Method & Arch. & Dim. & Resolution & mAP \\
+\midrule
+Multigrain~\cite{berman2019multigrain}  & ResNet-50 & 2048 & $224^2$ & 75.1 \\
+Multigrain~\cite{berman2019multigrain}  & ResNet-50 & 2048 & largest side 800 & 82.5 \\
+\midrule
+Supervised~\cite{touvron2020training}  & ViT-B/16 & 1536 & $224^2$ & 76.4 \\
+\rowcolor{Light}
+\OURS  & ViT-B/16 & 1536 & $224^2$ & 81.7 \\
+\rowcolor{Light}
+\OURS  & ViT-B/8 & 1536 & $320^2$ & \bf 85.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Copy detection.}
+We also evaluate the performance of ViTs trained with \OURS on a copy detection task.
+We report the mean average precision on the ``strong'' subset of the INRIA Copydays dataset~\cite{douze2009evaluation}.
+The task is to recognize images that have been distorted by blur, insertions, print and scan, etc. 
+Following prior work~\cite{berman2019multigrain}, we add 10k distractor images randomly sampled from the YFCC100M dataset~\cite{thomee2015yfcc100m}.
+We perform copy detection directly with cosine similarity on the features obtained from our pretrained network.
+The features are obtained as the concatenation of the output \texttt{[CLS]} token and of the GeM pooled~\cite{radenovic2018fine} output patch tokens.
+This results in a 1536d descriptor for ViT-B.
+Following~\cite{berman2019multigrain}, we apply whitening on the features.
+We learn this transformation on an extra 20K random images from YFCC100M, distincts from the distractors.
+Table~\ref{tab:copy} shows that ViT trained with \OURS is very competitive on copy detection.
+
+\begin{table}[h]
+\centering
+	\caption{\textbf{DAVIS 2017 Video object segmentation.}
+We evaluate the quality of frozen features on video instance tracking.
+We report mean region similarity $\mathcal{J}_m$ and mean contour-based accuracy $\mathcal{F}_m$.
+We compare with existing self-supervised methods and a supervised ViT-S/8 trained on ImageNet.
+%We report results with the ``/16'' networks in the supplementary.
+Image resolution is 480p.
+%The numbers for MoCo are taken from~\cite{jabri2020space}.
+  }
+  \setlength{\tabcolsep}{6pt}
+\small
+\begin{tabular}{@{}lllccc@{}}
+\toprule
+Method & Data & Arch. & $ (\mathcal{J}$\&$\mathcal{F})_m$ & $\mathcal{J}_m$ & $\mathcal{F}_m$\\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Supervised}}\\
+ImageNet & INet & ViT-S/8 & 66.0 & 63.9 & 68.1\\
+STM~\cite{oh2019video} & I/D/Y & RN50 & 81.8 & 79.2 & 84.3 \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Self-supervised}}\\
+CT~\cite{wang2019learning} & VLOG & RN50 & 48.7 & 46.4 & 50.0\\
+%MoCo~\cite{he2020momentum} & INet & RN50 & 65.4 & 63.2 & 67.6 \\
+MAST~\cite{lai2020mast} & YT-VOS & RN18 & 65.5 & 63.3 & 67.6 \\
+STC~\cite{jabri2020space} & Kinetics & RN18 & 67.6 & 64.8 & 70.2\\
+\rowcolor{Light}
+\OURS & INet & ViT-S/16 & 61.8 & 60.2 & 63.4 \\
+\rowcolor{Light}
+\OURS & INet & ViT-B/16 & 62.3 & 60.7 & 63.9 \\
+\rowcolor{Light}
+\OURS & INet & ViT-S/8 & \bf 69.9 & \bf 66.6 & \bf 73.1\\
+\rowcolor{Light}
+\OURS & INet & ViT-B/8 & \bf 71.4 & \bf 67.9 & \bf 74.9\\
+\bottomrule
+\end{tabular}
+\label{tab:dense}
+\end{table}
+
+\begin{figure}[t]
+\centering
+  \setlength{\tabcolsep}{0.5pt}
+\begin{tabular}{cc ccc cc}
+	\includegraphics[width=.24\linewidth]{1935.png}&
+	\includegraphics[width=.24\linewidth]{bnw-1935.png}&&&&
+	\includegraphics[width=.24\linewidth]{2642.png}&
+	\includegraphics[width=.24\linewidth]{bnw-2642.png}
+\\
+	\includegraphics[width=.24\linewidth]{3017.png}&
+	\includegraphics[width=.24\linewidth]{bnw-3017.png}&&&&
+	\includegraphics[width=.24\linewidth]{3425.png}&
+	\includegraphics[width=.24\linewidth]{bnw-3425.png}
+\\
+	\includegraphics[width=.24\linewidth]{3272.png}&
+	\includegraphics[width=.24\linewidth]{bnw-3272.png}&&&&
+	\includegraphics[width=.24\linewidth]{2032.png}&
+	\includegraphics[width=.24\linewidth]{bnw-2032.png}
+\\
+	\includegraphics[width=.24\linewidth]{1791.png}&
+	\includegraphics[width=.24\linewidth]{bnw-1791.png}&&&&
+	\includegraphics[width=.24\linewidth]{385.png}&
+	\includegraphics[width=.24\linewidth]{bnw-0385.png}
+\end{tabular}
+\caption{\textbf{Attention maps from multiple heads.}
+We consider the heads from the last layer of a ViT-S/8 trained with \OURS and display the self-attention for \texttt{[CLS]} token query.
+Different heads, materialized by different colors, focus on different locations that represents different objects or parts
+	(more examples in Appendix).}
+\label{fig:multihead}
+\end{figure}
+
+\subsubsection{Discovering the semantic layout of scenes}
+
+As shown qualitatively in Figure~\ref{fig:att}, our self-attention maps contain information about the segmentation of an image. 
+In this study, we measure this property on a standard benchmark as well as by directly probing the quality of masks generated from these attention maps.
+
+\paragraph{Video instance segmentation.}
+%In Fig.~\ref{fig:att}, we expose segmentation information contained in the \texttt{[CLS]} token by using it as a query for the attention maps of the last layer.
+In Tab.~\ref{tab:dense}, we evaluate the output patch tokens on the DAVIS-2017 video instance segmentation benchmark~\cite{pont20172017}.
+We follow the experimental protocol in Jabri~\etal~\cite{jabri2020space} and segment scenes with a nearest-neighbor between consecutive frames; we thus do not train any model on top of the features, nor finetune any weights for the task.
+We observe in Tab.~\ref{tab:dense} that even though our training objective nor our architecture are designed for dense tasks, the performance is competitive on this benchmark.
+Since the network is not finetuned, the output of the model must have retained some spatial information.
+Finally, for this dense recognition task, the variants with small patches (``/8'') perform much better (+$9.1\%$ $(\mathcal{J}$\&$\mathcal{F})_m$ for ViT-B).
+
+\paragraph{Probing the self-attention map.}
+In Fig.~\ref{fig:multihead}, we show that different heads can attend to different semantic regions of an image,  even when they are occluded (the bushes on the third row) or small (the flag on the second row).
+Visualizations are obtained with $480$p images, resulting in sequences of 3601 tokens for ViT-S/8.
+In Fig.~\ref{fig:vssup}, we show that a supervised ViT does not attend well to objects in presence of clutter both qualitatively and quantitatively.
+We report the Jaccard similarity between the ground truth and segmentation masks obtained by thresholding the self-attention map to keep 60\% of the mass.
+Note that the self-attention maps are smooth and not optimized to produce a mask. 
+Nonetheless, we see a clear difference between the supervised or \OURS models with a significant gap in terms of Jaccard similarities.
+Note that self-supervised convnets also contain information about segmentations but it requires dedicated methods to extract it from their weights~\cite{gur2020visualization}.
+
+\begin{figure}[t]
+\centering
+%\begin{tabular}{r}
+%\includegraphics[width=.9\linewidth]{images/sup_vs_dino2.pdf}\\
+  \setlength{\tabcolsep}{0.8pt}
+\begin{tabular}{@{}lccccc}
+	\small \textit{Supervised} &&&&\\
+	\includegraphics[width=.195\linewidth]{fig4-sup-857mask-head1.png}&
+	\includegraphics[width=.195\linewidth]{fig4-sup-1425mask-head1.png}&
+	\includegraphics[width=.195\linewidth]{fig4-sup-1339mask-head1.png}&
+	\includegraphics[width=.195\linewidth]{fig4-sup-967mask-head2.png}&
+	\includegraphics[width=.195\linewidth]{2963_sup.png}\\
+	\small \textit{\OURS} &&&&\\
+	\includegraphics[width=.195\linewidth]{fig4-dino-857mask-head2.png}&
+	\includegraphics[width=.195\linewidth]{fig4-dino-1425mask-head2.png}&
+	\includegraphics[width=.195\linewidth]{fig4-dino-1339mask-head3.png}&
+	\includegraphics[width=.195\linewidth]{fig4-dino-967mask-head0.png}&
+	\includegraphics[width=.195\linewidth]{2963_dino_fig3.png}\\
+	%\includegraphics[width=.2\linewidth]{images/fig3-dino/4037_dino_fig3.png}&
+	%\includegraphics[width=.2\linewidth]{images/fig3-dino/163_dino_fig3.png}&
+	%\includegraphics[width=.2\linewidth]{images/fig3-dino/211_dino_fig3.png}&
+	%\includegraphics[width=.2\linewidth]{images/fig3-dino/3014_dino_fig3.png}&
+	%\includegraphics[width=.2\linewidth]{images/fig3-dino/2055_dino_fig3.png}&
+	%\includegraphics[width=.245\linewidth]{images/fig3-dino/211_dino_fig3.png}&
+	%\includegraphics[width=.245\linewidth]{images/fig3-dino/2963_dino_fig3.png}\\
+\end{tabular}
+  \setlength{\tabcolsep}{6pt}
+\small
+\begin{tabular}{lccc}
+\toprule
+  & Random & Supervised  & \OURS  \\
+\midrule
+ViT-S/16 &  22.0 & 27.3 & \colorbox{Light}{45.9}\\
+ViT-S/8  & 21.8 & 23.7 & \colorbox{Light}{44.7}\\
+\bottomrule
+\end{tabular}
+\caption{\textbf{Segmentations from supervised versus \OURS.}
+We visualize masks obtained by thresholding the self-attention maps to keep 60\% of the mass.
+On top, we show the resulting masks for a ViT-S/8 trained with supervision and \OURS. 
+We show the best head for both models. 
+The table at the bottom compares the Jaccard similarity between the ground truth and these masks on the validation images of PASCAL VOC12 dataset.
+}
+\label{fig:vssup}
+\end{figure}
+
+
+\subsubsection{Transfer learning on downstream tasks}
+In Tab.~\ref{tab:transfers}, we evaluate the quality of the features pretrained with \OURS on different downstream tasks.
+We compare with features from the same architectures trained with supervision on ImageNet.
+We follow the protocol used in Touvron~\etal~\cite{touvron2020training} and finetune the features on each downstream task.
+We observe that for ViT architectures, self-supervised pretraining transfers better than features trained with supervision, which is consistent with observations made on convolutional networks~\cite{caron2020unsupervised,he2020momentum,sariyildiz2020concept}.
+Finally, self-supervised pretraining greatly improves results on ImageNet (+1-2\%). 
+
+\begin{table}[t]
+  \centering
+	\caption{\textbf{Transfer learning by finetuning pretrained models on different datasets.}
+We report top-1 accuracy.
+Self-supervised pretraining with \OURS transfers better than supervised pretraining.}
+\small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}l ccccccc@{}}
+    \toprule
+	   & Cifar$_{\text{10}}$ & Cifar$_{\text{100}}$ & INat$_{\text{18}}$ & INat$_{\text{19}}$ & Flwrs & Cars & INet \\
+    \midrule
+\textit{\small ViT-S/16}\\
+	  Sup.~\cite{touvron2020training}           & \bf 99.0 & 89.5 & 70.7     & 76.6     & 98.2     & 92.1 & 79.9 \\
+\rowcolor{Light}
+	  \OURS 			            & \bf 99.0 & \bf 90.5 & \bf 72.0 & \bf 78.2 & \bf 98.5 & \bf 93.0 & \bf 81.5 \\
+    \midrule
+\textit{\small ViT-B/16}\\
+%	  Supervised~\cite{dosovitskiy2020image}        & ViT-B/16  & 98.1 & 87.1 & - & - & 89.5 & - & 77.9 \\
+	  Sup.~\cite{touvron2020training}           & 99.0 & 90.8 & \bf 73.2 & 77.7 & 98.4 & 92.1 & 81.8 \\
+%	  Supervised+KD~\cite{touvron2020training}      & ViT-B/16  & 99.1 & 90.8 & 73.7 & 78.4 & 98.8 &  92.9 & \bf 83.4 \\
+\rowcolor{Light}
+	  \OURS                                     & \bf 99.1 & \bf 91.7 &  72.6 & \bf 78.6 & \bf 98.8 & \bf 93.0 & \bf 82.8 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:transfers}
+\end{table}
+

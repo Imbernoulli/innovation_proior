@@ -1,0 +1,141 @@
+\section{Introduction}
+\label{sec:intro}
+
+Techniques for eliminating unnecessary weights from neural networks
+(\emph{pruning})~\citep{brain-damage, brain-surgeon, han-pruning, pruning-filters}
+can reduce parameter-counts by more than 90\% without harming accuracy. Doing so
+decreases the size~\citep{han-pruning, distilling} or energy consumption~\citep{prune-energy, pruning-resource-efficient, thinet}
+of the trained networks, making inference more efficient.
+However, if a network can be reduced in size, why do we not train this smaller architecture instead in the interest of making training more efficient as well?
+Contemporary experience is that the architectures uncovered by pruning are harder to train from the start, reaching lower
+accuracy than the original networks.%
+\footnote{``Training a pruned model from scratch performs worse than retraining a pruned model, which may
+indicate the difficulty of training a network with a small capacity.'' \citep{pruning-filters} ``During retraining, it is better to retain
+the weights from the initial training phase for the connections
+that survived pruning than it is to re-initialize the pruned layers...gradient descent is able to find a good solution when the network is initially trained,
+but not after re-initializing some layers and retraining them.''~\citep{han-pruning}}
+
+\begin{figure}
+\centering
+\includegraphics[width=.19\textwidth]{graphs/mnist/lenet/random/legend}\includegraphics[width=.6\textwidth]{graphs/mnist/lenet/random2/legend}%
+\vspace{-1em}
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/random/iteration}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/random2/iteration}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/random/accuracy}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/random2/accuracy}
+
+\caption{The iteration at which early-stopping would occur (left)
+and the test accuracy at that iteration (right) of the Lenet architecture for MNIST and the Conv-2, Conv-4, and Conv-6
+architectures for CIFAR10 (see Figure \ref{fig:convnets}) when trained starting at various sizes. Dashed lines are randomly sampled sparse networks
+(average of ten trials).
+Solid lines are winning tickets (average of five trials).}
+\label{fig:random}
+\end{figure}
+
+Consider an example. In Figure \ref{fig:random}, we randomly sample and train subnetworks
+from a fully-connected network for MNIST and convolutional networks for CIFAR10. Random sampling models the effect
+of the unstructured pruning used by \citet{brain-damage} and \citet{han-pruning}. Across various levels of sparsity,
+dashed lines trace the iteration of minimum validation loss%
+\footnote{As a proxy for the speed
+at which a network learns, we use
+the iteration at which an early-stopping criterion would end training. The
+particular early-stopping
+criterion we employ
+throughout this paper
+is the iteration of minimum validation loss during training. See Appendix \ref{sec:justifying-early-stopping} for more details on this choice.}
+and the test accuracy at that iteration.
+The sparser the network, the slower the learning and the lower the eventual test accuracy.
+
+In this paper, we show that there consistently exist smaller subnetworks
+that train from the start and learn at least as fast as their larger counterparts while reaching similar test accuracy.
+Solid lines in Figure \ref{fig:random} show networks that we find.
+Based on these results, we state \emph{the lottery ticket hypothesis}.
+
+\newtheorem*{lth}{The Lottery Ticket Hypothesis}
+
+\begin{lth}
+A randomly-initialized, dense neural network contains
+a subnetwork that is initialized such that---when trained in isolation---it can match the test accuracy of the original network
+after training for at most the same number of iterations.
+\end{lth}
+
+More formally, consider a dense feed-forward neural network $f(x; \theta)$ with initial parameters $\theta = \theta_0 \sim \mathcal{D}_\theta$.
+When optimizing with stochastic gradient descent (SGD) on a training set, $f$ reaches minimum validation
+loss $l$ at iteration $j$ with test accuracy $a$ . In addition, consider training $f(x; m \odot \theta)$ with a mask $m \in \{0, 1\}^{|\theta|}$ on its parameters such that its
+initialization is $m \odot \theta_0$. When optimizing with SGD on the same training set (with $m$ fixed),
+$f$ reaches minimum validation loss $l'$ at iteration $j'$ with test
+accuracy $a'$. The lottery ticket hypothesis predicts that $\exists~m$ for which $j' \leq j$ (\emph{commensurate training time}),
+$a' \geq a$
+(\emph{commensurate accuracy}), and
+$\lVert m \rVert_0 \ll |\theta |$ (\emph{fewer parameters}).
+
+We find that a standard pruning technique automatically uncovers such trainable subnetworks
+from fully-connected and convolutional feed-forward networks.
+We designate these trainable subnetworks, $f(x; m \odot \theta_0)$, \emph{winning tickets}, since those that we find have won the initialization lottery
+with a combination of weights and connections capable of learning.
+When their parameters
+are randomly reinitialized ($f(x; m \odot \theta'_0)$ where $\theta'_0 \sim \mathcal{D}_\theta$), our winning tickets no longer match the performance
+of the original network, offering evidence that these smaller networks do not train effectively unless they are appropriately initialized.
+
+\textbf{Identifying winning tickets.} We
+identify a winning ticket by training a network and pruning its smallest-magnitude weights.
+The remaining, unpruned connections constitute
+the architecture of the winning ticket. Unique to our work, each unpruned connection's value is then reset to
+its initialization from original network \emph{before} it was trained.
+This forms our central experiment:%
+\vspace{-.5em}
+\begin{enumerate}
+\item Randomly initialize a neural network $f(x; \theta_0)$ (where $\theta_0 \sim \mathcal{D}_\theta$).
+\item Train the network for $j$ iterations, arriving at parameters $\theta_j$.%
+\item Prune $p\%$ of the parameters in $\theta_j$, creating a mask $m$.
+\item Reset the remaining parameters to their values in $\theta_0$, creating the winning ticket $f(x; m \odot \theta_0)$.
+\end{enumerate}
+\vspace{-.5em}
+%If dense networks contain winning tickets
+%and pruning identifies them, then the network $f(x; m \odot \theta_0)$ trained for $j$ iterations will
+%reach accuracy similar to $f(x; \theta_j)$ at least as fast.
+%If the original initialization $\theta_0$ is vital, then $m$ will not be able to do the same when randomly reinitialized.
+
+As described, this pruning approach is \emph{one-shot}: the network is trained
+once, $p\%$ of weights are pruned, and the surviving weights are reset. However, in this paper, we focus on \emph{iterative pruning}, which repeatedly
+trains, prunes, and resets the network over $n$ rounds; each round prunes $p^{\frac{1}{n}}\%$ of the weights that survive the previous round.
+Our results show that iterative pruning finds winning tickets that match the accuracy of the original network at smaller sizes than does one-shot pruning.
+
+\textbf{Results.} We identify winning tickets in a fully-connected
+architecture for MNIST and convolutional architectures for CIFAR10 across several optimization strategies (SGD, momentum, and Adam) with
+techniques like dropout, weight decay, batchnorm, and residual connections. We use an unstructured pruning technique, so these winning tickets are sparse.
+In deeper networks, our pruning-based strategy for finding winning tickets is sensitive to
+the learning rate: it requires warmup to find winning tickets at higher learning rates.
+The winning tickets we find are 10-20\% (or less) of the size of the original network (\emph{smaller size}). 
+Down to that size,
+they meet or exceed the original network's test accuracy (\emph{commensurate accuracy}) in at most the same number of iterations (\emph{commensurate training time}).
+%When training accuracy reaches 100\%, winning tickets still maintain higher test accuracy, meaning they also generalize better.
+When randomly reinitialized, winning tickets
+perform far worse, meaning structure alone cannot explain a winning ticket's success.
+
+\textbf{The Lottery Ticket Conjecture.} Returning to our motivating question, we
+extend our hypothesis into an untested conjecture that
+SGD seeks out and trains a subset of well-initialized weights.
+Dense, randomly-initialized networks are easier to train than the sparse networks that result from pruning because
+there are more possible subnetworks from which training might recover a winning ticket.
+
+\textbf{Contributions.}
+\vspace{-.5em}
+\begin{itemize}
+\item We demonstrate that pruning uncovers trainable subnetworks that reach test accuracy comparable to the original
+networks from which they derived in a comparable number of iterations.
+\item We show that pruning finds winning tickets that learn faster than the original network while reaching higher test accuracy and generalizing better.
+\item We propose the \emph{lottery ticket hypothesis} as a new perspective on the composition of neural networks to explain these findings.
+\end{itemize}
+\vspace{-.5em}
+\textbf{Implications.} In this paper, we empirically study the lottery ticket hypothesis. Now that we have demonstrated the existence of winning tickets, we hope to exploit this knowledge to:
+
+\textit{Improve training performance.}  Since winning tickets can be trained from the start in isolation, a hope is that we can design training schemes that search for winning tickets and prune as early as possible.
+
+\textit{Design better networks.} Winning tickets reveal combinations of sparse architectures and initializations that are particularly adept at learning. We can take
+inspiration from winning tickets to design new architectures and initialization schemes with the same properties that are conducive to learning. We may even be able to transfer
+winning tickets discovered for one task to many others.
+
+\textit{Improve our theoretical understanding of neural networks.} We can study why randomly-initialized feed-forward
+networks seem to contain winning tickets and potential implications for theoretical study of
+optimization~\citep{provably} and generalization~\citep{comp, arora}.

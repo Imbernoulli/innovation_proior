@@ -1,0 +1,261 @@
+\clearpage
+
+\section{Appendices}
+\label{sec:appendix}
+
+
+\subsection{Pre-training details}
+\label{app:mlm}
+
+We adopt the same fixed ``Base'' and ``Large'' model and learning configurations as for the original BERT \citep{devlin2018bert}. We train on the much larger C4 dataset \citep{raffel2019exploring} and use a $32000$ SentencePiece  vocabulary model \citep{kudo2018sentencepiece} trained on a $100$ million sentence subset of C4. Our TPU experiments use a batch size of $256$ as in \citet{devlin2018bert} and are each run on $4\times4$ TPU v3 chips. Our GPU experiments use a smaller batch size of $64$ and are run on $8$ V100 chips. Because the training configuration is lifted from \citet{devlin2018bert}, it may be slightly biased towards the BERT attention model.
+
+\begin{table}
+    \caption{Loss and accuracy pre-training metrics on TPUs. The GPU metrics are very similar. ``B'' denotes Base, ``L'' is Large and ``H'' is Hybrid.}
+    \label{tab:pretraining_metrics}
+    \setlength{\tabcolsep}{4.5pt}
+    \centering
+    \begin{tabular}{l| c c c | c c}
+        \hline
+         & \multicolumn{3}{c|}{Loss} & \multicolumn{2}{c}{Accuracy} \\ 
+         Model & Total & MLM & NSP & MLM & NSP \\ \hline \hline
+         BERT-B & \textbf{1.76} & \textbf{1.48} & \textbf{0.28} & \textbf{0.68} & \textbf{0.86} \\ 
+         Linear-B & 2.12 & 1.78 & 0.35 & 0.62 & 0.83 \\ 
+         FNet-B & 2.45 & 2.06 & 0.40 & 0.58 & 0.80 \\
+         Random-B & 5.02 & 4.48 & 0.55 & 0.26 & 0.70 \\ 
+         FF-only-B & 7.54 & 6.85 & 0.69 & 0.13 & 0.50 \\
+         FNet-H-B & 2.13 & 1.79 & 0.34 & 0.63 & 0.84 \\ \hline
+         BERT-L & \textbf{1.49} & \textbf{1.23} & \textbf{0.25} & \textbf{0.72} & \textbf{0.88} \\ 
+         Linear-L & 1.91 & 1.60 & 0.31 & 0.65 & 0.85 \\ 
+         FNet-L & 2.11 & 1.75 & 0.36 & 0.63 & 0.82 \\
+         FNet-H-L & 1.89 & 1.58 & 0.31 & 0.67 & 0.85 \\\hline
+    \end{tabular}
+\end{table}
+
+
+Table \ref{tab:pretraining_metrics} summarizes the pre-training metrics for the different models; the pre-training speeds are shown in Table \ref{tab:pretrain_speed} in the main text. Although they have weaker accuracy metrics, the Linear model and FNet train nearly $80\%$ faster than BERT on GPUs, and $70\%$ faster on TPUs (see Table \ref{tab:pretrain_speed}).  We also find that the three models with no learnable parameters in their mixing layer, namely FNet, the  Random model and the FF-only model, are the most stable during training.
+
+BERT's higher accuracy on the MLM pre-training task is not simply a result of having more parameters than the other models. Indeed, Table \ref{tab:pretraining_metrics} shows that BERT-Base is actually more accurate than FNet-Large, which contains more than twice as many parameters. BERT is presumably more expressive because the mixing (attention) weights are both task specific and token dependent, determined by token-token (query-key) dot products; see also \citet{tay2020synthesizer}. FNet's mixing weights, on the other hand, are neither task specific nor token dependent.
+
+\begin{table}
+    \caption{Pre-training model sizes (ignoring output projection layers). As in \citet{turc2019well}, for all models, we fix the feed-forward size to $4d_{h}$ and the number of self-attention heads to $d_{h}/64$. Smaller architectures have a similar number of parameters across all models because the majority of parameters are in the embedding layers. Each FNet-Hybrid (``FNet-H'') model contains 2 self-attention sublayers. We exclude FNet-Hybrid models with only 2 total layers.}
+    \label{tab:model_sizes}
+    \centering
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{c c | c c c c}
+        \hline
+        \multicolumn{2}{c|}{Dimensions} & \multicolumn{4}{c}{Parameters (millions)}  \\ 
+        $d_{h}$ & Layers & BERT & Linear & FNet & FNet-H  \\
+          \hline \hline
+        768  & 12 & 111 & 93 & 83 & 88 \\
+        512  & 12 & 55 & 49 & 42 & 44 \\
+        512  & 8 & 42 & 38 & 34 & 36 \\
+        256 & 8 & 15 & 15 & 13 & 13 \\
+        512 & 4 & 30 & 28 & 26 & 28 \\
+        256  & 4 & 12 & 12 & 11 & 11\\
+        256 & 2 & 10 & 10 & 10 & - \\
+        128 & 2 & 5 & 5 & 4 & - \\ \hline
+    \end{tabular}
+\end{table}
+
+Finally, Table \ref{tab:model_sizes} shows the model sizes that were used to construct Figure \ref{fig:gpu_speed_accuracy} (main text) and Figure \ref{fig:tpu_speed_accuracy} (Appendix \ref{app:tpu}).
+
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\textwidth]{figures/tpu_speed_accuracy.png}
+    \caption{Speed-accuracy trade-offs for TPU pre-training. The dashed line shows the Pareto efficiency frontier.}
+    \label{fig:tpu_speed_accuracy}
+\end{figure*}
+
+\begin{table*}
+    \caption{TPU training speeds (in steps per second; larger is better), inference speeds (in milliseconds per batch; smaller is better) and peak memory usage during training (in GB; smaller is better) on the Long-Range Arena Text classification task. Speed up multipliers relative to the Transformer are given in parentheses.}
+    \label{tab:lra_training_speed_tpu}
+    \centering
+    \begin{tabular}{l | c c c c c c}
+        \hline
+         Seq. length & 512 & 1024 & 2048 & 4096 & 8192 & 16386  \\ \hline \hline
+         & \multicolumn{6}{c}{Training Speed (steps/s)} \\ \hline
+         Transformer & 8.0 & 5.6 & 1.7 & OOM & OOM & OOM \\
+         Linear & 9.4 (1.2x) & \textbf{9.1 (1.6x)} & \textbf{7.6 (4.5x)} & 3.9 & 1.4 & OOM \\
+         FNet (mat) & \textbf{9.5 (1.2x)} & \textbf{9.1 (1.6x)} & 6.1 (3.6x) & 3.0 & 0.8 & 0.2 \\
+         FNet (FFT) & 8.6 (1.1x) & 6.0 (1.1x) & 3.2 (1.9x) & 1.6  & 0.8 & 0.3 \\
+         Performer & 9.2 (1.2x) & 8.4 (1.5x) & 6.9 (4.1x) & \textbf{4.2} & \textbf{2.2} & \textbf{1.1} \\ \hline
+         & \multicolumn{6}{c}{Inference Speed (ms/batch)} \\ \hline
+         Transformer & 7.0 & 13.2 & 39.4 & 129.9 & 490.2 & OOM \\
+         Linear & \textbf{5.6 (1.2x)} & \textbf{6.5 (2.0x)} & \textbf{9.6 (4.1x)} & 20.4 (6.4x) & 54.6 (9.0x) & OOM \\
+         FNet (mat) & 6.0 (1.2x) & 7.7 (1.7x) & 15.4 (2.6x) & 40.7 (3.2x) & 137.0 (3.6x) & 454.5 \\
+         FNet (FFT) & 10.8 (0.7x) & 16.8 (0.8x) & 29.9 (1.3x) & 58.8 (2.2x) & 113.6 (4.3x) & 263.2 \\
+         Performer & 6.1 (1.2x) & 7.2 (1.8x) & 10.1 (3.9x) & \textbf{17.5 (7.4x)} & \textbf{31.8 (15.4x)} & \textbf{61.0} \\ \hline
+         & \multicolumn{6}{c}{Peak Memory Usage (GB)} \\ \hline
+         Transformer & 1.1 & 2.1 & 5.8 & 9.1 & OOM & OOM \\
+         Linear & 0.9 & 1.1 & 1.9 & 4.9 & 14.8 & OOM \\
+         FNet (mat) & \textbf{0.8} & \textbf{0.9} & \textbf{1.3} & 2.2 & 4.8 & 11.9 \\
+         FNet (FFT) & \textbf{0.8} & \textbf{0.9} & \textbf{1.3} & \textbf{2.0} & \textbf{3.5} & \textbf{6.3} \\
+         Performer & 1.0 & 1.3 & 1.8 & 3.0 & 5.1 & 9.6 \\ \hline
+    \end{tabular}
+\end{table*}
+
+
+\subsection{TPU results}
+\label{app:tpu}
+
+In this section, we report FNet efficiency results for TPUs; the main text focuses on GPUs. Figure \ref{fig:tpu_speed_accuracy} shows the speed vs MLM pre-training accuracy curve when training on TPU ($4\times4$ v3 chips). As on GPUs, FNet and the Linear model define the Pareto efficiency frontier for smaller, faster models, while BERT defines the frontier for larger, slower models.
+
+Table \ref{tab:lra_training_speed_tpu} shows Long Range Arena Text classification efficiency results on TPUs ($4\times4$ v3 chips). The Linear model and FNet train faster than all the efficient Transformers for sequence lengths $\leq2048$ and $512$, respectively. For longer sequences, FNet is slower than the Performer and, based on results in \citet{tay2020long}, likely also slower than the other efficient Transformers that linearize attention, namely Local Attention \citep{parmar2018image}, Linformer \citep{wang2020linformer} and Linear Transformer \citep{katharopoulos2020transformers}. However, it is worth noting that Table \ref{tab:lra_accuracy} suggests that FNet is more accurate than all of the aforementioned models. Moreover, we expect that the GPU speed gains will transfer to TPUs as the TPU FFT implementation improves.
+
+
+\begin{table*}
+    \caption{Training (forward and backward passes; left) and inference (forward pass; left) speeds for \emph{only} the mixing sublayers -- all other model sublayers are removed. Both speeds are measured in milliseconds per batch (smaller is better), with batch sizes of 64 (GPU) and 256 (TPU). All batch examples have the sequence length fixed at 512. FNet uses the FFT for GPUs and matrix multiplications for TPUs. Speed up multipliers relative to self-attention are given in parentheses.}
+    \label{tab:mixing_speeds}
+    \centering
+    \begin{tabular}{l | c c | c c}
+        \hline
+         & \multicolumn{2}{c|}{Training speed (ms/batch)} & \multicolumn{2}{c}{Inference speed (ms/batch)} \\ 
+         & GPU & TPU & GPU & TPU\\ \hline \hline
+         Self-attention (Base) & 136 & 76 & 43 & 16 \\
+         Linear (Base) & 36 (3.7x) & 12 (6.1x) & 15 (2.8x) & \textbf{4 (3.9x)} \\
+         FNet (Base) & \textbf{11 (12.2x)} & \textbf{8 (9.9x)} & \textbf{11 (4.0x)} & 8 (2.1x) \\ \hline
+         Self-attention (Large) & 404 & 212 & 128 & 43 \\
+         Linear (Large) & 103 (3.9x) & 35 (6.1x) & 36 (3.6x) & \textbf{10 (4.5x)} \\
+         FNet (Large) & \textbf{18 (22.2x)} & \textbf{22 (9.7x)} & \textbf{18 (7.3x)} & 22 (2.0x)\\ \hline
+    \end{tabular}
+\end{table*}
+
+
+\subsection{Additional configurations that we experimented with}
+\label{app:things_we_tried}
+
+We experimented with a number of additional ideas to improve FNet.
+
+\textbf{Fourier Transform algorithm.} On GPUs, the FFT was the fastest algorithm for computing the DFT across all sequence lengths that we experimented with ($512-8192$). On TPUs, it is faster to compute the DFT directly using matrix multiplications for relatively shorter sequence lengths (up to lengths of $4096$; see Table \ref{tab:lra_training_speed_tpu}). This efficiency boundary between matrix multiplication and FFT on TPUs will change depending on the XLA precision for the matrix multiplications. We found that, although (slower) HIGHEST XLA precision was required to very accurately reproduce FFT in computing the DFT, (faster) DEFAULT XLA precision was sufficient to facilitate accurate model convergence.
+
+\textbf{Modifying the Fourier Transform computation.} To keep the entire FNet architecture simple, the Fourier sublayer accepts real input and returns real output. The standard Fourier sublayer in FNet simply extracts the real part after computing the 2D DFT. We found that FNet was less accurate and less stable during training if only the real part of the DFT was used throughout the computation. Simply extracting the absolute value (instead of the real part) also led to a significantly less accurate model. Because the feed-forward sublayer mixes the hidden dimension, we experimented with  applying a 1D DFT along the token dimension only in the Fourier sublayer (i.e. no hidden dimension mixing in the Fourier sublayer). This yielded some training speed gains but hurt accuracy. The 1D (token mixing only) DFT model still significantly outperformed the (no token mixing) FF-only model, indicating that token mixing is most important mechanism in the Fourier sublayer.
+
+\textbf{Other transforms.} We experimented with three natural alternatives to the Fourier Transform:
+\begin{itemize}
+    \item Discrete Cosine Transform (DCT). The DCT is closely related to the DFT but transforms real input to real output. However, we found that the DCT model underperformed FNet ($\sim4\%$ accuracy degradation).
+    \item Hadamard Transform\footnote{Whereas the DFT matrix in Equation \eqref{eq:vandermonde} contains $N$ roots of unity, the Hadamard Transform simply contains two roots of unity: $\{\pm1\}$; see also \citet{kunz1979equivalence}.}. Although the Hadamard Transform was slightly faster than the DFT, it yielded less accurate results ($\sim2\%$ accuracy degradation).
+    \item Hartley Transform. The Hartley Transform, which transforms real input to real output, can be described in terms of the Fourier Transform: $\mathcal{H} = \Re\left\{\mathcal{F}\right\} - \Im\left\{\mathcal{F}\right\}$. We found that the Hartley Transform matched the Fourier Transform on GLUE ($76.7$ vs. $76.7$). 
+\end{itemize}
+
+\textbf{Introducing learnable parameters to the Fourier sublayer.} Our attempts to introduce learnable parameters into the Fourier sublayer were either detrimental or inconsequential, and generally slightly slowed the model. For the (sequence length, hidden dimension) input in each Fourier sublayer, we tried two approaches to introduce learnable parameters: (1) element wise multiplication with a (sequence length, hidden dimension) matrix, and (2) regular matrix multiplication with (sequence length, sequence length) and (hidden dimension, hidden dimension) matrices. We experimented with these approaches in various configurations: preceding and/or following the DFT, and also in combination with inverse DFT (e.g. transform to frequency domain, apply element wise multiplication, transform back to time domain), but most setups degraded accuracy and reduced training stability, while a few did not change accuracy but lead to small speed decreases. In a slightly different set of experiments and in an effort to provide more flexibility to the model, we added (complex) learnable weights to the 2D DFT matrix. This model was stable but did not yield any accuracy gains, suggesting that the DFT is locally optimal in some sense.
+
+\textbf{FNet block modifications.} The standard FNet encoder block structure follows that of the Transformer: a Fourier sublayer followed by a feed-forward sublayer, with residual connections and layer norms after each sublayer; see Figure \ref{fig:architecture}. We tried several modifications to this structure, based on the intuition of moving in and out of the frequency domain between multiplications. For example, the sandwiching of Fourier, feed-forward, Fourier (or inverse Fourier) sublayers and only applying the residual connections and layer norms to the final result, yields a structure that more closely mimics convolutions. However, these setups degraded accuracy and lead to a more unstable model during training. Adding extra feed-forward sublayers to this layering, or swapping out the feed-forward sublayers for simpler dense sublayers, did not help either.
+
+% \textbf{The Fourier Transform is a mixer} The Fourier Transform is typically applied to extract constituent frequencies. We found that working in frequency domain exclusively degrades accuracy (e.g. applying the Fourier Transform at beginning and end of model only) yield a very poor model. It appears that the Fourier Transform best used as a ``mixer''.
+
+
+\subsection{Mixing layer speeds}
+\label{app:mixing_speeds}
+
+Table \ref{tab:mixing_speeds} summarizes the inference and training speeds for the different mixing layers. For each of the Base and Large configurations, we have removed all other sublayers and transformations and then calculated the speed per batch of input examples. The FNet training speeds are particularly fast because no parameters are updated. The Linear model has faster inference than FNet on TPUs because it is performing real matrix multiplications, whereas FNet performs complex matrix multiplications; see Equation \eqref{eq:vandermonde}.
+
+Although the Fourier mixing sublayer itself performs forward and backward passes significantly faster than the self-attention sublayer, FNet is overall 70-80\% faster than BERT because the overall training and inference speeds are bottle-necked by the feed-forward sublayers that all models share.
+
+\subsection{FNet-Hybrid ablations}
+\label{app:hybrid_ablations}
+
+\begin{table}
+    \caption{GPU pre-training accuracy and speed ablations for FNet-Hybrid models in the Base configuration. Batch size is 64. Metrics are recorded after 100k steps, which we have generally found to be a good indicator of final relative performance. See text for a description of the layouts.}
+    \label{tab:hybrid_ablations}
+    \setlength{\tabcolsep}{4pt}
+    \centering
+    \begin{tabular}{c c | c c | c}
+        \hline
+        \multicolumn{2}{c|}{Attention} & \multicolumn{2}{c|}{Accuracy} & Speed \\
+        Layers & Layout & MLM & NSP & (ms/batch) \\ \hline \hline
+        2 & BOTTOM & 0.497 & 0.733 & \textbf{193} \\
+        2 & MIDDLE & 0.499 & 0.686 & 196 \\
+        2 & MIXED & 0.509 &	0.727 &	194 \\
+        2 & TOP & \textbf{0.526} &	\textbf{0.738} &	\textbf{193} \\ \hline
+        0 & TOP & 0.486 &	0.679 &	\textbf{173} \\
+        2 & TOP & 0.526 &	0.738 &	193 \\
+        4 & TOP & 0.539 &	0.740 &	214 \\
+        6 & TOP & \textbf{0.546} & \textbf{0.746}	& 235 \\ \hline
+    \end{tabular}
+\end{table}
+
+Table \ref{tab:hybrid_ablations} shows the effects of varying the number of attention sublayers and the attention layout in the FNet-Hybrid model. For the ``BOTTOM'' layout, all attention sublayers are placed in the first few encoder layers, where they replace the Fourier mixing sublayers. For the ``TOP'' layout, attention sublayers are placed in the final encoder layers; for the ``MIDDLE'' layout they are placed in the middle layers; and for the ``MIXED'' layout, they are distributed through the model.
+
+From the Table \ref{tab:hybrid_ablations}, we can make two observations: (1) more attention improves accuracy at the cost of speed, and ultimately with diminishing returns; (2) placing attention layers at the top of the model gives the best accuracy results. Given our focus on speed, we chose to focus FNet-Hybrid experiments in the main text of the paper on the 2 attention layer, ``TOP'' configuration variant.
+
+
+\subsection{A note on Long-Range Arena hyperparameter settings}
+\label{app:lra}
+
+Concerning the Long-Range Arena setup, several hyperparameters are not described in \citet{tay2020long} and there a few mismatches between the configurations described in the paper and the code repository. Where possible, we prioritize configurations described in the paper with only two exceptions. Firstly, for the CIFAR10 (Image) task, we perform a sweep of the number of layers in the range $[1, 2, 3, 4]$. We found that 1 layer worked best for all models; \citet{tay2020long} suggest 3 layers yielded the best results. Secondly, for the Pathfinder task, we found that a base learning rate of $0.001$ (as given in the code repository) yielded better results for all models than the $0.01$ value indicated in \citet{tay2020long}.  We also perform a very small sweep over the embedding dimension and batch size, which are not listed in \citet{tay2020long}.
+
+We also remark that the accuracy comparisons between our runs and those from \citet{tay2020long} should be performed with the caveat that we found that results for certain tasks -- Text and Retrieval in particular -- can vary quite a bit between runs, especially for the Transformer; we report the best results.
+
+
+\subsection{FNet code}
+\label{app:code}
+
+\begin{lstlisting}[language=python, caption=FNet code written in JAX/Flax. Embedding and output projection layers are omitted for simplicity., captionpos=b, float=*t]
+import flax.linen as nn
+import jax
+import jax.numpy as jnp
+
+
+class FourierTransformLayer(nn.Module):
+  @nn.compact
+  def __call__(self, x):
+    return jax.vmap(jnp.fft.fftn)(x).real
+    
+    
+class FeedForwardLayer(nn.Module):
+  d_ff: int
+  dropout_rate: float
+  
+  @nn.compact
+  def __call__(self, x, deterministic):
+    x = nn.Dense(self.d_ff, 
+      kernel_init=nn.initializers.normal(2e-2), 
+      bias_init=nn.initializers.normal(2e-2), 
+      name="intermediate")(x)
+    x = nn.gelu(x)
+    x = nn.Dense(x.shape[-1], 
+      kernel_init=nn.initializers.normal(2e-2), 
+      name="output")(x)
+    return nn.Dropout(self.dropout_rate)(x, deterministic)
+
+
+class FNetEncoderBlock(nn.Module):
+  fourier_layer: FourierTransformLayer
+  ff_layer: FeedForwardLayer
+  
+  @nn.compact
+  def __call__(self, x, deterministic):
+    mixing_output = self.fourier_layer(x)
+    x = nn.LayerNorm(1e-12, name="mixing_layer_norm")(x + mixing_output)
+    feed_forward_output = self.ff_layer(x, deterministic)
+    return nn.LayerNorm(
+        1e-12, name="output_layer_norm")(x + feed_forward_output)
+        
+        
+class FNetEncoder(nn.Module):
+  num_layers: int
+  d_model: int
+  d_ff: int
+  dropout_rate: float
+  
+  def setup(self):
+    encoder_blocks = []
+    for layer in range(self.num_layers):
+      encoder_blocks.append(FNetEncoderBlock(
+        FourierTransformerLayer(), 
+        FeedForwardLayer(self.d_ff, self.dropout_rate), 
+        name=f"encoder_{layer}"))
+    self.encoder_blocks = encoder_blocks
+    self.pooler = nn.Dense(
+        self.d_model, 
+        kernel_init=nn.initializers.normal(2e-2), 
+        name="pooler")
+
+  def __call__(self, x, deterministic):
+    for encoder_block in self.encoder_blocks:
+      x = encoder_block(x, deterministic)
+    pooled_output = self.pooler(x[:, 0])
+    pooled_output = jnp.tanh(pooled_output)
+    return x, pooled_output
+\end{lstlisting}

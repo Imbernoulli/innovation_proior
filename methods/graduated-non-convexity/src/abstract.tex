@@ -1,0 +1,87 @@
+%!TEX root = main.tex
+\vspace{-3.7mm}
+\begin{abstract}
+Semidefinite Programming (SDP) and Sums-of-Squ- ares (SOS) relaxations have 
+led to
+%allowed the design of 
+\emph{certifiably} optimal \emph{non-minimal} solvers for several robotics and computer vision problems. 
+However, most non-minimal solvers rely on least squares formulations, and, as a result, are 
+brittle against
+%not robust to
+outliers.
+%, 
+%producing poor results in practice.
+% , and limiting their applicability to the outlier-free case.
+%
+While a standard approach to regain robustness against outliers 
+is to use robust cost functions, the latter 
+% To overcome this challenge, 
+% %On the other hand, 
+% the robust estimation literature
+% has developed
+% %provides 
+% a grounded theory to gain robustness against outliers,
+% reformulating the least squares problems
+% %through
+% with
+%  the use of robust cost functions. 
+% But robust cost functions 
+typically introduce 
+%extra
+other non-convexities, 
+preventing 
+the use of 
+existing 
+%the
+non-minimal solvers.
+ % 
+In this paper, we 
+%bridge the gap between
+enable the simultaneous use of 
+non-minimal solvers and robust estimation
+%
+by providing a general-purpose approach for robust \emph{global} estimation, which can be applied to any {problem where a non-minimal solver is available for the outlier-free case.}
+% is available.
+%Towards this goal, 
+To this end,
+we leverage the Black-Rangarajan duality between robust estimation and outlier processes (which has been traditionally applied to early vision problems), and show that
+%that 
+%the 
+ % joint use of non-minimal solvers and \emph{graduated non-convexity} (\GNC) 
+%use of 
+\emph{graduated non-convexity} (\GNC) 
+can be used 
+in conjunction with non-minimal solvers 
+%allows 
+%computing 
+to compute robust solutions, without requiring 
+an initial guess. % for the variables. 
+ %
+\revise{Although \GNC's global optimality cannot be guaranteed, }we demonstrate\revise{~the empirical robustness of} the resulting \emph{robust non-minimal solvers} in applications, including 
+point cloud and mesh registration, pose graph optimization, and image-based object pose estimation (also called \emph{shape alignment}).
+ % Replacing the least squares cost with robust cost functions yields non-convex optimizations whose performance are highly sensitive to initial guesses. 
+Our solvers are robust to {70-80\%} of outliers, 
+%across applications, 
+outperform \ransac, 
+are more accurate than specialized \emph{local} solvers, and 
+faster than specialized \emph{global} solvers.
+% and is more broadly applicable 
+% than existing general-purpose methods (\eg{ }\ransac), and compares favorably against specialized methods, while
+% % still, it is
+% being 
+% significantly
+% faster.
+% and general-purpose. 
+\finalize{We also propose the \emph{first} certifiably optimal non-minimal solver for shape alignment using SOS relaxation.}
+% We also extend the literature on non-minimal solvers by proposing a certifiably optimal SOS solver for shape alignment.
+% image-based object pose estimation (also called \emph{shape alignment}).
+% faster than specialized methods
+% more robust then RANSAC and existing techniques
+ % The third contribution is to demonstrate how two examples of the \GNC framework, the \GNC-\emph{Geman McClure} (\GNCGM) and the \GNC-\emph{Truncated Least Squares} (\GNCTLS), can be applied on four robotics and computer vision applications: point cloud registration, generalized 3D registration, pose graph optimization, and shape alignment from a single image. 
+ %
+ % Extensive benchmarks on both simulated and real datasets show the \GNC framework achieves state-of-the-art robustness against 70\% to 80\% outliers across applications, while being a general framework. Lastly, our development of a globally optimal solver based on SOS relaxation for the single shape estimation from a single image is itself of interest.
+\end{abstract}
+
+% Keywords appear just beneath the abstract. Use only for final RAL version.
+\begin{IEEEkeywords}Graduated non-convexity, outlier rejection, robust estimation, spatial perception, global optimization.
+\end{IEEEkeywords}

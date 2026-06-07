@@ -1,0 +1,57 @@
+% for the tables
+
+\newcommand{\modelarchcomp}{
+\begin{table}
+\caption{\label{tab:modelarchcomp} Comparison of \modelname and older \sd models.}
+\begin{tabular}{lccc}
+\toprule
+Model & \modelname & SD 1.4/1.5 & SD 2.0/2.1 \\
+\midrule
+\# of UNet params & 2.6B & 860M & 865M \\
+Transformer blocks & [0, 2, 10] & [1, 1, 1, 1] & [1, 1, 1, 1]\\
+Channel mult. & [1, 2, 4] & [1, 2, 4, 4] & [1, 2, 4, 4] \\
+Text encoder & CLIP ViT-L \& OpenCLIP ViT-bigG  & CLIP ViT-L & OpenCLIP ViT-H  \\
+Context dim. & 2048 & 768 & 1024 \\
+Pooled text emb. & OpenCLIP ViT-bigG & N/A & N/A \\
+\bottomrule
+\end{tabular}
+\end{table}
+}
+
+\newcommand{\aecomp}{
+\begin{wraptable}{r}{.5\textwidth}
+\vspace{-3em}
+\centering
+\caption{\label{tab:aecomp} Autoencoder reconstruction performance on the COCO2017~\cite{lin2015microsoft} validation split, images of size $256\times 256$ pixels. Note: \sd 2.x uses an improved version of \sd 1.x's autoencoder, where the decoder was finetuned with a reduced weight on the perceptual loss~\cite{zhang2018unreasonable}, and used more compute. Note that our new autoencoder is trained from scratch.}
+\resizebox{.5\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+model & PNSR $\uparrow$ & SSIM $\uparrow$ & LPIPS $\downarrow$ & rFID $\downarrow$ \\
+\midrule
+\modelname-VAE & $\fat{24.7}$ & $\fat{0.73}$ & $\fat{0.88}$ & $\fat{4.4}$ \\
+\sdshort-VAE 1.x & 23.4 & 0.69 & 0.96 & 5.0 \\ 
+\sdshort-VAE 2.x & 24.5 & 0.71 & 0.92 & 4.7 \\ 
+\bottomrule
+\end{tabular}}
+\vspace{-1em}
+\end{wraptable}
+}
+
+\newcommand{\sizecondtable}{
+\begin{wraptable}{r}{.4\textwidth}
+\vspace{-1.2em}
+\centering
+\caption{\label{tab:size-cond} Conditioning on the original spatial size of the training examples improves performance on class-conditional ImageNet~\cite{deng2009imagenet} on $512^2$ resolution. 
+}
+\begin{tabular}{lcc}
+\toprule
+model &  FID-5k $\downarrow$ & IS-5k $\uparrow$ \\
+\midrule 
+\emph{CIN-512-only}  & 43.84 & 110.64 \\ 
+\emph{CIN-nocond} & 39.76 &  211.50 \\
+\emph{CIN-size-cond} & \textbf{36.53} & \textbf{215.34} \\  
+\bottomrule
+\end{tabular}
+\vspace{-.5em}
+\end{wraptable}
+}

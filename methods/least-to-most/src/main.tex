@@ -1,0 +1,414 @@
+\documentclass{article}
+\usepackage{iclr2023_conference,times}
+
+    \usepackage{graphicx}
+    \usepackage{url}
+    \usepackage{tabularx}
+    
+\usepackage[toc,page,header]{appendix}
+\usepackage{minitoc}
+\renewcommand \thepart{}
+\renewcommand \partname{}
+\setcounter{parttocdepth}{3}
+
+\usepackage{xcolor, soul}
+\usepackage{multirow}
+\definecolor{good}{rgb}{0.0, 0.5, 0.0}
+\definecolor{bad}{rgb}{0.8, 0.0, 0.0}
+\definecolor{light_blue}{rgb}{0.80,0.85,1.0}
+\definecolor{light_red}{rgb}{1.0,0.85,0.80}
+\sethlcolor{light_blue}
+\newcommand{\prompt}[1]{{\footnotesize \textsf{#1}}}
+\definecolor{mydarkblue}{rgb}{0,0.08,0.45}
+\usepackage[colorlinks,citecolor=mydarkblue,urlcolor=mydarkblue,linkcolor=mydarkblue]{hyperref}
+
+\iclrfinalcopy
+
+
+
+
+\title{Least-to-Most Prompting Enables Complex Reasoning in Large Language Models}
+
+\author{%
+   Denny Zhou$^\dag$\thanks{Corresponding to: \ dennyzhou@google.com} \quad Nathanael Schärli$^\dag$ \quad Le Hou$^\dag$ \quad Jason Wei$^\dag$ \quad Nathan Scales$^\dag$ \quad
+   Xuezhi Wang$^\dag$  \\ \textbf{Dale Schuurmans$^\dag$ \quad Claire Cui$^\dag$ \quad  Olivier Bousquet$^\dag$ \quad  Quoc Le$^\dag$ \quad  Ed Chi$^\dag$}\\
+   $^\dag$Google Research, Brain Team \\
+}
+
+\begin{document}
+
+\doparttoc %
+\faketableofcontents %
+
+\maketitle
+
+\begin{abstract}
+Chain-of-thought prompting has demonstrated remarkable performance on various natural language reasoning tasks. However, it tends to perform poorly on tasks which requires solving problems harder than the exemplars shown in the prompts. To overcome this challenge of easy-to-hard generalization, we propose a novel prompting strategy, \emph{least-to-most prompting}. The key idea in this strategy is to break down a complex problem into a series of simpler subproblems and then solve them in sequence. Solving each subproblem is facilitated by the answers to previously solved subproblems. Our experimental results on tasks related to symbolic manipulation, compositional generalization, and math reasoning reveal that least-to-most prompting is capable of generalizing to more difficult problems than those seen in the prompts. A notable finding is that when the GPT-3 \texttt{code-davinci-002} model is used with least-to-most prompting, it can solve the compositional generalization benchmark SCAN in any split (including length split)  with an accuracy of at least 99\% using just 14 exemplars, compared to only 16\% accuracy with chain-of-thought prompting.  This is particularly noteworthy because neural-symbolic models in the literature that specialize in solving SCAN are trained on the entire training set containing over 15,000 examples. We have included prompts for all the tasks in the Appendix.
+\end{abstract}
+
+\section{Introduction}
+Despite the great success of deep learning in the past decade, there still remain huge differences between human intelligence and machine learning: (1) Given a new task, humans usually can learn to accomplish it from only a few demonstration examples, while machine learning requires a large amount of labeled data for model training; (2) Humans can clearly explain the underlying rationale for their predictions or decisions, while machine learning is essentially a black box;  (3) Humans can solve problems more difficult than any they have seen before, while for machine learning,  examples in training and testing are typically at the same level of difficulty. %
+
+The recently proposed chain-of-thought prompting approach \citep{wei2022chain,  chowdhery2022palm} has taken a significant step for narrowing the gap between human intelligence and machine intelligence. It combines the idea of natural language rationales \citep{ling2017program, cobbe2021training} with few-shot prompting \citep{brown2020language}. When further integrated with self-consistency decoding \citep{wang2022self} rather than using the typical greedy decoding, few-shot chain-of-thought prompting largely outperforms the state-of-the-art results in the literature on many challenging natural language processing tasks obtained from specially designed  neural models trained with hundreds of times more annotated examples, while being fully interpretable.  %
+
+
+However, chain-of-thought prompting has a key limitation---it often performs poorly on tasks that require generalization of solving problems harder than the demonstration examples, such as compositional generalization \citep{lake2018generalization, keysers2019measuring}.  %
+To tackle such easy-to-hard generalization issues, we propose \emph{least-to-most prompting}. It consists of two stages: first decomposing a complex problem into a list of easier subproblems, and then sequentially solving these subproblems, whereby solving a given subproblem is facilitated by the answers to previously solved subproblems. Both stages are implemented by few-shot prompting, so that there is no training or finetuning in either stage. An example usage of  least-to-most prompting is illustrated in Figure~\ref{fig:least-t-most}.
+
+The term least-to-most prompting is borrowed from educational psychology \citep{libby2008comparison}, where it is used to denote the technique of using a progressive sequence of prompts  to help a student to learn a new skill. Here we apply this technique for teaching humans to teach language models. Empirical results on symbolic manipulation, compositional generalization, and math reasoning show that least-to-most prompting can indeed generalize to problems harder than those demonstrated. %
+
+\begin{figure}[th]
+\includegraphics[width = \textwidth]{figures/ltm-pull-fig_new.png}
+\label{fig:least-t-most}
+\caption {Least-to-most prompting solving a math word problem in two stages: (1) query the language model to decompose the problem into subproblems; (2) query the language model to sequentially solve the subproblems. The answer to the second subproblem is built on the answer to the first subproblem. 
+The demonstration examples for each stage's prompt are omitted in this illustration.}
+\end{figure}
+
+
+\section{Least-to-Most Prompting}
+\label{sec:method}
+
+
+
+Least-to-most prompting teaches language models how to solve a complex problem by decomposing it to a series of  simpler subproblems. It consists of two sequential stages:
+\begin{enumerate}
+\item \textbf{Decomposition}. The prompt in this stage contains constant examples that demonstrate the decomposition, followed by the specific question to be decomposed.
+
+\item \textbf{Subproblem solving}. The prompt in this stage consists of three parts: (1) constant examples demonstrating how subproblems are solved; (2) a potentially empty list of previously answered subquestions and generated solutions, and (3) the question to be answered next.
+\end{enumerate}
+ 
+
+In the example shown in Figure~\ref{fig:least-t-most}, the language model is first asked to decompose the original problem into subproblems. The prompt that is passed to the model consists of examples that illustrate how to decompose complex problems (which are not shown in the figure), followed by the specific problem to be decomposed (as shown in the figure). The language model figures out that the original problem can be solved via solving an intermediate problem ``How long does each trip take?''.
+
+In the next phase, we ask the language model to sequentially solve %
+the subproblems from the problem decomposition stage. The original problem is appended as the final subproblem. The solving  starts from passing to the language model a prompt that consists of examples that illustrate how problems are solved (not shown in the figure), followed by the first subproblem ``How long does each trip take?''. We then take the answer generated by the language model (``... each trip takes 5 minutes.'') and construct the next prompt by appending the generated answer to the previous prompt, followed by the next subproblem, which happens to be the original problem in this example. The new prompt is then passed back to the language model, which returns the final answer.
+
+Least-to-most prompting can be combined with other prompting techniques like chain-of-thought \citep{wei2022chain} and self-consistency \citep{wang2022self}, but does not need to be. Also, for some tasks, the two stages in least-to-most prompting can be merged to form a single-pass prompt.
+
+
+
+
+\section{Results}
+We present least-to-most prompting results for symbolic manipulation, compositional generalization, and math reasoning tasks, and compare it with chain-of-thought prompting. %
+
+\subsection{Symbolic Manipulation}
+\label{sec:symbolic_manipulation}
+We take the last-letter-concatenation task \citep{wei2022chain}.  In this task, each input is a list of words, and the corresponding output is the concatenation of the last letters of the words in the list. For example, ``thinking, machine" outputs ``ge", since the last letter of ``thinking" is ``g" and the last letter of ``machine" is ``e". Chain-of-thought prompting does a perfect job when the testing lists have the same length as the lists in the prompt exemplars. However, it performs poorly when the testing lists are much longer than the lists in the prompt exemplars. We show that least-to-most prompting overcomes this limitation and significantly outperforms chain-of-thought prompting on length generalization.
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{\textwidth}{
+\vspace{5pt}
+        Q: ``think, machine, learning"\\ 
+        A: ``think", ``think, machine", ``think, machine, learning"
+\vspace{2pt}
+}
+\hrule
+\vspace{5pt}
+\caption {Least-to-most prompt context (decomposition) for the last-letter-concatenation task. It can decompose arbitrary long lists into sequential subsists with an accuracy of 100\%.}
+\label{table:l2m-last-letter-decomp}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{\textwidth}{
+\vspace{5pt}
+        Q: ``think, machine"\newline
+        A: The last letter of ``think" is ``k". The last letter of ``machine" is ``e". Concatenating ``k", ``e" leads to ``ke". So, {``think, machine" outputs ``ke".} \newline
+        \newline
+        Q: ``think, machine, learning"
+        \newline
+        A: {``think, machine" outputs ``ke".}  The last letter of ``learning" is ``g". Concatenating ``ke", ``g" leads to ``keg". So, ``think, machine, learning" outputs ``keg".
+\vspace{2pt}
+}
+\hrule
+\vspace{5pt}
+\caption {Least-to-most prompt context (solution) for the last-letter-concatenation task. The two exemplars in this prompt actually demonstrate a base case and a recursive step.}
+\label{table:l2m-last-letter-solve}
+\end{table}
+
+\textbf{Least-to-most prompting}. The least-to-most prompt contexts for the last-letter-concatenation task are shown in Tables \ref{table:l2m-last-letter-decomp} and \ref{table:l2m-last-letter-solve}. The exemplar in Table \ref{table:l2m-last-letter-decomp} demonstrates how to decompose a list into a sequence of sublists. The exemplar in Table \ref{table:l2m-last-letter-solve} demonstrates how to map an input to the desired output. Given a new list, we first append it to the exemplar in Table \ref{table:l2m-last-letter-decomp} to construct the decomposition prompt, which is sent to the language model to obtain the list's decomposition. Then, we construct for each sublist $S$ a solution prompt, which consists of the exemplars in Table \ref{table:l2m-last-letter-solve}, followed by the previous sublist/response pairs (if any), followed by $S$. We sequentially issue these prompts to the language model and use the last response as the final solution.
+
+
+
+It is worth a closer look at the exemplars in Table \ref{table:l2m-last-letter-solve}. Essentially, they teach language models how to build answers to new problems using the answers to previously solved problems:  (1) the list in the second exemplar (``think, machine, learning") is an extension of the list in the first exemplar (``think, machine") rather than an entirely independent one; (2) the response to ``think, machine, learning" is built on the output of ``think, machine" by starting with a sentence saying that ``think, machine" outputs ``ke". The two exemplars together illustrate a base case and a recursive step.
+
+
+
+
+
+
+\textbf{Chain-of-thought prompting}.
+The chain-of-thought prompt context for the last-letter-concatenation task is listed in Table \ref{table:cot-last-letter}. It uses the same lists as the least-to-most prompt in Table \ref{table:l2m-last-letter-solve}. The only difference is that, in the chain-of-thought prompt, the response to the second list (``think, machine, learning") is built from scratch, instead of using the output of the first list (``think, machine"). 
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{\textwidth}{
+\vspace{5pt}
+      Q: ``think, machine" \newline
+        A: The last letter of ``think" is ``k". The last letter of ``machine" is ``e". Concatenating ``k", ``e" leads to ``ke". So, ``think, machine" outputs ``ke".\newline
+        \newline
+        Q: ``think, machine, learning"\newline
+        A:  The last letter of ``think" is ``k". The last letter of ``machine" is ``e". The last letter of ``learning" is ``g".  Concatenating ``k", ``e", ``g" leads to ``keg". So, ``think, machine, learning" outputs ``keg".
+\vspace{2pt}
+}
+\hrule
+\vspace{5pt}
+\caption {Chain-of-thought prompt context for the last-letter-concatenation task. Unlike the least-to-most prompt in Table \ref{table:l2m-last-letter-solve}, the exemplars in the chain-of-thought prompt are independent of each other.}
+\label{table:cot-last-letter}
+\end{table}
+
+We compare least-to-most prompting (Table \ref{table:l2m-last-letter-decomp} \& \ref{table:l2m-last-letter-solve}) with chain-of-thought prompting (Table \ref{table:cot-last-letter}) and the standard few-shot prompting.  The prompt for the standard few-shot prompting is constructed by removing the intermediate explanations in the chain-of-thought prompt. That is, it just consists of these two exemplars:   (1) ``think, machine" outputs ``ke"; and (2) ``think, machine, learning" outputs 
+``keg". We do not consider a training or finetuning baseline because a machine learning model based on two examples would generalize very poorly. 
+
+\textbf{Results}. We randomly sample words in Wiktionary\footnote{\url{https://en.wiktionary.org/wiki/Wiktionary:Frequency_lists/PG/2006/04/1-10000}} to construct testing lists with lengths varying from 4 to 12. For each given length, 500 lists are constructed. The accuracies of different methods with \texttt{code-davinci-002} in GPT-3 are shown in Table~\ref{table:last-letter-result}. Standard prompting completely fails all test cases with an accuracy of 0. Chain-of-thought prompting significantly boosts the performance over standard prompting, but it still falls well behind least-to-most prompting, particularly when the lists are long. %
+Moreover, the performance of chain-of-thought prompting drops much faster than least-to-most prompting as the length increases. 
+
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ c | c c c c c } 
+  \hline
+   & {$L = 4$}  & {$L = 6$}  &  {$L = 8$} & {$L = 10$} & {$L = 12$}\\ 
+  \hline
+  Standard prompting &   0.0 & 0.0 & 0.0 & 0.0 & 0.0\\ 
+  \hline
+  Chain-of-Thought & 84.2 & 69.2 & 50.2 & 39.8 & 31.8\\ 
+  \hline
+  Least-to-Most &\textbf{94.0} &\textbf{88.4} &\textbf{83.0} &\textbf{76.4} & \textbf{74.0}\\ 
+  \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracies of different prompting methods on the last-letter-concatenation task. The length of testing lists increases from 4 to 12.}
+\label{table:last-letter-result}
+\end{table}
+
+In Appendices~\ref{app:letter-double} and \ref{app:letter-data-result}, we present additional experiments with different chain-of-thought prompts and different language models. Note that in contrast to least-to-most prompting, the exemplars in a chain-of-thought prompt can be independent of each other. For the last-letter concatenation task, this means that we do not need to present exemplars that are sublists of other exemplars. In fact, a chain-of-thought prompt with independent lists tends to outperform one with dependent lists, as the former conveys more information. Furthermore, we can enhance chain-of-thought prompting by incorporating additional exemplars. This seems to be fair, as the least-to-most prompt contains more words due to its extra decomposition.  As shown in Table \ref{table:letter-result-complete} (Appendix \ref{app:letter-data-result}), for lists with length 12,  chain-of-thought prompting achieves an accuracy of 37.4\% with 4 independent exemplars (Appendix \ref{app:cot-4-shot}), and 38.4\% with 8 independent exemplars (Appendix \ref{app:cot-8-shot}). Although there have been notable advancements compared to an accuracy of 31.8\% by the original prompt in Table \ref{table:cot-last-letter}, chain-of-thought prompting still lags behind least-to-most prompting, which boasts an accuracy of 74.0\%. 
+
+\textbf{Error analysis}. While least-to-most prompting significantly outperforms chain-of-thought prompting, it is still far from achieving 100\% accuracy for long lists. In Appendix~\ref{app:letter-error}, we present a detailed error analysis. We find that only very few of them are due to incorrect last letters, while most of them are concatenation errors (dropping or adding a letter). For example, given the list ``gratified, contract, fortitude, blew'', the model drops the last letter in the concatenation of ``dte'' and ``w'', and thus predicts the outcome to be ``dte'' instead of ``dtew''. In another example ``hollow, supplies, function, gorgeous'', the model somehow duplicates the last letter ``s'' in the concatenation of ``wsn'' and ``s'', and thus the prediction becomes ``wsnss'' instead of ``wsns''.
+
+
+\subsection{Compositional Generalization}
+\label{sec:compositional_generalization}
+SCAN \citep{lake2018generalization} is probably the most popular benchmark for evaluating compositional generalization. It requires mapping natural language commands to action sequences (Table~\ref{table: scan}). %
+Sequence-to-sequence models perform poorly under length split where the action sequences in the training set (about $80\%$ of the full set with over 20,000 examples) are shorter than the action sequences in the testing set. %
+Many specialized neural-symbolic models have been proposed to solve SCAN \citep{chen2020compositional,liu2020compositional, nye2020learning, shaw2021compositional, kim2021sequence}. We show that large language models with least-to-most prompting can solve SCAN using only a few demonstration examples. No training or finetuning is needed.
+
+\begin{table}[h!]
+\centering
+\begin{tabularx}{0.78\textwidth}{l|X}
+\hline
+  \textbf{Command} & \textbf{Action Sequence} \\
+ \hline
+ ``look thrice after jump" & JUMP LOOK LOOK LOOK\\
+ ``run left and walk" & TURN\_LEFT RUN WALK\\
+ ``look opposite right" & TURN\_RIGHT TURN\_RIGHT LOOK\\
+ \hline
+ \end{tabularx} 
+ \vspace{5pt}
+\caption {Example commands in SCAN and their corresponding action sequences. An agent successfully executes a natural language command by performing its corresponding action sequence.}
+\label{table: scan}
+\end{table}
+
+
+\textbf{Least-to-most prompting.} Like the last-letter-concatenation task in Section \ref{sec:symbolic_manipulation}, least-to-most prompting for SCAN is based on two kinds of prompts: (1) a command decomposition prompt containing 8 exemplars to demonstrate how to decompose a long command to a list of short commands (see Table~\ref{table: scan-reducing} for some of these exemplars);  and (2) a command mapping prompt containing 14 exemplars to demonstrate how to map natural language commands to action sequences (see Table~\ref{table: scan-mapping} for some of these exemplars). The full prompt contexts for both decomposition and mapping are listed in Appendix~\ref{app:scan}. The exemplars used in the command-mapping prompt are intended to fully cover the semantics of the SCAN commands.  
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{0.97\textwidth}{
+\vspace{5pt}
+
+Q: ``look opposite right thrice after walk"\\
+A: ``look opposite right thrice" can be solved by: ``look opposite right", ``look opposite right thrice". ``walk" can be solved by ``walk". So, ``look opposite right thrice after walk" can be solved by: ``look opposite right", ``look opposite right thrice", ``walk".\\ 
+
+ 
+Q:  ``look around right thrice and walk" \\ 
+A: ``look around right thrice" can be solved by: ``look right", ``look around right", ``look around right thrice". ``walk" can be solved by ``walk". So, ``look around right thrice and walk" can be solved by: ``look right", ``look around right", ``look around right thrice", ``walk".
+\vspace{3pt}
+}
+\hrule
+\vspace{5pt}
+\caption {Two exemplars taken from the least-to-most prompt for decomposing a long command to a sequence of short commands. }
+\label{table: scan-reducing}
+\end{table}
+
+We use Python notation to make our prompts in least-to-most prompting and the baselines (stand few-shot prompting and chain-of-thought prompting) concise and meet the input size limit of language models (usually up to 2048 tokens). For example,  in our prompt design, we map ``look twice" to ``LOOK" * 2  rather than ``LOOK LOOK". We may have to point out that these Python expressions are just intermediate representations.  After obtaining  responses from language models,  we run a postprocessing script to expand the Python expressions to generate the final results. However, it should not be surprising that we can also further teach language models to correctly process expressions. In Appendix~\ref{app:scan_expanding_expressions},  we show that with several demonstration exemplars, language models are able to expand Python expressions with a   near-perfect accuracy of 99.7\%. 
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{0.97\textwidth}{
+\vspace{5pt}
+Q: ``jump left"\\
+A: The output of ``jump left" concatenates: the output of ``turn left", the output of ``jump". ``turn left" outputs ``TURN\_LEFT". ``jump" outputs ``JUMP". So concatenating the output of ``turn left" and the output of ``jump" leads to ``TURN\_LEFT" + ``JUMP". So the output of ``jump left" is ``TURN\_LEFT" + ``JUMP".\\
+ 
+Q: ``run and look twice"\\
+A: The output of ``run and look twice" concatenates: the output of ``run", the output of ``look twice". ``run" outputs ``RUN". ``look twice" outputs ``LOOK" * 2. So concatenating the output of ``run" and the output of ``look twice" leads to ``RUN" + ``LOOK" * 2. So the output of ``run and look twice" is ``RUN" + ``LOOK" * 2.
+
+\vspace{3pt}
+}
+\hrule
+\vspace{5pt}
+\caption {Two exemplars taken from the least-to-most / chain-of-thought prompt for mapping commands to action sequences.  Python expressions are used as intermediate representations.}
+\label{table: scan-mapping}
+\end{table}
+
+
+
+\textbf{Chain-of-thought prompting}. The chain-of-thought prompt for SCAN uses the same command-mapping context as least-to-most prompting (see Table \ref{table: scan-mapping}) but it does not use command decomposition, which is exclusively used for least-to-most prompting.
+
+\textbf{Results}. We compare least-to-most prompting with chain-of-thought prompting and standard few-shot prompting. The exemplars for standard few-shot prompting are derived from the chain-of-thought prompt by removing the intermediate explanations.  The accuracies of different prompting methods with different language models are presented in Table~\ref{table: scan-results}. Example outputs can be found in Appendix~\ref{app:scan-outputs}. Using \texttt{code-davinci-002}, least-to-most prompting achieves an accuracy of $99.7\% $ under length split.
+ We also test least-to-most prompting on all other splits and even the full SCAN dataset. We find that its solving rate remains the same. In addition, it may be interesting to note that \texttt{code-davinci-002} consistently outperforms \texttt{text-davinci-002}, regardless of the prompting method.  
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ c|ccc }
+  {Method} & {Standard prompting}  & {Chain-of-Thought}  & 
+  {Least-to-Most} \\ 
+  \hline
+  \texttt{code-davinci-002}  &  16.7 & 16.2 & \textbf{99.7}\\ 
+  \texttt{text-davinci-002} & 6.0  & 0.0 & \textbf{76.0}\\ 
+ \texttt{code-davinci-001}  &  0.4 & 0.0  & \textbf{60.7}\\ 
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracies (\%) of different prompting methods on the test set of SCAN under length split. The results of \texttt{text-davinci-002} are based on a random subset of 100 commands.}
+\label{table: scan-results}
+\end{table}
+
+
+\textbf{Error analysis}. In the test set of the length split, there are 13 failures in total from least-to-most prompting: 6 of them incorrectly interpret ``twice” and ``thrice" following ``around", and the rest incorrectly interpret ``after" as ``and". Let us show a failed example for each category. In the example ``walk opposite right twice after run around right thrice'', \texttt{code-davinci-002} correctly translates the expression ``run around right'' to (``TURN\_RIGHT'' + ``RUN'') * 4. Then it makes a mistake when applying ``thrice'' to this expression and produces (``TURN\_RIGHT'' + ``RUN'') * 9 instead of (``TURN\_RIGHT'' + ``RUN'') * 4 * 3 or (``TURN\_RIGHT'' + ``RUN'') * 12. In the example ``run opposite left thrice after run around left twice'', \texttt{code-davinci-002} produces the correct translations for both sub-expressions that are connected by ``after'' but it combines them as if they were connected by ``and''. This means that the model produces (``TURN\_LEFT'' * 2 + ``RUN'') * 3 + (``TURN\_LEFT'' + ``RUN'') * 4 * 2 instead of (``TURN\_LEFT'' + ``RUN'') * 4 * 2 + (``TURN\_LEFT'' * 2 + ``RUN'') * 3. A detailed error analysis can be found in Appendix~\ref{app:scan-error}.
+
+
+\subsection{Math Reasoning}
+\label{sec:numerical_reasoning}
+
+
+In this section, we apply least-to-most prompting to solve math word problems in GSM8K \citep{cobbe2021training} and DROP \citep{dua2019drop}. We are particularly interested at seeing if large language models combined with least-to-most prompting can solve problems more difficult than those seen in the prompts. Here, we simply measure the difficulty by the number of solving steps. 
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{\textwidth}{
+\vspace{5pt}
+Q: Elsa has 5 apples. Anna has 2 more apples than Elsa. How many apples do they have together?\\
+A: Let's break down this problem: 1. How many apples does Anna have? 2. How many apples do they have together?\\ \\
+1. Anna has 2 more apples than Elsa. So Anna has 2 + 5 = 7 apples.\\
+2. Elsa and Anna have 5 + 7 = 12 apples together.\\ \\
+The answer is: 12.
+
+\vspace{3pt}
+}
+\hrule
+\vspace{5pt}
+\caption {The least-to-most prompt for solving GSM8K. The demonstration problem is solved in only two steps, but the prompt can handle problems that require multiple steps to be solved.}
+\label{table:l2m-gsm8k}
+\end{table}
+
+
+\begin{table}[h!]
+\centering
+\hrule
+\parbox{\textwidth}{
+\vspace{5pt}
+Q: Elsa has 5 apples. Anna has 2 more apples than Elsa. How many apples do they have together?\\
+A: Anna has 2 more apples than Elsa. So Anna has 2 + 5 = 7 apples. So Elsa and Anna have 5 + 7 = 12 apples together.\\ \\
+The answer is: 12.
+
+\vspace{3pt}
+}
+\hrule
+\vspace{5pt}
+\caption {The chain-of-thought prompt for solving GSM8K. It is derived from the least-to-most prompt in Table \ref{table:l2m-gsm8k} by removing the decomposition part.}
+\label{table:cot-gsm8k}
+\end{table}
+
+The prompt that we design to solve GSM8K is shown in Table \ref{table:l2m-gsm8k}. The demonstration exemplar consists of two parts. The first part (starting from ``Let's break down this problem \dots'') shows how the original problem can be decomposed into simpler subproblems, and the the second part shows how the subproblems are solved in sequence. Note that this prompt combines decomposition and subproblem solving into a single pass. One may instead design two different prompts respectively for decomposition and subproblem solving, as the least-to-most prompts in the previous sections, to further improve performance. Here, we focus on investigating how this simple least-to-most prompt  generalizes from a simple 2-step problem to more complex multi-step problems.
+
+We also construct a chain-of-thought prompt (Table \ref{table:cot-gsm8k}) as our baseline. It is derived from the least-to-most prompt (Table \ref{table:l2m-gsm8k}) by removing the decomposition part. The results are shown in Table \ref{table:drop-results}. Overall, least-to-most prompting only slightly improves chain-of-thought prompting: from $60.97\%$ to $62.39\%.$ However, least-to-most prompting essentially improves chain-of-thought prompting in solving problems which need at least 5 steps to be solved: from $39.07\%$ to $45.23\%$ (Table \ref{table:gsm8k-main-tex}). We find that almost every problem in GSM8K that least-to-most prompting fails to solve can be eventually solved by using a manually crafted decomposition. This should not be surprising. For our humans, as long as we know how to decompose a complex problem into simpler subproblems, we actually have solved it.  For the DROP benchmark, least-to-most prompting outperforms chain-of-thought prompting by a large margin (Table \ref{table:drop-results}). That is probably because most problems in DROP can be trivially decomposed.
+
+
+
+
+
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ c|ccc}
+  \hline
+  {Method} & {Non-football (DROP)} & {Football (DROP)} & {GSM8K}  \\
+  \hline
+  Zero-Shot & 43.86 & 51.77 & 16.38\\ 
+  Standard prompting  & 58.78 & 62.73 & 17.06\\ 
+  Chain-of-Thought & 74.77 & 59.56 &  60.87\\
+  Least-to-Most & \textbf{82.45} & \textbf{73.42} &  \textbf{62.39}\\ 
+  \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracies (\%) of different prompting methods on GSM8K and DROP (only the subset containing numerical problems). The base language model is \texttt{code-davinci-002}. %
+}
+\label{table:drop-results}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ c|ccccc}
+\hline
+{Accuracy by Steps (GSM8K)} & {All} & {2 Steps} & {3 Steps} & {4 steps} & {$\ge$ 5 steps}  \\
+ \hline
+Least-to-Most& \textbf{62.39} & 74.53 & \textbf{68.91} & \textbf{59.73} & \textbf{45.23} \\
+Chain-of-Thought& 60.87 & \textbf{76.68} & 67.29 & 59.39 & 39.07 \\
+  \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracies (\%) of least-to-most prompting and chain-of-thought prompting, broken down by the number of reasoning steps required in the expected solution.}
+\label{table:gsm8k-main-tex}
+\end{table}
+
+
+
+
+\section{Related Work}
+
+\textbf{Compositional generalization}. SCAN~\citep{lake2018generalization} is a widely used benchmark to evaluate compositional generalization. Among all of its splits, the most challenging is the length split, which requires a model to generalize to test sequences longer than training ones.  
+Prior work with good performance on SCAN mostly proposed neural-symbolic architectures~\citep{chen2020compositional,liu2020compositional} and grammar induction techniques~\citep{nye2020learning,shaw2021compositional, kim2021sequence}. \cite{chen2020compositional} proposed the neural-symbolic stack machine, which contains a neural network as the controller to generate an execution trace for a given input, and a symbolic stack machine to execute the trace and produce the output. The execution trace consists of domain-specific primitives for sequence manipulation, which allows the machine to break down the input sentence into different components, translate them separately, and compose them together. \cite{liu2020compositional} proposed a framework that cooperatively learns two neural modules, a composer and a solver, to jointly learn the input structure and the symbolic grammar rules. Both \cite{nye2020learning} and \cite{shaw2021compositional} inferred the symbolic grammar rules of SCAN, while \cite{kim2021sequence} proposed to learn a latent neural grammar. While approaches with symbolic components are able to achieve $100\%$ accuracy on SCAN~\citep{chen2020compositional,liu2020compositional,nye2020learning,shaw2021compositional}, they require complicated model training and grammar inference algorithms to search in a large grammar space. Another line of work on SCAN designs data augmentation schemes~\citep{andreas-2020-good,ekina2021recombine,lake2019compositional}. Both \cite{andreas-2020-good} and \cite{ekina2021recombine} construct synthetic training samples by recombining fragments occurring in different training samples, and \cite{ekina2021recombine} further designs a sampling scheme that encourages the recombination model to produce rare samples. On the other hand, \cite{lake2019compositional} proposed a meta training algorithm, which requires a meta-grammar space to construct training data, and the format of sampled grammars is similar to the SCAN grammar. While these data augmentation techniques improve the performance on several compositional generalization benchmarks, they fail to solve the length split of SCAN. Other prior works propose neural network architectures to improve compositional generalization, where they encourage the model to learn the word and span mapping~\citep{russin2019compositional,li2019compositional}, the alignment of input and output as span trees~\citep{herzig2020span}, and the permutation equivariance of input and output words~\citep{gordon2019permutation}. Still, these end-to-end neural networks without symbolic components do not generalize to longer test inputs. Unlike the existing work, we demonstrate that without model architectures and symbolic components specially designed to improve compositional generalization, least-to-most prompting achieves $99.7\%$ accuracy on any split (including length split) with only a handful of demonstration examples, and it does not require any training or finetuning. %
+
+\textbf{Easy-to-hard generalization}. In addition to compositional generalization, there are many other tasks where the test cases require more reasoning steps to solve than the training examples, for example, the last-letter-concatenation task where the test lists are longer than the demonstration examples. \cite{dong2018neural} propose Neural Logic Machines (NLMs) for both inductive learning and logic reasoning. NLMs trained on small-scale tasks (such as small size block worlds) can perfectly generalize to large-scale tasks (such as larger size block worlds). \cite{schwarzschild2021can} show that recurrent networks trained to solve simple problems with few recurrent steps (such as small size mazes or chess puzzles) can solve more complex problems (such as larger size mazes or chess puzzles) by performing additional recurrences during inference. In our method, we achieve easy-to-hard generalization by decomposing a complex problem into a series of easier problems.  
+
+\textbf{Task decomposition}. \cite{perez2020unsupervised} decompose a multi-hop question into a number of independent single-hop subquestions, which are answered by an off-the-shelf question answering (QA) model. Then those answers are aggregated to form the final answer.  Both question decomposition and answer aggregation are implemented by trained models. \cite{wang2022shepherd} conducts multi-hop QA by modeling prompts as continuous virtual tokens and progressively eliciting relevant knowledge from language models via iterative prompting. Unlike these methods, our approach does not involve any training or finetuning. Moreover, the subquestions generated in least-to-most prompting are usually dependent and have to be sequentially solved in a specific order so that answers to some subquestions can be used as building blocks to solve other subquestions. \cite{yang2022seqzero} translate natural language questions to  SQL queries by decomposing a question into a sequence of slot-filling natural language prompts corresponding to SQL clauses via a rule-based system. \cite{wu2022ai} propose chaining large language model steps such that the output of one step becomes the input for the next and develop an interactive system for users to construct and modify chains. Least-to-most prompting chains the processes of problem decomposition and subproblem solving.
+
+\section{Limitations}
+\label{sec:limit}
+Decomposition prompts typically don't generalize well across different domains. For instance, a prompt that demonstrates decomposing math word problems (as seen in Table \ref{table:l2m-gsm8k}) isn't effective for teaching large language models to break down common sense reasoning problems, such as ``Did Aristotle use a laptop?" \citep{geva2021strategyqa}. A new prompt must be designed to demonstrate decomposition for these types of problems in order to achieve optimal performance.
+
+Generalizing decomposition can even be difficult within the same domain. We've observed that nearly all problems in GSM8K can be accurately solved if the large language models are provided with the correct decomposition of those challenging problems. This finding isn't surprising and aligns with our experiences in solving math problems. Whenever we successfully break down a math problem into simpler subproblems we can solve, we've essentially solved the original problem. Exceptional results are achieved on the last-letter-concatenation task and the SCAN benchmark because decomposition in these tasks is relatively straightforward.  
+
+ 
+
+\section{Conclusion and Discussion}
+We introduced least-to-most prompting to enable language models to solve problems that are harder than those in the prompt. This approach entails a two-fold process: a top-down decomposition of the problem and a bottom-up resolution generation. Our empirical findings, which encompass symbolic manipulation, compositional generalization, and mathematical reasoning, reveal that least-to-most prompting significantly surpasses standard prompting and chain-of-thought prompting.
+
+In general, prompting might not be the optimal method for teaching reasoning skills to large language models. Prompting can be viewed as a unidirectional communication form in which we instruct a language model without considering its feedback. A natural progression would be to evolve prompting into fully bidirectional conversations, enabling immediate feedback to language models, thereby facilitating more efficient and effective learning. The least-to-most prompting technique represents a stride towards instructing language models through such bidirectional interactions.
+
+\section*{Acknowledgement}
+We sincerely thank Xinyun Chen, Xinying Song, Jeff Dean, Zoubin Ghahramani, Fernando Pereira, Jacob Devlin, and Pete Shaw for sharing their valuable knowledge and advice during our discussions. Their expertise greatly improved the quality of our work. Additionally, we are grateful to the anonymous reviewers for their careful review and helpful suggestions, which helped shape our manuscript into its final form.
+
+\bibliographystyle{iclr2023_conference}
+\bibliography{main}
+
+\clearpage
+
+\part{Appendix} %
+\parttoc %
+
+\clearpage
+
+\input{app_letter}
+\input{app_scan}
+\input{app_drop}
+\input{app_gsm8k_revised}
+
+\end{document}

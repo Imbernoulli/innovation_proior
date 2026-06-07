@@ -1,0 +1,487 @@
+
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\newcommand\tab[1][5mm]{\hspace*{#1}}
+
+\subsection{Algorithm}
+
+
+\begin{algorithm}[H]
+  \caption{\algo \ pytorch pseudocode.}
+  \label{alg:method}
+    \definecolor{codeblue}{rgb}{0.25,0.5,0.5}
+    \definecolor{codekw}{rgb}{0.85, 0.18, 0.50}
+    \newcommand{\algofontsize}{11.0pt}
+    \lstset{
+      backgroundcolor=\color{white},
+      basicstyle=\fontsize{\algofontsize}{\algofontsize}\ttfamily\selectfont,
+      columns=fullflexible,
+      breaklines=true,
+      captionpos=b,
+      commentstyle=\fontsize{\algofontsize}{\algofontsize}\color{codeblue},
+      keywordstyle=\fontsize{\algofontsize}{\algofontsize}\color{black},
+    }
+\begin{lstlisting}[language=python]
+# f: encoder network, lambda, mu, nu: coefficients of the invariance, variance and covariance losses, N: batch size, D: dimension of the representations
+# mse_loss: Mean square error loss function, off_diagonal: off-diagonal elements of a matrix, relu: ReLU activation function
+
+for x in loader: # load a batch with N samples
+    # two randomly augmented versions of x
+    x_a, x_b = augment(x)
+    
+    # compute representations
+    z_a = f(x_a) # N x D
+    z_b = f(x_b) # N x D
+    
+    # invariance loss
+    sim_loss = mse_loss(z_a, z_b)
+    
+    # variance loss
+    std_z_a = torch.sqrt(z_a.var(dim=0) + 1e-04)
+    std_z_b = torch.sqrt(z_b.var(dim=0) + 1e-04)
+    std_loss = torch.mean(relu(1 - std_z_a)) + torch.mean(relu(1 - std_z_b))
+    
+    # covariance loss
+    z_a = z_a - z_a.mean(dim=0)
+    z_b = z_b - z_b.mean(dim=0)
+    cov_z_a = (z_a.T @ z_a) / (N - 1)
+    cov_z_b = (z_b.T @ z_b) / (N - 1)
+    cov_loss = off_diagonal(cov_z_a).pow_(2).sum() / D 
+                    + off_diagonal(cov_z_b).pow_(2).sum() / D
+
+    # loss
+    loss = lambda * sim_loss + mu * std_loss + nu * cov_loss
+
+    # optimization step
+    loss.backward()
+    optimizer.step()
+\end{lstlisting}
+\end{algorithm}
+
+\clearpage
+
+% \subsection{Algorithm}
+
+% \begin{algorithm}[h]
+%   \caption{PyTorch-style pseudocode for \algo.}
+%   \label{alg:method}
+%     \definecolor{codeblue}{rgb}{0.25,0.5,0.5}
+%     \definecolor{codekw}{rgb}{0.85, 0.18, 0.50}
+%     \newcommand{\algofontsize}{9.5pt}
+%     \lstset{
+%       backgroundcolor=\color{white},
+%       basicstyle=\fontsize{\algofontsize}{\algofontsize}\ttfamily\selectfont,
+%       columns=fullflexible,
+%       breaklines=true,
+%       captionpos=b,
+%       commentstyle=\fontsize{\algofontsize}{\algofontsize}\color{codeblue},
+%       keywordstyle=\fontsize{\algofontsize}{\algofontsize}\color{black},
+%     }
+% \begin{lstlisting}[language=python]
+% # f: encoder network
+% # lambda, mu, nu: coefficients of the invariance, variance and covariance losses
+% # N: batch size
+% # D: dimension of the representations
+% #
+% # mse_loss: Mean square error loss function
+% # off_diagonal: off-diagonal elements of a matrix
+% # relu: ReLU activation function
+
+% for x in loader: # load a batch with N samples
+%     # two randomly augmented versions of x
+%     x_a, x_b = augment(x)
+    
+%     # compute representations
+%     z_a = f(x_a) # N x D
+%     z_b = f(x_b) # N x D
+    
+%     # invariance loss
+%     sim_loss = mse_loss(z_a, z_b)
+    
+%     # variance loss
+%     std_z_a = torch.sqrt(z_a.var(dim=0) + 1e-04)
+%     std_z_b = torch.sqrt(z_b.var(dim=0) + 1e-04)
+%     std_loss = torch.mean(relu(1 - std_z_a))
+%     std_loss = std_loss + torch.mean(relu(1 - std_z_b))
+    
+%     # covariance loss
+%     z_a = z_a - z_a.mean(dim=0)
+%     z_b = z_b - z_b.mean(dim=0)
+%     cov_z_a = (z_a.T @ z_a) / (N - 1)
+%     cov_z_b = (z_b.T @ z_b) / (N - 1)
+%     cov_loss = off_diagonal(cov_z_a).pow_(2).sum() / D
+%     cov_loss = cov_loss + off_diagonal(cov_z_b).pow_(2).sum() / D
+    
+%     # loss
+%     loss = lambda * sim_loss + mu * std_loss + nu * cov_loss
+
+%     # optimization step
+%     loss.backward()
+%     optimizer.step()
+% \end{lstlisting}
+% \end{algorithm}
+
+\subsection{Additional implementation details} \label{app:sec_impl_details}
+
+\subsubsection{Data augmentation} \label{app:data_aug}
+
+We follow the image augmentation protocol first introduced in SimCLR \cite{chen2020simclr} and now commonly used by similar approaches based on siamese networks \cite{caron2020swav, grill2020byol, chen2020simsiam, zbontar2021barlow}. Two random crops from the input image are sampled and resized to $224 \times 224$, followed by random horizontal flip, color jittering of brightness, contrast, saturation and hue, Gaussian blur and random grayscale. Each crop is normalized in each color channel using the ImageNet mean and standard deviation pixel values.
+In more details, the exact set of augmentations is based on BYOL~\cite{grill2020byol} data augmentation pipeline but is symmetrised. The following operations are performed sequentially to produce each view:
+\begin{itemize}
+    \item Random cropping with an area uniformly sampled with size ratio between 0.08 to 1.0, followed by resizing to size 224 $\times$ 224. \texttt{RandomResizedCrop(224, scale=(0.08, 0.1))} in PyTorch.
+    \item Random horizontal flip with probability 0.5.
+    \item Color jittering of brightness, contrast, saturation and hue, with probability 0.8. \texttt{ColorJitter(0.4, 0.4, 0.2, 0.1)} in PyTorch.
+    \item Grayscale with probability 0.2.
+    \item Gaussian blur with probability 0.5 and kernel size 23.
+    \item Solarization with probability 0.1.
+    \item color normalization with mean (0.485, 0.456, 0.406) and standard deviation (0.229, 0.224, 0.225).
+\end{itemize}
+
+\subsubsection{ImageNet evaluation} \label{app:eval_imnet}
+
+\textbf{Linear evaluation.} We follow standard procedure and train a linear classifier on top of the frozen representations of a ResNet-50 pretrained with \algo. We use the SGD optimizer with a learning rate of $0.02$, a weight decay of $10^{-6}$, a batch size of 256, and train for 100 epochs. The learning rate follows a cosine decay. The training data augmentation pipeline is composed of random cropping and resize of ratio 0.2 to 1.0 with size 224 $\times$ 224, and random horizontal flips. During evaluation the validation images are simply center cropped and resized to 224 $\times$ 224.
+
+\textbf{Semi-supervised evaluation.} We train a linear classifier and fine-tune the representations using 1 and 10\% of the labels. We use the SGD optimizer with no weight decay and a batch size of 256, and train for 20 epochs. We perform a grid search on the values of the encoder and linear head learning rates. In the 10\% of labels case, we use a learning rate of 0.01 for the encoder and 0.1 for the linear head. In the 1\% of labels case we use 0.03 for the encoder and 0.08 for the linear head. The two learning rates follow a cosine decay schedule. The training data and validation augmentation pipelines are identical to the linear evaluation data augmentation pipelines.
+
+\subsubsection{Transfer learning} \label{app:transfer_other}
+
+We use the VISSL library \cite{goyal2021vissl} for linear classification tasks and the detectron2 library \cite{wu2019detectron2} for object detection and segmentation tasks.
+
+\textbf{Linear classification.} We follow standard protocols \cite{misra2020pirl, caron2020swav, zbontar2021barlow} and train linear models on top of the frozen representations. For VOC07 \cite{everingham2010voc}, we train a linear SVM with LIBLINEAR \cite{fan2008liblinear}. The images are center cropped and resized to 224 $\times$ 224, and the C values are computed with cross-validation. For Places205 \cite{zhou2014places} we use SGD with a learning rate of 0.003, a weight decay of 0.0001, a momentum of 0.9 and a batch size of 256, for 28 epochs. The learning rate is divided by 10 at epochs 4, 8 and 12. For Inaturalist2018 \cite{vanhorni2018naturalist}, we use SGD with a learning rate of 0.005, a weight decay of 0.0001, a momentum of 0.9 and a batch size of 256, for 84 epochs. The learning rate is divided by 10 at epochs 24, 48 and 72.
+
+\textbf{Object detection and instance segmentation.} Following the setup of \cite{he2020moco, zbontar2021barlow}, we use the \texttt{trainval} split of VOC07+12 with 16K images for training and a Faster R-CNN C-4 backbone for 24K iterations with a batch size of 16. The backbone is initialized with our pretrained ResNet-50 backbone. We use a learning rate of 0.1, divided by 10 at iteration 18K and 22K, a linear warmup with slope of 0.333 for 1000 iterations, and a region proposal network loss weight of 0.2. For COCO we use Mask R-CNN FPN backbone for 90K iterations with a batch size of 16, a learning rate of 0.04, divided by 10 at iteration 60K and 80K and with 50 warmup iterations.
+
+\subsubsection{Audio classification} \label{app:audio}
+We use the standard split of ESC-50 \cite{piczak2015dataset}, composed of 1600 training audio samples and 400 validation sample. The raw audio encoder is a 1-dimensional ResNet-18 with output dimension 384. The time-frequency image representation is the mel spectrogram with 1 channel of the raw audio, that we normalize between 0 and 1, and that is processed be a ResNet-18 with output dimension of 512. We use the AdamW optimizer with learning rate 0.0005 for 100 epochs of pretraining. %We use time masking and frequency masking as data augmentation during pretraining
+
+\subsubsection{Analysis} \label{app:ablation}
+
+We give here implementation details on the results of Table~\ref{tab:ablation} with BYOL and SimSiam, as well as the default setup for \algo \ with 100 epochs of pretraining, used in all our ablations included in Appendix~\ref{app:additional_results}. For both BYOL and SimSiam experiments, the variance criterion has coefficient $\mu=1$ and the covariance criterion has coefficient $\nu=0.01$, the data augmentation pipeline and the architectures of the expander and predictor exactly follow the pipeline and architectures described in their paper. The linear evaluation setup of each methods follows closely the setup described in the original papers.
+
+\textbf{BYOL setup.} We use our own BYOL implementation in PyTorch, which outperforms the original implementation for 100 epochs of pretraining (69.3\% accuracy on the linear evaluation protocol against 66.5\% for the original implementation) and matches its performance for 1000 epochs of pretraining. We use the LARS optimizer \cite{you2017lars}, with a learning rate of $base\_lr * batch\_size / 256$ where $base\_lr$ = 0.45, and $batch\_size$ = 4096, a weight decay of $10^{-6}$, an eta value of 0.001 and a momentum of 0.9, for 100 epoch of pretraining with 10 epochs of warmup. The learning rate follows a cosine decay schedule. The initial value of the exponential moving average factor is 0.99 and follows a cosine decay schedule. 
+
+\textbf{SimSiam setup.} We use our own implementation of SimSiam, which reproduces exactly the performance reported in the paper \cite{chen2020simsiam}. We use SGD with a learning rate of $base\_lr * batch\_size / 256$ where $base\_lr$ = 0.05, $batch\_size$ = 2048, with a weight decay of 0.0001 and a momentum of 0.9 for 100 epochs of pretraining and 10 epochs of warmup. The learning rate of the encoder and the expander follow a cosine decay schedule while the learning rate of the predictor is kept fixed.
+
+\textbf{\algo \ setup.} The setting of \algo's experiments is identical to the setting described in section~\ref{sec:impl_details}, except that the number of pretraining epochs is 100 and the base learning rate is 0.3. The base learning rates used for the batch size study are 0.8, 0.5 and 0.4 for batch size 128, 256 and 512 respectively, and 0.3 for all other batch sizes. When a predictor is used, it has a similar architecture as the expander described in section~\ref{sec:impl_details}, but with 2 layers instead of 3, which gives better results in practice.
+
+\subsection{Additional results} \label{app:additional_results}
+
+\subsubsection{Other ResNet architectures}
+
+
+\begin{table}[t]
+\caption{\textbf{Linear classification with large architectures.} Top-1 accuracy comparison between different methods using various encoder architectures. For all \algo \ results, the output dimensionality of the expander is 8192. N-R stands for Narrow ResNet, where only the bottleneck convolutional layers are widen.}
+\label{tab:large_arch}
+\vspace{-6mm}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{llrrcc}
+\toprule
+Method & Arch. & Param. & Repr. & Top-1 & Top-5 \\
+\midrule
+SimCLR \cite{chen2020simclr}    & R50 (x2)   &   93M     &   4096    &   74.2    &   92.0    \\
+  & R50 (x4)   &   375M    &   8192    &   76.5    &   93.2    \\
+\midrule
+SwAV \cite{caron2020swav}& R50 (x2)    &   93M     &   4096    &   77.3    &   -    \\
+ & R50 (x4)    &   375M    &   8192    &   77.9    &   -    \\
+ & R50 (x5)    &   586M    &   10240   &   78.5    &   -    \\
+\midrule
+BYOL \cite{grill2020byol}& R50 (x2)    &   93M     &   4096    &   77.4    &   93.6    \\
+ & R50 (x4)    &   375M    &   8192    &   78.6    &   94.2    \\
+ & R200 (x2)   &   250M    &   4096    &   79.6    &   94.8    \\
+\midrule
+\algo \ (ours) & N-R50 (x2)    &   66M     &   2048    &   74.7    &   91.9    \\
+ & N-R50 (x4)    &   221M    &   2048    &   76.0    &   92.4  \\
+ & R50 (x2)    &   93M     &   4096    &   75.5    &   92.1    \\
+ & R50 (x4)    &   375M    &   8192    &   75.6    &   92.2    \\
+ & RNXT101-32-16 &   191M    &   2048    &   76.1    &   92.3  \\
+ & R200 (x2)   &   250M    &   4096    &   77.3    &   93.3    \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Table~\ref{tab:large_arch} reports the performance of \algo \ on linear classification with large ResNet architectures. We focus on the wider family of ResNet \cite{zagoruyko2016resnetwide} and aggregated ResNet \cite{xie2017resnext}, and we consider two ways of widening a standard ResNet. First, we follow standard practice in recent self-supervised learning work \cite{caron2020swav, grill2020byol, chen2020simclr} and multiple by 2 or 4 the number of filters in every convolutional layer, which also has the effect of multiplying the dimensionality of the representations. Second, as originally proposed in \cite{zagoruyko2016resnetwide}, we only multiply the number of filters in the bottleneck layers, which does not increases the dimensionality of the representations. We call this architecture Narrow ResNet (with prefix N- in Table~\ref{tab:large_arch}). The main observation we make is the dependency of \algo \ on the dimensionality of the representation. Using the narrow architecture, the performance of \algo, jumps from 73.2\% top-1 accuracy on linear classification with a ResNet-50, to 74.7\% with Narrow ResNet-50 (x2), which is a 1.5\% improvement and 76.0\% with Narrow ResNet-50 (x4), which is a 2.8\% improvement. We observe a similar trend going from ResNet-50 to ResNet-50 (x2), which is a 2.3\% improvement but the performance completely saturates with ResNet-50 (x4), which is a 0.1\% improvement over ResNet-50 (x2). Table~\ref{tab:large_arch_semi} reports the performance of \algo \ on semi-supervised classification with large ResNet architectures. \algo \ combined with a ResNet-50 (x2) \ outperforms the current state-of-the-art methods BYOL and SimCLR, using this encoder architecture. Our largest model ResNet-200 (x2) performs lower than BYOL when 1\% of the labels are used but is on par with 10\% of the labels. These results demonstrate the capabilities of \algo \ to scale up when large architectures are used.
+
+
+\begin{table}[t]
+\caption{\textbf{Semi-supervised classification with large architectures.} Top-1 accuracy comparison between different methods using various encoder architectures. For all \algo \ results, the output dimensionality of the expander is 8192.}
+\label{tab:large_arch_semi}
+\vspace{-6mm}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{llrrcccc}
+\toprule
+Method  & Arch. & Param.    & Repr. & \multicolumn{2}{c}{Top-1} & \multicolumn{2}{c}{Top-5} \\
+        &       &           &       & 1\% & 10\% & 1\% &  10 \% \\
+\midrule
+SimCLR \cite{chen2020simclr}    & R50 (x2)   &   93M     &   4096    &   58.5    &   71.7  & 83.0  & 91.2  \\
+  & R50 (x4)   &   375M    &   8192    &   63.0    &   74.4 &  85.8  & 92.6 \\
+\midrule
+BYOL \cite{grill2020byol}& R50 (x2)    &   93M     &   4096    &   62.2    &   73.5 & 84.1 & 91.7    \\
+ & R50 (x4)    &   375M    &   8192    &   69.1    &   75.7 & 87.9 & 92.5    \\
+ & R200 (x2)   &   250M    &   4096    &   71.2    &   77.7 & 89.5 & 93.7    \\
+\midrule
+% \algo \ (ours) & N-R50 (x2)    &   66M     &   2048    &   ?    &   ? &   ?    &   ?    \\
+%  & N-R50 (x4)    &   221M    &   2048    &   ?    &   ?&   ?    &   ?   \\
+%  & RNXT-101-32-16 &   191M    &   2048    &   ?    &   ?  &   ?    &   ?  \\
+ \algo \ (ours) & R50 (x2)    &   93M     &   4096    &   62.6    &   73.9  &   84.5    &   91.8  \\
+%  & R50 (x4)    &   375M    &   8192    &   ?    &   ?  &   ?    &   ?  \\
+ & R200 (x2)   &   250M    &   4096    &   68.8    &   77.3  &   88.2    &   93.6  \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\subsubsection{K-nearest-neighbors}
+
+
+\begin{table}[t]
+\caption{\textbf{K-NN classifiers on ImageNet.} Top-1 accuracy with 20 and 200 nearest neighbors.}
+\vspace{-6mm}
+\label{tab:results_knn}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lcc}
+\toprule
+Method & 20-NN & 200-NN \\
+\midrule
+NPID \cite{wu2018discrimination}        &  -        & 46.5    \\
+LA \cite{zhuang2019local}               &  -        & 49.4    \\
+PCL \cite{li2021pcl}                    &  54.5     & -         \\
+BYOL \cite{grill2020byol}               &  66.7     & 64.9  \\
+SwAV \cite{caron2020swav}               &  65.7     & 62.7    \\
+Barlow Twins \cite{zbontar2021barlow}   &  64.8     & 62.9  \\
+\algo \                                 &  64.5     & 62.8  \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+Following recent protocols \cite{caron2020swav, wu2018discrimination, zhuang2019local}, we evaluate the learnt representations using K-nearest-neighbors classifiers built on the training set of ImageNet and evaluated on the validation set of ImageNet. We report the results with K=20 and K=200 in Table~\ref{tab:results_knn}. \algo \ performs slightly lower than other methods in the 20-NN case but remains competitive in the 200-NN case. These results with K-NN classifiers demonstrate the potential applicability of \algo \ to downstream tasks based on nearest neighbors search, such as content retrieval in images or videos.
+
+% \vspace{2mm}
+% \textbf{Loss function coefficients.} 
+\subsubsection{Loss function coefficients} \label{app:loss_coeffs}
+Table~\ref{tab:impact_varcov} reports the performance for various values of the loss term coefficients in Eq.~(\ref{eq:loss}). Without variance regularization the representations immediately collapse to a single vector and the covariance term, which has no repulsive effect preventing collapse, has no impact. The invariance term is absolutely necessary and without it the network can not learn any good representations. By simply using the invariance term and variance regularization, which is a very simple baseline, \algo \ still reaches an accuracy of 57.5$\%$. These results show that variance and covariance regularizations have complementary effects, and that both are required.
+
+On ImageNet, we choose the final coefficients the following way. First, we have empirically found that using very different values for $\lambda$ and $\mu$, or taking $\lambda=\mu$ with $\nu > \mu$ leads to unstable training. On the other hand taking $\lambda=\mu$ and picking $\nu<\mu$ leads to stable convergence, with the exact value picked for $mu$ having very limited influence on the final linear classification accuracy. We have found that setting $lambda=mu= 25$ and $nu=1$ works best (by a small margin) for Imagenet but we have also obtained excellent results on MNIST and Cifar-10 and 100 using these exact same values. We could easily have tuned these parameters by cross-validation on the validation sets of these two smaller datasets.
+
+% \begin{table}[t]
+% \caption{\textbf{Ablation study.} Top-1 accuracy on linear classification with 100 pretraining epochs.}
+\def \hfillx {\hspace*{-\textwidth} \hfill}
+\begin{table}[t]
+\small
+% \hspace{1mm}
+\begin{minipage}[c]{0.49\textwidth}
+% \begin{table}%{.47\linewidth}
+    \centering
+    \captionof{table}{\textbf{Impact of variance-covariance regularization.} Inv: a invariance loss is used, $\lambda > 0$, Var: variance regularization, $\mu > 0$, Cov: covariance regularization, $\nu > 0$, in Eq.~(\ref{eq:loss}).}
+    \vspace{-1.5mm}
+    % \caption{\textbf{Impact of variance-covariance regularization.} Inv: a invariance loss is used, $\lambda > 0$, Var: variance regularization, $\mu > 0$, Cov: covariance regularization, $\nu > 0$, in Eq.~(\ref{eq:final_loss}).}
+    \label{tab:impact_varcov}
+    \setlength\tabcolsep{3.5pt}
+    \small
+    \vspace{0.1mm}
+    \begin{tabular}{lccccc}
+    \toprule
+    Method & $\lambda$ & $\mu$ & $\nu$ & Top-1  \\
+    \midrule
+    Inv                         & 1     & 0     & 0     & collapse \\
+    Inv + Cov                   & 25    & 0     & 1     & collapse \\
+    Inv + Cov                   & 0     & 25    & 1     & collapse \\
+    Inv + Var                   & 1     & 1     & 0     & 57.5 \\
+    \midrule
+    Inv + Var + Cov (\algo)     & 1     & 1	    & 1	    & collapse \\
+                                & 1	    & 10	& 1	    & collapse \\
+                                & 10	& 1	    & 1	    & collapse \\
+                                & 5	    & 5	    & 1	    & 68.1 \\
+                                & 10	& 10	& 1	    & 68.2 \\
+                                & 25    & 25    & 1     & 68.6 \\
+                                & 50	& 50	& 1	    & 68.3 \\
+    \bottomrule
+    \end{tabular}
+% \end{table}
+\end{minipage}
+\hfillx
+% \hspace{8mm}
+\begin{minipage}[c]{0.49\textwidth}
+% \begin{table}%{1,0\linewidth}
+    \centering
+    \captionof{table}{\textbf{Impact of normalization.} Std: variables are centered and divided by their standard deviation over the batch. This is applied or not to the embedding and the expander hidden layers. $l_2$: the embedding vectors are $l_2$-normalized.}
+    \vspace{-1.5mm}
+    \label{tab:impact_norm}
+    \small
+    \begin{tabular}{llc}
+    \toprule
+    Representation & Embedding & Top-1  \\
+    \midrule
+    % Std  & None & 68.6 \\
+    % Std  & Std  & 68.4 \\
+    % None & None & 67.4 \\
+    % None & Std  & 67.2 \\
+    % Std  & $l_2$ & 65.1 \\
+    Std  & None  & 68.6 \\
+    Std  & Std & 68.4 \\
+    None & Std  & 67.4 \\
+    Std & None & 67.2 \\
+    None  & $l_2$ & 65.1 \\
+    \bottomrule
+    \end{tabular}
+% \end{table}
+\end{minipage}
+% \end{center}
+\end{table}
+
+
+% \vspace{2mm}
+% \textbf{Normalizations. } 
+\subsubsection{Normalizations} 
+\algo \ is the first self-supervised method for joint-embedding architectures we are aware of that does not require normalization. Contrary to SimSiam, W-MSE, SwAV and BYOL, and others, the embedding vectors are not projected on the unit sphere. Contrary to Barlow Twins, they are not standardized (equivalent to batch normalization without the adaptive parameters). Table~\ref{tab:impact_norm} shows that the best settings do not involve any normalization of the embeddings, whether it is batch-wise or feature-wise (as in  $l_2$ normalization). Whenever the embeddings are standardized (lines 3 and 5 in the table) the covariance matrix of Eq.~(\ref{eq:covariance}) becomes the normalized auto-correlation matrix with coefficients between -1 and 1. This hurts the accuracy by 0.2$\%$. We observe that when unconstrained, the coefficients in the covariance matrix take values in a wider range, which seems to facilitate the training process. Standardization is still an important component that helps stabilize the training when used in the hidden layers of the \expandernospace, and the performance drops by 1.2\% when it is removed. Projecting the embeddings on the unit sphere implicitly constrains their standard deviation along the batch dimension to be $1/\sqrt{d}$, where $d$ is the dimension of the vectors. We change the invariance term of Eq.~(\ref{eq:invariance}) to be the mean square error between $l_2$-normalized vectors, and the target $\gamma$ in the variance term of Eq.~(\ref{eq:var_loss}) is set to $1/\sqrt{d}$ instead of $1$, forcing the standard deviation to get closer to $1/\sqrt{d}$, and the vectors to be spread out on the unit sphere. This puts a lot more constraints on the network and the performance drops by 3.5\%.
+
+\subsubsection{Expander network architecture} \label{app:expander_archi}
+\algo \ borrows the decorrelation mechanism of Barlow Twins \cite{zbontar2021barlow} and we observe that it therefore has the same dependency on the dimensionality of the expander network. Table~\ref{tab:ablation_expander} reports the impact of the width and depth of the expander network. The dimensionality corresponds the number of hidden and output units in the expander network during pretraining. As the dimensionality increases, the performance dramatically increases from 55.9\% top-1 accuracy on linear evaluation with a dimensionality of 256, to 68.8\% with dimensionality 16384. The performance tends to saturate as the difference between dimensionality 8192 and 16384 is only of 0.2\%.
+
+\subsubsection{Batch size} \label{sec:batch_size} Contrastive methods suffer from the need of a lot of negative examples which can translate into the need for very large batch sizes \cite{chen2020simclr}. Table~\ref{tab:ablation_bs} reports the performance on linear classification when the size of the batch varies between 128 and 4096. For each value of batch size, we perform a grid search on the base learning rate described in Appendix~\ref{app:ablation}. We observe a $0.7\%$ and $1.2\%$ drop in accuracy with small batch size of 256 and 128 which is comparable with the robustness to batch size of Barlow Twins \cite{zbontar2021barlow} and SimSiam \cite{chen2020simsiam}, and a $0.8\%$ drop with a batch size of 4096, which is reasonable and allows our method to be very easily parallelized on multiple GPUs.
+
+\begin{table}[t]
+% \vspace{-5em}
+\caption{\textbf{Impact of expander dimensionality.} Top-1 accuracy on the linear evaluation protocol with 100 pretraining epochs.}
+\label{tab:ablation_expander}
+\vspace{-6mm}
+\setlength{\tabcolsep}{10.5pt}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lccccccc}
+\toprule
+Dimensionality      & 256      & 512      & 1024      & 2048     & 4096  &  8192  &  16834 \\
+\midrule
+Top-1           & 55.9 & 59.2 & 62.4 & 65.1 & 67.3 & 68.6 & 68.8 \\
+\bottomrule
+% \end{tabularx}
+\end{tabular}
+\end{center}
+\vspace{-2mm}
+\end{table}
+
+\begin{table}[t]
+\caption{\textbf{Impact of batch size.} Top-1 accuracy on the linear evaluation protocol with 100 pretraining epochs.}
+\label{tab:ablation_bs}
+\vspace{-6mm}
+\setlength{\tabcolsep}{10.5pt}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lccccccc}
+\toprule
+Batch size      & 128      & 256      & 512      & 1024     & 2048     & 4096 \\
+\midrule
+Top-1           & 67.3 & 67.9 & 68.2 & 68.3 & 68.6 & 67.8 \\
+\bottomrule
+% \end{tabularx}
+\end{tabular}
+\end{center}
+\vspace{-2mm}
+\end{table}
+
+
+\subsubsection{Combination with BYOL and SimSiam} \label{app:combination}
+
+BYOL \cite{grill2020byol} and SimSiam \cite{chen2020simsiam} rely on a effective but difficult to interpret mechanism for preventing collapse, which may lead to instabilities during the training. We incorporate our variance regularization loss into BYOL and SimSiam and show that it helps stabilize the training and offers a small performance improvement. For both methods, the results are obtained using our own implementation and the exact same data augmentation and optimization settings as in their original paper. The variance and covariance regularization losses are incorporated with a factor of $\mu=1$ for variance and $\nu=0.01$ for covariance. We report in Figure~\ref{fig:byol_simsiam_accuracy} the improvement obtained over these methods on the linear evaluation protocol for different number of pre-training epochs. For BYOL the improvement is of 0.9\% with 100 epochs and becomes less significant as the number of pre-training epochs increases with a 0.2\% improvement with 1000 epochs. This indicates that variance regularization makes BYOL converge faster. In SimSiam the improvement is not as significant. We plot in Figure~\ref{fig:std} the evolution of the standard deviation computed along each dimension and averaged across the dimensions of the representation and the embeddings, during BYOL and SimSiam pretraining. For both methods, the standard deviation computed on the embeddings perfectly matches $1/\sqrt{d}$ where $d$ is the dimension of the embeddings, which indicates that the embeddings are perfectly spread-out across the unit sphere. This translates in an increased standard deviation at the representation level, which seems to be correlated to the performance improvement. We finally study in Figure~\ref{fig:byol_simsiam_cor} the evolution of the average correlation coefficient, during pretraining of BYOL and SimSiam, with and without variance and covariance regularization. The average correlation coefficient is computed by averaging the off-diagonal coefficients of the correlation matrix of the representations:
+\begin{equation}
+    \frac{1}{2d(d-1)} \sum_{i \ne j} C(Y)_{i,j}^2 + C(Y^{\prime})_{i,j}^2,
+\end{equation}
+where $Y$ and $Y^{\prime}$ are the standardized representations and $C$ is defined in Eq.~(\ref{eq:covariance}). In BYOL this coefficient is much lower using covariance regularization, which translate in a small improvement of the performance, according to Table~\ref{tab:ablation}. We do not observe the same improvement in SimSiam, both in terms of correlation coefficient, and in terms of performance on linear classification. The average correlation coefficient is correlated with the performance, which motivates the fact that decorrelation and redundancy reduction are core mechanisms for learning self-supervised representations.
+
+\begin{figure}
+    % \vspace{-3em}
+    \hspace{-4em}
+    \centering
+    \begin{minipage}{0.38\textwidth}
+        \centering
+        \includegraphics[trim=0.4cm 0cm 1.0cm 0cm, clip, width=1.3\textwidth]{plots/byol_var.pdf}
+        % \caption{first figure}
+    \end{minipage}\hspace{5em}
+    \begin{minipage}{0.42\textwidth}
+        \centering
+        \includegraphics[trim=0.1cm 0cm 0cm 0cm, clip, width=1.3\textwidth]{plots/simsiam_var.pdf}
+    \end{minipage}
+    \caption{\textbf{Incorporating variance regularization in BYOL and SimSiam.} Top-1 accuracy on the linear evaluation protocol for different number of pretraining epochs. For both methods pre-training follows the optimization and data augmentation protocol of their original paper but is based on our implementation. \textit{Var} indicates variance regularization}
+    \label{fig:byol_simsiam_accuracy}
+\end{figure}
+
+
+\subsection{Running time} \label{app:running_time}
+
+We report in Table~\ref{tab:running_time}, the running time of \algo \ in comparison with other methods. All methods are run by us on 32 Tesla V100 GPUs. Each method offers a different trade-off between running time, memory and performance. SwAV is a very fast algorithm which use less memory and run faster than the other methods but with a lower performance, multi-crop helps the performance at the cost of additional compute and memory usage. BYOL has the highest memory requirement, which is due to the need of storing the target network weights. Finally, Barlow Twins and \algo \ offer an interesting trade-off, consuming less memory than BYOL and SwAV with multi-crop, and running faster than SwAV with multi-crop, but with a slightly worse performance. The difference of 1h running time between Barlow Twins and \algo \ is probably due to implementation details not related to the method.
+
+\vspace{6mm}
+
+\begin{table}[h]
+\caption{\textbf{Running time and peak memory.} Comparison between different methods, the training is distributed on 32 Tesla V100 GPUs, the running time is measured over 100 epochs and the peak memory is measured on a single GPU. We report top-1 accuracy (\%) on linear classification on top of the frozen representations.}
+\vspace{-6mm}
+\label{tab:running_time}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lccc}
+\toprule
+Method & time / 100 epochs & peak memory / GPU & Top-1 accuracy (\%) \\
+\midrule
+SwAV                        &   9h      &   9.5G    & 71.8 \\
+SwAV (w/ multi-crop)        &   13h     &   12.9G   & 75.3 \\
+BYOL                        &   10h     &   14.6G   & 74.3 \\
+Barlow Twins                &   12h     &   11.3G   & 73.2 \\
+\algo                       &   11h     &   11.3G   & 73.2 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{table}
+
+\newpage
+\setcounter{figure}{2}
+
+\begin{figure}[b]
+\centering
+\hspace{-4em}
+\begin{subfigure}{.4\textwidth}
+    \centering
+    \includegraphics[width=1.3\textwidth]{plots/byol_stde.pdf}
+\end{subfigure}%
+\hspace{5em}
+\begin{subfigure}{.4\textwidth}
+    \centering
+    \includegraphics[width=1.3\textwidth]{plots/byol_stdh.pdf}
+\end{subfigure}
+\end{figure}
+\begin{figure}[b]
+\vspace{-3em}
+\centering
+\hspace{-4em}
+\begin{subfigure}{.4\textwidth}
+    \centering
+    \includegraphics[width=1.3\textwidth]{plots/simsiam_stde.pdf}
+\end{subfigure}%
+\hspace{5em}
+\begin{subfigure}{.4\textwidth}
+    \centering
+    \includegraphics[width=1.3\textwidth]{plots/simsiam_stdh.pdf}
+\end{subfigure}
+\caption{\textbf{Standard deviation of the features during BYOL and SimSiam pretraining.} Evolution of the average standard deviation of each dimension of the features with and without variance regularization (Var). left: the standard deviation is measured on the representations, right: the standard deviation is measured on the embeddings.}
+\label{fig:std}
+\end{figure}
+
+\begin{figure}
+    \hspace{-4em}
+    \centering
+    \begin{minipage}{0.4\textwidth}
+        \centering
+        \includegraphics[trim=0.0cm 0cm 0cm 0cm, clip, width=1.3\textwidth]{plots/byol_core.pdf} % first figure itself
+        % \caption{representations}
+    \end{minipage}\hspace{5em}
+    \begin{minipage}{0.4\textwidth}
+        \centering
+        \includegraphics[trim=0cm 0cm 0cm 0cm, clip, width=1.3\textwidth]{plots/simsiam_core.pdf} % second figure itself
+        % \caption{embeddings}
+    \end{minipage}
+    \caption{\textbf{Average correlation coefficient of the features during BYOL and SimSiam pretraining.} Evolution of the average correlation coefficient measured by averaging the off-diagonal terms of the correlation matrix of the representations with BYOL, BYOL with variance-covariance regularization (BYOL VarCov), SimSiam, and SimSiam with variance-covariance regularization (SimSiam VarCov).}
+    \label{fig:byol_simsiam_cor}
+\end{figure}
+

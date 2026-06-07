@@ -1,0 +1,38 @@
+\begin{Verbatim}[commandchars=\\\{\}]
+\PYG{k+kn}{import} \PYG{n+nn}{torch}
+\PYG{k+kn}{from} \PYG{n+nn}{torch} \PYG{k+kn}{import} \PYG{n}{nn}
+\PYG{k+kn}{from} \PYG{n+nn}{torchvision.models} \PYG{k+kn}{import} \PYG{n}{resnet50}
+
+\PYG{k}{class} \PYG{n+nc}{DETR}\PYG{p}{(}\PYG{n}{nn}\PYG{o}{.}\PYG{n}{Module}\PYG{p}{):}
+
+    \PYG{k}{def} \PYG{n+nf+fm}{\PYGZus{}\PYGZus{}init\PYGZus{}\PYGZus{}}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,} \PYG{n}{num\PYGZus{}classes}\PYG{p}{,} \PYG{n}{hidden\PYGZus{}dim}\PYG{p}{,} \PYG{n}{nheads}\PYG{p}{,}
+                 \PYG{n}{num\PYGZus{}encoder\PYGZus{}layers}\PYG{p}{,} \PYG{n}{num\PYGZus{}decoder\PYGZus{}layers}\PYG{p}{):}
+        \PYG{n+nb}{super}\PYG{p}{()}\PYG{o}{.}\PYG{n+nf+fm}{\PYGZus{}\PYGZus{}init\PYGZus{}\PYGZus{}}\PYG{p}{()}
+        \PYG{c+c1}{\PYGZsh{} We take only convolutional layers from ResNet\PYGZhy{}50 model}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{backbone} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Sequential}\PYG{p}{(}\PYG{o}{*}\PYG{n+nb}{list}\PYG{p}{(}\PYG{n}{resnet50}\PYG{p}{(}\PYG{n}{pretrained}\PYG{o}{=}\PYG{k+kc}{True}\PYG{p}{)}\PYG{o}{.}\PYG{n}{children}\PYG{p}{())[:}\PYG{o}{\PYGZhy{}}\PYG{l+m+mi}{2}\PYG{p}{])}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{conv} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Conv2d}\PYG{p}{(}\PYG{l+m+mi}{2048}\PYG{p}{,} \PYG{n}{hidden\PYGZus{}dim}\PYG{p}{,} \PYG{l+m+mi}{1}\PYG{p}{)}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{transformer} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Transformer}\PYG{p}{(}\PYG{n}{hidden\PYGZus{}dim}\PYG{p}{,} \PYG{n}{nheads}\PYG{p}{,}
+                                          \PYG{n}{num\PYGZus{}encoder\PYGZus{}layers}\PYG{p}{,} \PYG{n}{num\PYGZus{}decoder\PYGZus{}layers}\PYG{p}{)}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{linear\PYGZus{}class} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Linear}\PYG{p}{(}\PYG{n}{hidden\PYGZus{}dim}\PYG{p}{,} \PYG{n}{num\PYGZus{}classes} \PYG{o}{+} \PYG{l+m+mi}{1}\PYG{p}{)}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{linear\PYGZus{}bbox} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Linear}\PYG{p}{(}\PYG{n}{hidden\PYGZus{}dim}\PYG{p}{,} \PYG{l+m+mi}{4}\PYG{p}{)}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{query\PYGZus{}pos} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Parameter}\PYG{p}{(}\PYG{n}{torch}\PYG{o}{.}\PYG{n}{rand}\PYG{p}{(}\PYG{l+m+mi}{100}\PYG{p}{,} \PYG{n}{hidden\PYGZus{}dim}\PYG{p}{))}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{row\PYGZus{}embed} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Parameter}\PYG{p}{(}\PYG{n}{torch}\PYG{o}{.}\PYG{n}{rand}\PYG{p}{(}\PYG{l+m+mi}{50}\PYG{p}{,} \PYG{n}{hidden\PYGZus{}dim} \PYG{o}{//} \PYG{l+m+mi}{2}\PYG{p}{))}
+        \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{col\PYGZus{}embed} \PYG{o}{=} \PYG{n}{nn}\PYG{o}{.}\PYG{n}{Parameter}\PYG{p}{(}\PYG{n}{torch}\PYG{o}{.}\PYG{n}{rand}\PYG{p}{(}\PYG{l+m+mi}{50}\PYG{p}{,} \PYG{n}{hidden\PYGZus{}dim} \PYG{o}{//} \PYG{l+m+mi}{2}\PYG{p}{))}
+
+    \PYG{k}{def} \PYG{n+nf}{forward}\PYG{p}{(}\PYG{n+nb+bp}{self}\PYG{p}{,} \PYG{n}{inputs}\PYG{p}{):}
+        \PYG{n}{x} \PYG{o}{=} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{backbone}\PYG{p}{(}\PYG{n}{inputs}\PYG{p}{)}
+        \PYG{n}{h} \PYG{o}{=} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{conv}\PYG{p}{(}\PYG{n}{x}\PYG{p}{)}
+        \PYG{n}{H}\PYG{p}{,} \PYG{n}{W} \PYG{o}{=} \PYG{n}{h}\PYG{o}{.}\PYG{n}{shape}\PYG{p}{[}\PYG{o}{\PYGZhy{}}\PYG{l+m+mi}{2}\PYG{p}{:]}
+        \PYG{n}{pos} \PYG{o}{=} \PYG{n}{torch}\PYG{o}{.}\PYG{n}{cat}\PYG{p}{([}
+            \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{col\PYGZus{}embed}\PYG{p}{[:}\PYG{n}{W}\PYG{p}{]}\PYG{o}{.}\PYG{n}{unsqueeze}\PYG{p}{(}\PYG{l+m+mi}{0}\PYG{p}{)}\PYG{o}{.}\PYG{n}{repeat}\PYG{p}{(}\PYG{n}{H}\PYG{p}{,} \PYG{l+m+mi}{1}\PYG{p}{,} \PYG{l+m+mi}{1}\PYG{p}{),}
+            \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{row\PYGZus{}embed}\PYG{p}{[:}\PYG{n}{H}\PYG{p}{]}\PYG{o}{.}\PYG{n}{unsqueeze}\PYG{p}{(}\PYG{l+m+mi}{1}\PYG{p}{)}\PYG{o}{.}\PYG{n}{repeat}\PYG{p}{(}\PYG{l+m+mi}{1}\PYG{p}{,} \PYG{n}{W}\PYG{p}{,} \PYG{l+m+mi}{1}\PYG{p}{),}
+        \PYG{p}{],} \PYG{n}{dim}\PYG{o}{=\PYGZhy{}}\PYG{l+m+mi}{1}\PYG{p}{)}\PYG{o}{.}\PYG{n}{flatten}\PYG{p}{(}\PYG{l+m+mi}{0}\PYG{p}{,} \PYG{l+m+mi}{1}\PYG{p}{)}\PYG{o}{.}\PYG{n}{unsqueeze}\PYG{p}{(}\PYG{l+m+mi}{1}\PYG{p}{)}
+        \PYG{n}{h} \PYG{o}{=} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{transformer}\PYG{p}{(}\PYG{n}{pos} \PYG{o}{+} \PYG{n}{h}\PYG{o}{.}\PYG{n}{flatten}\PYG{p}{(}\PYG{l+m+mi}{2}\PYG{p}{)}\PYG{o}{.}\PYG{n}{permute}\PYG{p}{(}\PYG{l+m+mi}{2}\PYG{p}{,} \PYG{l+m+mi}{0}\PYG{p}{,} \PYG{l+m+mi}{1}\PYG{p}{),}
+                             \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{query\PYGZus{}pos}\PYG{o}{.}\PYG{n}{unsqueeze}\PYG{p}{(}\PYG{l+m+mi}{1}\PYG{p}{))}
+        \PYG{k}{return} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{linear\PYGZus{}class}\PYG{p}{(}\PYG{n}{h}\PYG{p}{),} \PYG{n+nb+bp}{self}\PYG{o}{.}\PYG{n}{linear\PYGZus{}bbox}\PYG{p}{(}\PYG{n}{h}\PYG{p}{)}\PYG{o}{.}\PYG{n}{sigmoid}\PYG{p}{()}
+
+\PYG{n}{detr} \PYG{o}{=} \PYG{n}{DETR}\PYG{p}{(}\PYG{n}{num\PYGZus{}classes}\PYG{o}{=}\PYG{l+m+mi}{91}\PYG{p}{,} \PYG{n}{hidden\PYGZus{}dim}\PYG{o}{=}\PYG{l+m+mi}{256}\PYG{p}{,} \PYG{n}{nheads}\PYG{o}{=}\PYG{l+m+mi}{8}\PYG{p}{,} \PYG{n}{num\PYGZus{}encoder\PYGZus{}layers}\PYG{o}{=}\PYG{l+m+mi}{6}\PYG{p}{,} \PYG{n}{num\PYGZus{}decoder\PYGZus{}layers}\PYG{o}{=}\PYG{l+m+mi}{6}\PYG{p}{)}
+\PYG{n}{detr}\PYG{o}{.}\PYG{n}{eval}\PYG{p}{()}
+\PYG{n}{inputs} \PYG{o}{=} \PYG{n}{torch}\PYG{o}{.}\PYG{n}{randn}\PYG{p}{(}\PYG{l+m+mi}{1}\PYG{p}{,} \PYG{l+m+mi}{3}\PYG{p}{,} \PYG{l+m+mi}{800}\PYG{p}{,} \PYG{l+m+mi}{1200}\PYG{p}{)}
+\PYG{n}{logits}\PYG{p}{,} \PYG{n}{bboxes} \PYG{o}{=} \PYG{n}{detr}\PYG{p}{(}\PYG{n}{inputs}\PYG{p}{)}
+\end{Verbatim}

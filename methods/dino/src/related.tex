@@ -1,0 +1,50 @@
+\section{Related work}
+
+%Our work builds upon recent progress in self-supervised pretraining and  self-training.
+
+\paragraph{Self-supervised learning.}
+A large body of work on self-supervised learning focuses on discriminative approaches coined \emph{instance classification}~\cite{chen2020simple,dosovitskiy2016discriminative,he2020momentum,wu2018unsupervised},
+which considers each image a different class and trains the model by discriminating them up to data augmentations.
+However, explicitly learning a classifier to discriminate between all images~\cite{dosovitskiy2016discriminative} does not scale well with the number of images. 
+Wu~\etal~\cite{wu2018unsupervised} propose to use a noise contrastive estimator (NCE)~\cite{gutmann2010noise} to compare instances instead of classifying them.
+A caveat of this approach is that it requires comparing features from a large number of images simultaneously.
+In practice, this requires large batches~\cite{chen2020simple} or memory banks~\cite{he2020momentum, wu2018unsupervised}.
+Several variants allow automatic grouping of instances in the form of clustering~\cite{asano2019self,caron2018deep,caron2019unsupervised,huang2019unsupervised,junnan2021prototypical,xie2016unsupervised,yang2016joint,zhuang2019local}.
+
+Recent works have shown that we can learn unsupervised features without discriminating between images.
+Of particular interest, Grill~\etal~\cite{grill2020bootstrap} propose a metric-learning formulation called BYOL, where features are trained by matching them to representations obtained with a momentum encoder.
+Methods like BYOL work even without a momentum encoder, at the cost of a drop of performance~\cite{chen2020exploring,grill2020bootstrap}.
+Several other works echo this direction, showing that one can match more elaborate representations~\cite{gidaris2020learning,gidaris2020obow}, train features matching them to a uniform distribution~\cite{bojanowski2017unsupervised} or by using whitening~\cite{ermolov2020whitening,zbontar2021barlow}.
+Our approach takes its inspiration from BYOL but operates with a different similarity matching loss and uses the exact same architecture for the student and the teacher.
+That way, our work completes the interpretation initiated in BYOL of self-supervised learning as a form of Mean Teacher self-distillation~\cite{tarvainen2017mean} with no labels.
+
+
+\paragraph{Self-training and knowledge distillation.}
+Self-training aims at improving the quality of features by propagating a small initial set of annotations to a large set of unlabeled instances.
+This propagation can either be done with hard assignments of labels~\cite{lee2013pseudo,xu2020iterative,yalniz2019billion} or with a soft assignment~\cite{xie2020self}.
+When using soft labels, the approach is often referred to as knowledge distillation~\cite{bucilua2006model,hinton2015distilling} and has been primarily designed to train a small network to mimic the output of a larger network to compress models.
+Xie~\etal~\cite{xie2020self} have shown that distillation could be used to propagate soft pseudo-labels to unlabelled data in a self-training pipeline, drawing an essential connection between self-training and knowledge distillation.
+Our work builds on this relation and extends knowledge distillation to the case where no labels are available.
+Previous works have also combined self-supervised learning and knowledge distillation~\cite{fang2021seed,shen2021s2,chen2020big,noroozi2018boosting}, enabling self-supervised model compression and performance gains.
+However, these works rely on a \emph{pre-trained} fixed teacher while our teacher is dynamically built during training.
+This way, knowledge distillation, instead of being used as a post-processing step to self-supervised pre-training, is directly cast as a self-supervised objective.
+%our framework unifies self-distillation and self-supervised learning into a single training.
+%Instead of using distillation as a post-processing step to self-supervised pre-training, our framework directly casts self-distillation as a self-supervised objective.
+Finally, our work is also related to \textit{codistillation}~\cite{anil2018large} where student and teacher have the same architecture and use distillation during training.
+However, the teacher in \textit{codistillation} is also distilling from the student, while it is updated with an average of the student in our work.
+
+%In parallel, it has been shown that self-training and self-supervised pretraining are complementary, leading to strong performance with limited annotations in computer vision~\cite{chen2020big}, speech recognition~\cite{zhang2020pushing, xu2020self} and natural language understanding~\cite{du2020self}. 
+%However, this line of work typically applies several independent steps of training, which involves to first pretrain the model and then apply several steps of self-training where labels are propagated.
+%Our work propose a self-supervised formulation that extend self-training with soft pseudo-labels to the case where there is no labels to start from, which allows to pretrain and self-train in one step. 
+%% \aj{not sure if this is going to be true}
+%Closer to our work, MixMatch~\cite{hoffer2019mix} is a self-training method that propagate pseudo-labels through a distillation loss. 
+%They do not combine self-training with self-supervised pretraining but their method work in one step.
+
+%\subsection{Vision Transformer}
+%The Transformer architecture has originally been proposed in the context of machine translation by Vaswani~\etal~\cite{vaswani2017attention}.
+%Since its introduction, this architecture has been successfully applied to sentence representation~\cite{devlin2018bert}, language modeling~\cite{radford2019language} and more recently speech recognition~\cite{}.
+%While there have been many attempts at adapting the Transformer architecture to images~\cite{parmar2018image,child2019generating}, it is only recently that standard Transformers have obtained competitive results on challenging image classification datasets~\cite{zhao2020exploring,dosovitskiy2020image}.
+%In particular, Dosovitskiy~\etal~\cite{dosovitskiy2020image} show that a patch based Transformer is particularly suited for image classification.
+%While these models originally required a lot of annotated data, Touvron~\etal~\cite{touvron2020training} show that they  also achieve competitive performance when trained on ImageNet alone by guiding their training with a RegNet~\cite{radosavovic2020designing} through distillation. 
+%Our work builds upon these recent advances in Vision Transformer (ViT) since we apply our self-distillation approach to this network. 
+%In particular, ViT models are difficult to train in the low annotated data regime. Our goal is to see if our combination of self-supervised pretraining and self-training helps the training of ViT in this setting.

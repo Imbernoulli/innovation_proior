@@ -1,0 +1,55 @@
+\newcommand{\sect}[1]{Sec.~\ref{#1}}
+\newcommand{\sectapp}[1]{Appendix~\ref{#1}}
+\newcommand{\sectapps}[1]{Appendices~\ref{#1}}
+\newcommand{\ssect}[1]{\S~\ref{#1}}
+\newcommand{\eqn}[1]{Equation~\ref{#1}}
+\newcommand{\fig}[1]{Figure~\ref{#1}}
+\newcommand{\figs}[1]{Figs.~\ref{#1}}
+\newcommand{\tbl}[1]{Table~\ref{#1}}
+\newcommand{\tbls}[1]{Tables~\ref{#1}}
+
+\newcommand{\degree}{\ensuremath{^\circ}\xspace}
+\newcommand{\ignore}[1]{}
+\newcommand{\norm}[1]{\lVert#1\rVert}
+\newcommand{\fcseven}{$\mbox{fc}_7$}
+
+\renewcommand*{\thefootnote}{\fnsymbol{footnote}}
+\def\naive{na\"{\i}ve\xspace}
+\def\Naive{Na\"{\i}ve\xspace}
+
+\DeclareMathAlphabet{\mathbfit}{OML}{cmm}{b}{it}
+
+\makeatletter
+\DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\@onedot{\ifx\@let@token.\else.\null\fi\xspace}
+
+\def\eg{e.g\onedot} \def\Eg{E.g\onedot}
+\def\ie{i.e\onedot} \def\Ie{I.e\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{etc\onedot}
+\def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot}
+\def\dof{d.o.f\onedot}
+\def\etal{et al\onedot}
+\def\aka{a.k.a\onedot}
+
+\newcommand{\xgx}[1]{{\color{blue}{[}GX: #1{]}}}
+\newcommand{\SH}[1]{{\color{green}{[}SH: #1{]}}}
+\newcommand{\bc}[1]{{\color{magenta}{[}BD: #1{]}}}
+\newcommand{\yt}[1]{{\color{purple}{[}YT: #1{]}}}
+\newcommand{\ml}[1]{{\color{purple}{[}ML: #1{]}}}
+\newcommand{\mike}[1]{{\color{purple}{[}ML: #1{]}}}
+\newcommand{\xhdr}[1]{{\noindent\bfseries #1}.}
+\newcommand{\todo}[1]{{\textcolor{red}{TODO: #1}}}
+\newcommand{\red}[1]{{\textcolor{red}{#1}}}
+\newcommand{\maroon}[1]{{\textcolor{Maroon}{#1}}}
+\newcommand{\CITE}{{\textcolor{red}{[CITE]}}\xspace}
+
+\def\method{StreamingLLM\xspace}
+
+\newcommand{\myparagraph}[1]{\vspace{0pt}\paragraph{#1}}
+
+\renewcommand\theadalign{bc}
+\renewcommand\theadfont{\bfseries}
+\renewcommand\theadgape{\Gape[4pt]}
+\renewcommand\cellgape{\Gape[4pt]}

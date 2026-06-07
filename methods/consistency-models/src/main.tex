@@ -1,0 +1,70 @@
+
+\documentclass{article}
+
+
+\usepackage[page,toc,titletoc,title]{appendix}
+
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+\usepackage[accepted]{icml2023}
+
+
+\input{cmd.tex}
+\usepackage[capitalize]{cleveref}
+\usepackage{tcolorbox}
+
+
+\usepackage[textsize=tiny]{todonotes}
+
+\icmltitlerunning{Consistency Models}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{Consistency Models}
+
+
+
+\icmlsetsymbol{equal}{*}
+
+\begin{icmlauthorlist}
+\icmlauthor{Yang Song}{a}
+\icmlauthor{Prafulla Dhariwal}{a}
+\icmlauthor{Mark Chen}{a}
+\icmlauthor{Ilya Sutskever}{a}
+\end{icmlauthorlist}
+
+\icmlaffiliation{a}{OpenAI, San Francisco, CA 94110, USA}
+\icmlcorrespondingauthor{Yang Song}{songyang@openai.com}
+
+\icmlkeywords{generative models, diffusion, consistency models, score-based generative models, score matching}
+
+\vskip 0.3in
+]
+
+
+
+\printAffiliationsAndNotice{}  %
+
+\begin{abstract}
+    Diffusion models have significantly advanced the fields of image, audio, and video generation, but they depend on an iterative sampling process that causes slow generation. To overcome this limitation, we propose \emph{consistency models}, a new family of models that generate high quality samples by directly mapping noise to data. They support fast one-step generation by design, while still allowing multistep sampling to trade compute for sample quality. They also support zero-shot data editing, such as image inpainting, colorization, and super-resolution, without requiring explicit training on these tasks. Consistency models can be trained either by distilling pre-trained diffusion models, or as standalone generative models altogether. Through extensive experiments, we demonstrate that they outperform existing distillation techniques for diffusion models in one- and few-step sampling, achieving the new state-of-the-art FID of 3.55 on CIFAR-10 and 6.20 on ImageNet $64\times 64$ for one-step generation. When trained in isolation, consistency models become a new family of generative models that can outperform existing one-step, non-adversarial generative models on standard benchmarks such as CIFAR-10, ImageNet $64\times 64$ and LSUN $256\times 256$. %
+\end{abstract}
+\input{intro.tex}
+\input{diffusion.tex}
+\input{consistency.tex}
+\input{distillation.tex}
+\input{generation.tex}
+\input{experiments.tex}
+\input{conclusion.tex}
+
+\bibliography{bibliography}
+\bibliographystyle{icml2023}
+
+
+\newpage
+\appendix
+\onecolumn
+\input{appendix.tex}
+
+
+\end{document}

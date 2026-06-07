@@ -1,0 +1,80 @@
+\label{sec:related}
+\begin{comment}
+\todo{\\
+  \paragraph{3d point cloud processing:}
+  \begin{itemize}
+    \item classification
+    \item segmentation
+    % \item correspondence
+  \end{itemize} 
+  traditionally, each 3d data processing task depends on some specific pipeline. our framework unifies them together.
+  
+  \paragraph{point cloud features:}
+  \begin{itemize}
+    \item global features
+    \item local features
+  \end{itemize}
+  most works use hand-crafted features. 
+
+  \paragraph{deep learning on 3d data:}
+  \begin{itemize}
+    \item multi-view CNN
+    \item volumetric CNN
+    \item spectral CNN on meshes 
+    \item non end-to-end approach
+  \end{itemize}
+  in previous work of deep learning on point clouds, a point cloud is first converted to one of the above forms. however, there lacks work that directly operates on a raw point set.
+
+  \paragraph{deep learning on unordered sets}
+  \begin{itemize}
+    \item discuss ``OrderMatters'', by Vinyals et al.
+    \item say that this is a rather fundamental problem, related to many other tasks
+  \end{itemize} 
+}
+\end{comment}
+
+\paragraph{Point Cloud Features}
+Most existing features for point cloud are handcrafted towards specific tasks. Point features often encode certain statistical properties of points and are designed to be invariant to certain transformations, which are typically classified as intrinsic~\cite{aubry2011wave, sun2009concise, bronstein2010scale} or extrinsic ~\cite{rusu2008aligning, rusu2009fast, ling2007shape, johnson1999using, chen2003visual}.  They can also be categorized as local features and global features. For a specific task, it is not trivial to find the optimal feature combination.
+
+%While one can extract all kinds of features and let a machine learning model decide which ones to use, the success of CNNs~\cite{lecun2015deep} for 2D images convinces us that an end-to-end feature learning paradigm is more promising. In this work we present a unified point feature learning network that can easily adapts to different tasks.
+
+% \paragraph{Point Cloud Features}
+% Most existing features for point cloud are handcrafted towards specific tasks. According to the spatial scopes, they can be categorized as local features and global features. Point features often encode certain statistical properties of points and are designed to be invariant to certain transformations, which are typically classified as being intrinsic [WKS, HKS] or extrinsic [PFH, FPFH, D2, spin image, LFD].
+
+% Often one feature that works on task A may not perform well on task B. In addition, different features often make different assumptions of where the point cloud comes from. For example, HKS and WKS features work very well on organic objects such as human bodies, but they are not suitable for describing CAD models with combinatorial structures. For a specific task, it is not trivial to find the optimal feature combination for the task. 
+
+% While one can extract all kinds of features and let a machine learning model to decide which ones to use, the success of CNNs [CITE] for 2D images convinces us that an end-to-end feature learning paradigm is more promising. In this work we present a unified point feature learning network that can easily adapts to different tasks, such as classification, segmentation, retrieval and correspondence. Our network directly works on point sets, due to its flexibility and broad usage in real applications.
+
+
+\paragraph{Deep Learning on 3D Data}
+% \todo{we need to argue why point cloud (most close to raw sensor data), instead of meshes (not canonical), volume (sparsity), projected images (not in 3D, non-trivial to choose viewpoints) somewhere in the paper.}
+
+3D data has multiple popular representations, leading to various approaches for learning. 
+\emph{Volumetric CNNs:}~\cite{wu20153d, maturana2015voxnet, qi2016volumetric} are the pioneers applying 3D convolutional neural networks on voxelized shapes. However, volumetric representation is constrained by its resolution due to data sparsity and computation cost of 3D convolution. FPNN~\cite{li2016fpnn} and Vote3D~\cite{wang2015voting} proposed special methods to deal with the sparsity problem; however, their operations are still on sparse volumes, it's challenging for them to process very large point clouds. 
+\emph{Multiview CNNs:}~\cite{su15mvcnn, qi2016volumetric} have tried to render 3D point cloud or shapes into 2D images and then apply 2D conv nets to classify them. With well engineered image CNNs, this line of methods have achieved dominating performance on shape classification and retrieval tasks~\cite{savvashrec}. However, it's nontrivial to extend them to scene understanding or other 3D tasks such as point classification and shape completion. 
+\emph{Spectral CNNs:} Some latest works~\cite{bruna2013spectral, masci2015geodesic} use spectral CNNs on meshes. However, these methods are currently constrained on manifold meshes such as organic objects and it's not obvious how to extend them to non-isometric shapes such as furniture. 
+\emph{Feature-based DNNs:}~\cite{fang20153d,guo20153d} firstly convert the 3D data into a vector, by extracting traditional shape features and then use a fully connected net to classify the shape. We think they are constrained by the representation power of the features extracted.
+
+% In our work, we do deep learning directly on the raw 3D representation -- point clouds, without the pre-processing stage of converting them to volumes, images, graphs, or feature vectors. Therefore, our method has the potential to greatly simply the pipeline in practical usage.
+
+% We argue that point cloud is a good representation in many aspects: 1) it's raw -- point clouds are the data acquired directly from depth sensors or laser scans, not like volumes or images that suffer from information loss. 2) it's in 3D, not like projected images that lack 3D geometry, which may require additional cross-view consistency mechanisms. 3) it's compact, not like volumetric grids that stores a 2D manifold surface in full 3D space. We design special networks to consume 3D point clouds and show that our network can be easily adapted for various 3D tasks with very good performance.
+
+
+% Volumetric CNNs: [3DShapeNets, voxnet, our cvpr work] are the pioneers applying 3D convolutional neural networks on voxelized shapes. However, since sensors can only reach the surfaces of objects, most 3D data are just 2D manifold/surface living in a 3D space, thus volumetric grids are often sparse. Besides, the storage and computation cost both grow cubically with the input resolution. To address this challenge, [FPNN and vote3D] propose special methods to deal with the sparsity of volumetric representation; however, their operations are still performed on a very sparse volume and it is still challenging for them to process very large point clouds.
+
+% Multiview CNNs: [MVCNN, our cvpr work, and some other image based methods] have tried to render 3D point cloud or shapes into 2D images and then apply 2D convolutional neural networks (using existing architectures such as AlexNet and VGG fine-tuned from ImageNet) to classify the shapes. With the well engineered image CNNs, this line of methods have achieved dominating performance on shape classification and retrieval tasks [cite SHREC]. However, it's nontrivial to extend them to scene understanding (not clear which camera positions to take), or other 3D tasks such as point classification and shape completion. Besides, when projecting 3D into images, we always have to convert predictions and data back and forth between 2D and 3D.
+
+% Spectral CNNs: There has also been latest work that use spectral CNNs on meshes. However, these methods are currently constrained on manifold meshes such as organic objects and it's not obvious how to extend them to non-isometric shapes with sophisticated topological and geometric variations, such as furniture. Besides, acquiring meshes or point graphs require significant efforts in post processing from raw sensor data.
+
+% Feature-based DNNs: [deep3dshape and Beihang's paper] firstly convert the 3D data into a vector, by extracting traditional shape features (HKS and WKS) and then use a fully connected neural network to classify the shape. We think they are constrained by the representation power of the features extracted.
+
+% In our work, we do deep learning directly on the raw 3D representation -- point clouds, without the pre-processing stage of converting them to volumes, images, graphs, or feature vectors. Therefore, our method has the potential to greatly simply the pipeline in practical usage. We argue that point cloud is a good representation in many aspects: 1) it's raw -- point clouds are the data acquired directly from depth sensors or laser scans, not like volumes or images that suffer from information loss. 2) it's in 3D, not like projected images that lack 3D geometry, which may require additional cross-view consistency mechanisms. 3) it's compact, not like volumetric grids that stores a 2D manifold surface in full 3D space. We design special networks to consume 3D point clouds and show that our network can be easily adapted for various 3D tasks with very good performance.
+
+
+\paragraph{Deep Learning on Unordered Sets}
+
+From a data structure point of view, a point cloud is an unordered set of vectors. While most works in deep learning focus on regular input representations like sequences (in speech and language processing), images and volumes (video or 3D data), not much work has been done in deep learning on point sets.
+
+One recent work from Oriol Vinyals et al~\cite{vinyals2015order} looks into this problem. They use a read-process-write network with attention mechanism to consume unordered input sets and show that their network has the ability to sort numbers. However, since their work focuses on generic sets and NLP applications, there lacks the role of geometry in the sets.
+
+% Our work exploits the geometry properties in 3D point sets, provides theoretical analysis to what has been learned, gives rich visualizations to help understand the model. Our work also targets towards real applications of object classification and segmentation.

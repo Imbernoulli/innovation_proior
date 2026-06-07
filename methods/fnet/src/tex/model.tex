@@ -1,0 +1,54 @@
+\section{Model}
+\label{sec:model}
+
+\subsection{Discrete Fourier Transform}
+\label{subsec:dft_background}
+
+The Fourier Transform decomposes a function into its constituent frequencies. Given a sequence $\{x_n\}$ with $n \in [0, N-1]$, the discrete Fourier Transform (DFT) is defined by the formula:
+\begin{equation}
+    \label{eq:dft}
+    X_k = \sum_{n=0}^{N-1} x_n e^{-{\frac{2\pi i}{N}} n k}, \quad 0 \leq k \leq N-1.
+\end{equation}
+For each $k$, the DFT generates a new representation $X_k$ as a sum of all of the original input tokens $x_n$, with so-called ``twiddle factors''.
+%
+There are two primary approaches to computing the DFT: the Fast Fourier Transform (FFT) and matrix multiplication. The standard FFT algorithm is the Cooley–Tukey algorithm \citep{cooley1965algorithm, frigo2005design}, which recursively re-expresses the DFT of a sequence of length $N = N_1N_2$ in terms of $N_1$ smaller DFTs of sizes $N_2$ to reduce the computation time to \O{N \log N}. 
+
+An alternative approach is to simply apply the DFT matrix to the input sequence. The DFT matrix, $W$, is a Vandermonde matrix for the roots of unity up to a normalization factor:
+\begin{equation}
+    \label{eq:vandermonde}
+    W_{nk} = \left({e^{-{\frac{2\pi i}{N}} n k}}/{\sqrt{N}}\right),
+\end{equation}
+where  $n,k = 0, \ldots , N-1$.
+This matrix multiplication is an \O{N^2} operation, which has higher asymptotic complexity than the FFT, but turns out to be faster for relatively shorter sequences on TPUs.
+
+
+\subsection{FNet architecture}
+\label{subsec:architecture}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.38\textwidth]{figures/f_net_architecture_short.pdf}
+    \caption{FNet architecture with $N$ encoder blocks.}
+    \label{fig:architecture}
+\end{figure}
+
+FNet is an attention-free Transformer architecture, wherein each layer consists of a Fourier mixing sublayer followed by a feed-forward sublayer. The architecture is shown in Figure \ref{fig:architecture}. Essentially, we replace the self-attention sublayer of each Transformer encoder layer with a Fourier sublayer, which applies a 2D DFT to its (sequence length, hidden dimension) embedding input -- one 1D DFT along the sequence dimension, $\mathcal{F}_{\textrm{seq}}$, and one 1D DFT along the hidden dimension, $\mathcal{F}_{\textrm{h}}$:\footnote{The relative ordering of $\mathcal{F}_{\textrm{seq}}$ and $\mathcal{F}_{\textrm{h}}$ in Equation \eqref{eq:fourier_layer} is immaterial because the two 1D DFTs commute.}
+\begin{equation}
+    \label{eq:fourier_layer}
+    y = \Re\left(\mathcal{F}_{\textrm{seq}}\left(\mathcal{F}_{\textrm{h}} (x)\right) \right) .
+\end{equation}
+As indicated by Equation \eqref{eq:fourier_layer}, we only keep the real part of the result; hence, we do not need to modify the (nonlinear) feed-forward sublayers or output layers to handle complex numbers. We found that FNet obtained the best results when the real part of the total transformation was only extracted at the end of the Fourier sublayer; that is, after applying both $\mathcal{F}_{\textrm{seq}}$ and $\mathcal{F}_{\textrm{h}}$.
+% \footnote{FNet was less accurate and less stable during training if only the real part of the Fourier Transform was used; i.e. replacing Equation \eqref{eq:fourier_layer} with $\Re(\mathcal{F}_{\textrm{seq}}(\Re(\mathcal{F}_{\textrm{h}} (x))))$.}
+We also experimented with the Hadamard, Hartley and Discrete Cosine Transforms. Of these three, the Hartley Transform was the strongest alternative, obtaining comparable accuracy to Equation \eqref{eq:fourier_layer}; see Appendix \ref{app:things_we_tried} for details.
+
+The simplest interpretation for the Fourier Transform is as a particularly effective mechanism for mixing tokens, which  provides the feed-forward sublayers sufficient access to all tokens. Because of the duality of the Fourier Transform, we can also view each alternating encoder block as applying alternating Fourier and inverse Fourier Transforms, transforming the input back and forth between the ``time'' and frequency domain. Because multiplying by the feed-forward sublayer coefficients in the frequency domain is equivalent to convolving (with a related set of coefficients) in the time domain, FNet can be thought of as alternating between multiplications and  %(large kernel)
+convolutions.\footnote{This is merely an intuition; the reality is more complicated due to the presence of residual connections and since the transformation in Equation \eqref{eq:fourier_layer} is no longer invertible if we only use the real component.}
+
+We use the same embedding layers as in \citet{devlin2018bert}; namely, we combine the word embeddings, absolute position embeddings of the tokens and type embeddings of the sentences. Because of the positional information encoded by the Fourier Transform in Equation \eqref{eq:dft} (see $n$, $k$ indices), FNet performs just as well without position embeddings. Nevertheless, we include the position embeddings to allow for a cleaner comparison with BERT.
+
+
+\subsection{Implementation}
+\label{subsec:implementation}
+
+Empirically, we found that on GPUs: the FFT is faster than matrix multiplications for all sequence lengths we consider ($512 - 8192$ tokens), whereas on TPUs: for relatively shorter sequences ($\leq 4096$ tokens), it is faster to cache the DFT matrix and then compute the DFT through matrix multiplications than using the FFT; for longer sequences, the FFT is faster. As a result, our GPU FNet implementation always uses the FFT, while our TPU implementation computes the 2D DFT using matrix multiplications for sequences up to lengths of $4096$ and the FFT for longer lengths.
+Presumably the GPU vs TPU difference is primarily a result of two factors: (1) TPUs are even more highly optimized for matrix multiplications than GPUs, and (2) GPUs offer a more efficient FFT implementation than TPUs. We suspect that FNet will only become more performant on TPUs as the TPU implementation of the FFT improves. Our model uses JAX and, in particular, the Flax framework\footnote{\url{https://github.com/google/flax}}. Core model code is given in Appendix \ref{app:code} and the full source core is available online.\footnote{\url{https://github.com/google-research/google-research/tree/master/f_net}}

@@ -1,0 +1,10 @@
+\section{Discussion}
+
+
+While ALBERT-xxlarge has less parameters than BERT-large and gets significantly better results, it is computationally more expensive due to its larger structure. An important next step is thus to speed up the training and inference speed of ALBERT through methods like sparse attention \citep{child2019generating} and block attention \citep{shen2018bi}.
+% Another issue is that we stop the training at 1.5M steps even the model hasn't fully converged yet. It would be interesting to see how far the model can go if we can speed up the training process or have enough computational capacity.
+An orthogonal line of research, which could provide additional representation power, includes hard example mining \citep{mikolov2013distributed} and more efficient language modeling training \citep{yang2019xlnet}.
+% Another crucial way of understanding ALBERT is to gain a deeper understanding through its theoretical analysis, which we hope to provide in the future.
+Additionally, although we have convincing evidence that sentence order prediction is a more consistently-useful learning task that leads to better language representations, we hypothesize that there could be more dimensions not yet captured by the current self-supervised training losses that could create additional representation power for the resulting representations.
+
+% Last but not least, while our experiments show state-of-the-art results on a wide range of NLU tasks, they also raise several questions about how to best design neural network architectures that combine training speed, inference speed, model size, and performance. 

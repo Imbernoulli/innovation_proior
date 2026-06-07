@@ -1,0 +1,221 @@
+\vspace{-0.04in}
+\section{Preliminaries}\label{sec:prelim}
+% \vspace{-0.1in}
+\paragraph{Notations.}
+% We denote by $\eta$ the learning rate, $\ell(\vtheta; \xi)$ the loss function for a data sample $\xi$, and $\cS$ the training dataset. Futhermore, we define $\ell_k(\vtheta) := \ell(\vtheta; \xi_k)$ the loss function in step $k$ with sampled data $\xi_k \sim \cS$. And we define $\cL(\vtheta):= \E_{\xi \sim \cS}[\ell(\vtheta; \xi)]$ as the training loss. 
+Unless otherwise stated, for a square matrix $\mM$, we use $\diag(\mM)$ to denote the vector consisting of its diagonal entries. The notation $\mathrm{Diag}$ (with capital ``D'') has two related usages: (1) for a vector $\vv$, $\mathrm{Diag}(\vv)$ denotes the diagonal matrix with $\vv$ on its diagonal; and (2) for a square matrix $\mM$, $\mathrm{Diag}(\mM)$ denotes the diagonal matrix that keeps only the diagonal entries of $\mM$ and zeros out the off-diagonal entries, i.e., $\mathrm{Diag}(\mM) := \mathrm{Diag}(\diag(\mM))$. For two vectors $\vu$, $\vv$ with the same dimension $d$, $\vu \odot \vv$ denotes their element-wise product $(u_1v_1, \dots, u_d v_d)$. For any exponent $p > 0$, $\vv^{\odot p}$ denotes element-wise exponentiation, i.e., $ \vv^{\odot p} := (v_1^p, \dots, v_d^p)$, and $\sqrt{\vv}$ stands for $\vv^{\odot 1/2}$. We use $\Rgez^{d}$ to denote the set of $d$-dimensional vectors with non-negative entries, and $\mathbb{S}^d_{++}$ to denote the set of $d \times d$ symmetric positive definite matrices. Given a pint $\vtheta$ and the manimizer manifold $\Gamma$, we let $\mathrm{dist}(\vtheta,\Gamma) = \min_{\vv \in \Gamma} \|\vtheta -\vv\|_2$ be the $\ell_2$ distance between $\vtheta$ and the manifold $\Gamma$.
+
+\paragraph{Derivatives.}
+For any scalar-valued function $f: \R^d \to \R$, we write $\nabla f(\vtheta)$ for its gradient at $\vtheta$, and $\nabla_{\Gamma} f(\vtheta)$ for the projection of this gradient onto the tangent space of a manifold $\Gamma$.
+For a vector-valued function $F: \R^d \to \R^d$, we denote its Jacobian at $\vtheta \in \R^d$ as $\partial F(\vtheta) \in \R^{d \times d}$, and its second-order derivative as $\partial^2 F(\vtheta)$, which is a third-order tensor. 
+Given a matrix $\mM \in \R^{d \times d}$, we define $\partial^2 F(\vtheta)[\mM]$ as the second-order directional derivative of $F$ at $\vtheta$ in the direction of $\mM$,
+$\partial^2 F(\vtheta)[\mM] := \sum_{i \in [d]}\inp{\frac{\partial^2 F_i}{\partial\vtheta^2}}{\mM}\ve_i$,
+where $F_i$ denotes the $i$-th coordinate of $F$, and $\ve_i$ the $i$-th vector of the standard basis. When the context is clear, 
+for any scalar-valued function $\cL: \R^d \to \R$, we abbreviate $\partial^2 (\nabla \cL)(\vtheta)[\mM]$ as $\nabla^3 \cL(\vtheta)[\mM]$.
+
+\paragraph{Loss Functions.} 
+Define $\ell(\vtheta; \xi)$ as the loss function for a data sample $\xi$ for a model with parameters~$\vtheta$.
+Define $\cL(\vtheta) := \E_{\xi \sim \cS}[\ell(\vtheta; \xi)]$ as the training loss function, where $\cS$ is the training dataset and $\xi \sim \cS$ means the data sample $\xi$ is drawn from $\cS$ uniformly at random. Let $\cL^* := \min_{\vtheta \in \mathbb{R}^d}\cL(\vtheta)$ be the minimum of training loss.
+Let $\gZ(\vtheta)$ be the distribution of gradient noise $\nabla \ell(\vtheta; \xi) - \nabla \cL(\vtheta)$, which is a random variable that depends on $\vtheta$.
+We define $\mSigma(\vtheta) := \E_{\vz \sim \gZ(\vtheta)}[\vz\vz^\top]$ as the noise covariance matrix of gradients at $\vtheta$.
+
+\paragraph{Smoothness Assumptions.} 
+We make the following smoothness assumptions on the loss function and the gradient noise distribution. 
+
+\begin{assumption}\label{amp:basic}
+    The loss function $\cL$ and the matrix square root of the noise covariance $\mSigma^{1/2}$ are $\cC^5$-smooth on $\R^d$, i.e. all their partial derivatives  up to order $5$ exist and are continuous.
+    % d ifferentiable and closed within its open domain $\text{dom}(\cL) \subseteq \mathbb{R}^d$ and is bounded from below, i.e. $\cL^* = \text{inf}_{\vtheta}\cL(\vtheta) > -\infty$.
+\end{assumption}
+
+Assuming smoothness on the loss function is a common practice in optimization analysis. Here, we specifically assume the $\cC^5$-smoothness, which we found to be a minimal smoothness requirement for our proof to hold for all $\cC^3$-smooth test functions in \Cref{thm:SDE-approximation}.
+
+Moreover, we assume that the smoothness constant of $\cL$ and the gradient noise are globally bounded:
+%In \Cref{thm:SDE-approximation}, we will later demonstrate the closeness between the Adam iteration and its approximation by applying an arbitrary test function to both and showing their similarity in expectation. The smoothness assumption here allows for a 
+%\xinghan{TBD: Added remark, why do we need C5, very high level}
+%\paragraph{Remark.} 
+%We provide a high-level intuition for this assumption.
+%This requires the projection defined by $\cL$ to be $\cC^4$-smooth, which in turn requires $\nabla \cL$ to be $\cC^4$, i.e., $\cL \in \cC^5$. 
+% \begin{assumption}\label{amp:mu-pl}
+%     $\cL$ is $\mu$-PL, i.e.~$\forall \vtheta \in \mathbb{R}^d$:
+%     $$2\mu(\cL(\vtheta)-\cL^*) \leq \lnormtwo{\nabla \cL(\vtheta)}^2$$
+% \end{assumption}    
+\begin{assumption}\label{amp:smooth}
+    $\cL$ is $\rho$-smooth on $\R^d$, i.e. $\forall \vtheta_1,\vtheta_2 \in \mathbb{R}^d $, $\lnormtwo{\nabla \cL(\vtheta_1) - \nabla \cL(\vtheta_2)} \leq \rho \lnormtwo{ \vtheta_1 - \vtheta_2}$ and $\cL$ is bounded from below, i.e. $\cL^* = \text{inf}_{\vtheta}\cL(\vtheta) > -\infty$. 
+\end{assumption}
+
+% \begin{assumption}
+% \label{amp:gradient-lower-bound}
+%     The loss function $\cL(\cdot)$ and the matrix square root of the noise covariance $\mSigma^{1/2}(\cdot)$ are $\cC^{\infty}$-smooth. Besides, we assume that $\normtwo{\nabla \ell(\vtheta;\xi)}$ is bounded by a constant for all $\vtheta$ and $\xi$.
+% \end{assumption}
+
+\begin{assumption}\label{amp:gradient-bound}
+     The noisy gradients are $\normltwo$-bounded, i.e., there exists some constant $R$ s.t. $\forall \vtheta \in \R^d$, $ \lnormtwo{\nabla \ell(\vtheta; \xi)} \leq R$ almost surely for training data sample $\xi \sim \Strain$.
+     
+     % \kaifeng{define a marco}
+\end{assumption}
+
+% \xinghan{!!!I want a separate bound only for z, not depending on L. Now the bound is on g=z+G. Or if this R is already not dependent of L? Need discussion with vfk}
+
+\paragraph{SGD and Adam.} 
+SGD is an iterative method that starts from an initial point $\vtheta_0$ and updates the parameters as
+$\vtheta_{k+1} := \vtheta_{k} - \eta \nabla \ell_{k}(\vtheta_{k})$ for all $k \ge 0$,
+where $\eta$ is the learning rate, $\ell_k(\vtheta)$ is the loss function for the data sample $\xi_k$ sampled at step $k$.
+Adam~\citep{kingma2014adam} is a popular optimizer that updates the parameters as:
+%And we formulate the $k$-th step of Adam as:
+\begin{align*}
+    \vm_{k+1} &:= \beta_1 \vm_k + (1-\beta_1) \nabla \ell_{k}(\vtheta_{k}) \\
+    \vv_{k+1} &:= \beta_2 \vv_k + (1-\beta_2) \nabla\ell_{k}(\vtheta_{k})^{\odot 2} \\
+    \theta_{k+1,i} &:= \theta_{k,i} - \eta \frac{m_{k+1,i}}{\sqrt{v_{k+1,i}}+\epsilon} \quad \text{for all } i \in [d].
+\end{align*}
+% \vspace{-0.05in}
+%where $i \in [d]$ represents any dimension in the parameter.
+%The subscript of $\vtheta_k$ also starts from $k = 0$, but for compatibity with the first two update formulas, we also manually define $\vm_{-1} = \vv_{-1} = \mathbf{0}$.
+Note that in practice, it is common to normalize $\vm_{k+1}$ and $\vv_{k+1}$ by $1-\beta_1^{k+1}$ and $1-\beta_2^{k+1}$ respectively before the division. However, this normalization quickly becomes neglectable when $k$ is large, so we ignore it for simplicity.
+% \kaifeng{$\vg_k:= \nabla \ell_k(\vtheta_k)$ is defined but never used in the main paper. I removed it.}
+
+\paragraph{SDE First-Order Approximation For SGD.} A \textit{Stochastic Differential Equation} (SDE) is an extension of an ordinary differential equation that incorporates random perturbations, and is widely used to model systems under the influence of noise. An SDE on $\R^d$ takes the form $\mathrm{d}\vtheta_t=b(\vtheta_t)\mathrm{d}t +\sigma(\vtheta_t)\mathrm{d}\mW_t$
+where $b:\R^d\to\R^d$ is the drift vector field, $\sigma:\R^d\to\R^{d\times m}$ is the diffusion matrix, and $\{\mW_t\}_{t \ge 0}$ is an $m$-dimensional Wiener process. 
+A line of works~\citep{li2015dynamics, jastrzkebski2017three,li2017stochastic, smith2020generalization,li2019stochastic,li2021validitymodelingsgdstochastic} used the following SDE to serve as a first-order approximation of SGD, which we refer to as the \textit{conventional SDE}:
+\begin{align*}
+    \mathrm{d}\vtheta_t = -\nabla \cL(\vtheta_t)\mathrm{d}t + \sqrt{\eta}\mSigma^{1/2}(\vtheta_t)\mathrm{d}\mW_t,
+\end{align*}
+%Previous works have derived SDE approximations of both SGD and Adam that can approximate their iterations until convergence. The SDE for SGD \citep{} is proved as: 
+where the stochastic integral is taken in the Itô sense.
+For an introduction to Itô calculus, see \citet{oksendal2013stochastic}. 
+%: one defines
+%\(\int_0^t\sigma(\vtheta_s)\,\mathrm{d}\mW_s\) as the mean-square limit of non-anticipative Riemann sums, and Itô’s formula (the stochastic chain rule) produces an extra drift term arising from the quadratic variation of $\mW_t$. 
+Later, \citet{malladi2024sdesscalingrulesadaptive} extended this type of SDE to Adam.
+Besides these conventional SDEs, below we introduce another type of SDE, slow SDE, that can more explicitly capture the implicit bias of SGD near a manifold of minimizers.
+
+%previous works~\citep{li2021happens,gu2023and} have developed another 
+%However, these conventional SDEs cannot explicitly capture the implicit bias of SGD and Adam, so previous works
+
+
+%extend their approximation period to the post-convergence stage, so we introduce a new kind of SDE, namely the slow SDE to obtain a long-time understanding.
+
+%Let $\vg_k:= \nabla \ell_k(\vtheta_k)$ be the loss gradient at step $k$, $\vz_k := \nabla \ell_k(\vtheta) - \nabla \cL(\vtheta)$ be the noise of gradient noise at step $k$, $\gZ(\vtheta)$ be the distribution of $\nabla \ell(\vtheta; \xi) - \nabla \cL(\vtheta)$, $\mSigma(\vtheta) := \E_{\vz \sim \gZ(\vtheta)}[\vz\vz^\top]$ be the noise covariance matrix of gradients at $\vtheta$, $\{\mW_t\}_{t \ge 0}$ be the standard Wiener process, and 
+
+
+\paragraph{Manifold Assumption.}
+Before going into the slow SDE, we introduce the \textit{manifold assumption}. 
+Previous studies~\citep{garipov2018losssurfacesmodeconnectivity,kuditipudi2019explaining} have found that low-loss solutions are in fact connected to each other, a phenomenon known as mode connectivity.
+\citet{wen2024understandingwarmupstabledecaylearningrates} provided empirical evidence that the training dynamics of language model training usually happen in a structure similar to a river valley, where many low-loss solutions lie in the bottom of the valley.
+Motivated by these observations, many previous works~\citep{li2021happens,fehrman2020convergence,lyu2020gradient,gu2023and} assumed that the minimizers of the training loss function are not isolated points but connected and form a manifold $\Gamma$:
+\begin{assumption}%[assumption 3.2 in \citet{gu2023and}]
+\label{amp:low-rank-manifold}
+    $\Gamma$ is $\cC^{\infty}$-smooth, $(d-m)$-dimensional compact submanifold of $\R^d$, where any $\zeta \in \Gamma$ is a local minimizer of $\cL$. For all $\vzeta \in \Gamma$, rank$(\nabla^2 \cL(\vzeta)) = m$. Additionally, there exists an open neighborhood of $\Gamma$, denoted as $U$, such that $\Gamma = \arg \min_{\vtheta \in U}\cL(\vtheta)$. 
+\end{assumption}
+%For technical reasons, we follow the assumptions in \citet{gu2023and}. The low rank manifold assumption can also be seen in previous works on implicit bias~\citep{fehrman2020convergence,lyu2022understanding}.
+%Empirical \citet{garipov2018losssurfacesmodeconnectivity} ??  \citep{cooper2018loss,wen2023doessharpnessawareminimizationminimize,wen2024understandingwarmupstabledecaylearningrates} and experimental \citep{garipov2018losssurfacesmodeconnectivity, davis2024gradient, wen2024understandingwarmupstabledecaylearningrates} evidences  have shown that minimizers to a loss function are connected and form a minimizer subspace that resembles a low-rank manifold. 
+% Although the minimizer subspace might only approximately form a manifold in practice (for example, the loss landscape may exhibit a river-valley structure according to \citet{wen2024understandingwarmupstabledecaylearningrates}) instead of exactly being it, we can start from assuming a minimizer manifold to obtain a theoretical understanding. 
+With this assumption, if an optimization process converges and the learning rate $\eta$ is sufficiently small, then the process will be trapped near some minimizer manifold which we denote by $\Gamma$. 
+% \kaifeng{kaiyue's loss valley: in practice, approximately like a manifold, need to look into the exact case first}
+\paragraph{Slow SDE.} A line of works~\citep{blanc2020implicit,damian2021label,li2021happens} studied the dynamics of SGD near the manifold $\Gamma$ and showed that 
+SGD has an implicit bias towards flatter minimizers on $\Gamma$.
+This effect cannot be directly seen from conventional SDEs, so \citet{li2021happens} derived a new type of SDE approximation, called slow SDE, that can explicitly capture this effect.
+See \Aref{app:illustration} for an illustration of the difference between conventional SDEs and slow SDEs.
+Here we introduce the slow SDE for SGD following the formulation in \citet{gu2024a}.
+%While conventional SDEs only approximate the dynamics itself during the convergence phase, a slow SDE instead computes the projection of the dynamics onto $\Gamma$, separating the fast mixing motion and allowing for a longer approximation of the implicit regularization motion. 
+%The slow SDE for SGD is first derived in~\citet{li2021happens}, and \citet{gu2024a} further provided a quantitative 
+%and also as a special case of \citet{gu2023and}.
+%Here we introduce the latter form.
+For ease of presentation, we define the following projection operators $\Phi, P_{\vzeta}$
+for points and differential forms respectively. Consider the gradient flow $\frac{\dd \vx(t)}{\dd t} = -\nabla
+\cL(\vx(t))$ with $\vx(0)=\vx$, and fix some point $\vtheta_{\mathrm{null}} \notin \Gamma$, we define the gradient flow projection of any $\vx$, $\Phi(\vx)$, as $\lim_{t\to +\infty} \vx(t)$ if the limit exists and belongs to $\Gamma$, and $\vtheta_{\mathrm{null}}$ otherwise. It can be shown by simple calculus \citep{li2021happens} that $\partial \Phi(\vzeta)$ equals the
+projection matrix onto the tangent space of $\Gamma$ at $\vzeta$.
+We decompose the noise covariance $\mSigma(\vzeta)$ for $\vzeta
+\in \Gamma$ into two parts: the noise in the tangent space
+$\mSigma_{\parallel}(\vzeta) := \partial \Phi(\vzeta) \mSigma(\vzeta) \partial
+\Phi(\vzeta)$ and the noise in the normal space $\mSigma_{\Diamond}(\vzeta) :=
+\mSigma(\vzeta) - \mSigma_{\parallel}(\vzeta)$.
+
+For any $\vzeta \in \Gamma$, matrix $\mA$ and vector $\vb$, we use $P_{\vzeta}(\mA \dd \vW_t + \vb \dd t)$ to denote $\Phi(\vzeta + \mA \dd \vW_t + \vb \dd t) - \Phi(\vzeta)$, which equals $\partial \Phi(\vzeta) \mA \dd \vW_t + \left(\partial
+    \Phi(\vzeta) \vb + \frac{1}{2}\partial^2 \Phi(\vzeta)[\mA \mA^\top]\right)
+    \dd t$ by Itô calculus.
+ $P_{\vzeta}$ can be interpreted as projecting an infinitesimal step from $\vzeta$, so that $\vzeta$
+after taking the projected step does not leave the manifold $\Gamma$.
+Now we are ready to state the slow SDE for SGD.
+\begin{definition}[Slow SDE for SGD]
+Given $\eta>0$ and $\vzeta_0\in\Gamma$, define $\vzeta(t)$ as the solution of the following SDE with initial condition $\vzeta(0)=\vzeta_0$:
+\begin{align}
+\mathrm{d}\vzeta(t)
+&= P_{\vzeta}\Bigl(
+  \underbrace{\mSigma_{\parallel
+  }^{1/2}(\vzeta)\mathrm{d}\mW_t}_{\text{(a) diffusion}}
+  -\underbrace{\frac{1}{2}\nabla^3 \cL(\vzeta)\bigl[\widehat\mSigma_{\Diamond}(\vzeta)\bigr]\mathrm{d}t}_{\text{(b) drift}}
+\Bigr).
+\label{eq:slow-sde-sgd}
+\end{align}
+Here $\widehat\mSigma_{\Diamond}(\vzeta)$ is defined as
+$
+\sum_{i,j:\,\lambda_i\neq0\lor\lambda_j\neq0}
+    \frac{1}{\lambda_i+\lambda_j}
+    \bigl\langle \mSigma_\Diamond(\vzeta),\,\vv_i \vv_j^{\!\top}\bigr\rangle\,
+    \vv_i \vv_j^{\!\top},
+$
+where $\{\vv_i\}_{i=1}^d$ is an orthonormal eigenbasis of $\nabla^2\cL(\zeta)$ with corresponding eigenvalues $\lambda_1,\dots,\lambda_d$. 
+\end{definition}
+
+\paragraph{Interpretation of the Slow SDE for SGD: Semi‐gradient Descent} This SDE on the minimizer manifold $\Gamma$ splits naturally into a \textit{diffusion} term $ P_\vzeta\bigl(\mSigma_{\parallel}^{1/2}(\vzeta)\,\dd\mW_t\bigr)$ injecting noise in the tangent space, and a \textit{drift} term $-\tfrac12\,P_\vzeta\bigl(\nabla^3\cL(\vzeta)\bigl[\widehat\mSigma_\Diamond(\vzeta)\bigr]\dd t\bigr)$
+that can be seen as the negative \emph{semi‐gradient} of the following sharpness measure:
+\begin{align*}
+    \mu(\vzeta) := \inner{\nabla^2 \cL(\vzeta)}{\widehat\mSigma_{\Diamond}(\vzeta)}.
+\end{align*}
+Here we use the word ``semi-gradient''~\citep{mnih2015human,brandfonbrener2019geometric} because it is not exactly the gradient of $\mu(\vzeta)$ but only the gradient with respect to the first argument of the inner product.
+More specifically, define $\mu(\vzeta_1, \vzeta_2) := \inner{\nabla^2 \cL(\vzeta_1)}{\widehat\mSigma_{\Diamond}(\vzeta_2)}$, then the drift term is essentially $-\frac{1}{2}\left.\nabla_{\vzeta_1} \mu(\vzeta_1, \vzeta_2)\right|_{\vzeta_1 = \vzeta,\vzeta_2 = \vzeta}$ after projecting onto the tangent space of $\Gamma$ at $\vzeta$.
+%However, the drift term is not 
+%a specific sharpness measure. To make this explicit, let $\mu(\vzeta_1, \vzeta_2) := \inner{\nabla^2 \cL(\vzeta_1)}{\widehat\mSigma_{\Diamond}(\vzeta_2)}$ be 
+%consider a function $\mu$ defined on two independent variables $\vzeta_1$, $\vzeta_2$: 
+%\begin{align}
+%\end{align}
+%and write its partial gradient in the first argument 
+%$\nabla_{\vzeta_1} \mu(\vzeta_1, \vzeta_2)$. It turns out that $-\tfrac12\,\nabla_{\vzeta_1}\mu(\vzeta,\vzeta)$, 
+% If we treat the covariance $\widehat\Sigma_\diamond(\zeta)$ as \emph{fixed}—i.e.\ ignore its dependence on~$\zeta_2$—then
+% \[
+%   -\tfrac12\,\nabla_{\zeta_1}\mu(\zeta,\zeta)
+% \]
+%after projection, coincides exactly with the drift term in \cref{eq:slow-sde-sgd}.
+In other words, SGD near manifold takes semi-gradients to minimize the implicit regularizer $\langle \nabla^2 \cL(\vzeta),\widehat\mSigma_{\Diamond}(\vzeta)\rangle$ but pretend $\widehat\mSigma_{\Diamond}(\vzeta)$ to be fixed, i.e. ignore the dependency of $\widehat\mSigma_{\Diamond}(\vzeta)$ on $\vzeta$.
+
+%In this view, the long-term behavior of SGD
+%is similar to stochastic semi-gradient methods \citep{mnih2015human,sutton1998reinforcement,brandfonbrener2019geometric} minimizing 
+%the implicit regularizer
+%$\langle \nabla^2 \cL(\vzeta), \widehat{\mSigma}_{\Diamond}(\vzeta)\rangle$
+%on the minimizer manifold of the original loss $\cL$.
+
+\paragraph{Example: Noisy Ellipse.} We provide a toy example to illustrate the phenomenon described by the slow SDE for SGD: 
+%To visualize the two-phase dynamics on a simple curved manifold, we consider a toy case where we have 
+there are two parameters $x, y$ and an elliptical loss with label noise
+$
+\cL(x,y)=\frac{1}{2}\left(\frac{(x+y)^2}{2a^2} +\frac{(y-x)^2}{2b^2}-1-\delta\right)^2.
+$
+The label noise $\delta$ is sampled uniformly from $\left\{-0.5, 0.5\right\}$ at every step. 
+As depicted in \cref{fig:ellipse-three}, SGD moves towards flatter minimizers after reaching the manifold.
+The same phenomenon can be observed for Adam, but Adam converges to a different minimizer that is closer to the axis (or, ``sparser'' in the parameter space).
+Understanding the difference between SGD and Adam is the main focus of this paper.
+
+
+%which is sparser (closer to the axis). We will dive into this discrepancy in \cref{sec:diag}.
+
+
+%iterations of Adam and SGD both exhibit a two-phase feature, but Adam converges to a different minimizer on $\Gamma$ which is sparser (closer to the axis). We will dive into this discrepancy in \cref{sec:diag}.
+\begin{figure}[t]
+  % \vspace{-0.5in}
+  \centering
+  \begin{subfigure}[b]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{fig/contour_plot.pdf}
+    \caption{}\label{fig:ellipse-three-a}
+  \end{subfigure}
+  \begin{subfigure}[b]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{fig/ellipse_SGD.pdf}
+    \caption{}\label{fig:ellipse-three-b}
+  \end{subfigure}
+  \begin{subfigure}[b]{0.32\textwidth}
+    \includegraphics[width=\textwidth]{fig/ellipse_Adam.pdf}
+    \caption{}\label{fig:ellipse-three-c}
+  \end{subfigure}
+  % \vspace{-0.05in}
+  \caption{\textbf{(a)}: Coutour of the elliptical loss, from which we can see the two tips as the flattest minima. \textbf{(b)}: SGD implicitly minimizes $\tr(\mH)$ and converges to the flattest minima. \textbf{(c)}: Adam reduces sharpness too but converges to a different and sparser minimizer.}
+  \label{fig:ellipse-three}
+  % \vspace{-0.2in}
+\end{figure}

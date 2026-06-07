@@ -1,0 +1,18 @@
+\vspace{-.15cm}
+\section{Conclusion}
+\label{sec:discussion}
+We have presented \method, a denoising diffusion model for trajectory data.
+Planning with \method is almost identical to sampling from it, differing only in the addition of auxiliary perturbation functions that serve to guide samples.
+The learned diffusion-based planning procedure has a number of useful properties, including graceful handling of sparse rewards, the ability to plan for new rewards without retraining, and a temporal compositionality that allows it to produce out-of-distribution trajectories by stitching together in-distribution subsequences.
+% Empirically, \method is particularly strong in control settings requiring long-horizon reasoning and test-time flexibility.
+Our results point to a new class of diffusion-based planning procedures for deep model-based reinforcement learning.
+% a new class of generative models and associated planning procedures for deep model-based reinforcement learning.
+% encoding rewards
+% that can be used for behavior synthesis.
+% Unlike conventional single-step dynamics models, \method lends itself to a learned, non-greedy planning procedure that allows it so solve long-horizon tasks.
+% Planning with \method amounts to sampling with auxiliary perturbation functions, allowing for test-time flexibility by encoding new reward functions in a new perturbation function and keeping the diffusion model unchanged.
+% In this paper, we present \method{}, a probabilistic planning framework for flexible behavior synthesis.
+% Our probabilistic planning framework exhibits unique properties of non-greedy planning, temporal compositionality, variable-length prediction and cost compositionality. 
+% We illustrate how this enables \method{} to exhibit long horizon multi-task planning, test-time behavior flexibility, and more  effective offline reinforcement learning.
+% Our results point to \method{} as a  promising direction of future direction of exploration for the generation of flexible and general purpose behavior.
+% \todo{TODO}

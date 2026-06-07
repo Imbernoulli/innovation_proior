@@ -1,0 +1,63 @@
+\section{Sampling with Invariance to the Noise Schedule}
+\label{appendix:discuss}
+\begin{table}
+    \centering
+    \caption{Formulations that are invariant to the choice of the noise schedules. The maximum likelihood training loss w.r.t. $\lambda$ is equivalent to the objectives in~\citep{kingma2021variational,song2021maximum}, and the exact solution of the diffusion ODEs are proposed in Proposition~\ref{proposition:exact_solution}.}
+    \vskip 0.10in
+    \begin{tabular}{c|c}
+    \toprule
+    Method & Invariance Formulation\\
+    \midrule
+    Maximum likelihood training & \(\displaystyle \int_{\lambda_T}^{\lambda_0} \E_{q_0(\x_0)}\E_{\epsilonv\sim\N(\vect{0},\Iv)}\Big[\|\epsilonv_\theta(\hat\x_{\lambda},\lambda)-\epsilonv\|_2^2\Big]\dd\lambda \) \\
+    Sampling by diffusion ODEs & \(\displaystyle \hat\x_{\lambda_t} = \frac{\hat\alpha_{\lambda_t}}{\hat\alpha_{\lambda_s}}\hat\x_{\lambda_s} - \hat\alpha_{\lambda_t} \int_{\lambda_s}^{\lambda_t} e^{-\lambda} \hat\epsilonv_\theta(\hat\x_\lambda,\lambda)\dd\lambda \) \\
+    \bottomrule
+    \end{tabular}
+    \label{tab:invariance}
+\end{table}
+
+
+In this section, we discuss more about the exact solution in Proposition~\ref{proposition:exact_solution} and give some insights about the formulation. Below we firstly restate the proposition w.r.t. $\lambda$ (i.e. the half-logSNR).
+\begin{repproposition}{proposition:exact_solution}[Exact solution of diffusion ODEs]
+Given an initial value $\hat\x_{\lambda_s}$ at time $s$ with the corresponding half-logSNR $\lambda_s$, the solution $\hat\x_{\lambda_t}$ at time $t$ of diffusion ODEs in Eq.~\eqref{eqn:diffusion_ode} with the corresponding half-logSNR $\lambda_t$ is:
+\begin{equation}
+    \hat\x_{\lambda_t} = \frac{\alpha_t}{\alpha_s}\hat\x_{\lambda_s} - \alpha_t \int_{\lambda_s}^{\lambda_t} e^{-\lambda} \hat\epsilonv_\theta(\hat\x_\lambda,\lambda)\dd\lambda.
+\end{equation}
+\end{repproposition}
+In the following subsections, we will show that such formulation decouples the model $\epsilonv_\theta$ from the specific noise schedule, and thus is invariant to the noise schedule. Moreover, such \textit{change-of-variable} for $\lambda$ in Proposition~\ref{proposition:exact_solution} is highly related to the maximum likelihood training of diffusion models~\citep{kingma2021variational,song2021maximum}. We show that both the maximum likelihood training and the sampling of diffusion models have invariance formulations that are independent of the noise schedule.
+
+\subsection{Decoupling the Sampling Solution from the Noise Schedule}
+\label{sec:decoupling}
+In this section, we show that Proposition~\ref{proposition:exact_solution} can decouples the exact solutions of the diffusion ODEs from the specific noise schedules (i.e. choice of the functions $\alpha_t=\alpha(t)$ and $\sigma_t=\sigma(t)$). Namely, given a starting point $\lambda_s$, a ending point $\lambda_t$, an initial value $\hat\x_{\lambda_s}$ at $\lambda_s$ and a noise prediction model $\hat\epsilonv_\theta$, \textbf{the solution of $\hat\x_{\lambda_t}$ is invariant of the noise schedule between $\lambda_s$ and $\lambda_t$}.
+
+We firstly consider the VP type diffusion models, which is equivalent to the original DDPM~\citep{ho2020denoising,song2020score}. For VP type diffusion models, we always have $\alpha_t^2+\sigma_t^2=1$, so defining the noise schedule is equivalent to defining the function $\alpha_t=\alpha(t)$ (For example, DDPM~\citep{ho2020denoising} uses a noise schedule such that $\beta(t)=\frac{\dd\log\alpha_t}{\dd t}$ is a linear function of $t$, and i-DDPM~\citep{nichol2021improved} uses a noise schedule such that $\beta(t)=\frac{\dd\log\alpha_t}{\dd t}$ is a cosine function of $t$). As $\lambda_t=\log\alpha_t-\log\sigma_t$, we have $\alpha_t = \sqrt{\frac{1}{1+e^{-2\lambda_t}}}$ and $\sigma_t=\sqrt{\frac{1}{1+e^{2\lambda_t}}}$. Thus, we can directly compute the $\alpha_t$ and $\sigma_t$ for a given $\lambda_t$. Denote $\hat\alpha_{\lambda}\coloneqq \sqrt{\frac{1}{1+e^{-2\lambda}}}$, we have
+\begin{equation}
+    \hat\x_{\lambda_t} = \frac{\hat\alpha_{\lambda_t}}{\hat\alpha_{\lambda_s}}\hat\x_{\lambda_s} - \hat\alpha_{\lambda_t} \int_{\lambda_s}^{\lambda_t} e^{-\lambda} \hat\epsilonv_\theta(\hat\x_\lambda,\lambda)\dd\lambda.
+\end{equation}
+We should notice that the integrand $e^{-\lambda}\hat\epsilonv_\theta(\hat\x_{\lambda},\lambda)$ is a function of $\lambda$, so its integral from $\lambda_s$ to $\lambda_t$ is only dependent on the starting point $\lambda_s$, the ending point $\lambda_t$ and the function $\hat\epsilonv_\theta$, which is independent of the intermediate values. As other coefficients ($\hat\alpha_{\lambda_s}$ and $\hat\alpha_{\lambda_t}$) are also only dependent on the starting point $\lambda_s$ and the ending point $\lambda_t$, we can conclude that $\hat\x_{\lambda_t}$ is invariant of the specific choice of the noise schedules. Intuitively, this is because we converts the original integral of time $t$ in Eq.~\eqref{eqn:variation_of_constants} to the integral of $\lambda$, and the functions $f(t)$ and $g(t)$ are converted to an \textbf{analytical} formulation $e^{-\lambda}$, which is invariant to the specific choices of $f(t)$ and $g(t)$. Finally, for other types of diffusion models (such as the VE type and the subVP type), they are all equivalent to the VP type by equivalently rescaling the noise prediction models, as proved in~\citep{kingma2021variational}. Therefore, the solutions of these types also have such property.
+
+In summary, Proposition~\ref{proposition:exact_solution} decouples the solution of diffusion ODEs from the noise schedules, which gives us an opportunity to design tailor-made samplers for DPMs. In fact, as shown in Sec.~\ref{sec:high-order}, the only approximation of the proposed DPM-Solver is about the Taylor expansion of the neural network $\hat\epsilonv_\theta$ w.r.t. $\lambda$, and DPM-Solver \textbf{analytically} computes other coefficients (which are corresponding to the specific noise schedules). Intuitively, DPM-Solver keeps the known information as much as possible, and only approximates the intractable integral of the neural network, so it can generate comparable samples within much fewer steps.
+
+\subsection{Choosing Time Steps for $\lambda$ is Invariant to the Noise Schedule}
+As mentioned in Appendix~\ref{sec:decoupling}, the formulation of Proposition~\ref{proposition:exact_solution} decouples the sampling solution from the noise schedule. The solution depends on the starting point $\lambda_s$ and the ending point $\lambda_t$, and is invariant to the intermediate noise schedule. Similarly, the updating equations of the algorithm of DPM-Solver are also invariant to the intermediate noise schedule. Therefore, if we have chosen the time steps $\{\lambda_i\}_{i=0}^M$, then the solution of DPM-Solver is also determined and is invariant to the intermediate noise schedule.
+
+A simple way for choosing time steps for $\lambda$ is uniformly splitting $[\lambda_T, \lambda_{\epsilon}]$, which is the setting in our experiments. However, we believe that there exists more precise ways for choosing the time steps, and we leave it for future work.
+
+\subsection{Relationship with the Maximum Likelihood Training of Diffusion Models}
+Interestingly, the maximum likelihood training of diffusion SDEs in continuous time also has such invariance property~\citep{kingma2021variational}. Below we briefly review the maximum likelihood training loss of diffusion SDEs, and then propose a new insight for understanding diffusion models.
+
+Denote the data distribution as $q_0(\x_0)$, the distribution of the forward process at each time $t$ as $q_t(\x_t)$, the distribution of the reverse process at each time $t$ as $p_t(\x_t)$ with $p_T=\N(\vect{0},\Iv)$. In~\citep{song2020score}, it is proved that the KL-divergence between $q_0$ and $p_0$ can be bounded by a weighted score matching loss:
+\begin{equation}
+    \kl{q_0}{p_0}\leq \kl{q_T}{p_T} + \frac{1}{2}\int_0^T \frac{g^2(t)}{\sigma_t^2}\E_{q_0(\x_0)}\E_{\epsilonv\sim\N(\vect{0},\Iv)}\Big[\|\epsilonv_\theta(\x_t,t)-\epsilonv\|_2^2\Big]\dt + C,
+\end{equation}
+where $\x_t=\alpha_t\x_0+\sigma_t\epsilonv$ and $C$ is a constant independent of $\theta$. As shown in Sec.~\ref{sec:exact_solution}, we have
+\begin{equation}
+\begin{aligned}
+    g^2(t) = \frac{\dd\sigma_t^2}{\dt} - 2\frac{\dd\log\alpha_t}{\dt}\sigma_t^2
+    = 2\sigma_t^2\left(\frac{\dd\log\sigma_t}{\dt} - \frac{\dd\log\alpha_t}{\dt}\right) = -2\sigma_t^2\frac{\dd\lambda_t}{\dt},
+\end{aligned}
+\end{equation}
+so by applying \textit{change-of-variable} w.r.t. $\lambda$, we have
+\begin{equation}
+    \kl{q_0}{p_0}\leq \kl{q_T}{p_T} + \int_{\lambda_T}^{\lambda_0} \E_{q_0(\x_0)}\E_{\epsilonv\sim\N(\vect{0},\Iv)}\Big[\|\epsilonv_\theta(\hat\x_{\lambda},\lambda)-\epsilonv\|_2^2\Big]\dd\lambda + C,
+\end{equation}
+which is equivalent to the importance sampling trick in~\citep[Sec. 5.1]{song2021maximum} and the continuous-time diffusion loss in~\citep[Eq. (22)]{kingma2021variational}. Compared to Proposition~\ref{proposition:exact_solution}, we can find that the sampling and the maximum likelihood training of diffusion models can both be converted to an integral w.r.t. $\lambda$, such that the formulation is invariant to the specific noise schedules, and we summarize it in Table~\ref{tab:invariance}. Such invariance property for both training and sampling brings a new insight for understanding diffusion models. For instance, we can directly define the noise prediction model $\epsilonv_\theta$ w.r.t. the (half-)logSNR $\lambda$ instead of the time $t$, then the training and sampling for diffusion models can be done \textbf{without further choosing any ad-hoc noise schedules}. Such finding may unify the different ways of the training and the inference of diffusion models, and we leave it for future study.

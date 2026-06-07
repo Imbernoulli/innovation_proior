@@ -1,0 +1,128 @@
+\begin{wrapfigure}{r}{0.35\textwidth}
+\vspace{-3em}
+\begin{minipage}{0.35\textwidth}
+
+\begin{algorithm}[H]
+    \caption{\Algname's MoE kernel backward pass of up-proj.}
+    \DontPrintSemicolon
+    \label{alg:up-bwd-moe}
+     \fontsize{8pt}{9pt}\selectfont
+    
+    \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+    \Input{$\rX, \ \rpi, \ \rW_{1}, \ dH$}
+    
+    \Output{$dX, \ d\W{1}$.}
+    
+    \underline{\textcolor{red}{Up-proj act $d\tilde{X}$ kernel} $(\textcolor{blue}{dH, \ \W{1}}) \rightarrow \textcolor{blue}{d\tilde{X}}$:}  \;
+    
+    \note{// varlen-$\mathbf{M}$ Grouped GEMM}\;
+    
+    \Indp
+    
+    \textbf{Parallel} \For{$e \in [E]$}{
+    
+    $dH_{e}, \ \W{1,e} \gets \mathrm{load}(\textcolor{blue}{dH_{e}, \ \W{1,e}})$ \;
+    
+    $d\tilde{X}_e \gets dH_{e}\, \W{1,e}^\top$ \;
+    
+    $\textcolor{blue}{d\tilde{X}_e} \gets \mathrm{store}(d\tilde{X}_e)$
+    
+    }
+    
+    \Indm
+    \underline{\textcolor{red}{Up-proj weight $d\W{1}$ kernel} $(\textcolor{blue}{X, \ dH, \ \pi}) \rightarrow \textcolor{blue}{d\W{1}}$}:\;
+    
+    \note{// Gather + varlen-$\mathbf{K}$ Grouped GEMM}\;
+    
+    \Indp
+    
+    
+    \textbf{Parallel} \For{$e \in [E]$}{
+    
+    $X, \ \pi_{:,e}, \ dH_{e} \gets \mathrm{load}(\textcolor{blue}{X, \ \pi_{:,e}, \ dH_{e}})$ \;
+    
+    $\bX_e \gets \mathrm{Gather}(\rX, \ \bpi_{:, e})$\;
+    
+    $d\W{1,e} \gets X_{e}^{\top} dH_e$ \; 
+    
+    $\textcolor{blue}{d\W{1,e}} \gets \mathrm{store}(d\W{1,e})$
+    }
+    
+    \Indm
+    \underline{\textcolor{red}{Expert aggregation $dX$ kernel} $(\textcolor{blue}{d\tilde{X}, \ \pi}) \rightarrow \textcolor{blue}{dX}$}: \;
+    
+    \note{// Gather and sum}\;
+    
+    \Indp
+    
+    \textbf{Parallel} \For{$t \in [T]$}{
+    { 
+    
+    $d\tilde{X}, \ \pi_{t,e} \gets \mathrm{load}(\textcolor{blue}{d\tilde{X}, \ \pi_{t,e}})$ \;
+    
+    $dX_t \gets \sum_{e \in [E]} \pi_{t, e} d\tilde{X}_{e,t}$}\; 
+    
+    $\textcolor{blue}{dX_t} \gets \mathrm{store}(dX_t)$ \;
+    }    
+
+\end{algorithm}
+% \end{minipage}~~~~~~~~\begin{minipage}{0.58\textwidth}
+% \begin{algorithm}[H]
+%     \caption{Fast SwiGLU during $A$ kernel's epilogue with 1 tanh call. } \label{alg:swiglu-call}
+%     \DontPrintSemicolon
+%     \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+%     \Input{$H \in \mathbb{R}^{\cdot \times 2n}$}
+%     \Output{$A \in \mathbb{R}^{\cdot \times n}$}
+
+%     \fontsize{8pt}{10pt}\selectfont
+
+%     \note{// retrieve the even and odd-indexed values on registers} \;
+     
+%      $H_{1}, \ H_{2} \gets H[:, \ ::2], H[:, \ 1::2]$ \; 
+
+%     \note{// ``fma'' means fused multiply-add. $\mathrm{fma}(a,b,c)=a \odot b+c$} \;
+
+%     $\sigma(H_1) \gets \mathrm{fma}\left(\tfrac{1}{2}, \ \tanh\!\big(\tfrac{1}{2}H_1\big), \ \tfrac{1}{2}\right)$ \;
+
+%      $\boxed{A \gets (\sigma(H_1) \odot H_1)  \odot H_2}$ \;
+    
+
+%     \Indm
+% \end{algorithm}
+% \vspace{-1.5em}
+% \begin{algorithm}[H]
+%     \caption{Fast dSwiGLU during $dH$ kernel's epilogue with 1 tanh call.} \label{alg:swiglu-derivative}
+%     \DontPrintSemicolon
+%     \SetKwInOut{Input}{Input}\SetKwInOut{Output}{Output}
+
+%     \Input{$H\in\mathbb{R}^{\cdot \times 2 n}$ , $dA\in\mathbb{R}^{\cdot \times n}$}
+%     \Output{$dH \in \mathbb{R}^{\cdot \times 2 n}, A\in\mathbb{R}^{\cdot \times n}$}
+
+%      \fontsize{8pt}{10pt}\selectfont
+    
+%     $H_{1}, \ H_{2} \gets H[:, \ ::2],\ H[:, \ 1::2]$ \;
+
+%     $\sigma(H_1) \gets \mathrm{fma}\left(\tfrac{1}{2}, \ \tanh\!\big(\tfrac{1}{2}H_1\big), \ \tfrac{1}{2}\right)$ \;
+
+%     $\mathrm{SiLU}(H_1) \gets \sigma(H_1) \odot H_1$ \;
+    
+%     $\boxed{A \gets \mathrm{SiLU}(H_1) \odot H_2}$ \;
+    
+%     $dH_2 \gets dA \odot \mathrm{SiLU}(H_1)$ \;
+    
+%     \note{// $d\mathrm{SiLU}(H_1)= \mathrm{SiLU}(H_1) (1-\sigma(H_1)) + \sigma(H_1)$}\;
+    
+%     $dH_1 \gets dA \odot H_2 \odot \mathrm{fma}\big(\mathrm{SiLU}(H_1), \ 1 - \sigma(H_1), \ \sigma(H_1) \big)$ \;
+
+%     \note{// interleave results back to $dH$ on registers} \;
+    
+%     $\boxed{dH[:, \ ::2] \gets dH_1; \quad dH[:, \ 1::2] \gets dH_2}$ \;
+    
+%     \Indm
+% \end{algorithm}
+
+\end{minipage}
+\end{wrapfigure}
+
+
+

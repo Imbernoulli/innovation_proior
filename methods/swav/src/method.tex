@@ -1,0 +1,202 @@
+%!TEX root = main.tex
+
+\section{Method}
+
+% \subsection{Method overview}
+Our goal is to learn visual features in an online fashion without supervision.
+To that effect, we propose an online clustering-based self-supervised method.
+Typical clustering-based methods~\cite{asano2019self,caron2018deep} are offline in the sense that they alternate between a cluster assignment step where image features of the entire dataset are clustered, and a training step where the cluster assignments, \ie, ``codes'' are predicted for different image views.
+Unfortunately, these methods are not suitable for online learning as they require multiple passes over the dataset to compute the image features necessary for clustering.
+In this section, we describe an alternative where we enforce consistency between codes from different augmentations of the same image.
+This solution is inspired by contrastive instance learning~\cite{wu2018unsupervised} as we do not consider the codes as a target, but only enforce consistent mapping between views of the same image.
+Our method can be interpreted as a way of contrasting between multiple image views by comparing their cluster assignments instead of their features.
+
+More precisely, we compute a code from an augmented version of the image and predict this code from other augmented versions of the same image.
+Given two image features $\mathbf{z}_t$ and $\mathbf{z}_s$ from two different augmentations of the same image, we compute their codes $\mathbf{q}_t$ and $\mathbf{q}_s$ by matching these features to a set of $K$ prototypes $\{\mathbf{c}_1,\dots, \mathbf{c}_K\}$.
+We then setup a ``swapped'' prediction problem with the following loss function:
+\begin{eqnarray}
+L(\mathbf{z}_t, \mathbf{z}_s) & = &\ell(\mathbf{z}_t, \mathbf{q}_s) + \ell(\mathbf{z}_s, \mathbf{q}_t),
+\label{eq:twoviews}
+\end{eqnarray}
+where the function~$\ell({\mathbf z},{\mathbf q})$ measures the fit between features ${\mathbf z}$ and a code ${\mathbf q}$, as detailed later.  
+Intuitively, our method compares the features $\mathbf{z}_t$ and $\mathbf{z}_s$ using the intermediate codes $\mathbf{q}_t$ and $\mathbf{q}_s$. 
+If these two features capture the same information, it should be possible to predict the code from the other feature.
+A similar comparison appears in contrastive learning where features are compared directly~\cite{wu2018unsupervised}. 
+In~\cref{fig:oto}, we illustrate the relation between contrastive learning and our method.
+
+% More formally, the loss function between two transformations of the same image is the sum of two multinomial logistic loss function with a temperature parameter $\tau$:
+% Basically, this loss discriminates the cluster assignment, or code of one transformation with the feature of the other transformation.
+% This ensures that two different views of the same images have a consistent mapping to the code vectors.
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{c | c}
+\includegraphics[height=.2\linewidth]{simclr_simple.pdf} &
+\includegraphics[height=.2\linewidth]{oto_simple.pdf} \\
+\\
+Contrastive instance learning & \OURSFULL (Ours)
+\end{tabular}
+   \caption{\textbf{Contrastive instance learning (left) \vs\ \OURS (right).}
+% Both methods obtain features from two different data augmentations of the same image.
+In contrastive learning methods applied to instance classification, the features from different transformations of the same images are compared directly to each other.
+In \OURS, we first obtain ``codes'' by assigning features to prototype vectors.
+We then solve a ``swapped'' prediction problem wherein the codes obtained from one data augmented view are predicted using the other view.
+Thus, \OURS does not directly compare image features.
+Prototype vectors are learned along with the ConvNet parameters by backpropragation. 
+}\label{fig:oto}
+\end{figure}
+
+\subsection{Online clustering}
+\label{sec:proto}
+
+Each image $\mathbf{x}_n$ is transformed into an augmented view $\mathbf{x}_{nt}$ by applying a transformation $t$ sampled from the set $\mathcal{T}$ of image transformations.
+The augmented view is mapped to a vector representation by applying a non-linear mapping $f_\theta$ to $\mathbf{x}_{nt}$.
+The feature is then projected to the unit sphere,~\ie,~ $\mathbf{z}_{nt} = f_\theta(\mathbf{x}_{nt}) / \|f_\theta(\mathbf{x}_{nt})\|_2$.
+We then compute a code $\mathbf{q}_{nt}$ from this feature by mapping $\mathbf{z}_{nt}$ to a set of $K$ trainable prototypes vectors,  $\{\mathbf{c}_1,\dots,\mathbf{c}_K\}$.
+We denote by $\mathbf{C}$ the matrix whose columns are the $\mathbf{c}_1, \dots, \mathbf{c}_k$. 
+We now describe how to compute these codes and update the prototypes online.
+
+\paragraph{Swapped prediction problem.} 
+The loss function in Eq.~(\ref{eq:twoviews}) has two terms that setup the ``swapped'' prediction problem of predicting the code $\mathbf{q}_t$ from the feature $\mathbf{z}_s$, and $\mathbf{q}_s$ from $\mathbf{z}_t$. 
+Each term represents the cross entropy loss between the code and the probability obtained by taking a softmax of the dot products of $\mathbf{z}_i$ and all prototypes in $\mathbf{C}$, \ie, 
+\begin{equation}
+  \ell(\mathbf{z}_t, \mathbf{q}_s) = - \sum_{k} \mathbf{q}_s^{(k)} \log \mathbf{p}_t^{(k)}, \quad \text{where} \quad \mathbf{p}_t^{(k)} = \frac{ \exp \left ( \frac{1}{\tau} \mathbf{z}_t^\top \mathbf{c}_k \right ) }{\sum_{k'} \exp \left ( \frac{1}{\tau} \mathbf{z}_t^\top \mathbf{c}_{k'} \right ) }.
+  \label{eq:loss}
+\end{equation}
+where $\tau$ is a temperature parameter~\cite{wu2018unsupervised}.
+Taking this loss over all the images and pairs of data augmentations leads to the following loss function for the swapped prediction problem:
+\begin{equation}
+  - \frac{1}{N} \sum_{n=1}^N \sum_{s,t \sim \mathcal{T}} \left [ 
+  \frac{1}{\tau} \mathbf{z}_{nt}^\top \mathbf{C} \mathbf{q}_{ns}
+  + \frac{1}{\tau} \mathbf{z}_{ns}^\top \mathbf{C} \mathbf{q}_{nt}
+  - \log \sum_{k=1}^K \exp \left ( \frac{\mathbf{z}_{nt}^\top \mathbf{c}_k}{\tau} \right )  
+  - \log \sum_{k=1}^K \exp \left ( \frac{\mathbf{z}_{ns}^\top \mathbf{c}_k}{\tau} \right ) \right ] .
+  \nonumber
+\label{eq:swapploss2}
+\end{equation}
+This loss function is jointly minimized with respect to the prototypes $\mathbf{C}$ and the parameters $\theta$ of the image encoder $f_\theta$ used to produce the features $(\mathbf{z}_{nt})_{n,t}$.
+
+\paragraph{Computing codes online.}
+
+In order to make our method online, we compute the codes using only the image features within a batch.
+Intuitively, as the prototypes $\mathbf{C}$ are used across different batches, \OURS clusters multiple instances to the prototypes.
+We compute codes using the prototypes $\mathbf{C}$ such that all the examples in a batch are equally partitioned by the prototypes. 
+This equipartition constraint ensures that the codes for different images in a batch are distinct, thus preventing the trivial solution where every image has the same code.
+Given $B$ feature vectors $\mathbf{Z}=[\mathbf{z}_{1},\dots,\mathbf{z}_{B}]$, we are interested in mapping them to the prototypes $\mathbf{C}=[\mathbf{c}_1,\dots,\mathbf{c}_K]$.
+We denote this mapping or codes by $\mathbf{Q} = [\mathbf{q}_1, \dots, \mathbf{q}_B]$, and optimize $\mathbf{Q}$ to maximize the similarity between the features and the prototypes , \ie, 
+\begin{equation}
+  \label{eq:assign}
+  \max_{\mathbf{Q}\in\mathcal{Q}} \ \text{Tr} \left( \mathbf{Q}^\top \mathbf{C}^\top \mathbf{Z} \right) +  \varepsilon H(\mathbf{Q}),
+\end{equation}
+where $H$ is the entropy function, $H(\mathbf{Q}) = -\sum_{ij} \mathbf{Q}_{ij} \log \mathbf{Q}_{ij}$ and $\varepsilon$ is a parameter that controls the smoothness of the mapping.
+We observe that a strong entropy regularization (\ie~using a high $\varepsilon$) generally leads to a trivial solution where all samples collapse into an unique representation and are all assigned uniformely to all prototypes.
+Hence, in practice we keep $\varepsilon$ low.
+Asano \etal~\cite{asano2019self}  enforce an equal partition by constraining the matrix $\mathbf{Q}$ to belong to the transportation polytope.
+They work on the full dataset, and we propose to adapt their solution to work on minibatches by restricting the transportation polytope to the minibatch:
+\begin{equation}
+  \mathcal{Q} = \left \{\mathbf{Q}\in\mathbb{R}_+^{K\times B} ~|~\mathbf{Q} \mathbf{1}_B = \frac{1}{K} \mathbf{1}_K, \mathbf{Q}^\top \mathbf{1}_K = \frac{1}{B} \mathbf{1}_B \right \},
+\end{equation}
+where $\mathbf{1}_K$ denotes the vector of ones in dimension $K$.
+These constraints enforce that on average each prototype is selected at least $\frac{B}{K}$ times in the batch.
+
+Once a continuous solution $\mathbf{Q}^*$ to Prob.~(\ref{eq:assign}) is found, a discrete code can be obtained by using a rounding procedure~\cite{asano2019self}.
+%This code can be derived by resorting to hard inference or sampling treating each $\mathbf{q}_n^*$ as a probability.
+Empirically, we found that discrete codes work well when computing codes in an offline manner on the full dataset as in Asano~\etal~\cite{asano2019self}.
+However, in the online setting where we use only minibatches, using the discrete codes performs worse than using the continuous codes.
+An explanation is that the rounding needed to obtain discrete codes is a more aggressive optimization step than gradient updates.
+While it makes the model converge rapidly, it leads to a worse solution.
+We thus preserve the soft code $\mathbf{Q}^*$ instead of rounding it. 
+These soft codes $\mathbf{Q}^*$ are the solution of Prob.~(\ref{eq:assign}) over the set $\mathcal{Q}$ and takes the form of a normalized exponential matrix~\cite{cuturi2013sinkhorn}:
+\begin{equation}
+\label{eq:qstar}
+  \mathbf{Q}^*= \text{Diag}(\mathbf{u}) \exp\left(\frac{\mathbf{C}^\top \mathbf{Z}}{\varepsilon} \right) \text{Diag}(\mathbf{v}),
+\end{equation}
+where $\mathbf{u}$ and $\mathbf{v}$ are renormalization vectors in $\mathbb{R}^K$ and $\mathbb{R}^B$ respectively.
+The renormalization vectors are computed using a small number of matrix multiplications using the iterative Sinkhorn-Knopp algorithm~\cite{cuturi2013sinkhorn}.
+In practice, we observe that using only $3$ iterations is fast and sufficient to obtain good performance.
+%We conjure that it is the same reason that rounding codes to discrete values deteriorate the quality of our model by converging too rapidly. 
+Indeed, this algorithm can be efficiently implemented on GPU, and the alignment of $4$K features to $3$K codes takes $35$ms in our experiments, see~\cref{sec:exp}.
+%Interestingly, the parameter $\varepsilon$ plays a similar role of controlling the smoothness of the exponential in Eq.~(\ref{eq:qstar}) as the temperature $\tau$ in Eq.~(\ref{eq:loss}).
+
+\paragraph{Working with small batches.}
+When the number $B$ of batch features is too small compared to the number of prototypes $K$, it is impossible to equally partition the batch into the $K$ prototypes.
+% The mapping quality of the batch features $\mathbf{Z}$ to the codes $\mathbf{C}$ becomes poor .
+Therefore, when working with small batches, we use features from the previous batches to augment the size of $\mathbf{Z}$ in Prob.~(\ref{eq:assign}).
+%This is similar to the memory bank mechanism used in contrastive methods~\cite{he2019momentum,wu2018unsupervised}.
+Then, we only use the codes of the batch features in our training loss.
+In practice, we store around $3$K features, \ie, in the same range as the number of code vectors.
+This means that we only keep features from the last $15$ batches with a batch size of $256$, while contrastive methods typically need to store the last $65$K instances obtained from the last $250$ batches~\cite{he2019momentum}.
+
+%\paragraph{Relation to contrastive learning.}
+%Contrastive learning~\cite{hadsell2006dimensionality} compares the two features $\mathbf{z}_t$ and $\mathbf{z}_s$, and contrasts this similarity against features from other images.
+%This is an extreme case of our formulation where the centroids are previously-stored image features and the code is a direct mapping between the current image and its stored representation~\cite{wu2018unsupervised}.
+%\jm{The previous sentence needs a small clarification as it is a dangerous one. We need to emphasize that this extreme case is not what we do: centroids are not previously-stored image features, and we have good reasons not doing so. }
+%As the number of classes grows with the dataset, it is standard to approximate the loss with a subset of randomly selected centroids, or images~\cite{chen2020simple, he2019momentum, wu2018unsupervised}.
+%\jm{Again, this may give the impression that procedure applies to our method.}
+%In particular, contrastive methods like MemoryBank~\cite{wu2018unsupervised}, MoCo~\cite{he2019momentum} are designed to work with small batches.
+%MemoryBank requires to store features for the entire dataset and MoCo needs extra memory for a Momentum Encoder and for storing around $65$K instances which means features that are $250$ batches away.
+%\jm{maybe clarify what it means to be 250 batches away.}
+%In contrast, our method does not require an extra encoder and only needs to store features in the same range as the number of code vectors, which is typically around $3$K (therefore only $15$ batches away).
+\begin{figure}[t!]
+  %\setlength{\tabcolsep}{3.5pt}
+\begin{minipage}{0.45\linewidth}
+\centering
+    \begin{tabular}{@{} l l c c @{}}
+      \toprule
+      Method      & Arch. & Param. & Top1  \\
+      \midrule
+      Supervised  & \resnetfifty    & 24  & 76.5  \\
+%      		  & EffNet-B7    & 66  & 84.4  \\
+      \midrule
+      Colorization~\cite{zhang2016colorful}     & \resnetfifty  & 24 & 39.6 \\
+      Jigsaw~\cite{noroozi2016unsupervised}     & \resnetfifty  & 24 & 45.7 \\
+      NPID~\cite{wu2018unsupervised}   & \resnetfifty  & 24 & 54.0   \\
+      BigBiGAN~\cite{donahue2019large} & \resnetfifty  & 24 & 56.6   \\
+      LA~\cite{zhuang2019local}        & \resnetfifty  & 24 & 58.8 \\
+      NPID++~\cite{misra2019self}      & \resnetfifty  & 24 & 59.0   \\
+      MoCo~\cite{he2019momentum}       & \resnetfifty  & 24 & 60.6   \\
+      SeLa~\cite{asano2019self}        & \resnetfifty  & 24 & 61.5   \\
+      PIRL~\cite{misra2019self}        & \resnetfifty  & 24 & 63.6   \\
+      CPC v2~\cite{henaff2019data}     & \resnetfifty  & 24 & 63.8 \\
+      PCL~\cite{li2020prototypical}     & \resnetfifty  & 24 & 65.9 \\
+      SimCLR~\cite{chen2020simple}     & \resnetfifty  & 24 & 70.0  \\
+      MoCov2~\cite{chen2020improved}   & \resnetfifty  & 24 & 71.1  \\
+\midrule
+      \OURS   		       & \resnetfifty  & 24 & \bf{75.3}        \\ 
+      \bottomrule
+ \end{tabular}
+\end{minipage}
+~~~~~\begin{minipage}{0.5\linewidth}
+\centering
+\includegraphics{figure_param_with_w5.pdf} 
+\end{minipage}
+    \caption{
+      \textbf{Linear classification on \ImNet.} 
+Top-1 accuracy for linear models trained on frozen features from different self-supervised methods.
+\textbf{(left)}
+Performance with a standard ResNet-50.
+\textbf{(right)} Performance as we multiply the width of a ResNet-50 by a factor $\times2$, $\times4$, and $\times5$.
+}
+    \label{fig:linear_inet}
+\end{figure}
+
+
+
+\subsection{Multi-crop: Augmenting views with smaller images}
+\label{sec:multicrop}
+As noted in prior works~\cite{chen2020simple,misra2019self}, comparing random crops of an image plays a central role by capturing information in terms of relations between parts of a scene or an object. 
+Unfortunately, increasing the number of crops or ``views'' quadratically increases the memory and compute requirements. 
+We propose a \texttt{multi-crop} strategy where we use two standard resolution crops and sample $V$ additional low resolution crops that cover only small parts of the image. 
+Using low resolution images ensures only a small increase in the compute cost. 
+% Additionally, we observe that mapping these small parts of an image to more global views increases performance.
+Specifically, we generalize the loss of Eq~(\ref{eq:twoviews}):
+\begin{equation}
+L(\mathbf{z}_{t_1}, \mathbf{z}_{t_2}, \dots, \mathbf{z}_{t_{V + 2}}) = \sum_{i \in \{1, 2\}} \sum_{v=1}^{V + 2} \mathbf{1}_{v \neq i} \ell(\mathbf{z}_{t_v}, \mathbf{q}_{t_i}).
+\end{equation}
+Note that we compute codes using only the full resolution crops.
+Indeed, computing codes for all crops increases the computational time and we observe in practice that it also alters the transfer performance of the resulting network.
+An explanation is that using only partial information (small crops cover only small area of images) degrades the assignment quality.
+Figure~\ref{fig:multicrop-exp} shows that \texttt{multi-crop} improves the performance of several self-supervised methods and is a promising augmentation strategy.
+%Downsizing the resolutions of the crops does not affect transfer performance while greatly reducing the compute requirement.
+%Training with $160 \times 160$ images even boosts the performance by $+0.5\%$ on ImageNet while halving the compute and memory costs compared to the standard $224 \times 224$ images.
+

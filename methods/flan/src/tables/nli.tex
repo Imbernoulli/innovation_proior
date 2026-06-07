@@ -1,0 +1,41 @@
+\begingroup
+\setlength{\tabcolsep}{3.5pt}
+\begin{table}[h]
+    \centering
+    \begin{tabular}{l lllll}
+    \toprule
+     & \multicolumn{5}{c}{\textsc{Natural Language Inference}} \\
+     \cmidrule(lr){2-6}
+     & \datasetacc{ANLI-R1} & \datasetacc{ANLI-R2} & \datasetacc{ANLI-R3} & \hspace{1.5mm}\datasetacc{CB} & \datasetacc{RTE} \\
+     \midrule
+     Supervised model & \bertlargeval{57.4} & \bertlargeval{48.3} & \bertlargeval{43.5} & \tfiveval{96.8} & \tfiveval{92.5} \\
+     
+     \glmname & \gptval{39.6}{}{39.0} & \gptval{39.9}{}{37.5} & \gptval{39.3}{}{40.7} & \gptval{42.9}{}{34.8} & \gptval{73.3}{}{70.8} \\
+     
+     \gptname & \gptval{34.6}{32.0}{36.8} & \gptval{35.4}{33.9}{34.0} & \gptval{34.5}{35.1}{40.2} & \gptval{46.4}{64.3}{82.1} & \gptval{58.9}{63.5}{70.4} \\
+     
+     \midrule
+     \flan\ 137B zero-shot \\
+     \flanname & 
+     \flanval{47.7\wewin{10.9}}{1.4}{46.4\wewin{9.6}} & 
+     \flanval{43.9\wewin{8.5}}{1.3}{44.4\wewin{9.0}} & 
+     \flanval{47.0\wewin{6.8}}{1.4}{48.5\wewin{8.3}} & 
+     \flanval{64.1\wekindawin{17.7}}{14.7}{83.9\wewin{1.8}} & 
+     \flanval{78.3\wewin{7.9}}{7.9}{84.1\wewin{13.9}} \\
+     
+     
+    \bottomrule
+    \end{tabular}
+    \vspace{-1mm}
+    \caption{
+    Results on NLI.
+    \explainflan\
+    \explainwewin\
+    \explainwekindawin\
+    $^{a}$T5-11B,
+    $^{b}$BERT-large.
+    }
+    \label{tab:nli_table}
+    \vspace{-3mm}
+\end{table}
+\endgroup

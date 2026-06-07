@@ -1,0 +1,289 @@
+\documentclass{article}
+
+
+% if you need to pass options to natbib, use, e.g.:
+    % \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2025
+
+
+% ready for submission
+\usepackage[final]{neurips_2025}
+
+% \usepackage[authoryear,round]{natbib}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2024}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2024}
+
+
+% to avoid loading the natbib package, add option nonatbib:
+%\usepackage[nonatbib]{neurips_2024}
+
+\pdfoutput=1
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}
+% \usepackage[nameinlink,capitalize]{cleveref}% hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{caption}
+
+\usepackage{graphicx} % Required for inserting images
+\usepackage{wrapfig}
+\usepackage{amssymb}
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{bm}
+\usepackage{subcaption}
+\usepackage{cite}
+\usepackage{array}
+% \usepackage[numbers, compress]{natbib}
+% \usepackage{cleveref}
+\usepackage{dsfont}
+% \input{math_commands}
+% \input{symbols}
+\input{math_commands_1}
+\input{symbols_1}
+
+\usepackage[nameinlink,capitalize]{cleveref}
+
+\usepackage{comment}
+\usepackage{multirow}
+
+\usepackage{xfrac}
+
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% \crefrangeformat{assumption}{#3Assumption~#1\text{–}#2#6}
+% \Crefrangeformat{assumption}{#3Assumption~#1\text{–}#2#6}
+
+% \theoremstyle{plain}
+% \newtheorem{theorem}{Theorem}[section]
+% \newtheorem{hypothesis}[theorem]{Hypothesis}
+% \newtheorem{proposition}[theorem]{Proposition}
+% \newtheorem{lemma}[theorem]{Lemma}
+% \newtheorem{corollary}[theorem]{Corollary}
+% \newtheorem{remark}[theorem]{Remark}
+% \theoremstyle{definition}
+% \newtheorem{definition}[theorem]{Definition}
+% \newtheorem{assumption}[theorem]{Assumption}
+% \newtheorem{example}[theorem]{Example}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{hypothesis}{Hypothesis}[section]
+\newtheorem{proposition}{Proposition}[section]
+\newtheorem{lemma}{Lemma}[section]
+\newtheorem{corollary}{Corollary}[section]
+\newtheorem{remark}{Remark}[section]
+\newtheorem{definition}{Definition}[section]
+\newtheorem{assumption}{Assumption}[section]
+\newtheorem{example}{Example}[section]
+
+\newcommand{\kaifeng}[1]{{\color{orange}Kaifeng: #1}}
+\newcommand{\xinghan}[1]{{\color{purple}Xinghan: #1}}
+\newcommand{\haodong}[1]{[{\color{blue}Haodong: #1}]}
+
+\newcommand{\Aref}[1]{\hyperref[#1]{Appendix~\ref*{#1}}}
+
+\newcommand{\fakeE}{\Tilde{\E}}
+\newcommand{\ME}{\mathrm{ME}}
+\newcommand{\OP}{\mathrm{OP}}
+\newcommand{\bias}{\mathrm{bias}}
+\newcommand{\var}{\mathrm{var}}
+\newcommand{\deltaA}{\delta_{\mathrm{A}}}
+\newcommand{\normnone}[1]{\|#1\|}
+\newcommand{\lnormnone}[1]{\left\|#1\right\|}
+\newcommand{\Strain}{\cS_{\mathrm{train}}}
+
+\makeatletter
+\renewcommand{\paragraph}{%
+  \@startsection{paragraph}{4}%
+  {\z@}{0ex}{-1em}%
+  {\normalfont\normalsize\bfseries}%
+}
+\makeatother
+
+\setlist[enumerate]{leftmargin=2em}
+
+
+\title{Adam Reduces a Unique Form of Sharpness:
+Theoretical Insights Near the Minimizer Manifold}
+%Training Dynamics Near the Minimizer Manifold}
+%Insights into
+%Theoretical Insights Near the Minimizer Manifold}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+
+\author{%
+  Xinghan Li\thanks{Equal contribution; alphabet ordering} \quad Haodong Wen\footnotemark[1]~~\thanks{Most work was done while Haodong was at Xi’an Jiaotong University.}\quad Kaifeng Lyu\thanks{Corresponding author.}\\
+  Institute for Interdisciplinary Information Sciences\\
+        Tsinghua University\\
+  \texttt{\{xh-li22,whd25\}@mails.tsinghua.edu.cn\quad klyu@mail.tsinghua.edu.cn} \\
+%   \And
+%   Haodong Wen\footnotemark[1]~~\thanks{Most work was done while Haodong was at Xi’an Jiaotong University.} \\
+% Institute for Interdisciplinary Information Sciences,\\
+%         Tsinghua University\\
+%   \texttt{whd25@mails.tsinghua.edu.cn} \\
+%   \AND
+%   Kaifeng Lyu\thanks{Corresponding author.}\\
+% Institute for Interdisciplinary Information Sciences,\\
+%         Tsinghua University\\
+%   \texttt{klyu@mail.tsinghua.edu.cn} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+}
+
+\allowdisplaybreaks[1]
+\begin{document}
+
+
+\maketitle
+
+    %$\normone{\tr(\mH)^{1/2}}$ 
+\begin{abstract}
+    Despite the popularity of the Adam optimizer in practice, most theoretical analyses study Stochastic Gradient Descent (SGD) as a proxy for Adam, and little is known about how the solutions found by Adam differ. In this paper, we show that Adam implicitly reduces a unique form of sharpness measure shaped by its adaptive updates, leading to qualitatively different solutions from SGD.
+    More specifically, when the training loss is small, Adam wanders around the manifold of minimizers and takes semi-gradients to minimize this sharpness measure in an adaptive manner, a behavior we rigorously characterize through a continuous-time approximation using stochastic differential equations.
+    We further demonstrate how this behavior differs from that of SGD in a well-studied setting: when training overparameterized models with label noise, SGD has been shown to minimize the trace of the Hessian matrix, $\tr(\mH)$, whereas we prove that Adam minimizes $\tr(\Diag(\mH)^{1/2})$ instead.
+    In solving sparse linear regression with diagonal linear networks, this distinction enables Adam to achieve better sparsity and generalization than SGD.
+    Finally, our analysis framework extends beyond Adam to a broad class of adaptive gradient methods, including RMSProp, Adam-mini, Adalayer and Shampoo, and provides a unified perspective on how these adaptive optimizers reduce sharpness, which we hope will offer insights for future optimizer design.
+    %most theoretical analyses usually focus on SGD as a proxy, and little is known about how the solution it finds is different from SGD. In this paper, we revisit how optimizers may implicitly bias the solution towards flat minimizers besides just minimizing the training loss.
+    %We show that, when the loss is small, Adam wanders around the manifold of minimizers and reduces a specific measure of sharpness shaped by gradient noise, in a manner that resembles an adaptive semi-gradient method on the manifold. This behavior is formally characterized via a rigorous continuous-time approximation using stochastic differential equations.
+    %We further illustrate how this form of sharpness reduction is different from SGD in a well-studied setting: when training overparameterized models with label noise, previous works have shown that SGD minimizes the trace of the Hessian matrix of the loss, $\tr(\mH)$, whereas we prove that Adam minimizes $\tr(\tr(\mH)^{1/2})$ instead. In solving sparse linear regression with diagonal linear networks, we show that this distinction leads to better sparsity and generalization for Adam. Finally, our theoretical framework is not limited to Adam but can also be applied to a broad class of adaptive gradient methods, including but not limited to RMSProp, Adam-mini, Adalayer. This allows us to compare and contrast the sharpness reduction behaviors of different adaptive gradient methods, which may provide insights for future design of adaptive optimizers.
+
+    %a standard setting thoroughly studied for SGD, we further prove that Adam minimizes $\tr(\tr(\mH)^{1/2})$, where $\mH$ is the Hessian matrix of the loss. This is in sharp contrast to SGD, which minimizes $\tr(\mH)$ in the same setting. 
+    %optimizers, and show that Adam reduces a unique form of sharpness, which is different from SGD. 
+    %little is known about how the solution it finds is different from that found by SGD.
+%The implicit bias of an optimizer, which characterizes its tendency leading towards an optimum with specific properties, is crucial for understanding the generalizability of the model trained by that optimizer. 
+%Adam, though being widely used in practice for providing stable and efficient convergence, is relatively underexplored in terms of implicit bias. In this work, we derive a special kind of SDE that drops off the fast mixing dynamics and captures the near-manifold dynamics of a framework of adaptive gradient methods including Adam, concluding that Adam implicitly reduces a unique form of sharpness. We further prove that Adam's implicit regularizer reduces to $\tr(\tr(\mH)^{1/2})$ with label noise. We argue that this target aligns better with sparsity than the $\tr(\tr(\mH))$ of SGD, and verified our theoretical predictions on a diagonal-net toy model. We also conducted real-world experiments to demonstrate the difference of the form of sharpness regularized by Adam and SGD. Our results bridge the gap between theory and practice for adaptive optimizers and provide actionable guidelines for their design and hyperparameter tuning. 
+\end{abstract}
+
+
+% solid: Adam also reduces sharpness, but in a way different from SGD - A toy case.
+
+% Adam Reduces Sharpness, But Different from SGD --- A Case Study Nearc Minimizer Manifold
+
+% What Happens after SGD Reaches Zero Loss? --A Mathematical Framework
+
+
+% How Adam Reduces Sharpness Differently from SGD: Insights Near the Minimizer Manifold
+
+
+% otherwise: on the sharpness reduction effect of Adam. 
+
+
+
+\input{intro}
+
+\input{related_work_whd}
+
+\input{preliminaries}
+
+\input{main_results}
+
+\input{diagonal_net}
+
+\input{matrix_factorization}
+
+% \input{realworld_exp}
+
+%% \input{related_work}
+
+\input{discussion}
+
+
+\newpage
+
+% \input{checklist}
+% \newpage
+
+{\small
+\bibliographystyle{plainnat}    % or plainnat, abbrvnat, etc.
+\bibliography{refs_1}
+}
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+\appendix
+
+% \begin{itemize}
+%     \item Additional Related Work ?
+%     \item Additional Notations ?
+%     \item Illustration of the difference between conventional and slow SDE (modify figure)
+%     \item Matrix Factorization Experiment (including details).
+%     \item working zones, proof of convergence, delta-good
+%     \item calculation of moments
+%     \item proof of weak approximation
+%     \item proof of reduction under label noise setting.
+%     \item Details of Diagonal Net Experiment.
+%     \item Source Code.
+% \end{itemize}
+
+% \input{additional_related_work}
+
+
+
+\input{illustration}
+
+% \input{additional_experiments}
+%%% END INSTRUCTIONS %%%
+
+% \input{related_work}
+
+% \input{matrix_factorization}
+
+\input{formal_statment_main_theorem}
+
+\input{working_zone}
+
+\input{proof_convergence}
+
+\input{proof_SDE_approximation_before_moment_calculation}
+
+% \input{proof-phi-s-property}
+
+\input{proof_moment_calculation}
+
+\input{proof_weak_approximation}
+
+\input{proof_implicit_bias_label_noise}
+
+\input{regularizer}
+
+\input{shampoo_AGM}
+
+% \input{outline}
+
+% \begin{filecontents}{arkiv.bbl}
+% \bibliography{refs_1}
+% \end{filecontents}
+
+\end{document}

@@ -1,0 +1,16 @@
+\begin{table}
+\setlength{\tabcolsep}{8pt}
+\small
+\centering
+\caption{SmoothQuant can enable lossless W8A8 quantization for LLaMA models~\cite{touvron2023llama}. Results are perplexities on the WikiText-2 dataset with a sequence length of 512. We used per-token activation quantization and $\alpha$=0.8 for SmoothQuant. 
+}
+\label{tab:llama}
+\begin{tabular}{lcccc}
+\toprule
+Wiki PPL$\downarrow$  & 7B & 13B & 30B & 65B  \\
+\midrule
+FP16  & 11.51 & 10.05 & 7.53 & 6.17    \\
+W8A8 SmoothQuant & 11.56 & 10.08 & 7.56 & 6.20\\
+\bottomrule
+\end{tabular}
+\end{table}

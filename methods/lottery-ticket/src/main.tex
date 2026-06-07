@@ -1,0 +1,125 @@
+\documentclass{article}
+\usepackage{iclr2019_conference,times}
+\iclrfinalcopy
+
+\input{math_commands.tex}
+
+\usepackage{amsthm}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+%\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{amsthm}
+
+\newcommand{\kernel}{winning ticket}
+\newcommand{\kernels}{winning tickets}
+\newcommand{\commentt}[1]{}
+
+\usepackage{tikz}
+\usetikzlibrary{positioning}
+\usepackage{amsmath}
+
+\newcommand\newsubcap[1]{\phantomcaption%
+       \caption*{\figurename~\thefigure(\thesubfigure): #1}}
+
+% Packages.
+
+\definecolor{shadeOne}{rgb}{0.9,0.95,0.95}
+\definecolor{shadeTwo}{rgb}{0.99,0.99,0.99}
+
+\usepackage[bordercolor=shadeOne, backgroundcolor=shadeTwo, linecolor=red, textwidth=0.45in, textsize=tiny]{todonotes}
+
+\input{commenting}
+
+\title{The Lottery Ticket Hypothesis:\\Finding Sparse, Trainable Neural Networks}
+
+
+\author{Jonathan Frankle\\MIT CSAIL\\\texttt{jfrankle@csail.mit.edu} \And Michael Carbin\\MIT CSAIL\\\texttt{mcarbin@csail.mit.edu}}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Neural network pruning techniques can reduce the parameter counts of trained networks by over 90\%, decreasing storage
+requirements and improving computational performance of inference without compromising accuracy.
+However, contemporary experience is that the sparse architectures produced by pruning are difficult to train
+from the start, which would similarly improve training performance.
+
+\vspace{.5em}
+We find that a standard pruning technique
+naturally uncovers subnetworks whose initializations made them capable of training effectively.
+Based on these results, we articulate
+the \emph{lottery ticket hypothesis}: dense, randomly-initialized, feed-forward networks contain
+subnetworks (\emph{winning tickets}) that---when trained in isolation---reach test accuracy comparable to the original network in a similar number of iterations.
+The winning tickets we find
+have won the initialization lottery: their connections have initial weights that make training particularly effective.
+
+\vspace{.5em}
+We present an algorithm to identify winning tickets and a series of experiments that support
+the lottery ticket hypothesis and the importance of these fortuitous initializations. 
+We consistently find winning tickets that are less than 10-20\% of the size of
+several fully-connected and convolutional feed-forward architectures for MNIST and CIFAR10.
+Above this size, the winning tickets that we find learn faster
+than the original network and reach higher test accuracy.
+
+\end{abstract}
+
+
+\input{intro}
+
+\input{mnist-oneshot}
+
+\input{convolutional}
+
+
+\input{dropout}
+
+\input{larger}
+
+\input{discussion}
+
+\input{limitations}
+
+
+\input{related}
+
+
+\bibliography{local}
+\bibliographystyle{iclr2019_conference}
+
+\newpage
+
+\begin{appendix}
+
+
+\input{acknowledgements}
+
+\input{app-han}
+
+\input{app-early-stopping}
+
+\input{app-train}
+
+\input{app-random-sparsity}
+
+\input{examining}
+
+\input{mnist-appendix}
+
+\input{convolutional-appendix}
+
+\input{appendix-resnet}
+
+
+\end{appendix}
+
+\end{document}

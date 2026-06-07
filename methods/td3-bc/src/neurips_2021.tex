@@ -1,0 +1,636 @@
+\documentclass{article}
+
+
+\usepackage[final]{neurips_2021} %
+
+
+
+
+\usepackage[utf8]{inputenc} %
+\usepackage[T1]{fontenc}    %
+\usepackage{hyperref}       %
+\usepackage{url}            %
+\usepackage{booktabs}       %
+\usepackage{amsfonts}       %
+\usepackage{nicefrac}       %
+\usepackage{microtype}      %
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{subfig}
+\usepackage{bbm}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage[noend]{algpseudocode}
+\usepackage[table,xcdraw,dvipsnames]{xcolor}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage[font=small]{caption}
+
+\usepackage{varioref}
+\labelformat{equation}{(#1)}
+\newcommand{\algorithmautorefname}{Algorithm}
+\renewcommand{\subsectionautorefname}{Subsection}
+\renewcommand{\sectionautorefname}{Section}
+
+\newcommand{\e}{\epsilon}
+\newcommand{\y}{\gamma}
+\newcommand{\al}{\alpha}
+\newcommand{\s}{\sigma}
+\newcommand{\ta}{\theta}
+\newcommand{\w}{\omega}
+\newcommand{\g}{\nabla}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\lb}{\left [}
+\newcommand{\rb}{\right ]}
+\newcommand{\lp}{\left (}
+\newcommand{\rp}{\right )}
+\newcommand{\lv}{\left \Vert}
+\newcommand{\rv}{\right \Vert}
+\newcommand{\la}{\left |}
+\newcommand{\ra}{\right |}
+\newcommand{\B}{\mathcal{B}}
+\newcommand{\Loss}{\mathcal{L}}
+
+\DeclareMathOperator*{\argmin}{argmin}
+\DeclareMathOperator*{\argmax}{argmax}
+\DeclareMathOperator{\oneargmin}{argmin}
+\DeclareMathOperator{\oneargmax}{argmax}
+\DeclareMathOperator*{\clip}{clip}
+
+\hyphenation{OpenAI}
+\hyphenation{MuJoCo}
+\hyphenation{GradientDICE}
+\hyphenation{Fisher-BRC}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{observation}{Observation}
+\newtheorem{lemma}{Lemma}
+
+\newcommand{\cblock}[3]{
+ \hspace{-1.5mm}
+ \begin{tikzpicture}
+   [
+   node/.style={square, minimum size=10mm, thick, line width=0pt},
+   ]
+   \node[fill={rgb,255:red,#1;green,#2;blue,#3}] () [] {};
+ \end{tikzpicture}%
+}
+
+\definecolor{mine}{RGB}{205, 232, 248}%
+
+\title{A Minimalist Approach to\\Offline Reinforcement Learning}
+
+
+\author{
+Scott Fujimoto$^{1,2}$ \qquad Shixiang Shane Gu$^2$ \\
+$^1$Mila, McGill University \\
+$^2$Google Research, Brain Team \\
+\texttt{scott.fujimoto@mail.mcgill.ca}
+}
+
+
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Offline reinforcement learning (RL) defines the task of learning from a fixed batch of data. Due to errors in value estimation from out-of-distribution actions, most offline RL algorithms take the approach of constraining or regularizing the policy with the actions contained in the dataset. Built on pre-existing RL algorithms, modifications to make an RL algorithm work offline comes at the cost of additional complexity. Offline RL algorithms introduce new hyperparameters and often leverage secondary components such as generative models, while adjusting the underlying RL algorithm. In this paper we aim to make a deep RL algorithm work while making minimal changes. We find that we can match the performance of state-of-the-art offline RL algorithms by simply adding a behavior cloning term to the policy update of an online RL algorithm and normalizing the data. The resulting algorithm is a simple to implement and tune baseline, while more than halving the overall run time by removing the additional computational overhead of previous methods. 
+\end{abstract}
+
+\section{Introduction}
+
+Traditionally, reinforcement learning (RL) is thought of as a paradigm for online learning, where the interaction between the RL agent and its environment is of fundamental concern for how the agent learns. In offline RL (historically known as batch RL), the agent learns from a fixed-sized dataset, collected by some arbitrary and possibly unknown process \citep{lange2012batch}. Eliminating the need to interact with the environment is noteworthy as data collection can often be expensive, risky, or otherwise challenging, particularly in real-world applications. Consequently, offline RL enables the use of previously logged data or leveraging an expert, such as a human operator, without any of the risk associated with an untrained RL agent. 
+
+Unfortunately, the main benefit of offline RL, the lack of environment interaction, is also what makes it a challenging task. While most off-policy RL algorithms are applicable in the offline setting, they tend to under-perform due to ``extrapolation error'': an error in policy evaluation, where agents tend to poorly estimate the value of state-action pairs not contained in the dataset. This in turn affects policy improvement, where agents learn to prefer out-of-distribution actions whose value has been overestimated, resulting in poor performance~\citep{fujimoto2018off}. The solution class for this problem revolves around the idea that the learned policy should be kept close to the data-generating process~(or behavior policy), and has been given a variety of names (such as batch-constrained~\citep{fujimoto2018off}, KL-control~\citep{jaques2019way}, behavior-regularized~\citep{wu2019behavior}, or policy constraint~\citep{levine2020offline}) depending on how this ``closeness'' is chosen to be implemented. 
+
+While there are many proposed approaches to offline RL, we remark that few are truly ``simple'', and even the algorithms which claim to work with minor additions to an underlying online RL algorithm make a significant number of implementation-level adjustments. In other cases, there are unmentioned hyperparameters, or secondary components, such as generative models, which make offline RL algorithms difficult to reproduce, and even more challenging to tune. Additionally, such mixture of details slow down the run times of the algorithms, and make causal attributions of performance gains and transfers of techniques across algorithms difficult, as in the case for many online RL algorithms~\citep{henderson2017deep,tucker18amirage,Engstrom2020Implementation,andrychowicz2021what,furuta2021identifying}. This motivates the need for more minimalist approaches in offline RL.  
+
+
+In this paper, we ask: 
+\textit{can we make a deep RL algorithm work offline with minimal changes?} We find that we can match the performance of state-of-the-art offline RL algorithms with a single adjustment to the policy update step of the TD3 algorithm \citep{fujimoto2018addressing}. TD3's policy $\pi$ is updated with the deterministic policy gradient \citep{DPG}:
+\begin{equation}
+    \pi = \argmax_\pi \E_{(s,a) \sim \mathcal{D}}[Q(s,\pi(s))].
+\end{equation}
+Our proposed change, TD3+BC, is to simply add a behavior cloning term to regularize the policy:
+\begin{equation} \label{eqn:change1}
+    \pi = \argmax_\pi \E_{(s,a) \sim \mathcal{D}} \lb \lambda Q(s,\pi(s)) - \lp \pi(s) - a \rp^2 \rb,
+\end{equation}
+with a single hyperparameter $\lambda$ to control the strength of the regularizer. This modification can be made by adjusting only a single line of code. Additionally, we remark that normalizing the states over the dataset, such that they have mean $0$ and standard deviation $1$, improves the stability of the learned policy. Importantly, these are the \textit{only} changes made to the underlying deep RL algorithm. To accommodate reproduciblity, all of our code is open-sourced\footnote{\url{https://github.com/sfujim/TD3_BC}}.
+
+We evaluate our minimal changes to the TD3 algorithm on the D4RL benchmark of continuous control tasks~\citep{fu2021benchmarks}. We find that our algorithm compares favorably against many offline RL algorithms, while being significantly easier to implement and more than halving the required computation cost. The surprising effectiveness of our minimalist approach suggests that in the context of offline RL, simpler approaches have been left underexplored in favor of more elaborate algorithmic contributions. 
+
+
+\section{Related Work}
+
+Although to the best of our knowledge, we are the first to use TD3 with behavior cloning (BC) for the purpose of offline RL, we remark that combining RL with BC, and other imitation learning approaches, has been previously considered by many authors. 
+
+\textbf{RL + BC}. With the aim of accelerating reinforcement learning from examples (known as learning from demonstrations~\citep{atkeson1997robot}), BC has been used as a regularization for policy optimization with DDPG~\citep{DDPG, nair2018overcoming, goecks2020integrating} and the natural policy gradient~\citep{kakade2001natural, rajeswaran2017learning}, but with additional sophistication through modified replay buffers and pre-training. The most similar work to our own is a SAC+BC baseline~\citep{haarnoja2018soft} from \cite{nair2020accelerating} and an unpublished course project~\citep{booherBC} combining PPO~\citep{ppo} with BC.
+
+\textbf{RL + Imitation}. Other than directly using BC with RL, imitation learning has been combined with RL in a variety of manners, such as mixed with adversarial methods~\citep{zhu2018reinforcement, kang2018policy}, used for pre-training~\citep{pfeiffer2018reinforced}, modifying the replay buffer~\citep{vevcerik2017leveraging, Gulcehre2020Making}, adjusting the value function~\citep{kim2013learning, hester2017deep}, or reward shaping~\citep{judah2014imitation, wu2021shaping}. In all cases, these methods use demonstrations as a method for overcoming challenges in exploration or improving the learning speed of the RL agent. 
+
+\textbf{Offline RL}. As aforementioned, offline RL methods generally rely on some approach for ``staying close'' to the data. This may be implemented using an estimate of the behavior policy and then defining an explicit policy parameterization~\citep{fujimoto2018off, ghasemipour2020emaq}  or by using divergence regularization~\citep{jaques2019way, kumar2019stabilizing, wu2019behavior, Siegel2020Keep, guo2021batch, kostrikov2021offline}. Other approaches use a weighted version of BC to favor high advantage actions \citep{wang2018exponentially, peng2019advantage, Siegel2020Keep, wang2020critic, nair2020accelerating} or perform BC over an explicit subset of the data~\citep{chen2020bail}. Some methods have modified the set of valid actions based on counts~\citep{laroche2019safe} or the learned behavior policy~\citep{fujimoto2019benchmarking}. Another direction is to implement divergence regularization as a form of pessimism into the value estimate \citep{nachum2019algaedice, kumar2020conservative, buckman2020importance}.  
+
+
+\textbf{Meta Analyses of RL Algorithms}. There are a substantial amount of meta analysis works on online RL algorithms. While some focus on inadequacies in the experimental protocols~\citep{henderson2017deep,osband2019behaviour}, others study the roles of subtle implementation details in algorithms~\citep{tucker18amirage,Engstrom2020Implementation,andrychowicz2021what,furuta2021identifying}. For example,~\citet{tucker18amirage,Engstrom2020Implementation} identified that superior performances of certain algorithms were more dependent on, or even accidentally due to, minor implementation rather than algorithmic differences.~\citet{furuta2021identifying} study two broad families of off-policy algorithms, which most offline algorithms are based on, and find that a few subtle implementation details are strongly co-adapted and critical to specific algorithms, making attributions of performance gains difficult. Recent offline research also follows a similar trend, where a number of implementation modifications are necessary for high algorithmic performances (see \autoref{table:implementations}). In contrast, we derive our algorithm by modifying the existing TD3 with only a few lines of codes. Our results suggest the community could also learn from careful explorations of simpler alternatives, besides emphasizing algorithmic novelties and complexities.
+
+
+\section{Background}
+
+\textbf{RL}. Reinforcement learning (RL) is a framework aimed to deal with tasks of sequential nature. Typically, the problem is defined by a Markov decision process (MDP) $(\mathcal{S}, \mathcal{A}, \mathcal{R}, p, \y)$, with state space $\mathcal{S}$, action space $\mathcal{A}$, scalar reward function $\mathcal{R}$, transition dynamics $p$, and discount factor~$\y$~\citep{sutton1998reinforcement}. The behavior of an RL agent is determined by a policy $\pi$ which maps states to actions (deterministic policy), or states to a probability distribution over actions (stochastic policy). The objective of an RL agent is to maximize the expected discounted return $\E_\pi[\sum_{t=0}^\infty \y^t r_{t+1}]$, which is the expected cumulative sum of rewards when following the policy in the MDP, where the importance of the horizon is determined by the discount factor. We measure this objective by a value function, which measures the expected discounted return after taking the action $a$ in state~$s$: $Q^\pi(s,a) = \E_\pi \lb \sum_{t=0}^\infty \y^t r_{t+1} | s_0 = s, a_0 = a \rb$. 
+
+\textbf{BC}. Another approach for training policies is through imitation of an expert or behavior policy. Behavior cloning (BC) is an approach for imitation learning~\citep{pomerleau1991efficient}, where the policy is trained with supervised learning to directly imitate the actions of a provided dataset. Unlike RL, this process is highly dependent on the performance of the data-collecting process.  
+
+
+
+\textbf{Offline RL}. Offline RL breaks the assumption that the agent can interact with the environment. Instead, the agent is provided a fixed dataset which has been collected by some unknown data-generating process (such as a collection of behavior policies). This setting may be considered more challenging as the agent loses the opportunity to explore the MDP according to its current beliefs, and instead from infer good behavior from only the provided data. 
+
+One challenge for offline RL is the problem of extrapolation error~\citep{fujimoto2018off}, which is generalization error in the approximate value function, induced by selecting actions not contained in the dataset. Simply put, it is difficult to evaluate the expected value of a policy which is sufficiently different from the behavior policy. Consequently, algorithms have taken the approach of constraining or regularizing the policy to stay near to the actions in the dataset~\citep{levine2020offline}. 
+
+
+
+
+
+
+
+
+
+\section{Challenges in Offline RL} \label{sec:challenges}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{clll}%
+\toprule
+& CQL & Fisher-BRC & TD3+BC \\
+& \citep{kumar2020conservative} & \citep{kostrikov2021offline} & (Ours) \\
+\cmidrule(r){1-4}
+\multirow{3}{*}{\shortstack{Algorithmic\\Adjustments}} & Add regularizer to critic$^\dagger$  & Train a generative model$^{\dagger\ddagger}$& Add a BC term$^\dagger$\\ 
+& Approximate logsumexp & Replace critic with offset function &\\
+& with sampling$^\ddagger$& Gradient penalty on offset function$^\dagger$ &\\
+\cmidrule(r){1-4}
+\multirow{5}{*}{\shortstack{Implementation\\Adjustments}} &Architecture$^{\dagger\ddagger}$& Architecture$^{\dagger\ddagger}$ & Normalize states \\
+& Actor learning rate$^\dagger$ &  Reward bonus$^\dagger$ & \\
+& Pre-training actor  & Remove SAC entropy term & \\
+& Remove SAC entropy term &  &\\ 
+& Max over sampled actions$^\ddagger$ &   &\\
+\bottomrule
+\end{tabular}
+\vspace{3pt}
+\caption{Implementation changes offline RL algorithms make to the underlying base RL algorithm. $^\dagger$ corresponds to details that add additional hyperparameter(s), and $^\ddagger$ corresponds to ones that add a computational cost.}
+\label{table:implementations}
+\end{table}    
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.35]{fixed_images/fixed_simple_imp.pdf}
+    \caption{Percent difference of performance of offline RL algorithms and their simplified versions which remove implementation adjustments to their underlying algorithm. HC~=~HalfCheetah, Hop~=~Hopper, W~=~Walker, r~=~random, m~=~medium, mr~=~medium-replay, me~=~medium-expert, e = expert. Huge drops in performances show that the implementation complexities are crucial for achieving the best results in these prior algorithms.}
+    \label{fig:simple_offline}
+\end{figure}
+
+In this section, we identify key open challenges in offline RL through analyzing and evaluating prior algorithms. We believe these challenges highlight the importance of minimalist approaches, where performance can be easily attributed to algorithmic contributions, rather than entangled with the specifics of implementation. 
+
+\textbf{Implementation and Tuning Complexities}. RL algorithms are notoriously difficult to implement and tune~\citep{henderson2017deep,Engstrom2020Implementation,furuta2021identifying}, where minor code-level optimizations and hyperparameters can have non-trivial impact of performance and stability. This problem may be additionally amplified in the context of offline RL, where evaluating changes to implementation and hyperparameters is counter-intuitive to the nature of offline RL, which explicitly aims to eliminate environment interactions~\citep{paine2020hyperparameter, yang2020offline}. 
+
+Most offline RL algorithms are built explicitly on top of an existing off-policy deep RL algorithm, such as TD3~\citep{fujimoto2018addressing} or SAC~\citep{haarnoja2018soft}, but then further modify the underlying algorithm with ``non-algorithmic'' implementation changes, such as modifications to network architecture, learning rates, or pre-training the actor network. 
+We remark that a desirable property of an offline RL algorithm would be to minimally modify the underlying algorithm, so as to reduce the space of possible adjustments required to achieve a strong performance. 
+
+In \autoref{table:implementations} we examine the particular modifications made by two recent offline RL algorithms, CQL~\citep{kumar2020conservative} and Fisher-BRC~\citep{kostrikov2021offline}. On top of algorithmic changes, 
+CQL also adds a pre-training phase where the actor is only trained with imitation learning and selects the max action over a sampled set of actions from the policy during evaluation. Fisher-BRC adds a constant reward bonus to every transition. Both methods modify SAC by removing the entropy term in the target update and modify the default network architecture. These changes add supplementary hyperparameters which may need to be tuned or increase computational costs.
+
+In the online setting, these changes are relatively inconsequential and could be validated with some simple experimentation. However, in the offline setting, where we cannot interact with the environment, making additional adjustments to the underlying algorithm should be considered as more costly as validating their effectiveness is no longer a trivial additional step. This is also problematic because unlike the algorithmic changes proposed by these papers, these implementation details are not well justified, meaning there is much less intuition as to when to include these details, or how to adjust them with minimal experimentation. In the case of the D4RL benchmark on MuJoCo tasks~\citep{mujoco, fu2021benchmarks}, we have a strong prior that our base deep RL algorithm performs well, as SAC/TD3 are considered state-of-the-art (or nearly) in these domains. If additional changes are necessary, then it suggests the algorithmic contributions alone are insufficient. 
+
+In \autoref{fig:simple_offline} we examine the percent difference in performance when removing the implementation changes in CQL and Fisher-BRC. There is a significant drop in performance in many of the tasks. This is not necessarily a death knell to these algorithms, as it is certainly possible these changes could be kept without tuning when attempting new datasets and domains. However, since neither paper make mention of a training/validation split, we can only assume these changes were made with their evaluation datasets in mind (D4RL, in this instance), and remark there is insufficient evidence that these changes may be universal. Ultimately, we make this point not to suggest a fundamental flaw with pre-existing algorithms, but to suggest that there should be a preference for making minimal adjustments to the underlying RL algorithm, to reduce the need for hyperparameter tuning. 
+
+\textbf{Extra Computation Requirement}. A secondary motivating factor for minimalism is avoiding the additional computational costs associated with modifying the underlying algorithm (in particular architecture) and more complex algorithmic ideas. In \autoref{fig:runtime} (contained later in \autoref{sec:experiments}), we examine the run time of offline RL algorithms, as well as the change in cost over the underlying algorithm, and find their is a significant computational cost associated with these modifications. On top of the architecture changes, for CQL this is largely due to the costs of logsumexp over multiple sampled actions, and for Fisher-BRC, the costs associated with training the independent generative model. Since an objective of offline RL is to take advantage of existing, potentially large, datasets, there should be a preference for scalable and efficient solutions. Of course, run time should not come at the cost of performance, but as we will later demonstrate, there exists a simple, and computationally-free, approach for offline RL which matches the performance of current state-of-the-art algorithms. 
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.33]{fixed_images/fixed_min_eval.pdf}
+    \caption{Percent difference of the worst episode during the 10 evaluation episodes at the last evaluation. This measures the deviations in performance at single point in time. HC~=~HalfCheetah, Hop~=~Hopper, W~=~Walker, r~=~random, m~=~medium, mr~=~medium-replay, me~=~medium-expert, e = expert. While online algorithms (TD3) typically have small episode variances per trained policy (as they should at \textit{convergence}), all offline algorithms have surprisingly high episodic variances for \textit{trained} policies. }
+    \label{fig:min_eval}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.33]{fixed_images/fixed_min_10_eval.pdf}
+    \caption{Percent difference of the worst evaluation during the last 10 evaluations. This measures the deviations in performance over a period of time. HC~=~HalfCheetah, Hop~=~Hopper, W~=~Walker, r~=~random, m~=~medium, mr~=~medium-replay, me~=~medium-expert, e = expert. Similarly to the result in~\autoref{fig:min_eval}, all offline-trained policies have significant variances near the final stage of training that are absent in the online setting.}
+    \label{fig:min_10_eval}
+\end{figure}
+
+\textbf{Instability of Trained Policies}. In analyzing the final trained policies of prior offline algorithms, we learned of a tangential, and open, challenge in the form of instability. In online RL, if the current policy is unsatisfactory, we can use checkpoints of previous iterations of the policy, or to simply continue training. However, in offline RL, the evaluation should only occur once by definition, greatly increasing the importance of the single policy at evaluation time. 
+We highlight two versions of instability in offline RL. \autoref{fig:min_eval} shows that in contrast to the online-trained policy, which converges to a robust low-variance policy, the offline-trained policy exhibits huge variances in performance during a single evaluation. Therefore, even if the average performance is reasonable, the agent may still perform poorly on some episodes. \autoref{fig:min_10_eval} shows instability over the set of evaluations, which means the performance of the agent may be dependent on the specific stopping point chosen for evaluation. This questions the empirical effectiveness of offline RL for safety-critical real-world use cases~\citep{mandel2014offline,gottesman2018evaluating, gauci2018horizon, jaques2019way, matsushima2020deployment} as well as the current trend of reporting only the mean-value of the final policy in offline benchmarking~\citep{fu2021benchmarks}. 
+
+Such variances are not likely caused by high policy entropies (e.g. TD3+BC trains a deterministic policy), but rather our hypothesis is that such a problem is due to distributional shifts issues and poor generalizations across unobserved states caused by offline nature of training~\citep{ross2011reduction}, where the optimized policy is never allowed to execute in the environment, similarly as in BC. This trait of offline RL algorithms appears to be consistent across all offline algorithms we evaluated, even for our minimalistic TD3+BC that is only a few lines change from TD3. While we could not solve this challenge sufficiently within the scope of this work, the fact that this is reproducible even in the minimalistic variant proves that this a fundamental problem shared by all offline training settings, and is a critical problem for the community to study in the future.  
+
+\section{A Minimalist Offline RL Algorithm}
+
+A key problem in offline RL, extrapolation error, can be summarized as the inability to properly evaluate out-of-distribution actions. Consequently, there has been a variety of different approaches to limiting, or regularizing, action selection such that the learned policy is easier to evaluate with the given dataset. We remark that while minimizing say, KL divergence, is a both logical and valid approach for reducing extrapolation error, there is no fundamental argument why minimizing one divergence or distance metric should be better than another. Thus, rather than derive an entirely new approach, we focus on simplicity, and present an offline RL algorithm which requires minimal modifications to a pre-existing deep RL algorithm. As discussed in \autoref{sec:challenges} a minimalist approach has a variety of benefits, such as reducing the number of hyperparameters to tune, increasing scalability by reducing computational costs, and providing an avenue for analyzing problems by disentangling algorithmic contributions from implementation details. 
+
+We now describe such an approach to offline RL. Our algorithm builds on top of TD3~\citep{fujimoto2018addressing}, making only two straightforward changes. 
+Firstly, we add a behavior cloning regularization term to the standard policy update step of TD3, to push the policy towards favoring actions contained in the dataset $\mathcal{D}$:
+\begin{equation} \label{eqn:changemain}
+    \pi = \argmax_\pi \E_{s \sim \mathcal{D}} \lb Q(s,\pi(s)) \rb \rightarrow \pi = \argmax_\pi \E_{(s,a) \sim \mathcal{D}} \lb \colorbox{mine}{$\lambda$} Q(s,\pi(s)) - \colorbox{mine}{$\lp \pi(s) - a \rp^2$} \rb.
+\end{equation}
+Secondly, we normalize the features of every state in the provided dataset. Let $s_i$ be the $i$th feature of the state $s$, let $\mu_i$ $\sigma_i$ be the mean and standard deviation, respectively, of the $i$th feature across the dataset:
+\begin{equation} \label{eqn:changenorm}
+    s_i = \frac{s_i - \mu_i}{\sigma_i + \e}, 
+\end{equation}
+where $\e$ is a small normalization constant (we use $10^{-3}$). While we remark this is a commonly used implementation detail in many deep RL algorithms~\citep{stable-baselines3}, we highlight it as (1) we want complete transparency about all implementation changes and (2) normalizing provides a non-trivial performance benefit in offline RL, where it is particularly well-suited as the dataset remains fixed. 
+
+While the choice of $\lambda$ in \autoref{eqn:changemain} is ultimately just a hyperparameter, we observe that the balance between RL (in maximizing $Q$) and imitation (in minimizing the BC term), is highly susceptible to the scale of $Q$. If we assume an action range of $[-1,1]$, the BC term is at most $4$, however the range of $Q$ will be a function of the scale of the reward. Consequently, we can add a normalization term into $\lambda$. Given the dataset of $N$ transitions $(s_i,a_i)$, we define the scalar $\lambda$ as:
+\begin{equation} \label{eqn:lambda}
+    \lambda = \frac{\al}{\frac{1}{N} \sum_{(s_i,a_i)} |Q(s_i,a_i)|}.
+\end{equation}
+This is simply a normalization term based on the average absolute value of $Q$. In practice, we estimate this mean term over mini-batches, rather than the entire dataset. Although this term includes $Q$, it is not differentiated over, and is simply used to scale the loss. This formulation has the added benefit of normalizing the learning rate across tasks, as the gradient $\nabla_a Q(s,a)$ will also be dependent on the scale of $Q$. We use $\al=2.5$ in our experiments. 
+
+This completes the description of TD3+BC. The Equations \ref{eqn:changemain}, \ref{eqn:changenorm}, and \ref{eqn:lambda} summarizes the entirety of our changes to TD3, and can be implemented by modifying only a handful of lines in most codebases. 
+
+
+
+\section{Experiments} \label{sec:experiments}
+
+\begin{table}[]
+\addtolength{\tabcolsep}{-1pt}
+\small
+\centering
+\begin{tabular}{c@{\hspace{5pt}}lr@{\hspace{-1pt}}lrrr@{\hspace{-1pt}}lr@{\hspace{-1pt}}lr@{\hspace{-1pt}}l}
+\toprule
+\multicolumn{1}{l}{}              &             & \multicolumn{2}{c}{BC}                                     & BRAC-p                & AWAC                 & \multicolumn{2}{c}{CQL}                                    & \multicolumn{2}{c}{Fisher-BRC}                             & \multicolumn{2}{c}{TD3+BC}                               \\
+\midrule
+\multirow{3}{*}{\rotatebox[origin=c]{90}{Random}} & HalfCheetah & \colorbox{white}{2.0}   & {\color[HTML]{525252} $\pm$0.1}  & 23.5                  & 2.2                  & \colorbox{white}{21.7}  & {\color[HTML]{525252} $\pm$0.9}  & \colorbox{mine}{32.2}  & {\color[HTML]{525252} $\pm$2.2}  & \colorbox{white}{10.2} & {\color[HTML]{525252} $\pm$1.3} \\
+                                  & Hopper      & \colorbox{mine}{9.5}    & {\color[HTML]{525252} $\pm$0.1}  & \colorbox{mine}{11.1} & \colorbox{mine}{9.6} & \colorbox{mine}{10.7}   & {\color[HTML]{525252} $\pm$0.1}  & \colorbox{mine}{11.4}  & {\color[HTML]{525252} $\pm$0.2}  & \colorbox{mine}{11.0}  & {\color[HTML]{525252} $\pm$0.1} \\
+          						  & Walker2d    & \colorbox{mine}{1.2}    & {\color[HTML]{525252} $\pm$0.2}  & \colorbox{mine}{0.8}  & \colorbox{mine}{5.1} & \colorbox{mine}{2.7}    & {\color[HTML]{525252} $\pm$1.2}  & \colorbox{mine}{0.6}   & {\color[HTML]{525252} $\pm$0.6}  & \colorbox{mine}{1.4}   & {\color[HTML]{525252} $\pm$1.6} \\
+\midrule
+\multirow{3}{*}{\rotatebox[origin=c]{90}{Medium}} & HalfCheetah & \colorbox{white}{36.6}  & {\color[HTML]{525252} $\pm$0.6}  & \colorbox{mine}{44.0} & 37.4                 & \colorbox{white}{37.2}  & {\color[HTML]{525252} $\pm$0.3}  & \colorbox{mine}{41.3}  & {\color[HTML]{525252} $\pm$0.5}  & \colorbox{mine}{42.8}  & {\color[HTML]{525252} $\pm$0.3} \\
+                                  & Hopper      & \colorbox{white}{30.0}  & {\color[HTML]{525252} $\pm$0.5}  & 31.2                  & 72.0                 & \colorbox{white}{44.2}  & {\color[HTML]{525252} $\pm$10.8} & \colorbox{mine}{99.4}  & {\color[HTML]{525252} $\pm$0.4}  & \colorbox{mine}{99.5}  & {\color[HTML]{525252} $\pm$1.0} \\
+          						  & Walker2d    & \colorbox{white}{11.4}  & {\color[HTML]{525252} $\pm$6.3}  & \colorbox{mine}{72.7} & 30.1                 & \colorbox{white}{57.5}  & {\color[HTML]{525252} $\pm$8.3}  & \colorbox{mine}{79.5}  & {\color[HTML]{525252} $\pm$1.0}  & \colorbox{mine}{79.7}  & {\color[HTML]{525252} $\pm$1.8} \\
+\midrule
+\multirow{3}{*}{\rotatebox[origin=c]{90}{\shortstack{Medium\\Replay}}} & HalfCheetah & \colorbox{white}{34.7}  & {\color[HTML]{525252} $\pm$1.8}  & \colorbox{mine}{45.6} & -                    & \colorbox{mine}{41.9}   & {\color[HTML]{525252} $\pm$1.1}  & \colorbox{mine}{43.3}  & {\color[HTML]{525252} $\pm$0.9}  & \colorbox{mine}{43.3}  & {\color[HTML]{525252} $\pm$0.5} \\
+                                  & Hopper      & \colorbox{white}{19.7}  & {\color[HTML]{525252} $\pm$5.9}  & 0.7                   & -                    & \colorbox{white}{28.6}  & {\color[HTML]{525252} $\pm$0.9}  & \colorbox{mine}{35.6}  & {\color[HTML]{525252} $\pm$2.5}  & \colorbox{mine}{31.4}  & {\color[HTML]{525252} $\pm$3.0} \\
+								  & Walker2d    & \colorbox{white}{8.3}   & {\color[HTML]{525252} $\pm$1.5}  & -0.3                  & -                    & \colorbox{white}{15.8}  & {\color[HTML]{525252} $\pm$2.6}  & \colorbox{mine}{42.6}  & {\color[HTML]{525252} $\pm$7.0}  & \colorbox{white}{25.2} & {\color[HTML]{525252} $\pm$5.1} \\
+\midrule
+\multirow{3}{*}{\rotatebox[origin=c]{90}{\shortstack{Medium\\Expert}}} & HalfCheetah & \colorbox{white}{67.6}  & {\color[HTML]{525252} $\pm$13.2} & 43.8                  & 36.8                 & \colorbox{white}{27.1}  & {\color[HTML]{525252} $\pm$3.9}  & \colorbox{mine}{96.1}  & {\color[HTML]{525252} $\pm$9.5}  & \colorbox{mine}{97.9}  & {\color[HTML]{525252} $\pm$4.4} \\
+                                  & Hopper      & \colorbox{white}{89.6}  & {\color[HTML]{525252} $\pm$27.6} & 1.1                   & 80.9                 & \colorbox{mine}{111.4}  & {\color[HTML]{525252} $\pm$1.2}  & \colorbox{white}{90.6} & {\color[HTML]{525252} $\pm$43.3} & \colorbox{mine}{112.2} & {\color[HTML]{525252} $\pm$0.2} \\
+								  & Walker2d    & \colorbox{white}{12.0}  & {\color[HTML]{525252} $\pm$5.8}  & -0.3                  & 42.7                 & \colorbox{white}{68.1}  & {\color[HTML]{525252} $\pm$13.1} & \colorbox{mine}{103.6} & {\color[HTML]{525252} $\pm$4.6}  & \colorbox{mine}{101.1} & {\color[HTML]{525252} $\pm$9.3} \\
+\midrule
+\multirow{3}{*}{\rotatebox[origin=c]{90}{Expert}} & HalfCheetah & \colorbox{mine}{105.2}  & {\color[HTML]{525252} $\pm$1.7}  & 3.8                   & 78.5                 & \colorbox{white}{82.4}  & {\color[HTML]{525252} $\pm$7.4}  & \colorbox{mine}{106.8} & {\color[HTML]{525252} $\pm$3.0}  & \colorbox{mine}{105.7} & {\color[HTML]{525252} $\pm$1.9} \\
+                                  & Hopper      & \colorbox{mine}{111.5}  & {\color[HTML]{525252} $\pm$1.3}  & 6.6                   & 85.2                 & \colorbox{mine}{111.2}  & {\color[HTML]{525252} $\pm$2.1}  & \colorbox{mine}{112.3} & {\color[HTML]{525252} $\pm$0.2}  & \colorbox{mine}{112.2} & {\color[HTML]{525252} $\pm$0.2} \\
+								  & Walker2d    & \colorbox{white}{56.0}  & {\color[HTML]{525252} $\pm$24.9} & -0.2                  & 57.0                 & \colorbox{mine}{103.8}  & {\color[HTML]{525252} $\pm$7.6}  & \colorbox{white}{79.9} & {\color[HTML]{525252} $\pm$32.4} & \colorbox{mine}{105.7} & {\color[HTML]{525252} $\pm$2.7} \\
+\midrule
+\multicolumn{1}{l}{}              & Total       & \colorbox{white}{595.3} & {\color[HTML]{525252} $\pm$91.5}      & 284.1                 & -                    & \colorbox{white}{764.3} & {\color[HTML]{525252} $\pm$61.5}      & \colorbox{mine}{974.6} & {\color[HTML]{525252} $\pm$108.3}     & \colorbox{mine}{979.3} & {\color[HTML]{525252}$\pm$33.4}    \\
+\bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{Average normalized score over the final 10 evaluations and 5 seeds. The highest performing scores are highlighted. CQL and Fisher-BRC are re-run using author-provided implementations to ensure an identical evaluation process, while BRAC and AWAC use previously reported results. $\pm$ captures the standard deviation over seeds. TD3+BC achieves effectively the same performances as the state-of-the-art Fisher-BRC, despite being much simpler to implement and tune and more than halving the computation cost.} \label{table:results}
+\end{table}
+
+
+
+
+We evaluate our proposed approach on the D4RL benchmark of OpenAI gym MuJoCo tasks~\citep{mujoco, OpenAIGym, fu2021benchmarks}, which encompasses a variety of dataset settings and domains. Our offline RL baselines include two state-of-the-art algorithms, CQL~\citep{kumar2020conservative} and Fisher-BRC~\citep{kostrikov2021offline}, as well as BRAC~\citep{wu2019behavior} and AWAC~\citep{nair2020accelerating} due to their algorithmic simplicity. 
+
+\begin{figure}
+    \centering
+\small{
+\cblock{214}{39}{40} BC \qquad 
+\cblock{255}{127}{14} CQL \qquad
+\cblock{44}{160}{44} Fisher-BRC \qquad
+\cblock{31}{119}{180} TD3+BC
+}
+    \includegraphics[width=\textwidth]{images/results.pdf} %
+    \caption{Learning curves comparing the performance of TD3+BC against offline RL baselines in the D4RL datasets. Curves are averaged over 5 seeds, with the shaded area representing the standard deviation across seeds. TD3+BC exhibits a similar learning speed and final performance as the state-of-the-art Fisher-BRC, without the need of pre-training a generative model.}
+    \label{fig:results}
+\end{figure}
+
+\begin{table}
+    \centering
+    \small
+    \begin{tabular}[b]{lcccc}
+    \toprule
+                        & CQL         & Fisher-BRC & Fisher-BRC & TD3+BC\\
+                        & (GitHub) & (GitHub) & (Ours) & (Ours)\\
+    \midrule
+    Implementation & \multicolumn{1}{r}{25m}         & \multicolumn{1}{r}{39m}                       & \multicolumn{1}{r}{15m}                & \multicolumn{1}{r}{< 1s}       \\
+    Algorithmic    & \multicolumn{1}{r}{1h 29m}      & \multicolumn{1}{r}{33m}                       & \multicolumn{1}{r}{58m}                   & \multicolumn{1}{r}{< 5s}        \\
+    Total          & \multicolumn{1}{r}{4h 11m} & \multicolumn{1}{r}{2h 12m}            & \multicolumn{1}{r}{2h 8m}          & \multicolumn{1}{r}{39m} \\
+    \bottomrule
+    & & & & \\
+    & & & & \\
+    \end{tabular}
+    \includegraphics[scale=0.33]{fixed_images/fixed_runtime.pdf}
+    \caption{Run time comparison of training each offline RL algorithm (does not include evaluation costs). (Left) Breakdown of the cost of the added implementation details (mainly architecture changes) and the algorithmic details by each method. (Right) Total training time of each algorithm. While CQL and Fisher-BRC have significantly increased computational costs over their base online RL algorithm due to various added complexities (e.g. see \autoref{table:implementations}), TD3+BC has effectively no increase. This results in less than half of the computational cost of these prior state-of-the-art algorithms.} %
+    \label{fig:runtime} %
+\end{table}
+
+To ensure a fair and identical experimental evaluation across algorithms, we re-run the state-of-the-art algorithms CQL and Fisher-BRC using the author-provided 
+implementations\footnote{\url{https://github.com/aviralkumar2907/CQL}}\footnote{\url{https://github.com/google-research/google-research/tree/master/fisher_brc}}. We train each algorithm for 1 million time steps and evaluate every 5000 time steps. Each evaluation consists of 10~episodes. Results for BRAC are obtained from the D4RL benchmark and from the CQL paper, while the AWAC results are obtained directly from the paper. BC results were obtained using our own implementation. 
+
+\textbf{D4RL.} We report the final performance results in \autoref{table:results} and display the learning curves in \autoref{fig:results}. Although our method is very simplistic in nature, it surpasses, or matches, the performance of the current state-of-the-art offline RL algorithms in most tasks. Only Fisher-BRC exhibits a comparable performance\footnote{As noted by previous papers~\citep{kostrikov2021offline}, we remark the author-provided implementation of CQL achieves a lower result than their reported results.}. Examining the learning curves, we can see that our approach achieves a similar learning speed and stability, without requiring any pre-training phase. 
+
+\textbf{Run time.} We evaluate run time of training each of the offline RL algorithms for 1 million time steps, using the author-provoided implementations. Additionally, for fair comparison, we re-implement Fisher-BRC, allowing each method to be compared in the same framework (PyTorch~\citep{paszke2019pytorch}). The results are reported in \autoref{fig:runtime}. Unsurprisingly, we find our approach compares favorably against previous methods in terms of wall-clock training time, effectively adding no cost to the underlying TD3 algorithm. All run time experiments were run with a single GeForce GTX 1080 GPU and an Intel Core i7-6700K CPU at 4.00GHz.
+
+\textbf{Ablation.} 
+In \autoref{fig:ablation}, we perform an ablation study over the components in our method. 
+As noted in previous work~\citep{fujimoto2018off}, without behavior cloning regularization, the RL algorithm alone is insufficient to achieve a high performance (except on some of the random data sets). We also note that our algorithm never underperforms vanilla behavior cloning, even on the expert tasks. Predictably, the removal of state normalization has the least significant impact, but it still provides some benefit across a range of tasks while being a minor adjustment. In \autoref{fig:ablation_lamb}, we evaluate the sensitivity of the algorithm to the hyperparameter $\al$, where the weighting $\lambda=\frac{\al}{\sum_{(s,a)} |Q(s,a)|}$ on the value function is determined by $\al$. On many tasks, our approach is robust to this weighting factor, but note the performance on a subset of tasks begins to decrease as $\al$ begins to more heavily favor imitation ($\al=1$) or RL ($\al=4$). 
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.275]{fixed_images/fixed_ablation.pdf}
+    \caption{Percent difference of the performance of an ablation of our proposed approach, compared to the full algorithm. TD3+$\lambda$+BC+Norm refers to the complete algorithm, where Norm refers to the state feature normalization. HC~=~HalfCheetah, Hop~=~Hopper, W~=~Walker, r~=~random, m~=~medium, mr~=~medium-replay, me~=~medium-expert, e = expert. As expected, both BC and TD3 are necessary components to achieve a strong performance. While removing state normalization is not devastating to the performance of the algorithm, we remark it provides a boost in performance across many tasks, while being a straightforward addition.}
+    \label{fig:ablation}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[scale=0.275]{images/lamb_ablation.pdf}
+    \caption{Percent difference of the performance of an ablation over $\al$, compared to the full algorithm. Recall the form of the sole hyperparameter $\lambda=\frac{\al}{\sum |Q(s,a)|}$, where $\lambda$ weights the $Q$ function during the policy update. $\al=2.5$ is used by default. HC~=~HalfCheetah, Hop~=~Hopper, W~=~Walker, r~=~random, m~=~medium, mr~=~medium-replay, me~=~medium-expert, e = expert. While there is effectively no performance difference between $\al=2$ and $\al=3$, we remark that performance begins to degrade on select tasks as the algorithm begins to approach more RL ($\al=4$) or imitation ($\al=1$).}
+    \label{fig:ablation_lamb}
+\end{figure}
+
+
+\section{Conclusion}
+
+Most recent advances in offline RL center around the idea of regularizing policy actions to be close to the support within batch data, and yet many state-of-the-art algorithms have significant complexities and additional modifications beyond base algorithms that lead to not only much slower run time, but also intractable attributions for sources of performance gains. Instead of complexity we optimize for simplicity, and introduce a minimalistic algorithm that achieves a state-of-the-art performance but is only a few lines of changes from the base TD3 algorithm, uses less than half of the computation time of competing algorithms, and has only one additional hyperparameter. 
+
+Additionally, we highlight existing open challenges in offline RL research, including not only the extra implementation, computation, and hyperparameter-tuning complexities that we successfully address in this work, but also call attention to the neglected problem of high episodic variance in offline-trained policies compared to online-trained (see Figures~\ref{fig:min_eval} and~\ref{fig:min_10_eval}) that we as the community should address in future works and benchmarking. %
+Finally, we believe the sheer simplicity of our approach highlights a possible overemphasis on algorithmic complexity made by the community, and we hope to inspire future work to revisit simpler alternatives which may have been overlooked. 
+\vfill
+
+
+
+
+
+
+\bibliography{references}
+\bibliographystyle{plainnat}
+
+
+
+
+
+
+
+
+
+
+
+
+\clearpage
+\appendix
+
+\section{Broader Impact}
+
+Offline RL will have societal impact by enabling new applications for reinforcement learning which can benefit from offline logged data such as robotics or healthcare applications, where collecting data is difficult, time-gated, expensive, etc. This may include potentially negative applications such as enforcing addictive behavior on social media. Another limitation to offline RL is that it is subject to any biases contained in the data set and can influenced by the data-generating policy. 
+
+For our specific algorithm, TD3+BC, given the performance gain over existing state-of-the-art methods is minimal, it would be surprising to see our paper result in significant impact in these contexts. However, where we might see impact is in enabling new users access to offline RL by reducing the computational cost, or burden of implementation, from having a simpler approach to offline RL. In other words, we foresee the impact our work is in accessibility and ease-of-use, and not through changing the scope of possible applications.  
+
+\section{Experimental Details}
+
+\textbf{Software}. We use the following software versions:
+\begin{itemize}[nosep]
+    \item Python 3.6
+    \item Pytorch 1.4.0~\citep{paszke2019pytorch}
+    \item Tensorflow 2.4.0~\citep{abadi2016tensorflow}
+    \item Gym 0.17.0~\citep{OpenAIGym}
+    \item MuJoCo 1.50\footnote{License information: \url{https://www.roboti.us/license.html}}~\citep{mujoco}%
+    \item mujoco-py 1.50.1.1
+\end{itemize}
+All D4RL datasets~\citep{fu2021benchmarks} use the v0 version. 
+
+\textbf{Hyperparameters}. Our implementations of TD3\footnote{\url{https://github.com/sfujim/TD3}, commit 6a9f76101058d674518018ffbb532f5a652c1d37}~\citep{fujimoto2018addressing}, CQL\footnote{\url{https://github.com/aviralkumar2907/CQL}, commit d67dbe9cf5d2b96e3b462b6146f249b3d6569796}~\citep{kumar2020conservative}, and Fisher-BRC\footnote{\url{https://github.com/google-research/google-research/tree/master/fisher_brc}, commit 9898bb462a79e727ca5f413dba0ac3c4ee48d6c0}~\citep{kostrikov2021offline} are based off of their respective author-provided implementations from GitHub. For TD3+BC, only $\al$ was tuned in the range $(1,2,2.5,3,4)$ on Hopper-medium-v0 and Hopper-expert-v0 on a single seed which was unused in final reported results. We use default hyperparameters according to each GitHub whenever possible. For CQL we modify the GitHub defaults for the actor learning rate and use a fixed $\alpha$ rather than the Lagrange variant, matching the hyperparameters defined in their paper (which differs from the GitHub), as we found the original hyperparameters performed better. Our re-implementation of Fisher-BRC~(in PyTorch rather than Tensorflow) is used only for run time experiments. 
+
+We outline the hyperparameters used by TD3+BC in \autoref{table:td3_hyp}, CQL in \autoref{table:cql_hyp}, and Fisher-BRC in \autoref{table:fisher_hyp}. 
+
+\textbf{Heuristics for selecting $\lambda$}. While we find a single setting of $\lambda$ works across all datasets, some practitioners may be interested in guidelines in choosing $\lambda$, such as setting it to a fixed constant. Note the aim in our heuristic of normalizing by the average absolute value is to balance the importance of value maximization and behavior cloning. With domain knowledge, this heuristic can be circumvented by selecting $\lambda$ roughly equal to $\al$ over the expected average value. We can also choose $\lambda$ by considering the value estimate of the agent-- if we see divergence in the value function due to extrapolation error \citep{fujimoto2018off}, then we need to decrease $\lambda$ such that the BC term is weighted more highly. Alternatively, if the performance resembles the performance of the behavior agent, then higher values of $\lambda$ should be considered.
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{cll}
+\toprule
+& Hyperparameter & Value \\
+\midrule
+\multirow{9}{*}{TD3 Hyperparameters} & Optimizer & Adam~\citep{adam} \\
+                                      & Critic learning rate & 3e-4 \\
+                                      & Actor learning rate  & 3e-4 \\
+                                      & Mini-batch size      & 256 \\
+                                      & Discount factor      & 0.99 \\
+                                      & Target update rate   & 5e-3 \\
+                                      & Policy noise         & 0.2 \\
+                                      & Policy noise clipping & (-0.5, 0.5) \\
+                                      & Policy update frequency & 2 \\
+\midrule
+\multirow{6}{*}{Architecture}         & Critic hidden dim    & 256        \\
+                                      & Critic hidden layers & 2          \\
+                                      & Critic activation function & ReLU \\
+                                      & Actor hidden dim     & 256        \\
+                                      & Actor hidden layers  & 2          \\
+                                      & Actor activation function & ReLU \\
+\midrule
+\multirow{1}{*}{TD3+BC Hyperparameters}  & $\alpha$             & 2.5 \\
+\bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{TD3+BC Hyperparameters. Recall the form of $\lambda = \frac{\al}{\frac{1}{N} \sum_{(s,a)} |Q(s,a)|}$. The hyperparameters of TD3 are not modified from the TD3 GitHub.}\label{table:td3_hyp}
+\end{table} %
+
+\begin{table}
+\centering
+\begin{tabular}{cll}
+\toprule
+& Hyperparameter & Value \\
+\midrule
+\multirow{7}{*}{SAC Hyperparameters} & Optimizer & Adam~\citep{adam}    \\
+                                      & Critic learning rate & 3e-4       \\
+                                      & Actor learning rate  & 3e-5$^\dagger$       \\
+                                      & Mini-batch size      & 256        \\
+                                      & Discount factor      & 0.99       \\
+                                      & Target update rate   & 5e-3   \\
+                                      & Target entropy       & -1 $\cdot$ Action Dim \\
+                                      & Entropy in Q target  & False$^\dagger$  \\ 
+\midrule
+\multirow{6}{*}{Architecture}         & Critic hidden dim    & 256        \\
+                                      & Critic hidden layers & 3$^\dagger$          \\
+                                      & Critic activation function & ReLU \\
+                                      & Actor hidden dim     & 256        \\
+                                      & Actor hidden layers  & 3$^\dagger$          \\
+                                      & Actor activation function & ReLU \\
+\midrule
+\multirow{5}{*}{CQL Hyperparameters}  & Lagrange             & False      \\
+                                      & $\alpha$                & 10         \\
+                                      & Pre-training steps   & 40e3       \\
+                                      & Num sampled actions (during eval) & 10 \\
+                                      & Num sampled actions (logsumexp) & 10 \\
+\bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{CQL Hyperparameters. We use the hyperparameters defined in the CQL paper rather than the default settings in the CQL GitHub as we found those settings performed poorly. $^\dagger$ denotes hyperparameters which deviate from the original SAC hyperparameters.}\label{table:cql_hyp}
+\end{table}
+
+\begin{table}
+\centering
+\begin{tabular}{cll}
+\toprule
+& Hyperparameter & Value \\
+\midrule
+\multirow{7}{*}{SAC Hyperparameters} & Optimizer & Adam~\citep{adam}    \\
+                                      & Critic Learning Rate & 3e-4       \\
+                                      & Actor Learning Rate  & 3e-4       \\
+                                      & Mini-batch size      & 256        \\
+                                      & Discount factor      & 0.99       \\
+                                      & Target update rate   & 5e-3   \\
+                                      & Target entropy       & -1 $\cdot$ Action Dim \\
+                                      & Entropy in Q target  & False$^\dagger$  \\ 
+\midrule
+\multirow{6}{*}{Architecture}         & Critic hidden dim    & 256        \\
+                                      & Critic hidden layers & 3$^\dagger$          \\
+                                      & Critic activation function & ReLU \\
+                                      & Actor hidden dim     & 256        \\
+                                      & Actor hidden layers  & 3$^\dagger$          \\
+                                      & Actor activation function & ReLU \\
+\midrule
+\multirow{5}{*}{\shortstack{Generative Model\\Hyperparameters}} & Num Gaussians & 5 \\
+                                      & Optimizer & Adam~\citep{adam} \\
+                                      & Learning rate                & (1e-3, 1e-4, 1e-5)        \\
+                                      & Learning rate schedule   & Piecewise linear (0, 8e5, 9e5) \\
+                                      & Target entropy & -1 $\cdot$ Action Dim \\
+\midrule
+\multirow{3}{*}{Generative Model Architecture}  & Hidden dim    & 256      \\
+                                      & Hidden layers           & 2         \\
+                                      & Activation function & ReLU \\
+\midrule
+\multirow{2}{*}{Fisher-BRC Hyperparameters}  & Gradient penalty $\lambda$             & 0.1      \\
+& Reward bonus & 5 \\
+\bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{Fisher-BRC Hyperparameters. We use the default hyperparameters in the Fisher-BRC GitHub. $^\dagger$ denotes hyperparameters which deviate from the original SAC hyperparameters.}\label{table:fisher_hyp}
+\end{table}
+
+\clearpage
+
+\section{Additional Experiments}
+
+\subsection{Additional Datasets}
+
+A concern of TD3+BC is the poor performance on random data. In \autoref{table:rexresults} we mix the random and expert datasets from D4RL~\citep{fu2021benchmarks}, by randomly selecting half the transitions from each dataset and concatenating. We find that TD3+BC performs comparatively to Fisher-BRC. However, both algorithms underperform CQL on Walker2d. One hypothesis for this performance gap is due to the poor performance of BC on the Walker2d expert dataset (see Table 2 and Figure 4 in the main body). For completeness we also report the performance of TD3+BC on the D4RL AntMaze datasets. For this domain we found that state feature normalization was harmful to performance and was not included. All other hyperparameters remain unchanged. 
+
+
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lr@{\hspace{0.1pt}}lr@{\hspace{0.1pt}}lr@{\hspace{0.1pt}}l}
+\toprule
+            & \multicolumn{2}{c}{CQL}                 & \multicolumn{2}{c}{Fisher-BRC}           & \multicolumn{2}{c}{TD3+BC}               \\ \midrule
+HalfCheetah & 73.3  & {\color[HTML]{525252} $\pm$6.9} & 105.8 & {\color[HTML]{525252} $\pm$2.5}  & 101.9 & {\color[HTML]{525252} $\pm$7.6}  \\
+Hopper      & 110.8 & {\color[HTML]{525252} $\pm$2.4} & 111.9 & {\color[HTML]{525252} $\pm$0.9}  & 112.2 & {\color[HTML]{525252} $\pm$0.3}  \\
+Walker2d    & 100.3 & {\color[HTML]{525252} $\pm$8.5} & 32.0    & {\color[HTML]{525252} $\pm$37.3} & 28.8  & {\color[HTML]{525252} $\pm$23.4} \\ \bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{Average normalized score over the final 10 evaluations and 5 seeds on a mixture of 50\% of the random D4RL dataset and 50\% of the expert D4Rl dataset. CQL and Fisher-BRC are re-run using author-provided implementations to ensure an identical evaluation process. $\pm$ captures the standard deviation over seeds.} \label{table:rexresults}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\begin{tabular}{lr@{\hspace{0.1pt}}l}
+\toprule
+                       & \multicolumn{2}{c}{TD3+BC}              \\
+\midrule
+AntMaze-Umaze          & 78.6 & {\color[HTML]{757171} $\pm$33.3} \\
+AntMaze-Umaze-Diverse  & 71.4 & {\color[HTML]{757171} $\pm$20.7} \\
+AntMaze-Medium-Diverse & 10.6 & {\color[HTML]{757171} $\pm$10.1} \\
+AntMaze-Medium-Play    & 3.0  & {\color[HTML]{757171} $\pm$4.8}  \\
+AntMaze-Large-Diverse  & 0.2  & {\color[HTML]{757171} $\pm$0.4}  \\
+AntMaze-Large-Play     & 0.0  & {\color[HTML]{757171} $\pm$0.0}   \\
+\bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{Average normalized score over the final 10 evaluations and 5 seeds on the AntMaze environments. $\pm$ captures the standard deviation over seeds.} \label{table:antmaze}
+\end{table}
+
+\subsection{State Feature Normalization with Other Algorithms}
+
+To better understand the effectiveness of state feature normalization, we apply it to both CQL and Fisher-BRC. We report the percent difference of including this technique in \autoref{fig:norm_other}. We find that this generally has minimal impact on performance. 
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.5]{fixed_images/fixed_norm.pdf}
+    \caption{Percent difference of performance of offline RL algorithms when adding normalization to state features. HC~=~HalfCheetah, Hop~=~Hopper, W~=~Walker, r~=~random, m~=~medium, mr~=~medium-replay, me~=~medium-expert, e = expert.} \label{fig:norm_other}
+\end{figure}
+
+\subsection{Benchmarking against the Decision Transformer}
+
+The Decision Transformer (DT) is concurrent work which examines the use of the transformer architecture in offline RL, by framing the problem as sequence modeling~\citep{chen2021decision}. The authors use the D4RL -v2 datasets, which non-trivially affects performance and make direct comparison to results on the -v0 datasets inaccurate. To compare against this approach, we re-run TD3+BC on the -v2 datasets. Results are reported in \autoref{table:dtresults}. Although DT uses state of the art techniques from language modeling, and some per-environment hyperparameters, we find TD3+BC achieves a similar performance without any additional hyperparameter tuning. Furthermore, we benchmark the training time of DT against TD3+BC, using the author-provided implementation\footnote{\url{https://github.com/kzl/decision-transformer}, commit 5fc73c19f1a89cb17e83aa656b6bba1986e9da59} in \autoref{fig:runtime_dt}, using the same experimental setup; a single GeForce GTX 1080 GPU and an Intel Core i7-6700K CPU at 4.00GHz. Unsurprisingly, TD3+BC trains significantly faster as it does not rely on the expensive transformer architecture.
+
+
+\begin{table}[ht]
+\centering
+\addtolength{\tabcolsep}{4pt}
+\begin{tabular}{clr@{\hspace{-1pt}}lr@{\hspace{-1pt}}l}
+\toprule
+Dataset              & Environment            & \multicolumn{2}{c}{DT}                                    & \multicolumn{2}{c}{TD3+BC} \\
+\midrule
+\multirow{3}{*}{Random}           & HalfCheetah & -                      &         & \colorbox{white}{11.0}     & {\color[HTML]{525252} $\pm$1.1}  \\
+                                  & Hopper      & -                      &         & \colorbox{white}{8.5}    & {\color[HTML]{525252} $\pm$0.6}  \\
+                                  & Walker2d    & -                      &         & \colorbox{white}{1.6}    & {\color[HTML]{525252} $\pm$1.7}  \\
+\midrule
+\multirow{3}{*}{Medium}		  	  & HalfCheetah & \colorbox{white}{42.6} & {\color[HTML]{525252} $\pm$0.1}  & \colorbox{mine}{48.3}    & {\color[HTML]{525252} $\pm$0.3}  \\
+                                  & Hopper      & \colorbox{mine}{67.6}  & {\color[HTML]{525252} $\pm$1}    & \colorbox{white}{59.3}   & {\color[HTML]{525252} $\pm$4.2}  \\
+						          & Walker2d    & \colorbox{white}{74.0}   & {\color[HTML]{525252} $\pm$1.4}  & \colorbox{mine}{83.7}    & {\color[HTML]{525252} $\pm$2.1}  \\
+\midrule
+\multirow{3}{*}{Medium-Replay}    & HalfCheetah & \colorbox{white}{36.6} & {\color[HTML]{525252} $\pm$0.8}  & \colorbox{mine}{44.6}    & {\color[HTML]{525252} $\pm$0.5}  \\
+                                  & Hopper      & \colorbox{mine}{82.7}  & {\color[HTML]{525252} $\pm$7}    & \colorbox{white}{60.9}   & {\color[HTML]{525252} $\pm$18.8} \\
+								  & Walker2d    & \colorbox{white}{66.6} & {\color[HTML]{525252} $\pm$3}    & \colorbox{mine}{81.8}    & {\color[HTML]{525252} $\pm$5.5}  \\
+\midrule
+\multirow{3}{*}{Medium-Expert}    & HalfCheetah & \colorbox{mine}{86.8}  & {\color[HTML]{525252} $\pm$1.3}  & \colorbox{mine}{90.7}    & {\color[HTML]{525252} $\pm$4.3}  \\
+                                  & Hopper      & \colorbox{mine}{107.6} & {\color[HTML]{525252} $\pm$1.8}  & \colorbox{white}{98.0}     & {\color[HTML]{525252} $\pm$9.4}  \\
+								  & Walker2d    & \colorbox{mine}{108.1} & {\color[HTML]{525252} $\pm$0.2}  & \colorbox{mine}{110.1}   & {\color[HTML]{525252} $\pm$0.5}  \\
+\midrule
+\multirow{3}{*}{Expert}           & HalfCheetah & -                      &         & \colorbox{white}{96.7}   & {\color[HTML]{525252} $\pm$1.1}  \\
+                                  & Hopper      & -                      &         & \colorbox{white}{107.8}  & {\color[HTML]{525252} $\pm$7}    \\
+							      & Walker2d    & -                      &         & \colorbox{white}{110.2}  & {\color[HTML]{525252} $\pm$0.3}  \\
+\midrule
+\multicolumn{1}{l}{}              & Total (DT)    & \colorbox{mine}{672.6} & {\color[HTML]{525252} $\pm$16.6} & \colorbox{mine}{677.4}   & {\color[HTML]{525252} $\pm$45.6} \\
+\cmidrule{2-6}
+\multicolumn{1}{l}{}              & Total       & -                      & {\color[HTML]{525252} }          & \colorbox{white}{1013.2} & {\color[HTML]{525252} $\pm$57.4} \\
+\bottomrule
+\end{tabular}
+\vspace{6pt}
+\caption{Average normalized score using the D4RL -v2 datasets. The highest performing scores are highlighted. $\pm$ captures the standard deviation over seeds. Total (DT) sums scores over the subset of tasks with DT results. TD3+BC results are taken following the same experimental procedure as the -v0 datasets, averaging over the final 10 evaluations and 5 seeds. No additional hyperparameter tuning was performed. DT results are taken directly from the paper and uses 3 seeds. TD3+BC and DT achieve a comparable performance.} \label{table:dtresults}
+\end{table}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[scale=0.5]{images/runtime_dt.pdf}
+    \caption{Benchmarking wall-clock training time of DT and TD3+BC over 1 million steps. Does not include evaluation costs. We remark that the DT was trained with only 100k time steps, which reduces the computational cost substantially, but even with this reduction, the DT takes over twice as long as TD3+BC to train. For many of the D4RL tasks the performance of TD3+BC converges before 100k time steps (see the learning curves in \autoref{fig:results}), but unlike the DT, we can let TD3+BC run for the full 1 million steps without incurring significant computational costs.}
+    \label{fig:runtime_dt}
+\end{figure}
+
+
+
+
+
+
+
+
+
+
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+

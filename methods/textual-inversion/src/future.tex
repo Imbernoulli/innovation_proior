@@ -1,0 +1,23 @@
+\section{Limitations}
+While our method offers increased freedom, it may still struggle with learning precise shapes, instead incorporating the ``semantic'' essence of a concept. For artistic creations, this is often enough. In the future, we hope to achieve better control over the accuracy of the reconstructed concepts, enabling users to leverage our method for tasks that require greater precision.
+
+Another limitation of our approach is in the lengthy optimization times. Using our setup, learning a single concept requires roughly two hours. These times could likely be shortened by training an encoder to directly map a set of images to their textual embedding. We aim to explore this line of work in the future.
+
+\section{Social impact}
+Text-to-image models can be used to generate misleading content and promote disinformation. Personalized creation could allow a user to forge more convincing images of non-public individuals. However, our model does not currently preserve identity to the extent where this is a concern.
+
+These models are further susceptible to the biases found in the training data. Examples include gender biases when portraying ``doctors'' and ``nurses'', racial biases when requesting images of scientists, and more subtle biases such as an over-representation of heterosexual couples and western traditions when prompting for a ``wedding''~\citep{mishkin2022risks}. As we build on such models, our own work may similarly exhibit biases. However, as demonstrated in \Cref{fig:bias}, our ability to more precisely describe specific concepts can also serve as a means for reducing these biases.
+
+Finally, the ability to learn artistic styles may be misused for copyright infringement. Rather than paying an artist for their work, a user could train on their images without consent, and produce images in a similar style. While generated artwork is still easy to identify, in the future such infringement could be difficult to detect or legally pursue. However, we hope that such shortcomings are offset by the new opportunities that these tools could offer an artist, such as the ability to license out their unique style, or the ability to quickly create early prototypes for new work.
+
+\section{Conclusions}
+We introduced the task of personalized, language-guided generation, where a text-to-image model is leveraged to create images of specific concepts in novel settings and scenes.
+Our approach, ``Textual Inversions", operates by \textit{inverting} the concepts into new pseudo-words within the textual embedding space of a pre-trained text-to-image model. These pseudo-words can be injected into new scenes using simple natural language descriptions, allowing for simple and intuitive modifications. In a sense, our method allows a user to leverage multi-modal information --- using a text-driven interface for ease of editing, but providing visual cues when approaching the limits of natural language.
+
+Our approach was implemented over LDM~\citep{rombach2021highresolution}, the largest publicly available text-to-image model. However, it does not rely on any architectural details unique to their approach. As such, we believe Textual Inversions to be easily applicable to additional, larger-scale text-to-image models. There, text-to-image alignment, shape preservation, and image generation fidelity may be further improved.
+
+We hope our approach paves the way for future personalized generation works. These could be core to a multitude of downstream applications, from providing artistic inspiration to product design. 
+
+\paragraph{Acknowledgments} We thank Yael Vinker, Roni Paiss and Haggai Maron for reviewing early drafts and helpful suggestions. Tom Bagshaw for discussions regarding artist rights and social impacts, and Omri Avrahami for providing us with early access to Blended Latent Diffusion. This work was partially supported by Len Blavatnik and the Blavatnik family foundation, BSF (grant 2020280) and ISF (grants 2492/20 and 3441/21).
+
+\clearpage

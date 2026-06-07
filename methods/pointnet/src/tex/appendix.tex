@@ -1,0 +1,89 @@
+Let $\mathcal{X}=\{S: S\subseteq [0,1]\mbox{ and } |S|=n \}$. 
+
+$f:\mathcal{X}\rightarrow \mathbb{R}$ is a continuous function on $\mathcal{X}$ w.r.t to Hausdorff distance $d_H(\cdot, \cdot)$ if the following condition is satisfied:
+
+$\forall \epsilon > 0, \exists \delta >0$, for any $S, S'\in\mathcal{X}$, if $d_H(S, S') < \delta$, then $|f(S)-f(S')|< \epsilon$.
+
+We show that $f$ can be approximated arbitrarily by composing a symmetric function and a continuous function. 
+
+% \begin{theorem}
+\begin{customthm}{1}
+Suppose $f:\mathcal{X}\rightarrow \mathbb{R}$ is a continuous set function w.r.t Hausdorff distance $d_H(\cdot, \cdot)$. $\forall \epsilon > 0$, $\exists$ a continuous function $h$ and a symmetric function $g(x_1, \dots, x_n)=\gamma \circ \mbox{MAX}$, where $\gamma$ is a continuous function, $\mbox{MAX}$ is a vector max operator that takes $n$ vectors as input and returns a new vector of the element-wise maximum, such that for any $S\in\mathcal{X}$,
+% Formally, $\forall \epsilon > 0$, $\exists g_{\epsilon}:\underbrace{\R^{K_\epsilon}\times \dots \times \R^{K_\epsilon}}_n\rightarrow \R$ which is a symmetric function and $h_{\epsilon}: \R^3 \rightarrow \R^{K_\epsilon}$ such that 
+\begin{align*}
+	|f(S) - \gamma(\mbox{MAX}(h(x_1), \ldots, h(x_n)))| < \epsilon
+\end{align*}
+where $x_1, \ldots, x_n$ are the elements of $S$ extracted in certain order, 
+\end{customthm}
+%\end{theorem}
+
+\begin{proof}
+By the continuity of $f$, we take $\delta_{\epsilon}$ so that 
+$|f(S)-f(S')|<\epsilon$ for any $S, S'\in \mathcal{X} \mbox{ if } d_H(S, S')<\delta_{\epsilon}$. 
+
+Define $K=\lceil 1/\delta_{\epsilon}\rceil$, which split $[0,1]$ into $K$ intervals evenly and define an auxiliary function that maps a point to the left end of the interval it lies in:
+$$\sigma(x)=\frac{\lfloor K x \rfloor}{K}$$
+Let $\tilde{S}=\{\sigma(x):x\in S\}$, then
+$$|f(S)-f(\tilde{S})|< \epsilon$$
+because $d_H(S, \tilde{S})<1/K\le \delta_{\epsilon}$.
+
+Let $h_k(x)=e^{-d(x, [\frac{k-1}{K}, \frac{k}{K}])}$ be a soft indicator function where $d(x, I)$ is the point to set (interval) distance. Let $\myvec h(x)=[h_1(x); \ldots; h_K(x)]$, then $\myvec h:\mathbb{R}\rightarrow \mathbb{R}^K$. 
+
+Let $v_j(x_1, \ldots, x_n)=\max\{\tilde{h}_j(x_1),\ldots,\tilde{h}_j(x_n)\}$, indicating the occupancy of the $j$-th interval by points in $S$. Let $\myvec v=[v_1;\ldots; v_K]$, then $\myvec v:\underbrace{\mathbb{R}\times \ldots\times \mathbb{R}}_{n}\rightarrow \{0, 1\}^K$ is a symmetric function, indicating the occupancy of each interval by points in $S$. 
+
+Define $\tau:\{0, 1\}^K\rightarrow \mathcal{X}$ as $\tau(v)=\{\frac{k-1}{K}: v_k\ge 1\}$, which maps the occupancy vector to a set which contains the left end of each occupied interval. It is easy to show:
+\begin{align*}
+\tau(\myvec v(x_1, \ldots, x_n))\equiv \tilde{S} 
+\end{align*}
+where $x_1,\ldots,x_n$ are the elements of $S$ extracted in certain order.
+
+Let $\gamma:\mathbb{R}^K\rightarrow \mathbb{R}$ be a continuous function such that $\gamma(\myvec v)=f(\tau(\myvec v))$ for $v\in\{0, 1\}^K$. Then,
+\begin{align*}
+&|\gamma(\myvec v(x_1, \ldots, x_n))-f(S)|\\
+=&|f(\tau(\myvec v(x_1, \ldots, x_n)))-f(S)|<\epsilon
+\end{align*}
+
+Note that $\gamma(\myvec v(x_1, \ldots, x_n))$ can be rewritten as follows:
+\begin{align*}
+\gamma(\myvec v(x_1, \ldots, x_n))=&\gamma(\mbox{MAX}(\myvec h(x_1), \ldots, \myvec h(x_n)))\\
+=&(\gamma \circ \mbox{MAX}) (\myvec h(x_1),\ldots,\myvec h(x_n))
+\end{align*}
+Obviously $\gamma \circ \mbox{MAX}$ is a symmetric function.
+% $f(\tau(\myvec v(x_1,\ldots, x_n)))$. Clearly, $\gamma$ is a piece-wise constant function. Due to the universal approximation property of neural networks, 
+\end{proof}
+
+Next we give the proof of Theorem 2.
+We define $\myvec u=\underset{x_i\in S}{\mbox{MAX}}\{h(x_i)\}$ to be the sub-network of $f$ which maps a point set in $[0,1]^m$ to a $K$-dimensional vector. The following theorem tells us that small corruptions or extra noise points in the input set is not likely to change the output of our network:
+% \begin{theorem}
+\begin{customthm}{2}
+Suppose $\myvec u:\mathcal{X}\rightarrow \mathbb{R}^K$ such that $\myvec u=\underset{x_i\in S}{\mbox{MAX}}\{h(x_i)\}$ and $f=\gamma \circ \myvec u$. Then, 
+\begin{enumerate}[label=(\alph*)]   
+    \item $\forall S, \exists~\mathcal{C}_S, \mathcal{N}_S\subseteq \mathcal{X}$,  $f(T)=f(S)$ if  $\mathcal{C}_S\subseteq T\subseteq \mathcal{N}_S$;
+    %\item Define the equivalence relation $\sim$ as $S\sim S'$ if $\myvec u(S)=\myvec u(S')$, then $\mathcal{C}_S=\underset{S'\sim S}{\cap} S'$ and $\mathcal{N}_S=\underset{S'\sim S}{\cup} S'$.
+    % \item Let $S\sim S'$ if $\myvec u(S)=\myvec u(S')$. $\mathcal{C}_S=\underset{S'\sim S}{\cap} S'$, $\mathcal{N}_S=\underset{S'\sim S}{\cup} S'$.
+    \item $|\mathcal{C}_S| \le K$
+\end{enumerate}
+%\label{thm:thm2}
+%     \begin{itemize}            
+%     \item Critical points.
+%     \\$\mathbb{C}=\{x_i: \myvec u_j(S)=h_j(x_i) \mbox{ for some } 1\le j\le K\}\cap S$
+%     \item Free-space points.
+%     \\$\mathbb{F}=\{x_i: \myvec u_j(S)<h_j(x_i) \mbox{ for some } 1\le j\le K\}\cap S$
+%     \item Non-critical points. 
+%     \\$\mathbb{N}=\{x_i: \myvec u_j(S)>h_j(x_i) \mbox{ for some } 1\le j\le K\}\cap S$
+% For any $S'$ such that  $\mathbb{C} \subseteq S' \subseteq \mathbb{C}\cup\mathbb{N}$, $\myvec u(S')\equiv \myvec u(S)$; for any $S'$ such that $S'\cap \mathbb{F}\neq \emptyset$, $\myvec u(S')\neq \myvec u(S)$.
+%\end{itemize}
+\end{customthm}
+%\end{theorem}
+\begin{proof}
+Obviously, $\forall S\in \mathcal{X}$, $f(S)$ is determined by $\myvec u(S)$. So we only need to prove that 
+$\forall S, \exists\,\mathcal{C}_S, \mathcal{N}_S\subseteq \mathcal{X}, f(T)=f(S)\,\mbox{if}\,\mathcal{C}_S\subseteq T\subseteq \mathcal{N}_S$. 
+
+For the $j$th dimension as the output of $\myvec u$, there exists at least one $x_j \in \mathcal{X}$ such that $h_j(x_j)=\myvec u_j$, where $h_j$ is the $j$th dimension of the output vector from $h$. Take $\mathcal{C}_S$ as the union of all $x_j$ for $j=1,\ldots,K$. Then, $\mathcal{C}_S$ satisfies the above condition. 
+
+Adding any additional points $x$ such that $h(x)\le \myvec u(S)$ at all dimensions to $\mathcal{C}_S$ does not change $\myvec u$, hence $f$. Therefore, $\mathcal{T}_S$ can be obtained adding the union of all such points to $\mathcal{N}_S$.
+
+
+
+
+\end{proof}

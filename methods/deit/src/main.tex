@@ -1,0 +1,111 @@
+\documentclass{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amssymb,amsmath}% http://ctan.org/pkg/amssymb
+\usepackage{pifont}
+\usepackage{graphicx,verbatimbox}
+\usepackage{hyperref} 
+\usepackage{tcolorbox}
+
+
+\usepackage{xspace}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{rotating}
+\usepackage{color}
+\usepackage{palatino}
+
+
+\newcommand{\stdminus}[1]{ \scalebox{0.65}{$\pm #1$}}
+
+
+\newcommand{\cmark}{\ding{51}\xspace}%
+\newcommand{\cmarkg}{\textcolor{lightgray}{\ding{51}}\xspace}%
+\newcommand{\xmark}{\ding{55}\xspace}%
+\newcommand{\xmarkg}{\textcolor{lightgray}{\ding{55}}\xspace}%
+\newcommand{\nomark}{~}%
+\newcommand{\adamw}{adamw}
+\newcommand{\adamwg}{\textcolor{lightgray}{adamw}}
+\newcommand{\sgd}{SGD}
+\newcommand{\sgdg}{\textcolor{lightgray}{SGD}}
+
+\def \ours          {DeiT\xspace}
+\def \ourstiny      {DeiT-Ti\xspace}
+\def \ourssmall     {DeiT-S\xspace}
+\def \oursbase      {DeiT-B\xspace}
+\def \ourslarge     {DeiT-L\xspace}
+\def \ourstinydis      {DeiT-Ti\alambic\xspace}
+\def \ourssmalldis     {DeiT-S\alambic\xspace}
+\def \oursbasedis   {DeiT-B\alambic\xspace}
+\def \oursbaseup    {DeiT-B$\uparrow$}
+\def \ourstinyup      {DeiT-Ti$\uparrow$}
+\def \ourssmallup     {DeiT-S$\uparrow$}
+\def \oursbasedisup {DeiT-B\alambic$\uparrow$}
+\def \ourstinydisup     {DeiT-Ti\alambic$\uparrow$}
+\def \ourssmalldisup     {DeiT-S\alambic$\uparrow$}
+
+\def \distil  {\vspace{-2pt}\alambic}
+\def \oursdis {DeiT\alambic}
+\def \oursdisup {DeiT\alambic$\uparrow$}
+
+\def \oursfix {FixDeiT-B\xspace}
+%
+\def \oursfixdis {FixDeiT-B\alambic\xspace}
+
+%
+\def \oursfixdistil {FixDeiT-B\alambic\xspace}
+
+\def \pzo {\phantom{0}} % 
+\def \alambic {\includegraphics[width=0.02\linewidth]{figs/alembic-crop.pdf}\xspace}
+
+
+
+\title{Training data-efficient image transformers \\ \& distillation through attention}
+\author{
+\begin{minipage}{\linewidth}
+\begin{center}
+\large Hugo Touvron$^{\star,\dagger}$ \hspace{0.23cm} Matthieu Cord$^{\dagger}$ \hspace{0.23cm} Matthijs Douze$^{\star}$ \\[0.2cm] 
+%
+Francisco Massa$^{\star}$ \hspace{0.23cm}
+Alexandre Sablayrolles$^{\star}$ \hspace{0.23cm}  Herv\'e J\'egou$^{\star}$ \\[0.5cm]
+\scalebox{1.}{$^\star$Facebook AI\hspace{0.6cm} $^\dagger$Sorbonne University}\\[1cm]
+\end{center}
+\end{minipage}
+}
+
+\date{~}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recently, neural networks purely based on attention were shown to address image understanding tasks such as image classification. These high-performing vision transformers are pre-trained with hundreds of millions of images using a large infrastructure, thereby limiting their adoption. 
+
+In this work, we produce competitive convolution-free transformers by training on Imagenet only. We train them on a single computer in less than 3 days.
+Our reference vision transformer (86M parameters) achieves top-1 accuracy of 83.1\% (single-crop) on ImageNet with no external data.  
+
+More importantly, we introduce a teacher-student strategy specific to  transformers. It relies on a distillation token ensuring that the student learns from the teacher 
+through attention. %
+%
+%
+We show the interest of this token-based distillation, especially when using a convnet as a teacher. This leads us to report results competitive with convnets for both Imagenet (where we obtain up to 85.2\% accuracy) and when transferring to other tasks. We share our code and models. % 
+\end{abstract}
+
+\input{introduction.tex}
+\input{related.tex}
+\input{transformer.tex}
+\input{token.tex}
+\input{experiments.tex} 
+\input{training.tex}
+\input{conclusion.tex}
+
+\clearpage
+
+{\small
+\bibliographystyle{ieee_fullname}
+\bibliography{egbib}
+}
+
+
+\end{document}

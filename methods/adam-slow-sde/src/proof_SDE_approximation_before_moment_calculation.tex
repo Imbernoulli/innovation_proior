@@ -1,0 +1,250 @@
+\section{Proof of the SDE Approximation of AGMs}\label{sec:proof-sde-approx}
+In this section, we present a detailed derivation of our slow SDE approximation of the AGM framework as formally stated in \Cref{thm:formal-main-result}. In \Aref{sec:lem-ada-man-proj}, we give some lemmas about the properties of the adaptive projection $\Phi_{\mS}$, introduced and explained in \Cref{sec:theory}. Then in \Aref{sec:iter-near-manifold}, we show that the iterations after convergence would continue staying near the manifold. Following that, we further calculate the moment change of the projected parameter $\Phi_{\mS_t}(\vtheta_t)$ during a ``giant step'' in \Aref{sec:momen-calculation}, which allows us to conduct an weak approximation in \Aref{sec:weak-approximation}. After going through the above paradigm, we finally prove an equivalent \Cref{thm:formal-SDE-approximation} of the SDE approximation part of \Cref{thm:formal-main-result}.
+
+Our slow SDE starts at a point after the time of convergence, so for simplicity, we will ``shift the timeline'' in this section.
+% \xinghan{\color{orange} done add description of K0 and log steps before K0.}
+% \xinghan{this is a lot of shit. plan to finish within 10/18}
+\begin{remark}[Time Shift]\label{rmk:time-shift-theta0-phi0}
+    To simplify the notations, we redefine $\vtheta_0$ and $\vv_0$ as follows. Starting from \Aref{sec:lem-ada-man-proj}, $\vtheta_0$ and $\vv_0$ will no longer represent the parameters that are initialized at the actual beginning of training. Instead, they represent the $\vtheta_{K_0}$ and $\vv_{K_0}$ yielded by the first part of \cref{thm:formal-main-result}, $(\vtheta_1,\vv_1)$ denoting $(\vtheta_{K_0+1}, \vv_{K_0+1})$, and so on. Our SDE approximation then describes the dynamics of AGMs after reaching the state $(\vtheta_0,\vv_0)$.
+\end{remark}
+
+\begin{remark}
+    Recall for any time step $k$ that $\vphi_k := \Phi_{S(\vv_k)}(\vtheta_k)$. With the ``time shift'' described in \cref{rmk:time-shift-theta0-phi0}, the time steps before $K_0$ will become negative. However in some parts of the following calculation, to deal with the first-order momentum we still need up to $\O(\log \frac{1}{\eta})$ past timesteps. Without loss of generality, we assume that at time $K_0$ the iteration has already converged for time $\O(\log \frac{1}{\eta})$, i.e., $\forall K_0 - \O(\log \frac{1}{\eta}) \leq k \leq K_0$,
+    \begin{align*}
+        \cL(\vtheta_k) - \cL^* &= \O\left(\eta\log\frac{1}{\eta}\right), \\
+        \normtwo{\vtheta_k -\vphi_k} &= \O\left(\sqrt{\eta\log\frac{1}{\eta}}\right), \\
+        \normtwo{\nabla \cL(\vtheta_k)} &=\O\left(\sqrt{\eta\log\frac{1}{\eta}}\right).
+    \end{align*}
+    If not, we simply increase $K_0$ by $\O(\log \frac{1}{\eta})$ and the argument in the proof of the first part of \cref{thm:formal-main-result} still holds. After the time shift, the range of $k$ above will become $-\O(\log \frac{1}{\eta}) \leq k \leq 0$.
+    Therefore, negative timesteps may appear in the derivation below and they are not typos; We just need their three properties above to control the order of some terms.
+\end{remark}
+
+
+% Next, we present a proof of convergence, which ensures that if the learning rate is sufficiently small, then the iteration will converge into and stay inside the working zones of some manifold with high probability, laying the foundations for the calculation of slow SDE.
+
+% Up to now, if we let total step number $K = \Theta(\eta^{-2})$ in \cref{convergence}, we can show with high probability that, starting from step $\Theta(\frac{1}{\eta}\log \frac{1}{\eta})$, the loss values of all steps fall below $\tilde{\O}(\eta)$. 
+
+% Next, we try to interpret this property of loss value to the behaviour of iteration. Specifically, in the next subsection, we will show that with high probability, all the iteration steps after convergence and the projections of these steps stay within a close neighborhood of the same manifold, and the projections move slowly on the manifold. 
+
+
+
+\subsection{Lemmas for Adaptive Manifold Projection}\label{sec:lem-ada-man-proj}
+Before we characterize the projections, we introduce some properties of the preconditioned projection function in this part.
+
+% \xinghan{all x in this part should be bold}
+
+\begin{lemma}[Adaption of Lemma C.2 in \citet{li2021happens}]\label{lmm:partial-phi-S-nabla-L}
+    For any $\vx\in\R^d$, and any \textit{p.d} matrix $\mS\in\R^{d \times d}$, it holds that $\partial \Phi_{\mS}(\vx)\mS \nabla \cL(\vx)=0$, and
+    \begin{align*}
+        \partial^2 \Phi_{\mS}(\vx)[\mS\nabla \cL(\vx),\mS\nabla\cL(\vx)] = - \partial \Phi_{\mS}(\vx) \mS \nabla^2 \cL(\vx) \mS \nabla \cL(\vx).
+    \end{align*}
+\end{lemma}
+\begin{proof}
+    We consider a trajectory starting from $\vx(0)=\vx$, with an ODE $\frac{\dd \vx(t)}{\dd t} = -\mS \nabla \cL(\vx(t))$, thus by the definition of $\Phi_{\mS}$, we have $\Phi_{\mS}(\vx) = \Phi_{\mS}(\vx(t))$, then we have 
+    \begin{align*}
+        \frac{\dd \Phi_{\mS}(\vx(t))}{\dd t} = - \partial \Phi_{\mS}(\vx)\mS \nabla \cL(\vx)=0.
+    \end{align*}
+    Further, we take the second derivative of $\Phi_{\mS}(\vx(t))$ with repsect to $t$
+    \begin{align*}
+        \frac{\dd^2 \Phi_{\mS}(\vx(t))}{\dd t^2} =  \partial^2 \Phi_{\mS}(\vx)[\mS\nabla \cL(\vx),\mS\nabla\cL(\vx)] + \partial \Phi_{\mS}(\vx) \mS \nabla^2 \cL(\vx) \mS \nabla \cL(\vx)=0.
+    \end{align*}
+    Taking $t=0$ completes the proof.
+\end{proof}
+% \begin{lemma}
+%     For any $x\in \Gamma$, $\partial \Phi_{\mS}(\vx) \mS$ is the orthogonal projection matrix onto tangent space $T_{x}(\Gamma)$.
+% \end{lemma}
+
+% \xinghan{I think this proof is too unclear. Needs some fixing}
+% \begin{lemma}\label{lmm:tangent-space-product}
+%     For any $\vx \in \Gamma$, $\vv \in T_{\vx}(\Gamma)$, and a p.d matrix $\mS$, it holds that $\partial \Phi_{\mS}(x) \vv = \vv$.
+% \end{lemma}
+% \begin{proof}
+%     For any $\vv\in T_\vx(\Gamma)$, let $\{\vv(t), t\ge 0\}$ be parameterized smooth curve on $\Gamma$ such that $\vv(0) =\vx$ and $\frac{\dd \vv(t)}{\dd t}\big|_{t=0}  = \vv$. Since $\vv(t)\in \Gamma$, thus $\nabla \cL(\vv(t))=0$, which gives $\Phi_{\mS}(\vv(t))=\vv(t)$. Thus we have
+%     \begin{align*}
+%         \frac{\dd \vv(t)}{\dd t}\bigg|_{t=0} =\frac{\dd \Phi_{\mS}(\vv(t))}{\dd t}\bigg|_{t=0} = \partial \Phi_{\mS}(\vv(t)) \frac{\dd \vv(t)}{\dd t}\bigg|_{t=0}.
+%     \end{align*}
+%     Plugging $\frac{\dd \vv(t)}{\dd t}\bigg|_{t=0} = \vv$ into the above equation completes the proof.
+% \end{proof}
+
+\begin{lemma}\label{lmm:tangent-space-product}
+    For any $\vx \in \Gamma$, and a p.d matrix $\mS$, the following two identities hold:
+    \begin{itemize}
+        \item For all $\vv \in T_{\vx}(\Gamma)$, $\partial \Phi_{\mS}(x)  \vv = \vv$.
+        \item For all $\vu \in T_{\vx}^{\perp}(\Gamma)$, $\partial \Phi_{\mS}(\vx) \mS \vu =\boldsymbol{0}$.
+    \end{itemize}
+\end{lemma}
+\begin{proof}
+    We first prove the first identity. For any $\vv\in T_\vx(\Gamma)$, let $\{\vv(t), t\ge 0\}$ be parameterized smooth curve on $\Gamma$ such that $\vv(0) =\vx$ and $\frac{\dd \vv(t)}{\dd t}\big|_{t=0}  = \vv$. Since $\vv(t)\in \Gamma$, thus $\nabla \cL(\vv(t))=0$, which gives $\Phi_{\mS}(\vv(t))=\vv(t)$. Thus we have
+    \begin{align*}
+        \frac{\dd \vv(t)}{\dd t}\bigg|_{t=0} =\frac{\dd \Phi_{\mS}(\vv(t))}{\dd t}\bigg|_{t=0} = \partial \Phi_{\mS}(\vv(t)) \frac{\dd \vv(t)}{\dd t}\bigg|_{t=0}.
+    \end{align*}
+    Plugging $\frac{\dd \vv(t)}{\dd t}\big|_{t=0} = \vv$ gives $\Phi_{\mS}(\vx)  \vv = \vv$.
+
+    For $\vu \in  T_{\vx}^{\perp}(\Gamma)$ and $t \ge 0$, we consider the Taylor expansion of $\nabla \cL (\vx + t \nabla^2 \cL(\vx)^\dagger \vu)$ at $t=0$:
+    \begin{align*}
+        \nabla \cL \left(\vx + t \nabla^2 \cL(\vx)^\dagger \vu\right) = \nabla^2 \cL(\vx) \cdot t \nabla^2 \cL(\vx)^\dagger \vu + o(t)
+        = t\vu + o(t),
+    \end{align*}
+    where the second equation uses the fact $\nabla^2 \cL(x)$ is full-rank on $T_{\vx}^{\perp}(\Gamma)$. Thus, by the continuity of $\partial \Phi_{\mS}$ proved in \Cref{lem:working-zone}, it follows that
+    \begin{align*}
+        \lim_{t \to 0 }\frac{\partial \Phi_{\mS}\left(\vx + t \nabla^2 \cL(\vx)^\dagger \vu\right) \mS \nabla \cL \left(\vx + t \nabla^2 \cL(\vx)^\dagger \vu\right)}{t} = \partial \Phi_{\mS}(\vx)\mS \vu.
+    \end{align*}
+    By \Cref{lmm:partial-phi-S-nabla-L}, $\partial \Phi_{\mS}\left(\vx + t \nabla^2 \cL(\vx)^\dagger \vu\right) \mS \nabla \cL \left(\vx + t \nabla^2 \cL(\vx)^\dagger \vu\right) =0$ for all $t \ge 0$, implying that $\partial \Phi_{\mS}(\vx)\mS \vu = 0$ for all $\vu \in T_{\vx}^\perp(\Gamma)$.
+\end{proof}
+
+\begin{lemma}\label{lmm:phi-H-0}
+    For any $\vx\in\Gamma$, and a \textit{p.d} matrix $\mS$, it holds that $\partial \Phi_{\mS}(\vx) \mS \nabla^2 \cL(\vx)=\boldsymbol{0}$.
+\end{lemma}
+\begin{proof}
+    From Lemma C.1 in \citet{li2021happens}, we have for $\vu\in T_{\vx}(\Gamma)$, $\nabla^2 \cL(\vx)\vu=0$, and for $\vu\in T_{\vx}^{\perp}(\Gamma)$, \Cref{lmm:tangent-space-product} gives that
+    \begin{align*}
+        \partial \Phi_{\mS}(\vx)\mS \vu = \boldsymbol{0}.
+    \end{align*}
+    The above identity completes the proof.
+\end{proof}
+\begin{lemma}\label{lmm:phi-nabla-L}
+    For any $\vx\in\Gamma$, $\vu,\vv\in \R^d$, \textit{p.d} matrix $\mS$, and $v\in T_{x}(\Gamma)$, it holds that
+    \begin{align*}
+        \partial^2 \Phi_{\mS}(\vx)[\vu\vv^\top] = -\partial \Phi_{\mS}(\vx)\mS \partial^2(\nabla \cL)(\vx)[\nabla^2 \cL(\vx)^{\dagger}\mS^{-1}\vu\vv^\top] - \mS^{-1} \nabla^2 \cL(\vx)^{\dagger}\partial^2(\nabla \cL)(\vx)[\mS \partial \Phi(\vx)\vu\vv^\top].
+    \end{align*}
+\end{lemma}
+\begin{proof}
+    We define $\mP := \mS^{1/2}$. And we do a reparameterization as $\vx' := \mP^{-1} \vx$, $\cL'(\vx) := \cL(\mP\vx)$, then we have
+    \begin{align*}
+        \partial \Phi'(\vx') &= \mP \partial \Phi_{\mS}(\mP \vx) \mP\\
+        \nabla^2 L'(\vx') &= \mP \nabla^2 L(\mP \vx) \mP\\
+        \partial^2 (\nabla L')(\vx')[\mM] &= \mP \partial^2 (\nabla L)(\mP \vx)[\mP \mM \mP]\\
+         \partial^2 \Phi'(\vx') [\mM] &= \mP \partial^2 \Phi(\vx)[\mP \mM \mP].
+    \end{align*}
+    Notice that in the space of $\vx'$, the adaptive projection mapping $\Phi_{\mS}$ turns into a fixed gradient flow projection. And this allows us to directly apply Lemma C.4 in \citet{li2021happens}, which gives
+    \begin{align*}
+        \partial^2 \Phi'(x')[\vv,\vu] = -\partial \Phi'(x') \partial^2(\nabla \cL')(x')[v,\nabla^2 \cL'(x')^{\dagger}\vu] -  \nabla^2 \cL'(x')^{\dagger}\partial^2(\nabla \cL')(x')[\vv, \partial \Phi'(x')\vu].
+    \end{align*}
+    A slight modification using the above transformations gives
+    \begin{align*}
+        \partial^2 \Phi_{\mS}(\vx)[\mP \vv,\mP \vu] &= -\partial \Phi_{\mS}(\vx)\mS \partial^2(\nabla \cL)(\vx)[\mP \vv, \nabla^2 \cL(\vx)^{\dagger}\mS^{-1}\mP \vu] \\
+        &~~~~- \mS^{-1} \nabla^2 \cL(\vx)^{\dagger}\partial^2(\nabla \cL)(\vx)[\mP \vv,\mS \partial \Phi(\vx)\mP \vu].
+    \end{align*}
+    We now redefine $\vu = \mP \vu$, $\vv =\mP \vv$, and we organize the above equation
+    \begin{align*}
+        \partial^2 \Phi_{\mS}(\vx)[\vu\vv^\top] &= -\partial \Phi_{\mS}(\vx)\mS \partial^2(\nabla \cL)(\vx)[\nabla^2 \cL(\vx)^{\dagger}\mS^{-1}\vu\vv^\top]\\
+        &~~~~- \mS^{-1} \nabla^2 \cL(\vx)^{\dagger}\partial^2(\nabla \cL)(\vx)[\mS \partial \Phi(\vx)
+    \vu\vv^\top].
+    \end{align*}
+    We completes the proof.
+\end{proof}
+
+
+
+
+
+% Combining with \cref{lem:traj-bound-by-L} implies that all these steps stay within an $\tilde{\O}(\sqrt{\eta})$-neighborhood of manifold, and when $\eta$ is sufficiently small, these steps will stay inside our working zone $\Gamma^{\epsilon_1}$. 
+
+
+% \xinghan{I need something that once Adam enters, Adam stays inside. Not preconditioned flow.}
+
+% \xinghan{do I need epsilon2 or epsilon1 here? What is 'if eta sufficiently small', how to formalize this?}
+
+% Next, we proceed to bound the movement of $\vtheta$'s projection on the manifold. 
+
+\subsection{Iteration Stays Near Manifold}\label{sec:iter-near-manifold}
+Now we begin the final preparations before deriving the slow SDE near the manifold. 
+% Denote $K_0 := \lceil \log_{\gamma}{\eta}\rceil$ as the timestamp where $\gamma^{K_0} \leq \eta$, then $K_0 = \Theta\left(\frac{1}{\eta}\log \frac{1}{\eta}\right)$. 
+Note that in the end of convergence analysis, the total steps equal $K = \lfloor(T+1) \eta^{-2} \rfloor$ and the converging step $K_0 = \O(\frac{1}{\eta}\log \frac{1}{\eta})$. So after time shifting, the high probability convergence of $\lfloor(T+1) \eta^{-2} \rfloor - \O(\frac{1}{\eta}\log \frac{1}{\eta}) > \lfloor T\eta^{-2}\rfloor$ steps are ensured in \cref{convergence}. Now denote $K := \lfloor T\eta^{-2}\rfloor$ be the total number of steps in our analysis.  Let $\beta$ be some constant in $(0, 0.5)$, whose exact value will be specified later. First, we bound the movement of projected steps by showing that $\vphi$ shifts no more than $\tilde{\O}(\eta^{0.5-0.5\beta})$ within $\Delta K := \lfloor\eta^{-1-\beta}\rfloor$ steps, demonstrating the ``slowness'' of the dynamics of AGMs after the projection. 
+
+% \xinghan{directly define K0, Delta K, K here.}
+
+\begin{lemma}\label{lem:proj-movement}
+    % Let $\eta$ be a sufficiently small learning rate, $K = \Theta(\eta^{-2}), K_0 = \Theta\left(\frac{1}{\eta}\log \frac{1}{\eta}\right)$, and $\Delta K = \eta^{-1-\beta}$ with $\beta$ being a constant in $(0, 0.5)$. 
+    For any $\delta = \O(\mathrm{poly}(\eta))$, with probability $1 - \delta$, for any $k \in [0, K - \Delta K]$, $\Delta k \in [\Delta K]$, $$\lnormtwo{\vphi_{k+\Delta k} - \vphi_k} \leq C_6 \eta^{0.5-0.5\beta} \sqrt{\log \frac{1}{\eta\delta}}$$
+    for some constant $C_6$.
+\end{lemma}
+% \xinghan{do we need e1 or e2 here; rely on convergence}
+\begin{proof}
+    % Plugging in $K$ to \cref{convergence} and combining \cref{lem:traj-bound-by-L}, there exists some constant $\tilde{C}_5$ such that for any $k \in [K_0, K]$, $\lnormtwo{\vtheta_k - \vphi_k} \leq \tilde{C}_5 \sqrt{\eta \log \frac{1}{\eta\delta}}$. For a sufficiently small $\eta$, these steps all stay in $\Gamma^{\epsilon_1}$. 
+    Recall from the proof of the first part of \cref{thm:formal-main-result} that $\vtheta_k$ stays inside $\Gamma^{\epsilon_1}$ For any $k \in [0, K]$ almost surely, and from \cref{lem:working-zone} that $\Phi_{S(\vv)}(\vtheta)$ is $\cC^4$ on $\cX^{\epsilon_1} := \Gamma^{\epsilon_1} \times \R_{[0,R_1]}^D$. Since $\cX^{\epsilon_1}$ is compact, $\Phi_{S(\vv)}(\vtheta)$ is then bounded and Lipschitz on $\cX^{\epsilon_1}$. Similarly, $\partial \Phi_{S(\vv)}(\vtheta)$ is bounded and Lipschitz on $\cX^{\epsilon_1}$. For any $k \in [0, K)$, let $\bar{k} = k - 2\log_{\beta_1}{\eta}$, we have: \begin{align*}
+        \vphi_{k+1} - \vphi_{k} &= \Phi_{S(\vv_{k+1})}(\vtheta_{k+1}) - \Phi_{S(\vv_k)}(\vtheta_k) \\
+        &= \Phi_{S(\vv_{\bar{k}})}(\vtheta_{k+1}) - \Phi_{S(\vv_{\bar{k}})}(\vtheta_k) + \O\left(\eta^2\log \frac{1}{\eta}\right) \\
+        &= \partial\Phi_{S(\vv_{\bar{k}})}(\vtheta_k)(\vtheta_{k+1} - \vtheta_k) + \O\left(\eta^2\log \frac{1}{\eta}\right) \\
+        &= \partial\Phi_{S(\vv_{\bar{k}})}(\vtheta_k)(\eta S(\vv_{k+1})\vm_{k+1}) + \O\left(\eta^2\log \frac{1}{\eta}\right) \\
+        &= \partial\Phi_{S(\vv_{\bar{k}})}(\vtheta_{\bar{k}})(\eta S(\vv_{\bar{k}})\vm_{k+1}) + \O\left(\eta^2\log \frac{1}{\eta}\right),
+    \end{align*}
+    where the second equality comes from the fact that one step of update on $\vv$ is of $\O(\eta^2)$ and the Lipschitzness of $S$ and $\Phi$, the third equality comes from $\lnormtwo{\vtheta_{k+1}-\vtheta_k} = \O(\eta)$, and the last equality follows from the boundedness and Lipschitzness of $\partial \Phi$. We can decompose $\vm_k$ as: \begin{align*}
+        \vm_{k+1} &= (1-\beta_1)\sum_{i=\bar{k}}^{k}\beta_1^{k-i}(\nabla\cL(\vtheta_i) + \vz_i) + \O(\eta^2) \\
+        &= (1-\beta_1)\sum_{i=\bar{k}}^{k}\beta_1^{k-i}\left(\nabla\cL(\vtheta_{\bar{k}}) + \O\left(\eta\log\frac{1}{\eta}\right)\right) + (1-\beta_1)\sum_{i=\bar{k}}^{k}\beta_1^{k-i}\vz_i + \O(\eta^2).
+    \end{align*}
+    A key observation is that $\partial\Phi_{S(\vv_{\bar{k}})}(\vtheta_{\bar{k}})S(\vv_{\bar{k}})\nabla\cL(\vtheta_{\bar{k}}) = 0$ from \cref{lmm:phi-H-0}, which allows us to view $\vphi_{k+1} - \vphi_{k}$ as $\sum_{i=\bar{k}}^{k}\tilde{\vz}_{k,i} + \O(\eta^2\log\frac{1}{\eta})$ where $\tilde{\vz}_{k,i} = \partial\Phi_{S(\vv_{\bar{k}})}(\vtheta_{\bar{k}})(\eta(1-\beta_1)\beta_1^{k-i} S(\vv_{\bar{k}})\vz_i)$. Note that $\tilde{\vz}_{k,i}$ is $\cF_{i+1}$-measurable and its mean is $\bf{0}$, since $\tilde{\vz}_{k,i}$ just applies a linear tensor transformation to $\vz_i$. If we define a constant $C_{6a}:=\sup\left\{\lnormtwo{\partial\Phi_{S(\vv)}(\vtheta)} \mid (\vv, \vtheta) \in \cX^{\epsilon_1}\right\} \cdot (1-\beta_1) \cdot R_2$ that is independent of $k$ and $i$, then $\lnormtwo{\tilde{\vz}_{k,i}}$ is almost surely bounded by $\eta\beta_1^{k-i}C_{6a}\lnormtwo{\vz_i}$.
+
+    For any $k \in [0, K - \Delta K]$ and $\Delta k \in [\Delta K]$, we have \begin{align*}
+        \vphi_{k+\Delta k} - \vphi_k &= \sum_{j=k}^{k+\Delta k-1} \left(\vphi_{j+1} - \vphi_{j}\right) \\
+        &= \sum_{j=k}^{k+\Delta k-1} \left(\sum_{i=j-2\log_{\beta_1}\eta}^{j}\tilde{\vz}_{j,i}+O\left(\eta^2 \log\frac{1}{\eta}\right)\right) \\
+        &= \sum_{i=k-2\log_{\beta_1}\eta}^{k+\Delta k - 1}\sum_{j=i}^{\min\left\{k+\Delta k - 1, j +2\log_{\beta_1}\eta\right\}} \tilde{\vz}_{j,i} + \tilde{\O}(\eta^{1-\beta})
+    \end{align*}
+    Denote $\mZ_i := \sum_{j=i}^{\min\left\{k+\Delta k - 1, j +2\log_{\beta_1}\eta\right\}} \tilde{\vz}_{j,i}$, then each $\mZ_i$ is a linear transformation of $\vz_i$ so it is with zero mean, and also $\lnormtwo{\mZ_i} \leq \eta \cdot \frac{C_{6a}}{1-\beta_1} \lnormtwo{\vz_i} \leq \eta \cdot \frac{C_{6a}R}{1-\beta_1}$ a.s. Azuma-Hoeffding's inequality then gives that for any $\delta = \O(\mathrm{poly}(\eta))$, with probability $1 - \delta$, \begin{align*}
+        \vphi_{k + \Delta k} - \vphi_{k} &\leq \sqrt{2 \eta^2 \left(\frac{C_{6a}R}{1-\beta_1}\right)^2 \cdot \left(R_{\mathrm{grp}}H + 2\log_{\beta_1}\eta\right) \cdot \log\frac{2}{\delta}} \\
+        &\leq C_{6b} \sqrt{\eta^{1-\beta}\log\frac{2}{\delta}}
+    \end{align*} 
+    for some constant $C_{6b}$. Finally, plugging in $\delta' = \frac{\delta}{K \cdot \Delta K}$ and taking union bound over all $k \in [0, K - \Delta K]$ and $\Delta k \in [\Delta K]$ gives the theorem.
+\end{proof}
+
+% The next theorem gives the closeness of the projection of $\vtheta_0$, i.e. $\vphi_0 = \Phi_{S(\vv_0)}{\vtheta_0}$, and the place where the iteration first converges near manifold, which ensures that $\vphi_0$ converges to the same manifold as the iteration.
+
+% \begin{lemma}\label{lem:phi0-close}
+%     % There exists $K_0 = \Theta\left(\frac{1}{\eta}\log \frac{1}{\eta}\right)$ and constants $C_{7a}, C_{7b}$ such that, 
+    
+%     For any $\delta = \O(\mathrm{poly}(\eta))$, with probability $1 - \delta$, we have \begin{align*}
+%         \lnormtwo{\vtheta_{K_0} - \vphi_{K_0}} \leq C_{7a}\sqrt{\eta \log \frac{1}{\eta\delta}}, \quad \lnormtwo{\vphi_{0} - \vphi_{K_0}} \leq  \tilde{O}(\sqrt{\eta}).
+%     \end{align*}
+% \end{lemma}
+
+% \begin{proof}
+%     \xinghan{TBD.}
+% \end{proof}
+
+With the concentration bounds so far, we can show that the dynamics behaves ``well'' during the whole iteration, and we formalize this idea below.
+
+\begin{definition}[$\delta$-good]\label{def:delta-good}
+    For any $\delta = \O(\mathrm{poly}(\eta))$ and any step $\hat{K} \in [K]$, we define step $\hat{K}$ to be $\delta$-good if and only if the simultaneous establishment of the following statements: 
+    \begin{enumerate}
+        \item For any $k \in [0, \hat{K}]$, $\vphi_k \in \Gamma$ and $\lnormtwo{\vtheta_k - \vphi_k} \leq C_{8a}\sqrt{\eta\log\frac{1}{\eta\delta}}$.
+        \item For any $k \in [0, \hat{K} - \Delta K]$, $\Delta k \in [\Delta K]$, $\lnormtwo{\vphi_{k+\Delta k} - \vphi_k} \leq C_{8b} \eta^{0.5-0.5\beta}\sqrt{\log \frac{1}{\eta \delta}}$.
+    \end{enumerate}
+    Here $C_{8a}$ and $C_{8b} = C_6\sqrt{2}$ are two constants.
+\end{definition}
+
+\begin{lemma}
+    When $\eta$ is sufficiently small, with probability $1 - \eta^{100}$, the event $\eta^{100}$-good holds for any step $\hat{K}$ in $[K]$.
+\end{lemma}
+\begin{proof}
+    Denote $\delta:=\eta^{100}$. From \cref{convergence}, with probability $1 - \delta/2$, all $k \in [0, K]$ satisfy $\cL(\vtheta_k) - \cL^* \leq \cL(\vtheta_0) - \cL^* + C_{5b} \eta \log \frac{2K^2}{\delta}$. Note that $D_0 : = \cL(\vtheta_0) - \cL^*$ is of $\O(\eta \log \frac{1}{\eta\delta})$ since time $0$ now refer to the time after convergence. Combining \cref{lem:traj-bound-by-L}, this implies $\lnormtwo{\vtheta_k - \vphi_k} \leq \frac{2C_2}{\sqrt{2\mu}C_1}\cdot \sqrt{C_{5a}D_0 + C_{5b} \eta \log \frac{2K^2}{\delta}}$ for any $k \in [0, K]$. When $\eta$ is small enough such that $\lnormtwo{\vtheta_k - \vphi_k} \leq \frac{2C_2}{\sqrt{2\mu}C_1}\cdot \sqrt{C_{5a}D_0 + C_{5b} \eta \log \frac{2K^2}{\delta}} + \eta R/\epsilon < \epsilon_2$, any $\vphi_k \in \Gamma$ with $k \geq 0$ will imply $\vphi_{k+1} \in \Gamma$, since $\vtheta_{k+1}$ cannot escape $\Gamma^{\epsilon_2}$. Giving $\vphi_0 \in \Gamma$ and using induction, we conclude that all $\vphi_k \in \Gamma$ for $k \geq 0$.
+
+    When the above holds, the requirement of  \cref{lem:proj-movement} is met. Then with probability $1 - \delta/2$, for any $k \in [0, K - \Delta K]$, $\Delta k \in [\Delta K]$, we have $\lnormtwo{\vphi_{k+\Delta k} - \vphi_k} \leq C_6 \eta^{0.5-0.5\beta} \sqrt{\log \frac{2}{\eta\delta}}$.
+
+    Finally, we just take the union of \cref{convergence} and \cref{lem:proj-movement}. With $\log \frac{2K^2}{\delta} \leq 8\log \frac{1}{\eta\delta}$ and $\log \frac{2}{\eta\delta} \leq 2\log\frac{1}{\eta\delta}$ (which are mild restrictions since $\eta$ is small), we have the theorem.
+\end{proof}
+
+We have proved that our iteration will behave well with high probability, but chances still exist that the iteration is driven out of working zones and becomes intractable. We define a well-behaved sequence that manually redirects the iteration when extreme cases happen. 
+
+\begin{definition}[Well-behaved Sequence]
+    Denote the event of step $k$ being $\eta^{100}$-good as $\cE_k$. Let $\vphi_{\mathrm{null}}$ be a fixed point on $\Gamma$. Starting from $\hat{\vtheta}_0 = \vtheta_0$ and $\hat{\vv}_0 = \vv_0$, we define a sequence of $(\hat{\vtheta}_k,\hat{\vv}_k, \hat{\vm}_k)$ as follows: \begin{align*}
+    \hat{\vm}_{k+1} &:= \beta_1 \hat{\vm}_{k} + (1-\beta_1) (\nabla\cL(\hat{\vtheta}_{k}) + \vz_k ) \\
+    % \hat{\vm}_{k+1} &:= \1_{\cE_k}\vm_{k+1} + \1_{\bar{\cE}_k} \bf{0} \\ 
+    \hat{\vv}_{k+1} &:= \beta_2 \hat{\vv}_{k} + (1-\beta_2) V\!((\nabla\cL(\hat{\vtheta}_{k}) + \vz_k )(\nabla\cL(\hat{\vtheta}_{k}) + \vz_k )^\top) \\
+    % \hat{\vv}_{k+1} &:= \1_{\cE_k}\vv_{k+1} + \1_{\bar{\cE}_k} \bf{0} \\
+    \hat{\vtheta}_{k+1} &:= \1_{\cE_k}\vtheta_{k+1} + \1_{\bar{\cE}_k} \vphi_{\mathrm{null}}, 
+            % \vm_{k+1} &:= \beta_1 \vm_{k} + (1-\beta_1) \nabla \ell_{k}(\vtheta_{k}) \\
+    % \vv_{k+1} &:= \beta_2 \vv_{k} + (1-\beta_2) V\!\left(\nabla\ell_{k}(\vtheta_{k}) \nabla\ell_{k}(\vtheta_{k})^\top\right) \\
+    % \vtheta_{k+1} &:= \vtheta_{k} - \eta S(\vv_{k+1}) \vm_{k+1},
+    \end{align*}
+    where $\1$ is the indicator function: $\1_{\cE} = 1$ if event $\cE$ happens and $\1_{\cE}=0$ otherwise.
+\end{definition}
+
+Note that the update of $\hat{\vtheta}_k$ can be written as \begin{align*}
+    % \hat{\vm}_{k+1} &:= \beta_1 \hat{\vm}_{k} + (1-\beta_1) (\nabla\cL(\hat{\vtheta}_{k}) + \vz_k ) \\
+    % & \quad \underbrace{- \1_{\bar{\cE}_k}(\beta_1 \hat{\vm}_{k} + (1-\beta_1) (\nabla\cL(\hat{\vtheta}_{k}) + \vz_k ))}_{:=\ve_{1k}}, \\
+    % \hat{\vv}_{k+1} &:= \beta_2 \hat{\vv}_{k} + (1-\beta_2) V\!((\nabla\cL(\hat{\vtheta}_{k}) + \vz_k )(\nabla\cL(\hat{\vtheta}_{k}) + \vz_k )^\top) \\
+    % & \quad \underbrace{- \1_{\bar{\cE}_k}(\beta_2 \hat{\vv}_{k} + (1-\beta_2) V\!((\nabla\cL(\hat{\vtheta}_{k}) + \vz_k )(\nabla\cL(\hat{\vtheta}_{k}) + \vz_k )^\top))}_{:=\ve_{2k}}, \\ 
+    \hat{\vtheta}_{k+1} &:= \hat{\vtheta}_{k} - \eta S(\hat{\vv}_{k+1}) \hat{\vm}_{k+1} \\
+    & \quad \underbrace{- \1_{\bar{\cE}_k}(\hat{\vtheta}_{k} - \eta S(\hat{\vv}_{k+1}) \hat{\vm}_{k+1} ) + \1_{\bar{\cE}_k}\vphi_{\mathrm{null}}}_{:=\ve_{k}}
+\end{align*}
+where $\ve_k$ denotes the redirection under extreme cases. By definition, $\ve_k$ equals zero in the vast majority of cases, and in other cases it's still bounded by a constant, so all moments of $\ve_k$ are within $\O(\eta^{100})$ which is negligibly small.

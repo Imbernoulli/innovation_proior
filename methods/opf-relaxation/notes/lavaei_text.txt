@@ -1,0 +1,1358 @@
+
+===== page 1 [pdftotext] =====
+                                                                                                                                              1
+
+
+
+
+                               Zero Duality Gap in Optimal Power Flow Problem
+                                                     Javad Lavaei and Steven H. Low
+
+
+   Abstract—The optimal power flow (OPF) problem is nonconvex                is studied in the recent work [12]. In an effort to convexify
+and generally hard to solve. In this paper, we propose a                     the OPF problem, it is shown in [13] that the load flow
+semidefinite programming (SDP) optimization, which is the dual               problem of a radial distribution system can be modeled as a
+of an equivalent form of the OPF problem. A global optimum
+solution to the OPF problem can be retrieved from a solution                 convex optimization problem in the form of a conic program.
+of this convex dual problem whenever the duality gap is zero.                Nonetheless, the results fail to hold for a meshed network,
+A necessary and sufficient condition is provided in this paper to            due to the presence of arctangent equality constraints [14].
+guarantee the existence of no duality gap for the OPF problem.               Nonconvexity appears in more sophisticated power problems
+This condition is satisfied by the standard IEEE benchmark                   such as the stability constrained OPF problem where the
+systems with 14, 30, 57, 118 and 300 buses as well as several
+randomly generated systems. Since this condition is hard to                  stability at the operating point is an extra constraint [15],
+study, a sufficient zero-duality-gap condition is also derived. This         [16] or the dynamic OPF problem where the dynamics of
+sufficient condition holds for IEEE systems after small resistance           the generators are also taken into account [17], [18]. The
+(10−5 per unit) is added to every transformer that originally                recent paper [19] proposes a convex relaxation to solve the
+assumes zero resistance. We investigate this sufficient condition            OPF problem efficiently and tests its results on IEEE systems.
+and justify that it holds widely in practice. The main underlying
+reason for the successful convexification of the OPF problem can             Some of the results derived in the present work are related
+be traced back to the modeling of transformers and transmission              to this well-known convex relaxation. However, [19] drops a
+lines as well as the non-negativity of physical quantities such as           rank constraint in the original OPF without any justification
+resistance and inductance.                                                   in order to obtain a convex formulation.
+   Index Terms—Power System, Optimal Power Flow, Convex                         As will be shown in this paper, the OPF problem is NP-
+Optimization, Linear Matrix Inequality, Polynomial-Time Algo-                hard in the worst case. Our recent work also proves that a
+rithm.                                                                       closely related problem of finding an optimal operating point
+                                                                             of a radiating antenna circuit is an NP-complete problem,
+                                                                             by reducing the number partitioning problem to the antenna
+                         I. I NTRODUCTION                                    problem [20]. The goal of the present work is to exploit the
+   The optimal power flow (OPF) problem deals with finding                   physical properties of power systems and obtain a polynomial-
+an optimal operating point of a power system that mini-                      time algorithm to find a global optimum of the OPF problem
+mizes an appropriate cost function such as generation cost                   for a large class of power networks.
+or transmission loss subject to certain constraints on power                    In this paper, we suggest solving the dual of an equivalent
+and voltage variables [1]. Started by the work [2] in 1962, the              form of the OPF problem (referred to as the Dual OPF
+OPF problem has been extensively studied in the literature                   problem), rather than the OPF problem itself. This dual
+and numerous algorithms have been proposed for solving                       problem is a convex semidefinite program and therefore can be
+this highly nonconvex problem [3], [4], [5], including lin-                  solved efficiently (in polynomial time). However, the optimal
+ear programming, Newton Raphson, quadratic programming,                      objective value of the dual problem is only a lower bound on
+nonlinear programming, Lagrange relaxation, interior point                   the optimal value of the original OPF problem and the lower
+methods, artificial intelligence, artificial neural network, fuzzy           bound may not be tight (in presence of a nonzero duality gap)
+logic, genetic algorithm, evolutionary programming and par-                  [21]. A globally optimal solution to the OPF problem can be
+ticle swarm optimization [1], [6], [7], [8]. A good number of                recovered from a solution to the Dual OPF problem if the
+these methods are based on the Karush-Kuhn-Tucker (KKT)                      duality gap is zero (i.e. strongly duality holds between these
+necessary conditions, which can only guarantee a locally opti-               two optimizations). In this paper, we derive a necessary and
+mal solution, in light of the nonconvexity of the OPF problem                sufficient condition to guarantee zero duality gap. Interestingly,
+[9]. This nonconvexity is partially due to the nonlinearity of               this condition is satisfied for all the five IEEE benchmark
+physical parameters, namely active power, reactive power and                 systems archived at [22] with 14, 30, 57, 118 and 300 buses,
+voltage magnitude.                                                           in addition to several randomly generated systems. In other
+   In the past decade, much attention has been paid to devising              words, these practical systems can all be convexified via the
+efficient algorithms with guaranteed performance for the OPF                 new formulation proposed here. In order to study why the
+problem. For instance, the recent papers [10] and [11] propose               duality gap is zero for the IEEE systems, we also derive
+nonlinear interior-point algorithms for an equivalent current                a sufficient zero-duality-gap condition, which reveals many
+injection model of the problem. An improved implementation                   useful properties of power systems. This sufficient condition
+of the automatic differentiation technique for the OPF problem               holds for IEEE systems after a small perturbation in a few
+                                                                             entries of the admittance matrix, in order to make the graph
+  Javad Lavaei is with the Department of Control and Dynamical Systems,      corresponding to the resistive part of the power network
+California Institute of Technology (email: lavaei@cds.caltech.edu).
+  Steven H. Low is with Computer Science and Electrical Engineering          strongly connected.
+Departments, California Institute of Technology (email: slow@caltech.edu).      To study the sufficient zero-duality-gap condition provided
+
+===== page 2 [pdftotext] =====
+                                                                                                                                      2
+
+
+
+here, we first consider a resistive network with only resistive      •  Vk : Complex voltage at bus k ∈ N .
+and constant-active-power loads. The OPF problem in this spe-        •  Plm : Active power transferred from bus l ∈ N to the rest
+cial case is also NP-hard. We exploit some physical properties          of the network through line (l, m) ∈ L.
+of power circuits and prove that the duality gap is zero for         • Slm : Apparent power transferred from bus l ∈ N to the
+a modified version of the OPF problem. Later on, we show                rest of the network through line (l, m) ∈ L.
+                                                                                            2
+that this modified OPF problem is expected to have the same          • fk (PGk ) = ck2 PG + ck1 PGk + ck0 : Quadratic cost
+                                                                                              k
+solution as the OPF problem. The results are then extended to           function with given nonnegative coefficients accounting
+general networks with no constraints on reactive loads. It is           for the cost of active power generation at bus k ∈ G.
+shown that by fixing the real part of the admittance matrix Y ,    Let V, Pg and Qg denote the unknown vectors {Vk }k∈N ,
+there is an unbounded region so that if the imaginary part of Y    {PGk }k∈G , and {QGk }k∈GP   , respectively. The classical OPF
+belongs to that region, the duality gap is zero. In other words,   problem aims to minimize k∈G fk (PGk ) over the unknown
+there is an unbounded set of network admittances for which         parameters V, Pg and Qg subject to the power balance
+the duality gap is zero for all possible values of loads and       equations at all buses and the physical constraints
+physical limits. The results are then extended to a general OPF
+problem. It is worth mentioning that we have proved in [35]                  Pkmin ≤ PGk ≤ Pkmax ,           ∀k ∈ G               (1a)
+that zero duality gap for the classical OPF problem studied                  Qmin   ≤ QGk ≤ Qmax    ,         ∀k ∈ G              (1b)
+                                                                               k               k
+here implies zero duality gap for a general OPF-based problem                  min            max
+                                                                             Vk ≤ |Vk | ≤ Vk ,               ∀k ∈ N               (1c)
+in which there could be more variables (such as transformer
+                                                                                        max
+ratios and variable shunt elements) and more constraints (such               |Slm | ≤ Slm   ,                 ∀(l, m) ∈ L         (1d)
+                                                                                        max
+as dynamic or contingency constraints). Hence, the results of                |Plm | ≤ Plm ,                   ∀(l, m) ∈ L         (1e)
+this work make it possible to convexify several fundamental                  |Vl − Vm | ≤ ∆Vlmmax
+                                                                                                  ,           ∀(l, m) ∈ L         (1f)
+power problems that have been studied for about half a century.
+                                                                                                                          max     max
+   The rest of the paper is organized as follows. The OPF          where Pkmin , Pkmax , Qmin
+                                                                                            k , Qk
+                                                                                                   max
+                                                                                                       , Vkmin , Vkmax , Slm  , Plm   ,
+                                                                        max                                              max      max
+problem is formulated in Section II. A polynomial-time al-         ∆Vlm      are some given real numbers such that Slm       = Sml
+                                                                          max       max
+gorithm is proposed in Section III to solve the OPF problem        and Plm     = Pml    . Note that some of the constraints stated in
+and two conditions are derived to guarantee a zero duality         (1) may not be needed for a practical OPF problem, in which
+gap. These conditions are studied in Section IV. Various           case the undesired constraints can be removed by setting the
+results are illustrated in Section V through IEEE benchmark        corresponding lower/upper bounds as infinity. For instance,
+systems and smaller examples. Concluding remarks are drawn         the line flow constraints (1d) and (1e) might not be necessary
+in Section VI. Some background on semidefinite programming         simultaneously or the constraint (1f) could be redundant,
+is provided in Appendix A and, finally, a few proofs are           depending on the situation. Although not stated explicitly, we
+collected in Appendices B and C.                                   assume throughout this work that the OPF problem is feasible
+   Notations: The following notations are used in this paper:      and that V = 0 does not satisfy its constraints.
+   • i : The imaginary unit.                                          Derive the circuit model of the power network by replacing
+   • R : The set of real numbers.                                  every transmission line and transformer with their equivalent
+   • Re{·} and Im{·}: The operators returning the real and         Π models [1]. In this circuit model, let ykl denote the mu-
+      imaginary parts of a complex matrix.                         tual admittance between buses k and l, and ykk denote the
+   • ∗ : The conjugate transpose operator.                         admittance-to-ground at bus k, for every k, l ∈ N (note that
+   • T : The transpose operator.                                   ykl = 0 if (k, l) 6∈ L). Let Y represent the admittance matrix
+   •  and  : The matrix inequality signs in the positive         of this equivalent circuit model, which is an n × n complex-
+      semidefinite sense (i.e. given two symmetric matrices A      valued P matrix whose (k, l) entry is equal to −ykl if k 6= l and
+      and B, A  B implies A − B is a positive semidefinite        ykk + m∈N (k) ykm otherwise, where N (k) denotes the set
+      matrix, meaning that its eigenvalues are all nonnegative).   of all buses that are directly connected to bus k. Define the
+                                                                                                                 T
+   • Tr : The matrix trace operator.                               current vector I := I1 I2 · · · In              as Y V. Note that
+   • | · | : The absolute value operator.                          Ik represents the net current injected to bus k ∈ N .
+                                                                      It is shown in Appendix B that the OPF problem is NP-
+II. OPF P ROBLEM : F ORMULATION AND C OMPUTATIONAL                 hard, which implies that an arbitrary (general) OPF problem
+                      C OMPLEXITY                                  may not be solvable in polynomial time. However, the goal of
+                                                                   this paper is to show that an OPF problem corresponding to
+   Consider a power network with the set of buses N :=             a practical power network is structured in such a way that it
+{1, 2, ..., n}, the set of generator buses G ⊆ N and the set of    might be solved efficiently in polynomial time even if it could
+flow lines L ⊆ N × N . Define the parameters of the system         have multiple local minima with a nonconvex (disconnected)
+as follows:                                                        feasibility region.
+   • PDk + QDk i: The given apparent power of the load
+     connected to bus k ∈ N (this number is zero whenever
+                                                                              III. N EW A PPROACH TO S OLVING OPF
+     bus k is not connected to any load).
+   • PGk + QGk i: The apparent power of the generator con-            By denoting the standard basis vectors in Rn as
+     nected to bus k ∈ G.                                          e1 , e2 , ..., en , let a number of matrices be defined now for
+
+===== page 3 [pdftotext] =====
+                                                                                                                                      3
+
+
+
+every k ∈ N and (l, m) ∈ L:
+
+    Yk := ek eTk Y,                                                            Pkmin − PDk ≤ Tr {Yk W } ≤ Pkmax − PDk             (4a)
+                                                                               Qmin  − QDk ≤ Tr Ȳk W ≤ Qmax
+                                                                                                
+  Ylm := (ȳlm + ylm )el eTl − (ylm )el eTm                                      k                            k   − QDk           (4b)
+                                                                                   min 2                   max 2
+                                                                                      
+         1 Re{Yk + YkT } Im{YkT − Yk }                                                   ≤ Tr {Mk W } ≤ (Vk )
+                                                 
+                                                                                Vk                                                (4c)
+  Yk :=
+         2 Im{Yk − YkT } Re{Yk + YkT }                                                     2              2      max 2
+                                                                                                
+                                                                               Tr {Ylm W } + Tr Ȳlm W ≤ (Slm       )             (4d)
+                               T          T
+                                                     
+         1 Re{Ylm + Ylm           } Im{Ylm  − Ylm }                                            max
+                                                                               Tr {Ylm W } ≤ Plm                                  (4e)
+ Ylm :=                        T                 T
+         2 Im{Ylm − Ylm           } Re{Ylm + Ylm   }                                              max 2
+                               T               T
+                                                                              Tr {Mlm W } ≤ (∆Vlm   )                             (4f)
+         −1 Im{Yk + Yk } Re{Yk − Yk }
+  Ȳk :=                                                                       W = XX   T
+                                                                                                                                  (4g)
+           2      Re{YkT − Yk } Im{Yk + YkT }
+                                  T                T
+                                                       
+         −1 Im{Ylm + Ylm            } Re{Ylm − Ylm   }                Note that the constraint |Plm | ≤ Plm max
+                                                                                                                 in the original OPF
+ Ȳlm :=                T                          T
+           2      Re{Ylm    − Ylm } Im{Ylm + Ylm     }                problem is changed to Plm ≤ Plm       max
+                                                                                                                  in order to derive
+                 T                                                    (4e). This modification can be done in light of the relations
+                            
+             ek ek     0
+  Mk :=                                                               Plm + Pml ≥ 0 and Plm        max
+                                                                                                        = Pml max
+                                                                                                                  . The above OPF
+               0     ek eTk
+         
+             (el − em )(el − em )T               0
+                                                                     formulation is not quadratic in X, due to the objective function
+ Mlm :=                                                               being of degree 4 with respect to the entries of X as well as
+                        0              (el − em )(el − em )T
+         h                            iT                              the constraint (4d). However, one can define some auxiliary
+                     T              T                                 variables to reformulate the OPF problem in a quadratic way
+    X :=     Re {V}       Im {V}
+                                                                      with respect to X. To this end, Schur’s complement formula
+where ȳlm denotes the value of the shunt element at bus l            yields that the constraint (4d) can be replaced by
+associated with the Π model of the line (l, m). For every k ∈                          2
+                                                                            − (Slm,max ) Tr {Ylm W } Tr Ȳlm W
+                                                                                                                         
+N , define Pk,inj and Qk,inj as the net active and reactive powers        Tr {Ylm W }           −1               0         0 (5)
+injected to bus k, i.e.,                                                       
+                                                                            Tr Ȳlm W             0              −1
+           Pk,inj := PGk − PDk ,          ∀k ∈ G                      On the other hand, given a scalar αk for some k ∈ G,
+           Qk,inj := QGk − QDk ,          ∀k ∈ G                      the constraint fk (PGk ) ≤ αk is equivalent to (by Schur’s
+                                                                      complement formula)
+           Pk,inj := −PDk ,               ∀k ∈ N \G                                                    √                        
+           Qk,inj := −QDk ,                ∀k ∈ N \G                      ck1 Tr {Yk W } − αk + ak        ck2 Tr {Yk W } + bk
+                                                                           √                                                       0
+                                                                              ck2 Tr {Yk W } + bk                  −1
+  Lemma 1: The following relations hold for every k ∈ N                                                                             (6)
+                                                                                                                √
+and (l, m) ∈ L:                                                       where ak := ck0 + ck1 PDk and bk := ck2 PDk .
+                                                                         Using (5) and (6), one can reformulate the OPF problem
+  Pk,inj = Tr Yk XXT
+             
+                                                               (2a)   formalized in (3) and (4) in a quadratic way. This leads to
+                                                                      Optimization 1, which is equivalent
+                                                                                                       P to the OPF problem:
+  Qk,inj = Tr Ȳk XXT
+              
+                                                               (2b)
+                                                                         Optimization 1: Minimize k∈G αk over the scalar vari-
+  Plm = Tr Ylm XXT
+            
+                                                               (2c)   ables αk ’s and the matrix variables X and W subject to the
+                         2               2                          constraints (4a), (4b), (4c), (4e), (4f), (4g), (5) and (6).
+  |Slm |2 = Tr Ylm XXT      + Tr Ȳlm XXT
+                               
+                                                               (2d)
+                                                                         The variable X can be eliminated from Optimization 1 by
+  |Vk |2 = Tr Mk XXT
+             
+                                                               (2e)
+                                                                      using the fact that a given matrix W can be written as XXT
+  |Vl − Vm |2 = Tr Mlm XXT
+                  
+                                                               (2f)   for some (nonzero) vector X if and only if W is both positive
+                                                                      semidefinite and rank 1. Hence, Optimization 2 below is an
+                                                                      equivalent form of Optimization 1 whose variables are only
+Proof: See Appendix C.
+                                                                      W and αk ’s for k ∈ G.
+   Extend the definitions of Pkmin , Pkmax , Qmin  max
+                                              k , Qk    from
+                                  min         max                        Optimization 2: This optimization is obtained from Opti-
+k ∈ G to every k ∈ N , with Pk          = Pk      = Qmin   =
+                                                      k               mization 1 by replacing the constraint (4g), i.e. W = XXT ,
+Qmax
+  k    = 0 if k ∈ N \G. Using Lemma 1, one can formulate
+                                                                      with the new constraints W  0 and rank{W } = 1.
+the OPF problem in terms of X as follows.
+                                                                         Notice that since Optimization 2 has a rank constraint, it is
+  OPF problem formulated in X: Minimize                               nonconvex. However, removing the constraint rank{W } = 1
+            X                          2                            from this optimization makes it a semidefinite program (SDP),
+                 ck2 Tr {Yk W } + PDk                                 which is a convex problem (see Appendix A for a brief
+            k∈G
+                                                               (3)   overview of SDP). This gives rise to Optimization 3 presented
+                                                                     below.
+                  + ck1 Tr {Yk W } + PDk + ck0
+                                                                         Optimization 3: This optimization is obtained from Opti-
+                                                                      mization 2 by removing the rank constraint rank{W } = 1.
+over the variables X ∈ R2n and W ∈ R2n×2n subject to the                 Optimization 3 is indeed an SDP relaxation of the OPF
+following constraints for every k ∈ N and (l, m) ∈ L                  problem. Assume that this convex optimization problem has a
+
+===== page 4 [pdftotext] =====
+                                                                                                                                          4
+
+
+
+rank-one optimal solution W opt . Then, there exists a vector          Furthermore, define the functions
+Xopt such that W opt = Xopt (Xopt )T . In that case, Xopt is                       X
+a global optimum of the OPF problem. However, since the                 h(x, r) :=       λk Pkmin − λ̄k Pkmax + λk PDk + γ k Qmin
+                                                                                                                              k
+OPF problem is NP-hard in general, Optimization 3 does not                         k∈N
+                                                                                                                                       
+always have a rank-one solution. We numerically solved this                                                    2             2
+                                                                                − γ̄k Qmax
+                                                                                       k    + γk QDk + µk Vkmin − µ̄k (Vkmax )
+optimization problem for IEEE test systems with 14, 30, 57,
+118 and 300 buses using SEDUMI and noticed that each                              X                  X 
+                                                                                        ck0 − rk2 −               max
+                                                                                                 
+solution W opt obtained always has rank two. The next lemma                     +                           λlm Plm
+explains the reason why this occurs for IEEE systems.                             k∈G                 (l,m)∈L
+                                                                                                                                  
+    Lemma 2: If Optimization 3 has a rank-one solution, then                              max    2  max    1    24     6
+                                                                                + µlm (∆Vlm   ) + (Slm  ) rlm + rlm + rlm
+it must have an infinite number of rank-two solutions.
+    Proof: See Appendix C.
+                                                                       and
+    Lemma 2 states that Optimization 3 might have a rank-
+one solution that cannot be directly identified by solving it                          X                              
+                                                                         A(x, r) :=          λk Yk + γk Ȳk + µk Mk
+numerically. However, using the method proposed later in this                          k∈N
+work, one can verify that Optimization 3 always has a rank-                   X                                                      
+                                                                                           2                      3
+                                                                                                      
+one solution for all aforementioned IEEE test systems. This              +               2rlm + λlm       Ylm + 2rlm Ȳlm + µlm Mlm
+implies that these power systems can be convexified by a                     (l,m)∈L
+convex relaxation technique. However, the focus of this paper
+                                                                          We propose an optimization problem in the sequel, which
+will not be on Optimization 3 due to the following reasons:
+                                                                       plays a central role in solving the OPF problem.
+    • The number of scalar variables of Optimization 3 is
+                                                                          Optimization 4 (Dual OPF): Maximize the linear function
+      quadratic with respect to n (in light of the non-sparse          h(x, r) over the vectors x ≥ 0 and r subject to the linear
+      structure of the matrix variable Wc ). Hence, solving            matrix inequalities
+      this optimization problem might be expensive and time-
+      consuming for large values of n.                                           A(x, r)  0                                          (8a)
+    • It is hard to analytically study Optimization 3 to deter-                             2     3
+                                                                                  1                
+                                                                                   rlm rlm      rlm
+      mine when it has a rank-one solution.                                          2
+                                                                                  rlm      4
+                                                                                          rlm     5
+                                                                                                rlm   0,          ∀(l, m) ∈ L       (8b)
+In this paper, we consider the dual of Optimization 3. To this                       3      5     6
+                                                                                   r      r     rlm
+end, define the following dual variables for every k ∈ N and                      lm 1 lm   
+                                                                                   1 rk
+(l, m) ∈ L:                                                                                     0,                 ∀k ∈ G            (8c)
+                                                                                   rk1 rk2
+   i) λk , γ k , µk : Lagrange multipliers associated with the
+      lower inequalities in (4a), (4b) and (4c), respectively.             The next theorem presents some important properties of
+  ii) λ̄k , γ̄k , µ̄k : Lagrange multipliers associated with the up-   Optimization 4.
+      per inequalities in (4a), (4b) and (4c), respectively.               Theorem 1: The following statements hold:
+ iii) λlm , µlm : Lagrange multipliers associated with the in-            i) Optimization 4 is the dual of the nonconvex problem of
+      equalities (4e) and (4f), respectively.                                Optimization 1.
+        1      2           6                                             ii) Optimization 4 is the dual of Optimization 3 and strong
+ iv) rlm    , rlm  , ..., rlm : The matrix
+                                 1      2   3
+                                                                            duality holds between these optimizations. Moreover,
+                                  rlm rlm   rlm                              the matrix variable W in Optimization 3 corresponds
+                                   2
+                                 rlm    4   5
+                                        rlm rlm  
+                                                                             to a Lagrange multiplier for the inequality constraint
+                                   3     5   6
+                                  rlm rlm rlm                                A(x, r)  0 in Optimization 4.
+    is the Lagrange multiplier associated with the matrix                  Proof: See Appendix C.
+    inequality (5).                                                        The relationship among the OPF problem and Optimiza-
+ v) rk1 , rk2 : If k ∈ G, the matrix                                   tions 1–4 are illustrated in Figure 1. This paper suggests
+                                                                       solving Optimization 4, which is the dual of a reformulated
+                                  1 rk1
+                                        
+                                                      (7)              OPF problem (i.e. Optimization 1) as well as the dual of a
+                                 rk1 rk2
+                                                                       convex relaxation of the OPF problem (i.e. Optimization 3).
+      is the Lagrange multiplier associated with the matrix            Since Optimization 4 is an SDP, a globally optimization
+      inequality (6).                                                  solution to this problem can be found in polynomial time.
+Let x and r denote the sets of all multipliers introduced in (i-       However, this solution can be used to retrieve a solution to the
+iii) and (iv-v), respectively. Define some aggregate multipliers       OPF problem only if the duality gap is zero for Optimization 1,
+for every k ∈ N as follows                                             meaning that the optimal objective values of Optimizations 1
+                                       √                               and 4 are identical. The next theorem investigates this issue
+                  −λk + λ̄k + ck1 + 2 ck2 rk1 if k ∈ G
+              
+       λk :=                                                           in more details.
+                  −λk + λ̄k                     otherwise                  Theorem 2: The following statements hold:
+      γk := −γ k + γ̄k                                                    i) The duality gap is zero for Optimization 1 if and only if
+      µk := −µk + µ̄k                                                        the SDP Optimization 3 has a rank-one solution W opt .
+
+===== page 5 [pdftotext] =====
+                                                                                                                                                5
+
+
+
+                                                     OPF Problem                The main complexity of the above algorithm can be traced
+                                                     (nonconvex)             back to its Step 1, which requires solving the Dual OPF
+                                                                             problem. As mentioned earlier, this optimization is an SDP
+                                                                             problem and therefore can be solved in polynomial time. We
+                                                               Equivalence
+                                                                             tested our algorithm on several randomly generated power
+                                  Equivalence:
+                                change of variable                           systems with all types of constraints given in (1) and observed
+                                    W=XXT                                    that this algorithm found a global optimum of the OPF
+             Optimization 2                          Optimization 1
+              (nonconvex)                             (nonconvex)            problem for all trials. Then, we considered the IEEE test
+                                                                             systems with 14, 30, 57, 118 and 300 buses, whose physical
+                                                                             constraints are in the form of (1a)-(1d), and made the following
+  Rank relaxation:
+removing constraint
+                                                                  Dual       observations:
+                                                               relaxation       • Optimization 3 always leads to a rank-two solution,
+    rank{W}=1
+                                                                                    from which a rank-one solution can be found using the
+                                                                                    technique delineated in Part (ii) of Corollary 1. Hence,
+             Optimization 3                          Optimization 4
+               (convex)                                (convex)                     Part (i) of Theorem 2 yields that the duality gap is zero
+                                  Equivalence:
+                                  strong duality
+                                                                                    for all these IEEE systems.
+                                                                                • Our algorithm based on the Dual OPF works after a
+ Fig. 1.   The relationship among OPF and Optimizations 1–4.                        small perturbation of the matrix Y . More precisely, if
+                                                                                    a small resistance (10−5 ) is added to each transformer
+                                                                                    that originally has zero resistance, the graph induced
+  ii) The duality gap is zero for Optimization 1 if its dual (i.e.                  by the matrix Re{Y } will become connected for each
+      the SDP Optimization 4) has a solution (xopt , ropt ) such                    aforementioned IEEE system. This perturbation makes ψ
+      that the positive semidefinite matrix A(xopt , ropt ) has a                   equal to 2.
+      zero eigenvalue of multiplicity 2.                                        Before studying why the OPF problem associated with a real
+    Proof: See Appendix C.                                                   power system is expected to be solvable using the algorithm
+    Due to the reasons outlined right after Lemma 2, this paper              proposed earlier, we make several important remarks below.
+ mainly focuses on Condition (ii) (as opposed to Condition (i)),                Remark 1: The last step of our algorithm relies on Part (i)
+ whose usefulness will become clear later. The next corollary                of Corollary 1, which states that there exist two real-valued
+ explains how to recover a solution to the OPF problem                       scalars ζ1 and ζ2 such that Vopt = (ζ1 + ζ2 i)(X1 + X2 i). In
+ whenever this zero-duality-gap condition is satisfied.                      order to find ζ1 and ζ2 , two (linear) equations are required. The
+    Corollary 1: If the zero-duality-gap condition (ii) given in             voltage angle at the swing bus being zero introduces one such
+ Theorem 2 is satisfied, then the following properties hold:                 equation. The second one can be formed by identifying the
+                                                    T                       active voltage constraints. Indeed, if µopt     (respectively, µ̄opt
+                                                                                                                                              k )
+                                        X1 X2T
+                                       T
+    • Given any nonzero vector                          in the null                                                       k
+                                                                             turns out to be nonzero for some k ∈ N , then the relation
+      space of A(xopt , ropt ), there exist two real-valued scalars
+                                                                             |Vkopt | = Vkmin (respectively, |Vkopt | = Vkmax ) must hold.
+      ζ1 and ζ2 such that Vopt = (ζ1 + ζ2 i)(X1 + X2 i) is a
+                                                                                Remark 2: Optimization 4 has two interesting properties for
+      global optimum of the OPF problem.
+                                         opt                                 a practical power system. Fist, since most of the constraints
+    • Given any arbitrary solution W         of Optimization 3, the
+                                                                             specified in (1) are likely to be inactive, the vectors xopt
+      rank of W is at most 2. Moreover, if the matrix W opt
+                  opt
+                                                                             and ropt are sparse. Moreover, the number of variables of
+      has rank 2, then the matrix (ρ1 + ρ2 )EE T is a rank-
+                                                                             Optimization 4 is O(|L|) + O(|N |), which is expected to be
+      one solution of Optimization 3, where ρ1 and ρ2 are the
+                                                                             equal to O(|N |) due to the very sparse topology of real power
+      nonzero eigenvalues of W opt and E is the unit eigenvector
+                                                                             systems. Note that solving Optimization 4 for very large-
+      associated with ρ1 .
+                                                                             scale power networks might be too costly, in which case it is
+    Proof: See Appendix C.                                                   recommended to use some sub-gradient techniques [19], [27].
+    This paper suggests the following strategy for finding a                    Remark 3: Optimization 4 has the interesting property that
+ global optimum of the OPF problem.                                          the given loads together with the physical limits on voltage
+    Algorithm for Solving OPF:                                               and power parameters only appear in the objective function,
+    1) Compute a solution (xopt , ropt ) of Optimization 4, which            whereas the network topology (the matrix Y ) shows up in its
+       is the dual of an equivalent form of the OPF problem.                 linear matrix constraints. Therefore, there is a natural decom-
+    2) If the optimal value h(xopt , ropt ) is +∞, then the OPF              position between the load profile and the network topology
+       problem is infeasible.                                                in Optimization 4. This useful property, besides the linearity
+    3) Find the multiplicity of the zero eigenvalue of the matrix            of Optimization 4, makes it possible to solve many more
+       A(xopt , ropt ) and denote it as ψ.                                   sophisticated problems efficiently, such as the OPF problem
+    4) If ψ is greater than 2, it might not be possible to solve             with stochastic and time-varying loads, and optimal network
+       the OPF problem in polynomial time.                                   reconfiguration for minimizing power loss.
+    5) If ψ is less than or equal to 2, then use the method                     Remark 4: Most of the algorithms proposed in the past
+       explained in Part (i) of Corollary 1 to find a globally               decade to solve the OPF problem are built on the KKT
+       optimal solution Vopt .                                               conditions written for the original or a reformulated OPF
+
+===== page 6 [pdftotext] =====
+                                                                                                                                           6
+
+
+
+problem. We highlight the differences between the Dual OPF            in the power balance equations. Modify the OPF problem by
+and the KKT conditions:                                               replacing the above constraints with the following
+   • The duality gap could be zero for an OPF problem whose
+                                                                                            PLk ≥ PDk ,      ∀k ∈ N                    (10)
+     feasibility region has several disjoint components (see
+     Case 1 in Appendix B). Hence, the OPF problem may                and name the resulting problem as modified OPF problem.
+     have many local solutions, all of which satisfy the KKT          Note that this variant of the OPF problem allows for the over-
+     conditions. In contrast, a global optimum of the OPF             satisfaction of the loads. This idea has already been considered
+     problem can be recovered by solving the Dual OPF when            by some other papers too (see [34] and the references given
+     the duality gap is zero.                                         therein). In what follows, we first study the modified OPF
+   • The KKT conditions are based on both primal and dual             problem, and then explain why the OPF and modified OPF
+     variables (say X, x, r), whereas the Dual OPF depends            problems are expected to have the same solution.
+     only on the dual variables (say x, r).                              Theorem 3: The duality gap is zero for the modified OPF
+   • There is a constraint A(x, r)  0 in the Dual OPF,               problem.
+     and besides an optimal solution to the OPF problem                  Proof: One can draw a digram similar to the one depicted
+     satisfies the relation A(xopt , ropt )Xopt = 0. The constraint   in Figure 1 for the modified OPF problem to obtain four
+     A(xopt , ropt )Xopt = 0 is part of the KKT conditions,           optimization problems named modified Optimizations 1–4
+     implying that the matrix A(x, r) should lose rank at             (note that the name “modified Dual OPF” will be used for
+     optimality. However, the stronger constraint A(x, r)  0         the modified Optimization 4). Now, it can be shown that the
+     is missing in the KKT conditions.                                modified Dual OPF problem is the same as Optimization 4
+Indeed, it can be shown that if the constraint A(x, r)  0            with the exception of having the extra constraints
+is incorporated into the KKT conditions, then the resulting
+                                                                                              λk ≥ 0,     ∀k ∈ N                       (11)
+conditions are able to find a global optimum of the OPF
+problem when the duality gap is zero.                                 Let (xopt , ropt ) denote a solution to the modified Dual OPF
+                                                                      problem. The goal is to show that the multiplicity of the zero
+      IV. Z ERO D UALITY G AP FOR P OWER S YSTEMS                     eigenvalue of A(xopt , ropt ) is at most two. To this end, notice
+                                                                      that the constraints (1b) and (1d) can be ignored due to the
+   In this section, we study the zero-duality-gap condition (ii)      absence of reactive powers in the network (note that Slk = Plk
+given in Theorem 2 in more details to justify why this                in this case). As a result,
+condition is expected to hold widely in practice. To this end,
+we first study the OPF problem for DC networks, which                             γk = 0,                         ∀k ∈ N
+is indeed an NP-hard problem. This helps find the useful                           1
+                                                                                  rlm            6
+                                                                                      = · · · = rlm = 0,          ∀(l, m) ∈ L
+properties of the Dual OPF problem, which will later be used
+to explore the solvability of the OPF problem for AC networks.        Hence, the matrix A(xopt , ropt ) can be expressed as
+                                                                                                                             
+                                                                               opt opt     T (xopt , ropt )        0
+                                                                          A(x , r ) =                                                  (12)
+A. Resistive Networks with Active Loads                                                            0         T (xopt , ropt )
+   As can be seen in Case (ii) of Appendix B, the OPF problem         for some matrix T (xopt , ropt ) ∈ Rn×n , where the (l, m) off-
+is NP-hard even if the network is resistive and there are no          diagonal entry of T (xopt , ropt ) is equal to
+reactive loads. This situation, which corresponds to DC power                                ylm opt
+                                                                                                 λlm + λopt        opt      opt   opt
+distribution, is itself important because (i) the active power        Tlm (xopt , ropt ) = −                           opt
+                                                                                                            ml + λl + λm −µlm −µml
+                                                                                              2
+loss in a power system is due to the resistive part of the
+network, and (ii) the study of this case reveals important facts      if (l, m) ∈ L and is zero otherwise. On the other hand, since
+about the general OPF problem. In this section, we prove zero         resistance is a nonnegative physical quantity, it can be shown
+duality gap for DC networks under a mild assumption, which            that ylm coming from the Π model of a transmission line or
+is expected to hold in reality.                                       a transformer is always nonnegative. It follows from this fact
+   Throughout this part, assume that the power system is a            together with the inequalities (11) and xopt ≥ 0 that all off-
+resistive network (i.e. Im{Y } = 0) and that all loads are            diagonal entries of the matrix T (xopt , ropt ) are non-positive.
+modeled as constant active powers. In the formulation of the             Assume for now that the graph of the power system is
+OPF problem, it was assumed that the (active) power to be             strongly connected, meaning that there exists a path between
+delivered to the load of bus k ∈ N must be exactly equal to           every two buses of the network [32]. Assume also that the
+PDk (this showed up in the power balance equations). Let the          nonnegative vector (λopt           opt
+                                                                                               1 , ..., λn ) is strictly positive. These as-
+OPF problem be changed to allow delivering any power more             sumptions imply that the matrix T (xopt , ropt ) is irreducible and
+than PDk to the load of bus k. To this end, define PLk as the         its off-diagonal entries are non-positive. Hence, the Perron-
+power delivered to the load of bus k and PDk as the desired           Frobenius theorem yields that the smallest eigenvalue of
+power requested by the load of bus k. In the OPF problem,             T (xopt , ropt ) is simple, and as a result of (12), the smallest
+we have the constraints                                               eigenvalue of A(xopt , ropt ) is repeated twice [32]. Since this
+                                                                      matrix is positive semidefinite, this simply implies that the
+                    PLk = PDk ,      ∀k ∈ N                    (9)    multiplicity of the zero eigenvalue of A(xopt , ropt ) is at most
+
+===== page 7 [pdftotext] =====
+                                                                                                                                           7
+
+
+
+2. Thus, the duality gap is zero for the modified OPF problem,             here based on Optimization 4 to solve the OPF problem, two
+by virtue of Part (ii) of Theorem 2.                                       conditions must hold. The first one is the connectivity of the
+   Now, suppose that the power network is strongly connected,              power network that holds in reality. The second one requires
+                                          opt
+but the nonnegative vector (λopt1 , ..., λn ) is not strictly posi-        that every nonnegative aggregate multiplier λopt  k , k ∈ N , be
+tive. Perturb the constraint (11) as                                       strictly positive. This condition holds for a generic OPF prob-
+                                                                           lem because λopt k being zero implies that the load constraint
+                         λk ≥ ε,     ∀k ∈ N
+                                                                           PLk = PDk can be removed from the OPF problem without
+for a small strictly positive number ε. Based on the above                 changing the solution, which signifies that the given value PDk
+discussion, the duality gap is zero for the perturbed modified             is not important at all.
+OPF problem and hence the perturbed modified Optimization 3                   A practical power system is often maintained at a normal
+has a rank one solution, denoted by Wεopt (see Part (i) of                 condition, where if a load bus requests to receive a certain
+Theorem 2). Since Wεopt has a bounded norm (due to the                     amount of active power or more, the optimal strategy is to
+voltage constraints in the OPF problem), this matrix converges             deliver exactly the minimum amount of power requested. This
+to a rank-one solution if ε tends to zero. Hence, the modified             normal operation results from the fact that generated power
+Optimization 3 has a rank-one solution for ε = 0 and therefore             is not supposed to be sold at a negative price (note that λopt k
+it follows from a variant of Condition (i) given in Theorem 2              in practice plays the role of nodal price for the load of bus
+that the duality gap is zero for the modified OPF problem.                 k ∈ N ). However, an abnormal operation may occur if the
+So far, it was assumed that the graph of the power system                  physical limits in the OPF problem are so tight that the OPF
+is connected. If not, it means that the OPF problem can be                 problem is over-constrained. Under this circumstance, it is
+broken down into a number of decoupled OPF problems, each                  possible that the OPF and modified OPF problems achieve
+associated with a connected power sub-network. The proof is                different solutions. The next theorem shows that this cannot
+completed by repeating the aforementioned argument for each                occur if some of the constraints are removed from the OPF
+small-sized OPF problem.                                                  problem to avoid making it over-constrained by choosing
+   Theorem 3 states that the duality gap becomes zero for the              inappropriate physical limits.
+OPF problem if the load constraints are changed from equality                 Theorem 4: Consider a non-generator bus k ∈ N \G. If the
+to inequality, meaning that the over-satisfaction of the loads             voltage constraints (1c) and (1f) associated with bus k and
+is permitted. It is important to study under what conditions               the flow constraint (1e) associated with every line connected
+the OPF and modified OPF problems have the same solution.                  to this bus are removed from the OPF problem, then λopt        k
+This is addressed in the sequel in terms of the duals of these             corresponding to this simplified OPF problem is nonnegative.
+problems.                                                                     Proof: The (k, k) entry of A(xopt , ropt ), under the assump-
+   Lemma 3: The duals of the OPF problem and the mod-                      tions made in the theorem, can be written as
+ified OPF problem have the same solution if the vector                                                                
+(λopt        opt
+   1 , ..., λn ) associated with the original (rather than the
+                                                                                                              X
+modified) OPF problem is nonnegative.                                                          λopt
+                                                                                                 k
+                                                                                                    ykk +         ykl                 (13)
+                                                                                                           l∈N (k)
+   Proof: As stated in the proof of Theorem 3, the dual of the
+modified OPF problem is the same as the dual of the OPF                    The proof follows from the following facts:
+problem but with the additional constraints λ1 , ..., λn ≥ 0.
+                                                                              • The expression given in (13) must be nonnegative due to
+Therefore, if the optimal solution of the dual of the OPF
+                                                                                the positive semi-definiteness of A(xopt , ropt ).
+problem satisfies these constraints, its means that the duals
+                                                                              • Although ykk might be negative, the overall term ykk +
+of the OPF and modified OPF problems have an identical                          P
+                                                                                   l∈N (k) ykl is always nonnegative (note that this term
+solution. This completes the proof.                                   
+                                                                                corresponds to the (k, k) entry of Y , which is the
+   The following result can be easily derived from Lemma 3
+                                                                                admittance of a passive network).                       
+and the proof of Theorem 3.
+   Corollary 2: The duality gap is zero for the OPF problem if                Consider a non-generator bus k. Since the load is known
+(λopt        opt                                                           at this bus, extra constraints related to this bus can make
+   1 , ..., λn ) is positive. Moreover, the sufficient zero-duality-
+gap condition given in Part (ii) of Theorem 2 holds for the OPF            the OPF problem infeasible or over-constrained if the limits
+problem if the vector (λopt           opt                                  are not defined properly. Note that the result of Theorem 4
+                            1 , ..., λn ) is strictly positive and the
+graph of the power network is strongly connected.                          can be easily generalized to generator buses as well. Hence,
+   Remark 5: It might happen that the vector (λopt                opt      the multiplier λopt
+                                                                                            k is expected to be nonnegative, something
+                                                        1 , ..., λn ) is
+not positive, while the duality gap is still zero. To account for          which is needed in Corollary 2 to guarantee the existence of
+such cases, one can repeat the argument made above to obtain               no duality gap for the OPF problem.
+a less conservative condition for having a zero duality gap,                  In summary, in order to be able to solve the OPF problem
+which is the positivity of λopt           opt     opt    opt               in polynomial time, it suffices to have either of the following
+                                 lm + λml + λl + λm for every
+(l, m) ∈ L.                                                                properties:
+   Assume that the OPF and modified OPF problems have                         • The over-satisfaction of a load is allowed and therefore
+the same solution. Then, the duality gap is zero for the OPF                    the modified OPF problem can be solved instead.
+problem, implying that Optimization 3 can solve the OPF                       • The physical limits of the OPF problem are not chosen in
+problem exactly. However, in order for the algorithm proposed                   such a way that the power system operates in an abnormal
+
+===== page 8 [pdftotext] =====
+                                                                                                                                           8
+
+
+
+     condition, where the active power is offered to a load at           inequalities). Recall that C belongs to the space associated
+     a negative price.                                                   with the variable (x, r, Ḡ). Project this set on the subspace
+Note that if neither of the above properties is satisfied, the           corresponding to its variable Ḡ and denote the resulting subset
+duality gap can still be zero due to the condition proposed in           as CG . Define TG as the complement of CG . Note that TG
+Remark 5.                                                                contains every matrix Ḡ for which there does not exist a
+                                                                         vector (x, r) such that Conditions (i–iii) given above are all
+                                                                         satisfied. One can observe that the sufficient zero-duality-gap
+B. General Networks with No Reactive-Load Constraints
+                                                                         condition given in Theorem 2 is satisfied for the ε-modified
+   As before, consider the modified OPF problem obtained by:             OPF problem with Y = G + Ḡi as long as Ḡ ∈ TG . The proof
+(i) replacing the equality constraint (9) with the inequality            of this theorem follows from the facts given below:
+constraint (10), and (ii) ignoring the apparent line flow limits           • Since C is closed and bounded (due to the relations given
+and taking only the active line flow limits into account.                    in (15)), the projection set CG is closed as well. Therefore,
+Assume that the matrix Y is complex, but any arbitrary                       the complement of CG , i.e. TG , is an open set.
+(positive/negative) amount of reactive power can be injected               • Consider a diagonal matrix Ḡ. It can be verified that the
+to each bus k ∈ N . In this case, the constraints (1b) can                   matrix T̄ (x, r, Ḡ) is zero in this case, Thus, the matrix
+be ignored. On the other hand, one can write the matrix                      A(x, r, Ḡ) has the block-diagonal structure (12), meaning
+A(xopt , ropt ) as                                                           that the non-resistive part of the network has disappeared.
+                                                            
+                          T (xopt , ropt ) T̄ (xopt , ropt )                 Hence, it can be inferred from the proof of Theorem 3
+     A(xopt , ropt ) =                                         (14)
+                         −T̄ (xopt , ropt ) T (xopt , ropt )                 that the duality gap is zero in this case. As a result, Ḡ
+                                                                             must belong to TG .
+for some real matrices T (xopt , ropt ), T̄ (xopt , ropt ) ∈ Rn×n . It     • The set of diagonal matrices is unbounded.                 
+can be concluded from the above relation and (12) that the
+                                                                            As done in the preceding subsection, the OPF and modified
+matrix T̄ (xopt , ropt ) becomes nonzero in the transition from
+                                                                         OPF problems are expected to have the same solution; other-
+resistive to general networks. Unlike the symmetric matrix
+                                                                         wise the power system may not work in a normal condition.
+T (xopt , ropt ), the matrix T̄ (xopt , ropt ) is skew-symmetric and
+                                                                         Note that the condition provided in Theorem 4 to guarantee
+therefore it cannot have only positive entries. This is an
+                                                                         the same solution for the OPF and modified OPF problems
+impediment to exploiting the Perron-Frobenius theorem. In
+                                                                         still holds for a general network with no constraints on reactive
+what follows, we build on Theorem 3 to bypass this issue.
+                                                                         loads. In this subsection, we perturbed the modified OPF prob-
+   Given a small number ε > 0, consider the Dual OPF
+                                                                         lem and defined an ε-modified OPF problem. Theorem 5 states
+problem (Optimization 4) subject to the extra constraints
+                                                                         that for every Re{Y } (that could be arbitrarily large or small),
+              1           1                1                             there exists an open, unbounded region for Im{Y } such that
+     kxk ≤      , krk ≤ , ε ≤ λk ≤ , ∀k ∈ N                   (15)
+              ε           ε                ε                             the algorithm proposed in this paper can find a global optimum
+where k · k is a vector norm. This optimization corresponds to           of the ε-modified OPF problem with Y = Re{Y }+Im{Y }i in
+the dual of a perturbed version of the modified OPF problem,             polynomial time. The importance of this result is as follows:
+which is referred to as ε-modified OPF problem in this paper.            when the duality gap is zero for a topology Y , then the ε-
+Note that when ε goes to zero, the solution of this problem              modified OPF problem corresponding to every possible load
+approaches that of the original modified OPF problem. To                 profiles and physical limits can be convexified.
+derive the next theorem, with no loss of generality, assume that
+the resistive part of the power network is strongly connected.
+                                                                         C. General Networks
+    Theorem 5: Given ε > 0, consider an arbitrary matrix
+G ∈ Rn×n , which satisfies all necessary properties for being               In this part, we combine the ideas presented in the last
+the real part of the admittance matrix of a power network.               two subsections to study the OPF problem associated with
+There exists an unbound open set TG in Rn×n such that for                a general network. For simplicity in the presentation, remove
+                                                                                                     max
+every Ḡ ∈ TG , the duality gap is zero for the ε-modified OPF           the constraints |Slm | ≤ Slm     (where (l, m) ∈ L), because of
+                                                                                                                          max
+problem with Y = G + Ḡi, regardless of the specific values              its similarity to the constraint |Plm | ≤ Plm        . Consider the
+                                                                                      opt opt
+of the loads and limits in the constraints (1).                          matrix A(x , r ), which can be expressed as
+    Proof: Write Y as G + Ḡi, where G is a known matrix and                                                                           
+                                                                                                     T (xopt , ropt ) T̄ (xopt , ropt )
+Ḡ is a matrix variable. Now, the matrix A(x, r) depends on                     A(xopt , ropt ) =
+the variable Ḡ, in addition to x and r. To account for this                                        −T̄ (xopt , ropt ) T (xopt , ropt )
+dependence explicitly, we use the notation A(x, r, Ḡ) instead           where T (xopt , ropt ) is symmetric and T̄ (xopt , ropt ) is skew-
+of A(x, r). Let C denote the set of all triple (x, r, Ḡ) such that      symmetric. As observed in both the resistive case and the
+   i) A(x, r, Ḡ) as well as the matrices given in (8b) and (8c)         general case with no reactive-load constraints, the duality gap
+      are all positive semidefinite.                                     can be pushed towards zero if the off-diagonal entries of
+  ii) The dimension of the null space of A(x, r, Ḡ) is at least 3.      T (xopt , ropt ) are all non-positive. In what follows, we first
+ iii) The relations x ≥ 0 and (15) are satisfied.                        study the sign structure of T (xopt , ropt ).
+The way C is defined makes it a closed semi-algebraic set (note             As carried out in Subsection IV-A, define PDk + QDk i as
+that the set C can be described by a number of polynomial                the apparent power requested by load k ∈ N and PLk + QLk i
+
+===== page 9 [pdftotext] =====
+                                                                                                                                           9
+
+
+
+as the apparent power delivered to load k ∈ N . In the original            where the load over-satisfaction at buses k and l must
+OPF problem, the equalities                                                obey the relations
+                                                                                  PLk − PDk = PLl − PDl = τ × Re{ykl }
+            PLk = PDk ,     QLk = QDk ,      ∀k ∈ N          (16)
+                                                                                  QLk − QDk = QLl − QDl = τ × Im{−ykl }
+must hold. If these equalities are replaced by the inequalities                                       max
+                                                                                  max{Plm , Pml } ≤ Plm   − τ × Re{ykl }
+
+            PLk ≥ PDk ,     QLk ≥ QDk ,      ∀k ∈ N          (17)          for some nonnegative number τ .
+                                                                       •   The dual of the above modified OPF problem can be
+then the optimal solutions λopt   k and γkopt corresponding to             obtained from the Dual OPF by incorporating the extra
+the dual of the modified OPF problem will both become                      constraint (19).
+nonnegative. On the other hand, the (k, l) ∈ L entry of                 • If optimal τ becomes zero, then the OPF and modified
+T (xopt , ropt ) can be obtained as                                        OPF problems will have the same solution, meaning that
+                                                                           the (k, l) entry of T (xopt , ropt ) is non-positive.
+                      Re{ykl } opt                                   Notice that the modified OPF problem defined above allows
+ Tkl (xopt , ropt ) = −        λkl + λopt   opt
+                                      kl + λk + λl
+                                                   opt 
+                         2                               (18)        the reactive load at bus k to be over-satisfied, but enforces extra
+                      Im{ykl } opt                                   consumption of both active and reactive loads at buses k, l and
+                               γk + γlopt − µopt    opt
+                                          
+                    +                        kl  − µkl
+                         2                                           reduces the maximum flow limit on line (k, l). Therefore, it
+With no loss of generality, assume that there exists no phase        is very likely to obtain τ opt = 0 due to these penalties for
+shifting transformer in the power system (for the analysis           load over-satisfaction (note that the imposed over-satisfaction
+presented next, one may need to replace every phase shifting         of active load often leads to more power loss). The above
+transformer with the model proposed in [35]). Due to the             modified OPF problem is defined to ensure the non-positivity
+particular models of transmission lines and transformers as          of only the (k, l) entry of T (xopt , ropt ). A similar modified
+well as the non-negativity of resistance and capacitance, the        OPF can be defined corresponding to all off-diagonal entries
+matrix Y has the following two properties:                           of T (xopt , ropt ).
+                                                                        So far, the reason why the off-diagonal entries of
+P1) The off-diagonal entries of the real part of Y are non-          T (xopt , ropt ) are expected to be non-positive is investigated.
+    positive.                                                        Having assumed the presence of this sign structure on
+P2) The off-diagonal entries of the imaginary part of Y are          T (xopt , ropt ), consider the matrix
+    nonnegative.                                                                                                                 
+                                                                                         T (xopt , ropt )   T̄ (xopt , ropt ) × ω
+It follows from these properties and the relation (18) that                                                                         (20)
+                                                                                     −T̄ (xopt , ropt ) × ω     T (xopt , ropt )
+the off-diagonal entries of T (xopt , ropt ) are non-positive if
+λopt   opt
+  k , γk   ≥ 0, ∀k ∈ N , or equivalently if the equality             for a given real number ω. As argued in the proof of Theo-
+load constraints (16) are replaced by the inequality load            rem 3, the smallest eigenvalue of the above matrix is repeated
+constraints (17). Unlike λopt           opt
+                            1 , ..., , λn that are expected to be    twice when ω = 0. Hence, there exists an interval [0, ω max ]
+all nonnegative, a few of γ1 , ..., , γnopt might become negative.
+                            opt
+                                                                     (where ω max > 0) such that the smallest eigenvalue of the
+Indeed, it is known that the injection of a negative reactive        matrix (20) is repeated twice for every ω belonging to this
+power to a bus might reduce the optimal generation cost,             interval. Now, note that if ω max > 1, then the zero-duality-
+especially when there exists a large capacitor bank at the same      gap condition given in Theorem 2 is satisfied. This happens
+bus.                                                                 whenever T̄ (xopt , ropt ) is sufficiently smaller than T (xopt , ropt )
+   Hence, the sufficient condition λopt        opt
+                                          k , γk   ≥ 0, ∀k ∈ N ,     with respect to a suitable measure on their entries. As can
+for guaranteeing a nice sign structure on T (xopt , ropt ) does      be justified intuitively and verified in simulations, this is the
+not always hold. Now, we wish to study a less conservative           case for practical systems operating at normal a condition,
+sufficient condition here. It follows from (18) that the off-        including the IEEE test systems.
+diagonal entries of T (xopt , ropt ) are non-positive if                It is noteworthy that Theorem 5 can be generalized to a
+                                                                     general network (with arbitrary constraints) to deduce that
+               Re{ykl } opt                opt                      there exists a large set for Y such that the ε-modified OPF
+                        λkl + λopt     opt
+                               kl + λk + λl
+                  2                                          (19)    problem has zero duality gap with respect to all network
+                 Im{ykl } opt                                        topologies Y in that region.
+                           γk + γlopt ≥ 0
+                                     
+               −
+                    2
+for every (k, l) ∈ L. This condition is satisfied for IEEE           D. Power Loss Minimization
+benchmark systems. The interpretation of this condition for             In this subsection, we consider the loss minimization prob-
+a single line (k, l) ∈ L is as follows:                              lem, as an important special case of the OPF problem. This
+  •   Define a modified OPF with the following active/reactive       corresponds to the assumption fk (PGk ) = PGk for every
+      load constraints                                               k ∈ G. Most of the results to be presented here can be extended
+                                                                     to a general OPF problem. With no loss of generality, assume
+         PLm = PDm ,       QLm = QDm ,       ∀m ∈ N \{k, l}          that Re{Y } has exactly one zero eigenvalue, implying that
+         PLm ≥ PDm ,       QLm ≥ QDm ,       ∀m ∈ {k, l}             (i) the graph associated with the resistive part of the network
+
+===== page 10 [pdftotext] =====
+                                                                                                                                     10
+
+
+
+is strongly connected [32], and (ii) every load modeled as a           The results of this section are attained using the following
+shunt admittance has no resistive part. Notice that the power        software tools:
+loss in a power system can be reduced by either increasing             • The MATLAB-based toolbox “YALMIP” (together with
+the voltage limits or decreasing the resistance of transmission           the solver “SEDUMI”) is used to solve the Dual OPF
+lines. The next lemma investigates an ideal case where the                problem (i.e. Optimization 4), which is an SDP prob-
+power loss is zero.                                                       lem [29].
+   Theorem 6: If the active power losses in the transmission           • The software toolbox “MATPOWER” is used to solve the
+lines were zero at optimality, then there would exist an optimal          OPF problem in Example 1 for the sake of comparison.
+dual point (xopt , ropt ) satisfying the relations                        The data for the IEEE benchmark systems analyzed
+    ropt = 0,    λopt           γkopt = µopt  opt   opt                   in this example is extracted from the library of this
+                  k = 1,                 k = λlm = µlm = 0
+                                                                          toolbox [30].
+for every k ∈ N and (l, m) ∈ L. Moreover, this dual solution           • The software toolbox “PSAT” is used to draw and analyze
+satisfies the zero-duality-gap condition (ii) given in Theorem 2.         the power networks given in Example 2 [31].
+Proof: Consider a specific point (x, r) defined as r = 0 and
+         λk = γ k = γ̄k = µk = µ̄k = λlm = µlm = 0                   A. Example 1: IEEE Benchmark Systems
+                
+                  0 if k ∈ G                                            Consider the OPF problems associated with IEEE systems
+         λ̄k :=
+                  1 otherwise                                        with 14, 30, 57, 118 and 300 buses, where
+for all k ∈ N and                                                       • There are constraints on the voltage magnitude, active
+                   P(l, m) ∈ L. It is straightforward to verify            power and reactive power at every bus as well as the
+that h(x, r) =       k∈N PDk . On the other hand, since the
+OPF problem is feasible and the total power loss is zero,                  apparent power at every line.
+the optimal objective value of the OPF problem is equal                 • The objective function is either the total generation cost
+
+to the total demand. This shows that the objective value of                or the power loss.
+the Dual problem at (x, r) is identical to the optimal value         In simulations, we observed that the necessary and sufficient
+of the OPF problem. Hence, to prove that (x, r) is a dual            zero-duality-gap condition (i) given in Theorem 2 is always
+solution, it suffices to show that (x, r) is a feasible point of     satisfied for all these systems. However, since the main algo-
+this optimization problem. To this end, it can be verified that      rithm proposed here is based on the sufficient zero-duality-
+                                                                     gap condition (ii) delineated in Theorem 2, we studied this
+            λk = 1,    γk = 0,     µk = 0,   ∀k ∈ N
+                                                                     condition for IEEE systems and noticed that the condition is
+and hence                                                            always satisfied after a small perturbation of Y , as discussed
+                            
+                                Re{Y }     0
+                                                                    below. Due to space restrictions, the details will be provided
+                A(x, r) =                                            only in one case: the loss minimization for the IEEE 30-bus
+                                  0      Re{Y }
+                                                                     system.
+Therefore, A(x, r) is positive semidefinite and has a zero              Consider the OPF problem for the IEEE 30-bus system,
+eigenvalue of multiplicity 2. This means that (xopt , ropt ) =       where the objective is to minimize the total power generated
+(x, r) is indeed a maximizer of Optimization 4 for which the         by the generators. When Optimization 4 is solved, the four
+sufficient zero-duality-gap condition (ii) given in Theorem 2        smallest eigenvalues of the matrix
+holds.                                                                                                                            
+   Theorem 6 studies a special type of the OPF problem in                        opt opt         T (xopt , ropt ) T̄ (xopt , ropt )
+                                                                             A(x , r ) =
+an ideal case of no power loss, and presents an optimal dual                                   −T̄ (xopt , ropt ) T (xopt , ropt )
+solution explicitly from which it can be seen that the duality       would be obtained as 0, 0, 0, 0. Since the number of zero
+gap is zero. However, active power loss is nonzero, but small,       eigenvalues is 4, condition (ii) in Theorem 2 is violated. To
+in practice. In that case, if the Lagrange multipliers λopt    opt
+                                                          k , γk     explore the underlying reason, consider the circuit of this
+       opt
+and µk are treated as nodal prices for active and reactive           power system that is depicted in Figure 2. The circuit is
+powers as well as voltage levels, it can be argued that the          composed of three regions connected to each other via some
+optimal point in a lossy case is likely to be close enough           transformers. This implies that if each line of the circuit is
+to the dual solution given in Theorem 6 so that the matrix           replaced by its resistive part, the resulting resistive graph
+A(xopt , ropt ) will still have two zero eigenvalues. In other       will not be connected (since the lines with transformers are
+words, it is expected that a small power loss in the transmission    assumed to have no resistive parts). Thus, the graph induced
+lines does not create a nonzero duality gap.                         by Re{Y } is not strongly connected. Although this does not
+                                                                     create a nonzero duality gap, it causes our sufficient duality-
+                V. P OWER S YSTEM E XAMPLES                          gap condition to be violated (see Corollary 2). This is an issue
+   This section illustrates our results through two examples.        with all the IEEE benchmark systems. This can be easily fixed
+Example 1 uses the IEEE benchmark systems archived at                by adding a little resistance to each transformer, say on the
+[22] to show the practicality of our result. Since the systems       order of 10−5 (per unit). After this modification to the real part
+analyzed in Example 1 are so large that the specific values of       of Y , the four smallest eigenvalues of the matrix A(xopt , ropt )
+the optimal solutions cannot be provided in the paper, some          turn out to be 0, 0, 0.0053, 0.0053; i.e. the zero eigenvalues
+smaller examples are analyzed in Example 2 with more details.        resulting from the non-connectivity of the resistive graph have
+
+===== page 11 [pdftotext] =====
+                                                                                                                                           11
+
+
+
+
+                                                                       (a)
+
+Fig. 2.   The circuit of the IEEE 30-bus system taken from [22].
+
+
+disappeared. Now, Condition (ii) in Theorem 2 is satisfied and               due to the relatively large-scale and non-convex nature of the
+therefore the vector of optimal voltages can be recovered using              OPF problem. However, no constraint violation have occurred
+the algorithm described after Theorem 2.                                     by solving the dual of the OPF problem due to its convexity.
+   To illustrate the discussions made in Section IV, we note
+that (for every k ∈ N )
+                                                                             B. Example 2: Small Systems
+          λopt
+           k ∈ [1, 1.1466],        γkopt ∈ [−0.0062, 0.1443],                   The IEEE test systems in the previous example operate in a
+          µopt
+           k ∈ [−0.0216, 0]                                                  normal condition at which the optimal bus voltages are close
+                                                                             to each other in both magnitude and phase. This example
+Hence
+        opt
+                                                                             illustrates that the sufficient zero-duality-gap condition (ii)
+    • λk ’s are all positive and around 1.                                   given in Theorem 2 is satisfied even in the absence of such
+        opt
+    • γk ’s are all but one nonnegative, and besides they are                a normal operation. Consider three distributed power systems,
+      around 0 .                                                             referred to as Systems 1, 2 and 3, depicted in Figure 3. Note
+         opt
+    • µk ’s are all very close to 0.                                         that Systems 2 and 3 are radial, while System 1 has a loop.
+Moreover, the maximum absolute values of the entries of                      The detailed specifications of these systems are provided in
+T̄ (xopt , ropt ) is 0.1844, whereas the average absolute values of          Table I in per unit for the voltage rating 400 kV and the
+the nonzero entries of T (xopt , ropt ) is 4.2583. This confirms the         power rating 100 MVA, in which z̄lm and ȳlm denote the
+claim in Section IV-C that the matrix T̄ (xopt , ropt ) is expected          series impedance and the shunt admittance of the Π model of
+to be negligible compared to T (xopt , ropt ).                               the transmission line connecting buses l, m ∈ {1, 2, 3, 4}. The
+    The computation on the IEEE benchmark examples were                      goal is to minimize the active power injected at slack bus 1
+all finished in a few seconds and the number of iterations                   while satisfying the constraints given in Table II.
+for each example was between 5 and 20. Note that although                       Optimization 4 is solved for each of these systems, and
+Optimization 4 is convex and there is no convergence problem                 it is observed that the zero-duality-gap condition derived in
+regardless of what initial point is used, the number of iterations           this work always holds. A globally optimal solution of the
+needed to converge mainly depends on the choice of starting                  OPF problem recovered from the solution of Optimization 4
+point. It is worth mentioning that when different algorithms                 is provided in Table III (Ploss and Qloss in the table represent
+implemented in Matpower were applied to these systems, some                  the total active and reactive power losses, respectively). It
+of the constraints are violated at the optimal point probably                is interesting to note that although different buses have very
+
+===== page 12 [pdftotext] =====
+                                                                                                                                      12
+
+
+                           TABLE I
+          PARAMETERS OF THE SYSTEMS GIVEN IN F IGURE 3.                                     VI. C ONCLUSIONS
+
+       Parameters      System 1        System 2          System 3
+                                                                          This paper is concerned with the optimal power flow (OPF)
+          z̄12       0.05 + 0.25i    0.1 + 0.5i        0.10 + 0.1i     problem that has been studied for about half a century and
+          z̄13       0.04 + 0.40i       None              None         is notorious for its high nonconvexity. We have derived the
+          z̄23       0.02 + 0.10i    0.02 + 0.20i      0.01 + 0.1i     dual of a reformulated OPF problem as a convex (SDP)
+          z̄14          None            None           0.01 + 0.2i
+          ȳ12          0.03i           0.01i             0.03i        optimization, which can be solved efficiently in polynomial
+          ȳ13          0.025i          None              None         time. We have provided a necessary and sufficient condition
+          ȳ23          0.01i           0.01i             0.01i        under which the duality gap is zero and hence a globally
+          ȳ14          None            None              0.01i
+                                                                       optimal solution to the OPF problem can be recovered from
+                                                                       a dual optimal solution. This condition is satisfied for the
+                            TABLE II                                   IEEE benchmark systems with 14, 30, 57, 118 and 300 buses.
+ C ONSTRAINTS TO BE SATISFIED FOR THE SYSTEMS GIVEN IN F IGURE 3.
+                                                                       Since this condition is hard to study, a sufficient zero-duality-
+       Constraints       System 1       System 2         System 3      gap condition is also proposed. We justify why this sufficient
+      PD2 + QD2 i      0.95 + 0.4i    0.7 + 0.02i      0.9 + 0.02i     condition might hold widely in practice. The main underlying
+      PD3 + QD3 i      0.9 + 0.6i     0.65 + 0.02i     0.6 + 0.02i     reasons for zero duality gap are (i) the particular modeling of
+      PD4 + QD4 i         None            None         0.9 + 0.02i
+        V1max              1.05           1.4               1
+                                                                       transmission lines and transformers, and (ii) the non-negativity
+                                                                       of physical quantities such as resistance and inductance.
+                                                                          As expected and already reported in [19], local-search
+                                                                       algorithms converge faster than SDP algorithms for solving
+disparate voltage magnitudes and phases, the duality gap is still      an OPF problem. However, the SDP problem derived here can
+zero. The optimal solution of Optimization 4 is summarized             be useful for addressing many problems such as: (i) finding
+in Table IV to demonstrate that the Lagrange multipliers               a globally optimal solution, (ii) verifying whether a locally
+corresponding to active and reactive power constraints are             optimal solution is globally optimal, (iii) solving emerging
+positive.                                                              optimization problems in smart grids where the existing local-
+   As another scenario, let the desired voltage magnitude at the       search algorithms may not work well [35], and (iv) identifying
+slack bus of System 1 be changed from 1.05 to 1. It can be             the number of solutions of a power flow problem. Note that the
+verified that the optimal value of Optimization 4 becomes +∞,          current SDP solvers cannot handle OPF problems with several
+which simply implies that the corresponding OPF problem is             thousand buses efficiently. However, the authors have observed
+infeasible.                                                            that those SDP problems can be reduced to second-order-cone
+   We repeated several hundred times this example by ran-              programs, which can be solved in less than a minute for OPF
+domly choosing the parameters of the systems given in Fig-             problems with as many as 10,000 buses. The details of this
+ure 3 over a wide range of values. In all these trials, the algo-      result and some other by-products of the convexification of
+rithm prescribed in Section III always found a globally optimal        the OPF problem are currently under study.
+solution of the OPF problem or detected its infeasibility.
+                                                                                         ACKNOWLEDGMENT
+                                TABLE III
+ PARAMETERS OF THE OPF PROBLEM RECOVERED FROM THE SOLUTION               The authors would like to gratefully acknowledge John C.
+                     OF O PTIMIZATION 4.                               Doyle for fruitful discussions on this topic. This research
+                                                                       was supported by ONR MURI N00014-08-1-0747 “Scalable,
+    Recovered        System 1          System 2            System 3
+    Parameters
+                                                                       Data-driven, and Provably-correct Analysis of Networks,”
+       V1
+         opt
+                     1.05∠0◦             1.4∠0◦             1∠0◦       ARO MURI W911NF-08-1-0233 “Tools for the Analysis
+       V2
+         opt
+                 0.71∠−20.11◦        1.10∠−25.73◦       0.78∠−10.58◦   and Design of Complex Multi-Scale Networks,” the Army’s
+         opt
+       V3        0.68∠−21.94◦        1.08∠−31.96◦       0.76∠−16.31◦   W911NF-09-D-0001 Institute for Collaborative Biotechnol-
+         opt
+       V4             None                None          0.95∠−10.82◦   ogy, and NSF NetSE grant CNS-0911041.
+         opt
+       Ploss         0.2193              0.1588             0.3877
+         opt
+       Qloss         1.2944              0.7744             0.5343
+                                                                                                 A PPENDIX
+
+                          TABLE IV                                     A. LMI and SDP Optimization Problems
+ L AGRANGE MULTIPLIERS OBTAINED BY SOLVING O PTIMIZATION 4 FOR            The area of convex optimization has seen remarkable
+                THE SYSTEMS GIVEN IN F IGURE 3.
+                                                                       progress in the past two decades, particularly in linear ma-
+       Lagrange Multipliers     System 1    System 2     System 3      trix inequalities (LMIs) and semidefinite programming (SDP)
+                opt
+              λ2                 1.3809      1.4028       1.7176       where the goal is to minimize a linear function subject to
+                opt
+              λ3                 1.4155      1.4917       1.7900       some LMIs [21], [23]. The book [24] describes several difficult
+                opt
+              λ4                  None        None        1.0207       control problems that can be cast as LMI/SDP problems. The
+                opt
+              γ2                 0.4391      0.2508       0.1764
+                opt                                                    recent advances in this field have been successfully applied
+              γ3                 0.4955      0.2633       0.1858
+              γ4
+                opt
+                                  None        None        0.0061
+                                                                       to different problems in other areas, e.g. circuit and com-
+              µ1
+                opt
+                                 0.0005      0.0001       0.0005       munications [25], [26]. A powerful property in semidefinite
+                                                                       programming is that the dual of an SDP optimization problem
+
+===== page 13 [pdftotext] =====
+                                                                                                                                                      13
+
+
+
+
+                                                                                                                                              Bus 3
+                                                                                                                           Bus 2
+
+
+
+
+                                         Bus3
+
+
+          Bus1
+                                                                                                              Bus 1
+                           Bus2                             Bus1             Bus2                                                     Bus 4
+                                                                                              Bus3
+
+
+
+
+                          (a)                                               (b)                                            (c)
+
+Fig. 3.    Figures (a), (b) and (c) depict Systems 1, 2 and 3 studied in Example 2, respectively.
+
+
+is again an SDP problem and, moreover, strong duality often                         holds; otherwise, only “weak duality” holds in which case the
+holds [23].                                                                         optimal value of the dual problem is only a lower bound on the
+   Given the scalar variables x1 , ..., xn , consider the problem                   optimal value of the original problem. One can refer to [21]
+of minimizing                                                                       and [23] for detailed discussions on LMI and SDP problems.
+                        a1 x1 + a2 x2 + · · · + an xn                    (21)       B. NP-Hardness of OPF Problems
+subject to the LMI constraint                                                         Consider two extremely special (artificial) instances of the
+                                                                                    OPF problem in the sequel:
+                       A0 + A1 x1 + · · · + An xn  0                    (22)         • Case 1: This case corresponds to the situation where G =
+
+where a1 , ..., an are given real numbers and A0 , ..., An are                          N and
+given symmetric matrices in Rn0 ×n0 , for some natural num-                                 fk (PGk ) = PGk ,                   ∀k ∈ G
+ber n0 . Notice that the objective of the above optimization                                  Vkmin = Vkmax = 1,                     ∀k ∈ N
+problem is a linear scalar function, and its constraint is an                                 Pkmin = Qmin = −∞,                      ∀k ∈ G
+                                                                                                       k
+LMI. The above optimization problem is referred to as an                                        max    max
+SDP problem, which belongs to the category of convex opti-                                    Pk    = Qk = +∞,                         ∀k ∈ G
+                                                                                               max     max      max
+mization problems that can be solved efficiently. To write the                                Slm  = Plm   = ∆Vlm   = ∞,              ∀(l, m) ∈ L
+Lagrangian for the above optimization problem, a Lagrange                               The above setting makes the power balance equations
+multiplier should be introduced for the inequality (22). In                             together with the constraints (1a), (1b), (1d), (1e) and
+light of the generalized Lagrangian theory, the multiplier                              (1f) all disappear. It is straightforward to verify that the
+associated with the inequality (22) is a symmetric matrix W in                          OPF problem reduces to
+Rn0 ×n0 that must be positive semidefinite. The corresponding                                                                X
+                                                                                                                                      !
+Lagrangian will be as follows:                                                                       min Re{V∗ Y V} +            PD k
+            n
+                          (               n
+                                                  !)                                                  V
+                                                                                                                             k∈N
+                                                                                                                                                (23)
+          X                             X
+                ak xk + Tr W A0 +           Ak xk                                                    s.t. |Vk | = 1,   ∀k ∈ N
+                 k=1                              k=1
+                                                                                        Note that if the lower limit Pkmin chosen as −∞ is
+Note that the trace operator performs the multiplication be-                            not allowed to be less than zero, one can choose PDk
+tween the expression in the constraint (22) and its associated                          sufficiently large so that the OPF problem again turns
+Lagrange multiplier. Minimizing the above Lagrangian over                               into the above optimization problem. Observe that the
+x1 , ..., xn and then maximizing the resulting term over W  0                          feasibility region of this OPF problem in the space of
+lead to the optimization problem of maximizing                                          V is a connected, but nonconvex, set (the nonconvexity
+                                  Tr{W A0 }                                             comes from the fact that this region encloses the origin
+                                                                                        but does not contain it).
+subject to the constraints                                                            • Case 2: This case is obtained from Case 1 by including
+                                                                                        the extra assumption Im{Y } = 0 and changing the limits
+                  Tr{W Ak } + ak = 0,           k = 1, 2, ..., n
+                                                                                        Qmin
+                                                                                          k    = −∞ and Qmax  k    = +∞ to Qmink   = Qmax
+                                                                                                                                        k   =0
+for a symmetric matrix variable W  0. This optimization                                for every k ∈ G. With no loss of generality, suppose that
+problem is the dual of the initial optimization problem formu-                          the voltage angle at bus 1 is equal to 0. Then, the OPF
+lated in (21) and (22). If some mild conditions (such as Slater’s                       problem can be written as
+conditions) hold, then the duality gap between the solutions
+                                                                                                                                !
+                                                                                                                       X
+                                                                                                                ∗
+of these two optimization problems becomes zero, meaning                                               min V Y V +         PD k
+that the optimal objective values obtained by these problems
+                                                                                                        V
+                                                                                                                       k∈N
+                                                                                                                                            (24)
+will be identical. In this case, it is said that “strong duality”                                     s.t. Vk ∈ {−1, 1},           ∀k ∈ N
+
+===== page 14 [pdftotext] =====
+                                                                                                                                      14
+
+
+
+     The feasibility region of this problem is a discrete set      (indeed, we do not yet know that rk0 = 1.) The Lagrangian for
+     with an exponential number of points in terms of n.           Optimization 1 can be written as (after some simplifications)
+The optimization problems given in (23) and (24) are both                                                 X
+                                                                           Tr A(x, r)XXT + h(x, r) +          (1 − rk0 )αk
+                                                                             
+NP-hard [33]. Hence, the OPF problem is NP-hard as well,
+                                                                                                               k∈G
+due to its special (artificial) Cases 1 and 2 being NP-hard.
+Note that although the NP-harness of the OPF problem was           To obtain the dual of Optimization 1, the Lagrangian should
+proved here by focusing on the voltage constraints, one can        first be minimized over X and αk ’s, and then be maximized
+come to the same conclusion by only considering the active         over the Lagrange multipliers. Observe that
+                                                                                                 0
+                                                                                                   
+or reactive constraints. Indeed, Lemma 1 presented earlier            • The minimum of 1 − rk αk over the variable αk is −∞
+in this work shows that these constraints introduce indefinite           unless rk0 = 1, in which case the minimum is zero.
+quadratic constraints, which again make the OPF problem NP-           • The minimum of the term
+hard [33].
+                                                                                             Tr A(x, r)XXT
+                                                                                               
+
+C. Proofs                                                                over X is −∞ unless A(x, r) is positive semidefinite, in
+  In this subsection, we prove Lemmas 1-2, Theorems 1-2                  which case the minimum is zero.
+and Corollary 1.                                                   The proof follows immediately from these observations. 
+                                                                      Proof of Part (ii) of Theorem 1: One can derive the
+  Proof of Lemma 1: In order to prove (2a), one can write:         dual of Optimization 3 by means of the standard procedure
+    Pk,inj = Re{Vk Ik∗ } = Re{V∗ ek e∗k I} = Re{V∗ Yk V}           outlined in Appendix A (see [21] and [24] for more details).
+                
+                   Re{Yk } −Im{Yk }
+                                                                  This leads to Optimization 4, where its variable W plays the
+           = XT                             X                      role of the Lagrange multiplier for the matrix constraint (8a)
+                   Im{Yk } Re{Yk }
+                                                                   in Optimization 3. The details are omitted for brevity. In
+                      Re{Yk + YkT } Im{YkT − Yk }
+                                                    
+             1
+           = XT                                        X           what follows, we will show that strong duality holds between
+             2        Im{Yk − YkT } Re{Yk + YkT }
+                                                                   Optimizations 3 and 4. Since these optimizations are both
+           = XT Yk X = Tr Yk XXT
+                            
+                                                                   semidefinite programs and hence convex, it suffices to prove
+The inequality (2b) can be derived similarly. On the other         that Optimization 4 has a finite optimal objective value and
+hand, the technique used above can be exploited to show that       a strictly feasible point (Slater’s condition). Since the OPF
+                                                                   problem is feasible and equivalent to Optimization 1, Opti-
+      ∗
+     Slm = Vl∗ (Vl ȳlm ) + Vl∗ (Vl − Vm ) ylm = VYlm V∗           mization 1 has a finite optimal value. Optimization 4 is its dual
+         = Tr Ylm XXT − Tr Ȳlm XXT i
+                                   
+                                                                   by Part (i) of Theorem 1, and is therefore upper bounded by
+                                                                   the finite optimal value of Optimization 1 (weak duality). To
+Inequalities (2c) and (2d) follow immediately from the above       show that Optimization 4 has a strictly feasible point, consider
+equality. The remaining inequalities in (2) can be proved          the point (x, r) given below
+similarly.                                                                 
+   Proof of Lemma 2: Assume that W opt is a rank-one                           ck1 + 1 if k ∈ G
+                                                                     λk =                             , λ̄k = 1, λlm = ε
+solution of Optimization 3. Write this matrix as Xopt (Xopt )T                    1      otherwise
+for some vector Xopt , and define Xopt         opt
+                                    1 and X2 in such a way           γ k = γ̄k = 1,
+                                     T
+that Xopt = (Xopt          (Xopt
+                       T         T
+                                    
+                     1 )       2 )     . It can be verified that                                                                    (25)
+                                                                     µk = 1,     µ̄k = 2,   µlm = 1,
+the matrix
+                                                                     rk1 = 0,   rk2 = 1,
+      1 opt opt T
+        X (X )                                                        1
+                                                                     rlm    4
+                                                                         = rlm    6
+                                                                               = rlm = 1,          2
+                                                                                                  rlm    3
+                                                                                                      = rlm    5
+                                                                                                            = rlm =0
+      2
+                                                          T
+         1 Xopt     ω1 − Xopt
+                                   opt
+                                     X1 ω1 − Xopt
+           
+                1         2   ω2                   2   ω2          for k ∈ N and (l, m) ∈ L, where ε is some positive number.
+      +         opt       opt
+         2 X1 ω2 + X2 ω1             Xopt
+                                       1 ω2 + X2 ω1
+                                                   opt
+                                                                   Then λk = γk = 0 and µk = 1. Now, observe that
+is a solution of Optimization 3 for every real numbers ω1             • The variable x whose entries are specified in (25) is
+
+and ω2 such that ω12 + ω22 = 1. The proof is completed by               strictly positive componentwise.
+noting that the above matrix has rank 2 for generic values of         • The relations
+                                                                                        1      2     3
+                                                                                                         
+(ω1 , ω2 ).                                                                              rlm rlm    rlm
+   Proof of Part (i) of Theorem 1: Consider the Lagrange                                rlm2   4     5  =I0
+                                                                                               rlm   rlm
+multipliers introduced before Optimization 4 with the only                                  3   5     6
+                                                                                          rlm rlm rlm
+difference that the multiplier                                                         
+                                                                                           1   rl1
+                                                                                                   
+                                                                                                     =I0
+                             1 rk1                                                        rl11 rl2
+                                   
+
+                            rk1 rk2                                      hold.
+given in (7) should be replaced by a general matrix                  •   We have
+                          0                                                                       X                 X
+                           rk rk1
+                                   
+                                                                                h(x, r) = I + ε             Ylm +             Mlm
+                           rk1 rk2                                                                (l,m)∈L           (l,m)∈L
+
+===== page 15 [pdftotext] =====
+                                                                                                                                                 15
+
+
+
+      Since Mlm is positive semidefinite, h(x, r) becomes              Optimization 3. In other words, Optimization 3 has a rank-
+      strictly positive definite for sufficiently small values of ε.   one solution, which makes the duality gap for Optimization 1
+In light of the above observations, (x, r) given in (25) is a          equal to zero (in light of Part (i) of Theorem 2).             
+strictly feasible point of Optimization 4 for an appropriate              Proof of Corollary 1: As can be deduced from  T   the proof
+value of ε. Hence, strong duality holds.                              of Part (ii) of Theorem 2, since X1T X2T             belongs to
+                                                                                                                                     T
+   Proof of Part (i) of Theorem 2: Recall that the following           the null space of A(x , r ), the vector X2 −X1T
+                                                                                               opt opt
+                                                                                                                      T
+properties hold for Optimizations 1–4:                                 is also is in the null space of the same matrix. Now, recall
+   • The optimal (objective) values of Optimizations 1 and             that Optimization 3 has a rank-one solution W opt that is
+      2 are the same, due to the equivalence between these             decomposable as Xopt (Xopt )T , where Xopt is a solution of
+      optimizations.                                                   Optimization 1. In light of the relation (26), Xopt belongs to
+   • The optimal values of Optimizations 3 and 4 are identical,        the null space of A(xopt , ropt ) and hence there exist two real
+      due to strong duality.                                           numbers ζ1 and ζ2 such that
+These properties yield that the duality gap for Optimization 1                                  
+                                                                                                   X1
+                                                                                                               
+                                                                                                                  −X2
+                                                                                                                        
+                                                                                        opt
+is equal to the difference between the optimal values of                              X = ζ1               + ζ2
+                                                                                                   X2              X1
+Optimizations 2 and 3. The proof is completed by noting that
+this difference is zero if and only if Optimization 3 has a            or equivalently
+rank-one solution.
+   Proof of Part (ii) of Theorem 2: Let W opt denote a solution                            Vopt = (ζ1 + ζ2 i)(X1 + X2 i)
+of Optimization 3. It follows from Part (ii) of Theorem 1 and          This completes the proof of Part (i) of Corollary 1. Part (ii) of
+the KKT conditions that                                                this corollary follows immediately from the proof of Part (ii)
+                    Tr A(xopt , ropt )W opt = 0                        of Theorem 2. The details are omitted for brevity.             
+                       
+                                                               (26)
+Denote the nonzero eigenvalues of W opt as ρ1 , ..., ρf and
+their associated unit eigenvectors as E1 , ..., Ef for some                                         R EFERENCES
+                                           Pf
+nonnegative integer f . By writing W opt as l=1 ρl El ElT , it          [1] J. A. Momoh, “Electric power system applications of optimization,”
+can be conduced from (26) and the positive semi-definiteness                Markel Dekker, New York, USA, 2001.
+                                                                        [2] J. Carpentier, “Contribution to the economic dispatch problem,” Bulletin
+of W opt and A(xopt , ropt ) that                                           Society Francaise Electriciens, vol. 3, no. 8, pp. 431-447, 1962.
+                                                                        [3] M. Huneault and F. D. Galiana, “A survey of the optimal power flow
+          A(xopt , ropt )El = 0,   ∀l ∈ {1, ..., f }                        literature,” IEEE Transactions on Power Systems, vol. 6, no. 2, pp. 762-
+                                                                            770, 1991.
+This implies that the orthogonal eigenvectors E1 , ..., Ef all          [4] G. L. Torres and V. H. Quintana, “Optimal power flow by a nonlinear
+belong to the null space of A(xopt , ropt ), which has dimension            complementarity method,” IEEE Transactions on Power Systems, vol.
+                                                                            15, no. 3, pp. 1028-1033, 2000.
+2. Hence, f is less than or equal to 2. On the other hand,              [5] H. Wang, C. E. Murillo-Sanchez, R. D. Zimmerman, and R. J. Thomas,
+if f = 1, then Optimization 3 has a rank-one solution and                   “On computational issues of market-based optimal power flow,” IEEE
+consequently the duality gap is zero for Optimization 1 (see                Transactions on Power Systems, vol. 22, no. 3, pp. 1185-1193, 2007.
+Part (i) of Theorem 2). Therefore, assume that f is equal to            [6] J. A. Momoh M. E. El-Hawary, and R. Adapa, “A review of selected
+                                                                            optimal power flow literature to 1993. Part I: Nonlinear and quadratic
+2. It can be shown that there exist two matrices T (x, r) and               programming approaches,” IEEE Transactions on Power Systems, vol.
+T̄ (x, r) such that                                                         14, no. 1, pp. 96-104, 1999.
+                                                                      [7] J. A. Momoh M. E. El-Hawary, and R. Adapa, “A review of selected
+                               T (x, r) T̄ (x, r)                           optimal power flow literature to 1993. Part II: Newton, linear program-
+               A(x, r) =                                       (27)         ming and interior point methods,” IEEE Transactions on Power Systems,
+                              −T̄ (x, r) T (x, r)
+                                                                            vol. 14, no. 1, pp. 105-111, 1999.
+                           T          T
+                                           T                           [8] K. S. Pandya and S. K. Joshi, “A survey of optimal power flow methods,”
+Decompose E1 as              E11 E12            for some vectors            Journal of Theoretical and Applied Information Technology, vol. 4, no.
+E11 ,E12 ∈ Rn . It can
+                      T   be  inferred   from   the above equation         5, pp. 450-458, 2008.
+that −E12   T
+                 E11T
+                          is in the null space of A(xopt , ropt ) as    [9] H. Wei, H. Sasaki, J. Kubokawa, and R. Yokoyama, “An interior point
+                                                                            nonlinear programming for optimal power flow problems with a novel
+well. Since this vector is orthogonal
+                                  T     to E1 , the vector E2 must         data structure,” IEEE Transactions on Power Systems, vol. 13, no. 3, pp.
+                       T      T
+be equal to ± −E12          E11      . Thus, one can write                  870-877, 1998.
+                                                                     [10] W. M. Lin, C. H. Huang, and T. S. Zhan, “A hybrid current-power
+                opt         E11  T                                         optimal power flow technique,” IEEE Transactions on Power Systems,
+                                                 T
+                                                    
+             W = ρ1                    E11 E12                              vol. 23, no. 1, pp. 177-185, 2008.
+                            E12                                        [11] Q. Y. Jiang, H. D. Chiang, C. X. Guo, and Y. J. Cao, “Power-current
+                                                             (28)
+                            −E12             T      T
+                                                                           hybrid rectangular formulation for interior-point optimal power flow,”
+                    + ρ2                 −E12      E11                      IET Generation, Transmission & Distribution, vol. 3, no. 8, pp. 748-
+                             E11                                            756, 2009.
+Consider now the rank-one matrix                                       [12] Q. Jiang, G. Geng, C. Guo, and Y. Cao, “An efficient implementation
+                                                                          of automatic differentiation in interior point optimal power flow,” IEEE
+                         E11  T               T
+                                                                           Transactions on Power Systems, vol. 25, no. 1, pp. 147-155, 2010.
+            (ρ1 + ρ2 )           E11          E12              (29)    [13] R. A. Jabr, “Radial distribution load flow using conic programming,”
+                         E12
+                                                                            IEEE Transactions on Power Systems, vol. 21, no. 3, pp. 1458-1459,
+Since W opt given in (28) satisfies the constraints of Optimiza-            2006.
+                                                                       [14] R. A. Jabr, “Optimal power flow using an extended conic quadratic
+tion 3 and also maximizes its objective function, it is easy to             formulation,” IEEE Transactions on Power Systems, vol. 23, no. 3, pp.
+verify that the rank-one matrix in (29) is also a solution of               1000-1008, 2008.
+
+===== page 16 [pdftotext] =====
+                                                                                                                                                           16
+
+
+
+[15] D. Gan, R. J. Thomas, and R. D. Zimmerman, “Stability-constrained                                   Javad Lavaei (SM’10) received the B.Sc. degree
+     optimal power flow,” IEEE Transactions on Power Systems, vol. 15, no.                               from Sharif University of Technology in 2003 and
+     2, pp. 535-540, 2000.                                                                               the M.A.Sc. degree from Concordia University in
+[16] H. R. Cai, C. Y. Chung, and K. P. Wong, “Application of differential                                2007, both in Electrical Engineering. He received
+     evolution algorithm for transient stability constrained optimal power                               the Ph.D. degree in Control and Dynamical Systems
+     flow,” IEEE Transactions on Power Systems, vol. 23, no. 2, pp. 719-                                 from California Institute of Technology in 2011. His
+     728, 2008.                                                                                          research interests lie in the area of control theory
+[17] K. Xie and Y. H. Song, “Dynamic optimal power flow by interior point                                and its applications in circuits, communications,
+     methods,” IEE Proceedings - Generation, Transmission and Distribution,                              networks, and energy systems.
+     vol. 148, no. 1, pp. 76-84, 2002.                                                                      Javad Lavaei has authored and co-authored more
+[18] Y. Xia and K. W. Chan, “Dynamic constrained optimal power flow using                                than 50 articles during his master’s and PhD stud-
+     semi-infinite programming,” IEEE Transactions on Power Systems, vol.        ies. He has won the Milton and Francis Clauser Doctoral Prize for the
+     21, no. 3, pp. 1455-1457, 2006.                                             best campus-wide Ph.D. thesis at Caltech. He has also won many other
+[19] X. Bai, H. Wei, K. Fujisawa and Y. Wang, “Semidefinite programming          awards including F. A. Gerard Prize, Governor General of Canada’s Gold
+     for optimal power flow problems,” International Journal of Electric         Medal, Northeastern Association of Graduate Schools Master’s Thesis Award,
+     Power & Energy Systems, vol. 30, no. 6-7, pp. 383-392, 2008.                Postgraduate Scholarship of Natural Sciences and Engineering Research
+[20] J. Lavaei, A. Babakhani, A. Hajimiri and J. C. Doyle, “Solving Large-       Council of Canada, and Silver Medal in the 1999 International Mathematical
+     Scale Linear Circuit Problems via Convex Optimization,” in Proceedings      Olympiad.
+     of the 48th IEEE Conference on Decision and Control, Shanghai, China,
+     2009.
+[21] S. Boyd and L. Vandenberghe, “Convex optimization,” Cambridge
+     University Press, 2004.
+[22] University of Washington, Power Systems Test Case Archive,
+     http://www.ee.washington.edu/research/pstca.
+[23] E. De Klerk, “Aspects of semidefinite programming: interior point
+     algorithms and selected applications,” Applied Optimization Series, Vol.
+     65, Kluwer Academic Publishers, 2002.
+[24] S. Boyd, LE Ghaoui, E. Feron and V. Balakrishnan, “Linear matrix
+     inequalities in system and control theory,” SIAM, Philadelphia, PA, 1994.
+[25] L. Vandenberghe, S. Boyd and A. E. Gamal, “Optimizing dominant time
+     constant in RC circuits,” IEEE Transactions on Computer-Aided Design
+     of Integrated Circuits and Systems, vol. 17, no. 2, pp. 110-125, 1998.
+[26] J. Lavaei, A. Babakhani, A. Hajimiri and J. C. Doyle, “Programmable
+     antenna design using convex optimization,” in 19th International Sym-
+     posium on Mathematical Theory of Networks and Systems, Budapest,
+     Hungary, 2010.
+[27] B. Recht, M. Fazel and P. A. Parrilo, “Guaranteed minimum
+     rank solutions to linear matrix equations via nuclear norm
+     minimization,” to appear in SIAM Review (available online at                                         Steven H. Low (F’08) received the B.S. degree from
+     http://pages.cs.wisc.edu/∼brecht/publications.html).                                                 Cornell University, Ithaca, NY, and the Ph.D. degree
+[28] H. Wolkowitz, R. Saigal, and L. Vandenberghe, editors, “Handbook of                                  from the University of California, Berkeley, both in
+     semidefinite programming: theory, algorithms and applications,” Kluwer,                              electrical engineering.
+     2000.                                                                                                   He is a Professor with the Computing & Math-
+[29] J. Löfberg, “A toolbox for modeling and optimization in MATLAB,” in                                 ematical Sciences and Electrical Engineering de-
+     Proceedings of the CACSD Conference, Taipei, Taiwan, 2004.                                           partments at California Institute of Technology,
+[30] R. D. Zimmerman, C. E. Murillo-Sánchez, and R. J. Thomas, “MAT-                                     Pasadena, and hold guest faculty position with the
+     POWER’s extensible optimal power flow architecture,” IEEE Power and                                  Swinbourne University, Australia and Shanghai Jiao-
+     Energy Society General Meeting, 2009.                                                                tong University, China. Prior to that, he was with
+[31] F. Milano, “An open source power system analysis toolbox,” IEEE                                      AT&T Bell Laboratories, Murray Hill, NJ, and the
+     Transactions on Power Systems, vol. 20, no. 3, pp. 1199-1206, 2005.         University of Melbourne, Melbourne, Australia.
+[32] C. Godsil and G. Royle, “Algebraic graph theory,” volume 207 of                Prof. Low was a co-recipient of the IEEE Bennett Prize Paper Award in
+     Graduate Texts in Mathematics. Springer, 2001.                              1997 and the 1996 R&D 100 Award. He was a member of the Networking
+[33] T. F. González, “Handbook of approximation algorithms and metaheuris-      and Information Technology Technical Advisory Group for the US President’s
+     tistics,” Chapman & Hall/CRC Computer & Information Science Series,         Council of Advisors on Science and Technology (PCAST) in 2006. He was on
+     2007.                                                                       the Editorial Board of the IEEE/ACM TRANSACTIONS ON NETWORK-
+[34] R. A. Jabr, A. H. Coonick and B. J. Cory, “A primal-dual interior           ING, IEEE Trans on Automatic Control, ACM Computing Surveys, and
+     point method for optimal power flow dispatching,” IEEE Transactions         the Computer Networks Journal. He is currently on the editorial boards of
+     on Power Systems, vol. 17, no. 3, pp. 654-662, 2002.                        Foundations and Trends in Networking and is a Senior Editor of the IEEE
+[35] J. Lavaei, “Zero duality gap for classical OPF problem convexifies          JOURNAL ON SELECTED AREAS IN COMMUNICATION.
+     fundamental nonlinear power problems,” in Proceedings of the 2011
+     American Control Conference, 2011.

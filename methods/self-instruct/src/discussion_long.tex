@@ -1,0 +1,79 @@
+\section{Discussion and Limitation}
+
+\subsection{Why does \name{} work?}
+It is worthwhile to  reflect on the role that high-quality human feedback plays 
+% the fundamentals that have  
+in enabling the recent successes on instruction-tuning LMs~\cite{mishra2022cross,wang2022benchmarking,wei2022finetuned,sanh2022multitask,ouyang2022training}. 
+% Fundamentally what do these models learn from observing human-annotated instructions? 
+Here are two extreme hypotheses: 
+
+\newcommand{\subscript}[2]{$#1 _ #2$}
+\begin{enumerate}[label=(\subscript{H}{{\arabic*}})]
+    \item  \emph{Human feedback} is a \emph{necessary and indispensable} aspect of instruction-tuning as LMs need to learn about issues that were not quite learned during pre-training. 
+    % LMs learn about tasks and how to address them from human feedback. 
+    % In other words, models learn about aspects of language that is not quite learned during pre-training and hence instruction-tuning with human-feedback is an indispensable step.   
+    \item  \emph{Human feedback} is an \emph{optional} aspect of instruction-tuning as LMs are already quite familiar with instructions  from their pre-training. Observing the human feedback is merely a lightweight process for aligning their pre-training distribution/objective which might be replaceable with a different process. 
+\end{enumerate}
+While the reality probably lies somewhere in between these two extremes, we conjecture 
+% \nascomment{I think you should use the verb `conjecture' -- hypothesize suggests that you're going to carry out an experiment to test it, which you don't do} 
+that it is closer to \subscript{H}{2}, particularly for larger models.
+This intuition, that LMs already know much about language instructions, is a key motivation for \name{} and is also supported by its  empirical success.
+
+
+\subsection{Broader Impact}
+
+Beyond the immediate focus of this paper, we believe that \name{} may help bring more transparency to what happens ``behind the scenes'' of widely-used instruction-tuned models like \gptinstruct{}. 
+% \nascomment{rest of this paragraph is too wordy and repetitive.  rework to make the point concisely.} \alisa{took a stab at it}
+% The parameters of these models and their training data remain hidden, limiting research progress that might otherwise prosper.
+% Unfortunately, such industrial models remain behind the API walls as their datasets are not released, and hence there is little understanding of their constructions. There is no doubt that such a lack of transparency is not conducive to productive research progress.
+% Now the burden falls on the shoulders of academia to better understand the source of success in these models and strive for even better, yet open, models.
+Unfortunately, such industrial models remain behind the API walls as their datasets are not released, and hence there is little understanding of their constructions and why they demonstrate impressive capabilities.
+% These industrial models remain behind the API walls and their datasets are not released. 
+% There is no doubt that such lack of transparency is not conducive to productive research progress.
+The burden now falls on academia to better understand the source of success in these models and strive for better -- yet open -- models. We believe our findings in this paper demonstrate the importance of diverse instruction data, and our large synthetic dataset can be the first step toward higher-quality data for building better instruction-following models.
+
+
+% Better understanding various generations of GPT3Instruct 
+% \todo{Discuss how instructGPT is trained - private user data and a lot of annotations blabla}
+% \todo{Want to argue that we're isolating the algorithmic contribution from data contribution.} \yizhong{rewrote, check?}
+
+
+\daniel{How about we turn the following heading into a "section" on limitations, in which case it would not count toward 8-pages?} \yizhong{Yes, I think we can remove section 8.1 and 8.2 for ACL submission?}
+\subsection{Limitations of \name}
+Here, we discuss some limitations of this work to inspire future research in this direction.  
+
+\paragraph{Tail phenomena.} 
+\name{} depends on LMs, and it will inherit all the limitations that carry over with LMs. 
+As recent studies have shown~\cite{razeghi2022impact,kandpal2022large},  \emph{tail phenomena} pose a serious challenge to the success of LMs. In other words, LMs' largest gains correspond to the frequent uses of languages (head of the language use distribution), and there are minimal gains in the low-frequency contexts. 
+Similarly, in the context of this work, it would not be surprising if the majority of the gains by \name{} are skewed toward 
+% popular \nascomment{I don't understand what makes a task  or instructions ``popular'' so I don't know what this means} 
+tasks or instructions that present more frequently in the pre-training corpus. 
+As a consequence, the approach might show brittleness with respect to uncommon and creative instructions.
+
+
+
+\paragraph{Dependence on large models.} 
+Because of \name's dependence on the inductive biases extracted from LMs, it might work best for larger models. 
+If true, this may create barriers to access for those who may not have large computing resources. 
+We hope future studies will carefully study the gains as a function of model size or various other parameters. 
+It is worthwhile to note that instruction-tuning with human annotation also suffers from a similar limitation: gains of instruction-tuning are higher for larger model~\cite{wei2022finetuned}. 
+% \daniel{Note: similar issue with human annotations }
+
+\paragraph{Reinforcing LM biases.}
+% It is very likely that A point of concern for the authors is whether \name{} 
+% \nascomment{I don't understand what this sentence is trying to say.} The idea enabling \name{} is about iterative amplification of LM's inductive biases  \nascomment{ you seem to be mixing up ``inductive bias'' with stereotype kinds of biases.  don't do that} that pertain to instruction-following. 
+A point of concern for the authors is the unintended consequences of this iterative algorithm, such as the amplification of problematic social biases (stereotypes or slurs about genders, races, etc.). 
+Relatedly, one observed challenge in this process is the algorithm's difficulty in producing balanced labels, which reflected models' prior biases. 
+We hope future work will hash out such details to better understand the pros and cons of the approach. 
+
+
+ % \paragraph{Acceptability to LM poisoning.}
+
+% \begin{itemize}
+    % \item Some kills can never be learned
+    % \item Some wrong behaviors are reinforced. does it reinforce biases?  
+    % \item Might only work with large models?
+    % \item Difficulty in generating datasets with balanced labels
+    % \item Tail phenomena 
+    % \item Obviously "there is no free lunch"; what is the catch?
+% \end{itemize}

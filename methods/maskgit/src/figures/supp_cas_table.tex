@@ -1,0 +1,59 @@
+\newcolumntype{N}{@{}m{0pt}@{}}
+\setlength{\tabcolsep}{2.5pt}
+\begin{table}[!th]
+\small
+    \centering
+    \resizebox{.93\linewidth}{!}{
+    \begin{tabular}{lc ccc ccc }
+    \toprule
+     {Model} & 
+     &  {Prec}  $\uparrow$ & {Rec}   $\uparrow$ &
+     & \multicolumn{2}{c}{{{CAS} $\times 100$} $\uparrow$}  
+     \\
+     \cline{6-7}
+    & &&& &{{Top-1 (73.1)}} & {{Top-5 (91.5)}} \\
+   % \textbf{ImageNet 256$\times$256}  &&& &&& &
+   %\\[-2pt]
+    \midrule
+     
+    BigGAN-deep~\cite{biggan}  & %, 1.0 trunc. &
+    & \textbf{0.82} & 0.27 &
+    & 42.65 &65.92 
+    \\
+    VQ-GAN$^\ast$ &
+    & 0.61 & 0.47 &
+    & 47.50 & 68.90
+    \\
+    \bfseries{\model (Ours)} &
+    & 0.78 & \bfseries{0.50} &
+   & \bfseries{58.20} & \bfseries{79.65} 
+
+    \\
+    % \textbf{ImageNet 512$\times$512} &&& &&& &\\[-2pt]
+    % \midrule
+    
+    %  BigGAN-deep~\cite{biggan} & 
+    %  & \textbf{0.88} & 0.29 &
+    %  &44.02&68.22
+    %  \\
+    %  VQGAN$^\ast$ &
+    %  & 0.73 & 0.31 &
+    %   &51.29&74.24 \\
+      
+    %  \bfseries{\model (Ours)} & 
+    %  &  0.78 & 0.50 &
+    %  &63.43&84.79 \\
+    %  % \bfseries{Ours}, 0.5 RS & ? & ? & &  \\
+    \bottomrule
+    
+    \end{tabular}
+    }
+    \vspace{-1mm}
+    \caption{More quantitative comparison with BigGAN-deep and our baseline VQGAN on ImageNet 256$\times$256.
+    \footnotesize{ $^\ast$ denotes the model we train with the same architecture and setup with ours.} 
+    }
+    \vspace{-5mm}
+    \label{tab:supp_cas}
+    % On average 10-15ms per step
+
+\end{table}

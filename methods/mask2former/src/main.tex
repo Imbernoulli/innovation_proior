@@ -1,0 +1,132 @@
+
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\usepackage[pagenumbers]{cvpr} %
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{makecell}
+\usepackage[export]{adjustbox}
+\usepackage[normalem]{ulem}
+\usepackage{textpos}  %
+
+
+\usepackage{tabulary,multirow,overpic,xcolor,subfloat}
+\usepackage[pagebackref=false, breaklinks=true, letterpaper=true, colorlinks,
+            citecolor=citecolor, linkcolor=linkcolor, bookmarks=false]{hyperref}
+\definecolor{citecolor}{HTML}{0071BC}
+\definecolor{linkcolor}{HTML}{ED1C24}
+
+\newcommand{\bd}[1]{\textbf{#1}}
+\newcommand{\app}{\raise.17ex\hbox{$\scriptstyle\sim$}}
+\newcommand{\ncdot}{{\mkern 0mu\cdot\mkern 0mu}}
+\def\x{\times}
+\newcolumntype{x}[1]{>{\centering\arraybackslash}p{#1pt}}
+\newcolumntype{y}[1]{>{\raggedright\arraybackslash}p{#1pt}}
+\newcommand{\dt}[1]{\fontsize{5pt}{0.1em}\selectfont (#1)}
+\newlength\savewidth\newcommand\shline{\noalign{\global\savewidth\arrayrulewidth
+  \global\arrayrulewidth 1pt}\hline\noalign{\global\arrayrulewidth\savewidth}}
+\newcommand{\tablestyle}[2]{\setlength{\tabcolsep}{#1}\renewcommand{\arraystretch}{#2}\centering\footnotesize}
+\makeatletter\renewcommand\paragraph{\@startsection{paragraph}{4}{\z@}
+  {.5em \@plus1ex \@minus.2ex}{-.5em}{\normalfont\normalsize\bfseries}}\makeatother
+
+\newcommand\blfootnote[1]{\begingroup\renewcommand\thefootnote{}\footnote{#1}\addtocounter{footnote}{-1}\endgroup}
+
+\DeclareMathAlphabet\mathbfcal{OMS}{cmsy}{b}{n}
+
+\newcommand{\std}[1]{\fontsize{5pt}{0.1em}\selectfont #1}
+\definecolor{Gray}{gray}{0.5}
+\newcommand{\demph}[1]{\textcolor{Gray}{#1}}
+
+\newcommand{\modelname}{Mask2Former\xspace}
+
+\newcommand{\modelnamelong}{Masked-attention Mask Transformer\xspace}
+\newcommand{\sota}[0]{state-of-the-art\xspace}
+
+\newcommand{\rg}[1]{{\color{red} R: #1}}
+\newcommand{\im}[1]{{\color{magenta} I: #1}}
+\newcommand{\rgedit}[1]{{\color{pink}#1}}
+\newcommand{\todo}[1]{{\color{red} TODO: #1}}
+
+
+\usepackage[capitalize]{cleveref}
+\crefname{section}{Sec.}{Secs.}
+\Crefname{section}{Section}{Sections}
+\Crefname{table}{Table}{Tables}
+\crefname{table}{Tab.}{Tabs.}
+
+\newcommand{\figref}[1]{Figure~\ref{#1}}
+\newcommand{\secref}[1]{Section~\ref{#1}}
+\newcommand{\tabref}[1]{Table~\ref{#1}}
+\newcommand{\appref}[1]{Appendix~\ref{#1}}
+
+
+\def\cvprPaperID{*****}
+\def\confName{CVPR}
+\def\confYear{2022}
+
+\crefname{section}{\S}{\S\S}
+\crefname{subsection}{\S}{\S\S}
+\crefformat{table}{Table~#2#1#3}
+\crefformat{figure}{Figure~#2#1#3}
+\crefformat{equation}{Equation~(#2#1#3)}
+\crefformat{algorithm}{Algorithm~#2#1#3}
+\crefformat{appendix}{Appendix~#2#1#3}
+
+\newcommand{\authorskip}{\hspace{2.5mm}}
+
+\begin{document}
+
+
+
+
+
+\title{\Large \modelnamelong for Universal Image Segmentation}
+
+
+
+
+\author{
+ Bowen Cheng$^{1,2}$\thanks{Work done during an internship at Facebook AI Research.} \authorskip Ishan Misra$^1$ \authorskip Alexander G. Schwing$^2$ \authorskip
+ Alexander Kirillov$^1$ \authorskip Rohit Girdhar$^1$ \\
+ $^1$Facebook AI Research (FAIR) \authorskip $^2$University of Illinois at Urbana-Champaign (UIUC) \\
+{\small \url{https://bowenc0221.github.io/mask2former}}
+}
+
+\maketitle
+
+\input{sections/abs}
+
+
+\input{sections/intro}
+\input{sections/relwork}
+\input{sections/approach}
+\input{sections/expts}
+\input{sections/concl}
+
+{
+\footnotesize
+{\bf \noindent Ethical considerations:} 
+While our technical innovations do not appear to have any inherent biases, the models trained with our approach on real-world datasets should undergo ethical review to ensure the predictions do not propagate problematic stereotypes, and the approach is not used for applications including but not limited to illegal surveillance.
+
+\noindent\textbf{Acknowledgments:} Thanks to Nicolas Carion and Xingyi Zhou for helpful feedback. BC and AS are supported in part by NSF \#1718221, 2008387, 2045586, 2106825, MRI \#1725729, NIFA 2020-67021-32799 and Cisco Systems Inc.\ (CG 1377144 - thanks for access to Arcetri).
+}
+
+{\small
+\bibliographystyle{ieee_fullname}
+\bibliography{refs}
+}
+
+
+\clearpage
+\appendix
+\begin{center}{\bf \Large Appendix}\end{center}\vspace{-2mm}
+\renewcommand{\thetable}{\Roman{table}}
+\renewcommand{\thefigure}{\Roman{figure}}
+\setcounter{table}{0}
+\setcounter{figure}{0}
+\input{sections/appendix}
+
+\end{document}

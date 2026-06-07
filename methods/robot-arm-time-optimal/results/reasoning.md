@@ -1,0 +1,182 @@
+OK, let me set up the actual problem before reaching for any machinery. A planner has handed me a path for a robot arm — a curve q(s) through configuration space, s∈[0, s_end], already collision-free, already respecting the workspace. What it didn't give me is *when* the arm is at each point of that curve. The geometry is frozen. The only thing I get to choose is the timing: an increasing scalar function s(t) telling me where along the curve the robot sits at time t, with the realized motion being q(s(t)). And I want the timing that finishes fastest, because this arm runs the same cycle thousands of times a day and seconds are productivity — but the motors have torque ceilings, and if I rush the timing somewhere a motor saturates and the path stops being physically followable.
+
+So the object I'm optimizing is a single scalar function of time. That's already a huge simplification over generic trajectory optimization: I'm not searching over curves in ℝⁿ, the curve is given. Let me see how far that simplification carries.
+
+The dynamics of the arm are M(q) q̈ + q̇ᵀC(q) q̇ + g(q) = τ — inertia times acceleration, plus the velocity-quadratic Coriolis/centrifugal term, plus gravity, equals the joint torques. The actuators constrain τ: each joint has τ_minᵢ ≤ τᵢ ≤ τ_maxᵢ. That's the whole feasibility story. Now, q is a function of s, and s is a function of t. Chain rule, writing ′ for d/ds and ˙ for d/dt:
+
+  q̇ = q′(s) ṡ,
+  q̈ = q′(s) s̈ + q″(s) ṡ².
+
+The first is just the chain rule; the second differentiates q′(s)ṡ in time — q′ picks up another ṡ giving q″ṡ², and ṡ differentiates to s̈ giving q′s̈. So the joint velocity and acceleration are completely determined by three scalars — s, ṡ, s̈ — together with the *fixed* geometric quantities q′(s) and q″(s). The whole robot's motion, at any instant, is pinned down by where it is on the path and how fast and how hard it's accelerating *along* the path.
+
+Let me push this into the dynamics and see what the torque constraint becomes. Substitute:
+
+  τ = M(q) [q′ s̈ + q″ ṡ²] + [q′ ṡ]ᵀ C(q) [q′ ṡ] + g(q)
+    = [M q′] s̈ + [M q″ + q′ᵀ C q′] ṡ² + g(q).
+
+Stare at that. Group it:
+
+  τ = a(s) s̈ + b(s) ṡ² + c(s),  where  a = M q′,  b = M q″ + q′ᵀC q′,  c = g.
+
+The torque is **linear in s̈ and linear in ṡ²**. That's the structural windfall. Everything nonlinear — the inertia matrix, the Coriolis tensor — got absorbed into the coefficient functions a(s), b(s), c(s), which depend only on the (fixed) path. So if I imagine the per-position vectors a(s), b(s), c(s) precomputed along the path, the torque limits become, at each s,
+
+  τ_min ≤ a(s) s̈ + b(s) ṡ² + c(s) ≤ τ_max.
+
+Two-sided, but I can stack the lower and upper bound into a single set of one-sided rows. Write each scalar constraint row as a_i(s) s̈ + b_i(s) ṡ² + c_i(s) ≤ 0 (with a_i = ±Mq′ etc.). Velocity bounds and acceleration bounds drop into the same template — they're just constraints linear in (s̈, ṡ²) too. So the entire dynamic feasibility of the timing reduces to a family of linear inequalities in two unknowns, s̈ and ṡ², parameterized by s. That feels like the whole problem is now two-dimensional.
+
+Let me make that geometric. The natural state is (s, ṡ) — position and velocity along the path. A *velocity profile* ṡ(s) over s∈[0, s_end] is exactly a candidate timing. And the cost? Traversal time is
+
+  T = ∫₀^T dt = ∫₀^{s_end} (dt/ds) ds = ∫₀^{s_end} ds/ṡ,
+
+since dt/ds = 1/ṡ. Now look at what that integral wants: 1/ṡ is decreasing in ṡ, so to make T small I want ṡ as *large as possible* — and crucially there's no coupling across positions. Raising the profile at one s only helps; it never forces me to lower it elsewhere. So the time-optimal timing is: at every single path position, drive ṡ as high as the constraints allow. The minimum-time problem just collapsed into "find the highest feasible velocity profile." That's the key — the cost stops mattering as an integral; what matters is the feasible region in the (s, ṡ) plane and pushing to its ceiling.
+
+So what's the ceiling? Fix s, and fix a velocity ṡ — equivalently fix ṡ². Then each constraint row a_i s̈ + b_i ṡ² + c_i ≤ 0 is a linear inequality in the single remaining unknown s̈. Solve it:
+
+  if a_i > 0:  s̈ ≤ (−c_i − b_i ṡ²)/a_i  — an *upper* bound on s̈; call it β_i,
+  if a_i < 0:  s̈ ≥ (−c_i − b_i ṡ²)/a_i  — a *lower* bound on s̈; call it α_i,
+  if a_i = 0:  s̈ disappears — the row becomes a pure bound on ṡ² (a "zero-inertia" situation; flag it, come back to it).
+
+Take the tightest over all rows: β(s, ṡ) = min over the upper bounds, α(s, ṡ) = max over the lower bounds. Then a path acceleration s̈ is feasible at (s, ṡ) iff α(s, ṡ) ≤ s̈ ≤ β(s, ṡ). Two vector fields on the phase plane: α is the maximum-deceleration field, β the maximum-acceleration field. Beautiful — so at each point of the plane I have an interval of admissible path accelerations.
+
+Now here's the thing about that interval. The bounds α_i and β_i each carry a +b_i ṡ²/(∓a_i) term, so as ṡ grows the upper bounds β_i come *down* and the lower bounds α_i go *up* — the admissible interval [α, β] narrows as I go faster. At some critical velocity it pinches shut: α(s, ṡ) = β(s, ṡ), no feasible s̈ left, and above that no feasible profile at all. The locus of those pinch velocities over s is a curve — the highest dynamically feasible speed at each position. Every valid velocity profile must stay on or below it. I don't need to "discover" this by experiment; it falls straight out of the algebra — the interval width is an affine-in-ṡ² thing that hits zero. This is the Maximum Velocity Curve, the MVC. So my feasible region is: under the MVC, and at each point inside it, s̈ ∈ [α, β].
+
+Given the cost analysis — push ṡ up everywhere — the optimal profile wants to hug the MVC. But it can't just *be* the MVC, because the MVC isn't itself a dynamically achievable trajectory: at a point of the MVC the only feasible s̈ is the single pinched value, which generally isn't the s̈ that keeps you *on* the MVC. So the optimal profile is some envelope of dynamically integrable arcs sitting as high under the MVC as possible.
+
+What does optimal control say about the shape? I'm minimizing ∫ds/ṡ with s̈ as the control, bounded in [α, β]. The cost is monotone in ṡ and the control enters linearly through the dynamics ṡ' = s̈/ṡ (writing the profile as a function of s: d(ṡ)/ds · ṡ = s̈). A minimum-time problem with control appearing linearly and bounded in an interval — that's the textbook recipe for a **bang-bang** solution: the optimal control sits on a *boundary* of [α, β] almost everywhere, either β (accelerate as hard as possible) or α (decelerate as hard as possible), switching between them at isolated points. Intuitively: blast forward at β until you're about to overshoot the MVC, then you must already have been decelerating at α to have skimmed under it — so the profile is a sequence of "accelerate maximally, then decelerate maximally" arcs kissing the MVC from below, joined at switch points.
+
+Let me make the construction concrete, the way you'd actually integrate it. Start at (0, ṡ_beg) and integrate the β field forward — maximum acceleration — climbing. You climb until you'd cross the MVC. You can't cross it, so somewhere before that you needed to be on an α (decelerating) arc that brings you tangent to the MVC. Concretely the algorithm: find the α→β switch points sitting on the MVC; from each, integrate *backward* along α until it intersects the forward β-profile (that intersection is a β→α switch point), and integrate *forward* along β until the next event. Stitch β-arc, α-arc, β-arc, … and cap the ends with the boundary velocities (forward β from the start, backward α from the goal). The result is the unique time-optimal profile. This is the classical numerical-integration picture, and it's exact.
+
+But now I hit the part that makes this approach miserable in practice, and I want to feel exactly where it breaks. The whole construction hinges on *finding the switch points* and on the α, β fields being well-behaved. Two problems.
+
+First, switch points. They come in three flavors on the MVC — where the MVC is discontinuous, where it's continuous but has a kink (non-differentiable), and "tangent" points where the field is tangent to the MVC. Finding them means building the MVC everywhere and analyzing its differentiability — doable, but finicky.
+
+Second, and worse: the zero-inertia points I flagged. Where some constraint's a_i(s) = 0, that row stops bounding s̈ and instead bounds ṡ². These are common — they're the dominant kind of switch point in real arm motions. The trouble is that α_i and β_i both have a_i in the denominator: (−c_i − b_i ṡ²)/a_i. As a_i → 0 the field *diverges*. So right where I most need to start an integration — at a singular switch point — the acceleration to use is a 0/0 ambiguity, and the limiting value depends on the *direction* you approach the point from, because the α-profiles fan out divergently around it. Pick the value slightly wrong and the integrated profile oscillates, crosses the MVC or the ṡ=0 line, and the algorithm spuriously declares failure. This is, by every account, the number-one reason numerical-integration TOPP implementations fail. People have built careful machinery to characterize which zero-inertia points are genuine singularities and to compute the correct singular acceleration (a specially chosen slope so the α-arc's tangent points at the singular point) — and it works, but the resulting code is thousands of lines and still has edge cases. Plus handling direct velocity bounds adds a *second* MVC with its own "trap points" and its own numerical headaches.
+
+So the fast approach is fragile and hard. Let me look at the opposite pole. There's a trick I half-used already: set x := ṡ². Then in the constraint a_i s̈ + b_i ṡ² + c_i ≤ 0, the ṡ² is *linear* in x, and s̈ is linear too. If I also discretize the path and treat the path accelerations and the x-values at grid points as my unknowns, every constraint is linear in those unknowns. And T = ∫ds/√x is a *convex* function of the x's. So I could write the entire TOPP as one big convex program — minimize the convex time over all grid variables at once, subject to all the linear constraints — and just call a convex solver. No switch points, no singular-acceleration special-casing, robust, simple, 100% success. The catch is size: with N grid points I have O(N) variables and O(mN) inequalities (m constraints per point), and solving that monolith — even as a sequence of LPs — costs about O(KmN³). An order of magnitude slower than numerical integration. Fine for offline, but I wanted this to run online, inside a planner that calls it thousands of times. Too slow.
+
+So I'm stuck between fast-but-fragile and robust-but-slow, and I want both. Let me go back and stare at the *discretized* structure, because there's something I glossed over.
+
+Discretize s into N segments with grid points s_0=0, …, s_N=s_end. On segment [s_i, s_{i+1}], let the path acceleration u_i = s̈ be constant, and let x_i = ṡ_i² be the squared velocity at grid point i. How does x evolve? From ṡ dṡ = s̈ ds (that's just d(ṡ²)/ds = 2s̈), with s̈ constant over the segment, ṡ² is *linear* in s along the segment, so
+
+  x_{i+1} = x_i + 2 Δ_i u_i,  Δ_i = s_{i+1} − s_i.
+
+That is a **linear** state-update — exactly linear, no approximation in the relation itself. The state x_i evolves under control u_i through a linear recursion. And the per-stage constraint, evaluated at s_i, is a_i u_i + b_i x_i + c_i ∈ C_i (the torque box / polytope) — **linear** in (u_i, x_i). So the discretized TOPP is a *discrete-time linear system* with *linear control-state inequality constraints*. The state is a scalar (x), the control is a scalar (u).
+
+The instant I phrase it that way, I recognize the shape: this is precisely the setting that set-membership control — the reachability/controllability theory from model-predictive control — is built for. There you ask: from which states can I reach a goal set (the *controllable set*), or which states can I reach from a start set (the *reachable set*), under admissible controls? And the key fact from that theory: for a linear system with linear (polytopic) constraints, these sets are themselves polytopes — and here, because the state is a single scalar, they're just **intervals**. Intervals! Defined by two numbers. And I can compute those two numbers with two tiny optimizations. That's the bridge between fast and robust: borrow reachability, but the per-step computation is microscopic because the state is 1D.
+
+Let me define the pieces carefully. At stage i, the admissible control-state pairs are
+
+  Ω_i = {(u, x) : a_i u + b_i x + c_i ∈ C_i}
+
+— a polygon in the (u, x) plane (it's a polytope C_i pulled back through an affine map). Its projection onto the x-axis, the set of admissible squared velocities X_i, is an interval; for a fixed x, the admissible controls U_i(x) form an interval. Good — these are the 1D shadows of the 2D feasible polygon, and notice this *is* the MVC in disguise (X_i is the slice of admissible velocities at s_i), but now I never have to build the MVC or hunt switch points on it.
+
+Now the controllable set. I want the timing to end at the prescribed goal velocity ṡ_N (rest, usually). Define the **i-stage controllable set** K_i: the set of squared velocities x at stage i from which there exists an admissible control sequence u_i, …, u_{N-1} steering the system to the goal velocity set at stage N. Build it backward. The goal is K_N = {ṡ_N²}. To step from K_{i+1} back to K_i, I need the **one-step set**: the set of x at stage i such that some admissible control u keeps the next state x + 2Δ_i u inside K_{i+1}:
+
+  Q_i(I) = {x ∈ X_i : ∃ u ∈ U_i(x), x + 2Δ_i u ∈ I}.
+
+Because Ω_i is a polygon, I is an interval, and the map (u,x) ↦ x + 2Δ_i u is linear, Q_i(I) is again an interval. So I only need its two endpoints, and each endpoint is a tiny linear program — minimize/maximize x subject to (u,x) ∈ Ω_i and x + 2Δ_i u ∈ I:
+
+  x⁺ = max x  s.t.  a_i u + b_i x + c_i ∈ C_i  and  x + 2Δ_i u ∈ I,
+  x⁻ = min x  (same constraints).
+
+Two variables (u, x), m+2 inequalities. A simplex or active-set LP cracks that in microseconds. Recurse: K_N = {ṡ_N²}, K_i = Q_i(K_{i+1}), going i = N−1 down to 0. That's the **backward pass**: 2N small LPs, O(mN) total. If any K_i comes out empty, the path isn't time-parameterizable from that point on; if K_0 is empty or the start velocity ṡ_0² ∉ K_0, the instance is infeasible — and I get that diagnosis for free, no trap-point analysis. The MVC's switch points are now *implicit*: they're encoded in how the controllable-set endpoints bend, and I never had to locate them or evaluate a divergent field at a singularity. The thing that made numerical integration fragile simply doesn't appear.
+
+Now the **forward pass** to extract the actual optimal profile. I'm at the start, x*_0 = ṡ_0². At each stage, my cost analysis said: go as fast as possible. So pick the *highest* control u that's admissible AND keeps me inside the next controllable set (so I don't paint myself into a corner where I can no longer reach the goal):
+
+  u*_i = max u  subject to  (u, x*_i) ∈ Ω_i  and  x*_i + 2Δ_i u ∈ K_{i+1},
+  x*_{i+1} = x*_i + 2Δ_i u*_i.
+
+Greedy: take the maximum feasible acceleration at every step, with the controllable-set membership guaranteeing the greed never traps me. Another N tiny LPs forward. Total: O(mN). This is the whole algorithm — a backward controllable-set sweep, then a greedy forward sweep.
+
+I should convince myself this greedy thing is actually *correct* and *optimal*, not just plausible.
+
+Correctness first — does it return an admissible parameterization exactly when one exists? Suppose the algorithm reports infeasible. By contradiction, suppose some admissible parameterization x_0, u_0, …, x_N exists. Induct backward: K_N contains x_N by construction; and if K_{i} contains x_i, then since x_i = x_{i-1} + 2Δ_{i-1}u_{i-1} with (u_{i-1}, x_{i-1}) ∈ Ω_{i-1}, the definition of the one-step set forces x_{i-1} ∈ K_{i-1}. So every K_i is non-empty and K_0 contains x_0 = ṡ_0² — contradicting the failure report. Conversely, if the algorithm returns a sequence, a forward induction shows each step satisfies Ω_i and the recursion, so it's admissible. Good: correct.
+
+Optimality. I claim the greedy profile dominates every admissible profile pointwise: x*_i ≥ x_i for all i, where (x_i) is any admissible parameterization. If that holds, then since T = Σ Δ_i/√x decreases as the x's rise, the greedy profile has minimum time. Induct forward. At i=0, x*_0 = x_0 = ṡ_0², equal. Now suppose x*_i ≥ x_i. The greedy step takes the maximal control keeping x*_{i+1} ∈ K_{i+1}; I want to show x*_{i+1} ≥ x_{i+1}. Here's the subtlety — I need that the *maximal* next-state I can reach from a higher current state is itself higher. Define the maximal transition T^β_i(x) = x + 2Δ β_i(x), where β_i(x) is the largest admissible-and-controllable control at state x. The induction goes through provided T^β_i is **non-decreasing** in x: if x*_i ≥ x_i then T^β_i(x*_i) ≥ T^β_i(x_i) ≥ x_{i+1}, where the last step is because x_{i+1} is *some* admissible successor of x_i and hence ≤ the maximal one. The hinge is monotonicity of the maximal transition. When the per-stage admissible-and-controllable set behaves nicely (no zero-inertia pathology in the continuum limit), that monotonicity holds and the greedy profile is exactly optimal. The only place it can fail is, again, at zero-inertia points — but here they don't break robustness, they only introduce a sub-optimality *gap*, and that gap shrinks to zero as the grid is refined (Δ → 0). So: exactly optimal away from singularities, and asymptotically optimal through them, while never being numerically fragile at them. That's the trade I wanted — I moved the singularity difficulty from a *robustness* problem (where it crashed numerical integration) to a benign *discretization-accuracy* problem.
+
+Let me also note what I get nearly for free by symmetry. Everything above used the *controllable* set (backward) because I'm anchoring the end velocity and maximizing speed forward. The mirror image — compute the **reachable** set forward (L_0 = start set, L_{i+1} = the reach of L_i under one admissible step), then sweep backward picking the lowest control — is a valid dual algorithm, and the forward reachable sets also answer "given where I can start, what end velocities are attainable?" which is exactly the admissible-velocity-propagation query a kinodynamic planner wants. Same LP machinery, run the other direction.
+
+One more practical thing about computing a(s), b(s), c(s), because I don't want to assemble the full inertia matrix and Coriolis tensor at every grid point — that's wasteful and the recursive Newton–Euler inverse dynamics gives me only the *products* I need anyway. I have inv_dyn(q, q̇, q̈) = M(q)q̈ + q̇ᵀC(q)q̇ + g(q). I want c = g(q), a = M q′, b = M q″ + q′ᵀC q′ at each s. Watch:
+
+  inv_dyn(q, 0, 0) = g(q) = c.  (zero velocity kills Coriolis, zero accel kills inertia term)
+  inv_dyn(q, 0, q′) = M q′ + g(q) = a + c  ⇒  a = inv_dyn(q, 0, q′) − c.  (zero velocity, accel = q′)
+  inv_dyn(q, q′, q″) = M q″ + q′ᵀC q′ + g = b + c  ⇒  b = inv_dyn(q, q′, q″) − c.
+
+Three inverse-dynamics calls per grid point and I have the coefficients, never forming M or C explicitly. (That third line uses that the Coriolis term q̇ᵀC q̇ with q̇ = q′ is exactly q′ᵀC q′, and the inertia term with q̈ = q″ is M q″ — which is what b collects.) The torque box becomes the polytope F w ≤ g with F = [I; −I], g = [τ_max; −τ_min], w = the constrained quantity.
+
+Now let me write the actual algorithm. Variables per stage are y = (u, x) = (s̈, ṡ²). The backward one-step solves two LPs to get the controllable interval; the forward step solves one LP to grab the maximal controllable control. The stagewise LP needs to assemble: the controllable-membership rows x + 2Δ u ∈ K_next (i.e. −2Δu − x ≤ −K_min and 2Δu + x ≤ K_max), plus the projected dynamics rows F(a_i u + b_i x + c_i) ≤ g, plus any direct bounds on x. Here's the core, mirroring how a real reachability-based TOPP library lays it out.
+
+```python
+import numpy as np
+
+# ---- 1) Project the dynamics onto the path: a(s) sddot + b(s) sdot^2 + c(s) = w ----
+# w is the constrained quantity (joint torque), feasible iff F w <= g.
+def torque_constraint_params(path, gridpoints, inv_dyn, tau_min, tau_max):
+    dof = path.dof
+    p   = path.eval(gridpoints)      # q(s_i)
+    ps  = path.evald(gridpoints)     # q'(s_i)
+    pss = path.evaldd(gridpoints)    # q''(s_i)
+    zero = np.zeros(dof)
+    # three inverse-dynamics evaluations isolate c, a, b  (no explicit M, C)
+    c = np.array([inv_dyn(p_, zero, zero)            for p_         in p])                       # g(q)
+    a = np.array([inv_dyn(p_, zero, ps_)  for p_, ps_  in zip(p, ps)])  - c                       # M q'
+    b = np.array([inv_dyn(p_, ps_, pss_)  for p_, ps_, pss_ in zip(p, ps, pss)]) - c              # M q'' + q'^T C q'
+    F = np.vstack([np.eye(dof), -np.eye(dof)])       # torque box as a polytope
+    g = np.concatenate([tau_max, -tau_min])          # F w <= g  <=>  tau_min <= w <= tau_max
+    return a, b, c, F, g
+
+# ---- 2) The stagewise LP over y = (u, x): min obj.y s.t. dynamics + controllable membership ----
+def solve_stage_lp(i, obj, a, b, c, F, g, delta, x_lo, x_hi, xnext_lo, xnext_hi):
+    # rows: F (a_i u + b_i x + c_i) <= g   -> [F a_i, F b_i] . (u,x) <= g - F c_i
+    A  = [np.column_stack([F.dot(a[i]), F.dot(b[i])])]
+    bb = [g - F.dot(c[i])]
+    # controllable-set membership of the next state: xnext_lo <= x + 2 delta u <= xnext_hi
+    if xnext_hi is not None:
+        A.append([[2 * delta,  1.0]]); bb.append([xnext_hi])
+    if xnext_lo is not None:
+        A.append([[-2 * delta, -1.0]]); bb.append([-xnext_lo])
+    A  = np.vstack(A); bb = np.concatenate(bb)
+    lb = np.array([-np.inf, x_lo if x_lo is not None else 0.0])
+    ub = np.array([ np.inf, x_hi if x_hi is not None else np.inf])
+    return solve_lp(obj, A, bb, lb, ub)         # returns y = (u, x), or NaNs if infeasible
+
+# ---- 3) Backward pass: controllable sets K_i, as intervals, via two LPs per stage ----
+def compute_controllable_sets(N, params, deltas, sd_end):
+    a, b, c, F, g = params
+    K = np.zeros((N + 1, 2))
+    K[N] = [sd_end**2, sd_end**2]               # K_N = { sdot_N^2 }
+    obj_x = np.array([0.0, -1.0])               # maximize x = minimize -x
+    for i in range(N - 1, -1, -1):
+        x_hi = solve_stage_lp(i, obj_x,  a, b, c, F, g, deltas[i],
+                              None, None, K[i+1, 0], K[i+1, 1])[1]   # x^+
+        x_lo = solve_stage_lp(i, -obj_x, a, b, c, F, g, deltas[i],
+                              None, None, K[i+1, 0], K[i+1, 1])[1]   # x^-
+        K[i] = [max(x_lo, 0.0), x_hi]
+        if np.isnan(K[i]).any():                # one-step set empty -> not parameterizable
+            return K
+    return K
+
+# ---- 4) Forward pass: greedily take the highest controllable control ----
+def compute_parameterization(N, params, deltas, sd_start, sd_end):
+    a, b, c, F, g = params
+    K = compute_controllable_sets(N, params, deltas, sd_end)
+    x0 = sd_start**2
+    if np.isnan(K).any() or not (K[0, 0] <= x0 <= K[0, 1]):
+        return None                              # infeasible / start not controllable
+    xs = np.zeros(N + 1); us = np.zeros(N); xs[0] = x0
+    for i in range(N):
+        # maximize the resulting next state x + 2 delta u  ==  maximize speed
+        obj = np.array([-2 * deltas[i], -1.0])
+        y = solve_stage_lp(i, obj, a, b, c, F, g, deltas[i],
+                           xs[i], xs[i], K[i+1, 0], K[i+1, 1])      # pin x = xs[i]
+        us[i] = y[0]
+        x_next = xs[i] + 2 * deltas[i] * us[i]
+        xs[i+1] = min(K[i+1, 1], max(K[i+1, 0], x_next))           # clamp into controllable set
+    sd  = np.sqrt(xs)                             # path velocity profile sdot(s_i)
+    sdd = us                                      # path accelerations sddot
+    return sdd, sd
+```
+
+And to turn the velocity profile into an actual time-stamped trajectory, integrate dt = ds/ṡ across the grid (the time on segment i is 2Δ_i/(ṡ_i + ṡ_{i+1}) for the constant-path-acceleration scheme), accumulate t_i, then resample q(s(t)).
+
+So the causal chain, start to finish: the path is fixed, so only the timing s(t) is free; chain-ruling q̇, q̈ through the dynamics makes the torque **linear in (s̈, ṡ²)**, turning actuator limits into per-position linear bounds and, with x = ṡ², an exactly linear state recursion x_{i+1} = x_i + 2Δu_i; minimum time means maximizing the velocity profile pointwise under the Maximum Velocity Curve, with a bang-bang optimal structure; the classical way to realize that — integrate the α/β fields and hunt switch points — is fast but founders on the divergent fields at zero-inertia singularities, while the monolithic convex program is robust but cubic-slow; recognizing the discretized problem as a *linear system with linear constraints* lets me import reachability, where controllable sets are mere intervals computed by pairs of two-variable LPs; a backward controllable-set sweep then a greedy forward sweep extract the optimal profile in O(mN), with switch points implicit and singularities demoted from a fragility problem to a vanishing discretization gap — fast, robust, and a few hundred lines.

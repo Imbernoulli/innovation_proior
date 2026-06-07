@@ -1,0 +1,1582 @@
+\documentclass{article}
+% \usepackage{CJKutf8}
+% \usepackage{iclr2023_conference}
+
+\usepackage[margin=1in]{geometry}
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{graphicx}
+% \usepackage{subfigure}
+% \usepackage[subfigure]{tocloft}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsfonts}
+\usepackage{multirow}
+\usepackage{verbatim}
+\usepackage{caption}
+\usepackage{longtable}
+\usepackage{supertabular}
+\usepackage{float}
+\usepackage{paralist}
+
+\usepackage{enumitem}
+\usepackage{tablefootnote}
+\usepackage[round,semicolon,sort]{natbib}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{xspace}
+\usepackage{textcomp}
+\usepackage{makecell}
+\usepackage{multirow}
+\usepackage{lscape} 
+\usepackage{siunitx}
+
+\setlength{\columnsep}{2em}
+\setlength{\parindent}{0em}
+\setlength{\parskip}{0.7em}
+
+\usepackage{amssymb}% http://ctan.org/pkg/amssymb
+\usepackage{pifont}% http://ctan.org/pkg/pifont
+\usepackage{scrextend}
+\usepackage{array}
+\usepackage{tgpagella}
+% \usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\definecolor{mydarkblue}{rgb}{0,0.08,0.45}
+\usepackage[colorlinks,citecolor=mydarkblue,urlcolor=mydarkblue,linkcolor=mydarkblue]{hyperref}
+\usepackage{url}            % simple URL typesetting
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{changepage}
+\usepackage{xargs}          % Use more than one optional parameter in a new commands
+\usepackage{wrapfig,lipsum,booktabs}
+\usepackage{longtable}
+% \usepackage[symbol]{footmisc}
+\usepackage{endnotes}
+% \renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\usepackage{pgfplots}
+\usetikzlibrary{pgfplots.groupplots}
+\pgfplotsset{compat=1.3}
+\usepackage{tikz}
+\usetikzlibrary{patterns}
+\usepackage[most]{tcolorbox}
+\usepackage[capitalize,noabbrev]{cleveref}
+\usepackage{multicol}
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+\usepackage{minitoc}
+
+
+
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+\usepackage{threeparttable}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{bbding}
+\usepackage{tabularx}
+\usepackage{bbm}
+\usepackage{wrapfig}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{caption}
+\usepackage{longtable}
+\newcommand{\tabincell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+\newcommand{\name}{Lion}
+\lstset{
+    % frame=tb,
+    language=Python,
+    % aboveskip=3mm,
+    % belowskip=3mm,
+    showstringspaces=false,
+    columns=flexible,
+    % basicstyle={\scriptsize\ttfamily},
+    basicstyle={\fontsize{8.5pt}{.9\baselineskip}\ttfamily},
+    numbers=none,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue},
+    commentstyle=\color{dkgreen},
+    stringstyle=\color{mauve},
+    % breaklines=true,
+    breakatwhitespace=true,
+    tabsize=2,
+    escapechar=|,
+    mathescape=true,
+}
+\lstset{escapeinside={<@}{@>}}
+\renewcommand{\lstlistingname}{Program}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% Make the "Part I" text invisible
+\renewcommand \thepart{}
+\renewcommand \partname{}
+
+
+\usepackage{lipsum}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+
+\title{
+% \vspace{-2em}%
+%   \hrule height 4pt%
+%   \vskip 0.25in%
+%   \vskip -\parskip%
+\vspace{-25pt}
+\textbf{Symbolic Discovery of Optimization Algorithms}
+% \vspace{-3mm}
+%   \vskip 0.2in%
+%   \vskip -\parskip%
+%   \hrule height 1pt%
+%   \vskip 0.09in
+  }
+
+\author{
+\normalsize{}
+\textbf{Xiangning Chen}\textsuperscript{1 2 $\mathsection$ }\thanks{Work done as a student researcher at Google Brain.}\hspace{8mm}
+\textbf{Chen Liang}\textsuperscript{1 $\mathsection$}\hspace{8mm}
+\textbf{Da Huang}\textsuperscript{1}\hspace{8mm}
+\textbf{Esteban Real}\textsuperscript{1}
+\vspace{10pt}
+\\
+\normalsize{}
+\textbf{Kaiyuan Wang}\textsuperscript{1}\hspace{8mm}
+\textbf{Yao Liu}\textsuperscript{1 }\thanks{Work done while at Google.}\hspace{8mm}
+\textbf{Hieu Pham}\textsuperscript{1}\hspace{8mm}
+\textbf{Xuanyi Dong}\textsuperscript{1}\hspace{8mm}
+\textbf{Thang Luong}\textsuperscript{1}
+\vspace{10pt}
+ \\ 
+\normalsize{}
+\textbf{Cho-Jui Hsieh}\textsuperscript{2}\hspace{8mm}
+\textbf{Yifeng Lu}\textsuperscript{1}\hspace{8mm}
+\textbf{Quoc V. Le}\textsuperscript{1}
+\vspace{20pt}
+\\ 
+\normalsize{}
+\textsuperscript{$\mathsection$}Equal \& Core Contribution
+\vspace{20pt}
+\\ 
+\normalsize{}
+\textsuperscript{1}Google\hspace{20mm}
+\textsuperscript{2}UCLA
+% \vspace{-2pt}
+}
+
+\date{}
+
+\begin{document}
+
+\doparttoc % Tell to minitoc to generate a toc for the parts
+\faketableofcontents % Run a fake tableofcontents command for the partocs
+% \part{} % Start the document part
+% \parttoc % Insert the document TOC
+
+\maketitle
+
+
+\begin{abstract}
+\noindent
+We present a method to formulate algorithm discovery as program search, and apply it to discover optimization algorithms for deep neural network training. We leverage efficient search techniques to explore an infinite and sparse program space. To bridge the large generalization gap between proxy and target tasks, we also introduce program selection and simplification strategies.
+Our method discovers a simple and effective optimization algorithm, \textbf{\name{}} (\textit{Evo\textbf{L}ved S\textbf{i}gn M\textbf{o}me\textbf{n}tum}). It is more memory-efficient than Adam as it only keeps track of the momentum. Different from adaptive optimizers, its update has the same magnitude for each parameter calculated through the sign operation.
+We compare \name{} with widely used optimizers, such as Adam and Adafactor, for training a variety of models on different tasks. On image classification, \name{} boosts the accuracy of ViT by up to 2\% on ImageNet and saves up to 5x the pre-training compute on JFT. On vision-language contrastive learning, we achieve 88.3\% \textit{zero-shot} and 91.1\% \textit{fine-tuning} accuracy on ImageNet, surpassing the previous best results by 2\% and 0.1\%, respectively. On diffusion models, \name{} outperforms Adam by achieving a better FID score and reducing the training compute by up to 2.3x. For autoregressive, masked language modeling, and fine-tuning, \name{} exhibits a similar or better performance compared to Adam. Our analysis of \name{} reveals that its performance gain grows with the training batch size. It also requires a smaller learning rate than Adam due to the larger norm of the update produced by the sign function. Additionally, we examine the limitations of \name{} and identify scenarios where its improvements are small or not statistically significant. The implementation of \name{} is publicly available.\footnote{\url{https://github.com/google/automl/tree/master/lion}.}
+\name{} is also successfully deployed in production systems such as Google’s search ads CTR model.
+\blfootnote{Correspondence: \href{xiangning@cs.ucla.edu}{xiangning@cs.ucla.edu}, \href{crazydonkey@google.com}{crazydonkey@google.com}.}
+
+
+% We also analyze the properties and limitations of \name{}. Its update norm is larger than Adam so it usually requires a smaller learning rate. Its improvement diminishes when using strong augmentations or smaller batch sizes during training. On some large-scale language and image-text datasets, the difference between \name{} and Adam is not statistically significant. 
+
+% We analyze the limitations of \name{} and find that the improvement over Adam is not statistical significant on some large-scale language and image-text datasets. Its improvement decreases when using strong augmentations or a smaller batch size during training. The implementation of \name{} is publicly available.\footnote{\url{https://github.com/google/automl}.}
+% We discuss the hyperparameter tuning for \name{} and observe that the suitable learning rate is usually $\sim$10x smaller than Adam due to larger update norm. 
+
+% In our analysis of \name{}, we examine its properties and limitations. Its update norm is much larger than AdamW so it usually requires smaller learning rates. Its difference with AdamW is not significant on some large-scale language and image-text datasets. Its improvement decreases when using strong augmentations or a smaller batch size during training. The implementation of \name{} is publicly available.\footnote{\url{https://github.com/google/automl}.
+
+\end{abstract}
+
+
+% We adopt techniques in efficient search, program selection and simplification to address the challenges in (1) searching over an infinite and sparse program space and (2) generalizing across the large gap in scales between the proxy and target tasks. 
+
+\section{Introduction}
+
+Optimization algorithms, i.e., optimizers, play a fundamental role in training neural networks. 
+There are a large number of handcrafted optimizers, mostly adaptive ones, introduced in recent years~\citep{zhuang2020adabelief, balles2018msvag, liu2020radam, bernstein2018signsgd, dozat2016nadam, anil2020second}. However, Adam~\citep{kingma2014adam} with decoupled weight decay~\citep{loshchilov2019adamw}, also referred to as AdamW, and Adafactor with factorized second moments~\citep{shazeer2018adafactor}, are still the de facto standard optimizers for training most deep neural networks, especially the recent state-of-the-art language~\citep{brown2020gpt3, vaswani2017attention, devlin2019bert}, vision~\citep{dosovitskiy2021vit, dai2021coatnet, zhai2021scalevit} and multimodal~\citep{radford2021clip, saharia2022imagen, yu2022coca} models. 
+
+
+
+\begin{table}
+    \centering
+    \caption{Accuracy of BASIC-L~\citep{hieu2021basic} on ImageNet and several robustness benchmarks.
+    We apply \name{} to both vision tower pre-training and vision-language contrastive training stages.
+    The previous SOTA results on \textit{zero-shot} and \textit{fine-tuning} ImageNet accuracy are 86.3\% and 91.0\%~\citep{yu2022coca}.}
+    \resizebox{.75\linewidth}{!}{
+    \begin{tabular}{l|cccccc|c}
+    \toprule
+    \multirow{2}{*}{Optimizer} & \multicolumn{6}{c|}{Zero-shot} & Fine-tune \\ 
+    & ImageNet & V2 & A & R & Sketch & ObjectNet & ImageNet \\ \midrule
+    Adafactor & 85.7 & 80.6 & 85.6 & 95.7 & 76.1 & 82.3 & 90.9 \\
+    \name{} & \textbf{88.3} & \textbf{81.2} & \textbf{86.4} & \textbf{96.8} & \textbf{77.2} & \textbf{82.9} & \textbf{91.1} \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:basic}
+\end{table}
+
+
+
+\begin{figure}
+\begin{minipage}[t]{.55\linewidth}
+    \centering
+    \caption{\textbf{Left}: ImageNet fine-tuning accuracy vs. pre-training cost of ViT models on JFT-300M. 
+    \textbf{Right}: FID of the diffusion model on $256^2$ image generation. We use DDPM for 1K steps w/o guidance to decode image.
+    As a reference, the FID of ADM is 10.94~\citep{dhariwal2021adm}.}
+    \includegraphics[width=.5\linewidth]{figs/classification/i1k.png}%
+    \includegraphics[width=.5\linewidth]{figs/diffusion_256.png}
+    \label{fig:teaser}
+\end{minipage}\hspace{12pt}%
+\begin{minipage}[t]{.42\linewidth}
+\vspace{-8pt}
+\begin{lstlisting}[caption={Discovered optimizer \name{}. $\beta_1=0.9$ and $\beta_2=0.99$ by default are derived from Program~\ref{lst:p2}.
+It only tracks momentum and uses the sign operation to compute the update. The two gray lines compute the standard decoupled weight decay, where $\lambda$ is the strength. }, captionpos=t, label={lst:p0}]
+def train(weight, gradient, momentum, lr):
+  update = interp(gradient, momentum, $\beta_1$)
+  update = sign(update)
+  momentum = interp(gradient, momentum, $\beta_2$)
+  <@\color{Gray}{weight\_decay = weight * $\lambda$}@>
+  <@\color{Gray}{update = update + weight\_decay}@>
+  update = update * lr
+  return update, momentum
+\end{lstlisting}
+\end{minipage}
+\vspace{-10pt}
+\end{figure}
+
+
+Another direction is to automatically discover such optimization algorithms.
+The learning to optimize (L2O) approach proposes to discover optimizers by training parameterized models, e.g., neural networks, to output the updates~\citep{andrychowicz2016l2l, metz2019understandl2l, li2016learning, metz2022velo}.
+However, those black-box optimizers, typically trained on a limited number of small tasks, struggle to generalize to state-of-the-art settings where much larger models are trained with significantly more training steps. Another line of methods~\citep{bello2017nos, wang2022efficient} apply reinforcement learning or Monte Carlo Sampling to discover new optimizers, where the search space is defined by trees composed from predefined operands (e.g., gradient and momentum) and operators (e.g., unary and binary math operations). 
+However, to make the search manageable, they often limit the search space by using fixed operands and restricting the size of the tree, thereby limiting the potential for discovery. For example, they are \textit{unable} to modify the tracking of momentum or how it contributes to the update, which is an essential component of \name{}.
+Consequently, the algorithms discovered have not yet reached the state-of-the-art. AutoML-Zero~\citep{real2020automl} is an ambitious effort that attempts to search every component of a machine learning pipeline while evaluating on toy tasks. This work follows the research direction of automatic discovering optimizers and is in particular inspired by AutoML-Zero, but aims at discovering effective optimization algorithms that can improve the state-of-the-art benchmarks.
+
+
+
+% This work follows this research direction and is in particular inspired by AutoML-Zero~\citep{real2020automl}, an ambitious effort that attempts to search an unrestricted space for every component of a machine learning pipeline, while evaluating on toy tasks. We 
+
+% Instead, we focus on discovering state-of-the-art ML optimizers.
+
+% However, the restricted search space limits the potential of the search. For example, it cannot change how the estimated first or second moments are updated. 
+% Built upon the Adam training pipeline, researchers are continuously proposing neural architectures, data augmentations, and regularization techniques, which makes it even harder to improve the optimizer itself.
+
+% In this paper, inspired by AutoML-Zero~\citep{real2020automl} that automatically discovers complete machine learning algorithms from scratch,
+% we leverage evolutionary search to discover novel optimizers. 
+% We focus on the optimizer part and name our project AutoML-Hero,
+% where optimization algorithms are represented as programs composed from basic mathematical operations that present a vast search space. 
+
+
+
+In this paper, we present a method to formulate algorithm discovery as program search and apply it to discover optimization algorithms. There are two primary challenges. The first one is to find high-quality algorithms in the infinite and sparse program space. The second one is to further select out the algorithms that can generalize from small proxy tasks to much larger, state-of-the-art tasks. 
+To tackle these challenges, we employ a range of techniques including evolutionary search with warm-start and restart, abstract execution, funnel selection, and program simplification.
+
+% The first one is to find high-quality algorithms in the infinite and sparse program space. The second one is to further select out the algorithms that can generalize from small proxy tasks to much larger state-of-the-art tasks. 
+% The limitations and open questions of our approach are also discussed.
+
+
+Our method discovers a simple and effective optimization algorithm: \name{}, short for \textit{Evo\textbf{L}ved S\textbf{i}gn M\textbf{o}me\textbf{n}tum}.
+% that only tracks the momentum and leverages the sign operation to compute the update.
+This algorithm differs from various adaptive algorithms by only tracking momentum and leveraging the sign operation to calculate updates, leading to lower memory overhead and uniform update magnitudes across all dimensions.
+Despite its simplicity, \name{} demonstrates outstanding performance across a range of models (Transformer, MLP, ResNet, U-Net, and Hybrid) and tasks (image classification, vision-language contrastive learning, diffusion, language modeling, and fine-tuning).
+Notably, we achieve 88.3\% \textit{zero-shot} and 91.1\% \textit{fine-tuning} accuracy on ImageNet by replacing Adafactor with \name{} in BASIC~\citep{hieu2021basic}, surpassing the previous best results by 2\% and 0.1\%, respectively. 
+Additionally, \name{} reduces the pre-training compute on JFT by up to 5x, improves training efficiency on diffusion models by 2.3x and achieves a better FID score, and offers similar or better performance on language modeling with up to 2x compute savings.
+
+
+We analyze the properties and limitations of \name{}.
+Users should be aware that the uniform update calculated using the sign function usually yields a larger norm compared to those generated by SGD and adaptive methods.
+Therefore, \name{} requires a smaller learning rate $lr$, and a larger decoupled weight decay $\lambda$ to maintain the effective weight decay strength. For detailed guidance, please refer to Section~\ref{sec:tuning}. Additionally, our experiments show that the gain of \name{} increases with the batch size and it is more robust to different hyperparameter choices compared to AdamW.
+For limitations, the difference between \name{} and AdamW is not statistical significant on some large-scale language and image-text datasets.
+%, such as autoregressive language modeling on the internal dataset and training the Imagen $64\times 64$ text-to-image base model. 
+The advantage of \name{} is smaller if using strong augmentations or a small batch size ($<$64) during training. 
+See Section~\ref{sec:limit} for details.
+
+% Additionally, \name{} saves up to 5x, 2.3x, and 2x compute to achieve the same or better quality when pre-training ViT on JFT, training diffusion models, and language modeling, respectively.
+
+% and high-quality 
+% The program also has the freedom to change the learning rate schedule (\texttt{lr}).
+
+\begin{figure}
+\begin{minipage}[t]{.39\linewidth}
+\begin{lstlisting}[caption={An example training loop, where the optimization algorithm that we are searching for is encoded within the \texttt{train} function. The main inputs are the weight (\texttt{w}), gradient (\texttt{g}) and learning rate schedule (\texttt{lr}). The main output is the \texttt{update} to the weight. \texttt{v1} and \texttt{v2} are two additional variables for collecting historical information.}, captionpos=t, label={loop}]
+w = weight_initialize()
+v1 = zero_initialize()
+v2 = zero_initialize()
+for i in range(num_train_steps):
+  lr = learning_rate_schedule(i)
+  g = compute_gradient(w, get_batch(i))
+  update, v1, v2 = train(w, g, v1, v2, lr)
+  w = w - update
+\end{lstlisting}
+\end{minipage}\hspace{19pt}%
+\begin{minipage}[t]{.25\linewidth}
+\begin{lstlisting}[caption={Initial program (AdamW). The bias correction and $\epsilon$ are omitted for simplicity.}, captionpos=t, label={lst:p1}]
+def train(w, g, m, v, lr):
+  g2 = square(g)
+  m = interp(g, m, 0.9)
+  v = interp(g2, v, 0.999)
+  sqrt_v = sqrt(v)
+  update = m / sqrt_v
+  wd = w * 0.01
+  update = update + wd
+  lr = lr * 0.001
+  update = update * lr
+  return update, m, v
+\end{lstlisting}
+\end{minipage}\hspace{19pt}%
+\begin{minipage}[t]{.28\linewidth}
+\begin{lstlisting}[caption={Discovered program after search, selection and removing redundancies in the raw Program~\ref{lst:raw}. Some variables are renamed for clarity.}, captionpos=t, label={lst:p2}]
+def train(w, g, m, v, lr):
+  g = clip(g, lr)
+  g = arcsin(g)
+  <@\color{PineGreen}{m = interp(g, v, 0.899)}@>
+  <@\color{RedOrange}{m2 = m * m}@>
+  <@\color{PineGreen}{v = interp(g, m, 1.109)}@>
+  <@\color{RedOrange}{abs\_m = sqrt(m2)}@>
+  <@\color{RedOrange}{update = m / abs\_m}@>
+  wd = w * 0.4602
+  update = update + wd
+  lr = lr * 0.0002
+  m = cosh(update)
+  update = update * lr
+  return update, m, v
+\end{lstlisting}
+\end{minipage}
+\vspace{-10pt}
+\end{figure}
+
+
+
+
+\section{Symbolic Discovery of Algorithms}
+
+We present an approach that formulates algorithm discovery as program search~\citep{koza1994genetic, brameier2007linear, real2020automl}. We use a symbolic representation in the form of programs for the following advantages: (1) it aligns with the fact that algorithms must be implemented as programs for execution; (2) symbolic representations like programs are easier to analyze, comprehend and transfer to new tasks compared to parameterized models such as neural networks; (3) program length can be used to estimate the complexity of different programs, making it easier to select the simpler, often more generalizable ones. This work focuses on optimizers for deep neural network training, but the method is generally applicable to other tasks.
+
+% We first define the search space that consists of programs that represent different training algorithms. We then apply evolutionary search as the search method to find the best programs in the search space, using the the evaluation on a set of low-compute proxy ML tasks as the fitness. Typically, the target tasks requires orders of magnitude larger compute than the proxy tasks, so there is a huge generalization gap where the good algorithms on proxy tasks do not necessarily perform well on the real tasks. To overcome that, we adopted a funnel algorithm selection step to pick out the algorithms that are more likely to generalize to the target tasks. We then simplify the selected algorithms through automatic transformation and ablation studies, and apply the finalized algorithm to other tasks and codebases to evaluate its generality. Finally, we showcase how the discovered algorithms can adapt to different tasks and discuss the challenges in improving the generalization of discovered algorithms.
+
+
+\subsection{Program Search Space}
+
+% We first design the program search space by defining the input / output signature, the structure of the program, and the available expressions. The design choice is influenced by the popular gradient-descent-based training algorithms such as AdamW to focus on first-order training algorithms. 
+% \textbf{Symbolic } the unreasonable effective of math. 
+
+We adhere to the following three criteria while designing the program search space: (1) the search space should be flexible enough to enable the discovery of novel algorithms; (2) the programs should be easy to analyze and incorporate into a machine learning workflow; (3) the programs should focus on the high-level algorithmic design rather than low-level implementation details. We define the programs to contain functions operating over n-dimensional arrays, including structures like lists and dictionaries containing such arrays, in an imperative language. They are similar to Python code using NumPy / JAX~\citep{harris2020array, jax2018github} as well as pseudo code of optimization algorithms. The details of the design are outlined below, with an example representation of AdamW in Program~\ref{lst:p1}.
+
+
+\textbf{Input / output signature} 
+The program defines a \verb|train| function, which encodes the optimization algorithm being searched for, where the main inputs are the model weight (\texttt{w}), the gradient (\texttt{g}) and the learning rate schedule value (\texttt{lr}) at the current training step.
+The main output is the \texttt{update} to the weight. The program also incorporates extra variables initialized as zeros to collect historical information during training.
+For example, AdamW requires two extra variables to estimate first and second moments. Note that those variables can be used arbitrarily, we use the name \texttt{m} and \texttt{v} in Program~\ref{lst:p1} just for better readability.
+This simplified code snippet in Program~\ref{loop} uses the same signature as AdamW to ensure that the discovered algorithms have smaller or equal memory footprints.
+% the memory footprints of the discovered algorithms are no larger than it. 
+As opposed to previous optimizer search attempts~\citep{bello2017nos, wang2022efficient}, our method allows discovering better ways of updating the extra variables.
+
+
+% different from the previous optimizer search, how the extra variables are updated is also searchable as part of the program instead of being fixed. 
+% Program~\ref{loop} demonstrates a simplified code snippet that uses a \verb|train| function with the same signature as AdamW. In our experiments, we use the same signature so that the memory footprints of the new algorithms are no larger than AdamW. 
+
+
+
+\textbf{Building blocks} 
+The \verb|train| function consists of a sequence of assignment statements, with no restrictions on the number of statements or local variables. Each statement calls a function using constants or existing variables as inputs, and the resulting value is stored in a new or existing variable. For the program, we select 45 common math functions, most of which corresponds to a function in NumPy or an operation in linear algebra. Some functions are introduced to make the program more compact, such as the linear interpolation function \verb|interp(x, y, a)|, which is made equivalent to \verb|(1 - a) * x + a * y|. 
+Preliminary experiments have investigated the inclusion of more advanced features such as conditional and loop statements, and defining and calling new functions, but these do not yield improved results, so we leave them out. A detailed description of the functions are summarized in Appendix~\ref{sec:functions}. 
+When necessary, the types and shapes of the function arguments are automatically cast, e.g., in the case of adding a dictionary of arrays to a scalar.
+
+
+
+\textbf{Mutations and redundant statements} 
+The design of mutations utilized in evolutionary search is tightly intertwined with the representation of the program. We include three types of mutations: (1) inserting a new statement at a random location with randomly chosen functions and arguments, (2) deleting a random chosen statement, and (3) modifying a random statement by randomly altering one of its function arguments, which may be either variables or constants. To mutate an argument, we replace it with an existing variable or a newly generated constant obtained by sampling from a normal distribution $X \sim \mathcal{N}(0\,\,1)$. 
+Additionally, we can mutate an existing constant by multiplying it by a random factor $2^{a}$, where $a \sim \mathcal{N}(0\,\,1)$. 
+These constants serve as tunable hyperparameters in the optimization algorithm, such as the peak learning rate and weight decay in AdamW.
+% The function arguments can be variables or constants. 
+% Arguments are mutated by randomly selecting from existing variables, or 
+% In addition to variables, the function arguments can be constants, serving as tunable hyperparameters in the optimization algorithm, such as the peak learning rate and weight decay in AdamW.
+% The constants are generated by drawing samples from a normal distribution $X \sim \mathcal{N}(0\,\,1)$, and can be mutated by multiplying by a random factor $2^{a}$, where $a \sim \mathcal{N}(0\,\,1)$. 
+Note that we allow a program to include redundant statements during search, i.e., statements that do not impact the final program outputs.
+% make a difference in the final outputs of the program. 
+% This is necessary since the mutations are local, i.e., affecting only one statement, so redundant statements can be intermediate steps for future bigger changes in the program. 
+This is necessary as mutations are limited to only affecting a single statement. Redundant statements therefore serve as intermediate steps towards future substantial modifications in the program.
+
+
+\textbf{Infinite and sparse search space} 
+Given the limitless number of statements and local variables, as well as the presence of mutable constants, the program search space is infinite. 
+Even if we ignore the constants and bound the program length and number of variables, the number of potential programs is still intractably large. A rough estimate of the number of possible programs is $n_{p} = n_{f}^l n_{v}^{n_a * l}$, where $n_f$ is the number of possible functions, $n_v$ is the number of local variables, $n_a$ is the average number of arguments per statement, and $l$ is the program length. 
+More importantly, the challenge comes from the sparsity of high-performing programs in the search space.
+%  also poses a significant challenge to the search process
+To illustrate this point, we conduct a random search that evaluates over 2M programs on a low-cost proxy task. The best program among them is still significantly inferior to AdamW.
+
+
+\begin{figure}
+    \centering
+    \caption{
+    \textbf{Left}: 
+    % Fitness curves of evolutionary search with and without restart compared to the random search and hyperparameter tuning baselines. 
+    % The evolutionary search, with mean and standard error calculated from five runs, significantly outperforms the \textit{best} results of hyperparameter tuning on AdamW and the \textit{best} random search result, both with 4x more compute. 
+    We run hyperparameter tuning on AdamW and random search, both with 4x more compute, to get the best results as two baselines (green and red lines). The evolutionary search, with mean and standard error calculated from five runs, significantly outperforms both of them.
+    The use of multiple restarts from the initial program is crucial due to the high variance in the search fitness (blue curves), and restarting from the best program after 300K progress further improves the fitness (orange curves) when the original search plateaus.
+    % restarts, both from the initial program and from the best program after 300K progress, is crucial in reducing the high variance in the search fitness curves and further improves the fitness when the original search plateaus.
+    \textbf{Right}: Example curves of search fitness, the cache hit rate, and the percentage of redundant statements. The cache hit rate and the redundant statements percentage increase along with the search progress to $\sim$90\% and $\sim$70\%.}
+    \includegraphics[width=.4\linewidth]{figs/search/release/v2/search.png}\hspace{30pt}%
+    \includegraphics[width=.47\linewidth]{figs/search/release/v2/cache_hit.png}
+    \label{fig:search}
+    \vspace{-10pt}
+\end{figure}
+
+
+
+
+
+\subsection{Efficient Search Techniques}
+We employ the following techniques to address the challenges posed by the infinite and sparse space. 
+
+
+\textbf{Evolution with warm-start and restart} 
+We apply regularized evolution as it is simple, scalable, and has shown success on many AutoML search tasks~\citep{real2020automl, real2019regularized, ying2019bench, so2019evolved,holland1992adaptation}. 
+It keeps a population of $P$ algorithms that are gradually improved through cycles. 
+Each cycle picks $T\!\!<\!P$ algorithms at random and the best performer is chosen as the \textit{parent}, i.e., \textit{tournament selection}~\citep{goldberg1991comparative}. This parent is then copied and \textit{mutated} to produce a \textit{child} algorithm, which is added to the population, while the oldest algorithm is removed. Normally, evolutionary search starts with random candidates, but we warm-start the initial population as AdamW to accelerate the search. 
+By default, we use a tournament size of two and a population size of 1K. 
+To further improve the search efficiency, we apply two types of restart: (1) restarting from the initial program, which can lead to different local optima due to the randomness in evolution and encourage exploration. This can be done by running multiple searches in parallel. (2) restarting from the best algorithm found thus far to further optimize it, encouraging exploitation. 
+Figure~\ref{fig:search} (Left) displays the mean and standard error of five evolutionary search experiments. We run hyperparameter tuning based on AdamW by only allowing mutations of constants in the evolution, and run random search by sampling random programs, both with 4x more compute. 
+Our search significantly outperforms the best results achieved by both baselines, demonstrated as the two dashed lines in the figure. The high variance in the search fitness necessitates running multiple repeats through restarting from the initial program. When the search fitness plateaus after $\sim$300K progress, restarting from the best program found thus far further improves the fitness shown by the orange curve.
+
+
+% There is a high variance in the search fitness curves so it is necessary to run multiple repeats, i.e., restarting from the same initial program. When the search fitness curves plateau after $\sim$300k progress, restarting from the best program found thus far further improves the fitness. 
+
+
+
+\textbf{Pruning through abstract execution} 
+We propose to prune the redundancies in the program space from three sources: programs with syntax or type / shape errors, functionally equivalent programs, and redundant statements in the programs. Before a program is actually executed, we perform an abstract execution step that (1) infers variable types and shapes to detect programs with errors, and keeps mutating the parent program until a valid child program is generated; (2) produces a hash that uniquely identifies how the outputs are computed from the inputs, allowing us to cache and look up semantically duplicate programs~\citep{ryan2023hash}; (3) identifies redundant statements that can be ignored during actual execution and analysis. For instance, Program~\ref{lst:p2} is obtained after removing all redundant statements in Program~\ref{lst:raw}. Abstract execution has negligible cost compared to the actual execution, with each input and function replaced by customized values, e.g., hash.
+See Appendix~\ref{sec:abstract_execution} for details of abstract execution. 
+Preliminary experiments have shown that the search process can become overwhelmed with invalid programs and cannot make progress without filtering out invalid programs.
+As seen in Figure~\ref{fig:search} (Right), the percentage of redundant statements and cache hit rate both increase as the search proceeds. 
+Based on five search runs, each covering 300K programs, there are $69.8\pm1.9\%$ redundant statements towards the end, implying that redundant statements removal makes the program $\sim$3x shorter on average, thus easier to analyze. The cache hit rate is $89.1\pm0.6\%$, indicating that using the hash table as cache brings $\sim$10x reduction on the search cost.
+
+
+\textbf{Proxy tasks and search cost} 
+To reduce search cost, we create low-cost proxies by decreasing the model size, number of training examples, and steps from the target tasks. Evaluation on the proxies can be completed on one TPU V2 chip within 20min. We use the accuracy or perplexity on the validation set as the fitness. Each search experiment utilizes 100 TPU V2 chips and runs for $\sim$72h. There are a total of 200-300K programs generated during each search experiment. However, the number of programs that are actually evaluated is around 20-30K, thanks to the use of the cache through abstract execution. To incorporate restart, we start five repeats of search experiments, followed by another round of search initializing from the best algorithm found thus far. This results in a total cost of $\sim$3K TPU V2 days. See Appendix~\ref{sec:proxy} for the details of proxy tasks. 
+
+
+
+\begin{figure}
+    \centering
+    \caption{
+    \textbf{Left}: The meta-validation (defined in Section~\ref{sec:generalize}) curves of two search runs measured on a $\sim$500x larger meta-validation task compared to the proxy. The blue one meta-overfits at $\sim$15\% of the search progress, while the orange one meta-overfits at $\sim$90\% and achieves a better metric.
+    \textbf{Right}: Histogram of the search progress when meta-overfitting happens based on 50 runs. Half of the runs meta-overfit early but a long tail of runs meta-overfit much later. Blue cross depicts the best meta-validation metric averaged within each bin, indicating that meta-overfitting happening later leads to programs that generalize better.}
+    \includegraphics[width=.4\linewidth]{figs/search/release/v2/meta_valid_example.png}\hspace{30pt}%
+    \includegraphics[width=.46\linewidth]{figs/search/release/v2/meta_valid_hist.png}
+    \label{fig:meta}
+    \vspace{-5pt}
+\end{figure}
+
+
+\subsection{Generalization: Program Selection and Simplification}
+\label{sec:generalize}
+The search experiments can discover promising programs on proxy tasks. 
+We use performance on \textit{meta-validation} tasks that are larger than the proxy tasks by increasing the model size and training steps, to select the programs that generalize beyond proxy tasks then further simplify them. The phenomenon of \textit{meta-overfitting} occurs when the search fitness keeps growing, but the meta-validation metric declines, indicating that the discovered algorithms have overfit the proxy tasks. Two examples are shown in Figure~\ref{fig:meta} (Left), where the blue curve represents early meta-overfitting and the orange curve represents later meta-overfitting.
+
+
+
+\textbf{Large generalization gap}
+The discovered algorithms face a significant challenge due to the substantial gap between the proxy tasks during search and the target tasks. While proxy tasks can typically be completed within 20min on one TPU V2 chip, target tasks can be $>10^4$x larger and require days of training on 512 TPU V4 chips.
+Furthermore, we expect the optimizer to perform well on different architectures, datasets and even different domains, so the discovered algorithms need to show strong out-of-distribution generalization. 
+The sparse search space and inherent noise in the evolution process further compound this challenge, leading to inconsistent generalization properties between different runs. Our observation suggests that evolutionary search experiments that meta-overfit later tend to uncover optimization algorithms that generalize better. 
+See more details in Figure~\ref{fig:meta} (Right). 
+
+
+
+\textbf{Funnel selection} 
+To mitigate the generalization gap, we collect promising programs based on search fitness and add an extra selection step using a series of meta-validation tasks to select those generalize better.
+To save compute, we apply a funnel selection process that gradually increases the scale of the meta-validation tasks. For example, starting with proxy task A, we create a 10x larger task B by increasing the model size and the training steps. Only algorithms that surpass the baseline on task B will be evaluated on task C, which is 100x larger. 
+This approach allows us to gradually filter out algorithms that show poor generalization performance, ultimately leading to the selection of algorithms that generalize well to larger tasks.
+
+
+\textbf{Simplification} 
+Simpler programs are easier to understand and our intuition is that they are more likely to generalize, so we simplify the programs with the following steps.
+Firstly, we remove redundant statements that do not contribute to the final output as identified through abstract execution. Secondly, we remove statements that are non-redundant but produce minimal differences when removed. This step can also be achieved through evolution by disabling the insertion of new statements in the mutation process. Finally, we rearrange the statements manually, assign clear and descriptive names to variables, and convert the program into its simpler, mathematically equivalent form.
+
+
+% (1) remove redundant statements that do not contribute to the final output identified through abstract execution; (2) remove statements that are not redundant but make small differences when removed.
+% Note that this step can also be done through evolutionary by disabling inserting new statements in the mutation; (3) we manually reorder the statements, use more informative naming and change the program to its simpler but mathematically equivalent form. 
+
+
+% are not redundant, but the difference it makes is very small. 
+% We perform ablations to check if a statement can be removed without hurting the quality. restricting the program length
+
+
+\section{Derivation and Analysis of \name{}}
+We arrive at the optimizer \name{} due to its simplicity, memory efficiency, and strong performance in search and meta-validation. 
+Note that the search also discovers other existing or novel algorithms shown in Appendix~\ref{sec:adaptation}, e.g., some with better regularization and some resembling AdaBelief~\citep{zhuang2020adabelief} and AdaGrad~\citep{duchi2011adagrad}.
+
+
+\subsection{Derivation}
+The search and funnel selection process lead to Program~\ref{lst:p2}, which is obtained by automatically removing redundant statements from the raw Program~\ref{lst:raw} (in the Appendix). 
+We further simplify it to get the final algorithm (\name{}) in Program~\ref{lst:p0}.
+Several unnecessary elements are removed from Program~\ref{lst:p2} during the simplification process.
+The \texttt{cosh} function is removed since \texttt{m} would be reassigned in the next iteration (line 3).
+The statements using \texttt{arcsin} and \texttt{clip} are also removed as we observe no quality drop without them. The three {\color{RedOrange} red} statements translate to a single \texttt{sign} function.
+Although both \texttt{m} and \texttt{v} are utilized in Program~\ref{lst:p2}, \texttt{v} only changes how the momentum is updated (two \texttt{interp} functions with constants $\sim$0.9 and $\sim$1.1 is equivalent to one with $\sim$0.99) and does not need to be separately tracked.
+Note that the bias correction is no longer needed, as it does not change the direction.
+Algorithm~\ref{alg:ours} shows the pseudocode. 
+
+
+
+\subsection{Analysis}
+\label{sec:lion_analysis}
+% After the simplification, we  have several interesting observations of \name{}. 
+
+\textbf{Sign update and regularization} 
+The \name{} algorithm produces update with uniform magnitude across all dimensions by taking the sign operation, which is in principle different from various adaptive optimizers.
+Intuitively, the sign operation adds noise to the updates, which acts as a form of regularization and helps with generalization~\citep{neelakantan2017adding, foret2021sam, chen2022vit-sam}.
+An evidence is shown in Figure~\ref{fig:mix} (Right) in the Appendix, where the ViT-B/16 trained by \name{} on ImageNet has a higher training error compared to AdamW but a 2\% higher accuracy on the validation set (as shown in Table~\ref{tab:imagenet}). Additionally, the results in Appendix~\ref{sec:landscape} demonstrate that \name{} leads to the convergence in smoother regions, which usually results in better generalization.
+
+
+
+\textbf{Momentum tracking}
+The default EMA factor used to track the momentum in \name{} is 0.99 ($\beta_2$), compared to the commonly used 0.9 in AdamW and momentum SGD. The current gradient and momentum are interpolated with a factor of 0.9 ($\beta_1$) before the sign operation is applied.
+This choice of EMA factor and interpolation allows \name{} to balance between remembering a $\sim$10x longer history of the gradient in momentum and putting more weight on the current gradient in the update. The necessity of both $\beta_1$ and $\beta_2$ is further discussed in Section~\ref{sec:ablation}.
+
+
+\textbf{Hyperparameter and batch size choices}
+\name{} is simpler and has fewer hyperparameters compared to AdamW and Adafactor as it does not require $\epsilon$ and factorization-related ones. The update is an element-wise binary $\pm 1$ if we omit the weight decay term, with larger norm than those produced by other optimizers like SGD and adaptive algorithms. 
+As a result, \name{} needs a \textit{smaller} learning rate and in turn a \textit{larger} decoupled weight decay to achieve a similar effective weight decay strength (\texttt{lr * $\lambda$}).
+Detailed information on tuning \name{} can be found in Section~\ref{sec:tuning}.
+Additionally, the advantage of \name{} over AdamW enlarges as the batch size increases, which fits the common practice of scaling up model training through data parallelism (Section~\ref{sec:ablation}).
+
+% The performance of \name{} remains stable when the batch size is as small as 64.
+% is more robust to different hyperparameter settings compared to AdamW.
+% In addition,  
+% One may doubt that \name{} requires a large batch size to get the accurate direction due to the added noise.
+% % as it ignores the magnitude information. 
+% We show in Appendix~\ref{sec:batch} that it indeed prefers a larger batch than AdamW, but its performance is stable even when the batch size is as small as 64.
+% In fact, it shows more potential for training with larger batch sizes , which fits the common practice of scaling up model training through data parallelism, as its gain over AdamW increases with the batch size.
+
+
+
+\textbf{Memory and runtime benefits}
+\name{} only saves the momentum thus has smaller memory footprint than popular adaptive optimizers like AdamW, which is beneficial when training large models and / or using a large batch size. 
+As an example, AdamW needs at least 16 TPU V4 chips to train a ViT-B/16 with image resolution 224 and batch size 4,096, while \name{} only needs 8 (both with \texttt{bfloat16} momentum). 
+Another practical benefit is that \name{} has faster runtime (steps / sec) in our experiments due to its simplicity, usually 2-15\% speedup compared to AdamW and Adafactor depending on the task, codebase, and hardware.
+
+% Our hypothesis is that \name{} is simpler and has fewer operations, it also does not need to factorize the second moment.
+
+
+
+\textbf{Relation to existing optimizers} The sign operation has been explored in previous optimizers~\citep{riedmiller1993rprop, bernstein2018signsgd}. The closest to ours is
+the handcrafted optimizer signSGD~\citep{bernstein2018signsgd} (and its momentum variant) that also utilizes the sign operation to calculate the update but has a different momentum update rule from \name{}. 
+Their focus is to mitigate communication costs between agents in distributed training, and they observe inferior performance when training ConvNets on image classification tasks.
+On the other hand, NAdam~\citep{dozat2016nadam} combines the updated first moment and the gradient to compute the update, but \name{} decouples the momentum tracking and how it is applied to the update through $\beta_2$. 
+% These demonstrate that our program search can automatically discover useful components similar to handcrafted update rules and assemble them into an improved combination. 
+A comparison of \name{} with related optimizers can be found in Section~\ref{sec:multi}.
+
+
+
+
+\section{Evaluation of \name{}}
+\label{sec:eval}
+
+In this section, we present evaluations of \name{}, on various benchmarks. 
+We mainly compare it to AdamW (or Adafactor when memory is a bottleneck) as it is exceedingly popular and the de facto standard optimizer on a majority of learning tasks. 
+The result of momentum SGD is only included for ResNet since it performs worse than AdamW elsewhere.
+% We also benchmark other popular optimizers in Section~\ref{sec:multi}, whose performance and learning curves are similar to AdamW.
+We also benchmark other popular optimizers in Section~\ref{sec:multi}, including handcrafted and automatically discovered ones.
+We make sure that every optimizer is well-tuned for each task (see Section~\ref{sec:tuning} for tuning details).
+By default, the learning rate schedule is cosine decay with 10K steps warmup, and the momentum is saved as \texttt{bfloat16} to reduce the memory footprint.
+
+
+
+\begin{table}
+    \centering
+    \caption{Accuracy on ImageNet, ImageNet ReaL, and ImageNet V2. Numbers in $(\cdot)$ are from~\citet{dai2021coatnet, dosovitskiy2021vit}. Results are averaged from three runs.}
+    \resizebox{.66\linewidth}{!}{
+    \begin{tabular}{lcccccc}
+    \toprule
+    Model & \#Params & Optimizer & \tabincell{c}{RandAug \\ + Mixup} & ImageNet & ReaL & V2 \\ \midrule
+    \multicolumn{7}{c}{Train from scratch on ImageNet} \\ \midrule
+    \multirow{3}{*}{ResNet-50} & \multirow{3}{*}{25.56M} & SGD & \multirow{3}{*}{\xmark} & 76.22 & 82.39 & 63.93 \\
+    & & AdamW & & 76.34 & \textbf{82.72} & \textbf{64.24} \\
+    & & \name & & \textbf{76.45} & \textbf{82.72} & 64.02 \\ \midrule
+    \multirow{2}{*}{Mixer-S/16} & \multirow{2}{*}{18.53M} & AdamW & \multirow{2}{*}{\xmark} & 69.26 & 75.71 & 55.01 \\
+    & & \name & & \textbf{69.92} & \textbf{76.19} & \textbf{55.75} \\ \midrule
+    \multirow{2}{*}{Mixer-B/16} & \multirow{2}{*}{59.88M} & AdamW & \multirow{2}{*}{\xmark} & 68.12 & 73.92 & 53.37 \\
+    & & \name & & \textbf{70.11} & \textbf{76.60} & \textbf{55.94} \\ \midrule
+    \multirow{4}{*}{ViT-S/16} & \multirow{4}{*}{22.05M} & AdamW & \multirow{2}{*}{\xmark} & 76.12 & 81.94 & 63.09 \\
+    & & \name & & \textbf{76.70} & \textbf{82.64} & \textbf{64.14} \\ \cmidrule{3-7}
+    & & AdamW & \multirow{2}{*}{\cmark} & 78.89 & 84.61 & 66.73 \\
+    & & \name & & \textbf{79.46} & \textbf{85.25} & \textbf{67.68} \\ \midrule
+    \multirow{4}{*}{ViT-B/16} & \multirow{4}{*}{86.57M} & AdamW & \multirow{2}{*}{\xmark} & 75.48 & 80.64 & 61.87 \\
+    & & \name & & \textbf{77.44} & \textbf{82.57} & \textbf{64.81} \\ \cmidrule{3-7}
+    & & AdamW & \multirow{2}{*}{\cmark} & 80.12 & 85.46 & 68.14 \\
+    & & \name & & \textbf{80.77} & \textbf{86.15} & \textbf{69.19} \\ \midrule
+    % \multirow{2}{*}{CoAtNet-0} & \multirow{2}{*}{25.04M} & AdamW & \multirow{2}{*}{\cmark} & 81.6 & - & - \\
+    % & & \name & & 82.56 & - & - \\ \midrule
+    \multirow{2}{*}{CoAtNet-1} & \multirow{2}{*}{42.23M} & AdamW & \multirow{2}{*}{\cmark} & 83.36 (83.3) & - & - \\
+    & & \name & & \textbf{84.07} & - & - \\ \midrule
+    % \multirow{2}{*}{CoAtNet-2} & \multirow{2}{*}{74.69M} & AdamW & \multirow{2}{*}{\cmark} & 84.1 & - & - \\
+    % & & \name & & & - & - \\ \midrule
+    \multirow{2}{*}{CoAtNet-3} & \multirow{2}{*}{166.97M} & AdamW & \multirow{2}{*}{\cmark} & 84.45 (84.5) & - & - \\
+    & & \name & & \textbf{84.87} & - & - \\ \midrule
+    \multicolumn{7}{c}{Pre-train on ImageNet-21K then fine-tune on ImageNet} \\ \midrule
+    \multirow{2}{*}{ViT-B/16\textsubscript{384}} & \multirow{2}{*}{86.86M} & AdamW & \multirow{2}{*}{\xmark} & 84.12 (83.97) & 88.61 (88.35) & 73.81 \\
+    & & \name & & \textbf{84.45} & \textbf{88.84} & \textbf{74.06} \\ \midrule
+    \multirow{2}{*}{ViT-L/16\textsubscript{384}} & \multirow{2}{*}{304.72M} & AdamW & \multirow{2}{*}{\xmark} & 85.07 (85.15) & 88.78 (88.40) & 75.10 \\
+    & & \name & & \textbf{85.59} & \textbf{89.35} & \textbf{75.84} \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:imagenet}
+    \vspace{-10pt}
+\end{table}
+
+
+\subsection{Image Classification}
+We perform experiments including various datasets and architectures on the image classification task (see Appendix~\ref{sec:classification} for dataset details).
+Apart from training from scratch on ImageNet, we also pre-train on two larger well-established datasets, ImageNet-21K and JFT~\citep{sun2017jft}.
+The image size is $224^2$ by default otherwise specified by the subscript.
+
+
+
+\textbf{Train from scratch on ImageNet}
+Following previous works~\citep{dosovitskiy2021vit, he2016resnet}, 
+we train ResNet-50 for 90 epochs with a batch size of 1,024, and other models for 300 epochs with a batch size of 4,096. As shown in Table~\ref{tab:imagenet}, \name{} significantly outperforms AdamW on various architectures. Empirically, the improvement is more substantial on models with larger capacity, with accuracy increases of 1.96\% and 0.58\% for ViT-B/16 and ViT-S/16, respectively.
+The performance gaps also tend to enlarger with fewer inductive biases.
+When strong augmentations are applied, the gain of \name{} over AdamW shrinks, but it still outperforms AdamW by 0.42\% on CoAtNet-3, despite the strong regularization during training~\citep{dai2021coatnet}.
+
+
+\textbf{Pre-train on ImageNet-21K}
+We pre-train ViT-B/16 and ViT-L/16 on ImageNet-21K for 90 epochs with a batch size of 4,096.
+Table~\ref{tab:imagenet} shows that \name{} still surpasses AdamW even when the training set is enlarged for 10x. The gaps on larger models are consistently bigger, with +0.52\% vs. +0.33\% (ImageNet), +0.57\% vs. +0.23\% (ReaL), and +0.74\% vs. +0.25\% (V2) for ViT-L/16 and ViT-B/16, respectively. 
+
+
+\begin{table}
+    \centering
+    \caption{Model performance when pre-trained on JFT then fine-tuned on ImageNet. 
+    Two giant ViT models are pre-trained on JFT-3B while smaller ones are pre-trained on JFT-300M. 
+    The ViT-G/14 results are directly from~\citet{zhai2021scalevit}.}
+    \resizebox{.85\linewidth}{!}{
+    \begin{threeparttable}
+    \begin{tabular}{l|cc|cc|cc|cc}
+    \toprule
+    Model & \multicolumn{2}{c|}{ViT-L/16\textsubscript{512}} & \multicolumn{2}{c|}{ViT-H/14\textsubscript{518}} & \multicolumn{2}{c|}{ViT-g/14\textsubscript{518}} & \multicolumn{2}{c}{ViT-G/14\textsubscript{518}} \\ \midrule
+    \#Params & \multicolumn{2}{c|}{305.18M} & \multicolumn{2}{c|}{633.47M} & \multicolumn{2}{c|}{1.04B} & \multicolumn{2}{c}{1.88B} \\
+    Optimizer & AdamW & \name & AdamW & \name & Adafactor & \name & Adafactor & \name \\ \midrule
+    ImageNet & 87.72 & \textbf{88.50} & 88.55 & \textbf{89.09} & 90.25 & \textbf{90.52} & 90.45 & \textbf{90.71} / \textbf{90.71\tnote{$\star$}} \\
+    ReaL & 90.46 & \textbf{90.91} & 90.62 & \textbf{91.02} & 90.84 & \textbf{91.11} & 90.81 & \textbf{91.06} / \textbf{91.25\tnote{$\star$}} \\
+    V2 & 79.80 & \textbf{81.13} & 81.12 & \textbf{82.24} & 83.10 & \textbf{83.39} & 83.33 & \textbf{83.54} / \textbf{83.83\tnote{$\star$}}\\
+    A & 52.72 & \textbf{58.80} & 60.64 & \textbf{63.78} & - & - & - & - \\
+    R & 66.95 & \textbf{72.49} & 72.30 & \textbf{75.07} & - & - & - & - \\
+    \bottomrule
+    \end{tabular}
+    \begin{tablenotes}
+        \item[$\star$] We observe overfitting in fine-tuning, therefore report both the last and oracle results.
+    \end{tablenotes}
+    \end{threeparttable}}
+    \label{tab:jft}
+\end{table}
+
+
+\textbf{Pre-train on JFT}
+To push the limit, we conduct extensive experiments on JFT.
+We follow the settings of~\citet{dosovitskiy2021vit} and \citet{zhai2021scalevit} for both pre-training and fine-tuning.
+Figure~\ref{fig:teaser} (Left) and~\ref{fig:pre-train} present the accuracy of three ViT models (ViT-B/16, ViT-L/16, and ViT-H/14) under different pre-training budgets on JFT-300M.
+\name{} enables the ViT-L/16 to match the performance of ViT-H/14 trained by AdamW on ImageNet and ImageNet V2 but with 3x less pre-training cost.
+On ImageNet ReaL, the compute saving further becomes 5x.
+Another evidence is that even when a ViT-L/16 is trained by AdamW for 4M steps by~\citet{zhai2021scalevit}, its performance still lags behind the same model trained by \name{} for 1M steps.
+
+
+Table~\ref{tab:jft} shows the fine-tuning results, with higher resolution and Polyak averaging.
+Our ViT-L/16 matches the previous ViT-H/14 results trained by AdamW, while being 2x smaller.
+The advantage is larger on more challenging benchmarks, such as +1.33\% (V2), +6.08\% (A), +5.54\% (R) for ViT-L/16. After we scale up the pre-training dataset to JFT-3B, the ViT-g/14 trained by \name{} outperforms the previous ViT-G/14 results~\citep{zhai2021scalevit}, with 1.8x fewer parameters.
+Our ViT-G/14 further achieves a 90.71\% accuracy on ImageNet.
+
+
+% The performance of the three optimizers are pretty similar on ResNet-50 as training ConvNets (piecewise linear structure) are easier than other architectures.
+% (to encourage translation, rotation equivalence, etc.)
+% (RandAugment with two layers and magnitude 15, Mixup of 0.8, and stochastic depth~\citep{huang2016stochastic} of 0.7)
+% resulting in a total of 280K steps.
+% The fine-tuning settings are identical to~\citet{dosovitskiy2021vit}: all models are trained by momentum SGD with batch size 512 for 20K steps (500 steps warmup then cosine decay).
+% to achieve the accuracy of 88.0\% (ImageNet), 90.3\% (ReaL) and 79.5\% (V2), underperforming the same model but with 4x fewer training steps by \name{}.
+
+
+\begin{figure}
+\begin{minipage}[t]{.53\linewidth}
+    \centering
+    \caption{ImageNet ReaL (\textbf{Left}) and ImageNet V2 (\textbf{Right}) accuracy after we pre-train ViT models on JFT-300M then fine-tune on ImageNet. See Table~\ref{tab:pre-train} (in the Appendix) for the detailed numbers.}
+    \includegraphics[width=0.5\linewidth]{figs/classification/real.png}%
+    \includegraphics[width=0.5\linewidth]{figs/classification/v2.png}
+    \label{fig:pre-train}
+\end{minipage}\hspace{10pt}%
+\begin{minipage}[t]{.44\linewidth}
+    \centering
+    \captionof{table}{Zero-shot accuracy of LiTs on ImageNet, CIFAR-100, and Oxford-IIIT Pet.
+    As a reference, the zero-shot accuracy of CLIP~\citep{radford2021clip} on ImageNet is 76.2\%.}
+    \resizebox{1.\linewidth}{!}{
+    \begin{tabular}{lcccc}
+    \toprule
+    Model & Optimizer & ImageNet & C100 & Pet \\ \midrule
+    \multirow{2}{*}{LiT-B/32-B} & AdamW & 68.78 & 71.41 & 86.62 \\
+    & \name & \textbf{69.88} & \textbf{71.78} & \textbf{87.36} \\ \midrule
+    \multirow{2}{*}{LiT-B/16-B} & AdamW & 74.26 & 72.25 & 89.83 \\
+    & \name & \textbf{75.39} & \textbf{72.49} & \textbf{91.20} \\ \midrule
+    \multirow{2}{*}{LiT-g/14\textsubscript{288}-L} & AdamW & 83.43 & 80.93 & 94.88 \\
+    & \name & \textbf{84.09} & \textbf{81.43} & \textbf{95.86} \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:lit}
+\end{minipage}
+\end{figure}
+
+
+
+
+\subsection{Vision-Language Contrastive Learning}
+This section focuses on the vision-language contrastive training~\citep{radford2021clip}.
+We compare \name{} with AdamW (Adafactor) on zero-shot image classification and image-text retrieval benchmarks.
+Instead of learning all the parameters from scratch, we initialize the image encoder with a strong pre-trained model as it is suggested to be more efficient~\citep{zhai2022lit}.
+% Our experiments cover various model scales, architectures, and datasets.
+% We evaluate on the standard CLIP training setting, where both the image and text encoders are trained from scratch.
+% Additionally, we compare \name{} with AdamW when initializing the image encoder with a strong pre-trained model, which is suggested to be more efficient~\citep{zhai2022lit}.
+
+
+\textbf{Locked-image text Tuning (LiT)}
+We perform a comparison between \name{} and AdamW on LiT~\citep{zhai2022lit} by training the text encoder~\citep{zhai2022lit} in a contrastive manner using the same frozen pre-trained ViT.
+All models are trained for 1B image-text pairs with a batch size of 16,384. Table~\ref{tab:lit} shows the zero-shot image classification results on three model scales, with the name specifies the size, e.g., LiT-B/16-B denotes a ViT-B/16 and a base size Transformer as the text encoder. 
+Our method, \name{}, demonstrates consistent improvement over AdamW with gains of +1.10\%, +1.13\%, and +0.66\%
+on zero-shot ImageNet accuracy for LiT-B/32-B, LiT-B/16-B, and LiT-g/14\textsubscript{288}-L, respectively. Figure~\ref{fig:diffusion} (Left) depicts an example zero-shot learning curve of LiT-B/16-B. Similar results are obtained on the other two datasets.
+The zero-shot image-text retrieval results on MSCOCO~\citep{lin2014coco} and Flickr30K~\citep{plummer2015flickr} can be found in Figure~\ref{fig:lit} (in the Appendix).
+The evaluation metric is Recall@K, calculated based on if the ground truth label of the query appears in the top-K retrieved examples. 
+\name{} outperforms AdamW on both datasets, with a larger gain in Recall@1 than Recall@10 on Flicker30K, implying more accurate retrieval results: +1.70\% vs. +0.60\% for image~$\rightarrow$~text and +2.14\% vs. +0.20\% for text~$\rightarrow$~image.
+
+
+
+
+\textbf{BASIC}
+\citet{hieu2021basic} propose to scale up batch size, dataset, and model size simultaneously, achieving drastic improvements over CLIP.
+It uses a sophisticated CoAtNet~\citep{dai2021coatnet} pre-trained on JFT-5B as the image encoder.
+Furthermore, the contrastive training is performed on 6.6B image-text pairs with a larger 65,536 batch size.
+To push the limit, we only experiment on the largest BASIC-L, and use \name{} on \textit{both} image encoder pre-training and contrastive learning stages.
+As illustrated in Table~\ref{tab:basic}, we achieve a significant 2.6\% gain over the baseline, striking a 88.3\% accuracy on zero-shot ImageNet classification. Note that this result is 2.0\% higher than the previous best result~\citep{yu2022coca}.
+The performance gain is consistent on five other robustness benchmarks.
+After fine-tuning the image encoder (CoAtNet-7) in BASIC-L obtained by \name{}, we further achieve a 91.1\% top-1 accuracy on ImageNet, which is 0.1\% better than the previous SOTA.
+
+
+% and we mainly compare to Adafactor~\citep{shazeer2018adafactor} due to the memory constraint. 
+% The momentum in \name{} is saved as \texttt{bfloat16} to reduce the memory footprint and we compare to the Adafactor optimizer.
+
+
+\begin{figure}
+    \centering
+    \caption{The zero-shot ImageNet accuracy curve of LiT-B/16-B (\textbf{Left}). FID comparison on $64\times 64$ (\textbf{Middle}) and $128\times 128$ (\textbf{Right}) image generation when training diffusion models. We decode image w/o guidance.}
+    \includegraphics[width=.28\linewidth]{figs/lit/i1k.png}%
+    \includegraphics[width=.58\linewidth]{figs/diffusion_64_128.png}
+    \label{fig:diffusion}
+\end{figure}
+
+
+\subsection{Diffusion Model}
+Recently, diffusion models achieve a huge success on image generation~\citep{ho2020ddpm, song2021ddim, dhariwal2021adm, ho2022free, saharia2022imagen}.
+Given its enormous potential, we test the performance of \name{} on unconditional image synthesis and multimodal text-to-image generation.
+
+
+\textbf{Image synthesis on ImageNet}
+We utilize the improved U-Net architecture introduced in~\citet{dhariwal2021adm} and perform $64\times 64$, $128\times 128$, and $256\times 256$ image generation on ImageNet.
+The batch size is set as 2,048 and the learning rate remains constant throughout training.
+For decoding, we apply DDPM~\citep{ho2020ddpm} for 1K sampling steps \textit{without} classifier-free guidance.The evaluation metric is the standard FID score.
+Illustrated by Figure~\ref{fig:teaser} (Right) and~\ref{fig:diffusion} (Middle and Right), \name{} enables both better quality and faster convergence on the FID score. 
+Note that the gap between \name{} and AdamW tends to increase with the image resolution, where the generation task becomes more challenging.
+When generating $256\times 256$ images, \name{} achieves the final performance of AdamW at 440K steps, reducing 2.3x iterations.
+The final FID scores are 4.1 (\name) vs. 4.7 (AdamW), and for reference, the FID of ADM~\citep{dhariwal2021adm} is 10.94.
+
+
+
+\textbf{Text-to-image generation}
+We follow the Imagen~\citep{saharia2022imagen} setup to train a base $64\times 64$ text-to-image model and a $64\times 64\rightarrow 256\times 256$ super-resolution model.
+All models are trained on a high-quality internal image-text dataset with a batch size of 2,048 and a constant learning rate. 
+Due to computational constraints, our base U-Net has a width of 192 compared to 512 in the original 2B model, while the 600M super-resolution model is identical to the original Imagen setup.
+Along with the training, 2K images are sampled from the MSCOCO~\citep{lin2014coco} validation set for real-time evaluation.
+We use the CLIP score to measure image-text alignment and the zero-shot FID-30K to measure image fidelity.
+Classifier-free guidance~\citep{ho2022free} with a weight of 5.0 is applied as it has been shown to improve image-text alignment.
+Figure~\ref{fig:imagen} depicts the learning curve. While there is no clear improvement on the base $64\times 64$ model, \name{} outperforms AdamW on the text-conditional super-resolution model. 
+It achieves a higher CLIP score and has a less noisy FID metric compared to AdamW.
+
+
+
+\begin{figure}
+\begin{minipage}[t]{.494\linewidth}
+    \centering
+    \caption{Evaluation of the Imagen text-to-image $64^2$ (\textbf{Left}) and the $64^2\rightarrow 256^2$ diffusion models (\textbf{Right}).}
+    \includegraphics[width=1.\linewidth]{figs/imagen.png}
+    \label{fig:imagen}
+\end{minipage}\hspace{8pt}%
+\begin{minipage}[t]{.49\linewidth}
+    \centering
+    \caption{Log perplexity on Wiki-40B (\textbf{Left}) and PG-19 (\textbf{Right}).
+    The speedup brought by \name{} tends to increase with the model scale.
+    The largest model on Wiki-40B is omitted as we observe severe overfitting.}
+    \includegraphics[width=1.\linewidth]{figs/lm.png}
+    \label{fig:lm}
+\end{minipage}
+\end{figure}
+
+
+
+
+\subsection{Language Modeling and Fine-tuning}
+\label{sec:lm}
+This section focuses on language modeling and fine-tuning.
+On language-only tasks, we find that tuning $\beta_1$ and $\beta_2$ can improve the quality for both AdamW and \name{}.
+See Section~\ref{sec:tuning} for tuning details.
+
+
+
+\textbf{Autoregressive language modeling}
+We first experiment on two smaller-scale academic datasets Wiki-40B~\citep{guo2020wiki40b} and PG-19~\citep{rae2020pg19} following~\citet{hua2022flash}.
+The employed Transformer spans three scales: small (110M), medium (336M), and large (731M). The architecture details can be found in Appendix~\ref{sec:architecture}.
+All models are trained with $2^{18}$ tokens per batch for 125K steps, with a learning rate schedule of 10K steps warmup followed by linear decay. The context length is set to 512 for Wiki-40B and 1,024 for PG-19.
+Figure~\ref{fig:lm} illustrates the token-level perplexity for Wiki-40B and word-level perplexity for PG-19.
+\name{} consistently achieves lower validation perplexity than AdamW.
+It achieves 1.6x and 1.5x speedup when training the medium size model on Wiki-40B and PG-19, respectively.
+When the model is increased to the large size, the speedup on PG-19 further increases to 2x.
+
+% After the model increases to the large size, our speedup further becomes 2x on PG-19.
+
+% , and their gap enlarges as we increase the model capacity. 
+% Those results demonstrate that our optimizer generalizes well to the language modeling task.
+% which contain clean English Wikipedia pages and a set of books extracted from the Project Gutenberg, respectively. Wiki-40B contains $\sim$3M training examples while PG-19 only contains $\sim$29K, but its average document length is a much larger 69K words.
+
+
+\begin{table}
+    \centering
+    \caption{One-shot evaluation averaged over three NLG and 21 NLU tasks. The results of GPT-3~\citep{brown2020gpt3} and PaLM~\citep{chowdhery2022palm} are included for reference. The LLMs trained by \name{} have better in-context learning ability. See Table~\ref{tab:oneshot-full} (in the Appendix) for detailed results on all tasks.}
+    \resizebox{.78\linewidth}{!}{
+    \begin{tabular}{l|cc|cc|cc|cc}
+    \toprule
+    \multirow{2}{*}{Task} & \multicolumn{2}{c|}{1.1B} & \multicolumn{2}{c|}{2.1B} & \multicolumn{2}{c|}{7.5B} & \multirow{2}{*}{\tabincell{c}{6.7B \\ GPT-3}} & \multirow{2}{*}{\tabincell{c}{8B \\ PaLM}} \\
+    & Adafactor & \name & Adafactor & \name & Adafactor & \name & & \\ \midrule 
+    \#Tokens & \multicolumn{6}{c|}{300B} & 300B & 780B \\ \midrule
+    Avg NLG & 11.1 & \textbf{12.1} & 15.6 & \textbf{16.5} & 24.1 & \textbf{24.7} & 23.1 & 23.9 \\
+    Avg NLU & 53.2 & \textbf{53.9} & 56.8 & \textbf{57.4} & 61.3 & \textbf{61.7} & 58.5 & 59.4 \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:oneshot}
+\end{table}
+
+
+Scaling up the scale of language models and pre-training datasets has revolutionized the field of NLP.
+% So we further scale up the dataset and model scales. 
+So we further perform larger-scale experiments.
+Our pre-training dataset, similar to that used in GLaM~\citep{du2022glam}, consists of 1.6 trillion tokens spanning a wide range of natural language use cases.
+Following GPT-3~\citep{brown2020gpt3}, we train three models, ranging from 1.1B to 7.5B parameters, for 300B tokens with a batch size of 3M tokens and a context length of 1K.
+We evaluate them on three natural language generative (NLG) and 21 natural language understanding (NLU) tasks (see Appendix~\ref{sec:nlp} for task details).
+On this massive dataset, we observe no perplexity difference throughout training.
+Nevertheless, \name{} outperforms Adafactor on the average in-context learning ability, as shown in Table~\ref{tab:oneshot}.
+Our 7.5B baseline model, trained for 300B tokens, outperforms the 8B PaLM, trained for 780B tokens, demonstrating the strength of our setup. \name{} outperforms Adafactor on both NLG and NLU tasks, particularly on the NLG tasks, with an exact match improvement of +1.0, +0.9, and +0.6 for the 1.1B, 2.1B, and 7.5B models, respectively.
+
+
+% For the modeling part, we use a large 256K vocabulary size and adopt the squared ReLU activation function introduced in Primer~\citep{so2021primer}.
+% The Transformer architecture details are shown in Appendix~\ref{sec:architecture} ranging from 1.1B to 7.5B parameters.
+% We use 256 V4 TPUs for all the experiments and compare \name{} (with \texttt{bfloat16} momentum) to Adafactor due to the memory constraint.
+% (24.1 vs. 23.9 on NLG; 61.3 vs. 59.4 on NLU)
+
+
+\textbf{Masked language modeling}
+We also perform BERT training on the C4 dataset~\citep{raffel2020t5}.
+It requires the language models to reconstruct randomly masked out tokens in the input sequence.
+We use the same architectures and training setups as the smaller-scale autoregressive experiments.
+\name{} performs slightly better than AdamW regarding the validation perplexity: 4.18 vs. 4.25 (small), 3.42 vs. 3.54 (medium), and 3.18 vs. 3.25 (large). See Figure~\ref{fig:mix} (Left) in the Appendix for the learning curves.
+
+
+
+\begin{table}
+    \centering
+    \caption{Fine-tuning performance of the T5 Base, Large, and 11B on the GLUE dev set. Results reported are the peak validation scores per task.}
+    \resizebox{1.\linewidth}{!}{
+    \begin{tabular}{lccccccccccccc}
+    \toprule
+    % Model & Optimizer & \tabincell{c}{CoLA \\ Matthew's} & \tabincell{c}{SST-2 \\ Acc} & \tabincell{c}{MRPC \\ F1 / Acc} & \tabincell{c}{STS-B \\ Pearson / Spearman} & \tabincell{c}{QQP \\ F1 / Acc} & \tabincell{c}{MNLI-m \\ Acc} & \tabincell{c}{MNLI-mm \\ Acc} & \tabincell{c}{QNLI \\ Acc} & \tabincell{c}{RTE \\ Acc} & \tabincell{c}{Avg} \\ \midrule
+    Model & Optimizer & CoLA & SST-2 & MRPC & STS-B & QQP & \tabincell{c}{MNLI \\ -m} & \tabincell{c}{MNLI \\ -mm} & QNLI & RTE & Avg \\ \midrule
+    \multirow{2}{*}{Base} & AdamW & 60.87 & 95.18 & 92.39 / 89.22 & \textbf{90.70} / \textbf{90.51} & 89.23 / 92.00 & 86.77 & 86.91 & 93.70 & 81.59 & 87.42 \\
+    & \name & \textbf{61.07} & \textbf{95.18} & \textbf{92.52} / \textbf{89.46} & 90.61 / 90.40 & \textbf{89.52} / \textbf{92.20} & \textbf{87.27} & \textbf{87.25} & \textbf{93.85} & \textbf{85.56} & \textbf{87.91} \\ \midrule
+    \multirow{2}{*}{Large} & AdamW & 63.89 & 96.10 & 93.50 / 90.93 & 91.69 / 91.56 & 90.08 / 92.57 & 89.69 & 89.92 & 94.45 & 89.17 & 89.46 \\ 
+    & \name & \textbf{65.12} & \textbf{96.22} & \textbf{94.06} / \textbf{91.67} & \textbf{91.79} / \textbf{91.60} & \textbf{90.23} / \textbf{92.67} & \textbf{89.85} & \textbf{89.94} & \textbf{94.89} & \textbf{90.25} & \textbf{89.86} \\ \midrule
+    \multirow{2}{*}{11B} & AdamW & 69.50 & 97.02 & 93.75 / 91.18 & 92.57 / 92.61 & 90.45 / 92.85 & \textbf{92.17} & \textbf{91.99} & 96.41 & 92.42 & 91.08 \\
+    & \name & \textbf{71.31} & \textbf{97.13} & \textbf{94.58} / \textbf{92.65} & \textbf{93.04} / \textbf{93.04} & \textbf{90.57} / \textbf{92.95} & 91.88 & 91.65 & \textbf{96.56} & \textbf{93.86} & \textbf{91.60} \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:glue}
+\end{table}
+
+
+\textbf{Fine-tuning}
+We fine-tune Base (220M), Large (770M), and the largest 11B T5~\citep{raffel2020t5} models on the GLUE benchmark~\citep{wang2018glue}.
+Every model is fine-tuned for 500K steps with a batch size of 128 and a constant learning rate.
+Table~\ref{tab:glue} shows the results on the GLUE dev set. 
+For MRPC and QQP, we report the F1 / Accuracy scores, for STS-B, we report the Pearson / Spearman correlation, and for the other datasets, we report their default metric. 
+On average, \name{} beats AdamW across all three model scales. 
+It achieves 10, 12, and 10 wins out of 12 scores for T5 Base, Large, and 11B models, respectively.
+
+
+\subsection{Comparison with Other Popular Optimizers}
+\label{sec:multi}
+We also employ four popular handcrafted optimizers: RAdam~\citep{liu2020radam}, NAdam~\citep{dozat2016nadam}, AdaBelief~\citep{zhuang2020adabelief}, AMSGrad~\citep{reddi2018amsgrad} and two optimizers discovered by AutoML: PowerSign~\citep{bello2017nos} and AddSign~\citep{bello2017nos} to train ViT-S/16 and ViT-B/16 on ImageNet (with RandAug and Mixup).
+We thoroughly tune the peak learning rate $lr$ and decoupled weight decay $\lambda$~\citep{loshchilov2019adamw} of every optimizer, while other hyperparameters are set as the default values in Optax.\footnote{\url{https://github.com/deepmind/optax}}
+As shown in Table~\ref{tab:multi}, \name{} is still the best performing one.
+We notice that there is no clear winner amongst the baselines. AMSGrad performs the best on ViT-S/16 but the worst on ViT-B/16.
+The inferior performance of PowerSign and AddSign compared to other optimizers is consistent with previous observations that automatically discovered optimizers have difficulty generalizing to real-world learning tasks.
+Figure~\ref{fig:multi} (in the Appendix) further shows that the learning curves of the five adaptive optimizers are pretty similar, whereas \name{} has a unique one that learns faster.
+
+
+\begin{table}[!t]
+    \centering
+    \caption{The performance of various optimizers to train ViT-S/16 and ViT-B/16 on ImageNet (with RandAug and Mixup). \name{} is still the best performing one, and there is no clear winner amongst the baselines.}
+    \resizebox{1.\linewidth}{!}{
+    \begin{tabular}{lc|ccccccc|cc|c}
+    \toprule
+    Model & Task & AdamW & RAdam & NAdam & \tabincell{c}{Ada-\\Belief} & AMSGrad & \tabincell{c}{Power-\\Sign} & \tabincell{c}{Add-\\Sign} & Ablation\textsubscript{0.9} & Ablation\textsubscript{0.99} & \name{} \\ \midrule
+    \multirow{3}{*}{ViT-S/16} & ImageNet & 78.89 & 78.59 & 78.91 & 78.71 & 79.01 & 77.36 & 77.37 & 78.23 & 78.19 & \textbf{79.46} \\
+    & ReaL & 84.61 & 84.47 & 84.62 & 84.56 & 85.01 & 83.39 & 83.36 & 84.28 & 84.17 & \textbf{85.25} \\
+    & V2 & 66.73 & 66.39 & 66.02 & 66.35 & 66.82 & 65.17 & 64.52 & 66.13 & 65.96 & \textbf{67.68} \\ \midrule
+    
+    \multirow{3}{*}{ViT-B/16} & ImageNet & 80.12 & 80.26 & 80.32 & 80.29 & 79.85 & 78.95 & 78.50 & 79.54 & 79.90 & \textbf{80.77} \\
+    & ReaL & 85.46 & 85.45 & 85.44 & 85.48 & 85.16 & 84.76 & 84.49 & 85.10 & 85.36 & \textbf{86.15} \\
+    & V2 & 68.14 & 67.76 & 68.46 & 68.19 & 68.48 & 67.46 & 65.95 & 68.07 & 68.20 & \textbf{69.19} \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:multi}
+\end{table}
+
+\subsection{Ablations}
+\label{sec:ablation}
+
+
+\textbf{Momentum tracking}
+To ablate the effects of both $\beta_1$ and $\beta_2$, we compare to a simple update rule: \texttt{m = interp(g, m, $\beta$); update = sign(m)}.
+Two optimizers, Ablation\textsubscript{0.9} and Ablation\textsubscript{0.99}, are created with $\beta$ values of 0.9 and 0.99 respectively.
+Illustrated by Table~\ref{tab:multi}, the two ablated optimization algorithms perform worse than all five compared baselines, let alone our \name{}.
+Further ablation studies on the language modeling task (as depicted in Figure~\ref{fig:beta_pg19} in the Appendix) yield similar conclusions.
+Those results validate the effectiveness and necessity of using two linear interpolation functions, letting \name{} to remember longer gradient history meanwhile assign a higher weight to the current gradient.
+
+
+% which is equivalent to setting both $\beta_1$ and $\beta_2$ in \name{} as 0.9.
+% As shown in Figure~\ref{fig:mix} (Middle), the ablated optimizer performs in-between AdamW and \name{}, but its convergence speed is slower than \name{} as the accuracy catches up at the last stage.
+% We further use it to pre-train a ViT-B/16 on JFT-300M and achieve an ImageNet accuracy of 84.39\% after fine-tuning, compared to 84.24\% by AdamW and 84.72\% by \name{}.
+% Those results validate the effectiveness of using two linear interpolate functions in \name{}.
+
+
+\textbf{Effect of batch size}
+Some may question whether \name{} requires a large batch size to accurately determine the direction due to the added noise from the sign operation. To address this concern, we train a ViT-B/16 model on ImageNet using various batch sizes while maintaining the total training epoch as 300, and incorporating RandAug and Mixup techniques.
+As shown in Figure~\ref{fig:sensitivity} (Left), the optimal batch size for AdamW is 256, while for \name{} is 4,096.
+This indicates that \name{} indeed prefers a larger batch size, but its performance remains robust even with a small 64 batch size.
+Furthermore, when the batch size enlarges to 32K, leading to only 11K training steps, 
+\name{} achieves a significant 2.5\% accuracy gain over AdamW (77.9\% vs. 75.4\%), demonstrating its effectiveness in the large batch training setting.
+
+
+
+\begin{figure}
+    \centering
+    \caption{\textbf{Left}: Ablation for the effect of batch size. \name{} prefers a larger batch than AdamW.
+    ImageNet accuracy of ViT-B/16 trained from scratch when we vary $lr$ and $\lambda$ for AdamW (\textbf{Middle}) and \name{} (\textbf{Right}). \name{} is more robust to different hyperparameter choices.}
+    \includegraphics[width=.3\linewidth]{figs/bs.png}%
+    \includegraphics[width=.6\linewidth]{figs/sensitivity.png}
+    \label{fig:sensitivity}
+\end{figure}
+
+
+\section{Hyperparameter Tuning}
+\label{sec:tuning}
+To ensure a fair comparison, we tune the peak learning rate $lr$ and decoupled weight decay $\lambda$ for both AdamW (Adafactor) and our \name{} using a logarithmic scale.
+The default values for $\beta_1$ and $\beta_2$ in AdamW are set as 0.9 and 0.999, respectively, with an $\epsilon$ of $1e-8$, while in \name{}, the default values for $\beta_1$ and $\beta_2$ are discovered through the program search process and set as 0.9 and 0.99, respectively.
+We only tune those hyperparameters in Section~\ref{sec:lm},
+where $\beta_1=0.9$, $\beta_2=0.99$ in AdamW, and $\beta_1=0.95$, $\beta_2=0.98$ in \name{}.
+In our experience, reducing $\beta_2$ results in shorter memorization of historical information and \textit{enhanced training stability}.
+% \textit{We suggest using the $\beta_1=0.95$, $\beta_2=0.98$ setting in \name{} if the $\beta_2$ in AdamW (Adafactor) is smaller than the default 0.999.}
+Additionally, the $\epsilon$ in AdamW is set as $1e-6$ instead of the default $1e-8$ as it improves stability in our experiments, similar to the observations in RoBERTa~\citep{liu2019roberta}.
+
+
+The update generated by \name{} is an element-wise binary $\pm 1$, as a result of the sign operation, therefore it has a larger norm than those generated by other optimizers.
+Based on our experience, \textit{a suitable learning rate for \name{} is typically 3-10x smaller than that for AdamW.}
+Note that the initial value, peak value, and end value of the learning rate should be changed \textit{simultaneously} with the same ratio compared to AdamW.
+We \textit{do not} modify other training settings such as the learning rate schedule, gradient and update clipping. 
+%, although sometimes a learning rate that is 3x smaller may perform slightly better.
+Since the effective weight decay is \texttt{lr * $\lambda$}: \texttt{update += w * $\lambda$}; \texttt{update *= lr},
+\textit{the value of $\lambda$ used for \name{} is 3-10x larger than that for AdamW in order to maintain a similar strength.}
+For instance, 
+\begin{compactitem}
+    \item $lr=1e-4$, $\lambda=10.0$ in \name{} and $lr=1e-3$, $\lambda=1.0$ in AdamW when training ViT-B/16 on ImageNet with strong augmentations,
+    \item $lr=3e-5$, $\lambda=0.1$ in \name{} and $lr=3e-4$, $\lambda=0.01$ in AdamW for diffusion models,
+    \item $lr=1e-4$, $\lambda=0.01$ in \name{} and $lr=1e-3$, $\lambda=0.001$ in Adafactor for the 7.5B language modeling. 
+\end{compactitem}
+Please see Table~\ref{tab:hyperparameter} (in the Appendix) for all hyperparameters.
+
+Apart from the peak performance, the sensitivity to hyperparameters and the difficulty in tuning them are also critical for the adoption of an optimizer in practice.
+In Figure~\ref{fig:sensitivity} (Middle and Right), we alter both $lr$ and $\lambda$ when training ViT-B/16 from scratch on ImageNet.
+Suggested by the heatmaps, \name{} is more robust to different hyperparameter choices compared to AdamW.
+
+
+
+% Learning to optimize can be generally categorized into learning-based and symbolic-based approaches.
+% Learning-based methods~\citep{andrychowicz2016l2l, bello2017nos, xiong2022graphlr, metz2019understandl2l, metz2022velo} usually employ a small black-box neural network to parameterize the update rule. 
+% It takes the learning state (e.g., gradient, model parameters, momentum) as inputs and outputs the update directly.
+% % Leveraging the powerful expressiveness of neural network, those approaches can significantly outperforms handcrafted optimizers on several tasks. 
+% A major challenge in learning to optimize is the lack of generalization to unseen tasks, which can be even more severe given the powerful expressiveness of neural network, i.e., the learned optimizer overfits the training tasks.
+% VeLO~\citep{metz2022velo} recently scales up the number of learning tasks to train the optimizer and achieves compelling performance on a series of machine learning tasks.
+% However, it still struggles to generalize to larger models or longer training steps. 
+% Our work lies in the line of symbolic approaches~\citep{bello2017nos, real2020automl, peng2020pyglove}, where the search space is constructed by basic mathematical operations with better interpretability.
+
+
+
+\section{Limitations}
+\label{sec:limit}
+% 4,096 batch size, ViT-B/16, 8 TPU V4 cores
+% Regarding the search method, xxx
+
+\textbf{Limitations of search}
+Despite the efforts to make the search space less restrictive, it remains inspired by the popular first-order optimization algorithms, leading to a bias towards similar algorithms.
+It also lacks the functions required to construct advanced second-order algorithms~\citep{anil2020second,gupta2018shampoo,martens2015optimizing}. 
+The search cost is still quite large and the algorithm simplification requires manual intervention. 
+Further reducing the bias in the search space to discover more novel algorithms and improving the search efficiency are important future directions. 
+The current program structure is quite simplistic, as we do not find a good usage of more advanced program constructs such as conditional, loop statements, and defining new functions. 
+Exploring how to incorporate these elements has the potential to unlock new possibilities.
+
+
+
+\textbf{Limitations of \name{}}
+% Though we endeavour to cover as many tasks as possible, the evaluation of \name{} is limited to the selected tasks.
+While we endeavour to evaluate \name{} on as many tasks as possible, the assessment is limited to the chosen tasks.
+On vision tasks, the discrepancies between \name{}, AdamW, and momentum SGD are pretty small on ResNets, likely due to the fact that ConvNets are easier to optimize compared to Transformers. 
+The performance gain brought by \name{} decreases when strong augmentations are utilized.
+There are also several tasks where \name{} performs similarly to AdamW, including: (1) the Imagen text-to-image base model, (2) the perplexity of autoregressive language model trained on the large-scale internal dataset, which is arguably a more reliable metric the in-context learning benchmarks, and (3) masked language modeling on C4.
+% One thing in common in those tasks is that the datasets are giant and have a high quality, so the difference between optimizers narrows. 
+These tasks have a common characteristic in that the datasets are massive and of high quality, which results in a reduced difference between optimizers.
+Another potential limitation is the batch size. Though people often scale up the batch size to enable more parallelism, it is likely that \name{} performs no better than AdamW if the batch size is small ($<$64).
+Additional, \name{} still requires momentum tracking in \texttt{bfloat16}, which can be expensive for training giant models.
+One potential solution is to factorize the momentum to save memory.
+% and a potential direction is to factorize the momentum to save more memory.
+
+
+% The embedding layer with a large number of parameters may also make a difference.
+
+\section{Related Work}
+Our work lies in the area of AutoML and meta-learning that includes learning to learn~\citep{andrychowicz2016l2l, ravi2017optfewshot, wichrowska2017optscale, bello2017nos, xiong2022graphlr, metz2019understandl2l, metz2022velo}, neural architecture search~\citep{real2019regularized, zoph2017nas, pham2018enas, liu2018darts, chen2020sdarts, wang2021rethinking, so2019evolved, chen2021drnas, yang2022tabnas, wang2021nosh} and hyperparameter optimization~\citep{li2017hyperband, jamison2016hpo, hutter2011smac, dong2021autohas}, etc. There is also a long history of using evolutionary methods to search for programs, i.e., genetic programming~\citep{koza1994genetic,brameier2007linear,holland1992adaptation}. 
+Our approach builds upon a symbolic search space similar to AutoML-Zero~\citep{real2020automl, peng2020pyglove}.
+However, instead of discovering programs with fixed dimensional matrices, vector, and scalars for toy tasks,
+our goal is to develop programs that operate on n-dimensional arrays and can generalize to state-of-the-art tasks.  Other related works include numerous handcrafted optimizers~\citep{kingma2014adam, bernstein2018signsgd, duchi2011adagrad, shazeer2018adafactor, zhuang2020adabelief, dozat2016nadam, anil2020second, liu2020radam, reddi2018amsgrad, gupta2018shampoo, riedmiller1993rprop, ma2018quasihyperbolic}, which we discuss in Section~\ref{sec:lion_analysis}.
+
+
+
+
+
+\section{Conclusion}
+This paper proposes to discover optimization algorithms via program search. We propose techniques to address the challenges in searching an infinite and sparse search space, and large generalization gap between the proxy and target tasks. Our method discovers a simple and effective optimizer, \name{}, that is memory-efficient and achieves strong generalization across architectures, datasets and tasks.
+
+
+\section*{Acknowledgements}
+We would like to thank (in alphabetical order) Angel Yu, Boqing Gong, Chen Cheng, Chitwan Saharia, Daiyi Peng, David So, Hanxiao Liu, Hanzhao Lin, Jeff Lund, Jiahui Yu, Jingru Xu, Julian Grady, Junyang Shen, Kevin Regan, Li Sheng, Liu Yang, Martin Wicke, Mingxing Tan, Mohammad Norouzi, Qiqi Yan, Rakesh Shivanna, Rohan Anil, Ruiqi Gao, Steve Li, Vlad Feinberg, Wenbo Zhang, William Chan, Xiao Wang, Xiaohua Zhai, Yaguang Li, Yang Li, Zhuoshu Li, Zihang Dai, Zirui Wang for helpful discussions, and the Google Brain team at large for providing a supportive research environment.
+
+
+\bibliographystyle{plainnat}
+\bibliography{reference}
+
+
+\newpage
+\appendix
+
+
+\section{Pseudocode for AdamW and \name{}}
+\begin{minipage}{.48\linewidth}
+\begin{algorithm}[H]
+    \caption{AdamW Optimizer}
+    \begin{algorithmic}
+    \State \textbf{given} $\beta_1$, $\beta_2$, $\epsilon$, $\lambda$, $\eta$, $f$
+    \State \textbf{initialize} $\theta_0$, $m_0\leftarrow 0$, $v_0\leftarrow 0$, $t\leftarrow 0$
+    \While{$\theta_t$ not converged}
+        \State $t \leftarrow t + 1$
+        \State $g_t \leftarrow \nabla_\theta f(\theta_{t-1})$
+        \State \textbf{update EMA of $g_t$ and $g^2_t$}
+        \State $m_t \leftarrow \beta_1 m_{t-1} + (1 - \beta_1)g_t$
+        \State $v_t \leftarrow \beta_2 v_{t-1} + (1 - \beta_2)g^2_t$
+        \State \textbf{bias correction}
+        \State $\hat{m}_t \leftarrow m_t / (1 - \beta^t_1)$
+        \State $\hat{v}_t \leftarrow v_t / (1 - \beta^t_2)$
+        \State \textbf{update model parameters}
+        \State $\theta_t \leftarrow \theta_{t-1} - \eta_t(\hat{m}_t/(\sqrt{\hat{v}_t} + \epsilon) + \lambda\theta_{t-1})$
+    \EndWhile
+    \State \textbf{return} $\theta_t$
+    \end{algorithmic}
+    \label{alg:adamw}
+\end{algorithm}
+\end{minipage}\enskip\enskip\enskip\,%
+\begin{minipage}{.48\linewidth}
+\begin{algorithm}[H]
+    \caption{\name{} Optimizer (ours)}
+    \begin{algorithmic}
+    \State \textbf{given} $\beta_1$, $\beta_2$, $\lambda$, $\eta$, $f$
+    \State \textbf{initialize} $\theta_0$, $m_0\leftarrow 0$
+    \While{$\theta_t$ not converged}
+        \State $g_t \leftarrow \nabla_\theta f(\theta_{t-1})$
+        \State \textbf{update model parameters}
+        \State $c_t \leftarrow \beta_1 m_{t-1} + (1-\beta_1)g_t$
+        \State $\theta_t \leftarrow \theta_{t-1} - \eta_t(\text{sign}(c_t) + \lambda\theta_{t-1})$
+        \State \textbf{update EMA of $g_t$}
+        \State $m_t \leftarrow \beta_2 m_{t-1} + (1 - \beta_2)g_t$
+    \EndWhile
+    \State \textbf{return} $\theta_t$
+    \end{algorithmic}
+    \label{alg:ours}
+\end{algorithm}
+\end{minipage}
+
+
+
+\begin{table}
+    \centering
+    \caption{Model performance when pre-trained on JFT-300M then fine-tuned on ImageNet. 
+    Those numbers correspond to Figure~\ref{fig:teaser} (Left) and Figure~\ref{fig:pre-train}. 
+    The fine-tuning resolution is $384^2$ for ViT-B/16 and ViT-L/16, and $392^2$ for ViT-H/14. 
+    Following~\citet{dosovitskiy2021vit}, Polyak averaging is not applied here.}
+    \resizebox{.9\linewidth}{!}{
+    \begin{tabular}{lcccccccc}
+    \toprule
+    Model & \#Params & Epochs / Steps & Optimizer & ImageNet & ReaL & V2 & A & R \\ \midrule
+    
+    \multirow{2}{*}{ViT-B/16\textsubscript{384}} & \multirow{2}{*}{86.86M} & \multirow{2}{*}{7 / 517,791} & AdamW & 84.24 & 89.04 & 74.89 & 27.39 & 53.71 \\
+    & & & \name & \textbf{84.72} & \textbf{89.14} & \textbf{75.83} & \textbf{29.65} & \textbf{55.86} \\ \midrule
+    
+    \multirow{4}{*}{ViT-L/16\textsubscript{384}} & \multirow{4}{*}{304.72M} & \multirow{2}{*}{7 / 517,791} & AdamW & 86.69 & 89.95 & 78.03 & 40.55 & 64.47 \\
+    & & & \name & \textbf{87.32} & \textbf{90.43} & \textbf{79.29} & \textbf{47.13} & \textbf{68.49} \\ \cmidrule{3-9}
+    
+    & & \multirow{2}{*}{14 / 1,035,583} & AdamW & 87.29 & 90.11 & 78.91 & 42.56 & 64.34 \\
+    & & & \name & \textbf{88.09} & \textbf{90.62} & \textbf{80.48} & \textbf{51.55} & \textbf{70.72} \\ \midrule
+    
+    \multirow{2}{*}{ViT-H/14\textsubscript{392}} & \multirow{2}{*}{632.72M} & \multirow{2}{*}{14 / 1,035,583} & AdamW & 88.02 & 90.27 & 80.10 & 53.14 & 69.48 \\
+    & & & \name & \textbf{88.78} & \textbf{90.68} & \textbf{81.41} & \textbf{58.21} & \textbf{73.09} \\
+    
+    \bottomrule
+    \end{tabular}}
+    \label{tab:pre-train}
+\end{table}
+
+
+
+
+\begin{figure}
+    \centering
+    \caption{Zero-shot image-text retrieval results on MSCOCO (\textbf{Top}) and Flickr30K (\textbf{Bottom}) for LiT-B/16-B. 
+    Recall@K is calculated based on if the ground truth label of the query appears in the top-K retrieved examples.}
+    \includegraphics[width=0.25\linewidth]{figs/lit/coco_i2t_r1.png}%
+    \includegraphics[width=0.25\linewidth]{figs/lit/coco_i2t_r10.png}%
+    \includegraphics[width=0.25\linewidth]{figs/lit/coco_t2i_r1.png}%
+    \includegraphics[width=0.25\linewidth]{figs/lit/coco_t2i_r10.png}
+    \includegraphics[width=0.25\linewidth]{figs/lit/flickr_i2t_r1.png}%
+    \includegraphics[width=0.25\linewidth]{figs/lit/flickr_i2t_r10.png}%
+    \includegraphics[width=0.25\linewidth]{figs/lit/flickr_t2i_r1.png}%
+    \includegraphics[width=0.25\linewidth]{figs/lit/flickr_t2i_r10.png}
+    \label{fig:lit}
+\end{figure}
+
+
+
+
+\section{Image Classification Tasks}
+\label{sec:classification}
+Our evaluation covers various benchmarks: ImageNet, ImageNet ReaL~\citep{beyer2020real}, ImageNet V2~\citep{recht2019v2}, ImageNet A~\citep{hendrycks2021a}, ImageNet R~\citep{hendrycks2021r}, ImageNet Sketch~\citep{wang2019sketch}, ObjectNet~\citep{barbu2019objectnet}, CIFAR-100~\citep{krizhevsky09cifar}, and Oxford-IIIT Pet~\citep{parkhi12pet}.
+
+
+\section{NLP Tasks}
+\label{sec:nlp}
+This section shows all the natural language generation (NLG) and natural language understanding (NLU) tasks where we evaluate the large-scale language models in Section~\ref{sec:lm}.
+Those tasks include \textit{Open-Domain Question Answering}, \textit{Cloze and Completion Tasks}, \textit{Winograd-Style Tasks}, \textit{Common Sense Reasoning}, \textit{In-Context Reading Comprehension}, \textit{SuperGLUE}, and \textit{Natural Language Inference}.
+
+\begin{itemize}
+    \item NLG: TriviaQA~\citep{joshi2017triviaqa}, Natural Questions~\citep{kwiatkowski2019nqs}, Web Questions~\citep{berant2013wqs}.
+    \item NLU: HellaSwag~\citep{zellers2019hellaswag}, StoryCloze~\citep{mostafazadeh2016storycloze}, Winograd~\citep{levesque2012winograd}, Winogrande~\citep{sakaguchi2020winogrande}, RACE~\citep{lai2017race}, PIQA~\citep{bisk2020piqa}, ARC~\citep{clark2018arc}, OpenbookQA~\citep{mihaylov2018openbookqa}, BoolQ~\citep{clark2019boolq}, Copa~\citep{gordon2012copa}, RTE~\citep{dagan2006rte}, WiC~\citep{pilehvar2019wic}, Multirc~\citep{khashabi2018multirc}, WSC~\citep{levesque2012winograd}, ReCoRD~\citep{zhang2018record}, CB~\citep{demarneffe2019cb}, Adversarial NLI~\citep{nie2020adversarial}.
+\end{itemize}
+
+
+
+\begin{minipage}[t]{.28\linewidth}
+\begin{lstlisting}[caption={Algorithm with a better regularization. It dynamically calculates the dot product between the weight and gradient, before computing the weight decay.}, captionpos=t, label={lst:reg}]
+def train(w, g, m, v, lr):
+  m = interp(m, g, 0.16)
+  g2 = square(g)
+  v = interpolate(v, g2, 0.001)
+  v753 = dot(g, w)
+  sqrt_v = sqrt(v)
+  update = m / sqrt_v
+  wd = v753 * w
+  update = sin(update)
+  update = update + wd
+  lr = lr * 0.0216
+  update = update * lr
+  v = sin(v)
+  return update, m, v
+\end{lstlisting}
+\end{minipage}\hspace{50pt}%
+\begin{minipage}[t]{.25\linewidth}
+\begin{lstlisting}[caption={Algorithm that tracks the second moment without EMA decay, which is the same as AdaGrad.}, captionpos=t, label={lst:adagrad}]
+def train(w, g, m, v, lr):
+  m = interp(m, g, 0.1)
+  g2 = square(g)
+  g2 = v + g2
+  v = interp(v, g2, 0.0015)
+  sqrt_v = sqrt(v)
+  update = m / sqrt_v
+  v70 = get_pi()
+  v = min(v, v70)
+  update = sinh(update)
+  lr = lr * 0.0606
+  update = update * lr
+  return update, m, v
+\end{lstlisting}
+\end{minipage}\hspace{50pt}%
+\begin{minipage}[t]{.25\linewidth}
+\begin{lstlisting}[caption={Algorithm uses the difference between gradient and momentum to track the second moment, resembling AdaBelief.}, captionpos=t, label={lst:belief}]
+def train(w, g, m, v, lr):
+  m = interp(m, g, 0.1)
+  g = g - m
+  g2 = square(g)
+  v = interp(v, g2, 0.001)
+  sqrt_v = sqrt(v)
+  update = m / sqrt_v
+  wd = w * 0.0238
+  update = update + wd
+  lr = lr * 0.03721
+  update = update * lr
+  return update, m, v
+\end{lstlisting}
+\end{minipage}
+
+
+
+
+
+\section{Other Discovered Programs}
+\label{sec:adaptation}
+% In this work, we focus on discovering optimization algorithms that generalize to different tasks. 
+By varying the task setting, different types of algorithms can be discovered. For example, if we reduce the amount of data in the proxy task, we are more likely to discover algorithms with better regularization (Program~\ref{lst:reg}), and if we reduce the search progress, we are likely to find simple variants of AdamW (Program~\ref{lst:adagrad} and~\ref{lst:belief}). Future work can explore this potential to discover optimizers specialized for different tasks. 
+
+
+\begin{table}
+\begin{minipage}{.55\linewidth}
+    \centering
+    \caption{Architecture details for language modeling.}
+    \resizebox{.89\linewidth}{!}{
+    \begin{tabular}{lccccc}
+    \toprule
+    Model & \#Params & $n_{layers}$ & $d_{model}$ & $n_{heads}$ & $d_{head}$ \\ \midrule
+    \multicolumn{6}{c}{Small-scale} \\ \midrule
+    Small & 110M & 12 & 768 & 12 & 64 \\
+    Medium & 336M & 24 & 1024 & 16 & 64 \\
+    Large & 731M & 24 & 1536 & 16 & 96 \\ \midrule
+    \multicolumn{6}{c}{Large-scale} \\ \midrule
+    1.1B & 1.07B & 24 & 1536 & 16 & 96 \\
+    2.1B & 2.14B & 32 & 2048 & 16 & 128 \\
+    7.5B & 7.49B & 32 & 4096 & 32 & 128 \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:model}
+\end{minipage}%
+\begin{minipage}{.4\linewidth}
+    \centering
+    \caption{Training error $L_{train}$ and landscape flatness $L^\mathcal{N}_{train}$ of ViT-B/16 trained from scratch on ImageNet.}
+    \resizebox{.7\linewidth}{!}{
+    \begin{tabular}{l|cc}
+    \toprule
+    Optimizer & AdamW & \name \\ \midrule
+    ImageNet & 75.48 & 77.44 \\
+    ReaL & 80.64 & 82.57 \\
+    V2 & 61.87 & 64.81 \\ \midrule
+    $L_{train}$ & 0.61 & 0.75 \\
+    $L^\mathcal{N}_{train}$ & 3.74 & 1.37 \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:landscape}
+\end{minipage}
+\end{table}
+
+
+
+
+
+\section{Architecture Details for Language Modeling}
+\label{sec:architecture}
+Table~\ref{tab:model} shows the Transformer architecture details for language modeling (Section~\ref{sec:lm}).
+The dimension of the feed-forward layer is $4\times d_{model}$. 
+We use vocabulary size 32K for small-scale and 256K for large-scale models.
+
+
+
+
+\section{Details of Proxy Tasks}
+\label{sec:proxy}
+For vision tasks, we train a ViT with three layers, 96 hidden units and three heads, on 10\% ImageNet for 30k steps with batch size 64. The image size is $64\times 64$ and the patch size is 16. 
+For language tasks, we train a Transformer with two layers, 128 hidden units and two heads on LM1B~\citep{chelba2013lm1b} for 20K steps with batch size 64, sequence length 32 and vocabulary size 3K.
+The evaluation time may vary for different programs, but typically a evaluation can be done on one TPU V2 chip within 20min. The validation accuracy or perplexity is used as the fitness. 
+
+
+
+\begin{figure}
+    \centering
+    \caption{Learning curve of ViT-S/16 (\textbf{Left}) and ViT-B/16 (\textbf{Right}) associated with Table~\ref{tab:multi}. The curves of the five adaptive optimizers are similar to each other.}
+    \includegraphics[width=.4\linewidth]{figs/classification/multi_vit_s.png}\quad\quad\quad%
+    \includegraphics[width=.4\linewidth]{figs/classification/multi_vit_b.png}
+    \label{fig:multi}
+\end{figure}
+
+
+\begin{figure}
+    \centering
+    \caption{\textbf{Left}: Validation perplexity when we perform masked language modeling on the C4 dataset. 
+    % Middle: Ablation for $\beta_1$ and $\beta_2$ in \name{}. 
+    \textbf{Right}: Training loss of ViT-B/16 on ImageNet.}
+    \includegraphics[width=.4\linewidth]{figs/mlm.png}\quad\quad\quad%
+    % \includegraphics[width=.32\linewidth]{figs/beta.png}%
+    \includegraphics[width=.4\linewidth]{figs/loss.png}
+    \label{fig:mix}
+\end{figure}
+
+
+
+
+
+\section{Analysis of Loss Landscape}
+\label{sec:landscape}
+In this section, we try to understand why our \name{} optimizer achieves better generalization than AdamW from the lens of loss geometry.
+The convergence to a smooth landscape has been shown to benefit the generalization of deep neural networks~\citep{foret2021sam, keskar2017largebatch, chen2022vit-sam, chen2020sdarts}.
+Following~\citet{chen2022vit-sam}, we measure the landscape flatness at convergence by $L^\mathcal{N}_{train} = \mathbb{E}_{\epsilon\sim\mathcal{N}}[L_{train}(w+\epsilon)]$ (average over 1K random noises) in Table~\ref{tab:landscape}.
+We observe that the ViT-B/16 trained by AdamW enjoys a smaller training error $L_{train}$.
+However, \name{} can enable ViT to converge to flatter regions, as it helps the model retain comparably lower error against Gaussian perturbations.
+
+
+\begin{wrapfigure}{r}{0.35\linewidth}
+\vspace{-22pt}
+\begin{lstlisting}[caption={Raw program of \name{} before removing redundent statements.}, captionpos=t, label={lst:raw}]
+def train(w, g, m, v, lr):
+  g = clip(g, lr)
+  m = clip(m, lr)
+  v845 = sqrt(0.6270633339881897)
+  v968 = sign(v)
+  v968 = v - v
+  g = arcsin(g)
+  m = interp(g, v, 0.8999999761581421)
+  v1 = m * m
+  v = interp(g, m, 1.109133005142212)
+  v845 = tanh(v845)
+  lr = lr * 0.0002171761734643951
+  update = m * lr
+  v1 = sqrt(v1)
+  update = update / v1
+  wd = lr * 0.4601978361606598
+  v1 = square(v1)
+  wd = wd * w
+  m = cosh(update)
+  lr = tan(1.4572199583053589)
+  update = update + wd
+  lr = cos(v845)
+  return update, m, v
+\end{lstlisting}
+\vspace{-20pt}
+\end{wrapfigure}
+
+
+\section{Available Functions}
+\label{sec:functions}
+% Supplementary Table~\ref{ops_table} describes all the ops in our search space.
+
+We include 43 available functions that can be used in the program during search. Note that the input of the functions can be one n-dimensional array, dictionaries or lists of arrays, similar to the \textit{pytrees} in JAX. 
+
+\textbf{Basic math functions from NumPy / JAX} This includes unary functions like \verb|abs|, \verb|cos|, \verb|sin|, \verb|tan|, \verb|arcsin|, \verb|arccos|, \verb|arctan|, \verb|exp|, \verb|log|, \verb|sinh|, \verb|cosh|, \verb|tanh|, \verb|arcsinh|, \verb|arccosh|, \verb|arctanh|, \verb|sign|, \verb|exp2|, \verb|exp10|, \verb|expm1|, \verb|log10|, \verb|log2|, \verb|log1p|, \verb|square|, \verb|sqrt|, \verb|cube|, \verb|cbrt|, \verb|sign|, \verb|reciprocal| and binary functions like \verb|+|, \verb|-|, \verb|*|, \verb|/|, \verb|power|, \verb|maximum|, \verb|minimum| with the same semantic as the corresponding function in NumPy / JAX. 
+
+\textbf{Linear algebra functions commonly used in first-order optimization algorithms} This includes: (1) unary function \verb|norm| that computes the norm of each arrays in the input; (2) unary function \verb|global_norm| that computes the global norm by treating all the numbers in the input as one vector; (3) binary function \verb|dot| that treats the two inputs as two vectors and computes their dot product; (4) binary function \verb|cosine_sim| that treats the two inputs as two vectors and computes their cosine similarity; (5) binary \verb|clip_by_global_norm| (\texttt{clip}) that clips the global norm of the first input to the value of the second input that is required to be a scalar; (6) ternary function \verb|interpolate| (\texttt{interp}) that uses the third argument \verb|a|, required to be a scalar, to compute a linear interpolation of the first two arguments \verb|x| and \verb|y| with \verb|(1 - a) * x + a * y|. 
+
+\textbf{Functions producing commonly used constants} This includes \verb|get_pi|, \verb|get_e|, \verb|get_eps| that generates $\pi$, $e$ and $\epsilon=10^{-8}$ respectively.
+
+
+
+
+\begin{figure}
+    \centering
+    \caption{Log perplexity of the small (\textbf{Left}), medium (\textbf{Middle}), and large (\textbf{Right}) size Transformer on PG-19. Since $\beta_1=0.95, \beta_2=0.98$ in \name{} when performing language modeling, we compare to Ablation\textsubscript{0.95} and Ablation\textsubscript{0.98} with $\beta=0.95$ and $\beta=0.98$, respectively (see Section~\ref{sec:ablation} for the definition). \name{} is still the best-performing one.}
+    \includegraphics[width=1.\linewidth]{figs/beta_pg19.png}
+    \vspace{-10pt}
+    \label{fig:beta_pg19}
+\end{figure}
+
+
+\section{Abstract Execution}
+\label{sec:abstract_execution}
+We propose to prune the large search space with abstract execution. Our approach is motivated by the fact that a large number of programs are invalid, functionally equivalent, or contain redundant statements that waste compute during evaluation. 
+To address this, we introduce an abstract execution step that checks the type and shape of each variable, and computes a hash for each unique computation from inputs to outputs to detect redundant statements.
+The abstract execution can be seen as a static analysis of the program, achieved by replacing functions and inputs with customized values. 
+We outline the specifics of the customized values and abstract execution procedure for three use cases below. The cost of the abstract execution is usually negligible compared to the actual execution of the program.
+
+
+\textbf{Detecting errors with type / shape inference} 
+To detect programs containing errors, we infer the type and shape of each variable in the program through the following steps: (1) replace each input with an abstract object that only contains type and shape information, and replace each statement with a type and shape inference function; (2) iterate through all statements. Instead of executing the original statement, we validate a function call by checking the function signature and type and shape information of its arguments. If valid, we compute the type and shape information of the output and assign it to the new variable;
+(3) verify the validity of the derived type and shape of the output.
+This process essentially performs a static analysis of the program, exposing errors caused by type and shape mismatch. Note that there are still run-time errors, such as division by zero, that cannot be detected in this manner. Without such filtering of invalid programs, the search would be overwhelmed with invalid programs, making it difficult to achieve meaningful progress.
+
+% for example, a list of two arrays, the first one is a $128\times256$ array and the second one is a $64\times256\times384$ array, 
+
+
+
+\textbf{Deduplicating with functional hash} 
+Among the valid programs that execute without errors, there are still lots of duplicates due to functionally equivalent programs that have different surface forms but the same underlying functionality. 
+To address this issue, we calculate a functional hash value for every unique computation from the inputs to the outputs as follows: (1) a unique hash value is assigned to each input and function; (2) iterate through all statements, calculating the hash value of the outputs by combining the hash values of the functions and arguments; (3) compute the hash value of program by combining the hash values of all outputs. 
+We then build a hash table that maps each unique functional hash value to the fitness of the corresponding program. When a new program is generated, we first look up its hash value and only perform evaluation if it is not found or if we want to evaluate it multiple times to reduce measurement noise. In our experiments, this technique reduces the search cost by $\sim$10x, as depicted in Figure~\ref{fig:search} (Right).
+
+
+
+% and assign this hash value to the output;
+% variable on the left hand side, i.e., the variable that the value of the function call is assigned to; 
+
+
+\textbf{Identifying redundant statements by tracking dependencies}
+% We include redundant statements in the programs so that the evolution can combine multiple mutations to make larger program changes. 
+In program evolution, redundant statements are included to enable combining multiple mutations to make larger program changes.
+However, these redundant statements increase the evaluation cost and make program analysis more challenging.
+To identify redundant statements, we need to determine the set of statements that the outputs depend on, which can be computed in a recursive manner using the following steps: 
+(1) replace the value of each input with an empty set, as they do not depend on any statement; (2) iterate through each statement. Note that each statement is an assignment that calls a function and assigns the result to a variable, which in turn depends on the current statement and all the depending statements of the function arguments. Therefore we replace the value of the variable with its dependency, i.e., a set of all depending statements; (3) compute the union of all statements that each output depends on, which contains all non-redundant statements. 
+By filtering out redundant statements, we obtain a simplified version of the program that is cheaper to execute and easier to analyze.
+In our experiments, this reduces the program length by $\sim$3x on average, as shown in Figure~\ref{fig:search} (Right).
+
+% including the current statement and the union of the statements that the arguments of the function call depend on; 
+
+
+\begin{table}
+    \centering
+    \caption{One-shot evaluation on English NLP tasks. TriviaQA, NQs, and WebQs are NLG tasks and the rest are NLU tasks. This corresponds to Table~\ref{tab:oneshot} in the main text.}
+    \resizebox{.85\linewidth}{!}{
+    \begin{tabular}{l|cc|cc|cc|cc}
+    \toprule
+    \multirow{2}{*}{Task} & \multicolumn{2}{c|}{1.1B} & \multicolumn{2}{c|}{2.1B} & \multicolumn{2}{c|}{7.5B} & \multirow{2}{*}{\tabincell{c}{6.7B \\ GPT-3}} & \multirow{2}{*}{\tabincell{c}{8B \\ PaLM}} \\
+    & Adafactor & \name & Adafactor & \name & Adafactor & \name & & \\ \midrule 
+    \#Tokens & \multicolumn{6}{c|}{300B} & 300B & 780B \\ \midrule
+
+    TriviaQA (EM) & 21.5 & \textbf{25.1} & 32.0 & \textbf{33.4} & 47.9 & \textbf{48.8} & 44.4 & 48.5 \\
+    NQs (EM) & 4.3 & \textbf{4.8} & 6.3 & \textbf{7.3} & \textbf{12.3} & 12.1 & 9.8 & 10.6 \\
+    WebQs (EM) & \textbf{7.5} & 6.3 & 8.4 & \textbf{8.7} & 12.1 & \textbf{13.3} & 15.1 & 12.6 \\ \\
+
+    HellaSwag & \textbf{50.7} & 50.3 & \textbf{59.4} & 59.3 & 68.2 & \textbf{68.3} & 66.5 & 68.2 \\
+    StoryCloze & \textbf{74.8} & 74.4 & 78.2 & \textbf{78.3} & 81.2 & \textbf{81.5} & 78.7 & 78.7 \\ \\
+    Winograd & 75.1 & \textbf{80.2} & 81.3 & \textbf{82.1} & \textbf{85.3} & 84.2 & 84.6 & 85.3 \\
+    Winogrande & 59.7 & \textbf{60.5} & 64.8 & \textbf{65.7} & \textbf{71.4} & 71.0 & 65.8 & 68.3 \\ \\
+    RACE-m & \textbf{52.0} & 50.8 & \textbf{55.1} & 53.8 & 59.1 & \textbf{61.3} & 54.7 & 57.7 \\
+    RACE-h & \textbf{36.8} & 35.4 & 40.3 & \textbf{40.7} & \textbf{44.5} & 43.9 & 44.3 & 41.6 \\ \\
+    PIQA & 69.4 & \textbf{69.9} & 71.3 & \textbf{72.1} & \textbf{75.5} & 74.5 & 76.3 & 76.1 \\
+    ARC-e & \textbf{64.3} & 62.0 & \textbf{69.5} & 68.9 & 72.4 & \textbf{72.7} & 62.6 & 71.3 \\
+    ARC-c & 31.2 & \textbf{32.9} & 37.3 & \textbf{38.0} & \textbf{43.3} & 42.6 & 41.5 & 42.3 \\
+    OpenbookQA & 44.8 & \textbf{48.0} & 48.4 & \textbf{49.0} & 51.4 & \textbf{52.4} & 53.0 & 47.4 \\ \\
+    BoolQ & 54.3 & \textbf{56.7} & \textbf{64.1} & 62.9 & 73.5 & \textbf{73.9} & 68.7 & 64.7 \\
+    Copa & 75.0 & \textbf{78.0} & 83.0 & \textbf{84.0} & 85.0 & \textbf{87.0} & 82.0 & 82.0 \\
+    RTE & \textbf{55.6} & 52.4 & 49.8 & \textbf{59.2} & \textbf{63.9} & 62.5 & 54.9 & 57.8 \\
+    WiC & \textbf{47.6} & 47.3 & 46.1 & \textbf{48.1} & \textbf{50.9} & 48.1 & 50.3 & 47.3 \\
+    Multirc (F1a) & 35.9 & \textbf{44.3} & 45.0 & \textbf{48.8} & 44.7 & \textbf{59.2} & 64.5 & 50.6 \\
+    WSC & \textbf{76.5} & 75.4 & \textbf{79.6} & 79.3 & \textbf{86.7} & 85.6 & 60.6 & 81.4 \\
+    ReCoRD & 73.4 & \textbf{73.7} & \textbf{77.8} & 77.7 & 81.0 & \textbf{81.1} & 88.0 & 87.8 \\
+    CB & \textbf{46.4} & 44.6 & \textbf{48.2} & 44.6 & \textbf{51.8} & 46.4 & 33.9 & 41.1 \\ \\
+    ANLI R1 & \textbf{33.3} & 30.1 & \textbf{32.4} & 31.2 & 31.5 & \textbf{34.0} & 31.6 & 32.4 \\
+    ANLI R2 & 29.8 & \textbf{31.8} & 29.8 & \textbf{30.6} & \textbf{32.4} & 31.9 & 33.9 & 31.4 \\
+    ANLI R3 & 29.8 & \textbf{31.8} & 31.4 & \textbf{31.9} & 33.6 & \textbf{34.2} & 33.1 & 34.5 \\ \midrule
+    
+    Avg NLG & 11.1 & \textbf{12.1} & 15.6 & \textbf{16.5} & 24.1 & \textbf{24.7} & 23.1 & 23.9 \\
+    Avg NLU & 53.2 & \textbf{53.9} & 56.8 & \textbf{57.4} & 61.3 & \textbf{61.7} & 58.5 & 59.4 \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:oneshot-full}
+\end{table}
+
+
+
+\begin{table}
+    \centering
+    \caption{Hyperparameters for all the experiments.}
+    \resizebox{.96\linewidth}{!}{
+    \begin{tabular}{lcccccccc}
+    \toprule
+    Model & Dropout & \tabincell{c}{Stoch\\Depth} & Augmentations & Optimizer & $\beta_1$ & $\beta_2$ & $lr$ & $\lambda$ \\ \midrule
+    % \endhead
+    \multicolumn{9}{c}{Train from scratch on ImageNet} \\ \midrule
+    \multirow{2}{*}{ResNet-50} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $3e-3$ & 0.1 \\
+    & & & & \name & 0.9 & 0.99 & $3e-4$ & 1.0 \\ \midrule
+    \multirow{2}{*}{Mixer-S/16} & \multirow{2}{*}{-} & \multirow{2}{*}{0.1} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-2$ & 0.3 \\ 
+    & & & & \name & 0.9 & 0.99 & $3e-3$ & 1.0 \\ \midrule
+    \multirow{2}{*}{Mixer-B/16} & \multirow{2}{*}{-} & \multirow{2}{*}{0.1} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-2$ & 0.3 \\ 
+    & & & & \name & 0.9 & 0.99 & $3e-3$ & 3.0 \\ \midrule
+    \multirow{4}{*}{ViT-S/16} & \multirow{2}{*}{0.1} & \multirow{2}{*}{0.1} &\multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-2$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-3$ & 1.0 \\ \cmidrule{2-9}
+    & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{\tabincell{c}{RandAug: 2, 15\\Mixup: 0.5}} & AdamW & 0.9 & 0.999 & $3e-3$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $3e-4$ & 1.0 \\ \midrule
+    \multirow{4}{*}{ViT-B/16} & \multirow{2}{*}{0.1} & \multirow{2}{*}{0.1} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $3e-3$ & 0.3 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-3$ & 1.0 \\ \cmidrule{2-9}
+    & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{\tabincell{c}{RandAug: 2, 15\\Mixup: 0.5}} & AdamW & 0.9 & 0.999 & $1e-3$ & 1.0 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-4$ & 10.0 \\ \midrule
+    \multirow{2}{*}{CoAtNet-1} & \multirow{2}{*}{-} & \multirow{2}{*}{0.3} & \multirow{2}{*}{\tabincell{c}{RandAug: 2, 15\\Mixup: 0.8}} & AdamW & 0.9 & 0.999 & $1e-3$ & 0.05 \\ 
+    & & & & \name & 0.9 & 0.99 & $2e-4$ & 1.0 \\ \midrule
+    \multirow{2}{*}{CoAtNet-3} & \multirow{2}{*}{-} & \multirow{2}{*}{0.7} & \multirow{2}{*}{\tabincell{c}{RandAug: 2, 15\\Mixup: 0.8}} & AdamW & 0.9 & 0.999 & $1e-3$ & 0.05 \\ 
+    & & & & \name & 0.9 & 0.99 & $2e-4$ & 1.0 \\ \midrule
+    
+    \multicolumn{9}{c}{Pre-train on ImageNet-21K} \\ \midrule
+    \multirow{2}{*}{ViT-B/16} & \multirow{2}{*}{0.1} & \multirow{2}{*}{0.1} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-3$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-4$ & 0.3 \\ \midrule
+    \multirow{2}{*}{ViT-L/16} & \multirow{2}{*}{0.1} & \multirow{2}{*}{0.1} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-3$ & 0.3 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-4$ & 1.0 \\ \midrule
+
+    \multicolumn{9}{c}{Pre-train on JFT} \\ \midrule
+    \multirow{2}{*}{ViT-B/16} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $6e-4$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-4$ & 0.3 \\ \midrule
+    \multirow{2}{*}{ViT-L/16} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $3e-4$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-4$ & 0.3 \\ \midrule
+    \multirow{2}{*}{ViT-H/14} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $3e-4$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $3e-5$ & 0.3 \\ \midrule
+    \multirow{2}{*}{ViT-g/14 \& ViT-G/14} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & Adafactor & 0.9 & 0.999 & $8e-4$ & 0.03 \\ 
+    & & & & \name & 0.9 & 0.99 & $3e-5$ & 0.3 \\ \midrule
+    
+    \multicolumn{9}{c}{Vision-language contrastive learning} \\ \midrule
+    \multirow{2}{*}{LiT-B/$\ast$-B} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-3$ & \multirow{2}{*}{-} \\ 
+    & & & & \name & 0.9 & 0.99 & $3e-4$ & \\ \midrule
+    \multirow{2}{*}{LiT-g/14-L} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-3$ & 0.1 \\ 
+    & & & & \name & 0.9 & 0.99 & $2e-4$ & 0.5 \\ \midrule
+    \multirow{2}{*}{BASIC-L} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & Adafactor & 0.9 & 0.999 & $5e-4$ & 0.01 \\ 
+    & & & & \name & 0.9 & 0.99 & $2e-4$ & 0.1 \\ \midrule
+
+    \multicolumn{9}{c}{Diffusion model} \\ \midrule
+    \multirow{2}{*}{Imagen base \& super-resolution} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $1e-3$ & \multirow{2}{*}{-} \\ 
+    & & & & \name & 0.9 & 0.99 & $1e-4$ & \\ \midrule
+    \multirow{2}{*}{Image generation on ImageNet} & \multirow{2}{*}{\tabincell{c}{$64\times 64$: 0.1 \\ $128\times 128$ \& $256\times 256$: 0.2}} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.999 & $3e-4$ & 0.01 \\
+    & & & & \name & 0.9 & 0.99 & $3e-5$ & 0.1 \\ \midrule
+
+    \multicolumn{9}{c}{Autoregressive \& masked language modeling} \\ \midrule
+    \multirow{2}{*}{Small \& Medium (PG-19, C4) \& Large} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.99 & $3e-3$ & \multirow{2}{*}{-} \\
+    & & & & \name & 0.95 & 0.98 & $3e-4$ & \\ \midrule
+    \multirow{2}{*}{Medium (Wiki-40B)} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.99 & $3e-3$ & 0.001 \\
+    & & & & \name & 0.95 & 0.98 & $3e-4$ & 0.01 \\ \midrule
+
+    % \multicolumn{9}{c}{Large-scale language modeling} \\ \midrule
+    \multirow{2}{*}{1.1B \& 2.1B} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & Adafactor & 0.9 & 0.99 & $2e-3$ & $0.0005$ \\
+    & & & & \name & 0.95 & 0.98 & $2e-4$ & $0.005$ \\ \midrule
+    \multirow{2}{*}{7.5B} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & Adafactor & 0.9 & 0.99 & $1e-3$ & 0.001 \\
+    & & & & \name & 0.95 & 0.98 & $1e-4$ & 0.01 \\ \midrule
+
+    \multicolumn{9}{c}{Language model fine-tuning} \\ \midrule
+    \multirow{2}{*}{T5-Base \& Large \& 11B} & \multirow{2}{*}{0.1} & \multirow{2}{*}{-} & \multirow{2}{*}{-} & AdamW & 0.9 & 0.99 & $3e-5$ & \multirow{2}{*}{-} \\
+    & & & & \name & 0.95 & 0.98 & $3e-6$ & \\
+    \bottomrule
+    \end{tabular}}
+    \label{tab:hyperparameter}
+\end{table}
+
+
+
+
+\end{document}

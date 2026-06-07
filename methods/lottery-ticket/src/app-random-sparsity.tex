@@ -1,0 +1,33 @@
+\section{Comparing Random Reinitialization and Random Sparsity}
+\label{app:random}
+
+In this Appendix, we aim to understand the relative performance of randomly reinitialized winning tickets and randomly sparse networks.
+\begin{enumerate}
+\item Networks found via iterative pruning with the original initializations (blue in Figure \ref{fig:random-app}).
+\item Networks found via iterative pruning that are randomly reinitialized (orange in Figure \ref{fig:random-app}).
+\item Random sparse subnetworks with the same number of parameters as those found via iterative pruning (green in Figure \ref{fig:random-app}).
+\end{enumerate}
+
+Figure \ref{fig:random-app} shows this comparison for all of the major experiments in this paper. For the fully-connected Lenet
+architecture for MNIST, we find that the randomly reinitialized networks outperform random sparsity. However, for all of the other,
+convolutional networks studied in this paper, there is no significant difference in performance between the two. We hypothesize that
+the fully-connected network for MNIST sees these benefits because only certain parts of the MNIST images contain useful information
+for classification, meaning connections in some parts of the network will be more valuable than others. This is less true with
+convolutions, which are not constrained to any one part of the input image.
+
+\begin{figure}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/random/mnist/vanilla/legend}
+\includegraphics[width=.5\textwidth]{graphs/random/mnist/vanilla/accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/random/conv/conv_paper1/accuracy}
+\includegraphics[width=.5\textwidth]{graphs/random/conv/conv_paper2/accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/random/conv/conv_paper3/accuracy}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/icml/resnet18-iclr-rearr-29900-0.03-20K/accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/icml/vgg19-iclr-rearr-112000-0.1-10K/accuracy}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/icml/resnet18-iclr-rearr-29900-0.1/accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/icml/vgg19-iclr-rearr-112000-0.1/accuracy}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/icml/resnet18-iclr-rearr-29900-0.01/accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/icml/vgg19-iclr-rearr-112000-0.01/accuracy}
+\caption{The test accuracy at the final iteration for each of the networks studied in this paper.}
+\label{fig:random-app}
+\end{figure}

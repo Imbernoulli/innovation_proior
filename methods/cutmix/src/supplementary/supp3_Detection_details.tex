@@ -1,0 +1,18 @@
+\section{Transfer Learning to Object Detection}
+\label{appendix:Detection}
+
+We evaluate the models on the Pascal VOC 2007 detection benchmark~\cite{pascalvoc} with 5 K \texttt{test} images over 20 object categories.
+For training, we use both VOC2007 and VOC2012 \texttt{trainval} (VOC07+12). 
+
+
+\noindent\textbf{Finetuning on SSD\footnote{https://github.com/amdegroot/ssd.pytorch}~\cite{liu2016ssd}: }
+The input image is resized to $300 \times 300$ (SSD300) and we used the basic training strategy of the original paper such as data augmentation, prior boxes, and extra layers. 
+Since the backbone network is changed from VGG16 to ResNet-50, the pooling location \texttt{conv4\_3} of VGG16 is modified to the output of \texttt{layer2} of ResNet-50.
+For training, we set the batch size, learning rate, and training iterations to $32$, $0.001$, and  $120$ K, respectively.
+The learning rate is decayed by the factor of $0.1$ at $80$ K and $100$ K iterations. 
+
+
+\noindent\textbf{Finetuning on Faster-RCNN\footnote{https://github.com/jwyang/faster-rcnn.pytorch}~\cite{fasterrcnn}: }
+Faster-RCNN takes fully-convolutional structure, so we only modify the backbone from VGG16 to ResNet-50. 
+The batch size, learning rate, training iterations are set to $8$, $0.01$, and $120$ K.
+The learning rate is decayed by the factor of $0.1$ at $100$ K iterations.

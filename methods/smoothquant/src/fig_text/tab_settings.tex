@@ -1,0 +1,22 @@
+\begin{table}[t]
+      \setlength{\tabcolsep}{2.5pt}
+      \small
+      \centering
+        \caption{Quantization setting of the baselines and \method. All weight and activations use INT8 representations unless specified. For \method, the efficiency \textbf{improves} from O1 to O3 (\ie, lower latency).
+      }
+      \label{tab:settings}
+      \begin{tabular}{lll}
+            \toprule
+            Method              & Weight      & Activation             \\
+            \midrule
+            W8A8                & per-tensor  & per-tensor dynamic     \\
+            ZeroQuant           & group-wise & per-token dynamic      \\
+            \texttt{LLM.int8()}          & per-channel & per-token dynamic+FP16 \\
+            Outlier Suppression & per-tensor  & per-tensor static      \\
+            \midrule
+            \method-O1          & per-tensor  & per-token dynamic      \\
+            \method-O2          & per-tensor  & per-tensor dynamic     \\
+            \method-O3          & per-tensor  & per-tensor static      \\
+            \bottomrule
+      \end{tabular}
+\end{table}

@@ -1,0 +1,21 @@
+
+
+
+
+\begin{table}
+    \setlength{\tabcolsep}{2pt}
+    \small
+    \centering
+    \begin{tabular}{lccccc}
+        \toprule
+     \textbf{OPT-6.7B}   & $s=1$ & $s=1.25$ & $s=1.5$ & $s=2$ & $s=4$ \\ \midrule
+    proportion of $\Delta^{'} \neq \Delta$ & 0\% & 2.8\% & 4.4\% & 8.2\% & 21.2\% \\
+    average $\Delta^{'}/ \Delta$ & 1 & 1.005 & 1.013 & 1.038 & 1.213 \\
+    average $\frac{\Delta^{'}}{\Delta} \cdot \frac{1}{s}$ & 1 & 0.804  & 0.676 & 0.519 & \textbf{0.303} \\ \midrule 
+    Wiki-2 PPL & 23.54 & 12.87 & 12.48 & \textbf{11.92} & 12.36 \\
+    \bottomrule
+    \end{tabular}
+    \caption{Statistics when multiplying the 1\% salient channels by $s>1$. Scaling up the salient channels significantly improves the perplexity (23.54 to 11.92). As $s$ goes larger, the percentage of changed $\Delta$ increases, and the error reduction rate for salient channels also increases. However, the best perplexity is achieved at $s=2$, since further increasing $s$ will increase the quantization error for \emph{non-salient} channels. 
+    } 
+    \label{tab:scale_study}
+\end{table}

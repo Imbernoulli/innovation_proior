@@ -1,0 +1,21 @@
+
+%------------------------------------- table --------------------------------------------
+\begin{table}[t]
+\renewcommand\arraystretch{1.1}
+\small
+\caption{Effect of different SE block integration strategies with ResNet-50 on ImageNet (error rates \%).}
+\label{tab:block-variants}
+\vspace{-1.7em}
+\begin{center}{\scalebox{0.95}{
+\begin{tabular}{l|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}}
+\hline
+Design & top-1 err. & top-5 err.\\
+\hline
+SE       & 22.28 & 6.03 \\
+SE-PRE  & 22.23  &  6.00   \\
+SE-POST & 22.78  &  6.35   \\
+SE-Identity   & 22.20  &  6.15  \\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table}

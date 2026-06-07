@@ -1,0 +1,129 @@
+\section{Planning with Diffusion}
+
+In this section we describe a denoising diffusion model designed for trajectory data.
+To plan with a diffusion model, we need to be able to condition its sampled trajectories on both evidence -- such as current state -- and desired outcomes -- either in the form of objectives to maximize or goals to reach.
+We discuss methods for planning with diffusion models for each of these problem settings and describe how they are analogous to well-known sampling routines in deep generative modeling.
+
+sampling strategies well known in deep generative modeling.
+conditional sampling strategies used to conditionally sample from generativewell-known in the gen
+We then discuss two options for planning with diffusion models.
+We then turn to how to plan with the model, and elaborate on two possible options.
+Both options mirror strategies well-known in generative modeling of images,
+used for class-conditional sampling from an unconditional model and for image inpainting.
+We do so by the use of two analogies to well-known procedure in the generative modeling of images: ''' '''.
+We refer to the model and associated planning procedures as \method.
+
+\subsection{A Generative Model of Trajectories}
+We focus on trajectory-centric representations of data.
+Instead of building a generative model for single-step prediction, we build one designed to produce an entire trajectory.
+The data representation is a sequence of state action pairs: $\tau = [[s_1, a_2], [s_2, a_2]]$.
+
+The architecture used to parameterize the reverse process $q_\theta$ is a U-Net structure with repeated blocks of residual temporal connections and group normalization (Figure~\ref{fig:architecture}.
+The model weights depend on the dimensions of the states and actions, but not on the horizon of the plan; this is determined according to the input noise.
+
+It is important to note what this model is not: it is not autoregressive in the planning horizon.
+It iteratively refines the entire trajectory simultaneously.
+
+%% MJ.1.20 There are a few options for the objective, depending on whether the model predicts the noise or the posterior process mean. I'm writing it up as the more conventional version -- predicting the noise -- but might swap it out later depending on final results. (It would be a local change that wouldn't affect anything outside of the next paragraph.)
+Training
+
+
+\subsection{Probabilistic Trajectory Optimization as Guided Sampling}
+Training the diffusion model on large amounts of data acts as an unconditional prior for the types of behavior that the model knows about.
+However, in many applications, we would like to steer the model toward particular regions.
+To do so, we use auxiliary optimality signals.
+
+%% Derivation
+
+This amounts to a $Q$-value guided sampling analogous to classifier-guided sampling for image generation.
+The source of the $Q$-values is independent of the method; and in particular any functional form could be used for gradients to steer the function.
+We describe the training of a denoised $Q$-function in Algorithm~\ref{alg:q_training}.
+We can use both Monte Carlo estimates from the data or train a $Q$-function using a reinforcement learning algorithm.
+
+
+\subsection{Collocation as Inpainting}
+An alternative control setting is not when we want to maximize a function, but when we want to sample any trajectory consistent with some constraints.
+We can accomplish this by modifying the posterior distributions during training to reveal the conditioning information.
+If the data representation is thought of as a single-channel image, this conditional sampling strategy is analogous to image inpainting.
+
+Conditioning can in principle happen on any combination of the inputs, including non-contiguous regions of states and actions.
+A particularly natural setting is that when a future state is revealed; this corresponds to sampling a trajectory consistent with the dynamics of the environment that begins at the current state and reaches a future state at a specific time.
+
+There are two differences between the strategies discussed here: whether a function is to be maximized or evidence is to be conditioned on, and whether that evidence needs to be a part of the observation or action itself.
+
+\section{Receding-Horizon Control with Diffusion Warm-Starting}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Properties of Diffusion Planners}
+
+While \method can be thought of as a variant of a dynamics model, it has a different set of affordances than regular single-step models.
+In this section, we describe some of the properties that are consequences of the design.
+
+\paragraph{Non-greedy planning}
+In contrast to standard single-step models, which can be incorporated directly into any classical planning algorithm,
+the form of the planner is largely determined by the form of the model.
+As a result, the model is not only an effective long-horizon predictor, but also an effective long-horizon planner.
+We demonstrate the reason in a simplified 2D environment, in which an agent must plan around an obstacle to reach a goal location.
+While shooting-style methods struggle because of the lack of reward shaping, our method behaves like a learned collocation technique.
+We explore a more quantitative version of this problem setting in Section~\ref{sec:maze2d}.
+
+\paragraph{Temporal compositionality}
+A standard reason to use dynamics models is that they are the minimal component required to tackle an MDP problem.
+Trajectory-level models lose out on the temporal compositionality that one can leverage due to the Markov property.
+We show that \method also benefits from this type of compositionality.
+In Figure~\ref{fig:properties}b, we train a diffusion model on trajectories that only exist on the right or left part of a state space.
+Because the model uses local coherence to enforce global consistency, it can construct a trajectory that spans the entire image.
+
+\pararagraph{Cost compositionality}
+An important property of \method is that the cost function is not baked in by the training procedure, in contrast to model-free $Q$-functions and policies.
+Because the model acts as a large unconditional prior over possible behaviors, it is possible to steer the model with comparatively lightweight cost functions at test-time.
+We demonstrate this by adding hazards to the toy environment of the running example.
+The model has remained unchanged, but its plans have updated to reflect a new test-time cost function.
+
+\paragraph{Variable-length plans}
+The minimal property of single-step models allows the planning horizon to be dynamically chosen at testing time; it need not be set in training time.
+Because our model is fully convolutional in the horizon dimension, the same holds true here.
+In Figure~\ref{fig:properties}d, we show how passing noise inputs of varying dimensionality to the model cause it to generate plans of varying horizon.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Experiments}
+
+The aim of our experiments is to evaluate \method in data-driven control scenarios.
+We begin in standard offline RL benchmark environments where conventionally model-free policies are the strongest.
+In contrast, prior planning-based approaches have been limited to TT and MBOP.
+This setting allows us to evaluate the guided sampling style of trajectory optimization.
+
+We then turn our attention to settings requiring more test-time flexibility than standard RL benchmark environments, including 
+a long horizon, sparse reward maze environment, for which we use the conditional inpainting version of planning, and a block stacking
+ask for which test and train conditions are not identical.
+
+\subsection{Offline reinforcement learning}
+%% D4RL with Monte-Carlo Q-value guidance
+%% D4RL with IQL Q-value guidance
+
+\subsection{Goal-conditioned reinforcement learning}
+%% Maze2D with inpainting
+
+\subsection{Flexible behavior}
+%% block stacking
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% 1. method
+%% 2. properties
+%% 3. experiments
+
+%%%% figures
+%% 1. architecture
+%% 2. teaser (sawyer)
+%% 3. properties
+%% 4. block stacking (kuka)
+
+%%%% experiments
+%% 1. goal-conditioned IQL for maze2d
+%% 2. antmaze
+%% 3. IQL Q-function guided locomotion
+

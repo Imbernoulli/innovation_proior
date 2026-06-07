@@ -1,0 +1,174 @@
+% \documentclass{article}
+% \usepackage[utf8]{inputenc}
+\documentclass{article}
+%\usepackage[square,sort,comma,numbers]{natbib}
+%\usepackage{natbib}
+%\setcitestyle{authoryear, open={((},close={))}}
+
+\usepackage{iclr2021_conference,times}
+
+\input{math_commands.tex}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2020}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2020}
+
+% to avoid loading the natbib package, add option nonatbib:
+%\usepackage[nonatbib]{neurips_2020}
+     
+\usepackage{times}
+\usepackage{latexsym}
+
+\usepackage{url}
+
+%\aclfinalcopy % Uncomment this line for the final submission
+%\def\aclpaperid{***} %  Enter the acl Paper ID here
+
+%\setlength\titlebox{5cm}
+% You can expand the titlebox if you need extra space
+% to show all the authors. Please do not make the titlebox
+% smaller than 5cm (the original size); we will check this
+% in the camera-ready version and ask you to change it back.
+
+% Recommended, but optional, packages for figures and better typesetting:
+\usepackage{verbatim}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs} % for professional tables
+
+% hyperref makes hyperlinks in the resulting PDF.
+\usepackage{hyperref}
+
+% Attempt to make hyperref and algorithmic work together better:
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+\usepackage{amsmath, amssymb, amsfonts, amsthm}
+%\usepackage{cite}
+%\usepackage{natbib}
+%\bibpunct{(}{)}{;}{a}{,}{,}
+%\usepackage[dvipsnames]{xcolor}
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{bbm}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage{bm}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{mathabx}
+\usepackage{multirow}
+\usepackage{setspace}
+%\usepackage[ruled,vlined]{algorithm2e}
+%\usepackage{algorithm}
+%\usepackage{algorithmic}
+
+\usepackage{booktabs}
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{graphicx} % more modern
+%\usepackage{floatrow}
+\usepackage{subfig}
+\usepackage{adjustbox}  
+\usepackage{wrapfig,lipsum,booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows,shapes,automata,backgrounds,petri}
+\usepackage{multirow}% http://ctan.org/pkg/multirow
+\usepackage{hhline}% http://ctan.org/pkg/hhline
+
+%\usepackage[ruled,vlined]{algorithm2e}
+% \usepackage{algorithmic}
+% \SetKwInput{KwInput}{Input} 
+% \SetKwInput{KwOutput}{Output}   
+
+\usepackage{wrapfig}
+\usepackage{makecell}
+\usepackage{svg}
+
+\usepackage{multirow}
+\usepackage{balance}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{microtype}
+\usepackage{xspace}
+\usepackage{wrapfig,lipsum}
+%\usepackage[noend,ruled]{algorithm2e}
+\usepackage{algorithm}
+\usepackage{algorithmicx}
+\usepackage{algpseudocode}
+\usepackage{makecell}
+\usepackage[T1]{fontenc}
+\usepackage{soul}
+\usepackage{tabularx, booktabs}
+\usepackage{trimclip}
+
+\usepackage{hyperref}
+\usepackage{todonotes}
+\usepackage{caption}
+\newcommand{\xiaodl}[2][]{\todo[color=yellow,size=\scriptsize,fancyline,caption={},#1]{Xiaodong:#2}}
+\newcommand{\hepc}[2][]{\todo[color=orange,size=\scriptsize,fancyline,caption={},#1]{Hepc:#2}}
+
+\newcommand{\cbb}{\mathbf{c}}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+\newcolumntype{L}{>{\arraybackslash}X}
+
+\algnewcommand\algorithmicinput{\textbf{Input:}}
+\algnewcommand\algorithmicoutput{\textbf{Output:}}
+\algnewcommand\algorithmicparameter{\textbf{Parameters:}}
+\algnewcommand\INPUT{\item[\algorithmicinput]}
+\algnewcommand\OUTPUT{\item[\algorithmicoutput]}
+\algnewcommand\PARAMETER{\item[\algorithmicparameter]}
+\newcommand\BibTeX{B{\sc ib}\TeX}
+
+\newcommand{\sj}[1]{{\color{blue}{[{\bf SJ}: #1]}}}
+
+\newcommand\ModelName{DeBERTa}
+\newcommand\DecoderName{EMD}
+
+\newcommand{\shorttextrightarrow}{\clipbox*{{.25\width} 0pt {\width} {\height}} \textrightarrow}
+\newcommand{\shorttextleftarrow}{\clipbox*{0pt 0pt {.75\width} {\height}} \textleftarrow}
+
+\iclrfinalcopy
+%\title{\ModelName: Transformer with Disentangled Attention and Decoding-based Enhancement}
+\title{\ModelName: Decoding-enhanced BERT with Disentangled Attention}
+%Decoding-enhanced BERT with Disentangled Attention}
+
+%\title{DeBERTa: Pre-training Masked Language Model with Disentangled Attention and Decoding-based Enhancement}
+%A Decoding-Enhanced Bidirectional Transformer}
+\author{Pengcheng He$^1$, Xiaodong Liu$^2$, Jianfeng Gao$^2$,  Weizhu Chen$^1$ \\
+    $^1$ Microsoft Dynamics 365 AI  ~~~~~~~~  $^2$ Microsoft Research \\
+  {\tt \{penhe,xiaodl,jfgao,wzchen\}@microsoft.com}
+}
+
+\date{December 2019}
+\graphicspath{figures/}
+\DeclareGraphicsExtensions{.png,.pdf,.svg}
+
+\begin{document}
+
+\maketitle
+
+\input{0_abstract.tex}
+
+\input{1_introduction.tex}
+
+\input{2_background.tex}
+
+\input{3_approach.tex}
+%\input{4_implementation.tex}
+\input{5_experiment.tex}
+\input{6_sumup}
+\input{8_broader_impact}
+\input{7_ack}
+
+\bibliography{ref,ref_xiaodong}
+\bibliographystyle{iclr2021_conference}
+\clearpage
+\appendix
+\input{appendix}
+\end{document}

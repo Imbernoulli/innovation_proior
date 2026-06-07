@@ -1,0 +1,51 @@
+\documentclass{article} %
+\usepackage{iclr2024_conference,times}
+
+\input{packages}
+\input{math_commands}
+\input{macro}
+
+
+\title{Efficient Streaming Language Models \\ with Attention Sinks}
+
+
+\author{
+Guangxuan Xiao$^{1}$\thanks{Part of the work done during an internship at Meta AI.} \quad Yuandong Tian$^2$ \quad Beidi Chen$^3$ \quad Song Han$^{1,4}$ \quad Mike Lewis$^2$ \\
+\\ $^1$ Massachusetts Institute of Technology\quad $^2$ Meta AI
+\\ $^3$ Carnegie Mellon University \quad $^4$ NVIDIA
+\\ \texttt{\url{https://github.com/mit-han-lab/streaming-llm}}
+}
+
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+\iclrfinalcopy %
+\begin{document}
+\maketitle
+
+\input{text/0_abstract}
+\input{text/1_introduction}
+\input{text/2_related}
+\input{text/3_method}
+\input{text/4_experiment}
+
+\input{text/5_conclusion}
+
+\section*{Reproducibility Statement}
+All findings presented in this paper can be reproduced. We have made our code and datasets available in this \href{https://github.com/mit-han-lab/streaming-llm}{github repo}. The models used in this paper are all openly available, and we provide references to access them. Details regarding our experiments, including hyperparameters, training protocols, and evaluation methods, can be found in the Experiments section (Section~\ref{sec:exps}). We are confident that with the provided resources, readers can reproduce the entirety of our presented results.
+
+\section*{Impact Statement}
+\method has been widely adopted by various LLM serving solutions including \href{https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/llama#run-llama-with-streamingllm}{NVIDIA TensorRT-LLM}, \href{https://github.com/intel/intel-extension-for-transformers}{Intel Extension for Transformers}, \href{https://huggingface.co/docs/transformers/v4.39.3/en/internal/generation_utils#transformers.SinkCache}{HuggingFace Transformers}, \href{https://github.com/mlc-ai/mlc-llm/pull/1459}{MLC LLM}, etc.
+
+\section*{Acknowledgements}
+This work is supported by 
+MIT-IBM Watson AI Lab,  
+Amazon and MIT Science Hub,   
+National Science Foundation.
+We thank Angela Li for writing suggestions and demo making, Jingwei Zuo for proofreading, and Xiuyu Li for the suggestion on notations.
+\bibliography{reference}
+\bibliographystyle{iclr2024_conference}
+
+\clearpage
+\input{text/6_appendix}
+\end{document}

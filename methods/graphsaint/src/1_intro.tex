@@ -1,0 +1,37 @@
+\section{Introduction}
+
+Recently, representation learning on graphs has attracted much attention, since it greatly facilitates tasks such as classification and clustering \citep{survey1,survey2}.
+%Inspired by Convolutional Neural Networks (CNNs) on grid-like data (i.e., images), Graph Convolutional Networks (GCNs) \cite{gcn_iclr16,gcn_nips16} have been proposed as extensions of CNNs to attributed graphs -- graphs with features on every node along with labels. Although state-of-the-art CNNs can be scaled to large sizes (tens or hundreds of layers, hundreds of thousands of input values, with millions of training images) \cite{resnet}, 
+Current works on Graph Convolutional Networks (GCNs) \citep{graphsage,fastgcn,lgcn,as-gcn,s-gcn} mostly focus on shallow models (2 layers) on relatively small graphs. Scaling GCNs to larger datasets and deeper layers still requires fast alternate training methods.
+
+In a GCN, data to be gathered for one output node comes from its neighbors in the previous layer. Each of these neighbors in turn, gathers its output from the previous layer, and so on. 
+Clearly, the deeper we back track, the more multi-hop neighbors to support the computation of the root. The number of support nodes (and thus the training time) potentially grows exponentially with the GCN depth. 
+To mitigate such ``neighbor explosion'', state-of-the-art methods %\citep{graphsage,fastgcn,s-gcn,gcn_web,as-gcn} 
+use various \textit{layer sampling} techniques. The works by \cite{graphsage,gcn_web,s-gcn} ensure that only a small number of neighbors (typically from 2 to 50) are selected by one node in the next layer.
+\cite{fastgcn} and \cite{as-gcn} further propose samplers to restrict the neighbor expansion factor to 1, by ensuring a fixed sample size in all layers. 
+While these methods significantly speed up training, they face challenges in scalability, accuracy or computation complexity. 
+
+%[TODO: one paragraph talking about graph clustering based approaches]
+%Cost of training deep GCNs can still be prohibitively high even when the neighbor expansion factor is as low as 2 \cite{s-gcn}. And accuracy may be compromised if the independent layer sampler \cite{fastgcn} cannot ensure enough connectivity from the input layer all the way to the output. 
+%More advanced sampler \cite{as-gcn} may significantly increase training complexity. 
+
+
+\paragraph{Present work} We present {\graphsaint} (\underline{Graph SA}mpling based \underline{IN}ductive learning me\underline{T}hod) to efficiently train deep GCNs. %series of techniques for training deep GCNs based on a fundamentally different minibatch construction method. 
+{\graphsaint} is developed from a fundamentally different way of minibatch construction. Instead of building a GCN on the full training graph and then sampling across the layers, we sample the training graph first and then build a full GCN on the subgraph. Our method is thus \textit{graph sampling} based. 
+Naturally, {\graphsaint} resolves ``neighbor explosion'', since every GCN of the minibatches is a small yet \textit{complete} one. 
+% Challenges also come with the graph sampling based training. 
+% The first question is, how to design the graph samplers.%so that nodes within a subgraph can support each other wo ...
+On the other hand, graph sampling based method also brings new challenges in training. 
+Intuitively, nodes of higher influence on each other should have higher probability to form a subgraph. This enables the sampled nodes to ``support'' each other without going outside the minibatch. 
+Unfortunately, such strategy results in non-identical node sampling probability, and introduces bias in the minibatch estimator. 
+To address this issue, we develop normalization techniques so that the feature learning does not give preference to nodes more frequently sampled. %model does not overwhelmingly learn features of highly influential nodes. 
+To further improve training quality, we perform variance reduction analysis, and design light-weight sampling algorithms by quantifying ``influence'' of neighbors. 
+% To ensure high training quality (accuracy and convergence time) requires appropriate graph sampling algorithm. 
+% Intuitively, nodes having strong influence on each other should be selected in the same subgraph. 
+% This way, when propagating through the GCN layers, the sampled nodes can ``support'' each other without information from outside the batch. 
+% Through insights gathered from theoretical analysis, we propose several light-weight graph samplers that lead to fast and accurate training. 
+% Accompanied with the graph sampling idea, we also develop normalization and variance reduction techniques to further improve training quality. 
+Experiments on {\graphsaint} using five large datasets show significant performance gain in both training accuracy and time. 
+We also demonstrate the flexibility of {\graphsaint} by integrating our minibatch method with popular GCN architectures such as JK-net \citep{jk-net} and GAT \citep{gat}. 
+The resulting deep models achieve new state-of-the-art F1 scores on PPI (0.995) and Reddit (0.970). 
+%Several interesting questions emerge with the idea of graph sampling based training. We address each of them in this paper through detailed analysis and experiments. 

@@ -1,0 +1,825 @@
+\section{Algorithm}
+\label{app:algo}
+\begin{algorithm}[!ht]
+\DontPrintSemicolon
+\SetAlgoLined
+\SetKwInOut{Input}{Inputs}
+\SetKwInOut{Output}{Output}
+\Input{
+\par
+\begin{tabular}{l l}
+$\mathcal{D}$, $\mathcal{T},$ and $\mathcal{T}^{\prime}$ & set of images and distributions of transformations\\
+$\netparams$, $f_\netparams$, $g_\netparams,$ and $q_\netparams$ & initial online parameters, encoder, projector, and predictor\\
+$\targetparams$, $f_\targetparams$, $g_\targetparams$ & initial target parameters, target encoder, and target projector\\
+$\mathrm{optimizer}$ & optimizer, updates online parameters using the loss gradient\\
+$K$ and $N$ & total number of optimization steps and batch size\\
+$\{\tau_k\}_{k=1}^K$ and $\{\eta_k\}_{k=1}^K$ & target network update schedule and learning rate schedule\\
+\end{tabular}}
+
+
+\For{$k=1$ \KwTo $K$}{ 
+$\mathcal{B} \gets \{x_i\sim\mathcal{D}\}_{i=1}^N$ \tcp*{sample a batch of $N$ images}
+\For{$x_i\in\mathcal{B}$}{
+$t \sim \mathcal{T} {\rm\ and\ } t^{\prime} \sim \mathcal{T}^{\prime}$ \tcp*{sample image transformations}
+$z_1 \leftarrow g_\netparams\left(f_\netparams(t(x_i))\right)$ and $z_2 \leftarrow g_\netparams\left(f_\netparams(t^{\prime}(x_i))\right)$ \tcp*{compute projections}
+
+$z^{\prime}_1 \leftarrow g_\targetparams\left(f_\targetparams(t^{\prime}(x_i))\right)$ and  $z^{\prime}_2 \leftarrow g_\targetparams\left(f_\targetparams(t(x_i))\right)$\tcp*{compute target projections}
+
+$l_i \leftarrow  -2\cdot\pa{\frac{\langle q_\netparams(z_1), z'_1\rangle}{\normtwo{q_\netparams(z_1)}\cdot\normtwo{z'_1}} + \frac{\langle q_\netparams(z_2),  z'_2\rangle}{\normtwo{q_\netparams(z_2)}\cdot\normtwo{z'_2}}} $\tcp*{compute the loss for $x_i$}
+}
+$\dtheta \leftarrow  \frac{1}{N}\sum\limits_{i=1}^{N} \partial_\theta l_i$ \tcp*{compute the total loss gradient w.r.t.\,$\theta$}
+$\netparams \leftarrow \mathrm{optimizer}(\netparams, \dtheta, \eta_k)$\tcp*{update online parameters}
+$\targetparams \leftarrow \tau_k \targetparams + (1 - \tau_k) \netparams$\tcp*{update target parameters}
+}
+
+\Output{encoder $f_\netparams$}
+\caption{\algo:  \longalgo}
+\label{alg:PBL}
+\end{algorithm}
+
+\section{Image augmentations}
+\label{app:transf}
+During self-supervised training, \algo uses the following \imageaugmentation s (which are a subset of the ones presented in~\cite{SimCLR}):
+\begin{itemize}
+    \item random cropping: a random patch of the image is selected, with an area uniformly sampled between 8\% and 100\% of that of the original image, and an aspect ratio logarithmically sampled between $3/4$ and $4/3$. This patch is then resized to the target size of $224 \times 224$ using bicubic interpolation;
+    \item optional left-right flip;
+    \item color jittering: the brightness, contrast, saturation and hue of the image are shifted by a uniformly random offset applied on all the pixels of the same image. The order in which these shifts are performed is randomly selected for each patch;
+    \item color dropping: an optional conversion to grayscale. When applied, output intensity for a pixel $(r, g, b)$ corresponds to its luma component, computed as $0.2989 r + 0.5870 g + 0.1140 b$;
+    \item Gaussian blurring: for a $224 \times 224$ image, a square Gaussian kernel of size $23 \times 23$ is used, with a standard deviation uniformly sampled over $[0.1, 2.0]$;
+    \item solarization: an optional color transformation $x \mapsto x \cdot \bOne_{\{x < 0.5\}} + (1 - x) \cdot \bOne_{\{x \ge 0.5\}}$ for pixels with values in $[0, 1]$.
+\end{itemize}
+
+Augmentations from the sets $\mathcal{T}$ and~$\mathcal{T}'$ (introduced in \Cref{sec:method}) are compositions of the above \imageaugmentation s in the listed order, each applied with a predetermined probability. The \imageaugmentation s parameters are listed in \Cref{tab:transformation_distributions}.
+
+During evaluation, we use a center crop similar to~\cite{SimCLR}: images are resized to $256$ pixels along the shorter side using bicubic resampling, after which a $224 \times 224$ center crop is applied. In both training and evaluation, we normalize color channels by subtracting the average color and dividing by the standard deviation, computed on ImageNet, after applying the augmentations.
+
+\begin{table}[ht]
+    \small
+    \centering
+    \begin{tabular}{l l l} \toprule
+        Parameter & $\mathcal{T}$ & $\mathcal{T}'$ \\ \midrule
+        Random crop probability & $1.0$ & $1.0$ \\
+        Flip probability & $0.5$ & $0.5$ \\
+        Color jittering probability & $0.8$ & $0.8$ \\
+        Brightness adjustment max intensity & $0.4$ & $0.4$ \\
+        Contrast adjustment max intensity & $0.4$ & $0.4$ \\
+        Saturation adjustment max intensity & $0.2$ & $0.2$ \\
+        Hue adjustment max intensity & $0.1$ & $0.1$ \\
+        Color dropping probability & $0.2$ & $0.2$ \\
+        Gaussian blurring probability & $1.0$ & $0.1$ \\
+        Solarization probability & $0.0$ & $0.2$ \\ \bottomrule
+    \end{tabular}
+     \vspace{0.5em}
+    \caption{Parameters used to generate \imageaugmentation s.}
+    \label{tab:transformation_distributions}
+\end{table}
+
+\section{Evaluation on ImageNet training}
+\label{app:eval_details}
+
+\subsection{Self-supervised learning evaluation on ImageNet}
+\paragraph{Linear evaluation protocol on ImageNet}
+\label{app:linear_eval_details}
+As in~\cite{kolesnikov2019revisiting,kornblith2019better,SimCLR,MOCOv2}, we use the standard linear evaluation protocol on ImageNet, which consists in training a linear classifier on top of the frozen representation, \emph{i.e.}, without updating the network parameters nor the batch statistics. At training time, we apply spatial augmentations, i.e., random crops with resize to $224 \times 224$ pixels, and random flips. At test time, images are resized to $256$ pixels along the shorter side using bicubic resampling, after which a $224 \times 224$ center crop is applied. In both cases, we normalize the color channels by subtracting the average color and dividing by the standard deviation (computed on ImageNet), after applying the augmentations. We optimize the cross-entropy loss using \SGD with Nesterov momentum over $80$ epochs, using a batch size of $1024$ and a momentum of $0.9$. We do not use any regularization methods such as weight decay, gradient clipping~\cite{pascanu2013difficulty}, tclip~\cite{AMDIM}, or logits regularization. We finally sweep over $5$ learning rates $\{0.4, 0.3, 0.2, 0.1, 0.05\}$ on a local validation set (10009 images from ImageNet \texttt{train} set), and report the accuracy of the best validation hyperparameter on the \texttt{test} set (which is the public validation set of the original ILSVRC2012 ImageNet dataset).
+
+
+\paragraph{Variant on linear evaluation on ImageNet}
+In this paragraph only, we deviate from the protocol of~\cite{SimCLR,MOCOv2} and
+propose another way of performing linear evaluation on top of a frozen representation. This method achieves better performance both in top-1 and top-5 accuracy. 
+
+\begin{itemize}[leftmargin=*]
+    \item We replace the spatial augmentations (random crops with resize to $224 \times 224$ pixels and random flips) with the pre-train augmentations of \Cref{app:transf}. This method was already used in~\cite{CPCv2} with a different subset of pre-train augmentations. 
+    \item We regularize the linear classifier as in  \cite{AMDIM}\footnote{\url{https://github.com/Philip-Bachman/amdim-public/blob/master/costs.py}} by clipping the logits using a hyperbolic tangent function 
+\[ {\rm tclip}(x) \triangleq \alpha \cdot \tanh( x / \alpha),\] where $\alpha$  is a positive scalar, and by adding a logit-regularization penalty term in the loss
+\[
+{\rm Loss}(x,y) \triangleq {\rm cross\_entropy}({\rm tclip}(x), y) + \beta \cdot {\rm average}({\rm tclip}(x)^2), 
+\] 
+where $x$ are the logits, $y$ are the target labels, and $\beta$ is the regularization parameter. We set $\alpha=20$ and $\beta=1e{-2}$.
+\end{itemize}
+ 
+We report in~\Cref{tab:recuit_enhanced} the top-1 and top-5 accuracy on ImageNet using this modified protocol. These modifications in the evaluation protocol increase the \algo's top-$1$ accuracy from $74.3\%$ to $74.8\%$ with a ResNet-$50$ ($1\times$).
+
+\begin{table}[ht]
+    \centering
+    \small
+    \begin{tabular}[ht]{l c c r r }
+    \toprule
+          Architecture      & Pre-train augmentations & Logits regularization &  Top-$1$ & Top-$5$         \\
+         \midrule 
+          \multirow{4}{*}{ResNet-$50$ ($1\times$)}  & & & $74.3$  & $91.6$ \\
+          & \checkmark & & $74.4$& $91.8$ \\
+          &  & \checkmark & $74.7$& $91.8$ \\ 
+          &  \checkmark & \checkmark & $\bf{74.8}$& $\bf{91.8}$ \\ 
+                    \midrule
+          \multirow{4}{*}{ResNet-$50$ ($4\times$)}  & & & $78.6$  & $94.2$ \\
+          & \checkmark & & $78.6$ & $94.3$ \\
+          &  & \checkmark & $78.9$ & $94.3$ \\ 
+          &  \checkmark & \checkmark & $\bf{79.0}$& $\bf{94.5}$ \\ 
+          \midrule
+          \multirow{4}{*}{ResNet-$200$ ($2\times$)} & &  & $79.6$  & $94.8$ \\
+          & \checkmark & & $79.6$ & $94.8$ \\
+          &  & \checkmark & $79.8$& $95.0$ \\ 
+          &  \checkmark & \checkmark & $\bf{80.0}$& $\bf{95.0}$ \\ 
+         \bottomrule
+    \end{tabular}
+    \vspace{0.5em}
+\captionsetup{width=.9\linewidth}
+\caption{\label{tab:recuit_enhanced}Different linear evaluation protocols on ResNet architectures by either replacing the spatial augmentations with pre-train augmentations, or regularizing the linear classifier. No pre-train augmentations and no logits regularization correspond to the evaluation protocol of the main paper, which is the same as in \cite{SimCLR,MOCOv2}. }
+\end{table}  
+
+\paragraph{Semi-supervised learning on ImageNet} 
+\label{app:semi_sup_details}
+We follow the semi-supervised learning protocol of~\cite{SimCLR,zhai2019s4l}. We first initialize the network with the parameters of the pretrained representation, and fine-tune it with a subset of ImageNet labels.
+At training time, we apply spatial augmentations, i.e., random crops with resize to $224 \times 224$ pixels and random flips. At test time, images are resized to $256$ pixels along the shorter side using bicubic resampling, after which a $224 \times 224$ center crop is applied. In both cases, we normalize the color channels by subtracting the average color and dividing by the standard deviation (computed on ImageNet), after applying the augmentations. We optimize the cross-entropy loss using \SGD with Nesterov momentum. We used a batch size of $1024$, a momentum of $0.9$. We do not use any regularization methods such as weight decay, gradient clipping~\cite{pascanu2013difficulty}, tclip~\cite{AMDIM}, or logits rescaling. We sweep over the learning rate $\{0.01, 0.02, 0.05, 0.1, 0.005\}$ and the number of epochs $\{30, 50\}$ and select the hyperparameters achieving the best performance on our local validation set to report test performance.
+
+\begin{figure}[ht]
+    \centering
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \vskip 0.1em
+        \includegraphics[width=\linewidth,bb = 0 0 872 791]{img/low-ratio-top1.pdf}
+        \caption{Top-1 accuracy}
+        \label{fig:few_data_top1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.48\linewidth}
+        \centering
+        \includegraphics[width=\linewidth,bb = 0 0 872 780]{img/low-ratio-top5.pdf}
+        \caption{Top-5 accuracy}
+        \label{fig:few_data_top5}
+    \end{subfigure}
+    \caption{\label{fig:few_data} Semi-supervised training with a fraction of ImageNet labels on a ResNet-$50$ ($\times 1$). }
+\end{figure}
+
+\begin{table}[ht]
+    \centering
+    \small
+    \input{tables/full_supervised.tex}
+    \vspace{0.5em}
+    \captionsetup{width=.7\linewidth}
+    \caption{Semi-supervised training with the full ImageNet on a ResNet-$50$ ($\times 1$). We also report other fully supervised methods for extensive comparisons.}
+    \label{tab:finetune100}
+\end{table}  
+
+
+In \Cref{table:few_labels} presented in the main text, we fine-tune the representation over the $1$\% and $10$\% ImageNet splits from \cite{SimCLR} with various ResNet architectures. 
+
+In \Cref{fig:few_data}, we fine-tune the representation over $1$\%, $2$\%, $5$\%, $10$\%, $20$\%, $50$\%, and $100$\% of the ImageNet dataset as in~\cite{CPCv2} with a ResNet-$50$ ($1\times$) architecture, and compare them with a supervised baseline and a fine-tuned \simclr representation. 
+In this case and contrary to~\Cref{table:few_labels} we don't reuse the splits from \simclr but we create our own via a balanced selection. 
+In this setting, we observed that tuning a \algo representation always outperforms a supervised baseline trained from scratch. In \Cref{fig:few_data_all_resnet}, we then fine-tune the representation over multiple ResNet architectures. We observe that the largest networks are prone to overfitting as they are outperformed by ResNets with identical depth but smaller scaling factor. This overfitting is further confirmed when looking at the training and evaluation loss: large networks have lower training losses, but higher validation losses than some of their slimmer counterparts. Regularization methods are thus recommended when tuning on large architectures.
+
+Finally, we fine-tune the representation over the full ImageNet dataset. We report the results in \Cref{tab:finetune100} along with supervised baselines trained on ImageNet. We observe that fine-tuning the SimCLR checkpoint does not yield better results (in our reproduction, which matches the results reported in the original paper~\cite{SimCLR}) than using a random initialization ($76.5$ top-$1$). Instead, \algo's initialization checkpoint leads to a high final score ($77.7$ top-$1$), higher than the vanilla supervised baseline of \cite{SimCLR}, matching the strong supervised baseline of AutoAugment\cite{cubuk2019randaugment} but still $1.2$ points below the stronger supervised baseline~\cite{gong2020maxup}, which uses advanced supervised learning techniques. 
+
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=\linewidth,trim={6cm 4cm 6cm 6cm},clip, bb=0 0 2160 1440]{img/resnet_semisupervised.pdf}
+    \caption{\label{fig:few_data_all_resnet}  Semi-supervised training with a fraction of ImageNet labels on multiple ResNets architecture pretrained with \algo. Note that large networks are facing overfitting problems.}
+\end{figure}
+
+\subsection{Linear evaluation on larger architectures and supervised baselines}
+\label{app:larger_architectures}
+
+\begin{table}[ht]
+    \centering
+    \small
+    \input{tables/large_resnets_linear_classif.tex}
+     \vspace{0.5em}
+     \captionsetup{width=.7\linewidth}
+     \caption{Linear evaluation of \algo on ImageNet using larger encoders. Top-$1$ and top-$5$ accuracies are reported in \%.}
+     \label{tab:large_resnet_perf}
+\end{table}
+
+Here we investigate the performance of \algo with deeper and wider ResNet architectures. We compare ourselves to the best supervised baselines from~\cite{SimCLR} when available (rightmost column in \cref{tab:large_resnet_perf}), which are also presented in~\Cref{fig:holygrail}. Importantly, we close in on those baselines using the ResNet-$50$ ($2 \times$) and the ResNet-$50$ ($4\times$) architectures, where we are within $0.4$ accuracy points of the supervised performance. To the best of our knowledge, this is the first time that the gap to supervised has been closed to such an extent using a self-supervised method under the linear evaluation protocol.
+Therefore, in order to ensure fair comparison, and suspecting that the supervised baselines' performance in~\cite{SimCLR} could be even further improved with appropriate data augmentations, we also report on our own reproduction of strong supervised baselines. We use RandAugment~\cite{cubuk2019randaugment} data augmentation for all large ResNet architectures (which are all version $1$, as per~\cite{ResNet}). We train our supervised baselines for up to $200$ epochs, using SGD with a Nesterov momentum value of $0.9$, a cosine-annealed learning rate after a $5$ epochs linear warmup period, weight decay with a value of $1e-4$, and a label smoothing~\cite{szegedy2016rethinking} value of $0.1$. Results are presented in \Cref{fig:byol_architectures}.
+
+\begin{figure}[ht]
+    \centering
+    \vskip 0.1em
+    %\includegraphics[width=0.95\linewidth]{img/byol_architectures.pdf}
+    \includegraphics[width=0.95\linewidth,bb=0 0 1149 995]{img/byol_architectures.pdf}
+    \captionsetup{width=.9\linewidth}
+    \caption{Results for linear evaluation of \algo compared to fully supervised baselines with various ResNet architectures. Our supervised baselines are ran with RandAugment~\cite{cubuk2019randaugment} augmentations.}
+    \label{fig:byol_architectures}
+\end{figure}
+
+\clearpage
+
+\section{Transfer to other datasets}
+\label{app:transfer_details}
+
+\subsection{Datasets}
+\label{app:datasets}
+\begin{table}[ht]
+   \small
+    \centering
+    \resizebox{\textwidth}{!}{
+    \input{tables/appendix_datasets_table.tex}
+    }
+     \vspace{0.5em}
+     \captionsetup{width=.9\linewidth}
+     \caption{Characteristics of image datasets used in transfer learning. When an official test split with labels is not publicly available, we use the official validation split as test set, and create a held-out validation set from the training examples.}
+     \label{tab:datasets_transfer}
+\end{table}
+We perform transfer via linear classification and fine-tuning on the same set of datasets as in~\cite{SimCLR}, namely  Food-$101$ dataset~\cite{food101}, CIFAR-$10$~\cite{cifar}
+and CIFAR-$100$~\cite{cifar}, Birdsnap~\cite{Birdsnap}, the SUN$397$ scene dataset~\cite{sun397}, Stanford Cars~\cite{carsdataset}, FGVC Aircraft~\cite{aircraft}, the PASCAL VOC $2007$ classification
+task~\cite{pascal}, the Describable Textures Dataset (DTD)~\cite{dtd}, Oxford-IIIT Pets~\cite{pets}, Caltech-$101$~\cite{caltech101}, and Oxford $102$ Flowers~\cite{flowers}. As in~\cite{SimCLR}, we used the validation sets specified by the dataset creators to select hyperparameters for FGVC Aircraft, PASCAL VOC
+2007, DTD, and Oxford 102 Flowers. On other datasets, we use the validation examples as test set, and hold out a subset of the training examples that we use as validation set. We use standard metrics for each datasets:
+\begin{itemize}
+    \item \textit{Top-$1$}: We compute the proportion of correctly classified examples.
+    \item \textit{Mean per class}: We compute the top-$1$ accuracy for each class separately and then compute the empirical mean over the classes.
+    \item \textit{Point 11-mAP}: We compute the empirical mean \emph{average precision} as defined in~\cite{pascal}.
+    \item \textit{Mean IoU:} We compute the empirical mean Intersection-Over-Union as defined in~\cite{pascal}.
+    \item \textit{AP50:} We compute the Average Precision as defined in~\cite{pascal}.
+\end{itemize}
+
+We detail the validation procedures for some specific datasets: 
+\begin{itemize}
+    \item For Sun397~\cite{sun397}, the original dataset specifies 10 train/test splits, all of which contain 50 examples/images of 397 different classes. We use the first train/test split. The original dataset specifies no validation split and therefore, the training images have been further subdivided into 40 images per class for the train split and 10 images per class for the valid split.
+    \item For Birdsnap~\cite{Birdsnap}, we use a random selection of valid images with the same number of images per category as the test split.
+    \item For DTD~\cite{dtd}, the original dataset specifies 10 train/validation/test splits, we only use the first split.
+    \item For Caltech-101~\cite{caltech101}, the original does not dataset specifies any train/test splits. We have followed the approach used in~\cite{donahue2014decaf}: This file defines datasets for 5 random splits of 25 training images per category, with 5 validation images per category and the remaining images used for testing.
+    \item For ImageNet, we took the last $10009$ last images of the official tensorflow ImageNet split.
+    \item For Oxford-IIIT Pets, the valid set consists of 20 randomly selected images per class.	
+\end{itemize}
+Information about the dataset are summarized in \Cref{tab:datasets_transfer}.
+
+\subsection{Transfer via linear classification}
+We follow the linear evaluation protocol of~\cite{kolesnikov2019revisiting,kornblith2019better,SimCLR} that we detail next for completeness. 
+We train a regularized multinomial logistic regression classifier on top of the frozen representation, i.e., with frozen pretrained parameters and without re-computing batch-normalization statistics.
+In training and testing, we do not perform any image augmentations; images are resized to $224$ pixels along the shorter side using bicubic resampling and then normalized with ImageNet statistics.
+Finally, we minimize the cross-entropy objective using \LBFGS with $\ell_2$-regularization, where we select the regularization parameters from a range of $45$ logarithmically-spaced values between $10^{-6}$ and $10^5$. After choosing the best-performing hyperparameters on the validation set, the model is retrained on combined training and validation images together, using the chosen parameters. The final accuracy is reported on the test set.
+
+\subsection{Transfer via fine-tuning}
+We follow the same fine-tuning protocol as in~\cite{CPCv2,kolesnikov2019revisiting,dmlab,SimCLR} that we also detail for completeness. Specifically, we initialize the network with the parameters of the pretrained representation. At training time, we apply spatial transformation, i.e., random crops with resize to $224 \times 224$ pixels and random flips. At test time, images are resized to $256$ pixels along the shorter side using bicubic resampling, after which a $224 \times 224$ center crop is extracted. In both cases, we normalize the color channels by subtracting the average color and dividing by the standard deviation (computed on ImageNet), after applying the augmentations.
+We optimize the loss using \SGD with Nesterov momentum for $20 000$ steps with a batch size of $256$ and with a momentum of $0.9$. We set the momentum parameter for the batch normalization statistics to $\max(1- 10 / s, 0.9)$ where $s$ is the number of steps per epoch. The learning rate and weight decay are selected respectively with a grid of seven logarithmically spaced learning rates between $0.0001$ and $0.1$, and $7$ logarithmically-spaced values of weight decay between $10^{-6}$ and $10^{-3}$, as well as no weight decay. These values of weight decay are divided by the learning rate. After choosing the best-performing hyperparameters on the validation set, the model is retrained on combined training and validation images together, using the chosen parameters. The final accuracy is reported on the test set.
+
+\subsection{Implementation details for semantic segmentation}
+\label{app:semantic_seg}
+We use the same fully-convolutional network (FCN)-based~\cite{long2015fully} architecture as~\cite{MOCO}. The backbone consists of the convolutional layers in ResNet-$50$. The $3\times 3$ convolutions in the conv$5$ blocks use dilation $2$ and stride $1$. This is followed by two extra $3\times 3$ convolutions with $256$ channels, each followed by batch normalization and ReLU activations, and a $1\times 1$ convolution for per-pixel classification. The dilation is set to $6$ in the two extra $3\times 3$ convolutions. The total stride is $16$ (FCN-$16$s \cite{long2015fully}).
+
+We train on the \texttt{train\textunderscore aug2012\xspace} set and report results on \texttt{val2012\xspace}. Hyperparameters are selected on a $2119$ images held-out validation set. We use a standard per-pixel softmax cross-entropy loss to train the FCN. Training is done with random scaling (by a ratio in $\left[0.5, 2.0\right]$), cropping, and horizontal flipping. The crop size is $513$. Inference is performed on the $\left[513, 513\right]$ central crop. For training we use a batch size of $16$ and weight decay of $0.0001$. We select the base learning rate by sweeping across $5$ logarithmically spaced values between $10^{-3}$ and $10^{-1}$. The learning rate is multiplied by $0.1$ at the $70$-th and $90$-th percentile of training. We train for $30000$ iterations, and average the results on 5 seeds.
+
+\subsection{Implementation details for object detection }
+\label{app:object_det}
+
+For object detection, we follow prior work on Pascal detection transfer~\cite{doersch2017multi,doersch2015unsupervised} wherever possible.  We use a Faster R-CNN~\cite{ren2015faster} detector with a R$50$-C$4$ backbone with a frozen representation. The R$50$-C$4$ backbone ends with the conv$4$ stage of a ResNet-$50$, and the box prediction head consists of the conv$5$ stage (including global pooling).
+We preprocess the images by applying multi-scale augmentation (rescaling the image so its longest edge is between $480$ and $1024$ pixels) but no other augmentation. We use an asynchronous \texttt{SGD} optimizer with $9$ workers and train for $1.5$M steps. We used an initial learning rate of $10^{-3}$, which is reduced to $10^{-4}$ at 1M steps and to $10^{-5}$ at $1.2$M steps.
+
+\subsection{Implementation details for depth estimation }
+\label{app:depth}
+For depth estimation, we follow the same protocol as in~\cite{laina2016depth}, and report its core components for completeness.
+We use a standard ResNet-$50$ backbone and feed the conv$5$ features into $4$ fast up-projection blocks with respective filter sizes $512$, $256$, $128$, and $64$. We use a reverse Huber loss function for training~\cite{laina2016depth, owen2007robust}.
+
+The original NYU Depth v$2$ frames of size $\left[640, 480\right]$ are down-sampled by a factor $0.5$ and center-cropped to $\left[304, 228\right]$ pixels. Input images are randomly horizontally flipped and the following color transformations are applied:
+\begin{itemize}
+\item \textit{Grayscale} with an application  probability of $0.3$.
+\item \textit{Brightness} with a maximum brightness difference of $0.1255$.
+\item \textit{Saturation} with a saturation factor randomly picked in the interval $\left[0.5, 1.5\right]$.
+\item \textit{Hue} with a hue adjustment factor randomly picked in the interval $\left[-0.2, 0.2\right]$.
+\end{itemize}
+We train for $7500$ steps with batch size $256$, weight decay $0.0005,$ and learning rate $0.16$ (scaled linearly from the setup of \cite{laina2016depth} to account for the bigger batch size).
+
+\subsection{Further comparisons on PASCAL and NYU v2 Depth}
+
+For completeness, ~\Cref{tab:detect_segment_full} and~\ref{table:app_depth_full} extends~\Cref{tab:other_transfer} with other published baselines which use comparable networks.  We see that in almost all settings, \algo outperforms these baselines, even when those baselines use more data or deeper models.  
+One notable exception is RMS error for NYU Depth prediction, which is a metric that's sensitive to outliers.
+The reason for this is unclear, but one possibility is that the network is producing higher-variance predictions due to being more confident about a test-set scene's similarities with those in the training set.
+\begin{table}[ht]
+\begin{center}
+\small
+\centering
+\begin{tabular}{l r r }
+\toprule
+    Method     & AP$_{50}$ & mIoU \\
+    \midrule
+    \supervisedbaseline~\cite{MOCO} & $74.4$ & $74.4$  \\
+    \midrule
+    RelPos~\cite{doersch2015unsupervised}, by~\cite{doersch2017multi}$^{*}$ & $66.8$ & - \\
+    Multi-task~\cite{doersch2017multi}$^{*}$ & $70.5$ & - \\
+    LocalAgg~\cite{zhuang2019local} & $69.1$ & - \\
+    MoCo~\cite{MOCO} & $74.9$ & $72.5$\\
+    MoCo + IG-1B~\cite{MOCO} & $75.6$ & $73.6$\\
+    CPC\cite{CPCv2}$^{**}$ & $76.6$ & -\\
+    \simclr (repro)  & $75.2$ & $75.2$\\
+    \algo (ours)   & \cellcolor{pearDark!20} $\bf{77.5}$  & \cellcolor{pearDark!20} $\bf{76.3}$\\
+    \bottomrule
+\end{tabular}
+\vspace{.2cm}
+\caption{\label{tab:detect_segment_full}Transfer results in semantic segmentation and object detection.}\vspace*{-.2cm}
+\end{center}
+\caption*{$^{*}$ uses a larger model (ResNet-$101$). $^{**}$ uses an even larger model (ResNet-$161$).}
+\end{table}
+
+\begin{table}[ht]
+\small
+\begin{center}
+\begin{tabular}{l c c c c c}
+\toprule
+               & \multicolumn{3}{c}{Higher better} & \multicolumn{2}{c}{Lower better}\\
+    { Method}&{ pct.\,$\!<\!1.25$}&{ pct.\,$\!<\!1.25^2$}&{ pct.\,$\!<\!1.25^3$}&{ rms} &{ rel}\\
+    \midrule
+    \supervisedbaseline~\cite{laina2016depth}&$81.1$&$95.3$&$98.8$&$0.573$&$\bf{0.127}$\\
+    \midrule
+    RelPos~\cite{doersch2015unsupervised}, by~\cite{doersch2017multi}$^{*}$ & $80.6$ & $94.7$ & $98.3$ & $\bf{0.399}$ & $0.146$ \\
+    Color~\cite{Zhang2016ColorfulIC}, by~\cite{doersch2017multi}$^{*}$ & $76.8$ & $93.5$ & $97.7$ & $0.444$ & $0.164$ \\
+    Exemplar~\cite{dosovitskiy2014discriminative,doersch2017multi}$^{*}$ & $71.3$ & $90.6$ & $96.5$ & $0.513$ & $0.191$ \\
+    Mot. Seg.~\cite{pathak2017learning}, by~\cite{doersch2017multi}$^{*}$ & $74.2$ & $92.4$ & $97.4$ & $0.473$ & $0.177$ \\
+    Multi-task~\cite{doersch2017multi}$^{*}$ & $79.3$ & $94.2$ & $98.1$ & $0.422$ & $0.152$ \\
+    \simclr (repro) &$83.3$&$96.5$&$99.1$&$0.557$&$0.134$\\
+    \algo (ours) &\cellcolor{pearDark!20}$\bf{84.6}$&\cellcolor{pearDark!20}$\bf{96.7}$& \cellcolor{pearDark!20} $\bf{99.1}$&\cellcolor{pearDark!20}$0.541$&\cellcolor{pearDark!20}$0.129$\\
+    \bottomrule
+\end{tabular}\vspace*{.1cm}
+\caption{\label{table:app_depth_full}Transfer results on NYU v2 depth estimation.}
+%\caption{\label{tab:other_transfer_full}Further results on transferring \algo's representation to other vision tasks.  $^{*}$ uses a larger model (ResNet-$101$). $^{**}$ uses an even larger model, ResNet-$161$ }
+\end{center}
+\end{table}
+\vspace{-1em}
+
+\section{Pretraining on Places 365}
+\label{app:train-places}
+To ascertain that \algo learns good representations on other datasets, we applied our representation learning protocol on the scene recognition dataset Places$365$-Standard~\cite{zhou2017places} before performing linear evaluation. This dataset contains $1.80$ million training images and $36500$ validation images with labels, making it roughly similar to ImageNet in scale. We reuse the \emph{exact} same parameters as in \Cref{sec:experiments} and train the representation for $1000$ epochs, using \algo and our \simclr reproduction. Results for the linear evaluation setup (using the protocol of \Cref{app:linear_eval_details} for ImageNet and Places365, and that of \Cref{app:transfer_details} on other datasets) are reported in \Cref{tab:transfer_learning_from_places}.
+
+Interestingly, the representation trained by using \algo on Places365 (\algo-PL) consistently outperforms that of \simclr on the same dataset, but underperforms the \algo representation trained on ImageNet (\algo-IN) on all tasks except Places365 and SUN397~\cite{sun397}, another scene understanding dataset. Interestingly, all three unsupervised representation learning methods achieve a relatively high performance on the Places365 task; for comparison, reference~\cite{zhou2017places} (in its linked repository) reports a top-1 accuracy of $55.2\%$ for a ResNet-$50$v2 trained from scratch using labels on this dataset.
+
+\begin{table}[ht]
+    \small
+    \centering
+     \input{tables/transfer_table_from_places.tex}
+     \vspace{1em}
+    \captionsetup{width=.9\linewidth} 
+     \caption{Transfer learning results (linear evaluation, ResNet-$50$) from Places365 (PL). For comparison purposes, we also report the results from \algo trained on ImageNet (\algo-IN).}
+     \label{tab:transfer_learning_from_places}
+\vspace{-1.4em}
+\end{table}
+
+\section{Additional ablation results}\label{sec:additional_ablation_results}
+To extend on the above results, we provide additional ablations obtained using the same experimental setup as in~\Cref{sec:ablation}, \emph{i.e.,} 300 epochs, averaged over $3$ seeds with the initial learning rate set to $0.3$, the batch size to $4096$, the weight decay to $10^{-6}$ and the base target decay rate $\tau_\text{base}$ to $0.99$ unless specified otherwise. Confidence intervals correspond to the half-difference between the maximum and minimum score of these seeds; we omit them for half-differences lower than $0.25$ accuracy points.
+
+\subsection{Architecture settings}
+\Cref{tab:archi-all-ablations} shows the influence of projector and predictor architecture on \algo. We examine the effect of different depths for both the projector and predictor, as well as the effect of the projection size. We do not apply a ReLU activation nor a batch normalization on the final linear layer of our MLPs such that a depth of $1$ corresponds to a linear layer.  Using the default projector and predictor of depth $2$ yields the best performance. 
+
+\begin{table}[ht!]
+\begin{minipage}{.45\linewidth}
+\begin{subtable}{\linewidth}
+    \small
+    \begin{center}
+        \begin{tabular}{P{1cm}P{1cm}rr}
+        \toprule
+           Proj.\,$g_\netparams$ \newline depth &   Pred.\,$q_\netparams$\newline depth & Top-$1$     & Top-$5$   \\
+        \midrule
+            \multirow{3}{*}{$1$}    & $1$   & $61.9$        & $86.0$ \\
+                                    & $2$   & $65.0$        & $86.8$  \\
+                                    & $3$   & $65.7$        & $86.8$  \\ \midrule
+            \multirow{3}{*}{$2$}    & $1$   & $71.5$        & $90.7$ \\
+                                    & $2$   & $\bf{72.5}$   & $\bf{90.8}$ \\
+                                    & $3$   & $71.4$        & $90.4$  \\ \midrule
+            \multirow{3}{*}{$3$}    & $1$   & $71.4$        & $90.4$ \\
+                                    & $2$   & $72.1$        & $90.5$  \\
+                                    & $3$   & $72.1$        & $90.5$  \\
+        \bottomrule
+        \end{tabular}
+         \caption{Projector and predictor depth (i.e. the number of Linear layers). }
+        \label{table:ablation-proj-depth}
+    \end{center}
+\end{subtable}
+\end{minipage}
+\phantom{aaaaa}
+\begin{minipage}{.45\linewidth}
+\begin{subtable}{\linewidth}
+    \small
+    \begin{center}
+        \begin{tabular}{P{2cm}rr}
+        \toprule
+           Projector\,$g_\netparams$\newline output dim & Top-$1$ & Top-$5$ \\
+        \midrule
+                         $16$ & $69.9 {\scriptstyle \pm 0.3}$ & $89.9$ \\
+                         $32$ & $71.3$ & $90.6$ \\
+                         $64$ & $72.2$ & $90.9$ \\
+                        $128$ & $72.5$ & $91.0$ \\
+                        $256$ & $72.5$ & $90.8$ \\
+                        $512$ & $\bf{72.6}$ & $\bf{91.0}$ \\
+        \bottomrule
+        \end{tabular}
+         \caption{Projection dimension.}
+         \label{table:ablation-proj-size}
+     \end{center}
+\end{subtable}
+\end{minipage}
+\caption{\label{tab:archi-all-ablations}Effect of architectural settings where top-$1$ and top-$5$ accuracies are reported in \%.}
+\end{table}
+
+\Cref{tab:ablation-lr} shows the influence of the initial learning rate on \algo. Note that the optimal value depends on the number of training epochs. \Cref{table:ablation-weight-decay} displays the influence of the weight decay on \algo. 
+
+\begin{table}[ht!]
+\hspace{-2em}
+\begin{subtable}{.5\linewidth}
+    \small
+    \begin{center}
+        \begin{tabular}{lrr} 
+        \toprule
+           Learning & &  \\
+           rate & Top-$1$      & Top-$5$    \\
+        \midrule
+                 $0.01$ & $34.8 {\scriptstyle \pm 3.0}$ & $60.8 {\scriptstyle \pm3.2}$ \\
+                 $0.1$  & $65.0 $ & $87.0$ \\
+                 $0.2$  & $71.7$ & $90.6$ \\
+                 $0.3$  & $\bf{72.5}$ & $\bf{90.8}$ \\
+                 $0.4$  & $72.3$ & $90.6$ \\
+                 $0.5$  & $71.5$ & $90.1$ \\
+                 $1$    & $69.4$ & $89.2$ \\
+        \bottomrule
+        \end{tabular}
+         \caption{Base learning rate.}
+        \label{tab:ablation-lr}
+    \end{center}
+\end{subtable}
+\phantom{aaaaa}
+\begin{subtable}{0.5\linewidth}
+    \small
+    \begin{center}
+        \begin{tabular}{P{2cm}rr}
+        \toprule
+           Weight decay \newline coefficient & Top-$1$ & Top-$5$ \\
+        \midrule
+              $1\cdot 10^{-7}$   & $72.1$ & $90.4$ \\
+              $5\cdot 10^{-7}$   & $\bf{72.6}$ & $\bf{91.0}$ \\
+              $1\cdot 10^{-6}$   & $72.5$ & $90.8$ \\
+              $5\cdot 10^{-6}$   & $71.0 {\scriptstyle \pm 0.3}$ & $90.0$ \\
+              $1\cdot 10^{-5}$   & $69.6 {\scriptstyle \pm 0.4}$ & $89.3$ \\
+        \bottomrule
+        \end{tabular}
+         \caption{Weight decay.}
+         \label{table:ablation-weight-decay}
+     \end{center}
+\end{subtable}
+\caption{\label{tab:lr-ema-ablation}Effect of learning rate and weight decay. We note that \algo's performance is quite robust within a range of hyperparameters. We also observe that setting the weight decay to zero may lead to unstable results (as in \simclr).}
+\end{table}
+
+\subsection{Batch size}
+We run a sweep over the batch size for both \algo and our reproduction of \simclr. As explained in~\Cref{sec:contrast}, when reducing the batch size by a factor $N$, we average gradients over $N$ consecutive steps and update the target network once every $N$ steps. 
+We report in \Cref{tab:batchsize-all-ablations}, the performance of both our reproduction of \simclr and \algo for batch sizes between $4096$ (\algo and \simclr default) down to $64$. We observe that the performance of \simclr deteriorates faster than the one of \algo which stays mostly constant for batch sizes larger than $256$. We believe that the performance at batch size $256$ could match the performance of the large $4096$ batch size with proper parameter tuning when accumulating the gradient. We think that the drop in performance at batch size $64$ in \cref{tab:batchsize-all-ablations} is mainly related to the ill behaviour of batch normalization at low batch sizes~\cite{GroupNorm}.
+
+\begin{table}[ht!]
+    \centering\small
+    \begin{tabular}{lrrrr}
+    \cmidrule[\heavyrulewidth]{1-5}
+     Batch &             \multicolumn{2}{c}{Top-$1$}    &  \multicolumn{2}{c}{Top-$5$}  \\
+     size  &             \algo (ours) & \simclr (repro)    & \algo (ours) & \simclr (repro)  \\
+    \midrule
+    $4096$ & $\bf{72.5}$ & $67.9$ & $\bf{90.8}$ & $88.5$ \\
+    $2048$ & $72.4$ & $67.8$ & $90.7$  & $88.5$ \\
+    $1024$ & $72.2$ & $67.4$ & $90.7$  & $88.1$ \\
+    $512$ & $72.2$  & $66.5$ & $90.8$  & $87.6$ \\
+    $256$ & $71.8$  & $64.3 {\scriptstyle \pm 2.1}$& $90.7$  & $86.3 {\scriptstyle \pm1.0}$ \\
+    $128$ & $69.6 {\scriptstyle \pm 0.5}$& $63.6$ & $89.6$ & $85.9$ \\
+    $64$ & $59.7 {\scriptstyle \pm 1.5}$ & $59.2 {\scriptstyle \pm 2.9}$& $83.2 {\scriptstyle \pm1.2}$ & $83.0 {\scriptstyle \pm1.9}$ \\
+    \bottomrule
+    \end{tabular}
+    \vspace{0.5em}
+    \caption{\label{tab:batchsize-all-ablations}Influence of the batch size. }
+\end{table}
+
+\subsection{\Imageaugmentation s}
+\label{app:imageaugment}
+\Cref{tab:im-transfo-all-ablations} compares the impact of individual image transformations on \algo and \simclr. \algo is more resilient to changes of image augmentations across the board. For completeness, we also include an ablation with symmetric parameters across both views; for this ablation, we use a Gaussian blurring w.p.\,of $0.5$ and a solarization w.p.\,of $0.2$ for both $\mathcal T$ and $\mathcal T'$, and recover very similar results compared to our baseline choice of parameters.
+
+\begin{table}[ht!]
+    \centering\small
+    \begin{tabular}{lrrrr}
+    \cmidrule[\heavyrulewidth]{1-5}
+                        &             \multicolumn{2}{c}{Top-$1$}    &  \multicolumn{2}{c}{Top-$5$}  \\
+    Image augmentation  &             \algo (ours) & \simclr (repro)    & \algo (ours) & \simclr (repro)  \\
+    \midrule
+    Baseline &      $\bf{72.5}$ & $67.9$ & $\bf{90.8}$  & $88.5$ \\
+    \midrule
+    Remove flip  & $71.9$  & $67.3$ & $90.6$  & $88.2$ \\
+    Remove blur  & $71.2$  & $65.2$ & $90.3$  & $86.6$ \\
+    Remove color (jittering and grayscale) & $63.4 {\scriptstyle \pm 0.7}$  & $45.7$ & $85.3 {\scriptstyle \pm 0.5}$  & $70.6$ \\
+    Remove color jittering & $71.8$  & $63.7$ & $90.7$  & $85.9$ \\
+    Remove grayscale  & $70.3$  & $61.9$ & $89.8$  & $84.1$ \\
+    Remove blur in $\mathcal T'$ & $72.4$ & $67.5$ & $90.8$ & $88.4$ \\
+    Remove solarize in $\mathcal T'$ & $72.3$ & $67.7$ & $90.8$ & $88.2$ \\
+    Remove blur and solarize in $\mathcal T'$ & $72.2$ & $67.4 $ & $90.8$  & $88.1$ \\
+    Symmetric blurring/solarization & $72.5$ & $68.1$ & $90.8$ & $88.4$ \\
+    Crop only & $59.4 {\scriptstyle \pm 0.3}$  & $40.3 {\scriptstyle \pm 0.3}$ & $82.4$  & $64.8 {\scriptstyle \pm 0.4}$ \\
+    Crop and flip only & $60.1 {\scriptstyle \pm 0.3}$  & $40.2$ & $83.0 {\scriptstyle \pm 0.3}$  & $64.8$ \\
+    Crop and color only & $70.7$ & $64.2$ & $90.0$ & $86.2$ \\
+    Crop and blur only & $61.1 {\scriptstyle \pm 0.3}$  & $41.7$ & $83.9$  & $66.4$ \\
+    \bottomrule
+    \end{tabular}
+    \vspace{0.5em}
+    \caption{\label{tab:im-transfo-all-ablations}Ablation on image transformations.}
+\end{table}
+
+\begin{table}[ht!]
+\centering \small
+\begin{tabular}{rrrr}
+\toprule
+    Loss weight $\beta$ & Temperature $\alpha$ & Top-$1$  & Top-$5$     \\
+\midrule
+ $0$                    & $0.1$  & $72.5$ & $90.8$ \\
+\midrule
+ \multirow{7}{*}{$0.1$} & $0.01$ & $72.2$ & $90.7$ \\
+                        & $0.1$  & $72.4$ & $90.9$ \\
+                        & $0.3$  & $\bf{72.7}$ & $91.0$ \\
+                        & $1$    & $72.6$ & $90.9$ \\
+                        & $3$    & $72.5$ & $90.9$ \\
+                        & $10$   & $72.5$ & $90.9$ \\
+\midrule
+\multirow{7}{*}{$0.5$}  & $0.01$ & $70.9$ & $90.2$ \\
+                        & $0.1$  & $72.0$ & $90.8$ \\
+                        & $0.3$  & $\bf{72.7}$ & $\bf{91.2}$ \\
+                        &              $1$    & $72.7$ & $91.1$ \\
+                        &              $3$    & $72.6$ & $91.1$ \\
+                        &             $10$     & $72.5$ & $91.0$ \\
+\midrule
+\multirow{6}{*}{$1$}    & $0.01$ & $53.9 {\scriptstyle \pm 0.5}$ & $77.5 {\scriptstyle \pm0.5}$ \\
+                        & $0.1$  & $70.9$ & $90.3$ \\
+                        & $0.3$  & $\bf{72.7}$ & $91.1$ \\
+                        &              $1$    & $\bf{72.7}$ & $91.1$ \\
+                        &              $3$    & $72.6$ & $91.0$ \\
+                        &             $10$    & $72.6$ & $91.1$ \\
+\bottomrule
+\end{tabular}\vspace{0.25cm}
+\captionsetup{width=.9\linewidth}
+\caption{\label{tab:app_neg_term_2}Top-1 accuracy in \% under linear evaluation protocol at 300 epochs of sweep over the temperature $\alpha$ and the dispersion term weight $\beta$ when using a predictor and a target network.}
+\end{table}
+
+\subsection{Details on the relation to contrastive methods}
+\label{app:neg-examples}
+
+As mentioned in \Cref{sec:contrast}, the \algo loss~\Cref{eq:cosine-loss} can be derived from the InfoNCE loss
+\begin{equation}
+\label{eq:infoNCE_beta}
+\text{InfoNCE}^{\alpha, \beta}_{\netparams} \eqdef
+ \frac{2}{B}\sum_{i=1}^B S_\netparams(v_i, v'_i)\!-\! \frac{2\alpha\cdot\beta}{B}\sum_{i=1}^B \ln\pa{\sum\limits_{j \neq i} \exp \frac{S_\netparams(v_i, v_j)}{\alpha} + \sum\limits_{j} \exp \frac{S_\netparams(v_i, v'_j)}{\alpha}}\CommaBin
+\end{equation}
+with
+\begin{equation}
+    S_\netparams(u_1, u_2) \eqdef \frac{\langle \phi(u_1), \psi(u_2) \rangle }{\|\phi(u_1)\|_2\cdot \|\psi(u_2)\|_2}\cdot
+\end{equation}
+
+
+The InfoNCE loss, introduced in \cite{CPC}, can be found in factored form in \cite{poole2019variational} as
+\begin{equation}
+\text{InfoNCE}_{\netparams} \eqdef
+ \frac{1}{B}\sum_{i=1}^B \ln\cfrac{f(v_i, v'_i)}{\frac{1}{B}\sum\limits_{j} \exp f(v_i, v'_j)}\,\cdot
+\end{equation}
+
+As in \simclr~\cite{SimCLR} we also use negative examples given by $(v_i, v_j)_{j\neq i}$ to get
+\begin{align}
+ &\frac{1}{B}\sum_{i=1}^B \ln\cfrac{\exp f(v_i, v'_i)}{\frac{1}{B}\sum\limits_{j\neq i} \exp f(v_i, v_j) + \frac{1}{B}\sum\limits_{j} \exp f(v_i, v'_j)} \\
+ &\qquad = \ln B + \frac{1}{B}\sum_{i=1}^Bf(v_i, v'_i) - \frac{1}{B}\sum_{i=1}^B \ln\pa{\sum\limits_{j\neq i} \exp f(v_i, v_j) + \sum\limits_{j} \exp f(v_i, v'_j)}.
+ \label{eq:infoNCE_bis}
+\end{align}
+
+To obtain \Cref{eq:infoNCE_beta} from \Cref{eq:infoNCE_bis}, we subtract $\ln B$ (which is independent of $\netparams$), multiply by $2\alpha$, take $f(x,y) = S_\netparams(x,y)/\alpha$ and finally multiply the second (negative examples) term by $\beta$. Using $\beta=1$ and dividing by $2\alpha$ gets us back to the usual InfoNCE loss as used by \simclr. 
+
+
+In our ablation in \Cref{tab:simclr_to_pbl}, we set the temperature $\alpha$ to its best value in the \simclr setting (i.e., $\alpha = 0.1$). With this value, setting $\beta$ to 1 (which adds negative examples), in the \algo setting (i.e., with both a predictor and a target network) hurts the performances. 
+In~\Cref{tab:app_neg_term_2}, we report results of a sweep over both the temperature $\alpha$ and the weight parameter
+$\beta$ with a predictor and a target network where \algo corresponds to~$\beta = 0$. 
+No run significantly outperforms \algo and some values of $\alpha$ and $\beta$ hurt the performance. While the best temperature for \simclr (without the target network and a predictor) is $0.1$, after adding a predictor and a target network the best temperature $\alpha$ is higher than~$0.3$.
+
+Using a target network in the loss has two effects: stopping the gradient through the prediction targets and stabilizing the targets with averaging. Stopping the gradient through the target change the objective while averaging makes the target stable and stale. In~\Cref{tab:simclr_to_pbl} we only shows results of the ablation when either using the online network as the prediction target (and flowing the gradient through it) or with a target network (both stopping the gradient into the prediction targets and computing the prediction targets with a moving average of the online network). We shown in~\Cref{tab:simclr_to_pbl} that using a target network is beneficial but it has two distinct effects we would like to understand from which effect the improvement comes from. 
+We report in \Cref{tab:app_neg_term_1} the results already in~\Cref{tab:simclr_to_pbl} but also when the prediction target is computed with a stop gradient of the online network (the gradient does not flow into the prediction targets). This shows that making the prediction targets stable and stale is the main cause of the improvement rather than the change in the objective due to the stop gradient. 
+
+\begin{table}[t]
+\centering \small
+
+\begin{tabular}{l c c c c}
+\toprule
+Method & Predictor & Target parameters & $\beta$ & Top-1  \\
+\midrule
+\algo   & \checkmark & $\targetparams$           & 0 & $\bf{72.5}$ \\
+        & \checkmark & $\targetparams$           & 1 & $70.9$ \\
+        &            & $\targetparams$           & 1 & $70.7$ \\
+        & \checkmark & $\mathrm{sg}(\netparams)$ & 1 & $70.2$ \\
+\simclr &            & $\netparams$              & 1 & $69.4$ \\
+        & \checkmark & $\mathrm{sg}(\netparams)$ & 1 & $70.1$ \\
+        &            & $\mathrm{sg}(\netparams)$ & 1 & $69.2$ \\
+        & \checkmark & $\netparams$              & 1 & $69.0$ \\
+        & \checkmark & $\mathrm{sg}(\netparams)$ & 0 & $5.5$  \\
+        & \checkmark & $\netparams$              & 0 & $0.3$  \\
+        &            & $\targetparams$           & 0 & $0.2$  \\
+        &            & $\mathrm{sg}(\netparams)$ & 0 & $0.1$  \\
+        &            & $\netparams$              & 0 & $0.1$  \\
+\bottomrule
+\end{tabular}\vspace{0.25cm}
+\captionsetup{width=.9\linewidth}
+\caption{\label{tab:app_neg_term_1}Top-1 accuracy in \%, under linear evaluation protocol at 300 epochs, of  \mbox{intermediate} variants between \algo and \simclr (with caveats discussed in \Cref{app:simclr_baseline}). $\mathrm{sg}$ means stop gradient.}
+\end{table}
+
+\subsection{\simclr baseline of Section \ref{sec:contrast}}
+\label{app:simclr_baseline}
+The \simclr baseline in \Cref{sec:contrast} ($\beta = 1$, without predictor nor target network) is slightly different from the original one in~\cite{SimCLR}. 
+First we multiply the original loss by $2\alpha$. For comparaison here is the original \simclr loss, 
+\begin{align}
+\text{InfoNCE}_{\netparams} \eqdef
+ \frac{1}{B}\sum_{i=1}^B \frac{S_\netparams(v_i, v'_i)}{\alpha}\!-\! \frac{1}{B}\sum_{i=1}^B \ln\pa{\sum\limits_{j \neq i} \exp \frac{S_\netparams(v_i, v_j)}{\alpha} + \sum\limits_{j} \exp \frac{S_\netparams(v_i, v'_j)}{\alpha}}\cdot
+\end{align}
+Note that this multiplication by $2\alpha$ matters as the \LARS optimizer is not completely invariant with respect to the scale of the loss. Indeed, \LARS applies a preconditioning to gradient updates on all weights, except for biases and batch normalization parameters. Updates on preconditioned weights are invariant by multiplicative scaling of the loss. However, the bias and batch normalization parameter updates remain sensitive to multiplicative scaling of the loss. 
+
+We also increase the original \simclr hidden and output size of the projector to respectively 4096 and 256. In our reproduction of \simclr, these three combined changes improves the top-1 accuracy at 300 epochs from $67.9\%$ (without the changes) to $69.2\%$ (with the changes).
+
+\subsection{Ablation on the normalization in the loss function} 
+\label{app:abla_norm}
+
+\begin{figure}[ht!]
+    \centering 
+    \begin{subfigure}{0.65\linewidth}
+        \centering
+        %\includegraphics[width=1.2\linewidth]{img/byol_l2norm_embedding.pdf}
+        \includegraphics[width=1.2\linewidth,bb=0 0 976 528]{img/byol_l2norm_embedding.pdf}
+        \caption{Representation $\ell_2$-norm}
+        \label{fig:l2_norm_embedding_1}
+    \end{subfigure}%
+
+    \begin{subfigure}{0.65\linewidth}
+        \centering
+        %\includegraphics[width=1.2\linewidth]{img/byol_l2norm_projection.pdf}
+        \includegraphics[width=1.2\linewidth,bb=0 0 976 528]{img/byol_l2norm_projection.pdf}
+        \caption{Projection $\ell_2$-norm}
+        \label{fig:l2_norm_embedding_2}
+    \end{subfigure}
+    \caption{\label{fig:l2_norm_normalization} Effect of normalization on the $\ell_2$ norm of network outputs.}
+\end{figure}
+
+\vspace{0.1cm}
+\begin{table}[ht!]
+\centering 
+\small
+\begin{tabular}{l c c}
+\toprule
+Normalization & Top-1 & Top-5  \\
+\midrule
+$\ell_2$-norm & $\bf{72.5}$ & $\bf{90.8}$ \\
+\LNt & $72.5 {\scriptstyle \pm 0.4}$ & $90.1$ \\
+No normalization & $67.4$ & $87.1$ \\
+\BNt & $65.3$ & $85.3$ \\
+\bottomrule
+\end{tabular}\vspace{0.25cm}
+\captionsetup{width=.9\linewidth}
+\caption{\label{tab:abla_norm}Top-1 accuracy in \% under linear evaluation \mbox{protocol} at 300 epochs for different normalizations in the loss.}
+\end{table}
+
+ \algo minimizes a squared error between the $\ell_2$-normalized prediction and target. We report results of \algo at 300 epochs using different normalization function and no normalization at all. More precisely,  given batch of prediction and targets in $\mathbb{R}^d$, $(p_{i}, t_{i})_{i\le B}$ with $B$ the batch size, \algo uses the loss function
+  $\frac{1}{B}\sum_{i=1}^B \| n_{\ell_2}(p_i) - n_{\ell_2}(z_i)\|_2^2$ with 
+  $n_{\ell_2} : x \rightarrow x/\|x\|_2$. 
+  We run \algo with other normalization functions: 
+  non-trainable batch-normalization and layer-normalization and no normalization. We divide the batch normalization and layer normalization by $\sqrt{d}$ to have a consistent scale with the $\ell_2$-normalization. We report results in \Cref{tab:abla_norm} where $\ell_2$, \LNt, no normalization and \BNt respectively denote using $n_{\ell_2}$, $n_\text{\BN}$, $n_\text{\LN}$ and $n_\text{\Id}$ with 
+
+\begin{align*}
+    {n_\text{\BN}^j}_{i}&: x \rightarrow \frac{x_{i}^j - \mu_\text{\BN}^j(x)}{\sigma_\text{BN}^j(x)\cdot\sqrt{d}}\CommaBin\quad 
+    {n_\text{\LN}^j}_{i}: x \rightarrow \frac{x_{i}^j - {\mu_\text{\LN}}_i(x)}{{\sigma_\text{LN}}_i(x)\cdot\sqrt{d}}\CommaBin \quad 
+    n_\text{\Id} : x \rightarrow x,\\
+    \mu_\text{\BN}^j &: x\rightarrow \frac{1}{B}\sum_{i=1}^B x_i^j, \quad
+    \sigma_\text{\BN}^j : x\rightarrow \sqrt{\frac{1}{B}\sum_{i=1}^B \left({x_i^j}\right)^2 - \mu_\text{\BN}^j(x)^2}, \quad\\
+    {\mu_\text{\LN}}_i &: x\rightarrow \frac{1}{d}\sum_{j=1}^d x_i^j, \quad
+    {\sigma_\text{\LN}}_i : x\rightarrow \frac{\|x_i - {\mu_{\LN}}_i(x)\|_2}{\sqrt{d}}
+\end{align*}
+
+When using no normalization at all, the projection $\ell_2$ norm rapidly increases during the first 100 epochs and stabilizes at around $3\cdot 10^6$ as shown in~\Cref{fig:l2_norm_normalization}. Despite this behaviour, using no normalization still performs reasonably well $(67.4\%)$. The $\ell_2$ normalization performs the best. %\newpage
+
+
+\section{Training with smaller batch sizes}\label{app:smaller-batch}
+The results described in \Cref{sec:experiments} were obtained using a batch size of $4096$ split over $512$ TPU cores. Due to its increased robustness, \algo can also be trained using smaller batch sizes without significantly decreasing performance. Using the same linear evaluation setup, \algo achieves $73.7\%$ top-1 accuracy when trained over $1000$ epochs with a batch size of $512$ split over $64$ TPU cores (approximately $4$ days of training). For this setup, we reuse the same setting as in \Cref{sec:method}, but use a base learning rate of $0.4$ (appropriately scaled by the batch size) and $\tau_\text{base} = 0.9995$ with the same weight decay coefficient of $1.5 \cdot 10^{-6}$.
+
+
+\section{Details on Equation~\ref{eq:byol_minimize_cond_var} in Section~\ref{sec:intuition_byol}}
+\label{app:thm-envelope}
+
+In this section we clarify why \algo's update is related to \Cref{eq:byol_minimize_cond_var} from \Cref{sec:intuition_byol},
+\begin{align}
+    \nabla_\netparams\EE{\normtwo{q^\star(z_\netparams) - z'_\targetparams}^2} = \nabla_\netparams\EE{\normtwo{\EE{z'_\targetparams | z_\netparams} -z'_\targetparams }^2} = \nabla_\netparams \EE{ \sum_i \var(z'_{\targetparams, i} | z_\netparams)}. \tag{\ref{eq:byol_minimize_cond_var}}
+\end{align}
+Recall that $q^\star$ is defined as
+\begin{align}
+    q^\star \eqdef \argmin_q \EE{\normtwo{q(z_\netparams) - z'_\targetparams}^2}, \quad\text{where}\quad q^\star(z_\netparams) = \EE{z'_\targetparams | z_\netparams},
+    \tag{\ref{eq:optimal_predictor}}
+\end{align}
+and implicitly depends on $\netparams$ and $\targetparams$; therefore, it should be denoted as $q^\star(\netparams, \targetparams)$ instead of just $q^\star$. For simplicity we  write $q^\star(\netparams, \targetparams)(z_\netparams)$ as $q^\star(\netparams, \targetparams, z_\netparams)$ the output of the optimal predictor for any parameters $\netparams$ and $\targetparams$ and input $z_\netparams$. 
+% , as the optimal predictor itself changes when the online and target parameters change. 
+
+\algo updates its online parameters following the gradient of \Cref{eq:byol_minimize_cond_var}, but considering only the gradients of $q$ with respect to its third argument $z$ when applying the chain rule. If we rewrite
+\begin{align}
+    \EE{\normtwo{q^\star(\netparams, \targetparams, z_\netparams) - z'_\targetparams}^2} = 
+    \EE{L(q^\star(\netparams, \targetparams, z_\netparams), z'_\targetparams)},
+\end{align}
+the gradient of this quantity w.r.t.\,$\netparams$ is
+\begin{align}
+    \frac{\partial}{\partial \netparams}
+    \EE{L(q^\star(\netparams, \targetparams, z_\netparams), z'_\targetparams)} = 
+    \EE{\frac{\partial L}{\partial q}\cdot\frac{\partial q^\star}{\partial \netparams} + 
+    \frac{\partial L}{\partial q}\cdot\frac{\partial q^\star}{\partial z}\cdot\frac{\partial z_\netparams}{\partial \netparams}},
+\end{align}
+where $\frac{\partial q^\star}{\partial \netparams}$ and $\frac{\partial q^\star}{\partial z}$ are the gradients of $q^\star$ with respect to its first and last argument. 
+Using the envelope theorem, and thanks to the optimality condition of the predictor, the term $\EE{\frac{\partial L}{\partial q}\cdot\frac{\partial q^\star}{\partial \netparams}} = 0$. Therefore, the remaining term $\EE{\frac{\partial L}{\partial q}\cdot\frac{\partial q^\star}{\partial z}\cdot\frac{\partial z_\netparams}{\partial \netparams}}$ where gradients are only back-propagated through the predictor's input is exactly the direction followed by \algo. 
+
+\section{Importance of a near-optimal predictor}
+\label{app:importance_no_pred}
+In this part we build upon the intuitions of \Cref{sec:intuition_byol} on the importance of keeping the predictor near-optimal. Specifically, we show that it is possible to remove the exponential moving average in \algo's target network (\emph{i.e.}, simply copy weights of the online network into the target) without causing the representation to collapse, provided the predictor remains sufficiently good.
+
+\subsection{Predictor learning rate}
+In this setup, we remove the exponential moving average (\emph{i.e.}, set $\tau = 0$ over the full training in \Cref{eq:tau}), and multiply the learning rate of the predictor by a constant $\lambda$ compared to the learning rate used for the rest of the network; all other hyperparameters are unchanged. As shown in \Cref{tab:pred_lr}, using sufficiently large values of $\lambda$ provides a reasonably good level of performance 
+and the performance sharply decreases with $\lambda$
+to %a 5\% top-1 accuracy for $\lambda = 1$ and a 
+$0.01\%$ top-1 accuracy (no better than random) for $\lambda = 0$.
+
+%whereas $\lambda = 1$ performs poorly and $\lambda = 0$ fully collapses (TBC).
+
+To show that this effect is directly related to a change of behavior in the predictor, and not only to a change of learning rate in any subpart of the network, we perform a similar experiment by using a multiplier $\lambda$ on the \emph{predictor}'s learning rate, and a different multiplier $\mu$ for the \emph{projector}.
+In \Cref{tab:pred_proj_lr}, we show  that the representation typically collapses or performs poorly when the predictor learning rate is lower or equal to that of the projector. As mentioned in Section~\ref{sec:intuition_byol}, we further hypothesize that one of the contributions of the target network is to maintain a near optimal predictor at all times.
+
+\subsection{Optimal linear predictor in closed form}
+Similarly, we can get rid of the slowly moving target network if we use a closed form optimal predictor on the batch, instead of a learned, non-optimal one. In this case we restrict ourselves to a linear predictor,
+\begin{align*}
+    q^\star = \argmin_{Q} \normtwo{Z_\netparams Q - Z'_\targetparams}^2= \pa{Z_\netparams\transpose Z_\netparams}^{-1} Z_\netparams\transpose Z'_\targetparams
+\end{align*}
+with $\normtwo{\cdot}$ being the Frobenius norm, $Z_\netparams$ and $Z'_\targetparams$ of shape $(B, F)$ respectively the online and target projections, where $B$ is the batch size and $F$ the number of features; and $q^\star$ of shape $(F, F)$, the optimal linear predictor for the batch. 
+
+At $300$ epochs, when using the closed form optimal predictor, and directly hard copying the weights of the online network into the target, we obtain a top-$1$ accuracy of $fill$.
+
+% These findings show that using a near optimal predictor is sufficient to prevent collapse, without relying on the slow target network. 
+
+\begin{table}[ht]
+\centering \small
+\begin{tabular}{cr}
+\toprule
+   $\lambda$ & Top-$1$   \\
+\midrule
+$0$ & $0.01$  \\
+                         $1$ & $5.5$  \\
+                         $2$ & $62.8 {\scriptstyle \pm 1.5}$ \\
+                        $10$ & $66.6$  \\
+                        $20$ & $66.3 {\scriptstyle \pm 0.3}$ \\
+\midrule
+Baseline & $72.5$ \\
+\bottomrule
+\end{tabular}\vspace{0.25cm}
+\captionsetup{width=.9\linewidth}
+\caption{Top-$1$ accuracy at 300 epochs when removing the slowly moving target network, directly hard copying the weights of the online network into the target network, and applying a multiplier to the predictor learning rate.}
+\label{tab:pred_lr}
+\end{table}
+
+% \begin{table}[ht]
+% \centering \small
+% \begin{tabular}{ccrrrrr}
+%  \addlinespace[-\aboverulesep] 
+%  \cmidrule[\heavyrulewidth]{3-7}
+%         & & \multicolumn{5}{c}{$\lambda$}  \\
+%         \cmidrule{3-7}
+%     & & $1$ & $1.5$ & $2$ & $5$ & $10$ \\
+% \cmidrule{2-7}
+% \multirow{5}{*}{$\mu$}  & \multicolumn{1}{|c|}{$1$} & $3.2 {\scriptstyle \pm 2.9}$ & $25.7 {\scriptstyle \pm 6.6}$ & $60.8 {\scriptstyle \pm 2.9}$ & $66.7 {\scriptstyle \pm 0.4}$ & $66.9$ \\
+%                         & \multicolumn{1}{|c|}{$1.5$} & $1.4 {\scriptstyle \pm 2.0}$ &  $9.2 {\scriptstyle \pm 7.0}$ & $55.2 {\scriptstyle \pm 5.8}$ & $61.5 {\scriptstyle \pm 0.6}$ & $66.0 {\scriptstyle \pm 0.3}$ \\
+%                         & \multicolumn{1}{|c|}{$2$} & $2.0 {\scriptstyle \pm 2.8}$ &  $5.3 {\scriptstyle \pm 1.9}$ & $15.8 {\scriptstyle \pm 13.4}$ & $60.9 {\scriptstyle \pm 0.8}$ & $66.3$ \\
+%                         & \multicolumn{1}{|c|}{$5$} & $1.5 {\scriptstyle \pm 0.9}$ &  $2.5 {\scriptstyle \pm 1.5}$ &  $2.5 {\scriptstyle \pm 1.4}$ & $20.5 {\scriptstyle \pm 2.0}$ & $60.5 {\scriptstyle \pm 0.6}$ \\
+%                         & \multicolumn{1}{|c|}{$10$} & $0.1$ &  $2.1 {\scriptstyle \pm 0.3}$ &  $1.9 {\scriptstyle \pm 0.8}$ &  $2.8 {\scriptstyle \pm 0.4}$ &  $8.3 {\scriptstyle \pm 6.8}$ \\
+% \bottomrule
+% \end{tabular}\vspace{0.25cm}
+% \captionsetup{width=.9\linewidth}
+% \caption{Top-$1$ accuracy at 300 epochs when removing the slowly moving target network, directly hard copying the weights of the online network in the target network, and applying a multiplier $\mu$ to the projector and $\lambda$ to the predictor learning rate.}
+% \label{tab:pred_lr}
+% \end{table}
+
+
+
+\begin{table}[ht]
+\centering \small
+\begin{tabular}{ccrrrrr}
+ \addlinespace[-\aboverulesep] 
+ \cmidrule[\heavyrulewidth]{3-7}
+        & & \multicolumn{5}{c}{$\lambda_{pred}$}  \\
+        \cmidrule{3-7}
+    & & $1$ & $1.5$ & $2$ & $5$ & $10$ \\
+\cmidrule{2-7}
+\multirow{5}{*}{$\mu_{proj}$}  & \multicolumn{1}{|c|}{$1$} & {\color{OliveGreen!4.783258594917787!BrickRed} $3.2 {\scriptstyle \pm 2.9}$} & {\color{OliveGreen!38.41554559043348!BrickRed} $25.7 {\scriptstyle \pm 6.6}$} & {\color{OliveGreen!90.88191330343795!BrickRed} $60.8 {\scriptstyle \pm 2.9}$} & {\color{OliveGreen!99.70104633781763!BrickRed} $66.7 {\scriptstyle \pm 0.4}$} & {\color{OliveGreen!100.0!BrickRed} $66.9$} \\
+& \multicolumn{1}{|c|}{$1.5$} & {\color{OliveGreen!2.092675635276532!BrickRed} $1.4 {\scriptstyle \pm 2.0}$} & {\color{OliveGreen!13.751868460388637!BrickRed} $9.2 {\scriptstyle \pm 7.0}$} & {\color{OliveGreen!82.51121076233183!BrickRed} $55.2 {\scriptstyle \pm 5.8}$} & {\color{OliveGreen!91.92825112107623!BrickRed} $61.5 {\scriptstyle \pm 0.6}$} & {\color{OliveGreen!98.65470852017937!BrickRed} $66.0 {\scriptstyle \pm 0.3}$} \\
+& \multicolumn{1}{|c|}{$2$} & {\color{OliveGreen!2.9895366218236172!BrickRed} $2.0 {\scriptstyle \pm 2.8}$} & {\color{OliveGreen!7.922272047832585!BrickRed} $5.3 {\scriptstyle \pm 1.9}$} & {\color{OliveGreen!23.617339312406575!BrickRed} $15.8 {\scriptstyle \pm 13.4}$} & {\color{OliveGreen!91.03139013452915!BrickRed} $60.9 {\scriptstyle \pm 0.8}$} & {\color{OliveGreen!99.1031390134529!BrickRed} $66.3$} \\
+& \multicolumn{1}{|c|}{$5$} & {\color{OliveGreen!2.242152466367713!BrickRed} $1.5 {\scriptstyle \pm 0.9}$} & {\color{OliveGreen!3.736920777279521!BrickRed} $2.5 {\scriptstyle \pm 1.5}$} & {\color{OliveGreen!3.736920777279521!BrickRed} $2.5 {\scriptstyle \pm 1.4}$} & {\color{OliveGreen!30.642750373692074!BrickRed} $20.5 {\scriptstyle \pm 2.0}$} & {\color{OliveGreen!90.43348281016442!BrickRed} $60.5 {\scriptstyle \pm 0.6}$} \\
+& \multicolumn{1}{|c|}{$10$} & {\color{OliveGreen!0.14947683109118085!BrickRed} $0.1$} & {\color{OliveGreen!3.139013452914798!BrickRed} $2.1 {\scriptstyle \pm 0.3}$} & {\color{OliveGreen!2.840059790732436!BrickRed} $1.9 {\scriptstyle \pm 0.8}$} & {\color{OliveGreen!4.185351270553064!BrickRed} $2.8 {\scriptstyle \pm 0.4}$} & {\color{OliveGreen!12.406576980568012!BrickRed} $8.3 {\scriptstyle \pm 6.8}$} \\
+\bottomrule
+\end{tabular}\vspace{0.25cm}
+\captionsetup{width=.9\linewidth}
+\caption{Top-$1$ accuracy at 300 epochs when removing the slowly moving target network, directly hard copying the weights of the online network in the target network, and applying a multiplier $\mu$ to the projector and $\lambda$ to the predictor learning rate. The predictor learning rate needs to be higher than the projector learning rate in order to successfully remove the target network. This further suggests that the learning dynamic of predictor is central to \algo's stability.}
+\label{tab:pred_proj_lr}
+\end{table}
+
+
+\label{app:byol_sketch}
+\begin{figure}[ht!]
+    \centering
+   \vskip -15cm
+  \includegraphics[width=1.5\linewidth,trim={0cm 0cm 1cm 1cm},clip, bb=0 0 1140 1018]{img/BYOL_sketch.pdf}
+  \caption{BYOL sketch summarizing the method by emphasizing the neural architecture.}
+  \label{fig:BYOL_sketch}
+\end{figure}
+
+\clearpage
+%\end{document}
+%\section{\algo pseudo-code in JAX}
+%\label{app:pseudocode}
+\includepdf[pages={1-3},lastpage=3]{lalala.pdf}
+\newpage

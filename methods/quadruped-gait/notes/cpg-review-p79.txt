@@ -1,0 +1,149 @@
+
+===== page 7 [pdftotext] =====
+                                                Central Pattern Generators for the control of robotic systems — 7/12
+
+
+                                                                                ax
+   2. Experiments with a 3 DOF hexapod                                 ẍi = ax (  (Xi − xi ) − ẋi )                    (3)
+                                                                                4
+For the experimental part of this study, we decided to                 θi = xi + ri sin (φi )                            (4)
+implement a CPG controller for a small 3D-printed hexa-
+                                                                     Where:
+pod robot5 (see Fig. 10). Since it has three degrees of
+freedom, it was the perfect candidate for a re-implementation        • θi is the output angle of each oscillatory centre
+of the controller presented in “Controlling swimming                 • φi , ri and xi are the state variables that encode the
+and crawling in a fish robot using a central pattern gen-              variation in time of every phase, amplitude and
+erator” by A. Crespi et al.[8]                                         offset
+                                                                     • The control parameters for each oscillator are ωi
+                                                                       (natural frequency), Ri (target amplitude) and Xi
+                                                                       (target offset).
+                                                                     • ar and ax are constant positive gains for Eqns. (2)
+                                                                       and (3). In our case: ar = ax = 2 rad/s.
+                                                                     • Finally, ωi j and ϕi j are respectively the coupling
+                                                                       weights and phase biases that determine how os-
+                                                                       cillator j influences oscillator i.
+
+                                                                      The only change we made to the original equations
+                                                                 in [8] was to replace the cosine function in Eqn. (4) with
+                                                                 a sine. That way, the reference positions of the joints in
+                                                                 the hexapod robot -corresponding to zero offset- match
+                                                                 with the lateral segments being perpendicular to the body,
+                                                                 and with a flat position of the middle segment (the same
+Figure 10. Micro-hexapod used for the experiments.               posture as in Fig. 10).
+The robot is composed of eight 3D-printed parts (in                   Equations (2) and (3) are critically-dampened second-
+white and green), nine screws, and three servomotors             order differential equations with stable fix points Ri and
+(blue). The three degrees of freedom consist in two              Xi respectively. With them it is possible to smoothly
+pairs of mechanically-coupled legs at each side, and             modulate the amplitude and offset of the oscillations in
+also a middle joint that selects which of the sides makes        real time.
+ground contact.                                                       The three oscillators i = 1, 2, 3 correspond to the
+                                                                 middle, left and right joints of the robot respectively, for
+    Our motivation for using the fish model as a ref-            which the maximum oscillation amplitudes are Amiddle =
+erence implementation was that its oscillatory network           12 ◦ , Ale f t = Aright = 40 ◦ . A schematic diagram with the
+model is very similar to the one employed in Salaman-            employed topology is shown in Figure 11.
+dra robotica[4] from EPFL. With three degrees of free-                As in Crepi’s article, each of the three oscillators
+dom instead of ten, the fish robot seemed like a better          were set to the same natural frequencies (ωi = ω ). Ini-
+choice as a didactic exercise.                                   tially, the coupling parameters were set to:
+    The CPG is built upon amplitude-controlled phase
+                                                                     ωi j = 0.5 [1/s] ∀i 6= j, ωii = 0.0 [1/s],
+oscillators derived from the Kuramoto model of syn-
+                                                                     ϕi j = 0.0 [rad/s] ∀i 6= j, ϕii = 0.0 [rad/s].
+chrony. Next, we will show the set of differential equa-
+tions that define the network:                                       In other words: the network is fully connected, but
+                                                                 there are no self-couplings, and (originally) no phase bi-
+                                                                 ases. With these parameters, the system converges into
+      φ̇i = ωi + ∑ [ωi j r j sin (φ j − φi − ϕi j )]       (1)   a regime where the phases (state variables φi ) grow lin-
+                       j
+                                                                 early with a common rate ω and zero phase difference
+                   ar                                            between the oscillators.
+      r¨i = ar (      (Ri − ri ) − ṙi )                   (2)
+                   4                                                 For the robot hexapod, gait information would need
+  5 Originally designed by Ijon Tichy:                           to be encoded into the phase biases ϕi j . Since the orig-
+http://www.thingiverse.com/thing:5156/                           inal paper was instead modulating the target offsets Xi
+
+===== page 8 [pdftotext] =====
+                                          Central Pattern Generators for the control of robotic systems — 8/12
+
+
+and amplitudes Ri , our model used Ri exclusively as a        2.1 Implementation of the CPG with Arduino
+smooth transition between the static state (zero ampli-       The robot is controlled using a a ZUM BT-328 board6 ,
+tude or Ri = 0 ◦ ) and motion, and Xi was not necessary.      which is based on the Arduino7 platform. The ordinary
+                                                              differential equations of the oscillator model were im-
+                                                              plemented using the Euler method8 , with the following
+                                                              update rule:
+                                                                 f o r ( i n t i = 0 ; i <N; i ++) {
+                                                                     f l o a t sA d = cW[ i ] ;
+                                                                     f o r ( i n t j = 0 ; j <N ; j ++)
+                                                                           sA d += w[ i ] [ j ] ∗ s r [ j ] ∗
+                                                                               s i n ( sA [ j ] − sA [ i ] − a [ i ] [ j ] ) ;
+                                                                     new sA [ i ] = sA [ i ] + T ∗ sA d ;
+
+                                                                     fl oa t sr dd = ar ∗ ( ( ar /4) ∗
+                                                                        ( cR [ i ]− s r [ i ] ) − s r d [ i ] ) ;
+                                                                     new sr d [ i ] = sr d [ i ] + T ∗ sr dd ;
+                                                                     new sr [ i ] = sr [ i ] + T ∗ s r d [ i ] ;
+
+                                                                     f l o a t s x d d = ax ∗ ( ( ax / 4 ) ∗
+                                                                         ( cX [ i ]− sx [ i ] ) − s x d [ i ] ) ;
+                                                                     new sx d [ i ] = sx d [ i ] + T ∗ sx dd ;
+                                                                     new sx [ i ] = sx [ i ] + T ∗ s x d [ i ] ;
+                                                                 }
+Figure 11. Diagram of the CPG-based controller imple-
+mented for the hexapod robot. A high level layer (red)           f o r ( i n t i = 0 ; i <N; i ++) {
+modifies the control parameters in real time in order to             sA [ i ] = new sA [ i ] ;
+determine the gait. The three oscillatory centres (green)            sr [ i ] = new sr [ i ] ;
+are coupled with constant weights. Their output θi is                sx [ i ] = new sx [ i ] ;
+fed into the PID controller of each servomotor.                      sr d [ i ] = new sr d [ i ] ;
+                                                                     sx d [ i ] = new sx d [ i ] ;
+    With this topology it is possible to define the follow-          o u t p u t [ i ] = sx [ i ] + s r [ i ] ∗
+ing walking gaits:                                                       s i n ( sA [ i ] ) ;
+                                                                 }
+                                                                  Where T is the time step for the Euler method. In
+   • Forward walking is achieved by setting                   our setup, we used a value of T = 0.01s.
+     ω21 = ω31 = 0.5 [1/s], ωi j = 0.0 [1/s] otherwise,
+     ϕ21 = π /2 [rad], ϕ31 = −π /2 [rad],                                3. Results and Discussion
+   • Backward walking simply requires a shift in the
+                                                              The hexapod implementation was a very useful test-bed
+     phase couplings:
+                                                              for its simplicity, and we could experiment with a wide
+     ω21 = ω31 = 0.5 [1/s], ωi j = 0.0 [1/s] otherwise,
+                                                              variety of parameters. For instance, we set ϕ23 = ϕ32 =
+     ϕ21 = −π /2 [rad], ϕ31 = π /2 [rad],
+   • Clockwise rotation is achieved with
+                                                              π rad so that the legs at both sides of the robot nego-
+                                                              tiated a counter-phase rhythm. Locomotion was then
+     ω21 = ω31 = 0.5 [1/s], ωi j = 0.0 [1/s] otherwise,
+                                                              achieved by coupling one of the sides uni-directionally
+     ϕ21 = π /2 [rad], ϕ31 = π /2 [rad],
+                                                              with the middle segment (ω12 = 0.5 [1/s], ω12 = 0.0 [1/s],
+   • Finally, counter-clockwise rotation uses
+     ω21 = ω31 = 0.5 [1/s], ωi j = 0.0 [1/s] otherwise,       ϕ12 = π /2 [rad]).
+     ϕ21 = π /2 [rad], ϕ31 = π /2 [rad],                        6 http://www.bq.com/gb/placa-zum-bt/
+                                                                7 http://www.arduino.cc/
+                                                                8 https://en.wikipedia.org/wiki/Euler_method
+
+===== page 9 [pdftotext] =====
+                                         Central Pattern Generators for the control of robotic systems — 9/12
+
+
+
+
+Figure 12. The graph shows how the CPG network is capable of recovering from random perturbations. The upper
+panel displays the CPG output (angles for each motor joint). The state variables for the central joint are plotted in
+the lower panel. Vertical markers have been placed to signal the points where the perturbations were introduced;
+these would correspond to interactions with the environment (i.e. an obstacle in the way).
+
+
+     Another effect that we evaluated was the ability of     tention was to create multiple resonant states (gaits) that
+the CPG to synchronize even when each oscillator had         arised at different levels of drive. At low frequencies
+a different natural frequency. In a centralized approach     the robot would for instance rotate in place, but upon a
+with no couplings, slight variations of the intrinsic fre-   frequency increase a new forward gait would be negoti-
+quencies can lead to inconsistency in the gaits over time,   ated among oscillators. Unfortunately we were not able
+due to phase drift. We could observe instead how the         to make this work, so more experimentation (i.e. the
+CPG corrected those slight phase differences seamlessly      incorporation of additional oscillators into the network)
+in real time, even after perturbations had been applied      would be needed.
+to the state variables (see Fig. 12).                            Such a topologically-based control approach would
+                                                             not only be more realistic in biological terms, but also
+3.1 Smooth transitions between gaits                         more interesting in regards to sensory input manage-
+We also tried to achieve a similar gait transitioning ef-    ment. For instance, joint-level feedback would allow
+fect as the one in the salamander robot[4]. By setting       to detect collisions with obstacles in the ground, elicit-
+different natural frequencies for each oscillator, our in-   ing obstacle-avoidance behaviour and thus producing a

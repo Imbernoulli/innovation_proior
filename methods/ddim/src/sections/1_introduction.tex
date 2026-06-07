@@ -1,0 +1,27 @@
+\section{Introduction}
+Deep generative models have demonstrated the ability to produce high quality samples in many domains~\citep{karras2020analyzing,oord2016wavenet}. In terms of image generation, generative adversarial networks (GANs, \citet{goodfellow2014generative}) currently exhibits higher sample quality than likelihood-based methods such as variational autoencoders~\citep{kingma2013auto}, autoregressive models~\citep{oord2016pixel} and normalizing flows~\citep{rezende2015variational,dinh2016density}. However, GANs require very specific choices in optimization and architectures in order to stabilize training~\citep{arjovsky2017wasserstein,gulrajani2017improved,karras2018a,brock2018large}, and could fail to cover modes of the data distribution~\citep{zhao2018bias}.
+
+Recent works on iterative generative models~\citep{bengio2014deep}, such as denoising diffusion probabilistic models (DDPM, \citet{ho2020denoising}) and noise conditional score networks (NCSN, \citet{song2019generative}) %
+have demonstrated the ability to produce samples comparable to that of GANs, without having to perform adversarial training. To achieve this, many denoising autoencoding models are trained to denoise samples corrupted by various levels of Gaussian noise. Samples are then produced by a Markov chain which, starting from white noise, progressively denoises it into an image. This generative Markov Chain process is either based on Langevin dynamics~\citep{song2019generative} or obtained by reversing a forward \textit{diffusion process} that progressively turns an image into noise~\citep{sohl-dickstein2015deep}. 
+
+A critical drawback of these models is that they require many iterations to produce a high quality sample. For DDPMs, this is because that the generative process (from noise to data) approximates the reverse of the forward \textit{diffusion process} (from data to noise), which could have thousands of steps; iterating over all the steps is required to produce a single sample, which is much slower compared to GANs, which only needs one pass through a network. 
+For example, it takes around 20 hours to sample 50k images of size $32 \times 32$ from a DDPM, but less than a minute to do so from \href{https://github.com/ajbrock/BigGAN-PyTorch}{\underline{a GAN}} on a Nvidia 2080 Ti GPU. This becomes more problematic for larger images as sampling 50k images of size $256 \times 256$ could take nearly $1000$ hours on the same GPU.
+
+To close this efficiency gap between DDPMs and GANs, %
+we present denoising diffusion implicit models (DDIMs). DDIMs are implicit probabilistic models~\citep{mohamed2016learning} and are closely related to DDPMs, in the sense that they are trained with the same objective function. %
+In Section~\ref{sec:variational}, 
+we generalize the forward \textit{diffusion process} used by DDPMs, which is Markovian, to \textit{non-Markovian} ones, for which we are still able to design suitable reverse generative Markov chains.
+We show that the resulting variational training objectives have a shared surrogate objective, which is \textit{exactly} the objective used to train DDPM. %
+Therefore, we can freely choose from a large family of generative models using the same neural network simply by choosing a different, \textit{non-Markovian} diffusion process (Section \ref{sec:reverse-family}) and the corresponding reverse generative Markov Chain. 
+In particular, we are able to use \textit{non-Markovian} diffusion processes which lead to "short" generative Markov chains (Section \ref{sec:acceleration}) that can be simulated in a small number of steps.
+This can massively increase sample efficiency only at a minor cost in sample quality. 
+
+
+
+
+In Section~\ref{sec:experiments}, we demonstrate several empirical benefits of DDIMs over DDPMs. \textit{First}, DDIMs have superior sample generation quality compared to DDPMs, when we accelerate sampling by $10\times$ to $100\times$ using our proposed method. 
+\textit{Second}, DDIM samples have the following ``consistency'' property, which does not hold for DDPMs: if we start with the same initial latent variable and generate several samples with Markov chains of various lengths, these samples would have similar high-level features. %
+\textit{Third}, because of ``consistency'' in DDIMs, %
+we can perform semantically meaningful image interpolation by manipulating the initial latent variable in DDIMs, unlike DDPMs which interpolates near the image space due to the stochastic generative process.
+
+

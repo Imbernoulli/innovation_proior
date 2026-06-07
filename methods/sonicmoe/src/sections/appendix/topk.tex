@@ -1,0 +1,41 @@
+% \footnote{\scriptsize \url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/tests/test_mlp.py\#L50}}
+% \footnote{\scriptsize \url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/topk_router.py\#L101}}
+% \footnote{\scriptsize\url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/layers/router.py\#L90}}
+
+
+%\footnote{We restrict this $E$ and $K$ so that we only need thread and warp-level primitives. Larger $E > 4k$ requires a SMEM buffer and block-level synchronization and is often too large for most MoE models.} 
+Existing MoE approaches such as ScatterMoE, MoMoE, and MegaBlocks use the PyTorch top-$K$ ($\mathrm{torch.topk}$) to compute the expert assignments for each token. We find that the PyTorch top-$K$ kernel can take approximately 40\% of the router's computation time. % (0.14ms out of 0.34ms $\approx41\%$ for ScatterMoE in Figure~\ref{fig:moe_breakdown}, where router GEMM only takes 0.10ms, and
+We implement an efficient top-$K$ kernel in \Algname~to reduce the overhead due to PyTorch top-$K$. % this top-$K$ to 0.006ms effectively the minimum possible as kernel launch time). This is because we design a custom top-$K$ sorting kernel for 
+Our top-$K$ kernel supports $E$ and $K$ when $E\leq4096$ and $K\leq16$ and is optimized for the case of a large number of tokens $T$. We also offer an optional softmax fusion on top-$K$ values within the top-$K$ kernel.  
+
+% We further note that it is possible to further fuse top-$K$ with router GEMM and softmax to reduce the router's total computation time, but we find that after the efficient top-$K$ kernel, the router does not contribute to a significant portion of the time for \Algname~(see Table~\ref{tab:snax-against-deepgemm++}).
+
+% \wentao{registers are limited, so we pack column bits }
+% \wentao{data format after packing. sort over new data format}
+% \wentao{cite bitonic merge}
+
+% \mayank{what do we mean by sorting networks here?} \xinle{can't understand how we further utilize the msntissa bits in registers}
+
+\begin{wrapfigure}{r}{0.25\textwidth}
+\vspace{-2em}
+\begin{minipage}{0.25\textwidth}
+    \centering
+    \includegraphics[width=\linewidth]{figures/bit-packing.pdf}
+    \caption{\small The sorting is conducted over values after we pack the column index bits into lower mantissa bits. This value format ensures a stable sorting result. Triton's official top-$K$ kernel follows a similar format.}
+    \label{fig:col-bit-packing}
+\end{minipage}
+\vspace{-2em}
+\end{wrapfigure}
+
+The top-$K$ kernel accepts the router output with shape $(T, E)$ and parallelizes over $T$. The kernel uses bitonic sort \citep{bitonicsort} over every row (sorts $E$ values) and selects the first $K$ columns as the sort output. After loading the input, we pack the column indices of the first $K$ columns (for $\mathrm{argtopK}$) into the lower $\log_2(E)$ mantissa bits of FP32 values in registers, except that we specialize the base sorting cases (number of values $\leq 64$) to follow the comparison strategies obtained from optimal low-latency sorting networks \citep{sorting}, which provide the minimum number of parallel operation steps and required $\mathrm{compare\_and\_swap}$ calls. 
+
+% \footnote{This design assumes that the lower mantissa bits (up to $\log_2(E)$ with maximum as 12 bits) of FP32 values do not significantly affect the sorting results, or equivalently, the relative sorting gap is larger than $2^{-11}=0.05\%$ for the top positions. An alternative design for this bit packing is to use FP64 values at a cost of all slower swapping operations and each thread hold less values.}
+
+% $\mathrm{TopK}$ is often applied to the expert scores computed via softmax, and we would expect the relative sorting gap is larger than $2^{-11}=0.05\%$ for the top positions.
+
+
+The bitonic compare and merging occurs within the same thread or the same warp via warp-shuffle. Therefore, every swap and merge operation only uses intra-thread or intra-warp registers. This achieves a higher memory bandwidth for the kernel over alternative kernel designs such as PyTorch TopK \citep{paszke2019pytorchimperativestylehighperformance}, the Triton \citep{triton} and Tilelang \citep{wang2025tilelang} official example, and RTop-K \citep{xie2025rtopk} in Figure~\ref{fig:topk-speed}.
+
+Since the assigned column indices for values on each row are always unique, there will not be any equal numbers after we pack the column index to the lower mantissa bits. Therefore, \Algname's top-$K$ kernel is always stable as there will not be any tie-breaking scenarios during bitonic compare and merge.
+
+

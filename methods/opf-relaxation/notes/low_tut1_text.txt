@@ -1,0 +1,554 @@
+
+===== page 1 [pdftotext] =====
+                                         IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                                            1
+
+
+
+                                                      Convex Relaxation of Optimal Power Flow
+                                                                 Part I: Formulations and Equivalence
+                                                                                                   Steven H. Low
+                                                                  Electrical Engineering, Computing+Mathematical Sciences
+                                                                              Engineering and Applied Science, Caltech
+                                                                                                 slow@caltech.edu
+
+
+
+
+arXiv:1405.0766v1 [math.OC] 5 May 2014
+                                                                                                     April 15, 2014
+
+
+
+                                                                                                          Abstract
+
+                                                    This tutorial summarizes recent advances in the convex relaxation of the optimal power flow (OPF) problem,
+                                               focusing on structural properties rather than algorithms. Part I presents two power flow models, formulates OPF and
+                                               their relaxations in each model, and proves equivalence relations among them. Part II presents sufficient conditions
+                                               under which the convex relaxations are exact.
+
+
+
+
+                                         Citation: IEEE Transactions on Control of Network Systems, 15(1): 15–27, March 2014. This is an extended version with Appendices
+                                         VIII and IX that provide some mathematical preliminaries and proofs of the main results. All proofs can be found in their original papers. We
+                                         provide proofs here because (i) it is convenient to have all proofs in one place and in a uniform notation, and (ii) some of the formulations
+                                         and presentations here are slightly different from those in the original papers.
+                                         A preliminary and abridged version has appeared in Proceedings of the IREP Symposium - Bulk Power System Dynamics and Control - IX,
+                                         Rethymnon, Greece, August 25-30, 2013.
+
+===== page 2 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                  2
+
+
+                                                    C ONTENTS
+
+I      Introduction                                                                                             4
+       I-A     Outline of paper . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .     5
+       I-B     Notations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .    5
+
+II     Power flow models                                                                                        6
+       II-A    Bus injection model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .      6
+       II-B    Branch flow model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .        7
+       II-C    Equivalence . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .      7
+
+III    Optimal power flow                                                                                       8
+       III-A   Bus injection model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .      8
+       III-B   Branch flow model . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .        9
+       III-C   OPF as QCQP . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .        9
+
+IV     Feasible sets and relaxations: BIM                                                                       11
+       IV-A     Preliminaries . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .   11
+       IV-B     Feasible sets . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .   12
+       IV-C     Semidefinite relaxations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .    15
+       IV-D     Solution recovery . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .     16
+       IV-E     Tightness of relaxations . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .    16
+       IV-F     Chordal relaxation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .    17
+
+V      Feasible sets and relaxations: BFM                                                                       17
+       V-A      Feasible sets . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .   17
+       V-B      SOCP relaxation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .     19
+       V-C      Equivalence . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .     21
+
+VI     BFM for radial networks                                                                          21
+       VI-A   Recursive equations and graph orientation . . . . . . . . . . . . . . . . . . . . . . . . 21
+       VI-B   Linear approximation and bounds . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+
+VII    Conclusion                                                                                               25
+
+Appendix: VIII: Mathematical preliminaries                                                                      26
+     A       QCQP, SDP, SOCP . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .            26
+     B       Graph, partial matrix and completion . . . . . . . . . . . . . . . . . . . . . . . . . .           28
+     C       Chordal relaxation . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .       29
+
+===== page 3 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                            3
+
+
+Appendix: IX: Proofs of main results                                                                      32
+     A        Proof of Theorem 1: equivalence . . . . . . . . . . . . . . . . . . . . . . . . . . . . .   32
+     B        Proof of Theorem 2: rank-1 characterization . . . . . . . . . . . . . . . . . . . . . . .   33
+     C        Proof of Corollary 3: uniqueness of completion . . . . . . . . . . . . . . . . . . . . .    34
+     D        Proof of Theorem 5: BIM feasible sets . . . . . . . . . . . . . . . . . . . . . . . . .     34
+     E        Proof of Theorem 7: BFM feasible sets . . . . . . . . . . . . . . . . . . . . . . . . .     34
+     F        Proof of Theorem 8: BFM cycle condition . . . . . . . . . . . . . . . . . . . . . . .       36
+     G        Proof of Theorem 9: radial networks . . . . . . . . . . . . . . . . . . . . . . . . . . .   37
+     H        Proof of Theorem 11: equivalence . . . . . . . . . . . . . . . . . . . . . . . . . . . .    38
+     I        Proof of Lemma 12: voltage bound . . . . . . . . . . . . . . . . . . . . . . . . . . .      40
+
+References                                                                                                42
+
+
+
+
+Acknowledgment. We thank the support of NSF through NetSE CNS 0911041, ARPA-E through GENI
+DE-AR0000226, Southern California Edison, the National Science Council of Taiwan through NSC 103-
+3113-P-008-001, the Los Alamos National Lab (DoE), and Caltech’s Resnick Institute.
+
+===== page 4 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                4
+
+
+                                                I. I NTRODUCTION
+   For our purposes an optimal power flow (OPF) problem is a mathematical program that seeks to minimize
+a certain function, such as total power loss, generation cost or user disutility, subject to the Kirchhoff’s
+laws as well as capacity, stability and security constraints. OPF is fundamental in power system operations
+as it underlies many applications such as economic dispatch, unit commitment, state estimation, stability
+and reliability assessment, volt/var control, demand response, etc. There has been a great deal of research
+on OPF since Carpentier’s first formulation in 1962 [1]. An early solution appears in [2] and extensive
+surveys can be found in e.g. [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14].
+   Power flow equations are quadratic and hence OPF can be formulated as a quadratically constrained
+quadratic program (QCQP). It is generally nonconvex and hence NP-hard. A large number of optimization
+algorithms and relaxations have been proposed. A popular approximation is a linear program, called DC
+OPF, obtained through the linearization of the power flow equations e.g. [15], [16], [17], [18], [19]. See
+also [20] for a more accurate linear approximation. To the best of our knowledge solving OPF through
+semidefinite relaxation is first proposed in [21] as a second-order cone program (SOCP) for radial (tree)
+networks and in [22] as a semidefinite program (SDP) for general networks in a bus injection model. It is
+first proposed in [23], [24] as an SOCP for radial networks in the branch flow model of [25], [26]. See
+Remark 6 below for more details. While these convex relaxations have been illustrated numerically in [21]
+and [22], whether or when they will turn out to be exact is first studied in [27]. Exploiting graph sparsity
+to simplify the SDP relaxation of OPF is first proposed in [28], [29] and analyzed in [30], [31].
+   Convex relaxation of quadratic programs has been applied to many engineering problems; see e.g. [32].
+There is a rich theory and extensive empirical experiences. Compared with other approaches, solving OPF
+through convex relaxation offers several advantages. First, while DC OPF is useful in a wide variety of
+applications, it is not applicable in other applications; see Remark 10. Second a solution of DC OPF may not
+be feasible (may not satisfy the nonlinear power flow equations). In this case an operator may tighten some
+constraints in DC OPF and solve again. This may not only reduce efficiency but also relies on heuristics
+that are hard to scale to larger systems or faster control in the future. Third, when they converge, most
+nonlinear algorithms compute a local optimal usually without assurance on the quality of the solution. In
+contrast a convex relaxation provides for the first time the ability to check if a solution is globally optimal.
+If it is not, the solution provides a lower bound on the minimum cost and hence a bound on how far
+any feasible solution is from optimality. Unlike approximations, if a relaxed problem is infeasible, it is a
+certificate that the original OPF is infeasible.
+   This two-part tutorial explains the main theoretical results on semidefinite relaxations of OPF developed
+in the last few years. Part I presents two power flow models that are useful in different situations, formulates
+OPF and its convex relaxations in each model, and clarifies their relationship. Part II [33] presents sufficient
+conditions that guarantee the relaxations are exact, i.e. when one can recover a globally optimal solution
+of OPF from an optimal solution of its relaxations. We focus on basic results using the simplest OPF
+formulation and does not cover many relevant works in the literature, such as stochastic OPF e.g. [34],
+[35], [36], distributed OPF e.g. [37], [38], [39], [40], [41], [42], new applications e.g. [43], [44], or what
+to do when relaxation fails e.g. [45], [46], [47], to name just a few.
+
+===== page 5 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                        5
+
+
+A. Outline of paper
+   Many mathematical models have been used to model power networks. In Part I of this two-part paper
+we present two such models, we call the bus injection model (BIM) and the branch flow model (BFM).
+Each model consists of a set of power flow equations. Each models a power network in that the solutions
+of each set of equations, called the power flow solutions, describe the steady state of the network. We
+prove that these two models are equivalent in the sense that there is a bijection between their solution sets
+(Section II). We formulate OPF within each model where the power flow solutions define the feasible set
+of OPF (Section III). Even though BIM and BFM are equivalent some results are much easier to formulate
+or prove in one model than the other; see Remark 2 in Section II.
+   The complexity of OPF formulated here lies in the nonconvexity of power flow equations that gives rise
+to a nonconvex feasible set of OPF. We develop various characterizations of the feasible set and design
+convex supersets based on these characterizations. Different designs lead to different convex relaxations
+and we prove their relationship (Sections IV and V). When a relaxation is exact an optimal solution of the
+original nonconvex OPF can be recovered from any optimal solution of the relaxation. In Part II [33] we
+present sufficient conditions that guarantee the exactness of convex relaxations.
+   Branch flow models are originally proposed for networks with a tree topology, called radial networks,
+e.g. [25], [26], [48], [49], [50], [51], [23], [52], [53]. They take a recursive structure that simplifies the
+computation of power flow solutions, e.g. [54], [55], [48]. The model of [25], [26] also has a linearization
+that offers several advantages over DC OPF in BIM; see Remark 10. The linear approximation provides
+simple bounds on the branch powers and voltage magnitudes in the nonlinear BFM (Section VI). These
+bounds are used in [56] to prove a sufficient condition for exact relaxation.
+   We make algorithmic recommendations in Section VII based on the results presented here.
+   This extended version differs from the journal version only in the addition of two Appendices. Appendix
+VIII provides some mathematical preliminaries and Appendix IX proofs of all main results. Even though
+all proofs can be found in their original papers, we provide proofs here because (i) it is convenient to have
+all proofs in one place and in a uniform notation, and (ii) some of the formulations and presentations here
+are slightly different from those in the original papers.
+
+B. Notations
+  Let C denote the set of complex numbers, R the set of real numbers, and N the set of integers. For
+a ∈ C, Re a and Im a denote the real and imaginary parts of a respectively. For any set A ⊆ Cn , conv A
+denotes the convex hull of A. For a ∈ R, [a]+ := max{a, 0}. For a, b ∈ C, a ≤ b means Re a ≤ Re b and
+Im a ≤ Im b. We abuse notation to use the same symbol a to denote either a complex number Re a + i Im a
+or a 2-dimensional real vector a =(Re a, Im a) depending on the context.
+  In general scalar or vector variables are in small letters, e.g. u, w, x, y, z. Most power system quantities
+however are in capital letters, e.g. S jk , Pjk , Q jk , I j ,V j . A variable without a subscript denotes a vector with
+appropriate components, e.g. s := (s j , j = 0, . . . , n), S := (S jk , ( j, k) ∈ E). For vectors x, y, x ≤ y denotes
+componentwise inequality.
+  Matrices are usually in capital letters. The transpose of a matrix A is denoted by AT and its Hermitian
+(complex conjugate) transpose by AH . A matrix A is Hermitian if A = AH . A is positive semidefinite (or
+
+===== page 6 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                          6
+
+
+psd), denoted by A  0, if A is Hermitian and xH Ax ≥ 0 for all x ∈ Cn ; in particular if A  0 then by
+definition A = AH . For matrices A, B, A  B means A − B is psd. Let Sn be the set of all n × n Hermitian
+matrices and Sn+ the set of n × n psd matrices.
+    A graph G = (N, E) consists of a set N of nodes and a set E ⊆ N × N of edges. If G is undirected then
+( j, k) ∈ E if and only if (k, j) ∈ E. If G is directed then ( j, k) ∈ E only if (k, j) 6∈ E; in this case we will
+use ( j, k) and j → k interchangeably to denote an edge pointing from j to k. We sometimes use G̃ = (N, Ẽ)
+to denote a directed graph. By “ j ∼ k” we mean an edge ( j, k) if G is undirected and either j → k or
+k → j if G is directed. Sometimes we write j ∈ G or ( j, k) ∈ G to mean j ∈ N or ( j, k) ∈ E respectively.
+A cycle c := ( j1 , . . . , jK ) is an ordered set of nodes jk ∈ N so that ( jk , jk+1 ) ∈ E for k = 1, . . . , K with the
+understanding that jK+1 := j1 . In that case we refer to a link or a node in the cycle by ( jk , jk+1 ) ∈ c or
+ jk ∈ c respectively.
+
+                                             II. P OWER FLOW MODELS
+   In this section we describe two mathematical models of power networks and prove their equivalence. By
+a “mathematical model” we mean a set of variables and a set of equations relating these variables. These
+equations are motivated by the physical system, but mathematically, they are the starting point from which
+all claims are derived.
+
+
+A. Bus injection model
+   Consider a power network modeled by a connected undirected graph G(N + , E) where N + := {0} ∪ N,
+N := {1, 2, . . . , n}, and E ⊆ N + × N + . Each node in N + represents a bus and each edge in E represents
+a transmission or distribution line. We use “bus” and “node” interchangeably and “line” and “edge”
+interchangeably. For each edge (i, j) ∈ E let yi j ∈ C be its admittance. A bus j ∈ N + can have a generator,
+a load, both or neither. Let V j be the complex voltage at bus j ∈ N + and |V j | denote its magnitude. Bus 0
+is the slack bus. Its voltage is fixed and we assume without loss of generality that V0 = 1∠0◦ per unit (pu).
+Let s j be the net complex power injection (generation minus load) at bus j ∈ N + .
+   The bus injection model (BIM) is defined by the following power flow equations that describe the
+Kirchhoff’s laws:
+
+                                      sj =      ∑ yHjk V j (V jH −VkH ),    j ∈ N+                                    (1)
+                                               k: j∼k
+
+Let the set of power flow solutions V for each s be:
+
+                                      V(s) := {V ∈ Cn+1 | V satisfies (1)}
+
+For convenience we include V0 in the vector variable V := (V j , j ∈ N + ) with the understanding that V0 :=
+1∠0◦ is fixed.
+   Remark 1: Bus types. Each bus j is characterized by two complex variables V j and s j , or equivalently,
+four real variables. The buses are usually classified into three types, depending on which two of the four
+real variables are specified. For the slack bus 0, V0 is given and s0 is variable. For a generator bus (also
+called PV -bus), Re(s j ) = p j and |V j | are specified and Im(s j ) = q j and ∠V j are variable. For a load bus
+
+===== page 7 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                         7
+
+
+(also called PQ-bus), s j is specified and V j is variable. The power flow or load flow problem is: given two
+of the four real variables specified for each bus, solve the n + 1 complex equations in (1) for the remaining
+2(n + 1) real variables. For instance when all n buses j 6= 0 are all load buses, the power flow problem
+solves (1) for the n complex voltages V j , j 6= 0, and the power injection s0 at the slack bus 0. This can
+model a distribution system with a substation at bus 0 and n constant-power loads at the other buses. For
+optimal power flow problems p j and |V j | on generator buses or s j on load buses can be variables as well.
+For instance economic dispatch optimizes real power generations p j at generator buses; demand response
+optimizes demands s j at load buses; and volt/var control optimizes reactive powers q j at capacitor banks,
+tap changers, or inverters. These remarks also apply to the branch flow model presented next.
+
+B. Branch flow model
+    In the branch flow model we adopt a connected directed graph G̃ = (N + , Ẽ) where each node in N + :=
+{0, 1, . . . , n} represents a bus and each edge in Ẽ ⊆ N + × N + represents a transmission or distribution line.
+Fix an arbitrary orientation for G̃ and let m := |Ẽ| be the number of directed edges in G̃. Denote an edge by
+( j, k) or j → k if it points from node j to node k. For each edge ( j, k) ∈ Ẽ let z jk := 1/y jk be the complex
+impedance on the line; let I jk be the complex current and S jk = Pjk + iQ jk be the sending-end complex
+power from buses j to k. For each bus j ∈ N + let V j be the complex voltage at bus j. Assume without loss
+of generality that V0 = 1∠0◦ pu. Let s j be the net complex power injection at bus j.
+    The branch flow model (BFM) in [24] is defined by the following set of power flow equations:
+
+                                      ∑ S jk = ∑ Si j − zi j |Ii j |2 + s j , j ∈ N +
+                                                                     
+                                                                                                              (2a)
+                                   k: j→k       i:i→ j
+                                         I jk = y jk (V j −Vk ),   j → k ∈ Ẽ                                       (2b)
+                                        S jk = V j I H
+                                                     jk ,   j → k ∈ Ẽ                                              (2c)
+
+ where (2b) is the Ohm’s law, (2c) defines branch power, and (2a) imposes power balance at each bus. The
+quantity zi j |Ii j |2 represents line loss so that Si j − zi j |Ii j |2 is the receiving-end complex power at bus j from
+bus i.
+  Let the set of solutions x̃ := (S, I,V ) of BFM for each s be:
+
+                                    X̃(s) := {x̃ ∈ C2m+n+1 | x̃ satisfies (2)}
+
+For convenience we include V0 in the vector variable V := (V j , j ∈ N + ) with the understanding that V0 :=
+1∠0◦ is fixed.
+
+C. Equivalence
+   Even though the bus injection model (1) and the branch flow model (2) are defined by different sets of
+equations in terms of their own variables, both are models of the Kirchhoff’s laws and therefore must be
+related. We now clarify the precise sense in which these two mathematical models are equivalent. We say
+two sets A and B are equivalent, denoted by A ≡ B, if there is a bijection between them [57].
+   Theorem 1: V(s) ≡ X̃(s) for any power injections s.
+
+===== page 8 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                8
+
+
+   Remark 2: Two models. Given the bijection between the solution sets V(s) and X̃(s) any result in one
+model is in principle derivable in the other. Some results however are much easier to state or derive in one
+model than the other. For instance BIM, which is widely used in transmission network problems, allows
+a much cleaner formulation of the semidefinite program (SDP) relaxation. BFM for radial networks has a
+convenient recursive structure that allows a more efficient computation of power flows and leads to a useful
+linear approximation of BFM; see Section VI. The sufficient condition for exact relaxation in [56] provides
+intricate insights on power flows that are hard to formulate or prove in BIM. Finally, since BFM directly
+models branch flows S jk and currents I jk , it is easier to use for some applications. We will therefore freely
+use either model depending on which is more convenient for the problem at hand.
+
+                                           III. O PTIMAL POWER FLOW
+A. Bus injection model
+  As mentioned in Remark 1 an optimal power flow problem optimizes both variables V and s over the
+solution set of the BIM (1). In addition all voltage magnitudes must satisfy:
+
+                                            v j ≤ |V j |2 ≤ v j , j ∈ N +                                    (3)
+
+where v j and v j are given lower and upper bounds on voltage magnitudes. Throughout this paper we assume
+v j > 0 to avoid triviality. The power injections are also constrained:
+
+                                             s j ≤ s j ≤ s j,    j ∈ N+                                      (4)
+
+where s j and s j are given bounds on the injections at buses j.
+  Remark 3: OPF constraints. If there is no bound on the load or on the generation at bus j then s j =
+−∞ − i∞ or s j = ∞ + i∞ respectively. On the other hand (4) also allows the case where s j is fixed (e.g.
+a constant-power load), by setting s j = s j to the specified value. For the slack bus 0, unless otherwise
+specified, we always assume v0 = v0 = 1 and s0 = −∞ − i∞, s0 = ∞ + i∞. Therefore we sometimes replace
+j ∈ N + in (3) and (4) by j ∈ N.
+  We can eliminate the variables s j from the OPF formulation by combining (1) and (4) into
+
+                              sj ≤      ∑         yHjk V j (V jH −VkH ) ≤ s j , j ∈ N +                      (5)
+                                     k:( j,k)∈E
+
+Then OPF in the bus injection model can be defined just in terms of the complex voltage vector V . Define
+
+                                      V := {V ∈ Cn+1 | V satisfies (3), (5)}                                 (6)
+
+V is the feasible set of optimal power flow problems in BIM.
+   Let the cost function be C(V ). Typical costs include the cost of generating real power at each generator
+bus or line loss over the network. All these costs can be expressed as functions of V . Then the problem of
+interest is:
+OPF:
+
+                                          min C(V )         subject to V ∈ V                                 (7)
+                                            V
+
+===== page 9 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                   9
+
+
+Since (5) is quadratic, V is generally a nonconvex set. OPF is thus a nonconvex problem and NP-hard to
+solve in general.
+
+
+B. Branch flow model
+   Denote the variables in the branch flow model (2) by x̃ := (S, I,V, s) ∈ C2(m+n+1) . We can also eliminate
+the variables s j as for the bus injection model by combining (2a) and (4) but it will prove convenient to
+retain s := (s j , j ∈ N + ) as part of the variables. Define the feasible set in the branch flow model:
+
+                                 X̃ := {x̃ ∈ C2(m+n+1) | x̃ satisfies (2), (3), (4)}                           (8)
+
+  Let the cost function in the branch flow model be C(x̃). Then the optimal power flow problem in the
+branch flow model is:
+OPF:
+
+                                           min C(x̃)       subject to      x̃ ∈ X̃                             (9)
+                                            x̃
+
+Since (2) is quadratic, X is generally a nonconvex set. OPF is thus a nonconvex problem and NP-hard to
+solve in general.
+
+    Remark 4: OPF equivalence. By Theorem 1 there is a bijection between V and X̃. Throughout this
+paper we assume that the cost functions in BIM and BFM are equivalent under this bijection and we abuse
+notation to denote them by the same symbol C(·). Then OPF (7) in BIM and (9) in BFM are equivalent.
+    Remark 5: OPF variants. OPF as defined in (7) and (9) is a simplified version that ignores other important
+constraints such as line limits, security constraints, stability constraints, and chance constraints; see extensive
+surveys in [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [58], [59] and a recent discussion in
+[60] on real-life OPF problems. Some of these can be incorporated without any change to the results in this
+paper (e.g. see [24], [61] for models that include shunt elements and line limits). Indeed a shunt element
+y j at bus j can be easily included in BIM by modifying (1) into:
+
+                                     sj =         ∑ yHjk V j (V jH −VkH ) + yHj |V j |2
+                                                 k: j∼k
+
+or included in BFM by modifying (2a) into:
+
+                                   ∑ S jk + yHj |V j |2 = ∑ Si j − zi j |Ii j |2 + s j
+                                                                                     
+                                  k: j→k                     i:i→ j
+
+
+C. OPF as QCQP
+  Before we describe convex relaxations of OPF we first show that, when C(V ) := V H CV is quadratic in
+V for some Hermitian matrix C, OPF is indeed a quadratically constrained quadratic program (QCQP) by
+converting it into the standard form. We will use the derivation in [61] for OPF (7) in BIM. OPF (9) in
+BFM can similarly be converted into a standard form QCQP.
+
+===== page 10 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                             10
+
+
+  Define the (n + 1) × (n + 1) admittance matrix Y by
+                                          
+                                          
+                                          
+                                          
+                                           ∑ yik , if i = j
+                                          k:k∼i
+                                 Yi j =    −yi j ,    if i 6= j and i ∼ j
+                                          
+                                          
+                                          
+                                          0
+                                          
+                                                      otherwise
+
+Y is symmetric but not necessarily Hermitian. Let I j be the net injection current from bus j to the rest of
+the network. Then the current vector I and the voltage vector V are related by the Ohm’s law I = YV . BIM
+(1) is equivalent to:
+
+                                           s j = VjIH     H       H
+                                                    j = (e j V )(I e j )
+
+where e j is the (n + 1)-dimensional vector with 1 in the jth entry and 0 elsewhere. Hence, since I = YV ,
+we have
+
+                        s j = tr eHj VV H Y H e j = tr Y H e j eHj VV H = V H Y jH V
+                                                                 
+
+
+where Y j := e j eHj Y is an (n + 1) × (n + 1) matrix with its jth row equal to the jth row of the admittance
+matrix Y and all other rows equal to the zero vector. Y j is in general not Hermitian so that V H Y jH V is in
+general a complex number. Its real and imaginary parts can be expressed in terms of the Hermitian and
+skew Hermitian components of Y jH defined as:
+                                           1 H                  1 H         
+                                  Φ j :=     Y j +Y j and Ψ j :=    Y j −Y j
+                                           2                     2i
+Then
+
+                                     Re s j = V H Φ jV and Im s j = V H Ψ jV
+
+Let their upper and lower bounds be denoted by
+
+                                             p j := Re s j and p j := Re s j
+                                             q j := Re s j and q j := Re s j
+
+Let J j := e j eHj denote the Hermitian matrix with a single 1 in the ( j, j)th entry and 0 everywhere else.
+Then OPF (7) can be written as a standard form QCQP:
+
+                                    min       V H CV                                                    (10a)
+                                   V ∈Cn+1
+                               subject to V H Φ jV ≤ p j , V H (−Φ j )V ≤ −p j                          (10b)
+                                              V H Ψ jV ≤ q j , V H (−Ψ j )V ≤ −q j                      (10c)
+                                              V H J jV ≤ v j , V H (−J j )V ≤ −v j                      (10d)
+
+where j ∈ N + in (10).
+
+===== page 11 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                                             11
+
+
+                                      IV. F EASIBLE SETS AND RELAXATIONS : BIM
+   In this and the next section we derive semidefinite relaxations of OPF and clarify their relations. The cost
+function C of OPF is usually assumed to be convex in its variables. The difficulty of OPF formulated here
+thus arises from the nonconvex feasible sets V for BIM and X̃ for BFM. The basic approach to deriving
+convex relaxations of OPF is to design convex supersets of (equivalent sets of) V or X̃ and minimize the
+same cost function over these supersets. Different choices of convex supersets lead to different relaxations,
+but they all provide a lower bound to OPF. If every optimal solution of a convex relaxation happens to lie
+in V or X̃ then it is also feasible and hence optimal for the original OPF. In this case we say the realxation
+is exact.
+   In this section we present three characterizations of the feasible set V in BIM. These characterizations
+naturally suggest convex supersets and semidefinite relaxations of OPF, and we prove equivalence relations
+among them. In the next section we treat BFM. In Part II of the paper we discuss sufficient conditions that
+guaranteed exact relaxations.
+
+
+A. Preliminaries
+   Since OPF is a nonconvex QCQP there is a standard semidefinite relaxation through the equivalence
+relation: for any Hermitian matrix M, V H MV = tr MVV H = tr MW for a psd rank-1 matrix W . Applying
+this transformation to the QCQP formulation (10) leads to an equivalent problem of the form:
+
+                                          min           tr CW
+                                        W ∈Sn+1
+                                    subject to          tr ClW ≤ bl , W  0, rank W = 1
+
+for appropriate Hermitian matrices Cl and real numbers bl . This problem is equivalent to (10) because
+given a psd rank-1 solution W , a unique solution V of (10) can be recovered through rank-1 factorization
+W = VV H . Unlike (10) which is quadratic in V this problem is convex in W except the nonconvex rank-1
+constraint. Removing the rank-1 constraint yields the standard SDP relaxation.
+   We now generalize this intuition to characterize the feasible set V in (6) in terms of partial matrices.
+These characterizations lead naturally to SDP, chordal, and second-order cone program (SOCP) relaxations
+of OPF in BIM, as shown in [57], [31].
+   We start with some basic definitions on partial matrices and their completions; see e.g. [62], [63], [64]
+for more details. Fix any connected undirected graph F with n vertices and m edges connecting distinct
+vertices.1 A partial matrix WF is a set of 2m + n complex numbers defined on F:
+                              
+                    WF :=       [WF ] j j , [WF ] jk , [WF ]k j | nodes j and edges ( j, k) of F
+
+WF can be interpreted as a matrix with entries partially specified by these complex numbers. If F is a
+complete graph (in which there is an edge between every pair of vertices) then WF is a fully specified n × n
+matrix. A completion W of WF is any fully specified n × n matrix that agrees with WF on graph F, i.e.,
+
+                                [W ] j j = [WF ] j j , [W ] jk = [WF ] jk         for j, ( j, k) ∈ F
+   1 In this subsection we abuse notation and use n, m to denote general integers unrelated to the number of buses or lines in a power network.
+
+===== page 12 [pdftotext] =====
+IEEE TRANS. ON CONTROL OF NETWORK SYSTEMS, 1(1):15–27, MARCH 2014 (WITH PROOFS)                                12
+
+
+Given an n × n matrix W we use WF to denote the submatrix of W on F, i.e., the partial matrix consisting
+of the entries of W defined on graph F. If q is a clique (a fully connected subgraph) of F then let WF (q)
+denote the fully-specified principal submatrix of WF defined on q. We extend the definitions of Hermitian,
+psd, and rank-1 for matrices to partial matrices, as follows. A partial matrix WF is Hermitian, denoted by
+WF = WFH , if [WF ] jk = [WF ]H
+                              k j for all ( j, k) ∈ F; it is psd, denoted by WF  0, if WF is Hermitian and the
+principal submatrices WF (q) are psd for all cliques q of F; it is rank-1, denoted by rank WF = 1, if the
+principal submatrices WF (q) are rank-1 for all cliques q of F. We say WF is 2 × 2 psd (rank-1) if, for all
+edges ( j, k) ∈ F, the 2 × 2 principal submatrices
+                                                           "                    #
+                                                             [WF ] j j [WF ] jk
+                                         WF ( j, k) :=
+                                                             [WF ]k j [WF ]kk
+
+are psd (rank-1), denoted by WF ( j, k)  0 (rank WF ( j, k) = 1). F is a chordal graph if either F has no
+cycle or all its minimal cycles (ones without chords) are of length three. A chordal extension c(F) of F is
+a chordal graph that contains F, i.e., c(F) has the same vertex set as F but an edge set that is a superset
+of F’s edge set. In that case we call the partial matrix Wc(F) a chordal extension of the partial matrix WF .
+Every graph F has a chordal extension, generally nonunique. In particular a complete supergraph of F is
+a trivial chordal extension of F.
+   For our purposes chordal graphs are important because of the result [62, Theorem 7] that every psd
+partial matrix has a psd completion if and only if the underlying graph is chordal. When a positive
+definite completion exists, there is a unique positive definite completion, in the class of all positive definite
+completions, whose determinant is maximal. Theorem 2 below extends this to rank-1 partial matrices.
+
+
+B. Feasible sets
+  We can now characterize the feasible set V of OPF defined in (6). Recall the undirected connected
+graph G = (N + , E) that models a power network. Given a voltage vector V ∈ V define a partial matrix
+WG := WG (V ): for j ∈ N + and ( j, k) ∈ E,
+
+                                                [WG ] j j := |V j |2                                       (11a)
+                                                [WG ] jk := V jVkH =: [WG ]H
+                                                                           kj                              (11b)
+
+ Then the constraints (5) and (3) imply that the partial matrix WG satisfies 2
+
+                           s j ≤ ∑ yHjk [WG ] j j − [WG ] jk ≤ s j , j ∈ N +
+                                                            
+                                                                                                           (12a)
+                                        k:( j,k)∈E
+                                                v j ≤ [WG ] j j ≤ v j ,                  j ∈ N+            (12b)
+
+
+
+
+   2 The constraint (12a) can also be written compactly in terms of the admittance matrix Y as in [65]:
+                                                                    
+                                                     s ≤ diag    WY H ≤ s

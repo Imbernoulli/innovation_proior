@@ -1,0 +1,372 @@
+% In this section, we elaborate the key ingredients of the efficient MoE kernel design in \Algname. Besides being optimized for all shapes of MoE, \Algname~is particularly fast and activation memory-efficient for fine-grained MoE. In section~\ref{sec:moe:grouped_gemm}, we outline \Algname's high-level kernel design and describe the activation memory usage. In Section~\ref{sec:moe:hide-io}, we focus on several key approaches that we can hide or reduce IO latency of fine-grained MoE. 
+
+% Although our kernel is more targeting on NVidia H100 GPU, the high-level design principle is transferable to other hardware like NVidia GB200 and even Google TPU with some adaption on low-level techniques (e.g. how to deal with asynchrony with GEMM).
+
+% \subsection{Memory-efficient MoE} \label{sec:moe:grouped_gemm}
+
+% For ScatterMoE the cached activation memory (for constant FLOPs $F = 6TKnd$) is given by
+% \begin{align}
+%     2Td+6TKn+2TKd=2Td+\frac{F}{3d}(3+G)
+% \end{align}
+% which shows that the activation memory increases linearly with $G$ even when FLOPs are constant.
+% % More importantly, this usage is independent of granularity as long as the number of layers $L > K$.  
+
+% Assuming fixed batch size ($T$ is constant) and constant FLOPs ($nK$ is constant)%and iso-parameters ($nE$ is constant)
+% , increasing granularity means increasing $K$. Increasing the granularity causes out of memory error (OOM) for MoE kernels such as ScatterMoE which do not focus on granularity. To make activation memory independent of granularity, we avoid caching $Y_2, X_e, dO_e$ as they require $2T K d$ bytes. 
+
+% We fuse grouping operation into the prologue and do not materialize $X_e$ and $dO_e$ in global memory. We also identify a computation path that circumvents the need of using $Y_2$ in $dZ$ kernel without incurring any additional FLOPs. As a result, we only cache $\textcolor{red}{X}$ and $\textcolor{red} {Z}$ and some routing metadata with activation memory size $2 T d + 4 T K n + O(TE)$ bytes per layer \textbf{similar as the usage for a dense model with activated number of parameters} \footnote{Although we still materialize a $Y_2$ variable, we can recycle $Y_2$ after each layer. As long as the number of MoE layers (typically 32+ for 7B+ MoE) is larger than $K$,  the transient memory usage of $Y_2$ will be overshadowed. We note that removing such materialization requires an atomic add which creates new issue with determinism \citep{determinism} and numerical accuracy (for BF16 atomic add).}
+
+
+% % For a 7B MoE model with $K = 16$, this means 1.21 GB per variable per layer.
+
+
+% We present the \algname\ algorithm in Algorithm~\ref{alg:our-moe} \footnote{Our only recomputation is $Y_1$ from $Z$, and this is cheap during epilogue of $dZ$ as shown in Algorithm~\ref{alg:swiglu-derivative}.}. \textbf{\algname\ achieves effectively the minimum activation memory without GEMM recomputation}. In Figure~\ref{fig:mem}, we profile \Algname's activation memory in a 7B MoE configuration and also demonstrate that the activation memory of \Algname~is \textit{independent of expert granularity}. More results from 1.4B to 120B are included in Figure~\ref{fig:mem}.
+
+
+% (0.28 GB in total per layer for the same 7B MoE). 
+
+
+
+% If we do not care about numerical accuracy and determinism, Algorithm~\ref{alg:our-moe} is still extendable to BF16 atomic add to avoid $Y_2$ and $d\tilde{X}$ materialization.
+
+
+% \paragraph{Comparison with MoMoE \citep{costin2025momoe}.} MoMoE \textit{materializes} the grouped $dO_{\pi(e)}$ and $X_{\pi(e)}$ during backward and \textit{this scales linearly with granularity}.
+
+% \paragraph{Comparison with Megatron}
+
+
+% \footnote{\href{https://github.com/NVIDIA/Megatron-LM/commit/2659630721ac87237c8cb772b1c2f1b34176f443}{A recent memory-efficient patch to Megatron}}
+
+
+% \begin{wrapfigure}{r}{0.3\textwidth}
+%     \begin{center}
+%         \includegraphics[width=0.3\textwidth]{figures/varlen-M.pdf}\\
+%         \vspace{1em}
+%         \includegraphics[width=0.23\textwidth]{figures/varlen-K.pdf}
+%         \caption{Index fetching strategies for gathering $\mathcal{M}$ (top, used by $Y_1$ and $dZ$ kernels) and gathering $\mathcal{K}$ (bottom, used by $d\W{1}$ and $d\W{2}$ kernels)}
+%         \label{fig:index-prefetch}
+%     \end{center}
+% \end{wrapfigure}
+
+% \subsection{IO-aware low-level optimization} 
+% In this section, we give a brief overview of our MoE kernel design.
+% \tri{don't call it "pingpong", at least not in the header. On blackwell it's no longer pingpong. Call it "overlap compute \& memory" or sth.on hopper it's pingpong, on Blackwell is "two-stage accumulator pipeline" (not an official term, we should find a good name for this, but it's spiritually pingpong without being called pingpong)}
+
+% We also describe how we schedule GEMM tiles in ~\ref{sec:moe:scheduling}
+
+
+
+The expressivity of fine-grained MoE comes from the diversity of every token's expert selection, which in turn leads to linearly-scaled IO cost w.r.t. expert granularity. To sustain high throughput, we need to maximally (1) reduce IO access via fusion (2) overlap the IO latency with compute. We first examine the token gather fusion with computation, and math and IO fusion with epilogue in Section~\ref{sec:moe:prologue} and~\ref{sec:moe:epilogue} respectively. We then describe the techniques to overlap MMA with IO in Section~\ref{sec:moe:wgsp}. In Appendix~\ref{sec:appendix:kernel_comparison}, we compare \Algname~with other MoE kernel designs with a summary in Table~\ref{tab:kernel-comparison}.
+
+
+% We examine \Algname's top-$K$ sorting kernel in Section~\ref{sec:moe:top-k} respectively.
+% \Algname's Grouped GEMM store and expert aggregation strategies, 
+\input{Table/moe_comparison}
+
+
+
+
+\subsection{\Algname's Grouped GEMM}
+
+\Algname~is built on top of an efficient varlen-$\mathbf{M}$ and varlen-$\mathbf{K}$ Grouped GEMM. Inside the Grouped GEMM, we fuse the gather operations with the activation loading (\ref{sec:moe:prologue}), and fuse SwiGLU/dSwiGLU/$dS$ with epilogue (\ref{sec:moe:epilogue}). The gather fusion helps \Algname~to be faster than MoE kernel designs that require a separate gather kernel such as MegaBlocks, Megatron, and DeepGEMM++, an optimized MoE forward pass implementation built on top of the DeepGEMM library \citep{deepgemm}. The epilogue fusion boosts \Algname~to be faster than ScatterMoE in the backward pass. These fusions reduce unnecessary IO access and can be overlapped with compute MMA, as we discuss in Section~\ref{sec:moe:wgsp}.
+
+% As shown in Figure~\ref{fig:arithmetic-intensity}, the IO cost of MoEs will scale linearly w.r.t. expert granularity $d/n$. When we have smaller experts $n$ and more activated experts $K$, we would
+
+
+% A single MoE layer with expert intermediate dimension $n$ and $K$ activated experts would consume the same FLOPs as a dense MLP layer with intermediate size as $n K$. However, 
+
+
+
+% \wentao{Andrew: i think sec 4 made sense but after reading it was not immediately obvious where the speedup is coming from and you could be clearer. Maybe start off the section with the flaws of current approaches (i.e. unfused memory-bound kernels / inefficient memory bound ops / inefficient compute-bound ops) to motivate your solution better as opposed to getting into technical details off the bat? The first couple paragraphs of 4.1 are a bit confusing as really end-to-end performance (including “gather” step) is the only thing that matters}
+
+\subsubsection{Gather fusion with GMEM-to-SMEM load} \label{sec:moe:prologue}
+
+% \footnote{On both Hopper and Blackwell GPUs, we have either legacy $\mathrm{cp.async}$ instruction or TMA for loading from GMEM to SMEM. The gather on $\mathbf{M}$ dim would require 1D TMA load with each size 64 $\cdot$ 4 = 256 (assume 4 pipeline stages and $\tileK$ as 64) that are often slower than a direct $\mathrm{cp.async}$ call with 4 producer warps due to TMA's extra hardware overhead. The TMA overhead is illustrated in \citet{luo2025dissecting}'s Figure 2 and 3. }
+\Algname's Grouped GEMM accepts either contiguously-packed inputs or inputs gathered from different positions, illustrated in Figure~\ref{fig:input-format}. For the latter case, we fuse the input gather with the input loads from global memory (GMEM, often the HBM) to shared memory (SMEM) so we can batch them to perform GEMM on Tensor Core \citep{tan2024scattered,costin2025momoe}. This involves (1) fetching the routed token indices for each expert and then (2) using these indices to gather activations via the $\mathrm{cp.async}$ instruction. 
+
+% We often have no better alternatives for the second step, but synchronous index fetching is still optimizable. 
+
+% We illustrate our fetching strategies in Figure~\ref{fig:index-prefetch}.
+% \wentao{yonye: This sentence is very vague. Can we say "we can use cooperative fetching to optimize sync index fetching?"}
+
+As shown in Figure~\ref{fig:moe_breakdown} and~\ref{fig:moe_breakdown-B300}, Gather fusion provides \Algname~with a major advantage over existing MoE kernel designs on both H100 and B300 GPUs such as DeepGEMM. Although DeepGEMM's varlen-$\mathbf{M}$ Grouped GEMM kernel is highly optimized, DeepGEMM assumes the inputs are already contiguously packed and padded to multiples of 128, which requires a separate kernel launch for gather and pad before the Grouped GEMM. 
+
+In the backward pass, weight gradients for up-proj and down-proj ($d\W{1}$ and $d\W{2}$ respectively) need to gather $X$ and $dO$, and the activation gradient for $dH$ also needs to gather $dO$. Despite the backward having more kernels requiring the gather operation, existing approaches including ScatterMoE \citep{tan2024scattered} and MoMoE \citep{costin2025momoe} fuse the gather during forward but still launch a separate gather kernel during backward. Fusing this gather reduces the IO cost by $2TKd$ bytes and cuts down a major portion of fine-grained MoE training time. 
+
+
+% \footnote{\scriptsize \url{https://github.com/deepseek-ai/DeepGEMM/blob/38f8ef73a48a42b1a04e0fa839c2341540de26a6/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp\#L127}\label{footnote:deepgemm}}
+
+
+
+% In Figure~\ref{fig:moe_breakdown}, even though we can provide an optimized gather kernel and DeepGEMM's varlen-$\mathbf{M}$ Grouped GEMM is also highly-optimized, the large amount of IO to gather $X$ ($2TKd$ bytes) still makes DeepGEMM++ (for definition of DeepGEMM++, refer to Figure \ref{fig:moe_breakdown}) slower than \Algname.
+
+% \footnote{In Figure~\ref{fig:moe_breakdown}, \Algname's forward up-proj kernel stores both GEMM outputs $H$ and SwiGLU outputs $A$ while DeepGEMM++ only stores $H$. If we offset \Algname's up-proj kernel (0.56ms) by half of the DeepGEMM++ SwiGLU time (0.56 - 0.10 / 2 = 0.51ms), we will get virtually identical time between \Algname~and DeepGEMM (0.49ms), and DeepGEMM does not have gather fusion.} 
+
+% \wentao{Yoneye: maybe "Fig 6 compared .... between ..., even though we can ...." The transition from deepgemm to the figure is too sudden.}
+
+
+
+% \wentao{Yongye: This two sentense we can say, "Figure 6 compare ... ... ... and deepgemm++, an optimized..., give intro first and then give your conclusion."}
+
+% \footnote{\scriptsize\url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/scattermoe/parallel_experts.py\#L92}}
+% \footnote{\scriptsize \url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/momoe.py\#L299}}
+% In the backward pass, weight gradients for up-proj and down-proj ($d\W{1}$ and $d\W{2}$ respectively) need to gather $X$ and $dO$, and the activation gradient for $dH$ also needs to gather $dO$. Despite the backward having more kernels requiring the gather operation, existing approaches including ScatterMoE \citep{tan2024scattered} and MoMoE \citep{costin2025momoe} fuse the gather during forward but still launch a separate gather kernel during backward. Fusing this gather reduces the IO cost by $2TKd$ bytes and cuts down a major portion of fine-grained MoE training time. 
+
+% For example in Figure~\ref{fig:moe_breakdown}, the 2 gathers in backward of ScatterMoE and MoMoE consume 19.6\% and 20.6\% total backward time which is even longer than their up-proj weight gradient $d\W{1}$ kernel time.
+
+% In Figure~\ref{fig:moe_breakdown}, the \textcolor{plot1}{gather $X$} block in DeepGEMM++ and MegaBlocks\footnote{\scriptsize \url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/layers/moe.py\#L198}} take a comparable time to the Grouped GEMM.
+
+% and the drop by introducing gather fusion is minimal for~\Algname
+
+
+
+
+% (weight gradients reduce over $T_e$ tokens, where each thread is expected to hold hundreds of indices)
+
+% \paragraph{Expert parallelism: all2all gather fusion.}
+% \wentao{todo}
+\begin{wrapfigure}{r}{0.44\textwidth}
+\begin{minipage}{0.44\textwidth}
+    \centering
+    \vspace{-2.5em}
+    \includegraphics[width=\linewidth]{figures/blackwell_gatherA_pipeline.pdf}
+    \caption{\small Pipeline structure for gather fusion with $\mathrm{cp.async}$ on Blackwell GPUs using 2-CTA clusters.% CTA 0 has 1 warp for loading indices, 4 warps for gather via $\mathrm{cp.async}$, and 1 warp for executing the 2-CTA MMA instruction. CTA 1 similarly loads indices and performs gather via $\mathrm{cp.async}$, but requires a dedicated relay warp to forward the $\mathrm{cp.async}$ completion signal to CTA 0's MMA warp. This relay is necessary because $\mathrm{cp.async}$ can only signal completion within the same CTA, not across CTAs in a cluster. \mayank{text repeated as the section}
+    }
+    \label{fig:blackwell-gather-pipeline}
+\end{minipage}
+\end{wrapfigure}
+
+\paragraph{Blackwell GPUs.} On Blackwell GPUs, the gather fusion with $\mathrm{cp.async}$ encounters an architectural challenge when using 2-CTA clusters (Figure~\ref{fig:blackwell-gather-pipeline}) for GEMM computation. The $\mathrm{cp.async}$ instruction, introduced in the Ampere generation, can only signal completion within the same CTA. However, Blackwell's 2-CTA GEMM requires the MMA instruction in the leader CTA (CTA 0) to wait for gather completion from both CTAs. To work around this limitation, CTA 1 requires a dedicated relay warp that receives the $\mathrm{cp.async}$ completion signal and forwards it to CTA 0's MMA warp using cluster-level synchronization primitives (e.g., mbarrier with cluster scope). This relay mechanism adds scheduling complexity but enables efficient gather fusion across the 2-CTA cluster, maintaining high throughput for Grouped GEMM.
+
+
+
+
+
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=0.5\linewidth]{figures/blackwell_gatherA_pipeline.pdf}
+%     \caption{\small Pipeline structure for gather fusion with $\mathrm{cp.async}$ on Blackwell GPUs using 2-CTA clusters. CTA 0 has 1 warp for loading indices, 4 warps for gather via $\mathrm{cp.async}$, and 1 warp for executing the 2-CTA MMA instruction. CTA 1 similarly loads indices and performs gather via $\mathrm{cp.async}$, but requires a dedicated relay warp to forward the $\mathrm{cp.async}$ completion signal to CTA 0's MMA warp. This relay is necessary because $\mathrm{cp.async}$ can only signal completion within the same CTA, not across CTAs in a cluster.}
+%     \label{fig:blackwell-gather-pipeline}
+% \end{figure}
+
+
+
+
+
+% We also employ the warp-cooperative index prefetching approach in our expert aggregation kernel where each token gathers and sums over their activated expert's results. More details are included in Appendix~\ref{sec:appendix:expert-agg}.
+
+
+
+
+% Therefore, it is necessary to fuse Gather with prologue with proper index prefetching to maintain the high 
+
+
+% with proper index prefetching, \Algname's up proj forward $A$ kernel can reach comparable tput to DeepGEMM++'s up proj forward and \Algname~has Gather fusion.
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/moe_breakdown_fwd_bwd.pdf}
+        \caption{\small Runtime breakdown of 7B MoE training on H100 GPUs. } 
+        \label{fig:moe_breakdown}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/moe_breakdown_fwd_bwd-B300.pdf}
+        \caption{\small Runtime breakdown of OLMoE-sized 7B \citep{muennighoff2024olmoe} MoE training on B300 GPUs. Triton official example does not implement the backward pass.}
+        \label{fig:moe_breakdown-B300}
+        \vspace{-.5em}
+    \end{subfigure}
+    \caption{\small Runtime breakdown of different MoE kernels (ms $\downarrow$) on the 7B MoE training. We annotate the model memory bandwidth (TB/s $\uparrow$) for memory-bound kernels (gather, SwiGLU/dSwiGLU, and expert aggregation kernel) and compute throughput (TFLOPS $\uparrow$, abbr as TF/s) for grouped GEMM kernels. Note that this profile is grouped by kernel runtime semantics and one block can contain multiple actual kernel timing results. For example, the ``router related'' on left subfigure includes both router GEMM and routing metadata computation time. In addition, we do not consider the CUDA stream bubble time across kernels in this figure. We use the $\mathrm{GroupedMLP}$ for Megatron, and $\mathrm{ParallelDroplessMLP}$ for MegaBlocks. DeepGEMM does \textit{not} provide an efficient router implementation, gather and expert aggregation kernels during the forward pass, where we use a standard PyTorch implementation (``DeepGEMM-pt'') or our highly optimized kernels (``DeepGEMM++'') for them. During the backward pass, both ``DeepGEMM++'' and ``DeepGEMM-pt'' use the same computational path as \Algname, except we launch separate kernel(s) that compute $dS$, $A'$, and $\mathrm{dSwiGLU}$ together. DeepGEMM++ is effectively the best possible MoE implementation built on top of DeepGEMM SM90/SM100 BF16 Grouped GEMM kernels without modifying DeepGEMM's source code. On B300 GPUs, we also compare with triton official example (``triton ex.'') for MoE that is optimized for inference as it does not store pre-activation results $H$. }
+    \label{fig:moe_breakdown-total}
+\end{figure}
+
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/moe_breakdown_fwd_bwd.pdf}
+%     \caption{\small Runtime breakdown of different MoE kernels (ms $\downarrow$) on the 7B MoE training with $(T, d, n, E, K) = (24576, 1536, 256, 128, 8)$ on H100. We annotate the model memory bandwidth (TB/s $\uparrow$) for memory-bound kernels (gather, SwiGLU/dSwiGLU, and expert aggregation kernel) and compute throughput (TFLOPS $\uparrow$, abbr as TF/s in the figure) for grouped GEMM kernels. Note that this profile is grouped by kernel runtime semantics and one block can contain multiple actual kernel timing results. For example, the ``router related'' on left subfigure includes both router GEMM and routing metadata computation time. In addition, we do not consider the CUDA stream bubble time across kernels in this figure. We use the $\mathrm{GroupedMLP}$ for Megatron, and $\mathrm{ParallelDroplessMLP}$ for MegaBlocks. DeepGEMM does \textit{not} provide an efficient router implementation, gather and expert aggregation kernels during the forward pass, where we use a standard PyTorch implementation (``DeepGEMM-pt'') or our highly optimized kernels (``DeepGEMM++'') for them. During the backward pass, both ``DeepGEMM++'' and ``DeepGEMM-pt'' use the same computational path as \Algname, except we launch separate kernel(s) that compute $dS$, $A'$, and $\mathrm{dSwiGLU}$ together. DeepGEMM++ is effectively the best possible MoE implementation built on top of DeepGEMM SM90 BF16 Grouped GEMM kernels without modifying DeepGEMM's source code.}
+%     \label{fig:moe_breakdown}
+% \end{figure}
+
+
+\subsubsection{Epilogue fusion}\label{sec:moe:epilogue}
+
+We exploit the epilogue computation to maximally reduce unnecessary IO accesses with the following design choices:
+
+\begin{itemize}
+    \item \textbf{SwiGLU and dSwiGLU fusion}: We fuse the SwiGLU and backward of SwiGLU with the epilogue of forward up-proj and backward down-proj activation gradient kernel respectively \citep{costin2025momoe}. 
+    
+    % In Figure~\ref{fig:moe_breakdown}, even though DeepGEMM++ has a highly-optimized Grouped GEMM and SwiGLU kernel, the total time (0.60ms) of DeepGEMM++'s up-proj (0.49ms, 629\tflops) and SwiGLU (0.11ms, 2.88\tbs) is still longer than \Algname's up-proj (0.55ms, 559\tflops) despite \Algname~having an additional Gather fusion besides SwiGLU.
+    
+    % \vspace{0.5em}
+    \item \textbf{Computing $dH$ and $dS$ in backward down-proj activation gradient ($dH$) kernel's epilogue}: This heavy epilogue fusion helps \Algname's $dH$ kernel to produce the same output with far less total time than ScatterMoE's down-proj act, $dS$, and dSwiGLU combined together in Figure~\ref{fig:moe_breakdown} and~\ref{fig:moe_breakdown-B300}. 
+    
+    % In addition, \Algname~also demonstrates a speedup over DeepGEMM++, where we launch an efficient Grouped GEMM and a separate optimized kernel that computes dSwiGLU and $dS$ together.
+
+    
+    % \Algname~only uses a lightweight load for $S$ during $dH$ epilogue for computing and storing $A'$.
+    % \wentao{todo: explain $A'$}
+    % \footnote{\scriptsize\url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/scattermoe/parallel_experts.py\#L79}}
+    % \footnote{\scriptsize\url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/momoe.py\#L702}}
+    In Appendix~\ref{sec:appendix:dS_computation}, we show that \Algname's $dS = \langle dA, \ A'\rangle = \langle dA, \mathrm{Broadcast}(\vs) A\rangle$ is the computationally and activation memory-efficient choice for fine-grained MoEs. However, both ScatterMoE and MoMoE choose to compute $dS$ as $\langle dO, \ Y \rangle$, which requires an additional $2TKd$ HBM load cost and requires caching $2TKd$ bytes of activation memory. In Figure~\ref{fig:moe_breakdown} (right subfigure), ScatterMoE launches a separate kernel for $dS$ while MoMoE fuses $dS$ with up-proj activation gradient which takes much longer time than \Algname's up-proj activation gradient. 
+    
+    
+    % \uline{The minimum extra overhead of IO for ScatterMoE and MoMoE is already \emph{half of the total computational time} for \Algname's $dH$ kernel.}\footnote{For the minimum IO, both ScatterMoE and MoMoE have to load $2Td+2TKd$ bytes for $dO$ and $Y$ which takes at least 0.23ms even with H100's peak HBM tput. In practice, ScatterMoE $dS$ kernel takes 0.24ms while MoMoE employs global atomic add for $dS$ which takes much longer time (see Figure~\ref{fig:moe_breakdown}). }
+    % \vspace{0.5em}
+    
+
+\end{itemize}
+
+The throughput of heavy epilogue fusion on backward down-proj activation gradient $dH$ kernel is boosted by the overlap of asynchronous IO and MMA, which we will elaborate in Section~\ref{sec:moe:wgsp}. Such overlap helps \Algname~to sustain a reasonable training throughput and memory bandwidth simultaneously even with the heavy epilogue fusion (load $H$ and $S$, compute $dH$, $dS$, and $A'$ as inputs to $d\W{2}$) in $dH$ kernel.
+
+% \input{Table/snax_compare_with_deepgemm+}
+
+% \paragraph{Expert parallelism: all2all scatter fusion.}
+% \wentao{todo}
+
+% \paragraph{Blackwell GPUs.}
+% \wentao{todo}
+
+
+
+% \subsubsection{Tile scheduling} \label{sec:moe:scheduling}
+% We use a persistent tile scheduler for all Grouped GEMM kernels. For both forward and backward activation kernels, we parallelize over tokens (varlen-$\mathbf{M}$ Grouped GEMM) and an ordering over expert ID (and linearize over the $d$ and $n$) is often sufficient. For the $d\W{1}$ and $d\W{2}$ kernel, we reduce over the token dimension (varlen-$\mathbf{K}$ Grouped GEMM) for each expert and the mainloop's duration is linear w.r.t. the number of routed tokens received by each expert. In this case, \Algname's tile scheduler follows Longest-Processing-Time (LPT) first order (Figure~\ref{fig:tail-effects}) to reduce the kernel runtime.% We acknowledge that the expert load imbalance issue is often alleviated by external load balancing control during MoE training (typically via auxiliary losses or expert-side bias \citep{wang2024auxiliary}). But the overhead of LPT scheduling is tiny so we still keep this design.
+
+% Specifically, we want to overlap the IO with compute, and minimize synchronous calls on IO side.
+% To further minimize IO, we reformulate the computation of $dH$ and $dS$ (see Appendix~\ref{sec:appendix:proof}), and fuse the calculations of $dH$, $dS$, and $A'$ into a single kernel, resulting in a heavy epilogue that can be further overlapped with MMA using Ping-Pong. 
+
+
+
+% As a result, our approach reduces the runtime of the backward pass significantly as shown in Fig.\ref{fig:moe_breakdown}.
+
+\subsection{GEMM MMA Overlapping with Asynchronous IO} \label{sec:moe:wgsp}
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{\linewidth}
+    \centering
+        \includegraphics[width=0.85\linewidth]{figures/pingpong-hopper.pdf}
+        \caption{\small \Algname's Ping-Pong warpgroup scheduling on Hopper GPUs. The green arrows indicate that a consumer warpgroup signals the start of the epilogue and the other consumer warpgroup can proceed with the MMA. Once this step is complete, the roles of 2 consumer warpgroups are switched. \Algname~mainly uses Ping-Pong for forward down-proj $Y$ kernel and backward down-proj activation gradient $dH$ kernel as they both have heavy epilogue. In $dH$ kernel, \Algname~has an asynchronous TMA load during epilogue. This figure is adapted from \citet{torch_cutlass_pingpong}'s blog on Ping-Pong scheduling.}
+        \label{fig:pingpong-hopper}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+    \centering
+        \includegraphics[width=0.85\linewidth]{figures/pingpong-blackwell.pdf}
+        \caption{\small \Algname's strategy to overlap GEMM MMA with epilogue IO on Blackwell GPUs. The green arrows indicate that the MMA warp signals the epilogue warps that the MMA accumulation result of a work tile is ready for epilogue. The yellow arrows indicate that the epilogue warps finish the epilogue of a work tile and signal the MMA warp that the epilogue warps' owned Tensor Memory (TMEM, an on-chip memory on Blackwell GPUs) stages now become available. Figure~\ref{fig:tmem-blackwell} illustrates this TMEM stage ownership transfer process.}
+        \label{fig:pingpong-blackwell}
+        \vspace{-.5em}
+    \end{subfigure}
+    \caption{\small \Algname's strategy to overlap GEMM MMA with asynchronous IO on Hopper and Blackwell GPUs.}
+    % \label{fig:p}
+\end{figure}
+
+\paragraph{Hopper GPUs.}
+
+In NVIDIA Hopper GPUs, GEMM is performed asynchronously with a producer-consumer paradigm \citep{shah2024flashattention3fastaccurateattention}. Suppose we have 2 consumer warpgroups, we can overlap the IO of 1 warpgroup with the GEMM of another warpgroup. Once this is finished, we switch the roles of the warpgroups (effectively interleaving IO and GEMM). This is often referred to as \textit{Ping-Pong scheduling} \citep{wright2024cutlass,shah2024flashattention3fastaccurateattention} on Hopper GPUs in Figure~\ref{fig:pingpong-hopper}. 
+    
+    
+
+% warpgroups choose a smaller tile size while interleaving the MMA and epilogue role between 2 warpgroups to overlap the epilogue with MMA time, as ``Ping-Pong'' scheduling \citep{wright2024cutlass} in Figure~\ref{fig:pingpong}. 
+
+%(1 warpgroup = 4 warps, we often have 2 consumer warpgroups) dedicates to computing.
+
+% \footnote{The selection between cooperative and Ping-Pong scheduling is largely determined by the selection of a larger tile size or more epilogue overlap. Fine-grained MoE needs both: the $d\W{1}$, $d\W{2}$ kernels often have long mainloop and we often need the largest tile so cooperative scheduling nearly always win, while $Y$, $dH$ kernels have heavy epilogue and Ping-Pong is usually more favorable. A more detailed comparison is included in Vijay Thakkar and Pradeep Ramani's lecture on CUTLASS with page 92-93 in {\scriptsize\url{https://drive.google.com/file/d/18sthk6IUOKbdtFphpm_jZNXoJenbWR8m/view}}.}
+Ping-Pong scheduling is particularly useful to maintain high Tensor Core throughput with heavy epilogue. For example, the down-proj forward $Y$ kernel's epilogue has heavy HBM store IO ($2TKd$ bytes) relative to the mainloop. In the down-proj activation gradient ($dH$) kernel's epilogue, we need to load $H$ and execute multiple activation and reduction operations to compute and store $dH$, $dS$, and $A'$ as inputs for $d\W{2}$. We note that the concept of overlapping MMA with IO and Ping-Pong scheduling is known in other places such as Flash Attention 3 \citep{shah2024flashattention3fastaccurateattention}, but the application of Ping-Pong scheduling to address the increasing IO costs of fine-grained MoE kernel design is novel.
+
+% DeepGEMM SM90 BF16 varlen-$\mathbf{M}$ Grouped GEMM kernel does \emph{not} implement Ping-Pong scheduling. This design choice is suitable for the case of lightweight epilogue (e.g. up-proj forward) but underperforms for the case of heavy epilogue in down-proj forward, as shown in Figure~\ref{fig:moe_breakdown}. 
+
+% In Figure~\ref{fig:grouepd-gemm-contiguous-speed}, \Algname's down-proj has 10.0\% higher TFLOPS than DeepGEMM on average. % and for 30B model's down-proj with $n=256$, \Algname~has 42.9\% higher TFLOPS over DeepGEMM. 
+
+Besides Ping-Pong scheduling, \Algname~also relies on asynchronous TMA operations to perform GMEM-to-SMEM load and SMEM-to-GMEM store. We overlap the following asynchronous IO with the MMA operations:
+
+\begin{itemize}[noitemsep]
+    \item \textbf{Asynchronous TMA load during $dH$ kernel's epilogue}: In the $dH$ kernel's epilogue, we need to load $H$ to compute $dH$ from $dA$. We create a dedicated pipeline for asynchronous TMA load of $H$ to overlap with other epilogue operations across epilogue stages. 
+    
+    % In Figure~\ref{fig:pingpong}, the transparent TMA block in the consumer warpgroups illustrates such asynchronous epilogue load.
+
+    % \footnote{For a tiled GEMM size of $(\tileM, \tileN)$, we have to compute scatter index for $K\lceil d/\tileN\rceil$ times for each output token while for TMA store, we do not need to fetch scatter index in GEMM epilogue. Instead, we will perform gather on the aggregation kernel and in this case, fully reuse the same gather index over the entire row $d$ and the number of synchronous index fetching per token is just $K$. Index reuse over $d$ for GEMM w. scatter requires each CTA persistently handle all GEMM tiles over $d$ before proceed to next $\tileM$, which can easily cause under-utilization of Streaming Processors if $E$ is small.}
+    % \footnote{\scriptsize\url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/scattermoe/kernels/ops.py\#L56}}
+    % \footnote{\scriptsize\url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/momoe.py\#L166}}
+    \item \textbf{Asynchronous TMA store in forward down-proj $Y$ and backward up-proj activation gradient $d\tilde{X}$ kernel}: in forward down-proj and backward up-proj activation gradient, \Algname~does \emph{not} fuse the scatter with HBM store where ScatterMoE and MoMoE both choose to fuse the HBM store with scatter. This is primarily because the scatter fusion requires a synchronous SMEM-to-GMEM store instruction on Hopper GPUs.\footnote{\textbf{Synchronous $\mathrm{st.global}$ is the \emph{only} available PTX instruction for scatter fusion with HBM store on Hopper GPUs if we do not use TMA 1D store.} This is different from the gather case as $\mathrm{cp.async}$ is asynchronous but it cannot be used for SMEM-to-GMEM store. Although asynchronous $\mathrm{st.async.release.global}$ instruction is available on Blackwell GPUs, the repeated index fetching would still make scatter a less favorable option.} The synchronous GMEM store blocks the execution of MMA of next tile and largely degrades the TFLOPS ($\sim$20\%) in the case of heavy HBM store, as illustrated by Figure~\ref{fig:expert-agg-why-slow}. 
+    % We also note that Ping-Pong warpgroup scheduling \emph{cannot} fully restore the throughput degradation for synchronous epilogue IO operations as the epilogue consumer warpgroup would be blocked and cannot switch the role with MMA warpgroup until the current synchronous GMEM store is finished.
+\end{itemize}
+
+
+% \textbf{This is why \Algname~chooses the unconventional Figure~\ref{fig:expert-agg} left strategy which ScatterMoE and MoMoE do \emph{not} choose on Hopper GPUs.} Fusing atomic add to HBM with GEMM is an alternative design that circumvents the need of expert aggregation kernel (Figure~\ref{fig:expert-agg} right). However, FP32 atomic add would have lower throughput than \Algname's current design while BF16 atomic add would (1) be numerically inaccurate (2) cause indeterminism (3) more importantly, cause \Algname~incompatible with expert parallelism as our future plan. 
+
+
+
+\paragraph{Blackwell GPUs.}
+
+\begin{wrapfigure}{r}{0.45\textwidth}
+\begin{minipage}{0.45\textwidth}
+    \centering
+    \vspace{-3.5em}
+    \includegraphics[width=\linewidth]{figures/tmem-blackwell.pdf}
+    \caption{\small Illustration that shows MMA warp would coordinate with epilogue warps to fully utilize TMEM resources while overlapping MMA with asynchronous IO.}
+    \label{fig:tmem-blackwell}
+\end{minipage}
+\vspace{-1.2em}
+\end{wrapfigure}
+
+In NVIDIA Blackwell GPUs, GEMM kernels use the same ``Ping-Pong'' scheduling in spirit, but the implementation differs from Hopper. Blackwell introduces Tensor Memory (TMEM), a dedicated 256KB on-chip memory per SM organized as 128 rows $\times$ 512 columns of 32-bit cells \citep{nvidia2022_gb200,colfax_cutlass_tmem}. The accumulator results from matrix multiplication are stored directly in TMEM rather than in registers, with the 512-column structure naturally enabling a two-stage accumulator pipeline. Each stage uses 256 columns: while one stage performs MMA operations via the new UMMA (Unified Matrix Multiply-Accumulate) instruction, the other stage executes the epilogue. This process is illustrated in Figure~\ref{fig:tmem-blackwell}. Unlike Hopper's WGMMA which required warpgroup-level coordination and consumed significant register memory, Blackwell's UMMA is a single-threaded asynchronous operation that eliminates register pressure for accumulation. This architectural change allows epilogue warps to read and process results from one TMEM stage concurrently with MMA warps accumulating into the other stage, enabling better overlap of epilogue and MMA operations compared to Hopper's ping-pong scheduling.
+
+
+% \paragraph{Asynchronous epilogue load for $dH$ computation:}\label{sec:moe:async_epi}
+% In the $dH$ kernel's epilogue, we need to load $H$ to compute $dH$ from $dA$. We create a dedicated pipeline with asynchronous TMA \citep{nvidia2022_h100} load for $H$ to overlap it with other epilogue operations across epilogue stages. 
+
+% \mayank{the following section is very confusing. I have no clue what the current implementation is even after reading this.}
+% \subsection{Efficient expert aggregation} \label{sec:moe:expert-agg}
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/expert-agg.pdf}
+%     \caption{\small Possible combinations of varlen-$\mathbf{M}$ Grouped GEMM with expert aggregation strategies. \uline{\Algname~choose the first strategy (left) that Grouped GEMM directly store contiguously-packed inputs and in the expert aggregation kernel, each token gathers and sums over expert output}. ScatterMoE and MoMoE (middle) choose to fuse HBM store of Grouped GEMM with scatter, and launch a summation kernel ($\mathrm{torch.bmm}$ or $\mathrm{torch.sum}$). Note that \uline{each token gathers (left) the Grouped GEMM result is equivalent as each expert scatters (middle) the Grouped GEMM result}. It is also possible to fuse atomic add with Grouped GEMM to circumvent the need of expert aggregation kernel as the right subfigure. In Section~\ref{sec:moe:expert-agg}, we justify why \Algname~choose the first strategy. This figure is adapted from \citet{tan2024scattered}'s Figure 2. }
+%     \label{fig:expert-agg}
+% \end{figure}
+
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/scatter_and_add_benchmark.pdf}
+%     \caption{\small Down-proj $Y$ and expert aggregation $O$ kernel during forward pass in H100. \textcolor{plot0}{\Algname~(gemm + gth w. sum)} as \uline{the design for \Algname~chooses TMA store in $Y$ kernel and the expert agg kernel will let each token gather and sum over outputs (Figure~\ref{fig:expert-agg} left strategy).} We compare this design against the strategy in Figure~\ref{fig:expert-agg} middle as launching 2 kernels: fusing scatter with HBM store ($\mathrm{st.global}$) and a summation kernel, which is \textcolor{plot8}{\Algname~(gemm w. sct + sum)}. We optimize the scatter by considering the varlen-$\mathbf{M}$ index prefetching strategy in Section~\ref{sec:moe:prologue}, and we use the identical tile size and other GEMM configs as the \textcolor{plot0}{\Algname~(gemm + gth w. sum)}. We also compare with ScatterMoE's design (fused scatter with GEMM + $\mathrm{torch.bmm}$, as \textcolor{plot1}{ScatterMoE (gemm w. sct + BMM)}) and MoMoE's design (fused scatter with GEMM + $\mathrm{torch.sum}$, as \textcolor{plot3}{MoMoE (gemm w. sct + sum)}). \uline{For each method on the $1^\text{st}$ row of plots, we report the GEMM TFLOPS as transparent bars and the TFLOPS of GEMM + expert agg together as the opaque bars. On the $2^\text{nd}$ row of plots, we report the HBM bandwidth of the expert agg kernel by each method with the same color as the $1^\text{st}$ row.} Note that we use triton implementation for the summation kernel (gth w. sum, and sum) for \Algname.}
+%     \label{fig:scatter-and-add-speed}
+% \end{figure}
+
+% We heavily tune the GEMM configs for both baselines and we remove the MoMoE's HBM store for $Y$ for a fair comparison.
+
+% Since \Algname~chooses contiguous TMA 2D store as the output for each expert, we would have to let each token gathers their activated expert results. 
+
+% After obtaining the Grouped GEMM results $Y$ (forward down-proj) and $d\tilde{X}$ (backward up-proj activation gradient), we need to sum over each expert output for each token as the final activation $O$ or activation gradient $dX$ of each MoE layer. Expert aggregation is memory-bounded, and we want \Algname~to achieve high memory bandwidth. There are 3 possible strategies illustrated in Figure~\ref{fig:expert-agg}, and \textbf{\Algname~chooses the first aggregation strategy}. 
+
+% \Algname~utilizes an efficient varlen expert aggregation kernel to produce $O$ (forward) and $dX$ (backward). This kernel accepts contiguously-packed inputs ($Y$ or $d\tilde{X}$), and we parallelize over each token to gather and sum over each activated expert result. 
+
+% This kernel usually sustains a HBM bandwidth of 2.85+ TB/s (85\%+ peak) on H100 GPU for a sufficiently large $T,K,d$. 
+
+% \uline{This throughput is mainly dependent on the $T,d$ and expected $K$ and will generally sustain for a variable number of activated experts as long as the expected number of activated experts is the same.} 
+
+
+
+
+%\mayank{following text is irrelevant so commented it out}%The gather fusion naturally fits with a variable number of activated experts per token which makes \Algname's MoE computation fully decouples with MoE routing inputs. The main low-level optimization is that we tile across $T$ while fully unroll the loop over $d$ within each CTA to maximally reuse the same fetched indices. We provide an implementation on both CuTe DSL and Triton with similar tput for large $K$ and $d$ as shown in Figure~\ref{fig:expert-agg-speed}, while the triton impl has better tput for smaller $K$ by the autotune.
+
+% The main low-level optimizations are (1) warp-cooperative index prefetching for gather, similar to the case of Gather-$\mathbf{K}$ in Grouped GEMM (Figure~\ref{fig:index-prefetch} right) (2) we tile across $T$ 
+
+
+% The ``expert agg.'' block in Figure~\ref{fig:moe_breakdown} profiles the time for expert aggregation across different implementations. \mayank{write some numbers here maybe, this is just left hanging}
+
+% Both ScatterMoE and MoMoE make each expert scatter the results to each token and aggregate the expert results via a plain summation kernel afterwards, which is the middle strategy in Figure~\ref{fig:expert-agg}. 
+
+
+% \uline{However, such scatter fusion will cause a major slowdown of GEMM kernel} because the scatter fusion (1) has more index synchronous fetching and address calculations\footnote{For a tiled GEMM size of $(\tileM, \tileN)$, we have to compute scatter index for $K\lceil d/\tileN\rceil$ times for each output token while for TMA store, we do not need to fetch scatter index in GEMM epilogue. Instead, we will perform gather on the aggregation kernel and in this case, fully reuse the same gather index over the entire row $d$ and the number of synchronous index fetching per token is just $K$. Index reuse over $d$ for GEMM w. scatter requires each CTA persistently handle all GEMM tiles over $d$ before proceed to next $\tileM$, which can easily cause under-utilization of Streaming Processors if $E$ or $n$ is small. } (2) requires a synchronous SMEM-to-GMEM store\footnote{\textbf{Synchronous $\mathrm{st.global}$ is the \emph{only} available PTX instruction for scatter fusion with HBM store on Hopper GPUs if we do not use TMA 1D store.} This is different from the gather case as $\mathrm{cp.async}$ is asynchronous but it cannot be used for SMEM-to-GMEM store. Although asynchronous $\mathrm{st.async.release.global}$ PTX instruction is available on Blackwell GPUs, the repeated index fetching will still make scatter a less favorable option than TMA 2D store. \textbf{We also note that Ping-Pong warpgroup scheduling \emph{cannot} help improve the throughput in this case as the epilogue consumer warpgroup would be blocked and cannot switch the role with MMA warpgroup until this HBM store is finished.}} on Hopper GPUs while TMA store is fully asynchronous. 
+ 
+
+
+
+% 41.7\% over ScatterMoE and 50.2\% over MoMoE which also have GEMM with scatter
+
+
+
+
+
+% \footnote{\scriptsize \url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/tests/test_mlp.py\#L50}}
+% \footnote{\scriptsize \url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/topk_router.py\#L101}}
+% \footnote{\scriptsize\url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/layers/router.py\#L90}}
+

@@ -1,0 +1,448 @@
+%
+\providecommand{\imwidth}{}
+\providecommand{\impath}[1]{}
+\providecommand{\impatha}[1]{}
+\providecommand{\impathb}[1]{}
+\providecommand{\impathc}[1]{}
+
+\newcommand{\teaser}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=0.94\textwidth]{img/cherries/teaserblock001}
+    %
+    \label{fig:teaser}
+\end{figure}
+}
+
+
+\newcommand{\sizecond}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=\textwidth]{img/sizecond/128-128-res}
+     \includegraphics[width=\textwidth]{img/sizecond/256-256-res}
+     \includegraphics[width=\textwidth]{img/sizecond/512-512-res}
+     \includegraphics[width=\textwidth]{img/sizecond/1024-1024-res}
+%
+    \caption{Varying the image-size conditioning as discussed in Sec.~\ref{subsec:condtricks}. From top to bottom: $\csize=(128, 128)$, $\csize=(256, 256)$, $\csize=(512, 512)$, $\csize=(1024, 1024)$. Prompt: \emph{An astronaut riding a horse, cinematic shot}}
+    \label{fig:sizecond}
+\end{figure}
+}
+
+\newcommand{\sizecondvtwo}{
+\begin{figure}[htbp]
+\renewcommand{\imwidth}{0.25\textwidth}
+\setlength{\tabcolsep}{.5pt}
+\centering
+\begin{tabular}{cccc}
+\toprule
+\footnotesize $\csize=(64, 64)$ & \footnotesize $\csize=(128, 128)$, & \footnotesize $\csize=(256,236)$, & \footnotesize $\csize=(512,512)$, \\
+\midrule
+%
+%
+%
+%
+%
+%
+%
+%
+\includegraphics[width=\imwidth]{img/sizecondv3/64_robot_2.jpg} &
+\includegraphics[width=\imwidth]{img/sizecondv3/128_robot_2.jpg} & 
+\includegraphics[width=\imwidth]{img/sizecondv3/256_robot_2.jpg} & 
+\includegraphics[width=\imwidth]{img/sizecondv3/512_robot_2.jpg} \\
+\midrule
+%
+\multicolumn{4}{c}{\scriptsize\emph{'A robot painted as graffiti on a brick wall. a sidewalk is in front of the wall, and grass is growing out of cracks in the concrete.'}} \\
+\midrule
+\includegraphics[width=\imwidth]{img/sizecondv3/64.jpg} &
+\includegraphics[width=\imwidth]{img/sizecondv3/128.jpg} & 
+\includegraphics[width=\imwidth]{img/sizecondv3/256.jpg} & 
+\includegraphics[width=\imwidth]{img/sizecondv3/512.jpg} \\
+\midrule
+\multicolumn{4}{c}{\footnotesize\emph{'Panda mad scientist mixing sparkling chemicals, artstation.'}} \\
+\bottomrule
+\end{tabular}
+\caption{The effects of varying the size-conditioning: We show draw 4 samples with the same random seed from \modelname and vary the size-conditioning as depicted above each column. The image quality clearly increases when conditioning on larger image sizes. Samples from the $512^2$ model, see \Cref{subsec:putting}. Note: For this visualization, we use the $512 \times 512$ pixel base model (see \Cref{subsec:putting}), since the effect of size conditioning is more clearly visible before $1024 \times 1024$ finetuning. Best viewed zoomed in. \vspace{-2em}}
+\label{fig:sizecond}
+\end{figure}
+}
+
+\newcommand{\cropcond}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=\textwidth]{img/cropcond/0-0-crop}
+     \includegraphics[width=\textwidth]{img/cropcond/0-256-crop}
+     \includegraphics[width=\textwidth]{img/cropcond/256-0-crop}
+%
+     \includegraphics[width=\textwidth]{img/cropcond/512-512-crop}
+    \caption{Varying the crop conditioning as discussed in Sec.~\ref{subsec:condtricks}. From top to bottom: $(c_{\text{top}}, c_{\text{left}}) = \left(0, 0\right)$, $(c_{\text{top}}, c_{\text{left}}) = \left(0, 256\right)$, $(c_{\text{top}}, c_{\text{left}}) = \left(256, 0\right)$, 
+%
+    $(c_{\text{top}}, c_{\text{left}}) = \left(512, 512\right)$.
+    Prompt: \emph{An astronaut riding a horse, cinematic shot}.
+    See \Cref{fig:comp_old_model} and \Cref{fig:comp_old_model_app} for samples from \sdshort 1.5 and \sdshort 2.1 which provide no explicit control of this parameter and thus introduce cropping artifacts during sampling.
+    }
+    \label{fig:cropcond}
+\end{figure}
+}
+
+\newcommand{\cropcondvtwo}{
+\begin{figure}[htbp]
+\renewcommand{\imwidth}{0.25\textwidth}
+\setlength{\tabcolsep}{.5pt}
+\centering
+\begin{tabular}{cccc}
+\toprule
+\footnotesize $\ccrop=(0,0)$ & \footnotesize $\ccrop=(0,256)$, & \footnotesize $\ccrop=(256,0)$, & \footnotesize $\ccrop=(512,512)$, \\
+\midrule
+%
+%
+%
+%
+%
+%
+%
+%
+\includegraphics[width=\imwidth]{img/cropcondv2/0-0/0-0.jpg} &
+\includegraphics[width=\imwidth]{img/cropcondv2/0-256/0-256-2.jpg} & 
+\includegraphics[width=\imwidth]{img/cropcondv2/256-0/256-0.jpg} & 
+\includegraphics[width=\imwidth]{img/cropcondv2/512-512/512-512.jpg} \\
+\midrule
+\multicolumn{4}{c}{\footnotesize\emph{'An astronaut riding a pig, highly realistic dslr photo, cinematic shot.'}} \\
+\midrule
+\includegraphics[width=\imwidth]{img/cropcondv2/0-0/capybara-0-0.jpg} &
+\includegraphics[width=\imwidth]{img/cropcondv2/0-256/capybara-0-256.jpg} & 
+\includegraphics[width=\imwidth]{img/cropcondv2/256-0/capybara-256-0.jpg} & 
+\includegraphics[width=\imwidth]{img/cropcondv2/512-512/capybara-512-512.jpg} \\
+\midrule
+\multicolumn{4}{c}{\footnotesize\emph{'A capybara made of lego sitting in a realistic, natural field.'}} \\
+\bottomrule
+\end{tabular}
+\caption{Varying the crop conditioning as discussed in Sec.~\ref{subsec:condtricks}. See \Cref{fig:comp_old_model} and \Cref{fig:comp_old_model_app} for samples from \sdshort 1.5 and \sdshort 2.1 which provide no explicit control of this parameter and thus introduce cropping artifacts. Samples from the $512^2$ model, see \Cref{subsec:putting}.}
+\label{fig:cropcond}
+\end{figure}
+}
+
+\newcommand{\aestheticcond}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=\textwidth]{img/acond/potato-seed2-aesthetics_start2end8}
+     \includegraphics[width=\textwidth]{img/acond/flower-seed2-aesthetics_start2end8}
+    \caption{Samples from an aesthetic-conditioned model when varying the aesthetic scale as discussed in Sec.~\ref{subsec:condtricks}. Aesthetic values from left to right: 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}
+    \label{fig:aestheticcond}
+\end{figure}
+}
+
+\newcommand{\fidvsclip}{
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.49\textwidth]{img/quant_eval/fidvsclip40-more.jpg}
+\hfill
+\includegraphics[width=.49\textwidth]{img/quant_eval/fidvsclip50-more.jpg}
+\caption{\label{fig:fid+vs_clip} Plotting FID vs CLIP score for different cfg scales. \emph{SDXL} shows only slightly improved text-alignment, as measured by CLIP-score, compared to previous versions that do not align with the judgement of human evaluators. Even further and similar as in \cite{kirstain2023pick}, FID are worse than for both \emph{SD-1.5} and \emph{SD-2.1}, while human evaluators clearly prefer the generations of \emph{SD-XL} over those of these previous models.}
+\end{figure}
+}
+
+
+\newcommand{\userstudyandmodel}{
+\begin{figure}[htbp]
+\centering
+\includegraphics[align=c,width=.475\textwidth]{img/sd-xl-vs.jpg}
+\includegraphics[align=c,width=.475\textwidth]{img/sdxl_pipeline.jpg}
+\caption{\label{fig:userstudyandmodel} \emph{Left:} Comparing user preferences between \modelname and \sd 1.5 \& 2.1. While \modelname already clearly outperforms \sd 1.5 \& 2.1, adding the additional refinement stage boosts performance. \emph{Right:} Visualization of the two-stage pipeline: We generate initial latents of size $128\times128$ using \modelname. Afterwards, we utilize a specialized high-resolution \emph{refinement model} and apply SDEdit~\cite{meng2021sdedit} on the latents generated in the first step, using the same prompt. \modelname and the refinement model use the same autoencoder.}
+\end{figure}
+}
+
+\newcommand{\modelplotone}{
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=.45\textwidth]{img/sdxl_pipeline.jpg}
+\hfill
+\caption{\label{fig:modelplot} \modelname is a two-stage LDM~\cite{ldm} pipeline: First, we use a base model to generate latents of size $128\times128$. In the second step, we utilize a specialized high-resolution model and apply SDEdit~\cite{sdeit} on the latents generated in the first step, using the same prompt.}
+\end{figure}
+}
+
+
+\newcommand{\refinevsnorefine}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=0.495\textwidth]{img/noref.jpg}
+     \includegraphics[width=0.495\textwidth]{img/ref.jpg}
+    \caption{$1024^2$ samples from \modelname without (left) and with (right) the refinement model discussed in Sec.~\ref{subsec:putting}.}
+    \label{fig:refinevsnorefine}
+\end{figure}
+}
+
+\newcommand{\sizedist}{
+\begin{wrapfigure}{r}{.49\textwidth}
+\vspace{-3em}
+\renewcommand{\imwidth}{.47\textwidth}
+\renewcommand{\impath}[1]{img/##1}
+\includegraphics[width=\imwidth]{\impath{size-dist}}
+\caption{\label{fig:size_dist} Height-vs-Width distribution of our pre-training dataset. Without the proposed size-conditioning, 39\% of the data would be discarded due to edge lengths smaller than 256 pixels as visualized by the dashed black lines. Color intensity in each visualized cell is proportional to the number of samples.\vspace{-1em}}
+\end{wrapfigure}
+}
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+
+\newcommand{\comparetoif}{
+\begin{figure}[htbp]
+     \centering
+     \includegraphics[height=0.81\textheight,keepaspectratio]{img/SDXLcompsv5.jpeg}
+     \caption{Qualitative comparison of \modelname{} with DeepFloyd IF, DALLE-2, Bing Image Creator, and Midjourney v5.2. To mitigate any bias arising from cherry-picking, Parti (P2) prompts were randomly selected. Seed \num{3} was uniformly applied across all models in which such a parameter could be designated. For models without a seed-setting feature, the first generated image is included.}
+     \label{fig:comparetoif}
+\end{figure}
+}
+
+
+
+
+\newcommand{\refinevsnorefinevtwo}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=0.495\textwidth]{img/refiner_magic/basez3.jpg}
+     \includegraphics[width=0.495\textwidth]{img/refiner_magic/refinerz3.jpg}
+     \includegraphics[width=0.495\textwidth]{img/refiner_magic/basez2.jpeg}
+     \includegraphics[width=0.495\textwidth]{img/refiner_magic/refinerz2.jpeg}
+    \caption{$1024^2$ samples from \modelname without (left) and with (right) the refinement model discussed in Sec.~\ref{subsec:putting}. }
+    \label{fig:refinevsnorefine}
+\end{figure}
+}
+
+\newcommand{\refinevsnorefineappendix}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=\textwidth]{img/refiner_magic/magic3_combined.jpeg}\\
+     \vspace{5mm}
+     \includegraphics[width=\textwidth]{img/refiner_magic/magic4_combined.jpeg}
+    \caption{\modelname samples (with zoom-ins) without (left) and with (right) the refinement model discussed. Prompt: (\emph{top}) ``close up headshot, futuristic young woman, wild hair sly smile in front of gigantic UFO, dslr, sharp focus, dynamic composition'' (\emph{bottom}) ``Three people having dinner at a table at new years eve, cinematic shot, 8k''. Zoom-in for details.}
+    \label{refinevsnorefineapp}
+\end{figure}
+}
+
+\newcommand{\refinevsnorefinevthree}{
+\begin{figure}[htbp] %
+     \centering
+     \includegraphics[width=\textwidth]{img/refiner_magic/magic2_combined.jpeg}
+    \caption{$1024^2$ samples (with zoom-ins) from \modelname without (left) and with (right) the refinement model discussed. Prompt: ``Epic long distance cityscape photo of New York City flooded by the ocean and overgrown buildings and jungle ruins in rainforest, at sunset, cinematic shot, highly detailed, 8k, golden light''. See~\Cref{refinevsnorefineapp} for additional samples.\vspace{-1em}}
+    \label{fig:refinevsnorefine}
+\end{figure}
+}
+
+\newcommand{\condcatcode}{
+\centering
+\begin{figure}[htbp]
+%
+\centering
+\resizebox{.81\textwidth}{!}{%
+\lstinputlisting[language=Python]{concat_conds_smaller.py}
+}
+\caption{\label{fig:cond_cat_code} Python code for concatenating the additional conditionings introduced in \Crefrange{subsec:archi_and_scale}{subsec:mar} along the channel dimension. }
+\end{figure}
+}
+
+\newcommand{\sdoldcompapp}{
+\renewcommand{\imwidth}{.47\textwidth}
+\renewcommand{\impatha}[1]{img/comp_old_model/sd1-5/##1}
+\renewcommand{\impathb}[1]{img/comp_old_model/sd2-1/##1}
+\renewcommand{\impathc}[1]{img/comp_old_model/sdxl/##1}
+%
+\begin{figure}[htbp]
+\centering
+\begin{tabular}{c@{\hspace{5pt}}c@{\hspace{3pt}}c}
+\toprule
+& \footnotesize{\shortstack{\emph{'Vibrant portrait painting of Salvador Dalí} \\ \emph{with a robotic half face.'}}}  & \footnotesize{\shortstack{\emph{'A capybara made of voxels} \\ \emph{sitting in a field.'}}} \\
+\midrule
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 1-5}}} &
+\includegraphics[width=\imwidth]{\impatha{dali_row}} &
+\includegraphics[width=\imwidth]{\impatha{capybara_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 2-1}}} &
+\includegraphics[width=\imwidth]{\impathb{dali_row}} &
+\includegraphics[width=\imwidth]{\impathb{capybara_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\modelname}}} &
+\includegraphics[width=\imwidth]{\impathc{dali_row}} &
+\includegraphics[width=\imwidth]{\impathc{capybara_row}} \\ %
+
+\bottomrule
+\toprule
+
+& \scriptsize{\shortstack{\emph{'Cute adorable little goat, unreal engine,} \\ \emph{cozy interior lighting, art station, detailed’} \\ \emph{ digital painting, cinematic, octane rendering.'}}}  & \scriptsize{\shortstack{\emph{'A portrait photo of a kangaroo wearing an orange hoodie} \\ \emph{and blue sunglasses standing on the grass in front of the Sydney} \\ \emph{Opera House holding a sign on the chest that says "SDXL"!.'}}} \\
+\midrule
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 1-5}}} &
+\includegraphics[width=\imwidth]{\impatha{goat_row}} &
+\includegraphics[width=\imwidth]{\impatha{cangaroo_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 2-1}}} &
+\includegraphics[width=\imwidth]{\impathb{goat_row}} &
+\includegraphics[width=\imwidth]{\impathb{cangaroo_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\modelname}}} &
+\includegraphics[width=\imwidth]{\impathc{goat_row}} &
+\includegraphics[width=\imwidth]{\impathc{cangaroo_row}} \\ %
+
+\bottomrule
+\end{tabular}
+\caption{\label{fig:comp_old_model_app} Additional results for the comparison of the output of \modelname with previous versions of \sd. For each prompt, we show 3 random samples of the respective model for 50 steps of the DDIM sampler~\cite{song2020denoising} and cfg-scale $8.0$~\cite{ho2022classifier} 
+}
+\end{figure}
+}
+
+
+\newcommand{\sdoldcompapptwo}{
+\renewcommand{\imwidth}{.47\textwidth}
+\renewcommand{\impatha}[1]{img/comp_old_model/sd1-5/##1}
+\renewcommand{\impathb}[1]{img/comp_old_model/sd2-1/##1}
+\renewcommand{\impathc}[1]{img/comp_old_model/sdxl/##1}
+%
+\begin{figure}[htbp]
+
+\centering
+\begin{tabular}{c@{\hspace{5pt}}c@{\hspace{3pt}}c}
+\toprule
+& \footnotesize{\shortstack{\emph{'Monster Baba yaga house with in a forest,} \\ \emph{dark horror style, black and white.'}}}  & \footnotesize{\shortstack{\emph{'A young badger delicately sniffing a } \\ \emph{yellow rose, richly textured oil painting.'}}} \\
+\midrule
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 1-5}}} &
+\includegraphics[width=\imwidth]{\impatha{baba_row}} &
+\includegraphics[width=\imwidth]{\impatha{badger_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 2-1}}} &
+\includegraphics[width=\imwidth]{\impathb{baba_row}} &
+\includegraphics[width=\imwidth]{\impathb{badger_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\modelname}}} &
+\includegraphics[width=\imwidth]{\impathc{baba_row}} &
+\includegraphics[width=\imwidth]{\impathc{badger_row}} \\ %
+
+\bottomrule
+\end{tabular}
+\caption{\label{fig:comp_old_model_app2} Additional results for the comparison of the output of \modelname with previous versions of \sd. For each prompt, we show 3 random samples of the respective model for 50 steps of the DDIM sampler~\cite{song2020denoising} and cfg-scale $8.0$~\cite{ho2022classifier}.
+}
+\end{figure}
+}
+
+%
+\definecolor{modelcolor}{rgb}{0.345, 0.471, 0.739}
+\definecolor{compcolor}{rgb}{0.894, 0.576, 0.267}
+
+\newcommand{\mjcompzero}{
+\begin{figure}[htbp]
+  \centering
+  %
+  \includegraphics[trim=60 0 0 0,clip,width=\textwidth]{img/mj_comp/total2.pdf}    
+    \caption{Results from 17,153 user preference comparisons between \textcolor{modelcolor}{\modelname} v0.9 and \textcolor{compcolor}{Midjourney v5.1}, which was the latest version available at the time. The comparisons span all ``categories'' and ``challenges'' in the PartiPrompts (P2) benchmark. Notably, \textcolor{modelcolor}{\modelname} was favored 54.9\% of the time over \textcolor{compcolor}{Midjourney V5.1}. Preliminary testing indicates that the recently-released \textcolor{compcolor}{Midjourney V5.2} has lower prompt comprehension than its predecessor, but the laborious process of generating multiple prompts hampers the speed of conducting broader tests.}
+  \label{fig:mjcomp_total}
+\end{figure}
+}
+
+
+
+
+\newcommand{\mjcompuno}{
+\begin{figure}[htbp]
+  \centering
+  %
+  \includegraphics[trim=20 0 0 0,clip,width=\textwidth]{img/mj_comp/categories2.pdf}
+  \caption{User preference comparison of \textcolor{modelcolor}{\modelname} (without refinement model) and \textcolor{compcolor}{Midjourney V5.1} across particular text categories. \textcolor{modelcolor}{\modelname} outperforms \textcolor{compcolor}{Midjourney V5.1} in all but two categories.}
+  \label{fig:mjcomp_categories}
+\end{figure}
+}
+
+\newcommand{\mjcompdue}{
+\begin{figure}[htbp]
+  \centering
+  %
+  \includegraphics[width=\textwidth]{img/mj_comp/challenges2.pdf}
+  \caption{Preference comparisons of \textcolor{modelcolor}{\modelname} (with refinement model) to \textcolor{compcolor}{Midjourney V5.1} on complex prompts. \textcolor{modelcolor}{\modelname} either outperforms or is statistically equal to \textcolor{compcolor}{Midjourney V5.1} in 7 out of 10 categories.}
+  \label{fig:mjcomp_challenges}
+\end{figure}
+}
+
+
+
+\newcommand{\sdoldcomp}{
+\renewcommand{\imwidth}{.47\textwidth}
+\renewcommand{\impatha}[1]{img/comp_old_model/sd1-5/##1}
+\renewcommand{\impathb}[1]{img/comp_old_model/sd2-1/##1}
+\renewcommand{\impathc}[1]{img/comp_old_model/sdxl/##1}
+%
+\begin{figure}[htbp]
+\vspace{-1em}
+\centering
+\begin{tabular}{c@{\hspace{5pt}}c@{\hspace{3pt}}c}
+\toprule
+%
+& \footnotesize{\shortstack{\emph{'A propaganda poster depicting a cat dressed as french} \\ \emph{emperor
+napoleon holding a piece of cheese.'}}} & \footnotesize{\shortstack{\emph{'a close-up of a fire spitting dragon,} \\ \emph{cinematic shot.'}}} \\ 
+\midrule
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 1-5}}} &
+\includegraphics[width=\imwidth]{\impatha{catpoleon_row}} &
+\includegraphics[width=\imwidth]{\impatha{dragon_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\sdshort 2-1}}} &
+\includegraphics[width=\imwidth]{\impathb{catpoleon_row}} &
+\includegraphics[width=\imwidth]{\impathb{dragon_row}} \\ %
+
+\rotatebox[origin=l,y=1.2em]{90}{\large{\textbf{\modelname}}} &
+\includegraphics[width=\imwidth]{\impathc{catpoleon_row}} &
+\includegraphics[width=\imwidth]{\impathc{dragon_row}} \\ %
+\bottomrule
+%
+\end{tabular}
+\caption{\label{fig:comp_old_model} Comparison of the output of \modelname with previous versions of \sd. For each prompt, we show 3 random samples of the respective model for 50 steps of the DDIM sampler~\cite{song2020denoising} and cfg-scale $8.0$~\cite{ho2022classifier}. Additional samples in \Cref{fig:comp_old_model_app}. \vspace{-1.0em}
+}
+\end{figure}
+}
+
+
+\newcommand{\failureplot}{
+\renewcommand{\imwidth}{.48\textwidth}
+\renewcommand{\impath}[1]{img/failure/##1}
+%
+\begin{figure}[htbp]
+
+\centering
+\begin{tabular}{c@{\hspace{5pt}}c}
+\toprule
+\footnotesize{\shortstack{\emph{'A close up of a handpalm} \\ \emph{with leaves growing from it.'}}}   &
+\footnotesize{\shortstack{\emph{'An empty fireplace with a television above it.} \\ 
+\emph{The TV shows a lion hugging a giraffe.'}}}   \\
+
+\midrule
+
+\includegraphics[width=\imwidth]{\impath{leave_handpalm}} &
+\includegraphics[width=\imwidth]{\impath{lion_giraffe}} \\ %
+
+\midrule
+\footnotesize{\emph{'A grand piano with a white bench.'}} &
+\footnotesize{\shortstack{\emph{'Three quarters view of a rusty old red pickup} \\ \emph{truck with white doors and a smashed windshield.'}}}   \\
+
+\midrule
+
+\includegraphics[width=\imwidth]{\impath{piano}} &
+\includegraphics[width=\imwidth]{\impath{truck}} \\ %
+
+\bottomrule
+\end{tabular}
+\caption{\label{fig:failure_cases} Failure cases of \modelname despite large improvements compared to previous versions of \sd, the model sometimes still struggles with very complex prompts involving detailed spatial arrangements and detailed descriptions (e.g. top left example). Moreover, hands are not yet always correctly generated (e.g. top left) and the model sometimes suffers from two concepts bleeding into one another (e.g. bottom right example).  All examples are random samples generated with 50 steps of the DDIM sampler~\cite{song2020denoising} and cfg-scale $8.0$~\cite{ho2022classifier}.
+}
+\end{figure}
+}

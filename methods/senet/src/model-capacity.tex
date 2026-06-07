@@ -1,0 +1,21 @@
+\section{Model and Computational Complexity}
+\label{sec:modelcapacity}
+
+For the proposed SE block design to be of practical use, it must offer a good trade-off between improved performance and increased model complexity. 
+To illustrate the computational burden associated with the module, we consider a comparison between ResNet-50 and SE-ResNet-50 as an example.  ResNet-50 requires ${\sim}3.86$ GFLOPs in a single forward pass for a $224\times224$ pixel input image. Each SE block makes use of a global average pooling operation in the \textit{squeeze} phase and two small FC layers in the \textit{excitation} phase, followed by an inexpensive channel-wise scaling operation. In the aggregate, when setting the reduction ratio $r$ (introduced in Section~\ref{subsec:adaptive-recal}) to $16$, SE-ResNet-50 requires ${\sim}3.87$ GFLOPs, corresponding to a $0.26\%$ relative increase over the original ResNet-50. In exchange for this slight additional computational burden, the accuracy of \mbox{SE-ResNet-50} surpasses that of ResNet-50 and indeed, approaches that of a deeper ResNet-101 network requiring ${\sim}7.58$ GFLOPs (Table~\ref{tab:imagenet-results}). 
+
+In practical terms, a single pass forwards and backwards through ResNet-50 takes $190$ ms, compared to $209$ ms for SE-ResNet-50 with a training minibatch of $256$ images (both timings are performed on a server with $8$ NVIDIA Titan X GPUs).  We suggest that this represents a reasonable runtime overhead, which may be further reduced as global pooling and small inner-product operations receive further optimisation in popular GPU libraries. Due to its importance for embedded device applications, we further benchmark CPU inference time for each model: for a $224\times 224$ pixel input image, ResNet-50 takes $164$ ms in comparison to $167$ ms for SE-ResNet-50. We believe that the small additional computational cost incurred by the SE block is justified by its contribution to model performance.
+
+% -----------------------table ------------------------------------
+\input{expe/arc}
+\input{expe/table_res}
+%------------------------------------------------------------------
+
+We next consider the additional parameters introduced by the proposed SE block.  These additional parameters result solely from the two FC layers of the gating mechanism and therefore constitute a small fraction of the total network capacity.  Concretely, the total number introduced by the weight parameters of these FC layers is given by: 
+\vspace{-1mm}
+\begin{equation}
+\label{model_capacity}
+\frac{2}{r} \sum_{s=1}^S N_s \cdot {C_s}^2,
+\end{equation}
+where $r$ denotes the reduction ratio, $S$ refers to the number of stages (a stage refers to the collection of blocks operating on feature maps of a common spatial dimension), $C_s$ denotes the dimension of the output channels and $N_s$ denotes the number of repeated blocks for stage $s$ (when bias terms are used in FC layers, the introduced parameters and computational cost are typically negligible).
+\mbox{SE-ResNet-50} introduces \mbox{${\sim}2.5$ million} additional parameters beyond the \mbox{${\sim}25$ million} parameters required by \mbox{ResNet-50}, corresponding to a ${\sim}10\%$ increase. In practice, the majority of these parameters come from the final stage of the network, where the excitation operation is performed across the greatest number of channels. However, we found that this comparatively costly final stage of SE blocks could be removed at only a small cost in performance (${<}0.1\%$ top-$5$ error on ImageNet) reducing the relative parameter increase to ${\sim}4\%$, which may prove useful in cases where parameter usage is a key consideration (see Section~\ref{subsec:ablation-stages} and~\ref{subsection:role-of-excitation} for further discussion).

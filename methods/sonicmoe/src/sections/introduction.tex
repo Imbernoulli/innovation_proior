@@ -1,0 +1,147 @@
+%\cite{brown2020languagemodelsfewshotlearners} have shown that scaling up large language models significantly improves task-agnostic few-shot performance. However, training larger language models with dense MLP layers is expensive due to large FLOPs requirements \citep{fedus2022switchtransformersscalingtrillion}.
+Mixture of Experts (MoE) \citep{shazeer2017outrageouslylargeneuralnetworks} models have emerged as a key technique for scaling up parameters \citep{deepseekv3insights,kimiteam2025kimik2openagentic} without increasing the training computational requirements. Modern transformers often have layers comprised of a sequence mixer block (e.g. Multi-head Attention \citep{vaswani2023attentionneed}), followed by a channel mixer block (e.g. dense MLPs) where MoEs are an excellent substitute for dense MLPs for FLOPs efficiency. An MoE block is typically composed of a token router and multiple smaller and often equal-sized subnetworks, called ``experts". MoEs can reduce FLOPs consumption during training by only activating a subset of all experts per token. However, reducing FLOPs does not directly translate to better hardware utilization since MoE computation features more dynamic IO accesses when each expert needs to gather tokens from different positions, and also scatter the results back to the original positions. Moreover, such hardware-unfriendliness becomes worse as experts become more \emph{granular} (experts have smaller intermediate sizes) and \emph{sparser} (experts are increased while keeping the number of activated experts constant), as shown in Table~\ref{tab:moe-scaling}.
+
+% \wentao{xinyu: fine-grained moe has been shown beneficial ... but the problem is expert +, local activation +;  intensity --, we wanna solve this}
+
+% For example, recent MoE models such as Kimi K2 \citep{kimiteam2025kimik2openagentic} have scaled up to 1T+ parameters. 
+
+
+
+
+% MoE layers exploit sparse computation thus reducing FLOPs for the same number of parameters.
+
+% \tri{This paragraph needs to go before the 2nd paragraph. The real problem the paper tackles is sparse and granular MoEs, not MoEs in general. So this paragraph presents the problem, and 2nd paragraph has some of the previous approaches and why they're falling short}
+
+%Expert granularity, defined as the ratio between the model embedding dimension and each expert's intermediate size, is of recent interest among MoE community.
+% \wentao{xinyu: why we need to talk about sequence mixer at all? we are only doing MoE}
+
+% \wentao{xinyu: does not talk about }
+
+MoE scaling laws~\citep{clark2022unified,krajewski2024scaling,tian2025towards} predict
+better model quality per FLOP with increasing expert granularity (ratio between the model's embedding dimension and each expert's intermediate size) and sparsity.
+Recent MoE models like DeepSeek V3 \citep{deepseekai2025deepseekv3technicalreport}, Qwen3 MoE \citep{qwen3_2024} and gpt-oss-120b \citep{openai2025gptoss120bgptoss20bmodel}, have demonstrated the superior performance of ``fine-grained" MoEs over ``coarse-grained" MoEs at scale. Besides granularity, the pursuit of MoEs with better model quality while keeping computational requirements constant has also led to modern MoEs becoming sparser. For example, Kimi K2 \citep{kimiteam2025kimik2openagentic} has the same amount of activated parameters as DeepSeek V3 \citep{deepseekai2025deepseekv3technicalreport} but much larger total parameter count. Overall, granularity and sparsity for MoEs have only increased over time as shown in Table~\ref{tab:moe-scaling}. We note that the pursuit of granularity and sparsity is also adopted by recent alternative architectures to MoE such as PEER \citep{he2024mixture}, Memory Layers \citep{berges2024memory}, and Ultra-Mem \citep{huangultra}. 
+
+% \wentao{xinyu: reader cannot understand where does dynamic IO come from}
+
+
+Though more granular and sparser MoEs increase model quality per FLOP, they suffer from hardware inefficiency due to: (1) larger activation memory footprint for granular MoE models as activation size typically scales linearly with the number of activated experts, (2) lower arithmetic intensity and increased IO cost due to granular experts and (3) wasted computations due to tile quantization effects of grouped GEMM for highly sparse MoEs. The high granularity and sparsity both push MoE training towards the memory-bound regime, requiring carefully designed MoE kernels to hide the increased IO costs. Existing state-of-the-art MoE kernels such as ScatterMoE~\citep{tan2024scattered} and MoMoE~\citep{costin2025momoe} are not designed to handle these high IO costs and they suffer significant training throughput degradation. 
+
+
+% LLMs are generally trained on modern accelerators like GPUs \citep{nvidia2022_h100} and TPUs \citep{jouppi2017indatacenterperformanceanalysistensor, jouppi2023tpuv4opticallyreconfigurable} which are optimized for dense general-purpose matrix multiplication (GEMM) operations. MoE can be consider8ed as performing a block-sparse matrix multiplication with tokens gathered from and scattered into different positions, and such dynamic nature imposes challenges on achieving the peak hardware throughput on GPUs in practice. For example, a common MoE implementation involves calling the Grouped GEMM API from a kernel templating library like CUTLASS \citep{nvidia_cutlass}. However, using these APIs requires pre-gathering the tokens by a separate pre-processing kernel which incurs significant IO overhead and GPU memory usage. Besides GPUs, TPUs and the XLA compiler also require statically known shapes for training but MoE computation relies on dynamic shapes which creates challenges for a hardware-friendly MoE kernel design \citep{jouppi2017indatacenterperformanceanalysistensor, jouppi2023tpuv4opticallyreconfigurable, gale2023megablocks}.
+
+% \tri{You need a paragraph on "what are previous approaches and how they're falling short". It should be clear what the baselines are. If you don't make it clear, the response from reviewers / audience is always "why didn't you compare to XYZ"}
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\linewidth]{figures/new_teasor.pdf}
+    \vspace{-2em}
+    \caption{\small \Algname's per-layer activation memory footprint (left) stays constant even when expert granularity ($d/n$ where $d$ is the embedding dimension and $n$ is the expert intermediate dimension) increases, and is 20\%-159\% more memory-efficient than other baselines. \Algname's forward computation throughput reaches an average of 88\% of the upper bound (cuBLAS BMM + activation + cuBLAS BMM + aggregation) on both H100 (mid) and B300 (right) GPUs. Note that the cuBLAS upper bound baseline does \emph{not} include the router computation. Here we use a 30B MoE configuration with microbatch size of 32768 tokens for both H100 and B300 GPUs, and we vary the activated experts / total number of experts as 2/32, 4/64, 8/128, and 16/256 from left to right.}
+    \label{fig:teasor}
+\end{figure}
+
+% \wentao{is we propose repeating the summary of contribution?}
+ We propose to co-design the MoE architecture with a GPU kernel tailored to NVIDIA Blackwell and Hopper generation GPUs and a novel routing method. (1) We derive an algorithm to compute the MoE backward pass more efficiently leading to a much smaller activation memory footprint that does not increase with increasing expert granularity. (2) We leverage new hardware features on Blackwell and Hopper GPUs to overlap memory IO with computation which can benefit all MoEs, and, in particular, fine-grained MoEs. (3) We propose a hardware-aware token rounding routing method where the routed number of tokens to an expert is always a multiple of the GEMM tile size. Using extensive experiments, we show that token rounding routing is 16\% faster than the baseline token-choice routing when we scale up the number of experts 4 times from a 30B MoE. We also validate that TR preserves the MoE inference quality on 1.8B parameter scale. With (1) and (2), we can increase the end-to-end training throughput of a 7B MoE model by 42\% (without changing the top-$K$ token choice routing). Our token rounding routing method further improves training throughput by 16\% when we scale up the number of experts without any accuracy loss.
+% \mayank{we ran 2b as the largest model right? } \wentao{yes}
+% \wentao{Andrew: I think a table with variables and notation at beginning would be nice. Some of the figures are hard to read as it requires thinking about what d, n, other letters mean. Particularly figure 1 at the beginning is the first thing readers will look at so its important to not “lose” people at start There are the two dimensions of expert weights (model dim, expert dim), total number of experts, top-k, and total tokens. These different values should probably be clearly specified to avoid confusion}
+
+% Such design will push us towards the Pareto-frontier of MoE model quality and wall-clock training time. 
+
+
+
+
+
+
+% more granular experts increases IO cost even higher for training which makes it hard to realize the theoretical expected speedup. %undermines the training efficiency measured at GPU wall-clock time.
+
+% As MoEs become sparser and more granular, the gap between the theoretical efficiency and the practical hardware efficiency is only exacerbated. More granular experts have been shown to empirically perform better while keeping the total parameters \citep{krajewski2024scaling}. However, higher granularity and sparsity leads to 3 specific problems: 1) worse hardware utilization due to the lower arithmetic intensity and increased IO costs by granular experts, 2) larger activation memory footprint for granular MoE models and 3) wasted computations due to tile quantization effects for highly sparse MoEs. 
+
+
+
+% This is also made worse on modern accelerators like GPUs and TPUs where the IO bandwidth is much lower than the tensorcore (MXU on TPU) throughput.
+
+
+
+
+
+
+% \tri{It takes you too long to get to MoE. The 1st sentence adds no information. Why are you citing Llama3, PaLM? Those have nothing to do w the problem in this paper. In 1-2 sentences, get to MoE, which is great FLOPS wise but inefficient on the hardware. It's not clear what the problem is. Be specific. Hardware effiency for granular and sparse MoEs? What would an ideal approach satisfy: fast, no accuracy loss. If you don't set these things up, readers will not know how to evaluate your method.}
+
+
+
+
+
+
+\textbf{Summary of contributions.} We propose \Algname, a hardware and model architecture co-design solution to address MoE training efficiency problems, making the following contributions:
+
+%\reallysquishlist
+% \mayank{Ion: can we come up with catchy names for the bullet points? Feels too generic. Why would people remember this paper after 5 years? What is the special thing that we are doing that is hard and why nobody did it before?}
+\begin{itemize}
+    \item \textbf{MoE training with minimum possible activation memory footprint without increasing FLOPs: } We analyze the impact of MoE granularity on the MoE layer's forward and backward passes and observe that increasing MoE granularity while maintaining constant FLOPs leads to a linear increase in activation memory required by the backward pass. Leveraging this observation, we carefully redesign the computation graph to avoid caching the activations for the router gradient computation while maintaining the mathematical equivalence to the original MoE formulation. As a result, for a fine-grained 7B MoE, \Algname\ reduces activation memory usage per layer by up to 45\% on H100 GPUs.
+    
+    \item \textbf{Efficient MoE kernel that overlaps IO with computation to yield SOTA training throughput:} We show that increasing both granularity and sparsity leads to MoEs becoming increasingly memory bandwidth bound. To alleviate this bottleneck, we exploit the asynchrony of the GEMM and IO operations by overlapping them to maximize throughput. For the same fine-grained 7B MoE model on H100 GPUs, our approach increases the \tflops~by 43\% on the forward pass compared to a highly optimized DeepGEMM baseline, and by 83\% and 115\% on the backward pass compared to the state-of-the-art MoE baselines ScatterMoE and MoMoE, respectively. On B300 GPUs, our approach also achieves 25\% more \tflops~on the forward pass and 15\% on the backward pass compared to a highly optimized DeepGEMM baseline on OLMoE-sized 7B MoE models. To evaluate the performance of these techniques, we conduct an extensive performance analysis through comprehensive kernel-level profiling and an IO-aware exploration of the MoE computational paths.
+    
+    
+    % Our kernel design also makes no assumption on the routing method and thus can be coupled with any routing strategy with similar speed.
+
+    
+   % optimizes IO by overlapping it with GEMM computations. We show that exploiting such  is critical to MoE training throughput. % with pingpong-style grouped GEMM, asynchronous epilogue load \& store, warp-cooperative index prefetching, an efficient top-$K$ computation, and Longest-Processing-Time (LPT) workload scheduling across streaming processors (SMs)
+    % \tri{(fixed) This is too many low level things. What are the big ideas? What's the insight? "Avoid mem IO by gather instead of duplicate, and hide mem latency by pingpong"}. 
+    
+    %can also be equipped with an arbitrary routing method with similar GEMM TFLOPS and activation function for the base architecture of MoE.
+    % \item \textbf{Highly-efficient MoE kernel design:} We analyze the impact of MoE granularity to the MoE layer's forward and backward pass, and propose a carefully designed MoE GPU kernel with pingpong-style grouped GEMM, asynchronous epilogue load \& store, warp-cooperative index prefetching, an efficient top-$K$ computation, and Longest-Processing-Time (LPT) workload scheduling across streaming processors (SMs) \tri{This is too many low level things. What are the big ideas? What's the insight? "Avoid mem IO by gather instead of duplicate, and hide mem latency by pingpong"}. Our implementation reduces activation memory usage by \wentao{todo: ???\%} and for an 120B training scale configuration per layer, improves the TFLOPS by \wentao{todo: ???}. Our kernel design also makes no assumption on the routing method and thus can be coupled with any routing strategy.%can also be equipped with an arbitrary routing method with similar GEMM TFLOPS and activation function for the base architecture of MoE.
+    
+    \item \textbf{Token rounding routing that eliminates wasted FLOPs from sparse MoEs:}
+    We introduce a drop-in routing algorithm that rounds the per-expert token counts to multiples of the tile size (e.g., 128) used by grouped GEMM in MoE kernels. This rounding reduces compute wasted on padding while preserving the original token-to-expert assignment as much as possible. The algorithm ensures that, for each expert, the maximum deviation from the original top-$K$ token-choice result is bounded by one tile. This method effectively eliminates padding waste in grouped GEMM while maintaining the same total number of tokens in expectation, and it delivers robust token-choice accuracy even under highly sparse MoE training regimes. We validate the performance of this token-rounding strategy in a 1.4B-parameter sparse training setting, demonstrating that its compute throughput consistently exceeds that of the vanilla top-$K$ token-choice routing. In highly sparse regimes, the improvement reaches up to 16\% higher TFLOPS for end-to-end MoE computation on H100 GPUs.
+    %We introduce a drop-in routing algorithm that \emph{rounds} the per-expert token count to the tile size (e.g., 128) multiples used by grouped GEMM in MoE kernel. This helps to reduce wasted compute by padding while prioritizing the original token-choice expert selection. This routing algorithm  favors token choice result such that for each expert, the maximum deviation from token choice top-$K$ result is at most 1 tile. This routing method eliminates padding waste in grouped GEMM while maintaining the same total tokens in expectation, and has robust token-choice inference quality even under sparse MoE training regime. We validate the performance of this token rounding strategy in a highly sparse training setting at 1.4B parameter scale. We also show that token rounding's compute throughput over vanilla token-choice top-$K$ is consistently larger once we enter highly sparse MoE training regime and can make 18\% TFLOPS difference on kernel runtime. 
+
+    % \tri{Need more info on the method. What's the intuition. Just a couple of sentences.} 
+
+
+%\squishend
+\end{itemize}
+
+
+% \tri{Need eval numbers here.}
+
+% \tri{After reading these 2 bullet points, I still don't know what your insights are. You're telling me you did things to make MoE fast, but idk what you did and why you did it. What's the bottleneck? There's stuff in the body that should show up in the intro like arithmetic intensity. }
+
+We release \Algname, mainly written in CuTe-DSL~\citep{cutedsl} with a PyTorch interface and a permissive license to benefit researchers and practitioners. The GitHub link is {\small \url{https://github.com/Dao-AILab/sonic-moe}}. A preliminary version of this paper is accepted to ICLR'26: {\small \url{https://openreview.net/pdf?id=KzTJ1raEgB}}.
+
+
+% without hurting the downstream task performance due to no dropping of tokens
+% , making the MoE ``dropless"
+
+% There has been a growing interest to solve these challenges by writing fast customized kernels for MoE training. 
+
+
+
+
+ %\ion{it only has about 55\% more parameters so I wouldn't say "much larger"; maybe "significantly larger"}
+
+
+% Increasing sparsity leads to poor arithmetic intensity. In the extremely sparse regime, the tile quantization effects (wasted extra compute due to padding GEMM tiles) becomes non-negligible and can contribute over 10\% of the the kernel's runtime.
+
+
+% Such induced sparsity can significantly reduce the computation costs compared to dense transformer models of the same size. 
+
+% \wentao{This should be put into sec 2 or 3, not 1. Sec 1 shouldn't discuss low-level problem.}
+% A MoE block usually has a token router and multiple smaller subnetworks, called ``experts". The router is responsible for dispatching tokens to the experts which are subsequently used by the specific expert for computation. The outputs from all experts in the layer are then aggregated and passed onto the next layer. 
+
+
+
+% The most widely used routing strategy by MoE models is token-choice routing where each token selects the relevant experts to be routed to. Other routing strategies such as expert-choice routing have been proposed to avoid expert imbalance; however these often result in training and inference time mismatch. For most of this paper, we focus on optimizing MoE computation with token-choice routing; however our approach is agnostic to the routing strategy. For token-choice routing, the MoE layer's forward computation can be broken down into a dynamic token dispatch (routing), multiple variable sized GEMM (size depends on the number of tokens routed to each expert) and token combination (token reduction) step during the MoE forward computation. Naively implementing MoEs in high level deep learning frameworks like PyTorch can incur significant activation memory cost and runtime.\\
+
+% Another problem with MoE computation is load imbalance amongst the experts since the token routing doesn't ensure uniform load balance. \mayank{write something about aux-loss} Each expert sub-network in the MoE model can receive a different number of tokens leading to irregular and inefficient device utilization. To address the issue, the Switch Transformer \mayank{cite Switch transformer} proposed to set a implement fixed capacity experts during training. However, this creates 2 new problems: 1) If an expert receives fewer tokens than its capacity, the tokens are padded to the expert capacity which leads to wasted computations and 2) if the tokens exceed the expert's capacity, they are dropped and skip computation which can cause suboptimal model training and can hurt downstream task accuracy. \todo{cite Megablocks}\\
+
+
+% \wentao{this should be in related works}
+%  A more efficient approach than using a naive PyTorch \citep{paszke2019pytorchimperativestylehighperformance} implementation is calling the Grouped GEMM API from an optimized library like CUTLASS \citep{nvidia_cutlass}. However, using these APIs requires pre-gathering the tokens which is done by a separate pre-processing kernel resulting in a lot of IO overhead and GPU memory usage. There has been a growing interest to solve these challenges by writing fast customized kernels for MoE training. One such effort is Megablocks \citep{gale2023megablocks} which frames the MoE computations as block-sparse matrix multiplication. This avoids both padding tokens and dropping tokens entirely. This approach significantly reduces wasted FLOPs due to padding without hurting the downstream task performance due to no dropping of tokens, making the MoE ``dropless". The proposed approach however, introduces increased implementation complexity due to the intricacies of implementing block-sparse matrix multiplication kernels.\\
+
+
+% \wentao{The training efficiency of MoE and its challenges to granularity and sparsity}
+% More recently, ScatterMoE \citep{tan2024scattered} has been proposed as an alternative approach. It formulates MoE computation as a Grouped GEMM with a fused group prologue. This is followed by an activation function (typically SwiGLU \citep{shazeer2020glu}) and a grouped output projection. The output is then reduced using a separate kernel. The ScatterMoE formulation of MoEs not only gains a speedup and memory savings compared to Megablocks, but also simplifies the implementation complexity tremendously. Their implementation is also self-contained unlike Megablocks which relies heavily on STK library for Block-Sparse matrix multiplication. The Megablocks implementation also creates complication for running GEMM with transposed inputs which is necesarry in the backward computation.
+
+% However, both ScatterMoE \citep{tan2024scattered} and Megablocks \citep{gale2023megablocks} use higher level DSLs like Triton \citep{triton} to implement their kernels which doesn't expose the full hardware features. For example, on modern GPUs it is possible to use asynchronous load/store instructions to fetch input tiles for GEMM while the matrix multiply units (tensorcores on GPUs) is running the GEMM for the previous tile allowing to hide IO overhead with computation. It is important to use such asynchrony on modern GPUs to achieve close to peak compute throughput as demonstrated by FlashAttention-3 \citep{shah2024flashattention3fastaccurateattention}. Previous approaches also don't fuse the pointwise activation function with the MoE GEMM computation leading to unnecesarry read and write operations for the activation computation which is trivially fuseable. ScatterMoE \citep{tan2024scattered} also doesn't fuse the group operation in the backward pass with the GEMM operations leading to an extra grouping kernel launch. This not only increases the intermediate memory usage during the backward pass but also adds a significant IO overhead.
+% However, both ScatterMoE \citep{tan2024scattered} and Megablocks \citep{gale2023megablocks} use higher level DSLs like Triton \citep{triton} to implement their kernels which doesn't expose the full hardware features. For example, on modern GPUs it is possible to use asynchronous load/store instructions to fetch input tiles for GEMM while the matrix multiply units (tensorcores on GPUs) is running the GEMM for the previous tile allowing to hide IO overhead with computation. It is important to use such asynchrony on modern GPUs to achieve close to peak compute throughput as demonstrated by FlashAttention-3 \citep{shah2024flashattention3fastaccurateattention}. Previous approaches also don't fuse the pointwise activation function with the MoE GEMM computation leading to unnecesarry read and write operations for the activation computation which is trivially fuseable. ScatterMoE \citep{tan2024scattered} also doesn't fuse the group operation in the backward pass with the GEMM operations leading to an extra grouping kernel launch. This not only increases the intermediate memory usage during the backward pass but also adds a significant IO overhead.
+
+
+

@@ -1,0 +1,25 @@
+\section{Related work}
+
+\textbf{Image Composition. }
+Image composition techniques \cite{wu2019gp,cong2020dovenet,lin2018st} aim to clone a given subject into a new background such that the subject melds into the scene. To consider composition in novel poses, one may apply 3D reconstruction techniques \cite{mildenhall2020nerf,Barron_2021_ICCV,boss2022samurai,verbin2021refnerf,poole2022dreamfusion} which usually works on rigid objects and require a larger number of views. Some drawbacks include scene integration (lighting, shadows, contact) and the inability to generate novel scenes. In contrast, our approach enable generation of subjects in novel poses and new contexts.
+
+\textbf{Text-to-Image Editing and Synthesis. }
+Text-driven image manipulation has recently achieved significant progress using GANs
+~\cite{goodfellow2014generative,brock2018large,karras2021alias,karras2019style,karras2020analyzing} combined with image-text representations such as CLIP~\cite{radford2021learning}, yielding realistic manipulations using text~\cite{patashnik2021styleclip,gal2021stylegan, xia2021tedigan, abdal2021clip2stylegan,bau2021paint,mokady2022self}.
+These methods work well on structured scenarios (e.g. human face editing) and can struggle over diverse datasets where subjects are varied.
+Crowson et al. \cite{crowson2022vqgan} use VQ-GAN \cite{esser2021taming} and train over more diverse data to alleviate this concern.
+Other works~\cite{avrahami2022blended, kim2022diffusionclip} exploit the recent diffusion models \cite{ho2020denoising,sohl2015deep,song2019generative,ho2020denoising,song2020denoising,rombach2021highresolution,nichol2021improved,song2020improved,palette,saharia2021image}, which achieve state-of-the-art generation quality over highly diverse datasets, often surpassing GANs~\cite{dhariwal2021diffusion}.
+While most works that require only text are limited to global editing \cite{crowson2022vqgan, kwon2021clipstyler}, 
+Bar-Tal et al.~\cite{bar2022text2live} proposed a text-based localized editing technique without using masks, showing impressive results. While most of these editing approaches allow modification of global properties or local editing of a given image, none enables generating novel renditions of a given subject in new contexts.
+
+There also exists work on text-to-image synthesis \cite{ding2021cogview,hinz2020semantic,tao2020df, li2019controllable,li2019object,qiao2019learn,qiao2019mirrorgan,ramesh2021zero,zhang2018photographic,crowson2022vqgan, gafni2022make, rombach2021highresolution,jain2021dreamfields}. Recent large text-to-image models such as Imagen~\cite{saharia2022photorealistic}, DALL-E2~\cite{ramesh2022hierarchical}, Parti~\cite{yu2022scaling}, CogView2~\cite{ding2022cogview2} and Stable Diffusion~\cite{rombach2021highresolution} demonstrated unprecedented semantic generation. These models do not provide fine-grained control over a generated image and use text guidance only.
+Specifically, it is challenging or impossible to preserve the identity of a subject consistently across synthesized images.
+
+\textbf{Controllable Generative Models. }
+There are various approaches to control generative models, where some of them might prove to be viable directions for subject-driven prompt-guided image synthesis.
+Liu et al.~\cite{liu2019more} propose a diffusion-based technique allowing for image variations guided by reference image or text.
+To overcome subject modification, several works~\cite{nichol2021glide, avrahami2022blendedlatent} assume a user-provided mask to restrict the modified area. Inversion~\cite{choi2021ilvr,dhariwal2021diffusion,ramesh2022hierarchical} can be used to preserve a subject while modifying context. Prompt-to-prompt~\cite{hertz2022prompt} allows for local and global editing without an input mask. These methods fall short of identity-preserving novel sample generation of a subject.
+
+In the context of GANs, Pivotal Tuning~\cite{roich2021pivotal} allows for real image editing by finetuning the model with an inverted latent code anchor, and Nitzan et al.~\cite{nitzan2022mystyle} extended this work to GAN finetuning on faces to train a personalized prior, which requires around 100 images and are limited to the face domain. Casanova et al.~\cite{casanova2021instance} propose an instance conditioned GAN that can generate variations of an instance, although it can struggle with unique subjects and does not preserve all subject details. 
+ 
+Finally, the concurrent work of Gal \etal\cite{gal2022image} proposes a method to represent visual concepts, like an object or a style, through new tokens in the embedding space of a frozen text-to-image model, resulting in small personalized token embeddings. While this method is limited by the expressiveness of the frozen diffusion model, our fine-tuning approach enables us to embed the subject within the model's output domain, resulting in the generation of novel images of the subject which preserve its key visual features.

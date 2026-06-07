@@ -1,0 +1,34 @@
+\section{Early Stopping Criterion}
+\label{sec:justifying-early-stopping}
+
+\begin{figure}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/vanilla/legend_run_validate_loss4}
+\includegraphics[width=.32\textwidth]{graphs/mnist/lenet/vanilla/run_validate_loss1}%
+\includegraphics[width=.32\textwidth]{graphs/mnist/lenet/vanilla/run_validate_loss2}%
+\includegraphics[width=.32\textwidth]{graphs/mnist/lenet/vanilla/run_validate_loss3}
+\caption{The validation loss data corresponding to Figure \ref{fig:oneshot_same_init_convergence}, i.e., the validation loss as training progresses for several different levels of pruning in the iterative pruning experiment. Each line is the average of
+five training runs at the same level of iterative pruning; the labels are the percentage of weights from the original network that remain after pruning.
+Each network was trained with Adam at a learning rate of 0.0012. The left graph shows winning tickets that learn increasingly faster than the original
+network and reach lower loss. The middle graph shows winning tickets that learn increasingly slower after the fastest
+early-stopping time has been reached. The right graph
+contrasts the loss of winning tickets to the loss of randomly reinitialized networks.}
+\label{fig:appendix-loss}
+\end{figure}
+
+Throughout this paper, we are interested in measuring the speed at which networks learn.
+As a proxy for this quantity, we measure the iteration at which an early-stopping criterion would end training.
+The specific criterion we employ is the iteration of minimum validation loss. In this Subsection, we further explain that criterion.
+
+Validation and test loss follow a pattern where they decrease early in the training process, reach a minimum, and then begin to increase as
+the model overfits to the training data. Figure \ref{fig:appendix-loss} shows an example of the validation loss as training progresses; these graphs use Lenet,
+iterative pruning, and Adam with a learning rate of 0.0012 (the learning rate we will select in the following subsection). This Figure
+shows the validation loss corresponding to the test accuracies in Figure \ref{fig:oneshot_same_init_convergence}.
+
+In all cases, validation loss initially drops, after which it forms a clear bottom and then begins increasing again.
+Our early-stopping criterion identifies this bottom. We consider networks that reach this moment sooner to have learned ``faster.''
+In support of this notion, the ordering in which each experiment meets our early-stopping criterion in Figure \ref{fig:oneshot_same_init_convergence} is the same order in which each experiment reaches a particular test accuracy
+threshold in Figure \ref{fig:oneshot_same_init_convergence}.
+
+Throughout this paper, in order to contextualize this learning speed, we also present the test accuracy of the network at the iteration of minimum validation loss.
+In the main body of the paper, we find that winning tickets both arrive at early-stopping sooner and reach higher test accuracy at this point.

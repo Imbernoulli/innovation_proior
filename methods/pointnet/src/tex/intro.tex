@@ -1,0 +1,45 @@
+\label{sec:intro}
+
+% \todo{Compress, Add more global picture. Deadline: Monday 5PM. Owner: Hao, Charles}
+
+In this paper we explore deep learning architectures capable of reasoning about 3D geometric data such as point clouds or meshes. Typical convolutional architectures require highly regular input data formats, like those of image grids or 3D voxels, in order to perform weight sharing and other kernel optimizations. Since point clouds or meshes are not in a regular format, most researchers typically transform such data to regular 3D voxel grids or collections of images (e.g, views) before feeding them to a deep net architecture. This data representation transformation, however, renders the resulting data unnecessarily voluminous --- while also introducing quantization artifacts that can obscure natural invariances of the data. 
+
+For this reason we focus on a different input representation for 3D geometry using simply point clouds -- and name our resulting deep nets {\em PointNets}. Point clouds are simple and unified structures that avoid the combinatorial irregularities and complexities of meshes, and thus are easier to learn from. The PointNet, however, still has to respect the fact that a point cloud is just a set of points and therefore invariant to permutations of its members, necessitating certain symmetrizations in the net computation. Further invariances to rigid motions also need to be considered. 
+
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{fig/teaser.pdf}
+    \caption{\textbf{Applications of PointNet.} We propose a novel deep net architecture that consumes raw point cloud (set of points) without voxelization or rendering. It is a unified architecture that learns both global and local point features, providing a simple, efficient and effective approach for a number of 3D recognition tasks.}
+    \label{fig:teaser}
+\end{figure}
+
+Our PointNet is a unified architecture that directly takes point clouds as input and outputs either class labels for the entire input or per point segment/part labels for each point of the input. % Further problems such as shape correspondences can also use the same machinery.
+The basic architecture of our network is surprisingly simple as in the initial stages each point is processed identically and independently. In the basic setting each point is represented by just its three coordinates $(x, y, z)$. Additional dimensions may be added by computing normals and other local or global features. %For example, once we compute a global descriptor using our basic PointNet, we can append its coordinates as additional dimensions to each point (same for all the points) to provide global context and repeat the net computation for a second time.  
+% The PointNet expands the provided attributes of each point into a much larger set of learned scalar functions through a multi-layer perceptron and then aggregates the computed values for each function through a symmetric computation, guaranteeing invariance to permutations of the point set. 
+
+Key to our approach is the use of a single symmetric function, max pooling. Effectively the network learns a set of optimization functions/criteria that select interesting or informative points of the point cloud and encode the reason for their selection. The final fully connected layers of the network aggregate these learnt optimal values into the global descriptor for the entire shape as mentioned above (shape classification) or are used to predict per point labels (shape segmentation). 
+
+Our input format is easy to apply rigid or affine transformations to, as each point transforms independently. Thus we can add a data-dependent spatial transformer network that attempts to canonicalize the data before the PointNet processes them, so as to further improve the results. 
+
+We provide both a theoretical analysis and an experimental evaluation of our approach. We show that our network can approximate any set function that is continuous. More interestingly, it turns out that our network learns to summarize an input point cloud by a sparse set of key points, which roughly corresponds to the skeleton of objects according to visualization. The theoretical analysis provides an understanding why our PointNet is highly robust to small perturbation of input points as well as to corruption through point insertion (outliers) or deletion (missing data).
+
+On a number of benchmark datasets ranging from shape classification, part segmentation to scene segmentation, we experimentally compare our PointNet with state-of-the-art approaches based upon multi-view and volumetric representations. Under a unified architecture, not only is our PointNet much faster in speed, but it also exhibits strong performance on par or even better than state of the art. 
+
+
+The key contributions of our work are as follows:
+\bitem
+\item We design a novel deep net architecture suitable for consuming unordered point sets in 3D;
+\item We show how such a net can be trained to perform 3D shape classification, shape part segmentation and scene semantic parsing tasks;
+\item We provide thorough empirical and theoretical analysis on the stability and efficiency of our method;
+\item We illustrate the 3D features computed by the selected neurons in the net and develop intuitive explanations for its performance.
+\eitem
+
+The problem of processing unordered sets by neural nets is a very general and fundamental problem -- we expect that our ideas can be transferred to other domains as well.
+
+\begin{figure*}[th!]
+    \centering
+    \includegraphics[width=0.9\linewidth]{fig/pointnet_fixed.pdf}
+    \caption{\textbf{PointNet Architecture.} The classification network takes $n$ points as input, applies input and feature transformations, and then aggregates point features by max pooling. The output is classification scores for $k$ classes. The segmentation network is an extension to the classification net. It concatenates global and local features and outputs per point scores. ``mlp'' stands for multi-layer perceptron, numbers in bracket are layer sizes. Batchnorm is used for all layers with ReLU. Dropout layers are used for the last mlp in classification net.}
+    \label{fig:pointnet_arch}
+\end{figure*}

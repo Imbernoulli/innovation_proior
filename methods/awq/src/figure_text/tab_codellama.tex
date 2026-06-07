@@ -1,0 +1,30 @@
+    
+
+
+
+\begin{table}
+    \small
+    \setlength{\tabcolsep}{2pt}
+    
+    \centering
+    \begin{tabular}{llcccccc}
+        \toprule
+        \textbf{MBPP (7B)} & pass@1 & pass@10 \\  \midrule
+    FP16 & 38.53 & 49.77 \\ \midrule
+    RTN & 37.51 & 48.49  \\ 
+    GPTQ & 31.97 & 44.75  \\ %
+    \methodshort & \textbf{40.64} & \textbf{49.25}  \\ 
+        \bottomrule
+    \end{tabular}
+    \begin{tabular}{llcccccc}
+        \toprule
+        \textbf{GSM8K} & 7B & 13B & 70B \\  \midrule
+    FP16  & 13.87 & 26.16 & 56.41 \\ \midrule
+    RTN & 11.07 & 21.23 & 53.98 \\ 
+    GPTQ & 12.13 & 24.26 & 56.03  \\ %
+    \methodshort & \textbf{13.57} & \textbf{25.25} & \textbf{56.40} \\ 
+        \bottomrule
+    \end{tabular}
+    \caption {INT4-g128 quantization results of CodeLlama-7b-Instruct-hf on MBPP dataset and Llama-2 (7B/13B/70B) on GSM8K dataset. AWQ outperforms existing methods on programming and math datasets, demonstrating the generability to different scenarios and evaluation settings. Notably, AWQ under the INT4-g128 configuration demonstrates comparable performance to the original FP16 model across both datasets.}
+    \label{tab:code_and_math}
+\end{table}

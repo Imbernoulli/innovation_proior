@@ -1,0 +1,367 @@
+\newcommand{\h}{0mm}
+\newcommand{\hh}{0mm}
+\newcommand{\hhh}{0mm}
+\newcommand{\vv}{0mm}
+\newcommand{\vvv}{0mm}
+\newcommand{\s}{\hphantom{0}}
+
+\newcommand{\figarch}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=1.015\linewidth]{figures/Network/network.pdf}\\
+\makebox[0.25\linewidth][c]{\footnotesize{(a) Traditional}}\hfill%
+\makebox[0.75\linewidth][c]{\footnotesize{(b) Style-based generator}}\\
+\vspace{1.9mm}
+\caption{While a traditional generator \cite{Karras2017} feeds the latent code though the input layer only, we first map the input to an intermediate latent space $\WW$, which then controls the generator through adaptive instance normalization (AdaIN) at each convolution layer. Gaussian noise is added after each convolution, before evaluating the nonlinearity. Here ``A'' stands for a learned affine transform, and ``B'' applies learned per-channel scaling factors to the noise input. The mapping network $f$ consists of 8 layers and the synthesis network $g$ consists of 18 layers\,---\,two for each resolution ($4^2-1024^2$). The output of the last layer is converted to RGB using a separate $1\times1$ convolution, similar to Karras~et~al.~\cite{Karras2017}. Our generator has a total of 26.2M trainable parameters, compared to 23.1M in the traditional generator.
+}
+\label{fig:arch}
+\vspace{-1mm}
+\end{figure}
+}
+
+\newcommand{\figFFHQ}{
+\begin{figure*}
+\centering
+\renewcommand{\h}{0.141\linewidth}
+\includegraphics[width=\h]{figures/FFHQ/ffhq1.\extt}\hfill%
+\includegraphics[width=\h]{figures/FFHQ/ffhq2.\extt}\hfill%
+\includegraphics[width=\h]{figures/FFHQ/ffhq3.\extt}\hfill%
+\includegraphics[width=\h]{figures/FFHQ/ffhq4.\extt}\hfill%
+\includegraphics[width=\h]{figures/FFHQ/ffhq5.\extt}\hfill%
+\includegraphics[width=\h]{figures/FFHQ/ffhq6.\extt}\hfill%
+\includegraphics[width=\h]{figures/FFHQ/ffhq7.\extt}\hfill%
+\caption{The FFHQ dataset offers a lot of variety in terms of age, ethnicity, viewpoint, lighting, and image background.%
+}
+\label{fig:FFHQ}
+\vspace{-1mm}
+\end{figure*}
+}
+
+\newcommand{\tabFID}{
+\begin{table}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{15mm}}
+\footnotesize{
+\begin{tabular}{|l@{\hspace{1.5mm}}l|x|x|}
+\hline
+            & \textbf{Method}                               & \textbf{CelebA-HQ}    & \textbf{FFHQ} \\\hline\hline
+\arch{a}    & Baseline Progressive GAN \cite{Karras2017}\ \ & 7.79                  & 8.04          \\\hline %
+\arch{b}    & + Tuning (incl. bilinear up/down)         & 6.11                  & 5.25          \\\hline %
+\arch{c}    & + Add mapping and styles                      & 5.34                  & 4.85          \\\hline %
+\arch{d}    & + Remove traditional input                    & 5.07                  & 4.88          \\\hline %
+\arch{e}    & + Add noise inputs                            & \textbf{5.06}         & 4.42          \\\hline %
+\arch{f}    & + Mixing regularization                       & 5.17                  & \textbf{4.40} \\\hline %
+\end{tabular}
+}\vspace{1.5mm}
+\caption{Fr\'echet inception distance (FID) for various generator designs (lower is better). In this paper we calculate the FIDs using 50,000 images drawn randomly from the training set, and report the lowest distance encountered over the course of training. 
+}
+\label{tab:FID}
+\vspace{-1.4mm}
+\end{table}
+}
+
+\newcommand{\tabmixing}{
+\begin{table}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{10.2mm}}
+\footnotesize{
+\begin{tabular}{|l@{\hspace{1.5mm}}l|x|x|x|x|}
+\hline
+            & \textbf{Mixing}         & \multicolumn{4}{c|}{\textbf{Number of latents during testing}}          \\
+            & \textbf{regularization} & \textbf{1}      & \textbf{2}    & \textbf{3}        & \textbf{4}        \\\hline\hline
+\arch{e}    & 0\%                     & 4.42            & 8.22          & 12.88             & 17.41             \\\hline %
+            & 50\%                    & 4.41            & 6.10          & \s8.71            & 11.61             \\\hline %
+\arch{f}    & 90\%                    & \textbf{4.40}   & \textbf{5.11} & \s6.88            & \s9.03            \\\hline %
+            & 100\%                   & 4.83            & 5.17          & \textbf{\s6.63}   & \textbf{\s8.40}   \\\hline %
+\end{tabular}
+}\vspace{1.5mm}\extraspaceafter
+\caption{FIDs in FFHQ for networks trained by enabling the mixing regularization for different percentage of training examples. Here we stress test the trained networks by randomizing $1\ldots4$ latents and the crossover points between them. Mixing regularization improves the tolerance to these adverse operations significantly. Labels \arch{e} and \arch{f} refer to the configurations in Table~\protect\ref{tab:FID}.
+}
+\label{tab:mixing}
+\end{table}
+}
+
+\newcommand{\tabdisentangle}{
+\begin{table}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{11.2mm}}
+\footnotesize{
+\begin{tabular}{|c@{\hspace{1.5mm}}l@{\hspace{1mm}}c|x|x|x|}
+\hline
+            & \multirow{2}{*}{\textbf{Method}}  &           & \multicolumn{2}{c|}{\textbf{Path length}} & \textbf{Separa-}\\
+            &                                   &           & \textbf{full}     & \textbf{end}      & \textbf{bility}   \\\hline\hline
+\arch{b}    & Traditional generator             & $\ZZ$     & 412.0             & 415.3             & 10.78             \\\hline %
+\arch{d}    & Style-based generator             & $\WW$     & 446.2             & 376.6             & \s3.61            \\\hline %
+\arch{e}    & + Add noise inputs                & $\WW$     & \textbf{200.5}    & \textbf{160.6}    & \s3.54            \\\hline %
+            & + Mixing 50\%                     & $\WW$     & 231.5             & 182.1             & \textbf{\s3.51}   \\\hline %
+\arch{f}    & + Mixing 90\%                     & $\WW$     & 234.0             & 195.9             & \s3.79            \\\hline %
+\end{tabular}
+}\vspace{1.5mm}\extraspaceafter
+\caption{Perceptual path lengths and separability scores for various generator architectures in FFHQ (lower is better). We perform the measurements in $\ZZ$ for the traditional network, and in $\WW$ for style-based ones.
+Making the network resistant to style mixing appears to distort the intermediate latent space $\WW$ somewhat. 
+We hypothesize that mixing makes it more difficult for $\WW$ to efficiently encode factors of variation that span multiple scales.
+}
+\label{tab:disentangle}
+\vspace*{1mm}
+\end{table}
+}
+
+\newcommand{\tabmapping}{
+\begin{table}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{9.6mm}}
+\footnotesize{
+\begin{tabular}{|c@{\hspace{1.5mm}}l@{\hspace{1mm}}c|x|x|x|x|}
+\hline
+            & \multirow{2}{*}{\textbf{Method}} & & \multirow{2}{*}{\textbf{FID}}  & \multicolumn{2}{c|}{\textbf{Path length}} & \textbf{Separa-}\\
+            &                   &           &               & \textbf{full}     & \textbf{end}      & \textbf{bility}   \\\hline\hline
+\arch{b}    & Traditional 0     & $\ZZ$     & 5.25          & 412.0             & 415.3             & \s10.78           \\\hline %
+            & Traditional 8     & $\ZZ$     & 4.87          & 896.2             & 902.0             & 170.29            \\\hline %
+            & Traditional 8     & $\WW$     & 4.87          & 324.5             & 212.2             & \s\s6.52          \\\hline %
+            & Style-based 0     & $\ZZ$     & 5.06          & 283.5             & 285.5             & \s\s9.88          \\\hline %
+            & Style-based 1     & $\WW$     & 4.60          & 219.9             & 209.4             & \s\s6.81          \\\hline %
+            & Style-based 2     & $\WW$     & 4.43          & \textbf{217.8}    & 199.9             & \s\s6.25          \\\hline %
+\arch{f}    & Style-based 8     & $\WW$     & \textbf{4.40} & 234.0             & \textbf{195.9}    & \textbf{\s\s3.79} \\\hline %
+\end{tabular}
+}\vspace{1.5mm}\extraspaceafter
+\caption{\label{tab:mapping}%
+The effect of a mapping network in FFHQ. The number in method name indicates the depth of the mapping network. We see that FID, separability, and path length all benefit from having a mapping network, and this holds for both style-based and traditional generator architectures. Furthermore, a deeper mapping network generally performs better than a shallow one.
+}
+\end{table}
+}
+
+\newcommand{\figpathlenbehavior}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/Plots/training.pdf}%
+\caption{\label{fig:pathlenbehavior}%
+FID and perceptual path length metrics over the course of training in our configurations \arch{b} and \arch{f} using the FFHQ dataset.
+Horizontal axis denotes the number of training images seen by the discriminator.
+The dashed vertical line at 8.4M images marks the point when training has progressed to full $1024^2$ resolution.
+On the right, we show only one curve for the traditional generator's path length measurements, because there is no discernible difference between full-path and endpoint sampling in $\ZZ$.
+}
+\end{figure}
+}
+
+\newcommand{\figstylescale}{
+\renewcommand{\h}{0.166\linewidth}
+\renewcommand{\hh}{\hspace{0.0mm}}
+\begin{figure}[t]
+\raisebox{15.5mm}{\makebox[0pt][l]{%
+\includegraphics[width=\h]{figures/Stylescale/seed91-strength0=100.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed91-strength1=70.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed91-strength2=50.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed91-strength4=0.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed91-strength6=-50.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed91-strength8=-100.\ext}}}%
+\raisebox{0mm}{\makebox{%
+\includegraphics[width=\h]{figures/Stylescale/seed388-strength0=100.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed388-strength1=70.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed388-strength2=50.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed388-strength4=0.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed388-strength6=-50.\ext}\hh%
+\includegraphics[width=\h]{figures/Stylescale/seed388-strength8=-100.\ext}}}\\
+\scriptsize{%
+\makebox[\h][c]{$\psi = 1$}\hh%
+\makebox[\h][c]{$\psi = 0.7$}\hh%
+\makebox[\h][c]{$\psi = 0.5$}\hh%
+\makebox[\h][c]{$\psi = 0$}\hh%
+\makebox[\h][c]{$\psi = -0.5$}\hh%
+\makebox[\h][c]{$\psi = -1$}\\
+}
+\caption{The effect of truncation trick as a function of style scale $\psi$. When we fade $\psi \rightarrow 0$, all faces converge to the ``mean'' face of FFHQ. This face is similar for all trained networks, and the interpolation towards it never seems to cause artifacts. By applying negative scaling to styles, we get the corresponding opposite or ``anti-face''. It is interesting that various high-level attributes often flip between the opposites, including viewpoint, glasses, age, coloring, hair length, and often gender.
+}
+\label{fig:stylescale}
+\end{figure}
+}
+
+\newcommand{\figstylemix}{
+\renewcommand{\h}{27.4mm}
+\renewcommand{\hh}{2.5mm}
+\renewcommand{\vv}{\vspace*{-0.35mm}}
+\begin{figure*}[t]
+\centering
+\begin{minipage}[c]{0.972\linewidth}
+\makebox[\hh][c]{}\hfill%
+\makebox[\h][c]{\textbf{\normalsize{\ Source A}}}\hfill%
+\rotatebox[origin=l]{90}{\makebox[0mm][l]{\hspace*{0.05\linewidth}\textbf{\normalsize{\raisebox{.5mm}[0mm][0mm]{Source B}}}}}\hfill%
+\newcommand{\varA}{var639}\includegraphics[height=\h]{figures/Stylemix/\varA.\extt}%
+\newcommand{\varB}{var701}\includegraphics[height=\h]{figures/Stylemix/\varB.\extt}%
+\newcommand{\varC}{var687}\includegraphics[height=\h]{figures/Stylemix/\varC.\extt}%
+\newcommand{\varD}{var615}\includegraphics[height=\h]{figures/Stylemix/\varD.\extt}%
+\newcommand{\varE}{var2268}\includegraphics[height=\h]{figures/Stylemix/\varE.\extt}\vspace*{-3.5mm}\\
+\begin{tikzpicture}\draw (0,0) -- (\linewidth,0);\end{tikzpicture}\vspace*{-0.5mm}\\%
+\makebox[\hh]{\rotatebox[origin=l]{90}{\makebox[\h][c]{\hspace{-0.332\linewidth}\normalsize{Coarse styles from source B}}}}\hspace{0.5mm}%
+\newcommand{\seed}{seed888}
+\includegraphics[height=\h]{figures/Stylemix/\seed.\extt}\hfill%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varA.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varB.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varC.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varD.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varE.\extt}\vv\\
+\makebox[\hh][c]{}\hspace{0.5mm}%
+\renewcommand{\seed}{seed829}
+\includegraphics[height=\h]{figures/Stylemix/\seed.\extt}\hfill%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varA.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varB.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varC.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varD.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varE.\extt}\vv\\
+\makebox[\hh][c]{}\hspace{0.5mm}%
+\renewcommand{\seed}{seed1898}
+\includegraphics[height=\h]{figures/Stylemix/\seed.\extt}\hfill%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varA.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varB.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varC.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varD.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-coarse-\varE.\extt}\vspace*{-3.5mm}\\
+\begin{tikzpicture}\draw (0,0) -- (\linewidth,0);\end{tikzpicture}\vspace*{-0.5mm}\\%
+\makebox[\hh]{\rotatebox[origin=l]{90}{\makebox[\h][c]{\hspace{-\h}\normalsize{Middle styles from source B}}}}\hspace{0.5mm}%
+\renewcommand{\seed}{seed1733}
+\includegraphics[height=\h]{figures/Stylemix/\seed.\extt}\hfill%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varA.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varB.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varC.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varD.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varE.\extt}\vv\\
+\makebox[\hh][c]{}\hspace{0.5mm}%
+\renewcommand{\seed}{seed1614}
+\includegraphics[height=\h]{figures/Stylemix/\seed.\extt}\hfill%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varA.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varB.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varC.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varD.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-middle-\varE.\extt}\vspace*{-3.5mm}\\
+\begin{tikzpicture}\draw (0,0) -- (\linewidth,0);\end{tikzpicture}\vspace*{-0.5mm}\\%
+\makebox[\hh]{\rotatebox[origin=l]{90}{\makebox[\h][c]{\hspace{-1mm}\normalsize{Fine from B}}}}\hspace{0.5mm}%
+\renewcommand{\seed}{seed845}
+\includegraphics[height=\h]{figures/Stylemix/\seed.\extt}\hfill%
+\raisebox{0mm}[0mm][0mm]{\makebox[0mm]{\hspace*{-1.5mm}\begin{tikzpicture}\draw (0,0mm) -- (0,-196.2mm);\end{tikzpicture}}}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-fine-\varA.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-fine-\varB.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-fine-\varC.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-fine-\varD.\extt}%
+\includegraphics[height=\h]{figures/Stylemix/\seed-fine-\varE.\extt}\\
+\end{minipage}
+\caption{\label{fig:stylemix}%
+Two sets of images were generated from their respective latent codes (sources A and B); the rest of the images were generated by copying a specified subset of styles from source B and taking the rest from source A. 
+Copying the styles corresponding to coarse spatial resolutions ($4^2$ -- $8^2$) brings high-level aspects such as pose, general hair style, face shape, and eyeglasses from source B, while all colors (eyes, hair, lighting) and finer facial features resemble A.
+If we instead copy the styles of middle resolutions ($16^2$ -- $32^2$) from B, we inherit smaller scale facial features, hair style, eyes open/closed from B, while the pose, general face shape, and eyeglasses from A are preserved.
+Finally, copying the fine styles ($64^2$ -- $1024^2$) from B brings mainly the color scheme and microstructure.
+\vspace*{-1mm}
+}
+\end{figure*}
+}
+
+\newcommand{\fignoisedetail}{
+\renewcommand{\h}{27.5mm}
+\begin{figure}[t]
+\includegraphics[width=\h]{figures/Noise/seed1157-d-box.\ext}\hfill%
+\includegraphics[width=\h]{figures/Noise/seed1157-e-crop.\ext}\hfill%
+\includegraphics[width=\h]{figures/Noise/seed1157-f-diff.\ext}\\
+\includegraphics[width=\h]{figures/Noise/seed1012-d-box.\ext}\hfill%
+\includegraphics[width=\h]{figures/Noise/seed1012-e-crop.\ext}\hfill%
+\includegraphics[width=\h]{figures/Noise/seed1012-f-diff.\ext}\\
+\footnotesize{%
+\makebox[\h][c]{(a) Generated image}\hfill%
+\makebox[\h][c]{(b) Stochastic variation}\hfill%
+\makebox[\h][c]{(c) Standard deviation}}\\\vspace{-1mm}
+\caption{Examples of stochastic variation. (a) Two generated images. (b) Zoom-in with different realizations of input noise. While the overall appearance is almost identical, individual hairs are placed very differently. (c) Standard deviation of each pixel over 100 different realizations, highlighting which parts of the images are affected by the noise. The main areas are the hair, silhouettes, and parts of background, but there is also interesting stochastic variation in the eye reflections. Global aspects such as identity and pose are unaffected by stochastic variation.
+}\vspace{-1mm}
+\label{fig:noisedetail}
+\end{figure}
+}
+
+\newcommand{\fignoisemix}{
+\renewcommand{\h}{0.245\linewidth}
+\renewcommand{\hh}{4mm}
+\renewcommand{\hhh}{8.83mm}
+\begin{figure}[t]
+\includegraphics[width=\h]{figures/Noise/seed1967-crop1.\extt}\hspace*{0.35mm}%
+\includegraphics[width=\h]{figures/Noise/seed1967-crop2.\extt}\hfill%
+\includegraphics[width=\h]{figures/Noise/seed1555-crop1.\extt}\hspace*{0.35mm}%
+\includegraphics[width=\h]{figures/Noise/seed1555-crop2.\extt}\vspace*{-\baselineskip}\\
+\raisebox{1mm}[0mm][0mm]{\makebox[\h][c]{(a)}\hspace*{0.35mm}\makebox[\h][c]{(b)}}\\
+\includegraphics[width=\h]{figures/Noise/seed1967-crop3.\extt}\hspace*{0.35mm}%
+\includegraphics[width=\h]{figures/Noise/seed1967-crop4.\extt}\hfill%
+\includegraphics[width=\h]{figures/Noise/seed1555-crop3.\extt}\hspace*{0.35mm}%
+\includegraphics[width=\h]{figures/Noise/seed1555-crop4.\extt}\vspace*{-\baselineskip}\\
+\raisebox{1mm}[0mm][0mm]{\makebox[\h][c]{(c)}\hspace*{0.35mm}\makebox[\h][c]{(d)}}\\
+\caption{Effect of noise inputs at different layers of our generator. (a) Noise is applied to all layers. (b) No noise. (c) Noise in fine layers only ($64^2$ -- $1024^2$). (d) Noise in coarse layers only \mbox{($4^2$ -- $32^2$)}. We can see that the artificial omission of noise leads to featureless ``painterly'' look. Coarse noise causes large-scale curling of hair and appearance of larger background features, while the fine noise brings out the finer curls of hair, finer background detail, and skin pores.
+}
+\label{fig:noisemix}
+\end{figure}
+}
+
+\newcommand{\figquality}{
+\begin{figure}[t]
+\includegraphics[width=\linewidth]{figures/Quality/seed5.\extt}
+\caption{Uncurated set of images produced by our style-based generator (config \arch{f}) with the FFHQ dataset. Here we used a variation of the truncation \FINAL{trick \cite{Marchesi2017, Brock2018, Kingma2018}} with $\psi=0.7$ for resolutions $4^2-32^2$. Please see the accompanying video for more results.
+}
+\label{fig:quality}
+\vspace{-2mm}
+\end{figure}
+}
+
+\newcommand{\figqualitybedroom}{
+\begin{figure}[t]
+\includegraphics[width=\linewidth]{figures/Bedroom07/seed0.\ext}
+\caption{Uncurated set of images produced by our style-based generator (config \arch{f}) with the \textsc{LSUN Bedroom} dataset at $256^2$. FID computed for 50K images was 2.65. %
+}
+\label{fig:qualitybedroom}
+\vspace{-2mm}
+\end{figure}
+}
+
+\newcommand{\figqualitycar}{
+\begin{figure}[t]
+\includegraphics[width=\linewidth]{figures/Car07/seed2.\ext}
+\caption{Uncurated set of images produced by our style-based generator (config \arch{f}) with the \textsc{LSUN Car} dataset at $512 \times 384$. FID computed for 50K images was 3.27. %
+}
+\label{fig:qualitycar}
+\vspace{0mm}
+\end{figure}
+}
+
+\newcommand{\figqualitycat}{
+\begin{figure}[t]
+\includegraphics[width=\linewidth]{figures/Cat07/seed1.\ext}
+\caption{Uncurated set of images produced by our style-based generator (config \arch{f}) with the \textsc{LSUN Cat} dataset at $256^2$. FID computed for 50K images was 8.53. %
+}
+\label{fig:qualitycat}
+\vspace{-2mm}
+\end{figure}
+}
+
+\newcommand{\figillustration}{
+\begin{figure}
+\centering
+\includegraphics[width=0.97\linewidth]{figures/Illustration/illustration.pdf}\\
+\footnotesize
+\makebox[0.33\linewidth][c]{(a) Distribution of}\hfill%
+\makebox[0.33\linewidth][c]{(b) Mapping from}\hfill%
+\makebox[0.33\linewidth][c]{(c) Mapping from}\\
+\makebox[0.33\linewidth][c]{features in training set}\hfill%
+\makebox[0.33\linewidth][c]{$\ZZ$ to features}\hfill%
+\makebox[0.33\linewidth][c]{$\WW$ to features}\vspace{1.5mm}\\
+\caption{%
+Illustrative example with two factors of variation (image features, e.g.,~masculinity and hair length).
+(a) An example training set where some combination (e.g.,~long haired males) is missing.
+(b) This forces the mapping from $\ZZ$ to image features to become curved so that the forbidden combination disappears in $\ZZ$ to prevent the sampling of invalid combinations.
+(c) The learned mapping from $\ZZ$ to $\WW$ is able to ``undo'' much of the warping.
+}
+\label{fig:illustration}
+\end{figure}
+}
+
+\newcommand{\figtest}{
+\begin{figure}[t]
+\centering
+\placeholderfig{}
+\placeholderfig{0.695\linewidth}{50mm}{Placeholder 1}\hfill%
+\placeholderfig{0.295\linewidth}{50mm}{Placeholder 2}\\
+\caption{TODO.
+}
+\label{fig:test}
+\end{figure}
+}

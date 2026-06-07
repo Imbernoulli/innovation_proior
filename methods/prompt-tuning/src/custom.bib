@@ -1,0 +1,540 @@
+% Use this file for citations not found in the ACL Anthology (contained in "anthology.bib").
+
+@inproceedings{brown_2020_gpt3,
+ author = {Brown, Tom and Mann, Benjamin and Ryder, Nick and Subbiah, Melanie and Kaplan, Jared D and Dhariwal, Prafulla and Neelakantan, Arvind and Shyam, Pranav and Sastry, Girish and Askell, Amanda and Agarwal, Sandhini and Herbert-Voss, Ariel and Krueger, Gretchen and Henighan, Tom and Child, Rewon and Ramesh, Aditya and Ziegler, Daniel and Wu, Jeffrey and Winter, Clemens and Hesse, Chris and Chen, Mark and Sigler, Eric and Litwin, Mateusz and Gray, Scott and Chess, Benjamin and Clark, Jack and Berner, Christopher and McCandlish, Sam and Radford, Alec and Sutskever, Ilya and Amodei, Dario},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {H. Larochelle and M. Ranzato and R. Hadsell and M. F. Balcan and H. Lin},
+ pages = {1877--1901},
+ publisher = {Curran Associates, Inc.},
+ title = {Language Models are Few-Shot Learners},
+ url = {https://proceedings.neurips.cc/paper/2020/file/1457c0d6bfcb4967418bfb8ac142f64a-Paper.pdf},
+ volume = {33},
+ year = {2020}
+}
+
+@article{raffel_2020_t5,
+  author  = {Colin Raffel and Noam Shazeer and Adam Roberts and Katherine Lee and Sharan Narang and Michael Matena and Yanqi Zhou and Wei Li and Peter J. Liu},
+  title   = {Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer},
+  journal = {Journal of Machine Learning Research},
+  year    = {2020},
+  volume  = {21},
+  number  = {140},
+  pages   = {1-67},
+  url     = {http://jmlr.org/papers/v21/20-074.html}
+}
+
+@inproceedings{li_2021_prefix_tuning,
+    title = "Prefix-Tuning: Optimizing Continuous Prompts for Generation",
+    author = "Li, Xiang Lisa  and
+      Liang, Percy",
+    booktitle = "Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)",
+    month = aug,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.acl-long.353",
+    doi = "10.18653/v1/2021.acl-long.353",
+    pages = "4582--4597",
+    abstract = "Fine-tuning is the de facto way of leveraging large pretrained language models for downstream tasks. However, fine-tuning modifies all the language model parameters and therefore necessitates storing a full copy for each task. In this paper, we propose prefix-tuning, a lightweight alternative to fine-tuning for natural language generation tasks, which keeps language model parameters frozen and instead optimizes a sequence of continuous task-specific vectors, which we call the prefix. Prefix-tuning draws inspiration from prompting for language models, allowing subsequent tokens to attend to this prefix as if it were {``}virtual tokens{''}. We apply prefix-tuning to GPT-2 for table-to-text generation and to BART for summarization. We show that by learning only 0.1{\%} of the parameters, prefix-tuning obtains comparable performance in the full data setting, outperforms fine-tuning in low-data settings, and extrapolates better to examples with topics that are unseen during training.",
+}
+
+@inproceedings{hambardzumyan_2021_warp,
+    title = "{WARP}: {W}ord-level {A}dversarial {R}e{P}rogramming",
+    author = "Hambardzumyan, Karen  and
+      Khachatrian, Hrant  and
+      May, Jonathan",
+    booktitle = "Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)",
+    month = aug,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.acl-long.381",
+    doi = "10.18653/v1/2021.acl-long.381",
+    pages = "4921--4933",
+    abstract = "Transfer learning from pretrained language models recently became the dominant approach for solving many NLP tasks. A common approach to transfer learning for multiple tasks that maximize parameter sharing trains one or more task-specific layers on top of the language model. In this paper, we present an alternative approach based on adversarial reprogramming, which extends earlier work on automatic prompt generation. Adversarial reprogramming attempts to learn task-specific word embeddings that, when concatenated to the input text, instruct the language model to solve the specified task. Using up to 25K trainable parameters per task, this approach outperforms all existing methods with up to 25M trainable parameters on the public leaderboard of the GLUE benchmark. Our method, initialized with task-specific human-readable prompts, also works in a few-shot setting, outperforming GPT-3 on two SuperGLUE tasks with just 32 training samples.",
+}
+
+@article{logeswaranFewshotSequenceLearning2020,
+  author    = {Lajanugen Logeswaran and
+               Ann Lee and
+               Myle Ott and
+               Honglak Lee and
+               Marc'Aurelio Ranzato and
+               Arthur Szlam},
+  title     = {Few-shot Sequence Learning with Transformers},
+  journal   = {CoRR},
+  volume    = {abs/2012.09543},
+  year      = {2020},
+  url       = {https://arxiv.org/abs/2012.09543},
+  archivePrefix = {arXiv},
+  eprint    = {2012.09543},
+  timestamp = {Sun, 03 Jan 2021 18:46:06 +0100},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-2012-09543.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@online{WinNT,
+  author = {Iyer, Shankar and Dandekar, Nikhil and Csernai, Kornel},
+  title = {First {Q}uora Dataset Release: Question Pairs},
+  year = 2017,
+  url = {https://data.quora.com/First-Quora-Dataset-Release-Question-Pairs},
+  urldate = {2019-04-03}
+}
+
+@inproceedings{dolan2005automatically,
+  title={Automatically constructing a corpus of sentential paraphrases},
+  author={Dolan, William B and Brockett, Chris},
+  booktitle={Proceedings of the Third International Workshop on Paraphrasing (IWP2005)},
+  year={2005}
+}
+
+@inproceedings{wang2019glue,
+  title={{GLUE}: A Multi-Task Benchmark and Analysis Platform for Natural Language Understanding},
+  author={Wang, Alex and Singh, Amanpreet and Michael, Julian and Hill, Felix and Levy, Omer and Bowman, Samuel R.},
+  note={In the Proceedings of ICLR.},
+  year={2019}
+}
+
+@inproceedings{fisch2019mrqa,
+    title={{MRQA} 2019 Shared Task: Evaluating Generalization in Reading Comprehension},
+    author={Adam Fisch and Alon Talmor and Robin Jia and Minjoon Seo and Eunsol Choi and Danqi Chen},
+    booktitle={Proceedings of 2nd Machine Reading for Reading Comprehension (MRQA) Workshop at EMNLP},
+    year={2019},
+}
+
+@article{Aghajanyan2020IntrinsicDE,
+  author    = {Armen Aghajanyan and
+               Luke Zettlemoyer and
+               Sonal Gupta},
+  title     = {Intrinsic Dimensionality Explains the Effectiveness of Language Model
+               Fine-Tuning},
+  journal   = {CoRR},
+  volume    = {abs/2012.13255},
+  year      = {2020},
+  url       = {https://arxiv.org/abs/2012.13255},
+  archivePrefix = {arXiv},
+  eprint    = {2012.13255},
+  timestamp = {Tue, 05 Jan 2021 16:02:31 +0100},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-2012-13255.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{lampinen2020transforming,
+  title={Transforming task representations to perform novel tasks},
+  author={Lampinen, Andrew K and McClelland, James L},
+  journal={Proceedings of the National Academy of Sciences},
+  volume={117},
+  number={52},
+  pages={32970--32981},
+  year={2020},
+  publisher={National Acad Sciences}
+}
+
+@inproceedings{vaswani2017attention,
+ author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, \L{}ukasz and Polosukhin, Illia},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {I. Guyon and U. V. Luxburg and S. Bengio and H. Wallach and R. Fergus and S. Vishwanathan and R. Garnett},
+ pages = {5998--6008},
+ title = {Attention is All you Need},
+ url = {https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf},
+ volume = {30},
+ year = {2017}
+}
+
+@inproceedings{wang2019superglue,
+ author = {Wang, Alex and Pruksachatkun, Yada and Nangia, Nikita and Singh, Amanpreet and Michael, Julian and Hill, Felix and Levy, Omer and Bowman, Samuel},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {H. Wallach and H. Larochelle and A. Beygelzimer and F. d\textquotesingle Alch\'{e}-Buc and E. Fox and R. Garnett},
+ pages = {},
+ publisher = {Curran Associates, Inc.},
+ title = {{SuperGLUE}: A Stickier Benchmark for General-Purpose Language Understanding Systems},
+ url = {https://proceedings.neurips.cc/paper/2019/file/4496bf24afe7fab6f046bf4923da8de6-Paper.pdf},
+ volume = {32},
+ year = {2019}
+}
+
+@inproceedings{MultiRC2018,
+    author = {Daniel Khashabi and Snigdha Chaturvedi and Michael Roth and Shyam Upadhyay and Dan Roth},
+    title = {Looking Beyond the Surface: A Challenge Set for Reading Comprehension over Multiple Sentences},
+    booktitle = {Proceedings of North American Chapter of the Association for Computational Linguistics (NAACL)},
+    year = {2018}
+}
+
+@article{de-marneff_simons_tonhauser_2019,
+  title={The {CommitmentBank}: Investigating projection in naturally occurring discourse},
+  journal={Proceedings of Sinn und Bedeutung 23},
+  author={De Marneff, Marie-Catherine and Simons, Mandy and Tonhauser, Judith},
+  year={2019}
+}
+
+@inproceedings{dagan2005pascal,
+  title={The {PASCAL} recognising textual entailment challenge},
+  author={Dagan, Ido and Glickman, Oren and Magnini, Bernardo},
+  booktitle={Machine Learning Challenges Workshop},
+  pages={177--190},
+  year={2005},
+  organization={Springer}
+}
+
+@inproceedings{bar2006second,
+  title={The second {PASCAL} recognising textual entailment challenge},
+  author={Bar-Haim, Roy and Dagan, Ido and Dolan, Bill and Ferro, Lisa and Giampiccolo, Danilo and Magnini, Bernardo and Szpektor, Idan},
+  booktitle={Proceedings of the second PASCAL challenges workshop on recognising textual entailment},
+  volume={6},
+  number={1},
+  pages={6--4},
+  year={2006},
+  organization={Venice}
+}
+
+@inproceedings{giampiccolo2007third,
+  title={The third {PASCAL} recognizing textual entailment challenge},
+  author={Giampiccolo, Danilo and Magnini, Bernardo and Dagan, Ido and Dolan, Bill},
+  booktitle={Proceedings of the ACL-PASCAL workshop on textual entailment and paraphrasing},
+  pages={1--9},
+  year={2007},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{bentivogli2009fifth,
+  title={The Fifth {PASCAL} Recognizing Textual Entailment Challenge.},
+  author={Bentivogli, Luisa and Clark, Peter and Dagan, Ido and Giampiccolo, Danilo},
+  booktitle={TAC},
+  year={2009}
+}
+
+@inproceedings{roemmele2011choice,
+  title={Choice of plausible alternatives: An evaluation of commonsense causal reasoning},
+  author={Roemmele, Melissa and Bejan, Cosmin Adrian and Gordon, Andrew S},
+  booktitle={2011 AAAI Spring Symposium Series},
+  year={2011}
+}
+
+@inproceedings{levesque2012winograd,
+  title={The {W}inograd schema challenge},
+  author={Levesque, Hector and Davis, Ernest and Morgenstern, Leora},
+  booktitle={Thirteenth International Conference on the Principles of Knowledge Representation and Reasoning},
+  year={2012}
+}
+
+@article{DBLP:journals/corr/abs-1808-09121,
+  author={Mohammad Taher Pilehvar and Jose Camacho{-}Collados},
+  title={{WiC}: 10,000 Example Pairs for Evaluating Context-Sensitive Representations},
+  journal={CoRR},
+  volume={abs/1808.09121},
+  year={2018},
+  url={http://arxiv.org/abs/1808.09121},
+  archivePrefix={arXiv},
+  eprint={1808.09121},
+  timestamp={Mon, 03 Sep 2018 13:36:40 +0200},
+  biburl={https://dblp.org/rec/bib/journals/corr/abs-1808-09121},
+  bibsource={dblp computer science bibliography, https://dblp.org}
+}
+
+@article{warstadt2018neural,
+  author    = {Alex Warstadt and
+               Amanpreet Singh and
+               Samuel R. Bowman},
+  title     = {Neural Network Acceptability Judgments},
+  journal   = {CoRR},
+  volume    = {abs/1805.12471},
+  year      = {2018},
+  url       = {http://arxiv.org/abs/1805.12471},
+  archivePrefix = {arXiv},
+  eprint    = {1805.12471},
+  timestamp = {Mon, 13 Aug 2018 16:47:08 +0200},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-1805-12471.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{socher2013recursive,
+  title={Recursive deep models for semantic compositionality over a sentiment treebank},
+  author={Socher, Richard and Perelygin, Alex and Wu, Jean and Chuang, Jason and Manning, Christopher D and Ng, Andrew and Potts, Christopher},
+  booktitle={Proceedings of the 2013 conference on empirical methods in natural language processing},
+  pages={1631--1642},
+  year={2013}
+}
+
+@article{cer2017semeval,
+  title={Semeval-2017 task 1: Semantic textual similarity-multilingual and cross-lingual focused evaluation},
+  author={Cer, Daniel and Diab, Mona and Agirre, Eneko and Lopez-Gazpio, Inigo and Specia, Lucia},
+  journal={arXiv preprint arXiv:1708.00055},
+  year={2017}
+}
+
+@InProceedings{N18-1101,
+  author = "Williams, Adina
+            and Nangia, Nikita
+            and Bowman, Samuel",
+  title = "A Broad-Coverage Challenge Corpus for
+           Sentence Understanding through Inference",
+  booktitle = "Proceedings of the 2018 Conference of
+               the North American Chapter of the
+               Association for Computational Linguistics:
+               Human Language Technologies, Volume 1 (Long
+               Papers)",
+  year = "2018",
+  publisher = "Association for Computational Linguistics",
+  pages = "1112--1122",
+  location = "New Orleans, Louisiana",
+  url = "http://aclweb.org/anthology/N18-1101"
+}
+
+@inproceedings{rajpurkar2016squad,
+    title = "{SQ}u{AD}: 100,000+ Questions for Machine Comprehension of Text",
+    author = "Rajpurkar, Pranav  and
+      Zhang, Jian  and
+      Lopyrev, Konstantin  and
+      Liang, Percy",
+    booktitle = "Proceedings of the 2016 Conference on Empirical Methods in Natural Language Processing",
+    month = nov,
+    year = "2016",
+    address = "Austin, Texas",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/D16-1264",
+    doi = "10.18653/v1/D16-1264",
+    pages = "2383--2392",
+}
+
+@article{liu2021gpt,
+  author    = {Xiao Liu and
+               Yanan Zheng and
+               Zhengxiao Du and
+               Ming Ding and
+               Yujie Qian and
+               Zhilin Yang and
+               Jie Tang},
+  title     = {{GPT} Understands, Too},
+  journal   = {CoRR},
+  volume    = {abs/2103.10385},
+  year      = {2021},
+  url       = {https://arxiv.org/abs/2103.10385},
+  archivePrefix = {arXiv},
+  eprint    = {2103.10385},
+  timestamp = {Wed, 24 Mar 2021 15:50:40 +0100},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-2103-10385.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@article{radford2019language,
+  title={Language Models are Unsupervised Multitask Learners},
+  author={Radford, Alec and Wu, Jeff and Child, Rewon and Luan, David and Amodei, Dario and Sutskever, Ilya},
+  journal={{OpenAI} Blog},
+  url={https://d4mucfpksywv.cloudfront.net/better-language-models/language_models_are_unsupervised_multitask_learners.pdf},
+  year={2019}
+}
+
+@inproceedings{6638947,
+  author={A. {Graves} and A. {Mohamed} and G. {Hinton}},
+  booktitle={2013 IEEE International Conference on Acoustics, Speech and Signal Processing}, 
+  title={Speech recognition with deep recurrent neural networks}, year={2013},
+  volume={},
+  number={},
+  pages={6645-6649},
+  doi={10.1109/ICASSP.2013.6638947}}
+  
+@inproceedings{kudo2018sentencepiece,
+    title = "{S}entence{P}iece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing",
+    author = "Kudo, Taku  and
+      Richardson, John",
+    booktitle = "Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing: System Demonstrations",
+    month = nov,
+    year = "2018",
+    address = "Brussels, Belgium",
+    publisher = "Association for Computational Linguistics",
+    url = "https://www.aclweb.org/anthology/D18-2012",
+    doi = "10.18653/v1/D18-2012",
+    pages = "66--71",
+}
+
+@article{zhang2018record,
+  author    = {Sheng Zhang and
+               Xiaodong Liu and
+               Jingjing Liu and
+               Jianfeng Gao and
+               Kevin Duh and
+               Benjamin Van Durme},
+  title     = {{ReCoRD}: Bridging the Gap between Human and Machine Commonsense Reading
+               Comprehension},
+  journal   = {CoRR},
+  volume    = {abs/1810.12885},
+  year      = {2018},
+  url       = {http://arxiv.org/abs/1810.12885},
+  archivePrefix = {arXiv},
+  eprint    = {1810.12885},
+  timestamp = {Fri, 04 Sep 2020 16:10:07 +0200},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-1810-12885.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+@inproceedings{8100054,
+  author={A. {Kembhavi} and M. {Seo} and D. {Schwenk} and J. {Choi} and A. {Farhadi} and H. {Hajishirzi}},
+  booktitle={2017 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)}, 
+  title={Are You Smarter Than a Sixth Grader? Textbook Question Answering for Multimodal Machine Comprehension}, 
+  year={2017},
+  volume={},
+  number={},
+  pages={5376-5384},
+  doi={10.1109/CVPR.2017.571}}
+  
+@software{jax2018github,
+  author = {James Bradbury and Roy Frostig and Peter Hawkins and Matthew James Johnson and Chris Leary and Dougal Maclaurin and George Necula and Adam Paszke and Jake Vander{P}las and Skye Wanderman-{M}ilne and Qiao Zhang},
+  title = {{JAX}: composable transformations of {P}ython+{N}um{P}y programs},
+  url = {http://github.com/google/jax},
+  version = {0.2.5},
+  year = {2018},
+}
+
+@inproceedings{pmlr-v80-shazeer18a,
+  title = 	 {Adafactor: Adaptive Learning Rates with Sublinear Memory Cost},
+  author =       {Shazeer, Noam and Stern, Mitchell},
+  booktitle = 	 {Proceedings of the 35th International Conference on Machine Learning},
+  pages = 	 {4596--4604},
+  year = 	 {2018},
+  editor = 	 {Dy, Jennifer and Krause, Andreas},
+  volume = 	 {80},
+  series = 	 {Proceedings of Machine Learning Research},
+  month = 	 {10--15 Jul},
+  publisher =    {PMLR},
+  pdf = 	 {http://proceedings.mlr.press/v80/shazeer18a/shazeer18a.pdf},
+  url = 	 {http://proceedings.mlr.press/v80/shazeer18a.html},
+}
+
+@article{shazeer2020glu,
+  author    = {Noam Shazeer},
+  title     = {{GLU} Variants Improve Transformer},
+  journal   = {CoRR},
+  volume    = {abs/2002.05202},
+  year      = {2020},
+  url       = {https://arxiv.org/abs/2002.05202},
+  archivePrefix = {arXiv},
+  eprint    = {2002.05202},
+  timestamp = {Fri, 14 Feb 2020 12:07:41 +0100},
+  biburl    = {https://dblp.org/rec/journals/corr/abs-2002-05202.bib},
+  bibsource = {dblp computer science bibliography, https://dblp.org}
+}
+
+
+@inproceedings{Nair2010RectifiedLU,
+author = {Nair, Vinod and Hinton, Geoffrey E.},
+title = {Rectified Linear Units Improve Restricted {B}oltzmann Machines},
+year = {2010},
+isbn = {9781605589077},
+publisher = {Omnipress},
+address = {Madison, WI, USA},
+booktitle = {Proceedings of the 27th International Conference on International Conference on Machine Learning},
+pages = {807–814},
+numpages = {8},
+location = {Haifa, Israel},
+series = {ICML'10}
+}
+
+@inproceedings{schick-schutze-2021-exploiting,
+    title = "Exploiting Cloze-Questions for Few-Shot Text Classification and Natural Language Inference",
+    author = {Schick, Timo  and
+      Sch{\"u}tze, Hinrich},
+    booktitle = "Proceedings of the 16th Conference of the European Chapter of the Association for Computational Linguistics: Main Volume",
+    month = apr,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.eacl-main.20",
+    pages = "255--269",
+    abstract = "Some NLP tasks can be solved in a fully unsupervised fashion by providing a pretrained language model with {``}task descriptions{''} in natural language (e.g., Radford et al., 2019). While this approach underperforms its supervised counterpart, we show in this work that the two ideas can be combined: We introduce Pattern-Exploiting Training (PET), a semi-supervised training procedure that reformulates input examples as cloze-style phrases to help language models understand a given task. These phrases are then used to assign soft labels to a large set of unlabeled examples. Finally, standard supervised training is performed on the resulting training set. For several tasks and languages, PET outperforms supervised training and strong semi-supervised approaches in low-resource settings by a large margin.",
+}
+
+@article{hansen_1990_ensembles,
+    title={Neural network ensembles},
+    author={L. K. {Hansen} and P. {Salamon}},
+    journal={IEEE Transactions on Pattern Analysis and Machine Intelligence},
+    year={1990},
+    volume={12},
+    number={10},
+    pages={993-1001},
+    doi={10.1109/34.58871}
+}
+
+@inproceedings{lakshminarayanan_2017_deep_ensembles,
+ author = {Lakshminarayanan, Balaji and Pritzel, Alexander and Blundell, Charles},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {I. Guyon and U. V. Luxburg and S. Bengio and H. Wallach and R. Fergus and S. Vishwanathan and R. Garnett},
+ pages = {},
+ publisher = {Curran Associates, Inc.},
+ title = {Simple and Scalable Predictive Uncertainty Estimation using Deep Ensembles},
+ url = {https://proceedings.neurips.cc/paper/2017/file/9ef2ed4b7fd2c810847ffa5fa85bce38-Paper.pdf},
+ volume = {30},
+ year = {2017}
+}
+
+@inproceedings{achille_2019_task2vec,
+author = {A. Achille and M. Lam and R. Tewari and A. Ravichandran and S. Maji and C. Fowlkes and S. Soatto and P. Perona},
+booktitle = {2019 IEEE/CVF International Conference on Computer Vision (ICCV)},
+title = {{Task2Vec}: Task Embedding for Meta-Learning},
+year = {2019},
+volume = {},
+issn = {},
+pages = {6429-6438},
+keywords = {task analysis;feature extraction;visualization;probes;measurement;semantics;training},
+doi = {10.1109/ICCV.2019.00653},
+url = {https://doi.ieeecomputersociety.org/10.1109/ICCV.2019.00653},
+publisher = {IEEE Computer Society},
+address = {Los Alamitos, CA, USA},
+month = {nov}
+}
+
+@inproceedings{houlsby_2019_adapters, title = {Parameter-Efficient Transfer Learning for {NLP}}, author = {Houlsby, Neil and Giurgiu, Andrei and Jastrzebski, Stanislaw and Morrone, Bruna and De Laroussilhe, Quentin and Gesmundo, Andrea and Attariyan, Mona and Gelly, Sylvain}, booktitle = {Proceedings of the 36th International Conference on Machine Learning}, pages = {2790--2799}, year = {2019}, editor = {Kamalika Chaudhuri and Ruslan Salakhutdinov}, volume = {97}, series = {Proceedings of Machine Learning Research}, month = {09--15 Jun}, publisher = {PMLR}, pdf = {http://proceedings.mlr.press/v97/houlsby19a/houlsby19a.pdf}, url = { http://proceedings.mlr.press/v97/houlsby19a.html }}
+
+@inproceedings{rebuffi_2017_adapters,
+ author = {Rebuffi, Sylvestre-Alvise and Bilen, Hakan and Vedaldi, Andrea},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {I. Guyon and U. V. Luxburg and S. Bengio and H. Wallach and R. Fergus and S. Vishwanathan and R. Garnett},
+ pages = {},
+ publisher = {Curran Associates, Inc.},
+ title = {Learning multiple visual domains with residual adapters},
+ url = {https://proceedings.neurips.cc/paper/2017/file/e7b24b112a44fdd9ee93bdf998c6ca0e-Paper.pdf},
+ volume = {30},
+ year = {2017}
+}
+
+@inproceedings{qinLearningHowAsk2021,
+    title = "Learning How to Ask: Querying {LM}s with Mixtures of Soft Prompts",
+    author = "Qin, Guanghui  and
+      Eisner, Jason",
+    booktitle = "Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    month = jun,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2021.naacl-main.410",
+    doi = "10.18653/v1/2021.naacl-main.410",
+    pages = "5203--5212",
+    abstract = "Natural-language prompts have recently been used to coax pretrained language models into performing other AI tasks, using a fill-in-the-blank paradigm (Petroni et al., 2019) or a few-shot extrapolation paradigm (Brown et al., 2020). For example, language models retain factual knowledge from their training corpora that can be extracted by asking them to {``}fill in the blank{''} in a sentential prompt. However, where does this prompt come from? We explore the idea of learning prompts by gradient descent{---}either fine-tuning prompts taken from previous work, or starting from random initialization. Our prompts consist of {``}soft words,{''} i.e., continuous vectors that are not necessarily word type embeddings from the language model. Furthermore, for each task, we optimize a mixture of prompts, learning which prompts are most effective and how to ensemble them. Across multiple English LMs and tasks, our approach hugely outperforms previous methods, showing that the implicit factual knowledge in language models was previously underestimated. Moreover, this knowledge is cheap to elicit: random initialization is nearly as good as informed initialization.",
+}
+
+@article{gpt,
+  title = {Improving Language Understanding by Generative Pre-Training},
+  author = {Alec Radford and Karthik Narasimhan and Tim Salimans and Ilya Sutskever},
+  year = {2018},
+  url = {https://s3-us-west-2.amazonaws.com/openai-assets/research-covers/language-unsupervised/language_understanding_paper.pdf},
+}
+
+@article{Waskom2021,
+  doi = {10.21105/joss.03021},
+  url = {https://doi.org/10.21105/joss.03021},
+  year = {2021},
+  publisher = {The Open Journal},
+  volume = {6},
+  number = {60},
+  pages = {3021},
+  author = {Michael L. Waskom},
+  title = {seaborn: statistical data visualization},
+  journal = {Journal of Open Source Software}
+}
+
+@software{flax2020github,
+  author = {Jonathan Heek and Anselm Levskaya and Avital Oliver and Marvin Ritter and Bertrand Rondepierre and Andreas Steiner and Marc van {Z}ee},
+  title = {{F}lax: A neural network library and ecosystem for {JAX}},
+  url = {http://github.com/google/flax},
+  version = {0.3.0},
+  year = {2020},
+}

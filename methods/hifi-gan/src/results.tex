@@ -1,0 +1,141 @@
+\section{Results}
+
+\subsection{Audio Quality and Synthesis Speed}
+\label{sec_fidelity_speed}
+To evaluate the performance of our models in terms of both quality and speed, 
+we performed the MOS test for spectrogram inversion, and the speed measurement. For the MOS test, we randomly selected 50 utterances from the LJSpeech dataset and used the ground truth spectrograms of the utterances which were excluded from training as input conditions.
+
+
+\par For easy comparison of audio quality, synthesis speed and model size, the results are compiled and presented in Table\ref{tab:mos-speed-comparison}. Remarkably, all variations of HiFi-GAN scored higher than the other models. $V1$ has 13.92M parameters and achieves the highest MOS with a gap of 0.09 compared to the ground truth audio; this implies that the synthesized audio is nearly indistinguishable from the human voice. In terms of synthesis speed, $V1$ is faster than WaveGlow and MoL WaveNet. $V2$ also demonstrates similarity to human quality with a MOS of 4.23 while significantly reducing the memory requirement and inference time, compared to $V1$. It only requires 0.92M parameters. Despite having the lowest MOS among our models, $V3$ can synthesize speech 13.44 times faster than real-time on CPU and 1,186 times faster than real-time on single V100 GPU while showing similar perceptual quality with MoL WaveNet. As $V3$ efficiently synthesizes speech on CPU, it can be well suited for on-device applications.
+
+\newcommand{\mlcell}[2][p{2cm}c]{%
+  \begin{tabular}[#1]{@{}c@{}}#2\end{tabular}}
+\begin{table}[ht]
+  \protect\caption{Comparison of the MOS and the synthesis speed. Speed of $n$ kHz means that the model can generate $n \times 1000$ raw audio samples per second. The numbers in () mean the speed compared to real-time.}
+  \label{tab:mos-speed-comparison}
+  \centering
+  \begin{tabular}[htbp]{lc@{\hspace{1.6em}}r@{\hspace{0.2em}}r@{\hspace{2em}}r@{\hspace{0.3em}}r@{\hspace{1.5em}}r}
+    \toprule
+    Model\hspace{1.6cm}   & 
+    \mlcell{\hspace{0.5cm}MOS (CI)}\hspace{0.5cm} & 
+    \multicolumn{2}{c}{\mlcell{Speed on CPU\\(kHz)}}\hspace{1.3em} & 
+    \multicolumn{2}{c}{\mlcell{Speed on GPU\\(kHz)}}\hspace{1em} & 
+    \mlcell{\# Param\\(M)} \\
+    \midrule
+    Ground Truth    & 4.45 ($\pm$0.06)  & \multicolumn{2}{c}{$-$}\hspace{1em}   & \multicolumn{2}{c}{$-$}\hspace{1em} & $-$ \\
+    \midrule 
+    WaveNet (MoL)   & 4.02 ($\pm$0.08)  & \multicolumn{2}{c}{$-$}\hspace{1em}   & 0.07      & ($\times0.003$)   & 24.73 \\
+    WaveGlow        & 3.81 ($\pm$0.08)  & 4.72 & ($\times0.21$)                 & 501       & ($\times22.75$)   & 87.73 \\
+    MelGAN          & 3.79  ($\pm$0.09) & 145.52 & ($\times6.59$)               & 14,238    & ($\times645.73$)  & 4.26 \\
+    \midrule 
+    HiFi-GAN $V1$ & \textbf{4.36} ($\pm$0.07) & 31.74 & ($\times$1.43) & 3,701 & ($\times$167.86)        & 13.92 \\
+    HiFi-GAN $V2$ & 4.23 ($\pm$0.07) & 214.97 & ($\times$9.74) & 16,863 & ($\times$764.80)      & \textbf{0.92} \\
+    HiFi-GAN $V3$ & 4.05 ($\pm$0.08) & \textbf{296.38} & \textbf{($\times$13.44)} & \textbf{26,169} & \textbf{($\times$1,186.80)}   & 1.46 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+
+\subsection{Ablation Study}
+We performed an ablation study of MPD, MRF, and mel-spectrogram loss to verify the effect of each HiFi-GAN component on the quality of the synthesized audio.
+$V3$ that has the smallest expressive power among the three generator variations was used as a generator for the ablation study, and the network parameters were updated up to 500k steps for each configuration.
+
+The results of the MOS evaluation are shown in Table~\ref{tab:ablation-study}, which show all three components contribute to the performance. Removing \textbf{MPD} causes a significant decrease in perceptual quality, whereas the absence of \textbf{MSD} shows a relatively small but noticeable degradation.
+To investigate the effect of \textbf{MRF}, one residual block with the widest receptive field was retained in each MRF module. The result is also worse than the baseline. 
+The experiment on the \textbf{mel-spectrogram loss} shows that it helps improve the quality, and we observed that the quality improves more stably when the loss is applied.
+
+To verify the effect of MPD in the settings of other GAN models, we introduced MPD in MelGAN. MelGAN trained with MPD outperforms the original one by a gap of 0.47 MOS, which shows statistically significant improvement.
+
+We experimented with periods of powers of 2 to verify the effect of periods set to prime numbers. While the period 2 allows signals to be processed closely, it results in statistically significant degradation with a difference of 0.20 MOS from the baseline.
+
+\begin{table}[ht]
+  \protect\caption{Ablation study results. Comparison of the effect of each component on the synthesis quality.}
+  \label{tab:ablation-study}
+  \centering
+  \begin{tabular}[htbp]{lcrr}
+    \toprule
+    Model\hspace{2.5cm}   & \hspace{0.5cm}MOS (CI)\hspace{0.5cm} \\
+    \midrule
+    Ground Truth  & 4.57 ($\pm$0.04) \\
+    \midrule
+    Baseline (HiFi-GAN $V3$) & 4.10 ($\pm$0.05) \\
+    \midrule 
+    w/o MPD     & 2.28 ($\pm$0.09) \\
+    w/o MSD     & 3.74 ($\pm$0.05) \\
+    w/o MRF    & 3.92  ($\pm$0.05) \\
+    w/o Mel-Spectrogram Loss    & 3.25  ($\pm$0.05) \\
+    MPD $p$=[2,4,8,16,32]    & 3.90  ($\pm$0.05) \\
+    \midrule[0.8pt]
+    MelGAN     & 2.88 ($\pm$0.08) \\
+    MelGAN with MPD     & 3.35 ($\pm$0.07) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Generalization to Unseen Speakers}
+
+We used 50 randomly selected utterances of nine unseen speakers in the VCTK dataset that were excluded from the training set for the MOS test. Table~\ref{tab:speaker-generalization} shows the experimental results for the mel-spectrogram inversion of the unseen speakers. The three generator variations scored 3.77, 3.69, and 3.61. They were all better than AR and flow-based models, indicating that the proposed models generalize well to unseen speakers. Additionally, the tendency of difference in MOS scores of the proposed models is similar with the result shown in Section~\ref{sec_fidelity_speed}, which exhibits generalization across different datasets.
+
+\begin{table}[h]
+  \centering
+    \begin{minipage}[t]{.41\linewidth}
+      \centering
+      \protect\caption{Quality comparison of synthesized utterances for unseen speakers.}
+      \label{tab:speaker-generalization}
+      \begin{tabular}[htbp]{lc}
+        \toprule
+        Model\hspace{2.0cm}   & \hspace{0.5cm}MOS (CI)\hspace{0cm} \\
+        \midrule
+        Ground Truth    & 3.79 ($\pm$0.07) \\
+        \midrule 
+        WaveNet (MoL)   & 3.52 ($\pm$0.08) \\
+        WaveGlow        & 3.52 ($\pm$0.08) \\
+        MelGAN          & 3.50  ($\pm$0.08) \\
+        \midrule 
+        HiFi-GAN $V1$ & \textbf{3.77} ($\pm$0.07) \\
+        HiFi-GAN $V2$ & 3.69 ($\pm$0.07) \\
+        HiFi-GAN $V3$ & 3.61 ($\pm$0.07) \\
+        \bottomrule
+      \end{tabular}
+    \end{minipage} 
+    \hspace{0.5cm}
+    \begin{minipage}[t]{.53\linewidth}
+      \centering
+      \protect\caption{Quality comparison for end-to-end speech synthesis.}
+      \label{tab:end-to-end-speech-synthesis}
+      \begin{tabular}[htbp]{llc}
+        \toprule
+        Model\hspace{3.7cm}   & \hspace{0.5cm}MOS (CI)\hspace{0cm} \\
+        \midrule
+        Ground Truth        & 4.23 ($\pm$0.07) \\
+        \midrule[0.8pt]
+        WaveGlow (w/o fine-tuning)   & 3.69 ($\pm$0.08) \\
+        \midrule 
+         HiFi-GAN $V1$ (w/o fine-tuning)    & 3.91 ($\pm$0.08) \\
+         HiFi-GAN $V2$ (w/o fine-tuning)    & 3.88 ($\pm$0.08) \\
+         HiFi-GAN $V3$ (w/o fine-tuning)    & 3.89 ($\pm$0.08) \\
+        \midrule 
+        WaveGlow (find-tuned)    & 3.66 ($\pm$0.08) \\
+        \midrule 
+        HiFi-GAN $V1$ (find-tuned)    & \textbf{4.18} ($\pm$0.08) \\
+        HiFi-GAN $V2$ (find-tuned)    & 4.12 ($\pm$0.07) \\
+        HiFi-GAN $V3$ (find-tuned)    & 4.02 ($\pm$0.08) \\
+        \bottomrule
+      \end{tabular}
+    \end{minipage}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.99\textwidth]{figs/e2e_fig.pdf}
+    \caption{Pixel-wise difference in the mel-spectrogram domain between generated waveforms and a mel-spectrogram from Tacotron2.
+    Before fine-tuning, HiFi-GAN generates waveforms corresponding to input conditions accurately. After fine-tuning, the error of the mel-spectrogram level increased, but the perceptual quality increased.}
+    \label{e2e_comparison}
+\end{figure}
+
+\subsection{End-to-End Speech Synthesis}
+
+We conducted an additional experiment to examine the effectiveness of the proposed models when applied to an end-to-end speech synthesis pipeline, which consists of \textit{text to mel-spectrogram} and \textit{mel-spectrogram to waveform} synthesis modules. We herein used Tacotron2~\citep{shen2018natural} to generate mel-spectrograms from text. Without any modification, we synthesized the mel-spectrograms using the most popular implementation of Tacotron2~\citep{Tacotron2Repo} with the provided pre-trained weights. We then fed them as input conditions into second stage models, including our models and WaveGlow used in Section~\ref{sec_fidelity_speed}.\footnote{MelGAN and MoL WaveNet were excluded from comparison for their differences in pre-processing such as frequency clipping. Mismatch in the input representation led to producing low quality audio when combined with Tacotron2.}
+
+The MOS scores are listed in Table~\ref{tab:end-to-end-speech-synthesis}. The results without fine-tuning show that all the proposed models outperform WaveGlow in the end-to-end setting, while the audio quality of all models are unsatisfactory compared to the ground truth audio. However, when the pixel-wise difference in the mel-spectrogram domain between generated waveforms and a mel-spectrogram from Tacotron2 are investigated as demonstrated in Figure~\ref{e2e_comparison}, we found that the difference is insignificant, which means that the predicted mel-spectrogram from Tacotron2 was already noisy. To improve the audio quality in the end-to-end setting, we applied fine-tuning with predicted mel-spectrograms of Tacotron2 in teacher-forcing mode~\citep{shen2018natural} to all the models up to 100k steps. MOS scores of all the fine-tuned proposed models over 4, whereas fine-tuned WaveGlow did not show quality improvement. We conclude that HiFi-GAN adapts well on the end-to-end setting with fine-tuning.
+

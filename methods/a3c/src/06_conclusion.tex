@@ -1,0 +1,24 @@
+%
+\vspace{-0.1cm}
+\section{Conclusions and Discussion}
+
+We have presented asynchronous versions of four standard reinforcement learning algorithms and showed that they are able to train neural network controllers on a variety of domains in a stable manner.
+Our results show that in our proposed framework stable training of neural networks through reinforcement learning is possible with both value-based and policy-based methods, off-policy as well as on-policy methods, and in discrete as well as continuous domains.
+When trained on the Atari domain using 16 CPU cores, the proposed asynchronous algorithms train faster than DQN trained on an Nvidia K40 GPU, with A3C surpassing the current state-of-the-art in half the training time.
+%
+
+One of our main findings is that using parallel actor-learners to update a shared model had a stabilizing effect on the learning process of the three value-based methods we considered.
+While this shows that stable online Q-learning is possible without experience replay, which was used for this purpose in DQN, it does not mean that experience replay is not useful.
+Incorporating experience replay into the asynchronous reinforcement learning framework could substantially improve the data efficiency of these methods by reusing old data.
+This could in turn lead to much faster training times in domains like TORCS where interacting with the environment is more expensive than updating the model for the architecture we used.
+
+Combining other existing reinforcement learning methods or recent advances in deep reinforcement learning with our asynchronous framework presents many possibilities for immediate improvements to the methods we presented.
+While our n-step methods operate in the \emph{forward view}~\citep{sutton:book} by using corrected n-step returns directly as targets, it has been more common to use the \emph{backward view} to implicitly combine different returns through eligibility traces~\citep{watkins1989learning,sutton:book,peng1996msq}.
+The asynchronous advantage actor-critic method could be potentially improved by using other ways of estimating the advantage function, such as generalized advantage estimation of~\cite{schulman2015gae}.
+%
+All of the value-based methods we investigated could benefit from different ways of reducing over-estimation bias of Q-values~\citep{hado2015doubledqn,bellemare2016gap}.
+Yet another, more speculative, direction is to try and combine the recent work on true online temporal difference methods~\citep{seijen2015true} with nonlinear function approximation.
+
+In addition to these algorithmic improvements, a number of complementary improvements to the neural network architecture are possible.
+The dueling architecture of~\cite{wang2015dueling} has been shown to produce more accurate estimates of Q-values by including separate streams for the state value and advantage in the network.
+The spatial softmax proposed by~\cite{levine2015endtoend} could improve both value-based and policy-based methods by making it easier for the network to represent feature coordinates.

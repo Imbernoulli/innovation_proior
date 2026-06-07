@@ -1,0 +1,46 @@
+\vspace{-2pt}
+\subsection{Properties of large autoregressive language models}
+\vspace{-2pt}
+
+\firstpara{Scaling laws} are found and studied in \textit{autoregressive} language models~\cite{scalinglaw,scalingar}, which describe a power-law relationship between the scale of model (or dataset, computation, \textit{etc.}) and the cross-entropy loss value on the test set.
+Scaling laws allow us to directly predict the performance of a larger model from smaller ones \cite{gpt4}, thus guiding better resource allocation.
+More pleasingly, they show that the performance of LLMs can scale well with the growth of model, data, and computation and never saturate, which is considered a key factor in the success of ~\cite{gpt3, llama1, llama2, opt, bloom, chinchilla}.
+% Scaling laws also show within limited computational resources, larger models can be more data-efficient than smaller ones because they can reach a lower test loss with the same computational budget~\cite{scalinglaw,scalingar}.
+% Some contributes the success of scaling laws to the autoregressive modeling' or something like this. Just give the evidence that scaling laws are mainly verified on AR rather Diffusion Transformers.}
+The success brought by scaling laws has inspired the vision community to explore more similar methods for multimodality understanding and generation~\cite{llava,alayrac2022flamingo,visionllm,dong2023dreamllm,cm3leon_chameleon,emu_baai,chen2023internvl,dai2023emu_meta,jin2023unified,ge2023seed_llama,ge2024seedx,tian2024mminterleaved,wang2024git}.
+
+% Propelled by the principles of scaling laws in neural language models~\cite{scalinglaw}, several Large Language Models~\cite{gpt3, opt, bloom, chinchilla, llama1, llama2} have been proposed, embodying the principle that increasing the scale of models tends to yield enhanced performance outcomes. GPT~\cite{gpt2, gpt3}, predicated on a transformer decoder architecture, undergoes generative pre-training and scales the model size to an unprecedented 175B parameters. 
+% LLama~\cite{llama1, llama2} release a collection of pre-trained and fine-tuned large language models (LLMs) ranging in scale from 7 billion to 70 billion parameters. 
+% The manifest efficacy of scaling laws applied to language models has proffered a glimpse into the promising potential of upscale in visual models~\cite{lvm}. 
+
+
+
+
+
+
+\para{Zero-shot generalization.} Zero-shot generalization~\cite{multitask_zeroshot} refers to the ability of a model, particularly a Large Language Model, to perform tasks that it has not been explicitly trained on.
+% In light of scaling laws~\cite{scalinglaw} and the emergent capabilities~\cite{emergent} of larger models, present-day Large Language Models can now attain sterling performance on a multitude of downstream tasks via zero-shot learning, evincing excellent generalization abilities. These capabilities render such models suitable as foundation models~\cite{foundationmodels}, obviating the need for excessive task-specific architectural tailoring for downstream applications~\cite{bert}. 
+Within the realm of the computer vision, there is a burgeoning interest in the zero-shot and in-context learning abilities of foundation models, CLIP~\cite{clip}, SAM~\cite{sam}, Dinov2~\cite{dinov2}. Innovations like Painter~\cite{painter} and LVM~\cite{lvm} extend visual prompters~\cite{visualprompttuning1,visualprompttuning2} to achieve in-context learning in vision.
+% thereby facilitating the generalization to downstream unseen tasks.
+
+
+\vspace{-3pt}
+\subsection{Visual generation}
+\vspace{-3pt}
+\firstpara{Raster-scan autoregressive models} for visual generation necessitate the encoding of 2D images into 1D token sequences.
+% Language models rely on tokenizer like BPE~\cite{bpe} to tokenize text data.
+Early endeavors~\cite{igpt,van2016pixelcnn} have shown the ability to generate RGB (or grouped) pixels in the standard row-by-row, raster-scan manner.
+\cite{reed2017mspixelcnn} extends \cite{van2016pixelcnn} by using multiple independent trainable networks to do super-resolution repeatedly.
+VQGAN~\cite{vqgan} advances \cite{igpt,van2016pixelcnn} by doing autoregressive learning in the latent space of VQVAE~\cite{vqvae}.
+It employs GPT-2 decoder-only transformer to generate tokens in the raster-scan order, like how ViT~\cite{vit} serializes 2D images into 1D patches.
+VQVAE-2~\cite{vqvae2} and RQ-Transformer~\cite{rq} also follow this raster-scan manner but use extra scales or stacked codes.
+Parti~\cite{parti}, based on the architecture of ViT-VQGAN~\cite{vit-vqgan}, scales the transformer to 20B parameters and works well in text-to-image synthesis.
+
+\para{Masked-prediction model.} MaskGIT~\cite{maskgit} employs a VQ autoencoder and a masked prediction transformer similar to BERT~\cite{bert, beit, mae} to generate VQ tokens through a greedy algorithm.
+MagViT~\cite{magvit} adapts this approach to videos, and MagViT-2~\cite{magvit2} enhances~\cite{maskgit,magvit} by introducing an improved VQVAE for both images and videos.
+MUSE~\cite{muse} further scales MaskGIT to 3B parameters.
+% setting new benchmarks in text-to-image synthesis.
+
+\para{Diffusion models}' progress has centered around improved learning or sampling~\cite{scorebased,ddim, dpm-solver,dpmpp,bao2022analytic}, guidance~\cite{cfg, glide}, latent learning~\cite{ldm}, and architectures~\cite{cdm, dit, imagen, raphael}.
+% The Denoising Diffusion Probabilistic Model~\cite{ddpm} leverages diffusion processes within the pixel space to predict noise, while the Cascade Diffusion Model~\cite{cascade-diffusion} employs a cascading mechanism of pixel diffusion models to iteratively refine the generated images. 
+DiT and U-ViT~\cite{dit,bao2023all} replaces or integrates the U-Net with transformer, and inspires recent image~\cite{chen2023pixart,chen2024pixart_sigma} or video synthesis systems~\cite{bar2024lumiere,gupta2023photorealistic} including Stable Diffusion 3.0~\cite{stable-diffusion3}, SORA~\cite{sora}, and Vidu~\cite{bao2024vidu}.

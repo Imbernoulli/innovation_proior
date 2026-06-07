@@ -1,0 +1,138 @@
+\begin{table*}[t!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}L{2.5cm}|L{1.2cm}|r*{19}{x}|x@{}}
+method & train set & aero      & bike      & bird      & boat      & bottle     & bus        & car        & cat        & chair      & cow        & table      & dog        & horse      & mbike      & persn     & plant      & sheep      & sofa       & train      & tv         & mAP       \\
+\hline
+BabyLearning &
+Prop. &
+77.7 &
+73.8 &
+62.3 &
+48.8 &
+45.4 &
+67.3 &
+67.0 &
+80.3 &
+41.3 &
+70.8 &
+49.7 &
+79.5 &
+74.7 &
+78.6 &
+64.5 &
+36.0 &
+69.9 &
+55.7 &
+70.4 &
+61.7 &
+63.8 \\
+R-CNN BB \cite{rcnn-pami} &
+12 &
+79.3 &
+72.4 &
+63.1 &
+44.0 &
+44.4 &
+64.6 &
+66.3 &
+84.9 &
+38.8 &
+67.3 &
+48.4 &
+82.3 &
+75.0 &
+76.7 &
+65.7 &
+35.8 &
+66.2 &
+54.8 &
+69.1 &
+58.8 &
+62.9 \\
+SegDeepM &
+12+seg &
+\bf{82.3} &
+75.2 &
+67.1 &
+50.7 &
+\bf{49.8} &
+71.1 &
+69.6 &
+88.2 &
+42.5 &
+71.2 &
+50.0 &
+85.7 &
+76.6 &
+81.8 &
+69.3 &
+\bf{41.5} &
+\bf{71.9} &
+62.2 &
+73.2 &
+\bf{64.6} &
+67.2 \\
+\hline
+FRCN [ours] &
+12 &
+80.1 &
+74.4 &
+67.7 &
+49.4 &
+41.4 &
+74.2 &
+68.8 &
+87.8 &
+41.9 &
+70.1 &
+50.2 &
+86.1 &
+77.3 &
+81.1 &
+70.4 &
+33.3 &
+67.0 &
+63.3 &
+77.2 &
+60.0 &
+66.1 \\
+FRCN [ours] &
+07++12 &
+82.0 &
+\bf{77.8} &
+\bf{71.6} &
+\bf{55.3} &
+42.4 &
+\bf{77.3} &
+\bf{71.7} &
+\bf{89.3} &
+\bf{44.5} &
+\bf{72.1} &
+\bf{53.7} &
+\bf{87.7} &
+\bf{80.0} &
+\bf{82.5} &
+\bf{72.7} &
+36.6 &
+68.7 &
+\bf{65.4} &
+\bf{81.1} &
+62.7 &
+\bf{68.8} \\
+\end{tabular}
+}
+\vspace{0.05em}
+\caption{{\bf VOC 2010 test} detection average precision (\%).
+BabyLearning uses a network based on \cite{Lin2014NiN}.
+All other methods use \vggsixteen. Training set key: {\bf 12}: VOC12 trainval, {\bf Prop.}: proprietary dataset, {\bf 12+seg}: {\bf 12} with segmentation annotations, {\bf 07++12}: union of VOC07 trainval, VOC07 test, and VOC12 trainval.
+%Results:
+%$^\dagger$\url{http://host.robots.ox.ac.uk:8080/anonymous/UKA8XB.html},
+%$^\dagger$\url{http://goo.gl/f1vtls},
+%$^\ddagger$\url{http://host.robots.ox.ac.uk:8080/anonymous/DGTVGW.html}
+%$^\ddagger$\url{http://goo.gl/kyZcnW}
+}
+\tablelabel{voc2010}
+\end{table*}

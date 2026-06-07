@@ -1,0 +1,9 @@
+\vspace{-0.1cm}
+\section{Conclusion}
+\label{sec:con}
+\vspace{-0.1cm}
+We presented $\encodec$: a state-of-the-art real-time neural audio compression model, producing high-fidelity audio samples across a range of sample rates and bandwidth. We showed subjective and objective results from 24kHz monophonic at 1.5 kbps (Figure~\ref{fig:mushra_bandwidth}) to 48kHz stereophonic (Table~\ref{tab:stereo}). 
+We improved sample quality by developing a simple but potent spectrogram-only adversarial loss which efficiently reduces artifacts and produce high-quality samples. 
+Besides, we stabilized training and improved the interpretability of the weights for losses through a novel gradient balancer. 
+Finally, we also demonstrated that a small Transformer model can be used to further reduce the bandwidth by up to 40\% without further
+degradation of quality, in particular for applications where low latency is not essential (e.g. music streaming).

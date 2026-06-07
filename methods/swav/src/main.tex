@@ -1,0 +1,194 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2020
+
+% ready for submission
+%\usepackage[nonatbib]{neurips_2020}
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%\usepackage[preprint]{neurips_2020}
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+\usepackage[nonatbib,final]{neurips_2020}
+
+% to avoid loading the natbib package, add option nonatbib:
+%\usepackage[nonatbib]{neurips_2020}
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage[dvipsnames]{xcolor}
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false, citecolor=ForestGreen]{hyperref}     % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+
+\usepackage{graphicx}
+\usepackage{comment}
+\usepackage{amsmath,amssymb} % define this before the line numbering.
+\usepackage{xspace}
+% \usepackage[font=footnotesize,labelfont=bf]{caption} 
+\usepackage{caption}
+\usepackage{mathtools}
+\usepackage{graphicx}
+\usepackage{soul}
+\usepackage{xspace}
+\usepackage[subrefformat=parens]{subfig}
+\usepackage{cleveref}
+\usepackage{enumitem}
+\usepackage[square,numbers,sort&compress]{natbib}
+
+\usepackage{bbding}
+\usepackage{pifont}
+\usepackage{wasysym}
+\usepackage{amssymb}
+\usepackage{float}
+\usepackage{dblfloatfix}
+\usepackage{footnote}
+\makesavenoteenv{tabular}
+\makesavenoteenv{table}
+\makesavenoteenv{figure}
+%\usepackage{authblk}
+\usepackage{xspace}
+\usepackage{multirow}
+
+
+\newcommand{\aj}[1]{{\color{red}[\textbf{Armand}:#1]}}
+\newcommand{\mc}[1]{{\color{green}[\textbf{Mathilde}:#1]}}
+\newcommand{\pb}[1]{{\color{orange}[\textbf{Piotr}:#1]}}
+\newcommand{\pg}[1]{{\color{cyan}[\textbf{Priya}:#1]}}
+\newcommand{\im}[1]{{\color{blue}[\textbf{Ishan}:#1]}}
+\newcommand{\jm}[1]{{\color{magenta}[\textbf{Julien}:#1]}}
+
+% formatting macros
+\newcommand{\todo}[1]{{\color{red}\textbf{#1}}}
+
+% \DeclareRobustCommand\onedot{\futurelet\@let@token\@onedot}
+\def\onedot{.}
+
+\def\eg{\emph{e.g}\onedot} \def\Eg{\emph{E.g}\onedot}
+\def\ie{\emph{i.e}\onedot} \def\Ie{\emph{I.e}\onedot}
+\def\cf{\emph{c.f}\onedot} \def\Cf{\emph{C.f}\onedot}
+\def\etc{\emph{etc}\onedot} \def\vs{\emph{vs}\onedot}
+\def\wrt{w.r.t\onedot} \def\dof{d.o.f\onedot}
+\def\etal{\emph{et al}\onedot}
+\crefname{section}{\S}{\S\S}
+\crefname{subsection}{\S}{\S\S}
+\crefformat{table}{Table~#2#1#3}
+\crefformat{figure}{Fig.~#2#1#3}
+\crefformat{equation}{Eqn~#2#1#3}
+
+
+% method macros
+\def\OURS{SwAV\xspace}
+\def\OURSFULL{Swapping Assignments between Views\xspace}
+%\newcommand{\appendixName}{supplementary material}
+\newcommand{\appendixName}{Appendix}
+
+
+% arch macros
+\newcommand{\resnet}{ResNet\xspace}
+\newcommand{\resnext}{ResNeXt\xspace}
+\newcommand{\resnetfiftyLong}{ResNet-50\xspace}
+\newcommand{\resnetfifty}{R50}
+\newcommand{\resnetfiftyVtwo}{R50v2}
+\newcommand{\resnethundred}{R101}
+\newcommand{\resnetonefifty}{R152}
+\newcommand{\resnextfifty}{RX-50}
+\newcommand{\resnexthundred}{RX101}
+\newcommand{\convone}{\texttt{conv1}}
+\newcommand{\resfour}{\texttt{res4}}
+\newcommand{\resfive}{\texttt{res5}}
+
+% dataset macros
+\newcommand{\ImNetDataset}{ImageNet\xspace}
+\newcommand{\ImNet}{ImageNet\xspace}
+\newcommand{\ImNetNine}{ImageNet-9k\xspace}
+\newcommand{\ImNetFull}{ImageNet-22k\xspace}
+\newcommand{\YFCCFull}{YFCC-100M\xspace}
+\newcommand{\YFCCone}{YFCC-1M\xspace}
+\newcommand{\YFCC}{YFCC\xspace}
+\newcommand{\iNat}{iNat18\xspace}
+\newcommand{\VOCseven}{VOC07\xspace}
+\newcommand{\VOCseventwelve}{VOC07+12\xspace}
+\newcommand{\Places}{Places205\xspace}
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\com}[1]{{\color{CadetBlue}\texttt{#1}}}
+
+\title{
+Unsupervised Learning of Visual Features \\
+by Contrasting Cluster Assignments
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{Mathilde Caron$^{1,2}$ \And Ishan Misra$^2$ \And \hspace{0.2cm} Julien Mairal$^1$ \hspace{-0.2cm} \AND \hspace{0.5cm} Priya Goyal$^2$ \And \hspace*{0.3cm} Piotr Bojanowski$^2$ \And Armand Joulin$^2$ \AND \normalfont $^1$ Inria$^*$ \And \normalfont $^2$ Facebook AI Research}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Unsupervised image representations have significantly reduced the gap with supervised pretraining, notably with the recent achievements of contrastive learning methods.
+These contrastive methods typically work online and rely on a large number of explicit pairwise feature comparisons, which is computationally challenging.
+In this paper, we propose an online algorithm, \OURS, that takes advantage of contrastive methods without requiring to compute pairwise comparisons.
+Specifically, our method simultaneously clusters the data while enforcing consistency between cluster assignments produced for different augmentations (or ``views'') of the same image, instead of comparing features directly as in contrastive learning.
+Simply put, we use a ``swapped'' prediction mechanism where we predict the code of a view from the representation of another view.
+Our method can be trained with large and small batches and can scale to unlimited amounts of data.
+Compared to previous contrastive methods, our method is more memory efficient since it does not require a large memory bank or a special momentum network.
+In addition, we also propose a new data augmentation strategy, \texttt{multi-crop}, that uses a mix of views with different resolutions in place of two full-resolution views, without increasing the memory or compute requirements.
+We validate our findings by achieving $75.3\%$ top-1 accuracy on ImageNet with ResNet-50, as well as surpassing supervised pretraining on all the considered transfer tasks.
+
+\end{abstract}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnotetext{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+\blfootnote{* Univ. Grenoble Alpes, Inria, CNRS, Grenoble INP, LJK, 38000 Grenoble, France}
+\blfootnote{Correspondence to \texttt{mathilde@fb.com}}
+\blfootnote{Code: \url{https://github.com/facebookresearch/swav}}
+
+\input{intro.tex}
+
+\input{related.tex}
+
+\input{method.tex}
+
+\input{experiments.tex}
+
+\section{Discussion}
+%This work presents an online clustering approach inspired by the recent progress in contrastive learning.
+%We show that comparing different views of the same image is not specific to instance classification by proposing a similar principle for clustering.
+%We enforce consistency between clustering codes for different augmentations of an image and 
+%obtain clustering `codes' for an image using Sinkhorn-Knopp in an online manner.
+%Additionally, we propose a \texttt{multi-crop} data augmentation strategy that can be applied to any self-supervised method with consistent gains. 
+Self-supervised learning is rapidly progressing compared to supervised learning, even surpassing it on transfer learning, even though the current experimental settings are designed for supervised learning.
+In particular, architectures have been designed for supervised tasks, and it is not clear if the same models would emerge from exploring architectures with no supervision.
+Several recent works have shown that exploring architectures with search~\cite{liu2020labels} or pruning~\cite{caron2020pruning} is possible without supervision, and we plan to evaluate the ability of our method to guide model explorations.
+
+\paragraph{Acknowledgement.}
+We thank Nicolas Carion, Kaiming He, Herve Jegou, Benjamin Lefaudeux, Thomas Lucas, Francisco Massa, Sergey Zagoruyko, and the rest of Thoth and FAIR teams for their help and fruitful discussions.
+Julien Mairal was funded by the ERC grant number 714381 (SOLARIS project) and by ANR 3IA MIAI@Grenoble Alpes (ANR-19-P3IA-0003).
+
+
+\bibliographystyle{splncs04}
+\bibliography{egbib}
+
+\newpage
+\input{appendix.tex}
+
+\end{document}

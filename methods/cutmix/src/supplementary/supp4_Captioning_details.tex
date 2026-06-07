@@ -1,0 +1,22 @@
+\section{Transfer Learning to Image Captioning}
+\label{appendix:captioning}
+
+\begin{table*}[]
+\centering
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+                     & BLEU1 & BLEU2 & BLEU3 & BLEU4 & METEOR & ROUGE & CIDER \\ \midrule
+ResNet-50 (Baseline) & 61.4  & 43.8  & 31.4  & 22.9  & 22.8   & 44.7  & 71.2  \\
+ResNet-50 + Mixup     & 61.6  & 44.1  & 31.6  & 23.2  & 22.9   & 47.9  & 72.2  \\
+ResNet-50 + Cutout    & 63.0  & 45.3  & 32.6  & 24.0  & 22.6   & 48.2  & 74.1  \\
+ResNet-50 + CutMix    & \textbf{64.2}  & \textbf{46.3}  & \textbf{33.6}  & \textbf{24.9}  & \textbf{23.1}   & \textbf{49.0}  & \textbf{77.6}  \\ \bottomrule
+\end{tabular}
+\caption{Image captioning results on MS-COCO dataset.}
+\label{tab:sup:imagecap}
+\end{table*}
+
+MS-COCO dataset~\cite{lin2014microsoft} contains $120$ K \texttt{trainval} images and $40$ K \texttt{test} images. 
+From the base model NIC\footnote{https://github.com/stevehuanghe/image\_captioning}~\cite{vinyals2015show}, the backbone model is changed from GoogLeNet to ResNet-50. 
+For training, we set batch size, learning rate, and training epochs to $20$, $0.001$, and $100$, respectively.
+For evaluation, the beam size is set to $20$ for all the experiments.
+Image captioning results with various metrics are shown in Table~\ref{tab:sup:imagecap}.

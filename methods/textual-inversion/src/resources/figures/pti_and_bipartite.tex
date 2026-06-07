@@ -1,0 +1,69 @@
+\begin{figure}[!hbt]
+    \centering
+    \setlength{\tabcolsep}{0.55pt}
+    \renewcommand{\arraystretch}{1.0}
+    {
+    
+    \begin{tabular}{c}
+    
+    \begin{tabular}{@{\hskip 10pt}c@{\hskip 10pt}c c c}
+    \begin{tabular}{c}
+    \raisebox{0.145\linewidth}{\begin{tabular}{c@{}c@{}c@{}c@{}} Input \\ Samples \end{tabular}}
+    \end{tabular} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/orig_1.jpeg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/orig_2.jpeg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/orig_3.jpeg}
+    \end{tabular} \\[-25pt]
+    
+    \begin{tabular}{c@{\hskip 20pt}c}
+    
+    \begin{tabular}{c@{\hskip 10pt}c c c}
+    & \multicolumn{3}{c}{Bipartite Inversion} \\
+    \raisebox{0.055\linewidth}{Reconstruction} &
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/inv_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/inv_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/inv_3.jpg} \\
+    
+    \raisebox{0.055\linewidth}{$s = 1$} &
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/1_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/1_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/1_3.jpg} \\
+    
+    \raisebox{0.055\linewidth}{$s = 2$} &
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/2_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/2_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/2_3.jpg} \\
+    
+    \raisebox{0.055\linewidth}{$s = 5$} &
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/5_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/5_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/bipartite/5_3.jpg} \\
+    & \multicolumn{3}{c}{\begin{tabular}{c@{}c@{}c@{}c@{}} ``A painting of \pholdercolor \\ sitting next to a serene pond" \end{tabular} }
+    \end{tabular} &
+    
+    \begin{tabular}{c c c}
+    \multicolumn{3}{c}{Pivotal Tuning} \\
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/inv_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/inv_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/inv_3.jpg} \\
+    
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/1_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/1_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/1_3.jpg} \\
+    
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/2_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/2_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/2_3.jpg} \\
+    
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/5_1.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/5_2.jpg} & 
+    \includegraphics[width=0.13\linewidth,height=0.13\linewidth]{resources/images/pivotal/5_3.jpg} \\
+    \multicolumn{3}{c}{\begin{tabular}{c@{}c@{}c@{}c@{}} ``A watercolor painting of \pholdercolor" \\ \quad \end{tabular}} 
+    \end{tabular}
+    
+    \end{tabular}
+    \end{tabular}
+    }
+    \caption{Advanced inversion results using Bipartite Inversion~\citep{ramesh2022hierarchical} (left) and Pivotal Tuning~\citep{roich2021pivotal} (right). $s$ is the guidance scale. Reconstructions were obtained using the prompt ``A photo of \pholdercolor". Bipartite inversion allows for more accurate reconstructions without modifying the model, but their structure is lost for complex prompts in high guidance scales. Pivotal tuning improves shapes at the cost of visual artifacts, and fail to adhere to simple prompts at high guidance scales. Note that the pivotal tuning results use a random noise input, while the bipartite results use a fixed noise for each column.}
+    \label{fig:advanced_inversion} 
+\end{figure}

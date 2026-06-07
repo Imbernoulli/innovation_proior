@@ -1,0 +1,33 @@
+
+\setlength{\tabcolsep}{4pt}
+\begin{table}[h]
+\small
+    \centering
+    
+    \resizebox{0.97\linewidth}{!}{
+        \begin{tabular}{lc l lc cc}
+        \toprule
+Dataset && Model & Classifier guidance && FID & IS          \\ 
+\midrule
+% ADM~[9]  & & & 23.24& 58.06 && 10.94 & 101.0  \\
+% % VQ-GAN~[11]       & & & n/a & n/a && 15.78 & 78.3  \\
+% VQGAN\cite{Esser21vqgan} & & & 26.52$^\ast$ & 66.18$^\ast$ && 15.78 & 78.3 \\
+% MaskGIT                         & & & 7.32 & 156.0 && 6.18 & 182.1 \\ \cline{2-8}
+
+ImageNet && ADM~\cite{dhariwal2021diffusion}  & 1.0 guidance  && 4.59 & 186.70 \\
+256$\times$256 && VQGAN~\cite{Esser21vqgan} & 0.05 acceptance rate    &&  5.88 & 304.8 \\
+&& MaskGIT & 0.05 acceptance rate    &          & \textbf{4.02} & \textbf{355.6} \\ \midrule
+ImageNet && ADM~\cite{dhariwal2021diffusion}  & 1.0 guidance  && 7.72 & 172.71 \\
+% 512x512 && VQGAN~\cite{Esser21vqgan}$^\ast$ & 0.05 acceptance rate && &  \\
+512$\times$512 && MaskGIT & 0.05 acceptance rate    && \textbf{4.46} & \textbf{342.0} \\
+  \bottomrule
+    \end{tabular}
+    
+    }
+    \vspace{-1mm}
+    \caption{\small{Class-conditional image synthesis on ImageNet for methods with classifier guidance.
+    %\small{$^\ast$ denotes the model we train with the same architecture and setup with ours.}
+    }}
+    \label{tab:supp_cc_classifier}
+\vspace{-5mm}
+\end{table}

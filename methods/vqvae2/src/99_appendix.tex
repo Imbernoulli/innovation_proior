@@ -1,0 +1,213 @@
+\appendix
+
+\section{Architecture Details and Hyperparameters}\label{app:arch}
+\subsection{PixelCNN Prior Networks}
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}l|cc}
+             & Top-Prior ($32\times 32$) & Bottom-Prior ($64 \times 64$) \\
+\toprule
+ Input size  & $32 \times 32$ & $64 \times 64$ \\
+ Batch size  & 1024   & 512 \\
+ Hidden units & 512 & 512 \\
+ Residual units & 2048 & 1024 \\
+ Layers  & 20 & 20 \\
+ Attention layers & 4 & 0 \\
+ Attention heads & 8 & - \\
+ Conv Filter size & 5 & 5\\
+ Dropout & 0.1 & 0.1 \\
+ Output stack layers & 20 & - \\
+ Conditioning stack residual blocks & - & 20 \\
+ Training steps & 1600000 & 754000 \\
+\bottomrule
+\end{tabular}
+\caption{Hyper parameters of autoregressive prior networks used for Imagenet-256 experiments.}
+\end{table}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}l|ccc}
+     &  Top-Prior & Mid-Prior & Bottom-Prior \\
+\toprule
+ Input Size & $32\times 32$ & $64\times 64$ & $128 \times 128$ \\
+ Batch size  & 1024   & 512 & 256\\
+ hidden units & 512 & 512 & 512 \\
+ residual units & 2048 & 1024 & 1024\\
+ layers  & 20 & 20 & 10 \\
+ Attention layers & 4 & 1 & 0\\
+ Attention heads & 8 & - & \\
+ Conv Filter size & 5 & 5 & 5\\
+ Dropout & 0.5 & 0.3 & 0.25 \\
+ Output stack layers & 0 & 0 & 0\\
+ Conditioning stack residual blocks & - & 8 & 8 \\
+ Training steps & 237000 & 57400 & 270000 \\
+\end{tabular}
+\caption{Hyper parameters of autoregressive prior networks used for FFHQ-1024 experiments.}
+\end{table}
+
+
+\subsection{VQ-VAE Encoder and Decoder}
+
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{@{}l|cc}
+             & ImageNet & FFHQ \\
+\toprule
+ Input size  & $256 \times 256$ & $1024 \times 1024$ \\
+ Latent layers & $32\times 32$, $64\times64$ & $32\times 32$, $64\times 64$, $128\times 128$ \\
+ $\beta$ (commitment loss coefficient) & 0.25 & 0.25 \\
+ Batch size  & 128   & 128 \\
+ Hidden units & 128 & 128 \\
+ Residual units & 64 & 64 \\
+ Layers  & 2 & 2 \\
+ Codebook size & 512 & 512 \\
+ Codebook dimension & 64 & 64 \\
+ Encoder conv filter size & 3 & 3\\
+ Upsampling conv filter size & 4 & 4\\
+ Training steps & 2207444 & 304741 \\
+\end{tabular}
+\caption{Hyper parameters of VQ-VAE encoder and decoder used for ImageNet-256 and FFHQ-1024 experiments.}
+\end{table}
+
+\newpage
+
+\section{Additional Samples}\label{app:samples}
+Please follow the following link to access the full version of our paper, rendered without lossy compression, which includes additional samples.
+\par
+\texttt{\url{https://drive.google.com/file/d/1H2nr_Cu7OK18tRemsWn_6o5DGMNYentM/view?usp=sharing}}
+
+% We here present additional samples from our model trained on ImageNet. All these samples are taken without any cherry-picking.
+
+
+% \begin{figure*}[h!]
+% \centering
+% \includegraphics[width=\textwidth]{samples_jpg/class_022_bald_eagle.jpeg}
+% \caption{Random samples from class 22 Bald Eagle in ImageNet.}
+% \label{fig:eagle}
+% \end{figure*}
+
+% \begin{figure*}[t!]
+% \centering
+% \includegraphics[width=\textwidth]{samples_jpg/class_011_goldfinch.jpeg}
+% \caption{Random samples from class 11 Gold Finch in ImageNet.}
+% \label{fig:goldfinch}
+% \end{figure*}
+
+% \begin{figure*}[t!]
+% \centering
+% \includegraphics[width=\textwidth]{samples_jpg/class_024_great_grey_owl.jpeg}
+% \caption{Random samples from class 24 Grey Owl in ImageNet}
+% \label{fig:owl}
+% \end{figure*}
+
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=0.32\textwidth]{samples_jpg/bird_z1.jpeg}
+%     \includegraphics[width=0.32\textwidth]{samples_jpg/bird_z2.jpeg}
+%     \includegraphics[width=0.32\textwidth]{samples_jpg/bird_orig.jpeg}\\
+%     \parbox{0.32\textwidth}{\center $h_\text{top}$}
+%     \parbox{0.32\textwidth}{\center $h_\text{top}, h_\text{bottom}$}
+%     \parbox{0.32\textwidth}{\center Original}
+%     \caption{Reconstructions from a hierarchical VQ-VAE with two latent maps (top and bottom) trained on ImageNet. The rightmost image is the original. Each latent map adds extra detail to the reconstruction. These latent maps are approximately 192x and 48x smaller than the original image (respectively).}
+%     \label{fig:im_rec}
+% \end{figure}
+
+
+% \begin{figure*}[t!]
+% \centering
+% \includegraphics[width=0.5\textwidth]{samples_jpg/biggan_000_tench_2x4_t0_02.jpeg}
+% \includegraphics[width=0.5\textwidth]{samples_jpg/biggan_class_001_goldfish_2x4_t02.jpeg}
+% \includegraphics[width=0.5\textwidth]{samples_jpg/biggan_class_009_ostrich_2x4_t02.jpeg}
+% \caption{BigGan deep samples with truncation level $0.02$ which trades diversity for sample quality.}
+% \label{fig:bigan_t02}
+% \end{figure*}
+
+
+% \begin{figure}[h!]
+%     \centering
+%     \begin{minipage}[c]{0.49\textwidth}
+%     	\parbox{\textwidth}{\center Top 1\%}	    
+%     	\includegraphics[width=\textwidth]{samples_jpg/mortar/t1_1_top1pct.jpeg}
+%     \end{minipage}
+%     \begin{minipage}[c]{0.49\textwidth}
+% 	 \parbox{\textwidth}{\center Top 10\%}    
+%   	 \includegraphics[width=\textwidth]{samples_jpg/mortar/t1_1_top10pct.jpeg}    
+%     \end{minipage}
+%     \begin{minipage}[c]{0.49\textwidth}
+% 	 \parbox{\textwidth}{\center Top 30\%}    
+%   	 \includegraphics[width=\textwidth]{samples_jpg/mortar/t1_1_top30pct.jpeg}    
+%     \end{minipage}
+%     \begin{minipage}[c]{0.49\textwidth}
+%  	 \parbox{\textwidth}{\center Top 50\%}   
+%   	 \includegraphics[width=\textwidth]{samples_jpg/mortar/t1_1_top50pct.jpeg}    
+%     \end{minipage}
+%     \begin{minipage}[c]{0.49\textwidth}
+% 	 \parbox{\textwidth}{\center Top 75\%}    
+%   	 \includegraphics[width=\textwidth]{samples_jpg/mortar/t1_1_top75pct.jpeg}    
+%     \end{minipage}
+%     \begin{minipage}[c]{0.49\textwidth}
+% 	 \parbox{\textwidth}{\center Top 100\%}    
+%   	 \includegraphics[width=\textwidth]{samples_jpg/mortar/t1_1_top100pct.jpeg}    
+%     \end{minipage}                
+
+%   \caption{Temperature 0.9 samples selected by our classifier rejection sampling technique from the mortar class (ImageNet class 666). Each grid is uniformly sampled from the shown percentage of top scoring samples out of 10000 total.}
+%     \label{fig:mortar}
+% \end{figure}
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/110_2.jpeg}
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/13_1.jpeg}
+    
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/231_1.jpeg}
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/more/129_3.jpeg}
+    
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/269_3.jpeg}
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/293_1.jpeg}
+    
+
+%   \caption{Representative samples from FFHQ-1024. Our model is able to capture the diversity present in the dataset while producing realistic high resolution samples. This can be noticed in the variety of age, gender, skin and hair colour, pose, facial expressions as well as the presence or absence of accessories and facial hair. Our model is able to capture the relatively rare cases of multiple persons in photos.}
+%     \label{fig:ffhq1}
+% \end{figure}
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/300_2.jpeg}
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/321_2.jpeg}
+    
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/322_1.jpeg}
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/more/263_2.jpeg}
+
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/393_2.jpeg}
+%     \includegraphics[width=0.49\textwidth]{samples_jpg/ffhq/151_2.jpeg}
+
+%     \label{fig:ffhq2}
+%       \caption{More representative samples from FFHQ-1024. Notice that, thanks to autoregressive modelling in the spatially compressed latent space, our model is quite effective in capturing longer-range dependencies in these high-resolution images and produce symmetric features such as matching eye colours or symmetric shapes of glasses and bone structure in faces.}
+
+% \end{figure}
+
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=\textwidth]{samples_jpg/ffhq/289_2.jpeg}
+%     \label{fig:ffhq-highres1}
+%     \caption{Full resolution sample from FFHQ-1024}
+% \end{figure}
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=\textwidth]{samples_jpg/ffhq/334_3.jpeg}
+%     \label{fig:ffhq-highres2}
+%         \caption{Full resolution sample from FFHQ-1024}
+
+% \end{figure}
+
+% \begin{figure}[h]
+%     \centering
+%     \includegraphics[width=\textwidth]{samples_jpg/ffhq/328_2.jpeg}
+%     \label{fig:ffhq-highres3}
+%         \caption{Full resolution sample from FFHQ-1024}
+
+% \end{figure}

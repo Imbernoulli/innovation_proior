@@ -1,0 +1,38 @@
+We first introduce the bi-stride pooling strategy, multi-scale building, and the corresponding data preprocessing. Note that all algorithms and preprocessing steps in this section are deterministic and done in one pass.
+\subsection{Motivations}
+As summarized in Fig.~\ref{fig:compare}. The pooling strategy can be categorized into two groups by either utilizing spatial proximity~\cite{lino2021simulating,lino2022towards} or purely relying on graph information~\cite{gao2019graph,li2020multipole}. For complex geometry, it's preferred to avoid spatial proximity unless desired by the simulation cases (such as contact or interface interactions). The only benchmark that uses only graph information is \GUN~\cite{gao2019graph} with an obvious drawback: it's easy to lose the connectivity and artificially introduce partitions, even with adjacent matrix enhancement (Fig.~\ref{fig:compare} (a)).
+
+For a more clear illustration, we first define the adjacency enhancement by the $K^{\text{th}}$-order matrix power as $\mA\leftarrow\mA^K$, where $\mA$ is the adjacency matrix of the graph. Geometrically, $\mA(i,j)=1$ means the edge $(i,j)$ exists, and $\mA^K(i,j)=1$ means that node $j$ is connected to node $i$ via at most $K$ hops. Given a pooling strategy $\text{P}$ and \revision{the pooled nodes' indices $\mathcal{I}$}, we define a $K{\text{th}}$-order outlier set as $\gO_K$, where the nodes in $\gO_K$ are not connected to any pooled nodes even after $K^{\text{th}}$-order adjacency enhancement: $\mA^K(i,j)=0,\forall i\in \revision{\mathcal{I}},\forall j\in\gO_K$.
+
+We finally define that a pooling strategy $\text{P}$ is $K^{\text{th}}$-order connection conservative (K-CC) if $\gO_K$ is empty. Empirically, the larger $K$ in $K^{\text{th}}$-order adjacency enhancement is harmful to distinguish the node features: as $K$ increases, $\mA^K(i,j)$ (converted to boolean) approaches a matrix with all its entries equal to $1$, representing a fully connected graph; then a single convolution will average all node features and make them indistinguishable. The most preferred, i.e. the smallest possible $K$ we seek is naturally $2$.
+With such reason, \citet{gao2019graph} uses the smallest $2^{\text{nd}}$ order enhancement to help conserve the connectivity. Nonetheless, there is no theoretical guarantee that a learnable pooling module is consistently 2-CC for any graph. These limitations motivate us to create a consistent 2-CC pooling strategy, as followed in Sec.~\ref{sec:bistride:adjenhance}.
+
+\subsection{Bi-Stride Pooling and Adjacency Enhancement}
+\label{sec:bistride:adjenhance}
+\begin{figure}[t]
+    \centering
+    \includegraphics[width = 0.8\linewidth]{figs/DAG_illu_single.pdf}\vspace{2pt}\\
+    \setlength{\tabcolsep}{0\linewidth}
+    \begin{tabular}{C{0.04\linewidth}C{0.43\linewidth}C{0.43\linewidth}}
+         & {\scriptsize(a) Bi-partition of a DAG} & {\scriptsize(b) Bi-stride of a mesh} \\
+    \end{tabular}\vspace{-5pt}
+    \caption{\textbf{The similarity between Bi-partition and Bi-stride.} The number in the circle means the depth of the frontiers of either topological sorting or BFS. The red-bounded circle (number 1) means the starting node, i.e. the seed.}
+    \vspace{-10pt}
+    \label{fig:DAG}
+\end{figure}
+We draw the initial inspiration from the bi-partition determination algorithm~\cite{asratian1998bipartite} in a directed acyclic graph (DAG). As shown in Fig.~\ref{fig:DAG}(a), after topological sorting, pooling on every other depth (yellow and green) generates a bi-partition where all edges reside between two partitions, and pooling either partition is obviously 2-CC.
+To resemble bi-partition determination on a mesh, which is not bi-partite due to cycles, we can conduct a breadth-first search (BFS) to compute the geodesic distances from a seed to all other nodes, and then stride and pool all nodes at every other BFS frontier (\textit{bi-stride}). A bi-stride example is shown in Fig.~\ref{fig:DAG}(b), where the number in each vertex represents the geodesic distance to the seed (node $1$ in the red circle) by BFS. This pooling is 2-CC by construction and conserves direct connections between pooled and unpooled nodes. As a result, we avoid building edges by using spatial proximity or handling cumbersome corner cases such as cross-boundary connections while also using the smallest adjacency enhancement.
+
+\paragraph*{Seeding Heuristics}
+We claim that there should exist some freedom as long as the seeding is balanced to a certain degree. For training datasets, we choose two deterministic seeding heuristics: 1) closest to the center of a cluster (CloseCenter) for \fonts, and 2) the minimum average distance (MinAve) for all other cases, and we preprocess the multi-level building in one pass. One can consider the cheaper heuristic CloseCenter during the online inferring phase if an unseen geometry is encountered. The details of the algorithms can be found in Sec.\ref{sec:appdx:algo}. \revision{The sensitivity study on choosing a different seeding heuristic in the test phase is presented in Sec.\ref{sec:appdx:abaltion:seeding}.}
+
+\paragraph*{Contact Edges}
+For problems involving contacts, such as \plate~(Fig.~\ref{fig:example:bistride}(c)) and \fonts~(Fig.~\ref{fig:example:bistride}(d)), the finest-level contact edges $\mA^C$ are built dynamically by spatial proximity between nodes. Note the edge-building by the spatial proximity does not apply to the internal elastic mechanics, whose edge is defined by the mesh only. The enhancement of the contact edges should be handled properly for multi-scale GNN, which, to the best of our knowledge, has not been addressed in prior works. At any level $l$, given adjacent matrices $\mA_l$ obtained by the input mesh and the enhancement rule, and the contact edge $\mA^C_l$ at this level, we first apply bi-stride pooling to select nodes $\mathcal{I}$, then enhance $\mA_{l+1}$ and $\mA^C_{l+1}$ using the following rule, \revision{where $[\mathcal{I},\mathcal{I}]$ means striding on the matrix rows and columns}:
+\begin{equation}
+    \label{eq:adj:enhance}
+    \begin{split}
+        \mA'_{l+1} \leftarrow \mA_l \mA_l, \quad \mA_{l+1} & \leftarrow \mA'_{l+1}[\mathcal{I},\mathcal{I}],\\
+        \mA'^C_{l+1} \leftarrow \mA_l \mA^C_l \mA_l , \quad \mA^C_{l+1} & \leftarrow \mA'^C_{l+1}[\mathcal{I},\mathcal{I}].
+    \end{split}
+\end{equation}
+The enhancement of contact edges can be geometrically interpreted as contact edge $(i,j)$ should exist if $j$ is reachable from $i$ in 2 hops and at least one of them is a contact edge at the finer level. We prove in Sec.~\ref{sec:appdx:prove:contact:conserve} that bi-stride pooling with the enhancement in Eq.~\ref{eq:adj:enhance} also conserves all contact edges.

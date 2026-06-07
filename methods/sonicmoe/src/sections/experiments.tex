@@ -1,0 +1,204 @@
+% We provide a kernel implementation of \Algname\ for NVIDIA H100 GPUs written using CuTe-DSL.% version 4.2.0. In this section, we thoroughly evaluate the design of \Algname~and address the following research questions:
+% \reallysquishlist
+%     \item \textbf{RQ1 (Section~\ref{sec:exp:mem})} how is the activation memory usage of \Algname? Is \Algname's activation memory usage \textit{independent of} expert granularity? 
+
+%     \item \textbf{RQ2 (Section~\ref{sec:exp:speed})} how is the training throughput of \Algname? Can \Algname~maximally sustain the throughput for fine-grained MoE across various scales and expert granularity?
+
+%     \item \textbf{RQ3 (Section~\ref{sec:exp:token_round_perf})} how is token rounding's downstream task evaluation compared to vanilla top-$K$ token choice for sparse MoE? Is there any performance degradation with token rounding routing? 
+
+%     \item \textbf{RQ4 (Section~\ref{sec:exp:token_round_throughput})} how is the compute throughput of token rounding routing for sparse MoE after we eliminate the tile quantization effect? Can it consistently scale well w.r.t. various MoE sparsity? 
+
+%     % Does addressing tile quantization effect improve training throughput improvement?
+% \squishend
+
+% For \textbf{RQ1, 2, 4}, we
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\linewidth]{figures/memory_usage.pdf}
+    \caption{\small Peak activation memory usage per layer across different model scales (1.4B–120B) on H100 GPUs. MegaBlocks does not support small $n$. The benchmark configurations are listed in Table~\ref{tab:config_benchmark}. For ``DeepGEMM++'' and ``DeepGEMM-pt'', we only cache $X$, gathered $X_e$, $H_e$ for each expert $e$ and routing metadata which is the minimum amount of activation memory required for backward computation without GEMM recomputation.}% or an extra gather for DeepGEMM-pt and DeepGEMM++.}
+    \label{fig:mem}
+\end{figure}
+
+
+% We profile the peak activation memory usage for a single MoE layer as in Figure~\ref{fig:mem}. We select training configurations of 1.4B, 7B, 30B, and 120B parameter scale MoE and we keep the total parameters, embedding dimension $d$, and MoE sparsity constant while varying expert intermediate size $n$ ($E$ and $K$ proportionally as well). Across all scales, our method consistently produces the lowest activation memory footprint. For the 7B model with $n=256$, our approach reduces memory usage by \textbf{45\%} compared to ScatterMoE, and more significantly compared to MoMoE. For 30B and 120B models, the gap becomes even wider: for example, at 120B scale, our method saves more than \textbf{5GB memory per layer} compared to MoMoE. We also investigate the effect of expert granularity on activation memory in Figure~\ref{fig:teasor} and we find that \Algname's activation memory, as expected, stays constant with expert granularity.  
+
+
+% We select training configurations of 1.4B, 7B, 30B, and 120B parameter scale MoE % from real production models
+% and we keep the total parameters, embedding dimension $d$, and MoE sparsity constant while varying expert intermediate size $n$ ($E$ and $K$ proportionally as well).
+% \subsection{\Algname~'s activation memory usage} \label{sec:exp:mem}
+% \begin{wrapfigure}{r}{0.35\textwidth}
+%     \includegraphics[width=\linewidth]{figures/plot_granularity.pdf}
+%     \caption{Peak activation memory of 7B MoE with various expert granularity while keeping MoE sparsity constant.}
+%     \label{fig:mem-w.r.t.-granularity}
+% \end{wrapfigure}
+
+We evaluate \Algname's activation memory footprint (Section~\ref{sec:exp:mem}) and training throughput (Section~\ref{sec:exp:speed}) compared to other baseline MoE implementations. We also demonstrate the efficacy of the token rounding routing strategy and show that it is possible to use token choice as a drop-in replacement after training with token rounding in Section~\ref{sec:exp:token_round_perf}. We also show that token rounding can maintain the training throughput under sparse MoE configuration in Section~\ref{sec:exp:token_round_throughput}.
+
+\subsection{\Algname's activation memory} \label{sec:exp:mem}
+We demonstrate that \Algname\ achieves the lowest peak activation memory footprint for a single MoE layer as shown in Figure~\ref{fig:mem} across all scales on H100 GPUs. For the 7B model with $n=256$, our approach reduces memory usage by \textbf{45\%} compared to ScatterMoE, and more significantly compared to MoMoE. For 30B and 120B models, the gap becomes even wider: at 120B scale, our method saves more than \textbf{3GiB memory per layer} compared to MoMoE. We also validate that \Algname's activation memory stays constant w.r.t. expert granularity as shown in Figure~\ref{fig:teasor}.
+
+
+
+
+% \begin{figure}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/mem}
+%     \caption{Comparison of training efficiency across different Mixture-of-Experts implementations. }
+%     \label{fig:speed}
+% \end{figure}
+% \wentao{E2E tput + componentwise TFLOPS 
+% 2 figures:
+% Left subfigure. Quality comparison of fine-grained MoE vs. coarse MoE. Iteration-wise
+% Right subfigure. GPU wall-clock time of our MoE vs. scattermoe, etc.
+% }
+
+
+\subsection{\Algname's training throughput}  \label{sec:exp:speed}
+
+
+
+\subsubsection{Entire forward and backward throughput}
+Figure~\ref{fig:speed} reports the compute throughput of forward and backward pass of one MoE layer in various MoE training configurations on H100 GPUs. Across all model scales, our method consistently achieves the highest TFLOPS. \textbf{For example, on a fine-grained 7B MoE model with $n=256$, \Algname~increases the \tflops~by 43\% on the forward pass compared to a highly optimized DeepGEMM baseline, and by 83\% and 115\% on the backward pass compared to ScatterMoE and MoMoE, respectively.} \Algname~also demonstrates speedup over DeepGEMM++ in the forward pass, which mainly arises from the gather $X$ kernel and Ping-Pong scheduling. The effect of both features increases as the MoE becomes more fine-grained and thus \Algname's relative speedup over DeepGEMM++ becomes larger.
+
+
+\textbf{We further measure the real training throughput of a 7B MoE model with $n=256$ with FSDP-2: \algname\ on 64 H100s achieves 213 billion tokens per day, which achieves similar throughput to ScatterMoE on 96 H100s with 225 billion tokens per day.} The throughput for this is measured using the lm-engine codebase\footnote{\scriptsize\url{https://github.com/open-lm-engine/lm-engine}} \citep{Mishra_lm_engine_A_2024}. We shard the model using ZeRO-3 within a single node (8x H100s) and replicate this sharded unit across nodes for this experiment.
+
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/benchmark_924.pdf}
+%     \caption{\small Forward \& backward TFLOPS for different MoE kernels on H100. DeepGEMM does not provide an efficient router implementation, gather and expert aggregation kernels, where we use a standard PyTorch implementation (``DeepGEMM-pt'') or our highly optimized kernels (``DeepGEMM++'') for them. During the backward pass, both ``DeepGEMM++'' and ``DeepGEMM-pt'' use the same computational path as \Algname, except we launch separate kernel(s) that compute $dS$, $A'$, and $\mathrm{dSwiGLU}$ together. The MoE configurations are the same as in Figure~\ref{fig:mem}.}
+%     \label{fig:speed}
+% \end{figure}
+Besides H100 GPUs, we also measure \Algname's compute throughput on B300 GPUs in Figure~\ref{fig:B300-speed}. We mainly compare with DeepGEMM++ which is powered by DeepGEMM SM100 BF16 grouped GEMM kernels. \Algname~still demonstrates an overall speedup over DeepGEMM++, and such speedup is more pronounced when we increase expert granularity similar to the trend on H100 GPUs. For example, when we increase the expert granularity $d/n$ from 2 to 8 for 120B MoE training, \Algname~achieves a greater relative speedup over DeepGEMM++ from 11.6\% and 13.4\% in forward and backward to 19.6\% and 16.8\% respectively. \textbf{We also highlight that \Algname's forward pass has higher throughput than the triton official example, despite \Algname~storing both pre- and post-activation to GMEM whereas triton official example is designed for inference and only stores post-activation $A$ in the up-projection kernel. }
+
+\begin{figure}[!ht]
+    \centering
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/benchmark_924.pdf}
+        \caption{\small Forward \& backward TFLOPS for different MoE kernels on H100 GPUs.} 
+        \label{fig:speed}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/benchmark-B300.pdf}
+        \caption{\small Forward \& backward TFLOPS for different MoE kernels on B300 GPUs.}
+        \label{fig:B300-speed}
+        \vspace{-1em}
+    \end{subfigure}
+    \caption{\small Forward \& backward TFLOPS for different MoE kernels on H100 and B300 GPUs. The definition of ``DeepGEMM++'', ``DeepGEMM-pt'', and ``triton ex.'' are the same as in Figure~\ref{fig:moe_breakdown-total}.}
+\end{figure}
+
+
+
+
+% \paragraph{Comparison with DeepGEMM++} \Algname's speedup over DeepGEMM++ in the forward pass mainly arises from the gather $X$ kernel and Ping-Pong scheduling. The effect of both features increases as the MoE becomes more fine-grained (as we move from right to left across all configs in Figure~\ref{fig:speed}) and thus \Algname's relative speedup over DeepGEMM++ becomes larger.
+
+% In this case, \Algname's speedup over DeepGEMM++ mostly comes from the gather $X$ kernel which needs to load and store $2TKd$ bytes each time (e.g., 8.59 GB in total for $T=32k,d=4k,K=16$ as 30B MoE per layer), and even worse, this IO costs will scale linearly w.r.t. expert granularity. Besides the gather kernel, \Algname~also employes Ping-Pong scheduling that provides a little speedup over 
+
+
+% The ``\textcolor{plot5}{DeepGEMM}'' baseline in Figure~\ref{fig:speed} represents DeepGEMM SM90 BF16 kernel\footref{footnote:deepgemm} equipped with an optimized grouping kernel and SwiGLU kernel (both achieves peak memory tput $\gtrapprox85\%$) PyTorch router and PyTorch expert agg calls. . \textbf{We use Nsight Compute to check that every major memory-bounded launched kernels in DeepGEMM++ have peak memory tput $\gtrapprox$ 85\% on H100}, which means there cannot be any other impl built on DeepGEMM to significantly surpass DeepGEMM++ without modifying the source codes of DeepGEMM. 
+
+In addition, we measure the training throughput of a single MoE layer with configurations from recent open-source MoEs in Figure~\ref{fig:real-moe-speed} for H100 GPUs and in Figure~\ref{fig:real-moe-speed-B300} for B300 GPUs. On H100 GPUs, \Algname~generally achieves more than 550 \tflops~during both forward and backward pass, and consistently surpasses all baselines. We note that ScatterMoE, MoMoE, DeepGEMM-pt, and DeepGEMM++ all fail to run at the configuration for DeepSeek-V3.2-Exp, a 685B MoE model, while \Algname~successfully runs on a single H100 GPU. We also note that \Algname's IO-aware kernel design can achieve a greater relative speedup (e.g. Qwen3-Next-80B-A3B-Thinking) for sparse and fine-grained MoEs. 
+
+%  achieving 534.8 \tflops~during forward and 480.1 \tflops~during backward
+% 61\%/85\% over ScatterMoE, 92\%/120\% over MoMoE for forward/backward passes with 
+
+
+On B300 GPUs, \Algname~generally achieves more than 1100 \tflops~during both forward and backward pass. \textbf{For the OLMoE-sized 7B MoE models, \Algname~demonstrates 25\% and 15\% higher \tflops~during forward and backward pass respectively than DeepGEMM++.} \Algname~also reaches 11.8\% higher \tflops~for forward pass than the triton official example. 
+
+% (e.g. Qwen3-Next-80B-A3B-Thinking, $4^\text{th}$ column for Figure~\ref{fig:real-moe-speed}).
+
+\begin{figure}[!ht]
+    \centering
+    \begin{subfigure}{\linewidth}
+    \includegraphics[width=\linewidth]{figures/real_moe_benchmark.pdf}
+    \caption{\small Forward \& backward TFLOPS of a single MoE layer on H100 GPUs. ScatterMoE, MoMoE, DeepGEMM-pt, and DeepGEMM++ all fail to run (either due to index overflow or CUDA OOM errors) for the DeepSeek-V3.2-Exp configuration.} \label{fig:real-moe-speed}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+    \includegraphics[width=\linewidth]{figures/real_moe_benchmark-B300.pdf}
+    \caption{\small Forward \& backward TFLOPS of a single MoE layer on B300 GPUs. Triton official example for MoE does not support $K=10$ for the \textit{Qwen3-Next-80B-A3B-Thinking} configuration. } \label{fig:real-moe-speed-B300}
+    \end{subfigure}
+    \caption{\small Forward \& backward TFLOPS of a single MoE layer for different MoE kernels for different configurations ranging from 7B to 685B parameters on H100 and B300 GPUs. The MoE configurations from left to right adopt the model size of \model{OLMoE-1B-7B-0125}~\citep{muennighoff2024olmoe}, \model{gpt-oss-20b}~\citep{openai2025gptoss120bgptoss20bmodel}, \model{Kimi-Linear-48B-A3B-Base}~\citep{team2025kimi}, \model{Qwen3-Next-80B-A3B-Thinking}~\citep{qwen3technicalreport}, \model{Qwen3-235B-A22B-Thinking-2507}~\citep{qwen3technicalreport}, and \model{DeepSeek-V3.2-Exp}~\citep{deepseekai2024deepseekv32}. For fair comparison, we do not consider shared experts and expert biases, and we always use TC top-$K$ router with softmax scores. } 
+\end{figure}
+
+
+
+
+
+\subsection{Token rounding} 
+
+\subsubsection{Token rounding's general task evaluation} \label{sec:exp:token_round_perf}
+
+\input{Table/sparsity}
+
+In this section, we assess the quality of trained MoEs using our token rounding (``TR'') algorithm. We use TR for training and during evaluation we switch to token-choice top-$K$ (``TC top-$K$'') routing. This assesses the capability of replacement of TR with TC after training.\footnote{Token rounding is not a token-choice routing method which creates difficulty for autoregressive generation. Here we do not apply any adaptation and switch to vanilla token choice top-$K$ routing during evaluation/validation.} We use the OLMoE codebase and construct MoE models with OLMoE base architecture \citep{muennighoff2024olmoe}. We use a deduplicated version of FineWeb-Edu \citep{benallal2024smollmcorpus} for training all our models. More details are included in Appendix~\ref{sec:appendix:exp-details}.
+
+We consistently use $\tileM=128$ in Table~\ref{tab:exp-sparse}, and the $\mathrm{round\_and\_sparsify}$ subroutine always rounds the expert frequency to the nearest multiple of $\tileM$ (``NR-f'', see Appendix~\ref{sec:appendix:ablation}). We also use softmax renormalization for TR. We compare TR to token-choice (TC) top-$K$ routing and expert-choice (EC) routing~\citep{zhou2022mixture}. However, EC routing results in future token leakage causing problems for autoregressive generation resulting in a performance drop during evaluation~\citep{raposo2024mixture,wang2024auxiliary}. To address this issue, we consider MoD's approach~\citep{raposo2024mixture} that trains an auxiliary router to predict the EC router's selection during inference\footnote{However, for MoE we are solving a harder \textit{$E$-label prediction problem} instead of MoD's\citep{raposo2024mixture} binary prediction problem. This is because EC router can activate arbitrary number of experts for each token, and we have to independently predict the label for each expert. This approach is likely not scalable for MoE as the prediction problem size scales with $E$. }. This baseline is referred to as ``EC (aux router)'' in each subtable in Table~\ref{tab:exp-sparse}. We also adapt EC routing to TC routing by finetuning a learned TC top-$K$ router and compare its task performance against TR's task performance \textit{without any adaptation}. This is the ``EC (ft TC router)'' baseline in Table~\ref{tab:exp-sparse}. Finally, we consider a token dropping baseline in which we set the capacity of each expert as the largest multiple of $M_\mathrm{tile}$ not exceeding its token frequencies and we discard the tokens with the lowest scores. This is the ``TC (token drop)'' baseline, and we note that this is equivalent as we always round down in TR.
+
+
+% \reallysquishlist
+%     \item \textbf{Token-rounding (TR).} We consistently use $\tileM=128$ in Table~\ref{tab:exp-sparse}, and the $\mathrm{round\_and\_sparsify}$ subroutine always rounds rounding expert frequency to the nearest multiple of $\tileM$ (``NR-f'', see Appendix~\ref{sec:appendix:ablation}). We also use softmax renormalization trick for TR: we use unnormalized top-$K$ scores during sorting, and during the final gather, we use normalized top-$K$ scores for all TC top-$K$ entries. \mayank{why is the normalization explicitely states here? Why is it relevant? Also write in a better way}
+
+%     \item \textbf{Token-choice (TC).} \mayank{we dont need this, this is not really a contribution} We compare TR to TC top-$K$ routing. We apply the softmax renormalization \citep{shazeer2017outrageouslylargeneuralnetworks} (same selected top-$K$ indices, but the selected top-$K$ expert scores become $\mathrm{softmax}(\mathrm{TopK}(logits), K)$, also named softmax-topK). This trick typically yields a better result for TC routing without renormalization. 
+
+%     \item \textbf{Expert-choice (EC).} Besides TC, a natural baseline would be EC routing\citep{zhou2022mixture}. Here we adopt EC over sequence for training while during evaluation we also switch to TC top-$K$. However, EC has future token leakage for autoregressive generation so we expect a performance drop during evaluation~\citep{raposo2024mixture,wang2024auxiliary}. To address this issue, we consider MoD's approach that trains and utilizes \citep{raposo2024mixture} an auxiliary router to predict the EC router's selection during inference\footnote{However, for MoE we are solving a harder \textit{$E$ label prediction problem} instead of MoD's\citep{raposo2024mixture} binary prediction problem. This is because EC router can activate arbitrary number of experts for each token, and we have to independently predict the label for each expert. This approach is likely not scalable for MoE as the prediction problem size scales with $E$. }. This baseline is ``EC (aux router)'' on each subtable. We also finetune a learned TC router by TC top-$K$ routing and compare its task performance against TR's task performance \textit{without any adaptation}. This is the ``EC (ft TC router)'' baseline.    
+% \squishend
+
+
+
+
+% We also consider TC top-$P$ routing\citep{huang2024harder} as an alternative TC baseline, but we note that top-$P$ is usually less hardware-efficient as $P$ is not directly related to MoE sparsity and the memory access pattern can be highly irregular. We still run the TC top-$P$ with \Algname~kernels. 
+
+
+
+\paragraph{TR's train-test gap.} We validate TR's performance on a 0.5B (subtable~\ref{tab:sparsity:a}) and 1.4B (subtable~\ref{tab:sparsity:d}) MoE model. We then increase the MoE sparsity by either decreasing $K$ while keeping $E$ constant (from~\ref{tab:sparsity:a} to~\ref{tab:sparsity:b}, from~\ref{tab:sparsity:d} to~\ref{tab:sparsity:e}) or increasing $E$ while keeping $K$ constant (from~\ref{tab:sparsity:a} to~\ref{tab:sparsity:c}). Across these sparse MoE configurations, we consistently observe similar model quality between TR and TC. In fact, TR achieves slightly lower validation perplexity and higher or the same average accuracy under the extremely sparse MoE ($K/E\leq 1/32$) settings for the~\ref{tab:sparsity:c} and~\ref{tab:sparsity:e}. There is a noticeable discrepancy between EC and TC as the train and val PPL for EC can have $\gtrapprox$3 gap for~\ref{tab:sparsity:c},\ref{tab:sparsity:d} and~\ref{tab:sparsity:e} compared to TC and TR's usual $\lessapprox$ 0.3 gap. TC finetuning is more effective than the auxiliary router to close this gap, but TR's task evaluation is still always better. In addition, when we compare TR with the token dropping baseline, we also find TR consistently yields lower validation perplexity, and has higher average task accuracy for~\ref{tab:sparsity:a},~\ref{tab:sparsity:c},~\ref{tab:sparsity:e}. In this case, TR can serve as an in-place substitute for TC during training.
+
+
+
+
+\subsubsection{Ablation studies on token rounding routing} \label{sec:exp:token_rounding_ab}
+
+There are 3 variables that can affect the trained MoE quality with token rounding routing: (1) rounding subroutine $\mathrm{round\_and\_sparsify}$ (2) microbatch size $T$, and (3) tile size $\tileM$ for rounding. We analyze their impacts:
+
+% and a more detailed discussion is included in Appendix~\ref{sec:appendix:token_rounding_ablation} with Section~\ref{sec:appendix:ablation}, ~\ref{sec:appendix:microbatch-ablation}, and \ref{sec:appendix:tile-size-ablation}. 
+
+
+
+\begin{itemize}
+    \item \textbf{Choice of rounding subroutine}: In Table~\ref{tab:exp-ablation}, we assess the choice of different routing subroutines to train MoEs using TR. We find that our token rounding algorithm in general is robust to the specific rounding subroutines, and nearest rounding expert frequency to multiples of $\tileM$ (``NR-f'' in Table~\ref{tab:exp-ablation}) is often sufficient for providing an excellent downstream task performance despite its simplicity. Therefore, we choose NR-f as the default rounding subroutine.
+
+    \item \textbf{Effect of microbatch size $T$ and tile size $\tileM$}: The token rounding is applied on the microbatch level so varying the microbatch size $T$ will result in different qualitative results for TR. This also holds true for EC routing. For example, EC over sequence will result in different model quality as EC over a text segment. Nevertheless, in Table~\ref{tab:exp-T-ablation}, we find that TR preserves its trained MoE quality when $\bar{T}_e/\tileM \ge 2$, and even if $\bar{T}_e/\tileM = 1$ (the last row in both subtables), the trained MoE inference quality is still better than training with EC and finetuning with TC top-$K$ routing. Similarly in Table~\ref{tab:exp-tileM-ablation}, we can find that TR is generally robust w.r.t. $\tileM$ when $\bar{T}_e/\tileM \geq 2$. However, when $\bar{T}_e/\tileM=1$ there is a noticeable degradation compared to TC baseline but the model quality is still better than the EC baseline.
+\end{itemize}
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\linewidth]{figures/token_rounding_tflops-new.pdf}
+    % \includegraphics[width=\linewidth]{figures/token_rounding_tflops.pdf}
+    % \includegraphics[width=0.47\linewidth]{figures/tr-24576-256.pdf}~~~~~\includegraphics[width=0.47\linewidth]{figures/tr-24576-1024.pdf} \\
+    % \includegraphics[width=0.47\linewidth]{figures/tr-32768-512.pdf}~~~~~\includegraphics[width=0.47\linewidth]{figures/tr-32768-1024.pdf}
+    \caption{\small Forward \& backward model TFLOPS for \Algname~MoE kernels with different routing methods. We compare TR equipped with ``nearest rounding to $\tileM$-multiples via expert frequency" subroutine against TC top-$K$ routing. Configuration details are in Appendix~\ref{sec:appendix:config}.}
+    \label{fig:token_rounding_speed}
+\end{figure}
+
+\subsubsection{Token rounding's training throughput} \label{sec:exp:token_round_throughput}
+
+
+
+
+In Figure~\ref{fig:token_rounding_speed}, we benchmark the token rounding's MoE main kernel runtime (without router) against top-$K$ token choice routing. We focus on the iso-FLOPs setting by keeping $T$, $n$ and $K$ constant. We linearly increase the number of experts $E$ while keeping $K$ constant to increase MoE sparsity. As we linearly increase $E$, we observe a drop in TFLOPS for token-choice routing. This is due to the (1) tile quantization effect as the wasted FLOPs spent on padding roughly linearly increases with the MoE sparsity as shown in Figure~\ref{fig:wasted_flops} and (2) the linearly increased IO due to more expert weights. We observe a drop in FLOPs for both TC and TR as we increase $E$, but the drop is more pronounced for TC as shown in Figure~\ref{fig:token_rounding_speed}. 
+
+
+
+% Figure~\ref{fig:token_rounding_speed} shows the drop in TFLOPS that as the number of experts $E$ becomes higher (so as MoE sparsity), we start to observe a TFLOPS drop of token-choice top-$K$ routing even with our optimized kernel. This is due to the tile quantization effect as the wasted FLOPs spent on padding roughly linearly increases with the MoE sparsity as shown in Figure~\ref{fig:wasted_flops}. 
+
+
+For the $3^\text{rd}$ and $4^\text{th}$ column in the top row in Figure~\ref{fig:token_rounding_speed}, an MoE model with 128 experts ($K/E = 1/64$) and $n = 1k$ with token rounding routing achieves 16.5\% model TFLOPS\footnote{Note that the consumed FLOPs are calculated from $(6+12) dn (\sum_e f_e)$ (note that $\sum_e f_e = TK$ for TC top-$K$ routing) as model FLOPs rather than hardware FLOPs. The speedup behind TR is to preserve the model FLOPs consumption on expectation but save the hardware FLOPs consumption by removing padding wastes, which in turn leads to model TFLOPS speedup. } improvement in forward and 6.1\% in backward, resulting in an end-to-end improvement of 9.4\%. For the $3^\text{rd}$ and $4^\text{th}$ column on the bottom row in Figure~\ref{fig:token_rounding_speed}, when we have a MoE with 256 experts ($K/E=1/64$), token rounding routing achieves a 25.7\% TFLOPS improvement in forward and 11.8\% in backward resulting in an end-to-end improvement of 15.9\%. In general, \textbf{we observe that as we move to larger intermediate sizes (more compute-bound) and higher MoE sparsity, the gap between TR and TC top-$K$ becomes larger.}
+
+
+This trend also holds with configurations from recent open-source MoEs in Figure~\ref{fig:token_rounding_real_speed}. When we equip \Algname's MoE kernel with TR router instead of TC top-$K$ router, we observe a larger relative speedup for highly sparse MoEs such as \model{Qwen3-Next-80B-A3B-Thinking} ($K/E=10/512$), where TR achieves 19.6\% and 7.9\% speedup over TC top-$K$ router during forward and backward pass respectively.
+
+\begin{figure}[!ht]
+    \centering
+    \includegraphics[width=\linewidth]{figures/token_rounding_real_moe.pdf}
+    \caption{\small Forward \& backward TFLOPS of a single MoE layer of \Algname~equipped with different routing methods for different configurations ranging from 7B to 685B parameters on H100. The MoE configurations from left to right adopt the model size of \model{OLMoE-1B-7B-0125}, \model{gpt-oss-20b}, \model{Kimi-Linear-48B-A3B-Base}, \model{Qwen3-Next-80B-A3B-Thinking}, \model{Qwen3-235B-A22B-Thinking-2507}, and \model{DeepSeek-V3.2-Exp} (configurations identical to Figure~\ref{fig:real-moe-speed}). We compare TR equipped with ``nearest rounding to $\tileM$-multiples via expert frequency" subroutine against TC top-$K$ routing. }
+    \label{fig:token_rounding_real_speed}
+\end{figure}

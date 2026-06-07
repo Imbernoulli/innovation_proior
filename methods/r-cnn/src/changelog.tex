@@ -1,0 +1,14 @@
+\section{Document changelog}
+
+This document tracks the progress of R-CNN.
+To help readers understand how it has changed over time, here's a brief changelog describing the revisions.
+
+\paragraph{v1} Initial version.
+
+\paragraph{v2} CVPR 2014 camera-ready revision. Includes substantial improvements in detection performance brought about by (1) starting fine-tuning from a higher learning rate (0.001 instead of 0.0001), (2) using context padding when preparing CNN inputs, and (3) bounding-box regression to fix localization errors. 
+
+\paragraph{v3} Results on the ILSVRC2013 detection dataset and comparison with OverFeat were integrated into several sections (primarily \secref{detection} and \secref{ilsvrc}).
+
+\paragraph{v4} The softmax \vs SVM results in \asecref{posneg} contained an error, which has been fixed. We thank Sergio Guadarrama for helping to identify this issue.
+
+\paragraph{v5} Added results using the new 16-layer network architecture from Simonyan and Zisserman \cite{vggverydeep} to \secref{netarch} and \tableref{voc2007oxfordnet}.

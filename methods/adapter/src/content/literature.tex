@@ -1,0 +1,56 @@
+\section{Related Work}
+
+\paragraph{Pre-trained text representations}
+Pre-trained textual representations are widely used to improve performance on NLP tasks.
+These representations are trained on large corpora (usually unsupervised), and fed as features to downstream models.
+In deep networks, these features may also be fine-tuned on the downstream task.
+Brown clusters, trained on distributional information, are a classic example of pre-trained representations~\citep{brown1992}.
+\citet{turian2010} show that pre-trained embeddings of words outperform those trained from scratch.
+Since deep-learning became popular, word embeddings have been widely used, and many training strategies have arisen~\citep{mikolov2013,pennington2014,bojanowski2017enriching}.
+Embeddings of longer texts, sentences and paragraphs, have also been developed~\citep{le2014,kiros2015,conneau2017,cer2019}.
+
+To encode context in these representations, features are extracted from internal representations of sequence models,
+such as MT systems~\citep{mccann2017}, and BiLSTM language models, as used in ELMo~\citep{peters2018}.
+As with adapters, ELMo exploits the layers other than the top layer of a pre-trained network.
+However, this strategy only \emph{reads} from the inner layers.
+In contrast, adapters \emph{write} to the inner layers, re-configuring the processing of features through the entire network.
+
+\paragraph{Fine-tuning}
+Fine-tuning an entire pre-trained model has become a popular alternative to features~\citep{dai2015,howard2018universal,radford2018improving}
+In NLP, the upstream model is usually a neural language model~\citep{bengio2003}.
+Recent state-of-the-art results on question answering~\citep{rajpurkar2016} and text classification~\citep{wang2018glue} have been attained by fine-tuning a Transformer network~\citep{vaswani2017} with a Masked Language Model loss~\citep{devlin2018bert}.
+Performance aside, an advantage of fine-tuning is that it does not require task-specific model design, unlike representation-based transfer.
+However, vanilla fine-tuning does require a new set of network weights for every new task.
+
+\paragraph{Multi-task Learning}
+Multi-task learning (MTL) involves training on tasks simultaneously.
+Early work shows that sharing network parameters across tasks exploits task regularities, yielding improved performance~\citep{caruana1997}.
+The authors share weights in lower layers of a network, and use specialized higher layers.
+Many NLP systems have exploited MTL.
+Some examples include: text processing systems (part of speech, chunking, named entity recognition, etc.)~\citep{collobert2008}, multilingual models~\citep{huang2013cross}, semantic parsing~\citep{peng2017}, machine translation~\citep{johnson2017}, and question answering~\citep{choi2017}.
+MTL yields a single model to solve all problems.
+However, unlike our adapters, MTL requires simultaneous access to the tasks during training.
+
+\paragraph{Continual Learning}
+As an alternative to simultaneous training, continual, or lifelong, learning aims to learn from a sequence of tasks~\citep{thrun1998}.
+However, when re-trained, deep networks tend to forget how to perform previous tasks; a challenge termed catastrophic forgetting~\citep{mccloskey1989catastrophic,french1999catastrophic}.
+Techniques have been proposed to mitigate forgetting~\citep{kirkpatrick2017overcoming,zenke2017continual}, however, unlike for adapters, the memory is imperfect.
+Progressive Networks avoid forgetting by instantiating a new network ``column'' for each task~\citep{rusu2016progressive}.
+However, the number of parameters grows linearly with the number of tasks,
+since adapters are very small, our models scale much more favorably.
+
+\paragraph{Transfer Learning in Vision}
+Fine-tuning models pre-trained on ImageNet~\citep{deng2009} is ubiquitous when building image recognition models~\citep{yosinski2014,huh2016makes}.
+This technique attains state-of-the-art performance on many vision tasks, including classification~\citep{kornblith2018better}, fine-grained classifcation~\citep{hermans2017}, segmentation~\citep{long2015}, and detection~\citep{girshick2014}.
+In vision, convolutional adapter modules have been studied~\citep{rebuffi2017,rebuffi2018,rosenfeld2018incremental}.
+These works perform incremental learning in multiple domains by adding small convolutional layers to a ResNet~\citep{he2016} or VGG net~\citep{simonyan2014very}.
+Adapter size is limited using $1\times 1$ convolutions, whilst the original networks typically use $3\times 3$.
+This yields $11\%$ increase in overall model size per task.
+Since the kernel size cannot be further reduced other weight compression techniques must be used to attain further savings.
+Our bottleneck adapters can be much smaller, and still perform well.
+
+Concurrent work explores similar ideas for BERT~\citep{stickland2019bert}.
+The authors introduce Projected Attention Layers (PALs), small layers with a similar role to our adapters.
+The main differences are i) \citet{stickland2019bert} use a different architecture,
+and ii) they perform multitask training, jointly fine-tuning BERT on all GLUE tasks.
+\citet{semnani2019} perform an emprical comparison of our bottleneck Adpaters and PALs on SQuAD v2.0~\citep{rajpurkar2018}.

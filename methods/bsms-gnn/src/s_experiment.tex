@@ -1,0 +1,76 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\urlstyle{same}
+
+%menglei's pass
+\subsection{Experiment Setup}
+\label{sec:experiments:setup}
+\paragraph*{Datasets} We adopt three representative public datasets from GraphMeshNets~\cite{pfaff2020learning}: 1) \cylinder: incompressible fluid around a cylinder; 2) \airfoil: compressible flow around an airfoil; and 3) \plate: deforming an elastic plate with an actuator. In addition, we create a new dataset, \fonts, featuring the inflation of enclosed elastic surfaces~\cite{fang2021guaranteed}. The example plots of them are plotted in Fig.~\ref{fig:example:bistride}.
+Compared to existing datasets, \fonts~has more complex geometric shapes, 2 to 8 times the number of nodes, and 70 times the number of contact edges. Hence it is very suitable for testing the capability of competing GNNs in terms of scalability and compatibility with complex geometries. More details are included in Sec.~\ref{sec:appdx:datasets}.
+\paragraph*{Baselines} On all datasets, we compare the computational complexity, training/inference time, and memory footprint of \ours~to baselines: 1) \flatGNN~\cite{pfaff2020learning}: the single-level GNN architecture of GraphMeshNets; 2) \linoGNN~\cite{lino2021simulating,lino2022towards,lino2022multi}: a representative work for those building the hierarchy with spatial proximity; and 3) \GUN~\cite{gao2019graph}: a representative work for those using learnable modules for pooling. The reimplementation details can be found in Sec.~\ref{sec:appdx:arch}. We note again that methods such as \cite{liu2021multi,fortunato2022multiscale} are not practical because they require manually drawing coarser meshes for every trajectory instance with CAE software. For all cases combined, this means manually drawing about $20,000$ meshes.
+\paragraph*{Implementation} We implement our framework with PyTorch~\cite{pytorch19lib} and PyG (PyTorch Geometric)~\cite{pygeo19lib}. We train the entire model by supervising the single-step $L_2$ loss between the ground truth and the nodal field output of the decoding module. More details, such as the network structures and hyperparameters are included in~\ref{sec:appdx:arch}.
+Our datasets and code are publicly available at \textit{\url{https://github.com/Eydcao/BSMS-GNN}}.
+\paragraph*{MISCs} The ablation study is conducted for the specific choice of our transition method in Sec.~\ref{sec:appdx:abaltion}. The ablation study concerning whether or not to use learnable pooling modules is not standalone listed but covered by comparing to \GUN~in full-scale experiments (details in Sec.~\ref{sec:experiments:results}).
+
+\subsection{Results and Discussions}
+\label{sec:experiments:results}
+By evaluating \ours~and other competitors on all the baselines (Sec.~\ref{sec:experiments:setup}), we observe the following conclusions:
+\begin{itemize}
+    \item We experimentally show the learnable pooling method is not applicable for the deployment of large-scale, complex geometries;
+    \item We design a small-scale experiment where pooling by spatial proximity leads to wrong edge and inference;
+    \item \ours~shows dominant advantages in significantly less memory footprint, training time to reach the desired accuracy, and the inference time;
+    \item \ours~also reaches the highest accuracy, reducing the rollout RMSE approximately by half on \fonts~with the largest mesh size and the most complex geometries; we also zero-shoot the trained model on a teaser with approximately 7x more nodes with the same level of accuracy.
+\end{itemize}
+For conciseness, we plot the detailed results in Table.~\ref*{tab:detail:res} and Table.~\ref*{tab:detail:res2} in Sec.~\ref{sec:appdx:detail:res}.
+\begin{figure}[t]
+    \centering
+    \includegraphics[width = \linewidth]{figs/compare_pooling.pdf}\vspace{-10pt}
+    \caption{\textbf{\ours~Comparison between pooling methods}. Unlike bi-stride pooling, which generalizes to any input graph, a learnable module leads to unfair pooling on unseen geometries, impeding the information exchange for unselected nodes. The inferred results show larger errors than bi-stride pooling.}\vspace{-10pt}
+    \label{fig:compare:pool}
+\end{figure}
+
+\paragraph*{Disadvantages of Learnable Pooling} Compared to other competitors, \GUN~shows a significantly higher RMSE in both 1-step and global rollouts on all datasets, except for the \airfoil~dataset, where the mesh is \revision{consistent} across trajectories. To confirm varying mesh leads to poor inference with learnable pooling, we apply the trained \GUN~model to an unseen test trajectory of the \plate~dataset.  Fig~\ref{fig:compare:pool} clearly reveals the unfair pooling distribution by the learnable module, which impedes information passing on coarser levels and results in poor inference. In comparison, bi-stride generates uniform pooling and accurate inference.
+
+Additionally, \GUN~has to conduct the adjacency matrix multiplication in the forward pass, which results in a 2-40x increase in the training and inference times, particularly in larger datasets. In the largest \fonts, one training epoch requires nearly 50 hours to complete, making the convergence of the model infeasible. Given its poor performance in both accuracy and efficiency, we conclude that \GUN~is not suitable for simulation cases with large-scale, complex geometries. By default, we will not specifically make comparisons to \GUN~in the following discussions.
+
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width = 0.9\linewidth]{figs/lino_failure_menglei.pdf}\vspace{-5pt}
+    \caption{\textbf{Failure cases for \linoGNN.} Left: the configuration of the simplest failure case for multi-level GNNs by spatial proximity: steady-state 1-D heat transfer. Right, leading two columns: two tests showing that even if trained to convergence, the erroneous edge across the boundary can still result in the wrong inference. Right, last two columns: the erroneous edge coincidentally does not affect the results due to the symmetry of the solution, and no heat will diffuse between two nodes with the same temperature.}\vspace{-10pt}
+    \label{fig:failure:1d}
+\end{figure*}
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width = 0.9\linewidth]{figs/perform.pdf}\vspace{-5pt}
+    \caption{\textbf{Performance comparison between \ours, \linoGNN, and \flatGNN.} \GUN~is not included because of poor performance. Full results are plotted in Table.~\ref*{tab:detail:res} and Table.~\ref*{tab:detail:res2} in Sec.~\ref{sec:appdx:detail:res}.}\vspace{-10pt}
+    \label{fig:perform:compare}
+\end{figure}
+
+\paragraph*{Failure Cases for Spatial Proximity} To illustrate the adversarial impact of wrongly constructed edges by spatial proximity, we design a simple 1-D steady-state heat transfer simulation on sticks (Figure~\ref{fig:failure:1d} left), on which \ours~and \linoGNN~are trained and evaluated. The training set consists of two mirrored instances, where one end of the stick is fixed at a certain temperature and the other end has a fixed heat flux, resulting in a linear temperature distribution. In the test set, we simply align two sticks in a head-to-tail configuration with a tiny space between them to prevent heat diffusion across the boundary. \linoGNN, utilizing spatial proximity, incorrectly constructs an edge between the two sticks. As a result, in half of the test cases, \linoGNN~shows wrong results at the boundary due to the erroneous edge(Figure~\ref{fig:failure:1d} right, leading two columns). Although only in simple cases, one can alleviate this issue by marking the two sticks as separate clusters and making inferences independently; a similar fix is unfeasible for connected, complex geometries. For instance, in a long, thin U-shaped tunnel, two nodes located on the parallel sides of the ``U'' are spatially close but geodesically distant, and hence should not be connected by an edge.
+\begin{figure*}[t]
+    \centering
+    \includegraphics[width = 0.95\linewidth]{figs/IDP_compares_menglei.pdf}\vspace{-5pt}
+    \caption{\textbf{Left:} Comparing the rollout RMSE between \ours~and existing SOTAs on benchmarks \fonts. Our framework reaches the highest accuracy, showing a stronger capability for complex, large geometries with massive contacts. \textbf{Right:} Our trained model can zero-shot infer on never-seen fonts, with about 7x size in mesh size with the same accuracy.}\vspace{-10pt}
+    \label{fig:failure:IDP:compares}
+\end{figure*}
+
+\paragraph*{Accuracy and Generalization}In terms of accuracy, our method has the smallest rollout RMSE for all cases except for the \plate~dataset, where all three competitors have similar results. \revision{We assume the main reason is that the mesh size for \plate~is too small, so the flat architecture does not show any disadvantage.}
+In the largest and most complex dataset, \fonts, our method achieves the highest accuracy, cutting down $40\%$ of the rollout RMSE compared to the competitors (Fig.~\ref{fig:failure:IDP:compares}. Left.). Additionally, our model demonstrates the ability to perform zero-shot inference on larger meshes than those in the training set, and still produce accurate global rollouts, even when the characters are written in a different language.
+
+\paragraph*{Performance Advantages of \ours~}
+Our method has a simplified and lightweight model architecture, characterized by a reduced number of MPs at each level and the absence of learnable transition modules. This results in a significant reduction in memory footprint during training (in Fig.\ref{fig:perform:compare}. (c) and Table.\ref{tab:detail:res2}); \ours~consumes $43\% \sim 87\%$ memory in training as \linoGNN, $48\% \sim 53\%$ as \flatGNN, and only $10\%$ as \GUN. our method also uses the least memory during inference, except for the \plate~dataset where the consumption is slightly higher (20MBs) than \flatGNN.
+
+Memory reduction also contributes to improved training efficiency, as it allows for larger batch sizes, more random sampling, and fewer times of data swapping between CPU and GPU. Combined, our method has the fastest unit training speed (per epoch) among all competitors (Fig.\ref{fig:perform:compare}. (a) and Table.\ref{tab:detail:res}), where it consumes only $26\% \sim 58\%$ unit training time as that of \linoGNN~and \flatGNN.
+
+In terms of inference time, our method exhibits similar performance to \linoGNN~on smaller mesh size datasets (\cylinder~and \plate~), both outperforming \flatGNN. However, as the mesh size increases, \ours~surpasses \linoGNN, showing better scalability. In large mesh size cases (\airfoil~and \fonts~), our method shows a $1.5\times$ and $1.9\times$ improvement over \linoGNN~and \flatGNN, respectively (Fig.\ref{fig:perform:compare}. (b) and Table.\ref{tab:detail:res}).
+
+Concerning the total training cost to reach a desired global rollout RMSE, we observe that all methods reach the target with a similar number of epochs. This is because that all these methods learn to resist rollout noise by seeing different, random noises at each epoch; enough noise patterns (proportional to epoch number) is the key for accurate rollout; as such, the total wall time is roughly proportional to the unit training time, given similar epoch numbers, making our method the most efficient.
+\begin{figure}[tb]
+    \includegraphics[width = 0.9 \linewidth]{figs/scale_test.pdf}
+    \caption{\textbf{Scaling analysis}. With the growing size of \fonts, \ours~shows a progressive advantage over \flatGNN~and \linoGNN.}
+    \label{fig:res:scale}
+\end{figure}
+
+\paragraph*{Scaling Analysis} By training and evaluating competing methods on \fonts~with varying resolutions (5K,15K,30K, and 45K), we observe that both \ours~and \linoGNN~scale up with a near-linear growing rate; still, our method is more efficient than \linoGNN~as illustrated earlier(Fig.~\ref{fig:res:scale}). We leave the details of scaling analysis in \ref{sec:appdx:scale}.

@@ -1,0 +1,11 @@
+\section{Related Work}
+Our work is based on a large family of existing methods on learning generative models as transition operators of Markov chains~\citep{sohl-dickstein2015deep,bengio2014deep,salimans2014markov,song2017a,goyal2017variational,levy2017generalizing}. Among them, denoising diffusion probabilistic models (DDPMs, \citet{ho2020denoising}) and noise conditional score networks (NCSN, \citet{song2019generative,song2020improved}) have recently achieved high sample quality comparable to GANs~\citep{brock2018large,karras2018a}. DDPMs optimize a variational lower bound to the log-likelihood, whereas NCSNs optimize the score matching objective~\citep{h2005estimation} over a nonparametric Parzen density estimator of the data~\citep{vincent2011connection,raphan2011least}. 
+
+Despite their different motivations, DDPMs and NCSNs are closely related. Both use a denoising autoencoder objective for many noise levels, and both use a procedure similar to Langevin dynamics to produce samples~\citep{neal2011mcmc}. Since Langevin dynamics is a discretization of a gradient flow~\citep{jordan1998variational}, %
+both DDPM and NCSN require many steps to achieve good sample quality. %
+This aligns with the observation that DDPM and existing NCSN methods have trouble generating high-quality samples in a few iterations.
+
+DDIM, on the other hand, is an implicit generative model~\citep{mohamed2016learning} where samples are uniquely determined from the latent variables. Hence, DDIM has certain properties that resemble GANs~\citep{goodfellow2014generative} and invertible flows~\citep{dinh2016density}, such as the ability to produce semantically meaningful interpolations. We derive DDIM from a purely variational perspective, where the restrictions of Langevin dynamics are not relevant; this could partially explain why we are able to observe superior sample quality compared to DDPM under fewer iterations. %
+The sampling procedure of DDIM is also reminiscent of neural networks with continuous depth~\citep{chen2018neural,grathwohl2018ffjord}, since the samples it produces from the same latent variable have similar high-level visual features, regardless of the specific sample trajectory.
+
+

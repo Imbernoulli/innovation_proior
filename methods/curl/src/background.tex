@@ -1,0 +1,117 @@
+\vspace{-3mm}
+
+\section{Background}
+
+
+
+
+\begin{figure*}
+\begin{center}
+\centerline{\includegraphics[width=11cm]{plots/curl_overview_diagram.pdf}}
+\caption{CURL Architecture: A batch of transitions is sampled from the replay buffer. Observations are then data-augmented twice to form {\it query} and {\it key} observations, which are then encoded with the query encoder and key encoders, respectively. The {\it queries} are passed to the RL algorithm while {\it query-key} pairs are passed to the contrastive learning objective. During the gradient update step, only the {\it query} encoder is updated. The {\it key} encoder weights are the moving average (EMA) of the query weights similar to MoCo \cite{he2019momentum}.} 
+\label{fig:curl_overview_diagram}
+\vspace{-10mm}
+\end{center}
+\end{figure*}
+
+
+CURL is a general framework for combining contrastive learning with RL. In principle, one could use any RL algorithm in the CURL pipeline, be it on-policy or off-policy. We use the widely adopted Soft Actor Critic (SAC) \cite{haarnoja2018soft} for continuous control benchmarks (DM Control) and Rainbow DQN \cite{hessel2017rainbow, van2019use} for discrete control benchmarks (Atari). Below, we review SAC, Rainbow DQN and Contrastive Learning.
+
+\subsection{Soft Actor Critic}
+
+ SAC is an off-policy RL algorithm that optimizes a stochastic policy for maximizing the expected trajectory returns. Like other state-of-the-art end-to-end RL algorithms, SAC is effective when solving tasks from state observations but fails to learn efficient policies from pixels. SAC is an actor-critic method that learns a policy $\pi_\psi$ and critics $Q_{\phi_1}$ and $Q_{\phi_2}$. The parameters $\phi_i$ are learned by minimizing the Bellman error:
+\vspace{-1mm}
+\begin{equation}\label{eq:qmsbe}
+   \mathcal L (\phi_{i},\mathcal{B}) = \mathbb{E}_{t \sim \mathcal B} \left [\left ( Q_{\phi_i}(o,a) - \left( r+\gamma(1-d)\mathcal T  \right )\right )^2 \right]
+\end{equation}
+
+where $t = (o,a,o',r,d)$ is a tuple with observation $o$, action $a$, reward $r$ and done signal $d$, $\mathcal{B}$ is the replay buffer, and $\mathcal T$ is the target, defined as:
+
+\begin{equation}\label{eq:target}
+   \mathcal{T}  = \left (\min_{i=1,2} Q^{*}_{\phi_i} (o',a') - \alpha \log \pi_\psi(a'|o')\right )
+\end{equation}
+
+In the target equation \eqref{eq:target}, $Q^{*}_{\phi_i}$ denotes the exponential moving average (EMA) of the parameters of $Q_{\phi_i}$. Using the EMA has empirically shown to improve training stability in off-policy RL algorithms. The parameter $\alpha$ is a positive entropy coefficient that determines the priority of the entropy maximization over value function optimization. 
+
+While the critic is given by $Q_{\phi_{i}}$, the actor samples actions from policy $\pi_\psi$ and is trained by maximizing the expected return of its actions as in:
+
+\begin{equation}\label{eq:actorloss}
+   \mathcal L (\psi) = \mathbb{E}_{a \sim \pi} \left [ Q^\pi (o,a) - \alpha \log \pi_\psi (a|o) \right ]
+\end{equation}
+
+where actions are sampled stochastically from the policy $
+   a_\psi (o,\xi) \sim \tanh \left (\mu_\psi (o) + \sigma_\psi (o) \odot \xi \right )$ and $\xi \sim \mathcal N (0,I)$ is a standard normalized noise vector. 
+
+\subsection{Rainbow}
+Rainbow DQN \cite{hessel2017rainbow} is best summarized as multiple improvements on top of the original Nature DQN \cite{mnih2015human} applied together. Specifically, Deep Q Network (DQN) \cite{mnih2015human} combines the off-policy algorithm Q-Learning with a convolutional neural network as the function approximator to map raw pixels to action value functions. Since then, multiple improvements have been proposed such as Double Q Learning \cite{van2016deep}, Dueling Network Architectures \cite{wang2015dueling}, Prioritized Experience Replay \cite{schaul2015prioritized}, and Noisy Networks \cite{fortunato2017noisy}. Additionally, distributional reinforcement learning \cite{bellemare2017distributional} proposed the technique of predicting a distribution over possible value function bins through the C51 Algorithm. Rainbow DQN combines all of the above techniques into a single off-policy algorithm for state-of-the-art sample efficiency on Atari benchmarks. Additionally, Rainbow also makes use of multi-step returns \cite{sutton1998introduction}. \citet{van2019use} propose a data-efficient version of the Rainbow which can be summarized as an improved configuration of hyperparameters that is optimized for performance benchmarked at 100K interaction steps.
+
+
+\subsection{Contrastive Learning}
+
+A key component of CURL is the ability to learn rich representations of high dimensional data using contrastive unsupervised learning. Contrastive learning \cite{hadsell2006dimensionality, lecun2006tutorial, oord2018representation, wu2018unsupervised, he2019momentum} can be understood as learning a differentiable dictionary look-up task. Given a query $q$ and keys $\mathbb{K} = \{k_0, k_1, \dots \}$ and an explicitly known partition of $\mathbb{K}$ (with respect to $q$) $P(\mathbb{K}) = ( \{k_{+}\}, \mathbb{K} \setminus \{k_{+}\} )$, the goal of contrastive learning is to ensure that $q$ matches with $k_{+}$ relatively more than any of the keys in $\mathbb{K} \setminus \{k_{+}\}$. $q, \mathbb{K}, k_{+},$ and $\mathbb{K} \setminus \{k_{+}\}$ are also referred to as {\it anchor, targets, positive, negatives} respectively in the parlance of contrastive learning \cite{oord2018representation, he2019momentum}. Similarities between the anchor and targets are best modeled with dot products ($q^Tk)$ \cite{wu2018unsupervised, he2019momentum} or bilinear products ($q^TWk$) \cite{oord2018representation, henaff2019data} though other forms like euclidean distances are also common \cite{schroff2015facenet, wang2015unsupervised}. To learn embeddings that respect these similarity relations, \citet{oord2018representation} propose the InfoNCE loss:
+
+\begin{equation}\label{eq:infonce}
+   \mathcal L_{q} = \log \frac{\exp(q^T W k_{+})}{ \exp(q^T W k_{+}) +  \sum_{i=0}^{K-1} \exp(q^T W k_{i})}
+\end{equation}
+
+The loss \ref{eq:infonce} can be interpreted as the log-loss of a $K$-way softmax classifier whose label is $k_{+}$. 
+
+
+\section{CURL Implementation}
+
+CURL minimally modifies a base RL algorithm by training the contrastive objective as an auxiliary loss during the batch update. In our experiments, we train CURL alongside two model-free RL algorithms --- SAC for DMControl experiments and Rainbow DQN (data-efficient version) for Atari experiments. To specify a contrastive learning objective, we need to define (i) the discrimination objective (ii) the transformation for generating query-key observations (iii) the embedding procedure for transforming observations into queries and keys and (iv) the inner product used as a similarity measure between the query-key pairs in the contrastive loss. The exact specification these aspects largely determine the quality of the learned representations.
+
+We first summarize the CURL architecture, and then cover each architectural choice in detail.
+
+\subsection{Architectural Overview}
+
+CURL uses instance discrimination with similarities to SimCLR \cite{chen2020simclr}, MoCo \cite{he2019momentum} and CPC \cite{henaff2019data}. Most Deep RL architectures operate with a stack of temporally consecutive frames as input \cite{hessel2017rainbow}. Therefore, instance discrimination is performed across the frame stacks as opposed to single image instances. We use a momentum encoding procedure for targets similar to MoCo \cite{kaiming2019moco} which we found to be better performing for RL. Finally, for the InfoNCE score function, we use a bi-linear inner product similar to CPC \cite{oord2018representation} which we found to work better than unit norm vector products used in MoCo and SimCLR. Ablations for both the encoder and the similarity measure choices are shown in Figure \ref{fig:method_ablations}. The contrastive representation is trained jointly with the RL algorithm, and the latent code receives gradients from both the contrastive objective and the Q-function. An overview of the architecture is shown in in Figure \ref{fig:curl_overview_diagram}.
+
+
+\subsection{Discrimination Objective}
+A key component of contrastive representation learning is the choice of positives and negative samples relative to an anchor \cite{bachman2019learning, tian2019contrastive, henaff2019data, he2019momentum, chen2020simclr}. Contrastive Predictive Coding (CPC) based pipelines \cite{henaff2019data, oord2018representation} use groups of image patches separated by a carefully chosen spatial offset for anchors and positives while the negatives come from other patches within the image and from other images. 
+
+While patches are a powerful way to incorporate spatial and instance discrimination together, they introduce extra hyperparameters and architectural design choices which may be hard to adapt for a new problem. SimCLR \cite{chen2020simclr} and MoCo \cite{he2019momentum} opt for a simpler design where there is no patch extraction. 
+
+Discriminating transformed image instances as opposed to image-patches within the same image optimizes a simpler instance discrimination objective \cite{wu2018unsupervised} with the InfoNCE loss and requires minimal architectural adjustments \cite{kaiming2019moco, chen2020simclr}. It is preferable to pick a simpler discrimination objective in the RL setting for two reasons. First, considering the brittleness of reinforcement learning algorithms \cite{henderson2018deep}, complex discrimination may destabilize the RL objective. Second, since RL algorithms are trained on dynamically generated datasets, a complex discrimination objective may significantly increase the wall-clock training time. CURL therefore uses instance discrimination rather than patch discrimination.  One could view contrastive instance discrimination setups like SimCLR and MoCo as maximizing mutual information between an image and its augmented version. The reader is encouraged to refer to \citet{oord2018representation, hjelm2018learning, tschannen2019mutual} for connections between contrastive learning and mutual information. 
+
+
+\subsection{Query-Key Pair Generation}
+Similar to instance discrimination in the image setting \cite{kaiming2019moco, chen2020simclr}, the anchor and positive observations are two different augmentations of the same image while negatives come from other images. CURL primarily relies on the random crop data augmentation, where a random square patch is cropped from the original rendering.
+
+A significant difference between RL and computer vision settings is that an instance ingested by a model-free RL algorithm that operates from pixels is not just a single image but a stack of frames \cite{mnih2015human}. For example, one typically feeds in a stack of 4 frames in Atari experiments and a stack of 3 frames in DMControl. This way, performing instance discrimination on frame stacks allows CURL to learn both spatial and temporal discriminative features. For details regarding the extent to which CURL captures temporal features, see Appendix \ref{appendix:ablation}.
+
+We apply the random augmentations across the batch but consistently across each stack of frames to retain information about the temporal structure of the observation. The augmentation procedure is shown in Figure \ref{fig:random_crop}. For more details, refer to Appendix \ref{appendix:hyperparams}.
+
+\begin{figure}[ht]
+\begin{center}
+\centerline{\includegraphics[width=6cm]{plots/random_crop.png}}
+\caption{Visually illustrating the process of generating an anchor and its positive using stochastic random crops. Our aspect ratio for cropping is 0.84, i.e, we crop a $84 \times 84$ image from a $100 \times 100$ simulation-rendered image. Applying the same random crop coordinates across all frames in the stack ensures time-consistent spatial jittering.}
+\label{fig:random_crop}
+\end{center}
+\vskip -0.2in
+\end{figure}
+\vspace*{-4mm}
+\subsection{Similarity Measure}
+
+Another determining factor in the discrimination objective is the inner product used to measure agreement between query-key pairs. CURL employs the bi-linear inner-product $\text{sim}(q,k) = q^T W k$, where $W$ is a learned parameter matrix. We found this similarity measure to outperform the normalized dot-product (see Figure \ref{fig:method_ablations} in Appendix \ref{appendix:hyperparams}) used in recent state-of-the-art contrastive learning methods in computer vision like MoCo and SimCLR.
+
+\vspace*{-2mm}
+\subsection{Target Encoding with Momentum}
+
+The motivation for using contrastive learning in CURL is to train encoders that map from high dimensional pixels to more semantic latents. InfoNCE is an unsupervised loss that learns encoders $f_q$ and $f_k$ mapping the raw anchors (query) $x_q$ and targets (keys) $x_k$ into latents $q = f_q(x_q)$ and $k = f_k(x_k)$, on which we apply the similarity dot products. It is common to share the same encoder between the anchor and target mappings, that is, to have $f_q = f_k$ \cite{oord2018representation, henaff2019data}. 
+
+From the perspective of viewing contrastive learning as building differentiable dictionary lookups over high dimensional entities, increasing the size of the dictionary and enriching the set of negatives is helpful in learning rich representations. \citet{he2019momentum} propose momentum contrast (MoCo), which uses the exponentially moving average (momentum averaged) version of the query encoder $f_q$ for encoding the keys in $\mathbb{K}$. Given $f_q$ parametrized by $\theta_q$ and $f_k$ parametrized by $\theta_k$, MoCo performs the update $\theta_k = m \theta_k + (1 - m) \theta_q $ and encodes any target $x_k$ using $\textrm{SG}(f_k(x_k))$ [${\textrm{SG}}$ : Stop Gradient].
+
+CURL couples frame-stack instance discrimination with momentum encoding for the targets during contrastive learning, and RL is performed on top of the encoder features. 
+
+
+\subsection{Differences Between CURL and Prior Contrastive Methods in RL}
+
+\citet{oord2018representation} use Contastive Predictive Coding (CPC) as an auxiliary task wherein an LSTM operates on a latent space of a convolutional encoder; and both the CPC and A2C \cite{mnih2015human} objectives are jointly optimized. CURL avoids using pipelines that {\it predict the future} in a latent space such as \citet{oord2018representation, hafner2019dream}. In CURL, we opt for a simple instance discrimination style contrastive auxiliary task. 
+
+\subsection{CURL Contrastive Learning Pseudocode (PyTorch-like)}\label{pytorch}
+
+\lstinputlisting[language=Python]{scripts/curl.py}
+
+

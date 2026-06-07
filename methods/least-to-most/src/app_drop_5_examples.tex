@@ -1,0 +1,97 @@
+\subsection{Examples where least-to-most succeeded but chain-of-thought failed}
+\label{app:drop-example}
+
+\subsubsection{Case 1}
+Q: The first two Buick automobiles were made in 1899 and 1900 at the ``Buick Auto-Vim and Power Company'' by chief-engineer Walter Lorenzo Marr, but company owner David Dunbar Buick was reluctant to begin making automobiles, being satisfied with stationary and marine engine production, so Marr left Buick in 1901 to found Marr (automobile) under his own name. His replacement was Eugene Richard, who applied for a patent in 1902 for Marrs valve-in-head (Overhead valve engine) engine, which patent, number 771,095, was awarded to Richard in the name of Buick in 1904. In 1903, the third Buick automobile was made, this time by Richard, but in 1904 Buick, whose company was now called ``Buick Motor Company,'' moved to Flint, Michigan, and Richard stayed behind. Marr was rehired in Flint as chief engineer, to begin making automobiles in production. That year, 37 Buick automobiles were made, production increasing to 750 in 1905, 1,400 in 1906, 4,641 in 1907, and 8,800 in 1908, taking the number one spot away from close competitors Oldsmobile, Ford Motor Company, and Maxwell automobile. How many Buick automobiles were built between 1904 and 1905?
+
+\paragraph{Chain-of-thought by \texttt{code-davinci-002}}
+A: According to the passage, 37 Buick automobiles were made in 1904, and 750 were made in 1905. 750 - 37 = 713. So the answer is 713.
+
+\paragraph{Least-to-most by \texttt{code-davinci-002}}
+Q: How many Buick automobiles were built in 1904?\\
+A: ``In 1903, the third Buick automobile was made, this time by Richard, but in 1904 Buick, whose company was now called ``Buick Motor Company,'' moved to Flint, Michigan, and Richard stayed behind. Marr was rehired in Flint as chief engineer, to begin making automobiles in production. That year, 37 Buick automobiles were made''. So the answer is 37.
+
+Q: How many Buick automobiles were built in 1905?\\
+A: ``production increasing to 750 in 1905''. So the answer is 750.
+
+Q: How many Buick automobiles were built between 1904 and 1905?\\
+A: We know that 37 Buick automobiles were built in 1904. We also know that 750 Buick automobiles were built in 1905. So 37 + 750 = 787 Buick automobiles were built between 1904 and 1905. So the answer is 787.
+
+\paragraph{Analysis}
+Chain-of-thought failed because it computed ``750 - 37 = 713'', which is wrong. The correct answer is ``37 + 750 = 787''.
+
+\subsubsection{Case 2}
+Q: The Guatemalan authorities were unaware of ongoing contacts between the colonial authorities in Yucatán and the Itza. In the second half of 1695 President Barrios began planning another expedition against the Itza from Verapaz, following harsh criticism of Juan Díaz de Velasco's retreat from near Lake Petén Itzá in April of that year. Barrios died in November, and oidor José de Escals became acting head of the Guatemalan colonial administration. He appointed oidor Bartolomé de Amésqueta to lead the next expedition against the Itza. Amésqueta marched his men through torrential rain from Cahabón to Mopán, arriving on 25 February 1696; the Guatemalans were still unaware of the clashes between García's forces and the Itza. Amésqueta's expedition was suffering from shortages of native labour and supplies. Twenty-five of his 150 men were sick, and his advance stalled as the force rested up at Mopán. Captain Díaz de Velasco volunteered to lead a party of 25 men ahead to the lake; he was accompanied by Dominican friars Cristóbal de Prada and Jacinto de Vargas. He was also accompanied by AjK'ixaw, the Itza nobleman who had been taken prisoner on Díaz's previous expedition, who served as a trusted guide, scout and translator. They set out from Mopán on 7 March and left some sick soldiers with some supplies after five days, they then caught up with an advance party of roadbuilders and their military escort at Río Chakal. The two forces combined, giving Díaz a force of 49 soldiers and 34 porters and archers from Verapaz. Once they arrived at IxB'ol, near the shore of Lake Petén Itzá, AjK'ixaw was sent ahead as an emissary to Nojpetén. How many months after Juan Díaz de Velasco's retreat did President Barrios die?
+
+\paragraph{Chain-of-thought by \texttt{code-davinci-002}}
+A: According to the passage, President Barrios died in November, and the expedition against the Itza was led by Bartolomé de Amésqueta in February. So the answer is 3.
+
+\paragraph{Least-to-most by \texttt{code-davinci-002}}
+Q: When did Juan Díaz de Velasco's retreat?\\
+A: ``April of that year''. So the answer is April.
+
+Q: When did President Barrios die?\\
+A: ``November''. So the answer is November.
+
+Q: How many months after Juan Díaz de Velasco's retreat did President Barrios die?\\
+A: We know that Juan Díaz de Velasco's retreat was in April. We also know that President Barrios died in November. So November - April = 7 months after Juan Díaz de Velasco's retreat did President Barrios die. So the answer is 7.
+
+\paragraph{Analysis}
+Chain-of-thought generated the wrong final answer because one fact it used, ``the expedition against the Itza was led by Bartolomé de Amésqueta in February'', is unrelated.
+
+\subsubsection{Case 3}
+Q: Peele was christened on 25 July 1556 at St James Garlickhythe in the City of London. His father, James Peele (d. Dec 30, 1585), who appears to have belonged to a Devonshire family, was clerk of Christs Hospital, a school which was then situated in central London, and wrote two treatises on bookkeeping, The Maner and Fourme How to Kepe a Perfecte Reconyng (1553) and The Pathe Waye to Perfectnes (1569). The latter depicts James Peele in a woodcut on the title page. No contemporary likeness of George is known, although he was said to be short-legged, dark complected, red haired, and squinting, although not necessarily from reliable sources. Georges mother, Anne, died July 1, 1580, and his father married Christian Widers (d. 1597 in St. Christopher le Stocks) on November 3, 1580. She became a nurse on the Hospital payroll, where she remained five years after James Peeles death, when she married Ralph Boswell. His siblings included Anne (d. Jan 10, 1568/9),  Isabel, Judith (d. Apr. 16, 1582), and James (b. Jan 3, 1563/4).  Anne married John Alford on May 14, 1565, and had one son, Robert (October 9, 1567- c. March 12, 1654/5). Judith married John Jackman on June 19, 1575, and had three children, Susan (b. June 3, 1576), William (April 30, 1577-July 1, 1577), and Sarah (d. May 24, 1578). On Feb. 5, 1568/9, Isabel married Mathew Shakespeare, with whom she had eight children.  Many scholars believe that this was a cousin of William Shakespeare, but this has not been verified. James Peele also wrote the Ironmongers Pageants of 1566 and 1569, which may have led to Georges writing of two Lord Mayors pageants. How many years after her marriage to James Peele did Christian Widers die?
+
+\paragraph{Chain-of-thought by \texttt{code-davinci-002}}
+A: According to the passage, Christian Widers died in 1597. James Peele died in 1585. 1597 - 1585 = 12. So the answer is 12.
+
+\paragraph{Least-to-most by \texttt{code-davinci-002}}
+Q: When did Christian Widers marry James Peele?\\
+A: ``She became a nurse on the Hospital payroll, where she remained five years after James Peeles death, when she married Ralph Boswell''. So the answer is 1580.
+
+Q: When did Christian Widers die?\\
+A: ``She became a nurse on the Hospital payroll, where she remained five years after James Peeles death, when she married Ralph Boswell''. So the answer is 1597.
+
+Q: How many years after her marriage to James Peele did Christian Widers die?\\
+A: We know that Christian Widers married James Peele in 1580. We also know that Christian Widers died in 1597. So 1597 - 1580 = 17 years after her marriage to James Peele did Christian Widers die. So the answer is 17.
+
+\paragraph{Analysis}
+Chain-of-thought generated the wrong final answer because one fact it used, ``James Peele died in 1585'', is unrelated.
+
+\subsubsection{Case 4}
+Q: Among the other denominations there are approximately 93,000 Mormons in 253 congregations, 25,000 Jewish adherents in 21 synagogues, 12,000 Muslims in 39 masjids, 7,000 Buddhists in 34 temples, 7,000 Hindus in 17 temples, 2,500 Unitarian Universalism in 9 congregations, 2,000 Bahai in 17 temples, 5 Sikh temples, a Zoroastrian temple, a Jain temple and an uncounted number of neopagans. How many more Mormons were there compared to Muslims?
+
+\paragraph{Chain-of-thought by \texttt{code-davinci-002}}
+A: According to the passage, there are 93,000 Mormons and 25,000 Muslims. 93,000 - 25,000 = 68,000. So the answer is 68,000.
+
+\paragraph{Least-to-most by \texttt{code-davinci-002}}
+Q: How many Mormons were there?\\
+A: ``93,000 Mormons''. So the answer is 93,000.
+
+Q: How many Muslims were there?\\
+A: ``12,000 Muslims''. So the answer is 12,000.
+
+Q: How many more Mormons were there compared to Muslims?\\
+A: We know that there were 93,000 Mormons. We also know that there were 12,000 Muslims. So there were 93,000 - 12,000 = 81,000 more Mormons than Muslims. So the answer is 81,000.
+
+\paragraph{Analysis}
+Chain-of-thought failed because it got one intermediate fact (the number of Muslims) wrong.
+
+\subsubsection{Case 5}
+Q: Killigrew lived in Hanworth in Middlesex and Falmouth in Cornwall. On 4 November 1566 Killigrew married in the church of St Peter Le Poer, London, Catherine, fourth daughter of Sir Anthony Cooke. He thus became Cecil's brother-in-law. His wife died in 1583, and on 7 November 1590 he was married in the same church to Jaél de Peigne, a French Hugenot. She was naturalised in June 1601. After Henry's death she remarried on 19 April 1617 George Downham, Bishop of Derry, and died c.1632. By his first wife, Killigrew had four daughters: How many years after here marriage to Killigrew did Catherine die?
+
+\paragraph{Chain-of-thought by \texttt{code-davinci-002}}
+A: According to the passage, Catherine died in 1583, and Killigrew married Jaél de Peigne in 1590. 1590 - 1583 = 7. So the answer is 7.
+
+\paragraph{Least-to-most by \texttt{code-davinci-002}}
+Q: When did Catherine marry Killigrew?\\
+A: ``On 4 November 1566 Killigrew married in the church of St Peter Le Poer, London, Catherine''. So the answer is 4 November 1566.
+
+Q: When did Catherine die?\\
+A: ``His wife died in 1583''. So the answer is 1583.
+
+Q: By his first wife, Killigrew had four daughters: How many years after here marriage to Killigrew did Catherine die?\\
+A: We know that Catherine married Killigrew in 1566. We also know that Catherine died in 1583. So 1583 - 1566 = 17 years after here marriage to Killigrew did Catherine die. So the answer is 17.
+
+\paragraph{Analysis}
+Chain-of-thought generated the wrong final answer because one fact it used, ``Killigrew married Jaél de Peigne in 1590'', is unrelated.

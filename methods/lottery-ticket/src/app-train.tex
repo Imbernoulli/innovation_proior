@@ -1,0 +1,34 @@
+\section{Training Accuracy for Lottery Ticket Experiments}
+\label{app:train}
+
+This Appendix accompanies Figure \ref{fig:rand_init} (the accuracy and early-stopping iterations of Lenet on MNIST from Section \ref{sec:fc}) and Figure \ref{fig:question-1} (the accuracy and early-stopping iterations of Conv-2, Conv-4, and Conv-6 in Section Section \ref{sec:conv}) in the main body of the paper.
+Those figures show the iteration of early-stopping, the test accuracy at early-stopping, the training accuracy at early-stopping, and the test accuracy at the end
+of the training process. However, we did not have space to include a graph of the training accuracy at the end of the training process, which we assert in the main body of the paper to be
+100\% for all but the most heavily pruned networks. In this Appendix, we include those additional graphs in Figure \ref{fig:rand_init2} (corresponding to Figure \ref{fig:rand_init}) and Figure \ref{fig:question-12} (corresponding to Figure \ref{fig:question-1}). As we describe in the main body of the paper, training accuracy reaches 100\% in all cases
+for all but the most heavily pruned networks. However, training accuracy remains at 100\% longer for winning tickets than for randomly reinitialized networks.
+
+\begin{figure}
+\centering
+\includegraphics[width=.7\textwidth]{graphs/mnist/lenet/all/legend}
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/all/iteration}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/all/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/all/train_accuracy}
+\hspace*{.33\textwidth}
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/50k/accuracy}%
+\includegraphics[width=.33\textwidth]{graphs/mnist/lenet/50k/train_accuracy}
+\caption{Figure \ref{fig:rand_init} augmented with a graph of the training accuracy at the end of 50,000 iterations.}
+\label{fig:rand_init2}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=.8\textwidth]{graphs/cifar10/conv/conv_paperall_w/legend}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w/accuracy}
+\hspace*{.5\textwidth}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w/train_accuracy}
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w_last_iteration/accuracy}%
+\includegraphics[width=.5\textwidth]{graphs/cifar10/conv/conv_paperall_w_last_iteration/train_accuracy}
+\caption{Figure \ref{fig:question-1} augmented with a graph of the training accuracy at the end of the training process.}
+\label{fig:question-12}
+\end{figure}

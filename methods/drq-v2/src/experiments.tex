@@ -1,0 +1,202 @@
+\section{Experiments}
+In this section we provide empirical evaluation of~\drqs{} on an extensive set of visual continuous control tasks from DMC~\citep{tassa2018dmcontrol}. We first present comparison to prior methods, both model-free and model-based, in terms of sample efficiency and wall-clock time. We then present a large scale ablation study that guided the final version of~\drqs.
+
+\begin{figure}[t!]
+    \centering
+
+    \includegraphics[width=\linewidth]{figs/exp_dmc_hard.pdf}
+    \caption{The \textit{hard} benchmark consists of three humanoid locomotion tasks: \textit{stand}, \textit{walk}, and \textit{run}. These three represent particularly hard exploration challenges, being previously unsolvable by model-free methods. The training speed of ~\drqs{} was key to solving the task, since it allowed for extensive investigation of different variations, resulting in the discovery of effective strategies.   }
+    \label{fig:exp_dmc_hard}
+    
+
+    % \vspace{-10pt}
+\end{figure}
+
+%\subsection{The DeepMind Control Suite Benchmarks}
+\subsection{Setup}
+\label{section:setup}
+\paragraph{Environments}
+We consider a set of MuJoCo tasks~\citep{todorov2012mujoco} provided by DMC~\citep{tassa2018dmcontrol}, a widely used benchmark for continous control. DMC offers environments of various difficulty, ranging from the simple control problems such as the single degree of freedom (DOF) pendulum and cartpool, to the control of complex multi-joint bodies such as the humanoid (21 DOF). We consider learning from pixels. In this setting, environment observations are stacks of $3$ consecutive RGB images of size $84 \times 84$, stacked  along the channel dimension to enable inference of dynamic information like velocity and acceleration.  In total, we consider $24$ different tasks, which we group into three buckets, \textit{easy}, \textit{medium}, and \textit{hard}, according to the sample complexity to reach near-optimal performance (see~\cref{section:benchmarks}). Our motivation for this is to encourage RL practitioners to focus on the medium and hard tasks and stop using the easy tasks for evaluation, as they are mostly solved at this point and may no longer provide any valuable signal in comparing different methods.
+
+\paragraph{Training Details}
+For all tasks in the suite an episode corresponds to $1000$ steps, where a per-step reward is in the unit interval $[0, 1]$. This upper bounds the episode return to $1000$ making it easier to compute aggregated performance measures across tasks, as we do in~\cref{fig:exp_dmc_12}.
+To facilitate fair wall-clock time comparison all algorithms are trained on the same hardware (i.e., a single NVIDIA V100 GPU machine) and evaluated with the same periodicity of $20000$ environment steps. Each evaluation query averages episode returns over $10$ episodes. Per common practice~\citep{hafner2019dream}, we employ action repeat of $2$ and measure sample complexity in the environment steps, rather than the actor steps. In all the figures we plot the mean performance over $10$ seeds together with the shaded regions which represent $95\%$ confidence intervals. A full list of hyper-parameters can be found in~\cref{section:hyperparams}.
+
+\paragraph{Comparison Axes}
+In many real-world applications, taking a step in the environment incurs significant computational cost making sample efficiency a critical feature of an RL algorithm. It is hence important to compare RL algorithms in terms of their sample efficiency. We facilitate this comparison by computing an algorithm's performance measured by episode return with respect to environment steps. On the other end, striving low sample complexity often comes at the cost of a poor computational efficiency. Unfortunately, recent deep RL literature has paid very little attention to this important axis which has led to skyrocketing hardware requirements. Such a trend has made it virtually impossible for an RL practitioner with modest hardware capacity to contribute to advancements in image-based RL, leaving research in this area to a few well-equipped labs. To democratize research in visual RL, we additionally propose to compare the agents in terms of wall-clock training time given the same single GPU hardware. We note that it is possible to adapt~\drqs{} to a distributed setup, as has been done for DDPG in prior work~\citep{barth-maron2018d4pg,hoffman2020acme}.
+
+
+
+
+\subsection{Comparison to Model-Free Methods}
+
+\paragraph{Baselines}%\todo{This section overlaps a bit with 4.1. I would bring most of the general definitions from 4.2 to 4.1 and keep here only comments on the results.}
+ We compare our method to several state-of-the-art model-free algorithms for visual RL including CURL~\citep{srinivas2020curl}, DrQ~\citep{yarats2021image}, and vanilla SAC~\citep{haarnoja2018sac} augmented with the convolutional encoder from SAC-AE~\citep{yarats2019improving}. Vanilla SAC is a weak baseline and only included as a ground point to showcase the recent progress in visual RL.
+
+\paragraph{Sample Efficiency Axis}
+We present results on the hard (\cref{fig:exp_dmc_hard}), medium (\cref{fig:exp_dmc_medium}), and easy (\cref{fig:exp_dmc_easy}) subsets of the DMC tasks, where the maximum number of environment interactions is limited to \textit{thirty}, \textit{three}, and \textit{one}  million of steps respectively.Our empirical study reveals that~\drqs{} outperforms prior model-free methods in terms of sample efficiency across the three benchmarks with different levels of difficulty. Importantly,~\drqs{}'s advantage is more pronounced on harder tasks (i.e., acrobot, quadruped, and humanoid), where exploration is especially challenging. Finally,~\drqs{} solves the DMC humanoid locomotion tasks directly from pixels, which, to the best of our knowledge, is the first successful demonstration of such feat by a model-free method.
+
+
+
+\begin{figure}[t!]
+    \centering
+
+    \includegraphics[width=\linewidth]{figs/exp_dmc_medium.pdf}
+    \caption{The \textit{medium} benchmark consists of $12$ complex control tasks that offer various challenges, including complex dynamics, sparse rewards, hard exploration, and more.~\drqs{} demonstrates favorable sample efficiency and comfortably outperforms leading model-free baselines.   }
+    \label{fig:exp_dmc_medium}
+    % \vspace{-10pt}
+\end{figure}
+
+
+
+\begin{figure}[t!]
+    \centering
+
+    \includegraphics[width=\linewidth]{figs/exp_dmc_easy.pdf}
+    \caption{The \textit{easy} benchmark consists of $9$ tasks, where performance gains have been largely saturated by prior work. Still,~\drqs{} is able to match sample complexity of the baselines. We note, that evaluation on these tasks is done for completeness reasons only, and encourage RL practitioners to refrain from using them for benchmarking purposes in future research.  }
+    \label{fig:exp_dmc_easy}
+    % \vspace{-10pt}
+\end{figure}
+
+
+
+
+
+
+
+
+\paragraph{Compute Efficiency Axis}
+To facilitate a fair comparison in terms of sheer wall-clock training time, besides employee the identical training protocol (see~\cref{section:setup}), we also use the same mini-batch size of $256$ for each agent. 
+In~\cref{fig:exp_wall_clock}, we evaluate~\drqs{} on a subset of DMC tasks for the sake of brevity only, and note that the demonstrated results can be easily extrapolated to the other tasks given the linear dependency between training time and sample complexity. In our benchmarks,~\drqs{} is able to achieve a throughput of $96$ FPS, which favorably compares to DrQ's $28$ FPS (a $3.4\times$ increase), and CURL's $16$ FPS (a $6\times$ increase) throughputs. Practically,~\drqs{} solves easy, medium, and hard tasks within $2.9$, $8.6$, and $86$ hours respectively. 
+
+% We hope that such training speed would make~\drqs{} a go-to backbone algorithm for further research in imaged-based RL.
+
+
+\begin{figure}[t!]
+    \centering
+
+    \includegraphics[width=\linewidth]{figs/exp_wall_clock.pdf}
+    \caption{\drqs{} not only achieves superior sample efficiency than prior model-free methods, but it also requires less wall-clock training time to do so. Our benchmarking shows that~\drqs{} can reach a throughput of $96$ FPS on a single NVIDIA V100 GPU. Practically, this means that most of the task can be solved in $8$ hours or less, which greatly speeds up the research process.}
+    \label{fig:exp_wall_clock}
+    % \vspace{-10pt}
+\end{figure}
+
+\subsection{Comparison to Model-Based Methods}
+
+
+
+\paragraph{Baseline}
+To see how~\drqs{} stacks up against model-based methods, which tend to achieve better sample complexity in expense of a larger computational footprint, we also compare to recent and unpublished\footnote{ArXiv v3 revision from May 3, 2021 introduces a new result on the \textit{Humanoid Walk} task in Appendix A.} improvements to Dreamer-v2~\citep{hafner2020dreamerv2}, a leading model-based approach for visual continuous control. The recent update shows that the model-based approach can solve the DMC humanoid tasks directly from pixel inputs. The open-source implementation of Dreamer-v2 (\url{https://github.com/danijar/dreamerv2}) only provides learning curves for \textit{Humanoid Walk}. For this reason we run their code to obtain results on other DMC tasks. To limit hardware requirements of compute-expensive Dreamer-v2, we only run it on a subset of $12$ out of $24$ considered tasks. This subset, however, overlaps with all the three (i.e. easy, medium, and hard) benchmarks.
+
+\paragraph{Sample Efficiency Axis}
+
+Our empirical study in~\cref{fig:exp_dmc_dreamer} reveals that in many cases,~\drqs{}, despite being a model-free method, can rival sample efficiency of state-of-the-art model-based Dreamer-v2. We note, however, that on several tasks (for example \textit{Acrobot Swingup} and \textit{Finger Turn Hard}) Dreamer-v2 outperforms~\drqs{}. We leave investigation of such discrepancy for future work.
+
+\paragraph{Compute Efficiency Axis} A different picture emerges if comparison is done with respect to wall-clock training time. Dreamer-v2, being a model-based method, performs  significantly more floating point operations to reach its sample efficiency. In our benchmarks, Dreamer-v2 records a throughput of $24$ FPS, which is $4\times$ less than~\drqs{}'s throughput of $96$ FPS, measured on the same hardware. In~\cref{fig:exp_dmc_dreamer_wall_clock} we plot learning curves against wall-clock time and observe that~\drqs{} takes less time to solve the tasks.
+
+
+
+\begin{figure}[t!]
+    \centering
+
+    \includegraphics[width=\linewidth]{figs/exp_dmc_dreamer.pdf}
+    \caption{In many cases model-free~\drqs{} can rival model-based Dreamer-v2 in sample efficiency. There are several tasks, however, where Dreamer-v2 performs better. }
+    \label{fig:exp_dmc_dreamer}
+    
+
+    % \vspace{-10pt}
+\end{figure}
+
+
+
+\begin{figure}[t!]
+    \centering
+
+    \includegraphics[width=\linewidth]{figs/exp_dmc_dreamer_wall_clock.pdf}
+    \caption{Model-based Dreamer-v2 performs more computations  than model-free~\drqs{}. This allows~\drqs{} to train faster in terms of wall-clock time and outperform Dreamer-v2 in this aspect.}
+    \label{fig:exp_dmc_dreamer_wall_clock}
+    % \vspace{-10pt}
+\end{figure}
+
+% In other settings, the environment may be a cheap simulator that only needs a negligible amount of computational resources compared to learning. While sample efficiency should still not be overlooked, in these cases understanding how quickly results can be obtained is more relevant. Unfortunately, computational efficiency in recent RL algorithms has not been given proper attention. As a result, computation requirements have skyrocketed in the chase for sample efficiency. This trend 
+
+
+
+%All considered agents are trained on a single NVIDIA V100 GPU machine to facilitate fair wall-clock time comparison. Furthermore, 
+
+%which we cast into image-based RL by using $84 \times 84$ RGB renderings as agent's inputs. The episode length of every task is $1000$ steps, except \textit{Reach Duplo}, where it is set to $250$. Per common practice~\citep{hafner2019dream} we repeat each action two times. Each agent is evaluated every $20000$ environment steps by recording an average episode return over $10$ episodes. All figures plot the mean performance over $10$ random seeds, together with p95 shading. We train a each agent on one NVIDIA V100 GPU.
+
+
+%To evaluate \drqs~on tasks of various difficulty we consider splitting DMC tasks into three benchmarks: \textit{easy}, \textit{medium}, and \textit{hard}. An RL agent is allowed to perform 1M, 3M, and 30M environment interactions respectively. The tasks specification is presented in Table XXX.
+
+
+
+
+
+
+%Algothought, the authors of Dreamer-v2 has not published the performance on DMC, we find that Dreamer-v2 demonstrates very strong results and we decided to include them for fair comparison. 
+
+
+%\subsection{Experimental Setup}
+%We consider a set of MuJoCo tasks~\citep{todorov2012mujoco} provided by DMC~\citep{tassa2018dmcontrol}, a widely used benchmark for continous control. DMC offers tasks of various difficulty, ranging from the simple control problems such as the single degree of freedom (DOF) pendulum and cartpool, to the control of complex multi-joint bodies such as the humanoid (21 DOF). We consider learning these tasks from pixels. In this setting, environment observations are stacks of three consecutive RGB images of size $84 \times 84$, 
+
+%which we cast into image-based RL by using $84 \times 84$ RGB renderings as agent's inputs. The episode length of every task is $1000$ steps, except \textit{Reach Duplo}, where it is set to $250$. Per common practice~\citep{hafner2019dream} we repeat each action two times. Each agent is evaluated every $20000$ environment steps by recording an average episode return over $10$ episodes. All figures plot the mean performance over $10$ random seeds, together with p95 shading. We train a each agent on one NVIDIA V100 GPU.
+
+
+%To evaluate \drqs~on tasks of various difficulty we consider splitting DMC tasks into three benchmarks: \textit{easy}, \textit{medium}, and \textit{hard}. An RL agent is allowed to perform 1M, 3M, and 30M environment interactions respectively. The tasks specification is presented in Table XXX.
+
+%\paragraph{Easy Benchmark}
+%This benchmark is relatively easy for most of the algorithms we consider, except SAC~\citep{haarnoja2018sac}. In~\cref{fig:exp_dmc_easy} we see that~\drqs{} is comparable to prior methods 
+
+
+
+
+
+
+\subsection{Ablation Study}
+\label{section:ablation}
+In this section we present an extensive ablation study that guided us to the final version of~\drqs{}. Here, for brevity we only discuss experiments that were most impactful and omit others that did not pan out. For computational reasons, we only ablate on $3$ different control tasks of various difficulty levels. Our findings are summarized in~\cref{fig:ablation} and detailed below.
+
+
+\paragraph{Switching from SAC to DDPG} DrQ~\citep{yarats2021image} leverages SAC~\citep{haarnoja2018sac} as the backbone RL algorithm. While it has been demonstrated by many works, including the original manuscripts~\citep{haarnoja2018sac,haarnoja2018sacapplication} that SAC is superior to DDPG~\citep{lillicrap2015continuous}, our careful examination identifies two shortcomings that preclude SAC (within DrQ) to solve hard exploration-wise image-based tasks. First, the automatic entropy adjustment strategy, introduced in~\cite{haarnoja2018sacapplication}, is inadequate and in some cases leads to a premature entropy collapse. This prevents the agent from finding more optimal behaviors due to the insufficient exploration. In~\cref{fig:exp_sac_vs_ddpg}, we empirically verify our intuition and, indeed, observe that DDPG demonstrates better exploration properties than SAC. Here, DDPG uses constant $\sigma=0.2$ for the exploration noise.
+
+
+\paragraph{$\mathbf{N}$-step Returns}
+The second issue concerns the inability of soft Q-learning to incorporate $n$-step returns to estimate TD error in a straightforward manner. The reason for this is that computing a target value for soft Q-function requires estimating per-step entropy of the policy, which is challenging to do for large $n$ in the off-policy regime. In contrast, DDPG does not require estimating per-step entropy to compute targets and is more amenable for $n$-step returns. In~\cref{fig:exp_nstep} we demonstrate that estimating TD error with $n$-step returns improves sample efficiency over vanilla DDPG. We select $3$-step returns as a sensible choice for our method.
+
+%We empirically verify our intuition in~\cref{fig:exp_sac_vs_ddpg}.  we experiment with DDPG that is more amenable for $n$-step returns~\citep{barth-maron2018d4pg}.%\todo{Why is importance sampling more needed in SAC than in DDPG?}
+%Furthermore, we use simple isotropic zero-mean Gaussian noise around the policy to facilitate exploration to replace SAC's automatic entropy adjustment. In~\cref{fig:exp_sac_vs_ddpg} we observe that DrQ with vanilla DDPG already improves performance.% \todo{Most of these things were mentioned already in 3.2. It clarifies better the n-step part though.}
+
+
+
+
+\paragraph{Replay Buffer Size}
+We hypothesize that a larger replay buffer plays an important role in circumventing the catastrophic forgetting problem~\citep{fedus2020replay}. This issue is especially prominent in tasks with more diverse initial state distributions (i.e., reacher or humanoid tasks), where the vast variety of possible behaviors requires significantly larger memory. We confirm this intuition by ablating the size of the replay buffer in~\cref{fig:exp_buffer}, where we observe that a buffer size of 1M helps to improve performance on \textit{Reacher Hard} considerably. 
+
+
+\paragraph{Scheduled Exploration Noise}
+Finally, we demonstrate that it is useful to decay the variance of the exploration noise over the course of training according to~\cref{eq:decay}. In~\cref{fig:exp_noise}, we compare two versions of our algorithm, where the first variant uses a fixed standard deviation of $\sigma=0.2$, while the second variant employes the decaying schedule $\sigma(t)$, with parameters $\sigma_{\mathrm{init}}=1.0$, $\sigma_{\mathrm{final}}=0.1$, and $T=500000$. Having the exploration noise to decay linearly over time turns out to be helpful and provide an additional performance boost, which was especially useful for solving humanoid tasks.
+
+
+
+
+
+
+\begin{figure*}[t!]
+    \centering
+    
+    \subfloat[DrQ (dotted silver) relies on SAC as a base RL algorithm. Replacing SAC with DDPG results in a significant performance gain (blue). ]{\includegraphics[width=\linewidth]{figs/exp_sac_vs_ddpg.pdf}  \label{fig:exp_sac_vs_ddpg}}\\
+ 
+    \subfloat[DDPG straightforwardly incorporates $n$-step returns, a critical tool for exploration. We observe that the $3$ (blue) and $5$ (red) steps variants provide additional improvements to the previous version that uses single step TD-targets (silver). Going forward, we adopt $3$-step returns (blue).]{\includegraphics[width=\linewidth]{figs/exp_nstep.pdf}  \label{fig:exp_nstep}}\\
+    
+    \subfloat[Increasing the size of the replay buffer improves performance, over the original 100k used by DrQ (silver). Going forward, we use a buffer size of 1M (red). ]{\includegraphics[width=\linewidth]{figs/exp_replay_size.pdf}  \label{fig:exp_buffer}}\\
+    
+    
+    \subfloat[Finally, a decaying schedule for the variance of the exploration noise (blue) helps on hard exploration tasks, versus the fixed variance variant (silver).]{\includegraphics[width=\linewidth]{figs/exp_schedule.pdf}  \label{fig:exp_noise}}\\
+    
+    
+         \caption{An ablation study that led us to the final version of~\drqs{}. We incrementally show each of the four key improvements to DrQ that collectively form~\drqs{}. The silver dotted curves in the first row show the original DrQ. In subsequent rows they show progressive improvements, using the optimal choice from the previous rows (i.e., the silver curve in the third row shows DrQ with a DDPG base RL algorithm and $3$-step returns). The red and blue curves show the effect of individual modifications. In the last row the blue curve corresponds to~\drqs{}.}
+
+    \label{fig:ablation}
+    % \vspace{-10pt}
+\end{figure*}

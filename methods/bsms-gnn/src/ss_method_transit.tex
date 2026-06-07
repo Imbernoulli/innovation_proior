@@ -1,0 +1,17 @@
+\subsection{Transition Between Levels}
+\label{sec:transition}
+We handle information transition between two adjacent levels with non-parametrized \textit{downsampling} and \textit{upsampling} modules to reduce the overhead of the learnable transition modules between every pair of adjacent levels. Here we define downsampling as the sequence of pooling nodes and then aggregating the information from the neighbors to the coarser level, and upsampling as the sequence of unpooling and then returning the information of the pooled nodes to their neighbors at the finer level.
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width = 0.75 \linewidth]{figs/transition_single_menglei.pdf}\\
+    \caption{\textbf{Schematic plot of transition between adjacent levels.}}\vspace{-10pt}
+    \label{fig:transit}
+\end{figure}
+
+\paragraph*{Downsampling} Let $\mA$ be the unweighted, boolean adjacency matrix. We initiate a nodal weight field $w$, which is one on the finest level and will be aggregated during downsampling. With the receiver $j$ and its sender $i$, the formal procedure of downsampling is formulated as (Fig.~\ref{fig:transit}):
+\begin{itemize}
+    \item Normalize by row as in a standard graph convolution $\hat{\mA}_{ij}\leftarrow\mA_{ij}/\sum_j\mA_{ij}$, and then convolve the weight once $\hat{w}_{ij}\leftarrow w_i\hat{\mA}_{ij}$ (Fig.~\ref{fig:transit}(a));
+    \item Calculate edge weights $\mC_{ij}\leftarrow\hat{w}_{ij}/\sum_i\hat{w}_{ij}$, where $\mC$ can be viewed as a contribution table with $\mC_{ij}$ as the share of weights in receiver $j$ contributed by sender $i$ (Fig.~\ref{fig:transit}(b));
+    \item Convolve the latent information by contribution table $\vv_j\leftarrow\sum_i\vv_i\mC_{ij}$, which is equivalent to equally splitting and sending the weighted information out from senders, and then conducting the weighted average on receivers (Fig.~\ref{fig:transit}(c)).
+\end{itemize}
+\paragraph*{Upsampling} After unpooling, all nodes except pooled ones have zero information. A returning process, resembling transposed convolution \revision{in U-Net}, can help distinguish the information between receivers. With the contribution table $\mC$ recording edge weights, a natural choice is $\vv_i\leftarrow\vv_j\mC^T_{ij}$ (Fig.~\ref{fig:transit}(d)).

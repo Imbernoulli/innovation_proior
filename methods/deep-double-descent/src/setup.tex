@@ -1,0 +1,32 @@
+\section{Experimental Setup}
+
+
+We briefly describe the experimental setup here; full details are in Appendix~\ref{sec:appendix_exp_details}
+\footnote{The raw data from our experiments
+are available at:
+\url{https://gitlab.com/harvard-machine-learning/double-descent/tree/master}}.
+We consider three families of architectures: ResNets, standard CNNs, and Transformers.
+\textbf{ResNets:}
+We parameterize a family of ResNet18s (\cite{he2016identity})
+by scaling the width (number of filters) of convolutional layers.
+Specifically, we use layer widths $[k, 2k, 4k, 8k]$ for varying $k$.
+The standard ResNet18 corresponds to $k=64$.
+\textbf{Standard CNNs:}
+We consider a simple family of 5-layer CNNs, with 4 convolutional layers of widths $[k, 2k, 4k, 8k]$ for varying $k$, and a fully-connected layer. For context, the CNN with width $k=64$, can reach over $90\%$ test accuracy on CIFAR-10 with data-augmentation.
+\textbf{Transformers:}
+We consider the 6 layer encoder-decoder from \cite{Vaswani},
+as implemented by \cite{ott2019fairseq}.
+%\footnote{https://github.com/pytorch/fairseq}.
+We scale the size of the network by
+modifying the embedding dimension $d_{\text{model}}$,
+and setting the width of the fully-connected layers proportionally
+($d_{\text{ff}} = 4\cdot d_{\text{model}}$).
+For ResNets and CNNs, we train with cross-entropy loss, and the following optimizers:
+(1) Adam with learning-rate $0.0001$ for 4K epochs; (2) SGD with learning rate $\propto \frac{1}{\sqrt{T}}$ for 500K gradient steps.
+We train Transformers for 80K gradient steps, with 10\% label smoothing and no drop-out.
+
+\paragraph{Label Noise.}
+In our experiments, label noise of probability $p$ refers to
+training on a samples which have the correct label
+with probability $(1-p)$, and a uniformly random incorrect label otherwise (label noise is sampled only once and not per epoch).
+Figure~\ref{fig:errorvscomplexity} plots test error on the noisy distribution, while the remaining figures plot test error with respect to the clean distribution (the two curves are just linear rescaling of one another).

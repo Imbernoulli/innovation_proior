@@ -1,0 +1,21 @@
+% \todo{In charge: Hao, Charles. First pass by Hao due May 16 10PM. Final pass due May 17 5PM.}
+Suppose that $\mathcal{X}=(M, d)$ is a discrete metric space whose metric is inherited from a Euclidean space $\mathbb{R}^n$, where $M\subseteq \mathbb{R}^n$ is the set of points and $d$ is the distance metric. In addition, the density of $M$ in the ambient Euclidean space may not be uniform everywhere. We are interested in learning set functions $f$ that take such $\mathcal{X}$ as the input (along with additional features for each point) and produce information of semantic interest regrading $\mathcal{X}$. In practice, such $f$ can be classification function that assigns a label to $\mathcal{X}$ or a segmentation function that assigns a per point label to each member of $M$.
+
+
+
+
+\begin{comment}
+\subsection{Properties of Point Sets in Metric Spaces}
+\rqi{Shall we shorten this paragraph to fit Section 1 and 2 into the first two pages?}
+
+As a set, points are unordered requiring the network to be permutation invariant to all possible input orders.
+
+Compared with generic sets, points sampled from a metric space have two additional properties:
+\begin{itemize}
+    \item Point-to-point relations are defined by a metric. While previous works like PointNet and Deep Sets have looked into the problem of learning representations for generic sets, they consider each point in the set as an independent element and relied on the global normalization of points to effectively aggregate point information by a max or average operation. Therefore, the generic set network only learns single point embedding or global point set feature. In our network, we regard the metric distance as first-class citizen and explicitly model point-to-point relations and learn local context features at increasing scales.
+    
+    \item Variable sampling density in local neighborhoods defined by the metric. While there is no clear definition of sampling density in a generic set, we can define sampling density in point sets sampled from a metric space. %High density region results in higher confidence in pattern recognition compared to regions with lower sampling density. 
+    There is no guarantee that a model trained or tuned at certain sampling density would perform well at another density at test time. It is also likely that sampling density varies in different regions in the metric space at test time. The model needs to adapt to sampling densities and use its ``best judgement'' to extract useful and reliable features in those regions. 
+    
+\end{itemize}
+\end{comment}

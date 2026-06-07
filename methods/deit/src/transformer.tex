@@ -1,0 +1,57 @@
+\section{Vision transformer: overview} 
+\label{sec:vit} 
+
+In this section, we briefly recall preliminaries associated with the vision transformer~\cite{dosovitskiy2020image,Vaswani2017AttentionIA}, and further discuss positional encoding and resolution. 
+
+%\subsection{Visual transformers: overview}
+
+\paragraph{Multi-head Self Attention layers (MSA).}
+The attention mechanism is based on a trainable associative memory with (key, value) vector pairs. 
+% 
+A \emph{query} vector $q\in\mathbb{R}^d$ is matched against a set of $k$ \emph{key} vectors (packed together into a matrix $K\in\mathbb{R}^{k\times d}$) using inner products. 
+These inner products are then scaled and normalized with a softmax function to obtain $k$ weights. 
+The output of the attention is the weighted sum of a set of $k$ \emph{value} vectors (packed into $V\in\mathbb{R}^{k\times d}$). 
+For a sequence of $N$ query vectors (packed into $Q\in\mathbb{R}^{N\times d}$), it produces an output matrix (of size $N\times d$): 
+\begin{equation}
+    \mathrm{Attention}(Q, K, V) = \mathrm{Softmax}(Q K^\top/\sqrt{d}) V,
+\end{equation}
+where the $\mathrm{Softmax}$ function is applied over each row of the input matrix and the $\sqrt{d}$ term provides appropriate normalization.\\
+In~\cite{Vaswani2017AttentionIA}, a Self-attention layer is proposed.  Query, key and values matrices are themselves computed from a sequence of $N$ input vectors (packed into $X\in \mathbb{R}^{N\times D}$): 
+$Q=XW_\mathrm{Q}$, $K=XW_\mathrm{K}$, $V=XW_\mathrm{V}$, using linear transformations $W_\mathrm{Q},W_\mathrm{K},W_\mathrm{V}$ with the constraint $k=N$, meaning that the attention is in between all the input vectors. \\
+Finally, {Multi-head} self-attention layer (MSA) is defined by considering $h$ attention ``heads'', \textit{ie} $h$ self-attention functions  applied to the input. 
+Each head provides a sequence of size $N\times d$. 
+These $h$ sequences are rearranged into a $N \times dh$ sequence that is reprojected by a linear layer into $N \times D$. 
+
+\paragraph{Transformer block for images.}
+To get a full transformer block as in~\cite{Vaswani2017AttentionIA},  we add a Feed-Forward Network (FFN) on top of the MSA layer. This FFN is composed of two linear layers separated by a GeLu activation~\cite{Hendrycks2016GaussianEL}.
+The first linear layer expands the dimension from $D$ to $4D$, and the second layer reduces the dimension from $4D$ back to $D$.
+Both MSA and FFN are operating as residual operators thank to skip-connections, and with a layer normalization~\cite{ba2016layer}.
+
+In order to get a transformer to process images, our work builds upon the ViT model~\cite{dosovitskiy2020image}.  It is a simple and elegant architecture that processes input images as if they were a sequence of input tokens. The fixed-size input RGB image is decomposed into a batch of $N$ patches of a fixed size of $16\times 16$ pixels ($N=14\times 14$). Each patch is projected with a linear layer that conserves its overall dimension $3 \times 16 \times 16=768$.\\
+%
+The transformer block described above is invariant to the order of the patch embeddings, and thus does not consider their relative position.
+The positional information is incorporated as fixed~\cite{Vaswani2017AttentionIA} or trainable~\cite{ghering2017convseq2seq} positional embeddings. 
+They are added before the first transformer block to the patch tokens, which are then fed to the stack of transformer blocks. 
+
+
+
+
+\paragraph{The class token} is a trainable vector, appended to the patch tokens before the first layer, that goes through the transformer layers, and is then projected with a linear layer to predict the class.
+This class token is inherited from NLP~\cite{devlin2018bert}, and departs from the typical pooling layers used in computer vision to predict the class. 
+The transformer thus process batches of $(N + 1)$ tokens of dimension $D$, of which only the class vector is used to predict the output.
+This architecture forces the self-attention to spread information between the patch tokens and the class token: at training time the supervision signal comes only from the class embedding, while the patch tokens are the model's only variable input.
+
+
+\paragraph{Fixing the positional encoding across resolutions. }
+\label{sec:position_encoding}
+
+Touvron et al.~\cite{Touvron2019FixRes} show that it is  desirable to use a lower training resolution and fine-tune the network at the larger resolution. %
+This speeds up the full training and improves the accuracy under prevailing data augmentation schemes. 
+%
+When increasing the resolution of an input image, we keep the patch size the same, 
+%
+% 
+therefore the number $N$ of input patches does change.
+Due to the architecture of transformer blocks and the class token, the model and classifier do not need to be modified to process more tokens.
+In contrast, one needs to adapt the positional embeddings, because there are $N$ of them, one for each patch. 
+Dosovitskiy et al.~\cite{dosovitskiy2020image}  interpolate the positional encoding when changing the resolution and demonstrate that this method works with the subsequent fine-tuning stage. 

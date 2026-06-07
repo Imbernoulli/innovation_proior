@@ -1,0 +1,24 @@
+\section{Introduction}
+Large-scale language models (LLMs) show excellent performance on various tasks~\citep{gpt3,opt}. However, serving LLMs is budget and energy-consuming due to their gigantic model size. For example, the GPT-3~\citep{gpt3} model contains 175B parameters, which will consume at least 350GB of memory to store and run in FP16, requiring 8$\times$48GB A6000 GPUs or 5$\times$80GB A100 GPUs just for inference.
+Due to the huge computation and communication overhead, the inference latency may also be unacceptable to real-world applications.
+\emph{Quantization} is a promising way to reduce the cost of LLMs~\cite{dettmers2022llmint8, zeroquant}. By quantizing the \emph{weights and activations} with low-bit integers, we can reduce GPU memory requirements, in size and bandwidth, and accelerate compute-intensive operations (\ie, \texttt{GEMM}\footnote{General matrix multiply} in linear layers, \texttt{BMM}\footnote{Batch matrix multiply} in attention). For instance, INT8 quantization of weights and activations can halve the GPU memory usage and nearly double the throughput of matrix multiplications compared to FP16.
+
+\input{fig_text/fig_trend}
+
+However, unlike CNN models or smaller transformer models like BERT~\cite{bert}, the \emph{activations} of LLMs are difficult to quantize. When we scale up LLMs beyond 6.7B parameters, systematic outliers with large magnitude will emerge in activations~\cite{dettmers2022llmint8}, leading to large quantization errors and accuracy degradation.
+ZeroQuant~\citep{zeroquant} applies dynamic per-token activation quantization and group-wise weight quantization (defined in \fig{fig:quantize_notation} \sect{sec:quantization}). It can be implemented efficiently and delivers good accuracy for GPT-3-350M and GPT-J-6B. However,  it can not maintain the accuracy for the large OPT model with 175 billion parameters (see Section~\ref{sec:accurate-quantization}).
+\texttt{LLM.int8()}~\cite{dettmers2022llmint8} addresses that accuracy issue by further introducing a mixed-precision decomposition (\ie, it keeps outliers in FP16 and uses INT8 for the other activations). However, it is hard to implement the decomposition efficiently on hardware accelerators.
+Therefore, deriving an \emph{efficient}, \emph{hardware-friendly}, and preferably \emph{training-free} quantization scheme for LLMs that would use INT8 for all the compute-intensive operations remains an open challenge.
+
+We propose \method, an accurate and efficient post-training quantization (PTQ) solution for LLMs.
+\method relies on a key observation: even if activations are much harder to quantize than weights due to the presence of outliers~\cite{dettmers2022llmint8},  different tokens exhibit similar variations across their channels.
+\input{fig_text/fig_intuition}
+Based on this observation, \method offline migrates the quantization difficulty from activations to weights (\fig{fig:intuition}).
+\method proposes a mathematically equivalent per-channel scaling transformation that significantly smooths the magnitude across the channels, making the model quantization-friendly.
+Since \method is compatible with various quantization schemes, we implement three efficiency levels of 
+quantization settings for \method (see \tbl{tab:settings}, O1-O3).
+Experiments show that \method is hardware-efficient: it can maintain the performance of OPT-175B~\cite{opt}, BLOOM-176B~\cite{scao2022bloom} , GLM-130B~\cite{zeng2022glm}, and MT-NLG 530B~\cite{smith2022using},
+leading to up to 1.51$\times$ speed up and 1.96$\times$ memory saving on PyTorch.
+\method is easy to implement. We integrate \method into FasterTransformer, the state-of-the-art transformer serving framework, achieving up to 1.56$\times$ speedup and halving the memory usage compared with FP16.
+Remarkably, \method allows serving large models like OPT-175B using only half number of GPUs compared to FP16 while being faster, and enabling the serving of a 530B model within one 8-GPU node.
+Our work democratizes the use of LLMs by offering a turnkey solution to reduce the serving cost. We hope \method can inspire greater use of LLMs in the future.

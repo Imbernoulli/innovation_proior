@@ -1,0 +1,33 @@
+\section{Conclusion}
+
+In recent years, object detection performance had stagnated.
+The best performing systems were complex ensembles combining multiple low-level image features with high-level context from object detectors and scene classifiers.
+This paper presents a simple and scalable object detection algorithm that gives a 30\% relative improvement over the best previous results on PASCAL VOC 2012.
+
+We achieved this performance through two insights.
+The first is to apply high-capacity convolutional neural networks to bottom-up region proposals in order to localize and segment objects.
+The second is a paradigm for training large CNNs when labeled training data is scarce. We show that it is highly effective to pre-train the network---\emph{with supervision}---for a auxiliary task with abundant data (image classification) and then to fine-tune the network for the target task where data is scarce (detection).
+We conjecture that the ``supervised pre-training/domain-specific fine-tuning'' paradigm will be highly effective for a variety of data-scarce vision problems.
+
+%Why not give more training data to other approaches, too? 
+%One issue is that it's non-trivial to benefit from data from a different domain, and that was labeled for a different task. 
+%Training a DPM for PASCAL, for example, requires bounding box annotations for the PASCAL categories. 
+%Additionally, \cite{devaMoreData} shows that even when more data is available, DPM does not easily benefit from it.
+%A second issue is that many models lack large sets of shared parameters to pre-train.
+%For instance, a bag-of-visual-words method is unlikely to benefit from training its codebook on ImageNet.
+%These issues may be overcome in the future, but they are research endeavors in their own right.
+
+%This paper proves a strong experimental claim:
+%a large convolutional neural network is highly effective at exploiting ``big visual data'' to learn a rich hierarchy of features that yields previously unattainable object detection results on the gold-standard PASCAL VOC Challenge.
+%This is no small feat.
+%From the vantage point of the detector, ILSVRC 2012 is weakly labeled, even missing annotations for key visual concepts such as \emph{person}.
+%The CNN's ability to easily turn this data into top-performing detection results is truly exciting.
+We conclude by noting that it is significant that we achieved these results by using a combination of classical tools from computer vision \emph{and} deep learning (bottom-up region proposals and convolutional neural networks).
+Rather than opposing lines of scientific inquiry, the two are natural and inevitable partners.
+
+
+
+\paragraph{Acknowledgments.}
+This research was supported in part by DARPA Mind's Eye and MSEE
+programs, by NSF awards IIS-0905647, IIS-1134072, and IIS-1212798, MURI N000014-10-1-0933, and by support from Toyota.
+The GPUs used in this research were generously donated by the NVIDIA Corporation.

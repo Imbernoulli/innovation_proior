@@ -1,0 +1,84 @@
+\section{Adapter tuning for NLP}
+
+\begin{SCfigure*}
+\begin{tabular}{cc}
+ \includegraphics[width=0.45\linewidth]{figures/Adapter_insertion.pdf}&
+ \includegraphics[width=0.45\linewidth]{figures/Adapter_arch.pdf}
+\end{tabular}
+ \caption{
+ Architecture of the adapter module and its integration with the Transformer.
+ \textbf{Left:} We add the adapter module twice to each Transformer layer:
+ after the projection following multi-headed attention and after the two feed-forward layers.
+ \textbf{Right:} The adapter consists of a bottleneck which contains few parameters relative to the attention and feedforward layers in the original model.
+ The adapter also contains a skip-connection.
+ During adapter tuning, the green layers are trained on the downstream data, this includes the adapter, the layer normalization parameters,
+ and the final classification layer (not shown in the figure).
+ \label{fig:adapters_transformer}}
+\end{SCfigure*}
+
+We present a strategy for tuning a large text model on several downstream tasks.
+Our strategy has three key properties:
+(i) it attains good performance,
+(ii) it permits training on tasks sequentially, that is, it does not require simultaneous access to all datasets,
+and (iii) it adds only a small number of additional parameters per task.
+These properties are especially useful in the context of cloud services,
+where many models need to be trained on a series of downstream tasks, so a high degree of sharing is desirable.
+
+To achieve these properties, we propose a new bottleneck adapter module.
+Tuning with adapter modules involves adding a small number of new parameters to a model, which are trained on the downstream task~\citep{rebuffi2017}.
+When performing vanilla fine-tuning of deep networks, a modification is made to the top layer of the network.
+This is required because the label spaces and losses for the upstream and downstream tasks differ.
+Adapter modules perform more general architectural modifications to re-purpose a pre-trained network for a downstream task.
+In particular, the adapter tuning strategy involves injecting new layers into the original network.
+The weights of the original network are untouched, whilst the new adapter layers are initialized at random.
+In standard fine-tuning, the new top-layer and the original weights are co-trained.
+In contrast, in adapter-tuning, the parameters of the original network are frozen and therefore may be shared by many tasks.
+
+Adapter modules have two main features: a small number of parameters, and a near-identity initialization.
+The adapter modules need to be small compared to the layers of the original network.
+This means that the total model size grows relatively slowly when more tasks are added.
+A near-identity initialization is required for stable training of the adapted model;
+we investigate this empirically in Section~\ref{sec:discussion}.
+By initializing the adapters to a near-identity function, original network is unaffected when training starts.
+During training, the adapters may then be activated to change the distribution of activations throughout the network.
+The adapter modules may also be ignored if not required;
+in Section~\ref{sec:discussion} we observe that some adapters have more influence on the network than others.
+We also observe that if the initialization deviates too far from the identity function, the model may fail to train.
+
+\subsection{Instantiation for Transformer Networks\label{sec:bottleneckadapter}}
+
+We instantiate adapter-based tuning for text Transformers.
+These models attain state-of-the-art performance in many NLP tasks,
+including translation, extractive QA, and text classification problems~\citep{vaswani2017,radford2018improving,devlin2018bert}.
+We consider the standard Transformer architecture, as proposed in~\citet{vaswani2017}.
+
+Adapter modules present many architectural choices.
+We provide a simple design that attains good performance.
+We experimented with a number of more complex designs, see Section~\ref{sec:discussion},
+but we found the following strategy performed as well as any other that we tested, across many datasets.
+
+Figure~\ref{fig:adapters_transformer} shows our adapter architecture, and its application it to the Transformer.
+Each layer of the Transformer contains two primary sub-layers: an attention layer and a feedforward layer.
+Both layers are followed immediately by a projection that maps the features size back to the size of layer's input.
+A skip-connection is applied across each of the sub-layers.
+The output of each sub-layer is fed into layer normalization.
+We insert two serial adapters after each of these sub-layers.
+The adapter is always applied directly to the output of the sub-layer, after the projection back to the input size,
+but before adding the skip connection back.
+The output of the adapter is then passed directly into the following layer normalization.
+
+To limit the number of parameters, we propose a bottleneck architecture.
+The adapters first project the original $d$-dimensional features into a smaller dimension, $m$, apply a nonlinearity, then project back to $d$ dimensions.
+The total number of parameters added per layer, including biases, is $2md+d+m$.
+By setting $m\ll d$, we limit the number of parameters added per task;
+in practice, we use around $0.5-8\%$ of the parameters of the original model.
+The bottleneck dimension, $m$, provides a simple means to trade-off performance with parameter efficiency.
+The adapter module itself has a skip-connection internally.
+With the skip-connection, if the parameters of the projection layers are initialized to near-zero,
+the module is initialized to an approximate identity function.
+
+Alongside the layers in the adapter module, we also train new layer normalization parameters per task.
+This technique, similar to conditional batch normalization~\citep{de2017modulating},
+FiLM~\citep{perez2018}, and self-modulation~\citep{chen2019}, also yields parameter-efficient adaptation of a network; with only $2d$ parameters per layer.
+However, training the layer normalization parameters alone is insufficient for good performance,
+see Section~\ref{sec:param_efficiency}.

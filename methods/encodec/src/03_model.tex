@@ -1,0 +1,174 @@
+\section{Model}
+An audio signal of duration $d$ can be represented by a sequence $\vx\in [-1, 1]^{C_\mathrm{a}\times T}$ with $C_\mathrm{a}$ the number of audio channels, $T = d\cdot f_\mathrm{sr}$  the number of audio samples at a
+given sample rate $f_\mathrm{sr}$.
+The $\encodec$model is composed of three main components: (i) First, an encoder network $E$ is input an audio extract and outputs a latent representation $\vz$; (ii) Next, a quantization layer $Q$ produces a compressed representation $\vz_q$,  using vector quantization;
+% Notice, one can explore various quantization methods including: scalar quantization, vector quantization, residual vector quantization, etc. 
+(iii) Lastly, a decoder network $G$ reconstructs the time-domain signal, $\vxh$, from the compressed latent representation $\vz_q$.
+The whole system is trained end-to-end to minimize a reconstruction loss applied over both time and frequency domain, together with a perceptual loss in the form of discriminators operating at different resolutions. A visual description of the proposed method can be seen in Figure~\ref{fig:arch}. 
+% distance metric $d$ (e.g., L1, L2, etc.), over either the time-domain signal~\cite{} or a frequency domain representation~\cite{}. To further improve the quality of the generated audio, recent methods suggest augmenting the objective function with various discriminators acting as a perceptual loss~\cite{}. 
+
+\subsection{Encoder \& Decoder Architecture}
+\label{model:encodec}
+
+\looseness=-1
+The $\encodec$model is a simple streaming, convolutional-based encoder-decoder architecture with sequential modeling component applied over the latent representation, both on the encoder and on the decoder side. 
+Such modeling framework was shown to provide great results in various audio-related tasks, e.g., source separation and enhancement~\citep{defossez2019music, defossez2020real}, neural vocoders~\citep{melgan, hifigan}, audio codec~\citep{zeghidour2021soundstream}, and artificial bandwidth extension~\citep{tagliasacchi2020seanet, li2021real}. We use the same architecture for 24 kHz and 48 kHz audio.
+
+% derived from the fully convolutional neural network proposed in~\cite{kumar2019melgan} and the Demucs  architecture~\cite{demusc}. Convolutional feedforward networks have been widely adopted for GAN-based vocoders, speech enhancement models and neural codecs with symmetric encoder-decoder architecture~\cite{streamingseanet,neil} or using only the decoder network as the generator~\cite{kong2020hifi,univnet}. Similarly to Demucs, we combine convolutions with auto-regressive layers in both the encoder and the decoder networks. 
+
+{\noindent \bf Encoder-Decoder.} 
+The encoder model $E$ consists in a 1D convolution with $C$ channels and a kernel size of 7 followed by $B$ convolution blocks. Each convolution block is composed of a single residual unit followed by a down-sampling layer consisting in a strided convolution, with a kernel size $K$ of twice the stride $S$. The residual unit contains two convolutions with kernel size 3 and a skip-connection. The number of channels is doubled whenever down-sampling occurred. The convolution blocks are followed by a two-layer LSTM for sequence modeling and a final 1D convolution layer with a kernel size of 7 and $D$ output channels. 
+Following~\citet{zeghidour2021soundstream, li2021real}, we use $C$ = 32, $B$ = 4 and (2, 4, 5, 8) as strides. We use ELU as a non-linear activation function~\citep{clevert2015fast} either layer normalization~\citep{ba2016layer}
+or weight normalization~\citep{salimans2016weight}.
+We use two variants of the model, depending on whether we target the low-latency streamable setup,
+or a high fidelity non-streamable usage.
+With this setup, the encoder outputs 75 latent steps per second of audio at 24 kHz, and 150 at 48 kHz.
+The decoder mirrors the encoder, using transposed convolutions instead of strided convolutions, and with the strides in reverse order as in the encoder, outputting the final mono or stereo audio.
+%old decoder
+% The decoder mirrors the encoder with $C$ channels and $B$ transposed convolution blocks. We use the same strides as the encoder in the reverse order to reconstruct the input waveform at the same resolution. First, a 1D convolution gets as input the $\vz_q$, the quantized representation. Then the architecture is composed of a two-layer LSTM followed by convolutional blocks. These blocks consist in transposed convolutions for up-sampling followed by the residual unit. The number of channels is halved whenever up-sampling occurs so that the last decoder block outputs $C$ channels. A final 1D convolution is used to output the waveform audio, either monophonic or stereophonic. 
+
+% {\noindent \bf Non causal.} 
+{\noindent \bf Non-streamable.} 
+ In the non-streamable
+%  non-causal 
+ setup, we use for each convolution 
+a total padding of $K -S$, split equally before the first time step and after the last one (with one more before if $K - S$ is odd).
+We further split the input into chunks of 1 seconds, with an overlap of 10 ms to avoid clicks, and normalize each chunk before
+feeding it to the model, applying the inverse operation on the output of the decoder, adding a negligible bandwidth overhead to transmit the scale.
+We use layer normalization~\citep{ba2016layer}, computing the statistics including also the time dimension in order
+to keep the relative scale information.
+
+
+% {\noindent \bf Streaming causal.} 
+{\noindent \bf Streamable.} 
+For the streamable setup, all padding is put before the first time step.
+For a transposed convolution with stride $s$, we output the $s$ first time steps, and keep the remaining $s$ steps in memory for completion when the next
+frame is available, or discarding it at the end of a stream.
+Thanks to this padding scheme, the model can output 320 samples (13 ms) as soon as the first 320 samples (13 ms)
+are received. We replace the layer normalization with statistics computed over the time dimension with 
+weight normalization~\citep{salimans2016weight}, as the former is ill-suited for a streaming setup.
+We notice a small gain over the objective metrics by keeping a form of normalization, as demonstrated in Table~\ref{tab:arch}.
+
+% {\noindent \bf Normalization methods.}
+% In the non-streamable setup, we normalize the input audio and use LayerNorm computing the statistics over the time dimension, enabling more stable training (notice this is different than the Transformer LayerNorm which is computed over the features dimension and not over the time dimension). The causal version of this normalization strategy can be highly sensitive to spikes in the audio sequence, hence we instead opted for working on the raw audio using WeightNorm on the model as it slightly outperformed the setup without normalization method applied to the model as illustrated in Table~\ref{tab:arch}.
+
+
+\subsection{Residual Vector Quantization}
+\label{sec:rvq}
+
+We use Residual Vector Quantization (RVQ) to quantize the output of the encoder as introduced by~\citet{zeghidour2021soundstream}. Vector quantization consists in projecting an input vector onto the closest
+entry in a codebook of a given size. RVQ refines this process by computing the residual after quantization,
+and further quantizing it using a second codebook, and so forth. 
+
+We follow the same training procedure as described by~\citet{dhariwal2020jukebox} and \citet{zeghidour2021soundstream}. The codebook entry selected for each input is updated using an exponential moving average with a decay of 0.99, and entries that are not used are replaced with a candidate sampled from
+the current batch. We use a straight-through-estimator~\citep{bengio2013estimating} to compute the gradient of the encoder, e.g. as if the quantization step was the identity function during the backward phase. Finally, a commitment loss, consisting of the MSE between the input of the quantizer and its output, with gradient only computed with respect to its input, is added to the overall training loss.
+
+By selecting a variable number of residual steps at train time, a single model can be used to support multiple bandwidth target~\citep{zeghidour2021soundstream}. For all of our models, we use at most 32 codebooks (16 for the 48 kHz models) with 1024 entries each, e.g. 10 bits per codebook. When doing variable bandwidth training, we select randomly a number of codebooks as a multiple of 4, i.e. corresponding to a bandwidth 1.5, 3, 6, 12 or 24 kbps at 24 kHz. Given a continuous latent represention with shape $[B, D, T]$ that comes out of the encoder, this procedure turns it into a discrete set of indexes $[B, N_q, T]$ with $N_q$ the number of codebooks selected. 
+This discrete representation can changed again
+to a vector by summing the corresponding codebook entries, which is done just before going into the decoder.
+
+\subsection{Language Modeling and Entropy Coding}
+\label{sec:lm}
+
+We additionally train a small Transformer based language model~\citep{vaswani2017attention} 
+with the objective of 
+keeping faster than real time end-to-end compression/decompression on a single CPU core. The model consists
+of 5 layers, 8 heads, 200 channels, a dimension of 800 for the feed-forward blocks, and no dropout.
+At train time, we select a bandwidth and the corresponding number of codebooks $N_q$. 
+For a time step $t$, the discrete representation obtained at time $t - 1$ is transformed into a continuous
+representation using learnt embedding tables, one for each codebook, and which are summed.
+For $t=0$, a special token is used instead.
+The output of the Transformer is fed into $N_q$ linear layers with as many output channels as the cardinality of each codebook (e.g. 1024), giving us the logits of the estimated distribution over each codebook for time $t$.
+ We thus neglect potential mutual information between the codebooks at a single time step. This allows to speedup inference (as opposed to having one time step per codebook, or a multi-stage prediction) with a limited
+impact over the final cross entropy. Each attention layer has a causal receptive field of 3.5 seconds, and we offset by a random amount the initial position of the sinusoidal position embedding to emulate being in a longer sequence. We train the model on sequences of 5 seconds.
+
+{\noindent \bf Entropy Encoding.} 
+We use a range based arithmetic coder~\citep{pasco1976source,rissanen1981universal} in order to leverage
+the estimated probabilities given by the language model. As noted by~\citet{balle2018integer}, evaluation of the same model might lead to different results on different architectures, or with different evaluation procedures
+due to floating point approximations. This can lead to decoding errors as the encoder and decoder will not use the exact same code. We observe in particular that the difference between batch evaluation (e.g. all time steps at once), and the real-life streaming evaluation that occurs in the decoder
+can lead to difference larger than $10^{-8}$. We first round the estimated probabilities with a precision of $10^{-6}$, although evaluations in more contexts would be needed for practical deployment.
+We use a total range width of $2^{24}$, and assign a minimum range width of 2. We discuss the impact on the processing time in Section~\ref{sec:latency}.
+
+
+\begin{figure*}[t!]
+    \centering
+    \includegraphics[width=0.9\textwidth]{figures/MS-STFTD-v2.pdf}
+    \caption{MS-STFT Discriminator architecture. The input to the network is a complex-valued STFT with the real and imaginary parts concatenated. Each discriminator is composed of a 2D convolutional layer, followed by 2D convolutions with increasing dilation rates. Then a final 2D convolution is applied.}
+    \label{fig:dics}
+\end{figure*}
+
+\subsection{Training objective}
+\label{model:losses}
+We detail the training objective that combines a reconstruction loss term, a perceptual loss term (via discriminators), and the RVQ commitment loss.
+% We follow a GAN based objective in which we optimize the generator and the discriminators. For the generator, we jointly optimize a reconstruction loss term, a perceptual loss term (via discriminators), and the RVQ commitment loss.
+% The training objective of the generator is comprised of four loss terms: a time domain term, a frequency domain term, and two discriminator-based loss terms (adversarial loss and feature loss) acting as a perceptual loss. The discriminator loss is based on the adversarial hinge-loss function.  
+
+{\noindent \bf Reconstruction Loss.}
+The reconstruction loss term is comprised of a time and a frequency domain loss term. We minimize the L1 distance between the target and compressed audio over the time domain, i.e. $\ell_{t}(\vx, \vxh) = \|\vx - \vxh\|_1$. For the frequency domain, we use a linear combination between the L1 and L2 losses over the mel-spectrogram using several time scales~\citep{yamamoto2020parallel, gritsenko2020spectral}. 
+Formally, 
+\begin{equation}
+    \ell_{f}(\vx, \vxh) = \frac{1}{|\alpha|\cdot |s|}\sum_{\alpha_i \in \alpha} \sum_{i \in e} \|\Sc_i(\vx) - \Sc_i(\vxh)\|_1 + \alpha_i \|\Sc_i(\vx) - \Sc_i(\vxh)\|_2,
+    \label{eq:msspec}
+\end{equation}
+where $\Sc_i$ is a 64-bins mel-spectrogram using a normalized STFT with window size of $2^i$ and hop length of $2^i/4$, $e = {5, \ldots, 11}$ is the set of scales, and $\alpha$ represents the set of scalar coefficients balancing between the L1 and L2 terms. Unlike \citet{gritsenko2020spectral}, we take $\alpha_i = 1$.
+
+{\noindent \bf Discriminative Loss.}
+To further improve the quality of the generated samples, we introduce a perceptual loss term based on a multi-scale STFT-based (MS-STFT) discriminator, illustrated in Figure~\ref{fig:dics}.
+Multi scale discriminators are popular for capturing different structures in audio signals~\citep{melgan, hifigan, you2021gan}. The MS-STFT discriminator consists in identically structured networks operating on multi-scaled complex-valued STFT with the real and imaginary parts concatenated. 
+Each sub-network is composed of a 2D convolutional layer (using kernel size 3 x 8 with 32 channels), followed by 2D convolutions with increasing dilation rates in the time dimension of 1, 2 and 4, and a stride of 2 over the frequency axis. A final 2D convolution with kernel size 3 x 3 and stride (1, 1) provide the final prediction. We use 5 different scales with STFT window lengths of [2048, 1024, 512, 256, 128]. 
+For 48 kHz audio, we double the size of each STFT window and train the discriminator every two batches, and for stereophonic audio, we process separately the left and right channels. We use LeakyReLU as a non-linear activation function and apply weight normalization~\citep{salimans2016weight} to our discriminator network. The MS-STFT discriminator model architecture is visually depicted in Figure~\ref{fig:dics}. 
+
+The adversarial loss for the generator is constructed as follows, $\ell_{g}(\vxh) = \frac{1}{K} \sum_{k} \max(0, 1 - D_k(\vxh)))$, where $K$ is the number of discriminators.
+Similarly to previous work on neural vocoders~\citep{melgan, hifigan, you2021gan}, we additionally include a relative feature matching loss for the generator. Formally, 
+\begin{equation}
+    \ell_{feat}(\vx, \vxh) = \frac{1}{KL} \sum_{k=1}^{K}\sum_{l=1}^{L} \frac{\| D_{k}^{l}(\vx) - D_{k}^{l}(\vxh) \|_1}{\mathrm{mean}\left(\|D_{k}^{l}(\vx) \|_1\right)},
+    \label{eq:feat}
+\end{equation}
+where the $\mathrm{mean}$ is computed over all dimensions,
+$(D_k)$ are the discriminators, and $L$ is the number of layers in discriminators.
+The discriminators are trained to minimize the following hinge-loss adversarial loss function: $L_{d}(\vx, \vxh) = \frac{1}{K} \sum_{k=1}^{K} \max(0, 1 - D_k(\vx)) + \max(0, 1 + D_k(\vxh))$, where $K$ is the number of discriminators. Given that the discriminator tend to overpower easily the decoder, we update its weight
+with a probability of 2/3 at 24 kHz, and 0.5 at 48 kHz.
+
+{\noindent \bf Multi-bandwidth training.}
+At 24 kHz, we train the model to support the bandwidths 1.5, 3, 6, 12, and 24 kbps by selecting the appropriate
+number of codebooks to keep in the RVQ step, as explained in Section~\ref{sec:rvq}. At 48 kHz, we 
+train to support 3, 6, 12 and 24 kbps. We also noticed that using a dedicated discriminator per-bandwidth
+is beneficial to the audio quality. Thus, we select a given bandwidth for the entire batch, and evaluate
+and update only the corresponding discriminator.
+
+{\noindent \bf VQ commitment loss.}
+As mentioned in Section~\ref{sec:rvq}, we add a commitment loss $l_w$ between the output of the encoder,
+and its quantized value, with no gradient being computed for the quantized value.
+For each residual step $c \in \{1, \ldots C\}$ (with $C$ depeding on the bandwidth target for the current batch), noting $\vz_c$ the current residual and $q_c(\vz_c)$ the nearest entry in the corresponding codebook, we define $l_w$ as
+\begin{equation}
+    l_w = \sum_{c=1}^{C} \| \vz_c - q_c(\vz_c)\|_2^2.
+\end{equation}
+
+Overall, the generator is trained to optimize the following loss, summed over the batch,
+\begin{equation}
+\label{eq:total_loss}
+    \begin{split}
+   &L_{G} = \lambda_t\cdot\ell_{t}(\vx, \vxh) + \lambda_f\cdot\ell_{f}(\vx, \vxh) + \lambda_g\cdot\ell_{g}(\vxh) + \lambda_{feat}\cdot\ell_{feat}(\vx, \vxh) + \lambda_w \cdot\ell_w(w),
+    \end{split}
+\end{equation}
+% where $L_{G}$ is the generator loss, $L_{D}$ is the discriminator loss, and
+where $\lambda_t$, $\lambda_f$, $\lambda_g$, $\lambda_{feat}$, and $\lambda_w$ the scalar coefficients to balance between the terms.
+
+
+{\noindent \bf Balancer.}
+We introduce a loss balancer in order to stabilize training, in particular the varying scale of the gradients coming from the discriminators.
+We also find that the balancer makes it easier to reason about the different loss weights, independently of their scale. 
+Let us take a number of losses $(\ell_i)_i$ that depends only on the output of the model $\hat{x}$.
+We define $g_i = \frac{\partial \ell_i}{\partial \hat{x}}$, and $\langle \|g_i\|_2 \rangle_\beta$ the exponential moving average 
+of $g_i$ over the last training batches. Given a set of weights $(\lambda_i)$ and a reference norm $R$, we 
+define 
+\begin{equation}
+    \tilde{g}_i = R \frac{\lambda_i}{\sum_{j} \lambda_j}\cdot \frac{g_i}{\langle \|g_i\|_2 \rangle_\beta}.
+\end{equation}
+\looseness=-1
+We then backpropagate into the network $\sum_i \tilde{g}_i$, instead of the original $\sum_i \lambda_i g_i$.
+This changes the optimization problem but allows to make the $\lambda_i$ interpretable irrespectively of the natural scale of each loss.
+If $\sum_i \lambda_i = 1$, then each weight can be interpreted as the fraction of the model gradient that come from the corresponding loss.
+We take $R=1$ and $\beta = 0.999$. All the generator losses from \eqref{eq:total_loss} fit into the balancer, except for the commitment loss, as it is not defined with respect to the output of the model.
+
+ 

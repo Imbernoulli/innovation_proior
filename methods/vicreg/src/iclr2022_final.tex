@@ -1,0 +1,514 @@
+
+\documentclass{article} % For LaTeX2e
+
+\usepackage[dvipsnames]{xcolor}
+\usepackage{iclr2022_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+% \usepackage{hyperref}
+% \usepackage{url}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+% \usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+
+% \usepackage[dvipsnames]{xcolor}
+
+% \definecolor{citeColor}{rgb}{1,0.0,0}
+
+% \usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false,citebordercolor=green]{hyperref}
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false,citecolor=RoyalBlue]{hyperref}
+
+% \usepackage[pdfborder={0 0 1},citebordercolor={0 1 0}]{hyperref}
+
+%My packages
+\usepackage{float}
+\usepackage{adjustbox}
+% \usepackage{subfig}
+\usepackage{subcaption}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{arydshln}
+\usepackage{booktabs}
+\usepackage{pifont}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xspace}
+% \usepackage{algorithm}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{wrapfig}
+\usepackage{lipsum}
+\usepackage[ruled]{algorithm2e}
+
+
+\newcommand{\algo}{VICReg}
+\newcommand{\expander}{expander }
+\newcommand{\expandernospace}{expander}
+\newcommand{\Expander}{Expander}
+\newcommand\todo[1]{\textcolor{RubineRed}{#1}}
+
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\bigcell}[2]{\begin{tabular}{@{}#1@{}}#2\end{tabular}}
+\newcolumntype{Y}{>{\centering\arraybackslash}X}
+
+% \renewcommand{\baselinestretch}{0.95}
+
+ \iclrfinalcopy
+
+
+\title{VICReg: Variance-Invariance-Covariance
+Re-gularization for Self-Supervised Learning}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+% \author{Antiquus S.~Hippocampus, Natalia Cerebro \& Amelie P. Amygdale \thanks{ Use footnote for providing further information
+% about author (webpage, alternative address)---\emph{not} for acknowledging
+% funding agencies.  Funding acknowledgements go at the end of the paper.} \\
+% Department of Computer Science\\
+% Cranberry-Lemon University\\
+% Pittsburgh, PA 15213, USA \\
+% \texttt{\{hippo,brain,jen\}@cs.cranberry-lemon.edu} \\
+% \And
+% Ji Q. Ren \& Yevgeny LeNet \\
+% Department of Computational Neuroscience \\
+% University of the Witwatersrand \\
+% Joburg, South Africa \\
+% \texttt{\{robot,net\}@wits.ac.za} \\
+% \AND
+% Coauthor \\
+% Affiliation \\
+% Address \\
+% \texttt{email}
+% }
+\author{
+    Adrien Bardes$^{1,2}$ \And Jean Ponce$^{2,4}$ \And Yann LeCun$^{1,3,4}$ \AND
+    \begin{tabular}{l}
+        $^1$\normalfont Facebook AI Research\\
+        $^2$\normalfont Inria, École normale supérieure, CNRS, PSL Research University \\
+        $^3$\normalfont Courant Institute, New York University\\
+        $^4$\normalfont Center for Data Science, New York University\\
+    \end{tabular}
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recent self-supervised methods for image representation learning maximize the agreement between embedding vectors produced by encoders fed with different views of the same image. The main challenge is to prevent a {\em collapse} in which the encoders produce constant or non-informative vectors. We introduce \algo \ (Variance-Invariance-Covariance Regularization), a method that explicitly avoids the collapse problem with two regularizations terms applied to both embeddings separately: (1) a term that maintains the variance of each embedding dimension above a threshold, (2) a term that decorrelates each pair of variables. Unlike most other approaches to the same problem, \algo \ does {\em not} require techniques such as: weight sharing between the branches, batch normalization, feature-wise normalization, output quantization, stop gradient, memory banks, etc., and achieves results on par with the state of the art on several downstream tasks. In addition, we show that our variance regularization term stabilizes the training of other methods and leads to performance improvements.
+\end{abstract}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnotetext{#1}%
+%   \addtocounter{footnote}{-1}%
+  \endgroup
+}
+% \blfootnote{* Inria, École normale supérieure, CNRS, PSL Research University}
+% \blfootnote{Correspondence to \texttt{abardes@fb.com}}
+% \blfootnote{Code: \url{https://github.com/facebookresearch/vicreg}}
+
+%%%%%%%%% BODY TEXT
+\section{Introduction}
+
+Self-supervised representation learning has made significant progress over the last years, almost reaching the performance of supervised baselines on many downstream tasks \cite{bachman2019mutual, misra2020pirl, he2020moco, tian2020makes, caron2020swav, grill2020byol, chen2020simsiam, gidaris2021obow, zbontar2021barlow}. Several recent approaches rely on a {\em joint embedding architecture} in which two networks are trained to produce similar embeddings for different views of the same image. A popular instance is the Siamese network architecture \cite{bromley1994siamese}, where the two networks share the same weights. The main challenge with joint embedding architectures is to prevent a {\em collapse} in which the two branches ignore the inputs and produce identical and constant output vectors. There are two main approaches to preventing collapse: contrastive methods and information maximization methods. Contrastive \cite{bromley1994siamese, chopra2005,he2020moco, hjelm2019mutual, chen2020simclr} methods tend to be costly, require large batch sizes or memory banks, and use a loss that explicitly pushes the embeddings of dissimilar images away from each other. They often require a mining procedure to search for offending dissimilar samples from a memory bank~\cite{he2020moco} or from the current batch \cite{chen2020simclr}. Quantization-based approaches \cite{caron2020swav, caron2018clustering} force the embeddings of different samples to belong to different clusters on the unit sphere. Collapse is prevented by ensuring that the assignment of samples to clusters is as uniform as possible. A similarity term encourages the cluster assignment score vectors from the two branches to be similar. More recently, a few methods have appeared that do not rely on contrastive samples or vector quantization, yet produce high-quality representations, for example BYOL~\cite{grill2020byol} and SimSiam~\cite{chen2020simsiam}. They exploit several tricks: batch-wise or feature-wise normalization, a "momentum encoder" in which the parameter vector of one branch is a low-pass-filtered version of the parameter vector of the other branch~\cite{grill2020byol, richemond2020byolworks}, or a stop-gradient operation in one of the branches~\cite{chen2020simsiam}. The dynamics of learning in these methods, and how they avoid collapse, is not fully understood, although theoretical and empirical studies point to the crucial importance of batch-wise or feature-wise normalization~\cite{richemond2020byolworks,tian2021understanding}. Finally, an alternative class of collapse prevention methods relies on maximizing the information content of the embedding~\cite{zbontar2021barlow, ermolov2021whitening}. These methods prevent {\em informational collapse} by decorrelating every pair of variables of the embedding vectors. This indirectly maximizes the information content of the embedding vectors. The Barlow Twins method drives the normalized cross-correlation matrix of the two embeddings towards the identity~\cite{zbontar2021barlow}, while the Whitening-MSE method whitens and spreads out the embedding vectors on the unit sphere \cite{ermolov2021whitening}.
+
+% YLC: is this necessary?
+% Distillation based methods can also be used in combination with bag-of-words representations \cite{gidaris2020bags, gidaris2021obow} in which case the collapse problem is avoided by the nature of the representations. 
+
+
+\section{VICReg: intuition}
+
+\begin{figure}[t]
+\centering
+\captionsetup[subfigure]{labelformat=empty}
+\subfloat[] {\includegraphics[trim=0cm 0.2cm 0cm 0cm, clip, width=157mm]{figures/vicreg_archi.pdf}}
+\vspace{-5mm}
+\caption{\textbf{\algo: joint embedding architecture with variance, invariance and covariance regularization.} Given a batch of images $I$, two batches of different views $X$ and $X^{\prime}$ are produced and are then encoded into representations $Y$ and $Y^{\prime}$. The representations are fed to an expander producing the embeddings $Z$ and $Z^{\prime}$. The distance between two embeddings from the same image is minimized, the variance of each embedding variable over a batch is maintained above a threshold, and the covariance between pairs of embedding variables over a batch are attracted to zero, decorrelating the variables from each other. 
+Although the two branches do not require identical architectures nor share weights, in most of our experiments, they are Siamese with shared weights: the encoders are ResNet-50 backbones with output dimension 2048. The expanders have 3 fully-connected layers of size 8192.}
+\label{fig:varcov_archi}
+\end{figure}
+
+We introduce \algo \ (Variance-Invariance-Covariance Regularization), a self-supervised method for training joint embedding architectures based on the principle of preserving the information content of the embeddings. 
+The basic idea is to use a loss function with three terms:
+\begin{itemize}
+    \item {\bf Invariance}: the mean square distance between the embedding vectors.
+    \item {\bf Variance}: a hinge loss to maintain the standard deviation (over a batch) of each variable of the embedding above a given threshold. This term forces the embedding vectors of samples within a batch to be different.
+    \item {\bf Covariance}: a term that attracts the covariances (over a batch) between every pair of (centered) embedding variables towards zero. This term decorrelates the variables of each embedding and prevents an {\em informational collapse} in which the variables would vary together or be highly correlated.
+\end{itemize}
+Variance and Covariance terms are applied to both branches of the architecture separately, thereby preserving the information content of each embedding at a certain level and preventing informational collapse independently for the two branches.
+The main contribution of this paper is the Variance preservation term, which explicitly prevents a collapse due to a shrinkage of the embedding vectors towards zero.
+The Covariance criterion is borrowed from the Barlow Twins method and prevents informational collapse due to redundancy between the embedding variables~\cite{zbontar2021barlow}. \algo \ is more generally applicable than most of the aforementioned methods because of fewer constraints on the architecture. In particular, \algo :
+\begin{itemize}
+    \item does not require that the weights of the two branches be shared, not that the architectures be identical, nor that the inputs be of the same nature;
+    \item does not require a memory bank, nor contrastive samples, nor a large batch size;
+    \item does not require batch-wise nor feature-wise normalization; and
+    \item does not require vector quantization nor a predictor module.
+\end{itemize}
+
+Other methods require asymmetric stop gradient operations, as in SimSiam~\cite{chen2020simsiam}, weight sharing between the two branches as in classical Siamese nets, or weight sharing through exponential moving average dampening with stop gradient in one branch, as in BYOL and MoCo~\cite{he2020moco, grill2020byol,chen2020mocov2}, large batches of contrastive samples, as in SimCLR~\cite{chen2020simclr}, or batch-wise and/or feature-wise normalization~\cite{caron2020swav, grill2020byol, chen2020simsiam, zbontar2021barlow, ermolov2021whitening}. One of the most interesting feature of \algo \ is the fact that the two branches are not required to share the same parameters, architecture, or input modality. This opens the door to the use of non-contrastive self-supervised joint-embedding for multi-modal signals, such as video and audio. We demonstrate the effectiveness of the proposed approach by evaluating the representations learned with \algo \ on several downstream image recognition tasks including linear head and semi-supervised evaluation protocols for image classification on ImageNet~\cite{deng2009imagenet}, and other classification, detection, instance segmentation, and retrieval tasks. Furthermore, we show that incorporating variance preservation into other self-supervised joint-embedding methods yields better training stability and performance improvement on downstream tasks. More generally, we show that \algo \ is an explicit and effective, yet simple method for preventing collapse in self-supervised joint-embedding learning.
+
+  
+\section{Related work}
+
+\noindent \textbf{Contrastive learning.} In contrastive SSL methods applied to joint embedding architectures, the output embeddings for a sample and its distorted version are brought close to each other, while other samples and their distortions are pushed away. The method is most often applied to Siamese architectures in which the two branches have identical architectures and share weights~\cite{misra2020pirl, he2020moco, bromley1994siamese, hjelm2019mutual, chen2020simclr, chen2020mocov2, hadsell2006contrastive, ye2019spreading, wu2018discrimination, oord2018coding, chen2020simclrv2}. Many authors use the InfoNCE loss~\cite{oord2018coding} in which the repulsive force is larger for contrastive samples that are closer to the reference. While these methods yield good performance, they require large amounts of contrastive pairs in order to work well. These contrastive pairs can be sampled from a memory bank as in MoCo~\cite{he2020moco}, or given by the current batch of data as in SimCLR~\cite{chen2020simclr}, with a significant memory footprint. This downside of contrastive methods motivates a search for alternatives.
+
+\vspace{2mm}
+\textbf{Clustering methods.} Instead of viewing each sample as its own class, clustering-based methods group them into clusters based on some similarity measure~\cite{caron2020swav, caron2018clustering, bautista2016cliquecnn, yang2016joint, xie2016clustering, huang2019neighbourhood, zhuang2019local, caron2019noncurated, asano2020labelling, yan2020clusterfit}. DeepCluster~\cite{caron2018clustering} uses $k$-means assignments of representations from previous iterations as pseudo-labels for the new representations, which requires an expensive clustering phase done asynchronously, and makes the method hard to scale up. SwAV~\cite{caron2020swav} mitigates this issue by learning the clusters online while maintaining a balanced partition of the assignments through the Sinkhorn-Knopp transform~\cite{cuturi2013sinkhorn}. These clustering approaches can be viewed as contrastive learning at the level of clusters which still requires a lot of negative comparisons to work well. 
+
+\vspace{2mm}
+\noindent \textbf{Distillation methods.} Recent proposals such as BYOL, SimSiam, OBoW and variants~\cite{grill2020byol, chen2020simsiam, gidaris2021obow, richemond2020byolworks, gidaris2020bags} have shown that collapse can be avoided by using architectural tricks inspired by knowledge distillation \cite{hinton2015distillation}. These methods train a student network to predict the representations of a teacher network, for which the weights are a running average of the student network's weights~\cite{grill2020byol}, or are shared with the student network, but no gradient is back-propagated through the teacher~\cite{chen2020simsiam}. These methods are effective, but there is no clear understanding of why and how they avoid collapse. Alternatively, the images can be represented as bags of word over a dictionary of visual features, which effectively prevents collapse. In OBoW~\cite{gidaris2020bags} and~\cite{gidaris2021obow} the dictionary is obtained by off-line or on-line clustering. By contrast, our method explicitly prevents collapse in the two branches independently, which removes the requirement for shared weights and identical architecture, opening the door to the application of joint-embedding SSL to multi-modal signals.
+
+\vspace{2mm}
+\noindent \textbf{Information maximization methods.} A principle to prevent collapse is to maximize the information content of the embeddings. Two such methods were recently proposed: W-MSE~\cite{ermolov2021whitening} and Barlow Twins~\cite{zbontar2021barlow}.
+In W-MSE, an extra module transforms the embeddings into the eigenspace of their covariance matrix (whitening or Karhunen-Loève transform), and forces the vectors thereby obtained to be uniformly distributed on the unit sphere.
+In Barlow Twins, a loss term attempts to make the normalized cross-correlation matrix of the embedding vectors from the two branches to be close to the identity. 
+Both methods attempt to produce embedding variables that are decorrelated from each other, thus preventing an {\em informational collapse} in which the variables carry redundant information. Because all variables are normalized over a batch, there is no incentive for them to shrink nor expand. This seems to sufficient to prevent collapse.
+Our method borrows the decorrelation mechanism of Barlow Twins. But it includes an explicit variance-preservation term for each variable of the two embeddings and thus does not require any normalization.
+    
+\section{VICReg: detailed description} \label{sec:method}
+
+\algo \ follows recent trends in self-supervised learning~\cite{caron2020swav, grill2020byol, chen2020simsiam, zbontar2021barlow, chen2020simclr} and is based on a {\em joint embedding architecture}. Contrary to many previous approaches, our architecture may be completely symmetric or completely asymmetric with no shared structure or parameters between the two branches. In most of our experiments, we use a Siamese net architecture in which the two branches are identical and share weights. Each branch consists of an {\em encoder} $f_{\theta}$ that outputs the representations (used for downstream tasks), followed by an {\em expander} $h_{\phi}$ that maps the representations into an embedding space where the loss function will be computed. The role of the \expander is twofold: (1) eliminate the information by which the two representations differ, (2) expand the dimension in a non-linear fashion so that decorrelating the embedding variables will reduce the dependencies (not just the correlations) between the variables of the representation vector. The loss function uses a term $s$ that learns invariance to data transformations and is regularized with a variance term $v$ that prevents norm collapse and a covariance term $c$ that prevents informational collapse by decorrelating the different dimensions of the vectors. After pretraining, the \expander is discarded and the representations of the encoder are used for downstream tasks.
+
+\subsection{Method} \label{sec:method_details}
+
+Given an image $i$ sampled from a dataset $\mathcal{D}$, two transformations $t$ and $t^{\prime}$ are sampled from a distribution $\mathcal{T}$ to produce two different views $x = t(i)$ and $x^{\prime} = t^{\prime}(i)$ of $i$. These transformations are random crops of the image, followed by color distortions. The distribution $\mathcal{T}$ is described in Appendix~\ref{app:sec_impl_details}. The views $x$ and $x^{\prime}$ are first encoded by $f_{\theta}$ into their {\em representations} $y = f_{\theta}(x)$ and $y^{\prime} = f_{\theta}(x^{\prime})$, which are then mapped by the expander $h_{\phi}$ onto the {\em embeddings} $z = h_{\phi}(y)$ and $z^{\prime} = h_{\phi}(y^{\prime})$. The loss is computed at the embedding level on $z$ and $z^{\prime}$.
+
+We describe here the variance, invariance and covariance terms that compose our loss function. The images are processed in batches, and we denote $Z = [z_1, \dots, z_n]$ and $Z^{\prime} = [z_1^{\prime}, \dots, z_n^{\prime}]$ the two batches composed of $n$ vectors of dimension $d$, of embeddings coming out of the two branches of the siamese architecture. We denote by $z^{j}$ the vector composed of each value at dimension $j$ in all vectors in $Z$. We define the variance regularization term $v$ as a hinge function on the standard deviation of the embeddings along the batch dimension:
+\begin{equation} \label{eq:var_loss}
+    v(Z) = \frac{1}{d} \sum_{j=1}^{d} \max(0, \gamma - S(z^{j}, \epsilon)),
+\end{equation}
+where $S$ is the regularized standard deviation defined by:
+\begin{equation}
+    S(x, \epsilon) = \sqrt{\mathrm{Var}(x) + \epsilon},
+\end{equation}
+$\gamma$ is a constant target value for the standard deviation, fixed to $1$ in our experiments, $\epsilon$ is a small scalar preventing numerical instabilities. This criterion encourages the variance inside the current batch to be equal to $\gamma$ along each dimension, preventing collapse with all the inputs mapped on the same vector. Using the standard deviation and not directly the variance is crucial. Indeed, if we take $S(x) = \mathrm{Var}(x)$ in the hinge function, the gradient of $S$ with respect to $x$ becomes close to 0 when $x$ is close to $\bar{x}$. In this case, the gradient of $v$ also becomes close to 0 and the embeddings collapse. We define the covariance matrix of $Z$ as:
+\begin{equation} \label{eq:covariance}
+    C(Z) = \frac{1}{n - 1} \sum_{i=1}^{n} (z_{i} - \bar{z})(z_{i} - \bar{z})^{T}, \ \ \ \textrm{where} \ \ \ \bar{z} = \frac{1}{n} \sum_{i=1}^{n} z_{i}.
+\end{equation}
+Inspired by Barlow Twins \cite{zbontar2021barlow}, we can then define the covariance regularization term $c$ as the sum of the squared off-diagonal coefficients of $C(Z)$, with a factor $1/d$ that scales the criterion as a function of the dimension:
+\begin{equation} \label{eq:cov_loss}
+    c(Z) = \frac{1}{d} \sum_{i \ne j} [C(Z)]_{i,j}^2.
+\end{equation}
+This term encourages the off-diagonal coefficients of $C(Z)$ to be close to $0$, decorrelating the different dimensions of the embeddings and preventing them from encoding similar information. Decorrelation at the embedding level ultimately has a decorrelation effect at the representation level, which is a non trivial phenomenon that we study in Appendix~\ref{app:additional_results}. We finally define the invariance criterion $s$ between $Z$ and $Z^{\prime}$ as the mean-squared euclidean distance between each pair of vectors, without any normalization:
+\begin{equation} \label{eq:invariance}
+    s(Z, Z^{\prime}) = \frac{1}{n} \sum_i \|z_i - z^{\prime}_i\|_2^2.
+\end{equation}
+The overall loss function is a weighted average of the invariance, variance and covariance terms:
+\begin{equation} \label{eq:loss}
+    \ell(Z, Z^{\prime}) = \ \lambda s(Z, Z^{\prime}) + \mu [ v(Z) + v(Z^{\prime}) ] + \nu [ c(Z) + c(Z^{\prime}) ],
+\end{equation}
+where $\lambda$, $\mu$ and $\nu$ are hyper-parameters controlling the importance of each term in the loss. In our experiments, we set $\nu = 1$ and perform a grid search on the values of $\lambda$ and $\mu$ with the base condition $\lambda = \mu > 1$. The overall objective function taken on all images over an unlabelled dataset $\mathcal{D}$ is given by:
+\begin{equation} \label{eq:final_loss}
+    \mathcal{L} = \sum_{I \in \mathcal{D}} \sum_{t, t^{\prime} \sim \mathcal{T}} \ell(Z^{I}, Z^{\prime I}),
+\end{equation}
+where $Z^{I}$ and $Z^{\prime I}$ are the batches of embeddings corresponding to the batch of images $I$ transformed by $t$ and $t^{\prime}$. The objective is minimized for several epochs, over the encoder parameters $\theta$ and \expander parameters $\phi$. We illustrate the architecture and loss function of \algo \ in Figure~\ref{fig:varcov_archi}.\\
+\setlength\intextsep{0pt}
+\subsection{Implementation details} \label{sec:impl_details}
+% \begin{wrapfigure}[17]{R}{0.5\textwidth} %<-- Wrapfigure covers 6 lines
+% \begin{algorithm}[H]
+%   \caption{\algo \ pseudocode.}
+%   \label{alg:method}
+%     \definecolor{codeblue}{rgb}{0.25,0.5,0.5}
+%     \definecolor{codekw}{rgb}{0.85, 0.18, 0.50}
+%     \newcommand{\algofontsize}{4.0pt}
+%     \lstset{
+%       backgroundcolor=\color{white},
+%       basicstyle=\fontsize{\algofontsize}{\algofontsize}\ttfamily\selectfont,
+%       columns=fullflexible,
+%       breaklines=true,
+%       captionpos=b,
+%       commentstyle=\fontsize{\algofontsize}{\algofontsize}\color{codeblue},
+%       keywordstyle=\fontsize{\algofontsize}{\algofontsize}\color{black},
+%     }
+% \begin{lstlisting}[language=python]
+% # f: encoder network, lambda, mu, nu: coefficients of the invariance, variance and covariance losses, N: batch size, D: dimension of the representations
+% # mse_loss: Mean square error loss function, off_diagonal: off-diagonal elements of a matrix, relu: ReLU activation function
+
+% for x in loader: # load a batch with N samples
+%     # two randomly augmented versions of x
+%     x_a, x_b = augment(x)
+    
+%     # compute representations
+%     z_a = f(x_a) # N x D
+%     z_b = f(x_b) # N x D
+    
+%     # invariance loss
+%     sim_loss = mse_loss(z_a, z_b)
+    
+%     # variance loss
+%     std_z_a = torch.sqrt(z_a.var(dim=0) + 1e-04)
+%     std_z_b = torch.sqrt(z_b.var(dim=0) + 1e-04)
+%     std_loss = torch.mean(relu(1 - std_z_a)) + torch.mean(relu(1 - std_z_b))
+    
+%     # covariance loss
+%     z_a = z_a - z_a.mean(dim=0)
+%     z_b = z_b - z_b.mean(dim=0)
+%     cov_z_a = (z_a.T @ z_a) / (N - 1)
+%     cov_z_b = (z_b.T @ z_b) / (N - 1)
+%     cov_loss = off_diagonal(cov_z_a).pow_(2).sum() / D 
+%                     + off_diagonal(cov_z_b).pow_(2).sum() / D
+
+%     # loss
+%     loss = lambda * sim_loss + mu * std_loss + nu * cov_loss
+
+%     # optimization step
+%     loss.backward()
+%     optimizer.step()
+% \end{lstlisting}
+% \end{algorithm}
+% \end{wrapfigure}
+Implementation details for pretraining with \algo \ on the 1000-classes ImagetNet dataset without labels are as follows. Coefficients $\lambda$ and $\mu$ are $25$ and $\nu$ is 1 in Eq.~(\ref{eq:loss}), and $\epsilon$ is $0.0001$ in Eq.~(\ref{eq:var_loss}). We give more details on how we choose the coefficients of the loss function in Appendix~\ref{app:loss_coeffs}. The encoder network $f_{\theta}$ is a standard ResNet-50 backbone~\cite{he2016resnet} with 2048 output units. The expander $h_{\phi}$ is composed of two fully-connected layers with batch normalization (BN)~\cite{ioffe2015bn} and ReLU, and a third linear layer. The sizes of all 3 layers were set to 8192. As with Barlow Twins, performance improves when the size of the expander layers is larger than the dimension of the representation. The impact of the expander dimension on performance is studied in Appendix~\ref{app:additional_results}. The training protocol follows those of BYOL and Barlow Twins: LARS optimizer~\cite{you2017lars, goyal2017lars} run for 1000 epochs with a weight decay of $10^{-6}$ and a learning rate $lr = batch\_size / 256 \times base\_lr$, where $batch\_size$ is set to $2048$ by default and $base\_lr$ is a base learning rate set to $0.2$. The learning rate follows a cosine decay schedule \cite{loshchilov2017sgdr}, starting from $0$ with $10$ warmup epochs and with final value of $0.002$.
+
+\section{Results}
+In this section, we evaluate the representations obtained after self-supervised pretraining of a ResNet-50~\cite{he2016resnet} backbone with \algo \ during 1000 epochs, on the training set of ImageNet, using the training protocol described in section~\ref{sec:method}. We also pretrain on pairs of image and text data and evaluate on retrieval tasks on the MS-COCO dataset.
+\begin{table}[t]
+\setlength{\tabcolsep}{7pt}
+\centering
+    \caption{\textbf{Evaluation on ImageNet.} Evaluation of the representations obtained with a ResNet-50 backbone pretrained with \algo \ on: (1) linear classification on top of the frozen representations from ImageNet; (2) semi-supervised classification on top of the fine-tuned representations from 1\% and 10\% of ImageNet samples. We report Top-1 and Top-5 accuracies (in \%). Top-3 best self-supervised methods are \underline{underlined}.}
+    \label{tab:imagenet_evaluation}
+    \vspace{-0.5em}
+    \begin{tabular}{ @{} l cc c cccc @{} }
+      \toprule
+ & \multicolumn{2}{c}{Linear}  &~~~~& \multicolumn{4}{c}{Semi-supervised} \\
+ \cmidrule{2-3}\cmidrule{5-8}
+ Method                     & Top-1 & Top-5 && \multicolumn{2}{c}{Top-1} & \multicolumn{2}{c}{Top-5} \\
+	                                            &        &        && 1\% & 10\% & 1\% & 10\% \\      
+      \midrule
+	    Supervised                              & 76.5 & -      && 25.4 & 56.4 & 48.4 & 80.4 \\
+      \midrule
+	    MoCo~\cite{he2020moco}                  & 60.6 & -      && -      & -      & -      & - \\
+	    PIRL~\cite{misra2020pirl}               & 63.6 & -      && -      & -      & 57.2 & 83.8 \\
+	    CPC v2 \cite{henaff2019data}            & 63.8 & -      && -      & -      & -      & - \\
+	    CMC \cite{tian2019cmc}                  & 66.2 & -      && -      & -      & -      & - \\
+	    SimCLR~\cite{chen2020simclr}            & 69.3 & 89.0   && 48.3 & 65.6 & 75.5 & 87.8 \\
+	    MoCo v2~\cite{chen2020mocov2}           & 71.1 & -      && -      & -      & -      & - \\
+	    SimSiam~\cite{chen2020simsiam}          & 71.3 & -      && -      & -      & -      & - \\
+	    SwAV~\cite{caron2020swav}               & 71.8 & -      && - & - & - & - \\
+	    InfoMin Aug~\cite{tian2020makes}        & 73.0 & \underline{91.1}   && -      & -      & -      & - \\
+	    OBoW \cite{gidaris2021obow}             & \underline{73.8} & -         && -    & -    & \underline{82.9} & \underline{90.7} \\
+	    BYOL~\cite{grill2020byol}               & \underline{74.3} & \underline{91.6}   && 53.2 & 68.8 & 78.4 & 89.0 \\
+	    SwAV (w/ multi-crop)~\cite{caron2020swav}               & \underline{75.3} & -      && \underline{53.9} & \underline{70.2} & 78.5 & \underline{89.9} \\
+	    Barlow Twins~\cite{zbontar2021barlow}   & 73.2 & 91.0 && \underline{55.0} & \underline{69.7} & \underline{79.2} & 89.3 \\
+    %   \midrule
+	    \algo \ (ours)                          & 73.2 & \underline{91.1} && \underline{54.8} & \underline{69.5} & \underline{79.4} & \underline{89.5} \\
+      \bottomrule
+    \end{tabular}
+    % }
+\end{table}
+
+\subsection{Evaluation on ImageNet} \label{sec:eval_imagenet}
+
+Following the ImageNet \cite{deng2009imagenet} linear evaluation protocol, we train a linear classifier on top of the frozen representations of the ResNet-50 backbone pretrained with \algo. We also evaluate the performance of the backbone when fine-tuned with a linear classifier on a subset of ImageNet's training set using 1\% or 10\% of the labels, using the split of \cite{chen2020simclr}. We give implementation details about the optimization procedure for these tasks in Appendix~\ref{app:sec_impl_details}. We have applied the training procedure described in section~\ref{sec:method} with three different random initialization. The numbers reported in Table~\ref{tab:imagenet_evaluation} for \algo \ are the mean scores, and we have observed that the difference between worse and best run is lower than 0.1\% accuracy for linear classification, which shows that \algo \ is a very stable algorithm. Lack of time has prevented us from doing the same for the semi-supervised classification experiments, and the experiments of section~\ref{sec:eval_transfer} and \ref{sec:ablations}, but we expect similar conclusion to hold. We compare in Table~\ref{tab:imagenet_evaluation} our results on both tasks against other methods on the validation set of ImageNet. The performance of \algo \ is on par with the state of the art without using the negative pairs of SimCLR, the clusters of SwAV, the bag-of-words representations of OBoW, or any asymmetric networks architectural tricks such as the momentum encoder of BYOL and the stop-gradient operation of SimSiam. The performance is comparable to that of Barlow Twins, which shows that \algo's more explicit way of constraining the variance and comparing views has the same power than maximizing cross-correlations between pairs of twin dimensions. The main advantage of \algo \ is the modularity of its objective function and the applicability to multi-modal setups.
+
+\subsection{Transfer to other downstream tasks} \label{sec:eval_transfer}
+Following the setup from \cite{misra2020pirl}, we train a linear classifier on top of the frozen representations learnt by our pretrained ResNet-50 backbone on a variety of different datasets: the Places205~\cite{zhou2014places} scene classification dataset, the VOC07~\cite{everingham2010voc} multi-label image classification dataset and the iNaturalist2018~\cite{vanhorni2018naturalist} fine-grained image classification dataset. We then evaluate the quality of the representations by transferring to other vision tasks including VOC07+12~\cite{everingham2010voc} object detection using Faster R-CNN~\cite{ren2015fasterrcnn} with a R50-C4 backbone, and COCO~\cite{lin2014coco} instance segmentation using Mask-R-CNN~\cite{he2017maskrcnn} with a R50-FPN backbone.  We report the performance in Table~\ref{tab:transfer_learning}, \algo \ performs on par with most concurrent methods, and better than Barlow Twins, across all classification tasks, but is slightly behind the top-3 on detection tasks. %This could be explained by the fact that \algo \ learns representations that are more invariant to transformation, but eliminates more low-level information about the images than the other methods.
+
+\begin{table}[t]
+\centering
+    \caption{\textbf{Transfer learning on downstream tasks.} Evaluation of the representations from a ResNet-50 backbone pretrained with \algo \ on: (1) linear classification tasks on top of frozen representations, we report Top-1 accuracy (in \%) for Places205 \cite{zhou2014places} and iNat18~\cite{vanhorni2018naturalist}, and mAP for VOC07~\cite{everingham2010voc}; (2) object detection with fine-tunning, we report AP$_{50}$ for VOC07+12 using Faster R-CNN with C4 backbone~\cite{ren2015fasterrcnn}; (3) object detection and instance segmentation, we report AP for COCO~\cite{lin2014coco} using Mask R-CNN with FPN backbone~\cite{he2017maskrcnn}. We use ${\dagger}$ to denote the experiments run by us. Top-3 best self-supervised methods are \underline{underlined}.}
+    \label{tab:transfer_learning}
+    \vspace{-0.5em}
+  \setlength{\tabcolsep}{2.0pt}
+    \begin{tabular}{ @{} l ccc c ccc @{} }
+      \toprule
+       & \multicolumn{3}{c}{Linear Classification} &~~~~& \multicolumn{3}{c}{Object Detection}\\
+\cmidrule{2-4}\cmidrule{6-8}
+	   Method  & Places205 & VOC07 & iNat18 && VOC07+12 & COCO det & COCO seg \\
+      \midrule
+	    Supervised                          & 53.2  & 87.5 & 46.7 && 81.3 & 39.0 & 35.4 \\
+      \midrule
+	    MoCo~\cite{he2020moco}              & 46.9 & 79.8 & 31.5 && - & - & - \\
+	    PIRL~\cite{misra2020pirl}           & 49.8 & 81.1 & 34.1 && - & - & - \\
+	    SimCLR~\cite{chen2020simclr}        & 52.5 & 85.5 & 37.2 && - & - & -\\
+	    MoCo v2~\cite{chen2020mocov2}       & 51.8 & 86.4 & 38.6 && 82.5 & 39.8 & 36.1 \\
+	    SimSiam~\cite{chen2020simsiam}      & -      & -      & -      && 82.4 & - & - \\
+	    BYOL~\cite{grill2020byol}           & 54.0 & \underline{86.6} & \underline{47.6} && - & \hspace{0.41em}\underline{40.4}$^{\dagger}$ & \hspace{0.41em}\underline{37.0}$^{\dagger}$ \\
+	    SwAV (m-c)~\cite{caron2020swav}           & \underline{56.7} & \underline{88.9} & \underline{48.6} && \underline{82.6} & \underline{41.6} & \underline{37.8} \\
+	    OBoW \cite{gidaris2021obow}         & \underline{56.8} & \underline{89.3} & -    && \underline{82.9} & - & - \\
+	    Barlow Twins~\cite{grill2020byol}   & 54.1 & 86.2 & 46.5 && \underline{82.6} & \hspace{0.41em}\underline{40.0}$^{\dagger}$ & \hspace{0.41em}\underline{36.7}$^{\dagger}$ \\
+    %   \midrule
+	    \algo \ (ours)                      & \underline{54.3} & \underline{86.6} & \underline{47.0} && 82.4 & 39.4 & 36.4 \\
+      \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsection{Multi-modal pretraining on MS-COCO}
+
+One fundamental difference of VICReg compared to Barlow Twins is the way the branches are regularized. In VICReg, both branches are regularized independently, as the covariance term is applied on each branch separately, which works better in the scenarios where the branches are completely different, have different types of architecture and process different types of data. Indeed, the statistics of the output of the two branches can be very different, and the amount of regularization required for each may vary a lot. In Barlow Twins, the regularization is applied on the cross-correlation matrix, which favors the scenarios where the branches produce outputs with similar statistics. We demonstrate the capabilities of VICReg in a multi-modal experiment where we pretrain on pairs of images and corresponding captions on the MS-COCO dataset. We regularize each branch with a different coefficient, which is not possible with Barlow Twins, and we show that VICReg outperforms Barlow Twins on image and text retrieval downstream tasks. Table~\ref{tab:retrieval} reports the performance of VICReg against the contrastive loss proposed by VSE++ \cite{faghri2018vse}, and against Barlow Twins, in the identical setting proposed in \cite{faghri2018vse}. VICReg outperforms the two by a significant margin.
+
+\begin{table}[t]
+\caption{\textbf{Evaluation on MS-COCO 5K retrieval tasks.} Comparison of VICReg with the contrastive loss of VSE++ \cite{faghri2018vse}, and with Barlow Twins, pretrain on the training set of MS-COCO. In all settings, the encoder for text is a word embedding followed by a GRU layer, the encoder for images is a ResNet-152.}
+% \vspace{-2mm}
+\label{tab:retrieval}
+\vspace{-1.5em}
+\setlength{\tabcolsep}{10.5pt}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lcccccc}
+\toprule
+Method & \multicolumn{3}{c}{Image-to-text} &  \multicolumn{3}{c}{Text-to-Image} \\
+                & R@1 & R@5 & R@10 & R@1 & R@5 & R@10 \\
+\midrule
+Contrastive (VSE++) &	30.3	& 59.4 &72.4	&41.3&	71.1&	81.2 \\
+Barlow Twins	&31.4	&60,4	&75.1&	42.9	&74.0&	83.5 \\
+VICReg	&33.6&	62.7&	77.9	&45.2&	76.1&	84.2 \\
+\bottomrule
+% \end{tabularx}
+\end{tabular}
+\end{center}
+\vspace{-2mm}
+\end{table}
+
+
+\section{Analysis} \label{sec:ablations}
+In this section we study how the different components of our method contribute to its performance, as well as how they interact with components from other self-supervised methods. We also evaluate different scenarios where the branches have different weights and architecture. All reported results are obtained on the linear evaluation protocol, using a ResNet-50 backbone if not mentioned otherwise, and 100 epochs of pretraining, which gives results consistent with those obtained with 1000 epochs of pretraining. The optimization setting used for each experiment is described in Appendix~\ref{app:sec_impl_details}.
+
+\vspace{2mm}
+\textbf{Asymmetric networks.} \label{sec:ablation_asymetric} We study the impact of different components used in asymmetric architectures and the effects of adding variance and covariance regularization, in terms of performance and training stability. Starting from a simple symmetric architecture with an encoder and an \expander without batch normalization, which correspond to \algo \ without batch normalization in the \expandernospace, we progressively add batch normalization in the inner layers of the \expandernospace, a predictor, a stop-gradient operation and a momentum encoder. We use the training protocol and architecture of SimSiam \cite{chen2020simsiam} when a stop-gradient is used and the training protocol and architecture of BYOL \cite{grill2020byol} when a momentum encoder is used. The predictor as used in SimSiam and BYOL is a learnable module $g_{\psi}$ that predicts the embedding of a view given the embedding of the other view of the same image. If $z$ and $z^{\prime}$ are the embeddings of two views of an image, then $p = g_{\psi}(z)$ and $p^{\prime} = g_{\psi}(z^{\prime})$ are the predictions of each view. The invariance loss function of Eq.~(\ref{eq:invariance}) is now computed between a batch of embeddings $Z = [z_1, \dots, z_n]$ and the corresponding batch of predictions $P = [p_1^{\prime}, \dots, p_n^{\prime}]$, then symmetrized:
+\begin{equation}
+    s(Z, Z^{\prime}, P, P^{\prime}) = \frac{1}{2n} \sum_i D(z_i - p^{\prime}_i) + \frac{1}{2n} \sum_i D(z^{\prime}_i - p_i),
+\end{equation}
+where $D$ is a distance function that depends on the method used. BYOL uses the mean square error between $l_2$-normalized vectors, SimSiam uses the negative cosine similarity loss and \algo \ uses the mean square error without $l_2$-normalization. The variance and covariance terms are regularizing the output $Z$ and $Z^{\prime}$ of the \expandernospace, which we empirically found to work better than regularizing the output of the predictor. We compare different settings in Table~\ref{tab:ablation}, based on the default data augmentation, optimization and architecture settings of the original BYOL, SimSiam and \algo \ methods. In all settings, the absence of BN indicates that BN is also removed in the predictor when one is used.
+
+\begin{table}[t]
+\caption{\textbf{Effect of incorporating variance and covariance regularization in different methods.} Top-1 ImageNet accuracy with the linear evaluation protocol after 100 pretraining epochs. For all methods, pretraining follows the architecture, the optimization and the data augmentation protocol of the original method using our reimplementation. ME: Momentum Encoder. SG: stop-gradient. PR: predictor. BN: Batch normalization layers after input and inner linear layers in the \expandernospace. No Reg: No additional regularization. Var Reg: Variance regularization. Var/Cov Reg: Variance and Covariance regularization. Unmodified original setups are marked by a ${\dagger}$.}
+% \vspace{-2mm}
+\label{tab:ablation}
+\vspace{-1.5em}
+\setlength{\tabcolsep}{10.5pt}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{lcccc|ccc}
+\toprule
+Method & ME & SG & PR & BN & No Reg & Var Reg & Var/Cov Reg \\
+\midrule
+BYOL            & \cmark & \cmark & \cmark & \cmark & \hspace{0.14em} 69.3$^{\dagger}$ & 70.2 & 69.5 \\
+SimSiam         &        & \cmark & \cmark & \cmark & \hspace{0.14em} 67.9$^{\dagger}$ & 68.1 & 67.6 \\
+SimSiam         &        & \cmark & \cmark &        & 35.1      & 67.3 & 67.1 \\
+SimSiam         &        & \cmark &        &        & collapse  & 56.8 & 66.1 \\
+\algo           &        &        & \cmark &        & collapse  & 56.2 & 67.3 \\
+\algo           &        &        & \cmark & \cmark & collapse  & 57.1 & 68.7 \\
+\algo           &        &        &        & \cmark & collapse  & 57.5 & \hspace{0.14em} 68.6$^{\dagger}$ \\
+\algo           &        &        &        &        & collapse  & 56.5 & 67.4 \\
+\bottomrule
+% \end{tabularx}
+\end{tabular}
+\end{center}
+\vspace{-2mm}
+\end{table}
+
+
+We analyse first the impact of variance regularization (VR) in the different settings. When using VR, adding a predictor (PR) to \algo \ does not lead to a significant change of the performance, which indicates that PR is redundant with VR. In comparison, without VR, the representations collapse, and both stop-gradient (SG) and PR are necessary. Batch normalization in the inner layers of the \expander (BN) in \algo \ leads to a 1.0\% increase in the performance, which is not a big improvement considering that SG and PR without BN is performing very poorly at 35.1\%. 
+
+Finally, incorporating VR with SG or ME further improves the performance by small margins of respectively 0.2\% and 0.9\%, which might be explained by the fact that these architectural tricks that prevent collapse are not perfectly maintaining the variance of the representations, i.e. very slow collapse is happening with these methods. We explain this intuition by studying the evolution of the standard deviation of the representations during pretraining for BYOL and SimSiam in Appendix~\ref{app:additional_results}. We then analyse the impact of adding additional covariance regularization (CR) in the different settings, along with variance regularization. We found that optimization with SG and CR is hard, even if our analysis of the average correlation coefficient of the representations during pretraining in Appendix~\ref{app:additional_results} shows that both fulfill the same objective. 
+
+% \begin{wraptable}{r}{5.5cm}
+% \caption{\textbf{Impact of sharing weights or not between branches.} Top-1 accuracy on linear classification with 100 pretraining epochs. In all settings, the encoder and \expander of both branches share the same architecture, but either share weights (\cmark), or have different weights in the two branches.}
+% \centering
+% \vspace{-2mm}
+% \label{tab:non-shared}
+% \begin{tabular}{lcc}
+% \toprule
+% Encoder & \Expander & Top-1 \\
+% \midrule
+%         &           & 66.5  \\
+%         & \cmark    & 67.3  \\
+% \cmark  &           & 67.8  \\
+% \cmark  & \cmark    & 68.6  \\
+% \bottomrule
+% \end{tabular}
+\newcommand{\xmark}{\ding{55}}%
+\begin{table}[t]
+\caption{\textbf{Impact of sharing weights or not between branches.} Top-1 accuracy on linear classification with 100 pretraining epochs. The encoder and \expander of both branches can share the same architecture and share their weights (SW), share the same architecture with different weights (DW), or have different architectures (DA). The encoders can be ResNet-50, ResNet-101 or ViT-S.}
+\centering
+\vspace{-2mm}
+\label{tab:non-shared}
+\begin{tabular}{lcccc}
+\toprule
+ & SW R50 & DW R50  & DA R50/R101 & DA R50/ViT-S \\
+\midrule
+BYOL          & 69.3  & \xmark & \xmark & \xmark \\
+SimCLR        & 64.4  & 63.1 & 63.9 & 63.5 \\
+Barlow Twins  & 68.7  & 64.2 & 65.3 & 63.9 \\
+\algo         & 68.6  & 66.5 & 68.1 & 66.2\\
+\bottomrule
+\end{tabular}
+% \end{wraptable}
+\end{table}
+
+The performance of BYOL and SimSiam slightly drops compared to VR only, except when PR is removed, where SG becomes useless. BN is still useful and improves the performance by 1.3\%. Finally with CR, PR does not harm the performance and even improves it by a very small margin. \algo+PR with 1000 epochs of pretraining exactly matches the score of \algo \ (73.2\% on linear classification).
+
+
+% \newpage
+
+% \vspace{2mm}
+\textbf{Weight sharing.} \label{sec:non-shared} 
+% \begin{table}[t]
+% \end{table}
+Contrary to most self-supervised learning approaches based on Siamese architectures, \algo \ has several unique properties: (1) weights do not need to be shared between the branches, each branch's weights are updated independently of the other branch's weights; (2) the branches are regularized independently, the variance and covariance terms are computed on each branch individually; (3) no predictor is necessary unlike with methods where one branch predicts outputs of the other branch. We compare the robustness of VICReg against other methods in different scenarios where the weights of the branches can be shared (SW), not shared (DW), and where the encoders can have different  architectures (DA). Among other self-supervised methods, SimCLR and Barlow Twins are the only ones that can handle these scenarios. The asymmetric methods that are based on a discrepancy between the branches requires either the architecture or the weights to be shared between the branches. The performance drops by 2.1\% with VICReg and 4.5\% with Barlow Twins, between the shared weights scenario (SW) and the different weight scenario (DW). The difference between VICReg and Barlow Twins is also significant in scenarios with different architectures, in particular VICReg performs better than Barlow Twins by 2.8\% with ResNet-50/ResNet-101 and better by 2.3\% with ResNet-50/ViT-S \cite{dosovitskiy2021vit}. This shows that VICReg is more robust than Barlow Twins in these kind of scenarios. The performance of SimCLR remains stable across scenarios, but is significantly worse than the performance of VICReg. Importantly, {\bf the ability of \algo \ to function with different parameters, architectures, and input modalities for the branches widens the applicability to joint-embedding SSL to many applications, including multi-modal signals.}
+
+% we have conducted a preliminary experiment: We have tested three scenarios: SWSA (for Shared Weights for the encoders and expanders, and Same Architecture for the encoders, a Resnet-50 in this case), DWSA (for Different Weights and Same Architecture for the encoders and expanders, again a Resnet-50), and DA (for different architectures ResNet-50 for the first branch and ResNet-101 for the second one, and of course different weights for the corresponding encoders and expanders).
+
+% Table~\ref{tab:non-shared} shows results on ImageNet using the standard linear protocol for situations where the weights of the encoder and the expander are shared or not. In all settings, there is no collapse and the performance is competitive. The slight drop in accuracy without sharing is likely due to the increased number of parameters. Importantly, {\bf the ability of \algo \ to function with different parameters, architectures, and input modalities for the branches widens the applicability to joint-embedding SSL to many applications, including multi-modal signals.}
+
+% \section{Discussion} \label{sec:conclusion}
+\section{Conclusion} \label{sec:conclusion}
+We introduced \algo, a simple approach to self-supervised learning based on a triple objective: learning invariance to different views with a invariance term, avoiding collapse of the representations with a variance preservation term, and maximizing the information content of the representation with a covariance regularization term. \algo \ achieves results on par with the state of the art on many downstream tasks, but is not subject to the same limitations as most other methods, particularly because it does not require the embedding branches to be identical or even similar.
+
+% \textbf{Limitations.} \label{sec:limitations}
+% The time and memory costs of \algo \ are dominated by the computation of the covariance matrix for each processed batch, which is quadratic in the dimension of the embeddings. Our experimental analysis, which corroborates the analysis of \cite{zbontar2021barlow}, shows that increasing the dimension of the embeddings significantly improves performance. Future work will explore how this quadratic bottleneck can be overcome by different approximation techniques, as well as completely new information maximization approaches based on higher-order statistics, and whether large \expander networks are required. 
+
+% SwAV introduced multi-crop, a data-augmentation protocol where more than two views are produced for each image, which improves considerably the performance on downstream tasks. Using multi-crop with \algo \ did not yield any performance improvement and showed signs of overfitting. More generally, multi-crop does not seem to help \algo, Barlow Twins, SimSiam nor BYOL, but yields performance improvements with SwAV, SimCLR and MoCo, which might be related to the loss function used by these methods.
+
+% \newpage
+
+% \textbf{Broader impact.} \label{sec:societal}
+% This work increases the domain of applicability of self-supervised learning, and may improve the performance on tasks for which labeled data is scarce, visual or otherwise, such as healthcare, environmental protection, material science, and the understanding and translation of rare languages. Using the method described here is not likely to mitigate the usual issues with machine-learning systems due to biases in the data or the model architecture.
+
+\newpage
+
+\textbf{Acknowledgement.} Jean Ponce was supported in part by the French government under management of Agence Nationale de la Recherche as part of the ”Investissements d’avenir” program,
+reference ANR-19-P3IA-0001 (PRAIRIE 3IA Institute), the Louis Vuitton/ENS Chair in Artificial
+Intelligence and the Inria/NYU collaboration. Adrien Bardes was supported in part by a FAIR/Prairie
+CIFRE PhD Fellowship. The authors wish to thank Jure Zbontar for the BYOL implementation,
+Stéphane Deny for useful comments on the paper, and Li Jing, Yubei Chen, Mikael Henaff, Pascal
+Vincent and Geoffrey Zweig for useful discussions. We thank Quentin Duval and the VISSL team for
+help obtaining the results of table 2.
+
+% \bibliographystyle{splncs04}
+\bibliographystyle{iclr2022_conference}
+\bibliography{iclr2022_conference}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\newpage
+\input{rebuttal_appendix.tex}
+
+\end{document}

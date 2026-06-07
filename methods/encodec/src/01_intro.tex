@@ -1,0 +1,39 @@
+\section{Introduction}
+%%% introduction makes claims, The body of the paper provides evidence to support each claim (forward reference it from intro)
+
+Recent studies suggest that streaming audio and video have accounted for the majority of the internet traffic in 2021 (82\% according to~\citep{internet_traffic_cisco}).
+With the internet traffic expected to grow, audio compression is an increasingly important problem. 
+In lossy signal compression we aim at minimizing the bitrate of a sample while also minimizing the amount of distortion according to a given metric, ideally correlated with human perception.
+Audio codecs typically employ a carefully engineered pipeline combining an encoder and a decoder 
+to remove redundancies in the audio content and yield a compact bitstream. 
+Traditionally, this is achieved by decomposing the input with a signal processing transform and trading off the quality of the components that are less likely to influence perception.
+Leveraging neural networks as trained transforms via an encoder-decoder mechanism has been explored by~\citet{morishima1990speech,rippel2019learned,zeghidour2021soundstream}. Our research work is in the continuity of this line of work, with a focus on audio signals.
+
+The problems arising in lossy neural compression models are twofold: first, the model has to represent a wide range of signals, such as not to overfit the training set or produce artifact laden audio outside its comfort zone. 
+We solve this by having a large and diverse training set (described in Section~\ref{experiments:dataset}), as well as discriminator networks (see Section~\ref{model:losses}) that serve as perceptual losses, which we study extensively in Section~\ref{results:comparison}, Table~\ref{tab:discriminators}.
+The other problem is that of compressing efficiently, both in compute time and in size. For the former, we limit ourselves to models that run in real-time on a single CPU core. For the latter, we use residual vector quantization of the neural encoder floating-point output, for which various approaches have been proposed~\citep{van2017neural,zeghidour2021soundstream}.
+%have to quantize their output to get a competitive bitrate.
+% Indeed, as neural networks are differentiable, their internal representations are floating point numbers. 
+% Various approaches have been proposed for quantization \cite{van2017neural}. % GS STE 
+
+% In this paper, we extend a simple differentiable quantization (DiffQ~\cite{defossez2021differentiable}) technique in Section~\ref{model:diffq}. We compare all relevant quantization methods in Section~\ref{results:comparison} (Fig.~\ref{fig:quantizers}), and show that DiffQ is state of the art across a wide range of bandwidths. \jade{This must be changed}
+
+\begin{figure}[t!]
+     \centering
+     \includegraphics[trim={4cm 0 0 0},clip,width=\textwidth]{figures/figure1_v2_rec}
+     \caption{$\encodec$: an encoder decoder codec architecture  which is trained with reconstruction ($\ell_f$ and $\ell_t$) as well as adversarial losses ($\ell_g$ for the generator and $\ell_d$ for the discriminator). The residual vector quantization commitment loss ($\ell_w$) applies only to the encoder. Optionally, we train a small Transformer language model for entropy coding over the quantized units with $\ell_l$, which reduces bandwidth even further.
+     \label{fig:arch}}
+\end{figure}
+
+Accompanying those technical contributions, we posit that designing end-to-end neural compression models is a set of intertwined choices, among which at least the encoder-decoder architecture, the quantization method, and the perceptual loss play key parts. 
+Objective evaluations exist and we report scores on them in our ablations (Section~\ref{results:comparison}). But the evaluation of lossy audio codecs necessarily relies on human perception, so we ran extensive human evaluation for multiple points in this design space, both for speech and music. 
+Those evaluations (MUSHRA) consist in having humans listen to, compare, and rate excerpts of speech or music compressed with competitive codecs and variants of our method, and the uncompressed ground truth.
+This allows to compare variants of the whole pipeline in isolation, as well as their combined effect, in Section~\ref{results:comparison} (Figure~\ref{fig:mushra_bandwidth} and Table~\ref{tab:main_table}). 
+Finally, our best model, $\encodec$, %combining our contributions, 
+reaches state-of-the-art scores for speech and for music at 1.5, 3, 6, 12 kbps at 24 kHz, and at 6, 12, and 24 kbps for 48 kHz with stereo channels.
+
+
+%Our main contributions are: \gab{maybe we remove this}
+%\begin{itemize}
+%    \item 
+%\end{itemize}

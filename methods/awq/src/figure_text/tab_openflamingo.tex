@@ -1,0 +1,25 @@
+    
+
+
+
+\begin{table*}%
+    \small
+    \setlength{\tabcolsep}{11pt}
+    
+    \centering
+    \begin{tabular}{llcccccc}
+        \toprule
+        \multicolumn{2}{l}{\textbf{COCO (CIDEr $\uparrow$)}} & 0-shot & 4-shot & 8-shot & 16-shot & 32-shot & \emph{$\Delta$(32-shot)} \\  \midrule
+    FP16 & - & 63.73 & 72.18 & 76.95 & 79.74 & 81.70  & - \\ \midrule
+    \multirow{3}{*}{\shortstack{INT4\\g128}} & RTN & 60.24 & 68.07 & 72.46 & 74.09 & 77.13 & -4.57 \\ 
+    & GPTQ & 59.72 & 67.68 & 72.53 & 74.98 & 74.98 & -6.72 \\ %
+    & \methodshort & \textbf{62.57} & \textbf{71.02} & \textbf{74.75} & \textbf{78.23} & \textbf{80.53} & \textbf{-1.17} \\ \midrule
+     \multirow{3}{*}{\shortstack{INT3\\g128}} & RTN & 46.07 & 55.13 & 60.46 & 63.21 & 64.79 & -16.91\\ 
+    & GPTQ & 29.84 & 50.77 & 56.55 & 60.54 & 64.77 & -16.93\\ %
+    & \methodshort & \textbf{56.33} & \textbf{64.73} & \textbf{68.79} & \textbf{72.86} & \textbf{74.47} & \textbf{-7.23}\\
+        \bottomrule
+    \end{tabular}
+    \caption {Quantization results of a visual language model OpenFlamingo-9B~\cite{openflamingo} on COCO Captioning datasets. \method{} outperforms existing methods under zero-shot and various few-shot settings, demonstrating the generability to different modalities and in-context learning workloads. \method{} reduces the quantization degradation (32-shot) from 4.57 to 1.17 under INT4-g128, providing 4$\times$ model size reduction with negligible performance loss. 
+    }
+    \label{tab:openflamingo}
+\end{table*}

@@ -1,0 +1,20 @@
+
+%------------------------------------- table --------------------------------------------
+\begin{table}[t]
+\renewcommand\arraystretch{1.1}
+\small
+\caption{Effect of using different non-linearities for the excitation operator in SE-ResNet-50 on ImageNet (error rates \%).}
+\label{tab:non-linearities}
+\vspace{-1.5em}
+\begin{center}{\scalebox{0.95}{
+\begin{tabular}{p{2.5cm}<{\centering}|p{1.3cm}<{\centering}|p{1.3cm}<{\centering}}
+\hline
+Excitation & top-1 err. & top-5 err.\\
+\hline
+ReLU & 23.47 & 6.98 \\
+Tanh & 23.00  &  6.38  \\
+Sigmoid & $\mathbf{22.28}$ & $\mathbf{6.03}$ \\
+\hline
+\end{tabular}}}
+\end{center}
+\end{table}

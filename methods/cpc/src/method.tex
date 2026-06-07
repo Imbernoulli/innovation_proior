@@ -1,0 +1,70 @@
+\section{Contrastive Predicting Coding}
+\label{method}
+
+We start this section by motivating and giving intuitions behind our approach. Next, we introduce the architecture of Contrastive Predictive Coding (CPC). After that we explain the loss function that is based on Noise-Contrastive Estimation. Lastly, we discuss related work to CPC.
+
+\subsection{Motivation and Intuitions}
+
+The main intuition behind our model is to learn the representations that encode the underlying shared information between different parts of the (high-dimensional) signal. At the same time it discards low-level information and noise that is more local.
+In time series and high-dimensional modeling, approaches that use next step prediction exploit the local smoothness of the signal.
+When predicting further in the future, the amount of shared information becomes much lower, and the model needs to infer more global structure. These 'slow features' \cite{wiskott2002slow} that span many time steps are often more interesting (e.g., phonemes and intonation in speech, objects in images, or the story line in books.).
+
+One of the challenges of predicting high-dimensional data is that unimodal losses such as mean-squared error and cross-entropy are not very useful, and powerful conditional generative models which need to reconstruct every detail in the data are usually required. But these models are computationally intense, and waste capacity at modeling the complex relationships in the data $x$, often ignoring the context $c$. For example, images may contain thousands of bits of information while the high-level latent variables such as the class label contain much less information (10 bits for 1,024 categories). This suggests that modeling $p(x|c)$ directly may not be optimal for the purpose of extracting shared information between $x$ and $c$. When predicting future information we instead encode the target $x$ (future) and context $c$ (present) into a compact distributed vector representations (via non-linear learned mappings) in a way that maximally preserves the mutual information of the original signals $x$ and $c$ defined as 
+\begin{align}
+I(x;c) &= \sum_{x,c} p(x,c) \log \frac{p(x|c)}{p(x)}. \label{mi}
+\end{align}
+By maximizing the mutual information between the encoded representations (which is bounded by the MI between the input signals), we extract the underlying latent variables the inputs have in commmon. 
+
+\subsection{Contrastive Predictive Coding}
+\label{model_math}
+
+Figure \ref{fig:overview} shows the architecture of Contrastive Predictive Coding models. First, a non-linear encoder $g_{\text{enc}}$ maps the input sequence of observations $x_t$ to a sequence of latent representations $z_t=g_{\text{enc}}(x_t)$, potentially with a lower temporal resolution. Next, an autoregressive model $g_{\text{ar}}$ summarizes all $z_{\leq t}$ in the latent space and produces a context latent representation $c_t=g_{\text{ar}}(z_{\leq t})$.
+
+As argued in the previous section we do not predict future observations $x_{t+k}$ directly with a generative model $p_k(x_{t+k}| c_t)$. Instead we model a density ratio which preserves the mutual information between $x_{t+k}$ and $c_t$ (Equation~\ref{mi}) as follows (see next sub-section for further details):
+\begin{equation}
+f_k(x_{t+k}, c_{t}) \propto \frac{p(x_{t+k}| c_t)}{p(x_{t+k})} \label{math:density_ratio}
+\end{equation}
+where $\propto$ stands for 'proportional to' (i.e. up to a multiplicative constant). Note that the density ratio $f$ can be unnormalized (does not have to integrate to 1). Although any positive real score can be used here, we use a simple log-bilinear model:
+\begin{align}
+f_k(x_{t+k}, c_{t}) = \exp \Big(z_{t+k}^T W_k c_t\Big),
+\end{align}
+In our experiments a linear transformation $W_k^T c_t$ is used for the prediction with a different $W_k$ for every step $k$. Alternatively, non-linear networks or recurrent neural networks could be used.
+
+By using a density ratio $f(x_{t+k}, c_{t})$ and inferring $z_{t+k}$ with an encoder, we relieve the model from modeling the high dimensional distribution $x_{t_k}$. Although we cannot evaluate $p(x)$ or $p(x|c)$ directly, we can use samples from these distributions, allowing us to use techniques such as Noise-Contrastive Estimation \cite{gutmann2010noise, mnih2012fast, jozefowicz2016exploring} and Importance Sampling \cite{bengio2008is} that are based on comparing the target value with randomly sampled negative values.
+
+In the proposed model, either of $z_t$ and $c_t$ could be used as representation for downstream tasks.
+The autoregressive model output $c_t$ can be used if extra context from the past is useful. One such example is speech recognition, where the receptive field of $z_t$ might not contain enough information to capture phonetic content. In other cases, where no additional context is required, $z_t$ might instead be better. If the downstream task requires one representation for the whole sequence, as in e.g. image classification, one can pool the representations from either $z_t$ or $c_t$ over all locations. 
+
+Finally, note that any type of encoder and autoregressive model can be used in the proposed framework. For simplicity we opted for standard architectures such as strided convolutional layers with resnet blocks for the encoder, and GRUs \cite{cho2014learning} for the autoregresssive model. More recent advancements in autoregressive modeling such as masked convolutional architectures \cite{oord2016wavenet, aaron2016pixelcnn} or self-attention networks \cite{attentionNIPS2017} could help improve results further.
+
+\subsection{InfoNCE Loss and Mutual Information Estimation}
+\label{sec:nce}
+
+Both the encoder and autoregressive model are trained to jointly optimize a loss based on NCE, which we will call InfoNCE. Given a set $X=\{x_1, \dots x_{N}\}$ of $N$ random samples containing one positive sample from $p(x_{t+k}|c_t)$ and $N-1$ negative samples from the 'proposal' distribution $p(x_{t+k})$, we optimize:
+\begin{align}
+\mathcal{L_{\text{N}}} &= - \mathop{{}\mathbb{E}}_{X}\left[\log \frac{f_k(x_{t+k}, c_{t})}{\sum_{x_j \in X} f_k(x_j, c_{t})}\right] \label{loss}
+\end{align}
+
+Optimizing this loss will result in $f_k(x_{t+k}, c_{t})$ estimating the density ratio in equation \ref{math:density_ratio}. This can be shown as follows.
+
+The loss in Equation \ref{loss} is the categorical cross-entropy of classifying the positive sample correctly, with $\frac{f_k}{\sum_{X} f_k}$ being the prediction of the model. Let us write the optimal probability for this loss as $p(d=i|X, c_{t})$ with $[d=i]$ being the indicator that sample $x_i$ is the 'positive' sample. The probability that sample $x_i$ was drawn from the conditional distribution $p(x_{t+k}|c_{t})$ rather than the proposal distribution $p(x_{t+k})$ can be derived as follows:
+\begin{align}
+p(d = i| X, c_{t}) &= \frac{p(x_i|c_{t})\prod_{l\neq i}p(x_l)}{\sum^N_{j=1} p(x_j|c_{t})\prod_{l\neq j}p(x_l)} \nonumber \\
+&=\frac{\frac{p(x_i|c_{t})}{p(x_i)}}{\sum^N_{j=1} \frac{p(x_j|c_{t})}{p(x_j)}}.
+\end{align}
+As we can see, the optimal value for $f(x_{t+k}, c_{t})$ in Equation \ref{loss} is proportional to $\frac{p(x_{t+k}|c_{t})}{p(x_{t+k})}$ and this is independent of the the choice of the number of negative samples $N-1$.
+
+Though not required for training, we can evaluate the mutual information between the variables $c_t$ and $x_{t+k}$ as follows:
+$$
+I(x_{t+k}, c_t) \geq \log(N)-\mathcal{L_{\text{N}}},
+$$
+which becomes tighter as N becomes larger. Also observe that minimizing the InfoNCE loss $\mathcal{L_{\text{N}}}$ maximizes a lower bound on mutual information. For more details see Appendix. 
+
+\subsection{Related Work}
+\label{related}
+
+CPC is a new method that combines predicting future observations (predictive coding) with a probabilistic contrastive loss (Equation \ref{loss}). This allows us to extract slow features, which maximize the mutual information of observations over long time horizons. Contrastive losses and predictive coding have individually been used in different ways before, which we will now discuss.
+
+Contrastive loss functions have been used by many authors in the past. For example, the techniques proposed by \cite{chopra2005learning, weinberger2009distance, schroff2015facenet} were based on triplet losses using a max-margin approach to separate positive from negative examples. More recent work includes Time Contrastive Networks \cite{sermanet2017time} which proposes to minimize distances between embeddings from multiple viewpoints of the same scene and whilst maximizing distances between embeddings extracted from different timesteps. In Time Contrastive Learning \cite{NIPS2016_6395} a contrastive loss is used to predict the segment-ID of multivariate time-series as a way to extract features and perform nonlinear ICA.
+
+There has also been work and progress on defining prediction tasks from related observations as a way to extract useful representations, and many of these have been applied to language. In Word2Vec \cite{mikolov2013efficient} neighbouring words are predicted using a contrastive loss. Skip-thought vectors \cite{kiros2015skip} and Byte mLSTM \cite{radford2017learning} are alternatives which go beyond word prediction with a Recurrent Neural Network, and use maximum likelihood over sequences of observations. In Computer Vision \cite{wang2015unsupervised} use a triplet loss on tracked video patches so that patches from the same object at different timesteps are more similar to each other than to random patches. \cite{Doersch_2015_ICCV, noroozi2016unsupervised} propose to predict the relative postion of patches in an image and in \cite{zhang2016colorful} color values are predicted from a greyscale images.

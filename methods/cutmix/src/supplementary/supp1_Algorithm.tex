@@ -1,0 +1,41 @@
+\section{CutMix Algorithm}
+\label{appendix:algorithm}
+
+\algnewcommand\Input{\item[\textbf{Input:}]}%
+\algnewcommand\Output{\item[\textbf{Output:}]}%
+\begin{algorithm*}[t]
+  \caption{Pseudo-code of CutMix}
+  \begin{algorithmic}[1]
+    \For {each iteration}
+    \State input, target = get\_minibatch(dataset) \Comment{input is N$\times$C$\times$W$\times$H size tensor, target is N$\times$K size tensor.}
+        \If{mode $==$ training}
+            \State input\_s, target\_s = shuffle\_minibatch(input, target) \Comment{CutMix starts here.}
+            \State lambda = Unif(0,1)
+            \State r\_x = Unif(0,W)
+            \State r\_y = Unif(0,H)
+            \State r\_w = Sqrt(1 - lambda)
+            \State r\_h = Sqrt(1 - lambda)
+            \State x1 = Round(Clip(r\_x - r\_w / 2, min=0))
+            \State x2 = Round(Clip(r\_x + r\_w / 2, max=W))
+            \State y1 = Round(Clip(r\_y - r\_h / 2, min=0))
+            \State y2 = Round(Clip(r\_y + r\_h / 2, min=H))
+            \State input[:, :, x1:x2, y1:y2] = input\_s[:, :, x1:x2, y1:y2]
+            \State lambda = 1 - (x2-x1)*(y2-y1)/(W*H) \Comment{Adjust lambda to the exact area ratio.}
+            \State target = lambda * target + (1 - lambda) * target\_s \Comment{CutMix ends.}
+        \EndIf
+        \State output = model\_forward(input)
+        \State loss = compute\_loss(output, target)
+        \State model\_update()
+    \EndFor
+  \end{algorithmic}
+  \label{alg:cutmix_algorithm}
+\end{algorithm*}
+
+We present the code-level description of CutMix algorithm in Algorithm~\ref{alg:cutmix_algorithm}.
+{N, C, and K denote the size of minibatch, channel size of input image, and the number of classes.}
+First, CutMix shuffles the order of the minibatch input and target along the first axis of the tensors.
+And the lambda and the cropping region (x1,x2,y1,y2) are sampled. 
+Then, we mix the input and input\_s by replacing the cropping region of input to the region of input\_s.
+The target label is also mixed by interpolating method. 
+
+Note that CutMix is easy to implement with few lines (from line $4$ to line $15$), so is very practical algorithm giving significant impact on a wide range of tasks.

@@ -1,0 +1,27 @@
+\begin{minipage}[t]{\textwidth}
+    \begin{minipage}[t]{0.3\textwidth}\vspace{0pt}
+    \centering
+    \includegraphics[width=\linewidth]{figures/learnable_sink_curve.png}
+    \vspace{-2em}
+    \captionof{figure}{\small Pre-training loss curves of models w/ and w/o sink tokens. Two models have a similar convergence trend.}
+    \label{fig:curve}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.66\textwidth}\vspace{0pt}
+    \centering
+    \small
+    \setlength{\tabcolsep}{3.0pt}
+      \captionof{table}{\small Zero-shot accuracy (in \%) across 7 NLP benchmarks, including ARC-[Challenge, Easy], HellaSwag, LAMBADA, OpenbookQA, PIQA, and Winogrande. The inclusion of a sink token during pre-training doesn't harm the model performance.}
+    \label{tab:pretrain_eval}
+\begin{tabular}{lccccccc}
+\toprule
+Methods        & {ARC-c} & {ARC-e} & {HS} & {LBD} & {OBQA} & {PIQA} & {WG}  \\
+\midrule
+Vanilla        & 18.6                    & 45.2                    & 29.4                        & 39.6                      & 16.0                   & 62.2                   & 50.1                          \\
++Sink Token & \textbf{19.6}                    & \textbf{45.6}                    & \textbf{29.8}                        & \textbf{39.9}                      & \textbf{16.6}                   & \textbf{62.6}                  & \textbf{50.8} \\
+        \bottomrule
+    \end{tabular}
+
+    \end{minipage}
+    \vspace{-1em}
+  \end{minipage}

@@ -1,0 +1,90 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2019_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xspace}
+\usepackage{multirow}
+
+\newcommand{\bert}{BERT\xspace}
+%\newcommand{\bertsize}[1]{BERT$_{\textsc{#1}}$\xspace} % matches the BERT paper
+\newcommand{\bertsize}[1]{BERT-#1\xspace} % matches the figures, so if you don't want to change the figures, let's use this one
+\newcommand{\roberta}{RoBERTa\xspace}
+\newcommand{\xlnet}{XLNet\xspace}
+\newcommand{\squad}{SQuAD\xspace}
+
+\newcommand{\mingda}[1]{\textcolor{red}{[#1 --MC]}}
+\newcommand{\kevin}[1]{\textcolor{blue}{[#1 --KG]}}
+\newcommand{\lanzhzh}[1]{\textcolor{violet}{[#1 --LAN]}}
+\newcommand{\radu}[1]{\textcolor{green}{[#1 --RS]}}
+\usepackage{subcaption}
+
+\usepackage{graphicx}
+\graphicspath{ {./imgs/} }
+% \renewcommand{\mingda}[1]{}
+% \renewcommand{\kevin}[1]{}
+% \renewcommand{\lanzhzh}[1]{}
+
+
+\title{ALBERT: A Lite BERT for Self-supervised Learning of Language Representations}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+% \author{}
+\author{
+    \begin{tabular}[t]{c} 
+        Zhenzhong Lan$^{1}$ \hspace{15pt} Mingda Chen$^{2}$\thanks{Work done as an intern at Google Research, driving data processing and downstream task evaluations.} \hspace{15pt} Sebastian Goodman$^{1}$ \hspace{15pt} Kevin Gimpel$^{2}$ \\[1.5ex]
+        Piyush Sharma$^{1}$ \hspace{15pt} Radu Soricut$^{1}$ \\[1.5ex]
+    \end{tabular} 
+    \\
+    \text{\hspace{50pt} $^{1}$Google Research \hspace{30pt} $^{2}$Toyota Technological Institute at Chicago} \\[1.5ex]
+    \texttt{\hspace{30pt}\{lanzhzh, seabass, piyushsharma, rsoricut\}@google.com} \\
+    \texttt{\hspace{100pt}\{mchen, kgimpel\}@ttic.edu} \\
+}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\begin{document}
+
+
+\maketitle
+
+\begin{abstract}
+Increasing model size when pretraining natural language representations often results in improved performance on downstream tasks. However, at some point further model increases become harder due to GPU/TPU memory limitations and longer training times. To address these problems,  we present two parameter-reduction techniques to lower memory consumption and increase the training speed of BERT~\citep{devlin2018bert}. Comprehensive empirical evidence shows that our proposed methods lead to models that scale much better compared to the original BERT. We also use a self-supervised loss that focuses on modeling inter-sentence coherence, and show it consistently helps downstream tasks with multi-sentence inputs. As a result, our best model establishes new state-of-the-art results on the GLUE, RACE, and \squad benchmarks while having fewer parameters compared to BERT-large. The code and the pretrained models are available at \url{ https://github.com/google-research/ALBERT}.
+\end{abstract}
+
+%  To address these problems,  we present a set of models that have significantly fewer parameters and higher parameter-efficiency compared to BERT~\citep{devlin2018bert}. Comprehensive empirical evidence also shows that the parameter-reduction techniques we adopt lead to models that scale much better than the original BERT. We also introduce a new self-supervised loss that focuses on modeling inter-sentence coherence. 
+ 
+\input{intro}
+\input{related_work}
+%\input{data}   % the content of this one was moved to models_experiments
+%\input{models} % the content of this one was moved to models_experiments
+\input{models_experiments}
+\input{discussion}
+
+\section*{Acknowledgement}
+The authors would like to thank Beer Changpinyo, Nan Ding, Noam Shazeer, and Tomer Levinboim for discussion and providing useful feedback on the project; Omer Levy and Naman Goyal for clarifying experimental setup for RoBERTa;  Zihang Dai for clarifying XLNet; Brandon Norick, Emma Strubell, Shaojie Bai, Chas Leichner, and Sachin Mehta for providing useful feedback on the paper; Jacob Devlin for providing the English and multilingual version of training data; Liang Xu, Chenjie Cao and the \href{https://github.com/CLUEbenchmark/CLUE}{CLUE community} for providing the training data and evaluation benechmark of the Chinese version of ALBERT models. 
+
+\bibliography{iclr2019_conference}
+\bibliographystyle{iclr2019_conference}
+\appendix
+\input{appendix}
+
+
+\end{document}

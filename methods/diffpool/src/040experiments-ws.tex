@@ -1,0 +1,185 @@
+\section{Experiments}
+\label{sec:ex}
+
+\begin{table*}[ht]\	
+\caption{Classification accuracies in percent. The far-right column gives the relative increase in accuracy compared to the baseline \textsc{GraphSage} approach.}
+\label{tab:results}
+\resizebox{0.93\textwidth}{!}{ \renewcommand{\arraystretch}{1.0}
+\centering
+\begin{tabular}{@{}clcccccc@{}}\cmidrule[\heavyrulewidth]{2-8}
+& \multirow{3}{*}{\vspace*{8pt}\textbf{Method}}&\multicolumn{5}{c}{\textbf{Data Set}}\\\cmidrule{3-8}
+& & {\textsc{Enzymes}} & {\textsc{D\&D}} & {\textsc{Reddit-Multi-12k}} & {\textsc{Collab}} & {\textsc{Proteins}} & {\text{Gain}}
+\\ \cmidrule{2-8}
+\multirow{4}{*}{\rotatebox{90}{\hspace*{-6pt}Kernel}} 
+& \textsc{Graphlet}  & 41.03 & 74.85 &  21.73 & 64.66 & 72.91 &  \\ 
+& \textsc{Shortest-path} & 42.32 & 78.86 & 36.93 & 59.10  & 76.43 &   \\     
+& \text{1-WL} &  53.43 & 74.02 &  39.03 &  78.61 & 73.76 &  \\     
+& \text{WL-OA} & 60.13  & 79.04	 & 44.38  & 80.74  & 75.26  &   \\       \cmidrule{2-8}
+% GNN
+& \textsc{PatchySan} & -- & 76.27	 & 41.32   & 72.60 &  75.00  & 4.17 \\ 
+\multirow{7}{*}{\rotatebox{90}{GNN}} 
+& \textsc{GraphSage} &  54.25 & 75.42 	 & 42.24  & 68.25  & 70.48 &  --\\ 
+& \textsc{ECC}  & 53.50  & 74.10 & 41.73  & 67.79 &   72.65  & 0.11 \\	
+& \textsc{Set2set} &  60.15 & 78.12  & 43.49 & 71.75 & 74.29 & 3.32 \\ 
+& \textsc{SortPool} & 57.12 & 79.37  & 41.82 & 73.76  & 75.54  & 3.39 \\     
+& \textsc{\name-Det} & 58.33 & 75.47 & 46.18 & \textbf{82.13} & 75.62 & 5.42 \\ 
+& \textsc{\name-NoLP} & 62.67  & 79.98	 & 46.44  & 75.63   &  77.42  &  6.30 \\ 
+& \textsc{\name} & \textbf{64.23}  & \textbf{81.15}	 & \textbf{47.04}  & 75.50   &  \textbf{78.10}  & \textbf{7.08}\\     
+\cmidrule[\heavyrulewidth]{2-8}
+\end{tabular}}
+\end{table*}
+
+We evaluate the benefits of \name\ against a number of state-of-the-art graph classification approaches, with the goal of answering the following questions:
+\begin{enumerate}[leftmargin=20pt]
+\item[{\bf Q1}] How does  \name\ compare to other pooling methods proposed for GNNs (e.g., using sort pooling~\cite{zhang2018end} or the \textsc{Set2Set} method \cite{Gil+2017})?
+\item[{\bf Q2}] How does  \name\ combined with GNNs compare to the state-of-the-art for graph classification task, including both GNNs and kernel-based methods?
+\item[{\bf Q3}] Does  \name  compute meaningful and interpretable clusters on the input graphs?
+\end{enumerate}
+
+
+\xhdr{Data sets}
+To probe the ability of \name to learn complex hierarchical structures from graphs in different domains, we evaluate on a variety of relatively large graph data sets chosen from benchmarks commonly used in graph classification \cite{KKMMN2016}. We use protein data sets including \textsc{Enzymes}, \textsc{Proteins}~\cite{Borgwardt2005a, Fer+2013}, \textsc{D\&D}~\cite{Dob+2003}, the social network data set \textsc{Reddit-Multi-12k}~\cite{Yan+2015a}, and the scientific collaboration data set \textsc{Collab}~\cite{Yan+2015a}. See Appendix A for statistics and properties.
+For all these data sets, we randomly sampled $10\%$ of the graphs to use as a validation set, with the remaining graphs used to perform 10-fold cross-validation to evaluate model performance. 
+%\xiang{if this is a general practice, reference a paper here. I'm wondering why the validate set is held out first then CV.}
+ 
+
+\xhdr{Model configurations}
+In our experiments, the GNN model used for \name\ is built on top of the \textsc{GraphSage} architecture, as we found this architecture to have superior performance compared to the standard GCN approach as introduced in \cite{kipf2017semi}. 
+We use the ``mean'' variant of \textsc{GraphSage}~\cite{hamilton2017inductive} and apply a \name layer after every two \textsc{GraphSage} layers in our architecture.
+A total of three \name layers are used for the \textsc{D\&D}, \textsc{Reddit-Multi-12k}, and $\textsc{Collab}$ data sets, and two \name layers are used for the \textsc{Enzymes} and \textsc{Proteins} data sets.
+The embedding matrix and the assignment matrix are computed by two separate \textsc{GraphSage} models respectively.
+At each \name layer, the number of clusters is set as $25\%$ of the number of nodes before applying \name.
+Batch normalization \cite{ioffe2015batch} is applied after every layer of \textsc{GraphSage}. 
+We also found that adding an $\ell_2$ normalization to the node embeddings at each layer made the training more stable. 
+In Section \ref{sec:s2v}, we also test an analogous variant of \name on the \textsc{Structure2Vec} \cite{dai2016discriminative} architecture, in order to demonstrate how \name\ can be applied on top of other GNN models. 
+All models are trained for 3\,000 epochs with early stopping applied when the validation loss starts to drop.
+We also evaluate two simplified versions of \name:
+\begin{itemize}[leftmargin=15pt, topsep=-5pt, parsep=0pt]
+ \item \textsc{\name-Det}, is a \name\ model where assignment matrices are generated using a deterministic graph clustering algorithm~\cite{dhillon2007weighted}.% This follows the approach used in \cite{Def+2015}, but uses a better performing GNN archicture and clustering algorithm. 
+    \item
+    \textsc{DiffPool-NoLP} is a variant of \textsc{\name} where the link prediction side objective is turned off.
+\end{itemize}
+
+\subsection{Baseline Methods}
+In the performance comparison on graph classification, we consider baselines based upon GNNs (combined with different pooling methods) as well as state-of-the-art kernel-based approaches. 
+
+\xhdr{GNN-based methods} 
+\begin{itemize}[leftmargin=15pt, topsep=-5pt, parsep=0pt]
+    \item \textsc{GraphSage} with global mean-pooling \cite{hamilton2017inductive}. Other GNN variants such as those proposed in \cite{kipf2017semi} are omitted as empirically GraphSAGE obtained higher performance in the task.
+    \item \textsc{Structure2Vec} (\textsc{S2V})~\cite{dai2016discriminative} is a state-of-the-art graph representation learning algorithm that combines a latent variable model with GNNs. It uses global mean pooling.
+    \item Edge-conditioned filters in CNN for graphs (\textsc{ECC})~\cite{simonovsky2017dynamic} incorporates edge information into the GCN model and performs pooling using a graph coarsening algorithm. %\chris{Are we using the version with clustering here?}
+    \item \textsc{PatchySan}~\cite{niepert2016learning} defines a receptive field (neighborhood) for each node, and using a canonical node ordering, applies convolutions on linear sequences of node embeddings. 
+    \item \textsc{Set2Set} replaces the global mean-pooling in the traditional GNN architectures by the aggregation used in \textsc{Set2Set}~\cite{vinyals2015order}. Set2Set aggregation has been shown to perform better than mean pooling in previous work \cite{Gil+2017}. We use \textsc{GraphSage} as the base GNN model. 
+    \item  \textsc{SortPool}~\cite{zhang2018end} applies a GNN architecture and then performs a single layer of soft pooling followed by 1D convolution on sorted node embeddings. 
+\end{itemize}
+
+\medskip
+For all the GNN baselines, we use 10-fold cross validation numbers reported by the original authors when possible. 
+For the \textsc{GraphSage} and \textsc{Set2Set} baselines, we use the base implementation and hyperparameter sweeps as in our \name\ approach.
+When baseline approaches did not have the necessary published numbers, we contacted the original authors and used \textbf{}their code (if available) to run the model, performing a hyperparameter search based on the original author's guidelines. 
+
+\xhdr{Kernel-based algorithms}
+We use the \textsc{Graphlet}~\cite{She+2009}, the \textsc{Shortest-Path}~\cite{Borgwardt2005}, \textsc{Weisfeiler-Lehman} kernel (\textsc{WL})~\cite{She+2011}, and \textsc{Weisfeiler-Lehman Optimal Assignment kernel} (\textsc{WL-OA})~\cite{kriege2016valid} as kernel baselines. For each kernel, we computed the normalized gram matrix. We computed the classification accuracies using the $C$-SVM implementation of \textsc{LibSvm}~\cite{Cha+11}, using 10-fold cross validation. The $C$ parameter was selected from $\{10^{-3}, 10^{-2}, \dotsc, 10^{2},$ $10^{3}\}$ by 10-fold cross validation on the training folds. Moreover, for \textsc{WL} and \textsc{WL-OA} we additionally selected the number of iteration from $\{0, \dots, 5\}$.
+
+Code for \name\ and all implemented baselines will be made public prior to publication.
+
+
+\subsection{Results for Graph Classification}\label{sec:classification}
+Table \ref{tab:results} compares the performance of \name\ to these state-of-the-art graph classification baselines.
+These results provide positive answers to our motivating questions {\bf Q1} and {\bf Q2}:
+We observe that our \name approach obtains the highest average performance among all pooling approaches for GNNs, improves upon the base \textsc{GraphSage} architecture by an average of $7.01\%$, and achieves state-of-the-art results on 4 out of 5 benchmarks. %, which is a $X-X\%$ better performance gain compared to all other GNNs baselines.
+Interestingly, our simplified model variant, \textsc{\name-Det}, achieves state-of-the-art performance on the \textsc{Collab} benchmark. This is because many collaboration graphs in \textsc{Collab} show only single-layer community structures, which can be captured well with pre-computed graph clustering algorithm~\cite{dhillon2007weighted}.
+\cut{
+Among the baseline methods, the kernel-based \textsc{WL-OA} also performs quite well, achieving the second-best accuracy on the \textsc{Collab} benchmark, which contains exceptionally dense graphs. 
+applied on top of \textsc{GraphSage} with GNNs using other pooling methods, as well as kernel-based methods. In the last column we report the percentage gain of each GNN pooling baseline over \textsc{GraphSage} with naive mean pooling.
+\textsc{Set2Set} aggregation has shown to give significant gains in many data sets, achieving an average of $3.23\%$ improvement compared to the naive baseline of \textsc{GraphSage} with global pooling. However, \textsc{Set2Set} aggregation has longer running time: it runs $12$ times slower than \name on average.
+In comparison, \textsc{PatchySan}, \textsc{SortPool} and \textsc{ClusterPool}  all achieve better results, due to their ability to pool according to structures of the graphs. 
+%Notably, ClusterPool achieves an improvement of XX$\%$ over \textbf{GraphSAGE}, due to it's ability to capture hierarchies of clusters.
+}
+
+
+\cut{
+One notable data set that demonstrates the expressivity of \name is \textsc{Reddit-Multi-12k}, in which each graph represents an online discussion thread between users/nodes (an edge is formed when a user replies to another user). It contains rich hierarchical structures due to the tree-structured nature of Reddit discussions: there are small clusters of discussion among small numbers of users occurring at the leaves of the discussion threads, and the small clusters themselves are grouped into larger clusters based on higher-level threads/topics. 
+\name significantly outperforms other methods on this data set, as it can automatically extract meaningful clusters (in a hierarchical fashion) from these natural thread-based graphs. 
+}
+
+\cut{
+Graphs in the \textsc{Collab} data set, in contrast, are very dense and do not have a hierarchical structure. As illustrated in Section \ref{sec:sparse_dense}, \name tends to assign nodes in densely connected subgraphs into a single cluster. In practice, we observe that hierarchies deeper than two do not result in performance improvement in this data set, which again stresses that it does not contain any hierarchical structure.}
+
+
+\xhdr{Differentiable Pooling on \textsc{Structure2Vec}}\label{sec:s2v}
+\name can be applied to other GNN architectures besides \textsc{GraphSage} to capture hierarchical structure in the graph data.
+To further support answering {\bf Q1}, we also applied \name on Structure2Vec (\textsc{S2V}). 
+We ran experiments using \textsc{S2V} with three layer architecture, as reported in \cite{dai2016discriminative}.
+In the first variant, one \name layer is applied after the first layer of \textsc{S2V}, and two more \textsc{S2V} layers are stacked on top of the output of \name. The second variant applies one \name layer after the first and second layer of \textsc{S2V} respectively. 
+In both variants, \textsc{S2V} model is used to compute the embedding matrix, while \textsc{GraphSage} model is used to compute the assignment matrix.
+
+
+\begin{table*}[htbp]\centering		
+\caption{Accuracy results of applying \name to \textsc{S2V}.}
+\label{tab:results2}
+\resizebox{.6\textwidth}{!}{ \renewcommand{\arraystretch}{1.1}
+\begin{tabular}{@{}clccc@{}}\cmidrule[\heavyrulewidth]{2-5}
+& \multirow{3}{*}{\vspace*{8pt}\textbf{Data Set}}&\multicolumn{3}{c}{\textbf{Method}}\\\cmidrule{3-5}
+& & {\textsc{S2V}} & {\textsc{S2V with 1 DiffPool}} & {\textsc{S2V with 2 DiffPool}}
+\\ \cmidrule{2-5}
+& \textsc{Enzymes}  & 	61.10 &64.18   & \textbf{65.27}  \\ 
+& \textsc{D\&D} & 78.92 & 80.75 &   \textbf{82.04}  \\     
+\cmidrule[\heavyrulewidth]{2-5}
+\end{tabular}}
+\end{table*}
+
+The results in terms of classification accuracy are summarized in Table \ref{tab:results2}.
+We observe that \name significantly improves the performance of S2V on both \textsc{Enzymes} and \textsc{D\&D} data sets. Similar performance trends are also observed on other data sets.
+The results demonstrate that \name is a general strategy to pool over hierarchical structure that can benefit different GNN architectures.
+
+\xhdr{Running time} Although applying \name requires additional computation of an assignment matrix, we observed that \name did not incur substantial additional running time in practice.
+This is because each \name layer reduces the size of graphs by extracting a coarser representation of the graph, which speeds up the graph convolution operation in the next layer.
+Concretely, we found that \textsc{GraphSage} with \name\ was 12$\times$ faster than the $\textsc{GraphSage}$ model with $\textsc{Set2Set}$ pooling, while still achieving significantly higher accuracy on all benchmarks. 
+In addition, \name is more efficient in both training and inference time compared to pooling using graph coarsening algorithms. \name layers are trained end-to-end and coarsens the graph directly using matrix multiplication operation in GPUs, while one needs to run a separate optimization procedure in order to pool using graph coarsening algorithms. 
+
+\subsection{Analysis of Cluster Assignment in \name}
+\label{sec:assignment_vis}
+
+\xhdr{Hierarchical cluster structure}
+To address {\bf Q3}, we investigated the extent to which \name learns meaningful node clusters by visualizing the cluster assignments in different layers. Figure \ref{fig:assignment_vis} shows such a visualization of node assignments in the first and second layers on a graph from \textsc{Collab} data set, where node color indicates its cluster membership. Node cluster membership is determined by taking the $\argmax$ of its cluster assignment probabilities. We observe that even when learning cluster assignment based solely on the graph classification objective (i.e., without the auxiliary link prediction objective), \name can still capture the hierarchical community structure.
+
+\xhdr{Dense vs. sparse subgraph structure}
+In addition, we observe that \name learns to collapse nodes into soft clusters in a non-uniform way, with a tendency to collapse densely-connected subgraphs into clusters. 
+%In terms of GNN computation, collapsing dense subgraphs in this way is intuitively an optimal pooling strategy.
+Since GNNs can efficiently perform message-passing on dense, clique-like subgraphs (due to their small diameters) \cite{liao2018graph}, pooling together nodes in such a dense subgraph is not likely to lead to any loss of structural information. 
+This intuitively explains why collapsing dense subgraphs is a useful pooling strategy for \name. 
+In contrast, sparse subgraphs may contain many interesting structures, including path-, cycle- and tree-like structures, and given the high-diameter induced by sparsity, GNN message-passing may fail to capture these structures. 
+Thus, by separately pooling distinct parts of a sparse subgraph, \name can learn to capture the meaningful structures present in sparse graph regions (e.g., as in Figure~\ref{fig:assignment_vis}). 
+
+
+
+\begin{figure*}[t!]
+    \centering
+    \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \includegraphics[width=1\textwidth]{figs/diffpool_vis.pdf}
+        \caption{}
+    \end{subfigure}
+    ~
+    \begin{subfigure}[b]{0.25\textwidth}
+        \centering
+        \includegraphics[height=1in]{figs/vis_1_ell.png}
+                \caption{}
+    \end{subfigure}%
+    ~ 
+    \begin{subfigure}[b]{0.25\textwidth}
+        \centering
+        \includegraphics[height=1in]{figs/vis_2_ell.png}
+        \caption{}
+    \end{subfigure}
+    \caption{Visualization of hierarchical cluster assignment in \name, using example graphs from \textsc{Collab}.
+      The left figure (a) shows hierarchical clustering over two layers, where nodes in the second layer correspond to clusters in the first layer. (Colors are used to connect the nodes/clusters across the layers, and dotted lines are used to indicate clusters.)
+      The right two plots (b and c) show two more examples first-layer clusters in different graphs. 
+      Note that although we globally set the number of clusters to be $25\%$ of the nodes, the assignment GNN automatically learns the appropriate number of meaningful clusters to assign for these different graphs.}
+        \label{fig:assignment_vis}
+\end{figure*}
+
+In addition, although we globally set the number of clusters to be $25\%$ of the nodes, the assignment network automatically learns the appropriate number of meaningful clusters to assign for different graphs in the dataset, in order to optimize the classification objective.
+Dense regions of graphs are pooled into a single cluster, whereas nodes sparse subgraphs are assigned into separate clusters according to their proximity to each other.
+Furthermore, a node that serve as bridges of multiple communities are assigned to multiple clusters, with weights indicating the strength of its connection to each cluster.

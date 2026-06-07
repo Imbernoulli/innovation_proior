@@ -1,0 +1,26 @@
+
+\section{Background}
+\label{sec:background}
+
+
+
+The problem of open-domain QA studied in this paper can be described as follows.  Given a factoid question, such as
+``\emph{Who first voiced Meg on Family Guy?}" or ``\emph{Where was the 8th Dalai Lama born?}", a system is required
+to answer it using a large corpus of diversified topics.
+More specifically, we assume the extractive QA setting, in which the answer is restricted to a span appearing in one or more passages in the corpus.
+Assume that our collection contains $D$ documents, $d_1, d_2, \cdots, d_D$.
+We first split each of the documents into text passages of equal lengths as the basic retrieval units\footnote{The ideal size and boundary of a text passage are functions of both the retriever and reader. We also experimented with natural paragraphs in our preliminary trials and found that using fixed-length passages performs better in both retrieval and final QA accuracy, as observed by~\citet{wang2019multi}.}
+and get $M$ total passages in our corpus $\mathcal{C} = \{p_1, p_2, \ldots, p_{M}\}$, where
+each passage $p_i$ can be viewed as a sequence of tokens $w^{(i)}_1, w^{(i)}_2, \cdots, w^{(i)}_{|p_i|}$.
+Given a question $q$, the task is to find a span $w^{(i)}_s, w^{(i)}_{s+1}, \cdots, w^{(i)}_{e}$
+from one of the passages $p_i$ that can answer the question.
+Notice that %
+to cover a wide variety of domains, the corpus size %
+can easily range from millions of documents (e.g., Wikipedia) to billions (e.g., the Web).
+As a result, any open-domain QA system needs to include an efficient \emph{retriever} component that
+can select a small set of relevant texts, before applying the reader to extract the answer~\cite{chen2017reading}.\footnote{Exceptions include~\cite{seo2019real} and~\cite{roberts2020much}, which \emph{retrieves} and \emph{generates} the answers, respectively.}
+Formally speaking, a retriever $R:(q,\mathcal{C}) \rightarrow \mathcal{C_F}$ is a function that takes as input a question $q$ and a corpus $\mathcal{C}$ and returns
+a much smaller \emph{filter set} of texts $\mathcal{C_F} \subset \mathcal{C}$, where $|\mathcal{C_F}| = k \ll |\mathcal{C}|$.  For a fixed $k$, a \emph{retriever} can be evaluated in isolation on \emph{top-k retrieval accuracy}, which is the fraction of questions for which $\mathcal{C_F}$ contains a span that answers the question.
+
+
+

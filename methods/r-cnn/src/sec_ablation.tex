@@ -1,0 +1,96 @@
+\subsection{Ablation studies}
+\seclabel{ablation}
+% from scratch/parameter_count.m:
+%   pct of parameters in layers 1-5: 0.06 (3,745,824)
+%   pct of parameters in layer 6:    0.65 (37,748,736)
+%   pct of parameters in layer 7:    0.29 (16,777,216)
+\paragraph{Performance layer-by-layer, without fine-tuning.}
+To understand which layers are critical for detection performance, we analyzed results on the VOC 2007 dataset for each of the CNN's last three layers.
+Layer \pool{5} was briefly described in \secref{vis}.
+The final two layers are summarized below.
+
+Layer \fc{6} is fully connected to \pool{5}. To compute features,
+it multiplies a $4096 \times 9216$ weight matrix by the \pool{5} feature map 
+(reshaped as a 9216-dimensional vector) and then adds a vector of
+biases. 
+This intermediate vector is component-wise half-wave rectified ($x \leftarrow \max(0, x)$).
+
+Layer \fc{7} is the final layer of the network. It is implemented
+by multiplying the features computed by \fc{6} by a $4096 \times 4096$
+weight matrix, and similarly adding a vector of biases and 
+applying half-wave rectification.
+
+We start by looking at results from the CNN \emph{without fine-tuning} on PASCAL, \ie all CNN parameters were pre-trained on ILSVRC 2012 only.
+Analyzing performance layer-by-layer (\tableref{voc2007} rows 1-3) reveals that
+features from \fc{7} generalize worse than 
+features from \fc{6}. This means that 29\%, or about 16.8 million,
+of the CNN's parameters can be removed without degrading mAP. 
+More surprising is that removing \emph{both} \fc{7} and
+\fc{6} produces quite good results even though \pool{5}
+features are computed using \emph{only 6\%}
+of the CNN's parameters. Much of the
+CNN's representational power comes from its convolutional layers,
+rather than from the much larger densely connected layers. This finding
+suggests potential utility in computing a dense feature map,
+in the sense of HOG, of an arbitrary-sized image by using only the convolutional layers
+of the CNN. This representation would enable experimentation with sliding-window detectors,
+including DPM, on top of \pool{5} features.
+
+%\paragraph{Color.}
+%To understand how much our system benefits from color (compared to HOG-based
+%approaches, which largely ignore it) we tested our pre-trained CNN in a grayscale world.
+%Training SVMs on \fc{6} features from grayscale versions of PASCAL images, and 
+%testing on grayscale images decreased mAP on VOC 2007 test from 43.4\% to 40.1\%. 
+
+\paragraph{Performance layer-by-layer, with fine-tuning.}
+
+We now look at results from our CNN after having fine-tuned its parameters on VOC 2007 trainval.
+The improvement is striking (\tableref{voc2007} rows 4-6):
+fine-tuning increases mAP by 8.0 percentage points to 54.2\%. 
+The boost from fine-tuning is much larger for \fc{6} and \fc{7} than for \pool{5},
+which suggests that the \pool{5} features learned from ImageNet are general and that most of the improvement is gained from learning domain-specific non-linear classifiers on top of them.
+
+\paragraph{Comparison to recent feature learning methods.}
+Relatively few feature learning methods have been tried on PASCAL VOC detection.
+We look at two recent approaches that build on deformable part models. For reference, we also include results for the standard HOG-based DPM \cite{release5}.
+
+The first DPM feature learning method, DPM ST \cite{lim2013sketch},
+augments HOG features with histograms of ``sketch
+token'' probabilities. Intuitively, a sketch token is
+a tight distribution of contours passing through the center of
+an image patch.
+Sketch token probabilities are computed at
+each pixel by a random forest that was trained to classify
+$35 \times 35$ pixel patches into one of 150 sketch tokens or background.
+
+The second method, DPM HSC \cite{HSC}, replaces HOG with histograms of sparse codes (HSC). To compute an HSC, sparse code
+activations are solved for at each pixel using a learned dictionary
+of 100 $7 \times 7$ pixel (grayscale) atoms. The resulting activations are 
+rectified in three ways (full and both half-waves), spatially pooled,
+unit $\ell_2$ normalized,
+and then power transformed ($x \leftarrow \textrm{sign}(x)|x|^\alpha$).
+
+All R-CNN variants strongly outperform the three DPM baselines (\tableref{voc2007} rows 8-10), including
+the two that use feature learning. Compared to the latest version of
+DPM, which uses only HOG features, our mAP is more than 20 percentage points higher: 54.2\% \vs 33.7\%---\emph{a 61\% relative improvement}.
+The combination of HOG and sketch tokens 
+yields 2.5 mAP points over HOG alone, while HSC improves over HOG
+by 4 mAP points (when compared internally
+to their private DPM baselines---both use non-public implementations of DPM
+that underperform the open source version \cite{release5}). These methods achieve mAPs of 29.1\% and 34.3\%, respectively.
+
+\subsection{Network architectures}
+\seclabel{netarch}
+Most results in this paper use the network architecture from Krizhevsky \etal \cite{krizhevsky2012imagenet}.
+However, we have found that the choice of architecture has a large effect on R-CNN detection performance.
+In \tableref{voc2007oxfordnet} we show results on VOC 2007 test using the 16-layer deep network recently proposed by Simonyan and Zisserman \cite{vggverydeep}.
+This network was one of the top performers in the recent ILSVRC 2014 classification challenge.
+The network has a homogeneous structure consisting of 13 layers of $3 \times 3$ convolution kernels,
+with five max pooling layers interspersed, and topped with three fully-connected layers.
+We refer to this network as ``O-Net'' for OxfordNet and the baseline as ``T-Net'' for TorontoNet.
+
+To use O-Net in R-CNN, we downloaded the publicly available pre-trained network weights for the \texttt{VGG\_ILSVRC\_16\_layers} model from the Caffe Model Zoo.\footnote{\url{https://github.com/BVLC/caffe/wiki/Model-Zoo}}
+We then fine-tuned the network using the same protocol as we used for T-Net.
+The only difference was to use smaller minibatches (24 examples) as required in order to fit within GPU memory.
+The results in \tableref{voc2007oxfordnet} show that R-CNN with O-Net substantially outperforms R-CNN with T-Net, increasing mAP from 58.5\% to 66.0\%.
+However there is a considerable drawback in terms of compute time, with the forward pass of O-Net taking roughly 7 times longer than T-Net.

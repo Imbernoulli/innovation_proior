@@ -1,0 +1,71 @@
+\section{Introduction}
+
+Transfer from pre-trained models yields strong performance on many NLP tasks~\citep{dai2015,howard2018universal,radford2018improving}.
+BERT, a Transformer network trained on large text corpora with an
+unsupervised loss, attained state-of-the-art performance on text classification
+and extractive question answering~\citep{devlin2018bert}.
+
+In this paper we address the online setting, where tasks arrive in a stream.
+The goal is to build a system that performs well on all of them, but without training an entire new model for every new task.
+A high degree of sharing between tasks is particularly useful for applications such as cloud services,
+where models need to be trained to solve many tasks that arrive from customers in sequence.
+For this, we propose a transfer learning strategy that yields \emph{compact} and \emph{extensible} downstream models.
+Compact models are those that solve many tasks using a small number of additional parameters per task.
+Extensible models can be trained incrementally to solve new tasks, without forgetting previous ones.
+Our method yields a such models without sacrificing performance.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/glue_results.pdf}
+\caption{
+Trade-off between accuracy and number of trained task-specific parameters, for adapter tuning and fine-tuning.
+The \emph{y}-axis is normalized by the performance of full fine-tuning, details in Section~\ref{sec:experiments}.
+The curves show the $20$th, $50$th, and $80$th performance percentiles across nine tasks from the GLUE benchmark.
+Adapter-based tuning attains a similar performance to full fine-tuning with two orders of magnitude fewer trained parameters.}
+\label{fig:glue_summary_results}
+\end{figure}
+
+The two most common transfer learning techniques in NLP are feature-based transfer and fine-tuning.
+Instead, we present an alternative transfer method based on adapter modules~\citep{rebuffi2017}.
+Features-based transfer involves pre-training real-valued embeddings vectors.
+These embeddings may be at the word~\citep{mikolov2013}, sentence~\citep{cer2019}, or paragraph level~\citep{le2014}.
+The embeddings are then fed to custom downstream models.
+Fine-tuning involves copying the weights from a pre-trained network and tuning them on the downstream task.
+Recent work shows that fine-tuning often enjoys better performance than feature-based transfer~\citep{howard2018universal}.
+
+Both feature-based transfer and fine-tuning require a new set of weights for each task.
+Fine-tuning is more parameter efficient if the lower layers of a network are shared between tasks.
+However, our proposed adapter tuning method is even more parameter efficient.
+Figure~\ref{fig:glue_summary_results} demonstrates this trade-off.
+The \emph{x}-axis shows the number of parameters trained per task;
+this corresponds to the marginal increase in the model size required to solve each additional task.
+Adapter-based tuning requires training two orders of magnitude fewer parameters to fine-tuning, while attaining similar performance.
+
+Adapters are new modules added between layers of a pre-trained network.
+Adapter-based tuning differs from feature-based transfer and fine-tuning in the following way.
+Consider a function (neural network) with parameters $\bm w$: $\phi_{\bm w}(\bm x)$.
+Feature-based transfer composes $\phi_{\bm w}$ with a new function, $\chi_{\bm v}$, to yield $\chi_{\bm v}(\phi_{\bm w}(\bm x))$.
+Only the new, task-specific, parameters, $\bm v$, are then trained.
+Fine-tuning involves adjusting the original parameters, $\bm w$, for each new task, limiting compactness.
+For adapter tuning, a new function, $\psi_{\bm w, \bm v}(\bm x)$, is defined, where parameters $\bm w$ are copied over from pre-training.
+The initial parameters $\bm v_0$ are set such that the new function resembles the original: $\psi_{\bm w, \bm v_0}(\bm x) \approx \phi_{\bm w}(\bm x)$.
+During training, only $\bm v$ are tuned.
+For deep networks, defining $\psi_{\bm w, \bm v}$ typically involves adding new layers to the original network, $\phi_{\bm w}$.
+If one chooses $|\bm v|\ll|\bm w|$, the resulting model requires $\sim|\bm w|$ parameters for many tasks.
+Since $\bm w$ is fixed, the model can be extended to new tasks without affecting previous ones.
+
+Adapter-based tuning relates to \emph{multi-task} and \emph{continual} learning.
+Multi-task learning also results in compact models.
+However, multi-task learning requires simultaneous access to all tasks, which adapter-based tuning does not require.
+Continual learning systems aim to learn from an endless stream of tasks.
+This paradigm is challenging because networks forget previous tasks after re-training~\citep{mccloskey1989catastrophic,french1999catastrophic}.
+Adapters differ in that the tasks do not interact and the shared parameters are frozen.
+This means that the model has perfect memory of previous tasks using a small number of task-specific parameters.
+
+We demonstrate on a large and diverse set of text classification tasks that adapters yield parameter-efficient tuning for NLP.
+The key innovation is to design an effective adapter module and its integration with the base model.
+We propose a simple yet effective, bottleneck architecture.
+On the GLUE benchmark, our strategy almost matches the performance of the fully fine-tuned BERT,
+but uses only 3\% task-specific parameters, while fine-tuning uses 100\% task-specific parameters.
+We observe similar results on a further $17$ public text datasets, and SQuAD extractive question answering.
+In summary, adapter-based tuning yields a single, extensible, model that attains near state-of-the-art performance in text classification.

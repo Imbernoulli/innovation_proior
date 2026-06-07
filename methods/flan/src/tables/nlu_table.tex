@@ -1,0 +1,84 @@
+\begingroup
+\setlength{\tabcolsep}{0.8pt}
+\newcommand{\centerme}[1]{\multicolumn{1}{c}{#1}}
+\newcommand{\centermewithrightbar}[1]{\multicolumn{1}{c|}{#1}}
+\begin{table}[t]
+    \centering
+    \small
+    \begin{tabular}{l cc ll cl cl lc lcl r}
+    \toprule
+     & & & & & & & & & \multicolumn{6}{c}{FLAN 137B} \\
+     \cmidrule(lr){10-15}
+     & & & \multicolumn{2}{c}{GLaM} & \multicolumn{2}{c}{\baselm{}} & \multicolumn{2}{c}{GPT-3 175B} & \multicolumn{2}{c}{zero-shot} & \multicolumn{3}{c}{few-shot} \\
+     \cmidrule(lr){4-5} \cmidrule(lr){6-7} \cmidrule(lr){8-9} \cmidrule(lr){10-11} \cmidrule(lr){12-14}
+     & \makecell[c]{\scriptsize Random\vspace{-0.6mm}\\ \scriptsize Guess} & \makecell[c]{\scriptsize Supervised\vspace{-0.6mm}\\\scriptsize Model} & \makecell[c]{zero-\vspace{-0.6mm}\\ shot} & \makecell[c]{one-\vspace{-0.6mm}\\ shot} & \makecell[c]{zero-\vspace{-0.6mm}\\ shot} & \makecell[c]{few-\vspace{-0.6mm}\\ shot {\tiny [$k$]}} & \makecell[c]{zero-\vspace{-0.6mm}\\ shot} & \makecell[c]{few-\vspace{-0.6mm}\\ shot {\tiny [$k$]}} & \makecell[c]{\scriptsize average \vspace{-0.6mm}\\ \scriptsize template}  & \makecell[c]{\scriptsize best dev \vspace{-0.6mm}\\ \scriptsize template} &  \makecell[c]{\scriptsize average \vspace{-0.6mm}\\ \scriptsize template}  & \makecell[c]{\scriptsize best dev \vspace{-0.6mm}\\ \scriptsize template} & {\tiny [$k$]} & {\scriptsize \#$t$} \\
+    \midrule
+    \tasktype{NLI} \\
+    ANLI R1 & 33.3 & \bertlargeval{57.4} & 40.9 & 42.4       \baselmvala{39.6}{39.0}{5} \gptvala{34.6}{36.8}{[50]} \flanvala{47.7}{1.4}{46.4} \flanvala{44.2}{2.3}{47.9} & \fewk{6} & \tiny{8} \\
+    ANLI R2 & 33.3 & \bertlargeval{48.3} & 38.2 & 40.0       \baselmvala{39.9}{37.5}{5} \gptvala{35.4}{34.0}{[50]} \flanvala{43.9}{1.3}{44.0} \flanvala{41.6}{1.4}{41.1} & \fewk{6} & \tiny{8} \\
+    ANLI R3 & 33.3 & \bertlargeval{43.5} & 40.9 & 40.8       \baselmvala{39.3}{40.7}{5} \gptvala{34.5}{40.2}{[50]} \flanvala{47.0}{1.3}{48.5} \flanvala{42.8}{2.2}{46.8} & \fewk{6} & \tiny{8} \\
+    CB & 33.3 & \tfiveval{93.6} & 33.9 & 73.2                 \baselmvala{42.9}{34.4}{5} \gptvala{46.4}{82.1}{[32]} \flanvala{64.1}{14.7}{83.9} \flanvala{82.6}{4.4}{82.1} & \fewk{7} & \tiny{10} \\
+    MNLI-m & 33.3 & \tfiveval{92.2} & \na & \na             \baselmvala{35.7}{43.7}{5} \gptvala{\na}{\na}{} \flanvala{51.1}{6.2}{61.2} \flanvala{60.8}{3.7}{63.5} & \fewk{10} & \tiny{10} \\
+    MNLI-mm & 33.3 & \tfiveval{91.9} & \na & \na           \baselmvala{37.0}{43.8}{5} \gptvala{\na}{\na}{} \flanvala{51.0}{6.5}{62.4} \flanvala{61.0}{3.5}{63.5} & \fewk{10} & \tiny{10} \\
+    QNLI & 50.0 & \tfiveval{96.9} & \na & \na              \baselmvala{50.6}{55.7}{5} \gptvala{\na}{\na}{} \flanvala{59.6}{4.9}{66.4} \flanvala{62.0}{1.7}{63.3} & \fewk{12} & \tiny{9} \\
+    RTE & 50.0 & \tfiveval{92.5} & 68.8 & 71.5              \baselmvala{73.3}{70.8}{5} \gptvala{63.5}{72.9}{[32]} \flanvala{78.3}{7.9}{84.1} \flanvala{79.9}{6.9}{84.5} & \fewk{8} & \tiny{10} \\
+    SNLI & 33.3 & \bertlargeval{91.3} & \na & \na          \baselmvala{33.3}{54.7}{5} \gptvala{\na}{\na}{} \flanvala{43.0}{7.4}{53.4} \flanvala{62.3}{2.4}{65.6} & \fewk{15} & \tiny{9} \\
+    WNLI & 50.0 & \tfiveval{94.5} & \na & \na              \baselmvala{56.3}{64.8}{5} \gptvala{\na}{\na}{} \flanvala{61.0}{10.6}{74.6} \flanvala{55.4}{11.0}{70.4} & \fewk{14} & \tiny{10} \\
+    \midrule
+    \tasktype{Reading Comp.} \\
+    BoolQ & 50.0 & \tfiveval{91.2} & 83.0 & 82.8             \baselmvala{81.0}{80.0}{1} \gptvala{60.5}{77.5}{[32]} \flanvala{80.2}{3.1}{82.9} \flanvala{83.6}{0.8}{84.6} & \fewk{4} & \tiny{9} \\
+    DROP & \na & \bertlargeval{80.5} & 54.9 & 55.2      \baselmvala{3.8}{10.3}{1} \gptvala{23.6$^{\dagger}$}{36.5}{[20]} \flanvala{21.9}{0.9}{22.7} \flanvala{22.3}{1.1}{23.9} & \fewk{2} & \tiny{7} \\
+    MultiRC & \na & \tfiveval{88.1} & 45.1 & 62.0        \baselmvala{60.0}{59.6}{5} \gptvala{72.9}{74.8}{[32]} \flanvala{74.5}{3.7}{77.5} \flanvala{69.2}{3.2}{72.1} & \fewk{1} & \tiny{8} \\
+    OBQA & 25.0 & \tfiveval{85.4} & 53.0 & 55.2              \baselmvala{41.8}{50.6}{10} \gptvala{57.6}{65.4}{[100]} \flanvala{77.4}{1.3}{78.4} \flanvala{77.2}{1.3}{78.2} & \fewk{16} & \tiny{7} \\
+    SQuADv1 & \na & \tfiveval{96.2} & \na & \na        \baselmvala{22.7}{50.2}{3} \gptvala{\na}{\na}{} \flanvala{79.5}{1.6}{80.1} \flanvala{82.1}{0.5}{82.7} & \fewk{4} & \tiny{8} \\
+    SQuADv2 & \na & \bertlargeval{83.4} & 68.3 & 70.0   \baselmvala{11.1}{34.9}{3} \gptvala{59.5$^{\dagger}$}{69.8}{[16]} \flanvala{40.9}{1.8}{44.2} \flanvala{40.8}{0.9}{43.1} & \fewk{3} & \tiny{10} \\
+    \midrule 
+    \tasktype{Closed-Book QA} \\
+    ARC-c & 25.0 & \tfiveval{81.1} & 48.2 & 50.3     \baselmvala{42.0}{49.4}{10} \gptvala{51.4}{51.5}{[50]} \flanvala{61.7}{1.4}{63.1} \flanvala{63.7}{0.6}{63.8} & \fewk{13} & \tiny{7} \\
+    ARC-e & 25.0 & \tfiveval{92.6} & 71.9 & 76.6           \baselmvala{76.4}{80.9}{10} \gptvala{68.8}{70.1}{[50]} \flanvala{79.5}{0.8}{79.6} \flanvala{80.5}{0.5}{80.7} & \fewk{14} & \tiny{7} \\
+    NQ & \na & \tfiveval{36.6} & 21.5 & 23.9            \baselmvala{3.2}{22.1}{5} \gptvala{14.6}{29.9}{[64]} \flanvala{18.6}{2.7}{20.7} \flanvala{27.2}{0.5}{27.6} & \fewk{16} & \tiny{10} \\
+    TQA {\tiny (wiki)} & \na & \tfiveval{60.5} & 68.8 & 71.5      \baselmvala{21.9}{63.3}{10} \gptvala{64.3}{71.2}{[64]} \flanvala{66.5}{2.6}{68.1} \flanvala{66.5}{1.0}{67.3} & \fewk{16} & \tiny{10} \\
+    TQA {\tiny (tfds-dev)} & \na & \tfiveval{51.0} & \na & \na      \baselmvala{18.4}{55.1}{10} \gptvala{\na}{\na}{\na} \flanvala{55.0}{2.3}{56.7} \flanvala{57.2}{0.6}{57.8} & \fewk{16} & \tiny{10} \\
+    \midrule 
+    \tasktype{Commonsense} \\
+    COPA & 50.0 & \tfiveval{94.8} & 90.0 & 92.0              \baselmvala{90.0}{89.0}{10} \gptvala{91.0}{92.0}{[32]} \flanvala{90.6}{2.0}{91.0} \flanvala{88.5}{3.8}{87.0} & \fewk{16} & \tiny{8} \\
+    HellaSwag & 25.0 & \bertlargeval{47.3} & 77.1 & 76.8     \baselmvala{57.0}{58.8}{10} \gptvala{78.9}{79.3}{[20]} \flanvala{56.4}{0.5}{56.7} \flanvala{59.4}{0.2}{59.2} & \fewk{3} & \tiny{8} \\
+    PIQA & 50.0 & \bertlargeval{66.8} & 80.4 & 81.4          \baselmvala{80.3$^*$}{80.2$^*$}{10} \gptvala{81.0}{82.3}{[50]} \flanvala{80.9$^*$}{0.8}{80.5$^*$} \flanvala{82.1$^*$}{0.3}{81.7$^*$} & \fewk{10} & \tiny{8} \\
+    StoryCloze & 50.0 & \bertlargeval{89.2} & 82.5 & 84.0    \baselmvala{79.5}{83.7}{10} \gptvala{83.2}{87.7}{[70]} \flanvala{92.2}{1.3}{93.4} \flanvala{93.3}{0.9}{94.7} & \fewk{10} & \tiny{8} \\
+    \midrule 
+    \tasktype{Sentiment} \\
+    IMDB & 50.0 & \bertlargeval{95.5} & \na & \na          \baselmvala{76.9}{83.3}{1} \gptvala{\na}{\na}{} \flanvala{94.1}{0.4}{94.3} \flanvala{94.8}{0.3}{95.0} & \fewk{2} & \tiny{7} \\
+    Sent140 & 50.0 & \bertlargeval{87.0} & \na & \na   \baselmvala{41.4}{63.3}{5} \gptvala{\na}{\na}{} \flanvala{69.9}{2.5}{73.5} \flanvala{68.7}{1.2}{69.3} & \fewk{16} & \tiny{6} \\
+    SST-2 & 50.0 & \tfiveval{97.5} & \na & \na              \baselmvala{51.0}{92.3}{5} \gptvala{71.6}{95.6}{[8]} \flanvala{92.6}{1.7}{94.6} \flanvala{94.4}{0.8}{94.6} & \fewk{16} & \tiny{8} \\
+    Yelp & 50.0 & \bertlargeval{98.1} & \na & \na           \baselmvala{84.7}{89.6}{3} \gptvala{\na}{\na}{} \flanvala{97.8}{0.2}{98.1} \flanvala{97.9}{0.1}{98.0} & \fewk{4} & \tiny{7} \\
+    \midrule 
+    \tasktype{Paraphrase} \\
+    MRPC & 50.0 & \tfiveval{90.4} & \na & \na               \baselmvala{53.7}{64.0}{5} \gptvala{\na}{\na}{} \flanvala{69.1}{1.3}{69.1} \flanvala{67.5}{1.7}{67.2} & \fewk{10} & \tiny{10} \\
+    QQP & 50.0 & \tfiveval{90.6} & \na & \na                \baselmvala{34.9}{58.9}{3} \gptvala{\na}{\na}{} \flanvala{72.1}{6.8}{75.9} \flanvala{73.5}{2.9}{75.9} & \fewk{16} & \tiny{7} \\
+    PAWS Wiki & 50.0 & \tfiveval{91.9} & \na & \na          \baselmvala{45.5}{53.5}{5} \gptvala{\na}{\na}{} \flanvala{61.5}{6.5}{69.4} \flanvala{66.2}{0.9}{70.2} & \fewk{10} & \tiny{10} \\
+    \midrule 
+    \tasktype{Coreference} \\
+    DPR & 50.0 & \bertlargeval{84.8} & \na & \na            \baselmvala{54.6}{57.3}{5} \gptvala{\na}{\na}{} \flanvala{60.3}{3.5}{66.8} \flanvala{62.4}{1.6}{63.3} & \fewk{16} & \tiny{10} \\
+    Winogrande & 50.0 & \bertlargeval{65.8} & 73.4 & 73.0     \baselmvala{68.3}{68.4}{10} \gptvala{70.2}{77.7}{[50]} \flanvala{67.3}{2.5}{71.2} \flanvala{72.3}{0.9}{72.8} & \fewk{16} & \tiny{10} \\
+    WSC273 & 50.0 & \bertlargeval{70.0} & 86.8 & 83.9        \baselmvala{81.0}{61.5}{5} \gptvala{88.3}{88.5}{[32]} \flanvala{80.8}{3.7}{\na} \flanvala{\na}{\na}{\na} & \fewk{\na} & \tiny{10} \\
+    \midrule 
+    \tasktype{Read. Comp. w/ Commonsense} \\
+    CosmosQA & 25.0 & \bertlargeval{67.1} & \na & \na      \baselmvala{34.1}{33.8}{5} \gptvala{\na}{\na}{} \flanvala{58.4}{1.3}{60.6} \flanvala{56.7}{1.3}{56.0} & \fewk{5} & \tiny{8} \\
+    ReCoRD & \na & \tfiveval{93.4} & 90.3 & 90.3              \baselmvala{87.8$^*$}{87.6$^*$}{1} \gptvala{90.2}{89.0}{[32]} \flanvala{67.8$^*$}{3.0}{72.5$^*$} \flanvala{77.0$^*$}{2.0}{79.0$^*$} & \fewk{1} & \tiny{10} \\
+    
+    
+    \bottomrule
+    \end{tabular}
+    \caption{
+    Results for eight NLU task clusters. 
+    All values shown are for accuracy (or exact match) except DROP, MultiRC, and SQuAD v1 and v2, which are F1.
+    \explainkt
+    $^{a}$T5-11B,
+    $^{b}$BERT-large.
+    $^*$see data contamination (\cref{sec:data_contamination}).
+    WSC273 \citep{levesque2012winograd} does not have training or validation sets, and so we do not compute few-shot results for FLAN.
+    For Trivia QA (TQA), we report exact match (EM) on both the wikipedia subset of the dev set to compare with GPT-3, as well as the full TFDS dev set.
+    }
+    \label{tab:nlu_table}
+\end{table}
+\endgroup

@@ -1,0 +1,213 @@
+\section{Object detection with R-CNN}
+\seclabel{detection}
+
+Our object detection system consists of three modules.
+The first generates category-independent region proposals. 
+These proposals define the set of candidate detections available to our detector.
+The second module is a large convolutional neural network that extracts a fixed-length feature vector from each region. 
+The third module is a set of class-specific linear SVMs.
+In this section, we present our design decisions for each module, describe their test-time usage, detail how their parameters are learned, and show detection results on PASCAL VOC 2010-12 and on ILSVRC2013.
+
+\subsection{Module design}
+
+\paragraph{Region proposals.}
+A variety of recent papers offer methods for generating category-independent 
+region proposals. Examples include: objectness \cite{objectness-pami},
+selective search \cite{UijlingsIJCV2013}, category-independent
+object proposals \cite{endres2010category}, constrained parametric min-cuts (CPMC)
+\cite{carreira2012cpmc}, multi-scale combinatorial grouping \cite{mcg2014}, and Cire{\c{s}}an \etal \cite{cirecsan2013mitosis}, who detect mitotic cells by applying a CNN to regularly-spaced square crops, which are a special case of region proposals.
+While R-CNN is agnostic to the particular region proposal method, we use selective search to enable a controlled comparison with prior detection work (\eg, \cite{UijlingsIJCV2013,regionlets}).
+
+\paragraph{Feature extraction.}
+We extract a 4096-dimensional feature vector from each region proposal using the Caffe \cite{Jia13caffe} implementation of the CNN described by Krizhevsky \etal
+\cite{krizhevsky2012imagenet}.
+Features are computed by forward propagating a mean-subtracted $227 \times 227$ 
+RGB image through five convolutional layers and two fully connected layers.
+We refer readers to \cite{Jia13caffe,krizhevsky2012imagenet} for more network architecture details.
+%Ablation studies in \secref{experiments} show how performance varies across features from each of the last three layers.
+
+In order to compute features for a region proposal, we must first 
+convert the image data in that region into a form that is compatible
+with the CNN (its architecture requires inputs of a fixed
+$227 \times 227$ pixel size). 
+Of the many possible transformations of our arbitrary-shaped regions, we opt for the simplest. 
+Regardless of the size or aspect ratio of the candidate region, we warp all pixels in a tight bounding box around it to the required size.
+%This leads to a fixed-length feature vector for each region.
+Prior to warping, we dilate the tight bounding box so that at the warped size there are exactly $p$ pixels of warped image context around the original box (we use $p = 16$).
+\figref{warped-samples} shows a random sampling of warped training regions.
+Alternatives to warping are discussed in \asecref{altwarp}.
+
+\begin{figure}[t!]
+\def \sz {-1.15em}
+\centering
+\includegraphics[height=0.8in]{figures/warped-samples/warped.pdf}
+\vspace{-1em}
+\caption{\textbf{Warped training samples} from VOC 2007 train.}
+\figlabel{warped-samples}
+\vspace{-1em}
+\end{figure}
+
+\subsection{Test-time detection}
+\seclabel{runtime}
+
+At test time, we run selective search on the test image to extract around 2000 region proposals (we use selective search's ``fast mode'' in all experiments).
+We warp each proposal and forward propagate it through the CNN in order to compute features. 
+Then, for each class, we score each extracted feature vector using the SVM trained for that class.  
+Given all scored regions in an image, we apply a greedy non-maximum suppression (for each class independently) that rejects a region if it has an intersection-over-union (IoU) overlap with a higher scoring selected region larger than a learned threshold.
+
+\paragraph{Run-time analysis.}
+Two properties make detection efficient. First,
+all CNN parameters are shared across all categories.  Second, the
+feature vectors computed by the CNN are low-dimensional when compared
+to other common approaches, such as spatial pyramids with bag-of-visual-word
+encodings. 
+The features used in the UVA detection system \cite{UijlingsIJCV2013}, for example, are two orders of magnitude larger than ours (360k \vs 4k-dimensional).
+
+The result of such sharing is that the time spent computing region
+proposals and features (13s/image on a GPU or
+53s/image on a CPU) is amortized over all classes. The only
+class-specific computations are dot products between features and
+SVM weights and non-maximum suppression. 
+In practice, all dot products for an image are batched
+into a single matrix-matrix product. The feature matrix is typically
+$2000 \times 4096$ and the SVM weight matrix is $4096 \times
+N$, where $N$ is the number of classes. 
+
+This analysis shows that R-CNN can
+scale to thousands of object classes without resorting to approximate
+techniques, such as hashing. 
+Even if there were 100k classes, the resulting
+matrix multiplication takes only 10 seconds on a modern multi-core CPU.
+This efficiency is not merely the result
+of using region proposals and shared features. The UVA system, 
+due to its high-dimensional features, would be two orders
+of magnitude slower while requiring
+134GB of memory just to store 100k linear predictors, compared
+to just 1.5GB for our lower-dimensional features.
+
+It is also interesting to contrast R-CNN with the recent work from Dean \etal
+on scalable detection using DPMs and hashing \cite{dean2013fast}. They report a mAP of around 16\% on VOC 2007 at a run-time of 5 minutes per image
+when introducing 10k distractor classes. With our approach, 10k
+detectors can run in about a minute on a CPU, and because 
+no approximations are made mAP would remain at 59\% (\secref{ablation}).
+
+
+\subsection{Training}
+\seclabel{training}
+
+\paragraph{Supervised pre-training.}
+We discriminatively pre-trained the CNN on a large auxiliary dataset (ILSVRC2012 classification) using \emph{image-level annotations} only (bounding-box labels are not available for this data).
+Pre-training was performed using the open source Caffe CNN library \cite{Jia13caffe}.
+In brief, our CNN nearly matches the performance of Krizhevsky \etal
+\cite{krizhevsky2012imagenet}, obtaining a top-1 error rate
+2.2 percentage points higher on the ILSVRC2012 classification validation
+set. This discrepancy is due to simplifications in the training process.
+
+\paragraph{Domain-specific fine-tuning.}
+To adapt our CNN to the new task (detection) and the new domain (warped proposal windows), we continue stochastic gradient descent (SGD) training of the CNN parameters using only warped region proposals.
+Aside from replacing the CNN's ImageNet-specific 1000-way classification layer with a randomly initialized ($N+1$)-way classification layer (where $N$ is the number of object classes, plus 1 for background), the CNN architecture is unchanged.
+For VOC, $N = 20$ and for ILSVRC2013, $N = 200$.
+We treat all region proposals with $\geq 0.5$ IoU overlap with a ground-truth
+box as positives for that box's class and the rest as negatives. 
+We start SGD at a learning rate of 0.001 (1/10th of the initial pre-training rate),
+which allows fine-tuning to make progress while not clobbering the initialization.
+In each SGD iteration, we uniformly sample 32 positive windows (over all classes) and 96 background windows to construct a mini-batch of size 128.
+We bias the sampling towards positive windows because they are extremely rare compared to background.
+
+\begin{table*}[t!]
+\centering
+\renewcommand{\arraystretch}{1.2}
+\renewcommand{\tabcolsep}{1.2mm}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{@{}l|r*{19}{c}|c@{}}
+\textbf{VOC 2010 test}         & aero      & bike      & bird      & boat      & bottle     & bus        & car        & cat        & chair      & cow        & table      & dog        & horse      & mbike      & person     & plant      & sheep      & sofa       & train      & tv         & mAP       \\
+\hline
+DPM v5 \cite{release5}$^\dagger$   &  49.2  &  53.8  &  13.1  &  15.3  &  35.5  &  53.4  &  49.7  &  27.0  &  17.2  &  28.8  &  14.7  &  17.8  &  46.4  &  51.2  &  47.7  &  10.8  &  34.2  &  20.7  &  43.8  &  38.3  &  33.4 \\
+UVA \cite{UijlingsIJCV2013}  &  56.2  &  42.4  &  15.3  &  12.6  &  21.8  &  49.3  &  36.8  &  46.1  &  12.9  &  32.1  &  30.0  &  36.5  &  43.5  &  52.9  &  32.9  &  15.3  &  41.1  &  31.8  &  47.0  &  44.8  &  35.1 \\
+Regionlets \cite{regionlets}  &  65.0  &  48.9  &  25.9  &  24.6  &  24.5  &  56.1  &  54.5  &  51.2  &  17.0  &  28.9  &  30.2  &  35.8  &  40.2  &  55.7  &  43.5  &  14.3  &  43.9  &  32.6  &  54.0  &  45.9  &  39.7 \\
+SegDPM \cite{fidler2013bottom}$^\dagger$  &  61.4  &  53.4  &  25.6  &  25.2  &  35.5  &  51.7  &  50.6  &  50.8  &  19.3  &  33.8  &  26.8  &  40.4  &  48.3  &  54.4  &  47.1  &  14.8  &  38.7  &  35.0  &  52.8  &  43.1  &  40.4 \\
+\hline
+R-CNN  &  67.1  &  64.1  &  46.7  &  32.0  &  30.5  &  56.4  &  57.2  &  65.9  &  27.0  &  47.3  &  40.9  &  66.6  &  57.8  &  65.9  &  53.6  &  26.7  &  56.5  &  38.1  &  52.8  &  50.2  &  50.2 \\
+R-CNN BB  &  \bf{71.8}  &  \bf{65.8}  &  \bf{53.0}  &  \bf{36.8}  &  \bf{35.9}  &  \bf{59.7}  &  \bf{60.0}  &  \bf{69.9}  &  \bf{27.9}  &  \bf{50.6}  &  \bf{41.4}  &  \bf{70.0}  &  \bf{62.0}  &  \bf{69.0}  &  \bf{58.1}  &  \bf{29.5}  &  \bf{59.4}  &  \bf{39.3}  &  \bf{61.2}  &  \bf{52.4}  &  \bf{53.7} \\
+\end{tabular}
+}
+\caption{\textbf{Detection average precision (\%) on VOC 2010 test.} R-CNN is most directly comparable to UVA and Regionlets since all methods use selective search region proposals. 
+Bounding-box regression (BB) is described in \secref{bboxreg}.
+At publication time, SegDPM was the top-performer on the PASCAL VOC leaderboard. $^\dagger$DPM and SegDPM use context rescoring not used by the other methods.}
+\tablelabel{voc2010}
+%\vspace{-1em}
+\end{table*}
+
+\paragraph{Object category classifiers.} 
+Consider training a binary classifier to detect cars.
+It's clear that an image region tightly enclosing a car should be a positive example.
+Similarly, it's clear that a background region, which has nothing to do with cars, should be a negative example.
+Less clear is how to label a region that partially overlaps a car.
+We resolve this issue with an IoU overlap threshold, below which regions are defined as negatives.
+The overlap threshold, $0.3$,  was selected by a grid search over $\{0, 0.1, \ldots, 0.5\}$ on a validation set. 
+We found that selecting this threshold carefully is important. 
+Setting it to $0.5$, as in \cite{UijlingsIJCV2013}, decreased mAP by $5$ points. Similarly, setting it to $0$ decreased mAP by $4$ points.
+Positive examples are defined simply to be the ground-truth bounding boxes for each class.
+
+Once features are extracted and training labels are applied, we optimize one linear SVM per class.
+Since the training data is too large to fit in memory, we adopt the standard hard negative mining method \cite{lsvm-pami,Sung94}. 
+Hard negative mining converges quickly and in practice mAP stops increasing after only a single pass over all images.
+
+In \asecref{posneg} we discuss why the positive and negative examples are defined differently in fine-tuning versus SVM training.
+We also discuss the trade-offs involved in training detection SVMs rather than simply using the outputs from the final softmax layer of the fine-tuned CNN.
+
+%Training is fast given precomputed feature vectors, which we  store on disk. 
+%Training time for all 20 PASCAL object detection SVMs (in 5k images) takes about 1.5 hours on a single core. 
+%Computing features takes about 5ms per region on a GPU. 
+
+\subsection{Results on PASCAL VOC 2010-12}
+Following the PASCAL VOC best practices \cite{PASCAL-IJCV}, we validated 
+all design decisions and hyperparameters on the VOC 2007 dataset (\secref{ablation}).
+For final results on the VOC 2010-12 datasets, we fine-tuned
+the CNN on VOC 2012 train and optimized our detection SVMs on VOC 2012 trainval. 
+We submitted test results to the evaluation server only once for each of the two major algorithm variants (with and without bounding-box regression).
+
+\tableref{voc2010} shows complete results on VOC 2010. 
+We compare our method against four strong baselines, including SegDPM \cite{fidler2013bottom}, which combines DPM detectors with the output of a semantic segmentation system \cite{o2p} and uses additional inter-detector context and image-classifier rescoring.
+%Such ensemble systems are difficult to outperform with relatively simple, non-ensemble approaches such as R-CNN.
+The most
+germane comparison is to the UVA system from
+Uijlings \etal \cite{UijlingsIJCV2013}, since our systems use the
+same region proposal algorithm. To classify regions, their method builds a four-level
+spatial pyramid and populates it with densely sampled SIFT,
+Extended OpponentSIFT, and RGB-SIFT descriptors, each vector quantized with 4000-word codebooks. 
+Classification is performed with a histogram intersection
+kernel SVM. Compared to their multi-feature, non-linear kernel SVM
+approach, we achieve a large improvement in mAP, from 35.1\% to
+53.7\% mAP, while also being much faster (\secref{runtime}).
+Our method achieves similar performance (53.3\% mAP) on VOC 2011/12 test.
+
+\subsection{Results on ILSVRC2013 detection}
+We ran R-CNN on the 200-class ILSVRC2013 detection dataset using the same system hyperparameters that we used for PASCAL VOC.
+We followed the same protocol of submitting test results to the ILSVRC2013 evaluation server only twice, once with and once without bounding-box regression.
+
+\figref{ilsvrc13} compares R-CNN to the entries in the ILSVRC 2013 competition and to the post-competition OverFeat result \cite{overfeat}.
+R-CNN achieves a mAP of 31.4\%, which is significantly ahead of the second-best result of 24.3\% from OverFeat.
+To give a sense of the AP distribution over classes, box plots are also presented and a table of per-class APs follows at the end of the paper in \tableref{classaps}.
+Most of the competing submissions (OverFeat, NEC-MU, UvA-Euvision, Toronto A, and UIUC-IFP) used convolutional neural networks, indicating that there is significant nuance in how CNNs can be applied to object detection, leading to greatly varying outcomes.
+%The reverse comparison (OverFeat on PASCAL) is also interesting, but is currently difficult to obtain because detection source code is not publically available for OverFeat.
+
+In \secref{ilsvrc}, we give an overview of the ILSVRC2013 detection dataset and provide details about choices that we made when running R-CNN on it.
+
+\begin{figure*}[t]
+\begin{center}
+\includegraphics[height=2.5in]{figures/ilsvrc/ilsvrc13.pdf}
+\hspace{2em}
+\includegraphics[height=2.5in]{figures/ilsvrc/ilsvrc13_boxplot.pdf}
+\end{center}
+\vspace{-0.5em}
+\caption{\textbf{(Left) Mean average precision on the ILSVRC2013 detection test set.} 
+Methods preceeded by * use outside training data (images and labels from the ILSVRC classification dataset in all cases). 
+\textbf{(Right) Box plots for the 200 average precision values per method.}
+A box plot for the post-competition OverFeat result is not shown because per-class APs are not yet available (per-class APs for R-CNN are in \tableref{classaps} and also included in the tech report source uploaded to arXiv.org; see \texttt{R-CNN-ILSVRC2013-APs.txt}).
+The red line marks the median AP, the box bottom and top are the 25th and 75th percentiles.
+The whiskers extend to the min and max AP of each method.
+Each AP is plotted as a green dot over the whiskers (best viewed digitally with zoom).
+}
+\figlabel{ilsvrc13}
+\end{figure*}

@@ -1,0 +1,475 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+
+% \begin{minipage}{0.69\textwidth}
+% % \vspace{-0.5cm}
+% \includegraphics[width=\textwidth]{fig/one_billion.pdf}
+% \vspace{-0.7cm}
+%  \captionof{figure}{Language modeling (LSTMs) on the One Billion Word.}
+%     \label{fig:1bw}
+% % \vspace{-0.4cm}
+% \end{minipage}
+% \begin{minipage}{0.3\textwidth}
+%     \centering
+%     % \begin{tabular}{c|c|c}
+%     %      Method &  Cifar10 & ImageNet\\
+%     %      \hline
+%     %      SGD   & 91.51 & 69.86 \\
+%     %      Adam   & 90.54 & 66.54 \\
+%     %      RAdam   & 91.38 & 67.62 \\
+%     % \end{tabular}
+%     \captionof{table}{Image Classification}
+%     \vspace{-0.2cm}
+%     \begin{tabular}{c|c|c}
+%         %  Method &  Cifar10 & ImageNet\\
+%         %  \hline
+%         & Method & Acc.\\
+%         \hline
+%         & & \\[-7pt]
+%       \parbox[t]{2mm}{\multirow{3}{*}{\rotatebox[origin=c]{90}{\small \;CIFAR10}}}
+%       & SGD & 91.51 \\[2pt]
+%         & Adam   & 90.54 \\[2pt]
+%         & RAdam   & 91.38 \\[2pt]
+%         \hline
+%         & & \\[-7pt]
+%         \parbox[t]{2mm}{\multirow{3}{*}{\rotatebox[origin=c]{90}{\small \;ImageNet}}}
+%         & SGD & 69.86 \\[2pt]
+%         & Adam & 66.54 \\[2pt]
+%         & RAdam & 67.62 
+%     \end{tabular}
+% % \end{table}
+% \end{minipage}
+% \vspace{-1mm}
+% \begin{figure}[h]
+% \centering
+% \vspace{-0.2cm}
+% \includegraphics[width=\textwidth]{fig/cifa_imagenet.pdf}
+% \vspace{-0.6cm}
+% \caption{Training of ResNet-18 on the ImageNet and ResNet-20 on the CIFAR10 dataset.}
+% \vspace{-0.4cm}
+%     \label{fig:cifa10}
+% \end{figure}
+
+% \begin{minipage}{0.74\textwidth}
+% % \vspace{-0.5cm}
+% \includegraphics[width=\textwidth]{fig/one_billion.pdf}
+% % \vspace{-0.3cm}
+%  \captionof{figure}{Language modeling (LSTMs) on the One Billion Word.}
+%     \label{fig:1bw}
+% % \vspace{-0.4cm}
+% \end{minipage}
+% \begin{minipage}{0.25\textwidth}
+%     % \begin{tabular}{c|c|c}
+%     %      Method &  Cifar10 & ImageNet\\
+%     %      \hline
+%     %      SGD   & 91.51 & 69.86 \\
+%     %      Adam   & 90.54 & 66.54 \\
+%     %      RAdam   & 91.38 & 67.62 \\
+%     % \end{tabular}
+%     \begin{tabular}{c|c|c}
+%         %  Method &  Cifar10 & ImageNet\\
+%         %  \hline
+%         & Method & Acc.\\
+%         \hline
+%         & & \\[-6pt]
+%       \parbox[t]{2mm}{\multirow{3}{*}{\rotatebox[origin=c]{90}{\small \;CIFAR10}}}
+%       & SGD & 91.51 \\[2pt]
+%         & Adam   & 90.54 \\[2pt]
+%         & RAdam   & 91.38 \\[2pt]
+%         \hline
+%         & & \\[-6pt]
+%         \parbox[t]{2mm}{\multirow{3}{*}{\rotatebox[origin=c]{90}{\small \;ImageNet}}}
+%         & SGD & 69.86 \\[2pt]
+%         & Adam & 66.54 \\[2pt]
+%         & RAdam & 67.62 
+%     \end{tabular}
+%     \captionof{table}{Image Classification}
+% % \end{table}
+% \end{minipage}
+
+\vspace{-0.1cm}
+\section{Experiments}
+\vspace{-0.1cm}
+
+%In this section, we conduct experiments to verify our intuition and examine RAdam, while detailed hyperparameter settings are elaborated in the Appendix.
+We evaluate RAdam on several benchmarks:
+% due to the space limitation.}: 
+One Billion Word for language modeling; Cifar10 and ImageNet for image classification; IWSLT'14 De-En/EN-DE and WMT'16 EN-De for neural machine translation.
+% ; Pong for Reinforcement Learning. 
+Following~\cite{loshchilov2017fixing}, we decouple weight decays in the vanilla Adam, Adam with warmup and RAdam 
+% employs the fixed weight decay 
+in our experiments.  Details are in Appendix~\ref{app:implement}.
+%It is worth noticing that, the vanilla Adam used in our experiments employs the fixed weight decay~\citep{loshchilov2017fixing}. 
+
+\vspace{-0.1cm}
+\subsection{Comparing to Vanilla Adam}
+\vspace{-0.1cm}
+As analyzed before, the adaptive learning rate has undesirably large variance in the early stage of training and leads to suspicious/bad local optima on NMT. 
+% One question we are interested in answering is: whether such an issue widely exits in other similar tasks and applications.
+One question we are interested in is: whether such an issue widely exits in other similar tasks and applications.
+%Here, we first verify whether such an issue widely exists by comparing the vanilla Adam with RAdam. 
+%Specifically, we conduct experiments on 
+Thus, we conduct a set of experiments with two classical tasks of NLP and CV, \ie, language modeling and image classification.
+% are used in this study.
+RAdam not only results in consistent improvements over the vanilla Adam, but also demonstrates its robustness to the change of learning rates. 
+It verifies that the variance issue exists in various machine learning applications, and has a big impact on the model behavior. 
+% Detailed comparison and analysis are described as follows. 
+
+
+% \begin{figure}[t]
+% \centering
+% \vspace{-0.2cm}
+% \includegraphics[width=\textwidth]{fig/cifa_imagenet.pdf}
+% \vspace{-0.6cm}
+% \caption{Training of ResNet-18 on the ImageNet and ResNet-20 on the CIFAR10 dataset.}
+% \vspace{-0.4cm}
+%     \label{fig:cifa10}
+% \end{figure}
+
+% \begin{wraptable}{r}{0.3\textwidth}
+%     \centering
+% \vspace{-0.3cm}
+%     \caption{Perplexity on Language Modeling}
+% \vspace{-0.2cm}
+%     \label{tab:lm_ppl}
+%     \begin{tabular}{c|c}
+%          Method &  One Billion Word\\
+%          \hline
+%          Adam   & 36.92 \\
+%          RAdam   &  35.70 \\
+%     \end{tabular}
+% \vspace{-0.5cm}
+% \end{wraptable}
+
+\noindent
+\textbf{Performance Comparison.}
+The performances on language modeling (\ie, One Billion Word~
+%\footnote{Rare words that occur less than 3 times are replaced with a special token, the resulting dictionary is shrank from 7.9M to 6.4M.}
+\citep{Chelba2013OneBW}) and image classification (\ie, CIFAR10~\citep{krizhevsky2009learning} and ImageNet~\citep{deng2009imagenet}) are 
+%summarized in Table~\ref{tab:lm_ppl} and Table~\ref{tab:image_cls}, and their learning curves are
+presented in Figure~\ref{fig:1bw}, \ref{fig:cifa10}. %and Table~\ref{tab:image_cls}.%, respectively. 
+The results show that RAdam outperforms Adam in all three datasets.
+As shown in Figure~\ref{fig:1bw}, although the rectification term makes RAdam slower than the vanilla Adam in the first few epochs, it allows RAdam to converge faster after that. %have a faster speed after that. 
+In other words, by reducing the variance of the adaptive learning rate in the early stage, it gets both faster convergence and better performance, which verifies the impact of the variance issue. 
+%At the same time, RAdam demonstrates consistent improvements over Adam on image classification. 
+We also observe that RAdam obtains consistent improvements over Adam on image classification.
+It is worth noting that, on both ImageNet and CIFAR10, although RAdam fails to outperform SGD in terms of test accuracy, it results in a better training performance (\eg, the training accuracy of SGD, Adam, and RAdam on ImageNet are $69.57$, $69.12$ and $70.30$ respectively). 
+%[Jianfeng: be careful to draw such a conclusion here. this might be a sign of overfitting, or worse generalization capability.]
+
+
+% \begin{wraptable}{r}{0.35\textwidth}
+%     \centering
+% \vspace{-0.3cm}
+%     \caption{Image Classification}
+% \vspace{-0.3cm}
+%     \label{tab:image_cls}
+%     \begin{tabular}{c|c|c}
+%         \multirow{2}{*}{Method}        & \multicolumn{2}{c}{Accuracy} \\
+%         \cline{2-3}
+%                 &  CIFAR10 & ImageNet\\
+%          \hline
+%          SGD   & 91.51 & 69.86 \\
+%          Adam   & 90.54 & 66.54 \\
+%          RAdam   & 91.38 & 67.62 
+%     \end{tabular}
+% % \vspace{-0.3cm}
+% \end{wraptable}
+
+
+% \begin{figure}[h]
+% \centering
+% \vspace{-0.2cm}
+% \includegraphics[width=0.8\textwidth]{fig/one_billion.pdf}
+% \caption{Training of LSTMs on the One Billion Word dataset.}
+%     \label{fig:1bw}
+% \end{figure}
+
+\noindent
+\textbf{Robustness to Learning Rate Change.}
+Besides performance improvements, RAdam also improves the robustness of model training. 
+%Specifically,
+We use different initial learning rates, conduct experiments with ResNet-20 on the CIFAR10 datasets, and summarize their performance in Figure~\ref{fig:cifa10_lr}. 
+For learning rates within a broad range (\ie, $\{0.1, 0.03, 0.01, 0.003\}$), RAdam achieves consistent model performances (their test accuracy curves highly overlap with each other), while Adam and SGD are shown to be more sensitive to the learning rate. 
+The observation can be interpreted that by rectifying the variance of the adaptive learning rate, RAdam improves the robustness of model training and can adapt to different learning rates of a broader range. 
+
+\begin{figure}[t]
+\centering
+\vspace{0.2cm}
+    \includegraphics[width=0.94\textwidth]{fig/cifa10_lr.pdf}
+    \vspace{-0.5cm}
+\caption{Performance of RAdam, Adam and SGD with different learning rates on CIFAR10.}
+% X-axis is the number of epochs. }
+% The upper row is the test accuracy and the lower row is the training loss. }
+% 
+% \vspace{-0.05cm}
+\label{fig:cifa10_lr}
+\end{figure}
+
+
+\begin{figure}[t]
+\vspace{-0.2cm}
+\centering
+    \includegraphics[width=\textwidth]{fig/cifa10_wu.pdf}
+\vspace{-0.7cm}
+\caption{Performance of RAdam, Adam with warmup on CIFAR10 with different learning rates.}
+% X-axis is the number of epochs. }
+% The upper row is the test accuracy and the lower row is the training loss. }
+\vspace{-0.5cm}
+\label{fig:cifa10_wu}
+\end{figure}
+
+
+\vspace{-0.1cm}
+\subsection{Comparing to Heuristic Warmup}
+\vspace{-0.1cm}
+To examine the effectiveness of RAdam, we first conduct comparisons on neural machine translation, on which the state-of-the-art employs Adam with the linear warmup.
+Specifically, we conduct experiments on three datasets, i.e., IWSLT'14 De-En, IWSLT'14 En-De, and WMT'16 En-De. 
+Due to the limited size of the IWSLT'14 dataset, we conduct experiments using 5 different random seeds and report their mean and standard derivation. 
+As discussed before, the vanilla Adam algorithm leads to suspicious/bad local optima (i.e., converges to a training perplexity around 500), and needs a learning rate warmup stage to stabilize the training. 
+
+We summarize the performance obtained with the heuristic warmup and our proposed rectification term in Table~\ref{tab:nmt} and visualize the training curve of IWSLT De-En in Figure~\ref{fig:eps2k}.
+With a consistent adaptive learning rate variance, our proposed method achieves similar performance to that of previous state-of-the-art warmup heuristics. 
+It verifies our intuition that the problematic updates of Adam are indeed caused by the undesirably large variance in the early stage. 
+
+\begin{table}[t]
+    \centering
+\vspace{-0.2cm}
+    \caption{BLEU score on Neural Machine Translation. 
+    }
+\vspace{-0.2cm}
+    \label{tab:nmt}
+    \begin{tabular}{c|c|c|c}
+         Method & IWSLT'14 DE-EN & IWSLT'14 EN-DE & WMT'16 EN-DE \\
+         \hline
+         Adam with warmup  & $34.66 \pm 0.014$ & $28.56 \pm 0.067$ & $27.03$\\
+         RAdam   & $34.76 \pm 0.003$ & $28.48 \pm 0.054$ & $27.27$\\
+    \end{tabular}
+\vspace{-0.6cm}
+\end{table}
+
+Moreover, we applied Adam with warmup on the CIFAR10 dataset. 
+Its best accuracy on the test set is $91.29$, which is similar to RAdam ($91.38$). 
+However, we found that RAdam requires less hyperparameter tuning. 
+Specifically, we visualize their learning curves in Figure~\ref{fig:cifa10_wu}.
+For some warmup steps, Adam with warmup is relatively more sensitive to the choice of the learning rate. 
+RAdam, at the same time, is not only more robust, but also can automatically control the warmup behavior (\ie, without requiring the length of warmup). 
+For example, when setting the learning rate as $0.1$, Adam with 100 steps of warmup fails to get satisfying performance and only results in an accuracy of $90.13$; RAdam successfully gets an accuracy of $91.06$, with the original setting of the moving average calculation (\ie, $\beta_1 = 0.9, \beta_2 = 0.999$). 
+We conjecture the reason is due to the fact that RAdam, which is based on a rigorous variance analysis, explicitly avoids the extreme situation where the variance is divergent, and rectifies the variance to be consistent in other situations. 
+
+\input{7approx.tex}
+
+% \section{Experiments}
+
+% To empirically evaluate our proposed rectification term, we first conduct experiments with Transformers on the neural machine translation task, on which existing practices require warmup to stabilize the training. 
+% The results demonstrate that our proposed rectification term can achieve similar performance with existing STOA warmup heuristics. 
+% Furthermore, we conduct experiments on benchmark datasets (including Cifa10, ImageNet, One-billion-word), on which the vanilla Adam is typically used without warmup. 
+% We observe consistent improvement on the generalization and stability, which verifies that the variance issue generally exists and affects various tasks or architectures. 
+% Detailed experiment setup is elaborated in the Appendix. 
+
+% \subsection{LSTM on Language Modeling}
+% We conduct experiments with LSTMs on the One Billion Word dataset~\citep{chelba2013one}. 
+% The results is summarized in Table~\ref{tab:lm_ppl}. 
+% We can find that 
+
+% \subsection{Convolutional Neural Neetwork on Cifar10 and ImageNet}
+% We conduct experiments on the CIFAR10~\citep{krizhevsky2009learning} and ImageNet (ILSVRC2012)~\citep{deng2009imagenet} datasets.
+
+
+% \begin{minipage}{0.5\textwidth}
+% \begin{table}[H]
+%     \centering
+%     \caption{Accuracy on Image Classification}
+%     \label{tab:image_cls}
+%     \begin{tabular}{c|c|c}
+%          Method &  Cifar10 & ImageNet\\
+%          \hline
+%          SGD   & 91.51 & 69.86 \\
+%          Adam   & 90.54 & 66.54 \\
+%          RAdam   & 91.05 & 67.62 \\
+         
+%     \end{tabular}
+% \end{table}
+% \end{minipage}
+% \begin{minipage}{0.5\textwidth}
+% \begin{table}[H]
+%     \centering
+%     \caption{Perplexity on Language Modeling}
+%     \label{tab:lm_ppl}
+%     \begin{tabular}{c|c}
+%          Method &  One Billion Word\\
+%          \hline
+%          Adam   & 37.89 \\
+%          RAdam   &  35.98 \\
+%     \end{tabular}
+% \end{table}
+% \end{minipage}
+
+% \begin{figure}[t]
+% \centering
+% \includegraphics[width=\textwidth]{fig/cifa_imagenet.pdf}
+% \caption{Training of ResNet-18 on the ImageNet and ResNet-20 on CIFAR10 dataset.}
+
+%     \label{fig:cifa10}
+% \end{figure}
+
+% \begin{figure}[t]
+% \centering
+%     \includegraphics[width=\textwidth]{fig/cifa10_lr.pdf}
+% \caption{Performance of CAdam, Adam and SGD with different learning rate on CIFAR10. X-axis is the number of epochs. The upper row is the test accuracy and the lower row is the training loss. }
+% \label{fig:cifa10_lr}
+% \end{figure}
+
+% \subsection{Transformer on Neural Machine Translation}
+% We conduct experiments on three datasets, i.e., IWSLT'14 De-En, IWSLT'14 En-De and WMT'16 En-De. 
+% Specifically, due to the limited size of the IWSLT'14 dataset, we conduct experiments with 5 different random seeds and report their average and standard derivation. 
+% As discussed before, the vanilla Adam algorithm leads to suspicious / bad local optimas (converges to a training perplexity around 500), and needs a learning rate warmup stage to stablize training. 
+% We summarize the performance obtained with the heuristic warmup or our proposed rectification term in Table~\ref{tab:nmt} and visualize the training curve of IWSLT De-En in Figure~\ref{fig:eps2k}.
+% With a consistent adaptive learning rate variance, our proposed method achives similar performance with previous state-of-the-art warmup heuristics. 
+% It verifies our intuition that the problematic updates of Adam is caused by the undesirably large variance in the early stage. 
+% Now, we move to other datasets to show that this issue generally affects the performance of various of tasks and neural architectures. 
+
+% \begin{table}[H]
+%     \centering
+%     \caption{BLEU score on Neural Machine Translation. Results marked with $*$ employs warmup.}
+%     \label{tab:nmt}
+%     \begin{tabular}{c|c|c|c}
+%          Method & IWSLT'14 DE-EN & IWSLT'14 EN-DE & WMT'16 EN-DE \\
+%          \hline
+%          Adam   & $34.66 \pm 0.014^*$ & $28.56 \pm 0.067^*$ & $26.93^*$\\
+%          RAdam   & $34.76 \pm 0.003$ & $28.48 \pm 0.054$ & $27.27$\\
+%     \end{tabular}
+% \end{table}
+
+
+% \input{7approx.tex}
+
+% % \section{Experiments}
+
+% % To empirically evaluate our proposed rectification term, we first conduct experiments with Transformers on the neural machine translation task, on which existing practices require warmup to stabilize the training. 
+% % The results demonstrate that our proposed rectification term can achieve similar performance with existing STOA warmup heuristics. 
+% % Furthermore, we conduct experiments on benchmark datasets (including Cifa10, ImageNet, One-billion-word), on which the vanilla Adam is typically used without warmup. 
+% % We observe consistent improvement on the generalization and stability, which verifies that the variance issue generally exists and affects various tasks or architectures. 
+% % Detailed experiment setup is elaborated in the Appendix. 
+
+% % \subsection{Transformer on Neural Machine Translation}
+% % We conduct experiments on three datasets, i.e., IWSLT'14 De-En, IWSLT'14 En-De and WMT'16 En-De. 
+% % Specifically, due to the limited size of the IWSLT'14 dataset, we conduct experiments with 5 different random seeds and report their average and standard derivation. 
+% % As discussed before, the vanilla Adam algorithm leads to suspicious / bad local optimas (converges to a training perplexity around 500), and needs a learning rate warmup stage to stablize training. 
+% % We summarize the performance obtained with the heuristic warmup or our proposed rectification term in Table~\ref{tab:nmt} and visualize the training curve of IWSLT De-En in Figure~\ref{fig:eps2k}.
+% % With a consistent adaptive learning rate variance, our proposed method achives similar performance with previous state-of-the-art warmup heuristics. 
+% % It verifies our intuition that the problematic updates of Adam is caused by the undesirably large variance in the early stage. 
+% % Now, we move to other datasets to show that this issue generally affects the performance of various of tasks and neural architectures. 
+
+% % \begin{table}[H]
+% %     \centering
+% %     \caption{BLEU score on Neural Machine Translation. Results marked with $*$ employs warmup.}
+% %     \label{tab:nmt}
+% %     \begin{tabular}{c|c|c|c}
+% %          Method & IWSLT'14 DE-EN & IWSLT'14 EN-DE & WMT'16 EN-DE \\
+% %          \hline
+% %          Adam   & $34.66 \pm 0.014^*$ & $28.56 \pm 0.067^*$ & $26.93^*$\\
+% %         %  \multirow{2}{*}{Adam}   & $34.66 \pm 0.014^*$ & $28.56 \pm 0.067^*$ & $26.93^*$\\
+% %         %  & $0.0$ & $0.0$ & $0.0$\\
+% %         %  \hline
+% %          RAdam   & $34.76 \pm 0.003$ & $28.48 \pm 0.054$ & $27.27$\\
+% %         %  CAdam-999-warmup   &  &  &  &\\
+% %     \end{tabular}
+% % \end{table}
+
+% % \subsection{LSTM on Language Modeling}
+% % We conduct experiments with LSTMs on the One Billion Word dataset~\citep{chelba2013one}. 
+% % The results is summarized in Table~\ref{tab:lm_ppl}. 
+% % We can find that 
+
+% % \subsection{Convolutional Neural Neetwork on Cifar10 and ImageNet}
+% % We conduct experiments on the CIFAR10~\citep{krizhevsky2009learning} and ImageNet (ILSVRC2012)~\citep{deng2009imagenet} datasets.
+
+
+
+
+% % \begin{minipage}{0.5\textwidth}
+% % \begin{table}[H]
+% %     \centering
+% %     \caption{Accuracy on Image Classification}
+% %     \label{tab:image_cls}
+% %     \begin{tabular}{c|c|c}
+% %          Method &  Cifar10 & ImageNet\\
+% %          \hline
+% %          SGD   & 91.51 & 69.86 \\
+% %          Adam   & 90.54 & 66.54 \\
+% %          RAdam   & 91.05 & 67.62 \\
+         
+% %     \end{tabular}
+% % \end{table}
+% % \end{minipage}
+% % \begin{minipage}{0.5\textwidth}
+% % \begin{table}[H]
+% %     \centering
+% %     \caption{Perplexity on Language Modeling}
+% %     \label{tab:lm_ppl}
+% %     \begin{tabular}{c|c}
+% %          Method &  One Billion Word\\
+% %          \hline
+% %          Adam   & 38.28 \\
+% %          RAdam   &  36.\\
+         
+% %     \end{tabular}
+% % \end{table}
+% % \end{minipage}
+% % % \xiaodl{Tab 1. BLEU?}
+
+% % \begin{figure}[t]
+% % \centering
+% % % \begin{subfigure}[b]{0.48\textwidth}
+% % %     \centering
+% % %     \includegraphics[width=\textwidth]{fig/train_loss.pdf}
+% % %     \caption{\,}
+% % % \end{subfigure}%
+% % % \begin{subfigure}[b]{0.54\textwidth}
+% % %     \centering
+% % %     \includegraphics[width=\textwidth]{fig/test_acc.pdf}
+% % %     \caption{\,}
+% % % \end{subfigure}
+% % % \caption{Training of ResNet-18 on the cifa10 dataset. (a) Training loss. (b) Test accuracy.}
+% % \centering
+% % \includegraphics[width=\textwidth]{fig/cifa_imagenet.pdf}
+% % \caption{Training of ResNet-20 on the ImageNet and CIFAR10 datasets.}
+
+% %     \label{fig:cifa10}
+% % \end{figure}
+
+% % \begin{figure}[t]
+% % \centering
+% %     \includegraphics[width=\textwidth]{fig/cifa10_lr.pdf}
+% % \caption{Performance of CAdam, Adam and SGD with different learning rate on CIFAR10. X-axis is the number of epochs. The upper row is the test accuracy and the lower row is the training loss. }
+% % \label{fig:cifa10_lr}
+% % \end{figure}
+
+% % \input{7approx.tex}
+
+% % % \begin{table}[t]
+% % % \begin{center}
+% % % \caption{Performance Comparison of Adam and RAdam. Results marked with $*$ are trained with the heuristic learning rate warmup.}
+% % % \label{tab:all}
+% % % % \scalebox{0.83}{
+% % % % \begin{tabularx}{\columnwidth}{l *{6}{Y}}
+% % % \begin{tabular}{l|c|c|c|c|c|c}
+% % % % \toprule
+% % % \hline
+% % % \multirow{2}{*}{Task} & \multicolumn{3}{|c|}{Neural Machine Translatin (BLEU)} & LM (PPL) & \multicolumn{2}{c}{Classification} \\ 
+% % % \cline{2-7}
+% % % & IWSLT DE-EN & IWSLT EN-DE & WMT EN-DE & One Billion & Cifa10 & ImageNet \\
+% % % \hline\hline
+% % % Adam  & $34.66 \pm 0.014$ & $28.56 \pm 0.067$ & $26.93$ 
+% % %       & 
+% % %       &        & \\\hline
+
+% % % RAdam  & $34.76 \pm 0.003$ & $28.48 \pm 0.054$ & $27.27$ 
+% % %       & 
+% % %       &        & \\\hline
+% % % \end{tabular}
+% % % % \end{tabularx}
+% % % % }
+% % % \end{center}
+% % % \end{table}

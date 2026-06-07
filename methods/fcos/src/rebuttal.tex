@@ -1,0 +1,108 @@
+
+\def\Ours{{FCOS}\xspace}
+\def\eg{{\it e.g.}\xspace}
+\def\ie{{\it i.e.}\xspace}
+
+
+
+
+%%%%%%%%% BODY TEXT - ENTER YOUR RESPONSE BELOW
+\section{More discussions}
+\noindent\textbf{Center-ness vs.\ IoUNet:}
+
+
+ Center-ness and IoUNet of Jiang et al.\ ``Acquisition of Localization Confidence for Accurate Object Detection''
+  shares a similar purpose (\ie, to suppress low-quality predictions) with different approaches.
+  IoUNet trains a separate network to predict the IoU score between predicted bounding-boxes and ground-truth boxes. Center-ness, as a part of our
+   detector, only has a single layer and is trained jointly with the detector, thus being much simpler. Moreover, ``center-ness'' does not take as input the predicted bounding-boxes. Instead, it directly accesses the location's ability to predict high-quality bounding-boxes.
+
+\noindent\textbf{BPR in Section 4.1 and ambiguity analysis:}
+
+%\begin{itemize}
+%    \itemsep -0.2cm
+%\item We confirm that each sample is used at most once.
+%\item
+ We do not aim to compare ``recall by specific IoU" with ``recall by pixel within box".
+ The main purpose of Table 1 is to show that the upper bound of recall of \Ours is very close to the upper bound of recall of anchor-based RetinaNet (98.4\%  vs.\ 99.23\%).
+ BPR by other IoU thresholds are listed as those
+  are used in the official code of RetinaNet. Moreover, \textit{no evidence shows that the regression targets of \Ours are difficult to learn because they are more spread-out.}  \Ours in fact yields more accurate bounding-boxes.
+%\item
+
+
+
+ During training, we deal with the ambiguity at the same FPN level by choosing the ground-truth
+  box with the minimal area. When testing, if two objects A and B with the same class have overlap,
+  no matter which one object the locations in the overlap predict, the prediction is correct and the missed one can be predicted by the locations only belonging to it. In the case that A and B do not belong to the same class,
+  a location in the overlap might predict A's class but regress B's bounding-box, which is a mistake.
+  That is why we only count the ambiguity across different classes. Moreover,
+it appears that
+  {this ambiguity does not make \Ours worse than RetinaNet in AP, as shown in Table \ref{table:ablation_study}.}
+
+%\end{itemize}
+
+
+
+
+\noindent\textbf{Additional ablation study:}
+
+\noindent
+ As shown in Table \ref{table:ablation_study}, a  vanilla
+  \Ours performs on par with RetinaNet, being of
+   simpler design and with $\sim9\times$ less network outputs. Moreover, \Ours works much better than RetinaNet with single anchor.
+   %More comparisons with single anchor (as suggested by R3) will be added.
+   As for the $2\%$ gain on $\tt test$-$\tt dev$, besides the performance gain brought by the components in Table \ref{table:ablation_study}, we conjecture that different training details (\eg, learning rate schedule) might
+% bring the remaining performance gain.
+cause slight differences in performance.
+%We have made our best to make the comparison as
+%fair as possible.
+%However, official RetinaNet codes [6] do not include the training details of the models evaluated on $\tt test$-$\tt dev$ and thus it is difficult.
+%to make an absolutely fair comparison.
+%Our released codes will include all training details of the models evaluated on \texttt{test-dev}.
+%Finally, we do not view group normalization, scalars, $P_5$ and IoU Loss as ``bells and whistles" because they can be implemented in a few lines of codes and almost cost-free when testing.
+%However, we will remove the claim to avoid the ambiguity.
+%Importantly, \textit{Table \ref{table:ablation_study} shows
+%that FCOS works well even without these small design choices.}
+
+
+\begin{table}[t!]
+\centering
+\small
+\begin{tabular}{l | c c c c | c}
+Method & $C_5/P_5$ & GN & Scalar & IoU & AP \\
+\Xhline{2\arrayrulewidth}
+RetinaNet (\#A=1) & $C_5$ & & & & 32.5 \\
+RetinaNet (\#A=9) & $C_5$ & & & & 35.7 \\
+\hline
+% \Ours w/o ctr & $C_5$ & & & & 32.6 \\
+\Ours (pure) & $C_5$ & & & & 35.7 \\
+\Ours & $P_5$ & & & & 35.8 \\
+\Ours & $P_5$ & \checkmark & & & 36.3 \\
+\Ours & $P_5$ & \checkmark & \checkmark & & 36.4 \\
+\Ours & $P_5$ & \checkmark & \checkmark & \checkmark & \textbf{36.6} \\
+\end{tabular}
+\caption{Ablation study on MS-COCO \texttt{minival}. ``\#A" is the number of anchor boxes per location in RetinaNet. ``IOU" is IOU loss. ``Scalar" denotes whether to use scalars in $\exp$. All experiments are conducted with the same settings.}
+\label{table:ablation_study}
+\end{table}
+
+\noindent\textbf{RetinaNet with Center-ness: %or scalars:
+}
+
+%\noindent
+ Center-ness cannot be directly used in RetinaNet with multiple anchor boxes per location because one location on feature maps has \textit{only one} center-ness score but different anchor boxes on the same location require different ``center-ness"
+ (note that center-ness is also used as ``soft" thresholds for positive/negative samples).
+
+  For anchor-based RetinaNet, the IoU score between anchor boxes and ground-truth boxes may serve as an alternative of ``center-ness".
+  % and we will add the experiments in the revised version, but in fact this is beyond the focus of this paper that focuses on the much simpler anchor-free setting. As for scalars, scalars only improve the performance by $0.1\%$ (Table \ref{table:ablation_study}). Moreover, RetinaNet \textit{normalizes} its regression training targets by the anchor boxes of each FPN level, which further makes scalars useless in RetinaNet.
+
+%\noindent\textbf{ \Ours at high IoU thresholds:}
+
+%\noindent Yes,
+%\Ours works well at high IoU thresholds, for example FCOS 32.9\% vs.\ RetinaNet 31.5\% in AP$_{80}$.
+%But scalar variables only help this a little. \Ours without scalar variables achieves almost the same performance (32.8\% in AP$_{80}$). IOU loss and more foreground locations used to train the regressor also help it. Analyses will be added when revising.
+
+\noindent\textbf{Positive samples overlap with RetinaNet:}
+
+%\noindent
+ We want to highlight that center-ness comes into play \textit{only} when testing. When training, all locations within ground-truth
+  boxes are marked as positive samples. As a result, \Ours can use more foreground locations to train the regressor and thus yield more accurate bounding-boxes.
+

@@ -1,0 +1,48 @@
+% !TEX root = main.tex
+
+% \cite{li2016unsupervised} uses a graph of nearest neighbors (NN) on SIFT descriptors \cite{lowe1999object}.
+
+\noindent\textbf{Unsupervised learning of features.}
+Several approaches related to our work learn deep models with no supervision.
+Coates and Ng~\cite{coates2012learning} also use $k$-means to pre-train convnets, but learn each layer sequentially
+in a bottom-up fashion, while we do it in an end-to-end fashion.
+Other clustering losses~\cite{yang2016joint,xie2016unsupervised,dosovitskiy2014discriminative,liao2016learning} 
+have been considered to jointly learn 
+convnet features and image clusters but they have never been tested on a scale to allow a thorough study on modern convnet architectures.
+Of particular interest,
+Yang~\etal~\cite{yang2016joint} iteratively learn convnet features and clusters with a recurrent framework.
+Their model offers promising performance on small datasets but may be 
+challenging to scale to the number of images required for convnets to be competitive.
+Closer to our work, Bojanowski and Joulin~\cite{bojanowski2017unsupervised} learn visual features on a large dataset with
+a loss that attempts to preserve the information flowing through the network~\cite{linsker1988towards}. 
+Their approach discriminates between images in a similar way as examplar SVM~\cite{malisiewicz2011ensemble}, while we are simply clustering them.
+\\
+
+\noindent\textbf{Self-supervised learning.}
+A popular form of unsupervised learning, called ``self-supervised learning''~\cite{de1994learning},
+uses pretext tasks to replace the labels annotated by humans by ``pseudo-labels'' directly computed from the raw input data.
+For example,
+Doersch~\etal~\cite{doersch2015unsupervised} use the prediction of the relative position of patches in an image as a pretext task,
+while Noroozi and Favaro~\cite{noroozi2016unsupervised} train a network to spatially rearrange shuffled patches.
+Another use of spatial cues is the work of Pathak~\etal~\cite{pathak2016context} where missing pixels are guessed based
+on their surrounding.
+Paulin~\etal~\cite{paulin2015local} learn patch level Convolutional Kernel Network~\cite{mairal2014convolutional} using an image retrieval setting. 
+Others leverage the temporal signal available in videos by 
+predicting the camera transformation between consecutive frames~\cite{agrawal2015learning}, exploiting the temporal coherence of tracked patches~\cite{wang2015unsupervised} or segmenting video based on motion~\cite{pathak2016learning}. 
+Appart from spatial and temporal coherence, many other signals have been explored: image colorization~\cite{zhang2016colorful,larsson2016learning}, cross-channel prediction~\cite{zhang2016split}, sound~\cite{owens2016ambient} or instance counting~\cite{noroozi2017representation}.
+More recently, several strategies for combining multiple cues have been proposed~\cite{wang2017transitive,doersch2017multi}.
+Contrary to our work, these approaches are domain dependent, requiring expert knowledge 
+to carefully design a pretext task that may lead to transferable features.
+\\
+
+\noindent\textbf{Generative models.}
+Recently, unsupervised learning has been making a lot of progress on image generation.
+Typically, a parametrized mapping is learned between a predefined random noise and the images,
+with either an autoencoder~\cite{kingma2013auto,bengio2007greedy,huang2007unsupervised,masci2011stacked,vincent2010stacked}, 
+a generative adversarial network (GAN)~\cite{goodfellow2014generative} 
+or more directly with a reconstruction loss~\cite{bojanowski2017optimizing}.
+Of particular interest, 
+the discriminator of a GAN can produce visual features, but their performance are relatively disappointing~\cite{donahue2016adversarial}. 
+Donahue~\etal~\cite{donahue2016adversarial} and Dumoulin~\etal~\cite{dumoulin2016adversarially} have shown that adding an encoder
+to a GAN produces visual features that are much more competitive.
+

@@ -1,0 +1,133 @@
+%
+
+\section{Continuous Action Control Using the MuJoCo Physics Simulator}
+\label{sec:mujoco}
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+To apply the asynchronous advantage actor-critic algorithm to the Mujoco tasks the
+necessary setup is nearly identical to that used in the discrete action domains, so
+here we enumerate only the differences required for the continuous action domains.
+The essential elements for many of the tasks (i.e. the physics models and task objectives)
+are near identical to the tasks examined in \citep{lillicrap2015continuous}.
+However, the rewards and thus performance are not comparable for most of the tasks due to
+changes made by the developers of Mujoco which altered the contact model.
+
+%
+For all the domains we attempted to learn the task using the physical state as input.
+The physical state consisted of the joint positions and velocities as well
+as the target position if the task required a target.
+In addition, for three of the tasks (pendulum, pointmass2D, and gripper) we also examined
+training directly from RGB pixel inputs.
+In the low dimensional physical state case, the inputs are mapped to a hidden state using one hidden layer with 200 ReLU units.
+In the cases where we used pixels, the input was passed through two layers of spatial convolutions without any non-linearity or pooling.
+In either case, the output of the encoder layers were fed to a single layer of 128 LSTM cells.
+The most important difference in the architecture is in the the output layer of the policy
+network. Unlike the discrete action domain where the action output is a Softmax, here the two outputs
+of the policy network are two real number vectors which we treat
+as the mean vector $\mu$ and scalar variance $\sigma^2$ of a multidimensional normal distribution
+with a spherical covariance.
+To act, the input is passed through the model to the output layer where we sample from the
+normal distribution determined by $\mu$ and $\sigma^2$.
+In practice, $\mu$ is modeled by a linear layer and $\sigma^2$ by a SoftPlus operation, $\log (1 + \exp (x))$,
+as the activation computed as a function of the output of a linear layer.
+In our experiments with continuous control problems the networks for policy network
+and value network do not share any parameters, though this detail is unlikely to be crucial.
+Finally, since the episodes were typically at most several hundred time steps long, we
+did not use any bootstrapping in the policy or value function updates and batched each episode
+into a single update.
+
+As in the discrete action case, we included an entropy cost which encouraged exploration.
+In the continuous case the we used a cost on the differential entropy of the normal distribution defined by
+the output of the actor network, $-\frac{1}{2}(\log(2\pi\sigma^2)+1)$, we used a constant multiplier of $10^{-4}$ for this cost across all of the tasks
+examined.
+%
+The asynchronous advantage actor-critic algorithm finds solutions for all the domains.  Figure \ref{fig-mujoco-wallclock}
+shows learning curves against wall-clock time, and demonstrates that most of the domains from
+states can be solved within a few hours. All of the experiments, including those done
+from pixel based observations, were run on CPU.  Even in the case of solving the domains
+directly from pixel inputs we found that it was possible to reliably discover solutions
+within 24 hours.
+Figure \ref{fig-mujoco-lr} shows scatter plots of the top scores against the sampled learning rates.
+In most of the domains there is large range of learning rates that consistently achieve good performance
+on the task.
+
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%

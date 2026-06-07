@@ -1,0 +1,2477 @@
+%
+\providecommand{\impath}[1]{}
+\providecommand{\impatha}[1]{}
+\providecommand{\impathb}[1]{}
+\providecommand{\impathc}[1]{}
+\providecommand{\impathd}[1]{}
+\providecommand{\impathe}[1]{}
+\providecommand{\imwidth}{}
+\providecommand{\imwidtha}{}
+\providecommand{\imwidthb}{}
+\providecommand{\smallimwidtha}{}
+\providecommand{\smallimwidthb}{}
+\providecommand{\subimwidtha}{}
+\providecommand{\subimwidthb}{}
+
+
+\newcommand{\cinneighbors}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/nn/##1} 
+\begin{adjustbox}{max width=0.825\linewidth, max height=0.725\textheight}
+\begin{tabular}{c c}
+\toprule
+\multirow{4}{*}{\rotatebox[origin=c]{90}{$k=250$, $p=1.0$, $a=1.0$}} 
+ & \includegraphics[width=0.8\textwidth, align=c]{\impath{topk250_9}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{topk250_90}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{topk250_200}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{topk250_985}} \\
+\midrule
+
+\multirow{4}{*}{\rotatebox[origin=c]{90}{$k=973$, $p=0.88$, $a=1.0$}} 
+ & \includegraphics[width=0.8\textwidth]{\impath{topp088_9}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{topp088_90}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{topp088_200}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{topp088_985}} \\
+\midrule 
+ 
+\multirow{4}{*}{\rotatebox[origin=c]{90}{mixed $k$, $p=1.0$, $a=0.05$}} 
+ & \includegraphics[width=0.8\textwidth]{\impath{a_01_9}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{a_01_90}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{a_01_200}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{a_01_985}} \\
+\midrule
+
+\multirow{4}{*}{\rotatebox[origin=c]{90}{mixed $k$, $p=1.0$, $a=0.005$}} 
+ & \includegraphics[width=0.8\textwidth]{\impath{a_10_9}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{a_10_90}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{a_10_200}} \\
+ & \includegraphics[width=0.8\textwidth]{\impath{a_10_985}} \\
+\bottomrule
+
+\end{tabular}
+\end{adjustbox}
+\caption{\label{fig:cinneighbors} Nearest neighbors for our class-conditional ImageNet model ($256 \times 256$ pix), based on the LPIPS \cite{zhang2018unreasonable} distance. The left column shows a sample from our model, while the 
+10 examples to the right show the nearest neighbors from the corresponding class (increasing distance) in the training dataset. Our model produces new, unseen high-quality images, not present in the training data.}
+\end{figure*}
+}
+
+
+\newcommand{\cinbatchone}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/batches/##1} 
+\begin{adjustbox}{max width=\linewidth, max height=\textheight}
+\includegraphics[width=\textwidth]{\impath{topk_250_a1_0}}
+\end{adjustbox}
+\caption{\label{fig:cinbatchone} Random samples on $256 \times 256$ class-conditional ImageNet with $k=250$, $p=1.0$, acceptance rate 1.0. FID: 15.98, IS: $78.6 \pm 1.1$. Please see \url{https://git.io/JLlvY} for an uncompressed version.}
+\end{figure*}
+}
+
+\newcommand{\cinbatchtwo}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/batches/##1} 
+\begin{adjustbox}{max width=\linewidth, max height=\textheight}
+\includegraphics[width=\textwidth]{\impath{topp_088_a1_0}}
+\end{adjustbox}
+\caption{\label{fig:cinbatchtwo} Random samples on $256 \times 256$ class-conditional ImageNet with $k=973$, $p=0.88$, acceptance rate 1.0. FID: 15.78, IS: $74.3 \pm 1.8$. Please see \url{https://git.io/JLlvY} for an uncompressed version.}
+\end{figure*}
+}
+
+
+\newcommand{\cinbatchthree}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/batches/##1} 
+\begin{adjustbox}{max width=\linewidth, max height=\textheight}
+\includegraphics[width=\textwidth]{\impath{mixed_k_a1_0}}
+\end{adjustbox}
+\caption{\label{fig:cinbatchthree} Random samples on $256 \times 256$ class-conditional ImageNet with $k \in [100, 200, 250, 300, 350, 400, 500, 600, 800, 973]$
+, $p=1.0$, acceptance rate 1.0. FID: 17.04, IS: $70.6 \pm 1.8$. Please see \url{https://git.io/JLlvY} for an uncompressed version.}
+\end{figure*}
+}
+
+
+\newcommand{\cinbatchfour}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/batches/##1} 
+\begin{adjustbox}{max width=\linewidth, max height=\textheight}
+\includegraphics[width=\textwidth]{\impath{mixed_k_a0_005}}
+\end{adjustbox}
+\caption{\label{fig:cinbatchfour} Random samples on $256 \times 256$ class-conditional ImageNet with $k \in [100, 200, 250, 300, 350, 400, 500, 600, 800, 973]$
+, $p=1.0$, acceptance rate 0.005. FID: 6.59, IS: $402.7 \pm 2.9$. Please see \url{https://git.io/JLlvY} for an uncompressed version.}
+\end{figure*}
+}
+
+\newcommand{\cinbatchfive}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/batches/##1} 
+\begin{adjustbox}{max width=\linewidth, max height=\textheight}
+\includegraphics[width=\textwidth]{\impath{mixed_k_a0_05}}
+\end{adjustbox}
+\caption{\label{fig:cinbatchfive} Random samples on $256 \times 256$ class-conditional ImageNet with $k \in [100, 200, 250, 300, 350, 400, 500, 600, 800, 973]$
+, $p=1.0$, acceptance rate 0.05. FID: 5.88, IS: $304.8 \pm 3.6$. Please see \url{https://git.io/JLlvY} for an uncompressed version.}
+\end{figure*}
+}
+
+\newcommand{\cinbatchsix}{
+\begin{figure*}
+\centering
+\renewcommand{\impath}[1]{img/qualitative_cin/batches/##1} 
+\begin{adjustbox}{max width=\linewidth, max height=\textheight}
+\includegraphics[width=\textwidth]{\impath{topk_600_a0_05}}
+\end{adjustbox}
+\caption{\label{fig:cinbatchsix} Random samples on $256 \times 256$ class-conditional ImageNet with $k=600$, $p=1.0$, acceptance rate 0.05. FID: 5.20, IS: $280.3 \pm 5.5$. Please see \url{https://git.io/JLlvY} for an uncompressed version.}
+\end{figure*}
+}
+
+
+\newcommand{\morecinsamples}{
+\begin{figure*}[thbp]
+	\centering
+    \renewcommand{\imwidth}{0.142\textwidth}
+    \renewcommand{\impath}[1]{img/qualitative_cin/moreours/##1} 
+    \setlength{\tabcolsep}{0pt}
+    \renewcommand{\arraystretch}{0}
+	\begin{small}
+ 	\begin{tabular}{ccccccc}
+%
+	\includegraphics[width=\imwidth]{\impath{000841}} &	        
+	\includegraphics[width=\imwidth]{\impath{000232}} &	        
+	\includegraphics[width=\imwidth]{\impath{000926}} &	        
+	\includegraphics[width=\imwidth]{\impath{000215}} &	        
+	\includegraphics[width=\imwidth]{\impath{000005}} &	        
+	\includegraphics[width=\imwidth]{\impath{000006}} &	 
+	\includegraphics[width=\imwidth]{\impath{000027}} \\
+	
+	\includegraphics[width=\imwidth]{\impath{000029}} &	        
+	\includegraphics[width=\imwidth]{\impath{000023}} &	        
+	\includegraphics[width=\imwidth]{\impath{000014}} &	        
+	\includegraphics[width=\imwidth]{\impath{000751}} &	        
+	\includegraphics[width=\imwidth]{\impath{000029_2}} &	        
+	\includegraphics[width=\imwidth]{\impath{000029_1}} &	 
+	\includegraphics[width=\imwidth]{\impath{000030}} \\
+	
+	\includegraphics[width=\imwidth]{\impath{000218}} &	        
+	\includegraphics[width=\imwidth]{\impath{000365}} &	        
+	\includegraphics[width=\imwidth]{\impath{000079}} &	        
+	\includegraphics[width=\imwidth]{\impath{000473}} &	        
+	\includegraphics[width=\imwidth]{\impath{000781}} &	        
+	\includegraphics[width=\imwidth]{\impath{000877}} &	 
+	\includegraphics[width=\imwidth]{\impath{000062}} \\
+%
+	\end{tabular}
+	\end{small}
+	\caption{\label{fig:morecinsamples} Samples from our class-conditional ImageNet model trained on $256\times256$ images.}
+\end{figure*}
+}
+
+
+\newcommand{\rejectioncin}{
+\begin{figure*}[thbp]
+	\centering
+    \renewcommand{\imwidth}{0.3\textwidth}
+    \renewcommand{\impath}[1]{img/qualitative_cin/reject/##1} 
+    \setlength{\tabcolsep}{1pt}
+    \renewcommand{\arraystretch}{1}
+	\begin{small}
+ 	\begin{tabular}{ccc} 	  	
+ 	\toprule
+ 	\multicolumn{3}{c}{933: \emph{cheeseburger}} \\
+ 	acc. rate 1.0 & acc. rate 0.5 & acc. rate 0.1 \\
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_05_933}} &	        
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_10_933}} &	        
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_50_933}} \\
+	\midrule
+ 	\multicolumn{3}{c}{992: \emph{agaric}} \\
+ 	acc. rate 1.0 & acc. rate 0.5 & acc. rate 0.1 \\
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_05_992}} &
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_10_992}} &
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_50_992}} \\
+	\midrule
+ 	\multicolumn{3}{c}{200: \emph{tibetian terrier}} \\
+ 	acc. rate 1.0 & acc. rate 0.5 & acc. rate 0.1 \\
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_05_200}} &
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_10_200}} &
+	\includegraphics[width=\imwidth]{\impath{tk_973_shrink_0_50_200}} \\
+  	\bottomrule
+	\end{tabular}
+	\end{small}
+	\caption{\label{fig:rejectioncin} Visualizing the effect of increased rejection rate (\ie lower acceptance rate) by using a ResNet-101 classifier trained on ImageNet and samples from our class-conditional ImageNet model. Higher rejection rates tend to produce images showing more central, recognizable objects compared to the unguided samples. Here, $k=973$, $p=1.0$ are fixed for all samples. Note that $k=973$ is the \emph{effective} size
+of the \emph{VQGAN}'s codebook, \ie it describes how many entries of the codebook with $\dim \mathcal{Z} = 16384$ are
+actually used.}
+\end{figure*}
+}
+
+
+\newcommand{\topkcin}{
+\begin{figure*}[thbp]
+	\centering
+    \renewcommand{\imwidth}{0.3\textwidth}
+    \renewcommand{\impath}[1]{img/qualitative_cin/topk/##1} 
+    \setlength{\tabcolsep}{1pt}
+    \renewcommand{\arraystretch}{1}
+	\begin{small}
+ 	\begin{tabular}{ccc} 	  	
+ 	\toprule
+ 	\multicolumn{3}{c}{933: \emph{cheeseburger}} \\
+ 	$k=973$ & $k=300$ & $k=100$ \\
+	\includegraphics[width=\imwidth]{\impath{top_k_973_933}} &	        
+	\includegraphics[width=\imwidth]{\impath{top_k_300_933}} &	        
+	\includegraphics[width=\imwidth]{\impath{top_k_100_933}} \\
+	\midrule
+ 	\multicolumn{3}{c}{992: \emph{agaric}} \\
+ 	$k=973$ & $k=300$ & $k=100$ \\
+	\includegraphics[width=\imwidth]{\impath{top_k_973_992}} &
+	\includegraphics[width=\imwidth]{\impath{top_k_300_992}} &
+	\includegraphics[width=\imwidth]{\impath{top_k_100_992}} \\
+	\midrule
+ 	\multicolumn{3}{c}{200: \emph{tibetian terrier}} \\
+ 	$k=973$ & $k=300$ & $k=100$ \\
+	\includegraphics[width=\imwidth]{\impath{top_k_973_200}} &
+	\includegraphics[width=\imwidth]{\impath{top_k_300_200}} &
+	\includegraphics[width=\imwidth]{\impath{top_k_100_200}} \\
+  	\bottomrule
+	\end{tabular}
+	\end{small}
+	\caption{\label{fig:topkcin} 
+Visualizing the effect of varying $k$ in top-k sampling (\ie truncating the probability distribution per image token) by using a ResNet-101 classifier trained on ImageNet and samples from our class-conditional ImageNet model. Lower values of $k$ produce more uniform, low-entropic images compared to samples obtained with full $k$. Here, an acceptance rate of 1.0 and $p=1.0$ are fixed for all samples.	Note that $k=973$ is the \emph{effective} size
+of the \emph{VQGAN}'s codebook, \ie it describes how many entries of the codebook with $\dim \mathcal{Z} = 16384$ are
+actually used.}
+\end{figure*}
+}
+
+
+\newcommand{\toppcin}{
+\begin{figure*}[thbp]
+	\centering
+    \renewcommand{\imwidth}{0.3\textwidth}
+    \renewcommand{\impath}[1]{img/qualitative_cin/topp/##1} 
+    \setlength{\tabcolsep}{1pt}
+    \renewcommand{\arraystretch}{1}
+	\begin{small}
+ 	\begin{tabular}{ccc} 	  	
+ 	\toprule
+ 	\multicolumn{3}{c}{933: \emph{cheeseburger}} \\
+ 	$p=1.0$ & $p=0.96$ & $p=0.84$ \\
+	\includegraphics[width=\imwidth]{\impath{1_00_933}} &	        
+	\includegraphics[width=\imwidth]{\impath{0_96_933}} &	        
+	\includegraphics[width=\imwidth]{\impath{0_84_933}} \\
+	\midrule
+ 	\multicolumn{3}{c}{992: \emph{agaric}} \\
+ 	$p=1.0$ & $p=0.96$ & $p=0.84$ \\
+	\includegraphics[width=\imwidth]{\impath{1_00_992}} &
+	\includegraphics[width=\imwidth]{\impath{0_96_992}} &
+	\includegraphics[width=\imwidth]{\impath{0_84_992}} \\
+	\midrule
+ 	\multicolumn{3}{c}{200: \emph{tibetian terrier}} \\
+ 	$p=1.0$ & $p=0.96$ & $p=0.84$ \\
+	\includegraphics[width=\imwidth]{\impath{1_00_200}} &
+	\includegraphics[width=\imwidth]{\impath{0_96_200}} &
+	\includegraphics[width=\imwidth]{\impath{0_84_200}} \\
+  	\bottomrule
+	\end{tabular}
+	\end{small}
+	\caption{\label{fig:toppcin} Visualizing the effect of varying $p$ in top-p sampling (or \emph{nucleus sampling} \cite{DBLP:conf/iclr/HoltzmanBDFC20}) by using a ResNet-101 classifier trained on ImageNet and samples from our class-conditional ImageNet model. Lowering $p$ has similar effects as decreasing $k$, see Fig.~\ref{fig:topkcin}. Here, an acceptance rate of 1.0 and $k=973$ are fixed for all samples.}
+\end{figure*}
+}
+
+
+\newcommand{\fidandinceptionplots}{
+\begin{figure*}[btph]
+\centering
+\includegraphics[width=0.33\textwidth]{img/quantitative_cin/taming_top_k}
+\includegraphics[width=0.33\textwidth]{img/quantitative_cin/taming_top_p}
+\includegraphics[width=0.33\textwidth]{img/quantitative_cin/taming_rejection}
+\vspace{-0.5em}
+\caption{\label{fig:fidandinceptionplots} FID and Inception Score as a function of top-k, nucleus and rejection filtering. \vspace{-0.5em}}
+\end{figure*}
+}
+
+
+\newcommand{\cintopkeffect}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/qualitative_cin/ours/##1}
+  \renewcommand{\imwidth}{0.95\textwidth}
+  \setlength{\tabcolsep}{1pt}
+%
+    \begin{adjustbox}{max width=\linewidth}
+  \centering
+  \begin{tabular}{c c}
+%
+	class & random samples \\
+    \toprule
+   \makecell{299: \\ \emph{meerkat}} & \includegraphics[width=\imwidth, align=c]{\impath{meerkat}} \vspace{1em}\\	     	
+   \makecell{643: \\ \emph{mask}} & \includegraphics[width=\imwidth, align=c]{\impath{mask}} \vspace{1em}\\	     	
+   \makecell{562: \\ \emph{fountain}} & \includegraphics[width=\imwidth, align=c]{\impath{fountain}} \vspace{1em}\\	     	
+  \makecell{331: \\ \emph{hare}} & \includegraphics[width=\imwidth, align=c]{\impath{hare}} \vspace{1em}\\	         
+  \makecell{511: \\ \emph{convertible}} & \includegraphics[width=\imwidth, align=c]{\impath{convertible}} 
+  \end{tabular}    
+  \end{adjustbox}
+  \caption{On the effect of top-k tuning. For each example: $k$ per row, from top to bottom: 973, 250, 25}
+  \label{fig:cintopkeffect}
+\end{figure*}
+}
+
+
+\newcommand{\cinqualitativebirds}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/qualitative_cin/ours/##1}
+  \renewcommand{\impathb}[1]{img/qualitative_cin/vqvae2/##1}
+  \renewcommand{\impathc}[1]{img/qualitative_cin/biggan/##1}
+  \renewcommand{\impathd}[1]{img/qualitative_cin/msp/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{cccc}
+    \textbf{ours} & VQVAE-2 \cite{razavi2019generating} & BigGAN \cite{brock2018large} & MSP \cite{msp} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impatha{0011}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{011}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{011}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{011}} 	\vspace*{1em} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impatha{0022}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{022}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{022}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{022}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Qualitative assessment of various models for class-conditional image synthesis on ImageNet. Depicted classes: \textsl{11: goldfinch} (top) and \textsl{22: bald eagle} (bottom).}
+  \label{fig:cinqualbirds}
+\end{figure*}
+}
+
+
+\newcommand{\cinqualitativeone}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/qualitative_cin/ours/##1}
+  \renewcommand{\impathb}[1]{img/qualitative_cin/vqvae2/##1}
+  \renewcommand{\impathc}[1]{img/qualitative_cin/biggan/##1}
+  \renewcommand{\impathd}[1]{img/qualitative_cin/msp/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{cccc}
+    \textbf{ours} & VQVAE-2 \cite{razavi2019generating} & BigGAN \cite{brock2018large} & MSP \cite{msp} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impatha{0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{000}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{000}} 	\vspace*{1em} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impatha{0009}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{009}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{009}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{009}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Qualitative assessment of various models for class-conditional image synthesis on ImageNet. Depicted classes: \textsl{0: tench} (top) and \textsl{9: ostrich} (bottom).}
+  \label{fig:cinqualone}
+\end{figure*}
+}
+
+\newcommand{\cinqualitativetwo}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/qualitative_cin/ours/##1}
+  \renewcommand{\impathb}[1]{img/qualitative_cin/vqvae2/##1}
+  \renewcommand{\impathc}[1]{img/qualitative_cin/biggan/##1}
+  \renewcommand{\impathd}[1]{img/qualitative_cin/msp/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{cccc}
+    \textbf{ours} & VQVAE-2 \cite{razavi2019generating} & BigGAN \cite{brock2018large} & MSP \cite{msp} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impatha{0028}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{028}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{028}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{028}} 	\vspace*{1em} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impatha{0097}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{097}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{097}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{097}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Qualitative assessment of various models for class-conditional image synthesis on ImageNet. Depicted classes: \textsl{28: spotted salamander} (top) and \textsl{97: drake} (bottom). We report class labels as in VQVAE-2 \cite{razavi2019generating}.}
+  \label{fig:cinqualtwo}
+\end{figure*}
+}
+
+
+\newcommand{\cinqualitativethree}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/qualitative_cin/ours/##1}
+  \renewcommand{\impathb}[1]{img/qualitative_cin/vqvae2/##1}
+  \renewcommand{\impathc}[1]{img/qualitative_cin/biggan/##1}
+  \renewcommand{\impathd}[1]{img/qualitative_cin/msp/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{cccc}
+    \textbf{ours} & VQVAE-2 \cite{razavi2019generating} & BigGAN \cite{brock2018large} & MSP \cite{msp} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impatha{0108}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{108}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{108}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{108}} 	\vspace*{1em} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impatha{0141}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{141}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{141}} &
+	\includegraphics[width=\imwidth, align=c]{\impathd{141}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Qualitative assessment of various models for class-conditional image synthesis on ImageNet. Depicted classes: \textsl{108: sea anemone} (top) and \textsl{141: redshank} (bottom). We report class labels as in VQVAE-2 \cite{razavi2019generating}.}
+  \label{fig:cinqualthree}
+\end{figure*}
+}
+
+\newcommand{\convlandscapessixteen}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/convolutional/semantic/landscapes/##1}
+  \renewcommand{\imwidtha}{0.23\textwidth}
+  \renewcommand{\imwidthb}{0.38\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c cc}
+	conditioning & \multicolumn{2}{c}{samples}\\
+    \toprule
+	\includegraphics[width=\imwidtha, align=c]{\impath{f16/mountainlake_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/mountainlake3}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/mountainlake2}} \\
+
+	\includegraphics[width=\imwidtha, align=c]{\impath{f16/lake}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/lake_s1}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/lake_s2}} \\
+
+	\includegraphics[width=\imwidtha, align=c]{\impath{f16/tree}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/tree_s3}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/tree_s1}} \\
+
+	\includegraphics[width=\imwidtha, align=c]{\impath{f16/mlake2}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/mlake2_s2}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f16/mlake2_s5}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples generated from semantic layouts on S-FLCKR with $f=16$, using the sliding attention window.}
+  \label{fig:convf16landscapes}
+\end{figure*}
+}
+
+
+\newcommand{\convlandscapesthirtytwo}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/convolutional/semantic/landscapes/##1}
+  \renewcommand{\imwidtha}{0.23\textwidth}
+  \renewcommand{\imwidthb}{0.38\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c cc}
+	conditioning & \multicolumn{2}{c}{samples}\\
+    \toprule
+	\includegraphics[width=\imwidtha, align=c]{\impath{f32/river}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/river_s2}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/river_s4}} \\
+
+	\includegraphics[width=\imwidtha, align=c]{\impath{f32/rfw4233cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/rfw512_4233_s1}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/rfw512_4233_s3}} \\
+
+	\includegraphics[width=\imwidtha, align=c]{\impath{f32/wind}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/wind_s1}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/wind_s5}} \\
+	
+	\includegraphics[width=\imwidtha, align=c]{\impath{f32/creek}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/creek_s1}} &	         
+	\includegraphics[width=\imwidthb, align=c]{\impath{f32/creek_s3}} \\
+	
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples generated from semantic layouts on S-FLCKR with $f=32$, using the sliding attention window.}
+  \label{fig:convf32landscapes}
+\end{figure*}
+}
+
+
+\newcommand{\convcondplot}{
+\begin{figure}[tbp]
+  \renewcommand{\impatha}[1]{img/convolutional/depth/rin_old/##1}
+  \renewcommand{\impathb}[1]{img/convolutional/superres/##1}
+  \renewcommand{\impathc}[1]{img/convolutional/semantic/landscapes/##1}
+  \renewcommand{\impathd}[1]{img/convolutional/class/##1}
+  \renewcommand{\impathe}[1]{img/edges_f8/##1}
+  \renewcommand{\imwidth}{0.16\textwidth}
+  \renewcommand{\imwidtha}{0.115\textwidth}
+  \renewcommand{\imwidthb}{0.19\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{ c cc}
+%
+%
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654s2}} \\
+
+%
+%
+%
+%
+	
+	\includegraphics[width=\imwidth, align=c]{\impathb{bottles_lr}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impathb{bottles_sr1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{bottles_sr2}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impathc{f16/mountainlake_cond}} \phantom {a}&     	
+	\includegraphics[width=\imwidth, align=c]{\impathc{f16/mountainlake3}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{f16/mountainlake2}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impathc{f32/rfw4233cond}} \phantom {a}&     	
+	\includegraphics[width=\imwidth, align=c]{\impathc{f32/rfw512_4233_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathc{f32/rfw512_4233_s3}} \\
+	
+	%
+	%
+	%
+	\includegraphics[width=\imwidth, align=c]{\impathe{c3_745673}} \phantom {a}&
+	\includegraphics[width=\imwidth, align=c]{\impathe{c3_s0}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathe{c3_s2}} \\
+%
+  \end{tabular}    
+  \vspace{0.015em}
+  \caption{Applying the sliding attention window approach
+  (Fig.~\ref{fig:attentionslide}) to various conditional image synthesis tasks.
+  Top: Depth-to-image on RIN, 2nd row: Stochastic superresolution on IN, 3rd
+  and 4th row: Semantic synthesis on S-FLCKR, bottom: Edge-guided synthesis on
+  IN. The resulting images vary between $368 \times 496$ and $1024 \times 576$, hence they are best viewed zoomed in.}
+  \label{fig:convcondplot}
+\end{figure}
+}
+
+
+\newcommand{\convdepth}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/convolutional/depth/rin_old/##1}
+  \renewcommand{\impath}[1]{img/convolutional/depth/rin_f16/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c ccc}
+	conditioning & \multicolumn{3}{c}{samples}\\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impatha{depth654s4}} \\
+	
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{dog1_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{dog1_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{dog1_s3}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{dog1_s4}} \\
+
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{crab_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{crab_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{crab_s4}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{crab_s3}} \\
+		
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{grasshopper_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{grasshopper_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{grasshopper_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{grasshopper_s3}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{bird_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{bird_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{bird_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{bird_s3}} \\
+	
+    \bottomrule  
+  \end{tabular}    
+  \caption{Depth-guided neural rendering on RIN with $f=16$ using the sliding
+  attention window.}
+  \label{fig:convdepth}
+\end{figure*}
+}
+
+
+\newcommand{\convdepthtwo}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/convolutional/depth/rin_old/##1}
+  \renewcommand{\impath}[1]{img/convolutional/depth/rin_f16/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c ccc}
+	conditioning & \multicolumn{3}{c}{samples}\\
+    \toprule
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{monkey_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{monkey_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{monkey_s4}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{monkey_s3}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{linedog_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{linedog_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{linedog_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{linedog_s3}} \\
+	
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_s3}} \\
+
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{rundog_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{rundog_s4}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{rundog_s1}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{rundog_s3}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{facedog_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{facedog_s4}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{facedog_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{facedog_s3}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Depth-guided neural rendering on RIN with $f=16$ using the sliding
+  attention window.}
+  \label{fig:convdepthtwo}
+\end{figure*}
+}
+
+\newcommand{\artsyedges}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/convolutional/edges/in_f16/##1}
+  \renewcommand{\imwidth}{0.32\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c cc}
+	conditioning & \multicolumn{2}{c}{samples}\\
+    \toprule
+	
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{helmet_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{helmet_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{helmet_s3}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{tbox_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{tbox_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{tbox_s2}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{shot_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{shot_s2}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{shot_s4}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Intentionally limiting the receptive field can lead to interesting creative applications like this one: Edge-to-Image synthesis on IN with $f=8$, using the sliding attention window.}
+  \label{fig:convedges}
+\end{figure*}
+}
+
+
+\newcommand{\convcoco}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/convolutional/semantic/coco/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c ccc}
+	conditioning & \multicolumn{3}{c}{samples}\\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4596_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4596_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4596_s5}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4596_s6}} \\    
+    
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_2002_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_2002_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_2002_s3}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_2002_s4}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4573_cond}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4573_s2}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4573_s3}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{coco_4573_s4}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{yo}
+  \label{fig:convcoco}
+\end{figure*}
+}
+
+\newcommand{\convdepthcamera}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/convolutional/depth/in_f8/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c ccc}
+	conditioning & \multicolumn{3}{c}{samples}\\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{condcamera}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{imgnet_depth_f8_37997_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{imgnet_depth_f8_37997_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{imgnet_depth_f8_37997_s3}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{yo}
+  \label{fig:convdepthcamera}
+\end{figure*}
+}
+
+\newcommand{\convsr}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/convolutional/superres/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c ccc}
+	conditioning & \multicolumn{3}{c}{samples}\\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_lr}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_hr1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_hr2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{goose_hr3}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{dog_lr}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{dog_hr1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{dog_hr2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{dog_hr3}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{lamp_lr}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{lamp_hr1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{lamp_hr2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{lamp_hr3}} \\
+
+
+	\includegraphics[width=\imwidth, align=c]{\impath{pc_lr}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{pc_hr1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{pc_hr2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{pc_hr3}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{pot_lr}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{pot_hr1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{pot_hr2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{pot_hr3}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Additional results for stochastic superresolution with an $f=16$ model on IN, using the sliding attention window.}
+  \label{fig:convsr}
+\end{figure*}
+}
+
+
+
+\newcommand{\fstudyfaces}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/fexperiments/faces/##1}
+  \renewcommand{\imwidth}{0.095\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{c  c c  c c c  c c c c}
+	f1 & \multicolumn{2}{c}{f2} & \multicolumn{3}{c}{f8} & \multicolumn{2}{c}{f16} & \multicolumn{2}{c}{\footnotesize{\emph{downsampling factor}}} \\
+    \toprule
+   	\includegraphics[width=\imwidth, align=c]{\impath{f1/faces_f1_s0_gs361250}} \phantom {a} &     
+   	
+	\includegraphics[width=\imwidth, align=c]{\impath{f2/faces_f2_s1}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{f2/faces_f2_s3}} \phantom {a}&         
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{f8/faces_f8_halfbeard}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{f8/faces_f8_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{f8/faces_f8_s3}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s7}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s9}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s8}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s10}} \phantom {a}\\
+
+
+   	\includegraphics[width=\imwidth, align=c]{\impath{f1/faces_f1_s1_gs361250}} \phantom {a} &     
+	   	
+	\includegraphics[width=\imwidth, align=c]{\impath{f2/faces_f2_s4}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{f2/faces_f2_s2}} \phantom {a}&         
+
+	\includegraphics[width=\imwidth, align=c]{\impath{f8/faces_f8_s4}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{f8/faces_f8_s5}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{f8/faces_f8_s6}} \phantom {a}&     
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s14}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s13}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{f16/faces_f16_s19_gs92092}} \phantom {a}\\	
+    \bottomrule  
+    %
+    \footnotesize 1.0 & \multicolumn{2}{c}{\footnotesize 3.86} &
+    \multicolumn{3}{c}{\footnotesize 65.81} & \multicolumn{2}{c}{\footnotesize 280.68} & \multicolumn{2}{c}{\footnotesize{\emph{speed-up}}} \\
+    %
+  \end{tabular}    
+  \caption{Evaluating the importance of effective codebook for HQ-Faces
+  (CelebA-HQ and FFHQ) for a fixed sequence length $\vert s \vert = 16\cdot16 =
+  256$. Globally consistent structures can only be modeled with a context-rich
+  vocabulary (right). All samples are generated with temperature $t=1.0$ and
+  top-$k$ sampling with $k=100$. Last row reports the speedup over the f1
+  baseline which operates directly on pixels and takes 7258 seconds to produce
+  a sample on a NVIDIA GeForce GTX Titan X.\vspace{-1em}}
+  %
+  %
+  %
+  %
+  %
+  \label{fig:fstudyfaces}
+\end{figure*}
+}
+
+\newcommand{\quantfacefstudy}{
+\begin{figure*}[p]
+\renewcommand{\impath}[2]{img/fexperiments/suppfaces_recs/##1/009287_##2}
+\renewcommand{\impatha}[2]{img/fexperiments/suppfaces_samples/##1/002895_##2}
+\renewcommand{\impathb}[1]{img/fexperiments/suppfaces_samples/##1/samples}
+\renewcommand{\imwidth}{0.142\textwidth}
+\setlength{\tabcolsep}{2pt}
+\centering
+  \begin{minipage}[c]{0.40\textwidth}
+    \vspace{1.0em}
+    %
+\includegraphics[width=0.99\linewidth]{img/fexperiments/tradeoff}
+  \end{minipage}
+  \begin{minipage}[c]{0.58\textwidth}
+  \begin{tabular}{c c c c c c c}
+    & f2 & f4 & f8 & \textbf{f16} & f32 & f64 \\
+    \toprule
+
+    \parbox[c]{\imwidth}{\centering \scriptsize recon-struction} &
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-13T11-28-13_faces_f2_coord}{xrec}} &     
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-22T13-50-21_faces_f4_coord}{xrec}} &     
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-12T22-48-25_faces_f8_coord}{xrec}} &
+   \includegraphics[width=\imwidth, align=c]{\impath{2020-11-13T21-41-45_faces_f16_coord}{xrec}} &     
+   \includegraphics[width=\imwidth, align=c]{\impath{2020-11-22T13-34-58_faces_f32_coord}{xrec}} &     
+   \includegraphics[width=\imwidth, align=c]{\impath{2020-11-23T01-08-26_faces_f64_coord}{xrec}} \\    
+    \parbox[c]{\imwidth}{\centering \scriptsize sample} &
+    \includegraphics[width=\imwidth, align=c]{\impatha{2020-11-13T11-28-13_faces_f2_coord}{xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impatha{2020-11-22T13-50-21_faces_f4_coord}{xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impatha{2020-11-12T22-48-25_faces_f8_coord}{xsample}} &
+    \includegraphics[width=\imwidth, align=c]{\impatha{2020-11-13T21-41-45_faces_f16_coord}{xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impatha{2020-11-22T13-34-58_faces_f32_coord}{xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impatha{2020-11-23T01-08-26_faces_f64_coord}{xsample}} \\    
+    \parbox[c]{\imwidth}{\centering \scriptsize samples} &
+    \includegraphics[width=\imwidth, align=c]{\impathb{2020-11-13T11-28-13_faces_f2_coord}} &     
+    \includegraphics[width=\imwidth, align=c]{\impathb{2020-11-22T13-50-21_faces_f4_coord}} &     
+    \includegraphics[width=\imwidth, align=c]{\impathb{2020-11-12T22-48-25_faces_f8_coord}} &
+    \includegraphics[width=\imwidth, align=c]{\impathb{2020-11-13T21-41-45_faces_f16_coord}} &     
+    \includegraphics[width=\imwidth, align=c]{\impathb{2020-11-22T13-34-58_faces_f32_coord}} &     
+    \includegraphics[width=\imwidth, align=c]{\impathb{2020-11-23T01-08-26_faces_f64_coord}} \\    
+    \parbox[c]{\imwidth}{\centering \scriptsize rec. error} &
+    \tiny $0.11 \pm 0.02$ &
+    \tiny $0.20 \pm 0.03$ &
+    \tiny $0.23 \pm 0.04$ &
+    \tiny $0.38 \pm 0.07$ &
+    \tiny $0.63 \pm 0.08$ &
+    \tiny $0.66 \pm 0.11$ \\
+    \parbox[c]{\imwidth}{\centering \scriptsize nll} &
+    \tiny $5.66\cdot 10^4$ &
+    \tiny $1.29\cdot 10^4$ &
+    \tiny $4.10\cdot 10^3$ &
+    \tiny $2.32\cdot 10^3$ &
+    \tiny $2.28\cdot 10^2$ &
+    \tiny $6.75\cdot 10^1$ \\
+    \bottomrule
+  \end{tabular}    
+    %
+  \end{minipage}
+\caption{Trade-off between negative log-likelihood (nll) and reconstruction error.
+  While context-rich encodings obtained with large factors $f$ allow the
+  transformer to effectively model long-range interactions, the reconstructions
+  capabilities and hence quality of samples suffer after a critical value
+  (here, $f=16$). For more details, see Sec.~\ref{supp:contextrich}.}
+\label{fig:quantfacefstudy}
+\end{figure*}
+}
+
+\newcommand{\vqvaegan}{
+\begin{figure*}[p]
+    \renewcommand{\imwidth}{\textwidth}
+    \includegraphics[width=\imwidth, align=c]{img/fexperiments/qualcomp/00}
+    \includegraphics[width=\imwidth, align=c]{img/fexperiments/qualcomp/01}
+  \caption{Comparing reconstruction capabilities between VQVAEs and
+  \emph{VQGAN}s. Numbers in parentheses denote compression factor and
+  codebook size. With the same compression factor and codebook size,
+  \emph{VQGAN}s produce more realistic reconstructions compared to blurry
+  reconstructions of VQVAEs. This enables increased compression rates
+  for \emph{VQGAN} while retaining realistic reconstructions. See Sec.~\ref{supp:contextrich}.}
+\label{fig:vqvaegan}
+\end{figure*}
+}
+
+
+\newcommand{\rfwfstudy}{
+\begin{figure*}[p]
+\renewcommand{\impath}[1]{img/fexperiments/supprfw_samples/##1}
+\renewcommand{\imwidth}{0.165\textwidth}
+\renewcommand{\imwidtha}{0.24\textwidth}
+\renewcommand{\impatha}[1]{img/fexperiments/supprfw_recs/2020-11-11T17-24-24_landscapes_f4_ss/##1}
+\renewcommand{\impathb}[1]{img/fexperiments/supprfw_recs/2020-11-09T13-31-51_RFWnet2nettransformer_v2/##1}
+\renewcommand{\impathc}[1]{img/fexperiments/supprfw_recs/2020-10-16T10-39-45_RFWnet2nettransformer512_restore/##1}
+\setlength{\tabcolsep}{0pt}
+\centering
+  \begin{minipage}[c]{0.575\textwidth}
+  \begin{tabular}{c  c c  c c c}
+	f4 & \multicolumn{2}{c}{f16} & \multicolumn{3}{c}{f32} \\
+    \toprule
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-11T17-24-24_landscapes_f4_ss/007813_xsample}} \phantom {a} &     
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-09T13-31-51_RFWnet2nettransformer_v2/007813_xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-09T13-31-51_RFWnet2nettransformer_v2/007751_xsample}} \phantom {a}&         
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/007813_xsample}} &	         
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/007751_xsample}} &
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/000235_xsample}} \\
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-11T17-24-24_landscapes_f4_ss/004225_xsample}} \phantom {a} &     
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-09T13-31-51_RFWnet2nettransformer_v2/004225_xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-09T13-31-51_RFWnet2nettransformer_v2/003462_xsample}} \phantom {a}&         
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/004225_xsample}} &	         
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/003462_xsample}} &
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/002895_xsample}} \\
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-11T17-24-24_landscapes_f4_ss/005056_xsample}} \phantom {a} &     
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-09T13-31-51_RFWnet2nettransformer_v2/005056_xsample}} &     
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-11-09T13-31-51_RFWnet2nettransformer_v2/000905_xsample}} \phantom {a}&         
+
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/005056_xsample}} &	         
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/000905_xsample}} &
+    \includegraphics[width=\imwidth, align=c]{\impath{2020-10-16T10-39-45_RFWnet2nettransformer512_restore/000144_xsample}} \\
+    \bottomrule  
+  \end{tabular}    
+  \end{minipage}
+  \begin{minipage}[c]{0.3675\textwidth}
+  \hspace{2.5em}
+  \begin{tabular}{c c c c}
+    factor & \multicolumn{3}{c}{reconstructions} \\
+    \toprule
+    \parbox[c]{\imwidtha}{\centering f4} &
+    \includegraphics[width=\imwidtha, align=c]{\impatha{009287_xrec}} &     
+    \includegraphics[width=\imwidtha, align=c]{\impatha{004409_xrec}} &     
+    \includegraphics[width=\imwidtha, align=c]{\impatha{004225_xrec}} \\    
+    \midrule
+    \parbox[c]{\imwidtha}{\centering f16} &
+    \includegraphics[width=\imwidtha, align=c]{\impathb{009287_xrec}} &     
+    \includegraphics[width=\imwidtha, align=c]{\impathb{004409_xrec}} &     
+    \includegraphics[width=\imwidtha, align=c]{\impathb{004225_xrec}} \\    
+    \midrule
+    \parbox[c]{\imwidtha}{\centering f32} &
+    \includegraphics[width=\imwidtha, align=c]{\impathc{009287_xrec}} &     
+    \includegraphics[width=\imwidtha, align=c]{\impathc{004409_xrec}} &     
+    \includegraphics[width=\imwidtha, align=c]{\impathc{004225_xrec}} \\    
+    \bottomrule
+  \end{tabular}    
+  \end{minipage}
+  \caption{Samples on landscape dataset (left) obtained with different factors
+  $f$, analogous to Fig.~\ref{fig:fstudyfaces}. In contrast to faces, a factor
+  of $f=32$ still allows for faithful reconstructions (right). See also
+  Sec.~\ref{supp:contextrich}.}
+  \label{fig:rfwfstudy}
+\end{figure*}
+}
+
+
+\newcommand{\mirrorlaketop}{
+  \vspace{-1em}
+	\centering
+	\includegraphics[width=1.00\textwidth, trim=0em 12em 0em 7em, clip]{img/misc/reflectionator}
+  %
+  %
+  %
+	\label{fig:frontpage}
+  \vspace{1.5em}
+}
+
+
+\newcommand{\alaskatop}{
+  \vspace{-1em}
+	\centering
+	\includegraphics[width=1.00\textwidth, trim=0em 0em 0em 0em, clip]{img/misc/alaskatop}
+  %
+  \captionof{figure}{
+    %
+  Our approach enables transformers
+  %
+  to synthesize high-resolution images like this one, which contains
+  1280x460 pixels.}
+	\label{fig:frontpage}
+  \vspace{1.5em}
+}
+
+
+\newcommand{\mountainlakes}{
+\begin{figure*}[tbp]
+	\centering
+	\includegraphics[width=0.495\textwidth]{img/misc/mountainlake3}
+	\includegraphics[width=0.495\textwidth]{img/misc/mountainlake2}
+	\caption{Mountain Lake. Drama pur.}
+	\label{fig:mountainlakes}
+\end{figure*}
+}
+
+
+\newcommand{\modelfigure}{
+	\begin{figure*}
+		\centering
+	\includegraphics[width=0.975\textwidth]{img/modelfigure.pdf}
+  \caption{Our approach uses a convolutional \emph{VQGAN} to learn a codebook of context-rich visual parts, whose composition is subsequently modeled with an autoregressive transformer architecture. A discrete codebook provides the interface between these architectures and a patch-based discriminator enables strong compression while retaining high perceptual quality. This method introduces the efficiency of convolutional approaches to transformer based high resolution image synthesis.}
+	\label{fig:model}
+	\end{figure*}
+}
+
+
+\newcommand{\attentionslide}{
+	\begin{figure}[th]
+	\centering
+	\includegraphics[width=0.485\textwidth]{img/attentionslide2.pdf}
+    \caption{Sliding attention window.}
+	\label{fig:attentionslide}
+	\end{figure}
+}
+
+\newcommand{\bigsamples}{
+	\begin{figure}
+		\centering
+	\includegraphics[width=0.4995\textwidth]{img/hrsamples/3704_s1}
+%
+	\includegraphics[width=0.4995\textwidth]{img/misc/reflectionator_crop}
+	\includegraphics[width=0.4995\textwidth]{img/misc/longlake_crop}
+  \caption{Samples generated from semantic layouts on S-FLCKR. Sizes from
+    top-to-bottom: $1280 \times 832$, $1024 \times 416$ and $1280 \times 240$
+    pixels. Best viewed zoomed in. A larger visualization can be found in the
+    appendix, see Fig~\ref{fig:bigsamplesbig}.}
+	\label{fig:bigsamples}
+	\end{figure}
+}
+
+
+\newcommand{\bigsamplesbig}{
+	\begin{figure}
+	\centering
+	\includegraphics[width=0.995\textwidth]{img/hrsamples/3704_s1}
+%
+	\includegraphics[width=0.995\textwidth]{img/misc/reflectionator_crop}
+	\includegraphics[width=0.995\textwidth]{img/misc/longlake_crop}
+  \caption{Samples generated from semantic layouts on S-FLCKR. Sizes from
+    top-to-bottom: $1280 \times 832$, $1024 \times 416$ and $1280 \times 240$
+    pixels.}
+	\label{fig:bigsamplesbig}
+	\end{figure}
+}
+
+
+\newcommand{\bigsamplesbigtwo}{
+	\begin{figure}
+	\centering
+	\includegraphics[width=0.99\textwidth]{img/hrsamples/sunset_and_ocean_crop}
+	\includegraphics[width=0.99\textwidth]{img/hrsamples/ocean_crop}	
+	\includegraphics[width=0.99\textwidth]{img/hrsamples/river_jungle_crop5}	
+%
+  \caption{Samples generated from semantic layouts on S-FLCKR. Sizes from
+    top-to-bottom: $1536\times 512$, $1840\times 1024$, and $1536\times 620$
+    pixels.}
+	\label{fig:bigsamplesbigtwo}
+	\end{figure}
+}
+
+
+\newcommand{\bigsamplesbigthree}{
+	\begin{figure}
+	\centering
+	\includegraphics[width=0.99\textwidth]{img/hrsamples/meadow}
+	\includegraphics[width=0.99\textwidth]{img/hrsamples/pastell_crop}
+	%
+%
+    \includegraphics[width=0.99\textwidth]{img/hrsamples/longlake}	
+	\includegraphics[width=0.99\textwidth]{img/hrsamples/bay}	
+  \caption{Samples generated from semantic layouts on S-FLCKR. Sizes from
+    top-to-bottom: $2048\times 512$, $1460\times 440$, $2032\times 448$ and
+    $2016\times 672$
+    pixels.}
+	\label{fig:bigsamplesbigthree}
+	\end{figure}
+}
+
+\newcommand{\bigsamplesbigvertical}{
+	\begin{figure}
+	\centering
+	\includegraphics[height=0.495\textheight]{img/hrsamples/rfw256_4247_s1}
+	\includegraphics[height=0.495\textheight]{img/hrsamples/nightsky_crop}
+	\includegraphics[height=0.495\textheight]{img/hrsamples/sunrisemountain}
+	\includegraphics[height=0.495\textheight]{img/hrsamples/waterfall}
+
+%
+  \caption{Samples generated from semantic layouts on S-FLCKR. Sizes from
+    top-to-bottom: $1280 \times 832$, $1024 \times 416$ and $1280 \times 240$
+    pixels.}
+	\label{fig:bigsamplesbigvertical}
+	\end{figure}
+}
+
+\newcommand{\unconditionalchurches}{
+	\begin{figure}
+	\centering
+	\includegraphics[width=0.98\textwidth]{img/uncondchurches/c2}
+	\includegraphics[scale=0.36]{img/uncondchurches/c5}
+	\includegraphics[scale=0.36]{img/uncondchurches/c6}
+	\includegraphics[scale=0.36]{img/uncondchurches/c7}
+	
+	\includegraphics[scale=0.36]{img/uncondchurches/c9}
+	\includegraphics[scale=0.36]{img/uncondchurches/c8}
+	
+	\includegraphics[scale=0.36]{img/uncondchurches/churches_s15}
+	\includegraphics[scale=0.36]{img/uncondchurches/churches_s19}
+
+  \caption{Unconditional samples from a model trained on LSUN Churches \& Towers, using the sliding attention window.}
+	\label{fig:unconditionalchurches}
+
+	\end{figure}
+}
+
+
+\newcommand{\ourvsigpt}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/igpt/theirs/##1}
+  \renewcommand{\impathb}[1]{img/igpt/ours/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{c ccc}
+    conditioning & \multicolumn{3}{c}{\textbf{ours} (top) vs iGPT \cite{chen2020generative} (bottom)}\\
+    \toprule
+    \multirow{2}{*}{\includegraphics[width=\imwidth, align=c]{\impathb{input2}} \phantom{a}}
+	&     	
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_2_ours_s2}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_2_ours_s3}} &
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_2_ours_s4}} \\
+
+	& 
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_2_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_2_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_2_s3}} \\
+
+\midrule
+	\multirow{2}{*}{\includegraphics[width=\imwidth, align=c]{\impathb{input4}} \phantom{a}}
+	&     	
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_4_ours_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_4_ours_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_4_ours_s3}} \\
+
+	& 
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_4_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_4_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_4_s3}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Comparing our approach with the pixel-based approach of
+  \cite{chen2020generative}. Here, we use our $f=16$ S-FLCKR model to obtain
+  high-fidelity image completions of the inputs depicted on the left (half
+  completions). For each conditioning, we show three of our samples (top) and
+  three of \cite{chen2020generative} (bottom).}
+  \label{fig:ourvsigpt}
+\end{figure*}
+}
+
+
+\newcommand{\ourvsigpttwo}{
+\begin{figure*}[tbp]
+  \renewcommand{\impatha}[1]{img/igpt/theirs/##1}
+  \renewcommand{\impathb}[1]{img/igpt/ours/##1}
+  \renewcommand{\imwidth}{0.24\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{c ccc}
+    conditioning & \multicolumn{3}{c}{\textbf{ours} (top) vs iGPT \cite{chen2020generative} (bottom)}\\
+    \toprule
+    \multirow{2}{*}{\includegraphics[width=\imwidth, align=c]{\impathb{input6}} \phantom{a}}
+	&     	
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_6_ours_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_6_ours_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_6_ours_s6}} \\
+
+	& 
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_6_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_6_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_6_s3}} \\
+
+\midrule
+	\multirow{2}{*}{\includegraphics[width=\imwidth, align=c]{\impathb{input3}} \phantom{a}}
+	&     	
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_3_ours_s4}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_3_ours_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impathb{igpt_3_ours_s3}} \\
+
+	& 
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_3_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_3_s2}} &
+	\includegraphics[width=\imwidth, align=c]{\impatha{igpt_3_s3}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Comparing our approach with the pixel-based approach of
+  \cite{chen2020generative}. Here, we use our $f=16$ S-FLCKR model to obtain
+  high-fidelity image completions of the inputs depicted on the left (half
+  completions). For each conditioning, we show three of our samples (top) and
+  three of \cite{chen2020generative} (bottom).}
+  \label{fig:ourvsigpttwo}
+\end{figure*}
+}
+
+
+\newcommand{\ourscoco}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/supp_ade_coco/coco/##1}
+  \renewcommand{\imwidth}{0.22\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{c c c c}
+	conditioning & ground truth & \multicolumn{2}{c}{samples}\\
+    \toprule
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207_conditioning_02289-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207_inputs_02289-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207_samples_onepix_02289-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207_samples_onepix_02289-0001}} \\
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638_conditioning_00131-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638_inputs_00131-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638_samples_onepix_00131-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638_samples_onepix_00131-0001}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131_conditioning_00411-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131_inputs_00411-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131_samples_onepix_00411-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131_samples_onepix_00411-0000}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143_conditioning_01180-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143_inputs_01180-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143_samples_onepix_01180-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143_samples_onepix_01180-0002}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956_conditioning_03571-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956_inputs_03571-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956_samples_onepix_03571-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956_samples_onepix_03571-0002}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150_conditioning_01346-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150_inputs_01346-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150_samples_onepix_01346-0002}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150_samples_onepix_01346-0000}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Additional $256 \times 256$ results on the COCO-Stuff dataset.}
+  \label{fig:ourscoco}
+\end{figure*}
+}
+
+
+
+\newcommand{\oursade}{
+\begin{figure*}[tbp]
+%
+  \renewcommand{\impath}[1]{img/supp_ade_coco/ade20k/##1}
+  \renewcommand{\imwidth}{0.22\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{c c c c}
+	conditioning & ground truth & \multicolumn{2}{c}{samples} \\
+    \toprule
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_conditioning_01228-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_inputs_01228-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_samples_onepix_01228-0002}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_samples_onepix_01228-0001}} \\        
+    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_conditioning_00484-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_inputs_00484-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_samples_onepix_00484-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_samples_onepix_00484-0002}} \\        
+    
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_conditioning_01693-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_inputs_01693-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_samples_onepix_01693-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_samples_onepix_01693-0002}} \\    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_conditioning_01632-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_inputs_01632-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_samples_onepix_01632-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_samples_onepix_01632-0001}} \\    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_conditioning_01187-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_inputs_01187-0002}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_samples_onepix_01187-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_samples_onepix_01187-0002}} \\    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_conditioning_01824-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_inputs_01824-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_samples_onepix_01824-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_samples_onepix_01824-0000}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Additional $256 \times 256$ results on the ADE20K dataset.}
+  \label{fig:oursade}
+\end{figure*}
+}
+
+
+\newcommand{\ourvsspadecoco}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/compare_spade/coco/##1}
+  \renewcommand{\imwidth}{0.22\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{c c c c}
+	conditioning & ground truth & \textbf{ours} & SPADE \cite{park2019semantic}\\
+    \toprule
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207_conditioning_02289-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207_inputs_02289-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/ours/000000017207}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000017207/theirs/000000017207}} \\
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638_conditioning_00131-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638_inputs_00131-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/ours/000000033638}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000033638/theirs/000000033638}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131_conditioning_00411-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131_inputs_00411-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/ours/000000131131}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000131131/theirs/000000131131}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143_conditioning_01180-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143_inputs_01180-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/ours/000000539143}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000539143/theirs/000000539143}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956_conditioning_03571-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956_inputs_03571-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/ours/000000521956}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000521956/theirs/000000521956}} \\
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150_conditioning_01346-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150_inputs_01346-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/ours/000000451150}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{000000451150/theirs/000000451150}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Qualitative comparison to \cite{park2019semantic} on $256 \times 256$ images from the COCO-Stuff dataset.}
+  \label{fig:ourvsspadecoco}
+\end{figure*}
+}
+
+\newcommand{\ourvsspadeade}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/compare_spade/ade20k/##1}
+  \renewcommand{\imwidth}{0.22\textwidth}
+  \setlength{\tabcolsep}{1pt}
+  \centering
+  \begin{tabular}{c c c c}
+	conditioning & ground truth & \textbf{ours} & SPADE \cite{park2019semantic} \\
+    \toprule
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_conditioning_01228-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_inputs_01228-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000407/ours/ADE_val_00000407_samples_onepix_01228-0002}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000407/theirs/ADE_val_00000407}} \\        
+    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_conditioning_00484-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_inputs_00484-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000390/ours/ADE_val_00000390_samples_onepix_00484-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000390/theirs/ADE_val_00000390}} \\        
+    
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_conditioning_01693-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_inputs_01693-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000266/ours/ADE_val_00000266_samples_onepix_01693-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000266/theirs/ADE_val_00000266}} \\    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_conditioning_01632-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_inputs_01632-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00001325/ours/ADE_val_00001325_samples_onepix_01632-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00001325/theirs/ADE_val_00001325}} \\    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_conditioning_01187-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_inputs_01187-0002}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000145/ours/ADE_val_00000145_samples_onepix_01187-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000145/theirs/ADE_val_00000145}} \\    
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_conditioning_01824-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_inputs_01824-0000}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{00000486/ours/ADE_val_00000486_samples_onepix_01824-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{00000486/theirs/ADE_val_00000486}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Qualitative comparison to \cite{park2019semantic} on $256 \times 256$ images from the ADE20K dataset.}
+  \label{fig:ourvsspadeade}
+\end{figure*}
+}
+
+
+\newcommand{\permutations}{
+\begin{figure*}[tbp]
+\centering
+\begin{tabular}{c c c c c c} 
+  \scriptsize{row major} & \scriptsize{spiral in} & \scriptsize{spiral out} & \scriptsize{z-curve} & \scriptsize{subsample} & \scriptsize{alternate} \\
+%
+  \includegraphics[width=0.14\linewidth]{img/permutations/perm1} &
+  \includegraphics[width=0.14\linewidth]{img/permutations/perm6} &
+  \includegraphics[width=0.14\linewidth]{img/permutations/perm2} &
+  \includegraphics[width=0.14\linewidth]{img/permutations/perm3} &
+  \includegraphics[width=0.14\linewidth]{img/permutations/perm4} &
+  \includegraphics[width=0.14\linewidth]{img/permutations/perm5} 
+\end{tabular}
+\includegraphics[width=0.49\linewidth]{img/permutations/data/step_train_loss}
+\includegraphics[width=0.49\linewidth]{img/permutations/data/epoch_val_loss}
+\caption{Top: All sequence permutations we investigate, illustrated on a
+  $4 \times4$ grid. Bottom: The transformer architecture is permutation invariant but next-token
+  prediction is not: The average loss on the validation split of ImageNet,
+  corresponding to the negative log-likelihood, differs significantly between
+  different prediction orderings. Among our choices, the commonly used
+  row-major order performs best.}
+\label{fig:permutations}
+\end{figure*}
+}
+
+\newcommand{\rindepthamples}{
+\begin{figure}[btp]
+  \renewcommand{\impath}[1]{img/depthtorin/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    conditioning & \multicolumn{3}{c}{samples} & conditioning & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_00954-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00954-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00954-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00954-0001}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_07407-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07407-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07407-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07407-0003}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_05669-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_05669-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_05669-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_05669-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_08836-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08836-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08836-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08836-0003}} \\
+	
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_00468-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00468-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00468-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00468-0001}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_04944-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_04944-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_04944-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_04944-0001}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Conditional samples for the depth-to-image model on RIN.}
+  \label{fig:depthrinsamples}
+\end{figure}
+}
+
+\newcommand{\indepthsamples}{
+\begin{figure}[btp]
+  \renewcommand{\impath}[1]{img/depthtoin/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    conditioning & \multicolumn{3}{c}{samples} & conditioning & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_16216-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_16216-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_16216-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_16216-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_16331-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_16331-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_16331-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_16331-0003}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_17507-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_17507-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_17507-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_17507-0003}} &
+
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_09438-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_09438-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_09438-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_09438-0000}} \\
+
+	
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_26548-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_26548-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_26548-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_26548-0001}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_22732-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_22732-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_22732-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_22732-0003}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Conditional samples for the depth-to-image model on IN.}
+  \label{fig:depthinsamples}
+\end{figure}
+}
+
+\newcommand{\sticktoreal}{
+\begin{figure}[tbp]
+  \renewcommand{\impath}[1]{img/deepfashion/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    conditioning & \multicolumn{3}{c}{samples} & conditioning & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{condin2726}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{full2726_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full2726_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full2726_3}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{condin640}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{full640_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full640_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full640_3}} \\
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{condin0}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{full0_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full0_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full0_3}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{condin2036}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{full2036_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full2036_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full2036_3}} \\
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{condin690}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{full690_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full690_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full690_3}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{condin903}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{full903_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full903_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{full903_3}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Conditional samples for the pose-guided synthesis model via keypoints on DeepFashion.}
+  \label{fig:dfsamples}
+\end{figure}
+}
+
+\newcommand{\adesamples}{
+\begin{figure}[tbp]
+  \renewcommand{\impath}[1]{img/ade20k/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    conditioning & \multicolumn{3}{c}{samples} & conditioning & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{861condin}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{861f1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{861f4}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{861f3}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_01703-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01703-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01703-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01703-0000}} \\
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_01437-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01437-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01437-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01437-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_01699-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01699-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01699-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01699-0003}} \\
+
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_01101-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01101-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01101-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01101-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_01742-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01742-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01742-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01742-0003}} \\
+
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples from the semantically guided model trained on ADE20K.}
+  \label{fig:adesamples}
+\end{figure}
+}
+
+\newcommand{\landscapesamples}{
+\begin{figure}[tbp]
+  \renewcommand{\impath}[1]{img/rfw/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    conditioning & \multicolumn{3}{c}{samples} & conditioning & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_06975-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06975-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06975-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06975-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_04243-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_04243-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_04243-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_04243-0003}} \\
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_10057-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_10057-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_10057-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_10057-0000}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_06117-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06117-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06117-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06117-0003}} \\
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_02258-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_02258-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_02258-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_02258-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{conditioning_08828-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08828-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08828-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08828-0001}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples from the semantically guided model trained on our landscapes dataset.}
+  \label{fig:landscapesamples}
+\end{figure}
+}
+
+\newcommand{\rinclasscond}{
+\begin{figure}[tbp]
+  \renewcommand{\impath}[1]{img/classcondrin/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    \tiny{class exemplar} & \multicolumn{3}{c}{samples} &  \tiny{class exemplar} & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_00750-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00750-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00750-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00750-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_08334-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08334-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08334-0005}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08334-0000}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_03448-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_03448-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_03448-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_03448-0003}} &
+
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_07187-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07187-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07187-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07187-0003}} \\
+%
+%
+%
+%
+	
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_07332-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07332-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07332-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07332-0001}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_09274-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_09274-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_09274-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_09274-0001}} \\
+	
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples produced by the class-conditional model trained on RIN.}
+  \label{fig:rinclasscond}
+\end{figure}
+}
+
+\newcommand{\inclasscond}{
+\begin{figure}[htbp]
+  \renewcommand{\impath}[1]{img/classcondin/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+    \tiny{class exemplar} & \multicolumn{3}{c}{samples} &  \tiny{class exemplar} & \multicolumn{3}{c}{samples} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_06517-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06517-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06517-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06517-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_39966-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_39966-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_39966-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_39966-0005}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_15089-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_15089-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_15089-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_15089-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_08000-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08000-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08000-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_08000-0003}} \\
+	
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_47327-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_47327-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_47327-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_47327-0003}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{inputs_48522-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_48522-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_48522-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_48522-0001}} \\
+	
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples synthesized by the class-conditional IN model.}
+  \label{fig:inclasscond}
+\end{figure}
+}
+
+
+\newcommand{\rinuncond}{
+\begin{figure}[tbp]
+%
+  \renewcommand{\impath}[1]{img/uncondrin/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{2pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c  c  c  c}
+     \multicolumn{8}{c}{unconditional samples from the RIN-model} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_05818-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_07537-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_00538-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01111-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01111-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_05818-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06549-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06549-0002}} \\
+	\midrule
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01619-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01619-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_01619-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_02176-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06548-0002}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_02176-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_06549-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{samples_onepix_03213-0001}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Samples produced by an unconditional model trained on RIN.}
+  \label{fig:rinuncond}
+\end{figure}
+}
+
+
+\newcommand{\permuationsbatches}{
+\begin{figure}[tbp]
+%
+  \renewcommand{\impath}[1]{img/permutations/##1}
+  \renewcommand{\imwidth}{0.075\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{ c  c  c  c  c    c    c  c  c  c  c}
+     \multicolumn{5}{c}{Row Major} & & \multicolumn{5}{c}{Subsample}\\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_01562-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_01562-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_01562-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_01562-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_01562-0004}} &     
+    \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05096-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05096-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05096-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05096-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05096-0004}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_04384-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_04384-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_04384-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_04384-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_04384-0004}} &     
+    \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05933-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05933-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05933-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05933-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_05933-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10575-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10575-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10575-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10575-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10575-0004}} &     
+    \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_11371-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_11371-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_11371-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_11371-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_11371-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10781-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10781-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10781-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10781-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_10781-0004}} &     
+    \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_14045-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_14045-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_14045-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_14045-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_14045-0004}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_14942-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_14942-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_14942-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_14942-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{rowmajor/samples_onepix_14942-0004}} &     
+    \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_16437-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_16437-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_16437-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_16437-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{scalespace/samples_onepix_16437-0004}} \\
+
+   	\midrule
+    \multicolumn{5}{c}{Z-Curve} & & \multicolumn{5}{c}{Spiral Out}\\
+   	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_01799-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_01799-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_01799-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_01799-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_01799-0004}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_06109-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_06109-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_06109-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_06109-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_06109-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_04581-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_04581-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_04581-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_04581-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_04581-0004}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_07032-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_07032-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_07032-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_07032-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_07032-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_05591-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_05591-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_05591-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_05591-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_05591-0004}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_08449-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_08449-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_08449-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_08449-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_08449-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_06153-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_06153-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_06153-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_06153-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_06153-0004}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_15989-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_15989-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_15989-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_15989-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_15989-0004}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_08296-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_08296-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_08296-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_08296-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{zcurve/samples_onepix_08296-0004}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_16282-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_16282-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_16282-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_16282-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralout/samples_onepix_16282-0004}} \\
+
+
+   	\midrule
+    \multicolumn{5}{c}{Alternating} & & \multicolumn{5}{c}{Spiral In}\\
+   	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03371-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03371-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03371-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03371-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_12800-0000}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_00618-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_00618-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_00618-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_00618-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_00618-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03704-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03704-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03704-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03704-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_12800-0001}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_09744-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_09744-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_09744-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_09744-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_09744-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03774-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03774-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03774-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_03774-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_12800-0002}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_11665-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_11665-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_11665-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_11665-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_11665-0004}} \\
+
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04642-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04642-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04642-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04642-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_12800-0003}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_22726-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_22726-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_22726-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_22726-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_22726-0004}} \\
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04700-0000}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04700-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04700-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_04700-0003}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{alternate/samples_onepix_21390-0000}} &     
+  \phantom{x} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_32097-0000}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_32097-0001}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_32097-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_32097-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{spiralin/samples_onepix_32097-0004}} \\
+
+	
+    \bottomrule  
+  \end{tabular}    
+  \caption{Random samples from transformer models trained with different
+  orderings for autoregressive prediction as described in
+  Sec.~\ref{sec:orderingsupp}.
+  %
+  }
+  \label{fig:permutationsbatches}
+\end{figure}
+}
+
+
+\newcommand{\firstpagefigure}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/##1}
+  \renewcommand{\imwidth}{0.12\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{ c  c  c  c@{\hskip 1.0em}  c  c  c  c}
+    \scriptsize{conditioning} & \multicolumn{3}{c}{\scriptsize{samples}} & \scriptsize{conditioning} & \multicolumn{3}{c}{\scriptsize{samples}} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{completions/dogball_half2}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{completions/dogball4}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{completions/dogball6}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{completions/dogball7}} &         
+
+
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherin_half}} &     
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherh1}} &         
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherh2}} &         
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherh7}} \\
+  \midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/conditioning_00443-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_00443-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_00443-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_00443-0003}} &    
+
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/conditioning_03537-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_03537-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_03537-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_03537-0003}} \\
+	\midrule
+	
+
+	\includegraphics[width=\imwidth, align=c]{\impath{convolutional/semantic/coco/coco_4596_cond}}&     
+	\includegraphics[width=\imwidth, align=c]{\impath{convolutional/semantic/coco/coco_4596_s1}} &	         
+	\includegraphics[width=\imwidth, align=c]{\impath{convolutional/semantic/coco/coco_4596_s5}} &
+	\includegraphics[width=\imwidth, align=c]{\impath{convolutional/semantic/coco/coco_4596_s6}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/conditioning_01138-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/samples_onepix_01138-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/samples_onepix_01138-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/samples_onepix_01138-0000}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/condin1593}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1593_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1593_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1593_3}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/condin1511}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1511_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1511_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1511_3}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/inputs_00062-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_00062-0005}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_00062-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_00062-0001}} &
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/inputs_05868-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_05868-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_05868-0004}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_05868-0003}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Transformers within our setting unify a wide range of image
+  synthesis tasks. We show $256\times 256$ synthesis results across different
+  conditioning inputs and datasets, all obtained with the same approach to
+  exploit inductive biases of effective CNN based \emph{VQGAN} architectures in
+  combination with the expressivity of transformer architectures. Top row:
+  Completions from unconditional training on ImageNet. 2nd row: Depth-to-Image
+  on RIN. 3rd row: Semantically guided synthesis on COCO-Stuff (left) and
+  ADE20K (right). 4th row: Pose-guided person generation on DeepFashion. Bottom row: Class-conditional samples on RIN.}
+  \label{fig:firstpage}
+\end{figure*}
+}
+
+
+\newcommand{\firstpagefigurehalf}{
+\begin{figure}[tbp]
+  \renewcommand{\impath}[1]{img/##1}
+  \renewcommand{\imwidth}{0.12\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{ c  c  c  c}
+    \scriptsize{conditioning} & \multicolumn{3}{c}{\scriptsize{samples}} \\
+    \toprule
+    
+%
+%
+%
+%
+	
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherin_half}} &     
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherh1}} &         
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherh2}} &         
+ 	\includegraphics[width=\imwidth, align=c]{\impath{completions/witcherh7}} \\
+  \midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/conditioning_00443-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_00443-0000}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_00443-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{depthtorin/samples_onepix_00443-0003}} \\
+	\midrule
+		
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/conditioning_01138-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/samples_onepix_01138-0001}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/samples_onepix_01138-0002}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{ade20k/samples_onepix_01138-0000}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/condin1511}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1511_1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1511_2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{deepfashion/full1511_3}} \\
+	\midrule
+
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/inputs_00062-0001}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_00062-0005}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_00062-0003}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{classcondrin/samples_onepix_00062-0001}} \\
+    \bottomrule  
+  \end{tabular}    
+  \caption{Transformers within our setting unify a wide range of image
+  synthesis tasks. We show $256\times 256$ synthesis results across different
+  conditioning inputs and datasets, all obtained with the same approach to
+  exploit inductive biases of effective CNN based \emph{VQGAN} architectures in
+  combination with the expressivity of transformer architectures. Top row:
+  Completions from unconditional training on ImageNet. 2nd row: Depth-to-Image
+  on RIN. 3rd row: Semantically guided synthesis on ADE20K. 4th row: Pose-guided person generation on DeepFashion. Bottom row: Class-conditional samples on RIN.}
+  \label{fig:firstpage}
+\end{figure}
+}
+
+
+\newcommand{\superresdebug}{
+\begin{figure*}[tbp]
+  \renewcommand{\impath}[1]{img/##1}
+  \renewcommand{\imwidth}{0.1\textwidth}
+  \setlength{\tabcolsep}{0pt}
+  \centering
+  \begin{tabular}{ c  c  c  c   c  c  c  c}
+     \multicolumn{8}{c}{yes} \\
+    \toprule
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/lowresdog}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/doghr1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/doghr2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/doghr3}} \phantom{a}&
+	
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/lanternlowres}} &     
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/lanternhr1}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/lanternhr2}} &         
+	\includegraphics[width=\imwidth, align=c]{\impath{superres/lanternhr3}}
+    \bottomrule  
+  \end{tabular}    
+  \caption{empty}
+  \label{fig:superresdebug}
+\end{figure*}
+}
+
+
+\newcommand{\facesnns}{
+\begin{figure}[tbp]
+\centering
+    \renewcommand{\impath}[1]{img/nns/##1}
+    \renewcommand{\imwidth}{0.075\textwidth}
+    \setlength{\tabcolsep}{0pt}
+    \renewcommand{\arraystretch}{0}
+    \centering
+    \begin{adjustbox}{max width=0.8 \linewidth, max height=0.7\textheight}
+    %
+\begin{tabular}{c@{\hskip 0.5em}c@{\hskip 1.0em}cccccccccc}
+  \toprule
+
+  & sample & \multicolumn{10}{c}{nearest neighbors} \\
+  \midrule
+
+  \multirow{4}{*}{\rotatebox[origin=c]{90}{CelebA-HQ (best val. NLL)}} &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000045_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000021_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000025_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns_bestval/000035_000009}} \\
+
+  \midrule
+
+  \multirow{4}{*}{\rotatebox[origin=c]{90}{CelebA-HQ (best train NLL)}} &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000000_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000001_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000002_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{celebahq_nns/000003_000009}} \\
+
+  \midrule
+
+  \multirow{4}{*}{\rotatebox[origin=c]{90}{FFHQ (best val. NLL)}} &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000013_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000009_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000007_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns_bestval/000000_000009}} \\
+
+  \midrule
+
+  \multirow{4}{*}{\rotatebox[origin=c]{90}{FFHQ (best train NLL)}} &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000000_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000001_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000002_000009}} \\
+
+  &
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000000_query}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000000}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000001}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000002}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000003}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000004}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000005}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000006}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000007}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000008}} & 
+  \includegraphics[width=\imwidth, align=c]{\impath{ffhq_nns/000003_000009}} \\
+
+  \bottomrule
+
+\end{tabular}
+\end{adjustbox}
+  %
+  \caption{\label{fig:facesnns} Nearest neighbors for our face-models trained on FFHQ and CelebA-HQ ($256 \times 256$ pix), based on the LPIPS \cite{zhang2018unreasonable} distance. The left column shows a sample from our model, while the 10 examples to the right show the nearest neighbors from the corresponding class (increasing distance) in the training dataset. We evaluate two different model checkpoints for each dataset: Best val. NLL denotes the minimal NLL
+  over the course of training, evaluated on unseen testdata. For this checkpoint, both models generate crisp, high-quality samples not present in the training data. However, when drastically overfitting the model, it reproduces
+  samples from the training data (best train NLL). Although not an ideal measure of image quality, NLL thus provides a proxy on model selection, whereas FID does not. See also Sec.~\ref{supp:nns}.}
+\end{figure}
+}
+
+
+\newcommand{\facesfidandinceptionplots}{
+\begin{figure*}
+\centering
+\includegraphics[width=0.4\textwidth]{img/faces_topk/scores_celebahq}
+\includegraphics[width=0.4\textwidth]{img/faces_topk/scores_ffhq}
+  \caption{\label{fig:facesfidandinceptionplots} FID and Inception Score as a function of top-k for CelebA-HQ (left) and FFHQ (right).}
+\end{figure*}
+}

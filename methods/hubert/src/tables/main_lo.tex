@@ -1,0 +1,63 @@
+
+\begin{table*}[t]
+    \centering
+    \begin{tabular}{lcccccc}
+        \toprule
+        Model & Unlabeled Data & LM & dev-clean & dev-other & test-clean & test-other \\
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{10-min labeled}}} \\
+        % DeCoAR 2.0~\cite{ling2020decoar} & LS-960 & 4-gram & - & - & - & - \\
+        DiscreteBERT~\cite{baevski2019effectiveness} & LS-960 & 4-gram & 15.7 & 24.1 & 16.3 & 25.2 \\
+        wav2vec 2.0 \textsc{Base}~\cite{baevski2020wav2vec}   & LS-960 & 4-gram & 8.9 & 15.7 & 9.1 & 15.6 \\
+        wav2vec 2.0 \textsc{Large}~\cite{baevski2020wav2vec}  & LL-60k & 4-gram & 6.3 & 9.8 & 6.6 & 10.3  \\
+        wav2vec 2.0 \textsc{Large}~\cite{baevski2020wav2vec}  & LL-60k & Transformer & 4.6 & 7.9 & 4.8 & 8.2 \\
+        \midrule
+        HUBERT \textsc{Base}    & LS-960 & 4-gram & 9.1 & 15.0 & 9.7 & 15.3  \\
+        HUBERT \textsc{Large}   & LL-60k & 4-gram & 6.1 & 9.4 & 6.6 & 10.1 \\
+        HUBERT \textsc{Large}   & LL-60k & Transformer & 4.3 & 7.0 & 4.7 & 7.6 \\
+        HUBERT \textsc{X-Large} & LL-60k & Transformer & 4.4 & 6.1 & 4.6 & 6.8 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{1-hour labeled}}} \\
+        DeCoAR 2.0~\cite{ling2020decoar} & LS-960 & 4-gram & - & - & 13.8 & 29.1 \\
+        DiscreteBERT~\cite{baevski2019effectiveness} & LS-960 & 4-gram & 8.5 & 16.4 & 9.0 & 17.6 \\
+        wav2vec 2.0 \textsc{Base}~\cite{baevski2020wav2vec}   & LS-960 & 4-gram & 5.0 & 10.8 & 5.5 & 11.3 \\
+        wav2vec 2.0 \textsc{Large}~\cite{baevski2020wav2vec}  & LL-60k & Transformer & 2.9 & 5.4 & 2.9 & 5.8 \\
+        \midrule
+        HUBERT \textsc{Base}    & LS-960 & 4-gram & 5.6 & 10.9 & 6.1 & 11.3  \\
+        HUBERT \textsc{Large}   & LL-60k & Transformer & 2.6 & 4.9 & 2.9 & 5.4 \\
+        HUBERT \textsc{X-Large} & LL-60k & Transformer & 2.6 & 4.2 & 2.8 & 4.8 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{10-hour labeled}}} \\
+        SlimIPL~\cite{likhomanenko2020slimipl} & LS-960 & 4-gram + Transformer & 5.3 & 7.9 & 5.5 & 9.0 \\
+        DeCoAR 2.0~\cite{ling2020decoar} & LS-960 & 4-gram & - & - & 5.4 & 13.3 \\
+        DiscreteBERT~\cite{baevski2019effectiveness} & LS-960 & 4-gram & 5.3 & 13.2 & 5.9 & 14.1 \\
+        wav2vec 2.0 \textsc{Base}~\cite{baevski2020wav2vec}   & LS-960 & 4-gram & 3.8 & 9.1 & 4.3 & 9.5 \\
+        wav2vec 2.0 \textsc{Large}~\cite{baevski2020wav2vec}  & LL-60k & Transformer & 2.4 & 4.8 & 2.6 & 4.9 \\
+        \midrule
+        HUBERT \textsc{Base}    & LS-960 & 4-gram & 3.9 & 9.0 & 4.3 & 9.4 \\
+        HUBERT \textsc{Large}   & LL-60k & Transformer & 2.2 & 4.3 & 2.4 & 4.6 \\
+        HUBERT \textsc{X-Large} & LL-60k & Transformer & 2.1 & 3.6 & 2.3 & 4.0 \\
+        
+        \midrule\midrule
+        \multicolumn{7}{c}{\textit{\textbf{100-hour labeled}}} \\
+        % LPM~\cite{hsu2020semi} & LL-60K & ConvLM & 4.87 & 13.84 & 4.88 & 15.28 \\
+        IPL~\cite{xu2020iterative} & LL-60k & 4-gram + Transformer & 3.19 & 6.14 & 3.72 & 7.11 \\
+        SlimIPL~\cite{likhomanenko2020slimipl} & LS-860 & 4-gram + Transformer & 2.2 & 4.6 & 2.7 & 5.2 \\
+        Noisy Student\cite{park2020improved} & LS-860 & LSTM & 3.9 & 8.8 & 4.2 & 8.6 \\
+        DeCoAR 2.0~\cite{ling2020decoar} & LS-960 & 4-gram & - & - & 5.0 & 12.1 \\
+        DiscreteBERT~\cite{baevski2019effectiveness} & LS-960 & 4-gram & 4.0 & 10.9 & 4.5 & 12.1 \\
+        wav2vec 2.0 \textsc{Base}~\cite{baevski2020wav2vec}   & LS-960 & 4-gram & 2.7 & 7.9 & 3.4 & 8.0 \\
+        wav2vec 2.0 \textsc{Large}~\cite{baevski2020wav2vec}  & LL-60k & Transformer & 1.9 & 4.0 & 2.0 & 4.0 \\
+        
+        \midrule
+        HUBERT \textsc{Base}    & LS-960 & 4-gram & 2.7 & 7.8 & 3.4 & 8.1  \\
+        HUBERT \textsc{Large}   & LL-60k & Transformer & 1.8 & 3.7 & 2.1 & 3.9 \\
+        HUBERT \textsc{X-Large} & LL-60k & Transformer & 1.7 & 3.0 & 1.9 & 3.5 \\
+        
+        \bottomrule
+    \end{tabular}
+    \caption{Results and comparison with the literature on low resource setups (10-min, 1-hour, 10-hour, and 100-hour of labeled data).}
+    \label{tab:main_lo}
+\end{table*}

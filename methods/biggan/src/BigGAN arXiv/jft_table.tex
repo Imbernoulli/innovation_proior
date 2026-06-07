@@ -1,0 +1,41 @@
+\begin{table}[tbp]
+\small
+\begin{center}\begin{tabular}{c|c|c|c|c|c|c|c|c} 
+\hline
+ %Res. & Batch & Ch. & Param (M) & Shared & Hier. & Ortho. & FID & IS \\
+ Ch. & Param (M) & Shared & Skip-$z$ & Ortho. & FID & IS & (min FID) / IS & FID / (max IS) \\
+\hline
+%\multirow{4}{*}{256}
+% G: 254953092, D: 62152898 = 317,105,990
+ 64 & 317.1 & \xmark & \xmark & \xmark & $48.38$ & $23.27$ & $48.6 / 23.1$ & $49.1 / 23.9$ \\
+\hline
+% G: 37197444, D: 62152898 = 99,350,342
+ 64 & 99.4 & \cmark & \cmark & \cmark & $23.48$ & $24.78$ & $22.4 / 21.0$ & $60.9 / 35.8$ \\
+\hline
+% G: 82107844, D: 125786402 = 207,894,246
+ 96 & 207.9 & \cmark & \cmark & \cmark & $18.84$ & $27.86$ & $17.1 / 23.3$ & $51.6 / 38.1$ \\
+\hline
+% G: 144559364, D: 211124610 = 355,683,974
+128 & 355.7 & \cmark & \cmark & \cmark & $13.75$ & $30.61$ & $13.0 / 28.0$ & $46.2 / 47.8$ \\
+\hline
+\end{tabular}
+\end{center}
+\caption{
+\label{jft_table}
+%Results on the internal dataset at $256\times256$ resolution.
+%The \textit{FID} and \textit{IS} columns report these scores given by the internal dataset-trained Inception v2 classifier with noise distributed as $z \sim \mathcal{N}(0, I)$ (non-truncated).
+%The \textit{(min FID) / IS} and \textit{FID / (max IS)} columns report scores at the best FID and IS from a sweep across truncated noise distributions ranging from $\sigma = 0$ to $\sigma = 2$.
+%Images from the validation set have an IS of 50.88 and FID of 1.94.
+BigGAN results on JFT-300M at $256\times256$ resolution.
+The \textit{FID} and \textit{IS} columns report these scores given by the JFT-300M-trained Inception v2 classifier with noise distributed as $z \sim \mathcal{N}(0, I)$ (non-truncated).
+The \textit{(min FID) / IS} and \textit{FID / (max IS)} columns report scores at the best FID and IS from a sweep across truncated noise distributions ranging from $\sigma = 0$ to $\sigma = 2$.
+Images from the JFT-300M validation set have an IS of 50.88 and FID of 1.94.
+}
+\end{table}
+
+
+% train+val set:
+% (JFT) inception_score = 50.659447,+/- 1.394818, acc: -1.000000, FID = 1.914317  duration = 139.051551 s
+% 
+% test set:
+% (JFT) inception_score = 50.883789,+/- 4.031054, acc: -1.000000, FID = 1.935230  duration = 139.914789 s

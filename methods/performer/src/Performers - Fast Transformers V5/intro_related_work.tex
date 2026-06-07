@@ -1,0 +1,37 @@
+\section{Introduction and related work}
+\label{sec:intro_related_work}
+
+Transformers \citep{transformer, universal_t} are powerful neural network architectures that have become SOTA in several areas of machine learning including natural language processing (NLP) (e.g. speech recognition \citep{luo}), neural machine translation (NMT) \citep{nmt}, document generation/summarization, time series prediction, generative modeling (e.g. image generation \citep{parmar}), music generation \citep{simon}, and bioinformatics \citep{rives, progen, ingraham2019generative, elnaggar2019end, du2020energy}. 
+
+Transformers rely on a trainable \textit{attention} mechanism that identifies complex dependencies between the elements of each input sequence. Unfortunately, the regular Transformer scales quadratically with the number of tokens $L$ in the input sequence, which is prohibitively expensive for large $L$ and precludes its usage in settings with limited computational resources even for moderate values of $L$. 
+Several solutions have been proposed to address this issue \citep{longformer, conformer, imputer, sparsetr, image_transformer}. Most approaches restrict the attention mechanism to attend to local neighborhoods \citep{parmar} or incorporate structural priors on attention such as sparsity \citep{sparsetr}, pooling-based compression \citep{compr} clustering/binning/convolution techniques (e.g. \citep{routing_t} which applies $k$-means clustering to learn dynamic sparse attention regions, or \citep{reformer}, where locality sensitive hashing is used to group together tokens of similar embeddings), sliding windows \citep{longformer}, or truncated targeting \citep{chelba}. 
+There is also a long line of research on using dense attention matrices, but defined by low-rank kernels
+substituting softmax \citep{trans-rnns, shen}. Those methods critically rely on kernels admitting explicit representations as dot-products of finite positive-feature vectors.
+
+The approaches above do not aim to approximate regular attention, but rather propose simpler and more tractable attention mechanisms, often by incorporating additional constraints (e.g. identical query and key sets as in \citep{reformer}), or by trading regular with sparse attention using more layers \citep{sparsetr}. Unfortunately, there is a lack of rigorous guarantees for the representation power produced by such methods, and sometimes the validity of sparsity patterns can only be verified empirically through trial and error by constructing special GPU operations (e.g. either writing C++ CUDA kernels \citep{sparsetr} or using TVMs \citep{longformer}). Other techniques %improving 
+which aim to reduce %overall 
+Transformers' space complexity include reversible residual layers allowing one-time activation storage in training \citep{reformer} and shared attention weights \citep{shared_weights}. These constraints may impede application %of the Transformer 
+to long-sequence problems, where approximations of the attention mechanism are not sufficient. Approximations based on truncated back-propagation \citep{transformerxl} are also unable to capture long-distance correlations since the gradients are only propagated inside a localized window.
+Other methods propose biased estimation of %the 
+regular attention but only in the non-causal setting and with large mean squared error \citep{linformer}.
+
+%Other methods propose algorithms that
+%in principle can provide estimation (yet not %unbiased) of the regular attention, but are not %feasible in practice due to inherent difficulty %of approximating regular non-Lipschitz  %attention (e.g. require projection matrices %with entries of magnitude $2^{-100}$ for %$100$-dimensional problems, see: Theorem 2 in %\citep{linformer}). Those methods are applied %by severely relaxing the structure of the %original algorithms, leading to mechanisms no %longer approximating regular attention (see: %Section \ref{sec:experiments}).
+
+In response, we introduce the first Transformer architectures, \textit{Performers}, capable of \textbf{provably} accurate and practical estimation of regular (softmax) full-rank attention, but of only linear space and time complexity and \textbf{not relying on any priors} such as sparsity or low-rankness. Performers use the \textit{Fast Attention Via positive Orthogonal Random features} (FAVOR+) mechanism, leveraging new methods for approximating softmax and Gaussian kernels, which we propose. We believe these methods are of independent interest, contributing to the theory of scalable kernel methods. 
+Consequently, Performers are the first linear architectures \textbf{fully compatible} (via small amounts of fine-tuning) with regular Transformers, providing strong theoretical guarantees: unbiased or nearly-unbiased estimation of the attention matrix, uniform convergence and lower variance of the approximation.
+
+%Importantly, 
+FAVOR+ can be also applied to efficiently model other kernelizable attention mechanisms beyond softmax. This representational power is crucial to accurately compare softmax with other kernels for the first time on large-scale tasks, that are beyond the reach of regular Transformers, and find for them optimal attention-kernels.
+FAVOR+ can also be applied beyond the Transformer scope as a more scalable replacement for regular attention, which itself has a wide variety of uses in computer vision \citep{attention_cvpr}, reinforcement learning \citep{relational}, training with softmax cross entropy loss, and even combinatorial optimization \citep{pointer}.
+
+We test Performers on a rich set of tasks ranging from pixel-prediction through text models to protein sequence modeling. We demonstrate competitive results with other examined efficient sparse and dense attention methods, showcasing the effectiveness of the novel attention-learning paradigm leveraged by Performers. We emphasize that in principle, FAVOR+ can also be combined with other techniques, such as reversible layers \citep{reformer} or cluster-based attention \citep{routing_t}. 
+
+
+
+
+
+ 
+
+
+

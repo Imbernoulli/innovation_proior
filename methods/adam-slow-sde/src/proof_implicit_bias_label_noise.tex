@@ -1,0 +1,389 @@
+\section{Proof of Theorems in \Cref{sec:diag}}\label{proof:diag}
+
+% \xinghan{10/13 TBD: This part is too messy.}
+
+\subsection{Proof of Adam and AdamE's Implicit Biases with Label Noise}
+In this part, we give the proof of \Cref{thm:agm-slow-ode}, \Cref{thm:adam-implicit-bias-label-noise} and \Cref{thm:adame-implicit-bias-label-noise}.
+\begin{proof}[Proof of \Cref{thm:agm-slow-ode}] Recall the SDE formula in \Cref{equ:AGMs-SDE-no-projection} and \Cref{lma:1st-moment}:
+    \begin{align*}
+        \left\{\begin{array}{l}
+             \dd \vzeta(t) = \partial\Phi_{\mS(\vv)}(\vzeta)\mS(\vv) \mSigma^{1/2}(\vzeta)\dd \mW_t - \frac{1}{2} \mS_t  \partial\Phi_{\mS(\vv)}(\vzeta) \mS_t \partial^2 (\nabla \cL)(\vzeta) [\mP \cV_{\nabla^2 \cL'(\phi'_{(0)})}(\mP \mSigma_0\mP)\mP]\dd t, \\
+             \dd \vv(t) = c \left(V(\mSigma(\vzeta)) - \vv\right) \dd t.
+        \end{array}\right. 
+    \end{align*}
+
+Plugging in the following:
+\begin{itemize}
+    \item The definition that $\mP:=\mS_0^{1/2}$,
+    \item \Cref{lmm:phi-H-0}: For any $\vzeta\in\Gamma$ and \textit{p.d} matrix $\mS$, $\partial \Phi_{\mS}(\vzeta)\mS \nabla^2 \cL(\vzeta)=\boldsymbol{0}$,
+    \item The label noise condition: $\mSigma(\vzeta) := \alpha \nabla^2 \cL(\vzeta)$ for any $\vzeta\in\Gamma$ and some constant $\alpha >0$.
+\end{itemize}
+yields the final result:
+    \begin{align}\label{AGM-slow-ode-appendix}
+        \left\{\begin{array}{l}
+             \dd \vzeta(t) =  - \frac{\alpha}{2} \mS_t  \partial\Phi_{\mS_t}(\vzeta) \mS_t \partial^2 (\nabla \cL)(\vzeta) [\mS_t]\dd t, \\
+             \dd \vv(t) = c \left(V(\mSigma(\vzeta)) - \vv\right) \dd t.
+        \end{array}\right.
+    \end{align}
+    The above equation completes the proof.
+\end{proof}
+
+For \Cref{thm:adam-implicit-bias-label-noise} and \Cref{thm:adame-implicit-bias-label-noise}, 
+% we first give the more general lemma, for which the above two lemmas are direct corollaries. We first recall the update rule of AdamE-$\lambda$, the variant of Adam proposed as a verification case of our main results
+%     \begin{align*}
+%         \vm_{k+1} &:= \beta_1 \vm_k + (1-\beta_1) \nabla \ell_{k}(\vtheta_{k}) \\
+%         \vv_{k+1} &:= \beta_2 \vv_k + (1-\beta_2) \nabla\ell_{k}(\vtheta_{k})^{\odot 2} \\
+%         \theta_{k+1,i} &:= \theta_{k,i} - \eta \frac{m_{k+1,i}}{\left(v_{k+1,i}\right)^{\lambda}+\epsilon} \quad \text{for all } i \in [d],\lambda\in(0,1).
+% \end{align*}
+% Notice that taking $\lambda =1/2$ reduces AdamE-$\lambda$ to Adam. 
+we first present the following formal statements and give the corresponding proofs for each of them.
+
+\begin{lemma}[Adam's Implicit Bias under Label Noise and $\epsilon = 0$]
+    With the label noise condition, every fixed point of \Cref{equ:AGMs-ODE} for Adam with $\epsilon = 0$ satisfies $\nabla_{\Gamma} \tr\left(\mathrm{Diag}(\mH)^{1/2}\right) = 0$, where $\nabla_{\Gamma} f$ stands for the
+gradient of a function $f$ projected to the tangent space of $\Gamma$. 
+    \label{thm:formal-adam-implicit-bias-label-noise-eps-0}
+\end{lemma}
+\begin{proof}[Proof of \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0}]
+    Consider the a fixed point  $(\vzeta^*,\vv^*)$ of the ODE \eqref{AGM-slow-ode-appendix}. It must satisfy
+    \begin{align}
+        S(\vv^*) \partial\Phi_{S(\vv^*)} (\vzeta^*) S(\vv^*) \nabla^3 \cL (\vzeta^*)[S(\vv^*)]=\vzero, \label{equ:constraint-for-Phi}
+    \end{align}
+    and 
+    \begin{align}
+        \vv^* = V(\mSigma(\vzeta^*)). \label{equ:constraint-for-v}
+    \end{align}
+    First, we simplify the notation by denoting the following:
+    $$\mS^* := S(\vv^*), \quad \mP^*_{\parallel}:=\partial \Phi_{S(\vv^*)}\mS^*,  \quad \mH^* = \nabla^2 \cL(\vzeta^*).$$
+    Then \Cref{equ:constraint-for-Phi} becomes
+    \begin{align*}
+        \mS^* \mP^*_{\parallel} \nabla^3 \cL (\vzeta^*)[\mS^*] = \vzero. 
+    \end{align*}
+    Since $\vv^* = V(\mSigma(\vzeta^*))$ and $\mSigma(\vzeta^*) = \alpha \mH^*$, we have that $\vv^* = \diag(\mSigma(\vzeta^*)) = \alpha\diag(\mH^*)$.
+    Then $\mS^* = \Diag(\frac{1}{(\alpha\diag(\mH^*))^{1/2}})$, and we can rewrite $\nabla^3 \cL (\vzeta^*)[\mS^*]$ as
+    \begin{align*}
+        \nabla^3 \cL (\vzeta^*)[\mS^*] = \sum_{j=1}^{d} \frac{1}{(\alpha H^*_{jj})^{1/2}} \nabla(H^*_{jj}) = \frac{2}{\sqrt{\alpha}} \sum_{j=1}^{d} \nabla ((H^*_{jj})^{1/2}) = \frac{2}{\sqrt{\alpha}} \nabla \tr\left(\Diag(\mH^*)^{1/2}\right).
+    \end{align*}
+Therefore, \Cref{equ:constraint-for-Phi} is equivalent to
+\begin{align*}
+    \mS^* \mP^*_{\parallel}\nabla \tr\left(\Diag(\mH^*)^{1/2}\right) = \vzero.
+\end{align*}
+
+W.L.O.G, we can decompose $\mP_{\parallel}^*$ and $\mH^*$ into block matrices as
+\begin{align*}
+    \mP_{\parallel}^* = \begin{pmatrix}
+        \boldsymbol{0},& \boldsymbol{0}\\
+         \boldsymbol{0}, & \mP^*_{d-m}
+    \end{pmatrix},
+    \mH^* = \begin{pmatrix}
+        \boldsymbol{0},& \boldsymbol{0}\\
+         \boldsymbol{0}, & \mH^*_{d-m}
+    \end{pmatrix},
+\end{align*}
+where $\mP^*_{d-m},\mH^*_{d-m}\in\R^{(d-m)\times (d-m)}$ are full-rank matrices. Under this decomposition, the first $m$ diagonal elements in  $(\Diag(\mH))^{1/2}$ is $0$, and the first $m$ diagonal elements in  $\mS^*$ is $0$. Specifically,
+\begin{align*}
+    \mS^* = \begin{pmatrix}
+        \vzero & \vzero\\
+        \vzero & \mS^*_{d-m}
+    \end{pmatrix},
+    \quad
+    \Diag(\mH^*) = \begin{pmatrix}
+        \vzero & \vzero\\
+         \vzero & \Diag(\mH^*_{d-m})
+    \end{pmatrix}.
+\end{align*}
+Then the constraint in \Cref{equ:constraint-for-Phi} can be reduced into
+\begin{align} \label{equ:constraint-for-Phi-eps-0-simplified}
+    -\nabla_{\Gamma}\tr\left(\Diag(\mH^*)^{1/2}\right) = \vzero,
+\end{align}
+proving the theorem.
+% Also notice that the direction of ODE always has an negative accumulation of $\tr()$
+% The above equation directly gives
+% \begin{align*}
+%     \vzeta^* \in \arg\min_{\vzeta\in\Gamma}\tr\left(\Diag(\mH)^{1-\lambda}\right).
+% \end{align*}
+%Then we complete the proof. Also notice that, taking $\epsilon =0$, gives \Cref{thm:adame-implicit-bias-label-noise}, and futher taking $\lambda= 1/2$ gives the results in \Cref{thm:adam-implicit-bias-label-noise}.
+\end{proof}
+
+In the practical use, we usually set $\epsilon$ to an extremely small constant; for example, PyTorch's official documentation sets the default value of $\epsilon$ to $10^{-8}$. Such a small constant will hardly alter the form of the implicit bias, but to make our analysis more rigorous, we also derived the case for Adam with $\epsilon > 0$.
+
+\begin{lemma}[Adam's Implicit Bias under Label Noise and $\epsilon > 0$]\label{lemma:adam-implicit-bias-label-noise-eps-not-0}
+    With the label noise condition, every fixed point of \Cref{equ:AGMs-ODE} for Adam with $\epsilon > 0$ satisfies that
+    $$\nabla_{\Gamma} \tr\left( \Diag(\mH)^{1/2} - \frac{\epsilon}{\sqrt{\alpha}} \ln\left(\sqrt{\alpha}\Diag(\mH)^{1/2} + \epsilon\right) \right) = \vzero.$$\label{thm:formal-adam-implicit-bias-label-noise-eps-not-0}
+\end{lemma}
+\begin{proof}
+    Let $(\vzeta^*,\vv^*)$ be a fixed point of the ODE \eqref{AGM-slow-ode-appendix} (equivalently, of \Cref{equ:AGMs-ODE}). Then, as in the proof of \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0}, it satisfies the stationarity constraints
+    \begin{align}
+        &S(\vv^*) \partial\Phi_{S(\vv^*)} (\vzeta^*)  S(\vv^*)  \nabla^3 \cL (\vzeta^*)[S(\vv^*)]=\vzero, \label{equ:constraint-for-Phi-epspos}\\
+        &\vv^* = V\big(\mSigma(\vzeta^*)\big). \label{equ:constraint-for-v-epspos}
+    \end{align}
+    Introduce the shorthand
+    \[
+        \mS^* := S(\vv^*),\qquad
+        \mP^*_{\parallel}:=\partial \Phi_{S(\vv^*)}\mS^*,\qquad
+        \mH^* := \nabla^2 \cL(\vzeta^*).
+    \]
+    Under the label noise condition we have $\mSigma(\vzeta^*)=\alpha\mH^*$, hence by \eqref{equ:constraint-for-v-epspos}
+    \[
+        \vv^* = V\big(\mSigma(\vzeta^*)\big) = \diag\big(\mSigma(\vzeta^*)\big)
+        = \alpha\diag(\mH^*).
+    \]
+    For Adam with $\epsilon>0$, the diagonal preconditioner is
+    \[
+        \mS^* = \Diag\left(\frac{1}{\sqrt{\vv^*}+\epsilon}\right)
+        = \Diag\left(\frac{1}{\sqrt{\alpha\diag(\mH^*)}+\epsilon}\right).
+    \]
+    We now compute $\nabla^3 \cL(\vzeta^*)[\mS^*]$. Since $\mS^*$ is diagonal, we only need to sum up the diagonal terms:
+    \begin{align}
+        \nabla^3 \cL(\vzeta^*)[\mS^*]
+        = \sum_{j=1}^{d} \frac{1}{\sqrt{\alpha H^*_{jj}}+\epsilon}\nabla\big(H^*_{jj}\big).
+        \label{equ:epspos-first-line}
+    \end{align}
+    Define the scalar function
+    \[
+        \psi(x)
+        := \sqrt{\alpha x}-\epsilon\ln\big(\sqrt{\alpha x}+\epsilon\big), \qquad x\ge 0.
+    \]
+    A direct differentiation gives
+    \[
+        \psi'(x)
+        = \frac{\alpha}{2\big(\sqrt{\alpha x}+\epsilon\big)}.
+    \]
+    Therefore,
+    \[
+        \frac{1}{\sqrt{\alpha x}+\epsilon}
+        = \frac{2}{\alpha}\psi'.
+    \]
+    Plugging this identity into \eqref{equ:epspos-first-line} and using the chain rule yields
+    \begin{align}
+        \nabla^3 \cL(\vzeta^*)[\mS^*]
+        = \frac{2}{\alpha}\sum_{j=1}^d \psi'(H^*_{jj})\nabla\big(H^*_{jj}\big)
+        = \frac{2}{\alpha}\nabla\left[\sum_{j=1}^d \psi(H^*_{jj})\right]
+        = \frac{2}{\alpha}\nabla \tr\Big(\psi\big(\Diag(\mH^*)\big)\Big).
+        \label{equ:antiderivative-epspos}
+    \end{align}
+    Noting that $\psi$ acts elementwise on the diagonal, we can also write
+    \[
+        \tr\Big(\psi\big(\Diag(\mH^*)\big)\Big)
+        = \tr\left( \sqrt{\alpha}\Diag(\mH^*)^{1/2}
+        - \epsilon\ln\big(\sqrt{\alpha}\Diag(\mH^*)^{1/2}+\epsilon\big) \right).
+    \]
+    Substitute \eqref{equ:antiderivative-epspos} into \eqref{equ:constraint-for-Phi-epspos}:
+    \[
+        \mS^* \mP^*_{\parallel}\frac{2}{\alpha}
+        \nabla \tr\left( \sqrt{\alpha}\Diag(\mH^*)^{1/2}
+        - \epsilon\ln\big(\sqrt{\alpha}\Diag(\mH^*)^{1/2}+\epsilon\big) \right)
+        =\vzero.
+    \]
+    Since $\epsilon>0$, the diagonal matrix $\mS^*$ has strictly positive diagonal entries and is therefore invertible, and we can cancel it out. With arguments similar to those in \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0}, only the bottom-right part of $\mH^*$ (that corresponds to the dimensions within $\Gamma$) are nonzero, and we obtain the following result:
+    % Multiplying the last display on the left by $(\mS^*)^{-1}$ and ignoring the positive scalar $2/\alpha$ gives
+    % \[
+    %     \mP^*_{\parallel}
+    %     \nabla \tr\left( \sqrt{\alpha}\Diag(\mH^*)^{1/2}
+    %     - \epsilon\ln\big(\sqrt{\alpha}\Diag(\mH^*)^{1/2}+\epsilon\big) \right)
+    %     = \vzero.
+    % \]
+    % By definition, $\mP^*_{\parallel}$ is the orthogonal projector onto the tangent space $\mathrm{T}_{\vzeta^*}\Gamma$, hence $\mP^*_{\parallel}\nabla f(\vzeta^*)=\nabla_{\Gamma} f(\vzeta^*)$ for any smooth $f$. Applying this with
+    % \[
+    %     f(\vzeta)=\tr\left( \sqrt{\alpha}\Diag(\mH(\vzeta))^{1/2}
+    %     - \epsilon\ln\big(\sqrt{\alpha}\Diag(\mH(\vzeta))^{1/2}+\epsilon\big) \right),
+    % \]
+    % we obtain
+    \[
+        \nabla_{\Gamma} \tr\left( \sqrt{\alpha}\Diag(\mH^*)^{1/2}
+        - \epsilon\ln\big(\sqrt{\alpha}\Diag(\mH^*)^{1/2}+\epsilon\big) \right)
+        = \vzero,
+    \]
+    a direct calculation gives 
+\begin{align*}
+    \nabla_{\Gamma} \tr\left( \Diag(\mH^*)^{1/2}
+        - \frac{\epsilon}{\sqrt{\alpha}}\ln\left( \frac{\sqrt{\alpha}}{\epsilon}\Diag(\mH^*)^{1/2}+\mI\right) \right)
+        =\vzero,
+\end{align*}
+    which proves the claim.
+    % \smallskip
+    % \noindent\emph{Well-definedness.} Because $\epsilon>0$ and $\Diag(\mH^*)^{1/2}\succeq \boldsymbol{0}$ (entrywise) under the label noise condition, the matrix inside the logarithm has strictly positive diagonal entries, so all operations above are well-defined and smooth in a neighborhood of $\vzeta^*$.
+\end{proof}
+
+\begin{lemma}[AdamE's Implicit Bias under Label Noise and $\epsilon = 0$]
+    With the label noise condition, every fixed point of \Cref{equ:AGMs-ODE} for AdamE-$\lambda$ with $\lambda \in [0, 1)$ and $\epsilon = 0$ satisfies $\nabla_{\Gamma} \tr\left(\mathrm{Diag}(\mH)^{1-\lambda}\right) = 0$.
+    \label{thm:formal-adamE-implicit-bias-label-noise-eps-0}
+\end{lemma}
+\begin{proof}[Proof of \Cref{thm:formal-adamE-implicit-bias-label-noise-eps-0}]
+    The proof is similar to the proof of \Cref{thm:formal-adam-implicit-bias-label-noise-eps-0}, but when calculating $\mS^*$, we have $\mS^* = \Diag(\frac{1}{(\alpha\diag(\mH^*))^{\lambda}})$ instead of $\mS^* = \Diag(\frac{1}{(\alpha\diag(\mH^*))^{1/2}})$, which gives
+    \begin{align*}
+        \nabla^3 \cL (\vzeta^*)[\mS^*] = \sum_{j=1}^{d} \frac{1}{(\alpha H^*_{jj})^{\lambda}} \nabla(H^*_{jj}) &= \frac{1}{(1-\lambda)\alpha^{\lambda}} \sum_{j=1}^{d} \nabla ((H^*_{jj})^{1-\lambda}) \\
+        &= \frac{1}{(1-\lambda)\alpha^{\lambda}} \nabla \tr\left(\Diag(\mH^*)^{1-\lambda}\right).
+    \end{align*}
+    This leads to the constraint 
+    $-\nabla_{\Gamma}\tr\left(\Diag(\mH^*)^{1-\lambda}\right) = \vzero$ in the same way as \Cref{equ:constraint-for-Phi-eps-0-simplified}, which completes the proof.
+\end{proof}
+
+% \kaifeng{Next, I feel it is sufficient to derive the implicit regularizer for Adam with $\epsilon > 0$. Not many people will care about AdamE with $\epsilon > 0$.}
+
+\begin{comment}
+-------
+old version
+\begin{lemma}[Adam and AdamE's Implicit Biases with Label Noise]
+    With the label noise condition, $\epsilon \ge 0$, the fixed points of \Cref{equ:AGMs-ODE} in the AdamE-$\lambda$ case satisfiy $\nabla \tr(\Diag(\mH)^{1-\lambda}) = O(\epsilon)$, where $\lambda\in[0,1)$.
+    \label{thm:formal-adam-implicit-bias-label-noise}
+\end{lemma}
+\begin{proof}
+    
+    
+    %We first consider \Cref{equ:constraint-for-Phi}. To simplify the notation, we denote that 
+    %$$\mS^* := S(\vv^*), \mP^*_{\parallel}:=\partial \Phi_{S(\vv^*)}\mS^*,  \mH^* = \nabla^2 \cL(\vzeta^*).$$
+    % \begin{align}
+    %     \mS(\vv^*) \partial^2 (\nabla \cL)(\vzeta^*)[S(\vv^*)]=0,\label{equ:constraint-for-phi}
+    % \end{align}
+    % Solving \Cref{equ:constraint-for-phi} and \Cref{equ:constraint-for-v} gives
+    % \begin{align}
+    %     \partial^2 (\nabla \cL)(\vzeta^*)[S(V(\mSigma(\vzeta^*)))]=0.\label{equ:adam-regular-term-before}
+    % \end{align}
+    Integrating by parts gives 
+\begin{align}
+    \partial^2 \left(\nabla\cL\right) \left[\mS\right] &= \nabla\left[\langle\nabla^2\cL,\mS\rangle\right] - \nabla \left(\mS\right)\left[\nabla^2\cL\right].\label{equ:implicit-bias-decomposition}
+\end{align}
+We use $\mH$ and $\nabla^2\cL$ interchangeably to denote the Hessian matrix. For the first term, note that 
+\begin{align*}
+    \langle \mS, \mH\rangle &= \sum_{j,k}\left[\mS\right]_{jk} \mH_{jk} = \sum_{i,j,k}\mP_{ji}\mH_{jk}\mP_{ki} \\
+    &= \sum_i \left[\mP\mH\mP\right]_{ii} = \tr\left(\mP\mH\mP\right) \\
+    &= \tr\left(\left(\Diag \mH\right)^{1-\lambda}\right) + O(\epsilon \tr(\mH)),
+\end{align*}
+where the last equality comes from the update rule of AdamE-$\lambda$: 
+$$\mS= (\Diag\mH)^{-\lambda} + O(\epsilon), \mP= (\Diag\mH)^{-\lambda/2} + O(\sqrt{\epsilon}).$$ 
+For the second term, we also plug in the update rule of Adam, and use $h_j$ to denote $\mH_{jj}$, which turns out to be the gradient of the same thing:
+% \begin{align*}
+%     \nabla \left(\mS\right)\left[\nabla^2\cL\right] &= \sum_{j,k}\nabla\left(\left[\mS\right]_{jk}\right)\nabla^2_{jk}\cL = \sum_{j}\nabla\left(\left[\mS\right]_{jj}\right)\nabla^2_{jj}\cL \\
+%     &= \sum_j\nabla\left(h_j^{-\frac{1}{2}}\right) \cdot h_j + \O\left(\epsilon \sum_j h_j\right)\\
+%     % &= \sum_j \nabla\left(h_j\right) \cdot -\frac{1}{2} h_j^{-\frac{1}{2}}  + O(\epsilon \tr(\mH))\\
+%     &= \sum_j \nabla \left(-h_j^{\frac{1}{2}}\right) + O(\epsilon \tr(\mH))\\
+%     &= -\nabla \tr\left(\left(\Diag \mH\right)^{\frac{1}{2}}\right) + O\left(\epsilon \nabla \tr(\mH)\right).
+% \end{align*}
+\begin{align*}
+    \nabla \left(\mS\right)\left[\nabla^2\cL\right] &= \sum_{j,k}\nabla\left(\left[\mS\right]_{jk}\right)\nabla^2_{jk}\cL \\
+    &= \sum_{j}\nabla\left(\left[\mS\right]_{jj}\right)\nabla^2_{jj}\cL \\
+    &= \sum_j\nabla\left(h_j^{-\lambda}\right) \cdot h_j  + \O\left(\epsilon \sum_j h_j\right) \\
+    &= \sum_j \nabla\left(h_j\right) \cdot -\lambda h_j^{-\lambda} \\
+    &= -\frac{\lambda}{1-\lambda} \sum_j \nabla \left(-h_j^{1-\lambda}\right) + O(\epsilon \tr(\mH))\\
+    &= -\frac{\lambda}{1-\lambda}\nabla \tr\left(\left(\Diag \mH\right)^{1-\lambda}\right) + O(\epsilon \tr(\mH)).
+\end{align*}
+Summarizing, our drift term can be represented as a constant multiple of
+\begin{align}
+    \partial^2 (\nabla \cL)(\vzeta^*)[S(\vv^*)]&=\nabla\left[\langle\mH^*,\mS^*\rangle\right] - \nabla \left(\mS^*\right)\left[\mH^*\right]\\ &= \frac{1}{1-\lambda}\nabla \tr\left(\left(\Diag \mH^*\right)^{1-\lambda}\right) + O(\epsilon \nabla \tr(\mH^*)),\label{equ:adam-regular-term}
+\end{align}
+from which we can rewrite the constant for the fixed points in \Cref{equ:constraint-for-Phi} as
+\begin{align*}
+    \mS^* \mP^*_{\parallel} \nabla \tr\left(\left(\Diag \mH\right)^{\frac{1}{2}}\right) = O(\epsilon).
+\end{align*}
+W.L.O.G, we can decompose $\mP_{\parallel}^*$ and $\mH^*$ into block matrices as
+\begin{align*}
+    \mP_{\parallel}^* = \begin{pmatrix}
+        \boldsymbol{0},& \boldsymbol{0}\\
+         \boldsymbol{0}, & \mP^*_{d-m}
+    \end{pmatrix},
+    \mH^* = \begin{pmatrix}
+        \boldsymbol{0},& \boldsymbol{0}\\
+         \boldsymbol{0}, & \mH^*_{d-m}
+    \end{pmatrix},
+\end{align*}
+where $\mP^*_{d-m},\mH^*_{d-m}\in\R^{(d-m)\times (d-m)}$ are full-rank matrices. Under this decomposition, the first $m$ diagonal elements in  $(\Diag(\mH))^{1/2}$ is $0$, and the first $m$ diagonal elements in  $\mS^*$ is $\epsilon\ge0$. Specifically
+\begin{align*}
+    \mS^* = \begin{pmatrix}
+        \epsilon \mI_m,& \boldsymbol{0}\\
+         \boldsymbol{0},& \mS^*_{d-m}
+    \end{pmatrix},
+    \Diag(\mH^*) = \begin{pmatrix}
+        \boldsymbol{0},& \boldsymbol{0}\\
+         \boldsymbol{0},& \Diag(\mH^*_{d-m})
+    \end{pmatrix}.
+\end{align*}
+Then the constraint in \Cref{equ:constraint-for-Phi} can be reduced into
+\begin{align*}
+    -\nabla_{\Gamma}\tr\left(\Diag(\mH^*)^{1 - \lambda}\right) = O(\epsilon),
+\end{align*}
+where $\nabla_{\Gamma} f$ stands for the
+gradient of a function $f$ projected to the tangent space of the manifold $\Gamma$. 
+
+% Also notice that the direction of ODE always has an negative accumulation of $\tr()$
+
+% The above equation directly gives
+% \begin{align*}
+%     \vzeta^* \in \arg\min_{\vzeta\in\Gamma}\tr\left(\Diag(\mH)^{1-\lambda}\right).
+% \end{align*}
+Then we complete the proof. Also notice that, taking $\epsilon =0$, gives \Cref{thm:adame-implicit-bias-label-noise}, and futher taking $\lambda= 1/2$ gives the results in \Cref{thm:adam-implicit-bias-label-noise}.
+% forming a preconditioned gradient flow that implicitly minimizes $\tr\left(\left(\Diag \mH\right)^{\frac{1}{2}}\right)$ when $\epsilon \to 0$. Combining \Cref{equ:adam-regular-term-before} and \cref{equ:adam-regular-term} gives the result in \Cref{thm:adam-implicit-bias-label-noise}.
+\end{proof}
+
+% \begin{proof}[Proof of \Cref{thm:adame-implicit-bias-label-noise}]
+%     Now we consider the optimizer AdamE-$\lambda$, the variant of Adam proposed as a verification case of our main results, whose update rule is
+%     \begin{align*}
+%         \vm_{k+1} &:= \beta_1 \vm_k + (1-\beta_1) \nabla \ell_{k}(\vtheta_{k}) \\
+%         \vv_{k+1} &:= \beta_2 \vv_k + (1-\beta_2) \nabla\ell_{k}(\vtheta_{k})^{\odot 2} \\
+%         \theta_{k+1,i} &:= \theta_{k,i} - \eta \frac{m_{k+1,i}}{\left(v_{k+1,i}\right)^{\lambda}+\epsilon} \quad \text{for all } i \in [d],\lambda\in(0,1).
+% \end{align*}
+% Now for AdamE-$\lambda$, the precondition matrix $\mS= (\Diag\mH)^{-\lambda} + O(\epsilon)$, and $\mP= (\Diag\mH)^{-\lambda/2} + O(\sqrt{\epsilon})$, which gives
+% \begin{align*}
+%     \langle \mS, \mH\rangle &= \sum_{j,k}\left[\mS\right]_{jk} \mH_{jk} \\
+%     &= \sum_{i,j,k}\mP_{ji}\mH_{jk}\mP_{ki} \\
+%     &= \sum_i \left[\mP\mH\mP\right]_{ii} \\
+%     &= \tr\left(\mP\mH\mP\right) \\
+%     &= \tr\left(\left(\Diag \mH\right)^{1-\lambda}\right) + O(\epsilon \tr(\mH)).
+% \end{align*}
+% Also, similar to the case for Adam, we have
+% \begin{align*}
+%     \nabla \left(\mS\right)\left[\nabla^2\cL\right] &= \sum_{j,k}\nabla\left(\left[\mS\right]_{jk}\right)\nabla^2_{jk}\cL \\
+%     &= \sum_{j}\nabla\left(\left[\mS\right]_{jj}\right)\nabla^2_{jj}\cL \\
+%     &= \sum_j\nabla\left(h_j^{-\lambda}\right) \cdot h_j  + \O\left(\epsilon \sum_j h_j\right) \\
+%     &= \sum_j \nabla\left(h_j\right) \cdot -\lambda h_j^{-\lambda} \\
+%     &= -\frac{\lambda}{1-\lambda} \sum_j \nabla \left(-h_j^{1-\lambda}\right) + O(\epsilon \tr(\mH))\\
+%     &= -\frac{\lambda}{1-\lambda}\nabla \tr\left(\left(\Diag \mH\right)^{1-\lambda}\right) + O(\epsilon \tr(\mH)).
+% \end{align*}
+% Utilizaing \Cref{equ:implicit-bias-decomposition}, we get the regularization term for AdamE-$\lambda$ as
+% \begin{align*}
+%     \partial^2 \left(\nabla\cL\right) \left[\mS\right] &= \nabla\left[\langle\nabla^2\cL,\mS\rangle\right] - \nabla \left(\mS\right)\left[\nabla^2\cL\right]\\
+%     &= \frac{1}{1-\lambda}\tr\left(\left(\Diag \mH\right)^{1-\lambda}\right) + O(\epsilon \tr(\mH)),
+% \end{align*}
+% Evaluating the above equation when $\epsilon \to 0$ completes the proof.
+% \end{proof}
+\end{comment}
+
+\subsection{Proof of \Cref{lmm:diagonal-net}}
+\begin{proof}
+We only prove the second argument in \Cref{lmm:diagonal-net} with any $e_0\in(0,1]$, since taking $e_0= 0.5$ yields the first argument. First, we recall that the minimizer manifold $\Gamma$ is defined as 
+$$\Gamma := \left\{\vtheta | \langle \vz_i, \vu^{\odot 2} - \vv^{\odot 2}\rangle = y_i, \forall i \in [n]\right\}.$$ 
+So if any $\vtheta = \tbinom{\vu}{\vv}$ belongs to $\Gamma$, and another $\tilde{\vtheta} = \tbinom{\tilde{\vu}}{\tilde{\vv}}$ satisfies that $\tilde{u}_i^{\odot 2} - \tilde{v}_i^{\odot 2} = u_i^{\odot 2} - v_i^{\odot 2}$ for any $i \in [d]$, then $\tilde{\vtheta}$ also belongs to $\Gamma$.
+
+Next, we derive the explicit expression of the Hessian matrix when $\vtheta \in \Gamma$: \begin{align*}
+        \nabla^2 \cL (\vtheta) &= \frac{2}{n} \sum_{i=1}^{n}2 \tbinom{\vz_i \odot \vu}{-\vz_i \odot \vv} \tbinom{\vz_i \odot \vu}{-\vz_i \odot \vv}^\top + \left( \langle \vz_i, \vu^{\odot 2} - \vv^{\odot 2}\rangle - y_i \right) \left(\begin{array}{cc}
+        \Diag(\vz) & 0 \\
+       0 & -\Diag(\vz)
+    \end{array}\right) \\
+    &= \frac{4}{n} \sum_{i=1}^{n} \tbinom{\vz_i \odot \vu}{-\vz_i \odot \vv}\tbinom{\vz_i \odot \vu}{-\vz_i \odot \vv}^\top.
+    % &= \frac{4}{n} \sum_{i=1}^{n} u_i^2 + v_i^2,
+\end{align*}
+Hence, we have that 
+$$\tr(\Diag(\mH)^{e_0}) \propto \sum_{i=1}^{d} (|u_i|^{2e_0}+|v_i|^{2e_0}),$$
+and $\left\| \vu^{\odot 2} - \vv^{\odot 2} \right\|_{e_0}^{e_0} = \sum_{i=1}^{d} |u_i^2-v_i^2|^{e_0}$.
+Let $e_0 \in (0, 1]$, and we recall that our goal is to prove that given the following condition
+\begin{align}
+    \vtheta \in \arg\min_{\vtheta' \in \Gamma} \tr(\Diag(\mH)^{e_0}) = \arg\min_{\vtheta' \in \Gamma}\sum_{i=1}^{d}(|u_i|^{2e_0}+|v_i|^{2e_0}),\label{equ:condition-min-tr}
+\end{align}
+it holds that $\vtheta \in \arg \min_{\vtheta'\in \Gamma}\left\|\widehat\vw\right\|_{e_0}$. 
+
+First, we prove that $u_i = 0 \vee v_i = 0$ holds for any $i \in [d]$. Assume for the contrary that there exists some $i$ such that $u_i \neq 0$ and $v_i \neq 0$, then we construct another reference point $\tilde{\vtheta} = \tbinom{\tilde{\vu}}{\tilde{\vv}}$ by letting $\tilde{\vu}$ and $\vu$ agree on all indices other than $i$, and that 
+\begin{align}
+    \tilde{u}_i = \sqrt{u_i^2 - v_i^2}, \tilde{v}_i = 0, &\quad  \text{ if } |u_i| \geq |v_i|, \label{equ:u-v-construct-1}\\
+    \tilde{u}_i = 0, \tilde{v}_i = \sqrt{v_i^2 - u_i^2}, &\quad  \text{ otherwise.}\label{equ:u-v-construct-2}
+\end{align}
+With this construction, $\tilde{\vu}^{\odot 2} - \tilde{\vv}^{\odot 2} = \vu^{\odot 2} - \vv^{\odot 2}$, so $\tilde{\vtheta} \in \Gamma$. One can observe that 
+    $$|\tilde{u}_i|^{2e_0} + |\tilde{v}_i|^{2e_0} < |u_i|^{2e_0} +|v_i|^{2e_0},$$
+    which contradicts the condition in \Cref{equ:condition-min-tr}. 
+
+Now we are ready to prove $\vtheta \in \arg \min_{\vtheta'\in \Gamma}\left\|\widehat\vw\right\|_{e_0}$. Also, we prove this by contradiction. Now assume $\vtheta \notin \arg\min_{\vtheta' \in \Gamma} \left\| \vu^{\odot 2} - \vv^{\odot 2} \right\|_{e_0}$. There must exist some $\tilde{\vtheta} \in \Gamma$ such that 
+$$\left\| \tilde{\vu}^{\odot 2} - \tilde{\vv}^{\odot 2} \right\|_{e_0} < \left\| \vu^{\odot 2} - \vv^{\odot 2} \right\|_{e_0}.$$
+W.L.O.G., one can assume that for any $i \in [d]$, either $\tilde{u}_i = 0$ or $\tilde{v}_i = 0$, else we can construct another minimizer that preserves $\left\| \tilde{\vu}^{\odot 2} - \tilde{\vv}^{\odot 2} \right\|_{e_0}$ as \Cref{equ:u-v-construct-1} and \Cref{equ:u-v-construct-2}. However, given the condition $u_i =0 \vee v_i =0$, we have that
+\begin{align*}
+    \sum_{i=1}^{d} |u_i^2-v_i^2|^{e_0} = \sum_{i=1}^{d} |u_i|^{2e_0} + |v_i|^{2e_0},
+\end{align*}
+and $\sum_{i=1}^{d} |\tilde{u}_i^2-\tilde{v}_i^2|^{e_0} = \sum_{i=1}^{d} |\tilde{u}_i|^{2e_0} + |\tilde{v}_i|^{2e_0}$, which indicates that $\sum_{i=1}^{d} |\tilde{u}_i|^{2e_0} + |\tilde{v}_i|^{2e_0} < \sum_{i=1}^{d} |{u}_i|^{2e_0} + |{v}_i|^{2e_0}$, a contradiction.
+\end{proof}

@@ -1,0 +1,96 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+\pdfoutput=1
+
+\usepackage{cvpr}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{subfigure}
+\usepackage{lib}
+\usepackage[font=small,labelfont=bf,skip=5pt]{caption}
+
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+
+\cvprfinalcopy
+
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+% bug fix: should be cf. NOT c.f.
+\renewcommand{\cf}{\textit{cf.}\xspace}
+
+% LOCAL COMMANDS
+\newcommand{\pool}[1]{$\textrm{pool}_{#1}$\xspace}
+\newcommand{\conv}[1]{$\textrm{conv}_{#1}$\xspace}
+\newcommand{\fc}[1]{$\textrm{fc}_{#1}$\xspace}
+\newcommand{\OtwoP}{O$_2$P\xspace}
+\newcommand{\val}{val\xspace}
+\newcommand{\vala}{val$_1$\xspace}
+\newcommand{\valb}{val$_2$\xspace}
+\newcommand{\train}{train\xspace}
+\newcommand{\test}{test\xspace}
+\newcommand{\trainvalN}{val$_1+$train$_N$\xspace}
+\newcommand{\trainvala}{val$_1+$train$_{.5\textrm{k}}$\xspace}
+\newcommand{\trainvalb}{val$_1+$train$_{1\textrm{k}}$\xspace}
+%\newcommand{\trainvalab}{val$_1+$train$_{1\textrm{k}}+$val$_2$\xspace}
+\newcommand{\trainvalab}{val$+$train$_{1\textrm{k}}$\xspace}
+%%%%%%%%%%%%%%%%
+
+\makeatletter
+\renewcommand{\paragraph}{%
+  \@startsection{paragraph}{4}%
+  {\z@}{1.5ex \@plus 1ex \@minus .2ex}{-0.5em}%
+  {\normalfont\normalsize\bfseries}%
+}
+\makeatother
+
+\begin{document}
+
+\abovedisplayskip=12pt plus 3pt minus 9pt
+\abovedisplayshortskip=0pt plus 3pt
+\belowdisplayskip=12pt plus 3pt minus 9pt
+\belowdisplayshortskip=7pt plus 3pt minus 4pt
+
+
+%%%%%%%%% TITLE
+\title{Rich feature hierarchies for accurate object detection and semantic segmentation\\{\large Tech report (v5)}}
+
+\author{Ross Girshick~~~Jeff Donahue~~~Trevor Darrell~~~Jitendra Malik\\
+UC Berkeley\\
+{\tt\small \{rbg,jdonahue,trevor,malik\}@eecs.berkeley.edu}
+}
+
+\maketitle
+%\thispagestyle{empty}
+
+%%%%%%%%% ABSTRACT
+\input{abstract}
+
+%%%%%%%%% BODY TEXT
+
+\input{sec_intro}
+\input{sec_detection}
+\input{sec_vis}
+\input{sec_ablation}
+\input{sec_error_analysis}
+\input{sec_ilsvrc}
+\input{sec_segmentation}
+\input{sec_conclusion}
+
+\vspace{2em}
+{\noindent \Large \bf Appendix}
+
+\appendix
+\input{appendix}
+\input{changelog}
+
+{\small
+\bibliographystyle{ieee}
+\bibliography{r-cnn-arxiv}
+}
+
+\end{document}

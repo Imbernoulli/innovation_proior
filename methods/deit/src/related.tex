@@ -1,0 +1,35 @@
+\section{Related work}
+\label{sec:related}
+
+\paragraph{Image Classification} is so core to computer vision that it is often used as a benchmark to measure progress in image understanding. 
+Any progress usually translates to improvement in other related tasks such as detection or segmentation. 
+Since 2012's AlexNet~\cite{Krizhevsky2012AlexNet}, convnets have dominated this benchmark and have become the de facto standard.
+The evolution of the state of the art on the ImageNet dataset~\cite{Russakovsky2015ImageNet12} reflects the progress with convolutional neural network architectures and learning~\cite{Krizhevsky2012AlexNet,Simonyan2015VGG,tan2019efficientnet,Touvron2019FixRes,Touvron2020FixingTT,Xie2019SelftrainingWN}.
+
+Despite several attempts to use transformers for image classification~\cite{chen2020generative}, until now their performance has been inferior to that of convnets.
+Nevertheless hybrid architectures that combine convnets and transformers, including the self-attention mechanism, have recently exhibited competitive results in image classification~\cite{wu2020visual}, detection~\cite{carion2020end,Hu2018RelationNF}, video processing~\cite{Sun2019VideoBERTAJ,Wang2018NonlocalNN}, unsupervised object discovery~\cite{Locatello2020ObjectCentricLW}, and unified text-vision tasks~\cite{Chen2020UNITERUI,li2019visualbert,Lu2019ViLBERTPT}.
+
+
+
+Recently Vision transformers (ViT)~\cite{dosovitskiy2020image} closed the gap with the state of the art on ImageNet, without using any convolution.
+This performance is remarkable since convnet methods for image classification have benefited from years of tuning and optimization~\cite{he2019bag,pytorchmodels}.
+Nevertheless, according to this study~\cite{dosovitskiy2020image}, a pre-training phase on a large volume of curated data is required for the learned transformer to be effective. 
+% 
+In our paper we achieve a strong performance without requiring a large training dataset, i.e., with Imagenet1k only. 
+%
+\paragraph{The Transformer architecture,}
+%
+introduced by Vaswani et al.~\cite{Vaswani2017AttentionIA} for machine translation are currently the reference model for all natural language processing (NLP) tasks.
+Many improvements of convnets for image classification are inspired by transformers.
+For example, Squeeze and Excitation~\cite{Hu2017SENet}, Selective Kernel~\cite{Li2019SelectiveKN} and Split-Attention Networks~\cite{zhang2020resnest} exploit mechanism akin to transformers self-attention (SA) mechanism.
+
+\paragraph{Knowledge Distillation} (KD), introduced by Hinton et al.~\cite{Hinton2015DistillingTK}, refers to the training paradigm in which a \emph{student} model leverages ``soft'' labels coming from a strong \emph{teacher} network. 
+This is the output vector of the teacher's softmax function rather than just the maximum of scores, wich gives a ``hard'' label.
+Such a training improves the performance of the student model (alternatively, it can be regarded as a form of compression of the teacher model into a smaller one -- the student).
+On the one hand the teacher's soft labels will have a similar effect to labels smoothing~\cite{Yuan2019RevisitKD}. %
+On the other hand as shown by Wei et al.~\cite{Wei2020CircumventingOO} the teacher's supervision takes into account the effects of the data augmentation, which sometimes causes a misalignment between the real label and the image.
+For example, let us consider image with a ``cat'' label that represents a large landscape and a small cat in a corner. 
+If the cat is no longer on the crop of the data augmentation it implicitly changes the label of the image. 
+KD can transfer inductive biases~\cite{abnar2020transferring}  in a soft way in a student model using a teacher model where they would be incorporated in a hard way. 
+For example, it may be useful to induce biases due to convolutions in a transformer model by using a convolutional model as teacher. 
+In our paper we study the distillation of a transformer student by either a convnet or a transformer teacher. We introduce a new distillation procedure specific to transformers and show its superiority. 

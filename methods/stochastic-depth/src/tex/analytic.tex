@@ -1,0 +1,67 @@
+% !TeX root = ../eccv2016submission.tex
+
+In this section, we provide more insights into \name{} by presenting a series of analytical results. We perform experiments to support the hypothesis that \name{} effectively addresses the problem of vanishing gradients in backward propagation. Moreover, we demonstrate the robustness of \name{} with respect to its hyper-parameter.
+
+\eat{
+\paragraph{\textbf{Improved Forward Propagation.}}
+Training with \name{} facilitates the forward information flow by shortening the network depth, and encourages feature reuse through skip connections. We empirically compare the amount of information passed through these identity connections $id()$ with those pass through regular connections $f_\ell()$.
+%it roughly shows to what extent \name{} strengthens feature reuse.
+
+Following the practice of He et al.~\cite{he2015deep}, we use the standard deviation of a node's activations (outputs) as a measure of the information content. The amount of information conveyed by a connection is estimated by the average standard deviation of all its node's activations. Specifically, let $\left[H_\ell\right]_{j}^i$ be the $j^{th}$ dimension of $H_\ell$ when applied to the $i^{th}$ minibatch.
+
+Let $a^{i,j}_\ell=[f_\ell(H_{\ell-1})]_j$ denote the $j^{th}$ dimension of the output of $f_\ell$, when the $i^{th}$ image is forward propagated through the network.
+
+Specifically, let $a^{i,j}_\ell$ be the response of the $j^{th}$ hidden node in the $\ell^{th}$ skip connection, corresponds to the $i^{th}$ input sample. Then the entire skip connection's average information intensity is computed by $S_\ell = \frac{1}{M_\ell}\sum_j\sqrt{\frac{1}{N}\sum_i(a^{i,j}_\ell-\bar{a}^{j}_\ell)^2}$,
+where $N$ is number of input samples, $\bar{a}^{j}_\ell = \frac{1}{N}\sum_i a^{i,j}_\ell$, and $M_\ell$ is the total number of hidden nodes \footnote{For transition residual block where paddings are used to match input and output dimensions, those padded nodes are ignored.}. Similarly, we can measure the information intensity in the regular layers of the $\ell^{th}$ residual block as $R_\ell = \frac{1}{M_\ell}\sum_j\sqrt{\frac{1}{N}\sum_i(b^{i,j}_\ell-\bar{b}^{j}_\ell)^2}$, where $b^{i,j}_\ell$ and $\bar{b}^{j}_\ell$ are the analogous statistics of the last Batch Normalization layer in that convolutional block.
+
+Fig. \ref{figure.std_ratio} shows the ratio $S_\ell/(S_\ell+R_\ell)$ for each residual block in the 110-layer (with 54 residual blocks) ResNets trained on CIFAR-10, with constant depth and \name{} from Fig. \ref{figure.cifar} (\textit{left}). The ratio  $S_\ell/(S_\ell+R_\ell)$ illustrates the learned relative importance of the skip connections. A larger value indicates that more information flows through the skip connections.
+
+\begin{figure}[t]
+	\vspace{-2ex}
+	\begin{center}
+		\centerline{\includegraphics[width = 0.9 \columnwidth]{figures/ratio.eps}}
+%		\vspace{-1ex}
+		\caption{$S_\ell/(S_\ell+R_\ell)$, the ratio of information intensity between the skip connections and the entire residual module, measured across different positions in a trained 110 layer ResNet on CIFAR-10, with and without \name{}. The vertical dotted lines indicate transition between differently sized feature maps, at which large drops (loss of information) occur naturally. The \name{} enforces a clear trend of increasing feature reuse deeper down the network.}
+		\label{figure.std_ratio}
+	\end{center}
+	\vspace{-4ex}
+\end{figure}
+
+Both ResNets trained with and without \name{} have a significant portion of activation attributed to the skip connections, but the trend clearly differs.
+With \name{}, this ratio \emph{increases monotonically} deeper down the network (modulo the transition between different feature maps as indicated by vertical dotted lines). Without \name{}, there is no clear direction. The results show that \name{} indeed successfully reinforces feature reuse mostly in those later layers, which could enable information to flow forward more efficiently.
+}
+
+\begin{figure}[t]
+	\vspace{-2ex}
+	\begin{center}
+		\centerline{\includegraphics[width = 0.9 \columnwidth]{figures/gradient.pdf}}
+		\vspace{-2ex}
+		\caption{The first convolutional layer's mean gradient magnitude for each epoch during training. The vertical dotted lines indicate scheduled reductions in learning rate by a factor of 10, which cause gradients to shrink.}
+		\label{figure.gradient}
+	\end{center}
+	\vspace{-8ex}
+\end{figure}
+
+\paragraph{\textbf{Improved gradient strength.}}
+Stochastically dropping layers during training reduces the effective depth on which gradient back-propagation is performed, while keeping the test-time model depth unmodified. As a result we expect training with \name{} to reduce the vanishing gradient problem in the backward step.
+To empirically support this, we compare the magnitude of gradients to the first convolutional layer of the first ResBlock ($\ell\!=\!1$) with and without \name{} on the  CIFAR-10 data set.
+
+Fig. \ref{figure.gradient} shows the mean absolute values of the gradients. The two large drops indicated by vertical dotted lines are due to scheduled learning rate division. It can be observed that the magnitude of gradients in the network trained with \name{} is always larger, especially after the learning rate drops. This seems to support out claim that \name{} indeed significantly reduces the vanishing gradient problem, and enables the network to be trained more effectively.  Another indication of the effect is in the left panel of Fig.~\ref{figure.cifar}, where one can observe that the test error of the ResNets with constant depth approximately plateaus after the first drop of learning rate, while \name{} still improves the performance even after the learning rate drops for the second time. This further supports that \name{} combines the benefits of shortened network during training with those of deep models at test time.
+
+\begin{figure}[t]
+	\vspace{-2ex}
+	\begin{center}
+		\centerline{\includegraphics[width=0.5\columnwidth]{figures/deathRate.eps}
+		\includegraphics[width=0.58\columnwidth]{figures/heatMap.eps}}
+	\end{center}
+	\vspace{-4ex}
+    \label{figure.deathRate}
+	\caption{Left: Test error (\%) on CIFAR-10 with respect to the  $p_L$ with uniform and decaying assignments of $p_\ell$. Right: Test error (\%) heatmap on CIFAR-10 varyied over $p_L$ and network depth.}
+	\vspace{-4ex}
+	\label{figure.deathRate}
+\end{figure}
+
+\paragraph{\textbf{Hyper-parameter sensitivity.}}
+The survival probability $p_L$ is the only hyper-parameter of our method. Although we used $p_L\!=\!0.5$ throughout all our experiments, it is still worth investigating the sensitivity of \name{} with respect to its hyper-parameter. To this end, we compare the test error of the 110-layer ResNet under varying values of $p_L$ ($L=54$) for both linear decay and uniform assignment rules on the CIFAR-10 data set in Fig.~\ref{figure.deathRate} (\textit{left}). We make the following observations: 1) both assignment rules yield better results than the baseline when $p_L$ is set properly; 2) the linear decay rule outperforms the uniform rule consistently; 3) the linear decay rule is relatively robust to fluctuations in $p_L$ and obtains competitive results when $p_L$ ranges from 0.4 to 0.8; 4) even with a rather small survival probability e.g. $p_L=0.2$, \name{} with linear decay still performs well, while giving a 40\% reduction in training time. This shows that \name{} can save training time substantially without compromising accuracy.
+
+The heatmap on the right shows the test error varied over both $p_L$ and network depth. Not surprisingly, deeper networks (at least in the range of our experiments) do better with a $p_L=0.5$. The "valley" of the heatmap is along the diagonal. A deep enough model is necessary for stochastic depth to significantly outperform the baseline (an observation we also make with the ImageNet data set), although shorter networks can still benefit from less aggressive skipping.

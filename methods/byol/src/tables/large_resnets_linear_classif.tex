@@ -1,0 +1,19 @@
+\begin{tabular}{lrrrrrrc}
+\toprule
+ &&& \multicolumn{2}{c}{\algo} & \multicolumn{2}{c}{Supervised (ours)} & Supervised~\cite{SimCLR} \\
+ Architecture  & Multiplier  &   Weights &   Top-1 &   Top-5 & Top-1 & Top-5 & Top-1 \\
+\midrule
+ ResNet-50 &$1 \times$   &            24M &            $74.3$ &           $91.6$ & $76.4$ & $92.9$ & $76.5$\\
+ ResNet-101 &$1 \times$  &            43M &            $76.4$ &           $93.0$ & $78.0$ & $94.0$ & - \\
+ ResNet-152 &$1 \times$  &            58M &            $77.3$ &           $93.7$ & $79.1$ & $94.5$ & - \\
+ ResNet-200 &$1 \times$  &            63M &            $77.8$ &           $93.9$ & $79.3$ & $94.6$ & - \\
+ ResNet-50 &$2 \times$   &            94M &            $77.4$ &           $93.6$ & $79.9$ & $95.0$ & $77.8$ \\
+ ResNet-101 &$2 \times$  &           170M &            $78.7$ &           $94.3$ & $80.3$ & $95.0$ & - \\
+ ResNet-50 &$3 \times$   &           211M &            $78.2$ &           $93.9$ & $80.2$ & $95.0$ & - \\
+ ResNet-152 &$2 \times$  &           232M &            $79.0$ &           $94.6$ & $80.6$ & $95.3$ & - \\
+ ResNet-200 &$2 \times$  &           250M &            $\bf{79.6}$ &      $\bf{94.9}$ & $80.1$ & $95.2$ & - \\
+ ResNet-50 &$4 \times$   &           375M &            $78.6$  &         $94.2$ & $80.7$ & $\bf{95.3}$ & $78.9$ \\
+ ResNet-101 &$3 \times$  &           382M &            $78.4$ &          $94.2$ & $80.7$ & $\bf{95.3}$ & - \\
+ ResNet-152 &$3 \times$  &           522M &            $79.5$ &          $94.6$ & $\bf{80.9}$ & $95.2$ & - \\
+\bottomrule
+\end{tabular}

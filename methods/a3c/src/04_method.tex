@@ -1,0 +1,229 @@
+%
+\vspace{-0.1cm}
+\section{Asynchronous RL Framework}
+\label{sec:method}
+
+%
+%
+%
+%
+
+We now present multi-threaded asynchronous variants of one-step Sarsa, one-step Q-learning, n-step Q-learning, and advantage actor-critic.
+The aim in designing these methods was to find RL algorithms that can train deep neural network policies reliably and without large resource requirements.
+While the underlying RL methods are quite different, with actor-critic being an on-policy policy search method and Q-learning being an off-policy value-based method, we use two main ideas to make all four algorithms practical given our design goal.
+
+%
+First, we use asynchronous actor-learners, similarly to the Gorila framework~\citep{nair2015gorila}, but instead of using separate machines and a parameter server, we use multiple CPU threads on a single machine.
+Keeping the learners on a single machine removes the communication costs of sending gradients and parameters and enables us to use Hogwild!~\citep{recht2011hogwild} style updates for training.
+
+Second, we make the observation that multiple actors-learners running in parallel are likely to be exploring different parts of the environment.
+Moreover, one can explicitly use different exploration policies in each actor-learner to maximize this diversity.
+By running different exploration policies in different threads, the overall changes being made to the parameters by multiple actor-learners applying online updates in parallel are likely to be less correlated in time than a single agent applying online updates.
+Hence, we do not use a replay memory and rely on parallel actors employing different exploration policies to perform the stabilizing role undertaken by experience replay in the DQN training algorithm.
+
+In addition to stabilizing learning, using multiple parallel actor-learners has multiple practical benefits.
+First, we obtain a reduction in training time that is roughly linear in the number of parallel actor-learners.
+Second, since we no longer rely on experience replay for stabilizing learning we are able to use on-policy reinforcement learning methods such as Sarsa and actor-critic to train neural networks in a stable way.
+%
+We now describe our variants of one-step Q-learning, one-step Sarsa, n-step Q-learning and advantage actor-critic.
+%
+
+%
+
+\begin{algorithm}[t]
+\caption{Asynchronous one-step Q-learning - pseudocode for each actor-learner thread.}
+\begin{algorithmic}
+\small
+\State \emph{// Assume global shared $\theta$, $\theta^-$, and counter $T=0$.}
+%
+\State Initialize thread step counter $t\gets 0$
+\State Initialize target network weights $\theta^- \gets \theta$
+\State Initialize network gradients $d\theta \gets 0$
+\State Get initial state $s$
+\Repeat
+\State Take action $a$ with $\epsilon$-greedy policy based on $Q(s,a;\theta)$
+\State Receive new state $s'$ and reward $r$
+\State $y =
+    \left\{
+    \begin{array}{l l}
+      r  \quad & \text{for terminal } s'\\
+      r + \gamma \max_{a'} Q(s', a'; \theta^-) \quad & \text{for non-terminal } s'
+    \end{array} \right.$
+\State Accumulate gradients wrt $\theta$: $d\theta \gets d\theta + \frac{\partial\left(y - Q(s,a;\theta)\right)^2}{\partial \theta}$
+\State $s=s'$
+\State $T \gets T + 1$ and $t \gets t + 1$
+\If {$T\mod I_{target} == 0$}
+\State Update the target network $\theta^- \gets \theta$ 
+\EndIf
+\If {$t\mod I_{AsyncUpdate} == 0$ or $s$ is terminal}
+\State Perform asynchronous update of $\theta$ using $d\theta$.
+\State Clear gradients $d\theta \gets 0$.
+\EndIf
+\Until $T > T_{max}$
+\end{algorithmic}
+\label{alg:targetq}
+\end{algorithm}
+
+\textbf{Asynchronous one-step Q-learning:}
+Pseudocode for our variant of Q-learning, which we call Asynchronous one-step Q-learning, is shown in Algorithm~\ref{alg:targetq}.
+Each thread interacts with its own copy of the environment and at each step computes a gradient of the Q-learning loss.
+%
+We use a shared and slowly changing target network in computing the Q-learning loss, as was proposed in the DQN training method.
+%
+We also accumulate gradients over multiple timesteps before they are applied, which is similar to using minibatches.
+This reduces the chances of multiple actor learners overwriting each other's updates.
+%
+Accumulating updates over several steps also provides some ability to trade off computational efficiency for data efficiency.
+
+%
+Finally, we found that giving each thread a different exploration policy helps improve robustness.
+Adding diversity to exploration in this manner also generally improves performance through better exploration.
+While there are many possible ways of making the exploration policies differ we experiment with using $\epsilon$-greedy exploration with $\epsilon$ periodically sampled from some distribution by each thread.
+
+%
+%
+%
+%
+
+%
+
+\textbf{Asynchronous one-step Sarsa:}
+The asynchronous one-step Sarsa algorithm is the same as asynchronous one-step Q-learning as given in Algorithm~\ref{alg:targetq} except that it uses a different target value for $Q(s,a)$.
+The target value used by one-step Sarsa is $r + \gamma Q(s', a'; \theta^-)$ where $a'$ is the action taken in state $s'$~\citep{rummery1994sarsa,sutton:book}.
+%
+%
+%
+%
+%
+%
+%
+%
+%
+We again use a target network and updates accumulated over multiple timesteps to stabilize learning.
+
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+\textbf{Asynchronous n-step Q-learning:}
+Pseudocode for our variant of multi-step Q-learning is shown in Supplementary Algorithm~\ref{alg:msq}.
+The algorithm is somewhat unusual because it operates in the forward view by explicitly computing n-step returns, as opposed to the more common backward view used by techniques like eligibility traces~\citep{sutton:book}.
+We found that using the forward view is easier when training neural networks with momentum-based methods and backpropagation through time.
+In order to compute a single update, the algorithm first selects actions using its exploration policy for up to $t_{max}$ steps or until a terminal state is reached.
+This process results in the agent receiving up to $t_{max}$ rewards from the environment since its last update.
+The algorithm then computes gradients for n-step Q-learning updates for each of the state-action pairs encountered since the last update.
+Each n-step update uses the longest possible n-step return resulting in a one-step update for the last state, a two-step update for the second last state, and so on for a total of up to $t_{max}$ updates.
+The accumulated updates are applied in a single gradient step.
+
+%
+
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+%
+
+\textbf{Asynchronous advantage actor-critic:}
+The algorithm, which we call asynchronous advantage actor-critic (A3C), maintains a policy $\pi(a_t|s_t;\theta)$ and an estimate of the value function $V(s_t;\theta_v)$.
+Like our variant of n-step Q-learning, our variant of actor-critic also operates in the forward view and uses the same mix of n-step returns to update both the policy and the value-function.
+The policy and the value function are updated after every $t_{max}$ actions or when a terminal state is reached.
+The update performed by the algorithm can be seen as $\nabla_{\theta'} \log\pi(a_t|s_t;\theta') A(s_t,a_t;\theta,\theta_v)$ where $A(s_t,a_t;\theta,\theta_v)$ is an estimate of the advantage function given by $\sum_{i=0}^{k-1}\gamma^i r_{t+i} + \gamma^k V(s_{t+k};\theta_v)-V(s_t;\theta_v)$, where $k$ can vary from state to state and is upper-bounded by $t_{max}$.
+The pseudocode for the algorithm is presented in Supplementary Algorithm~\ref{alg:reinforce}.
+
+
+As with the value-based methods we rely on parallel actor-learners and accumulated updates for improving training stability.
+Note that while the parameters $\theta$ of the policy and $\theta_v$ of the value function are shown as being separate for generality, we always share some of the parameters in practice.
+We typically use a convolutional neural network that has one softmax output for the policy $\pi(a_t|s_t;\theta)$ and one linear output for the value function $V(s_t;\theta_v)$, with all non-output layers shared.
+
+We also found that adding the entropy of the policy $\pi$ to the objective function improved exploration by discouraging premature convergence to suboptimal deterministic policies.
+This technique was originally proposed by~\citep{williams1991function}, who found that it was particularly helpful on tasks requiring hierarchical behavior.
+The gradient of the full objective function including the entropy regularization term with respect to the policy parameters takes the form
+%
+$\nabla_{\theta'} \log\pi(a_t|s_t;\theta') (R_t - V(s_t;\theta_v)) + \beta \nabla_{\theta'} H(\pi(s_t;\theta'))$,
+%
+where $H$ is the entropy.  The hyperparameter $\beta$ controls the strength of the entropy regularization term.
+
+
+%
+\textbf{Optimization:}
+We investigated three different optimization algorithms in our asynchronous framework -- SGD with momentum, RMSProp~\citep{tieleman2012lecture} without shared statistics, and RMSProp with shared statistics.
+We used the standard non-centered RMSProp update given by
+\begin{eqnarray}
+\label{eq-rmsprop}
+g = \alpha g + (1-\alpha)\Delta\theta^2 \text{ and } \theta \gets \theta - \eta \frac{\Delta\theta}{\sqrt{g+\epsilon}},
+\end{eqnarray}
+where all operations are performed elementwise.
+A comparison on a subset of Atari 2600 games showed that a variant of RMSProp where statistics $g$ are shared across threads is considerably more robust than the other two methods.
+Full details of the methods and comparisons are included in Supplementary Section~\ref{sec:opt}.

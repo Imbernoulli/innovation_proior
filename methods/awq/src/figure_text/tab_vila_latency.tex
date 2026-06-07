@@ -1,0 +1,16 @@
+\begin{table}
+    \setlength{\tabcolsep}{5pt}
+    \small
+    \centering
+    \begin{tabular}{lcccc} \toprule
+\textbf{Model (Throughput$\uparrow$)}          & Precision & A100 & 4090 & Orin \\ \midrule
+VILA-7B      & FP16      & 81.6              & 58.5              & 11.5              \\
+VILA-7B-AWQ  & W4A16     & 155.3             & 168.1             & 35.6              \\ \midrule
+VILA-13B     & FP16      & 48.5              & OOM               & 6.1               \\
+VILA-13B-AWQ & W4A16     & 102.1             & 99.0              & 17.5 \\\bottomrule             
+\end{tabular}
+    \caption{\system also enables seamless deployment of VILA~\cite{lin2023vila}, a state-of-the-art visual-language model, on multiple GPU platforms. Leveraging our 4-bit AWQ quantization, \system accelerates VILA-7B by up to \textbf{3.1$\times$} and VILA-13B by up to \textbf{2.9$\times$}.}
+    \label{tab:vila_latency}
+\end{table}
+
+

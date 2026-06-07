@@ -1,0 +1,80 @@
+\section{Introduction}
+
+Features matter.
+The last decade of progress on various visual recognition tasks has been based considerably on the use of SIFT \cite{SIFT} and HOG \cite{Dalal05}.
+But if we look at performance on the canonical visual recognition task, PASCAL VOC object detection \cite{PASCAL-IJCV}, it is generally acknowledged that progress has been slow during 2010-2012, with small gains obtained by building ensemble systems and employing minor variants of successful methods.
+
+SIFT and HOG are blockwise orientation histograms, a representation we could associate roughly with complex cells in V1, the first cortical area in the primate visual pathway.
+But we also know that recognition occurs several stages downstream, which suggests that there might be hierarchical, multi-stage processes for computing features that are even more informative for visual recognition.
+
+\begin{figure}[t!]
+\centering
+\includegraphics[width=\linewidth]{figures/overview/splash-method.pdf}
+\caption{\textbf{Object detection system overview.}
+Our system (1) takes an input image, (2) extracts around 2000 bottom-up region proposals, (3) computes features for each proposal using a large convolutional neural network (CNN), and then (4) classifies each region using class-specific linear SVMs.
+R-CNN achieves a mean average precision (mAP) of \textbf{53.7\% on PASCAL~VOC~2010}. 
+For comparison, \cite{UijlingsIJCV2013} reports 35.1\% mAP using the same region proposals, but with a spatial pyramid and bag-of-visual-words approach.
+The popular deformable part models perform at 33.4\%.
+On the 200-class \textbf{ILSVRC2013 detection dataset, R-CNN's mAP is 31.4\%}, a large improvement over OverFeat \cite{overfeat}, which had the previous best result at 24.3\%.
+}
+\figlabel{splash}
+\vspace{-1em}
+\end{figure}
+
+Fukushima's ``neocognitron'' \cite{fukushima1980neocognitron}, a biologically-inspired hierarchical and shift-invariant model for pattern recognition, was an early attempt at just such a process.
+The neocognitron, however, lacked a supervised training algorithm.
+Building on Rumelhart \etal \cite{rumelhart86}, LeCun \etal \cite{lecun-89e} showed that stochastic gradient descent via backpropagation was effective for training convolutional neural networks (CNNs), a class of models that extend the neocognitron.
+
+CNNs saw heavy use in the 1990s (\eg, \cite{lecun-98}), but then fell out of fashion with the rise of support vector machines.
+In 2012, Krizhevsky \etal \cite{krizhevsky2012imagenet} rekindled interest
+in CNNs by showing substantially higher image classification accuracy on the ImageNet Large Scale Visual Recognition Challenge (ILSVRC) \cite{ILSVRC12,imagenet_cvpr09}.
+Their success resulted from training a large CNN on 1.2 million labeled images, together with a few twists on LeCun's CNN (\eg, $\max(x,0)$ rectifying non-linearities and ``dropout'' regularization).
+
+The significance of the ImageNet result was vigorously debated during the ILSVRC 2012 workshop.
+%\footnote{For an excellent summary read \url{http://goo.gl/PhTvoE}.}
+The central issue can be distilled to the following: To what
+extent do the CNN classification results on ImageNet generalize
+to object detection results on the PASCAL VOC Challenge?
+
+We answer this question by bridging the gap between image classification and object detection.
+This paper is the first to show that a CNN can lead to dramatically higher object detection performance on PASCAL VOC as compared to systems based on simpler HOG-like features.
+To achieve this result, we focused on two problems: localizing objects with a deep network and training a high-capacity model with only a small quantity of annotated detection data.
+
+Unlike image classification, detection requires localizing (likely many) objects within an image.
+One approach frames localization as a regression problem.
+However, work from Szegedy \etal \cite{szegedy2013deep}, concurrent with our own, 
+indicates that this strategy may not fare well in practice (they report a mAP of 30.5\% on VOC 2007 compared to the 58.5\% achieved by our method).
+An alternative is to build a sliding-window detector.
+CNNs have been used in this way for at least two decades, typically on constrained object categories, such as faces \cite{rowley1998neural,lecun94} and pedestrians \cite{sermanetCVPR13}.
+In order to maintain high spatial resolution, these CNNs typically only have two convolutional and pooling layers.
+We also considered adopting a sliding-window approach.
+However, units high up in our network, which has five convolutional layers, have very large receptive fields ($195 \times 195$ pixels) and strides ($32 \times 32$ pixels) in the input image, which makes precise localization within the sliding-window paradigm an open technical challenge.
+
+Instead, we solve the CNN localization problem by operating within the ``recognition using regions'' paradigm \cite{gu2009recognition}, which has been successful for both object detection \cite{UijlingsIJCV2013} and semantic segmentation \cite{carreira2012cpmc}.
+At test time, our method generates around 2000 category-independent region proposals for the input image, extracts a fixed-length feature vector from each proposal using a CNN, and then classifies each region with category-specific linear SVMs.
+We use a simple technique (affine image warping) to compute a fixed-size CNN input from each region proposal, regardless of the region's shape.
+\figref{splash} presents an overview of our method and highlights some of our results.
+Since our system combines region proposals with CNNs, we dub the method R-CNN: Regions with CNN features.
+
+In this updated version of this paper, we provide a head-to-head comparison of R-CNN and the recently proposed OverFeat \cite{overfeat} detection system by running R-CNN on the 200-class ILSVRC2013 detection dataset.
+OverFeat uses a sliding-window CNN for detection and until now was the best performing method on ILSVRC2013 detection.
+We show that R-CNN significantly outperforms OverFeat, with a mAP of 31.4\% versus 24.3\%.
+
+A second challenge faced in detection is that labeled data is scarce and the amount currently available is insufficient for training a large CNN.
+The conventional solution to this problem is to use \emph{unsupervised} pre-training, followed by supervised fine-tuning (\eg, \cite{sermanetCVPR13}).
+The second principle contribution of this paper is to show that \emph{supervised} pre-training on a large auxiliary dataset (ILSVRC), followed by domain-specific fine-tuning on a small dataset (PASCAL), is an effective paradigm for learning high-capacity CNNs when data is scarce.
+In our experiments, fine-tuning for detection improves mAP performance by 8 percentage points.
+After fine-tuning, our system achieves a mAP of 54\% on VOC 2010 compared to 33\% for the highly-tuned, HOG-based deformable part model (DPM) \cite{lsvm-pami,release5}.
+We also point readers to contemporaneous work by Donahue \etal \cite{decafICML}, who show that Krizhevsky's CNN can be used (without fine-tuning) as a blackbox feature extractor, yielding excellent performance on several recognition tasks including scene classification, fine-grained sub-categorization, and domain adaptation.
+
+Our system is also quite efficient.
+The only class-specific computations are a reasonably small matrix-vector product and greedy non-maximum suppression.
+This computational property follows from features that are shared across all categories and that are also two orders of magnitude lower-dimensional than previously used region features (\cf \cite{UijlingsIJCV2013}).
+
+
+Understanding the failure modes of our approach is also critical for improving it, and so we report results from the detection analysis tool of Hoiem \etal
+\cite{hoiem2012diagnosing}.
+As an immediate consequence of this analysis, we demonstrate that a simple bounding-box regression method significantly reduces mislocalizations, which are the dominant error mode.
+
+Before developing technical details, we note that because R-CNN operates on regions it is natural to extend it to the task of semantic segmentation.
+With minor modifications, we also achieve competitive results on the PASCAL VOC segmentation task, with an average segmentation accuracy of 47.9\% on the VOC 2011 test set.

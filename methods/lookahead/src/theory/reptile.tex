@@ -1,0 +1,66 @@
+\documentclass{article}
+\newcommand{\theHalgorithm}{\arabic{algorithm}}
+
+% Use the following line for the initial blind version submitted for review:
+% \usepackage{icml/icml2019}
+
+\input{defs.tex}
+\input{macros.tex}
+
+\begin{document}
+
+
+\subsection{Theoretical Justification} We will now elaborate on the connection to Reptile \cite{nichol2018reptile}, which gives insight into why Lookahead improves performance during training and testing.
+
+For ease of understanding, we will consider Lookahead with $k=2$ and gradient descent as the inner optimizer and address a more general case in the appendix. Suppose we have a set of tasks we wish to jointly optimize $\mathcal{L} = \{L_i\}$. In supervised learning, each task $L_i$ can be thought of as corresponding to minimizing the risk on a mini-batch of a fixed size. Note that if each batch is equally likely to be drawn (which is the typical setting), this is equivalent to minimizing the empirical risk on the training distribution. Let the initial parameters be denoted $\phi_0$, and let $L_0$ and $L_1$ denote two tasks we sample form $\mathcal{L}$. 
+% \MZ{Add propositions and lemmas?}
+
+Then, our inner optimizer updates yield 
+\begin{align}
+    \phi_1 &= \phi_0 - \eta \nabla_{\phi_0} L_0(\phi_0) \\
+    \phi_2 
+    &= \phi_1 - \eta \nabla_{\phi_1} L_1(\phi_1) \\ 
+    &= \phi_0 - \eta \nabla_{\phi_0} L_0(\phi_0) - \nabla_{\phi_0} L_1( \phi_0 - \eta \nabla_{\phi_0} L_0(\phi_0)) \\ 
+    &\approx \phi_0 - \eta (\sum_{i=0}^1 \nabla_{\phi_0} L_i(\phi_0)) + \eta^2 \nabla^2_{\phi_0} L_1(\phi_0) \nabla_{\phi_0} L_0(\phi_0) 
+\end{align}
+
+where we use the first-order Taylor approximation on the gradient of the second loss function
+.
+\[
+\nabla_x L(x+\epsilon v) = \nabla_x L(x) + \epsilon (\nabla^2_x L(x))v
+\]
+
+Now taking the expectation across sampled loss functions:\footnote{Under expectation of sampled loss functions, we have
+ $\nabla^2_{\phi_0} L_1(\phi_0) \nabla_{\phi_0} L_0(\phi_0) = \frac{1}{2}\frac{\partial}{\partial \phi_0} \nabla_{\phi_0} L_0(\phi_0) \cdot \nabla_{\phi_0} L_1(\phi_0)$}
+ 
+\begin{align}
+    \E_{L_0, L_1}[\phi_2] \approx \phi_0 
+    &- \eta (\sum_{i=0}^1 \nabla_{\phi_0} L_i(\phi_0)) \\ 
+    &+ \frac{\eta^2}{2}\frac{\partial}{\partial \phi_0} \nabla_{\phi_0} L_0(\phi_0) \cdot \nabla_{\phi_0} L_1(\phi_0)
+\end{align}
+
+More generally, for $k$ steps of gradient descent, we get 
+% \MZ{Can remove this or the next equation if we need space}:
+\begin{align}
+    \E_{L_0, L_1, \cdots, L_k}[\phi_k] \approx \phi_0 
+    - \eta (\sum_{i=0}^k \nabla_{\phi_0} L_i(\phi_0)) \notag \\ 
+    + \frac{\eta^2}{2}(\frac{\partial}{\partial \phi_0}  \sum_{i=0}^k \sum_{j=0}^{i-1} \nabla_{\phi_0} L_i(\phi_0) \cdot \nabla_{\phi_0} L_j(\phi_0))
+\end{align}
+
+Hence, the Lookahead update for gradient descent yields:
+\begin{equation}
+\label{eq:lookahead-update}
+\begin{split}
+        \phi_0 + \alpha (\phi_k - \phi_0) =  \phi_0 + \alpha[
+       - \eta (\sum_{i=0}^k \nabla_{\phi_0} L_i(\phi_0)) \notag \\ 
+    + \frac{\eta^2}{2} (\frac{\partial}{\partial \phi_0}  \sum_{i=0}^k \sum_{j=0}^{i-1} \nabla_{\phi_0} L_i(\phi_0) \cdot \nabla_{\phi_0} L_j(\phi_0))]
+\end{split}
+\end{equation}
+
+whereas the first term is typical and corresponds to minimizing the traditional objective, the second term acts as a regularizer. It updates the parameters such that the vectors of the gradients of different mini-batches are aligned, which means that we are at a point in parameter space that is more likely to generalize 
+% \JL{Need some citation here. Probably "Gradient episodic memory for continual learning" }.
+% \MZ{maybe comment about intuition on $k$, $\epsilon$, $\eta$. We also need to write the general case in the appendix?}
+
+\bibliography{references}
+\bibliographystyle{icml2019}
+\end{document}

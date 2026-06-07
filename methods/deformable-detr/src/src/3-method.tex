@@ -1,0 +1,127 @@
+\section{Revisiting Transformers and DETR}
+\label{sec:revisit}
+
+
+\textbf{Multi-Head Attention in Transformers.~} Transformers~\citep{vaswani2017attention} are of a network architecture based on attention mechanisms for machine translation. Given a query element (e.g., a target word in the output sentence) and a set of key elements (e.g., source words in the input sentence), the \emph{multi-head attention module} adaptively aggregates the key contents according to the attention weights that measure the compatibility of query-key pairs. To allow the model focusing on contents from different representation subspaces and different positions, the outputs of different attention heads are linearly aggregated with learnable weights. Let $q\in\Omega_q$ indexes a query element with representation feature $\vz_q \in \sR^{C}$, and $k\in\Omega_k$ indexes a key element with representation feature $\vx_k \in \sR^{C}$, where $C$ is the feature dimension, $\Omega_q$ and $\Omega_k$ specify the set of query and key elements, respectively. Then the multi-head attention feature is calculated by
+\begin{equation}
+\text{MultiHeadAttn}(\vz_q, \vx) = \sum_{m=1}^{M} \mW_m \big[\sum_{k\in\Omega_k} \emA_{mqk} \cdot \mW'_m \vx_k \big],
+\label{eq:trans_attn_fun}
+\end{equation}
+where $m$ indexes the attention head, $\mW'_m \in \sR^{C_v \times C}$ and $\mW_m \in \sR^{C \times C_v}$ are of learnable weights ($C_v = C/M$ by default). The attention weights $\emA_{mqk} \propto \exp\{\frac{\vz_q^T \mU_m^T~ \mV_m \vx_k}{\sqrt{C_v}}\}$ are normalized as $\sum_{k\in\Omega_k} \emA_{mqk} = 1$, in which $\mU_m, \mV_m \in \sR^{C_v \times C}$ are also learnable weights. To disambiguate different spatial positions, the representation features $\vz_q$ and $\vx_k$ are usually of the concatenation/summation of element contents and positional embeddings.
+
+
+There are two known issues with Transformers. One is Transformers need long training schedules before convergence. Suppose the number of query and key elements are of $N_q$ and $N_k$, respectively.
+Typically, with proper parameter initialization, $\mU_m \vz_q$ and $\mV_m \vx_k$ follow distribution with mean of $0$ and variance of $1$, which makes attention weights $\emA_{mqk} \approx \frac{1}{N_k}$, when $N_k$ is large.
+It will lead to ambiguous gradients for input features. Thus, long training schedules are required so that the attention weights can focus on specific keys. In the image domain, where the key elements are usually of image pixels, $N_k$ can be very large and the convergence is tedious.
+
+
+On the other hand, the computational and memory complexity for multi-head attention can be very high with numerous query and key elements. The computational complexity of Eq.~\ref{eq:trans_attn_fun} is of $O(N_qC^2 + N_kC^2 + N_qN_kC)$. In the image domain, where the query and key elements are both of pixels, $N_q = N_k \gg C$, the complexity is dominated by the third term, as $O(N_qN_kC)$. Thus, the multi-head attention module suffers from a quadratic complexity growth with the feature map size.
+
+\textbf{DETR.~} DETR~\citep{carion2020end} is built upon the Transformer encoder-decoder architecture, combined with a set-based Hungarian loss that forces unique predictions for each ground-truth bounding box via bipartite matching. We briefly review the network architecture as follows.
+
+
+Given the input feature maps $\vx \in \sR^{C \times H \times W}$ extracted by a CNN backbone (e.g., ResNet~\citep{he2016deep}), DETR exploits a standard Transformer encoder-decoder architecture to transform the input feature maps to be features of a set of object queries. A 3-layer feed-forward neural network (FFN) and a linear projection are added on top of the object query features (produced by the decoder) as the detection head. The FFN acts as the regression branch to predict the bounding box coordinates $\vb \in [0, 1]^4$, where $\vb = \{b_x, b_y, b_w, b_h\}$ encodes the normalized box center coordinates, box height and width (relative to the image size). The linear projection acts as the classification branch to produce the classification results.
+
+
+
+For the Transformer encoder in DETR, both query and key elements are of pixels in the feature maps. The inputs are of ResNet feature maps (with encoded positional embeddings). Let $H$ and $W$ denote the feature map height and width, respectively. The computational complexity of self-attention is of $O(H^2W^2C)$, which grows quadratically with the spatial size. 
+
+
+
+For the Transformer decoder in DETR, the input includes both feature maps from the encoder, and $N$ object queries represented by learnable positional embeddings (e.g., $N = 100$). There are two types of attention modules in the decoder, namely, cross-attention and self-attention modules.
+In the cross-attention modules, object queries extract features from the feature maps. The query elements are of the object queries, and key elements are of the output feature maps from the encoder. In it, $N_q = N$, $N_k = H\times W$ and the complexity of the cross-attention is of $O(HWC^2 + NHWC)$. The complexity grows linearly with the spatial size of feature maps. In the self-attention modules, object queries interact with each other, so as to capture their relations. The query and key elements are both of the object queries. In it, $N_q = N_k = N$, and the complexity of the self-attention module is of $O(2NC^2 + N^2C)$. The complexity is acceptable with moderate number of object queries.
+
+
+DETR is an attractive design for object detection, which removes the need for many hand-designed components. However, it also has its own issues. These issues can be mainly attributed to the deficits of Transformer attention in handling image feature maps as key elements:
+(1) DETR has relatively low performance in detecting small objects. Modern object detectors use high-resolution feature maps to better detect small objects. However, high-resolution feature maps would lead to an unacceptable complexity for the self-attention module in the Transformer encoder of DETR, which has a quadratic complexity with the spatial size of input feature maps.
+(2) Compared with modern object detectors, DETR requires many more training epochs to converge. This is mainly because the attention modules processing image features are difficult to train. For example, at initialization, the cross-attention modules are almost of average attention on the whole feature maps.
+While, at the end of the training, the attention maps are learned to be very sparse, focusing only on the object extremities.
+It seems that DETR requires a long training schedule to learn such significant changes in the attention maps.
+
+
+
+
+
+\section{Method}
+
+\subsection{Deformable Transformers for End-to-End Object Detection}
+\label{sec:deform_attn}
+
+\begin{figure}[t]
+\begin{center}
+  \includegraphics[width=0.95\linewidth]{fig/deform_attn.pdf}
+\end{center}
+\vspace{-0.5em}
+\caption{Illustration of the proposed deformable attention module.}
+\vspace{-0.5em}
+\label{fig:deform_attn}
+\end{figure}
+
+\textbf{Deformable Attention Module.~} The core issue of applying Transformer attention on image feature maps is that it would look over all possible spatial locations. To address this, we present a \emph{deformable attention module}.
+Inspired by deformable convolution~\citep{dai2017deformable,zhu2019deformable}, the deformable attention module only attends to a small set of key sampling points around a reference point, regardless of the spatial size of the feature maps, as shown in Fig.~\ref{fig:deform_attn}.
+By assigning only a small fixed number of keys for each query, the issues of convergence and feature spatial resolution can be mitigated.
+
+Given an input feature map $\vx \in \sR^{C \times H \times W}$, let $q$ index a query element with content feature $\vz_q$ and a 2-d reference point $\vp_q$, the deformable attention feature is calculated by
+\begin{equation}
+\text{DeformAttn}(\vz_q, \vp_q, \vx) = \sum_{m=1}^{M} \mW_m \big[\sum_{k=1}^{K} \emA_{mqk} \cdot \mW'_m \vx(\vp_q + \Delta\vp_{mqk})\big],
+\label{eq:single_deform_attn_fun}
+\end{equation}
+where $m$ indexes the attention head, $k$ indexes the sampled keys, and $K$ is the total sampled key number ($K \ll HW$).
+$\Delta\vp_{mqk}$ and $\emA_{mqk}$ denote the sampling offset and attention weight of the $k^\text{th}$ sampling point in the $m^\text{th}$ attention head, respectively.
+The scalar attention weight $\emA_{mqk}$ lies in the range $[0, 1]$, normalized by $\sum_{k=1}^{K} \emA_{mqk} = 1$. $\Delta\vp_{mqk} \in \sR^2$ are of 2-d real numbers with unconstrained range. As $\vp_q + \Delta\vp_{mqk}$ is
+fractional, bilinear interpolation is applied as in \citet{dai2017deformable} in computing $\vx(\vp_q + \Delta\vp_{mqk})$. 
+Both $\Delta\vp_{mqk}$ and $\emA_{mqk}$ are obtained via linear projection over the query feature $\vz_q$. In implementation, the query feature $\vz_q$ is fed to a linear projection operator of $3MK$ channels, where the first $2MK$ channels encode the sampling offsets $\Delta\vp_{mqk}$, and the remaining $MK$ channels are fed to a $\softmax$ operator to obtain the attention weights $\emA_{mqk}$.
+
+The deformable attention module is designed for processing convolutional feature maps as key elements. Let $N_q$ be the number of query elements, when $MK$ is relatively small, the complexity of the deformable attention module is of $O(2N_qC^2 + \min(HWC^2, N_qKC^2))$ (See Appendix~\ref{sec:complexity} for details). When it is applied in DETR encoder, where $N_q = HW$, the complexity becomes $O(HWC^2)$, which is of linear complexity with the spatial size. When it is applied as the  cross-attention modules in DETR decoder, where $N_q = N$ ($N$ is the number of object queries), the complexity becomes $O(NKC^2)$, which is irrelevant to the spatial size $HW$.
+
+\textbf{Multi-scale Deformable Attention Module.~}
+Most modern object detection frameworks benefit from multi-scale feature maps~\citep{liu2020deep}. Our proposed deformable attention module can be naturally extended for multi-scale feature maps.
+
+Let $\{\vx^l\}_{l=1}^{L}$ be the input multi-scale feature maps, where $\vx^l \in \sR^{C \times H_l \times W_l}$. Let $\hat{\vp}_q \in [0, 1]^2$ be the normalized coordinates of the reference point for each query element $q$, then the multi-scale deformable attention module is applied as
+\begin{equation}
+\text{MSDeformAttn}(\vz_q, \hat{\vp}_q, \{\vx^l\}_{l=1}^{L}) = \sum_{m=1}^{M} \mW_m \big[\sum_{l=1}^{L} \sum_{k=1}^{K} \emA_{mlqk} \cdot \mW'_m \vx^l(\phi_{l}(\hat{\vp}_q) + \Delta\vp_{mlqk})\big],
+\label{eq:deform_attn_fun}
+\end{equation}
+where $m$ indexes the attention head, $l$ indexes the input feature level, and $k$ indexes the sampling point.
+$\Delta\vp_{mlqk}$ and $\emA_{mlqk}$ denote the sampling offset and attention weight of the $k^\text{th}$ sampling point in the $l^\text{th}$ feature level and the $m^\text{th}$ attention head, respectively.
+The scalar attention weight $\emA_{mlqk}$ is normalized by $\sum_{l=1}^{L} \sum_{k=1}^{K} \emA_{mlqk} = 1$.
+Here, we use normalized coordinates $\hat{\vp}_q \in [0, 1]^2$ for the clarity of scale formulation, in which the normalized coordinates $(0, 0)$ and $(1, 1)$ indicate the top-left and the bottom-right image corners, respectively. Function $\phi_{l}(\hat{\vp}_q)$ in Equation~\ref{eq:deform_attn_fun} re-scales the normalized coordinates $\hat{\vp}_q$ to the input feature map of the $l$-th level. The multi-scale deformable attention is very similar to the previous single-scale version, except that it samples $LK$ points from multi-scale feature maps instead of $K$ points from single-scale feature maps.
+
+
+The proposed attention module will degenerate to deformable convolution~\citep{dai2017deformable}, when $L = 1$, $K = 1$, and $\mW_m' \in \sR^{C_v \times C}$ is fixed as an identity matrix. Deformable convolution is designed for single-scale inputs, focusing only on one sampling point for each attention head. However, our multi-scale deformable attention looks over multiple sampling points from multi-scale inputs. The proposed (multi-scale) deformable attention module can also be perceived as an efficient variant of Transformer attention, where a pre-filtering mechanism is introduced by the deformable sampling locations. When the sampling points traverse all possible locations, the proposed attention module is equivalent to Transformer attention.
+
+\textbf{Deformable Transformer Encoder.~}
+We replace the Transformer attention modules processing feature maps in DETR with the proposed multi-scale deformable attention module. Both the input and output of the encoder are of multi-scale feature maps with the same resolutions. In encoder, we extract multi-scale feature maps $\{\vx^l\}_{l=1}^{L-1}$ ($L = 4$) from the output feature maps of stages $C_3$ through $C_5$ in ResNet~\citep{he2016deep} (transformed by a $1\times 1$ convolution), where $C_l$ is of resolution $2^l$ lower than the input image. The lowest resolution feature map $\vx^L$ is obtained via a $3\times 3$ stride $2$ convolution on the final $C_5$ stage, denoted as $C_6$. All the multi-scale feature maps are of $C = 256$ channels. Note that the top-down structure in FPN~\citep{lin2017feature} is not used, because our proposed multi-scale deformable attention in itself can exchange information among multi-scale feature maps. The constructing of multi-scale feature maps are also illustrated in 
+Appendix~\ref{sec:build_ms_feature}. Experiments in Section~\ref{sec:ablation} show that adding FPN will not improve the performance.
+
+In application of the multi-scale deformable attention module in encoder, the output are of multi-scale feature maps with the same resolutions as the input. Both the key and query elements are of pixels from the multi-scale feature maps. For each query pixel, the reference point is itself.
+To identify which feature level each query pixel lies in, we add a scale-level embedding, denoted as $\ve_l$, to the feature representation, in addition to the positional embedding. Different from the positional embedding with fixed encodings, the scale-level embedding $\{\ve_l\}_{l=1}^L$ are randomly initialized and jointly trained with the network. 
+
+\textbf{Deformable Transformer Decoder.~} 
+There are cross-attention and self-attention modules in the decoder.
+The query elements for both types of attention modules are of object queries. 
+In the cross-attention modules, object queries extract features from the feature maps, where the key elements are of the output feature maps from the encoder. In the self-attention modules, object queries interact with each other, where the key elements are of the object queries.
+Since our proposed deformable attention module is designed for processing convolutional feature maps as key elements, we only replace each cross-attention module to be the multi-scale deformable attention module, while leaving the self-attention modules unchanged.
+For each object query, the 2-d normalized coordinate of the reference point $\hat{\vp}_q$ is predicted from its object query embedding via a learnable linear projection followed by a $\mathrm{sigmoid}$ function.
+
+Because the multi-scale deformable attention module extracts image features around the reference point, we let the detection head predict the bounding box as relative offsets w.r.t. the reference point to further reduce the optimization difficulty. The reference point is used as the initial guess of the box center. The detection head predicts the relative offsets w.r.t. the reference point. Check Appendix \ref{sec:bbox_pred} for the details. In this way, the learned decoder attention will have strong correlation with the predicted bounding boxes, which also accelerates the training convergence.
+
+By replacing Transformer attention modules with deformable attention modules in DETR, we establish an efficient and fast converging detection system, dubbed as Deformable DETR (see Fig.~\ref{fig:attention_demo}).
+
+\subsection{Additional Improvements and Variants for Deformable DETR}
+\label{sec:improve}
+
+Deformable DETR opens up possibilities for us to exploit various variants of end-to-end object de-tectors, thanks to its fast convergence, and computational and memory efficiency. Due to limited space, we only introduce the core ideas of these improvements and variants here. The implementation details are given in Appendix~\ref{sec:imp_details}.
+
+\textbf{Iterative Bounding Box Refinement.~}
+This is inspired by the iterative refinement developed in optical flow estimation~\citep{teed2020raft}.
+We establish a simple and effective iterative bounding box refinement mechanism to improve detection performance. Here, each decoder layer refines the bounding boxes based on the predictions from the previous layer.
+
+
+\textbf{Two-Stage Deformable DETR.~}
+In the original DETR, object queries in the decoder are irrelevant to the current image. Inspired by two-stage object detectors, we explore a variant of Deformable DETR for generating region proposals as the first stage. The generated region proposals will be fed into the decoder as object queries for further refinement, forming a two-stage Deformable DETR.
+
+In the first stage, to achieve high-recall proposals, each pixel in the multi-scale feature maps would serve as an object query. However, directly setting object queries as pixels will bring unacceptable computational and memory cost for the self-attention modules in the decoder, whose complexity grows quadratically with the number of queries. To avoid this problem, we remove the decoder and form an encoder-only Deformable DETR for region proposal generation. In it, each pixel is assigned as an object query, which directly predicts a bounding box. Top scoring bounding boxes are picked as region proposals.
+No NMS is applied before feeding the region proposals to the second stage.
+
+

@@ -1,0 +1,1415 @@
+\section*{Appendix}
+
+\section{Proof of Theorem~\ref{thm:lars-conv}}
+
+\begin{proof}
+We analyze the convergence of $\lars$ for general minibatch size here. Recall that the update of $\lars$  is the following
+$$
+x_{t+1}^{(i)}  = x_{t}^{(i)} - \eta_t \phi(\|x_t^{(i)}\|) \frac{g_{t}^{(i)}}{\|g_t^{(i)}\|},
+$$
+for all $i \in [h]$. For simplicity of notation, we reason the 
+
+Since the function $f$ is $L$-smooth, we have the following:
+\begin{align}
+&f(x_{t+1}) \leq f(x_t) + \langle \nabla_i f(x_t), x_{t+1}^{(i)} - x_{t}^{(i)} \rangle + \sum_{i=1}^h \frac{L_i}{2} \|x_{t+1}^{(i)} - x_t^{(i)}\|^2 \nonumber \\
+&= f(x_t) - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i}\phi(\|x_t^{(i)}\|)  \times \left( [\nabla_i f(x_t)]_j \times \frac{g_{t,j}^{(i)}}{\|g_{t}^{(i)}\|}  \right) + \sum_{i=1}^h \frac{L_i\eta_t^2 \phi^2(\|x_t^{(i)}\|)}{2} \nonumber \\
+&\leq f(x_t) - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i}   \phi(\|x_t^{(i)}\|) \times \left( [\nabla_i f(x_t)]_j \times \left(\frac{g_{t,j}^{(i)}}{\|g_{t}^{(i)}\|} - \frac{[\nabla_i f(x_t)]_j}{\| \nabla_i f(x_t) \|} + \frac{[\nabla_i f(x_t)]_j}{\| \nabla_i f(x_t) \|} \right)  \right) + \frac{\eta_t^2  \alpha_u^2}{2} \| L\|_1 \nonumber \\
+&= f(x_t) - \eta_t\sum_{i=1}^h  \phi(\|x_t^{(i)}\|) \times \|\nabla_i f(x_t)\| - \eta_t  \sum_{i=1}^h \sum_{j=1}^{d_i} \left( [\nabla_i f(x_t)]_j \times \left(\frac{g_{t,j}^{(i)}}{\|g_{t}^{(i)}\|} - \frac{[\nabla_i f(x_t)]_j}{\| \nabla_i f(x_t) \|} \right)  \right) + \frac{\eta_t^2 \alpha_u^2 }{2} \| L\|_1
+\label{eq:lars-conv-eq1}
+\end{align}
+The first inequality follows from the lipschitz continuous nature of the gradient. Let $\Delta_{t}^{(i)} = g_{t}^{(i)} - \nabla_i f(x_t)$. Then the above inequality can be rewritten in the following manner:
+\begin{align}
+&f(x_{t+1}) \leq f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|)  \|\nabla_i f(x_t)\| \nonumber \\
+& \qquad \qquad - \eta_t  \sum_{i=1}^h \sum_{j=1}^{d_i} \phi(\|x_t^{(i)}\|) \times  \left( [\nabla_i f(x_t)]_j \times \left(\frac{(\Delta_{t,j}^{(i)} + [\nabla_i f(x_t)]_j)}{\|\Delta_{t}^{(i)} + \nabla_i f(x_t)\|} - \frac{[\nabla_i f(x_t)]_j}{\| \nabla_i f(x_t) \|} \right)  \right) + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1 \nonumber \\
+&= f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \|\nabla_i f(x_t)\| \nonumber \\
+& \qquad \qquad - \eta_t  \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \times \left( \frac{\langle \Delta_{t}^{(i)} + \nabla_i f(x_t),  \nabla_i f(x_t)\rangle} {\|\Delta_{t}^{(i)} + \nabla_i f(x_t)\|} - \|\nabla_i f(x_t)\|  \right) + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1 \nonumber \\
+&= f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \|\nabla_i f(x_t)\| \nonumber \\
+& \qquad \qquad + \eta_t  \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \times \left( \frac{\|\nabla_i f(x_t)\| \|\Delta_{t}^{(i)} + \nabla_i f(x_t)\| - \langle \Delta_{t}^{(i)} + \nabla_i f(x_t),  \nabla_i f(x_t)\rangle} {\|\Delta_{t}^{(i)} + \nabla_i f(x_t)\|}  \right) + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1 \nonumber \\
+&= f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \|\nabla_i f(x_t)\| + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1 \nonumber \\
+& \qquad \quad + \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \times \left( \frac{\|\nabla_i f(x_t)\| \|\Delta_{t}^{(i)} + \nabla_i f(x_t)\| - \|\Delta_{t}^{(i)} + \nabla_i f(x_t)\|^2 +\langle \Delta_{t}^{(i)},  \Delta_{t}^{(i)} + \nabla_i f(x_t)\rangle } {\|\Delta_{t}^{(i)} + \nabla_i f(x_t)\|}  \right).
+\end{align}
+
+Using Cauchy-Schwarz inequality in the above inequality, we have:
+\begin{align*}
+f(x_{t+1}) &\leq f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|)  \|\nabla_i f(x_t)\| \nonumber \\
+& \qquad \qquad + \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|)  \times \left( \|\nabla_i f(x_t)\| - \|\Delta_{t}^{(i)} + \nabla_i f(x_t)\| + \|\Delta_{t}^{(i)}\|  \right) + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1 \nonumber \\
+&\leq f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|)  \|\nabla_i f(x_t)\| + 2\eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \times  \|\Delta_{t}^{(i)}\|  + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1
+\end{align*}
+
+Taking expectation, we obtain the following:
+\begin{align}
+\mathbb{E}[f(x_{t+1})] &\leq f(x_t) - \eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|)  \|\nabla_i f(x_t)\| + 2\eta_t \sum_{i=1}^h \phi(\|x_t^{(i)}\|) \times \mathbb{E}[ \|\Delta_{t}^{(i)}\|]  + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1 \nonumber \\
+&\leq f(x_t) - \eta_t  \alpha_l  \sum_{i=1}^h\|\nabla_i f(x_t)\| + 2\eta_t \alpha_u \frac{\|\sigma\|_1}{\sqrt{b}}  + \frac{\eta_t^2 \alpha_u^2}{2} \| L\|_1.
+\end{align}
+Summing the above inequality for $t=1$ to $T$ and using telescoping sum, we have the following inequality:
+\begin{align*}
+\mathbb{E}[f(x_{T+1})] &\leq f(x_1) -  \eta  \alpha_l  \sum_{t=1}^T \sum_{i=1}^h \mathbb{E}[\|\nabla_i f(x_t)\|] + 2\eta T \frac{ \alpha_u \|\sigma\|_1}{\sqrt{b}}  + \frac{\eta^2 \alpha_u^2 T}{2} \| L\|_1.
+\end{align*} 
+Rearranging the terms of the above inequality, and dividing by $\eta T \alpha_l$, we have:
+\begin{align*}
+\frac{1}{T} \sum_{t=1}^T \sum_{i=1}^h \mathbb{E}[\|\nabla_i f(x_t)\|] &\leq \frac{f(x_1) - \mathbb{E}[f(x_{T+1})]}{T\eta \alpha_l} + \frac{2\alpha_u\|\sigma \|_1}{\sqrt{b}\alpha_l} + \frac{\eta \alpha_u^2}{2\alpha_l} \| L\|_1 \\
+&\leq \frac{f(x_1) - f(x^*)}{T\eta\alpha_l} + \frac{2\alpha_u\|\sigma \|_1}{\alpha_l\sqrt{b} } + \frac{\eta \alpha_u^2}{2\alpha_l} \| L\|_1.
+\end{align*}
+
+\end{proof}
+
+\section{Proof of Theorem~\ref{thm:lamb-conv}}
+
+\begin{proof}
+We analyze the convergence of $\lamb$ for general minibatch size here. Recall that the update of $\lamb$  is the following
+$$
+x_{t+1}^{(i)}  = x_{t}^{(i)} - \eta_t \phi(\|x_t^{(i)}\|) \frac{r_{t}^{(i)}}{\|r_t^{(i)}\|},
+$$
+for all $i \in [h]$. For simplicity of notation, we reason the 
+
+Since the function $f$ is $L$-smooth, we have the following:
+\begin{align}
+f(x_{t+1}) &\leq f(x_t) + \langle \nabla_i f(x_t), x_{t+1}^{(i)} - x_{t}^{(i)} \rangle + \sum_{i=1}^h \frac{L_i}{2} \|x_{t+1}^{(i)} - x_t^{(i)}\|^2 \nonumber \\
+&= f(x_t) \underbrace{- \eta_t  \sum_{i=1}^h \sum_{j=1}^{d_i} \phi(\|x_t^{(i)}\|)  \times \left( [\nabla_i f(x_t)]_j \times \frac{r_{t,j}^{(i)}}{\|r_{t}^{(i)}\|}  \right)}_{T_1} + \sum_{i=1}^h \frac{L_i \alpha_u^2 \eta_t^2}{2}
+\label{eq:lamb-conv-eq1}
+\end{align}
+The above inequality simply follows from the lipschitz continuous nature of the gradient. We bound term $T_1$ in the following manner:
+\begin{align}
+T_1  &\leq - \eta_t  \sum_{i=1}^h \sum_{j=1}^{d_i} \phi(\|x_t^{(i)}\|) \times \left( [\nabla_i f(x_t)]_j \times \frac{r_{t,j}^{(i)}}{\|r_{t}^{(i)}\|}  \right) \nonumber \\
+&\leq - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \sqrt{\frac{1 - \beta_2}{G^2d_i}} \left( \phi(\|x_t^{(i)}\|)  \times [\nabla_i f(x_t)]_j \times g_{t,j}^{(i)}  \right) \nonumber \\
+&\qquad \qquad - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \left(\phi(\|x_t^{(i)}\|)  \times [\nabla_i f(x_t)]_j \times \frac{r_{t,j}^{(i)}}{\|r_{t}^{(i)}\|}  \right)\mathds{1}(sign(\nabla_i f(x_t)]_j) \neq sign(r_{t,j}^{(i)})) 
+\label{eq:lamb-conv-eq2}
+\end{align}
+This follows from the fact that $\|r_{t}^{(i)}\| \leq \sqrt{\frac{d_i}{1 - \beta_2}}$ and $\sqrt{v_t} \leq G$. If $\beta_2 = 0$, then $T_1$ can be bounded as follows:
+\begin{align*}
+T_1 &\leq - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \sqrt{\frac{1}{d_i}} \left( \phi(\|x_t^{(i)}\|)  \times |[\nabla_i f(x_t)]_j| \right) \nonumber \\
+&\qquad \qquad - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \left(\phi(\|x_t^{(i)}\|)  \times [\nabla_i f(x_t)]_j \times \frac{r_{t,j}^{(i)}}{\|r_{t}^{(i)}\|}  \right)\mathds{1}(sign(\nabla_i f(x_t)]_j) \neq sign(r_{t,j}^{(i)})) 
+\end{align*}
+The rest of the proof for $\beta_2 = 0$ is similar to argument for the case $\beta_2 > 0$, which is shown below. Taking expectation, we have the following:
+\begin{align}
+\mathbb{E}[T_1] &\leq - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \sqrt{\frac{1 - \beta_2}{G^2 d_i}} \mathbb{E}\left[\phi(\|x_t^{(i)}\|)  \times \left( [\nabla_i f(x_t)]_j \times g_{t,j}^{(i)}  \right)\right] \nonumber \\
+&\qquad \qquad - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \mathbb{E}\left[\phi(\|x_t^{(i)}\|)  \times \left( [\nabla_i f(x_t)]_j \times \frac{r_{t,j}^{(i)}}{\|r_{t}^{(i)}\|}  \right)\mathds{1}(sign(\nabla_i f(x_t)]_j) \neq sign(g_{t,j}^{(i)}))\right] \nonumber \\
+&\leq - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \sqrt{\frac{1 - \beta_2}{G^2 d_i}} \mathbb{E}\left[\left(\phi(\|x_t^{(i)}\|)  \times [\nabla_i f(x_t)]_j \times g_{t,j}^{(i)}  \right)\right] \nonumber \\
+&\qquad \qquad + \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \mathbb{E}\left[\alpha_u | [\nabla_i f(x_t)]_j |\mathds{1}(sign(\nabla_i f(x_t)]_j) \neq sign(g_{t,j}^{(i)}))\right] \nonumber \\
+&\leq - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \sqrt{\frac{1 - \beta_2}{G^2 d_i}} \mathbb{E}\left[\phi(\|x_t^{(i)}\|) \times \left( [\nabla_i f(x_t)]_j \times g_{t,j}^{(i)}  \right)\right] \nonumber \\
+&\qquad \qquad - \eta_t \sum_{i=1}^h \sum_{j=1}^{d_i} \alpha_u | [\nabla_i f(x_t)]_j |\mathbb{P}(sign(\nabla_i f(x_t)]_j) \neq sign(g_{t,j}^{(i)})) \nonumber \\
+\end{align}
+Using the bound on the probability that the signs differ, we get:
+\begin{align*}
+\mathbb{E}[T_1] \leq - \eta_t \alpha_l \sqrt{\frac{h(1 - \beta_2)}{G^2 d}} \|\nabla f(x_t)\|^2 + \eta_t\alpha_u \sum_{i=1}^h \sum_{j=1}^{d_i} \frac{\sigma_{i,j}}{\sqrt{b}}.
+\end{align*}
+Substituting the above bound on $T_1$ in \eqref{eq:lamb-conv-eq1}, we have the following bound:
+\begin{align}
+\mathbb{E}[f(x_{t+1})] &\leq  f(x_t) - \eta_t \alpha_l  \sqrt{\frac{h(1 - \beta_2)}{G^2 d}} \|\nabla f(x_t)\|^2 + \eta_t \alpha_u \frac{\|\tilde{\sigma}\|_1}{\sqrt{b}}+ \frac{\eta_t^2 \alpha_u^2 \|L\|_1}{2}
+\end{align}
+Summing the above inequality for $t=1$ to $T$ and using telescoping sum, we have the following inequality:
+\begin{align*}
+\mathbb{E}[f(x_{T+1})] &\leq f(x_1) -  \eta_t \alpha_l  \sqrt{\frac{h(1 - \beta_2)}{G^2 d}} \sum_{t=1}^T \mathbb{E}[\|\nabla f(x_t)\|^2]+ \eta T \alpha_u \frac{\|\tilde{\sigma}\|_1}{\sqrt{b}}  + \frac{\eta^2 \alpha_u^2 T}{2} \| L\|_1.
+\end{align*} 
+
+
+Rearranging the terms of the above inequality, and dividing by $\eta T \alpha_l$, we have:
+\begin{align*}
+ \sqrt{\frac{h(1 - \beta_2)}{G^2 d}} \frac{1}{T} \sum_{t=1}^T \mathbb{E}[\|\nabla f(x_t)\|^2] &\leq \frac{f(x_1) - \mathbb{E}[f(x_{T+1})]}{T\eta \alpha_l} + \frac{\alpha_u \|\tilde{\sigma}\|_1}{\alpha_l\sqrt{b}} + \frac{\eta}{2} \| L\|_1 \\
+&\leq \frac{f(x_1) - f(x^*)}{T\eta \alpha_l} + \frac{\alpha_u\|\tilde{\sigma}\|_1}{\alpha_l\sqrt{b}} + \frac{\eta \alpha_u^2}{2\alpha_l} \| L\|_1.
+\end{align*}
+\end{proof}
+
+
+\section{Comparison of Convergence Rates of $\lars$ and $\sgd$}
+\label{sec:conv-compare}
+
+Inspired by the comparison used by \citep{signsgd} for comparing SIGN $\sgd$ with $\sgd$, we define the following quantities:
+\begin{align*}
+\left(\sum_{i=1}^h \|\nabla_i f(x_t)\|\right)^2 &=  \frac{\psi(\nabla f(x_t))d \|\nabla f(x_t)\|^2}{h} \geq \frac{\psi_g d \|\nabla f(x_t)\|^2}{h} \\
+\|L\|_1^2 &\leq  \frac{\psi_L d^2 \|L\|_\infty^2}{h^2} \\
+\|\sigma\|_1^2 &=  \frac{\psi_\sigma d \|\sigma\|^2}{h}.
+\end{align*}
+Then $\lars$ convergence rate can be written in the following manner:
+\begin{align*}
+\left(\mathbb{E}[\|\nabla f(x_a)\|\right)^2 \leq O\left(\frac{(f(x_1) - f(x^*)) L_\infty}{T}  \frac{\psi_L}{\psi_g^2}+ \frac{\|\sigma \|^2}{T} \frac{\psi_\sigma^2}{\psi_g^2}\right).
+\end{align*}
+If $\psi_L \ll \psi_g^2$ and $\psi_\sigma \ll \psi_g^2$ then $\lars$ (i.e., gradient is more denser than curvature or stochasticity), we gain over $\sgd$. Otherwise, $\sgd$'s upper bound on convergence rate is better.
+
+
+\begin{figure}
+\begin{minipage}[b]{.48\textwidth}
+
+\begin{algorithm}[H]\small
+	\caption{N-LAMB}
+	\label{alg:nlamb}
+	\begin{algorithmic}
+		\STATE {\bf Input:} $x_1 \in \mathbb{R}^d$, learning rate $\{\eta_t\}_{t=1}^T$,  parameters $0 < \beta_{1}, \beta_2 < 1$, scaling function $\phi$, $\epsilon > 0$, parameters $0 < \{\beta_{1}^t\}_{t=1}^T < 1$
+		\STATE Set $m_{0} = 0$, $v_{0} = 0$
+		\FOR{$t=1$ {\bf to} $T$}
+		\STATE Draw b samples $S_t$ from $\mathbb{P}$.
+        \STATE Compute $g_t = \frac{1}{|\mathcal{S}_t|} \sum_{s_t \in \mathcal{S}_t}\nabla \ell(x_t, s_t)$.
+        %\STATE $\hat{g} = \frac{g_t}{1 - {\Pi}_{i=1}^t \beta_{1}^i}$
+		\STATE  $m_{t} = \beta_{1} m_{t-1} + (1 - \beta_{1}) g_{t}$ 
+		\STATE $\hat{m} = \frac{\beta_{1}^{t+1} m_t}{1 - {\Pi}_{i=1}^{t+1} \beta_{1}^i} + \frac{(1 - \beta_{1}^{t}) g_t}{1 - {\Pi}_{i=1}^{t} \beta_{1}^i}$
+		\STATE  $v_{t} = \beta_{2} v_{t-1} + (1 - \beta_{2}) g_{t}^2$
+		\STATE $\hat{v} = \frac{\beta_2 v_t}{1 - {\beta}_2^t}$
+		\STATE Compute ratio $r_t = \frac{\hat{m}}{\sqrt{\hat{v}} + \epsilon}$
+		\STATE $x_{t+1}^{(i)} = x_{t}^{(i)} - \eta_t \frac{\phi(\|x_t^{(i)}\|)}{\|r_t^{(i)} + \lambda x_t^{(i)}\|} (r_t^{(i)} + \lambda x_t)$
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+
+\end{minipage}\hfill% This must go next to `\end{minipage}`
+\begin{minipage}[b]{.5\textwidth}
+
+\begin{algorithm}[H]\small
+	\caption{NN-LAMB}
+	\label{alg:nnlamb}
+	\begin{algorithmic}
+		\STATE {\bf Input:} $x_1 \in \mathbb{R}^d$, learning rate $\{\eta_t\}_{t=1}^T$,  parameters $0 < \beta_{1}, \beta_2 < 1$, scaling function $\phi$, $\epsilon > 0$, parameters $0 < \{\beta_{1}^t\}_{t=1}^T < 1$
+		\STATE Set $m_{0} = 0$, $v_{0} = 0$
+		\FOR{$t=1$ {\bf to} $T$}
+		\STATE Draw b samples $S_t$ from $\mathbb{P}$.
+        \STATE Compute $g_t = \frac{1}{|\mathcal{S}_t|} \sum_{s_t \in \mathcal{S}_t}\nabla \ell(x_t, s_t)$.
+        %\STATE $\hat{g} = \frac{g_t}{1 - {\Pi}_{i=1}^t \beta_{1}^i}$
+		\STATE  $m_{t} = \beta_{1} m_{t-1} + (1 - \beta_{1}) g_{t}$ 
+		\STATE $\hat{m} = \frac{\beta_{1}^{t+1} m_t}{1 - {\Pi}_{i=1}^{t+1} \beta_{1}^i} + \frac{(1 - \beta_{1}^{t}) g_t}{1 - {\Pi}_{i=1}^{t} \beta_{1}^i}$
+		\STATE  $v_{t} = \beta_{2} v_{t-1} + (1 - \beta_{2}) g_{t}^2$
+		%\STATE $\hat{v} = \frac{\beta_2 v_t}{1 - {\beta}_2^t}$
+		\STATE $\hat{v} = \frac{\beta_{2}^{t+1} v_t}{1 - {\Pi}_{i=1}^{t+1} \beta_{2}^i} + \frac{(1 - \beta_{2}^{t}) g_{t}^2}{1 - {\Pi}_{i=1}^{t} \beta_{2}^i}$
+		\STATE Compute ratio $r_t = \frac{\hat{m}}{\sqrt{\hat{v}} + \epsilon}$
+		\STATE $x_{t+1}^{(i)} = x_{t}^{(i)} - \eta_t \frac{\phi(\|x_t^{(i)}\|)}{\|r_t^{(i)} + \lambda x_t^{(i)}\|} (r_t^{(i)} + \lambda x_t)$
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+
+\end{minipage}
+\end{figure}
+
+\section{N-LAMB: Nesterov Momentum for LAMB}
+
+\cite{sutskever2013importance} report that Nesterov’s accelerated gradient (NAG) proposed by \cite{nesterov1983method} is conceptually and empirically better than the regular momentum method for convex, non-stochastic objectives.
+\cite{dozat2016incorporating} incorporated Nesterov’s momentum into Adam optimizer and proposed the Nadam optimizer. Specifically, only the first moment of Adam was modified and the second moment of Adam was unchanged. The results on several applications (Word2Vec, Image Recognition, and LSTM Language Model) showed that Nadam optimizer improves the speed of convergence and the quality of the learned models. We also tried using Nesterov’s momentum to replace the regular momentum of LAMB optimizer's first moment. In this way, we got a new algorithm named as N-LAMB (Nesterov LAMB). The complete algorithm is in Algorithm \ref{alg:nlamb}. We can also Nesterov’s momentum to replace the regular momentum of LAMB optimizer's second moment. We refer to this algorithm as NN-LAMB (Nesterov's momentum for both the first moment and the second moment). The details of NN-LAMB were shown in Algorithm \ref{alg:nnlamb}.
+
+\cite{dozat2016incorporating} suggested the best performance of Nadam was achieved by $\beta_1$ = 0.975, $\beta_2$ = 0.999, and $\epsilon$ = 1e-8. We used the same settings for N-LAMB and NN-LAMB. We scaled the batch size to 32K for ImageNet training with ResNet-50. Our experimental results show that N-LAMB and NN-LAMB can achieve a comparable accuracy compared to LAMB optimizer. Their performances are much better than momentum solver (Figure \ref{fig:n_lamb}).
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/n_lamb.png}
+\caption{This figure shows N-LAMB and NN-LAMB can achieve a comparable accuracy compared to LAMB optimizer. Their performances are much better than momentum solver. The result of momentum optimizer was reported by \cite{goyal2017accurate}. For Nadam, we use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}. We also tuned the learning rate of Nadam in \{1e-4, 2e-4, ..., 9e-4, 1e-3, 2e-3, ..., 9e-3, 1e-2\}.}
+\label{fig:n_lamb}
+\vspace{-10pt}
+\end{figure*}
+
+\section{LAMB with learning rate correction}
+
+There are two operations at each iteration in original Adam optimizer (let us call it adam-correction):
+$$m_t = m_t/(1 - {\beta}_1^t)$$
+$$v_t = v_t/(1 - {\beta}_2^t)$$
+It has an impact on the learning rate by ${\eta}_t := {\eta}_t * \sqrt{(1 - {\beta}_2^t) / (1 - {\beta}_1^t)}$.
+According to our experimental results, adam-correction essentially has the same effect as learning rate warmup (see Figure \ref{fig:adam_correct}). The warmup function often was implemented in the modern deep learning system. Thus, we can remove adam-correction from the LAMB optimizer. We did not observe any drop in the test or validation accuracy for BERT and ImageNet training.
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.96\textwidth]{figs/adam_correct.png}
+\caption{The figure shows that adam-correction has the same effect as learning rate warmup. We removed adam-correction from the LAMB optimizer. We did not observe any drop in the test or validation accuracy for BERT and ImageNet training.}
+\label{fig:adam_correct}
+\vspace{-10pt}
+\end{figure*}
+
+\section{LAMB with different norms}
+We need to compute the matrix/tensor norm for each layer when we do the parameter updating in the LAMB optimizer.
+We tried different norms in LAMB optimizer. However, we did not observe a significant difference in the validation accuracy of ImageNet training with ResNet-50. In our experiments, the difference in validation accuracy is less than 0.1 percent (Figure \ref{fig:lamb_norm}). We use L2 norm as the default.
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.96\textwidth]{figs/lamb_norm.png}
+\caption{We tried different norms in LAMB optimizer. However, we did not observe a significant difference in the validation accuracy of ImageNet training with ResNet-50. We use L2 norm as the default.}
+\label{fig:lamb_norm}
+\vspace{-10pt}
+\end{figure*}
+
+\section{Regular Batch Sizes for Small Datasets: MNIST and CIFAR-10.}
+According to DAWNBench, DavidNet (a custom 9-layer Residual ConvNet) is the fastest model for CIFAR-10 dataset (as of April 1st, 2019)\footnote{https://dawn.cs.stanford.edu/benchmark/CIFAR10/train.html}.
+The baseline uses the momentum SGD optimizer.
+Table \ref{table:cifar10_davidnet} and Figure \ref{fig:cifar10_davidnet} show the test accuracy of CIFAR-10 training with DavidNet. The PyTorch implementation (momentum SGD optimizer) on GPUs was reported on Standford DAWNBench's website, which achieves 94.06\% in 24 epochs. The Tensorflow implementation (momentum SGD optimizer) on TPU achieves a 93.72\% accuracy in 24 epochs\footnote{https://github.com/fenwickslab/dl\_tutorials/blob/master/tutorial3\_cifar10\_davidnet\_fix.ipynb}. We use the implementation of TensorFlow on TPUs. $\lamb$ optimizer is able to achieve 94.08\% test accuracy in 24 epochs, which is better than other adaptive optimizers and momentum SGD.
+Even on the smaller tasks like MNIST training with LeNet, $\lamb$ is able to achieve a better accuracy than existing solvers (Table \ref{table:mnist_results}).
+
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.9\textwidth]{figs/cifar10_davidnet.png}
+\caption{$\lamb$ is better than the existing solvers (batch size = 512). We make sure all the solvers are carefully tuned. The learning rate tuning space of Adam, AdamW, Adagrad and LAMB is \{0.0001, 0.0002, 0.0004, 0.0006, 0.0008, 0.001, 0.002, 0.004, 0.006, 0.008, 0.01, 0.02, 0.04, 0.06, 0.08, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50\}. The momentum optimizer was tuned by the baseline implementer. The weight decay term of AdamW was tuned by \{0.0001, 0.001, 0.01, 0.1, 1.0\}.}
+\label{fig:cifar10_davidnet}
+\vspace{-10pt}
+\end{figure*}
+
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{ CIFAR-10 training with DavidNet (batch size = 512). All of them run 24 epochs and finish the training under one minute on one cloud TPU. We make sure all the solvers are carefully tuned. The learning rate tuning space of Adam, AdamW, Adagrad and LAMB is \{0.0001, 0.0002, 0.0004, 0.0006, 0.0008, 0.001, 0.002, 0.004, 0.006, 0.008, 0.01, 0.02, 0.04, 0.06, 0.08, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50\}. The momentum optimizer was tuned by the baseline implementer. The weight decay term of AdamW was tuned by \{0.0001, 0.001, 0.01, 0.1, 1.0\}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+Optimizer & $\adagrad$ & $\adam$ & $\adamw$ & momentum & $\lamb$ \\
+\hline
+\hline
+Test Accuracy & 0.9074 & 0.9225 & 0.9271 & 0.9372 & 0.9408 \\
+\hline
+%\textcolor{blue}{Our Method} & 128k/32k & --- & 89.559 & 1024 TPUs & ---\\
+%\hline
+\end{tabular}
+\label{table:cifar10_davidnet}
+\end{table}
+
+
+%\subsubsection{CIFAR-10}
+%We make sure all the solvers are carefully tuned. The learning rate tuning space of Adam, AdamW, Adagrad and LAMB is \{0.0001, 0.0002, 0.0004, 0.0006, 0.0008, 0.001, 0.002, 0.004, 0.006, 0.008, 0.01, 0.02, 0.04, 0.06, 0.08, 0.1, 0.2, 0.4, 0.6, 0.8, 1, 2, 4, 6, 8, 10, 15, 20, 25, 30, 35, 40, 45, 50\}. The momentum optimizer was tuned by the baseline implementer. The weight decay term of AdamW was tuned by \{0.0001, 0.001, 0.01, 0.1, 1.0\}. 
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{ Test Accuracy by MNIST training with LeNet (30 epochs for Batch Size = 1024). The tuning space of learning rate for all the optimizers is \{0.0001, 0.001, 0.01, 0.1\}. We use the same learning rate warmup and decay schedule for all of them.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+Optimizer & Momentum & Addgrad & $\adam$ & $\adamw$ & $\lamb$ \\
+\hline
+\hline
+Average accuracy over 5 runs & 0.9933  & 0.9928 & 0.9936 & 0.9941 & 0.9945  \\
+\hline
+%\textcolor{blue}{Our Method} & 128k/32k & --- & 89.559 & 1024 TPUs & ---\\
+%\hline
+\end{tabular}
+\label{table:mnist_results}
+\end{table}
+
+\section{Implementation Details and Additional Results}
+
+There are several hyper-parameters in $\lamb$ optimizer. 
+Although users do not need to tune them, we explain them to help users to have a better understanding.
+${\beta}_1$ is used for decaying the running average of the gradient.
+${\beta}_2$ is used for decaying the running average of the square of gradient.
+The default setting for other parameters: weight decay rate $\lambda$=0.01, ${\beta}_1$=0.9, ${\beta}_2$=0.999, $\epsilon$=1e-6.
+We did not tune ${\beta}_1$ and ${\beta}_2$.
+However, our experiments show that tuning them may get a higher accuracy.
+
+Based on our experience, learning rate is the most important hyper-parameter that affects the learning efficiency and final accuracy.
+\cite{bengio2012practical} suggests that it is often the single most important hyper-parameter and that it always should be tuned.
+%Table \ref{table:imagenet_adagrad_tuning_1}
+%\ref{table:imagenet_adagrad_tuning_2}
+Thus, to make sure we have a solid baseline, we carefully tune the learning rate of $\adam$, $\adamw$, $\adagrad$, and momentum $\sgd$
+
+In our experiments, we found that the validation loss is not reliable for large-batch training. A lower validation loss does not necessarily lead to a higher validation accuracy (Figure \ref{fig:not_trust_val_loss}).
+Thus, we use the test/val accuracy or F1 score on dev set to evaluate the optimizers.
+
+%\subsection{\textcolor{blue}{Push the batch size to the full dataset}}
+%\textcolor{blue}{In order to help the readers to evaluate our approach, we use a small example and put the batch size to the whole dataset.}
+%\textcolor{blue}{Use MNIST as the example, compare batch size = 60000 for LAMB, Adam, AdamW, LARS, AdaGrad, RMSProp. Please tune the learning rate comprehensively for them. Put the tuning data into appendix.}
+%\textcolor{blue}{First, give a comparison on the regular batch, they should get a similar accuracy.}
+
+%\textcolor{blue}{1. We use random search and grid search to tune the hyper-parameters like learning rate.
+%Or you can say "We used quasirandom search (Bousquet et al., 2017) to tune the metaparameters".
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/do_not_trust_val_loss.png}
+\caption{Our experiments show that even the validation loss is not reliable in the large-scale training. A lower validation loss may lead to a worse accuracy. Thus, we use the test/val accuracy or F1 score on dev set to evaluate the optimizers.}
+%\textcolor{blue}{can move it to appendix}
+\label{fig:not_trust_val_loss}
+\vspace{-10pt}
+\end{figure*}
+
+
+
+\subsubsection{BERT}
+Table \ref{table:adamw_16k} shows some of the tuning information from BERT training with $\adamw$ optimizer.
+$\adamw$ stops scaling at the batch size of 16K. The target F1 score is 90.5. $\lamb$ achieves a F1 score of 91.345. The table shows the tuning information of $\adamw$. In Table \ref{table:adamw_16k}, we report the best F1 score we observed from our experiments.
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{ $\adamw$ stops scaling at the batch size of 16K. The target F1 score is 90.5. $\lamb$ achieves a F1 score of 91.345. The table shows the tuning information of $\adamw$. In this table, we report the best F1 score we observed from our experiments.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+Solver & batch size & warmup steps & LR & last step infomation & F1 score on dev set\\
+\hline
+\hline
+$\adamw$ & 16K & 0.05$\times$31250 & 0.0001 & loss=8.04471, step=28126 & diverged\\
+\hline
+$\adamw$ & 16K & 0.05$\times$31250 & 0.0002 & loss=7.89673, step=28126 & diverged\\
+\hline
+$\adamw$ & 16K & 0.05$\times$31250 & 0.0003 & loss=8.35102, step=28126 & diverged\\
+\hline
+$\adamw$ & 16K & 0.10$\times$31250 & 0.0001 & loss=2.01419, step=31250 & 86.034 \\
+\hline
+$\adamw$ & 16K & 0.10$\times$31250 & 0.0002 & loss=1.04689, step=31250 & 88.540 \\
+\hline
+$\adamw$ & 16K & 0.10$\times$31250 & 0.0003 & loss=8.05845, step=20000 & diverged \\
+\hline
+$\adamw$ & 16K & 0.20$\times$31250 & 0.0001 & loss=1.53706, step=31250 & 85.231 \\
+\hline
+$\adamw$ & 16K & 0.20$\times$31250 & 0.0002 & loss=1.15500, step=31250 & 88.110 \\
+\hline
+$\adamw$ & 16K & 0.20$\times$31250 & 0.0003 & loss=1.48798, step=31250 & 85.653 \\
+\hline
+%\textcolor{blue}{Our Method} & 128k/32k & --- & 89.559 & 1024 TPUs & ---\\
+%\hline
+\end{tabular}
+\label{table:adamw_16k}
+\end{table}
+
+The loss curves of BERT training by $\lamb$ for different batch sizes are shown in Figure \ref{fig:bert_train_loss}.
+We observe that the loss curves are almost identical to each other, which means our optimizer scales well with the batch size. 
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=1.08\textwidth]{figs/bert_train_loss.png}
+\caption{This figure shows the training loss curve of $\lamb$ optimizer. We just want to use this figure to show that $\lamb$ can make the training converge smoothly. Even if we scale the batch size to the extremely large cases, the loss curves are almost identical to each other.}
+\label{fig:bert_train_loss}
+\vspace{-10pt}
+\end{figure*}
+
+The training loss curve of BERT mixed-batch pre-training with LAMB is shown in Figure \ref{fig:bert_lamb_loss}.
+%Our experiments show that training loss values are not necessarily meaningful. 
+%We often observe a lower training loss leads to a worse testing accuracy.
+This figure shows that LAMB can make the training converge smoothly at the batch size of 64K.
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/64k_32k_loss.png}
+\caption{This figure shows the training loss curve of LAMB optimizer. This figure shows that LAMB can make the training converge smoothly at the extremely large batch size (e.g. 64K).}
+\label{fig:bert_lamb_loss}
+\vspace{-10pt}
+\end{figure*}
+
+Figure \ref{fig:bert_scaling} shows that we can achieve 76.8\% scaling efficiency by scaling the batch size (49.1 times speedup by 64 times computational resources) and 101.8\% scaling efficiency with mixed-batch (65.2 times speedup by 64 times computational resources)
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.90\textwidth]{figs/bert_scaling.png}
+\caption{We achieve 76.8\% scaling efficiency (49 times speedup by 64 times computational resources) and 101.8\% scaling efficiency with a mixed, scaled batch size (65.2 times speedup by 64 times computational resources). 1024-mixed means the mixed-batch training on 1024 TPUs.}
+\label{fig:bert_scaling}
+\vspace{-10pt}
+\end{figure*}
+%\textcolor{blue}{Jeff Dean's comments, put it to appendix?}
+
+
+
+
+\subsubsection{ImageNet}
+
+Figures \ref{fig:lamb_ratio_1} - \ref{fig:lamb_ratio_200} show the LAMB trust ratio at different iterations for ImageNet training with ResNet-50.
+From these figures we can see that these ratios are very different from each other for different layers.
+LAMB uses the trust ratio to help the slow learners to train faster.
+
+\subsection{Baseline tuning details for ImageNet training with ResNet-50}
+If you are not interested in the baseline tuning details, please skip this section.
+
+\citet{goyal2017accurate} suggested a proper learning rate warmup and decay scheme may help improve the ImageNet classification accuracy. 
+We included these techniques in Adam/AdamW/AdaGrad tuning.
+Specifically, we use the learning rate recipe of \cite{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 76.3\% \citep{goyal2017accurate}.
+There techniques help to improve the accuracy of Adam/AdamW/AdaGrad to around 73\%.
+However, even with these techniques, Adam/AdamW/AdaGrad stil can not achieve the target validation accuracy.
+
+To make sure our baseline is solid, we carefully tuned the hyper-parameters.
+Table \ref{table:imagenet_adagrad_tuning_1} shows the tuning information of standard Adagrad.
+Table \ref{table:imagenet_adagrad_tuning_2} shows the tuning information of adding the learning rate scheme of \cite{goyal2017accurate} to standard Adagrad.
+Table \ref{table:imagenet_adam_tuning_1} shows the tuning information of standard Adam.
+Table \label{table:imagenet_adam_tuning_2} shows the tuning information of adding the learning rate scheme of \cite{goyal2017accurate} to standard Adam.
+It is tricky to tune the AdamW optimizer since both the L2 regularization and weight decay have the effect on the performance.
+Thus we have four tuning sets.
+
+The first tuning set is based on AdamW with default L2 regularization.
+We tune the learning rate and weight decay.
+The tuning information is in Figures \ref{table:imagenet_adamw_default_l2_1}, \ref{table:imagenet_adamw_default_l2_2}, \ref{table:imagenet_adamw_default_l2_3}, and \ref{table:imagenet_adamw_default_l2_4}.
+
+The second tuning set is based on AdamW with disabled L2 regularization.
+We tune the learning rate and weight decay.
+The tuning information is in Figures \ref{table:imagenet_adamw_default_1}, \ref{table:imagenet_adamw_default_2}, \ref{table:imagenet_adamw_default_3}, and \ref{table:imagenet_adamw_default_4}.
+
+Then we add the learning rate scheme of \cite{goyal2017accurate} to AdamW and refer to it as AdamW+.
+
+The third tuning set is based on AdamW+ with default L2 regularization.
+We tune the learning rate and weight decay.
+The tuning information is Figure \ref{table:imagenet_adam_tuning_l2_1} and \ref{table:imagenet_adam_tuning_l2_2}.
+
+The fourth tuning set is based on AdamW+ with disabled L2 regularization.
+We tune the learning rate and weight decay.
+The tuning information is in Figures \ref{table:imagenet_adam_tuning_nol2_1}, \ref{table:imagenet_adam_tuning_nol2_2}, \ref{table:imagenet_adam_tuning_nol2_3}.
+
+Based on our comprehensive tuning results, we conclude the existing adaptive solvers do not perform well on ImageNet training or at least it is hard to tune them.
+
+
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/lamb_ratio_1.png}
+\caption{The LAMB trust ratio.}
+\label{fig:lamb_ratio_1}
+\vspace{-10pt}
+\end{figure*}
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/lamb_ratio_4.png}
+\caption{The LAMB trust ratio.}
+\label{fig:lamb_ratio_4}
+\vspace{-10pt}
+\end{figure*}
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/lamb_ratio_10.png}
+\caption{The LAMB trust ratio.}
+\label{fig:lamb_ratio_10}
+\vspace{-10pt}
+\end{figure*}
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/lamb_ratio_50.png}
+\caption{The LAMB trust ratio.}
+\label{fig:lamb_ratio_50}
+\vspace{-10pt}
+\end{figure*}
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/lamb_ratio_100.png}
+\caption{The LAMB trust ratio.}
+\label{fig:lamb_ratio_100}
+\vspace{-10pt}
+\end{figure*}
+
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/lamb_ratio_200.png}
+\caption{The LAMB trust ratio.}
+\label{fig:lamb_ratio_200}
+\vspace{-10pt}
+\end{figure*}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdaGrad optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations).}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+Learning Rate & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.0026855469 \\
+\hline
+0.001 & 0.015563965 \\
+\hline
+0.002 & 0.022684732 \\
+\hline
+0.004 & 0.030924479 \\
+\hline
+0.008 & 0.04486084 \\
+\hline
+0.010 & 0.054158527 \\
+\hline
+0.020 & 0.0758667 \\
+\hline
+0.040 & 0.1262614 \\
+\hline
+0.080 & 0.24037679 \\
+\hline
+0.100 & 0.27357993 \\
+\hline
+0.200 & 0.458313 \\
+\hline
+0.400 & {\bf 0.553833} \\
+\hline
+0.800 & 0.54103595 \\
+\hline
+1.000 & 0.5489095 \\
+\hline
+2.000 & 0.47680664 \\
+\hline
+4.000 & 0.5295207 \\
+\hline
+6.000 & 0.36950684 \\
+\hline
+8.000 & 0.31081137 \\
+\hline
+10.00 & 0.30670166 \\
+\hline
+12.00 & 0.3091024 \\
+\hline
+14.00 & 0.3227946 \\
+\hline
+16.00 & 0.0063680015 \\
+\hline
+18.00 & 0.11287435 \\
+\hline
+20.00 & 0.21602376 \\
+\hline
+30.00 & 0.08315023 \\
+\hline
+40.00 & 0.0132039385 \\
+\hline
+50.00 & 0.0009969076 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adagrad_tuning_1}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning AdaGrad optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+Learning Rate & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.0011189779 \\
+\hline
+%0.0002 & 0.002746582 & Run2 & Run3 & Average\\
+%\hline
+%0.0004 & 0.0046183267 & Run2 & Run3 & Average\\
+%\hline
+%0.0008 & 0.0060628257 & Run2 & Run3 & Average\\
+%\hline
+0.001 & 0.00793457 \\
+\hline
+0.002 & 0.012573242 \\
+\hline
+0.004 & 0.019022623 \\
+\hline
+0.008 & 0.027079264 \\
+\hline
+0.010 & 0.029012045 \\
+\hline
+0.020 & 0.0421346 \\
+\hline
+0.040 & 0.06618246 \\
+\hline
+0.080 & 0.10970052 \\
+\hline
+0.100 & 0.13429768 \\
+\hline
+0.200 & 0.26550293 \\
+\hline
+0.400 & 0.41918945 \\
+\hline
+0.800 & 0.5519816 \\
+\hline
+1.000 & 0.58614093 \\
+\hline
+2.000 & 0.67252606 \\
+\hline
+4.000 & 0.70306396 \\
+\hline
+6.000 & 0.709493 \\
+\hline
+8.000 & 0.7137858 \\
+\hline
+10.00 & 0.71797687 \\
+\hline
+12.00 & 0.7187703 \\
+\hline
+14.00 & {\bf 0.72007245} \\
+\hline
+16.00 & 0.7194214 \\
+\hline
+18.00 & 0.7149251 \\
+\hline
+20.00 & 0.71293133 \\
+\hline
+30.00 & 0.70458984 \\
+\hline
+40.00 & 0.69085693 \\
+\hline
+50.00 & 0.67976886 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adagrad_tuning_2}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default Adam optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+Learning Rate & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.5521 \\
+\hline
+0.0002 & 0.6089 \\
+\hline
+0.0004 & 0.6432 \\
+\hline
+0.0006 & 0.6465 \\
+\hline
+0.0008 & 0.6479 \\
+\hline
+0.001 & {\bf 0.6604} \\
+\hline
+0.002 & 0.6408 \\
+\hline
+0.004 & 0.5687 \\
+\hline
+0.006 & 0.5165 \\
+\hline
+0.008 & 0.4812 \\
+\hline
+0.010 & 0.3673 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_1}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning Adam optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+Learning Rate & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.410319 \\
+\hline
+0.0002 & 0.55263263 \\
+\hline
+0.0004 & 0.6455485 \\
+\hline
+0.0006 & 0.6774495 \\
+\hline
+0.0008 & 0.6996867 \\
+\hline
+0.001 & 0.71010333 \\
+\hline
+0.002 & {\bf 0.73476154} \\
+\hline
+0.004 & 0.73286945 \\
+\hline
+0.006 & 0.72648114 \\
+\hline
+0.008 & 0.72214764 \\
+\hline
+0.010 & 0.71466064 \\
+\hline
+0.012 & 0.7081502 \\
+\hline
+0.014 & 0.6993001 \\
+\hline
+0.016 & 0.69108075 \\
+\hline
+0.020 & 0.67997235 \\
+\hline
+0.040 & 0.58658856 \\
+\hline
+0.060 & 0.51090497 \\
+\hline
+0.080 & 0.45174155 \\
+\hline
+0.100 & 0.40297446 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_2}
+\end{table}
+
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.00001 & default (0.01) & 0.53312176 \\
+\hline
+0.0002 & 0.00001 & default (0.01) & 0.5542806 \\
+\hline
+0.0004 & 0.00001 & default (0.01) & 0.48769125 \\
+\hline
+0.0006 & 0.00001 & default (0.01) & 0.46317545 \\
+\hline
+0.0008 & 0.00001 & default (0.01) & 0.40903726 \\
+\hline
+0.001 & 0.00001 & default (0.01) & 0.42401123 \\
+\hline
+0.002 & 0.00001 & default (0.01) & 0.33870444 \\
+\hline
+0.004 & 0.00001 & default (0.01) & 0.12339274 \\
+\hline
+0.006 & 0.00001 & default (0.01) & 0.122924805 \\
+\hline
+0.008 & 0.00001 & default (0.01) & 0.08099365 \\
+\hline
+0.010 & 0.00001 & default (0.01) & 0.016764322 \\
+\hline
+0.012 & 0.00001 & default (0.01) & 0.032714844 \\
+\hline
+0.014 & 0.00001 & default (0.01) & 0.018147787 \\
+\hline
+0.016 & 0.00001 & default (0.01) & 0.0066731772 \\
+\hline
+0.018 & 0.00001 & default (0.01) & 0.010294597 \\
+\hline
+0.020 & 0.00001 & default (0.01) & 0.008260091 \\
+\hline
+0.025 & 0.00001 & default (0.01) & 0.008870442 \\
+\hline
+0.030 & 0.00001 & default (0.01) & 0.0064493814 \\
+\hline
+0.040 & 0.00001 & default (0.01) & 0.0018107096 \\
+\hline
+0.050 & 0.00001 & default (0.01) & 0.003540039 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_l2_1}
+\end{table}
+
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.0001 & default (0.01) & 0.55489093 \\
+\hline
+0.0002 & 0.0001 & default (0.01) & {\bf 0.56514484} \\
+\hline
+0.0004 & 0.0001 & default (0.01) & 0.4986979 \\
+\hline
+0.0006 & 0.0001 & default (0.01) & 0.47595215 \\
+\hline
+0.0008 & 0.0001 & default (0.01) & 0.44685873 \\
+\hline
+0.001 & 0.0001 & default (0.01) & 0.41029868 \\
+\hline
+0.002 & 0.0001 & default (0.01) & 0.2808024 \\
+\hline
+0.004 & 0.0001 & default (0.01) & 0.08111572 \\
+\hline
+0.006 & 0.0001 & default (0.01) & 0.068115234 \\
+\hline
+0.008 & 0.0001 & default (0.01) & 0.057922363 \\
+\hline
+0.010 & 0.0001 & default (0.01) & 0.05222575 \\
+\hline
+0.012 & 0.0001 & default (0.01) & 0.017313639 \\
+\hline
+0.014 & 0.0001 & default (0.01) & 0.029785156 \\
+\hline
+0.016 & 0.0001 & default (0.01) & 0.016540527 \\
+\hline
+0.018 & 0.0001 & default (0.01) & 0.00575765 \\
+\hline
+0.020 & 0.0001 & default (0.01) & 0.0102335615 \\
+\hline
+0.025 & 0.0001 & default (0.01) & 0.0060831704 \\
+\hline
+0.030 & 0.0001 & default (0.01) & 0.0036417644 \\
+\hline
+0.040 & 0.0001 & default (0.01) & 0.0010782877 \\
+\hline
+0.050 & 0.0001 & default (0.01) & 0.0037638347 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_l2_2}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.001 & default (0.01) & 0.21142578 \\
+\hline
+0.0002 & 0.001 & default (0.01) & 0.4289144 \\
+\hline
+0.0004 & 0.001 & default (0.01) & 0.13537598 \\
+\hline
+0.0006 & 0.001 & default (0.01) & 0.33803305 \\
+\hline
+0.0008 & 0.001 & default (0.01) & 0.32611084 \\
+\hline
+0.001 & 0.001 & default (0.01) & 0.22194417 \\
+\hline
+0.002 & 0.001 & default (0.01) & 0.1833903 \\
+\hline
+0.004 & 0.001 & default (0.01) & 0.08256022 \\
+\hline
+0.006 & 0.001 & default (0.01) & 0.020507812 \\
+\hline
+0.008 & 0.001 & default (0.01) & 0.018269857 \\
+\hline
+0.010 & 0.001 & default (0.01) & 0.007507324 \\
+\hline
+0.012 & 0.001 & default (0.01) & 0.020080566 \\
+\hline
+0.014 & 0.001 & default (0.01) & 0.010762532 \\
+\hline
+0.016 & 0.001 & default (0.01) & 0.0021362305 \\
+\hline
+0.018 & 0.001 & default (0.01) & 0.007954915 \\
+\hline
+0.020 & 0.001 & default (0.01) & 0.005859375 \\
+\hline
+0.025 & 0.001 & default (0.01) & 0.009724935 \\
+\hline
+0.030 & 0.001 & default (0.01) & 0.0019124349 \\
+\hline
+0.040 & 0.001 & default (0.01) & 0.00390625 \\
+\hline
+0.050 & 0.001 & default (0.01) & 0.0009969076 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_l2_3}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.01 & default (0.01) & 0.0009765625 \\
+\hline
+0.0002 & 0.01 & default (0.01) & 0.0009969076 \\
+\hline
+0.0004 & 0.01 & default (0.01) & 0.0010172526 \\
+\hline
+0.0006 & 0.01 & default (0.01) & 0.0009358724 \\
+\hline
+0.0008 & 0.01 & default (0.01) & 0.0022379558 \\
+\hline
+0.001 & 0.01 & default (0.01) & 0.001566569 \\
+\hline
+0.002 & 0.01 & default (0.01) & 0.009480794 \\
+\hline
+0.004 & 0.01 & default (0.01) & 0.0033569336 \\
+\hline
+0.006 & 0.01 & default (0.01) & 0.0029907227 \\
+\hline
+0.008 & 0.01 & default (0.01) & 0.0018513998 \\
+\hline
+0.010 & 0.01 & default (0.01) & 0.009134929 \\
+\hline
+0.012 & 0.01 & default (0.01) & 0.0022176106 \\
+\hline
+0.014 & 0.01 & default (0.01) & 0.0040690103 \\
+\hline
+0.016 & 0.01 & default (0.01) & 0.0017293295 \\
+\hline
+0.018 & 0.01 & default (0.01) & 0.00061035156 \\
+\hline
+0.020 & 0.01 & default (0.01) & 0.0022379558 \\
+\hline
+0.025 & 0.01 & default (0.01) & 0.0017089844 \\
+\hline
+0.030 & 0.01 & default (0.01) & 0.0014241537 \\
+\hline
+0.040 & 0.01 & default (0.01) & 0.0020345051 \\
+\hline
+0.050 & 0.01 & default (0.01) & 0.0012817383 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_l2_4}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.00001 & disable & 0.48917642 \\
+\hline
+0.0002 & 0.00001 & disable & 0.58152264 \\
+\hline
+0.0004 & 0.00001 & disable & 0.63460284 \\
+\hline
+0.0006 & 0.00001 & disable & 0.64849854 \\
+\hline
+0.0008 & 0.00001 & disable & 0.6598918 \\
+\hline
+0.001 & 0.00001 & disable & 0.6662801 \\
+\hline
+0.002 & 0.00001 & disable & {\bf 0.67266846} \\
+\hline
+0.004 & 0.00001 & disable & 0.6692708 \\
+\hline
+0.006 & 0.00001 & disable & 0.6573079 \\
+\hline
+0.008 & 0.00001 & disable & 0.6639404 \\
+\hline
+0.010 & 0.00001 & disable & 0.65230304 \\
+\hline
+0.012 & 0.00001 & disable & 0.6505534 \\
+\hline
+0.014 & 0.00001 & disable & 0.64990234 \\
+\hline
+0.016 & 0.00001 & disable & 0.65323895 \\
+\hline
+0.018 & 0.00001 & disable & 0.67026776 \\
+\hline
+0.020 & 0.00001 & disable & 0.66086835 \\
+\hline
+0.025 & 0.00001 & disable & 0.65425617 \\
+\hline
+0.030 & 0.00001 & disable & 0.6476237 \\
+\hline
+0.040 & 0.00001 & disable & 0.55478925 \\
+\hline
+0.050 & 0.00001 & disable & 0.61869305 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_1}
+\end{table}
+
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.0001 & disable & 0.5033366 \\
+\hline
+0.0002 & 0.0001 & disable & 0.5949707 \\
+\hline
+0.0004 & 0.0001 & disable & 0.62561035 \\
+\hline
+0.0006 & 0.0001 & disable & 0.6545207 \\
+\hline
+0.0008 & 0.0001 & disable & 0.66326904 \\
+\hline
+0.001 & 0.0001 & disable & 0.6677043 \\
+\hline
+0.002 & 0.0001 & disable & {\bf 0.67244464} \\
+\hline
+0.004 & 0.0001 & disable & 0.6702881 \\
+\hline
+0.006 & 0.0001 & disable & 0.66033936 \\
+\hline
+0.008 & 0.0001 & disable & 0.66426593 \\
+\hline
+0.010 & 0.0001 & disable & 0.66151935 \\
+\hline
+0.012 & 0.0001 & disable & 0.6545817 \\
+\hline
+0.014 & 0.0001 & disable & 0.65509033 \\
+\hline
+0.016 & 0.0001 & disable & 0.6529338 \\
+\hline
+0.018 & 0.0001 & disable & 0.65651447 \\
+\hline
+0.020 & 0.0001 & disable & 0.65334064 \\
+\hline
+0.025 & 0.0001 & disable & 0.655009 \\
+\hline
+0.030 & 0.0001 & disable & 0.64552814 \\
+\hline
+0.040 & 0.0001 & disable & 0.6425374 \\
+\hline
+0.050 & 0.0001 & disable & 0.5988159 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_2}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.001 & disable & 0.4611206 \\
+\hline
+0.0002 & 0.001 & disable & 0.0076293945 \\
+\hline
+0.0004 & 0.001 & disable & 0.29233804 \\
+\hline
+0.0006 & 0.001 & disable & 0.57295734 \\
+\hline
+0.0008 & 0.001 & disable & 0.5574748 \\
+\hline
+0.001 & 0.001 & disable & 0.5988566 \\
+\hline
+0.002 & 0.001 & disable & 0.586263 \\
+\hline
+0.004 & 0.001 & disable & {\bf 0.62076825} \\
+\hline
+0.006 & 0.001 & disable & 0.61503094 \\
+\hline
+0.008 & 0.001 & disable & 0.4697876 \\
+\hline
+0.010 & 0.001 & disable & 0.619751 \\
+\hline
+0.012 & 0.001 & disable & 0.54243976 \\
+\hline
+0.014 & 0.001 & disable & 0.5429077 \\
+\hline
+0.016 & 0.001 & disable & 0.55281574 \\
+\hline
+0.018 & 0.001 & disable & 0.5819295 \\
+\hline
+0.020 & 0.001 & disable & 0.5938924 \\
+\hline
+0.025 & 0.001 & disable & 0.541097 \\
+\hline
+0.030 & 0.001 & disable & 0.45890298 \\
+\hline
+0.040 & 0.001 & disable & 0.56193036 \\
+\hline
+0.050 & 0.001 & disable & 0.5279134 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_3}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning default AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.01 & disable & 0.0009969076 \\
+\hline
+0.0002 & 0.01 & disable & 0.0008951823 \\
+\hline
+0.0004 & 0.01 & disable & 0.00095621747 \\
+\hline
+0.0006 & 0.01 & disable & 0.0012817383 \\
+\hline
+0.0008 & 0.01 & disable & 0.016886393 \\
+\hline
+0.001 & 0.01 & disable & 0.038146973 \\
+\hline
+0.002 & 0.01 & disable & 0.0015258789 \\
+\hline
+0.004 & 0.01 & disable & 0.0014241537 \\
+\hline
+0.006 & 0.01 & disable & 0.081441246 \\
+\hline
+0.008 & 0.01 & disable & 0.028116861 \\
+\hline
+0.010 & 0.01 & disable & 0.011820476 \\
+\hline
+0.012 & 0.01 & disable & 0.08138021 \\
+\hline
+0.014 & 0.01 & disable & 0.010111491 \\
+\hline
+0.016 & 0.01 & disable & 0.0041910806 \\
+\hline
+0.018 & 0.01 & disable & 0.0038248699 \\
+\hline
+0.020 & 0.01 & disable & 0.002746582 \\
+\hline
+0.025 & 0.01 & disable & 0.011555989 \\
+\hline
+0.030 & 0.01 & disable & 0.0065104165 \\
+\hline
+0.040 & 0.01 & disable & 0.016438803 \\
+\hline
+0.050 & 0.01 & disable & 0.007710775 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adamw_default_4}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy\\
+\hline
+\hline
+0.0001 & 0.01 & default (0.01) & 0.0009969076\\
+\hline
+0.0002 & 0.01 & default (0.01) & 0.0009969076\\
+\hline
+0.0004 & 0.01 & default (0.01) & 0.0009969076\\
+\hline
+0.0006 & 0.01 & default (0.01) & 0.0009358724\\
+\hline
+0.0008 & 0.01 & default (0.01) & 0.0009969076\\
+\hline
+0.001 & 0.01 & default (0.01) & 0.0009765625\\
+\hline
+0.002 & 0.01 & default (0.01) & 0.0010172526\\
+\hline
+0.004 & 0.01 & default (0.01) & 0.0010172526\\
+\hline
+0.006 & 0.01 & default (0.01) & 0.0010172526\\
+\hline
+0.008 & 0.01 & default (0.01) & 0.0010172526\\
+\hline
+0.0001 & 0.001 & default (0.01) & 0.0010172526\\
+\hline
+0.0002 & 0.001 & default (0.01) & 0.0010172526\\
+\hline
+0.0004 & 0.001 & default (0.01) & 0.0010172526\\
+\hline
+0.0006 & 0.001 & default (0.01) & 0.0009969076\\
+\hline
+0.0008 & 0.001 & default (0.01) & 0.0010172526\\
+\hline
+0.001 & 0.001 & default (0.01) & 0.0010172526\\
+\hline
+0.002 & 0.001 & default (0.01) & 0.0010172526\\
+\hline
+0.004 & 0.001 & default (0.01) & 0.0038452148\\
+\hline
+0.006 & 0.001 & default (0.01) & 0.011881511\\
+\hline
+0.008 & 0.001 & default (0.01) & 0.0061442056\\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_l2_1}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.0001 & default (0.01) & 0.3665975 \\
+\hline
+0.0002 & 0.0001 & default (0.01) & 0.5315755 \\
+\hline
+0.0004 & 0.0001 & default (0.01) & 0.6369222 \\
+\hline
+0.0006 & 0.0001 & default (0.01) & 0.6760457 \\
+\hline
+0.0008 & 0.0001 & default (0.01) & 0.69557697 \\
+\hline
+0.001 & 0.0001 & default (0.01) & 0.7076009 \\
+\hline
+0.002 & 0.0001 & default (0.01) & {\bf 0.73065186} \\
+\hline
+0.004 & 0.0001 & default (0.01) & 0.72806805 \\
+\hline
+0.006 & 0.0001 & default (0.01) & 0.72161865 \\
+\hline
+0.008 & 0.0001 & default (0.01) & 0.71816 \\
+\hline
+0.0001 & 0.00001 & default (0.01) & 0.49804688 \\
+\hline
+0.0002 & 0.00001 & default (0.01) & 0.6287028 \\
+\hline
+0.0004 & 0.00001 & default (0.01) & 0.6773885 \\
+\hline
+0.0006 & 0.00001 & default (0.01) & 0.67348224 \\
+\hline
+0.0008 & 0.00001 & default (0.01) & 0.6622111 \\
+\hline
+0.001 & 0.00001 & default (0.01) & 0.6468709 \\
+\hline
+0.002 & 0.00001 & default (0.01) & 0.5846761 \\
+\hline
+0.004 & 0.00001 & default (0.01) & 0.4868978 \\
+\hline
+0.006 & 0.00001 & default (0.01) & 0.34969077 \\
+\hline
+0.008 & 0.00001 & default (0.01) & 0.31193033 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_l2_2}
+\end{table}
+
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.01 & disable & 0.0010172526 \\
+\hline
+0.0002 & 0.01 & disable & 0.0009765625 \\
+\hline
+0.0004 & 0.01 & disable & 0.0010172526 \\
+\hline
+0.0006 & 0.01 & disable & 0.0009969076 \\
+\hline
+0.0008 & 0.01 & disable & 0.0010172526 \\
+\hline
+0.001 & 0.01 & disable & 0.0009765625 \\
+\hline
+0.002 & 0.01 & disable & 0.0009969076 \\
+\hline
+0.004 & 0.01 & disable & 0.0009969076 \\
+\hline
+0.006 & 0.01 & disable & 0.0009765625 \\
+\hline
+0.008 & 0.01 & disable & 0.0010172526 \\
+\hline
+0.0001 & 0.001 & disable & 0.0009765625 \\
+\hline
+0.0002 & 0.001 & disable & 0.0010172526 \\
+\hline
+0.0004 & 0.001 & disable & 0.0010172526 \\
+\hline
+0.0006 & 0.001 & disable & 0.0010172526 \\
+\hline
+0.0008 & 0.001 & disable & 0.0010172526 \\
+\hline
+0.001 & 0.001 & disable & 0.0009969076 \\
+\hline
+0.002 & 0.001 & disable & 0.0010579427 \\
+\hline
+0.004 & 0.001 & disable & 0.0016886393 \\
+\hline
+0.006 & 0.001 & disable & 0.019714355 \\
+\hline
+0.008 & 0.001 & disable & 0.1329956 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_nol2_1}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.0001 & disable & 0.28515625 \\
+\hline
+0.0002 & 0.0001 & disable & 0.44055176 \\
+\hline
+0.0004 & 0.0001 & disable & 0.56815594 \\
+\hline
+0.0006 & 0.0001 & disable & 0.6234741 \\
+\hline
+0.0008 & 0.0001 & disable & 0.6530762 \\
+\hline
+0.001 & 0.0001 & disable & 0.6695964 \\
+\hline
+0.002 & 0.0001 & disable & 0.70048016 \\
+\hline
+0.004 & 0.0001 & disable & 0.71698 \\
+\hline
+0.006 & 0.0001 & disable & 0.72021484 \\
+\hline
+0.008 & 0.0001 & disable & {\bf 0.7223918} \\
+\hline
+0.010 & 0.0001 & disable &  0.72017413\\
+\hline
+0.012 & 0.0001 & disable &  0.72058105\\
+\hline
+0.014 & 0.0001 & disable &  0.7188924\\
+\hline
+0.016 & 0.0001 & disable &  0.71695966\\
+\hline
+0.018 & 0.0001 & disable &  0.7154134\\
+\hline
+0.020 & 0.0001 & disable &  0.71358234\\
+\hline
+0.025 & 0.0001 & disable &  0.7145386\\
+\hline
+0.030 & 0.0001 & disable &  0.7114258\\
+\hline
+0.040 & 0.0001 & disable &  0.7066447\\
+\hline
+0.050 & 0.0001 & disable &  0.70284015\\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_nol2_2}
+\end{table}
+
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{The accuracy information of tuning AdamW optimizer for ImageNet training with ResNet-50 (batch size = 16384, 90 epochs, 7038 iterations). We use the learning rate recipe of \citep{goyal2017accurate}: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|}
+\hline
+learning rate & weight decay & L2 regularization & Top-1 Validation Accuracy \\
+\hline
+\hline
+0.0001 & 0.00001 & disable & 0.31247965 \\
+\hline
+0.0002 & 0.00001 & disable & 0.4534912 \\
+\hline
+0.0004 & 0.00001 & disable & 0.57765704 \\
+\hline
+0.0006 & 0.00001 & disable & 0.6277669 \\
+\hline
+0.0008 & 0.00001 & disable & 0.65321857 \\
+\hline
+0.001 & 0.00001 & disable & 0.6682129 \\
+\hline
+0.002 & 0.00001 & disable & 0.69938153 \\
+\hline
+0.004 & 0.00001 & disable & 0.7095947 \\
+\hline
+0.006 & 0.00001 & disable & 0.710612 \\
+\hline
+0.008 & 0.00001 & disable & 0.70857745 \\
+\hline
+0.010 & 0.00001 & disable & 0.7094116 \\
+\hline
+0.012 & 0.00001 & disable & 0.70717365 \\
+\hline
+0.014 & 0.00001 & disable & {\bf 0.7109375} \\
+\hline
+0.016 & 0.00001 & disable & 0.7058309 \\
+\hline
+0.018 & 0.00001 & disable & 0.7052409 \\
+\hline
+0.020 & 0.00001 & disable & 0.7064412 \\
+\hline
+0.025 & 0.00001 & disable & 0.7035319 \\
+\hline
+0.030 & 0.00001 & disable & 0.6994629 \\
+\hline
+0.040 & 0.00001 & disable & 0.6972656 \\
+\hline
+0.050 & 0.00001 & disable & 0.6971232 \\
+\hline
+\end{tabular}
+\label{table:imagenet_adam_tuning_nol2_3}
+\end{table}

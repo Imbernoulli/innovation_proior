@@ -1,0 +1,24 @@
+\begin{table}
+    \centering
+    \caption{\small Accuracy (in \%) on StreamEval with increasing query-answer distance. Each line in StreamEval contains 23 tokens. Accuracies are averaged over 100 samples, and each sample contains 100 queries.}
+    \label{tab:kv_lines}
+    \begin{tabular}{llcccc}
+        \toprule
+        \multicolumn{2}{c}{Llama-2-7B-32K-Instruct} & \multicolumn{4}{c}{Cache Config}                                      \\
+        \cmidrule(lr){1-2} \cmidrule(lr){3-6}
+        Line Distances                              & Token Distances                  & 4+2044 & 4+4092 & 4+8188 & 4+16380 \\
+        \midrule
+        20                                          & 460                              & 85.80  & 84.60  & 81.15  & 77.65   \\
+        40                                          & 920                              & 80.35  & 83.80  & 81.25  & 77.50   \\
+        60                                          & 1380                             & 79.15  & 82.80  & 81.50  & 78.50   \\
+        80                                          & 1840                             & 75.30  & 77.15  & 76.40  & 73.80   \\
+        100                                         & 2300                             & 0.00   & 61.60  & 50.10  & 40.50   \\
+        150                                         & 3450                             & 0.00   & 68.20  & 58.30  & 38.45   \\
+        200                                         & 4600                             & 0.00   & 0.00   & 62.75  & 46.90   \\
+        400                                         & 9200                             & 0.00   & 0.00   & 0.00   & 45.70   \\
+        600                                         & 13800                            & 0.00   & 0.00   & 0.00   & 28.50   \\
+        800                                         & 18400                            & 0.00   & 0.00   & 0.00   & 0.00    \\
+        1000                                        & 23000                            & 0.00   & 0.00   & 0.00   & 0.00    \\
+        \bottomrule
+    \end{tabular}
+\end{table}

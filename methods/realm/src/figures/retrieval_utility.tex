@@ -1,0 +1,97 @@
+\begin{figure*}[ptb]
+\centering
+\begin{tikzpicture}
+ \begin{axis}[
+   width=1.2\columnwidth,
+   height=0.8\columnwidth,
+   legend cell align=left,
+   legend style={at={(1, 1)},anchor=north east,font=\scriptsize},
+   mark options={mark size=3},
+   font=\scriptsize,
+   xmin=0, xmax=200,
+   ymin=0, ymax=3.2,
+   xtick={0, 50, 100, 150, 200},
+   ymajorgrids=true,
+   xmajorgrids=true,
+   xlabel style={yshift=0.5ex,},
+   xlabel=Pre-training Steps (Thousands) ,
+   ylabel=Retrieval Utility,
+   ylabel style={yshift=-0.5ex,}]
+    \addplot[mark=triangle,g-blue] plot coordinates {
+(0, 0.4870335553570302)
+(10, 1.6283367644777194)
+(20, 1.933776036871063)
+(30, 2.0041376407247413)
+(40, 1.9967591197965078)
+(50, 1.967421851377687)
+(60, 1.9783062606785702)
+(70, 1.9747018990660743)
+(80, 1.9228911003560645)
+(90, 2.036878828395492)
+(100, 1.9200309391254438)
+(110, 1.914781704899911)
+(120, 1.9980497854538093)
+(130, 1.8706547102603057)
+(140, 1.9837496104468106)
+(150, 1.973855775378632)
+(160, 1.9895911115697824)
+(170, 1.9696919231070622)
+(180, 2.028405946627168)
+(190, 1.9590725785261562)
+(200, 2.086580118497257)
+    };
+    \addlegendentry{Salient span masking}
+    \addplot[mark=x,g-red] plot coordinates {
+(0, 0.23141121073211263)
+(10, 0.8205503256147296)
+(20, 0.854025527215577)
+(30, 1.003707903515242)
+(40, 1.0150897896138955)
+(50, 0.9640269530993363)
+(60, 0.9427491107832932)
+(70, 0.9697737769948522)
+(80, 1.0363693585282714)
+(90, 1.0821630555977242)
+(100, 0.9739717430562631)
+(110, 1.0695464290750996)
+(120, 1.02078362435653)
+(130, 1.0538118199206679)
+(140, 1.0220123031814914)
+(150, 0.9783359728089053)
+(160, 1.0108277345016037)
+(170, 1.1087646700114135)
+(180, 1.0097750809231012)
+(190, 1.017119983666107)
+(200, 1.0468622987085805)
+    };
+    \addlegendentry{Random span masking}
+    \addplot[mark=o,g-orange] plot coordinates {
+(0, 0.24583594144307278)
+(10, 0.3688633470909383)
+(20, 0.36925738236742056)
+(30, 0.416591803198644)
+(40, 0.4619641520176722)
+(50, 0.4627946554077122)
+(60, 0.5223345536397)
+(70, 0.4888092925400017)
+(80, 0.5354503663593189)
+(90, 0.5411899211868447)
+(100, 0.5492647498842971)
+(110, 0.5604785949541389)
+(120, 0.556891506009893)
+(130, 0.5717637951899287)
+(140, 0.5974641177394396)
+(150, 0.6012307466956258)
+(160, 0.6146574663791348)
+(170, 0.6005905914097749)
+(180, 0.5742741544145618)
+(190, 0.6144357218130096)
+(200, 0.6187538774662582)
+};
+\addlegendentry{Random uniform masking}
+\end{axis}
+\end{tikzpicture}
+\caption{The Retrieval Utility (RU, described in Eq.~\ref{eq:retrieval_utility}) vs the number of pre-training steps. RU roughly estimates the ``usefulness''
+of retrieval. RU is impacted by the choice of masking and the number of pre-training steps. }
+\label{fig:retrieval_utility}
+\end{figure*}

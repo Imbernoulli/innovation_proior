@@ -1,0 +1,635 @@
+%!TEX root = supp.tex
+\renewcommand{\thesubsection}{\Alph{subsection}}
+\newcommand\tab[1][5mm]{\hspace*{#1}}
+%In this \appendixName, we first provide implementation details for our main results (namely pretraining with \OURS and transfer learning on downstream tasks) in~\cref{ap:implementation}.
+%We then report additional results for \OURS in~\cref{ap:results}.
+%We perform thorough ablations studies to justify the design choices related to our clustering approach in~\cref{ap:ablation}.
+%Finally in~\cref{ap:clustering}, we give details about the clustering-approaches presented in our paper, DeepCluster-v2 and SeLa-v2, which are obtained by applying to DeepCluster~\cite{caron2018deep} and SeLa~\cite{asano2019self} the improvements of SimCLR.
+
+\subsection{Implementation Details}
+\label{ap:implementation}
+In this section, we provide the details and hyperparameters for \OURS pretraining and transfer learning.
+Our code is publicly available at \url{https://github.com/facebookresearch/swav}.
+
+\subsubsection{Implementation details of \OURS training}
+\label{ap:implementation_swav}
+First, we provide a pseudo-code for \OURS training loop using two crops in Pytorch style:
+\\
+\\
+\com{\# C: prototypes (DxK)}
+\\
+\com{\# model: convnet + projection head}
+\\
+\com{\# temp: temperature}
+\\
+\\
+\code{for x in loader:}  \com{\# load a batch x with B samples}
+\\
+\tab \code{x\_t = t(x)}  \com{\# t is a random augmentation}
+\\
+\tab \code{x\_s = s(x)}  \com{\# s is a another random augmentation}
+\\
+\\
+\tab \code{z = model(cat(x\_t, x\_s))}  \com{\# embeddings: 2BxD}
+\\
+\\
+\tab \code{scores = mm(z, C)}  \com{\# prototype scores: 2BxK}
+\\
+\tab \code{scores\_t = scores[:B]}
+\\
+\tab \code{scores\_s = scores[B:]}
+\\
+\\
+\tab \com{\# compute assignments}
+\\
+\tab \code{with torch.no\_grad():}
+\\
+\tab \tab \code{q\_t = sinkhorn(scores\_t)}
+\\
+\tab \tab \code{q\_s = sinkhorn(scores\_s)}
+\\
+\\
+\tab \com{\# convert scores to probabilities}
+\\
+\tab \code{p\_t = Softmax(scores\_t / temp)}
+\\
+\tab \code{p\_s = Softmax(scores\_s / temp)}
+\\
+\\
+\tab \com{\# swap prediction problem}
+\\
+\tab \code{loss = - 0.5 * mean(q\_t * log(p\_s) + q\_s * log(p\_t))}
+\\
+\\
+\tab \com{\# SGD update: network and prototypes}
+\\
+\tab \code{loss.backward()}
+\\
+\tab \code{update(model.params)}
+\\
+\tab \code{update(C)}
+\\
+\\
+\tab \com{\# normalize prototypes}
+\\
+\tab \code{with torch.no\_grad():}
+\\
+\tab \tab \code{C = normalize(C, dim=0, p=2)}
+\\
+\\
+\com{\# Sinkhorn-Knopp}
+\\
+\code{def sinkhorn(scores, eps=0.05, niters=3):}
+\\
+\tab \code{Q = exp(scores / eps).T}
+\\
+\tab \code{Q /= sum(Q)}
+\\
+\tab \code{K, B = Q.shape}
+\\
+\tab \code{u, r, c = zeros(K), ones(K) / K, ones(B) / B}
+\\
+\tab \code{for \_ in range(niters):}
+\\
+\tab \tab \code{u = sum(Q, dim=1)}
+\\
+\tab \tab \code{Q *= (r / u).unsqueeze(1)}
+\\
+\tab \tab \code{Q *= (c / sum(Q, dim=0)).unsqueeze(0)}
+\\
+\tab \code{return (Q / sum(Q, dim=0, keepdim=True)).T}
+\\
+\\
+Most of our training hyperparameters are directly taken from SimCLR work~\cite{chen2020simple}.
+We train \OURS with stochastic gradient descent using large batches of $4096$ different instances.
+We distribute the batches over $64$ V$100$ $16$Gb GPUs, resulting in each GPU treating $64$ instances.
+The temperature parameter $\tau$ is set to $0.1$ and the Sinkhorn regularization parameter $\varepsilon$ is set to $0.05$ for all runs.
+We use a weight decay of $10^{-6}$, LARS optimizer~\cite{you2017large} and a learning rate of $4.8$ which is linearly ramped up during the first $10$ epochs.
+After warmup, we use the cosine learning rate decay~\cite{loshchilov2016sgdr,misra2019self} with a final value of $0.0048$.
+To help the very beginning of the optimization, we freeze the prototypes during the first epoch of training.
+We synchronize batch-normalization layers across GPUs using the optimized implementation with kernels through CUDA/C-v2 extension from \texttt{apex}\footnote{\scriptsize\url{github.com/NVIDIA/apex}}.
+We also use \texttt{apex} library for training with mixed precision~\cite{micikevicius2017mixed}.
+Overall, thanks to these training optimizations (mixed precision, kernel batch-normalization and use of large batches~\cite{goyal2017accurate}), $100$ epochs of training for our best \OURS model take approximately $6$ hours (see~\cref{tab:cost}).
+Similarly to previous works~\cite{chen2020simple,chen2020improved,li2020prototypical}, we use a projection head on top of the convnet features that consists in a $2$-layer multi-layer perceptron (MLP) that projects the convnet output to a $128$-D space.
+
+Note that \OURS is more suitable for a multi-node distributed implementation compared to contrastive approaches SimCLR or MoCo.
+The latter methods require sharing the feature matrix across all GPUs at every batch which might become a bottleneck when distributing across many GPUs.
+On the contrary, \OURS requires sharing only matrix normalization statistics (sum of rows and columns) during the Sinkhorn algorithm.
+
+\subsubsection{Data augmentation used in \OURS}
+We obtain two different views from an image by performing crops of random sizes and aspect ratios.
+Specifically we use the \texttt{RandomResizedCrop} method from \texttt{torchvision.transforms} module of PyTorch with the following scaling parameters: \texttt{s=(0.14, 1)}.
+Note that we sample crops in a narrower range of scale compared to the default \texttt{RandomResizedCrop} parameters.
+Then, we resize both full resolution views to $224 \times 224$ pixels, unless specified otherwise (we use $160 \times 160$ resolutions in some of our experiments).
+Besides, we obtain $V$ additional views by cropping small parts in the image.
+To do so, we use the following \texttt{RandomResizedCrop} parameters: \texttt{s=(0.05, 0.14)}.
+We resize the resulting crops to $96 \times 96$ resolution.
+Note that we always deal with resolutions that are divisible by $32$ to avoid roundings in the ResNet-$50$ pooling layers.
+Finally, we apply random horizontal flips, color distortion and Gaussian blur to each resulting crop, exactly following the SimCLR implementation~\cite{chen2020simple}.
+An illustration of our \texttt{multi-crop} augmentation strategy can be viewed in~\cref{fig:multicrop}.
+
+\begin{figure}[h]
+\includegraphics[width=0.98\linewidth]{multicrop.pdf}
+	\caption{\textbf{Multi-crop}: the image $x_n$ is transformed into $V + 2$ views: two global views and $V$ small resolution zoomed views.}
+\label{fig:multicrop}
+\end{figure}
+
+\subsubsection{Implementation details of linear classification on \ImNet with ResNet-50}
+We obtain $75.3$ top-1 accuracy on ImageNet by training a linear classifier on top of frozen final representations ($2048$-D) of a ResNet-$50$ trained with \OURS.
+This linear layer is trained during $100$ epochs, with a learning rate of $0.3$ and a weight decay of $10^{-6}$.
+We use cosine learning rate decay and a batch size of $256$.
+We use standard data augmentations, i.e., cropping of random sizes and aspect ratios (default parameters of \texttt{RandomResizedCrop}) and random horizontal flips.
+
+\subsubsection{Implementation details of semi-supervised learning (finetuning with 1\% or 10\% labels)}
+We finetune with either 1\% or 10\% of ImageNet labeled images a ResNet-$50$ pretrained with \OURS.
+We use the 1\% and 10\% splits specified in the official code release of SimCLR.
+We mostly follow hyperparameters from PCL~\cite{li2020prototypical}: we train during $20$ epochs with a batch size of $256$, we use distinct learning rates for the convnet weights and the final linear layer, and we decay the learning rates by a factor $0.2$ at epochs $12$ and $16$.
+We do not apply any weight decay during finetuning.
+For 1\% finetuning, we use a learning rate of $0.02$ for the trunk and $5$ for the final layer.
+For 10\% finetuning, we use a learning rate of $0.01$ for the trunk and $0.2$ for the final layer.
+
+\subsubsection{Implementation details of transfer learning on downstream tasks}
+\par \noindent \textbf{Linear classifiers.} We mostly follow PIRL~\cite{misra2019self} for training linear models on top of representations given by a ResNet-50 pretrained with \OURS.
+On \VOCseven, all images are resized to 256 pixels along the shorter side, before taking a $224 \times 224$ center crop.
+Then, we train a linear SVM with LIBLINEAR~\cite{fan2008liblinear} on top of corresponding global average pooled final representations ($2048$-D).
+For linear evaluation on other datasets (\Places and \iNat), we train linear models with stochastic gradient descent using a batch size of $256$, a learning rate of $0.01$ reduced by a factor of $10$ three times (equally spaced intervals), weight decay of $0.0001$ and momentum of $0.9$.
+On \Places, we train the linear models for $28$ epochs and on \iNat for $84$ epochs. We report the top-1 accuracy computed using the $224 \times 224$ center crop on the validation set.
+
+\par \noindent \textbf{Object Detection on \VOCseventwelve.} We use a Faster R-CNN~\cite{ren2015faster} model as implemented in Detectron2~\cite{wu2019detectron2} and follow the finetuning protocol from He~\etal~\cite{he2019momentum} making the following changes to the hyperparameters -- our initial learning rate is $0.1$ which is warmed with a slope (\texttt{WARMUP\_FACTOR} flag in Detectron2) of $0.333$ for $1000$ iterations.
+Other training hyperparamters are kept exactly the same as in He~\etal~\cite{he2019momentum}, \ie, batchsize of $16$ across $8$ GPUs, training for $24$K iterations on \VOCseventwelve \texttt{trainval} with the learning rate reduced by a factor of $10$ after $18$K and $22$K iterations, using SyncBatchNorm to finetune BatchNorm parameters, and adding an extra BatchNorm layer after the \texttt{res5} layer (\texttt{Res5ROIHeadsExtraNorm} head in Detectron2).
+We report results on \VOCseven test set averaged over $5$ independant runs.
+
+\par \noindent \textbf{Object Detection on COCO.}
+We test the generalization of our ResNet-50 features trained on \ImNet with \OURS by transferring them to object detection on COCO dataset~\cite{lin2014microsoft} with DETR framework~\cite{carion2020end}.
+DETR is a recent object detection framework that relies on a transformer encoder-decoder architecture.
+It reaches competitive performance with Faster R-CNN while being conceptually simpler and trainable end-to-end.
+Interestingly, unlike other frameworks~\cite{he2019rethinking}, current results with DETR have shown that using a pretrained backbone is crucial to obtain good results compared to training from scratch.
+Therefore, we investigate if we can boost DETR performance by using features pretrained on ImageNet with \OURS instead of standard supervised features.
+We also evaluate features from MoCov2~\cite{chen2020improved} pretraining.
+We train DETR during $300$ epochs with AdamW, we use a learning rate of $10^{-4}$ for the transformer and apply a weight decay of $10^{-4}$.
+We select for each method the best learning rate for the backbone among the following three values: $10^{-5}$, $5 \times 10^{-5}$ and $10^{-4}$.
+We decay the learning rates by a factor $0.1$ after $200$ epochs.
+
+\subsubsection{Implementation details of training with small batches of 256 images}
+We start using a queue composed of the feature representations from previous batches after $15$ epochs of training.
+Indeed, we find that using the queue before $15$ epochs disturbs the convergence of the model since the network is changing a lot from an iteration to another during the first epochs.
+We simulate large batches of size $4096$ by storing the last $15$ batches, that is $3,840$ vectors of dimension $128$.
+We use a weight decay of $10^{-6}$, LARS optimizer~\cite{you2017large} and a learning rate of $0.6$.
+We use the cosine learning rate decay~\cite{loshchilov2016sgdr} with a final value of $0.0006$.
+
+\subsubsection{Implementation details of ablation studies}
+In our ablation studies (results in Table $5$ of the main paper for example), we choose to follow closely the data augmentation used in concurrent work SimCLR.
+This allows a fair comparison and importantly, isolates the effect of our contributions.
+In practice, it means that we use the default parameters of the random crop method (\texttt{RandomResizedCrop}), \texttt{s=(0.08, 1)} instead of \texttt{s=(0.14, 1)}, when sampling the two large resolution views.
+
+\subsubsection{SimCLR loss with multi-crop augmentation}
+When implementing SimCLR with \texttt{multi-crop} augmentation, we have to deal with several positive pairs formed by an anchor features and the different crops coming from the same instance.
+We denote by $B$ the total number of unique dataset instances in the batch and by $M$ the number of crops per instance.
+For example, in the case of 2x160+4x96 crops, we have $M=6$ crops per instance.
+We call $N = B \times M$ the effective total number of crops in the batch.
+Overall, we minimize the following loss
+\begin{equation}
+\mathcal{L} = - \frac{1}{N} \frac{1}{M - 1} \sum_{i=1}^N \sum_{v^+ \in \{v_i^+\}} \log{\frac{\exp{z_i^T v^+ / \tau}}{\exp{z_i^T v^+ / \tau} + \sum_{v^- \in \{v_i^-\}} \exp{z_i^T v^- / \tau}}}.
+\end{equation}
+For a feature representation $z_i$, the corresponding set of positive examples $\{v_i^+\}$ is formed by the representations of the other crops from the same instance.
+The set of negatives $\{v_i^-\}$ is formed by the representations of all crops in the same batch except ones coming from the same instance as $x_i$.
+Note that this extension of SimCLR loss with several pairs of positive is similar to the one used in Khosla~\etal~\cite{khosla2020supervised}.
+
+\subsection{Additional Results}
+\label{ap:results}
+
+\subsubsection{Running times}
+In~\cref{tab:cost}, we report compute and GPU memory requirements based on our implementation for different settings.
+As described in~\cref{ap:implementation_swav}, we train each method on $64$ V100 16GB GPUs, with a batch size of $4096$, using mixed precision and \texttt{apex} optimized version of synchronized batch-normalization layers.
+We report results with ResNet-$50$ for all methods.
+In~\cref{fig:cost}, we report \OURS performance for different training lengths measured in hours based on our implementation.
+We observe that after only $6$ hours of training, \OURS outperforms SimCLR trained for $1000$ epochs ($40$ hours based on our implementation) by a large margin.
+If we train \OURS for longer, we see that the performance gap between the two methods increases even more.
+
+\begin{table}[h]
+  \caption{
+\textbf{Computational cost.} We report time and GPU memory requirements based on our implementation for different models trained during $100$ epochs.
+}
+\vspace{.3em}
+  \label{tab:cost}
+\centering
+\begin{tabular}{l c c c c}
+    \toprule
+	  Method & \texttt{multi-crop} & time / 100 epochs & peak memory / GPU \\
+    \midrule
+	SimCLR & $2 \times 224$ & 4h00 & 8.6G \\
+	\OURS & $2 \times 224$ & 4h09 & 8.6G \\
+	\OURS & $2 \times 160$ + $4 \times 96$ & 4h50 & 8.5G \\
+	\OURS & $2 \times 224$ + $6 \times 96$ & 6h15 & 12.8G \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\begin{minipage}{0.5\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figure_cost.pdf}
+\end{minipage}
+\begin{minipage}{0.5\linewidth}
+\caption{
+\textbf{Influence of longer training.}
+Top-1 ImageNet accuracy for linear models trained on frozen features.
+We report \OURS performance for different training lengths measured in hours based on our implementation.
+We train each ResNet-$50$ models on $64$ V100 16GB GPUs with a batch size of $4096$ (see \cref{ap:implementation_swav} for implementation details).
+} 
+\label{fig:cost}
+\end{minipage}
+\end{figure}
+
+\subsubsection{Larger architectures}
+In~\cref{tab:larger}, we show results when training \OURS on large architectures.
+We observe that \OURS benefits from training on large architectures and plan to explore in this direction to furthermore boost self-supervised methods.
+\begin{table}[h]
+\centering
+  \caption{
+\textbf{Large architectures.}
+Top-1 accuracy for linear models trained on frozen features from different self-supervised methods on large architectures.
+}
+\vspace{.3em}
+\begin{tabular}{@{} l l c c @{}}
+\toprule
+Method      & Arch. & Param. & Top1  \\
+\midrule
+Supervised & EffNet-B7    & 66  & 84.4  \\
+      \midrule
+      Rotation~\cite{gidaris2018unsupervised} & RevNet50-4w     & 86  & 55.4 \\
+      BigBiGAN~\cite{donahue2019large}        & RevNet50-4w     & 86  & 61.3 \\
+      AMDIM~\cite{bachman2019learning}         & Custom-RN       & 626 & 68.1 \\
+      CMC~\cite{tian2019contrastive}           & \resnetfifty-w2 & 188 & 68.4 \\
+      MoCo~\cite{he2019momentum}               & \resnetfifty-w4 & 375 & 68.6 \\
+      CPC v2~\cite{henaff2019data}             & R161            & 305 & 71.5 \\
+      SimCLR~\cite{chen2020simple}             & \resnetfifty-w4 & 375 & 76.8 \\
+      \midrule
+      \OURS                             & \resnetfifty-w2 & 188 & \bf 77.3 \\
+      \OURS                             & \resnetfifty-w4 & 375 & \bf 77.9 \\
+      \OURS                             & \resnetfifty-w5 & 586 & \bf 78.5 \\
+    \bottomrule
+ \end{tabular}
+  \label{tab:larger}
+\end{table}
+\paragraph{Implementation details for SwAV \resnetfifty-w2.}
+The model is trained for $400$ epochs on $128$ GPUS (batch size $4096$).
+We train the model with 2x224+4x96 (total of $6$ crops).
+All other hyperparameters are the same as the ones described in appendix~\ref{ap:implementation_swav}.
+
+\paragraph{Implementation details for SwAV \resnetfifty-w4.}
+The model is trained for $400$ epochs on $64$ GPUS (batch size $2560$) with a queue of $2560$ samples starting from the beginning of training.
+We train the model with 2x224+4x96 (total of $6$ crops).
+All other hyperparameters are the same as the ones described in appendix~\ref{ap:implementation_swav}.
+
+\paragraph{Implementation details for SwAV \resnetfifty-w5.}
+The model is trained for $400$ epochs on $128$ GPUS (batch size $1536$) with a queue of $1536$ samples starting from the beginning of training.
+We train the model with 2x224+4x96 (total of $6$ crops).
+All other hyperparameters are the same as the ones described in appendix~\ref{ap:implementation_swav}.
+
+\subsubsection{Transferring unsupervised features to downstream tasks}
+In~\cref{tab:frozen_and_detect_ap}, we expand results from the main paper by providing numbers from previously and concurrently published self-supervised methods.
+In the left panel of~\cref{tab:frozen_and_detect_ap}, we show performance after training a linear classifier on top of frozen representations on different datasets while on the right panel we evaluate the features by finetuning a ResNet-$50$ on object detection with Faster R-CNN~\cite{ren2015faster} and DETR~\cite{carion2020end}.
+Overall, we observe on~\cref{tab:frozen_and_detect_ap} that \OURS is the first self-supervised method to outperform ImageNet supervised backbone on all the considered transfer tasks and datasets.
+Other self-supervised learners are capable of surpassing the supervised counterpart but only for one type of transfer (object detection with finetuning for MoCo/PIRL for example).
+We will release this model so other researchers might also benefit by replacing the ImageNet supervised network with our model.
+
+\begin{table}[h]
+\centering
+    \caption{
+\textbf{Transfer learning on downstream tasks.}
+Comparison between features from ResNet-50 trained on ImageNet with \OURS or supervised learning.
+We also report numbers from other self-supervised methods ($^\dagger$ for numbers from other methods run by us).
+We consider two settings.
+(1) Linear classification on top of frozen features. We report top-1 accuracy on all datasets except \VOCseven where we report mAP.
+	(2) Object detection with finetuned features on \VOCseventwelve \texttt{trainval} using Faster R-CNN~\cite{ren2015faster} and on COCO~\cite{lin2014microsoft} using Mask R-CNN~\cite{he2017mask} or DETR~\cite{carion2020end}.
+We report the most standard detection metrics for these datasets: $\text{AP}_{50}$ on \VOCseventwelve and $\text{AP}$ on COCO.
+    }
+    \label{tab:frozen_and_detect_ap}
+    \vspace{.4em}
+  \setlength{\tabcolsep}{3.7pt}
+    \begin{tabular}{ @{} l ccc c ccc @{} }
+      \toprule
+       & \multicolumn{3}{c}{Linear Classification} &~~~~& \multicolumn{3}{c}{Object Detection}\\
+\cmidrule{2-4}\cmidrule{6-8}
+	    &\Places & \VOCseven & \iNat && \VOCseventwelve & COCO & COCO \\
+	    & &  &  && \scriptsize(Faster R-CNN R50-C4) & \scriptsize(Mask R-CNN R50-FPN) & \scriptsize(DETR) \\
+      \midrule
+	    Supervised & $53.2^{\phantom{\dagger}}$  & $87.5^{\phantom{\dagger}}$ & $46.7^{\phantom{\dagger}}$ && $81.3^{\phantom{\dagger}}$ & $39.7^{\phantom{\dagger}}$ & $40.8^{\phantom{\dagger}}$ \\
+      \midrule
+	    RotNet~\cite{gidaris2020learning} & $45.0^{\phantom{\dagger}}$ & $64.6^{\phantom{\dagger}}$ & - && - & - \\
+	    NPID++~\cite{misra2019self} & $46.4^{\phantom{\dagger}}$ & $76.6^{\phantom{\dagger}}$ & $32.4^{\phantom{\dagger}}$ && $79.1^{\phantom{\dagger}}$ & - \\
+	    %LA~\cite{zhuang2019local} & $49.1^{\phantom{\dagger}}$ & - & - && - & - \\
+	    MoCo~\cite{he2019momentum} & $46.9^{\dagger}$ & $79.8^{\dagger}$ & $31.5^{\dagger}$ && $81.5^{\phantom{\dagger}}$ & - \\
+	    PIRL~\cite{misra2019self} & $49.8^{\phantom{\dagger}}$ & $81.1^{\phantom{\dagger}}$ & $34.1^{\phantom{\dagger}}$ && $80.7^{\phantom{\dagger}}$ & - \\
+	    PCL~\cite{li2020prototypical} & $49.8^{\phantom{\dagger}}$ & $84.0^{\phantom{\dagger}}$ & - && - & - \\
+	    BoWNet~\cite{gidaris2020learning} & $51.1^{\phantom{\dagger}}$ & $79.3^{\phantom{\dagger}}$ & - && $81.3^{\phantom{\dagger}}$ & - \\
+	    SimCLR~\cite{chen2020simple} & $53.3^{\dagger}$ & $86.4^{\dagger}$ & $36.2^{\dagger}$ && - & - \\
+	    MoCov2~\cite{he2019momentum} & $52.9^{\dagger}$ & $87.1^{\dagger}$ & $38.9^{\dagger}$ && $82.5^{\phantom{\dagger}}$ & $39.8^{\phantom{\dagger}}$ & $42.0^{\dagger}$ \\
+      \midrule
+	    \OURS  & $\mathbf{56.7}^{\phantom{\dagger}}$ & $\mathbf{88.9}^{\phantom{\dagger}}$ & $\mathbf{48.6}^{\phantom{\dagger}}$ && $\mathbf{82.6}^{\phantom{\dagger}}$ & $\mathbf{41.6}^{\phantom{\dagger}}$ & $\mathbf{42.1}^{\phantom{\dagger}}$ \\
+      \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsubsection{More detection metrics for object detection}
+In~\cref{tab:cocomask}, ~\cref{tab:voc} and~\cref{tab:detr}, we evaluate the features by finetuning a ResNet-$50$ with different detectors: Mask R-CNN~\cite{he2017mask}, Faster R-CNN~\cite{ren2015faster} and DETR~\cite{carion2020end}.
+We report more detection metrics compared to the table in the main paper~\cref{tab:frozen_and_detect_ap}.
+We observe in~\cref{tab:cocomask}, \cref{tab:voc} and in~\cref{tab:detr} that \OURS outperforms the ImageNet supervised pretrained model on all the detection evaluation metrics.
+
+Note that MoCov2 backbone performs particularly well on the object detection benchmark, and even outperform \OURS features for some detection metrics.
+However, as shown in~\cref{tab:frozen_and_detect_ap}, this backbone is not competitive with the supervised features when evaluating on classification tasks without finetuning.
+
+\begin{table}[h]
+\centering
+  \caption{
+\textbf{Object detection and instance segmentation finetuned on COCO.}
+Following the setup of \cite{he2019momentum}, we use Mask R-CNN detector with ResNet50-FPN trained on \texttt{train2017} with default $1 \times$ schedule and evaluated on \texttt{val2017}.
+The metrics include bounding box AP (AP$^\text{b}$) and mask AP (AP$^\text{m}$).}
+\vspace{.3em}
+\begin{tabular}{l lll lll}
+\toprule
+	Method & AP$^{b}$ & AP$^{b}_{50}$ & AP$^{b}_{75}$ & AP$^{m}$ & AP$^{m}_{50}$ & AP$^{m}_{75}$ \\
+\midrule
+	Supervised  & 39.7 & 59.5 & 43.3 & 35.9 & 56.6 & 38.6 \\
+\midrule
+	MoCo-v2~\cite{chen2020improved} & 39.8 & 59.8 & 43.6 & 36.1 & 56.9 & 38.7 \\
+\midrule
+	\OURS  & \bf 41.6 & \bf 62.3 & \bf 45.5 & \bf 37.8 & \bf 59.6 & \bf 40.5 \\
+\bottomrule
+\end{tabular}
+  \label{tab:cocomask}
+\end{table}
+
+\begin{table}[h]
+\centering
+  \caption{
+\textbf{More detection metrics for object detection on \VOCseventwelve with finetuned features using Faster R-CNN~\cite{ren2015faster}.}
+}
+\vspace{.3em}
+\begin{tabular}{l lll}
+\toprule
+Method & AP$^{all}$ & AP$^{50}$ & AP$^{75}$ \\
+\midrule
+Supervised                                   & 53.5 & 81.3 & 58.8 \\
+Random                                            & 28.1 & 52.5 & 26.2 \\
+\midrule
+NPID++~\cite{misra2019self} & 52.3 & 79.1 & 56.9 \\
+PIRL~\cite{misra2019self} & 54.0 & 80.7 & 59.7 \\
+BoWNet~\cite{gidaris2020learning} & 55.8 & 81.3 & 61.1 \\
+MoCov1~\cite{he2019momentum} & 55.9 & 81.5 & 62.6 \\
+MoCov2~\cite{chen2020improved} & \bf 57.4 & 82.5 & \bf 64.0 \\
+\midrule
+\OURS  & 56.1 & \bf 82.6 & 62.7 \\
+\bottomrule
+\end{tabular}
+  \label{tab:voc}
+\end{table}
+
+\begin{table}[h]
+\centering
+  \caption{
+\textbf{More detection metrics for object detection on COCO with finetuned features using DETR~\cite{carion2020end}.}
+}
+\vspace{.3em}
+\begin{tabular}{ll c c c c c c}
+    \toprule
+	  Method && $\text{AP}$ & $\text{AP}_{50}$ & $\text{AP}_{75}$ & $\text{AP}_S$ & $\text{AP}_M$ & $\text{AP}_L$ \\
+    \midrule
+	\ImNet labels && 40.8 & 61.2 & 42.9 & 20.1 & 44.5 & 60.3 \\
+    \midrule
+	MoCo-v2 && 42.0 & 62.7 & 44.4 & \bf 20.8 & 45.6 & \bf 60.9 \\
+	\OURS && \bf 42.1 & \bf 63.1 & \bf 44.5 & 19.7 & \bf 46.3 & \bf 60.9 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:detr}
+\end{table}
+
+\subsubsection{Low-Shot learning on ImageNet for \OURS pretrained on Instagram data}
+We now test whether \OURS pretrained on Instagram data can serve as a pretraining method for low-shot learning on ImageNet.
+We report in~\cref{tab:detr} results when finetuning Instagram \OURS features with only few labels per ImageNet category.
+We observe that using pretrained features from Instagram improves considerably the performance compared to training from scratch.
+\begin{table}[h]
+  \caption{
+\textbf{Low-shot learning on ImageNet.} Top-1 and top-5 accuracies when training with $13$ or $128$ examples per category.
+}
+\vspace{.3em}
+  \label{tab:semisup}
+\centering
+\begin{tabular}{ll c c c c}
+    \toprule
+	  \# examples per class & \multicolumn{2}{c}{13} & \multicolumn{2}{c}{128} \\
+	  & top1 & top5 & top1 & top5 \\
+    \midrule
+	No pretraining & 25.4 & 48.4 & 56.4 & 80.4 \\
+    \midrule
+	%\OURS \ImNet & 53.9 & 78.5 & 70.2 &  89.9 \\
+	\OURS IG-1B & \bf 38.2  & \bf 67.1  & \bf 64.7 & \bf 87.2 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsubsection{Image classification with KNN classifiers on \ImNet}
+Following previous work protocols~\cite{wu2018unsupervised,zhuang2019local}, we evaluate the quality of our unsupervised features with K-nearest neighbor (KNN) classifiers on ImageNet.
+We get features from the computed network outputs for center crops of training and test images.
+We report results with $20$ and $200$ NN in~\cref{tab:knn}.
+We outperform the current state-of-the-art of this evaluation.
+Interestingly we also observe that using fewer NN actually boosts the performance of our model.
+\begin{table}[h]
+  \caption{
+\textbf{KNN classifiers on ImageNet.} We report top-1 accuracy with $20$ and $200$ nearest neighbors.
+}
+\vspace{.3em}
+  \label{tab:knn}
+\centering
+\begin{tabular}{ll c c}
+    \toprule
+	  Method && 20-NN & 200-NN \\
+    \midrule
+	NPID~\cite{wu2018unsupervised} && - & 46.5 \\
+	LA~\cite{zhuang2019local} && - & 49.4 \\
+	PCL~\cite{li2020prototypical} && 54.5 & - \\
+    \midrule
+	\OURS && \bf 65.7 & \bf 62.7 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Ablation Studies on Clustering}
+\label{ap:ablation}
+
+\subsubsection{Number of prototypes}
+In~\cref{tab:nmbproto}, we evaluate the influence of the number of prototypes used in \OURS.
+We train ResNet-50 with \OURS for $400$ epochs with $2 \times 160 + 4 \times 96$ crops (ablation study setting) and evaluate the performance by training a linear classifier on top of frozen final representations.
+We observe in~\cref{tab:nmbproto} that varying the number of prototypes by an order of magnitude (3k-100k) does not affect much the performance (at most $0.3$ on ImageNet).
+This suggests that the number of prototypes has little influence as long as there are ``enough''.
+Throughout the paper, we train \OURS with $3000$ prototypes.
+We find that using more prototypes increases the computational time both in the Sinkhorn algorithm and during back-propagation for an overall negligible gain in performance.
+
+\begin{table}[h]
+\centering
+  \caption{
+\textbf{Impact of number of prototypes.} Top-1 ImageNet accuracy for linear models trained on frozen features.
+}
+\vspace{.3em}
+\begin{tabular}{l c c c c c c}
+    \toprule
+	  Number of prototypes & 300 & 1000 & 3000 & 10000 & 30000 & 100000 \\
+    \midrule
+	Top-1 & 72.8 & 73.6 & 73.9 & 74.1 & 73.8 & 73.8 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:nmbproto}
+\end{table}
+
+\subsubsection{Learning the prototypes}
+We investigate the impact of learning the prototypes compared to using fixed random prototypes.
+Assigning features to fixed random targets has been explored in NAT~\cite{bojanowski2017unsupervised}.
+However, unlike \OURS, NAT uses a target per instance in the dataset, the assignment is hard and performed with Hungarian algorithm.
+In~\cref{tab:learned_soft} (left), we observe that learning prototypes improves \OURS from $73.1$ to $73.9$ which shows the effect of adapting the prototypes to the dataset distribution.
+
+Overall, these results suggest that our framework learns from a different signal from "offline" approaches that attribute a pseudo-label to each instance while considering the full dataset and then predict these labels (like DeepCluster~\cite{caron2018deep} for example). 
+Indeed, the prototypes in \OURS are not strongly encouraged to be categorical and random fixed prototypes work almost as well.
+Rather, they help contrasting different image views without relying on pairwise comparison with many negatives samples.
+This might explain why the number of prototypes does not impact the performance significantly.
+
+\begin{table}[h]
+  \caption{
+\textbf{Ablation studies on clustering.} Top-1 ImageNet accuracy for linear models trained on frozen features.
+\textbf{(left)} Impact of learning the prototypes.
+\textbf{(right)} Hard versus soft assignments.
+}
+\label{tab:learned_soft}
+\vspace{.3em}
+\begin{minipage}{0.5\linewidth}
+\centering
+\begin{tabular}{l c c}
+    \toprule
+	  Prototypes & Learned & Fixed \\
+    \midrule
+	Top-1 & 73.9 & 73.1 \\
+    \bottomrule
+  \end{tabular}
+\end{minipage}
+\begin{minipage}{0.5\linewidth}
+\begin{tabular}{l c c}
+    \toprule
+	  Assignment & Soft & Hard \\
+    \midrule
+	Top-1 & 73.9 & 73.3 \\
+    \bottomrule
+  \end{tabular}
+\end{minipage}
+\end{table}
+
+\begin{figure}[b]
+\begin{minipage}{0.48\linewidth}
+\centering
+\includegraphics[width=\linewidth]{figure_loss.pdf}
+\end{minipage}
+~~~~~\begin{minipage}{0.48\linewidth}
+\caption{\textbf{Hard versus soft assignments.}
+We report the training loss for \OURS models trained with either soft or hard assignments.
+The models are trained during $400$ epochs with $2 \times 160 + 4 \times 96$ crops.
+}
+\label{fig:losssoft}
+\end{minipage}
+\end{figure}
+
+\subsubsection{Hard versus soft assignments}
+In~\cref{tab:learned_soft} (right), we evaluate the impact of using hard assignment instead of the default soft assignment in \OURS.
+We train the models during $400$ epochs with $2 \times 160 + 4 \times 96$ crops (ablation study setting) and evaluate the performance by training a linear classifier on top of frozen final representations.
+We also report the training losses in~\cref{fig:losssoft}.
+We observe that using the hard assignments performs worse than using the soft assignments.
+An explanation is that the rounding needed to obtain discrete codes is a more aggressive optimization step than gradient updates.
+While it makes the model converge rapidly (see \cref{fig:losssoft}), it leads to a worse solution.
+
+\begin{table}[b]
+\centering
+  \caption{
+\textbf{Impact of the number of iterations in Sinkhorn algorithm.} Top-1 ImageNet accuracy for linear models trained on frozen features.
+}
+\vspace{.3em}
+\begin{tabular}{l c c c c}
+    \toprule
+	Sinkhorn iterations & 1 & 3 & 10 & 30 \\
+    \midrule
+	Top-1 & \textit{fail} & 73.9 & 73.8 & 73.7 \\
+    \bottomrule
+  \end{tabular}
+  \label{tab:iters}
+\end{table}
+
+\subsubsection{Impact of the number of iterations in Sinkhorn algorithm}
+In~\cref{tab:iters}, we investigate the impact of the number of normalization steps performed during Sinkhorn-Knopp algorithm~\cite{cuturi2013sinkhorn} on the performance of \OURS.
+We observe that using only $3$ iterations is enough for the model to converge.
+When performing less iterations, the loss fails to converge.
+We observe that using more iterations slightly alters the transfer performance of the model.
+We conjecture that it is for the same reason that rounding codes to discrete values deteriorate the quality of our model by converging too rapidly.
+
+\subsection{Details on Clustering-Based methods: DeepCluster-v2 and SeLa-v2}
+\label{ap:clustering}
+In this section, we provide details on our improved implementation of clustering-based approaches DeepCluster-v2 and SeLa-v2 compared to their corresponding original publications~\cite{caron2018deep,asano2019self}.
+These two methods follow the same pipeline: they alternate between pseudo-labels generation (``assignment phase'') and training the network with a classification loss supervised by these pseudo-labels (``training phase'').
+
+\subsubsection{Training phase}
+During the training phase, both methods minimize the multinomial logistic loss of the pseudo-labels $\mathbf{q}$ classification problem:
+\begin{equation}
+  \ell(\mathbf{z}, \mathbf{c}, \mathbf{q}) = - \sum_{k} \mathbf{q}^{(k)} \log \mathbf{p}^{(k)}, \quad \text{where} \quad \mathbf{p}^{(k)} = \frac{ \exp \left ( \frac{1}{\tau} \mathbf{z}^\top \mathbf{c}_k \right ) }{\sum_{k'} \exp \left ( \frac{1}{\tau} \mathbf{z}^\top \mathbf{c}_{k'} \right ) }.
+  \label{eq:ap_assignloss}
+\end{equation}
+The pseudo-labels are kept fixed during training and updated for the entire dataset once per epoch during the assignment phase.
+
+\paragraph{Training phase in DeepCluster-v2.}
+In the original DeepCluster work, both the classification head $\mathbf{c}$ and the convnet weights are trained to classify the images into their corresponding pseudo-label between two assignments.
+Intuitively, this classification head is optimized to represent prototypes for the different pseudo-classes.
+However, since there is no mapping between two consecutive assignments: the classification head learned during an assignment becomes irrelevant for the following one.
+Thus, this classification head needs to be re-set at each new assignment which considerably disrupts the convnet training.
+For this reason, we propose to simply use for classification head $\mathbf{c}$ the centroids given by k-means clustering (Eq.~\ref{eq:kmeans}).
+Overall, during training, DeepCluster-v2 optimizes the following problem with mini-batch SGD:
+\begin{equation}
+\min_{\mathbf{z}} \ell(\mathbf{z}, \mathbf{c}, \mathbf{q}).
+\end{equation}
+
+\paragraph{Training phase in SeLa-v2.}
+In SeLa work, the prototypes $\mathbf{c}$ are learned with stochastic gradient descend during the training phase.
+Overall, during training, SeLa-v2 optimizes the following problem:
+\begin{equation}
+\min_{\mathbf{z},\mathbf{c}} \ell(\mathbf{z}, \mathbf{c}, \mathbf{q}).
+\end{equation}
+
+\subsubsection{Assignment phase}
+The purpose of the assignment phase is to provide assignments $\mathbf{q}$ for each instance of the dataset.
+For both methods, this implies having access to feature representations $\mathbf{z}$ for the entire dataset.
+Both original works~\cite{caron2018deep,asano2019self} perform regularly a pass forward on the whole dataset to get these features.
+Using the original implementation, if assignments are updated at each epoch, then the assignment phase represents one third of the total training time.
+Therefore, in order to speed up training, we choose to use the features computed during the previous epoch instead of dedicating pass forwards to the assignments.
+This is similar to the memory bank introduced by Wu~\etal~\cite{wu2018unsupervised}, without momentum.
+
+\paragraph{Assignment phase in DeepCluster-v2.}
+DeepCluster-v2 uses spherical k-means to get pseudo-labels.
+In particular, pseudo-labels $\mathbf{q}$ are obtained by minimizing the following problem:
+\begin{equation}
+\label{eq:kmeans}
+  \min_{\mathbf{C} \in \mathbb{R}^{d\times K}}
+  \frac{1}{N}
+  \sum_{n=1}^N
+  \min_{\mathbf{q}}
+	- \mathbf{z}_n^\top \mathbf{C} \mathbf{q},
+\end{equation}
+where $\mathbf{z}_n$ and the columns of $\mathbf{C}$ are normalized.
+The original work DeepCluster uses tricks such as cluster re-assignments and balanced batch sampling to avoid trivial solutions but we found these unnecessary, and did not observe collapsing during our trainings.
+As noted by Asano~\etal, this is due to the fact that assignment and training are well separated phases.
+
+\paragraph{Assignment phase in SeLa-v2.}
+Unlike DeepCluster, SeLa uses the same loss during training and assignment phases.
+In particular, we use Sinkhorn-Knopp algorithm to optimize the following assignment problem (see details and derivations in the original SeLa paper~\cite{asano2019self}):
+\begin{equation}
+\min_{\mathbf{q}} \ell(\mathbf{z}, \mathbf{c}, \mathbf{q}).
+\end{equation}
+
+\paragraph{Implementation details}
+We use the same hyperparameters as \OURS to train SeLa-v2 and DeepCluster-v2: these are described in~\cref{ap:implementation}.
+Asano~\etal~\cite{asano2019self} have shown that multi-clustering boosts performance of clustering-based approaches, and so we use $3$ sets of $3000$ prototypes $\mathbf{c}$ when training SeLa-v2 and DeepCluster-v2.
+Note that unlike online methods (like \OURS, SimCLR and MoCo), the clustering approaches SeLa-v2 and DeepCluster-v2 can be implemented with only a single crop per image per batch.
+The major limitation of SeLa-v2 and DeepCluster-v2 is that these methods are not online and therefore scaling them to very large scale dataset is not posible without major adjustments.

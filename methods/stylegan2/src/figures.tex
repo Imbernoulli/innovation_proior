@@ -1,0 +1,671 @@
+\newcommand{\h}{0mm}
+\newcommand{\hh}{0mm}
+\newcommand{\hhh}{0mm}
+\newcommand{\vv}{0mm}
+\newcommand{\vvv}{0mm}
+\newcommand{\s}{\hphantom{0}}
+
+\pdfsuppresswarningpagegroup=1
+
+\newcommand{\overlaycropface}{%
+  \begin{tikzpicture}[overlay]%
+    \draw[white,thick] (0,2.096) rectangle ++(-1.5,0.75);%
+    \node at (-0.75,      2.471) {\includegraphics[width=1.5cm]{figures/artifacts/crop-face2.\ext}};%
+  \end{tikzpicture}%
+}
+\newcommand{\overlaycropcar}{%
+  \begin{tikzpicture}[overlay]%
+    \draw[white,thick] (-2.096,0) rectangle ++(-0.75,1.5);%
+    \node at (          -2.471,0.75) {\includegraphics[width=0.75cm]{figures/artifacts/crop-car2.\ext}};%
+  \end{tikzpicture}%
+}
+\newcommand{\figdroplets}{
+\begin{figure*}[t]
+\renewcommand{\h}{0.163\linewidth}
+\includegraphics[width=\h]{figures/artifacts/face2.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/face2_1024.\ext}\hfill\hfill\hfill%
+\includegraphics[width=\h,trim={32 66 100 66},clip]{figures/artifacts/car3.\ext}\hfill%
+\includegraphics[width=\h,trim={16 33 50 33},clip]{figures/artifacts/car3_256.\ext}\hfill\hfill\hfill%
+\includegraphics[width=\h]{figures/artifacts/horse.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/horse_64.\ext}\\
+\makebox[\h]{\hspace{-4.5mm}\raisebox{29.5mm}[0mm][0mm]{\begin{tikzpicture}\draw[red,thick] (0,0) circle (2.5mm);\end{tikzpicture}}}\hfill%
+\makebox[\h]{\hspace{-4.5mm}\raisebox{29.5mm}[0mm][0mm]{\begin{tikzpicture}\draw[red,thick] (0,0) circle (2.5mm);\end{tikzpicture}}}\hfill\hfill\hfill%
+\makebox[\h]{\hspace{5.4mm}\raisebox{22.5mm}[0mm][0mm]{\begin{tikzpicture}\draw[red,thick] (0,0) circle (3.5mm);\end{tikzpicture}}}\hfill%
+\makebox[\h]{\hspace{5.4mm}\raisebox{22.5mm}[0mm][0mm]{\begin{tikzpicture}\draw[red,thick] (0,0) circle (3.5mm);\end{tikzpicture}}}\hfill\hfill\hfill%
+\makebox[\h]{\hspace{24.5mm}\raisebox{25.5mm}[0mm][0mm]{\begin{tikzpicture}\draw[red,thick] (0,0) circle (4mm);\end{tikzpicture}}}\hfill%
+\makebox[\h]{\hspace{24.5mm}\raisebox{25.5mm}[0mm][0mm]{\begin{tikzpicture}\draw[red,thick] (0,0) circle (4mm);\end{tikzpicture}}}\\\vspace{-1.5\baselineskip}
+\caption{Instance normalization causes water droplet -like artifacts in StyleGAN images. These are not always obvious in the generated images, but if we look at the activations inside the generator network, the problem is always there, in all feature maps starting from the 64x64 resolution. It is a systemic problem that plagues all StyleGAN images.
+}
+\label{fig:droplets}
+\end{figure*}
+}
+
+\newcommand{\figarch}{
+\begin{figure*}[t]
+\includegraphics[width=\linewidth,trim={0 81 0 74},clip]{figures/diagrams/stylegan2-diagrams.pdf}\\
+\footnotesize
+\makebox[0.216\linewidth]{(a) StyleGAN}\hfill%
+\makebox[0.249\linewidth]{(b) StyleGAN (detailed)}\hfill%
+\makebox[0.249\linewidth]{(c) Revised architecture}\hfill%
+\makebox[0.231\linewidth]{(d) Weight demodulation}\\
+\caption{
+\setlength{\fboxsep}{1.5pt}
+We redesign the architecture of the StyleGAN synthesis network. (a) The original StyleGAN, where \framebox{A} denotes a learned affine transform from $\WW$ that produces a style and \framebox{B} is a noise broadcast operation. (b) The same diagram with full detail. Here we have broken the AdaIN to explicit normalization followed by modulation, both operating on the mean and standard deviation per feature map. We have also annotated the learned weights ($w$), biases ($b)$, and constant input ($c$), and redrawn the gray boxes so that one style is active per box. The activation function (leaky ReLU) is always applied right after adding the bias. (c) We make several changes to the original architecture that are justified in the main text. We remove some redundant operations at the beginning, move the addition of $b$ and \framebox{B} to be outside active area of a style, and adjust only the standard deviation per feature map. (d) The revised architecture enables us to replace instance normalization with a ``demodulation'' operation, which we apply to the weights associated with each convolution layer.
+}
+\label{fig:arch}
+\end{figure*}
+}
+
+\newcommand{\tabmain}{
+\begin{table*}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{11.9mm}}
+\footnotesize{
+\begin{tabular}{|l@{\hspace{1.5mm}}l|xxxx|xxxx|}
+\hline
+& \multirow{2}{*}{\textbf{Configuration}}
+    & \multicolumn{4}{c|}{\textbf{FFHQ, 1024$\times$1024}}
+    & \multicolumn{4}{c|}{\textbf{LSUN Car, 512$\times$384}}
+\\
+&
+    & FID \FINAL{$\downarrow$}
+    & \makebox[0mm][c]{Path length \FINAL{$\downarrow$}}
+    & \makebox[0mm][c]{Precision \FINAL{$\uparrow$}}
+    & Recall \FINAL{$\uparrow$}
+    & FID \FINAL{$\downarrow$}
+    & \makebox[0mm][c]{Path length \FINAL{$\downarrow$}}
+    & \makebox[0mm][c]{Precision \FINAL{$\uparrow$}}
+    & Recall \FINAL{$\uparrow$}
+\\ \hline
+\arch{a} & Baseline StyleGAN \cite{Karras2018}\ \                   %
+    & 4.40          & 212.1         & {\bf 0.721}   & 0.399         %
+    & 3.27          & 1484.5        & {\bf 0.701}   & 0.435         %
+\\
+\arch{b} & + Weight demodulation\ \                                 %
+    & 4.39          & 175.4         & 0.702         & 0.425         %
+    & 3.04          & \s862.4       & 0.685         & 0.488         %
+\\
+\arch{c} & + Lazy regularization\ \                                 %
+    & 4.38          & 158.0         & 0.719         & 0.427         %
+    & 2.83          & \s981.6       & 0.688         & 0.493         %
+\\
+\arch{d} & + Path length regularization\ \                          %
+    & 4.34          & {\bf 122.5}   & 0.715         & 0.418         %
+    & 3.43          & \s651.2       & 0.697         & 0.452         %
+\\
+\arch{e} & + No growing, new G \& D arch.\ \                        %
+    & 3.31          & 124.5         & 0.705         & 0.449         %
+    & 3.19          & \s471.2       & 0.690         & 0.454         %
+\\ \hline
+\arch{f} & + Large networks \FINAL{(StyleGAN2)}\ \                  %
+    & {\bf 2.84}    & 145.0         & 0.689         & {\bf 0.492}   %
+    & {\bf 2.32}    & {\bf \s415.5} & 0.678         & {\bf 0.514}   %
+\\
+& \FINAL{Config \arch{a} with large networks}\ \                    %
+    & 3.98          & 199.2         & 0.716         & 0.422         %
+    & --            & --            & --            & --            %
+\\ \hline
+\end{tabular}\vspace{2mm}}
+\caption{
+Main results.
+For each training run, we selected the training snapshot with the lowest FID.
+We computed each metric 10 times with different random seeds and report their average.
+\FINAL{\emph{Path length}} corresponds to the PPL metric, computed based on path endpoints in $\WW$ \cite{Karras2018}\FINAL{, without the central crop used by Karras et al. \cite{Karras2018}.}
+The \textsc{FFHQ} dataset contains 70k images, and the discriminator saw 25M images during training. 
+For \textsc{LSUN Car} the numbers were 893k and 57M. 
+\FINAL{$\uparrow$ indicates that higher is better, and $\downarrow$ that lower is better.}
+}\vspace{-2mm}
+\label{tab:main}
+\end{table*}
+}
+
+\newcommand{\tabskips}{
+\begin{table}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{7mm}}
+\footnotesize{
+\begin{tabular}{|l|x@{\hspace{2.5mm}}x|x@{\hspace{2.5mm}}x|x@{\hspace{2.5mm}}x|}
+\hline
+\multirow{2}{*}{\textbf{FFHQ}}
+    & \multicolumn{2}{c|}{D original}
+    & \multicolumn{2}{c|}{D input skips}
+    & \multicolumn{2}{c|}{D residual}
+\\
+    & FID & PPL
+    & FID & PPL
+    & FID & PPL
+\\ \hline
+G original
+    & 4.32          & 265           %
+    & 4.18          & 235           %
+    & 3.58          & 269           %
+\\
+G output skips
+    & 4.33          & 169           %
+    & 3.77          & 127           %
+    & {\bf 3.31}    & {\bf 125}     %
+\\
+G residual
+    & 4.35          & 203           %
+    & 3.96          & 229           %
+    & 3.79          & 243           %
+\\ \hline
+\end{tabular}\vspace{1.5mm}\\
+\begin{tabular}{|l|x@{\hspace{2.5mm}}x|x@{\hspace{2.5mm}}x|x@{\hspace{2.5mm}}x|}
+\hline
+\multirow{2}{*}{\textbf{LSUN Car}}
+    & \multicolumn{2}{c|}{D original}
+    & \multicolumn{2}{c|}{D input skips}
+    & \multicolumn{2}{c|}{D residual}
+\\
+    & FID & PPL
+    & FID & PPL
+    & FID & PPL
+\\ \hline
+G original
+    & 3.75          & 905           %
+    & 3.23          & 758           %
+    & 3.25          & 802           %
+\\
+G output skips
+    & 3.77          & 544           %
+    & 3.86          & {\bf 316}     %
+    & 3.19          & 471           %
+\\
+G residual
+    & 3.93          & 981           %
+    & 3.40          & 667           %
+    & {\bf 2.66}    & 645           %
+\\ \hline
+\end{tabular}\vspace{2mm}}
+\caption{
+Comparison of generator and discriminator architectures without progressive growing.
+The combination of generator with output skips and residual discriminator corresponds to configuration~\arch{e} in the main result table.
+}
+\label{tab:skips}
+\end{table}
+}
+
+\newcommand{\tablsun}{
+\begin{table}[t]
+\centering
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{7.2mm}}
+\footnotesize{
+\begin{tabular}{|l|c|x@{\hspace{2.5mm}}x|x@{\hspace{2.5mm}}x|}
+\hline
+\multirow{2}{*}{\textbf{Dataset}} & \multirow{2}{*}{\textbf{Resolution}}
+    & \multicolumn{2}{c|}{\textbf{StyleGAN} (\arch{a})}
+    & \multicolumn{2}{c|}{\textbf{StyleGAN2} (\arch{f})}
+\\
+&
+    & FID & PPL
+    & FID & PPL
+\\ \hline
+\textsc{LSUN Car} & 512$\times$384
+    & 3.27          & 1485          %
+    & {\bf 2.32}    & {\bf 416}     %
+\\
+\textsc{LSUN Cat} & 256$\times$256
+    & 8.53          & \s924         %
+    & {\bf 6.93}    & {\bf 439}     %
+\\
+\textsc{LSUN Church} & 256$\times$256
+    & 4.21          & \s742         %
+    & {\bf 3.86}    & {\bf 342}     %
+\\
+\textsc{LSUN Horse} & 256$\times$256
+    & 3.83          & 1405          %
+    & {\bf 3.43}    & {\bf 338}     %
+\\ \hline
+\end{tabular}\vspace{2mm}}
+\caption{
+Improvement in LSUN datasets measured using FID and PPL.
+We trained \textsc{Car} for 57M images, \textsc{Cat} for 88M, \textsc{Church} for 48M, and \textsc{Horse} for 100M images.
+}
+\label{tab:lsun}
+\end{table}
+}
+
+\newcommand{\figpplimages}{
+\begin{figure}[t]
+\renewcommand{\h}{0.48\linewidth}
+\includegraphics[width=\h]{figures/ppl_experiment/images-good-17.\ext}\hfill%
+\includegraphics[width=\h]{figures/ppl_experiment/images-bad-09.\ext}\vspace*{-1mm}\\
+\makebox[\h][c]{\footnotesize (a) Low PPL scores}\hfill%
+\makebox[\h][c]{\footnotesize (b) High PPL scores}\\\vspace{-0.5\baselineskip}
+\caption{
+Connection between perceptual path length and image quality using baseline StyleGAN \FINAL{(config \arch{a}) with \textsc{LSUN Cat}}.
+(a) Random examples with low PPL ($\le 10^\mathrm{th}$ percentile).
+(b) Examples with high PPL ($\ge 90^\mathrm{th}$ percentile).
+There is a clear correlation between PPL scores and semantic consistency of the images.
+}
+\label{fig:pplimages}
+\end{figure}
+}
+
+\newcommand{\figpplhistograms}{
+\begin{figure}[t]
+\renewcommand{\h}{0.49\linewidth}
+\includegraphics[width=\h]{figures/ppl_experiment/histogram1.pdf}\hfill%
+\includegraphics[width=\h]{figures/ppl_experiment/histogram2.pdf}\vspace*{-1mm}\\
+\makebox[\h][c]{\footnotesize (a) StyleGAN (config \arch{a})}\hfill%
+\makebox[\h][c]{\footnotesize (b) StyleGAN2 (config \arch{f})}\\\vspace{-0.5\baselineskip}
+\caption{
+(a) Distribution of PPL scores of individual images generated using baseline StyleGAN \FINAL{(config \arch{a}) with \textsc{LSUN Cat} (FID\,=\,8.53, PPL\,=\,924)}.
+The percentile ranges corresponding to Figure~\ref{fig:pplimages} are highlighted in orange.
+(b) StyleGAN2 (config \arch{f}) improves the PPL distribution considerably (showing a snapshot with the same FID\,=\,8.53, PPL\,=\,387).
+}
+\label{fig:pplhistograms}
+\end{figure}
+}
+
+\newcommand{\figGDarch}{
+\begin{figure}[t]\vspace*{-0.75mm}
+\includegraphics[width=\linewidth,trim={132 84 134 47},clip]{figures/diagrams/GenDisc-diagrams2.pdf}\\
+\footnotesize
+\makebox[0.33\linewidth]{(a) MSG-GAN}\hfill%
+\makebox[0.36\linewidth]{(b) Input/output skips}\hfill%
+\makebox[0.22\linewidth]{(c) Residual nets}\\
+\caption{
+\setlength{\fboxsep}{1.5pt}
+Three generator (above the dashed line) and discriminator architectures.
+\framebox{Up} and \framebox{Down} denote bilinear up and downsampling, respectively.
+In residual networks these also include 1$\times$1 convolutions to adjust the number of feature maps.
+\framebox{tRGB} and \framebox{fRGB} convert between RGB and high-dimensional per-pixel data.
+Architectures used in configs \arch{e} and \arch{f} are shown in green.
+}
+\label{fig:GDarch}
+\end{figure}
+}
+
+\newcommand{\figVIN}{
+\begin{figure}[t]
+\renewcommand{\h}{0.3305\linewidth}
+\includegraphics[width=\h]{figures/activations/ffhq-cfg-f-seed402.\ext}\hfill%
+\includegraphics[width=\h]{figures/activations/ffhq-cfg-f-seed402-layer13-fmap2.\ext}\hfill%
+\includegraphics[width=\h]{figures/activations/ffhq-cfg-f-seed402-layer11-fmap2.\ext}\\
+\includegraphics[width=\h]{figures/activations/car-cfg-f-seed7.\ext}\hfill%
+\includegraphics[width=\h]{figures/activations/car-cfg-f-seed7-layer11-fmap0.\ext}\hfill%
+\includegraphics[width=\h]{figures/activations/car-cfg-f-seed7-layer9-fmap3.\ext}\\
+\includegraphics[width=\h]{figures/activations/horse-cfg-f-seed651.\ext}\hfill%
+\includegraphics[width=\h]{figures/activations/horse-cfg-f-seed651-layer9-fmap2.\ext}\hfill%
+\includegraphics[width=\h]{figures/activations/horse-cfg-f-seed651-layer7-fmap3.\ext}\\\vspace{-0.5\baselineskip}
+\caption{Replacing normalization with demodulation removes the characteristic artifacts from images and activations.
+}
+\label{fig:VIN}
+\end{figure}
+}
+
+\newcommand{\figpgartifacts}{
+\begin{figure}[t]
+\renewcommand{\h}{0.3305\linewidth}
+\includegraphics[width=\h]{figures/artifacts/teeth4.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/teeth3.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/teeth1.\ext}\\
+\includegraphics[width=\h,trim={360 210 360 670},clip]{figures/artifacts/teeth4.\ext}\hfill%
+\includegraphics[width=\h,trim={365 200 355 680},clip]{figures/artifacts/teeth3.\ext}\hfill%
+\includegraphics[width=\h,trim={368 180 352 700},clip]{figures/artifacts/teeth1.\ext}\\
+\makebox[\h]{\hspace{0mm}\raisebox{6mm}[0mm][0mm]{\begin{tikzpicture}\draw[blue] (0,0) -- (0,2.1);\end{tikzpicture}}}\hfill%
+\makebox[\h]{\hspace{0.4mm}\raisebox{6mm}[0mm][0mm]{\begin{tikzpicture}\draw[blue] (0,0) -- (0,2.1);\end{tikzpicture}}}\hfill%
+\makebox[\h]{\hspace{0.5mm}\raisebox{6mm}[0mm][0mm]{\begin{tikzpicture}\draw[blue] (0,0) -- (0,2.1);\end{tikzpicture}}}\vspace{-1.5\baselineskip}\\
+\caption{Progressive growing leads to ``phase'' artifacts. In this example the teeth do not follow the pose but stay aligned to the camera, as indicated by the blue line.
+}
+\label{fig:pgartifacts}
+\end{figure}
+}
+
+\newcommand{\figresolutionusage}{
+\begin{figure}[t]
+\renewcommand{\h}{0.495\linewidth}
+\includegraphics[width=\h]{figures/progression/generator-plot-cfg-e.pdf}\hfill
+\includegraphics[width=\h]{figures/progression/generator-plot-cfg-f.pdf}\\
+\footnotesize%
+\makebox[\h][c]{(a) StyleGAN-sized (config \arch{e})}\hfill%
+\makebox[\h][c]{(b) Large networks (config \arch{f})}\\
+\caption{
+Contribution of each resolution to the output of the generator as a function of training time.
+The vertical axis shows a breakdown of the relative standard deviations of different resolutions, and the horizontal axis corresponds to training progress, measured in millions of training images shown to the discriminator. 
+We can see that in the beginning the network focuses on low-resolution images and progressively shifts its focus on larger resolutions as training progresses.
+In (a) the generator basically outputs a $512^2$ image with some minor sharpening for $1024^2$, while in (b) the larger network focuses more on the high-resolution details.
+}
+\label{fig:resolutionusage}
+\end{figure}
+}
+
+\newcommand{\figprojhist}{
+\begin{figure}[t]
+\renewcommand{\h}{0.49\linewidth}
+\includegraphics[width=\h]{figures/projhist/car-cfg-a.pdf}\hfill%
+\includegraphics[width=\h]{figures/projhist/ffhq-cfg-a.pdf}\vspace*{-1.5mm}\\
+\makebox[\h][c]{\footnotesize \textsc{LSUN Car}, StyleGAN}\hfill%
+\makebox[\h][c]{\footnotesize \textsc{FFHQ}, StyleGAN}\vspace*{1.5mm}\\
+\includegraphics[width=\h]{figures/projhist/car-cfg-f.pdf}\hfill%
+\includegraphics[width=\h]{figures/projhist/ffhq-cfg-f.pdf}\vspace*{-1.5mm}\\
+\makebox[\h][c]{\footnotesize \textsc{LSUN Car}, StyleGAN2}\hfill%
+\makebox[\h][c]{\footnotesize \textsc{FFHQ}, StyleGAN2}\vspace*{-2mm}\\
+\caption{\label{fig:projhist}%
+LPIPS distance histograms between original and projected images for generated (blue) and real images (orange).
+Despite the higher image quality of our improved generator, it is much easier to project the generated images into its latent space $\WW$.
+The same projection method was used in all cases.
+}
+\end{figure}
+}
+
+\newcommand{\figprojimgcar}{
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-old-gen-0000.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-old-gen-0001.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-old-gen-0002.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-old-gen-0003.\ext}\\
+\raisebox{1mm}[3mm][1mm]{\footnotesize Baseline StyleGAN --- generated images}\\
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-gen-0000.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-gen-0001.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-gen-0002.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-gen-0003.\ext}\\
+\raisebox{1mm}[3mm][1mm]{\footnotesize StyleGAN2 --- generated images}\\
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-real-0000.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-real-0001.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-real-0002.\ext}%
+\includegraphics[width=0.25\linewidth]{figures/projimg_car/crop-new-real-0003.\ext}\\
+\raisebox{1mm}[3mm][3mm]{\footnotesize StyleGAN2 --- real images}\\
+\caption{\label{fig:projimgcar}%
+Example images and their projected and re-synthesized counterparts. 
+For each configuration, top row shows the target images and bottom row shows the synthesis of the corresponding projected latent vector and noise inputs.
+Top: With the baseline StyleGAN, projection often finds a reasonably close match for generated images, but especially the backgrounds differ from the originals. 
+Middle: The images generated using our best architecture can be projected almost perfectly back into generator inputs, allowing unambiguous attribution to the generating model.
+Bottom: Projected real images (from the training set) show clear differences to the originals, as expected.
+All tests were done using the same projection method and hyperparameters.
+}
+\end{figure}
+}
+
+\newcommand{\figprojimgcarhorizontal}{
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-old-gen-0001.\ext}%
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-old-gen-0002.\ext}%
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-old-gen-0003.\ext}\hfill
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-new-gen-0001.\ext}%
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-new-gen-0002.\ext}%
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-new-gen-0003.\ext}\hfill
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-new-real-0000.\ext}%
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-new-real-0001.\ext}%
+\includegraphics[width=0.11\linewidth]{figures/projimg_car/crop-new-real-0002.\ext}\vspace*{-1mm}\\
+\makebox[0.33\linewidth]{\footnotesize \FINAL{StyleGAN --- generated images}}\hfill
+\makebox[0.33\linewidth]{\footnotesize \FINAL{StyleGAN2 --- generated images}}\hfill
+\makebox[0.33\linewidth]{\footnotesize \FINAL{StyleGAN2 --- real images}}\vspace*{1mm}\\
+\caption{\label{fig:projimgcar}%
+Example images and their projected and re-synthesized counterparts. 
+For each configuration, top row shows the target images and bottom row shows the synthesis of the corresponding projected latent vector and noise inputs.
+With the baseline StyleGAN, projection often finds a reasonably close match for generated images, but especially the backgrounds differ from the originals. 
+The images generated using StyleGAN2 can be projected almost perfectly back into generator inputs, while projected real images (from the training set) show clear differences to the originals, as expected.
+All tests were done using the same projection method and hyperparameters.
+}
+\end{figure*}
+}
+
+\newcommand{\figartifactsapp}{
+\renewcommand{\h}{0.195\linewidth}
+\begin{figure*}[t]
+\includegraphics[width=\h]{figures/artifacts/missing_comparison_64.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_comparison_128.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_comparison_256.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_comparison_512.\ext}\hfill\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_comparison.\ext}\vspace*{.5mm}\\
+\includegraphics[width=\h]{figures/artifacts/missing_64.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_128.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_256.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing_512.\ext}\hfill\hfill%
+\includegraphics[width=\h]{figures/artifacts/missing.\ext}\\
+\footnotesize 
+\makebox[\h]{Feature map $64^2$}\hfill%
+\makebox[\h]{Feature map $128^2$}\hfill%
+\makebox[\h]{Feature map $256^2$}\hfill%
+\makebox[\h]{Feature map $512^2$}\hfill\hfill%
+\makebox[\h]{Generated image}\\
+\caption{
+An example of the importance of the droplet artifact in StyleGAN generator.
+We compare two generated images, one successful and one severely corrupted.
+The corresponding feature maps were normalized to the viewable dynamic range using instance normalization.
+For the top image, the droplet artifact starts forming in $64^2$ resolution, is clearly visible in $128^2$, and increasingly dominates the feature maps in higher resolutions.
+For the bottom image, $64^2$ is qualitatively similar to the top row, but the droplet does not materialize in $128^2$.
+Consequently, the facial features are stronger in the normalized feature map.
+This leads to an overshoot in $256^2$, followed by multiple spurious droplets forming in subsequent resolutions.
+Based on our experience, it is rare that the droplet is missing from StyleGAN images, and indeed the generator fully relies on its existence. 
+}
+\label{fig:artifactsapp}
+\end{figure*}
+}
+
+\newcommand{\figcarscomparison}{
+\begin{figure*}[t]
+\renewcommand{\h}{\linewidth}
+\renewcommand{\hh}{3mm}
+\vspace{\hh}%
+\includegraphics[width=\h]{figures/image_matrices/car-cfg-a-seed5.\ext}\\
+\makebox[\h]{Model 1: FID\,=\,3.27, P\,=\,0.70, R\,=\,0.44, PPL\,=\,1485}\\\\
+\includegraphics[width=\h]{figures/image_matrices/car-cfg-f-snapshot20153-seed6.\ext}\\
+\makebox[\h]{Model 2: FID\,=\,3.27, P\,=\,0.67, R\,=\,0.48, PPL\,=\,437}\\
+\caption{%
+Uncurated examples from two generative models trained on \textsc{LSUN Car} without truncation.
+FID, precision, and recall are similar for models~1 and~2, even though the latter produces car-shaped objects more often.
+Perceptual path length (PPL) indicates a clear preference for model~2. 
+Model 1 corresponds to configuration~\arch{a} in \reftablsun{}, and model~2 is an early training snapshot of configuration~\arch{f}.
+}
+\vspace{\hh}
+\label{fig:carscomparison}
+\end{figure*}
+}
+
+\newcommand{\figcatscomparison}{
+\begin{figure*}[t]
+\renewcommand{\h}{\linewidth}
+\renewcommand{\hh}{9mm}
+\vspace{\hh}%
+\includegraphics[width=\h]{figures/image_matrices/cat-cfg-a-seed9.\ext}\\
+\makebox[\h]{Model 1: FID\,=\,8.53, P\,=\,0.64, R\,=\,0.28, PPL\,=\,924}\\\\
+\includegraphics[width=\h]{figures/image_matrices/cat-cfg-f-snapshot27014-seed2.\ext}\\
+\makebox[\h]{Model 2: FID\,=\,8.53, P\,=\,0.62, R\,=\,0.29, PPL\,=\,387}\\
+\caption{%
+Uncurated examples from two generative models trained on \textsc{LSUN Cat} without truncation.
+FID, precision, and recall are similar for models~1 and~2, even though the latter produces cat-shaped objects more often.
+Perceptual path length (PPL) indicates a clear preference for model~2. 
+Model 1 corresponds to configuration~\arch{a} in \reftablsun{}, and model~2 is an early training snapshot of configuration~\arch{f}.
+}
+\vspace{\hh}
+\label{fig:catscomparison}
+\end{figure*}
+}
+
+\newcommand{\figffhqcherrypick}{
+\begin{figure*}[t]
+\renewcommand{\h}{0.499\linewidth}
+\renewcommand{\hh}{20mm}
+\vspace{\hh}%
+\includegraphics[width=\h]{figures/good_latents/ffhq-6139-24780-1.0-config-f/0066.\ext}\hfill%
+\includegraphics[width=\h]{figures/good_latents/ffhq-6139-24780-1.0-config-f/1518.\ext}\\
+\includegraphics[width=\h]{figures/good_latents/ffhq-6139-24780-1.0-config-f/0389.\ext}\hfill%
+\includegraphics[width=\h]{figures/good_latents/ffhq-6139-24780-1.0-config-f/0230.\ext}\vspace{2mm}%
+\caption{
+Four hand-picked examples illustrating the image quality and diversity achievable using StylegGAN2 (config \arch{f}).
+}
+\vspace{\hh}
+\label{fig:ffhqcherrypick}
+\end{figure*}
+}
+
+\newcommand{\figfrequencies}{
+\begin{figure*}
+\renewcommand{\h}{0.245\linewidth}
+\renewcommand{\hh}{0.495\linewidth}
+\includegraphics[width=\h]{figures/artifacts/frequencies-PG.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/frequencies-PG-128.\ext}\hfill\hfill%
+\includegraphics[width=\h]{figures/artifacts/frequencies-new.\ext}\hfill%
+\includegraphics[width=\h]{figures/artifacts/frequencies-new-128.\ext}\vspace{-1mm}\\%
+\footnotesize
+\makebox[\h]{Generated image}\hfill%
+\makebox[\h]{Feature map $128^2$}\hfill\hfill%
+\makebox[\h]{Generated image}\hfill%
+\makebox[\h]{Feature map $128^2$}\vspace{2mm}\\%
+\small
+\makebox[\hh]{(a) Progressive growing (config \arch{a})}\hfill\hfill%
+\makebox[\hh]{(b) Without progressive growing (config \arch{f})}\\
+\vspace*{-1mm}%
+\caption{
+Progressive growing leads to significantly higher frequency content in the intermediate layers. This compromises shift-invariance of the network and makes it harder to localize features precisely in the higher-resolution layers.
+}
+\label{fig:frequencies}
+\end{figure*}
+}
+
+\newcommand{\figuncurated}{
+\begin{figure*}[t]
+\renewcommand{\h}{0.984\linewidth}
+\setlength{\lineskip}{2mm}
+\footnotesize
+\rotatebox{90}{\makebox[61mm][c]{\textsc{FFHQ}}}\hfill%
+\includegraphics[width=\h]{figures/uncurated/ffhq-cfg-f-seed6600-psi50.\ext}\\
+\rotatebox{90}{\makebox[46mm][c]{\textsc{LSUN Car}}}\hfill%
+\includegraphics[width=\h]{figures/uncurated/car-cfg-f-seed6000-psi50.\ext}\\
+\rotatebox{90}{\makebox[30mm][c]{\textsc{LSUN Cat}}}\hfill%
+\includegraphics[width=\h]{figures/uncurated/cat-cfg-f-seed6600-psi50.\ext}\\
+\rotatebox{90}{\makebox[30mm][c]{\textsc{LSUN Church}}}\hfill%
+\includegraphics[width=\h]{figures/uncurated/church-cfg-f-seed6800-psi50.\ext}\\
+\rotatebox{90}{\makebox[30mm][c]{\textsc{LSUN Horse}}}\hfill%
+\includegraphics[width=\h]{figures/uncurated/horse-cfg-f-seed6000-psi50.\ext}\\
+\caption{%
+Uncurated results for each dataset used in \reftabmains{}.
+The images correspond to random outputs produced by our generator (config \arch{f}), with truncation applied at all resolutions using $\psi=0.5$ \cite{Karras2018}.
+}
+\label{fig:uncurated}
+\end{figure*}
+}
+
+\newcommand{\figeigenvalues}{
+\begin{figure}[t]
+\includegraphics[width=0.49\linewidth]{figures/eigenvalues/jacobian_ffhq.pdf}\hfill
+\includegraphics[width=0.49\linewidth]{figures/eigenvalues/jacobian_car.pdf}
+\caption{
+The mean and standard deviation of the magnitudes of sorted singular values of the Jacobian matrix evaluated at random latent space points $\ww$, with largest eigenvalue normalized to $1$. In both datasets, path length regularization (Config D) and novel architecture (Config F) exhibit better conditioning; notably, the effect is more pronounced in the Cars dataset that contains much more variability, and where path length regularization has a relatively stronger effect on the PPL metric (\reftabmain{}).
+}
+\label{fig:eigenvalues}
+\end{figure}
+}
+
+\newcommand{\fignoiseregcars}{
+\begin{figure}[t]
+\renewcommand{\h}{0.2475\linewidth}
+\renewcommand{\hh}{0.498333\linewidth}
+\footnotesize
+\makebox[\hh]{Generated target image}\hfill%
+\makebox[\hh]{Real target image}\\%
+\includegraphics[width=\hh]{figures/noisereg_car/cropa-fakenoreg.\ext}\hfill%
+\includegraphics[width=\hh]{figures/noisereg_car/cropa-realnoreg.\ext}\\%
+\includegraphics[width=\h]{figures/noisereg_car/cropb-fakenoreg.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/cropb-fake--reg.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/cropb-realnoreg.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/cropb-real--reg.\ext}\\
+\includegraphics[width=\h]{figures/noisereg_car/crop-fakenoreg-noise0008.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/crop-fake--reg-noise0008.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/crop-realnoreg-noise0008.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/crop-real--reg-noise0008.\ext}\\
+\includegraphics[width=\h]{figures/noisereg_car/crop-fakenoreg-noise0012.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/crop-fake--reg-noise0012.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/crop-realnoreg-noise0012.\ext}\hfill%
+\includegraphics[width=\h]{figures/noisereg_car/crop-real--reg-noise0012.\ext}\\
+\footnotesize
+\makebox[\h]{No noise}\hfill%
+\makebox[\h]{With noise}\hfill%
+\makebox[\h]{No noise}\hfill%
+\makebox[\h]{With noise}\\%
+\makebox[\h]{regularization}\hfill%
+\makebox[\h]{regularization}\hfill%
+\makebox[\h]{regularization}\hfill%
+\makebox[\h]{regularization}\\%
+\caption{%
+Effect of noise regularization in latent-space projection where we also optimize the contents of the noise inputs of the synthesis network.
+Top to bottom: target image, re-synthesized image, contents of two noise maps at different resolutions.
+When regularization is turned off in this test, we only normalize the noise maps to zero mean and unit variance, which leads the optimization to sneak signal into the noise maps.
+Enabling the noise regularization prevents this. The model used here corresponds to configuration~\arch{f} in \reftabmain{}.
+}
+\label{fig:noiseregcars}
+\end{figure}
+}
+
+\newcommand{\tabspectralnorm}{
+\begin{table}[t]
+\FINAL{%
+\centering%
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{4.4mm}}%
+\newcolumntype{y}{>{\centering\arraybackslash\hspace{0pt}}p{6.4mm}}%
+\newcommand{\YES}{\checkmark}%
+\newcommand{\NO}{--}%
+\footnotesize{%
+\begin{tabular}{|l|xxxx|yyyy|}
+\hline
+&
+\makebox[0mm][c]{SN-G}              &   %
+\makebox[0mm][c]{SN-D}              &   %
+\makebox[0mm][c]{Demod}             &   %
+\makebox[0mm][c]{P.reg}             &   %
+\makebox[0mm][c]{FID $\downarrow$}  &   %
+\makebox[0mm][c]{PPL $\downarrow$}  &   %
+\makebox[0mm][c]{Pre. $\uparrow$}   &   %
+\makebox[0mm][c]{Rec. $\uparrow$}   \\  %
+\hline
+1 & \NO  & \NO  & \YES & \YES   & \textbf{2.83} & 145.0          & 0.689          & \textbf{0.492} \\   %
+\hline
+2 & \NO  & \YES & \YES & \YES   & 2.98          & 131.4          & 0.700          & 0.469          \\   %
+3 & \YES & \YES & \YES & \YES   & 3.40          & \textbf{130.9} & \textbf{0.720} & 0.435          \\   %
+4 & \YES & \YES & \NO  & \YES   & 3.38          & 162.6          & 0.705          & 0.468          \\   %
+5 & \YES & \YES & \NO  & \NO    & 3.33          & 394.9          & 0.705          & 0.463          \\   %
+6 & \YES & \NO  & \NO  & \YES   & 3.36          & 217.1          & 0.695          & 0.464          \\   %
+7 & \YES & \NO  & \NO  & \NO    & 3.22          & 394.4          & 0.692          & 0.489          \\   %
+\hline
+\end{tabular}\vspace{2mm}}
+\caption{
+Effect of spectral normalization with \textsc{FFHQ} at $1024^2$.
+The first row corresponds to StyleGAN2, i.e., config \arch{f} in \reftabmain{}.
+In the subsequent rows, we enable spectral normalization in the generator (\emph{SN-G}) and in the discriminator (\emph{SN-D}).
+We also test the training without weight demodulation (\emph{Demod}) and path length regularization (\emph{P.reg}).
+All of these configurations are highly detrimental to FID, as well as to Recall.
+$\uparrow$ indicates that higher is better, and $\downarrow$ that lower is better.
+}\vspace{-2mm}
+\label{tab:spectralnorm}
+}
+\end{table}
+}
+
+\newcommand{\tabpower}{
+\begin{table}[t]
+\FINAL{%
+\centering%
+\footnotesize%
+\newcolumntype{x}{>{\centering\arraybackslash\hspace{0pt}}p{23mm}}%
+\begin{tabular}{|l@{\hspace{2.9mm}}|x|x|}
+\hline
+\textbf{Item}           & \textbf{GPU years (Volta)} & \textbf{Electricity (MWh)}\\\hline
+Initial exploration     & 20.25     & 58.94     \\
+Paper exploration       & 13.71     & 31.49     \\
+FFHQ config~\arch{f}    & \s0.23    & \s0.68    \\
+Other runs in paper     & \s7.20    & 16.77     \\
+Backup runs left out    & \s4.73    & 12.08     \\
+Video, figures, etc.    & \s0.31    & \s0.82    \\
+Public release          & \s4.62    & 10.82     \\\hline
+Total                   & 51.05     & 131.61    \\\hline
+\end{tabular}\vspace{3mm}
+\caption{
+Computational effort expenditure and electricity consumption data for this project. The unit for computation is GPU-years on a single NVIDIA V100 GPU\,---\,it would have taken approximately 51 years to execute this project using a single GPU. See the text for additional details about the computation and energy consumption estimates.
+ \emph{Initial exploration} includes all training runs after the release of StyleGAN~\cite{Karras2018} that affected our decision to start this project.
+ \emph{Paper exploration} includes all training runs that were done specifically for this project, but were not intended to be used in the paper as-is.
+ \emph{FFHQ config F} refers to the training of the final network. This is approximately the cost of training the network for another dataset without hyperparameter tuning.
+ \emph{Other runs in paper} covers the training of all other networks shown in the paper.
+ \emph{Backup runs left out} includes the training of various networks that could potentially have been shown in the paper, but were ultimately left out to keep the exposition more focused.
+ \emph{Video, figures, etc.} includes computation that was spent on producing the images and graphs in the paper, as well as on the result video.
+ \emph{Public release} covers testing, benchmarking, and large-scale image dumps related to the public release.
+}
+\label{tab:power}
+}
+\end{table}
+}

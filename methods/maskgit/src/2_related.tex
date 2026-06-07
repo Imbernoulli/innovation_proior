@@ -1,0 +1,31 @@
+\section{Related Work}
+\label{sec:related}
+\subsection{Image Synthesis}\label{sec:related_synthesis}
+Deep generative models~\cite{KingmaW14, Vahdat2020nvae, goodfellow2014generative, SAGAN, Song19generative,dhariwal2021diffusion,Oord16pixelcnn, Parmar18imagetransformer} have achieved lots of successes in image synthesis tasks. GAN based methods demonstrate amazing capability in yielding high-fidelity samples~\cite{goodfellow2014generative, biggan, Karras2019stylegan2, SAGAN, tseng2021regularizing}.
+In contrast, likelihood-based methods, such as Variational Autoencoders (VAEs) \cite{KingmaW14, Vahdat2020nvae}, Diffusion Models \cite{Song19generative,dhariwal2021diffusion,ho2021cascaded} and Autoregressive Models \cite{Oord16pixelcnn, Parmar18imagetransformer}, offer distribution coverage and hence can generate more diverse samples~\cite{Song19generative, Vahdat2020nvae, Oord16pixelcnn}. 
+
+However, maximizing likelihood directly in pixel space can be challenging. So instead,
+VQVAE \cite{Oord17vqvae, Razavi19vqvae2} proposes to generate images in latent space in two stages. In the first stage, which is known as \textbf{tokenization}, it tries to compress images into discrete latent space, and primarily consists of three components:\vspace{-2.5mm}
+\begin{itemize}
+    \item an encoder $E$ that learns to tokenize images $x \in \mathbb{R}^{H\times W \times 3}$ into latent embedding $E(x)$, \vspace{-2.5mm}
+    \item a codebook $\mathbf{e}_k \in \mathbb{R}^D, k\in 1, 2, \cdots, K$ which serves for a nearest neighbor look up used to quantize the embedding into visual tokens, and  \vspace{-2.5mm}
+    \item a decoder $G$ which predicts the reconstructed image $\hat{x}$ from the visual tokens $\mathbf{e}$. 
+\end{itemize}\vspace{-1mm}
+%  The training objective of the first stage is 
+% \begin{equation} \label{eq:1}
+% \begin{split}
+%  \mathcal{L}_{VQ} = {} & ||sg[E(x)] -\mathbf{e}||_2^2 + \beta ||sg[\mathbf{e}] - E(x)||_2^2 \\
+%   &+ \mathcal{L}_{rec}(x,\hat{x}).
+% \end{split}
+% \end{equation}
+% Here the terms represent the codebook loss penalizing token $\mathbf{e}$ far from embedding $E(x)$, the commitment loss constraining $E$ to stick to one token in the codebook, and the reconstruction loss between input and reconstruction. $sg$ is the stop-gradient operator and $\beta$ is a commitment loss hyper-parameter. VQVAE first introduces this training objective and uses $L_2$ for the reconstruction loss. Later VQGAN proposes the additions of the perceptual loss and the adversarial loss to achieve higher compression efficiency.
+
+\noindent In the second stage, it first predicts the latent priors of the visual tokens using deep autoregressive models, and then uses the decoder from the first stage to map the token sequences into image pixels. Several approaches have followed this paradigm due to the efficacy of the two-stage approach. DALL-E \cite{Ramesh21dalle} uses Transformers \cite{Vaswani17attention} to improve token prediction in the second stage. VQGAN~\cite{Esser21vqgan} adds adversarial loss and perceptual loss~\cite{johnson2016perceptual, zhang2018unreasonable} in the first stage to improve the image fidelity. A contemporary work to ours, VIM~\cite{vim2021}, proposes to use a VIT backbone ~\cite{dosovitskiy2021vit} to further improve the tokenization stage. Since these approaches still employ an auto-regressive model, the decoding time in the second stage scales with the token sequence length. 
+
+\subsection{Masked Modeling with Bi-directional Transformers}
+The transformer architecture~\cite{Vaswani17attention}, was first proposed in NLP, and has recently extended its reach to computer vision~\cite{dosovitskiy2021vit, caron2021dino}.
+Transformer consists of multiple self-attention layers, allowing interactions between all pairs of elements in the sequence to be captured.
+In particular, BERT~\cite{Devlin19bert} introduces the masked language modeling (MLM) task for language representation learning. The bi-directional self-attention used in BERT~\cite{Devlin19bert} allows the masked tokens in MLM to be predicted utilizing context from both directions.
+In vision, the masked modeling in BERT~\cite{Devlin19bert} has been extended to image representation learning~\cite{he2021mae, Bao2022Beit} with images quantized to discrete tokens. However, few works have successfully applied the same masked modeling to image generation~\cite{zhang2021ufcbert} because of the difficulty in performing autoregressive decoding using bi-directional attentions.
+To our knowledge, this paper provides the first evidence demonstrating the efficacy of masked modeling for image generation on the common ImageNet benchmark.
+Our work is inspired by bi-directional machine translation~\cite{ghazvininejad2019maskpredict, gu2020fully, gu2017non} in NLP, and our novelty lies in the proposed new masking strategy and decoding algorithm which, as substantiated by our experiments, are essential for image generation.

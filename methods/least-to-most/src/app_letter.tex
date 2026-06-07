@@ -1,0 +1,671 @@
+\section{Last-letter-concatenation}
+\label{app:letter}
+
+\subsection{Prompt context for decomposing a word list into subproblems}
+\label{app:letter-prompt-reduction}
+In Section~\ref{sec:symbolic_manipulation} we mentioned that language model prompting can be used to decompose a word list such as ``think, machine, learning, reasoning'' into a sequence of subproblems ``think, machine'', ``think, machine, learning'', and ``think, machine, learning, reasoning''.
+
+The following prompt context achieves 100\% accuracy on this task when using the \texttt{text-davinci-002} model. Note that it achieves perfect accuracy on lists up to size 12 (which is the maximum that we tested for our experiment) even though it only contains one exemplar each for lists of sizes 2 and 3.
+
+\prompt{Q: ``machine, learning'' \\
+A: creating sequential sublists of the list ``machine, learning'': \\
+``machine'' \\
+``machine, learning'' \\
+\\
+Q: ``machine, learning, artificial'' \\
+A: creating sequential sublists of the list ``machine, learning, artificial'': \\
+``machine'' \\ 
+``machine, learning'' \\
+``machine, learning, artificial'' \\
+}
+
+
+\subsection{Prompt contexts with more and different examples}
+\label{app:letter-double}
+The last-letter-concatenation experiments presented in Section~\ref{sec:symbolic_manipulation} are based on prompt contexts that consists of 2 demonstration examples. To make sure that the accuracy gain achieved by least-to-most prompting is not caused by the slight increase in example length when compared to chain-of-thought, we also performed experiments with more context examples so that we can compare least-to-most vs. chain-of-thought for different prompt sizes. Also, we perform experiments where we use for chain-of-thought prompting the same prompt examples that we use for least-to-most prompting (unlike the situation in Table~\ref{tabel:chain-least-concat} where we use different examples). All these prompts are shown below, and we present and discuss the corresponding accuracies in Section~\ref{app:letter-data-result}.
+
+\subsubsection{Standard prompting, 4-shot}
+
+\prompt{Q: ``think, machine''\\
+A: ``ke''\\
+ \\
+Q: ``learning, reasoning, generalization''\\
+A: ``ggn''\\
+ \\
+Q: ``artificial, intelligence''\\
+A: ``le''\\
+ \\
+Q: ``transformer, language, vision''\\
+A: ``ren''
+}
+
+\subsubsection{Chain-of-thought prompting, 4-shot}
+\label{app:cot-4-shot}
+\prompt{Q: ``think, machine''\\
+A: The last letter of ``think'' is ``k''. The last letter of ``machine'' is ``e''. Concatenating ``k'', ``e'' leads to ``ke''. So, ``think, machine'' outputs ``ke''.\\
+ \\
+Q: ``learning, reasoning, generalization''\\
+A: The last letter of ``learning'' is ``g''. The last letter of ``reasoning''  is  ``g''. The last letter of ``generalization'' is ``n''. Concatenating ``g'', ``g'', ``n'' leads to ``ggn''. So, ``learning, reasoning, generalization'' outputs ``ggn''.\\
+ \\
+Q: ``artificial, intelligence''\\
+A: The last letter of ``artificial'' is ``l''. The last letter of ``intelligence'' is ``e''. Concatenating ``l'', ``e'' leads to ``le''. So, ``artificial, intelligence'' outputs ``le''.\\
+ \\
+Q: ``transformer, language, vision''\\
+A: The last letter of ``transformer'' is ``r''. The last letter of ``language'' is ``e''. The last letter of ``vision'' is ``n''. Concatenating ``r'', ``e'', ``n'' leads to ``ren''. So, ``transformer, language, vision'' outputs ``ren''.\\
+}
+
+\subsubsection{Chain-of-thought prompting, 8-shot}
+\label{app:cot-8-shot}
+\prompt{Q: ``think, machine''\\
+A: The last letter of ``think'' is ``k''. The last letter of ``machine'' is ``e''. Concatenating ``k'', ``e'' leads to ``ke''. So, ``think, machine'' outputs ``ke''.\\
+ \\
+Q: ``learning, reasoning, generalization''\\
+A: The last letter of ``learning'' is ``g''. The last letter of ``reasoning''  is  ``g''. The last letter of ``generalization'' is ``n''. Concatenating ``g'', ``g'', ``n'' leads to ``ggn''. So, ``learning, reasoning, generalization'' outputs ``ggn''.\\
+ \\
+Q: ``artificial, intelligence''\\
+A: The last letter of ``artificial'' is ``l''. The last letter of ``intelligence'' is ``e''. Concatenating ``l'', ``e'' leads to ``le''. So, ``artificial, intelligence'' outputs ``le''.\\
+ \\
+Q: ``transformer, language, vision''\\
+A: The last letter of ``transformer'' is ``r''. The last letter of ``language'' is ``e''. The last letter of ``vision'' is ``n''. Concatenating ``r'', ``e'', ``n'' leads to ``ren''. So, ``transformer, language, vision'' outputs ``ren''.\\
+ \\
+Q: ``school, teacher'' \\
+A: The last letter of ``school'' is ``l''. The last letter of ``teacher'' is ``r''. Concatenating ``l'', ``r'' leads to ``lr''. So, ``school, teacher'' outputs ``lr''. \\
+ \\
+Q: ``art, science, department'' \\
+A: The last letter of ``art'' is ``t''. The last letter of ``science'' is ``e''. The last letter of ``department'' is ``t''. Concatenating ``t'', ``e'', ``t'' leads to ``tet''. So, ``art, science, department'' outputs ``tet''. \\
+ \\
+Q: ``pen, laptop'' \\
+A: The last letter of ``pen'' is ``n''. The last letter of ``laptop'' is ``p''. Concatenating: ``n'', ``p'' leads to ``np''. So, ``pen, laptop'' outputs ``np''. \\
+ \\
+Q: ``book, campus, university'' \\
+A: The last letter of ``book'' is ``k''. The last letter of ``campus'' is ``s''. The last letter of ``university'' is ``y''. Concatenating: ``k'', ``s'', ``y'' leads to ``ksy''. So, ``book, campus, university'' outputs ``ksy''.
+}
+
+\subsubsection{Chain-of-thought prompting, 2-shot, same examples as for least-to-most}
+\prompt{Q: ``think, machine''\\
+A: The last letter of ``think'' is ``k''. The last letter of ``machine'' is ``e''. Concatenating ``k'', ``e'' leads to ``ke''. So, ``think, machine'' outputs ``ke''.\\
+ \\
+Q: ``think, machine, learning'' 
+A: The last letter of ``think'' is ``k''. The last letter of ``machine'' is ``e''. The last letter of ``learning'' is ``g''. Concatenating ``k'', ``e'', ``g'' leads to ``keg''. So, ``think, machine, learning'' outputs ``keg''.
+}
+
+\subsubsection{Least-to-most prompting, 4-shot}
+
+\prompt{Q: ``think, machine''\\
+A: The last letter of ``think'' is ``k''. The last letter of ``machine'' is ``e''. Concatenating ``k'', ``e'' leads to ``ke''. So, ``think, machine'' outputs ``ke''.\\
+ \\
+Q: ``think, machine, learning''\\
+A: ``think, machine'' outputs ``ke''. The last letter of ``learning'' is ``g''. Concatenating ``ke'', ``g'' leads to ``keg''. So, ``think, machine, learning'' outputs ``keg''.\\
+ \\
+Q: ``transformer, language''\\
+A: The last letter of ``transformer'' is ``r''. The last letter of ``language'' is ``e''. Concatenating: ``r'', ``e'' leads to ``re''. So, ``transformer, language'' outputs ``re''.\\
+ \\
+Q: ``transformer, language, vision''\\
+A: ``transformer, language'' outputs ``re''. The last letter of ``vision'' is ``n''. Concatenating: ``re'', ``n'' leads to ``ren''. So, ``transformer, language, vision'' outputs ``ren''.
+}
+
+\subsection{Data Generation and additional results}
+\label{app:letter-data-result}
+\textbf{Data generation.}
+The last-letter-concatenation dataset is based on a list of the 10k most common English words (including proper nouns) used in books that are part of project Gutenberg, as collected in Wiktionary\footnote{\url{https://en.wiktionary.org/wiki/Wiktionary:Frequency_lists/PG/2006/04/1-10000}}. After eliminating profane words, we ended up with a list of 9694 words (all lowercase). For each of the desired list sizes 2, 4, 6, 8, 10, 12, we then generated 500 examples, each of which consists of a random sequence of these words (input) and the corresponding sequence of last letters (output). We will release the full dataset upon publication of this paper. Below are 10 random examples of list size 6:
+
+\begin{itemize}
+\item \prompt{IN: ``narrative, celebrate, neighbouring, indebted, stove, calling'' OUT: ``eegdeg''}
+\item \prompt{IN: ``barley, silk, thankful, kiss, logs, silent'' OUT: ``yklsst''}
+\item \prompt{IN: ``knitting, conveyance, receives, represent, cow, shut'' OUT: ``gestwt''}
+\item \prompt{IN: ``olive, dark, limitation, airy, pocket, wondered'' OUT: ``eknytd''}
+\item \prompt{IN: ``apprehensive, exclamation, perspiration, trusting, destiny, tactics'' OUT: ``enngys''}
+\item \prompt{IN: ``qualified, envoy, disciple, exert, witnesses, plane'' OUT: ``dyetse''}
+\item \prompt{IN: ``decidedly, dome, france, chris, knowing, peaceful'' OUT: ``yeesgl''}
+\item \prompt{IN: ``deceit, refinement, tips, cord, princes, discovery'' OUT: ``ttsdsy''}
+\item \prompt{IN: ``drops, paste, defective, bohemia, requested, convenient'' OUT: ``seeadt''}
+\item \prompt{IN: ``diverse, christopher, homely, agreeable, fright, suspended'' OUT: ``eryetd''}
+\end{itemize}
+
+\textbf{Complete results.}
+Table~\ref{table:letter-result-complete} summarizes all the experiments we performed for the last-letter-concatenation task. In addition to the experiments where prompt contexts contain 2 demonstration examples presented in Section~\ref{sec:symbolic_manipulation}, this includes experiments where the prompts contain 4 and 8 demonstration examples (see above).
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{ |c|c|c|c|c|c|c|c| } 
+  \hline
+  \textbf{Prompting method} & \textbf{\# Examples} & \textbf{Model} & \textbf{L = 4} & \textbf{L = 6} & \textbf{L = 8} & \textbf{L = 10} & \textbf{L = 12}\\ 
+  \hline
+  Standard & Any & Any & 0.0 & 0.0 & 0.0 & 0.0 & 0.0\\ 
+  \hline
+  \multirow{4}{*}{Chain-of-Thought} & 2 & \texttt{code-002} & 89.4 & 75.0 & 51.8 & 39.8 & 33.6\\
+  & 2 (L2M) & \texttt{code-002} & 84.2 & 69.2 & 50.2 & 39.8 & 31.8\\
+  & 4 & \texttt{code-002} & 88.6 & 77.0 & 53.4 & 44.0 & 37.4\\
+  & 8 & \texttt{code-002} & 91.0 & 79.8 & 56.8 & 46.8 & 38.4\\
+  & 4 & \texttt{text-002}* & 87.0 & 64.0 & 46.0 & 25.0 & 14.0\\
+  & 4 & \texttt{code-001} & 13.0 & 1.8 & 0.0 & 0.0 & 0.0 \\
+  \hline
+  \multirow{4}{*}{Least-to-Most} & 2 & \texttt{code-002} & 94.0 & 88.4 & 83.0 & 76.4 & 74.0\\ 
+  & 4 & \texttt{code-002} &\textbf{96.0} &\textbf{92.0} &\textbf{84.6} &\textbf{80.2} & \textbf{76.6}\\
+  & 4 & \texttt{text-002}* & 94.0 & 90.0 & 84.0 & 72.0 & 66.0 \\ 
+  & 4 & \texttt{code-001} & 19.6 & 8.4 & 4.0 & 1.0 & 0.1 \\ 
+  \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Accuracy of different prompting methods, prompt sizes, and GPT3 models on the last-letter-concatenation task with the length of lists increasing from 4 to 12. We use \texttt{code-002} to denote the model \texttt{code-davinci-002}, \texttt{text-002} to denote the model \texttt{text-davinci-002}, and \texttt{code-001} to denote the model \texttt{code-davinci-001}. The results in the second row for chain-of-thought prompting correspond to the experiment where we use for chain-of-thought the same prompt examples that we use for least-to-most. The results of \texttt{text-davinci-002} are based on a subset of 100 random examples (rather than the full set of 500 exammples).}
+\label{table:letter-result-complete}
+\end{table}
+
+While more prompt examples have no effect for standard prompting (the accuracy remains at 0), they increase the accuracy across the board for chain-of-thought and least-to-most prompting. However, least-to-most prompting consistently outperforms chain-of-thought prompting. In fact, even if we compare 2-shot least-to-most (prompt size 123 GPT3 tokens) to 8-shot chain-of-thought (prompt size 573 GPT3 tokens), the accuracy for least-to-most prompting is much higher than for chain-of-thought prompting. The difference is especially pronounced for long sequences (e.g., for L = 12, we have least-to-most at 74.0\% vs. chain-of-thought at 38.4\%). This shows that least-to-most prompting is much more data-efficient than chain-of-thought prompting for this problem.
+
+Comparing the first two rows for chain-of-thought prompting shows that chain-of-thought achieves higher accuracy if we use two independent examples (see prompt in Table~\ref{tabel:chain-least-concat}) instead of the two dependent examples that we use for least-to-most prompting. This demonstrates that the accuracy advantage of least-to-most prompting over chain-of-thought prompting remains even if the use the same examples for both of them.
+
+The table also contains the results from running against two additional GPT-3 models: \texttt{text-davinci-002} and \texttt{codex-davinci-001}. While \texttt{text-davinci-002} shows similar accuracy to \texttt{code-davinci-002} on small list sizes, the accuracy drops off much faster when moving to larger list sizes, both for chain-of-thought prompting as well as for least-to-most prompting. This indicates that the \texttt{code-davinci-002} model has an advantage when it comes to dealing with iteration and recursion.
+
+The \texttt{code-davinci-001} model performs much worse than \texttt{code-davinci-002} across all dimensions. Even for the shortest list size (L = 4), the accuracy for least-to-most prompting is only 19.6\% compared to 96\% for \texttt{code-davinci-002}. This indicates that there is a large potential for improvement when using the exact same configuration with new model generations.
+
+
+\input{app_letter_error_analysis}
+
+
+\subsection{Example outputs from code-davinci-002}
+In this section, we present 5 examples (one example for lengths 4, 6, 8, 10, 12) of successes and failures of the \texttt{code-davinci-002} model for standard prompting, chain-of-thought prompting, and least-to-most prompting. They are all based on the prompt contexts containing 4 demonstration examples.
+
+\subsubsection{Standard prompting: Failure}
+\prompt{\noindent
+\textbf{``witnesses, arkansas, remaining, privileged''} \\
+\\
+\textbf{Golden:} \\
+``ssgd'' \\
+\\
+\textbf{Solution:} \\
+Q: ``witnesses, arkansas, remaining, privileged'' \\
+A: ``n'' \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``clan, noun, roy, nicholas, relish, liking''} \\
+\\
+\textbf{Golden:} \\
+``nnyshg'' \\
+\\
+\textbf{Solution:} \\
+Q: ``clan, noun, roy, nicholas, relish, liking'' \\
+A: ``nicholas'' \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``franklin, temporarily, high, origin, rapidly, diversion, firmament, promptly''} \\
+\\
+\textbf{Golden:} \\
+``nyhnynty'' \\
+\\
+\textbf{Solution:} \\
+Q: ``franklin, temporarily, high, origin, rapidly, diversion, firmament, promptly'' \\
+A: ``n'' \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``conquered, owed, enclosure, indeed, shattered, beads, increased, provided, weak, grind''} \\
+\\
+\textbf{Golden:} \\
+``ddeddsddkd'' \\
+\\
+\textbf{Solution:} \\
+Q: ``conquered, owed, enclosure, indeed, shattered, beads, increased, provided, weak, grind'' \\
+A: ``d'' \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``hope, alison, mirrors, benefits, altered, curve, keen, portuguese, distance, interfaces, proof, seamus''} \\
+\\
+\textbf{Golden:} \\
+``enssdeneesfs'' \\
+\\
+\textbf{Solution:} \\
+Q: ``hope, alison, mirrors, benefits, altered, curve, keen, portuguese, distance, interfaces, proof, seamus'' \\
+A: ``hope'' \\
+}
+
+
+\subsubsection{Chain-of-thought prompting: Success}
+\prompt{\noindent
+\textbf{``geese, rogers, benefactor, version''} \\
+\\
+\textbf{Golden:} \\
+``esrn'' \\
+\\
+\textbf{Solution:} \\
+Q: ``geese, rogers, benefactor, version'' \\
+A: The last letter of ``geese'' is ``e''. The last letter of ``rogers'' is ``s''. The last letter of ``benefactor'' is ``r''. The last letter of ``version'' is ``n''. Concatenating ``e'', ``s'', ``r'', ``n'' leads to ``esrn''. So, ``geese, rogers, benefactor, version'' outputs ``esrn''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``amply, bestow, maryland, edited, blowing, prosperous''} \\
+\\
+\textbf{Golden:} \\
+``ywddgs'' \\
+\\
+\textbf{Solution:} \\
+Q: ``amply, bestow, maryland, edited, blowing, prosperous'' \\
+A: The last letter of ``amply'' is ``y''. The last letter of ``bestow'' is ``w''. The last letter of ``maryland'' is ``d''. The last letter of ``edited'' is ``d''. The last letter of ``blowing'' is ``g''. The last letter of ``prosperous'' is ``s''. Concatenating ``y'', ``w'', ``d'', ``d'', ``g'', ``s'' leads to ``ywddgs''. So, ``amply, bestow, maryland, edited, blowing, prosperous'' outputs ``ywddgs''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``needless, courts, reflected, curly, glowing, asp, chronicles, anthony''} \\
+\\
+\textbf{Golden:} \\
+``ssdygpsy'' \\
+\\
+\textbf{Solution:} \\
+Q: ``needless, courts, reflected, curly, glowing, asp, chronicles, anthony'' \\
+A: The last letter of ``needless'' is ``s''. The last letter of ``courts'' is ``s''. The last letter of ``reflected'' is ``d''. The last letter of ``curly'' is ``y''. The last letter of ``glowing'' is ``g''. The last letter of ``asp'' is ``p''. The last letter of ``chronicles'' is ``s''. The last letter of ``anthony'' is ``y''. Concatenating ``s'', ``s'', ``d'', ``y'', ``g'', ``p'', ``s'', ``y'' leads to ``ssdygpsy''. So, ``needless, courts, reflected, curly, glowing, asp, chronicles, anthony'' outputs ``ssdygpsy''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``nigel, alaska, rent, hospital, newspaper, medical, nation, dave, associated, rumour''} \\
+\\
+\textbf{Golden:} \\
+``latlrlnedr'' \\
+\\
+\textbf{Solution:} \\
+Q: ``nigel, alaska, rent, hospital, newspaper, medical, nation, dave, associated, rumour'' \\
+A: The last letter of ``nigel'' is ``l''. The last letter of ``alaska'' is ``a''. The last letter of ``rent'' is ``t''. The last letter of ``hospital'' is ``l''. The last letter of ``newspaper'' is ``r''. The last letter of ``medical'' is ``l''. The last letter of ``nation'' is ``n''. The last letter of ``dave'' is ``e''. The last letter of ``associated'' is ``d''. The last letter of ``rumour'' is ``r''. Concatenating ``l'', ``a'', ``t'', ``l'', ``r'', ``l'', ``n'', ``e'', ``d'', ``r'' leads to ``latlrlnedr''. So, ``nigel, alaska, rent, hospital, newspaper, medical, nation, dave, associated, rumour'' outputs ``latlrlnedr''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``brightness, preparatory, intense, accumulated, reluctantly, nets, inquiries, grip, inquisition, alley, innocent, herbert''} \\
+\\
+\textbf{Golden:} \\
+``syedysspnytt'' \\
+\\
+\textbf{Solution:} \\
+Q: ``brightness, preparatory, intense, accumulated, reluctantly, nets, inquiries, grip, inquisition, alley, innocent, herbert'' \\
+A: The last letter of ``brightness'' is ``s''. The last letter of ``preparatory'' is ``y''. The last letter of ``intense'' is ``e''. The last letter of ``accumulated'' is ``d''. The last letter of ``reluctantly'' is ``y''. The last letter of ``nets'' is ``s''. The last letter of ``inquiries'' is ``s''. The last letter of ``grip'' is ``p''. The last letter of ``inquisition'' is ``n''. The last letter of ``alley'' is ``y''. The last letter of ``innocent'' is ``t''. The last letter of ``herbert'' is ``t''. Concatenating ``s'', ``y'', ``e'', ``d'', ``y'', ``s'', ``s'', ``p'', ``n'', ``y'', ``t'', ``t'' leads to ``syedysspnytt''. So, ``brightness, preparatory, intense, accumulated, reluctantly, nets, inquiries, grip, inquisition, alley, innocent, herbert'' outputs ``syedysspnytt''. \\
+}
+
+
+\subsubsection{Chain-of-thought prompting: Failure}
+\prompt{\noindent
+\textbf{``pattern, vote, afterwards, solemn''} \\
+\\
+\textbf{Golden:} \\
+``nesn'' \\
+\\
+\textbf{Solution:} \\
+Q: ``pattern, vote, afterwards, solemn'' \\
+A: The last letter of ``pattern'' is ``n''. The last letter of ``vote'' is ``e''. The last letter of ``afterwards'' is ``s''. The last letter of ``solemn'' is ``n''. Concatenating ``n'', ``e'', ``s'', ``n'' leads to ``ness''. So, ``pattern, vote, afterwards, solemn'' outputs ``ness''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``disappointment, troublesome, respectfully, monstrous, worry, politics''} \\
+\\
+\textbf{Golden:} \\
+``teysys'' \\
+\\
+\textbf{Solution:} \\
+Q: ``disappointment, troublesome, respectfully, monstrous, worry, politics'' \\
+A: The last letter of ``disappointment'' is ``t''. The last letter of ``troublesome'' is ``e''. The last letter of ``respectfully'' is ``y''. The last letter of ``monstrous'' is ``s''. The last letter of ``worry'' is ``y''. The last letter of ``politics'' is ``s''. Concatenating ``t'', ``e'', ``y'', ``s'', ``y'', ``s'' leads to ``teyssy''. So, ``disappointment, troublesome, respectfully, monstrous, worry, politics'' outputs ``teyssy''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``drawing, changes, purified, basic, others, send, chimney, vice''} \\
+\\
+\textbf{Golden:} \\
+``gsdcsdye'' \\
+\\
+\textbf{Solution:} \\
+Q: ``drawing, changes, purified, basic, others, send, chimney, vice'' \\
+A: The last letter of ``drawing'' is ``g''. The last letter of ``changes'' is ``s''. The last letter of ``purified'' is ``d''. The last letter of ``basic'' is ``c''. The last letter of ``others'' is ``s''. The last letter of ``send'' is ``d''. The last letter of ``chimney'' is ``y''. The last letter of ``vice'' is ``e''. Concatenating ``g'', ``s'', ``d'', ``c'', ``s'', ``d'', ``y'', ``e'' leads to ``gsdcsyde''. So, ``drawing, changes, purified, basic, others, send, chimney, vice'' outputs ``gsdcsyde''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``sensitive, pray, wreath, betwixt, golden, regions, loyalty, interval, hunting, ranch''} \\
+\\
+\textbf{Golden:} \\
+``eyhtnsylgh'' \\
+\\
+\textbf{Solution:} \\
+Q: ``sensitive, pray, wreath, betwixt, golden, regions, loyalty, interval, hunting, ranch'' \\
+A: The last letter of ``sensitive'' is ``e''. The last letter of ``pray'' is ``y''. The last letter of ``wreath'' is ``h''. The last letter of ``betwixt'' is ``t''. The last letter of ``golden'' is ``n''. The last letter of ``regions'' is ``s''. The last letter of ``loyalty'' is ``y''. The last letter of ``interval'' is ``l''. The last letter of ``hunting'' is ``g''. The last letter of ``ranch'' is ``h''. Concatenating ``e'', ``y'', ``h'', ``t'', ``n'', ``s'', ``y'', ``l'', ``g'', ``h'' leads to ``eyhtsynslgh''. So, ``sensitive, pray, wreath, betwixt, golden, regions, loyalty, interval, hunting, ranch'' outputs ``eyhtsynslgh''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``freezing, arduous, pushing, vitality, hue, generosity, white, motto, matthew, preferred, hounds, breast''} \\
+\\
+\textbf{Golden:} \\
+``gsgyeyeowdst'' \\
+\\
+\textbf{Solution:} \\
+Q: ``freezing, arduous, pushing, vitality, hue, generosity, white, motto, matthew, preferred, hounds, breast'' \\
+A: The last letter of ``freezing'' is ``g''. The last letter of ``arduous'' is ``s''. The last letter of ``pushing'' is ``g''. The last letter of ``vitality'' is ``y''. The last letter of ``hue'' is ``e''. The last letter of ``generosity'' is ``y''. The last letter of ``white'' is ``e''. The last letter of ``motto'' is ``o''. The last letter of ``matthew'' is ``w''. The last letter of ``preferred'' is ``d''. The last letter of ``hounds'' is ``s''. The last letter of ``breast'' is ``t''. Concatenating ``g'', ``s'', ``g'', ``y'', ``e'', ``y'', ``e'', ``o'', ``w'', ``d'', ``s'', ``t'' leads to ``gsgyeyowdst''. So, ``freezing, arduous, pushing, vitality, hue, generosity, white, motto, matthew, preferred, hounds, breast'' outputs ``gsgyeyowdst''. \\
+}
+
+
+\subsubsection{Least-to-most prompting: Success}
+\prompt{\noindent
+\textbf{``worm, jackson, widow, car''} \\
+\\
+\textbf{Golden:} \\
+``mnwr'' \\
+\\
+\textbf{Solution:} \\
+Q: ``worm, jackson'' \\
+A: The last letter of ``worm'' is ``m''. The last letter of ``jackson'' is ``n''. Concatenating: ``m'', ``n'' leads to ``mn''. So, ``worm, jackson'' outputs ``mn''. \\
+\\
+Q: ``worm, jackson, widow'' \\
+A: ``worm, jackson'' outputs ``mn''. The last letter of ``widow'' is ``w''. Concatenating: ``mn'', ``w'' leads to ``mnw''. So, ``worm, jackson, widow'' outputs ``mnw''. \\
+\\
+Q: ``worm, jackson, widow, car'' \\
+A: ``worm, jackson, widow'' outputs ``mnw''. The last letter of ``car'' is ``r''. Concatenating: ``mnw'', ``r'' leads to ``mnwr''. So, ``worm, jackson, widow, car'' outputs ``mnwr''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``twinkle, blushed, pale, fast, irony, tearing''} \\
+\\
+\textbf{Golden:} \\
+``edetyg'' \\
+\\
+\textbf{Solution:} \\
+Q: ``twinkle, blushed'' \\
+A: The last letter of ``twinkle'' is ``e''. The last letter of ``blushed'' is ``d''. Concatenating: ``e'', ``d'' leads to ``ed''. So, ``twinkle, blushed'' outputs ``ed''. \\
+\\
+Q: ``twinkle, blushed, pale'' \\
+A: ``twinkle, blushed'' outputs ``ed''. The last letter of ``pale'' is ``e''. Concatenating: ``ed'', ``e'' leads to ``ede''. So, ``twinkle, blushed, pale'' outputs ``ede''. \\
+\\
+Q: ``twinkle, blushed, pale, fast'' \\
+A: ``twinkle, blushed, pale'' outputs ``ede''. The last letter of ``fast'' is ``t''. Concatenating: ``ede'', ``t'' leads to ``edet''. So, ``twinkle, blushed, pale, fast'' outputs ``edet''. \\
+\\
+Q: ``twinkle, blushed, pale, fast, irony'' \\
+A: ``twinkle, blushed, pale, fast'' outputs ``edet''. The last letter of ``irony'' is ``y''. Concatenating: ``edet'', ``y'' leads to ``edety''. So, ``twinkle, blushed, pale, fast, irony'' outputs ``edety''. \\
+\\
+Q: ``twinkle, blushed, pale, fast, irony, tearing'' \\
+A: ``twinkle, blushed, pale, fast, irony'' outputs ``edety''. The last letter of ``tearing'' is ``g''. Concatenating: ``edety'', ``g'' leads to ``edetyg''. So, ``twinkle, blushed, pale, fast, irony, tearing'' outputs ``edetyg''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``colonists, empty, fowl, intend, diligent, reluctantly, seed, gentry''} \\
+\\
+\textbf{Golden:} \\
+``syldtydy'' \\
+\\
+\textbf{Solution:} \\
+Q: ``colonists, empty'' \\
+A: The last letter of ``colonists'' is ``s''. The last letter of ``empty'' is ``y''. Concatenating: ``s'', ``y'' leads to ``sy''. So, ``colonists, empty'' outputs ``sy''. \\
+\\
+Q: ``colonists, empty, fowl'' \\
+A: ``colonists, empty'' outputs ``sy''. The last letter of ``fowl'' is ``l''. Concatenating: ``sy'', ``l'' leads to ``syl''. So, ``colonists, empty, fowl'' outputs ``syl''. \\
+\\
+Q: ``colonists, empty, fowl, intend'' \\
+A: ``colonists, empty, fowl'' outputs ``syl''. The last letter of ``intend'' is ``d''. Concatenating: ``syl'', ``d'' leads to ``syld''. So, ``colonists, empty, fowl, intend'' outputs ``syld''. \\
+\\
+Q: ``colonists, empty, fowl, intend, diligent'' \\
+A: ``colonists, empty, fowl, intend'' outputs ``syld''. The last letter of ``diligent'' is ``t''. Concatenating: ``syld'', ``t'' leads to ``syldt''. So, ``colonists, empty, fowl, intend, diligent'' outputs ``syldt''. \\
+\\
+Q: ``colonists, empty, fowl, intend, diligent, reluctantly'' \\
+A: ``colonists, empty, fowl, intend, diligent'' outputs ``syldt''. The last letter of ``reluctantly'' is ``y''. Concatenating: ``syldt'', ``y'' leads to ``syldty''. So, ``colonists, empty, fowl, intend, diligent, reluctantly'' outputs ``syldty''. \\
+\\
+Q: ``colonists, empty, fowl, intend, diligent, reluctantly, seed'' \\
+A: ``colonists, empty, fowl, intend, diligent, reluctantly'' outputs ``syldty''. The last letter of ``seed'' is ``d''. Concatenating: ``syldty'', ``d'' leads to ``syldtyd''. So, ``colonists, empty, fowl, intend, diligent, reluctantly, seed'' outputs ``syldtyd''. \\
+\\
+Q: ``colonists, empty, fowl, intend, diligent, reluctantly, seed, gentry'' \\
+A: ``colonists, empty, fowl, intend, diligent, reluctantly, seed'' outputs ``syldtyd''. The last letter of ``gentry'' is ``y''. Concatenating: ``syldtyd'', ``y'' leads to ``syldtydy''. So, ``colonists, empty, fowl, intend, diligent, reluctantly, seed, gentry'' outputs ``syldtydy''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``leo, observations, power, thou, dart, emergency, notorious, indulging, consume, provoke''} \\
+\\
+\textbf{Golden:} \\
+``osrutysgee'' \\
+\\
+\textbf{Solution:} \\
+Q: ``leo, observations'' \\
+A: The last letter of ``leo'' is ``o''. The last letter of ``observations'' is ``s''. Concatenating: ``o'', ``s'' leads to ``os''. So, ``leo, observations'' outputs ``os''. \\
+\\
+Q: ``leo, observations, power'' \\
+A: ``leo, observations'' outputs ``os''. The last letter of ``power'' is ``r''. Concatenating: ``os'', ``r'' leads to ``osr''. So, ``leo, observations, power'' outputs ``osr''. \\
+\\
+Q: ``leo, observations, power, thou'' \\
+A: ``leo, observations, power'' outputs ``osr''. The last letter of ``thou'' is ``u''. Concatenating: ``osr'', ``u'' leads to ``osru''. So, ``leo, observations, power, thou'' outputs ``osru''. \\
+\\
+Q: ``leo, observations, power, thou, dart'' \\
+A: ``leo, observations, power, thou'' outputs ``osru''. The last letter of ``dart'' is ``t''. Concatenating: ``osru'', ``t'' leads to ``osrut''. So, ``leo, observations, power, thou, dart'' outputs ``osrut''. \\
+\\
+Q: ``leo, observations, power, thou, dart, emergency'' \\
+A: ``leo, observations, power, thou, dart'' outputs ``osrut''. The last letter of ``emergency'' is ``y''. Concatenating: ``osrut'', ``y'' leads to ``osruty''. So, ``leo, observations, power, thou, dart, emergency'' outputs ``osruty''. \\
+\\
+Q: ``leo, observations, power, thou, dart, emergency, notorious'' \\
+A: ``leo, observations, power, thou, dart, emergency'' outputs ``osruty''. The last letter of ``notorious'' is ``s''. Concatenating: ``osruty'', ``s'' leads to ``osrutys''. So, ``leo, observations, power, thou, dart, emergency, notorious'' outputs ``osrutys''. \\
+\\
+Q: ``leo, observations, power, thou, dart, emergency, notorious, indulging'' \\
+A: ``leo, observations, power, thou, dart, emergency, notorious'' outputs ``osrutys''. The last letter of ``indulging'' is ``g''. Concatenating: ``osrutys'', ``g'' leads to ``osrutysg''. So, ``leo, observations, power, thou, dart, emergency, notorious, indulging'' outputs ``osrutysg''. \\
+\\
+Q: ``leo, observations, power, thou, dart, emergency, notorious, indulging, consume'' \\
+A: ``leo, observations, power, thou, dart, emergency, notorious, indulging'' outputs ``osrutysg''. The last letter of ``consume'' is ``e''. Concatenating: ``osrutysg'', ``e'' leads to ``osrutysge''. So, ``leo, observations, power, thou, dart, emergency, notorious, indulging, consume'' outputs ``osrutysge''. \\
+\\
+Q: ``leo, observations, power, thou, dart, emergency, notorious, indulging, consume, provoke'' \\
+A: ``leo, observations, power, thou, dart, emergency, notorious, indulging, consume'' outputs ``osrutysge''. The last letter of ``provoke'' is ``e''. Concatenating: ``osrutysge'', ``e'' leads to ``osrutysgee''. So, ``leo, observations, power, thou, dart, emergency, notorious, indulging, consume, provoke'' outputs ``osrutysgee''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate, wet, howard''} \\
+\\
+\textbf{Golden:} \\
+``eygnetncoetd'' \\
+\\
+\textbf{Solution:} \\
+Q: ``niece, greedy'' \\
+A: The last letter of ``niece'' is ``e''. The last letter of ``greedy'' is ``y''. Concatenating: ``e'', ``y'' leads to ``ey''. So, ``niece, greedy'' outputs ``ey''. \\
+\\
+Q: ``niece, greedy, anything'' \\
+A: ``niece, greedy'' outputs ``ey''. The last letter of ``anything'' is ``g''. Concatenating: ``ey'', ``g'' leads to ``eyg''. So, ``niece, greedy, anything'' outputs ``eyg''. \\
+\\
+Q: ``niece, greedy, anything, retain'' \\
+A: ``niece, greedy, anything'' outputs ``eyg''. The last letter of ``retain'' is ``n''. Concatenating: ``eyg'', ``n'' leads to ``eygn''. So, ``niece, greedy, anything, retain'' outputs ``eygn''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture'' \\
+A: ``niece, greedy, anything, retain'' outputs ``eygn''. The last letter of ``moisture'' is ``e''. Concatenating: ``eygn'', ``e'' leads to ``eygne''. So, ``niece, greedy, anything, retain, moisture'' outputs ``eygne''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest'' \\
+A: ``niece, greedy, anything, retain, moisture'' outputs ``eygne''. The last letter of ``jest'' is ``t''. Concatenating: ``eygne'', ``t'' leads to ``eygnet''. So, ``niece, greedy, anything, retain, moisture, jest'' outputs ``eygnet''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest, adrian'' \\
+A: ``niece, greedy, anything, retain, moisture, jest'' outputs ``eygnet''. The last letter of ``adrian'' is ``n''. Concatenating: ``eygnet'', ``n'' leads to ``eygnetn''. So, ``niece, greedy, anything, retain, moisture, jest, adrian'' outputs ``eygnetn''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest, adrian, attic'' \\
+A: ``niece, greedy, anything, retain, moisture, jest, adrian'' outputs ``eygnetn''. The last letter of ``attic'' is ``c''. Concatenating: ``eygnetn'', ``c'' leads to ``eygnetnc''. So, ``niece, greedy, anything, retain, moisture, jest, adrian, attic'' outputs ``eygnetnc''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo'' \\
+A: ``niece, greedy, anything, retain, moisture, jest, adrian, attic'' outputs ``eygnetnc''. The last letter of ``hugo'' is ``o''. Concatenating: ``eygnetnc'', ``o'' leads to ``eygnetnco''. So, ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo'' outputs ``eygnetnco''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate'' \\
+A: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo'' outputs ``eygnetnco''. The last letter of ``accurate'' is ``e''. Concatenating: ``eygnetnco'', ``e'' leads to ``eygnetncoe''. So, ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate'' outputs ``eygnetncoe''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate, wet'' \\
+A: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate'' outputs ``eygnetncoe''. The last letter of ``wet'' is ``t''. Concatenating: ``eygnetncoe'', ``t'' leads to ``eygnetncoet''. So, ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate, wet'' outputs ``eygnetncoet''. \\
+\\
+Q: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate, wet, howard'' \\
+A: ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate, wet'' outputs ``eygnetncoet''. The last letter of ``howard'' is ``d''. Concatenating: ``eygnetncoet'', ``d'' leads to ``eygnetncoetd''. So, ``niece, greedy, anything, retain, moisture, jest, adrian, attic, hugo, accurate, wet, howard'' outputs ``eygnetncoetd''. \\
+}
+
+
+\subsubsection{Least-to-most prompting: Failure}
+\prompt{\noindent
+\textbf{``supper, procession, region, ruby''} \\
+\\
+\textbf{Golden:} \\
+``rnny'' \\
+\\
+\textbf{Solution:} \\
+Q: ``supper, procession'' \\
+A: The last letter of ``supper'' is ``r''. The last letter of ``procession'' is ``n''. Concatenating: ``r'', ``n'' leads to ``rn''. So, ``supper, procession'' outputs ``rn''. \\
+\\
+Q: ``supper, procession, region'' \\
+A: ``supper, procession'' outputs ``rn''. The last letter of ``region'' is ``n''. Concatenating: ``rn'', ``n'' leads to ``rnn''. So, ``supper, procession, region'' outputs ``rnn''. \\
+\\
+Q: ``supper, procession, region, ruby'' \\
+A: ``supper, procession, region'' outputs ``rnn''. The last letter of ``ruby'' is ``y''. Concatenating: ``rnn'', ``y'' leads to ``rnnn''. So, ``supper, procession, region, ruby'' outputs ``rnnn''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``release, appeared, endure, field, render, monk''} \\
+\\
+\textbf{Golden:} \\
+``ededrk'' \\
+\\
+\textbf{Solution:} \\
+Q: ``release, appeared'' \\
+A: The last letter of ``release'' is ``e''. The last letter of ``appeared'' is ``d''. Concatenating: ``e'', ``d'' leads to ``ed''. So, ``release, appeared'' outputs ``ed''. \\
+\\
+Q: ``release, appeared, endure'' \\
+A: ``release, appeared'' outputs ``ed''. The last letter of ``endure'' is ``e''. Concatenating: ``ed'', ``e'' leads to ``ede''. So, ``release, appeared, endure'' outputs ``ede''. \\
+\\
+Q: ``release, appeared, endure, field'' \\
+A: ``release, appeared, endure'' outputs ``ede''. The last letter of ``field'' is ``d''. Concatenating: ``ede'', ``d'' leads to ``eded''. So, ``release, appeared, endure, field'' outputs ``eded''. \\
+\\
+Q: ``release, appeared, endure, field, render'' \\
+A: ``release, appeared, endure, field'' outputs ``eded''. The last letter of ``render'' is ``r''. Concatenating: ``eded'', ``r'' leads to ``ededer''. So, ``release, appeared, endure, field, render'' outputs ``ededer''. \\
+\\
+Q: ``release, appeared, endure, field, render, monk'' \\
+A: ``release, appeared, endure, field, render'' outputs ``ededer''. The last letter of ``monk'' is ``k''. Concatenating: ``ededer'', ``k'' leads to ``edederk''. So, ``release, appeared, endure, field, render, monk'' outputs ``edederk''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``mentally, uncomfortable, amount, straight, whatsoever, deference, channel, integrity''} \\
+\\
+\textbf{Golden:} \\
+``yettrely'' \\
+\\
+\textbf{Solution:} \\
+Q: ``mentally, uncomfortable'' \\
+A: The last letter of ``mentally'' is ``y''. The last letter of ``uncomfortable'' is ``e''. Concatenating: ``y'', ``e'' leads to ``ye''. So, ``mentally, uncomfortable'' outputs ``ye''. \\
+\\
+Q: ``mentally, uncomfortable, amount'' \\
+A: ``mentally, uncomfortable'' outputs ``ye''. The last letter of ``amount'' is ``t''. Concatenating: ``ye'', ``t'' leads to ``yet''. So, ``mentally, uncomfortable, amount'' outputs ``yet''. \\
+\\
+Q: ``mentally, uncomfortable, amount, straight'' \\
+A: ``mentally, uncomfortable, amount'' outputs ``yet''. The last letter of ``straight'' is ``t''. Concatenating: ``yet'', ``t'' leads to ``yett''. So, ``mentally, uncomfortable, amount, straight'' outputs ``yett''. \\
+\\
+Q: ``mentally, uncomfortable, amount, straight, whatsoever'' \\
+A: ``mentally, uncomfortable, amount, straight'' outputs ``yett''. The last letter of ``whatsoever'' is ``r''. Concatenating: ``yett'', ``r'' leads to ``yettar''. So, ``mentally, uncomfortable, amount, straight, whatsoever'' outputs ``yettar''. \\
+\\
+Q: ``mentally, uncomfortable, amount, straight, whatsoever, deference'' \\
+A: ``mentally, uncomfortable, amount, straight, whatsoever'' outputs ``yettar''. The last letter of ``deference'' is ``e''. Concatenating: ``yettar'', ``e'' leads to ``yettare''. So, ``mentally, uncomfortable, amount, straight, whatsoever, deference'' outputs ``yettare''. \\
+\\
+Q: ``mentally, uncomfortable, amount, straight, whatsoever, deference, channel'' \\
+A: ``mentally, uncomfortable, amount, straight, whatsoever, deference'' outputs ``yettare''. The last letter of ``channel'' is ``l''. Concatenating: ``yettare'', ``l'' leads to ``yettarel''. So, ``mentally, uncomfortable, amount, straight, whatsoever, deference, channel'' outputs ``yettarel''. \\
+\\
+Q: ``mentally, uncomfortable, amount, straight, whatsoever, deference, channel, integrity'' \\
+A: ``mentally, uncomfortable, amount, straight, whatsoever, deference, channel'' outputs ``yettarel''. The last letter of ``integrity'' is ``y''. Concatenating: ``yettarel'', ``y'' leads to ``yettarely''. So, ``mentally, uncomfortable, amount, straight, whatsoever, deference, channel, integrity'' outputs ``yettarely''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``complexion, criminal, assume, seven, driver, hero, horse, purpose, zeus, joint''} \\
+\\
+\textbf{Golden:} \\
+``nlenroeest'' \\
+\\
+\textbf{Solution:} \\
+Q: ``complexion, criminal'' \\
+A: The last letter of ``complexion'' is ``n''. The last letter of ``criminal'' is ``l''. Concatenating: ``n'', ``l'' leads to ``nl''. So, ``complexion, criminal'' outputs ``nl''. \\
+\\
+Q: ``complexion, criminal, assume'' \\
+A: ``complexion, criminal'' outputs ``nl''. The last letter of ``assume'' is ``e''. Concatenating: ``nl'', ``e'' leads to ``nle''. So, ``complexion, criminal, assume'' outputs ``nle''. \\
+\\
+Q: ``complexion, criminal, assume, seven'' \\
+A: ``complexion, criminal, assume'' outputs ``nle''. The last letter of ``seven'' is ``n''. Concatenating: ``nle'', ``n'' leads to ``nlen''. So, ``complexion, criminal, assume, seven'' outputs ``nlen''. \\
+\\
+Q: ``complexion, criminal, assume, seven, driver'' \\
+A: ``complexion, criminal, assume, seven'' outputs ``nlen''. The last letter of ``driver'' is ``r''. Concatenating: ``nlen'', ``r'' leads to ``nlenr''. So, ``complexion, criminal, assume, seven, driver'' outputs ``nlenr''. \\
+\\
+Q: ``complexion, criminal, assume, seven, driver, hero'' \\
+A: ``complexion, criminal, assume, seven, driver'' outputs ``nlenr''. The last letter of ``hero'' is ``o''. Concatenating: ``nlenr'', ``o'' leads to ``nlenro''. So, ``complexion, criminal, assume, seven, driver, hero'' outputs ``nlenro''. \\
+\\
+Q: ``complexion, criminal, assume, seven, driver, hero, horse'' \\
+A: ``complexion, criminal, assume, seven, driver, hero'' outputs ``nlenro''. The last letter of ``horse'' is ``e''. Concatenating: ``nlenro'', ``e'' leads to ``nlenroe''. So, ``complexion, criminal, assume, seven, driver, hero, horse'' outputs ``nlenroe''. \\
+\\
+Q: ``complexion, criminal, assume, seven, driver, hero, horse, purpose'' \\
+A: ``complexion, criminal, assume, seven, driver, hero, horse'' outputs ``nlenroe''. The last letter of ``purpose'' is ``e''. Concatenating: ``nlenroe'', ``e'' leads to ``nlenroee''. So, ``complexion, criminal, assume, seven, driver, hero, horse, purpose'' outputs ``nlenroee''. \\
+\\
+Q: ``complexion, criminal, assume, seven, driver, hero, horse, purpose, zeus'' \\
+A: ``complexion, criminal, assume, seven, driver, hero, horse, purpose'' outputs ``nlenroee''. The last letter of ``zeus'' is ``s''. Concatenating: ``nlenroee'', ``s'' leads to ``nlenroees''. So, ``complexion, criminal, assume, seven, driver, hero, horse, purpose, zeus'' outputs ``nlenroees''. \\
+\\
+Q: ``complexion, criminal, assume, seven, driver, hero, horse, purpose, zeus, joint'' \\
+A: ``complexion, criminal, assume, seven, driver, hero, horse, purpose, zeus'' outputs ``nlenroees''. The last letter of ``joint'' is ``t''. Concatenating: ``nlenroees'', ``t'' leads to ``nlenroeast''. So, ``complexion, criminal, assume, seven, driver, hero, horse, purpose, zeus, joint'' outputs ``nlenroeast''. \\
+\\
+\hrule \bigskip
+}
+
+\prompt{\noindent
+\textbf{``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies, dost, treasury''} \\
+\\
+\textbf{Golden:} \\
+``darlneyddsty'' \\
+\\
+\textbf{Solution:} \\
+Q: ``provoked, columbia'' \\
+A: The last letter of ``provoked'' is ``d''. The last letter of ``columbia'' is ``a''. Concatenating: ``d'', ``a'' leads to ``da''. So, ``provoked, columbia'' outputs ``da''. \\
+\\
+Q: ``provoked, columbia, sir'' \\
+A: ``provoked, columbia'' outputs ``da''. The last letter of ``sir'' is ``r''. Concatenating: ``da'', ``r'' leads to ``dar''. So, ``provoked, columbia, sir'' outputs ``dar''. \\
+\\
+Q: ``provoked, columbia, sir, principal'' \\
+A: ``provoked, columbia, sir'' outputs ``dar''. The last letter of ``principal'' is ``l''. Concatenating: ``dar'', ``l'' leads to ``darl''. So, ``provoked, columbia, sir, principal'' outputs ``darl''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven'' \\
+A: ``provoked, columbia, sir, principal'' outputs ``darl''. The last letter of ``seven'' is ``n''. Concatenating: ``darl'', ``n'' leads to ``darln''. So, ``provoked, columbia, sir, principal, seven'' outputs ``darln''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme'' \\
+A: ``provoked, columbia, sir, principal, seven'' outputs ``darln''. The last letter of ``extreme'' is ``e''. Concatenating: ``darln'', ``e'' leads to ``darle''. So, ``provoked, columbia, sir, principal, seven, extreme'' outputs ``darle''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme, timothy'' \\
+A: ``provoked, columbia, sir, principal, seven, extreme'' outputs ``darle''. The last letter of ``timothy'' is ``y''. Concatenating: ``darle'', ``y'' leads to ``darley''. So, ``provoked, columbia, sir, principal, seven, extreme, timothy'' outputs ``darley''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted'' \\
+A: ``provoked, columbia, sir, principal, seven, extreme, timothy'' outputs ``darley''. The last letter of ``submitted'' is ``d''. Concatenating: ``darley'', ``d'' leads to ``darleyd''. So, ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted'' outputs ``darleyd''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered'' \\
+A: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted'' outputs ``darleyd''. The last letter of ``considered'' is ``d''. Concatenating: ``darleyd'', ``d'' leads to ``darleydd''. So, ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered'' outputs ``darleydd''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies'' \\
+A: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered'' outputs ``darleydd''. The last letter of ``spies'' is ``s''. Concatenating: ``darleydd'', ``s'' leads to ``darleydds''. So, ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies'' outputs ``darleydds''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies, dost'' \\
+A: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies'' outputs ``darleydds''. The last letter of ``dost'' is ``t''. Concatenating: ``darleydds'', ``t'' leads to ``darleyddst''. So, ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies, dost'' outputs ``darleyddst''. \\
+\\
+Q: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies, dost, treasury'' \\
+A: ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies, dost'' outputs ``darleyddst''. The last letter of ``treasury'' is ``y''. Concatenating: ``darleyddst'', ``y'' leads to ``darleyddsty''. So, ``provoked, columbia, sir, principal, seven, extreme, timothy, submitted, considered, spies, dost, treasury'' outputs ``darleyddsty''. \\
+}

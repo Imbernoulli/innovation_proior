@@ -1,0 +1,22 @@
+\begin{table}
+\setlength{\tabcolsep}{2.5pt}
+\small
+\centering
+\caption{SmoothQuant's performance on the OPT-IML model.
+}
+\label{tab:opt-iml}
+\begin{tabular}{lcc}
+\toprule
+OPT-IML-30B        & LAMBADA $\uparrow$ & WikiText $\downarrow$  \\
+\midrule
+FP16               & 69.12\%                     & 14.26                           \\
+\midrule
+W8A8               & 4.21\%                      & 576.53                          \\
+ZeroQuant          & 5.12\%                      & 455.12                          \\
+LLM.int8()         & 69.14\%                     & 14.27                           \\
+Outlier Suppression & 0.00\%                      & 9485.62                         \\
+\midrule
+SmoothQuant-O3     &\textbf{ 69.77\%}                     & \textbf{14.37}\\
+\bottomrule
+\end{tabular}
+\end{table}

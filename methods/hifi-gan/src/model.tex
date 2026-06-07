@@ -1,0 +1,94 @@
+\section{HiFi-GAN}
+\subsection{Overview}
+HiFi-GAN consists of one generator and two discriminators: multi-scale and multi-period discriminators. The generator and discriminators are trained adversarially, along with two additional losses for improving training stability and model performance.
+
+\subsection{Generator}
+The generator is a fully convolutional neural network. It uses a mel-spectrogram as input and upsamples it through transposed convolutions until the length of the output sequence matches the temporal resolution of raw waveforms. Every transposed convolution is followed by a multi-receptive field fusion (MRF) module, which we describe in the next paragraph. Figure~\ref{arch_gen_overall} shows the architecture of the generator. As in previous work~\citep{mathieu2015deep, isola2017image, Kumar2018melgan}, noise is not given to the generator as an additional input.
+
+\paragraph{Multi-Receptive Field Fusion}
+We design the multi-receptive field fusion (MRF) module for our generator, which observes patterns of various lengths in parallel. Specifically, MRF module returns the sum of outputs from multiple residual blocks. Different kernel sizes and dilation rates are selected for each residual block to form diverse receptive field patterns. The architectures of MRF module and a residual block are shown in Figure~\ref{arch_gen_overall}. We left some adjustable parameters in the generator; the hidden dimension $h_u$, kernel sizes $k_u$ of the transposed convolutions, kernel sizes $k_r$, and dilation rates $D_r$ of MRF modules can be regulated to match one's own requirement in a trade-off between synthesis efficiency and sample quality.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.99\textwidth]{figs/arch_gen_overall.pdf}
+    \caption{The generator upsamples mel-spectrograms up to $|k_{u}|$ times to match the temporal resolution of raw waveforms. A MRF module adds features from $|k_{r}|$ residual blocks of different kernel sizes and dilation rates. Lastly, the $n$-th residual block with kernel size $k_{r}[n]$ and dilation rates $D_{r}[n]$ in a MRF module is depicted.}
+    \label{arch_gen_overall}
+\end{figure}
+ 
+\subsection{Discriminator}
+
+Identifying long-term dependencies is the key for modeling realistic speech audio. For example, a phoneme duration can be longer than 100 ms, resulting in high correlation between more than 2,200 adjacent samples in the raw waveform. This problem has been addressed in the previous work~\citep{donahue2018adversarial} by increasing receptive fields of the generator and discriminator. We focus on another crucial problem that has yet been resolved; as speech audio consists of sinusoidal signals with various periods, the diverse periodic patterns underlying in the audio data need to be identified.
+
+To this end, we propose the multi-period discriminator (MPD) consisting of several sub-discriminators each handling a portion of periodic signals of input audio. Additionally, to capture consecutive patterns and long-term dependencies, we use the multi-scale discriminator (MSD) proposed in MelGAN \citep{Kumar2018melgan}, which consecutively evaluates audio samples at different levels.
+We conducted simple experiments to show the ability of MPD and MSD to capture periodic patterns, and the results can be found in Appendix \hyperref[app-b1]{B}.
+
+\paragraph{Multi-Period Discriminator} MPD is a mixture of sub-discriminators, each of which only accepts equally spaced samples of an input audio; the space is given as period $p$. The sub-discriminators are designed to capture different implicit structures from each other by looking at different parts of an input audio. We set the periods to [2, 3, 5, 7, 11] to avoid overlaps as much as possible.
+As shown in Figure~\ref{arch_mpd_overall}, we first reshape 1D raw audio of length $T$ into 2D data of height $T/p$ and width $p$ and then apply 2D convolutions to the reshaped data. In every convolutional layer of MPD, we restrict the kernel size in the width axis to be 1 to process the periodic samples independently. Each sub-discriminator is a stack of strided convolutional layers with leaky rectified linear unit (ReLU) activation. Subsequently, weight normalization~\citep{salimans2016weight} is applied to MPD.
+By reshaping the input audio into 2D data instead of sampling periodic signals of audio, gradients from MPD can be delivered to all time steps of the input audio.
+
+\paragraph{Multi-Scale Discriminator} Because each sub-discriminator in MPD only accepts disjoint samples, we add MSD to consecutively evaluate the audio sequence. The architecture of MSD is drawn from that of MelGAN~\citep{Kumar2018melgan}. MSD is a mixture of three sub-discriminators operating on different input scales: raw audio, $\times$2 average-pooled audio, and $\times$4 average-pooled audio, as shown in Figure~\ref{arch_msd_overall}. Each of the sub-discriminators in MSD is a stack of strided and grouped convolutional layers with leaky ReLU activation. The discriminator size is increased by reducing stride and adding more layers. Weight normalization is applied except for the first sub-discriminator, which operates on raw audio. Instead, spectral normalization~\citep{miyato2018spectral} is applied and stabilizes training as it reported.
+
+Note that MPD operates on disjoint samples of raw waveforms, whereas MSD operates on smoothed waveforms.
+
+For previous work using multi-discriminator architecture such as MPD and MSD, \citet{binkowski2019high}'s work can also be referred. The discriminator architecture proposed in the work has resemblance to MPD and MSD in that it is a mixture of discriminators, but MPD and MSD are Markovian window-based fully unconditional discriminator, whereas it averages the output and has conditional discriminators.
+Also, the resemblance between MPD and RWD~\citep{binkowski2019high} can be considered in the part of  reshaping input audio, but MPD uses periods set to prime numbers to discriminate data of as many periods as possible, whereas RWD uses reshape factors of overlapped periods and does not handle each channel of the reshaped data separately, 
+which are different from what MPD is aimed for. A variation of RWD can perform a similar operation to MPD, but it is also not the same as MPD in terms of parameter sharing and strided convolution to adjacent signals. More details of the architectural difference can be found in Appendix \hyperref[app-c1]{C}.
+
+\begin{figure}[t]
+    \centering
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[height=0.55\textwidth]{figs/arch_msd_overall.pdf}
+        \caption{}
+        \label{arch_msd_overall}
+    \end{subfigure}
+    \begin{subfigure}[b]{0.49\textwidth}
+        \centering
+        \includegraphics[height=0.7\textwidth]{figs/arch_mpd_overall.pdf}
+        \caption{}
+        \label{arch_mpd_overall}
+    \end{subfigure}
+    \caption{(a) The second sub-discriminator of MSD. (b) The second sub-discriminator of MPD with period $3$.}
+    \label{arch_disc_overall}
+\end{figure}
+
+\subsection{Training Loss Terms}
+\label{training_loss_terms}
+\paragraph{GAN Loss} For brevity, we describe our discriminators, MSD and MPD, as one discriminator throughout Section~\ref{training_loss_terms}. For the generator and discriminator, the training objectives follow LSGAN~\citep{mao2017least}, which replace the binary cross-entropy terms of the original GAN objectives~\citep{goodfellow2014generative} with least squares loss functions for non-vanishing gradient flows. The discriminator is trained to classify ground truth samples to 1, and the samples synthesized from the generator to 0. The generator is trained to fake the discriminator by updating the sample quality to be classified to a value almost equal to 1. GAN losses for the generator $G$ and the discriminator $D$ are defined as
+\begin{align}
+    \mathcal{L}_{Adv}(D; G) &= \mathbb{E}_{(x, s)} \Bigg[(D(x)-1)^2 + (D(G(s)))^2\Bigg]\\
+    \mathcal{L}_{Adv}(G; D) &= \mathbb{E}_{s} \Bigg[(D(G(s))-1)^2\Bigg]
+\end{align}
+, where $x$ denotes the ground truth audio and $s$ denotes the input condition, the mel-spectrogram of the ground truth audio.
+
+\paragraph{Mel-Spectrogram Loss} 
+In addition to the GAN objective, we add a mel-spectrogram loss to improve the training efficiency of the generator and the fidelity of the generated audio.
+Referring to previous work~\citep{isola2017image}, applying a reconstruction loss to GAN model helps to generate realistic results, and in \citet{yamamoto2020parallel}'s work, time-frequency distribution is effectively captured by jointly optimizing multi-resolution spectrogram and adversarial loss functions. 
+We used mel-spectrogram loss according to the input conditions, 
+which can also be expected to have the effect of focusing more on improving the perceptual quality due to the characteristics of the human auditory system.
+The mel-spectrogram loss is the L1 distance between the mel-spectrogram of a waveform synthesized by the generator and that of a ground truth waveform. It is defined as
+\begin{align}
+    \mathcal{L}_{Mel}(G) &= \mathbb{E}_{(x, s)} \Bigg[||\phi(x)-\phi(G(s))||_{1}\Bigg]
+\end{align}
+, where $\phi$ is the function that transforms a waveform into the corresponding mel-spectrogram. The mel-spectrogram loss helps the generator to synthesize a realistic waveform corresponding to an input condition, and also stabilizes the adversarial training process from the early stages.
+
+\paragraph{Feature Matching Loss} The feature matching loss is a learned similarity metric measured by the difference in features of the discriminator between a ground truth sample and a generated sample~\citep{larsen2016autoencoding, Kumar2018melgan}. As it was successfully adopted to speech synthesis~\citep{Kumar2018melgan}, we use it as an additional loss to train the generator. Every intermediate feature of the discriminator is extracted, and the L1 distance between a ground truth sample and a conditionally generated sample in each feature space is calculated. The feature matching loss is defined as
+\begin{align}
+    \mathcal{L}_{FM}(G; D) &= \mathbb{E}_{(x, s)} \Bigg[\sum_{i=1}^{T}\frac{1}{N_{i}}||D^i(x)-D^i(G(s))||_{1}\Bigg]
+\end{align}
+, where $T$ denotes the number of layers in the discriminator; $D^i$ and $N_i$ denote the features and the number of features in the $i$-th layer of the discriminator, respectively.
+
+\paragraph{Final Loss} Our final objectives for the generator and discriminator are as
+\begin{align}
+    \mathcal{L}_{G} &= \mathcal{L}_{Adv}(G; D) + \lambda_{fm}\mathcal{L}_{FM}(G; D) + \lambda_{mel}\mathcal{L}_{Mel}(G)
+    \label{final_loss_gen} \\
+    \mathcal{L}_{D} &= \mathcal{L}_{Adv}(D; G)
+    \label{final_loss_disc}
+\end{align}
+, where we set $\lambda_{fm}=2$ and $\lambda_{mel}=45$.
+Because our discriminator is a set of sub-discriminators of MPD and MSD, Equations~\ref{final_loss_gen} and~\ref{final_loss_disc} can be converted with respect to the sub-discriminators as
+\begin{align}
+    \mathcal{L}_{G} &= \sum_{k=1}^{K}\Bigg[\mathcal{L}_{Adv}(G; D_k) + \lambda_{fm}\mathcal{L}_{FM}(G; D_k)\Bigg] + \lambda_{mel}\mathcal{L}_{Mel}(G)\\
+    \mathcal{L}_{D} &= \sum_{k=1}^{K}\mathcal{L}_{Adv}(D_k; G)
+\end{align}
+, where $D_k$ denotes the $k$-th sub-discriminator in MPD and MSD.

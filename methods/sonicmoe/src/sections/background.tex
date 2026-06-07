@@ -1,0 +1,153 @@
+
+We first provide an overview of the MoE architecture and a standard MoE kernel employing grouped GEMM in Section~\ref{sec:background:grouped_gemm}. In Section~\ref{sec:background:arithmetic}, we discuss how granularity and MoE sparsity will affect MoE's training efficiency. We then examine the impact of the MoE routing method on the MoE model quality and training efficiency in Section~\ref{sec:background:routing-methods}.
+
+
+
+\subsection{MoE using Grouped GEMM}\label{sec:background:grouped_gemm}
+
+Modern GPUs support Tensor Cores; specialized hardware units with high matrix multiplication throughput \citep{nvidia2022_h100}. A GEMM (general matrix multiply)~\citep{Blas} kernel often has 3 stages: prologue (start input loading), mainloop (keep loading inputs and compute GEMM) and epilogue (miscellaneous IO/math operations on GEMM outputs). The kernel tiles computations (dividing large matrices into small tiles), and optionally pads dimensions so computation aligns with hardware-permissible tile sizes. In this paper, we follow standard GEMM notations in most BLAS~\citep{Blas} libraries: we have $A \in \R^{\mathbf{M}\times \mathbf{K}}$, $B \in \R^{\mathbf{K}\times \mathbf{N}}$, $C \in \R^{\mathbf{M}\times \mathbf{N}}$ for $C = A B$ with problem shape ($\mathbf{M},\mathbf{N},\mathbf{K}$). This notation is adopted by CUTLASS~\citep{nvidia_cutlass} which implements efficient GEMM on CUDA. 
+
+
+\begin{figure}[!ht]
+  \centering
+  % ------- LEFT: algorithm ----------
+  \begin{minipage}[t]{0.46\textwidth}
+    \vspace{-2pt} % top-align this minipage
+    \input{algorithm/swiglu_computation}
+  \end{minipage}
+  \hfill
+  \begin{minipage}[t]{0.52\textwidth}
+    \vspace{0pt} % top-align this minipage
+    \centering
+    \includegraphics[width=0.75\linewidth]{figures/moe_inputs.pdf}
+    \captionof{figure}{\small MoE computation often requires a Grouped GEMM. Each expert gathers inputs from different positions on an input tensor (top) or reads a contiguous chunk on a grouped input array (bottom). This figure is adapted from \citet{tan2024scattered}'s Figure 2. \label{fig:input-format}}
+  \end{minipage}
+\end{figure}
+
+
+% \footnote{A warp is the basic execution unit on an NVIDIA GPU. A warpgroup in Hopper GEMM consists of 4 contiguous warps (128 threads). Hopper GPUs provide a high-throughput WGMMA instruction for MMA which is issued collectively by a warpgroup.}
+
+On both NVIDIA Hopper and Blackwell GPUs, GEMM is performed asynchronously with a producer-consumer paradigm \citep{shah2024flashattention3fastaccurateattention} where producers are dedicated to loading a tile of data from High Bandwidth Memory (HBM), or global memory (GMEM) logically, to shared memory (SMEM) while consumer warpgroups are responsible for GEMM computation~\citep{shah2024flashattention3fastaccurateattention}. In prologue and mainloop, producer warpgroups fetch a tile of data and cache it to a dedicated pipeline while the consumer warpgroups read from the cached tile in this pipeline, perform tiled matrix multiply (MMA) and accumulate over the $\mathbf{K}$ dimension of GEMM. After the mainloop, we enter the epilogue stage where the consumer warpgroups apply post-processing (activation function and write results back to HBM) on the final MMA results.
+
+An MoE block is typically composed of a token router and multiple smaller and often equal-sized subnetworks, called ``experts". The router is responsible for dispatching tokens to the experts which are subsequently used by the specific expert for computation. The outputs from all experts in the layer are then aggregated and passed onto the next layer. MoE computation\footnote{\label{footnote:moe_main_computation}We refer to the computation that decides the activated expert for each token and relevant routing metadata as \textit{\textbf{MoE routing}}, and how each expert processes the routed tokens and expert aggregation as \textit{\textbf{MoE computation}}. Algorithm~\ref{alg:our-forward-moe},~\ref{alg:our-down-bwd-moe}, and~\ref{alg:up-bwd-moe} are \Algname's MoE computation components that are compatible with arbitrary routing algorithms. } can be performed using Grouped GEMM (a list of GEMMs with possibly different $\{\mathbf{M}, \mathbf{N}, \mathbf{K}\}$ dimensions). Algorithm~\ref{alg:moe-swiglu-grouped-gemm} illustrates running MoE forward with Grouped GEMM. 
+
+As shown in Algorithm~\ref{alg:moe-swiglu-grouped-gemm}, during the forward pass (and backward activation gradient computation), we have a variable number of tokens routed to every expert. A Grouped GEMM operation with fixed $(\mathbf{N},\mathbf{K})$ dim (as the expert weight matrix) but variable $\mathbf{M}$ (token dim) is then performed. We refer to this Grouped GEMM as ``varlen-$\mathbf{M}$ Grouped GEMM''. During the backward weight gradient computation, the embedding dimension ($\mathbf{M}$ for backward) and intermediate hidden size ($\mathbf{N}$ for backward) are constant and instead, we reduce over the token dimension ($\mathbf{K}$), which we refer to as ``varlen-$\mathbf{K}$ Grouped GEMM''. For each Grouped GEMM, we often have inputs gathered from different positions or contiguously-packed, as illustrated in Figure~\ref{fig:input-format}. For example in Algorithm~\ref{alg:moe-swiglu-grouped-gemm}, the inputs to up-proj are gathered while the inputs to down-proj are already contiguously-packed. 
+
+% \wentao{Yongye: might be helpful to describe how to do GEMM in Hopper and Blackwell?}
+
+% and it naturally fits with the forward and backward of a MoE block as during the forawa
+
+% In the MoE setting, we typically have different $\mathbf{M}_i$, which corresponds to different number of tokens for each expert but same $\mathbf{K}_i$ and $\mathbf{N}_i$ during the forward computation. During the backward computation, the MoE computation needs variable $\mathbf{K}_i$ for weight gradient computation.
+
+
+
+% \begin{wrapfigure}{r}{0.3\textwidth}
+% \begin{minipage}{0.3\textwidth}
+%     \vspace{-5em}
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/io-costs.pdf}
+%     \caption{\small IO cost of MoE's forward pass for one layer w.r.t. expert granularity across MoE configurations under iso-FLOPs training from 1.4B to 120B (configurations in Table~\ref{tab:config_arithmetic_intensity}). We keep MoE activation ratio $\rho=K/E$ and the number of parameters of each MoE layer $3dnE$ constant. When we scale up expert granularity $d/n$, we scale down expert intermediate size $n$ while keeping both $nE$ and $nK$ constant. }
+%     \label{fig:arithmetic-intensity}
+%     \vspace{-1em}
+% \end{minipage}
+% \end{wrapfigure}
+
+
+
+
+% Algorithm~\ref{alg:moe-swiglu} presents the MoE computation algorithm with SwiGLU \citep{shazeer2020glu} as the expert network, but this is more for an illustration as Algorithm~\ref{alg:moe-swiglu} implies more memory-bounded matrix-vector multiply (GEMV) instead of hardware-friendly matrix-matrix multiply (GEMM) as in Algorithm~\ref{alg:moe-swiglu-grouped-gemm}.
+
+
+
+% \wentao{Is this statement correct?} \ion{So is this mainly about using the capabilities of the new GPUs? If yes, we shold be more explicit.} 
+
+
+% Previous approaches also don't fuse the pointwise activation function with the MoE GEMM computation leading to unnecessary read and write operations for the activation computation which is trivially fuseable. ScatterMoE \citep{tan2024scattered} also doesn't fuse the group operation in the backward pass with the GEMM operations leading to an extra grouping kernel launch. This not only increases the intermediate memory usage during the backward pass but also adds a significant IO overhead.
+
+
+
+\subsection{MoE computation}\label{sec:background:arithmetic}
+
+
+%As MoEs are mostly composed of Grouped GEMM, we can measure the IO cost and FLOPs for Grouped GEMM to understand MoE's computational characteristics.
+Arithmetic intensity, defined as the ratio of FLOPs over the number of transferred bytes (IO), is a metric to quantify whether a kernel is memory-bound (kernel runtime dominated by memory IO cost) or compute-bound (kernel runtime dominated by compute throughput).% A compute-bound kernel has arithmetic intensity greater than the ratio of peak hardware TFLOPS over peak HBM bandwidth.  
+
+The standard MoE computation for an expert $e$ with SwiGLU activation can be broken down into the following components:
+
+\vspace{-3em}
+\begin{align}
+    H_e = \text{up-projection}(X_e) = X_e W_{1,e}:& \mathbb{R}^{T_e \times d} \to \mathbb{R}^{T_e \times 2n}\\
+    A_e = \text{SwiGLU}(H_e):& \mathbb{R}^{T_e \times 2n} \to \mathbb{R}^{T_e \times n}\\
+    Y_e = \text{down-projection}(A_e) = A_e W_{2,e}:& \mathbb{R}^{T_e \times n} \to \mathbb{R}^{T_e \times d}
+\end{align}
+\vspace{-2em}
+
+where $X_e \in \R^{T_e\times d}$ denotes the input received by expert $e$.
+
+% If we denote $T_e$ as the number of tokens routed to expert $e$ and use SwiGLU for the MoE layers, we have an up-projection (Algorithm~\ref{alg:moe-swiglu-grouped-gemm}) that converts $X_e \in \R^{T_e\times d}$ to $H_e = X_e \W{1,e} \in \R^{T_e\times 2n}$, and we compute SwiGLU output $A_e = \mathrm{SwiGLU}(H_e) \in \R^{T_e \times n}$. The down-projection of expert $e$ converts $Y_e = A_e \W{2,e} \in \R^{T_e\times d}$.
+
+
+
+Here, the up-projection uses $2 T_e \cdot 2n \cdot d$ FLOPs and $2 T_e d + 2 \cdot 2n \cdot d + 2 T_e n$ HBM memory transfer bytes (we ignore the writes for $H_e$ here). Similarly, down-projection uses $2 T_e n d$ FLOPs with $2 T_e n + 2 n d + 2 T_e d$  bytes. Defining $\rho = \frac{K}{E}$ as the MoE activation ratio, $G = \frac{d}{n}$ as the granularity and uniform routing i.e., $T_e = T\rho$, the arithmetic intensity (ignoring the writes for $H_e$) for the forward pass of an expert is
+% \begin{align}    
+%     \dfrac{6T_e \cdot n \cdot d}{4T_e \cdot n + 6 n \cdot d + 4 T_e \cdot d} &\approx \dfrac{3 T_e n}{2 T_e + 3 n} \quad \text{when } n \ll d
+%     \\
+%     \dfrac{6}{\frac{4}{d} + \frac{6}{T_e} + \frac{4}{n}} &\approx \dfrac{3 T_e n}{2 T_e + 3 n} \quad \text{when } n \ll d
+%     \\
+%     \dfrac{6}{(\frac{4}{d} + \frac{4}{n}) + \frac{6}{T_e}} &\approx \dfrac{3 T_e n}{2 T_e + 3 n} \quad \text{when } n \ll d
+% \end{align}
+\vspace{-.5em}
+\begin{align}    \label{eqn:arithmetic_intensity}
+    \dfrac{2 T_e \cdot 2n \cdot d +  2 T_e n d}{4 T_e n + 6 n d + 4 T_e d} = \dfrac{3}{\frac{2}{d} + \frac{2}{n} + \frac{3}{T_e}} = \frac{3}{\frac{2 + 2G}{d} + \frac{3}{T\rho}}
+\end{align}
+\vspace{-1.5em}
+
+% We also provide an upper bound of arithmetic intensity\footnote{Here we assume BF16 data types. For the forward, we only consider the minimum byte transfer so we assume the up-projection only output $Y_2$ but not $Z$. For the backward, we ignore the additional bytes to load \& store for $\mathrm{dSwiGLU}$ and reduction for $dX$ here because they are more implementation-dependent.} of MoE backward pass by focusing on bytes and FLOPs necessary for the 4 GEMMs:
+% % Given a linear layer $Y = X W$, and an output activation gradient $G$, the activation gradient $dX = GW^\top$ while the weight gradient is $dW = X^\top G$. The total bytes for computing $dX$ is $\mathrm{size}(G)+\mathrm{size}(W)+\mathrm{size}(dX)$, and similarly the total bytes for computing $dW$ are also $\mathrm{size}(X)+\mathrm{size}(W) + \mathrm{size}(G)$. The FLOPs needed for both computing $dX$ and $dW$ are also the same. Therefore, we can represent the bytes \& FLOPs of MoE backward as follows:
+
+% \vspace{-1.5em}
+% \begin{align}    \label{eqn:bwd-arithmetic-inten}
+%     \dfrac{2 (2 T_e n d + 4 T_e n d)}{2 (2 T_e n + 2 n d + 2 T_e d) + 2 (4 T_e n + 2 n d + 4 T_e d)} = \frac{3}{\left(\frac{3}{d} + \frac{2}{n}\right) + \frac{3}{T_e}}
+% \end{align}
+% \vspace{-1em}
+
+For a specific model size (constant $d$), it can be seen that increasing granularity (increasing $G$) or increasing sparsity (decreasing $\rho$) leads to a decreasing arithmetic intensity. This is caused by the linear scaling of IO cost w.r.t. expert granularity. Therefore, for the case of fine-grained MoEs (high $G$)\footnote{Here we refer to ``fine-grained MoE'' as MoE with small intermediate size i.e., $n$ is smaller than $d$. We assume the setting of both iso-FLOPs and iso-params.}, it becomes increasingly important to address the increased IO cost by maximally reducing IO access and hiding IO latency. We examine a memory-efficient MoE kernel design in Section~\ref{sec:moe:memory-efficiency} and discuss techniques to reduce IO access and latency in Section~\ref{sec:moe:hide-io}.
+%In practice, embedding dimension $d$ is often pre-determined by the base model before we employ the MoE layer, and the arithmetic intensity of MoE is dependent on intermediate size $n$, equivalently as granularity, and $T_e$, where MoE sparsity $\textcolor{red}{\rho} = K/E$ plays a major role.
+
+% Figure~\ref{fig:arithmetic-intensity} suggest that when $n < 256$, we enter the memory-bound regime where the observed TFLOPS decrease nearly linearly with $n$ even under the most ideal case (cuBLAS dense BMM) due to the linear scaling between IO costs and granularity $\left( G = \frac{d}{n} \right)$.
+
+
+
+
+
+
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/io-costs.pdf}
+%     \caption{\small IO costs of MoE's forward pass w.r.t. expert granularity across MoE configurations from 1.4B to 120B (configurations in Table~\ref{tab:config_arithmetic_intensity}). The arithmetic intensity and IO cost \mayank{should be cost not costs in the title of figure} are computed via Equation~\ref{eqn:arithmetic_intensity}. \mayank{what are we scaling? what is kept constant, very hard to understand. What value does it add to have so many models in this figure?} \wentao{we can keep it for now. This image is effectively visualizing Equation 1.}}
+%     \label{fig:arithmetic-intensity}
+% \end{figure}
+
+\paragraph{Existing MoE kernel designs.} There are multiple MoE implementations available: ScatterMoE \citep{tan2024scattered}, MoMoE \citep{costin2025momoe}, MegaBlocks \citep{gale2023megablocks}, and Megatron \citep{shoeybi2019megatron}. However, they do not specialize for the setting of fine-grained MoEs that have linearly-increasing IO cost w.r.t. increasing expert granularity. In contrast, our kernel design, \Algname, minimizes the impact of IO cost on the training throughput. \textbf{In Figure~\ref{fig:speed} and~\ref{fig:B300-speed}, we show that when expert granularity $G$ increases, \Algname~demonstrates a greater relative speedup over existing MoE kernel designs due to the IO-aware optimizations.} We elaborate on the technical differences between \Algname~and prior MoE kernels in Appendix~\ref{sec:appendix:kernel_comparison} and include an overview in Table~\ref{tab:kernel-comparison}.
+
+
+\subsection{MoE routing methods}\label{sec:background:routing-methods}
+
+In MoE, routing determines which experts to activate for each token. Token choice (TC) routing where each token independently selects the activated expert is often the default routing method for MoE models~\citep{shazeer2017outrageouslylargeneuralnetworks}. We often have top-$K$ TC routing where the routing decision for token $t$ is $\mathrm{TopK}_{e\in[E]}(S_{t, e}, K)$ and $S_{t, e}$ is the expert score for token $t$. Besides top-$K$, \citet{huang2024harder} introduce token-choice top-$P$ routing to flexibly allocate compute during training. However, it introduces nondeterminism in the number of activated experts and consumed FLOPs per token. \citet{zeng-etal-2024-adamoe} also propose a similar idea that uses ``null experts'' to dynamically adjust the number of activated experts. 
+
+Besides TC routing, expert choice (EC) routing is developed to avoid load imbalance for expert parallelism \citep{zhou2022mixture} by letting experts choose the tokens. However, EC routing is not directly usable for inference because it is incompatible with autoregressive decoding, and switching back to TC at inference time leads to a mismatch. In addition, EC breaks causality by future token information leakage~\citep{wang2024auxiliary}. To address the inference issue of EC routing, \citet{raposo2024mixture} introduce an auxiliary loss to promote the agreement between TC and EC routing results, or train an auxiliary router to explicitly predict the routing result of EC router and use this auxiliary router during inference.
+
+% In this paper, we focus on TC routing under sparse MoE training regime and identify the wasted compute by GEMM padding (``tile quantization effects'') in MoE computation kernel that is prevalent for sparse MoE. We propose a token rounding (TR) routing method that eliminates the wasted compute  and we empirically demonstrate that TR still produces a qualitatively comparable model with TC routing in Section~\ref{sec:exp:token_round_perf}.
+
+
+In this paper, we propose a novel Grouped GEMM tile-aware token rounding method that rounds the number of received tokens per expert (``expert frequency'') to nearby multiples of Grouped GEMM tile sizes and alters at most one tile of tokens per expert. This approach effectively reduces wasted FLOPs caused by Grouped GEMM padding during sparse MoE training while preserving inference quality of trained MoE models. There are similar works that propose to drop and reroute tokens, including Rectify-Router \citep{zeng2024turn}, but they do not focus on the tile structure of Grouped GEMM. Other works such as TMA-adaptive FP8 Grouped GEMM \citep{tmaadatpivefp8} focus on reducing padding-related load traffic but the FLOPs wasted by non-aligned tile size in GEMM computation is not addressed. 
+
+
+%\cite{yue2024ada} introduce Ada-K Routing which dynamically adjusts the number of activated experts using a learnable module. \cite{huang2024harder} enables dynamic expert selection based on the confidence level in expert selection. 
+
+% % activation skip computing
+% \wentao{talk about related routing methods. Cite TC, EC, null experts, adamoe,  }
+% \xinle{Added}
+
+
+

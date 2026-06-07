@@ -1,0 +1,18 @@
+% \section{Discussion}
+% In this work, we have shown that Adam implicitly minimizes a distinctive sharpness measure $\tr(\mathrm{Diag}(\mH)^{1/2})$, and that this bias leads to different solutions and generalization behavior compared to SGD. Our slow SDE framework not only rigorously characterizes Adam’s adaptive semi-gradient drift near the minimizer manifold, but also recovers concrete separations in sparse linear regression and deep matrix factorization settings.
+
+% Despite these advances, several important avenues remain open. First, we have focused on the “2-scheme” regime (where $1-\beta_2=O(\eta^2)$) in order to track Adam’s preconditioner over a long timescale; extending our analysis to the intermediate “1.5-scheme” (e.g.\ different scalings of $\beta_2$) is left for future work. Second, our derivations assume that the iterates remain close to a smooth minimizer manifold; understanding Adam’s implicit bias once the trajectory ventures beyond this local neighborhood may require restarting the analysis from the SGD dynamics. Finally, our approach cannot cover weight‐decay or decoupled decay terms such as the $W$-term in AdamW; characterizing how weight decay alters the effective sharpness regularizer is an important direction for follow-on studies.
+% \vspace{-0.1in}
+\section{Conclusions}
+% \vspace{-0.15in}
+
+% \section{Discussion}
+In this work, we have shown that Adam implicitly minimizes a distinctive sharpness measure $\tr(\mathrm{Diag}(\mH)^{1/2})$, and that this bias leads to different solutions and generalization behavior compared to SGD. Our slow SDE framework not only rigorously characterizes Adam’s adaptive semi-gradient drift near the minimizer manifold, but also recovers concrete separations in sparse linear regression and deep matrix factorization settings.
+
+Despite these advances, several important avenues remain open. First, we have focused on the “2-scheme” regime (where $1-\beta_2=O(\eta^2)$) in order to track Adam’s preconditioner over a long timescale; extending our analysis to the intermediate 1.5-scheme or other scalings of $1-\beta_2$ is left for future work. Second, our derivations assume that the iterates remain close to a smooth minimizer manifold; understanding Adam’s implicit bias once the trajectory ventures beyond this local neighborhood may require restarting the analysis from the SGD dynamics. Finally, our approach cannot cover weight‐decay or decoupled decay terms such as the $W$-term in AdamW; characterizing how weight decay alters the effective sharpness regularizer is an important direction for follow-on studies.
+
+% We show that Adam implicitly minimizes the sharpness measure $ \tr(\mathrm{Diag}(\mH)^{1/2})$, leading to solutions and generalization behavior distinct from SGD. Our slow SDE framework rigorously captures Adam’s adaptive semi‐gradient drift near the minimizer manifold and recovers explicit separations in sparse linear regression and deep matrix factorization.
+% Open directions include extending analysis beyond the “2‐scheme” regime (\(1-\beta_2 = O(\eta^2)\)) to intermediate regimes such as 1.5-scheme, characterizing Adam’s implicit bias once iterates exit the local manifold neighborhood, and incorporating weight‐decay (e.g., AdamW) to understand its effect on the effective sharpness regularizer.
+
+\section{Acknowledgement}
+We would like to thank Xinran Gu, Kaiyue Wen, Yushun Zhang, Jiaye Teng, Yuhang Cai, and the anonymous NeurIPS reviewers for their insightful comments and feedback.

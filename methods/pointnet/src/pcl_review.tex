@@ -1,0 +1,154 @@
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\pdfoutput=1
+\hyphenpenalty=2000
+\textwidth=6.5in
+\textheight=9.0in
+\evensidemargin=0.0in
+\oddsidemargin=0.0in
+\topmargin=-0.5in
+\clubpenalty=4000
+\widowpenalty=4000
+\displaywidowpenalty=500
+
+\newlength\minalignvsep
+
+\usepackage{cvpr}
+\usepackage{times}
+\usepackage{epsfig}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{pbox}
+\usepackage{epstopdf}
+\usepackage{subfigure}
+\usepackage{xspace}
+\usepackage{comment}
+\usepackage{lipsum}
+%\usepackage{jeffe}
+\usepackage{enumitem}
+
+\newcommand{\cmt}[2]{[#1: #2]}
+\newcommand{\todo}[1]{\cmt{{\bf TODO}}{{\bf \color{red} #1}}}
+\newcommand{\hao}[1]{\cmt{{\bf Hao}}{{\bf \color{red} #1}}}
+\newcommand{\rqi}[1]{\cmt{{\bf Charles}}{{\bf \color{blue} #1}}}
+\newcommand{\km}[1]{\cmt{{\bf Kaichun}}{{\bf \color{green} #1}}}
+\newcommand{\leo}[1]{\cmt{{\bf Leo}}{{\bf \color{cyan} #1}}}
+
+\newcommand{\shape}{S}
+\newcommand{\image}{I}
+\newcommand{\network}{\mathbb{G}}
+\newcommand{\prob}{\mathcal{P}}
+
+\newcommand{\para}[1]{\noindent{\bf #1}}
+
+\newcommand{\softpara}{\paragraph}
+\newcommand{\mypara}{\vspace*{-15pt}\paragraph}
+
+\newcommand{\bmemo}[1]{\noindent{\color{blue}{\sf [[#1]]}}}
+
+\newcommand{\denselist}{\itemsep 0pt\parsep=0pt\partopsep 0pt\vspace{-2pt}}
+\newcommand{\bitem}{\begin{itemize}\denselist}
+\newcommand{\eitem}{\end{itemize}}
+\newcommand{\benum}{\begin{enumerate}\denselist}
+\newcommand{\eenum}{\end{enumerate}}
+\newcommand{\bdescr}{\begin{description}\denselist}
+\newcommand{\edescr}{\end{description}}
+
+\newcommand{\Remark}[1]     {{\sf [#1]}}
+
+\setlength{\abovedisplayskip}{0pt}
+\setlength{\belowdisplayskip}{0pt}
+
+\newtheorem{theorem}{Theorem}
+
+\newcommand{\myvec}[1]{\mathbf #1}
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+\newtheorem{innercustomthm}{Theorem}
+\newenvironment{customthm}[1]
+  {\renewcommand\theinnercustomthm{#1}\innercustomthm}
+  {\endinnercustomthm}
+  
+% Include other packages here, before hyperref.
+
+% If you comment hyperref and then uncomment it, you should delete
+% egpaper.aux before re-running latex.  (Or just hit 'q' on the first latex
+% run, let it finish, and you should be clear).
+\usepackage[pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+
+\cvprfinalcopy % *** Uncomment this line for the final submission
+
+\def\cvprPaperID{201} % *** Enter the CVPR Paper ID here
+\def\httilde{\mbox{\tt\raisebox{-.5ex}{\symbol{126}}}}
+
+% Pages are numbered in submission mode, and unnumbered in camera-ready
+\ifcvprfinal\pagestyle{empty}\fi
+\begin{document}
+
+%%%%%%%%% TITLE
+\title{PointNet: Deep Learning on Point Sets for 3D Classification and Segmentation}
+
+% \author{First Author\\
+% Institution1\\
+% Institution1 address\\
+% {\tt\small firstauthor@i1.org}
+% % For a paper whose authors are all at the same institution,
+% % omit the following lines up until the closing ``}''.
+% % Additional authors and addresses can be added with ``\and'',
+% % just like the second author.
+% % To save space, use either the email address or home page, not both
+% \and
+% Second Author\\
+% Institution2\\
+% First line of institution2 address\\
+% {\tt\small secondauthor@i2.org}
+% }
+
+\author{Charles R. Qi*\qquad Hao Su* \qquad Kaichun Mo \qquad Leonidas J. Guibas\\Stanford University}
+
+\maketitle
+%\thispagestyle{empty}
+
+%%%%%%%%% ABSTRACT
+\begin{abstract}
+  \input{./tex/abstract}
+\end{abstract}
+
+%%%%%%%%% BODY TEXT
+\section{Introduction}
+\blfootnote{* indicates equal contributions.}
+\input{./tex/intro}
+
+\section{Related Work}
+\input{./tex/related}
+
+\section{Problem Statement}
+\input{./tex/problem}
+
+\section{Deep Learning on Point Sets}
+\input{./tex/arch}
+
+\section{Experiment}
+\input{./tex/exp}
+
+\section{Conclusion}
+\input{./tex/conclusion}
+
+\input{./tex/acknowledgement}
+
+{\small
+\bibliographystyle{ieee}
+\bibliography{pcl}
+}
+
+\newpage
+\input{./tex/supplementary}
+
+% \newpage
+% \section{Appendix}
+% \input{./tex/appendix}
+
+\end{document}

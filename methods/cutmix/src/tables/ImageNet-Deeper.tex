@@ -1,0 +1,22 @@
+
+\begin{table}[]
+\small
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\multirow{2}{*}{Model}     & \multirow{2}{*}{\# Params} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-1 \\ Err (\%)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-5 \\ Err (\%)\end{tabular}} \\
+                          &                            &                               &  \\ \midrule
+ResNet-101 (Baseline)~\cite{resnet}    & 44.6 M    & 21.87     & 6.29\\
+ResNet-101 + Cutout~\cite{devries2017cutout} & 44.6 M    & 20.72    & 5.51\\ 
+ResNet-101 + Mixup~\cite{zhang2017mixup}    & 44.6 M    & 20.52    & 5.28\\ 
+ResNet-101 + CutMix                     & 44.6 M    & \textbf{20.17}    & \textbf{5.24}\\ \midrule
+ResNeXt-101 (Baseline)~\cite{resnext}   & 44.1 M    &    21.18   &  5.57 \\
+ResNeXt-101 + CutMix                    &  44.1 M    &  \textbf{19.47}  & \textbf{5.03}  \\ 
+\toprule
+\end{tabular}
+\vspace{-0.2cm}
+\caption{Impact of CutMix on ImageNet classification for ResNet-101 and ResNext-101.}
+\vspace{-0.4cm}
+\label{table:imagenet-deeper}
+\end{table}
+

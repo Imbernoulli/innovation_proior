@@ -1,0 +1,31 @@
+\vskip 1.05em
+\begin{tabular}{l l |r r r r}
+     \toprule 
+          Method & Architecture & \multicolumn{2}{c}{Top-1 accuracy (\%)} & \multicolumn{2}{c}{Top-5 accuracy (\%)} \\
+          & & Frac.\,$1\%$ & Frac.\,$10\%$ & Frac.\,$1\%$ & Frac.\,$10\%$ \\
+          \midrule \hline
+          Supervised baseline & ResNet-$50$ & & & $48.4$ & $80.4$ \\
+          \midrule
+          \multicolumn{4}{l}{\emph{Methods using other label propagation:}}\\
+          Pseudo-label & ResNet-$50$ & & & $51.6$ & $82.4$\\
+         VAT+Entropy Min. & ResNet-$50$ & & & $47.0$ & $83.4$\\
+         UDA (w. RandAug) & ResNet-$50$ & & & - & $88.5$\\
+         FixMatch (w. RandAug) & ResNet-$50$ & & & - & $89.1$\\
+         S4L (Rot+VAT+En. M.) & ResNet-$50$ ($4\times$) & & & - & $91.2$\\
+         \midrule
+         \hline
+         \multicolumn{4}{l}{\emph{Representation learning only:}}\\
+         InstDisc & ResNet-$50$ & & & $39.2$ & $77.4$\\
+         BigBiGAN \cite{BigBiGAN} & RevNet-$50$ ($4\times$) & & & $55.2$ & $78.8$ \\
+         PIRL \cite{PIRL}  & ResNet-$50$ & & & $57.2$ & $83.8$\\
+         \CPCC \cite{CPCv2}  & ResNet-$161$ & & & $77.9$ & $91.2$\\
+         
+         \simclr \cite{SimCLR}  & ResNet-$50$ & $48.3$ & $65.6$ & $75.5$ & $87.8$\\
+         \algo (ours) & ResNet-$50$ & \cellcolor{pearDark!20} $\bf{53.3}$ & \cellcolor{pearDark!20} $\bf{68.4}$ &\cellcolor{pearDark!20} $\bf{78.2}$ & \cellcolor{pearDark!20} $\bf{88.8}$\\
+         \simclr \cite{SimCLR}   & ResNet-$50$ ($2\times$) & $58.5$ & $71.7$ & $83.0$ & $91.2$\\
+          \algo (ours) & ResNet-$50$ ($2\times$) &\cellcolor{pearDark!20} $\bf{62.0}$ & \cellcolor{pearDark!20} $\bf{72.4}$ &\cellcolor{pearDark!20} $\bf{84.2}$ & \cellcolor{pearDark!20} $90.9$\\
+         \simclr \cite{SimCLR}  & ResNet-$50$ ($4\times$) & $63.0$ & $74.4$ & $85.8$ & $92.6$\\
+         \algo (ours) & ResNet-$50$ ($4\times$) &\cellcolor{pearDark!20} ?& \cellcolor{pearDark!20} ? &\cellcolor{pearDark!20} ? &\cellcolor{pearDark!20} ?\\
+         \algo (ours) & ResNet-$152$ ($3\times$) & $\bf{67.4}$ & $\bf{74.7}$ & $\bf{86.9}$ & $91.5$\\
+         \bottomrule
+\end{tabular}

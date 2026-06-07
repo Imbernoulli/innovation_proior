@@ -1,0 +1,66 @@
+\section{Qualitative comparisons and applications} 
+
+In the following section, we demonstrate a range of applications enabled through Textual Inversions, and provide visual comparisons to the state-of-the-art and human-captioning baselines. 
+
+\label{sec:applications}
+
+
+
+\subsection{Image variations}
+\label{sec:image_variations}
+
+\input{resources/figures/user_sentences_comparison}
+
+We begin by demonstrating our ability to capture and recreate variations of an object using a single pseudo-word. In \Cref{fig:user_sentences_comp} we compare our method to two baselines: LDM guided by a human caption and DALLE-2 guided by either a human caption or an image prompt. Captions were collected using Mechanical Turk. Annotators were provided with four images of a concept and asked to describe it in a manner that could allow an artist to recreate it. We asked for both a short ($\leq12$ words) and a long ($\leq30$ words) caption. In total, we collected $10$ captions per concept --- five short and five long. \Cref{fig:user_sentences_comp} shows multiple results generated with a randomly chosen caption for each setup. Additional large-scale galleries showing our uncurated reconstructions are provided in the supplementary.
+
+As our results demonstrate, our method better captures the unique details of the concept. Human captioning typically captures the most prominent features of an object, but provides insufficient detail to reconstruct finer features like color patterns (\eg of the teapot). In some cases (\eg the skull mug) the object itself may be exceedingly difficult to describe through natural language. When provided with an image, DALLE-2 is able to recreate more appealing samples, particularly for well-known objects with limited detail (Aladdin's lamp). However, it still struggles with unique details of personalized objects that the image encoder (CLIP) is unlikely to have seen (mug, teapot). In contrast, our method can successfully capture these finer details, and it does so using only a single word embedding. However, note that while our creations are more similar to the source objects, they are still variations that may differ from the source.
+
+
+
+
+\subsection{Text-guided synthesis}
+
+\input{resources/figures/generation}
+
+In \Cref{fig:conditional_gen,fig:teaser} we show our ability to compose novel scenes by incorporating the learned pseudo-words into new conditioning texts. For each concept, we show exemplars from our training set, along with an array of generated images and their conditioning texts. As our results demonstrate, the frozen text-to-image model is able to jointly reason over both the new concepts and its large body of prior knowledge, bringing them together in a new creation. Importantly, despite the fact that our training goal was generative in nature, our pseudo-words still encapsulate semantic concepts that the model can then leverage. For example, observe the bowl's ability (row four) to contain other objects like food, or the ability to preserve the Furby's bird-like head and crown while adapting his palette to better match a prompt (album cover, row three). Additional concepts and texts are provided in the supplementary materials.
+
+
+\input{resources/figures/baseline_comparisons}
+
+To better evaluate our ability to compose objects into new scenes, we compare our method to several personalization baselines (\Cref{fig:baseline_comp}). In particular, we consider the recent PALAVRA~\citep{cohen2022my}, which is most similar to our own work. PALAVRA encodes object sets into the textual embedding space of CLIP, using a mix of contrastive learning and cyclic consistency goals. We find a new pseudo-word using their approach and use it to synthesize new images by leveraging VQGAN-CLIP~\citep{crowson2022vqgan} and CLIP-Guided Diffusion~\citep{crowson2021diffusion}. As a second baseline, we apply the CLIP-guided models of Crowson~\etal while trying to jointly minimize the CLIP-based distances to both the training set images and to the target text (VQGAN-CLIP) or by initializing the optimization with an input image from our set (Guided Diffusion). For the latter, we chose image-based initializations as we observed that they outperform the use of images in the optimization loss. Similar observations were reported in Disco Diffusion~\citep{lettsDiscoDiffusion2021}.
+
+The images produced by PALAVRA (rows $2$, $3$) typically contain elements from the target prompt (\eg a beach, a moon) but they fail to accurately capture the concept and display considerable visual corruption. This is unsurprising, as PALAVRA was trained with a discriminative goal. In their case, the model needs to only encode enough information to distinguish between two typical concepts (\eg it may be sufficient to remember the mug was black-and-white with text-like symbols). Moreover, their word-discovery process had no need to remain in regions of the embedding space that contain embedding vectors that can be mapped to outputs on the natural image manifold. In the case of the text-and-image guided synthesis methods (rows $4$, $5$), results appear more natural and closer to the source image, but they fail to generalize to new texts. Moreover, as our method builds upon pre-trained, large-scale text-to-image synthesis models, we can optimize a single pseudo-word and re-use it for a multitude of new generations. The baseline models, meanwhile, use CLIP for test-time optimization and thus require expensive optimization for every new creation.
+
+
+\subsection{Style transfer}
+
+A typical use-case for text-guided synthesis is in artistic circles, where users aim to draw upon the unique style of a specific artist and apply it to new creations. Here, we show that our model can also find pseudo-words representing a specific, unknown style. To find such pseudo-words, we simply provide the model with a small set of images with a shared style, and replace the training texts with prompts of the form: ``A painting in the style of \pholdercolor". Results are shown in \Cref{fig:styles}. They serve as further demonstration that our ability to capture concepts extends beyond simple object reconstructions and into more abstract ideas.
+
+Note that this differs from traditional style transfer, as we do not necessarily wish to maintain the content of some input image. Instead, we offer the network the freedom to decide how to depict the subject, and merely ask for an appropriate style.
+
+\input{resources/figures/styles}
+
+\subsection{Concept compositions}
+
+\input{resources/figures/compositions}
+In \Cref{fig:compositions} we demonstrate compositional synthesis, where the guiding text contains multiple learned concepts. We observe that the model can concurrently reason over multiple novel pseudo-words at the same time. However, it struggles with relations between them (\eg it fails to place two concepts side-by-side). We hypothesize that this limitation arises because our training considers only single concept scenes, where the concept is at the core of the image. Training on multi-object scenes may alleviate this shortcoming. However, we leave such investigation to future work.
+
+\subsection{Bias reduction}
+
+A common limitation of text-to-image models is that they inherit the biases found in the internet-scale data used to train them. These biases then manifest in the generated samples. For example, the DALLE-2 system card~\citep{mishkin2022risks} reports that their baseline model tends to produce images of people that are white-passing and male-passing when provided with the prompt ``A CEO". Similarly, results for ``wedding", tend to assume Western wedding traditions, and default to heterosexual couples.
+
+Here, we demonstrate that we can utilize a small, curated dataset in order to learn a new ``fairer" word for a biased concept, which can then be used in place of the original to drive a more inclusive generation.
+
+Specifically, in \Cref{fig:bias} we highlight the bias encoded in the word ``Doctor'', and show that this bias can be reduced (\ie we increase perceived gender and ethnic diversity) by learning a new embedding from a small, more diverse set.
+
+\input{resources/figures/bias}
+
+\subsection{Downstream applications}
+
+Finally, we demonstrate that our pseudo-words can be used in downstream models that build on the same initial LDM model. Specifically, we consider the recent Blended Latent Diffusion~\citep{avrahami2022blendedlatent} which enables localized text-based editing of images via a mask-based blending process in the latent space of an LDM. In \Cref{fig:blended} we demonstrate that this localized synthesis process can also be conditioned on our learned pseudo-words, without requiring any additional modifications of the original model. 
+
+\input{resources/figures/belnded_diffusion}
+
+\subsection{Image curation}
+
+Unless otherwise noted, results in this section are partially curated. For each prompt, we generated $16$ candidates (or six for DALLE-2) and manually selected the best result. We note that similar curation processes with larger batches are typically employed in text-conditioned generation works~\citep{avrahami2022blended,ramesh2021zero,yu2022scaling}, and that one can automate this selection process by using CLIP to rank images. In the supplementary materials, we provide large-scale, uncurated galleries of generated results, including failure cases.

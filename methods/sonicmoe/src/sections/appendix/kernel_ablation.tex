@@ -1,0 +1,167 @@
+In this section, we present kernel-level ablation studies on training throughput to examine the impact of each of the implemented features on~\Algname. In Section~\ref{sec:appendix:grouped_gemm}, we investigate the Grouped GEMM throughput with and without the gather fusion on Hopper and Blackwell GPUs. In Section~\ref{sec:appendix:expert_agg}, we profile the memory bandwidth of expert aggregation kernels. In section~\ref{sec:appendix:scatter_and_add}, we compare the left and middle expert aggregation strategy when both implemented on \Algname~on H100 GPUs in Figure~\ref{fig:expert-agg}. In Section~\ref{sec:appendix:topk}, we compare~\Algname's top-$K$ kernels with other efficient top-$K$ implementations. 
+
+
+
+\subsection{Grouped GEMM} \label{sec:appendix:grouped_gemm}
+
+\begin{figure}[h]
+    \centering
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/grouped_gemm_benchmark.pdf}
+        \caption{\small Varlen-$\mathbf{M}$ Grouped GEMM with contiguously-packed inputs to up and down-proj during forward pass on H100 GPUs. } 
+        \label{fig:grouepd-gemm-contiguous-speed}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/grouped_gemm_benchmark-B300.pdf}
+        \caption{\small Varlen-$\mathbf{M}$ Grouped GEMM with contiguously-packed inputs to up and down-proj during forward pass on B300 GPUs. }
+        \label{fig:grouepd-gemm-contiguous-speed-B300}
+        \vspace{-1em}
+    \end{subfigure}
+    \caption{\small Varlen-$\mathbf{M}$ Grouped GEMM with contiguously-packed inputs on H100 and B300 GPUs. We use the same configurations as in Figure~\ref{fig:mem}. ``cuBLAS BMM'' is a \textit{dense} BMM baseline equivalent to all expert receiving equal number of tokens (perfectly load balanced), whose TFLOPS can be considered as an \textit{upper bound} for any Grouped GEMM kernel.}
+\end{figure}
+
+We also benchmark \Algname's base Grouped GEMM kernel with both contiguously-packed inputs and gathered inputs without any epilogue fusion on H100 and B300 GPUs. For contiguously-packed inputs, we mainly compare with DeepGEMM kernels ($\mathrm{sm90\_m\_grouped\_bf16\_gemm\_contiguous}$\footnote{\scriptsize\url{https://github.com/deepseek-ai/DeepGEMM/blob/9b680f428484625f4f35dc3617f134187c6bcd4a/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp\#L127}} and $\mathrm{sm90\_bf16\_k\_grouped\_gemm}$\footnote{\scriptsize\url{https://github.com/deepseek-ai/DeepGEMM/blob/9b680f428484625f4f35dc3617f134187c6bcd4a/csrc/jit_kernels/impls/sm90_bf16_gemm.hpp\#L234}} on H100 GPUs, $\mathrm{sm100\_m\_grouped\_bf16\_gemm\_contiguous}$\footnote{\scriptsize\url{https://github.com/deepseek-ai/DeepGEMM/blob/35c4bc87713726d048f65275f6f1b551a4e7a6dc/csrc/jit_kernels/impls/sm100_bf16_gemm.hpp\#L124}} and $\mathrm{sm100\_bf16\_k\_grouped\_gemm}$\footnote{\scriptsize\url{https://github.com/deepseek-ai/DeepGEMM/blob/35c4bc87713726d048f65275f6f1b551a4e7a6dc/csrc/jit_kernels/impls/sm100_bf16_gemm.hpp\#L233}} on B300 GPUs). We note that at the time of writing, DeepGEMM's $\mathbf{k}$ Grouped GEMM kernel only accepts the form of $D = A B+C$ for GEMM\footnote{This formula naturally fits with the gradient accumulation.} where for correctness, we use a zero-filled FP32 $C$ weight gradient buffer as accumulator input, but we use $C$ as uninitialized weight gradient buffer during benchmarking. For inputs requiring a gather operation, we mainly compare with ScatterMoE and MoMoE. We also benchmark cuBLAS dense BMM (CUDA toolkit v12.9 for H100 GPUs and v13.0 for B300 GPUs) assuming each expert receives the same amount of tokens. On Blackwell GPUs, we also benchmark the GEMM example in triton official example\footnote{\scriptsize\url{https://github.com/triton-lang/triton/blob/c833d995f93d2eadb5627afae129496a852bc9fb/python/triton_kernels/bench/bench_mlp.py\#L53}}.
+
+
+\paragraph{Grouped GEMM with contiguously-packed inputs.} We compare \Algname~with DeepGEMM on varlen-$\mathbf{M}$ Grouped GEMM without any other fusion. We also benchmark cuBLAS dense BMM (perfect load balance and no tensormap update needed) as a reference for the TFLOPS upper bound for Grouped GEMM. 
+
+
+
+\begin{itemize}
+    \item \textbf{H100 GPUs}: In Figure~\ref{fig:grouepd-gemm-contiguous-speed}, we find that \Algname's up-proj has 2.7\% higher TFLOPS while down-proj has 10.0\% higher TFLOPS than DeepGEMM on average. We use Ping-Pong scheduling for down-proj with $n<1024$ while DeepGEMM~\citep{deepgemm} uses cooperative scheduling~\citep{deepgemm,pingpongandcooperative}, and as a result, we observe \Algname~has a greater speedup over DeepGEMM when intermediate size is small. For example, \Algname~has 57.4\%, 14.0\%, and 5.3\% more TFLOPS than DeepGEMM for 30B down-proj config. 
+    
+    \item \textbf{B300 GPUs}: In Figure~\ref{fig:grouepd-gemm-contiguous-speed-B300}, we find that \Algname's up-proj has 8.1\% higher TFLOPS while down-proj has 12.7\% higher TFLOPS than DeepGEMM on average. Compared to the triton official GEMM example, \Algname's up-proj has 13.3\% higher TFLOPS while down-proj has 15.6\% higher TFLOPS on average. \Algname's speedup for fine-grained MoEs are still maintained: for example, \Algname~has 20.2\%, 8.5\%, and 8.1\% higher TFLOPS than DeepGEMM, and 22.2\%, 14.9\%, and 7.5\% higher TFLOPS than triton official example for 30B down-proj config. 
+\end{itemize}
+
+% \begin{figure}[!ht]
+%     \centering
+%     \includegraphics[width=\linewidth]{figures/grouped_gemm_benchmark.pdf}
+%     \caption{\small Varlen-$\mathbf{M}$ Grouped GEMM with contiguously-packed inputs to up and down-proj during forward pass on H100 GPU. We use the same configurations as in Figure~\ref{fig:mem}. ``cuBLAS BMM'' is a \textit{dense} BMM baseline equivalent to all expert receiving equal number of tokens (perfectly load balanced), whose TFLOPS can be considered as an \textit{upper bound} for any Grouped GEMM kernel.}
+%     \label{fig:grouepd-gemm-contiguous-speed}
+% \end{figure}
+
+\begin{figure}[!ht]
+    \centering
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/gather_grouped_gemm_benchmark.pdf}
+        \caption{\small Forward pass up-proj (gather on $\mathbf{M}$ dim) and backward up-proj weight gradient $d\W{1}$ (gather on $\mathbf{K}$ dim) kernel on H100 GPUs. }
+        \label{fig:gather-speed}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/gather_grouped_gemm_benchmark-B300.pdf}
+        \caption{\small Forward pass up-proj (gather on $\mathbf{M}$ dim) and backward up-proj weight gradient $d\W{1}$ (gather on $\mathbf{K}$ dim) kernel on B300 GPUs.}
+        \label{fig:gather-speed-B300}
+    \end{subfigure}
+    \caption{\small Forward pass up-proj (gather on $\mathbf{M}$ dim) and backward up-proj weight gradient $d\W{1}$ (gather on $\mathbf{K}$ dim) kernel on H100 and B300 GPUs. \Algname~supports both inputs gathered from different positions (opaque bars) and contiguously-packed inputs (transparent bars). ScatterMoE and MoMoE both have gather fusion for varlen-$\mathbf{M}$ but not varlen-$\mathbf{K}$, so we benchmark their gather with varlen-$\mathbf{K}$ Grouped GEMM time (opaque bar) by adding up the time of their contiguously-packed weight gradient kernel (transparent bar) with the time of their gather kernel. DeepGEMM does not have gather fusion for both varlen-$\mathbf{M}$ and varlen-$\mathbf{K}$ Grouped GEMM, so we provide an optimized gather kernel in both cases. We also provide a ``cuBLAS dense BMM" (transparent bar) baseline and the gather with GEMM time (opaque bar) by adding up the time with a heavily-tuned gather kernel's time with the same input shape, which can be considered as the upper bound TFLOPS for \emph{any} Grouped GEMM kernel without gather fusion.}
+\end{figure}
+
+
+
+\paragraph{Grouped GEMM with gather fusion.}
+
+
+We report~\Algname, ScatterMoE, MoMoE, and DeepGEMM with and without gather fusion (as opaque and transparent bars for each method) on Hopper GPU. ScatterMoE and MoMoE both have gather fusion for varlen-$\mathbf{M}$ but not varlen-$\mathbf{K}$ Grouped GEMM, so we benchmark their gather with varlen-$\mathbf{K}$ Grouped GEMM time (opaque bar) by adding up the time of their contiguously-packed weight gradient kernel (transparent bar) with the time of their own gather kernel. We also adopt the similar benchmark approach for DeepGEMM and cuBLAS dense BMM. We note that the cuBLAS dense BMM results can be considered as the upper bound of the TFLOPS for any Grouped GEMM kernel without gather fusion. 
+
+\begin{itemize}
+    \item \textbf{Gather on $\mathbf{M}$ dimension.} 
+
+    \begin{itemize}
+        \item \textbf{H100 GPUs}: in Figure~\ref{fig:gather-speed}, the average relative TFLOPS difference of \Algname~with and without gather fusion on $\mathbf{M}$ dim is 6.3\%. \Algname~consistently achieves higher TFLOPS than ScatterMoE (avg 9.7\%), MoMoE (avg 30.9\%), and DeepGEMM (avg 38.3\%) with gather fusion.
+    
+        
+        \item \textbf{B300 GPUs}: in Figure~\ref{fig:gather-speed-B300}, the average relative TFLOPS difference of \Algname~with and without gather fusion on $\mathbf{M}$ dim is 3.4\%. \textbf{Triton official example also implements gather fusion with TMA on Blackwell GPUs, but the difference of TFLOPS with and without gather fusion is 6.3\%, higher than \Algname.} Similar to the case on Hopper GPUs, \Algname~consistently achieves higher TFLOPS than ScatterMoE, MoMoE, and DeepGEMM with gather fusion.
+    \end{itemize}
+        
+    
+    \item \textbf{Gather on $\mathbf{K}$ dimension.} 
+
+        \begin{itemize}
+        \item \textbf{H100 GPUs}: In Figure~\ref{fig:gather-speed}, the average relative TFLOPS difference of \Algname~with and without gather fusion on $\mathbf{K}$ dim is 8.5\%. When we compare \Algname~with gather fusion (opaque bars) against ScatterMoE and MoMoE with their gather kernel together, we observe a wider gap as expert granularity increases (from right to left on each 3 bar groups). 
+        
+        % \Algname~already achieves higher TFLOPS than ScatterMoE (avg 23.5\% higher), MoMoE (avg 4.3\% higher), and DeepGEMM (avg 41.4\% higher) without gather fusion (transparent bars). 
+        
+        % On average, \Algname~with gather fusion achieves 55.1\%, 42.4\%, 71.8\% higher TFLOPS than ScatterMoE, MoMoE, and DeepGEMM with gather fusion respectively.
+    
+        
+        \item \textbf{B300 GPUs}:  In Figure~\ref{fig:gather-speed-B300}, the average relative TFLOPS difference of \Algname~with and without gather fusion on $\mathbf{K}$ dim is -0.1\%. This means gather fusion on $\mathbf{K}$ dim virtually does not induce any throughput degradation on TFLOPS. We still observe a wider gap of TFLOPS between \Algname~with gather fusion and ScatterMoE and MoMoE with a separate gather kernel as expert granularity increases. 
+    \end{itemize}
+        
+\end{itemize}
+
+% In addition, \Algname~has consistently shorter time than cuBLAS dense BMM added with minimum possible gather time for both varlen-$\mathbf{M}$ (25.0\% less on average) and varlen-$\mathbf{K}$ (28.7\% less on average). Therefore, it is (almost) impossible for any Grouped GEMM implementation without gather fusion to achieve less time than \Algname~with gather fusion}.
+
+\subsection{Expert aggregation} \label{sec:appendix:expert_agg}
+
+In Figure~\ref{fig:expert-agg-speed} and~\ref{fig:expert-agg-speed-B300}, we compare the bandwidth of \Algname's gather-and-sum aggregation (Figure~\ref{fig:expert-agg} left) with ScatterMoE's $\mathrm{torch.bmm}$ and MoMoE $\mathrm{torch.sum}$ aggregation on contiguous $Y$ inputs (Figure~\ref{fig:expert-agg} middle). In addition, we implement 2 optimized triton kernels that either use vanilla triton $\mathrm{tl.load}$ or TMA load and they both sum over contiguous $Y$ inputs. We report the max bandwidth of both results as ``max(tl.load, TMA)''. This result achieves 85\%+ peak for most MoE configurations so we consider it as an upper bound for any aggregation kernel on both H100 and B300 GPUs. On B300 GPUs, we also use Gluon to implement gather-and-sum aggregation with TMA gather\footnote{adopted from \scriptsize\url{https://github.com/triton-lang/triton/blob/8ecbfb066a28e231e9fd54ca0ce6de8ace4950aa/python/tutorials/gluon/09-tma-gather-scatter.py\#L298}}.
+
+
+% In the $2^\text{nd}$ row of Figure~\ref{fig:scatter-and-add-speed} , we find gather fused with summation can have comparable bandwidth with pure summation kernels. This is also shown by the small difference between \Algname~and ``triton sum (gathered $Y$)'' in Figure~\ref{fig:expert-agg-speed}. \Algname~(triton) achieves much higher bandwidth than ScatterMoE and slightly (2.0\%) higher bandwidth than MoMoE. This demonstrates the \Algname's aggregation strategy as fused gather with summation can still maintain near peak bandwidth. 
+
+\begin{figure}[!ht]
+    \centering
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/reduction_benchmark-H100.pdf}
+        \caption{\small Expert aggregation kernels ($O$ kernel) during forward pass of MoE on H100 GPUs.}
+        \label{fig:expert-agg-speed}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/reduction_benchmark-B300.pdf}
+        \caption{\small Expert aggregation kernels ($O$ kernel) during forward pass of MoE on B300 GPUs. }
+        \label{fig:expert-agg-speed-B300}
+    \end{subfigure}
+    \caption{\small Expert aggregation kernel ($O$ kernel) on H100 and B300 GPUs. Same configurations as in Figure~\ref{fig:mem}. ScatterMoE uses $\mathrm{torch.bmm}$ call to reduce over $K$ for a contiguous $Y$ input, MoMoE uses a $\mathrm{torch.sum}$ call. We take the maximum bandwidth between PyTorch eager and PyTorch compile on default mode with PyTorch 2.9.0. We also implement 2 optimized triton kernels that either use vanilla triton $\mathrm{tl.load}$ or TMA load and they both sum over contiguous $Y$ inputs. We report the max bandwidth of both results as ``max(tl.load, TMA)''. On B300 GPUs, we also use Gluon to implement gather-and-sum aggregation with TMA gather. On H100 GPUs, we use Triton 3.3.1, and on B300 GPUs, we use Triton 3.6.0 for benchmarking. }
+\end{figure}
+
+
+\begin{itemize}
+    \item \textbf{H100 GPUs}: although~\Algname's aggregation kernel requires a gather fusion during HBM load, the memory bandwidth of \Algname~still surpasses ScatterMoE (2.92x on average) and MoMoE (1.05x on average), and is only slightly slower (0.98x on average) than the triton upper bound of summing over contiguous $Y$.
+
+    \item \textbf{B300 GPUs}: the results are similar to that of H100 GPUs. The memory bandwidth of \Algname~aggregation kernel still largely surpasses ScatterMoE (6.72x on average) and MoMoE (3.32x on average), and is only slightly slower (0.98x on average) than the triton upper bound of summing over contiguous $Y$. \textbf{We also note that \Algname~gather-and-sum is faster than Gluon TMA gather-and-sum (1.05x on average).}
+\end{itemize}
+
+
+
+\subsection{Strategies of combining grouped gemm and expert aggregation} \label{sec:appendix:scatter_and_add}
+
+We compare the left and middle expert aggregation strategy when both are implemented on \Algname~on H100 GPUs in Figure~\ref{fig:expert-agg}. We observe the left strategy (gemm + gth w. sum) achieves a 20\% higher \tflops~than the middle strategy (gemm w. sct + sum) and we therefore choose the left one for forward down-proj and backward up-proj activation gradient kernel. 
+
+\begin{figure}[!ht]
+    \includegraphics[width=\linewidth]{figures/scatter_and_add_benchmark.pdf}
+    \caption{\small Throughput of Grouped GEMM and expert aggregation kernel on H100 GPUs. ``\Algname~(gemm + gth w. sum)'' is the final design choice for~\Algname~as illustrated in Figure~\ref{fig:expert-agg} left strategy. We compare this design against ``\Algname~(gemm w. sct + sum)'' that implements the Figure~\ref{fig:expert-agg} middle strategy on \Algname. We use identical tile sizes and other GEMM configs for both ``\Algname~(gemm + gth w. sum)'' and ``\Algname~(gemm w. sct + sum)''. We also compare with ScatterMoE's design (fused scatter with GEMM + $\mathrm{torch.bmm}$, labeled as ``ScatterMoE (gemm w. sct + BMM)'') and MoMoE's design (fused scatter with GEMM + $\mathrm{torch.sum}$, labeled as ``MoMoE (gemm w. sct + sum)''). For each method, we report the GEMM TFLOPS in transparent bars and TFLOPS of total runtime of GEMM and expert aggregation in the opaque bars.}
+    \label{fig:scatter-and-add-speed}  
+\end{figure}
+
+
+
+\subsection{Top-$K$ sorting} \label{sec:appendix:topk}
+
+
+
+
+We benchmark the bandwidth of \Algname's top-$K$ kernel in Figure~\ref{fig:topk-speed} and~\ref{fig:topk-speed-B300}. For each GPU, we compare \Algname~with PyTorch\footnote{\scriptsize \url{https://github.com/pytorch/pytorch/blob/b54e466fd04e5e736662a6206d81ab0d5fe85d91/aten/src/ATen/native/cuda/TensorTopK.cu\#L40}}, triton official example\footnote{\scriptsize \url{https://github.com/triton-lang/triton/blob/de8e71503fea971dfb65308147798657e18f8568/python/triton_kernels/triton_kernels/topk_details/_topk_forward.py\#L90}}, tilelang official example\footnote{\scriptsize \url{https://github.com/tile-ai/tilelang/blob/5c62d00a64f2f52cf6b2536a2492a29fc5323723/examples/topk/example_topk.py\#L18}}, and RTop-K\footnote{\scriptsize  \url{https://github.com/xiexi51/RTopK/blob/952f515321a4bdc5c4a57944bca0d32641052460/rtopk_kernel.cu\#L7}} \citep{xie2025rtopk} on BF16 and FP32 inputs.
+
+
+\begin{figure}[!ht]
+    \centering
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/topk_benchmark.pdf}
+        \caption{\small Top-$K$ kernels with BF16 inputs ($1^\text{st}$ row) and FP32 inputs ($2^\text{nd}$ row) during forward pass of MoE on H100 GPUs. }
+    \label{fig:topk-speed}
+    \end{subfigure}
+    \begin{subfigure}{\linewidth}
+        \includegraphics[width=\linewidth]{figures/topk_benchmark-B300.pdf}
+        \caption{\small Top-$K$ kernels with BF16 inputs ($1^\text{st}$ row) and FP32 inputs ($2^\text{nd}$ row) during forward pass of MoE on B300 GPUs. }
+    \label{fig:topk-speed-B300}
+    \end{subfigure}
+    \caption{\small Top-$K$ kernels during forward pass of MoE. Same configurations as in Figure~\ref{fig:mem}. ``torch'' is a direct $\mathrm{torch.topk}$ call. ``triton'' and ``tilelang'' are taken from their official examples with slight modifications to support BF16 inputs. For the triton official kernel, we remove the unnecessary bit matrix store and disable the softmax fusion in this example for a fair comparison. ``RTop-K''\citep{xie2025rtopk} only supports FP32 inputs. We set $\epsilon=0$ and maximum iteration as 8 for RTop-K.}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{PyTorch single block Top-$K$}: PyTorch \citep{paszke2019pytorchimperativestylehighperformance} implements a radix-select followed by a gather algorithm for top-$K$, and it dispatches to a single or multiple block version depending on $T,E,K$. For large $T$ with modest $E$ and $K$, PyTorch uses the single-block version that performs 2 SMEM scans. In this case, \Algname's sorting networks with pure register-based communication are much faster.
+
+    \item \textbf{Triton official example}: triton \citep{triton} provides a top-$K$ example kernel that is also based on bit packing and bitonic merge. The main algorithmic difference is that \Algname~relies on optimal sorting networks on the base cases while the Triton implementation directly calls $\mathrm{triton.language.topk}$. During the top-$K$ benchmark in Figure~\ref{fig:topk-speed}, we observe that Triton is much faster than PyTorch $\mathrm{torch.topk}$ but it is still consistently slower than \Algname's top-$K$ across all configurations.
+
+    \item \textbf{Tilelang official example}: tilelang \citep{wang2025tilelang} provides a top-$K$ example kernel that performs $K$-pass maximum reduction. This design is more targeted for small $K$ and we observe that as both $E$ and $K$ become larger, the Tilelang top-$K$ kernel's throughput decreases compared to other baselines (and~\Algname)'s increasing trend. Such a trend makes tilelang's example top-$K$ kernel ($K$-pass top-$K$ kernel) unsuitable for fine-grained MoEs.
+
+    \item \textbf{RTop-K}: RTop-K \citep{xie2025rtopk} follows a threshold-based binary search. Each bisection step utilizes warp-level primitives and follows a \textit{selection-by-count} method instead of \Algname's sorting network. RTop-K is also an iterative algorithm with iterations dependent on the value range and vector size. In addition, RTop-K heavily utilizes SMEM for scanning while \Algname~solely relies on registers for its $\mathrm{compare\_and\_swap}$ subroutine. We find that \Algname's top-$K$ generally achieves higher throughput on both H100 and B300 GPUs.
+\end{itemize}

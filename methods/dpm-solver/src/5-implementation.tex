@@ -1,0 +1,24 @@
+\section{Implementation Details of DPM-Solver}
+
+\fan{All to Appendix}
+
+Building upon the proposed second-order and third-order solvers in Sec.~\ref{sec:solver}, we combine them and further propose a fast version of DPM-Solver that enables fast sampling in $20$ function evaluations. We list the key implementation details of DPM-Solver in this section, including the technique of applying DPM-Solver for discrete-time DPMs and conditional samplings.
+
+
+\paragraph{End Time of Sampling.} \fan{Move to the begin of exp}
+Theoretically, we need to solve diffusion ODEs from time $T$ to time $0$ to generate samples. Practically, the training and evaluation for the noise prediction model $\epsilonv_\theta(\x_t,t)$ usually start from time $\epsilon$ to time $T$ to avoid numerical issues, where $\epsilon>0$ is a hyperparameter~\citep{song2020score}. \fan{In constrast to ..., We don't add the denoising step, since we find it performs well enough. Put it down}
+
+\paragraph{DPM-Solver in 20 Function Evaluations.}
+For fast sampling in $K \leq 20$ function evaluations, we manually design the time steps and the solver of each single step to make the most use of the function evaluations. To sum up, as each step of DPM-Solver-3rd needs $3$ function evaluations, we firstly take $\lfloor K / 3\rfloor$ or $\lfloor K / 3\rfloor - 1$ steps of DPM-Solver-3rd, then take the remaining step by the first-order DDIM or the second-order DPM-Solver-2nd, depending on the reminder of $K$ divided by $3$. We refer to Appendix~\ref{appendix:dpm-solver-fast} for details.
+
+\paragraph{Computation of $\lambda^{-1}(\cdot)$.} \fan{Move to the first time it appears}
+As the neural network of $\epsilonv_\theta$ takes time $t$ as the second input variable, we need to convert the time steps of $\lambda$ to the time steps of $t$, which needs to compute the function $t=\lambda^{-1}(\cdot)$. We argue that the costs of computing $\lambda^{-1}$ is negligible, because for the noise schedules of $\alpha_t$ and $\sigma_t$ used in previous models (``linear'' and ``cosine'')~\citep{ho2020denoising,nichol2021improved}, both $\lambda(t)$ and its inverse function $\lambda^{-1}(\cdot)$ have analytic formulations (see Appendix~\ref{appendix:logsnr}).
+
+
+\paragraph{Sampling from Discrete-Time DPMs.}
+Discrete-time DPMs~\citep{ho2020denoising} choose $N$ discrete time steps $\{t_n\}_{n=1}^N$ in $[0,T]$, and train the noise prediction model in these discrete time steps. The discrete-time noise prediction model is parameterized by $\tilde\epsilonv_\theta(\x_n, n)$ for $n=0,\dots,N-1$, and each $\x_n$ is sampled from the distribution at time $t_n$. We can transform the discrete-time noise prediction model to the continuous version by letting
+$\epsilonv_\theta(\x, t)\coloneqq \tilde\epsilonv_\theta(\x, (N - 1)t)$, for all $\x\in\R^d, t\in[0,T]$.
+Note that the input time of $\tilde\epsilonv_\theta$ may not be integers, but we find that the noise prediction model can still work well, and we hypothesize that it is because of the smooth time embeddings (e.g. position embeddings~\citep{ho2020denoising}).\jianfei{I suppose this is a method invented by us?}
+
+\paragraph{Conditional Sampling by DPM-Solver.}
+DPM-Solver can also be used for conditional sampling, with a simple modification. The conditional generation needs to sample from the conditional diffusion ODE~\citep{song2020score, dhariwal2021diffusion} which includes the conditional noise prediction model. We follow the classifier guidance method~\citep{dhariwal2021diffusion} to define the conditional noise prediction model as $\epsilonv_\theta(\x_t,t,y)\coloneqq \epsilonv_\theta(\x_t,t) - \sigma_t\nabla_{\x}\log p_t(y|\x_t;\theta)$, where $p_t(y|\x_t;\theta)$ is a pre-trained classifier. Thus, we can use DPM-Solver to solver this diffusion ODE for fast conditional sampling, as shown in Fig.~\ref{fig:intro}.

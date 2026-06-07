@@ -1,0 +1,33 @@
+\OURS is simple to implement and experiment with.
+For this reason, we provide our \OURS implementation in PyTorch in this appendix.
+%It is not a library, but simply a \texttt{main\_swav.py} importing model and criterion definitions with standard training loops.
+From \texttt{main\_swav.py} are imported the dataset definition (\texttt{src/multicropdataset.py}), the model architecture (\texttt{src/resnet50.py}) and some miscellaneous training utilities (\texttt{src/utils.py}).
+\\
+
+For example, to train \OURS on a single node with 8 gpus for 400 epochs, run:
+\\
+\texttt{python -m torch.distributed.launch -{}-nproc\_per\_node=8 main\_swav.py \textbackslash \\}
+\texttt{-{}-data\_path /path/to/imagenet \textbackslash \\}
+\texttt{-{}-epochs 400 \textbackslash \\}
+\texttt{-{}-base\_lr 0.6 \textbackslash \\}
+\texttt{-{}-final\_lr 0.0006 \textbackslash \\}
+\texttt{-{}-warmup\_epochs 0 \textbackslash \\}
+\texttt{-{}-batch\_size 32 \textbackslash \\}
+\texttt{-{}-size\_crops 224 96 \textbackslash \\}
+\texttt{-{}-nmb\_crops 2 6 \textbackslash \\}
+\texttt{-{}-min\_scale\_crops 0.14 0.05 \textbackslash \\}
+\texttt{-{}-max\_scale\_crops 1. 0.14 \textbackslash \\}
+\texttt{-{}-use\_fp16 true \textbackslash \\}
+\texttt{-{}-freeze\_prototypes\_niters 5005 \textbackslash \\}
+\texttt{-{}-queue\_length 3840 \textbackslash \\}
+\texttt{-{}-epoch\_queue\_starts 15 \textbackslash \\}
+
+Our best ResNet-50 \OURS model is available to download at \url{https://dl.fbaipublicfiles.com/deepcluster/swav_800ep_pretrain.pth.tar}.
+
+\pythonexternal{main_swav.py}
+
+\pythonexternal{src/multicropdataset.py}
+
+\pythonexternal{src/resnet50.py}
+
+\pythonexternal{src/utils.py}

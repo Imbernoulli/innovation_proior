@@ -1,0 +1,172 @@
+\section{Experimental setup}
+\label{app:experiments}
+
+Here we present additional details on the experiments appearing in the main paper. 
+
+\subsection{CIFAR-classification}
+We run every experiment with three random seeds using the publicly available setup from \citep{devries2017improved}. A reviewer helpfully noted that this implementation of ResNet-18 has wider channels and more parameters than the original. For future work, it would be better to follow the original ResNet architecture for CIFAR classification. However, we observed consistently better convergence with Lookahead across different architectures and have results with other architectures in Appendix \ref{app:swa-comparison}. Our plots show the mean value with error bars of one standard deviation. We use a standard training procedure that is the same as that of \citet{Zagoruyko2016WRN}. That is, images are zero-padded with $4$ pixels on each side and then a random $32 \times 32$ crop is extracted and mirrored horizontally $50\%$ of the time. Inputs are normalized with per-channel means and standard deviations. Lookahead is evaluated on the slow weights of its inner optimizer. To make this evaluation fair, we evaluate the training loss at the end of each epoch by iterating through the training set again, without performing any gradient updates.
+
+We conduct hyperparameter searches over learning rates and weight decay values, making choices based on final validation performance. For SGD, we set the momentum to 0.9 and sweep over the learning rates \{0.01, 0.03, 0.05, 0.1, 0.2, 0.3\} and weight decay values of \{0.0003, 0.001, 0.003\}. The best choice was a learning rate of 0.05 and weight decay of 0.001. We found AdamW \citep{loshchilov2017fixing} to perform better than Adam and refer it to as Adam throughout our CIFAR experiment section. For Adam, we do a grid search on learning rate of \{1e-4, 3e-4, 1e-3, 3e-3, 1e-2\} and weight decay values of \{0.1, 0.3, 1, 3\}. The best choice was a learning rate of 3e-4 and weight decay of 1. For Polyak averaging, we compute the moving average of SGD use the best weight decay from SGD and sweep over the learning rates \{0.05, 0.1, 0.2, 0.3, 0.5\}. The best choice was a learning rate of $0.3$.
+
+For Lookahead, we set the inner optimizer SGD learning rate to $0.1$ and do a grid search over $\alpha = \{0.2, 0.5, 0.8\}$ and $k = \{5, 10\}$, with $\alpha=0.8$ and $k=5$ performing best (though the choice is fairly robust). We report the verison of Lookahead that resets momentum in our CIFAR experiments. 
+
+\subsection{ImageNet}
+For the baseline algorithm, we used SGD with a heavy ball momentum of $0.9$. We swept over learning rates in the set: $\{0.01, 0.02, 0.05, 0.1, 0.2, 0.3\}$ and selected a learning rate of 0.1 because it had the highest final validation accuracy.
+
+We directly wrapped Lookahead around the settings provided in the official PyTorch repository repository with $k =5$ and $\alpha=0.5$ (where SGD has a learning rate of 0.1 in the inner loop). Observing the improved convergence of our algorithm, we tested Lookahead with the aggressive learning rate decay schedule (decaying at the 30th, 48th, and 58th epochs). We run our experiments on 4 Nvidia P100 GPUs with a batch size of 256 and weight decay of 1e-4. We used the same settings in the ResNet-152 experiments. 
+
+\subsection{Language modeling}
+
+For the language modeling task we used the model and code provided by \citet{merity2017regularizing}. We used the default settings suggested in this codebase at the time of usage which we report here. The LSTM we trained had 3 layers each containing 1150 hidden units. We used word embeddings of dimension 400.  Within each hidden layer we apply dropout with probability 0.3 and the input embedding layers use dropout with probability 0.65. We applied dropout to the embedding layer itself with probability 0.1. We used the weight drop method proposed in \citet{merity2017regularizing} with probability 0.5. We adopt the regularization proposed in section 4.6 in \citet{merity2017regularizing}: RNN activations have L2 regularization applied to them with a scaling of 2.0, and temporal activation regularization is applied with scaling 1.0. Finally, all weights receive a weight decay of 1.2e-6.
+
+We trained the model using variable sequence lengths and batch sizes of 80. We apply gradient clipping of 0.25 to all optimizers. During training, if validation loss has not decreased for 15 epochs then we reduce the learning rate by half.  Before applying Lookahead, we completed a grid search over the Adam and SGD optimizers to find competitive baseline models. For SGD we did not apply momentum and searched learning rates in the range $\{50, 30, 10, 5, 2.5, 1, 0.1\}$. For Adam we kept the default momentum values of $(\beta_1, \beta_2) = (0.9, 0.999)$ and searched over learning rates in the range $\{0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001\}$. We chose the best model by picking the model which achieved the best validation performance at any point during training.
+
+After picking the best SGD/Adam hyperparameters we trained the models again using Lookahead with the best baseline optimizers for the inner-loop. We tried using $k=\{5,10,20\}$ inner-loop updates and $\alpha = \{ 0.2, 0.5, 0.8\}$ interpolation coefficients. Once again, we reported Lookahead's final performance by choosing the parameters which gave the best validation performance during training.
+
+For this task, $\alpha=0.5$ or $\alpha=0.8$ and $k=5$ or $k=10$ worked best. As in our other experiments, we found that Lookahead was largely robust to different choices of $k$ and $\alpha$. We expect that we could achieve even better results with Lookahead if we jointly optimized the hyperparameters of Lookahead and the underlying optimizer.
+
+\subsection{Neural machine translation}
+\label{app:nmt}
+
+For this task, we trained on a single TPU core that has 8 workers each with a minibatch size of 2048. We use the default hyperparameters for Adam \citep{vaswani2017attention} and AdaFactor \citep{adafactor} in the experiments. For Lookahead, we did a minor grid search over the learning rate $\{0.02, 0.04, 0.06\}$ and $k=\{5, 10\}$ while setting $\alpha=0.5$. We found learning rate 0.04 and $k=10$ worked best. After we train those models for 250k steps, they can all reach around 27 BLEU on Newstest2014 respectively.
+
+
+
+
+% \subsection{Sensitivity to Inner Optimizer}
+
+% We present additional sensitivity studies to the inner optimizer of Lookahead. Lookahead parameters are fixed to $\alpha=0.8$ and $k=5$ and demonstrate less variance compared to the inner loop optimizer of SGD when hyperparameters are misspecified.
+
+%     \begin{figure*}
+%         \centering
+%         \begin{subfigure}[b]{0.475\textwidth}
+%             \centering
+%             \includegraphics[width=\textwidth]{images/diff-lr_train_loss3.png}
+%             \caption[Network2]%
+%             {{\small CIFAR-10 Train Loss: Different LR}}    
+%             \label{fig:cifar-lr-ablation}
+%         \end{subfigure}
+%         \hfill
+%         \begin{subfigure}[b]{0.475\textwidth}  
+%             \centering 
+%             \includegraphics[width=\textwidth]{images/diff-momentum_train_loss.png}
+%             \caption[]%
+%             {{\small CIFAR-10 Train Loss: Different momentum}}    
+%             \label{fig:mean and std of net24}
+%         \end{subfigure}
+%         \vskip\baselineskip
+%         \begin{subfigure}[b]{0.475\textwidth}   
+%             \centering 
+%             \includegraphics[width=\textwidth]{images/diff-lr_decaytrain_loss.png}
+%             \caption[]%
+%             {{\small CIFAR-10 Train Loss: Different LR decay}}    
+%             \label{fig:mean and std of net34}
+%         \end{subfigure}
+%         \quad
+%         \begin{subfigure}[b]{0.475\textwidth}   
+%             \centering 
+%             \includegraphics[width=\textwidth]{images/diff-bs_train_loss.png}
+%             \caption[]%
+%             {{\small CIFAR-10 Train Loss: Different batch sizes}}    
+%             \label{fig:mean and std of net44}
+%         \end{subfigure}
+%         \caption[]
+%         {\small Evaluation of Lookahead wrapped around different internal parameters on CIFAR-10. $k$ and $\alpha$ are fixed to 5 and 0.8 \MZ{Need to say something in text}} 
+%         \label{fig:mean and std of nets}
+%     \end{figure*}
+
+\section{Additional Experiments}
+
+\subsection{Inner Optimizer State}
+\label{app:interpolation}
+
+Throughout our paper, we maintain the state of our inner optimizer for simplicity. For SGD with heavy-ball momentum, this corresponds to preserving the momentum. Here, we present a sensitivity study by comparing the convergence of Lookahead when maintaining the momentum, interpolating the momentum, and resetting the momentum. All three improve convergence versus SGD.
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[t]{0.48 \linewidth}
+    \centering
+    \includegraphics[width=1. \textwidth]{images/pulloptim_train_loss.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48 \linewidth}
+\begin{table}[H]
+\begin{center}
+%\begin{small}
+\vspace{-1.1in}
+\begin{sc}
+\begin{tabular}{l c c  }
+\toprule
+Optimizer & CIFAR-10  \\
+\midrule
+Maintain & $95.15 \pm .08$  \\ 
+Interpolate & $95.16 \pm .13$ \\
+Reset & $94.91 \pm .05$  \\ 
+\bottomrule
+\end{tabular}
+\end{sc}
+%\end{small}
+\end{center}
+\caption{CIFAR Final Validation Accuracy.}
+\label{tabel:cifar-interpolation}
+\end{table}
+\end{minipage}
+\caption{Evaluation of maintaining, interpolating, and resetting momentum on CIFAR-10}
+\end{figure}
+
+\subsection{Validation Accuracy}
+We present curves corresponding to the evolution of validation accuracy during training on CIFAR and ImageNet datasets. Though not the focus of our work, we find that faster convergence in training loss does in fact correspond to better validation performance on these datasets.
+
+
+% \begin{wrapfigure}{T}{\linewidth}
+\begin{figure*}
+\begin{minipage}[t]{0.48 \linewidth}
+    \centering
+    \includegraphics[width=.98\linewidth]{images/Cifar_test.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48 \linewidth}
+    \centering
+\includegraphics[width=.98\linewidth]{images/imagenet_val.png}
+\end{minipage}
+\centering
+\caption{Evolution of test accuracy on CIFAR-10 and ImageNet.}
+\vskip -0.1in
+\label{fig:cifar-val}
+\end{figure*}
+
+\subsection{Comparison to Stochastic Weight Averaging}
+\label{app:swa-comparison}
+
+In this subsection, we elaborate on differences between Stochastic Weight Averaging (SWA) \cite{izmailov2018averaging} and Lookahead, showing that they serve different purposes but can be complementary. First, SWA and the general family of methods that perform tail averaging \cite{ruppert1988efficient, polyak1992acceleration} requires a choice of when to begin averaging. A choice that is either too early or too late can be detrimental to performance. This is illustrated in Figure \ref{fig:swa_resnet}, where we plot comparisons of the test accuracy of three runs of Lookahead and SWA, using SGD in the inner loop of both algorithms. We use the suggested schedule from the SWA paper, which has higher learning rates than is typical at the end of training. SWA achieves better performance when initialized from epoch 10 compared to epoch 1, due to poor performance from the earlier models. In contrast, Lookahead is used from initialization and does not have this tail averaging start decision. While SWA performs better during the intermediate stages of training (since it is loosely approximating an ensemble by averaging the weights of multiple models), Lookahead with its variance reduction properties achieves better final performance, even with the modified learning rate schedule. Lookahead also computes an exponential moving average of its fast weights rather than the artithmetic average of SWA, which increases the emphasis on recent proposals of weights \cite{martens2014new}.
+
+\begin{wrapfigure}{r}{.6\linewidth}
+\vskip -0.2in
+\centering
+\includegraphics[width=.9 \linewidth]{images/swa_resnet110.pdf}
+\caption{Test Accuracy on CIFAR-100 with SWA and Lookahead (PreResNet-110). We follow exactly the hyperparameter settings in their repository and also run Lookahead with $\alpha = 0.8$ and $k=10$. Note that the learning rate schedule uses a learning rate that is higher than is typical at the end of training.}
+% \vskip -0.1in
+\label{fig:swa_resnet}
+\end{wrapfigure}
+
+We do believe that Lookahead is complementary to SWA and traditional techniques for ensembling models. To this end, we perform three runs with Wide ResNet-28-10 \cite{Zagoruyko2016WRN} on CIFAR-100 with SWA and compare two choices of the inner loop algorithm of SWA. The inner loop algorithms are SGD (as in \cite{izmailov2018averaging}) and Lookahead wrapped around SGD. The runs with Lookahead achieve higher test accuracy throughout training and in the weight averaged network.
+
+\begin{figure*}
+\begin{minipage}[t]{0.48 \linewidth}
+    \centering
+    \includegraphics[width=.98\linewidth]{images/wrn_accuracy.pdf}
+\end{minipage}
+\hfill
+\begin{minipage}[t]{0.48 \linewidth}
+    \centering
+\includegraphics[width=.98\linewidth]{images/wrn_accuracy_swa.pdf}
+    % \includegraphics[width=.98\linewidth]{images/wrn_accuracy.pdf}
+\end{minipage}
+\centering
+% \vskip -0.1in
+\caption{Test Accuracy on CIFAR-100 with SWA and Lookahead (Wide ResNet-28-10). Following Izmailov et al, SWA is started at epoch 161. We plot the accuracy throughout training (left) and the accuracy of the SWA network (right).}
+\vskip -0.1in
+\label{fig:swa-comparison-wrn}
+\end{figure*}
+
+% todo, weights are synced (didn't mention in rebuttal), applied towards the end of training, exponential rather than arithmetic average

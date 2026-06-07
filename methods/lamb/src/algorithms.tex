@@ -1,0 +1,103 @@
+%!TEX root = nips_2018.tex
+
+In this section, we first discuss a general strategy to adapt the learning rate in large batch settings.  Using this strategy, we discuss two specific algorithms in the later part of the section. Since our primary focus is on deep learning, our discussion is centered around training a $h$-layer neural network.
+
+{\bf General Strategy.} Suppose we use an iterative \emph{base} algorithm $\mathcal{A}$ (e.g. $\sgd$ or $\adam$) in the small batch setting with the following layerwise update rule:
+\begin{align*}
+x_{t+1} = x_t + \eta_t u_t, 
+\end{align*} 
+where $u_t$ is the update made by $\mathcal{A}$ at time step $t$. We propose the following two changes to the update for large batch settings:
+\begin{enumerate}
+\item The update is normalized to unit $l_2$-norm. This is ensured by modifying the update to the form $u_t/\|u_t\|$. Throughout this paper, such a normalization is done layerwise i.e., the update for each layer is ensured to be unit $l_2$-norm.
+\item The learning rate is scaled by $\phi(\|x_t\|)$ for some function $\phi:\mathbb{R}^{+} \rightarrow \mathbb{R}^+$. Similar to the normalization, such a scaling is done layerwise.
+\end{enumerate}
+Suppose the base algorithm $\mathcal{A}$ is $\sgd$, then the modification results in the following update rule:
+\begin{align}
+x_{t+1}^{(i)} = x_t^{(i)} - \eta_t \frac{\phi(\|x_t^{(i)}\|)}{\|g_t^{(i)}\|} g_t^{(i)} ,
+\end{align}
+for all layers $i \in [h]$ and where $x^{(i)}_t$ and $g^{(i)}_t$ are the parameters and the gradients of the $i^{\text{th}}$ layer at time step $t$.  The normalization modification is similar to one typically used in normalized gradient descent except that it is done layerwise. Note that the modification leads to a biased gradient update; however, in large-batch settings, it can be shown that this bias is small.  It is intuitive  that such a normalization provides robustness to exploding gradients (where the gradient can be arbitrarily large) and plateaus (where the gradient can be arbitrarily small). Normalization of this form essentially ignores the size of the gradient and is particularly useful in large batch settings where the direction of the gradient is largely preserved.
+
+The scaling term involving $\phi$ ensures that the norm of the update is of the same order as that of the parameter. We found that this typically ensures faster convergence in deep neural networks. In practice, we observed that a simple function of $\phi(z) = \min\{\max\{z, \gamma_l\}, \gamma_u\}$ works well. It is instructive to consider the case where $\phi(z) = z$. In this scenario, the overall change in the learning rate is $\tfrac{\|x_t^{(i)}\|}{\|g_t^{(i)}\|}$ , which can also be interpreted as an estimate on the inverse of Lipschitz constant of the gradient (see~\eqref{eq:l-const}). We now discuss different instantiations of the strategy discussed above. 
+In particular, we focus on two algorithms: $\lars$ (\ref{Subsection:lars}) and the proposed method, $\lamb$ (\ref{Subsection:lamb}).
+
+\subsection{$\lars$ Algorithm}
+\label{Subsection:lars}
+
+The first instantiation of the general strategy is $\lars$ algorithm \citep{you2017scaling}, which is obtained by using momentum optimizer as the base algorithm $\mathcal{A}$ in the framework. $\lars$ was earlier proposed for large batch learning for $\resnet$ on ImageNet. In general, it is observed that the using (heavy-ball) momentum, one can reduce the variance in the stochastic gradients at the cost of little bias. The pseudocode for $\lars$ is provide in Algorithm~\ref{alg:lars}.
+
+\begin{figure}
+\begin{minipage}[b]{.48\textwidth}
+\begin{algorithm}[H]\small
+	\caption{$\lars$}
+	\label{alg:lars}
+	\begin{algorithmic}
+		\STATE {\bfseries Input:} $x_1 \in \mathbb{R}^d$, learning rate $\{\eta_t\}_{t=1}^T$, parameter $0 < \beta_{1} < 1$, scaling function $\phi$, $\epsilon > 0$
+		\STATE Set $m_{0} = 0$
+		\FOR{$t=1$ {\bfseries to} $T$}
+		\STATE Draw b samples $S_t$ from $\mathbb{P}$
+        \STATE Compute $g_t = \frac{1}{|\mathcal{S}_t|} \sum_{s_t \in \mathcal{S}_t}\nabla \ell(x_t, s_t)$
+        \STATE $m_{t} = \beta_{1} m_{t-1} + (1 - \beta_{1}) (g_{t} + \lambda x_t)$
+		\STATE $x_{t+1}^{(i)} = x_{t}^{(i)} - \eta_t \frac{\phi(\|x_t^{(i)}\|)}{\|m_t^{(i)}\|} m_t^{(i)}$ for all $i \in [h]$
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+\end{minipage}\hfill% This must go next to `\end{minipage}`
+\begin{minipage}[b]{.5\textwidth}
+\begin{algorithm}[H]\small
+	\caption{$\lamb$}
+	\label{alg:lamb}
+	\begin{algorithmic}
+		\STATE {\bf Input:} $x_1 \in \mathbb{R}^d$, learning rate $\{\eta_t\}_{t=1}^T$,  parameters $0 < \beta_{1}, \beta_2 < 1$, scaling function $\phi$, $\epsilon > 0$
+		\STATE Set $m_{0} = 0$, $v_{0} = 0$
+		\FOR{$t=1$ {\bf to} $T$}
+		\STATE Draw b samples $S_t$ from $\mathbb{P}$.
+        \STATE Compute $g_t = \frac{1}{|\mathcal{S}_t|} \sum_{s_t \in \mathcal{S}_t}\nabla \ell(x_t, s_t)$.
+		\STATE  $m_{t} = \beta_{1} m_{t-1} + (1 - \beta_{1}) g_{t}$ 
+		\STATE  $v_{t} = \beta_{2} v_{t-1} + (1 - \beta_{2}) g_{t}^2$
+		\STATE $m_t = m_t/(1 - {\beta}_1^t)$ 
+        \STATE $v_t = v_t/(1 - {\beta}_2^t)$
+		\STATE Compute ratio $r_t = \frac{m_t}{\sqrt{v_t} + \epsilon}$
+		\STATE $x_{t+1}^{(i)} = x_{t}^{(i)} - \eta_t \frac{\phi(\|x_t^{(i)}\|)}{\|r_t^{(i)} + \lambda x_t^{(i)}\|} (r_t^{(i)} + \lambda x_t^{(i)})$
+		\ENDFOR
+	\end{algorithmic}
+\end{algorithm}
+\end{minipage}
+\end{figure}
+
+We now provide convergence analysis for $\lars$ in general nonconvex setting stated in this paper. For the sake of simplicity, we analyze the case where $\beta_1 = 0$ and $\lambda = 0$ in Algorithm~\ref{alg:lars}. However, our analysis should extend to the general case as well. We will defer all discussions about the convergence rate to the end of the section.
+
+\begin{theorem}
+\label{thm:lars-conv}
+Let $\eta_t = \eta = \sqrt{\tfrac{2(f(x_1) - f(x^*))}{\alpha_u^2 \|L\|_1 T}}$ \ for all $t \in [T]$, $b=T$, $\alpha_l \leq \phi(v) \leq \alpha_u$ for all $v > 0$ where $\alpha_l, \alpha_u > 0$. Then for $x_t$ generated using $\lars$ (Algorithm~\ref{alg:lars}), we have the following bound
+\begin{align*}
+\left(\mathbb{E}\left[\frac{1}{\sqrt{h}}\sum_{i=1}^h \|\nabla_i f(x_a)\|\right]\right)^2 \leq O\left(\frac{(f(x_1) - f(x^*))L_{avg}}{T} + \frac{\|\sigma \|^2_1}{Th}\right), 
+\end{align*}
+where $x^*$ is an optimal solution to the problem in \eqref{eq:1} and $x_a$ is an iterate uniformly randomly chosen from $\{x_1, \cdots, x_T\}$.
+\end{theorem}
+
+\subsection{$\lamb$ Algorithm}
+\label{Subsection:lamb}
+
+The second instantiation of the general strategy is obtained by using $\adam$ as the base algorithm $\mathcal{A}$. $\adam$ optimizer is popular in deep learning community and has shown to have good performance for training state-of-the-art language models like $\bert$. Unlike $\lars$, the adaptivity of $\lamb$ is two-fold: (i) per dimension normalization with respect to the square root of the second moment used in $\adam$ and (ii) layerwise normalization  obtained due to layerwise adaptivity. The pseudocode for $\lamb$ is provided in Algorithm~\ref{alg:lamb}. When $\beta_1 = 0$ and $\beta_2 = 0$, the algorithm reduces to be Sign \sgd where the learning rate is scaled by square root of the layer dimension \citep{signsgd}.
+
+The following result provides convergence rate for $\lamb$ in general nonconvex settings. Similar to the previous case, we focus on the setting where $\beta_1 = 0$ and $\lambda = 0$. As before, our analysis extends to the general case; however, the calculations become messy.
+
+\begin{theorem}
+\label{thm:lamb-conv}
+Let $\eta_t = \eta = \sqrt{\tfrac{2(f(x_1) - f(x^*))}{\alpha_u^2 \|L\|_1 T}}$ \ for all $t \in [T]$, $b = T$, $d_i = d/h$ for all $i \in [h]$, and $\alpha_l \leq \phi(v) \leq \alpha_u$ for all $v > 0$ where $\alpha_l, \alpha_u > 0$. Then for $x_t$ generated using $\lamb$ (Algorithm~\ref{alg:lamb}), we have the following bounds:
+\begin{enumerate}
+    \item When $\beta_2 = 0$, we have
+    \begin{align*}
+\left(\mathbb{E}\left[\frac{1}{\sqrt{d}}\|\nabla f(x_a)\|_1\right]\right)^2 &\leq  O\left(\frac{(f(x_1) - f(x^*))L_{avg}}{T} + \frac{\|\tilde{\sigma}\|^2_1}{Th}\right),
+\end{align*}
+
+    \item When $\beta_2 > 0$, we have
+    \begin{align*}
+ \mathbb{E}[\|\nabla f(x_a)\|^2] &\leq O\left(\sqrt{\frac{G^2 d}{h(1 - \beta_2)}} \times \left[\sqrt{\frac{2(f(x_1) - f(x^*))\|L\|_1}{T}} + \frac{\|\tilde{\sigma}\|_1}{\sqrt{T}} \right]\right),
+\end{align*}
+
+\end{enumerate}
+where $x^*$ is an optimal solution to the problem in \eqref{eq:1} and $x_a$ is an iterate uniformly randomly chosen from $\{x_1, \cdots, x_T\}$.
+\end{theorem}
+
+{\bf Discussion on convergence rates.} We first start our discussion with the comparison of convergence rate of $\lars$ with that of $\sgd$ (Theorem~\ref{thm:sgd-conv}). The convergence rates of $\lars$ and $\sgd$ differ in two ways: (1) the convergence criterion is $(\mathbb{E}[\sum_{i=1}^h \|\nabla_i f\|])^2$ as opposed to $\mathbb{E}[\|\nabla f\|^2]$ in $\sgd$ and (2) the dependence on $L$ and $\sigma$ in the convergence rate. Briefly, the convergence rate of $\lars$ is better than $\sgd$ when the gradient is denser than curvature and stochasticity. This convergence rate comparison is similar in spirit to the one obtained in \citep{signsgd}. Assuming that the convergence criterion in Theorem~\ref{thm:sgd-conv} and Theorem~\ref{thm:lars-conv} is of similar order (which happens when gradients are fairly dense), convergence rate of $\lars$ and $\lamb$ depend on $L_{avg}$ instead of $L_\infty$ and are thus, significantly better than that of $\sgd$. A more quantitative comparison is provided in Section~\ref{sec:conv-compare} of the Appendix. The comparison of $\lamb$ (with $\beta_2$ = 0) with $\sgd$ is along similar lines. We obtain slightly worse rates for the case where $\beta_2 > 0$; although, we believe that its behavior should be better than the case $\beta_2 = 0$. We leave this investigation to future work. 

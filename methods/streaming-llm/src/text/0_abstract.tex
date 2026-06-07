@@ -1,0 +1,11 @@
+\begin{abstract}
+Deploying Large Language Models (LLMs) in streaming applications such as multi-round dialogue, where long interactions are expected, is urgently needed but poses two major challenges.
+Firstly, during the decoding stage, caching previous tokens' Key and Value states (KV) consumes extensive memory.
+Secondly, popular LLMs cannot generalize to longer texts than the training sequence length.
+Window attention, where only the most recent KVs are cached, is a natural approach --- but we show that it fails when the text length surpasses the cache size.
+We observe an interesting phenomenon, namely \emph{attention sink}, that keeping the KV of initial tokens will largely recover the performance of window attention. In this paper, we first demonstrate that the emergence of \emph{attention sink} is due to the strong attention scores towards initial tokens as a ``sink'' even if they are not semantically important.
+Based on the above analysis, we introduce \method, an efficient framework that enables LLMs trained with a \textit{finite length} attention window to generalize to \textit{infinite sequence length} without any fine-tuning.
+We show that \method can enable Llama-2, MPT, Falcon, and Pythia to perform stable and efficient language modeling with up to 4 million tokens and more.
+In addition, we discover that adding a placeholder token as a dedicated attention sink during pre-training can further improve streaming deployment. In streaming settings, \method outperforms the sliding window recomputation baseline by up to 22.2$\times$ speedup.
+Code and datasets are provided in the \href{https://github.com/mit-han-lab/streaming-llm}{link}.
+\end{abstract}

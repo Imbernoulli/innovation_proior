@@ -1,0 +1,201 @@
+OK, let me think this through from scratch. I have a lithium-ion cell and I want a model I can actually use — inside a BMS, inside a parameter-estimation loop, inside an optimizer that calls it thousands of times, inside a pack solver with hundreds of cells. The model that physicists trust is the porous-electrode / concentrated-solution description that Newman and Doyle and Fuller built: volume-average the porous microstructure into a continuum, put a representative spherical active-material particle at every macroscopic point `x` across the cell, let lithium diffuse radially inside each particle, let lithium ions diffuse and migrate through the electrolyte, conserve charge in both the solid and the electrolyte, and couple the two phases through a Butler–Volmer reaction at every particle surface. It is faithful. And it is a nightmare to solve fast.
+
+Let me actually stare at why it's a nightmare, because the cost is structural, not incidental. Write the thing down. In each electrode and the separator I have charge conservation in the electrolyte — the MacInnes equation — where the electrolyte current `i_e` is driven by minus the gradient of the electrolyte potential plus a diffusional term proportional to the gradient of `log c_e`, and its divergence equals the local reaction current `a_k j_k` (zero in the separator, where nothing reacts). I have Ohm's law in the solid: `I − i_e = −σ_k ∂φ_s/∂x`. I have molar conservation of lithium ions in the electrolyte, `ε_k ∂c_e/∂t = ∂N_e/∂x + (1/F)∂i_e/∂x`, with the flux `N_e` a sum of a diffusive part `ε^b D_e(c_e) ∂c_e/∂x` and a migration part `(t⁺/F) i_e`. I have radial solid diffusion inside each particle, `∂c_s/∂t = (1/r²)∂_r(r² D_s ∂_r c_s)`, with a surface flux set by the local reaction `j_k/F`. And I have Butler–Volmer tying it all together, `j_k = j_{0,k} sinh(F η_k/(2RT))`, with exchange-current density `j_{0,k} = m_k c_s^½ (c_{s,max}−c_s)^½ c_e^½` and overpotential `η_k = φ_s − φ_e − U_k(c_s|surface)`, where `U_k` is the open-circuit potential.
+
+Now look at the *type* of this system. The two charge-conservation equations have no time derivative in them — they're elliptic constraints relating potentials to currents instantaneously. The two diffusion equations are parabolic. When I discretize in space, the elliptic equations become algebraic constraints and the parabolic ones become ODEs, so the whole thing is a differential-algebraic system, and because the coupling is strong it's an index-1 DAE — stiff. Two costs fall out of that. First, the sheer number of states: a particle diffusion problem at *every* `x`. With 30 `x`-points per electrode and 15 `r`-points per particle that's `2 × 30 × 15 = 900` particle states alone, plus electrolyte concentration, electrolyte potential and electrode potentials — on the order of 1100 states to store and advance every step. Second, the DAE form itself: I have to find consistent initial conditions for the algebraic potentials by a Newton solve before I can even start, and worse, if the current steps — say I switch from discharge to charge — the algebraic part can fail to converge. That's exactly the regime a BMS or a fast-charge controller lives in. So the full model is both too big and too brittle for the job.
+
+The cheap escape that the control community already uses is the single-particle model. The idea there: stop resolving a particle at every `x`. Represent each electrode by one particle, assume the reaction current is spread uniformly through the electrode, assume the electrolyte is just a constant — uniform concentration, flat potential. Then I solve one spherical diffusion equation per electrode with a surface flux proportional to `±I/L_k`, and the voltage is the difference of the two open-circuit potentials minus two reaction overpotentials of the form `−2 sinh⁻¹(I/(j_{0,k} L_k))`. A handful of states, non-stiff, robust. Wonderful — except it has no electrolyte at all. And it's well documented that this is fine only at low current; once you push past roughly 1C–2C the voltage it predicts drifts away from the full model by tens of millivolts, exceeding fifty at high C-rate. The reason is already visible in the equations: at high current the electrolyte concentration develops real gradients across the cell, the ionic conductivity and the local overpotentials shift with it, and the reaction stops being uniform. The single-particle model threw all of that away.
+
+So the obvious move, and the move a lot of people have already made, is: bolt the electrolyte back on. Add an electrolyte diffusion PDE, and add to the voltage a concentration overpotential and an electrolyte Ohmic loss. And there are six or seven such "extended SPM" models in the literature. Let me look at what bothers me about them before I write my own, because if I just do the same thing I'll inherit the same problem.
+
+What they do, concretely, is take the *pointwise* expressions from the full model — a concentration overpotential like `2(1−t⁺) log((1+C_e c_{e,p}¹|_{x=1})/(1+C_e c_{e,n}¹|_{x=0}))`, a pointwise Ohmic loss — and graft them onto the single-particle voltage. The choices of which terms to keep, whether to keep the nonlinear `D_e(c_e)` or freeze it, whether to keep `c_e^½` in the exchange-current density — those are made by hand. One of these models needs something like six separate assumptions, and the killer is that you can only *check* those assumptions after you've run the full model and compared. So you can't tell, from the cell parameters and the C-rate alone, whether the model is going to be accurate before you run it. And there's a subtler problem I want to nail down. When they write a pointwise voltage and then plug in an electrode-*averaged* particle concentration and an electrode-averaged reaction current, they are implicitly asserting that the reaction current at a point equals its electrode average — that every particle in the electrode is doing the same thing. That's the very assumption the single-particle model rests on, and it's *only* true to lowest order. The moment you try to add a correction, you're adding it on top of an inconsistency. No wonder these models over- or under-correct in different regimes.
+
+So I don't want to bolt things on. I want to *derive* the reduced model — start from the full model, and let a systematic procedure tell me which terms survive and which die, and at what order. If I do that, then "which terms to keep" stops being a judgement call and the modelling error becomes something I can read off the parameters. Asymptotic methods are exactly the tool: find a small parameter, expand every unknown in powers of it, solve order by order. The leading order should hopefully reproduce the single-particle model — that would be a sanity check that I've found the right small parameter — and the next order should *generate* the electrolyte corrections for me, consistently, without my choosing them.
+
+First I have to nondimensionalize, because "small" only means anything against a scale. Let me scale `x` by the cell thickness `L`, time by a discharge timescale `τ_d = F c_{n,max} L / I_typ` (the time to deplete the negative electrode at the typical current), the particle radial coordinate by `R_k`, solid concentration by `c_{s,max}`, electrolyte concentration by a typical value `c_e,typ`, potentials by the thermal voltage `RT/F`, currents by `I_typ`. When I push these scalings through the full model, a set of dimensionless groups falls out, and the physics is now in the *sizes* of those groups.
+
+Let me list the groups and, more importantly, feel out which are small and which are large, because that's where the asymptotics lives. There's `C_k = τ_k/τ_d`, the ratio of solid-diffusion to discharge time — order 0.1×(C-rate), so order one at the C-rates I care about. There's `C_{r,k} = τ_{r,k}/τ_d`, reaction over discharge — also order one-ish. There's `γ_e = c_e,typ/c_{n,max}`, about 0.04, smallish but a fixed material ratio, not something I expand in. Now the interesting ones. `σ_k`, the ratio of the thermal voltage to the typical Ohmic drop in the solid, comes out around `476/C` in the negative electrode — *large*. `κ̂_e`, the same ratio for the electrolyte, around `5.2/C` — also large. And `C_e = τ_e/τ_d`, the ratio of the electrolyte-transport timescale to the discharge timescale, comes out around `4.19×10⁻³ × (C-rate)` — *tiny*. There's my small parameter. `C_e → 0` is the physical statement that lithium ions cross the cell much faster than the cell discharges, so the electrolyte never gets far from equilibrium. That's exactly the regime where the single-particle model is supposed to be good, which is encouraging.
+
+But I can't just expand in `C_e` and leave the large parameters sitting there at infinity, because the way `σ_k` and `κ̂_e` enter is going to decide whether the Ohmic losses appear at leading order, at first order, or never. Let me think about the orders of magnitude. `σ_k C_e` is `(476/C)(4.19×10⁻³ C) ≈ 2`, order one. `κ̂_e C_e` is `(5.2/C)(4.19×10⁻³ C) ≈ 0.02`, also order-one-ish (a fixed small constant, not blowing up or vanishing). That's the tell. The Ohmic drops are large parameters, but their *product* with my small parameter is order one. So the distinguished limit — the scaling that keeps the maximum amount of physics alive at the same order — is to hold `σ_k C_e` and `κ̂_e C_e` fixed as `C_e → 0`. Concretely, set `σ_k = σ_k'/C_e` and `κ̂_e = κ̂_e'/C_e` with the primed quantities order one. If I'd instead let `σ_k, κ̂_e → ∞` independently of `C_e`, the Ohmic losses would drop out entirely and I'd lose them; if they grew faster they'd blow up. The distinguished limit is the one that lets the electrolyte concentration correction and the Ohmic losses appear *together*, at the same first order. That co-appearance is going to matter.
+
+Now, before I expand anything, there's one rewrite of the voltage I want to do, and I think it's the whole game. The terminal voltage is `V = φ_{s,p}|_{x=1} − φ_{s,n}|_{x=0}`. That's a difference of two potentials at the two ends. Let me instead follow a *current path* through the cell: the current enters the negative current collector at `x=0`, travels through the solid of the negative electrode to some point `x_n`, jumps into the electrolyte through a reaction there, crosses the electrolyte to a point `x_p` in the positive electrode, jumps back into the positive solid through another reaction, and exits at `x=1`. Summing the potential drops along that path and using the overpotential definition `η_k = φ_s − φ_e − U_k`, I get the voltage as a sum of named pieces: a pointwise open-circuit voltage `U_eq|_{x_n,x_p} = U_p(c_{s,p}|_{r=1})|_{x_p} − U_n(c_{s,n}|_{r=1})|_{x_n}`, the two reaction overpotentials `η_p|_{x_p} − η_n|_{x_n}`, the electrolyte potential difference `φ_{e,p}|_{x_p} − φ_{e,n}|_{x_n}`, and the solid-phase Ohmic drops. This holds for *any* path `(x_n, x_p)` — every path through the cell gives the same terminal voltage, since `V` is just the difference of the two endpoint solid potentials.
+
+And that last fact is the lever. If `V` is the same for every path, then `V` equals the *average* of the path expression over all paths. So integrate the pointwise expression over `x_n ∈ [0, L_n]`, divide by `L_n`, and over `x_p ∈ [1−L_p, 1]`, divide by `L_p`. Now every piece of the voltage is an *electrode-averaged* quantity: averaged OCV, averaged overpotentials, averaged electrolyte potential difference, averaged solid Ohmic loss. Why do I want the averaged form rather than the pointwise one? Because of exactly the inconsistency I diagnosed in the ad-hoc models. The pointwise expression requires me to know both the reaction current *and* the potentials at a particular point. After reduction I only know the electrode-*averaged* current; resolving the pointwise reaction distribution would defeat the cheap model. With the pointwise form I'd have to assume the local current equals the average, which is false beyond leading order. With the averaged form, the problem is well posed exactly as stated: given the electrode-averaged current, find the electrode-averaged potential differences. No assumption smuggled in. This is the step the ad-hoc models skipped, and it is exactly where a first-order error can enter. Without this rewrite I'd need a more complicated model to reach the same accuracy.
+
+One more relation I'll want, also before expanding. Integrate the electrolyte molar-conservation equation over the whole cell and use the no-flux boundary conditions at `x=0,1` and the continuity conditions at the interfaces. The reaction-source and current terms telescope, and what's left says the total amount of lithium ion in the electrolyte is conserved: `∫₀^{L_n} c_{e,n} dx + ∫ c_{e,s} dx + ∫ c_{e,p} dx = 1` (it starts at the uniform value 1 everywhere). I'll need this to fix constants of integration — the electrolyte is a closed reservoir, ions just slosh from one side to the other.
+
+Now expand. Every variable `f ~ f⁰ + C_e f¹ + C_e² f² + …`. Leading order first.
+
+Take the dimensionless molar conservation and flux. In dimensionless form the molar equation reads `C_e ε_k γ_e ∂c_e/∂t = −γ_e ∂N_e/∂x + C_e ∂i_e/∂x`, and the flux `N_e = −ε^b D_e(c_e) ∂c_e/∂x + (C_e t⁺/γ_e) i_e`. At leading order in `C_e` the time-derivative term and the migration term both carry an explicit `C_e`, so they vanish, and I'm left with `∂N_e⁰/∂x = 0` with `N_e⁰ = −ε^b D_e(c_e⁰) ∂c_e⁰/∂x`. So the leading-order flux is constant in `x`. Apply the no-flux boundary conditions at the cell ends — `N_e⁰ = 0` at `x=0` and `x=1` — and flux continuity at the interfaces, and the constant must be zero: `N_e⁰ = 0` everywhere, which forces `∂c_e⁰/∂x = 0`, so `c_e⁰` is uniform. With the initial condition `c_e = 1` and the lithium-conservation integral, that uniform value is `c_e⁰ = 1`. No electrolyte depletion at leading order. Good — that matches the single-particle picture.
+
+Next the two charge equations at leading order. MacInnes: `i_e = ε^b κ̂_e κ_e(c_e)(−∂φ_e/∂x + 2(1−t⁺) ∂log(c_e)/∂x)`. But `κ̂_e = κ̂_e'/C_e` is *large*, order `1/C_e`. For `i_e` to stay order one, the bracket must be order `C_e`, so at leading order `∂φ_e⁰/∂x = 0`. Same logic for solid Ohm's law `I − i_e = −σ_k ∂φ_s/∂x` with `σ_k = σ_k'/C_e` large: `∂φ_s⁰/∂x = 0`. So at leading order both potentials are flat in `x`. That's the single-particle assumption, but now it's a *consequence* of the high-conductivity limit, not a postulate.
+
+Stack these up. `c_e⁰`, `φ_e⁰`, `φ_s⁰` are all `x`-independent, and `c_s⁰` is `x`-independent initially. Then from Butler–Volmer, the exchange-current density and the overpotential, `j_k⁰`, `j_{0,k}⁰` and `η_k⁰` are all `x`-independent too — the reaction is uniform across each electrode. So integrate charge conservation `∂i_e⁰/∂x = j_k⁰` across the electrode with the boundary conditions `i_e = 0` at the outer edge and `i_e = I` at the inner edge. In the negative electrode the current ramps linearly from 0 to `I`, giving `i_{e,n}⁰ = xI/L_n` and a uniform reaction current `j_n⁰ = I/L_n`; in the positive electrode it ramps back down, `i_{e,p}⁰ = (1−x)I/L_p` and `j_p⁰ = −I/L_p`. So the leading-order interfacial current is just the applied current spread uniformly over the electrode thickness.
+
+Now invert Butler–Volmer at leading order: `j_k⁰ = j_{0,k}⁰ sinh(η_k⁰/2)` gives `η_n⁰ = 2 sinh⁻¹(I/(j_{0,n}⁰ L_n))` and `η_p⁰ = −2 sinh⁻¹(I/(j_{0,p}⁰ L_p))`. The flat electrolyte potential plus the interface continuity gives `φ_{e,p}⁰ − φ_{e,n}⁰ = 0`, and the flat solid potential gives zero solid Ohmic loss at leading order, both pointwise and averaged. Put the pieces into the averaged voltage. Since `c_s⁰` is `x`-independent, the averaged OCV is just `U_p(c_{s,p}⁰) − U_n(c_{s,n}⁰)`, the averaged overpotentials equal the pointwise ones, and the leading-order voltage is
+
+`V⁰ = U_p(c_{s,p}⁰) − U_n(c_{s,n}⁰) − 2 sinh⁻¹(I/(j_{0,p}⁰ L_p)) − 2 sinh⁻¹(I/(j_{0,n}⁰ L_n))`,
+
+with `j_{0,k}⁰ = (γ_k/C_{r,k}) (c_{s,k}⁰)^½ (1−c_{s,k}⁰)^½` (the `c_e^½` factor evaluated at `c_e⁰=1`). And the solid concentration `c_{s,k}⁰` itself solves a single spherical diffusion equation per electrode, `C_k ∂c_{s,k}⁰/∂t = (1/r²)∂_r(r² ∂_r c_{s,k}⁰)`, with surface flux `−(a_k γ_k/C_k) ∂_r c_{s,k}⁰|_{r=1} = ±I/L_k`. That is the single-particle model, exactly. So the small parameter was the right one, and the "single particle" is not an approximation of replacing many particles by one — in this limit *every* particle in an electrode genuinely does the same thing, so one representative particle suffices. The leading order recovers the cheap model and tells me precisely what assumptions it secretly rests on. Now I go to first order and let the corrections come out.
+
+At `O(C_e)`, the molar and flux equations. The molar equation `C_e ε_k γ_e ∂c_e/∂t = −γ_e ∂N_e/∂x + C_e ∂i_e/∂x`: at this order the time-derivative term is still one order too high (it carries `C_e` and `c_e¹` would need a `c_e⁰` time derivative, but `c_e⁰=1` is constant, so it drops), and I get `∂N_e¹/∂x = (1/γ_e) ∂i_e⁰/∂x`. The right side I already know: `∂i_e⁰/∂x = j_k⁰ = I/L_n` in the negative electrode, etc. Integrate, apply the `O(C_e)` no-flux and continuity conditions, and the first-order flux is a steady linear profile: `N_{e,n}¹ = Ix/(γ_e L_n)`, `N_{e,s}¹ = I/γ_e`, `N_{e,p}¹ = I(1−x)/(γ_e L_p)`. The ion flux ramps up across the negative electrode, is constant across the separator (no reaction there), and ramps down across the positive — exactly what you'd expect from ions being injected uniformly on one side and absorbed on the other.
+
+Now the flux constitutive law at `O(C_e)`: `N_{e,k}¹ = −ε^b D_e(1) ∂c_{e,k}¹/∂x + (t⁺/γ_e) i_{e,k}⁰`. Notice `D_e` is frozen at its value at `c_e⁰=1` — the concentration-dependence of the diffusivity is a higher-order effect, so the first-order electrolyte equation is *linear*. Rearrange for the concentration gradient: `∂c_{e,k}¹/∂x = (1/(ε^b D_e(1)))((t⁺/γ_e) i_{e,k}⁰ − N_{e,k}¹)`. Both `i_e⁰` and `N_e¹` are known linear-in-`x` functions, so the right side is linear in `x`, and integrating gives `c_{e,k}¹` quadratic in `x` in each region. The three constants of integration are fixed by concentration continuity at the two interfaces and the `O(C_e)` part of the lithium-conservation integral (the closed-reservoir condition). Working it through, the negative-electrode correction comes out as
+
+`c_{e,n}¹ = ((1−t⁺) I /(6 γ_e D_e(1)))(2(L_p²/ε_p^b − L_n²/ε_n^b) + (3L_s/ε_s^b)(1+L_p−L_n) + (3/(ε_n^b L_n))(L_n²−x²))`,
+
+`c_{e,s}¹ = ((1−t⁺) I /(6 γ_e D_e(1)))(2(L_p²/ε_p^b − L_n²/ε_n^b) + (3/ε_s^b)(L_n² − L_p² + 1 − 2x))`,
+
+and
+
+`c_{e,p}¹ = ((1−t⁺) I /(6 γ_e D_e(1)))(2(L_p²/ε_p^b − L_n²/ε_n^b) + (3L_s/ε_s^b)(L_p−L_n−1) + (3/(L_p ε_p^b))((x−1)²−L_p²))`.
+
+The electrode averages I will need later are
+
+`c̄_{e,n}¹ = ((1−t⁺) I /(6 γ_e D_e(1)))(2(L_p²/ε_p^b − L_n²/ε_n^b) + 2L_n/ε_n^b + (3L_s/ε_s^b)(L_p−L_n+1))`,
+
+and
+
+`c̄_{e,p}¹ = ((1−t⁺) I /(6 γ_e D_e(1)))(2(L_p²/ε_p^b − L_n²/ε_n^b) − 2L_p/ε_p^b + (3L_s/ε_s^b)(L_p−L_n−1))`.
+
+The physical content: the `(1−t⁺)` factor is the fraction of the current that the electrolyte concentration has to carry (the transference number `t⁺` rides along as migration); the electrolyte is depleted where ions leave and enriched where they arrive, and the profile is set by the diffusivity and the porosities.
+
+Now the electrolyte potential at `O(C_e)`. Recall MacInnes with the large `κ̂_e = κ̂_e'/C_e`: multiply through and the leading balance at this order is `i_{e,k}⁰ = ε^b κ̂_e' κ_e(1)(−∂φ_{e,k}¹/∂x + 2(1−t⁺) ∂c_{e,k}¹/∂x)`. Solve for the potential gradient: `∂φ_{e,k}¹/∂x = 2(1−t⁺) ∂c_{e,k}¹/∂x − i_{e,k}⁰/(ε^b κ̂_e' κ_e(1))`. Integrate. The first term integrates straight to `2(1−t⁺) c_{e,k}¹` — this is the *diffusion (concentration) potential*, the potential that builds up because of the concentration gradient. The second term, with the known linear `i_e⁰`, integrates to a geometry-dependent Ohmic piece — this is the migration Ohmic drop in the electrolyte:
+
+`φ_{e,n}¹ = φ̃_e + 2(1−t⁺) c_{e,n}¹ − (I/(κ̂_e' κ_e(1)))((x²−L_n²)/(2 ε_n^b L_n) + L_n/ε_s^b)`,
+
+`φ_{e,s}¹ = φ̃_e + 2(1−t⁺) c_{e,s}¹ − Ix/(κ̂_e' κ_e(1) ε_s^b)`,
+
+and
+
+`φ_{e,p}¹ = φ̃_e + 2(1−t⁺) c_{e,p}¹ − (I/(κ̂_e' κ_e(1)))((x(2−x)+L_p²−1)/(2ε_p^b L_p) + (1−L_p)/ε_s^b)`.
+
+The electrode averages then give
+
+`φ̄_{e,n}¹ = φ̃_e + 2(1−t⁺) c̄_{e,n}¹ + (IL_n/(κ̂_e' κ_e(1)))(1/(3ε_n^b) − 1/ε_s^b)`,
+
+and
+
+`φ̄_{e,p}¹ = φ̃_e + 2(1−t⁺) c̄_{e,p}¹ + (IL_p/(κ̂_e' κ_e(1)))(1/ε_s^b − 1/(3ε_p^b)) − I/(κ̂_e' κ_e(1)ε_s^b)`.
+
+The two physically distinct contributions to the electrolyte potential — concentration-driven and Ohmic — have separated themselves cleanly, which is exactly what I'd want from a systematic expansion and exactly what the ad-hoc models muddle together.
+
+The solid potential at `O(C_e)` is the same kind of integration. Ohm's law `I − i_{e,k}⁰ = −σ_k' ∂φ_{s,k}¹/∂x` with `i_e⁰` linear gives `φ_{s,k}¹` quadratic in `x`. In the negative electrode `φ_{s,n}¹ = φ_{s,n}|_{x=0} + (Ix/(2σ_n' L_n))(2L_n − x)`, and a mirror expression in the positive. Electrode-average these — average the difference of the two — and the solid Ohmic loss collapses to a clean `ΔΦ̄_Solid = −(I/3)(L_p/σ_p + L_n/σ_n)`. (The factor of `1/3` is the average of the quadratic potential profile over the electrode.)
+
+Now the step that justifies the whole averaged-voltage rewrite I did up front. Look at charge conservation at `O(C_e)`: `∂i_{e,k}¹/∂x = j_k¹`. The boundary conditions at this order say `i_{e,k}¹ = 0` at *both* ends of each electrode — the leading-order current already carried all of `I`, so the first-order electrolyte current has to start and end at zero. Integrate `∂i_e¹/∂x = j_k¹` across the electrode with zero at both ends, and the integral of the left side telescopes to `i_e¹|_{end} − i_e¹|_{start} = 0`. Therefore `∫_electrode j_k¹ dx = 0`. The electrode-*averaged* first-order correction to the reaction current is zero.
+
+That single fact cascades. The `O(C_e)` particle equation, averaged over the electrode, has its surface flux set by the averaged `j_k¹` — which I just showed is zero. So the averaged first-order particle problem is a pure diffusion equation with *no* surface flux and zero initial condition, whose only solution is `c̄_{s,n}¹ = 0` and `c̄_{s,p}¹ = 0`. The averaged solid concentration gets no first-order correction. And therefore the first-order correction to the averaged OCV, `Ū_eq¹ = U_p'(c_{s,p}⁰) c̄_{s,p}¹ − U_n'(c_{s,n}⁰) c̄_{s,n}¹`, is *zero*. There is no first-order open-circuit-voltage correction. This is exactly why the averaged formulation is well posed and the pointwise one isn't: I never had to know the pointwise reaction distribution `j_k¹(x)` to get the averaged voltage — only its electrode integral, which vanishes. The ad-hoc models, by writing pointwise expressions and substituting the averaged current, are implicitly assuming `j_k¹(x) = 0` *pointwise*, i.e. that every particle is still identical at first order. That's false; what's true is only that the *average* of `j_k¹` is zero. The averaging removes the need for the false assumption and buys the consistency that makes the model accurate to `O(C_e²)`.
+
+So the first-order voltage correction has no OCV piece and no averaged-particle piece — it's entirely electrolyte and Ohmic. Two contributions are left to compute: the reaction-overpotential correction and the concentration overpotential.
+
+For the reaction overpotential, linearize Butler–Volmer at `O(C_e)`. Expanding `j_k = j_{0,k} sinh(η_k/2)` to first order gives `j_k¹ = j_{0,k}¹ sinh(η_k⁰/2) + (j_{0,k}⁰ η_k¹/2) cosh(η_k⁰/2)`, with `η_k¹ = φ_{s,k}¹ − φ_{e,k}¹ − U_k'(c_{s,k}⁰) c_{s,k}¹|_{r=1}` and the exchange-current correction `j_{0,k}¹ = (j_{0,k}⁰/2)(c_{s,k}¹/c_{s,k}⁰ − c_{s,k}¹/(1−c_{s,k}⁰) + c_{e,k}¹)|_{r=1}`. Now average over the electrode and use everything I've established: `∫ j_k¹ = 0`, `c̄_{s,k}¹ = 0`. With the averaged reaction-current correction and averaged solid-concentration correction both gone, the solid-potential and OCP-derivative pieces of `η_k¹` drop out on averaging, and what survives is the exchange-current shift carried by `c̄_{e,k}¹`: the averaged overpotential correction reduces to `η̄_k¹ = −c̄_{e,k}¹ tanh(η_k⁰/2)`. Evaluate the `tanh` from the leading overpotential. In the negative electrode `η_n⁰ = 2 sinh⁻¹(I/(j_{0,n}⁰L_n))`, so `η̄_n¹ = −c̄_{e,n}¹ I/√((j_{0,n}⁰L_n)²+I²)`. In the positive electrode `η_p⁰ = −2 sinh⁻¹(I/(j_{0,p}⁰L_p))`, so `η̄_p¹ = +c̄_{e,p}¹ I/√((j_{0,p}⁰L_p)²+I²)`. The terminal voltage uses `η_p − η_n`, so the reaction-overpotential contribution to `V¹` is the sum of two positive-sign pieces,
+
+`c̄_{e,p}¹ I/√((j_{0,p}⁰L_p)²+I²) + c̄_{e,n}¹ I/√((j_{0,n}⁰L_n)²+I²)`.
+
+The first-order electrolyte concentration shifts the exchange-current density and hence the overpotential, by an amount that's largest when the kinetics are sluggish.
+
+The concentration overpotential is the electrolyte potential difference's diffusion part: averaging `φ_{e,k}¹` and taking the positive-minus-negative difference, the Ohmic geometry pieces are bookkept into `ΔΦ̄_Elec` and the diffusion piece gives `η̄_c = 2 C_e (1−t⁺)(c̄_{e,p}¹ − c̄_{e,n}¹)`. The electrolyte Ohmic loss, from averaging the migration pieces of `φ_e¹`, is `ΔΦ̄_Elec = −(I/(κ̂_e κ_e(1)))(L_n/(3ε_n^b) + L_s/ε_s^b + L_p/(3ε_p^b))` — separator contributes its full thickness (current is uniform there), electrodes contribute a third (current ramps linearly).
+
+Assemble the first-order voltage correction `V¹`: the reaction-overpotential correction above, plus the concentration overpotential `2(1−t⁺)(c̄_{e,p}¹ − c̄_{e,n}¹)`, plus the electrolyte Ohmic loss, plus the solid Ohmic loss `−(I/3)(L_p/σ_p + L_n/σ_n)`. Now `V¹` is purely algebraic. Every piece is built from `c_{e,k}¹`, which I solved in closed form, and from the leading-order quantities. No new PDE, no new state. The whole first-order accuracy gain is one algebraic expression evaluated after the single-particle solve — negligible cost, and friendly to a microcontroller where RAM is scarce.
+
+There's a clean way to fold the reaction-overpotential correction back into the leading-order form so the combined voltage looks like the single-particle voltage with dressed-up exchange-current densities. Define an electrode-averaged exchange-current density that carries the electrolyte factor inside the average: `j̄_{0,k} = (1/L_k)∫ (γ_k/C_{r,k})(c_{s,k}⁰)^½(1−c_{s,k}⁰)^½ (1 + C_e c_{e,k}¹)^½ dx`. Then expand `−2 sinh⁻¹(I/(j̄_{0,k} L_k))`: to first order this is `−2 sinh⁻¹(I/(j_{0,k}⁰ L_k)) + C_e c̄_{e,k}¹ I/√((j_{0,k}⁰L_k)² + I²) + O(C_e²)`, which is precisely the leading reaction overpotential plus the `O(C_e)` correction I just derived. So writing the reaction overpotential as `−2 sinh⁻¹(I/(j̄_{0,k} L_k))` with the dressed `j̄_{0,k}` automatically captures both orders. Neat — the structure of the single-particle voltage is preserved, the electrolyte just enters through the averaged exchange-current density.
+
+Combining, the voltage accurate to `O(C_e²)` is
+
+`V = Ū_eq + η̄_r + η̄_c + ΔΦ̄_Elec + ΔΦ̄_Solid`,
+
+with `Ū_eq = U_p(c_{s,p}⁰) − U_n(c_{s,n}⁰)`, `η̄_r = −2 sinh⁻¹(I/(j̄_{0,p} L_p)) − 2 sinh⁻¹(I/(j̄_{0,n} L_n))`, `η̄_c = 2 C_e (1−t⁺)(c̄_{e,p}¹ − c̄_{e,n}¹)`, `ΔΦ̄_Elec = −(I/(κ̂_e κ_e(1)))(L_n/(3ε_n^b) + L_s/ε_s^b + L_p/(3ε_p^b))`, and `ΔΦ̄_Solid = −(I/3)(L_p/σ_p + L_n/σ_n)`. I'll call this — the single-particle model plus the steady algebraic electrolyte correction — the SPMe(S), with the (S) for "steady": the electrolyte is taken at its quasi-steady profile, so there's no extra state.
+
+That's the right model whenever the current varies slowly compared with the electrolyte diffusion timescale. But the whole reason I want robustness is the case it *doesn't* cover: a step change in current. Right after a step, the electrolyte concentration hasn't relaxed to its steady profile yet — it's still transiently redistributing, on the electrolyte-diffusion timescale `τ_e`. The steady `c_{e,k}¹` would be wrong in that window. So I need to let `c_{e,k}¹` be genuinely time-dependent.
+
+To see what governs that transient, rescale time with `τ_e` rather than `τ_d` — i.e. zoom into the fast electrolyte timescale. On that short timescale the particle concentrations barely move (solid diffusion is slow by comparison) and the slow exchange terms in the electrolyte equation are negligible; what's left is the transient diffusion of `c_{e,k}¹`. The equation that is correct both in this fast layer and after the layer has relaxed is the first-order electrolyte equation with its time-derivative term kept instead of dropped: `C_e ε_k γ_e ∂c_{e,k}¹/∂t = −γ_e ∂N_{e,k}¹/∂x + source`, where the source is the uniform reaction injection (`+I/L_n` in the negative, `0` in the separator, `−I/L_p` in the positive) and the flux is `N_{e,k}¹ = −ε^b D_e(1) ∂c_{e,k}¹/∂x + (t⁺ I/γ_e)×(linear-in-x current shape)`. In steady state this collapses to the algebraic `c_{e,k}¹` I already have, so the composite is consistent with the SPMe(S); out of steady state it tracks the transient. I'll take this — the single-particle solid diffusion plus a transient electrolyte PDE plus the algebraic voltage — as the canonical SPMe.
+
+Step back and count what I've got. The canonical SPMe is three independent linear parabolic PDE problems: one for the negative particle, one for the positive particle, one for the electrolyte concentration across the three regions — plus an algebraic voltage read off afterwards. The two particle problems and the electrolyte problem don't talk to each other within a timestep (the electrolyte source is the *leading-order* current `±I/L_k`, which is just the applied current, not a coupled unknown), so the structure is naturally parallel. Everything is linear, so discretizing gives a well-conditioned system of ODEs — not the stiff DAE of the full model — which tolerates larger timesteps and has no consistent-initialization or current-step convergence problem. For the finite-volume discretization I had in mind, that's roughly 30 particle states plus 80 electrolyte states, about 110, against the full model's ~1100. An order of magnitude less memory, and no DAE brittleness.
+
+And because I *derived* this rather than assembled it, I get the error estimate for free. The expansion is in `C_e`, so the model is accurate to `O(C_e²)` provided the distinguished-limit conditions hold: `C_e = I_typ L/(D_e,typ F c_{n,max}) ≪ 1` (ions cross faster than discharge), `RT σ_k/(F I_typ L) ≫ 1` and `RT κ_e,typ/(F I_typ L) ≫ 1` (Ohmic drops small against thermal voltage), and the solid-diffusion and reaction timescales `≪ 1/C_e` (so those processes keep up with the discharge). Reapply the scalings and the leading model error at a given time is of order `max((I_typ L/(D_e,typ F c_{n,max}))², (I_typ L/D_e,typ)² (1/(F R T)) |U_k''|)`. The first term is the squared `C_e`, as expected from a first-order expansion. The second is the interesting one: it carries `|U_k''|`, the curvature of the open-circuit potential. When the OCP is nearly linear this is small, but near the end of discharge the OCP bends sharply, `|U_k''|` spikes, and the error grows — which is exactly the regime (high C-rate, deep discharge) where I'd expect the single-averaged-particle approximation to strain, because then the particles really do start behaving differently and `c̄_{s,k}¹=0` stops being a good story. I could chase that term by taking a distinguished limit with `U_k'' ~ O(1/C_e)`, but that would force me to resolve every particle separately again — back to the full model's cost. So I deliberately leave it: the residual `O(C_e)` particle error is the price of keeping the single-particle cheapness, and now I can *see* that trade-off in the parameters instead of discovering it by surprise.
+
+Now land it in code, against the submodel framework I started from. The cheap base — the single-particle model — already exists: an x-averaged Fickian particle diffusion per electrode, a constant-concentration electrolyte, a leading-order electrolyte conductivity model, leading-order electrode potentials, and surface-potential-difference submodels. The SPMe inherits all of that and refills exactly three slots with what I derived: the electrolyte concentration submodel becomes the Stefan–Maxwell mass balance (`N_e = −tor·D_e(c_e,T)·∇c_e + t⁺ i_e/F`, plus the framework's optional convection term, and `∂(ε c_e)/∂t = −∇·N_e + source/F`), which is the code-level version of the transient electrolyte equation; the electrolyte potential submodel becomes the composite one that builds `φ_e¹` and splits off `η̄_c = χ(RT/F)(macinnes_p − macinnes_n)` (which reduces to `2(1−t⁺)RT/F` under the ideal MacInnes factor used above) and `ΔΦ̄_Elec = −i(L_n/(3κ_n) + L_s/κ_s + L_p/(3κ_p))`; and the solid potential submodel becomes the composite first-order Ohmic loss, the `−(I/3)(L/σ)` term. The particle submodel stays the single x-averaged particle, because `c̄_{s,k}¹ = 0` told me there's nothing to gain at first order by resolving more. The terminal voltage is assembled in the base model as `OCV + η_r + η_c + ΔΦ_Elec + ΔΦ_Solid`, the averaged form I rewrote at the very start.
+
+```python
+import pybamm
+from .spm import SPM   # the leading-order single-particle base model
+
+class SPMe(SPM):
+    def __init__(self, options=None, name="Single Particle Model with electrolyte",
+                 build=True):
+        # c_s-bar^1 = 0, so the inherited particle submodel stays x-averaged.
+        self.x_average = True
+        super().__init__(options, name, build)
+
+    def set_solid_submodel(self):
+        for domain in ["negative", "positive"]:
+            if self.options.electrode_types[domain] == "porous":
+                solid_submodel = pybamm.electrode.ohm.Composite
+            elif self.options.electrode_types[domain] == "planar":
+                if self.options["surface form"] == "false":
+                    solid_submodel = pybamm.electrode.ohm.LithiumMetalExplicit
+                else:
+                    solid_submodel = pybamm.electrode.ohm.LithiumMetalSurfaceForm
+            self.submodels[f"{domain} electrode potential"] = solid_submodel(
+                self.param, domain, self.options
+            )
+
+    def set_electrolyte_concentration_submodel(self):
+        # Stefan-Maxwell mass balance for the transient electrolyte concentration.
+        self.submodels["electrolyte diffusion"] = pybamm.electrolyte_diffusion.Full(
+            self.param, self.options
+        )
+
+    def set_electrolyte_potential_submodel(self):
+        surf_form = pybamm.electrolyte_conductivity.surface_potential_form
+
+        if (
+            self.options["surface form"] == "false"
+            or self.options.electrode_types["negative"] == "planar"
+        ):
+            if self.options["electrolyte conductivity"] in ["default", "composite"]:
+                self.submodels["electrolyte conductivity"] = (
+                    pybamm.electrolyte_conductivity.Composite(
+                        self.param, options=self.options
+                    )
+                )
+            elif self.options["electrolyte conductivity"] == "integrated":
+                self.submodels["electrolyte conductivity"] = (
+                    pybamm.electrolyte_conductivity.Integrated(
+                        self.param, options=self.options
+                    )
+                )
+
+        if self.options["surface form"] == "false":
+            surf_model = surf_form.Explicit
+        elif self.options["surface form"] == "differential":
+            surf_model = surf_form.CompositeDifferential
+        elif self.options["surface form"] == "algebraic":
+            surf_model = surf_form.CompositeAlgebraic
+
+        for domain in ["negative", "positive"]:
+            if self.options.electrode_types[domain] == "porous":
+                self.submodels[f"{domain} surface potential difference [V]"] = (
+                    surf_model(self.param, domain, self.options)
+                )
+```
+
+And the composite electrolyte-potential submodel is, in its core, my first-order MacInnes solution turned into code: build `φ_e` from a constant plus the diffusion potential `χ(RT/F)log(c_e/c̄_e)` plus the quadratic-in-x migration Ohmic pieces, then read off the two electrode-averaged outputs:
+
+```python
+# diffusion-potential part of phi_e, averaged into the concentration overpotential
+macinnes_c_e_p = pybamm.x_average(
+    self._higher_order_macinnes_function(c_e_p / c_e_av)
+)
+macinnes_c_e_n = pybamm.x_average(
+    self._higher_order_macinnes_function(c_e_n / c_e_av)
+)
+eta_c_av = chi_av * RT_F_av * (macinnes_c_e_p - macinnes_c_e_n)
+
+# migration Ohmic part of phi_e, averaged across the three regions
+delta_phi_e_av = -i_boundary_cc * (L_n / (3 * kappa_n_av)
+                                   + L_s / kappa_s_av
+                                   + L_p / (3 * kappa_p_av))
+```
+
+So the causal chain, start to finish: the full porous-electrode model is faithful but a stiff thousand-state DAE that's too slow and too brittle for control, estimation, optimization and packs; the electrolyte ions cross the cell far faster than it discharges, which makes `C_e = τ_e/τ_d` a tiny parameter, so I nondimensionalize and expand in it, holding the large conductivities in a distinguished limit (`σ_k C_e`, `κ̂_e C_e` fixed) so the Ohmic losses survive at first order; I first rewrite the terminal voltage in electrode-averaged form, because that's the only object that's well posed given only the averaged current; at leading order the electrolyte goes uniform, the potentials go flat, the reaction goes uniform, and the single-particle model falls out exactly; at first order the averaged reaction-current correction integrates to zero, which kills the OCV and averaged-particle corrections and leaves the electrolyte correction as a closed-form, purely algebraic addition to the voltage — a concentration overpotential, an electrolyte Ohmic loss, a solid Ohmic loss, and a reaction-overpotential shift folded into a dressed exchange-current density; promoting the steady electrolyte profile to a transient linear PDE makes it correct across current steps; the result is three independent linear PDEs plus an algebraic voltage — an order of magnitude cheaper than the full model, non-stiff, parallel, and with an error I can bound from the parameters before I ever run it.

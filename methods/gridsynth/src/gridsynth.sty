@@ -1,0 +1,285 @@
+% macro definitions and packages for ptrace.tex
+
+\textheight=9.5in
+\textwidth=7in
+\headheight=0in
+\headsep=-0.4in
+\oddsidemargin=-.25in
+\topmargin=0in
+\columnsep=.25in
+
+\usepackage{latexsym}
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{mathrsfs}   % special script style \mathscr{S}
+\usepackage{mathtools}
+\usepackage{minitoc}
+\usepackage{mdframed}
+
+% ----------------------------------------------------------------------
+% Theorem definitions:
+%
+% theorem, lemma, proposition, corollary, definition, example, 
+% examples, openproblem, principle, remark, remarks, convention, 
+% notation
+%
+% All are numbered by default. Get unnumbered versions by un-lemma etc.
+
+\newtheorem{n-lemma}{Lemma}[section]
+\newtheorem{n-proposition}[n-lemma]{Proposition}
+\newtheorem{n-theorem}[n-lemma]{Theorem}
+\newtheorem{n-corollary}[n-lemma]{Corollary} 
+\newtheorem*{un-lemma}{Lemma}
+\newtheorem*{un-theorem}{Theorem}
+\newtheorem*{un-proposition}{Proposition}
+\newtheorem*{un-corollary}{Corollary} 
+\newtheorem{conjecture}[n-lemma]{Conjecture}
+
+\theoremstyle{definition}
+\newtheorem{n-definition}[n-lemma]{Definition}
+\newtheorem{n-algorithm}[n-lemma]{Algorithm}
+\newtheorem{n-problem}[n-lemma]{Problem}
+\newtheorem{n-hypothesis}[n-lemma]{Hypothesis}
+\newtheorem*{un-definition}{Definition}
+\newtheorem*{un-problem}{Problem}
+\newtheorem*{un-hypothesis}{Hypothesis}
+
+\theoremstyle{remark}
+\newtheorem{n-example}[n-lemma]{Example}
+\newtheorem{n-remark}[n-lemma]{Remark}
+\newtheorem{n-notation}[n-lemma]{Notation}
+\newtheorem*{un-example}{Example}
+\newtheorem*{un-remark}{Remark}
+
+\newenvironment{theorem}{\begin{n-theorem}}{\end{n-theorem}}
+\newenvironment{lemma}{\begin{n-lemma}}{\end{n-lemma}}
+\newenvironment{proposition}{\begin{n-proposition}}{\end{n-proposition}}
+\newenvironment{corollary}{\begin{n-corollary}}{\end{n-corollary}}
+\newenvironment{definition}{\begin{n-definition}}{\end{n-definition}}
+\newenvironment{example}{\begin{n-example}}{\end{n-example}}
+\newenvironment{remark}{\begin{n-remark}}{\end{n-remark}}
+\newenvironment{algorithm}{\begin{n-algorithm}}{\end{n-algorithm}}
+\newenvironment{hypothesis}{\begin{n-hypothesis}}{\end{n-hypothesis}}
+\newenvironment{problem}{\begin{n-problem}}{\end{n-problem}}
+
+%----------------------------------------------------------------------
+% a hack: \m is similar to \vcenter, but works better.
+% \mp{0.2}{x}: raise the box x so that 20% of it is below the
+% centerline. Unlike \vcenter, don't change the horizontal spacing
+
+\newlength{\localh}
+\newlength{\locald}
+\newbox\mybox
+\def\mp#1#2{\setbox\mybox\hbox{#2}\localh\ht\mybox\locald\dp\mybox\addtolength{\localh}{-\locald}\raisebox{-#1\localh}{\box\mybox}}
+\def\m#1{\mp{0.5}{#1}}
+
+%----------------------------------------------------------------------
+% Alphabetic labels
+{\makeatletter
+\gdef\alphalabels{\def\theenumi{\@alph\c@enumi}\def\labelenumi{(\theenumi)}}}
+
+% Round labels
+{\makeatletter
+\gdef\roundlabels{\def\theenumi{\@arabic\c@enumi}\def\labelenumi{(\theenumi)}}}
+
+% ----------------------------------------------------------------------
+% Prettier symbols                                                              
+\renewcommand{\leq}{\leqslant}
+\renewcommand{\geq}{\geqslant}
+\renewcommand{\preceq}{\preccurlyeq}
+\renewcommand{\succeq}{\succcurlyeq}
+
+% ----------------------------------------------------------------------
+% Miscellaneous macros
+
+\newcommand{\xmatrix}[4]{{\renewcommand{\arraystretch}{#1}\arraycolsep=#2ex\left(\begin{array}{#3}#4\end{array}\right)}}       % resizable matrix
+\newcommand{\zmatrix}{\xmatrix{.8}{.8}}         % matrix
+\newcommand{\da}{^{\dagger}}
+\newcommand{\bul}{^{\bullet}}
+\newcommand{\s}[1]{\{#1\}}
+\newcommand{\pair}[1]{\langle#1\rangle}
+\newcommand{\floor}[1]{\lfloor#1\rfloor}
+\newcommand{\seq}{\subseteq}
+\newcommand{\N}{\mathbb{N}}                     % Nat'l numbers AMS fonts
+\newcommand{\Z}{\mathbb{Z}}                     % Integers AMS fonts
+\newcommand{\R}{{\mathbb{R}}}                   % Reals
+\newcommand{\C}{{\mathbb{C}}}                   % Complex
+\newcommand{\D}{{\mathbb{D}}}                   % Dyadic
+\newcommand{\Q}{{\mathbb{Q}}}                  % Rational
+\newcommand{\mymod}{\mathop{{\rm mod}}}
+\newcommand{\mmod}[1]{\,(\mymod#1)}
+\newcommand{\norm}[1]{\|#1\|}
+\newcommand{\imp}{\Longrightarrow}
+\newcommand{\divides}{\mathop{|}\nolimits}
+\newcommand{\bigparen}[1]{\left(#1\right)}
+\newcommand{\Realpart}{\mathop{{\rm Re}}}
+\newcommand{\Disk}{\overline {\cal D}}  % the closed unit disk
+\newcommand{\Aff}{\mathop{{\rm Aff}}}
+\newcommand{\inv}{^{-1}}
+\newcommand{\Repsilon}{{\cal R}_{\epsilon}}
+\newcommand{\grid}{\mathop{\rm grid}\nolimits}
+\newcommand{\Grid}{\mathop{\rm Grid}\nolimits}
+\newcommand{\rt}[1]{\sqrt{2}{}^{#1}}  % sqrt(2)^k
+\newcommand{\rtt}[1]{\frac{1}{\rt{#1}}}  % 1/sqrt(2)^k
+\newcommand{\BBox}{\mathop{{\rm BBox}}\nolimits}
+\newcommand{\up}{\mathop{\rm up}\nolimits}
+\newcommand{\area}{\mathop{\rm area}\nolimits}
+\newcommand{\del}{\partial}
+
+\newcommand{\such}{~|~}    
+\newcommand{\setpair}[1]{\s{(x,y)\such #1}}              
+\newcommand{\sk}{\mathtt{Skew}}
+\newcommand{\shift}{\mbox{Shift}}
+\newcommand{\state}{(D,\Delta)}
+\newcommand{\bias}{\mathtt{Bias}}
+\newcommand{\poly}{\mathop{\rm poly}\nolimits}
+\newcommand{\polylog}{\mathop{\rm polylog}\nolimits}
+\newcommand{\logl}{\mbox{log}_\lambda}
+\newcommand{\sinl}{\sinh_{\lambda}}
+\newcommand{\cosl}{\cosh_{\lambda}}
+\newcommand{\overl}[1]{\overline{#1}}
+\newcommand{\Det}{\mbox{det}}
+\renewcommand{\epsilon}{\varepsilon}
+\newcommand{\groupspan}[1]{\langle#1\rangle}
+\newcommand{\Rz}{R_{\textsl{z}}}
+
+\newcommand{\G}{G}   % Grid operator
+
+\newcommand{\tr}{\mathop{{\rm tr}}\nolimits}
+\newcommand{\bignorm}[1]{\left\|\rule{0mm}{2ex}{#1}\right\|}
+
+% ----------------------------------------------------------------------
+% Formatting of ArXiv and DOI identifiers with the hyperref package.
+% Usage: \arxiv{quant-ph/0406196} \doi{10.1145/1206035.1206039}
+\newcommand{\urlalt}[2]{\href{#2}{\nolinkurl{#1}}}
+\newcommand{\arxiv}[1]{\urlalt{arXiv:#1}{http://arxiv.org/abs/#1}}
+\newcommand{\doi}[1]{\urlalt{doi:#1}{http://dx.doi.org/#1}}
+
+% ---------------------------------------------------
+% Macros for computing with PGF.
+
+% Essential commands for formulas and assertions.
+\usepackage{pgf}
+{\makeatletter\global\let\error\@latex@error}
+
+% Precision = 3 digits.
+\pgfkeys{/pgf/number format/.cd,fixed,precision=3}
+
+% Assert some numerical statement. Throw an 
+% error if the statement is not true.
+\newcommand{\assert}[1]{%
+\pgfmathparse{#1}%
+  \ifnum1=\pgfmathresult
+  \else\error
+    {Assertion failed: #1, \pgfmathresult}
+  \fi}
+
+% Print a computed expression.
+\newcommand{\formula}[1]{
+\pgfmathparse{#1}
+\pgfmathprintnumber{\pgfmathresult}}
+
+% Example defined formulas.
+\def\roundone#1{round(10*(#1))/10}
+\def\roundthree#1{round(1000*(#1))/1000}
+
+% Exponentiation seems to be broken in PGF. 
+% E.g. without the modification below,
+% \formula{4^(-0.5)} will print 2 instead 
+% of 0.5.
+%
+% The redefinition below appears to fix the 
+% problem. It was taken from:
+%
+% http://tex.stackexchange.com/questions/31775/is-plotting-exponential-graphs-a-known-source-of-bugs-in-tikz
+\makeatletter
+% undefine old exp function
+\let\pgfmath@function@exp\relax 
+\pgfmathdeclarefunction{exp}{1}{%   
+  \begingroup
+    \pgfmath@xc=#1pt\relax
+    \pgfmath@yc=#1pt\relax
+    \ifdim\pgfmath@xc<-9pt
+      \pgfmath@x=1sp\relax
+    \else
+      \ifdim\pgfmath@xc<0pt
+        \pgfmath@xc=-\pgfmath@xc
+      \fi
+      \pgfmath@x=1pt\relax
+      \pgfmath@xa=1pt\relax
+      \pgfmath@xb=\pgfmath@x
+      \pgfmathloop%
+        \divide\pgfmath@xa by\pgfmathcounter
+        \pgfmath@xa=\pgfmath@tonumber\pgfmath@xc\pgfmath@xa%
+        \advance\pgfmath@x by\pgfmath@xa
+      \ifdim\pgfmath@x=\pgfmath@xb
+      \else
+        \pgfmath@xb=\pgfmath@x
+      \repeatpgfmathloop%
+      \ifdim\pgfmath@yc<0pt
+        \pgfmathreciprocal@{\pgfmath@tonumber\pgfmath@x}%
+        \pgfmath@x=\pgfmathresult pt\relax
+      \fi
+    \fi
+    \pgfmath@returnone\pgfmath@x%
+  \endgroup
+}
+\makeatother
+
+% ---------------------------------------------------
+% Parametrization.
+
+% The R, A, B and K Lemmas are parametric. The global
+% parameters are the desired uprightness and the step. 
+% The Lemma-specific parameter is a bound defining a 
+% region of the logarithmic plane in which the Lemma 
+% holds. The values of these bounds are entered below. 
+% If the provided values satisfy the conditions 
+% required for the proofs to be correct, then the 
+% document will build. Otherwise, Latex will throw an 
+% error message specifying which condition failed.
+%
+% To find the assertions used in this document, search 
+% for "Check!!!". Definitions and parameters follow.
+
+% Lambda.
+\def\l{((sqrt 2) + 1)}
+
+% Hyperbolic sine.
+\def\sinhl#1{((pow(\l, (#1)) - pow(\l, neg (#1)))/2)}
+
+% Hyperbolic cosine.
+\def\coshl#1{((pow(\l, (#1)) + pow(\l, neg (#1)))/2)}
+
+% Log in base lambda.
+\def\logl#1{(ln(#1) / ln(\l))}
+
+% A helper function for Lemma K.
+\def\kone#1{(((sqrt 2) - (\coshl {#1}))^2)}
+
+% Uprightness.
+\def\M{(1/\oneoverM)}
+\def\oneoverM{ceil(1/(pi / (4* (sqrt (\P +1)))))}
+
+% Skew-bound.
+\def\P{15}
+
+% Step.
+\def\Qstep{0.9}
+
+% R-bound.
+\def\r{0.8}
+
+% A-bound.
+\def\a{(-0.3)}
+
+% A-bound-1. For some reason, PGF will complain 
+% if I ask it to compute, e.g.,
+% \formula{\kone (\a -1)} but gladly accepts 
+% \formula{\kone \aa}.
+\def\aa{(\a -1)}
+
+% -R-bound+1. As above.
+\def\rr{(-\r+1)}
+
+% B-bound.
+\def\b{0.2}

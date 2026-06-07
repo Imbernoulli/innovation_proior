@@ -1,0 +1,64 @@
+\subsection{Error analysis: Least-to-most prompting}
+\label{app:letter-error}
+
+\begin{table}[h!]
+\centering
+\begin{tabular}{|l|c|c|c|c|}
+    \hline
+    \multirow{2}{*}{\textbf{Error type}} & \multicolumn{2}{c|}{\textbf{2 examples}} & \multicolumn{2}{c|}{\textbf{4 examples}} \\
+    & \textbf{L = 4} & \textbf{L = 12} & \textbf{L = 4} & \textbf{L = 12} \\
+    \hline
+    Concatenation error & 13 & 19 & 21 & 20 \\
+    \ \ - Dropping a letter & 8 & 12 & 15 & 15 \\
+    \ \ - Adding a letter & 4 & 7 & 4 & 3 \\
+    \ \ - Wrong order & 1 & 0 & 2 & 2 \\
+    \hline
+    Wrong template & 7 & 1 & 0 & 0 \\
+    \hline
+    Incorrect last letter & 2 & 1 & 1 & 2 \\
+    \hline
+    Copy error & 0 & 0 & 1 & 0 \\
+    \hline
+\end{tabular}
+\vspace{5pt}
+\caption{Least-to-most prompting error analysis of 20 random failures of the \texttt{code-davinci-002} model on list lengths 4 and 12 for prompt contexts consisting of 2 and 4 examples. Note that for some examples, the model made more than one type of error (e.g., dropping and adding a letter during concatenation).}
+\label{table:letter-error-complete}
+\end{table}
+
+For least-to-most prompting, we analyzed 20 random failures of the \texttt{code-davinci-002} model on list lengths 4 and 12 for prompt contexts consisting of 2 and 4 examples. The results are shown in Table~\ref{table:letter-error-complete}. Concatenation errors may either be due to dropping a letter, adding a letter or outputting the letters in the wrong order. Wrong template means that the model used the extension template instead of the base template to concatenate the last letter of the first two words of the list. Incorrect last letter means that the model got the last letter of a word wrong, and copy error means that the error was due to making a mistake when copying an intermediate result.
+
+We observe that for the prompt consisting of 2 examples, the fraction of concatenation errors increases as we go from length 4 to length 12 while the fraction of wrong template errors go down. This makes sense because the number of concatenations grows with the length of the list, while the number of times the model needs to use the base template stays constant. Note that the template errors disappear when we move to the double prompt, which means that adding two more examples helps the model recognize which template to use. As a consequence, the double prompt has a similar distribution of errors for both list lengths.
+
+\textbf{Examples of concatenation errors.}
+In the example ``gratified, contract, fortitude, blew'', the model drops the last letter in the concatenation of ``dte'' and ``w'', which means that it predicts the last letter sequence to be ``dte'' instead of ``dtew''.
+
+In the example ``hollow, supplies, function, gorgeous'', the model duplicates the last letter ``s'' in the concatenation of ``wsn'' and ``s'', which means that it predicts the last letter sequence ``wsnss'' instead of ``wsns''.
+
+In the example ``madly, vengeance, cowardice, monk'', the model drops the last letter ``k'' in the concatenation of ``yee'' and ''k'' and instead adds the letter ``g''. Consequently, the model predicts ``yeeg'' instead of ``yeek''.
+
+In the example ``slender, lash, throng, scheme'', the model breaks the order of the letters ``h'' and ``g'' in the concatenation of ``rh'' and ``g'', which means that it predicts the last letter sequence ``rghe'' instead of ``rhge''.
+
+\textbf{Example of incorrect last letter.}
+In the example ``modification, introducing, schools, lunch'', the model determines the last letter of the word ``modification'' to be ``g''. Consequently, the predicted last letter sequence is ``ggsh'' instead of ``ngsh''.
+
+\textbf{Example of wrong template application.}
+In the example ``upper, unexpectedly, specifically, connection'', the model uses the extension template to determine the output of the first two words ``upper, unexpectedly''. I.e., it produces:
+
+\begin{itemize}
+    \item ``upper'' outputs ``er''. The last letter of ``unexpectedly'' is ``y''. Concatenating ``er'', ``y'' leads to ``ery''. So, ``upper, unexpectedly'' outputs ``ery''.
+\end{itemize}
+
+when it should have produced:
+
+\begin{itemize}
+    \item The last letter of ``upper'' is ``r''. The last letter of ``unexpectedly'' is ``y''. Concatenating ``r'', ``y'' leads to ``ry''.
+\end{itemize}
+
+As a consequence, the model predicts the sequence ``eryyn'' instead of ``ryyn''.
+
+\textbf{Example of copy error.}
+In the example ``displeased, hawk, healing, anchor'', the model correctly computes the final concatenation ``dkgr'' but then makes a mistake when copying the result to the final output and drops the final ``r'', which leads to the prediction ``dkg'' instead of ``dkgr'':
+
+\begin{itemize}
+    \item ``displeased, hawk, healing'' outputs ``dkg''. The last letter of ``anchor'' is ``r''. Concatenating: ``dkg'', ``r'' leads to ``dkgr''. So, ``displeased, hawk, healing, anchor'' outputs ``dkg''.
+\end{itemize}

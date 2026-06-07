@@ -1,0 +1,30 @@
+
+\begin{table}[]
+\small
+\centering
+\tabcolsep=0.1cm
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\multirow{2}{*}{Model}            & \multirow{2}{*}{\# Params} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-1 \\ Err (\%)\end{tabular}} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Top-5 \\ Err (\%)\end{tabular}} \\
+                                  &                            &                        &        \\ \midrule
+ResNet-152*                                     & 60.3 M     & 21.69    & 5.94\\
+ResNet-101 + SE Layer*~\cite{SENet}             & 49.4 M     & 20.94    & 5.50\\
+ResNet-101 + GE Layer*~\cite{GENet}             & 58.4 M     & 20.74    & 5.29\\
+ResNet-50 + SE Layer*~\cite{SENet}              & 28.1 M     & 22.12    & 5.99\\
+ResNet-50 + GE Layer*~\cite{GENet}              & 33.7 M     & 21.88    & 5.80\\ \midrule
+ResNet-50 (Baseline)                            & 25.6 M     & 23.68    & 7.05\\
+ResNet-50 + Cutout~\cite{devries2017cutout}     & 25.6 M     & 22.93    & 6.66\\
+ResNet-50 + StochDepth~\cite{stochasticdepth}   & 25.6 M     & 22.46    & 6.27       \\
+ResNet-50 + Mixup~\cite{zhang2017mixup}         & 25.6 M     & 22.58    & 6.40\\
+ResNet-50 + Manifold Mixup~\cite{verma2018manifoldmixup}& 25.6 M     & 22.50     & 6.21\\
+ResNet-50 + DropBlock*~\cite{ghiasi2018dropblock}   & 25.6 M    & 21.87     & {5.98}\\
+ResNet-50 + Feature CutMix                      & 25.6 M    & 21.80  & 6.06\\ 
+ResNet-50 + CutMix                              & 25.6 M    & \textbf{{21.40}}    & \textbf{{5.92}}\\  \midrule
+\end{tabular}
+\vspace{-0.1cm}
+\caption{ImageNet classification results based on ResNet-50 model.
+`*' denotes results reported in the original papers.
+}
+\vspace{-0.2cm}
+\label{table:imagenet-res50}
+\end{table}

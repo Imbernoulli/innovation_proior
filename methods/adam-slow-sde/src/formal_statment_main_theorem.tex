@@ -1,0 +1,128 @@
+\section{Restatements of the Main Results}\label{sec:formal-statement}
+In this section, to make our results more organized and easy to understand, we give the restatements of the main results in \Cref{sec:theory}, where we present the two main theorems.
+\begin{enumerate}
+  \item The AGM iterates converge to a neighborhood of the manifold (\Cref{thm: convergence});
+  \item Moreover, once the iterates enter this neighborhood, their dynamics over $\O(\eta^{-2})$ discrete steps can be accurately tracked by a slow SDE (\Cref{thm:SDE-approximation}).
+\end{enumerate}
+
+
+Recall that in the AGM framework, the transition from $\vtheta_{k}$ to $\vtheta_{k+1}$ is defined as:
+\begin{align*}
+    \vm_{k+1} &:= \beta_1 \vm_{k} + (1-\beta_1) \nabla \ell_{k}(\vtheta_{k}) \\
+    \vv_{k+1} &:= \beta_2 \vv_{k} + (1-\beta_2) V\!\left(\nabla\ell_{k}(\vtheta_{k}) \nabla\ell_{k}(\vtheta_{k})^\top\right) \\
+    \vtheta_{k+1} &:= \vtheta_{k} - \eta S(\vv_{k+1}) \vm_{k+1},
+\end{align*}
+under the following conditions:
+\begin{enumerate}
+    \item $S: \Rgez^{D} \longrightarrow \mathbb{S}^d_{++}$ is $\rho_s$-smooth, where $\Rgez^{D}$ denotes the subset of $\R^D$ that has non-negative entries, and $\mathbb{S}^d_{++}$ denotes the space of $\R^{d \times d}$ positive definite matrices. 
+    \item $S(\vv) \succeq \frac{1}{R_0} \mI$  for some $R_0 > 0$ and any $\vv \in \Rgez^{D}$.
+    \item $V: \R^{d\times d} \longrightarrow \R^{D}$ is linear, and $V(\vg\vg^\top) \in \Rgez^{D}$ for all $\vg \in \R^d$.
+\end{enumerate}
+
+
+% \begin{assumption}
+%     vfk has been awarded the Tsinghua University Special Scholarship for Outstanding Students.
+% \end{assumption}
+
+\subsection{Slow SDE for AGMs}
+
+\begin{theorem}\label{thm:formal-main-result}
+Let Assumptions \ref{amp:smooth}, \ref{amp:gradient-bound} and \ref{amp:beta1-bound} be satisfied. Let $\Gamma$ denote a local minimizer manifold, $\eta$ be a sufficiently small learning rate of an AGM, and $1-\beta_2 = \Theta(\eta^2)$. 
+Then we have the following conclusions:
+\begin{enumerate}
+    \item (Convergence to a near–manifold neighborhood) There exists a constant $\epsilon_0 > 0$ such that for any initial point $\vtheta_0$ whose $\ell_2$ distance from $\Gamma$ does not exceed $\epsilon_0$, and any $\delta \in (\eta^{200}, 1)$,\footnotemark[3] with probability at least $1 - \delta$, the following holds for some $K_0 = \mathcal{O}(\frac{1}{\eta} \log \frac{1}{\eta})$:
+    \begin{gather*}
+        \cL(\vtheta_{K_0}) - \cL^* = \O\left(\eta\log\frac{1}{\eta\delta}\right),\\
+        \|\vtheta_{K_0} -\Phi_{\mS_{K_0}}(\vtheta_{K_0})\|_2 = \O\left(\sqrt{\eta\log\frac{1}{\eta\delta}}\right).
+    \end{gather*} 
+    \footnotetext[3]{The exponent here, along with the exponents related to the $\delta$-goodness in \Cref{def:delta-good}, can be arbitrary large constant, which does not affect the order of following derivations.}
+    % where the notation $\Gamma^{\epsilon}$ denotes $\left\{\vtheta : \exists \vtheta' \in \Gamma, \lnormtwo{\vtheta - \vtheta'} \leq \epsilon\right\}$ , i.e. the $\epsilon$-neighborhood of $\Gamma$.
+    
+    \item (Slow SDE tracks AGM's trajectory in a weak approximation sense) Moreover, let $T > 0$, $K := \lfloor T\,\eta^{-2}\rfloor$, and suppose Assumptions \ref{amp:low-rank-manifold}, \ref{amp:basic} and \ref{amp:S-smooth} hold. Continue running an AGM for $K$ iterations after reaching the final state $(\vtheta_{K_0},\vv_{K_0})$ in conclusion 1 and totally obtain $\{(\vtheta_k, \vv_k)\}_{k=0}^{K_0+K}$. Let $\mX(t) =\left(\vzeta(t),\vv(t)\right)$ be the solution to \eqref{equ:AGMs-SDE} with initial condition
+$$\mX(0) =
+\mX_0
+\in \Gamma \times \mathbb{R}_{\ge 0}^D, \quad \mX_0 := (\Phi_{\mS(\vv_{K_0})}(\vtheta_{K_0}), \vv_{K_0}).
+$$
+% and we define that $\vtheta^{(s)}:=\vtheta_{sH}$, and $\bar\mX^{(s)} := \left(\Phi_{\mS^{(s)}}(\vtheta^{(s)}),\vv^{(s)}\right)$, where $H$ is $\frac{\alpha}{\eta}$ for some constant $\alpha>0$.
+
+% and define the parameters of AGM as $\bar\mX_{t} := \left(\Phi_{\mS_t}(\vtheta_{t}),\vv_{t}\right)$. For any $C^3$ function $g(\vtheta)$,
+% \[
+%   \max_{0\le t\le \lfloor\frac{T}{\eta^2}\rfloor}
+%   \left|\E\left[g\left(\bar\mX_{t}\right) \middle| \mX_0\right]
+%   -\E\left[g\left(\mX( t\eta^2)\right)\middle|\mX(0)=\mX_0\right]\right|
+%   =\widetilde \O\bigl(\eta^{0.25}\bigr),
+% \]
+% where $\widetilde O(\cdot)$ hides logarithmic factors and constants that are independent of~$\eta$ (but possibly depending on $g$).
+For any $k \in \{0, 1, \dots, K\}$,
+let $\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right)$ be the AGM state at step $K_0 + k$ projected onto $\Gamma$.
+%For any $k \in \{0,1,\dots,K\}$, we denote by $\bar\mX_{k}$ the AGM state at step $K_0 + k$ projected to $\Gamma$, i.e., $$\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right).$$
+Then for any $C^3$ function $g(\vtheta)$,
+\begin{align*}
+\max_{0\le k\le K}
+\left|
+\E\left[g\left(\bar\mX_{k}\right)\middle|\mX_0\right]
+-\E\left[g\left(\mX(k\eta^2)\right)\middle|\mX(0)=\mX_0\right]\right| 
+= \widetilde \O\left(\eta^{0.25}\right),
+\end{align*}
+where $\widetilde \O(\cdot)$ hides logarithmic factors and constants independent of $\eta$ (but possibly depending on $g$).
+\end{enumerate}
+
+\end{theorem}
+
+% \begin{theorem}
+% Let $T>0$ and suppose \Cref{amp:basic}--\ref{amp:beta1-bound} hold. 
+% There exist constant $\epsilon_0,C>0$ such that the following statement holds for all sufficiently small learning rates $\eta$.
+% Define step $K_0 := \lfloor C\log(1/\eta)\rfloor$ and $K := \lfloor T\,\eta^{-2}\rfloor$. 
+% %Assume the initial parameter $\vtheta_0$ satisfies $\mathrm{dist}(\vtheta_0,\Gamma)\le \epsilon_0$.
+% Run an AGM for $K_0+K+1$ iterations and obtain $\{(\vtheta_k, \vv_k)\}_{k=0}^{K_0+K}$, where the initial parameter $\vtheta_0$ 
+% is an arbitrary point that satisfies $\mathrm{dist}(\vtheta_0,\Gamma)\le \epsilon_0$.
+% Let $\mX(t)=(\vzeta(t),\vv(t))$ be the solution to \eqref{equ:AGMs-SDE} on $t\in[0,T]$ with initial condition 
+% $$\mX(0) =
+% \mX_0
+% \in \Gamma \times \mathbb{R}_{\ge 0}^D, \quad \mX_0 := (\Phi_{\mS(\vv_{0})}(\vtheta_{0}), \vv_{0}).
+% $$
+% For any $k \in \{0, 1, \dots, K\}$,
+% let $\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right)$ be the AGM state at step $K_0 + k$ projected onto $\Gamma$.
+% %For any $k \in \{0,1,\dots,K\}$, we denote by $\bar\mX_{k}$ the AGM state at step $K_0 + k$ projected to $\Gamma$, i.e., $$\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right).$$
+% Then for any $C^3$ function $g(\vtheta)$,
+% \begin{align*}
+% \max_{0\le k\le K}
+% \left|
+% \E\left[g\left(\bar\mX_{k}\right)\middle|\mX_0\right]
+% -\E\left[g\left(\mX(k\eta^2)\right)\middle|\mX(0)=\mX_0\right]\right| 
+% = \widetilde \O\left(\eta^{0.25}\right),
+% \end{align*}
+% where $\widetilde \O(\cdot)$ hides logarithmic factors and constants independent of $\eta$ (but possibly depending on $g$).
+% \end{theorem}
+
+Notice that in \Cref{thm:formal-main-result} we give a more explicit statement for our SDE approximation results in \Cref{thm:SDE-approximation}. One can see that \Cref{thm:SDE-approximation} is a direct corollary of \Cref{thm:formal-main-result}.
+
+\begin{proof}[Proof of \Cref{thm:formal-main-result}]
+    For the convergence part of \Cref{thm:formal-main-result}, we first construct the working zones near the manifold in \Aref{sec:working-zone} to ensure some properties that are crucial to our analysis such as the $\mu$-PL condition. After that, we give the proof of convergence in \Aref{app:proof-convergence}. We finish our proof in \Aref{app:proof-formal-statement} by combining the previous results in working zone and convergence analysis.
+    
+    And the proof of the SDE approximation part is finished in \Aref{sec:weak-approximation} through the moment calculation and the subsequent weak approximation analysis in \Aref{sec:proof-sde-approx}.
+\end{proof}
+
+\subsection{Convergence Guarantee of AGMs}
+
+In the proof, the first part of \cref{thm:formal-main-result} is done by first proving a convergence result with global $\mu$-PL condition, and then arguing that AGM starting near enough to the manifold will stick to the manifold with high probability. As mentioned in \cref{subsubsec:convergence}, the convergence under $\mu$-PL condition can be seen as a separate technical contribution of our paper, which is stated below.
+
+\begin{definition}[Polyak-Łojasiewicz Condition]
+    \label{def:mu-pl}
+    For some $\mu, \bar{L} > 0$, we say some function $\cL:\R^d \to \R$ is $(\mu, \bar{L})$-Polyak-Łojasiewicz (abbreviated as $(\mu, \bar{L})$-PL), if and only if for all $\vtheta \in \mathbb{R}^d$ such that $\cL(\vtheta) \leq \bar{L}$:
+    $$2\mu(\cL(\vtheta)-\cL^*) \leq \lnormtwo{\nabla \cL(\vtheta)}^2.$$
+    When $\bar{L} = +\infty$, we call this condition the $\mu$-Polyak-Łojasiewicz ($\mu$-PL) condition.
+\end{definition}
+
+
+\begin{theorem}[Formal restatement of \Cref{thm: convergence}]\label{thm:formal-convergence-1}
+    Let Assumptions \ref{amp:smooth}, \ref{amp:gradient-bound} and \ref{amp:beta1-bound} be satisfied, $\cL$ be a function satisfying the $\mu$-PL condition, and $\eta$ be a sufficiently small learning rate of an AGM. Let $1-\beta_2 = \Theta(\eta^2)$. For any $\delta \in (0,1)$, with probability at least $1 - \delta$, the following holds for some $K = \mathcal{O}(\frac{1}{\eta} \log \frac{1}{\eta})$:
+    \begin{gather*}
+        \cL(\vtheta_K) - \cL^* = \O\left(\eta\log\frac{1}{\eta\delta}\right),\\
+        \|\vtheta_K -\Phi_{\mS_K}(\vtheta_K)\|_2 = \O\left(\sqrt{\eta\log\frac{1}{\eta\delta}}\right).
+    \end{gather*} 
+\end{theorem}
+
+\paragraph{Remark.} Note that \cref{thm:formal-convergence-1} is different from Part 1 of \cref{thm:formal-main-result} in the sense that \cref{thm:formal-convergence-1} requires the $\mu$-PL condition to hold globally, while Part 1 of \cref{thm:formal-main-result} does not. Actually, the latter requires the iteration to start from some neighborhood of $\Gamma$. Later on, we will find from \cref{lem:working-zone} that $\mu$-PL provably exists in a neighborhood of $\Gamma$, and we prove that an iteration of AGMs starting within that neighborhood stays within that neighborhood with high probability.
+
+There have been many previous works discussing the convergence bound of Adam. For example, \citet{reddi2018convergence} and \citet{dereich2024convergence} give convergence bounds under the convexity condition, \citet{zou2019sufficient}, \citet{shi2021rmsprop} and \citet{zhang2022adam} focus on the cases where learning rates follow a $1/\sqrt{t}$ decay, and the bounds given by \citet{NEURIPS2018_90365351}, \citet{zhang2022adam} and \citet{10.1145/3637528.3671718} do not decrease to $0$ as $\eta \to 0$. Also, most works \citep{defossez2020simple, guo2025unifiedconvergenceanalysisadaptive, iiduka2022theoreticalanalysisadamusing, wang2024convergenceadamnonuniformsmoothness, zhang2024convergence, hong2023highprobabilityconvergenceadam} only establish an upper bound on the average of gradient norms over the time of iteration. In contrast, we directly bound the loss term of the last step to $o(1)$. Going beyond convex loss functions, we establish the bound on $\mu$-PL functions, and we focus on the constant learning rate schedule.

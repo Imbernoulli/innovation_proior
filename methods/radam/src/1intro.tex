@@ -1,0 +1,121 @@
+% !TEX encoding = UTF-8
+% !TEX Root = 0_main.tex
+
+\section{Introduction}
+\vspace{-0.1cm}
+
+\begin{wrapfigure}{r}{0.35\textwidth} 
+\centering
+\vspace{-0.8cm}
+\includegraphics[width=0.35\textwidth]{fig/ppl_loss_legend_small.pdf}
+\vspace{-0.6cm}
+\caption{Training loss v.s. \# of iterations of Transformers on the De-En IWSLT'14 dataset. }
+\vspace{-0.4cm}
+\label{fig:eps2k}
+\end{wrapfigure}
+
+
+% The development of 
+% fast and stable optimization algorithms 
+% is one of the longest running goals in computer science~\citep{cauchy1847methode}.
+Fast and stable optimization algorithms are what generations of researchers have been pursuing~\citep{gauss1823theoria,cauchy1847methode}.
+Remarkably, stochastic gradient-based optimization, such as stochastic gradient descent (SGD), has witnessed tremendous success in many fields of science and engineering despite its simplicity.
+%For example, stochastic gradient descent (SGD) has demonstrated its effectiveness in extensive machine learning applications. 
+% Recently, many new methods have been proposed 
+Recently, many efforts have been made 
+to accelerate optimization by applying \textit{adaptive learning rate}. 
+In particular, Adagrad~\citep{duchi2011adaptive} and its variants, \eg, RMSprop~\citep{tieleman2012lecture}, Adam~\citep{kingma2014adam}, Adadelta~\citep{zeiler2012adadelta} and Nadam~\citep{dozat2016incorporating},
+% have been widely used due to their fast convergence.
+stand out due to their fast convergence, and have been considered as the optimizer of choice in many applications. 
+
+%Despite their fast convergence, it has been noticed that in many cases, 
+However, it has been observed that these optimization methods may converge to bad/suspicious local optima,
+% or even diverge, 
+% \HMJ{Actually no experiment show that they diverges. $==>$ ..optima no matter how the hyper-parameter is chosen.}
+and have to resort to a warmup heuristic -- using a small learning rate in the first few epochs of training to mitigate such problem~\citep{vaswani2017attention, popel2018training}.  
+% require a warmup stage (i.e., using a small learning rate in the first few epochs); otherwise, the optimization converges to suspicious/bad local optima or even explodes~\citep{vaswani2017attention, popel2018training}.
+For example, when training typical Transformers based neural machine translation models
+on the
+De-En IWSLT'14 dataset, 
+removing the warmup stage
+% stage raises the final 
+increases the training loss 
+% of a typical Transformer based neural machine translation model
+from 3 to around 10, as shown in Figure~\ref{fig:eps2k}. 
+Similar phenomena are observed in other scenarios like BERT (a bidirectional transformer language model) pre-training~\citep{devlin2018bert}.% \XD{Require a few words to explain BERT...}
+
+% Since the theoretical underpinnings of the warmup are lacking,
+Due to the lack of the theoretical underpinnings,
+there is neither guarantee that warmup would 
+% work for various machine learning settings 
+bring consistent improvements for various machine learning settings 
+nor guidance on how we should conduct warmup. 
+Thus, researchers typically use different settings in different applications and have to take a trial-and-error approach,
+% which can be tedious and time-consuming for many large-scale machine learning tasks, such as language modeling and image classification. 
+which can be tedious and time-consuming. 
+
+% In this paper, we conduct an in-depth analysis of the convergence issue, 
+In this paper, we conduct both empirical and theoretical analysis of the convergence issue to identify its origin.
+% In this paper, we conduct both empirical and theoretical analysis to identify the origin of the convergence issue.
+%Here, we analyze this phenomenon, study why we need warmup, and explore the optimization issue it tries to address. 
+%Specifically, 
+We show that its root cause is: the adaptive learning rate has undesirably large variance in the early stage of model training, due to the limited amount of training samples being used. 
+Thus, to reduce such variance, it is better to use smaller learning rates in the first few epochs of training, which justifies the warmup heuristic.
+%We show that due to the limited sample size, the adaptive learning rate has undesirably large variance in the early stage of training, which obstructs the optimization process.
+
+Inspired by our analysis results, we propose a new variant of Adam, called Rectified Adam (RAdam), which explicitly rectifies the variance of the adaptive learning rate based on derivations.
+We conduct extensive experiments on language modeling, image classification, and neural machine translation.
+RAdam brings consistent improvement over the vanilla Adam, which verifies the variance issue generally exists on various tasks across different network architectures.
+
+In summary, our main contributions are two-fold:
+% \begin{itemize}[leftmargin=*,topsep=0pt]
+\begin{itemize}[leftmargin=*]
+    \item
+    \vspace{-0.1in}
+    We identify the variance issue of the adaptive learning rate and present a theoretical justification for the warmup heuristic. 
+    We show that the convergence issue is due to the undesirably large variance of the adaptive learning rate in the early stage of model training.
+    \item 
+    We propose a new variant of Adam (\ie, RAdam), which not only explicitly rectifies the variance and is theoretically sound, but also compares favorably with the heuristic warmup.
+\end{itemize}
+    
+    %\item
+    %Empirical studies are conducted to examine RAdam.
+    %It shows that RAdam brings consistent improvement over the vanilla Adam, which verifies the variance issue generally exists on various tasks across different network architectures.
+    %Also, it achieves similar performance with the state-of-the-art heuristics (\ie, warmup) on NMT.
+    % \XD{What is sota heuristics? One of biggest adv of RAdam is that we don't need to search warmup steps. We should state this explicitly here.}
+    %Moreover, we conduct simulation experiments to empirically examine our assumptions and approximations to better understand RAdam. 
+
+% \section{Introduction}
+
+% Fast and stable optimization algorithms are what generations of researchers have been pursuing for~\citep{cauchy1847methode}. 
+% Remarkably, stochastic gradient-based optimization has witnessed tremendous success in many fields of science and engineering despite its simplicity.
+% For example, stochastic gradient descent (SGD) has demonstrated its effectiveness in extensive machine learning applications. 
+% Recently, many efforts have been made to accelerate optimization by applying \textit{adaptive learning rate}. Specifically,  Adagrad~\citep{duchi2011adaptive} and its variants, \eg, RMSprop~\citep{tieleman2012lecture}, Adam~\citep{kingma2014adam}, Adadelta~\citep{zeiler2012adadelta} and Nadam~\citep{dozat2016incorporating}, stand out due to their rapid speed, and have been considered as the optimizer of choice in many applications. 
+
+% % Despite of the fast convergence merit, many techniques are proposed for stabilizing the training, including learning rate warmup \cite{vaswani2017attention,goyal2017accurate}, gradient clipping, better initialization \cite{zhang2019fixup}, and normalization in many machine learning problems. 
+% Despite of their fast convergence, it has been noticed that in many cases, these methods require a warmup stage (using a small learning rate in the first few epochs); otherwise, the optimization converges to suspicious / bad local optimas or even explodes~\citep{vaswani2017attention, popel2018training}.
+% % many techniques are proposed for stabilizing the training, including learning rate warmup \cite{vaswani2017attention,goyal2017accurate}, gradient clipping, better initialization \cite{zhang2019fixup}, and normalization in many machine learning problems. 
+% % At the same time, it has been noticed in many machine learning practices (\eg, neural machine translation), these methods require a ``warmup'' stage (\ie, using small learning rates in the first few epoches); otherwise, the loss fails to descent normally or even explodes \citep{popel2018training}.
+% % For example in neural machine translation, a common practice is to equip Adam with a ``warmup'' stage (\ie, using small learning rates in the first few epoches); otherwise, the loss fails to descent normally or even explodes \citep{popel2018training}.
+% For example, on the De-En IWSLT'14 dataset, removing the warmup stage raises the final training perplexity of Transformers from under 10 to over 500 (as in Figure~\ref{fig:eps2k}). 
+% Similar phenomenons are observed in other scenarios like BERT pre-training~\citep{devlin2018bert}.
+
+% Here, we analyze this phenomenon in details and try to understand why we need warmup and what strategy we should use. 
+% We show that, due to the limited sample size, the adaptive learning rate has undesirably large variance in the early stage, which obstructs the optimization process.
+% We further derive a rectification term to fix this issue. 
+% % A rectification term is further derived to fix this issue. 
+% Specifically, we make the following key contributions:
+
+% \begin{itemize}[leftmargin=*]
+%     \item We theoretically demonstrate that, due to the limited sample size, the adaptive learning rate has a huge variance in the early state, which could even be divergent.
+%     We further design controlled experiments with a real world dataset (neural machine translation) to empirically verify that the abovementioned issue is indeed the cause of convergence problems. 
+%     Specifically, we observe Adam successfully converges as long as constraining its variance, or getting sufficient samples to estimate the adaptive learning rate; otherwise the loss fails to descent normally or even explodes.
+%     \item With further analysis, we derive an approximation to the variance of the adaptive learning rate and design a rectification term to constraint its magnitude. We refer this method as RAdam and find existing warmup strategies can be viewed as an approximation to our result, which verifies our intuition that warmup works as a heuristic variance reduction technique. 
+%     Comparing to existing strategies, ours is theoretically sound thus having more potentials.
+%     \item
+%     Empirical studies are conducted to examine RAdam.
+%     It achieves similar performance with the state-of-the-art heuristics on NMT.
+%     % , which verifies our intuition (\ie, it is because the large variance of the adaptive learning rate, the vanilla Adam converges to suspicious / bad local optimas). 
+%     It brings consistent improvement over the vanilla Adam, which verifies the variance issue generally exists on various tasks / architectures
+%     %, and affects the model performance.
+% \end{itemize}

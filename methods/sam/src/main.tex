@@ -1,0 +1,664 @@
+\documentclass{article} % For LaTeX2e
+\usepackage{iclr2021_conference,times}
+\usepackage{multirow}
+\input{math_commands.tex}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\definecolor{C0}{HTML}{3182ce}
+\definecolor{C1}{HTML}{dd6b20}
+\usepackage[breaklinks=true,colorlinks,bookmarks=false,citecolor=C0]{hyperref}
+\usepackage{mwe}
+\usepackage[toc,page]{appendix}
+\usepackage{url}
+\usepackage{tikz}
+\usepackage{wrapfig,booktabs}
+\usepackage{subcaption}
+\usepackage[]{algorithm2e}
+\usepackage{amsthm}
+\usepackage{mathrsfs}
+\usepackage{verbatim}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{claim}[theorem]{Claim}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{assumption}[theorem]{Assumption}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{condition}{Condition}
+\newtheorem{remark}[theorem]{Remark}
+\newtheorem{inftheorem}[theorem]{Theorem (stated informally)}
+\newenvironment{sketch}{\paragraph{Proof sketch}\mbox{}}{\hfill $\blacksquare$}
+\usepackage{amsmath,amssymb}
+\newsavebox{\measurebox}
+
+
+\title{
+Sharpness-Aware Minimization for Efficiently Improving Generalization
+}
+
+\author{%
+  Pierre Foret \thanks{Work done as part of the Google AI Residency program.} \\
+  Google Research \\
+  \texttt{pierre.pforet@gmail.com} \\
+  \And
+  Ariel Kleiner \\
+  Google Research \\
+  \texttt{akleiner@gmail.com} \\
+  \And
+  Hossein Mobahi \\
+  Google Research \\
+  \texttt{hmobahi@google.com} \\
+  \And
+  Behnam Neyshabur \\
+  Blueshift, Alphabet\\
+  \texttt{neyshabur@google.com} \\
+}
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy 
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+In today's heavily overparameterized models, the value of the training loss provides few guarantees on model generalization ability. Indeed, optimizing only the training loss value, as is commonly done, can easily lead to suboptimal model quality. Motivated by prior work connecting the geometry of the loss landscape and generalization, we introduce a novel, effective procedure for instead simultaneously minimizing loss value and loss sharpness.  In particular, our procedure, Sharpness-Aware Minimization (SAM), seeks parameters that lie in neighborhoods having uniformly low loss; this formulation results in a min-max optimization problem on which gradient descent can be performed efficiently. We present empirical results showing that SAM improves model generalization across a variety of benchmark datasets (e.g., CIFAR-\{10, 100\}, ImageNet, finetuning tasks) and models, yielding novel state-of-the-art performance for several.  Additionally, we find that SAM natively provides robustness to label noise on par with that provided by state-of-the-art procedures that specifically target learning with noisy labels. We open source our code at \url{https://github.com/google-research/sam}.
+\end{abstract}
+
+\section{Introduction}
+
+Modern machine learning's success in achieving ever better performance on a wide range of tasks has relied in significant part on ever heavier overparameterization, in conjunction with developing ever more effective training algorithms that are able to find parameters that generalize well.  Indeed, many modern neural networks can easily memorize the training data and have the capacity to readily overfit \citep{rethinking_generalization}.  Such heavy overparameterization is currently required to achieve state-of-the-art results in a variety of domains \citep{efficientnet, bitm, gpipe}. In turn, it is essential that such models be trained using procedures that ensure that the parameters actually selected do in fact generalize beyond the training set.
+
+Unfortunately, simply minimizing commonly used loss functions (e.g., cross-entropy) on the training set is typically not sufficient to achieve satisfactory generalization.  The training loss landscapes of today's models are commonly complex and non-convex, with a multiplicity of local and  global minima, and with different global minima yielding models with different generalization abilities \citep{keshar}.  As a result, the choice of optimizer (and associated optimizer settings) from among the many available (e.g., stochastic gradient descent~\citep{10029946121}, Adam~\citep{2014arXiv1412.6980K}, RMSProp~\citep{hinton2012neural}, and others~\citep{duchi2011adaptive, dozat2016incorporating, 2015arXiv150305671M}) has become an important design choice, though understanding of its relationship to model generalization remains nascent~\citep{keshar, wilson2017marginal, 2017arXiv171207628S, agarwal2020revisiting, ntk}.  Relatedly, a panoply of methods for modifying the  training process have been proposed, including dropout~\citep{srivastava2014dropout}, batch normalization~\citep{ioffe2015batch}, stochastic depth~\citep{2016arXiv160309382H}, data augmentation~\citep{autoaug}, and mixed sample augmentations~\citep{zhang2017mixup, 2020arXiv200212047H}.
+
+The connection between the geometry of the loss landscape---in particular, the flatness of minima---and generalization has been studied extensively from both theoretical and empirical perspectives \citep{keshar, dziugaite2017computing, jiang2019fantastic}.  While this connection has held the promise of enabling new approaches to model training that yield better generalization, practical efficient algorithms that specifically seek out flatter minima and furthermore effectively improve generalization on a range of state-of-the-art models have thus far been elusive (e.g., see \citep{2016arXiv161101838C,swa}; we include a more detailed discussion of prior work in Section~\ref{sec:related}).
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{c c c}
+\raisebox{-0.5\height}{\includegraphics[width=.4\linewidth]{figures/summary_plot_6.pdf}} &
+\raisebox{-0.5\height}{\includegraphics[width=0.28\textwidth]{figures/no_sam.png}} &
+\raisebox{-0.5\height}{\includegraphics[width=0.28\linewidth]{figures/sam_wide.png}} \\
+\end{tabular}
+
+\caption{(left)  Error rate reduction obtained by switching to SAM. Each point is a different dataset / model / data augmentation. (middle) A sharp minimum to which a ResNet trained with SGD converged. (right)  A wide minimum to which the same ResNet trained with SAM converged.}
+\label{fig:sam_schema}
+\vspace{-0.4cm}
+\end{figure}
+
+We present here a new efficient, scalable, and effective approach to improving model generalization ability that directly leverages the geometry of the loss landscape and its connection to generalization, and is powerfully complementary to existing techniques.  In particular, we make the following contributions:
+\begin{itemize}
+\item We introduce Sharpness-Aware Minimization~(SAM), a novel procedure that improves model generalization by simultaneously minimizing loss value and loss sharpness.  SAM functions by seeking parameters that lie in neighborhoods having uniformly low loss value (rather than parameters that only themselves have low loss value, as illustrated in the middle and righthand images of Figure~\ref{fig:sam_schema}), and can be implemented efficiently and easily.
+\item We show via a rigorous empirical study that using SAM improves model generalization ability across a range of widely studied computer vision tasks (e.g., CIFAR-\{10, 100\}, ImageNet, finetuning tasks) and models, as summarized in the lefthand plot of Figure~\ref{fig:sam_schema}.  For example, applying SAM yields novel state-of-the-art performance for a number of already-intensely-studied tasks, such as ImageNet, CIFAR-\{10, 100\}, SVHN, Fashion-MNIST, and the standard set of image classification finetuning tasks (e.g., Flowers, Stanford Cars, Oxford Pets, etc).
+\item We show that SAM furthermore provides robustness to label noise on par with that provided by state-of-the-art procedures that specifically target learning with noisy labels.
+\item Through the lens provided by SAM, we further elucidate the connection between loss sharpness and generalization by surfacing a promising new notion of sharpness, which we term \textit{m-sharpness}.
+\end{itemize}
+
+Section~2 below derives the SAM procedure and presents the resulting algorithm in full detail.  Section~3 evaluates SAM empirically, and Section~4 further analyzes the connection between loss sharpness and generalization through the lens of SAM.  Finally, we conclude with an overview of related work and a discussion of conclusions and future work in Sections~5 and~6, respectively.
+
+
+\section{Sharpness-Aware Minimization~(SAM)}
+Throughout the paper, we denote scalars as $a$, vectors as $\boldsymbol{a}$, matrices as $\boldsymbol{A}$, sets as $\mathcal{A}$, and equality by definition as $\triangleq$.  Given a training dataset $\mathcal{S} \triangleq \cup_{i=1}^n \{(\boldsymbol{x}_i, \boldsymbol{y}_i)\}$ drawn i.i.d.~from distribution $\mathscr{D}$, we seek to learn a model that generalizes well.  In particular, consider a family of models parameterized by $\boldsymbol{w} \in \mathcal{W} \subseteq \mathbb{R}^d$; given a per-data-point loss function $l: \mathcal{W} \times \mathcal{X} \times \mathcal{Y} \rightarrow \R_+$, we define the training set loss $L_S(\boldsymbol{w}) \triangleq \frac{1}{n} \sum_{i=1}^n l(\boldsymbol{w}, \boldsymbol{x}_i, \boldsymbol{y}_i)$ and the population loss $L_\mathscr{D}(\boldsymbol{w}) \triangleq \E_{(\boldsymbol{x}, \boldsymbol{y}) \sim D} [l(\boldsymbol{w}, \boldsymbol{x}, \boldsymbol{y})]$. Having observed only $\mathcal{S}$, the goal of model training is to select model parameters $\boldsymbol{w}$ having low population loss $L_\mathscr{D}(\boldsymbol{w})$.
+
+Utilizing $L_\mathcal{S}(\boldsymbol{w})$ as an estimate of $L_\mathscr{D}(\boldsymbol{w})$ motivates the standard approach of selecting parameters $\boldsymbol{w}$ by solving $\min_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w})$ (possibly in conjunction with a regularizer on $\boldsymbol{w}$) using an optimization procedure such as SGD or Adam.  Unfortunately, however, for modern overparameterized models such as deep neural networks, typical optimization approaches
+can easily result in suboptimal performance at test time.  In particular, for modern models, $L_\mathcal{S}(\boldsymbol{w})$ is typically non-convex in $\boldsymbol{w}$, with multiple local and even global minima that may yield similar values of $L_\mathcal{S}(\boldsymbol{w})$ while having significantly different generalization performance (i.e., significantly different values of $L_\mathscr{D}(\boldsymbol{w})$).
+
+Motivated by the connection between sharpness of the loss landscape and generalization, we propose a different approach: rather than seeking out parameter values $\boldsymbol{w}$ that simply have low training loss value $L_{\mathcal{S}}(\boldsymbol{w})$, we seek out parameter values whose entire neighborhoods have uniformly low training loss value (equivalently, neighborhoods having both low loss and low curvature).  The following theorem illustrates the motivation for this approach by bounding generalization ability in terms of neighborhood-wise training loss (full theorem statement and proof in Appendix \ref{appendix:theorem}):
+\begin{inftheorem} For any $\rho>0$, with high probability over training set $\mathcal{S}$ generated from distribution $\mathscr{D}$,
+$$L_\mathscr{D}(\boldsymbol{w}) \leq \max_{\|\boldsymbol{\eps}\|_2 \leq \rho} L_\mathcal{S}(\boldsymbol{w}+\boldsymbol{\eps}) + h(\|\boldsymbol{w}\|_2^2/\rho^2),$$
+where $h: \mathbb{R}_{+}\rightarrow  \mathbb{R}_{+}$ is a strictly increasing function (under some technical conditions on $L_\mathscr{D}(\boldsymbol{w})$).
+\end{inftheorem}
+To make explicit our sharpness term, we can rewrite the right hand side of the inequality above as
+$$[\max_{\|\boldsymbol{\eps}\|_2\leq \rho }L_\mathcal{S}(\boldsymbol{w}+\boldsymbol{\epsilon}) - L_\mathcal{S}(\boldsymbol{w})] + L_\mathcal{S}(\boldsymbol{w}) + h(\|\boldsymbol{w}\|_2^2/\rho^2).$$
+The term in square brackets captures the sharpness of $L_\mathcal{S}$ at $\boldsymbol{w}$ by measuring how quickly the training loss can be increased by moving from $\boldsymbol{w}$ to a nearby parameter value; this sharpness term is then summed with the training loss value itself and a regularizer on the magnitude of $\boldsymbol{w}$.  Given that the specific function $h$ is heavily influenced by the details of the proof, we substitute the second term with $\lambda ||w||_2^2$ for a hyperparameter $\lambda$, yielding a standard L2 regularization term. Thus, inspired by the terms from the bound, we propose to select parameter values by solving the following Sharpness-Aware Minimization (SAM) problem:
+\begin{equation}
+\label{sam-loss}
+\min_{\boldsymbol{w}} L^{SAM}_\mathcal{S}(\boldsymbol{w}) + \lambda ||\boldsymbol{w}||_2^2 \text{~~~~~~where~~~~~~} L^{SAM}_\mathcal{S}(\boldsymbol{w}) \triangleq \max_{||\boldsymbol{\epsilon}||_p\leq \rho} L_S(\boldsymbol{w}+\boldsymbol{\epsilon}),
+\end{equation}
+where $\rho \geq 0$ is a hyperparameter and $p \in [1, \infty]$ (we have generalized slightly from an L2-norm to a $p$-norm in the maximization over $\boldsymbol{\epsilon}$, though we show empirically in appendix \ref{appendix:pnorm} that $p=2$ is typically optimal).  Figure~\ref{fig:sam_schema} shows\footnote{
+Figure~\ref{fig:sam_schema} was generated following \cite{DBLP:journals/corr/abs-1712-09913} with the provided ResNet56 (no residual connections) checkpoint, and training the same model with SAM.} the loss landscape for a model that converged to minima found by minimizing either $L_\mathcal{S}(\boldsymbol{w})$ or $L^{SAM}_\mathcal{S}(\boldsymbol{w})$, illustrating that the sharpness-aware loss prevents the model from converging to a sharp minimum.
+
+
+
+In order to minimize $L^{SAM}_\mathcal{S}(\boldsymbol{w})$, we derive an efficient and effective approximation to $\nabla_{\boldsymbol{w}} L^{SAM}_\mathcal{S}(\boldsymbol{w})$ by differentiating through the inner maximization, which in turn enables us to apply stochastic gradient descent directly to the SAM objective.  Proceeding down this path, we first approximate the inner maximization problem via a first-order Taylor expansion of $L_\mathcal{S}(\boldsymbol{w}+\boldsymbol{\epsilon})$ w.r.t. $\boldsymbol{\epsilon}$ around $\boldsymbol{0}$, obtaining
+$${\boldsymbol{\epsilon}^*}(\boldsymbol{w}) \triangleq \argmax_{\|\boldsymbol{\epsilon}\|_p \leq \rho} L_\mathcal{S}(\boldsymbol{w}+\boldsymbol{\epsilon}) \approx \argmax_{\|\boldsymbol{\epsilon}\|_p \leq \rho} L_\mathcal{S}(\boldsymbol{w}) + \boldsymbol{\epsilon}^T \nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w}) = \argmax_{\|\boldsymbol{\epsilon}\|_p \leq \rho} \boldsymbol{\epsilon}^T \nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w}).$$
+In turn, the value $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})$ that solves this approximation is given by the solution to a classical dual norm problem ($|\cdot |^{q-1}$ denotes elementwise absolute value and power)\footnote{In the case of interest $p=2$, this boils down to simply rescaling the gradient such that its norm is $\rho$.}:
+
+
+\begin{equation}
+\label{eq:dual-solution}
+    \hat{\boldsymbol{\epsilon}}(\boldsymbol{w}) = \rho \mbox{ sign}\left(\nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w})\right)\left|\nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w})\right|^{q-1} / \bigg(\|\nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w})\|_q^q\bigg)^{1/p}
+\end{equation}
+where $1/p + 1/q = 1$.  Substituting back into equation~(\ref{sam-loss}) and differentiating, we then have
+\begin{equation*}
+\begin{split}
+\nabla_{\boldsymbol{w}} L^{SAM}_\mathcal{S}(\boldsymbol{w}) & \approx \nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w} + \hat{\boldsymbol{\epsilon}}(\boldsymbol{w}))
+= \frac{d (\boldsymbol{w} + {\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})})}{d\boldsymbol{w}}\nabla_{\boldsymbol{w}}  L_\mathcal{S}(\boldsymbol{w})|_{\boldsymbol{w}+\hat{\boldsymbol{\epsilon}}(w)} \\
+& =  {\nabla_w  L_\mathcal{S}(\boldsymbol{w})|_{\boldsymbol{w}+\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})}} + {\frac{d \hat{\boldsymbol{\epsilon}}(\boldsymbol{w})}{d \boldsymbol{w}}\nabla_{\boldsymbol{w}}  L_\mathcal{S}(\boldsymbol{w})|_{\boldsymbol{w}+\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})}}.
+\end{split}
+\end{equation*}
+This approximation to $\nabla_{\boldsymbol{w}} L^{SAM}_\mathcal{S}(\boldsymbol{w})$ can be straightforwardly computed via automatic differentiation, as implemented in common libraries such as JAX, TensorFlow, and PyTorch.  Though this computation implicitly depends on the Hessian of $L_\mathcal{S}(\boldsymbol{w})$ because $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})$ is itself a function of $\nabla_{\boldsymbol{w}}  L_\mathcal{S}(\boldsymbol{w})$, the Hessian enters only via Hessian-vector products, which can be computed tractably without materializing the Hessian matrix.  Nonetheless, to further accelerate the computation, we drop the second-order terms.
+obtaining our final gradient approximation:
+\begin{equation}
+\label{eq:sam-gradient}
+\nabla_{\boldsymbol{w}} L^{SAM}_\mathcal{S}(\boldsymbol{w}) \approx {\nabla_{\boldsymbol{w}} L_\mathcal{S}(w)|_{\boldsymbol{w}+\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})}}.
+\end{equation}
+As shown by the results in Section~3, this approximation (without the second-order terms) yields an effective algorithm.  In Appendix \ref{appendix:second_order}, we additionally investigate the effect of instead including the second-order terms; in that initial experiment, including them surprisingly degrades performance, and further investigating these terms' effect should be a priority in future work.
+
+We obtain the final SAM algorithm by applying a standard numerical optimizer such as stochastic gradient descent (SGD) to the SAM objective $L^{SAM}_\mathcal{S}(\boldsymbol{w})$, using equation~\ref{eq:sam-gradient} to compute the requisite objective function gradients.  Algorithm~\ref{alg:sam-algorithm} gives pseudo-code for the full SAM algorithm, using SGD as the base optimizer, and Figure~\ref{fig:sam-step-schematic} schematically illustrates a single SAM parameter update.
+
+\begin{figure}[!htb]
+    \centering
+    \begin{minipage}{.6\textwidth}
+        \centering
+        \begin{algorithm}[H]\small
+         \KwIn{Training set $\mathcal{S} \triangleq \cup_{i=1}^n\{(\boldsymbol{x}_i, \boldsymbol{y}_i)\}$, Loss function $l:\mathcal{W} \times \mathcal{X} \times \mathcal{Y} \rightarrow \mathbb{R}_+$, Batch size $b$, Step size $\eta>0$, Neighborhood size $\rho>0$.}
+         \KwOut{Model trained with SAM}
+         Initialize weights $\boldsymbol{w}_0$, $t=0$\;
+         \While{not converged}{
+          Sample batch $\mathcal{B} = \{(\boldsymbol{x}_1, \boldsymbol{y}_1), ... (\boldsymbol{x}_b, \boldsymbol{y}_b)\}$\;
+           Compute gradient $\nabla_{\boldsymbol{w}} L_\mathcal{B}(\boldsymbol{w})$ of the batch's training loss\;
+           Compute $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})$\ per equation~\ref{eq:dual-solution}\;
+           Compute gradient approximation for the SAM objective (equation~\ref{eq:sam-gradient}): $\boldsymbol{g} = \nabla_w L_\mathcal{B}(\boldsymbol{w})|_{\boldsymbol{w}+\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})}$\;
+          Update weights: $\boldsymbol{w}_{t+1} = \boldsymbol{w}_t - \eta \boldsymbol{g}$\;
+          $t=t+1$\;
+         }
+         \Return{$\boldsymbol{w}_t$}
+         \caption{SAM algorithm}
+         \label{alg:sam-algorithm}
+        \end{algorithm}
+    \end{minipage}%
+    \begin{minipage}{0.4\textwidth}
+        \centering
+  \includegraphics[width=1\textwidth]{figures/SAM_demo.pdf}
+  \captionof{figure}{Schematic of the SAM parameter update.}
+  \label{fig:sam-step-schematic}
+    \end{minipage}
+\end{figure}
+
+
+\section{Empirical Evaluation}
+In order to assess SAM's efficacy, we apply it to a range of different tasks, including image classification from scratch (including on CIFAR-10, CIFAR-100, and ImageNet), finetuning pretrained models, and learning with noisy labels.  In all cases, we measure the benefit of using SAM by simply replacing the optimization procedure used to train existing models with SAM, and computing the resulting effect on model generalization.  As seen below, SAM materially improves generalization performance in the vast majority of these cases.
+
+\subsection{Image Classification From Scratch}
+We first evaluate SAM's impact on generalization for today's state-of-the-art models on CIFAR-10 and CIFAR-100 (without pretraining): WideResNets with ShakeShake regularization \citep{wrs, Shake} and PyramidNet with ShakeDrop regularization \citep{pyramid, shakedrop}.  Note that some of these models have already been heavily tuned in prior work and include carefully chosen regularization schemes to prevent overfitting; therefore, significantly improving their generalization is quite non-trivial. We have ensured that our implementations' generalization performance in the absence of SAM matches or exceeds that reported in prior work \citep{autoaug, fast_aa}
+
+All results use basic data augmentations (horizontal flip, padding by four pixels, and random crop).  We also evaluate in the setting of more advanced data augmentation methods such as cutout regularization \citep{cutout} and AutoAugment \citep{autoaug}, which are utilized by prior work to achieve state-of-the-art results.
+
+SAM has a single hyperparameter $\rho$ (the neighborhood size), which we tune via a grid search over  $\{0.01, 0.02, 0.05, 0.1, 0.2, 0.5\}$ using 10\% of the training set as a validation set\footnote{We found $\rho=0.05$ to be a solid default value, and we report in appendix \ref{appendix:no_rho_tuning} the scores for all our experiments, obtained with $\rho=0.05$ without further tuning.}.  Please see appendix~\ref{appendix:cifar_hparams} for the values of all hyperparameters and additional training details.  As each SAM weight update requires two backpropagation operations (one to compute $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})$ and another to compute the final gradient), we allow each non-SAM training run to execute twice as many epochs as each SAM training run, and we report the best score achieved by each non-SAM training run across either the standard epoch count or the doubled epoch count\footnote{Training for longer generally did not improve accuracy significantly, except for the models previously trained for only 200 epochs and for the largest, most regularized model (PyramidNet + ShakeDrop).}.  We run five independent replicas of each experimental condition for which we report results (each with independent weight initialization and data shuffling), reporting the resulting mean error (or accuracy) on the test set, and the associated 95\% confidence interval.  Our implementations utilize JAX \citep{jax2018github}, and we train all models on a single host having 8 NVidia V100 GPUs\footnote{Because SAM's performance is amplified by not syncing the perturbations, data parallelism is highly recommended to leverage SAM's full potential (see Section 4 for more details).}.  To compute the SAM update when parallelizing across multiple accelerators, we divide each data batch evenly among the accelerators, independently compute the SAM gradient on each accelerator, and average the resulting sub-batch SAM gradients to obtain the final SAM update.
+
+As seen in Table~\ref{tab:cifar}, SAM improves generalization across all settings evaluated for CIFAR-10 and CIFAR-100.  For example, SAM enables a simple WideResNet to attain 1.6\% test error, versus 2.2\% error without SAM.  Such gains have previously been attainable only by using more complex model architectures (e.g., PyramidNet) and regularization schemes (e.g., Shake-Shake, ShakeDrop); SAM provides an easily-implemented, model-independent alternative.  Furthermore, SAM delivers improvements even when applied atop complex architectures that already use sophisticated regularization: for instance, applying SAM to a PyramidNet with ShakeDrop regularization yields 10.3\% error on CIFAR-100, which is, to our knowledge, a new state-of-the-art on this dataset without the use of additional data.
+
+\begin{table}[!htb]
+\small
+\centering
+\begin{tabular}{ll|cc|cc|}
+
+\cline{3-6}
+                                                  &                                        & \multicolumn{2}{c|}{CIFAR-10}             & \multicolumn{2}{c|}{CIFAR-100}             \\ \hline
+\multicolumn{1}{|l|}{Model}                       & Augmentation & SAM                          & SGD & SAM                           & SGD \\ \hline
+\multicolumn{1}{|l|}{WRN-28-10 (200 epochs)}  & Basic             & $\textbf{2.7}_{\pm 0.1}$  & $3.5_{\pm 0.1}$       & $\textbf{16.5}_{\pm 0.2}$  & $18.8_{\pm 0.2}$     \\
+\multicolumn{1}{|l|}{WRN-28-10 (200 epochs)}  & Cutout            & $\textbf{2.3}_{\pm 0.1}$  & $2.6_{\pm 0.1}$       & $\textbf{14.9}_{\pm 0.2}$ & $16.9_{\pm 0.1}$    \\
+\multicolumn{1}{|l|}{WRN-28-10 (200 epochs)}  & AA   & $\textbf{2.1}_{\pm <0.1}$  & $2.3_{\pm 0.1}$       & $\textbf{13.6}_{\pm 0.2}$ & $15.8_{\pm 0.2}$     \\ \hline
+\multicolumn{1}{|l|}{WRN-28-10 (1800 epochs)} & Basic          & $\textbf{2.4}_{\pm 0.1}$  & $3.5_{\pm 0.1}$       & $\textbf{16.3}_{\pm 0.2}$ & $19.1_{\pm 0.1}$     \\
+\multicolumn{1}{|l|}{WRN-28-10 (1800 epochs)} & Cutout           & $\textbf{2.1}_{\pm 0.1}$  & $2.7_{\pm 0.1}$       & $\textbf{14.0}_{\pm 0.1}$ & $17.4_{\pm 0.1}$     \\
+\multicolumn{1}{|l|}{WRN-28-10 (1800 epochs)} & AA        & $\textbf{1.6}_{\pm 0.1}$  & $2.2_{\pm <0.1}$       & $\textbf{12.8}_{\pm 0.2}$ & $16.1_{\pm 0.2}$     \\ \hline
+\multicolumn{1}{|l|}{Shake-Shake (26 2x96d)}      & Basic       & $\textbf{2.3}_{\pm <0.1}$  & $2.7_{\pm 0.1}$       & $\textbf{15.1}_{\pm 0.1}$ & $17.0_{\pm 0.1}$     \\
+\multicolumn{1}{|l|}{Shake-Shake (26 2x96d)}      & Cutout            & $\textbf{2.0}_{\pm <0.1}$  & $2.3_{\pm 0.1}$       & $\textbf{14.2}_{\pm 0.2}$ & $15.7_{\pm 0.2}$     \\
+\multicolumn{1}{|l|}{Shake-Shake (26 2x96d)}      & AA          & $\textbf{1.6}_{\pm <0.1}$  & $1.9_{\pm 0.1}$       & $\textbf{12.8}_{\pm 0.1}$ & $14.1_{\pm 0.2}$     \\ \hline
+\multicolumn{1}{|l|}{PyramidNet}                  & Basic      & $\textbf{2.7}_{\pm 0.1}$   & $4.0_{\pm 0.1}$      & $\textbf{14.6}_{\pm 0.4}$ & $19.7_{\pm 0.3}$     \\
+\multicolumn{1}{|l|}{PyramidNet}                  & Cutout              & $\textbf{1.9}_{\pm 0.1}$  & $2.5_{\pm 0.1}$       & $\textbf{12.6}_{\pm 0.2}$ & $16.4_{\pm 0.1}$     \\
+\multicolumn{1}{|l|}{PyramidNet}                  & AA      & $\textbf{1.6}_{\pm 0.1}$  & $1.9_{\pm 0.1}$       & $\textbf{11.6}_{\pm 0.1}$ & $14.6_{\pm 0.1}$     \\ \hline
+\multicolumn{1}{|l|}{PyramidNet+ShakeDrop}        & Basic        & $\textbf{2.1}_{\pm 0.1}$  & $2.5_{\pm 0.1}$       & $\textbf{13.3}_{\pm 0.2}$ & $14.5_{\pm 0.1}$     \\
+\multicolumn{1}{|l|}{PyramidNet+ShakeDrop}        & Cutout       & $\textbf{1.6}_{\pm<0.1}$   & $1.9_{\pm 0.1}$      & $\textbf{11.3}_{\pm 0.1}$ & $11.8_{\pm 0.2}$     \\
+\multicolumn{1}{|l|}{PyramidNet+ShakeDrop}        & AA      & $\textbf{1.4}_{\pm<0.1}$    & $1.6_{\pm<0.1}$     & $\textbf{10.3}_{\pm 0.1}$ & $10.6_{\pm 0.1}$     \\ \hline
+\end{tabular}
+\caption{Results for SAM on state-of-the-art models on CIFAR-\{10, 100\} (WRN  = WideResNet; AA = AutoAugment; SGD is the standard non-SAM procedure used to train these models).}
+\label{tab:cifar}
+\end{table}
+
+Beyond CIFAR-\{10, 100\}, we have also evaluated SAM on the SVHN \citep{svhn} and Fashion-MNIST datasets \citep{fmnist}.  Once again, SAM enables a simple WideResNet to achieve accuracy at or above the state-of-the-art for these datasets: 0.99\% error for SVHN, and 3.59\% for Fashion-MNIST. Details are available in appendix~\ref{appendix:svhn}.
+
+
+To assess SAM's performance at larger scale, we apply it to ResNets~\citep{resnet} of different depths (50, 101, 152) trained on ImageNet~\citep{imagenet_cvpr09}.  In this setting, following prior work \citep{resnet, szegedy2015rethinking}, we resize and crop images to 224-pixel resolution, normalize them, and use batch size 4096, initial learning rate 1.0, cosine learning rate schedule, SGD optimizer with momentum 0.9, label smoothing of 0.1, and weight decay 0.0001.  When applying SAM, we use $\rho = 0.05$ (determined via a grid search on ResNet-50 trained for 100 epochs).  We train all models on ImageNet for up to 400 epochs using a Google Cloud TPUv3 and report top-1 and top-5 test error rates for each experimental condition (mean and 95\% confidence interval across 5 independent runs).
+
+As seen in Table~\ref{tab:imagenet_table}, SAM again consistently improves performance, for example improving the ImageNet top-1 error rate of ResNet-152 from 20.3\% to 18.4\%.  Furthermore, note that SAM enables increasing the number of training epochs while continuing to improve accuracy without overfitting.  In contrast, the standard training procedure (without SAM) generally significantly overfits as training extends from 200 to 400 epochs.
+
+\begin{table}[h]
+\small
+\centering
+\begin{tabular}{|cc|cc|cc|}
+\hline
+\multirow{2}{*}{Model} & \multirow{2}{*}{Epoch} & \multicolumn{2}{c|}{SAM} & \multicolumn{2}{c|}{Standard Training (No SAM)} \\
+                       &                        & Top-1        & Top-5        & Top-1          & Top-5          \\ \hline
+ResNet-50               & 100                    & $\textbf{22.5}_{\pm 0.1}$   & $6.28_{\pm 0.08}$        & $22.9_{\pm 0.1}$          & $6.62_{\pm 0.11}$           \\
+                       & 200                    & $\textbf{21.4}_{\pm 0.1}$   & $5.82_{\pm 0.03}$        & $22.3_{\pm 0.1}$          & $6.37_{\pm 0.04}$           \\
+                       & 400                    & $\textbf{20.9}_{\pm 0.1}$   & $5.51_{\pm 0.03}$        & $22.3_{\pm 0.1}$          & $6.40_{\pm 0.06}$           \\ \hline
+ResNet-101              & 100                    & $\textbf{20.2}_{\pm 0.1}$   & $5.12_{\pm 0.03}$        & $21.2_{\pm 0.1}$          & $5.66_{\pm 0.05}$           \\
+                       & 200                    & $\textbf{19.4}_{\pm 0.1}$   & $4.76_{\pm 0.03}$        & $20.9_{\pm 0.1}$          & $5.66_{\pm 0.04}$           \\
+                       & 400                    & $\textbf{19.0}_{\pm<0.01}$   & $4.65_{\pm 0.05}$        & $22.3_{\pm 0.1}$          & $6.41_{\pm 0.06}$           \\ \hline
+ResNet-152              & 100                    & $\textbf{19.2}_{\pm<0.01}$   & $4.69_{\pm 0.04}$        & $20.4_{\pm<0.0}$          & $5.39_{\pm 0.06}$           \\
+                       & 200                    & $\textbf{18.5}_{\pm 0.1}$   & $4.37_{\pm 0.03}$        & $20.3_{\pm 0.2}$          & $5.39_{\pm 0.07}$           \\
+                       & 400                    & $\textbf{18.4}_{\pm<0.01}$   & $4.35_{\pm 0.04}$        & $20.9_{\pm<0.0}$          & $5.84_{\pm 0.07}$              \\ \hline
+\end{tabular}
+\caption{Test error rates for ResNets trained on ImageNet, with and without SAM.}
+\label{tab:imagenet_table}
+\vspace{-0.1cm}
+\end{table}
+
+\subsection{Finetuning}
+
+Transfer learning by pretraining a model on a large related dataset and then finetuning on a smaller target dataset of interest has emerged as a powerful and widely used technique for producing high-quality models for a variety of different tasks.  We show here that SAM once again offers considerable benefits in this setting, even when finetuning extremely large, state-of-the-art, already high-performing models.
+
+In particular, we apply SAM to finetuning EfficentNet-b7 (pretrained on ImageNet) and EfficientNet-L2 (pretrained on ImageNet plus unlabeled JFT; input resolution 475)~\citep{efficientnet, 2018arXiv180508974K, gpipe}.  We initialize these models to publicly available checkpoints\footnote{\url{https://github.com/tensorflow/tpu/tree/master/models/official/efficientnet}} trained with RandAugment (84.7\% accuracy on ImageNet) and NoisyStudent (88.2\% accuracy on ImageNet), respectively.  We finetune these models on each of several target datasets by training each model starting from the aforementioned checkpoint; please see the appendix for details of the hyperparameters used.  We report the mean and 95\% confidence interval of top-1 test error over 5 independent runs for each dataset.
+
+As seen in Table~\ref{tab:finetuning}, SAM uniformly improves performance relative to finetuning without SAM.  Furthermore, in many cases, SAM yields novel state-of-the-art performance, including 0.30\% error on CIFAR-10, 3.92\% error on CIFAR-100, and 11.39\% error on ImageNet.
+
+\begin{table}[h]
+\centering
+
+\scalebox{0.83}{
+\begin{tabular}{|l|ccl|ccl|}
+\hline
+Dataset            & \begin{tabular}[c]{@{}c@{}}EffNet-b7 \\ + SAM\end{tabular} & EffNet-b7 & \begin{tabular}[c]{@{}c@{}}Prev. SOTA\\ (ImageNet only)\end{tabular} & \begin{tabular}[c]{@{}c@{}}EffNet-L2\\ + SAM\end{tabular} & EffNet-L2 & Prev. SOTA \\ \hline
+FGVC\_Aircraft     & $6.80_{\pm 0.06}$                                                             & $8.15_{\pm 0.08}$            & \textbf{5.3} (TBMSL-Net)                                                                         & $\textbf{4.82}_{\pm 0.08}$                                                             & $5.80_{\pm 0.1}$            & 5.3 (TBMSL-Net)           \\
+Flowers            & $\textbf{0.63}_{\pm 0.02}$                                                             & $1.16_{\pm 0.05}$            & 0.7 (BiT-M)                                                                           & $\textbf{0.35}_{\pm 0.01}$                                                             & $0.40_{\pm 0.02}$            & 0.37 (EffNet)          \\
+Oxford\_IIIT\_Pets & $\textbf{3.97}_{\pm 0.04}$                                                             & $4.24_{\pm 0.09}$            & 4.1 (Gpipe)                                                                          & $\textbf{2.90}_{\pm 0.04}$                                                         & $3.08_{\pm 0.04}$            & 4.1 (Gpipe)         \\
+Stanford\_Cars     & $5.18_{\pm 0.02}$                                                             & $5.94_{\pm 0.06}$            & \textbf{5.0} (TBMSL-Net)                                                                         & $4.04_{\pm 0.03}$                                                             & $4.93_{\pm 0.04}$            & \textbf{3.8} (DAT)          \\
+CIFAR-10            & $\textbf{0.88}_{\pm 0.02}$                                                             & $0.95_{\pm 0.03}$            & 1 (Gpipe)                                                                            & $\textbf{0.30}_{\pm 0.01}$                                                             & $0.34_{\pm 0.02}$            & 0.63 (BiT-L)          \\
+CIFAR-100           & $\textbf{7.44}_{\pm 0.06}$                                                             & $7.68_{\pm 0.06}$            & 7.83 (BiT-M)                                                                         & $\textbf{3.92}_{\pm 0.06}$                                                             & $4.07_{\pm 0.08}$            & 6.49 (BiT-L)         \\
+Birdsnap           & $\textbf{13.64}_{\pm 0.15}$                                                            & $14.30_{\pm 0.18}$           & 15.7 (EffNet)                                                                         & $\textbf{9.93}_{\pm 0.15}$                                                             & $10.31_{\pm 0.15}$           & 14.5 (DAT)          \\
+Food101                       & $7.02_{\pm 0.02}$                                                             & $7.17_{\pm 0.03}$            & 7.0  (Gpipe)                                                                         & $\textbf{3.82}_{\pm 0.01}$                                                            & $3.97_{\pm 0.03}$            & 4.7 (DAT)           \\
+
+ImageNet                       & $15.14_{\pm 0.03}$                                                             & $15.3$            & $\textbf{14.2}$  (KDforAA)                                                                         & $\textbf{11.39}_{\pm 0.02}$                                                            & $11.8$            & $11.45$ (ViT)           \\\hline
+\end{tabular}}
+\caption{Top-1 error rates for finetuning EfficientNet-b7 (left; ImageNet pretraining only) and EfficientNet-L2 (right; pretraining on ImageNet plus additional data, such as JFT) on various downstream tasks.  Previous state-of-the-art (SOTA) includes EfficientNet (EffNet)~\citep{efficientnet}, Gpipe~\citep{gpipe}, DAT~\citep{dat},  BiT-M/L~\citep{bitm}, KDforAA \citep{2020arXiv200311342W}, TBMSL-Net~\citep{TBMSL-Net}, and ViT \citep{2020arXiv201011929D}.}
+\label{tab:finetuning}
+\vspace{-0.2cm}
+\end{table}
+
+\subsection{Robustness to Label Noise}
+
+
+
+\begin{wraptable}{R}{6.5cm}
+\centering
+\scalebox{0.8}{
+\begin{tabular}{|ccccc|}
+\hline
+Method                  & \multicolumn{4}{c|}{Noise rate (\%)}                                                              \\
+                        & \multicolumn{1}{l}{20} & \multicolumn{1}{l}{40} & \multicolumn{1}{l}{60} & \multicolumn{1}{l|}{80} \\ \hline
+\cite{DBLP:journals/corr/abs-1904-11238}     & 94.0                   & 92.8                   & 90.3                   & 74.1                    \\
+\cite{DBLP:journals/corr/abs-1805-07836} & 89.7                   & 87.6                   & 82.7                   & 67.9                    \\
+\cite{lee2019robust}       & 87.1                   & 81.8                   & 75.4                   & -                       \\
+\cite{DBLP:journals/corr/abs-1905-05040}      & 89.7                   & -                      & -                      & 52.3                    \\
+\cite{9008796}     & 92.6                   & 90.3                   & 43.4                   & -                       \\
+MentorNet \citeyearpar{mentornet}        & 92.0                   & 91.2                   & 74.2                   & 60.0                    \\
+Mixup \citeyearpar{zhang2017mixup}            & 94.0                   & 91.5                   & 86.8                   & 76.9                    \\
+MentorMix \citeyearpar{2019arXiv191109781J}       & \textbf{95.6}          & \textbf{94.2}          & 91.3                   & \textbf{81.0}           \\ \hline
+SGD                & 84.8                   & 68.8                   & 48.2                   & 26.2                    \\
+Mixup                   & 93.0                   & 90.0                   & 83.8                   & 70.2                    \\
+Bootstrap + Mixup        & 93.3                   & 92.0                   & 87.6                   & 72.0                    \\
+SAM                    & 95.1                   & 93.4                   & 90.5                   & 77.9                    \\
+Bootstrap + SAM        & 95.4                   & \textbf{94.2}          & \textbf{91.8}          & 79.9                    \\ \hline
+\end{tabular}
+}
+\caption{Test accuracy on the clean test set for models trained on CIFAR-10 with noisy labels. Lower block is our implementation, upper block gives scores from the literature, per \cite{2019arXiv191109781J}.}
+\label{tab:noisy_cifar}
+\end{wraptable}
+
+The fact that SAM seeks out model parameters that are robust to perturbations suggests SAM's potential to provide robustness to noise in the training set (which would perturb the training loss landscape).  Thus, we assess here the degree of robustness that SAM provides to label noise.
+
+In particular, we measure the effect of applying SAM in the classical noisy-label setting for CIFAR-10, in which a fraction of the training set's labels are randomly flipped; the test set remains unmodified (i.e., clean).  To ensure valid comparison to prior work, which often utilizes architectures specialized to the noisy-label setting, we train a simple model of similar size (ResNet-32) for 200 epochs, following \cite{2019arXiv191109781J}.  We evaluate five variants of model training: standard SGD, SGD with Mixup \citep{zhang2017mixup}, SAM, and "bootstrapped" variants of SGD with Mixup and SAM (wherein the model is first trained as usual and then retrained from scratch on the labels predicted by the initially trained model). When applying SAM, we use $\rho=0.1$ for all noise levels except 80\%, for which we use $\rho=0.05$ for more stable convergence. For the Mixup baselines, we tried all values of $\alpha \in \{1, 8, 16, 32\}$ and conservatively report the best score for each noise level.
+
+As seen in Table~\ref{tab:noisy_cifar}, SAM provides a high degree of robustness to label noise, on par with that provided by state-of-the art procedures that specifically target learning with noisy labels.  Indeed, simply training a model with SAM outperforms all prior methods specifically targeting label noise robustness, with the exception of MentorMix \citep{2019arXiv191109781J}.  However, simply bootstrapping SAM yields performance comparable to that of MentorMix (which is substantially more complex).
+
+\section{Sharpness and Generalization Through the Lens of SAM}
+
+\subsection{$m$-sharpness}
+
+Though our derivation of SAM defines the SAM objective over the entire training set, when utilizing SAM in practice, we compute the SAM update per-batch (as described in Algorithm~\ref{alg:sam-algorithm}) or even by averaging SAM updates computed independently per-accelerator (where each accelerator receives a subset of size $m$ of a batch, as described in Section~3).  This latter setting is equivalent to modifying the SAM objective~(equation~\ref{sam-loss}) to sum over a set of independent $\epsilon$ maximizations, each performed on a sum of per-data-point losses on a disjoint subset of $m$ data points, rather than performing the $\epsilon$ maximization over a global sum over the training set (which would be equivalent to setting $m$ to the total training set size).  We term the associated measure of sharpness of the loss landscape \textit{$m$-sharpness}.
+
+To better understand the effect of $m$ on SAM, we train a small ResNet on CIFAR-10 using SAM with a range of values of $m$.  As seen in Figure~\ref{fig:msharpness} (middle), smaller values of $m$ tend to yield models having better generalization ability.  This relationship fortuitously aligns with the need to parallelize across multiple accelerators in order to scale training for many of today's models.
+
+Intriguingly, the $m$-sharpness measure described above furthermore exhibits better correlation with models' actual generalization gaps as $m$ decreases, as demonstrated by Figure~\ref{fig:msharpness} (right)\footnote{We follow the rigorous framework of \cite{jiang2019fantastic}, reporting the mutual information between the $m$-sharpness measure and generalization on the two publicly available tasks from the \textit{Predicting generalization in deep learning} NeurIPS2020 competition. \url{https://competitions.codalab.org/competitions/25301}}.  In particular, this implies that $m$-sharpness with $m < n$ yields a better predictor of generalization than the full-training-set measure suggested by Theorem~1 in Section~2 above, suggesting an interesting new avenue of future work for understanding generalization.
+
+\begin{figure}[t]
+\centering
+\begin{tabular}{c c c}
+\hspace{-0.4cm}\includegraphics[width=0.40\linewidth]{figures/spectrum_14.pdf} &   \hspace{-0.4cm}\includegraphics[width=0.3\textwidth]{figures/virtual_batch_size_10.pdf} & \hspace{-0.4cm}\includegraphics[width=0.3\linewidth]{figures/mi_5.pdf} \\
+\end{tabular}
+
+\caption{(left) Evolution of the spectrum of the Hessian during training of a model with standard SGD (lefthand column) or SAM (righthand column). (middle) Test error as a function of $\rho$ for different values of $m$. (right)  Predictive power of $m$-sharpness for the generalization gap, for different values of $m$ (higher means the sharpness measure is more correlated with actual generalization gap).}
+\label{fig:msharpness}
+\vspace{-0.2cm}
+\end{figure}
+
+
+
+\subsection{Hessian Spectra}
+
+Motivated by the connection between geometry of the loss landscape and generalization, we constructed SAM to seek out minima of the training loss landscape having both low loss value and low curvature (i.e., low sharpness).  To further confirm that SAM does in fact find minima having low curvature, we compute the spectrum of the Hessian for a WideResNet40-10 trained on CIFAR-10 for 300 steps both with and without SAM (without batch norm, which tends to obscure interpretation of the Hessian), at different epochs during training.  Due to the parameter space's dimensionality, we approximate the Hessian spectrum using the Lanczos algorithm of \cite{2019arXiv190110159G}.
+
+Figure~\ref{fig:msharpness} (left) reports the resulting Hessian spectra.  As expected, the models trained with SAM converge to minima having lower curvature, as seen in the overall distribution of eigenvalues, the maximum eigenvalue ($\lambda_{\max}$) at convergence (approximately 24 without SAM, 1.0 with SAM), and the bulk of the spectrum (the ratio $\lambda_{\max} / \lambda_5$, commonly used as a proxy for sharpness \citep{2020arXiv200209572J}; up to 11.4 without SAM, and 2.6 with SAM).
+
+
+\section{Related Work}\label{sec:related}
+The idea of searching for ``flat'' minima can be traced back to \cite{hochreiter1995simplifying}, and its connection to generalization has seen significant study~\citep{keshar,dziugaite2017computing,neyshabur2017exploring,dinh2017sharp}. In a recent large scale empirical study, \cite{jiang2019fantastic} studied 40 complexity measures and showed that a sharpness-based measure has highest correlation with generalization, which motivates penalizing sharpness. \cite{hochreiter1997flat} was perhaps the first paper on penalizing the sharpness, regularizing a notion related to Minimum Description Length (MDL). Other ideas which also penalize sharp minima include operating on diffused loss landscape \citep{Mobahi2016} and regularizing local entropy \citep{2016arXiv161101838C}. Another direction is to not penalize the sharpness explicitly, but rather average weights during training; \cite{swa} showed that doing so can yield flatter minima that can also generalize better. However, the measures of sharpness proposed previously are difficult to compute and differentiate through. In contrast, SAM is highly scalable as it only needs two gradient computations per iteration. The concurrent work of \cite{2020arXiv200605620S} focuses on resilience to random and adversarial corruption to expose a model's vulnerabilities; this work is perhaps closest to ours.  Our work has a different basis: we develop SAM motivated by a principled starting point in generalization, clearly demonstrate SAM's efficacy via rigorous large-scale empirical evaluation, and surface important practical and theoretical facets of the procedure (e.g., $m$-sharpness). The notion of all-layer margin introduced by \cite{Wei2020Improved} is closely related to this work; one is adversarial perturbation over the activations of a network and the other over its weights, and there is some coupling between these two quantities.
+
+\section{Discussion and Future Work}
+In this work, we have introduced SAM, a novel algorithm that improves generalization by simultaneously minimizing loss value and loss sharpness; we have demonstrated SAM's efficacy through a rigorous large-scale empirical evaluation. We have surfaced a number of interesting avenues for future work. On the theoretical side, the notion of per-data-point sharpness yielded by $m$-sharpness (in contrast to global sharpness computed over the entire training set, as has typically been studied in the past) suggests an interesting new lens through which to study generalization.  Methodologically, our results suggest that SAM could potentially be used in place of Mixup in robust or semi-supervised methods that currently rely on Mixup (giving, for instance, MentorSAM). We leave to future work a more in-depth investigation of these possibilities.
+
+\section{Acknowledgments}
+
+We thank our colleagues at Google --- Atish Agarwala, Xavier Garcia, Dustin Tran, Yiding Jiang, Basil Mustafa, Samy Bengio --- for their feedback and insightful discussions. We also thank the JAX and FLAX teams for going above and beyond to support our implementation. We are grateful to Sven Gowal for his help in replicating EfficientNet using JAX, and Justin Gilmer for his implementation
+of the Lanczos algorithm\footnote{\url{https://github.com/google/spectral-density}} used to generate the Hessian spectra.  
+We thank Niru Maheswaranathan for his matplotlib mastery. We also thank David Samuel for providing a PyTorch implementation of SAM\footnote{\url{https://github.com/davda54/sam}}.
+
+\bibliographystyle{iclr2021_conference}
+\bibliography{iclr2021_conference}
+
+\newpage
+\appendix
+\section{Appendix}
+\label{appendix:theorem}
+\subsection{PAC Bayesian Generalization Bound}
+
+Below, we state a generalization bound based on sharpness.
+
+\begin{theorem}
+For any $\rho>0$ and any distribution $\mathscr{D}$, with probability $1-\delta$ over the choice of the training set $\mathcal{S}\sim \mathscr{D}$, 
+\begin{equation}
+    L_\mathscr{D}(\boldsymbol{w}) \leq \max_{\|\boldsymbol{\epsilon}\|_2 \leq \rho} L_\mathcal{S}(\boldsymbol{w} + \boldsymbol{\epsilon}) +\sqrt{\frac{k\log\left(1+\frac{\|\boldsymbol{w}\|_2^2}{\rho^2}\left(1+\sqrt{\frac{\log(n)}{k}}\right)^2\right) + 4\log\frac{n}{\delta} + \tilde{O}(1)}{n-1}}
+\end{equation}
+where $n=|\mathcal{S}|$, $k$ is the number of parameters and we assumed $L_\mathscr{D}(\boldsymbol{w}) \leq \mathbb{E}_{\epsilon_i \sim \gN(0,\rho)}[L_\mathscr{D}(\boldsymbol{w}+\boldsymbol{\epsilon})]$.
+\end{theorem}
+
+The condition $L_\mathscr{D}(\boldsymbol{w}) \leq \mathbb{E}_{\epsilon_i \sim \gN(0,\rho)}[L_\mathscr{D}(\boldsymbol{w}+\boldsymbol{\epsilon})]$ means that adding Gaussian perturbation should not decrease the test error. This is expected to hold in practice for the final solution but does not necessarily hold for any $\boldsymbol{w}$.
+\begin{proof}
+First, note that the right hand side of the bound in the theorem statement is lower bounded by $\sqrt{k\log(1+\|\boldsymbol{w}\|_2^2/\rho^2)/(4n)}$ which is greater than 1 when $\|\boldsymbol{w}\|_2^2 >\rho^2(\exp(4n/k)-1)$. In that case, the right hand side becomes greater than 1 in which case the inequality holds trivially. Therefore, in the rest of the proof, we only consider the case when $\|\boldsymbol{w}\|_2^2 \leq \rho^2(\exp(4n/k)-1)$.
+
+The proof technique we use here is inspired from \cite{chatterji2019intriguing}. Using PAC-Bayesian generalization bound \cite{mcallester1999pac} and following \cite{dziugaite2017computing}, the following generalization bound holds for any prior $\mathscr{P}$ over parameters with probability $1-\delta$ over the choice of the training set $\mathcal{S}$, for any posterior $\mathscr{Q}$ over parameters:
+\begin{equation}
+    \mathbb{E}_{\boldsymbol{w}\sim \mathscr{Q}}[L_\mathscr{D}(\boldsymbol{w})] \leq \mathbb{E}_{\boldsymbol{w}\sim \mathscr{Q}}[L_\mathcal{S}(\boldsymbol{w})] +\sqrt{\frac{KL(\mathscr{Q}||\mathscr{P}) + \log \frac{n}{\delta}}{2(n-1)}}
+\end{equation}
+Moreover, if $\mathscr{P}=\gN(\boldsymbol{\mu}_P,\sigma_P^2 \boldsymbol{I})$ and $\mathscr{Q}=\gN(\boldsymbol{\mu}_Q,\sigma_Q^2 \boldsymbol{I})$, then the KL divergence can be written as follows:
+\begin{equation}
+    KL(\mathscr{P}||\mathscr{Q}) = \frac{1}{2}\bigg[\frac{k\sigma_Q^2+\|\boldsymbol{\mu}_P-\boldsymbol{\mu}_Q\|_2^2}{\sigma_P^2}- k + k\log\left(\frac{\sigma_P^2}{\sigma_Q^2}\right)\bigg]
+\end{equation}
+Given a posterior standard deviation $\sigma_Q$, one could choose a prior standard deviation $\sigma_P$ to minimize the above KL divergence and hence the generalization bound by taking the derivative\footnote{Despite the nonconvexity of the function here in $\sigma_P^2$, it has a unique stationary point which happens to be its minimizer.} of the above KL with respect to $\sigma_P$ and setting it to zero. We would then have ${\sigma^*_P}^2=\sigma_Q^2+\|\boldsymbol{\mu}_P-\boldsymbol{\mu}_Q\|_2^2/k$. However, since $\sigma_P$ should be chosen before observing the training data $\mathcal{S}$ and $\boldsymbol{\mu}_Q$,$\sigma_Q$ could depend on $\mathcal{S}$, we are not allowed to optimize $\sigma_P$ in this way. Instead, one can have a set of predefined values for $\sigma_P$ and pick the best one in that set. See \cite{langford2002not} for the discussion around this technique. Given fixed $a,b>0$, let $T=\{c\exp((1-j)/k)| j\in \mathbb{N}\}$ be that predefined set of values for $\sigma_P^2$. If for any $j\in \mathbb{N}$, the above PAC-Bayesian bound holds for $\sigma_P^2=c\exp((1-j)/k)$ with probability $1-\delta_j$ with $\delta_j=\frac{6\delta}{\pi^2j^2}$, then by the union bound, all above bounds hold simultaneously with probability at least $1-\sum_{j=1}^\infty\frac{6\delta}{\pi^2j^2} =1-\delta$.
+
+Let $\sigma_Q=\rho$, $\boldsymbol{\mu}_Q=\boldsymbol{w}$ and $\boldsymbol{\mu}_P=\boldsymbol{0}$. Therefore, we have:
+\begin{equation}\label{eq:weight_upper}
+    \sigma_Q^2+\|\boldsymbol{\mu}_P-\boldsymbol{\mu}_Q\|_2^2/k \leq \rho^2 + \|\boldsymbol{w}\|_2^2/k \leq \rho^2(1+\exp(4n/k))
+\end{equation}
+We now consider the bound that corresponds to $j=\lfloor 1 - k\log((\rho^2 + \|\boldsymbol{w}\|_2^2/k)/c)\rfloor$. We can ensure that $j\in \mathbb{N}$ using inequality \eqref{eq:weight_upper} and by setting $c=\rho^2(1+\exp(4n/k))$. Furthermore, for $\sigma_P^2=c\exp((1-j)/k)$, we have:
+\begin{equation}
+    \rho^2 + \|\boldsymbol{w}\|_2^2/k \leq \sigma_P^2 \leq \exp(1/k) \left(\rho^2 + \|\boldsymbol{w}\|_2^2/k\right)
+\end{equation}
+
+
+Therefore, using the above value for $\sigma_P$, KL divergence can be bounded as follows:
+
+\begin{align}
+    KL(\mathscr{P}||\mathscr{Q}) &=\frac{1}{2}\bigg[\frac{k\sigma_Q^2+\|\boldsymbol{\mu}_P-\boldsymbol{\mu}_Q\|_2^2}{\sigma_P^2}- k + k\log\left(\frac{\sigma_P^2}{\sigma_Q^2}\right)\bigg]\\
+    &\leq \frac{1}{2}\bigg[\frac{k(\rho^2 + \|\boldsymbol{w}\|_2^2/k)}{\rho^2 + \|\boldsymbol{w}\|_2^2/k}- k + k\log\left(\frac{\exp(1/k) \left(\rho^2 + \|\boldsymbol{w}\|_2^2/k\right)}{\rho^2}\right)\bigg]\\
+    &=\frac{1}{2}\bigg[k\log\left(\frac{\exp(1/k) \left(\rho^2 + \|\boldsymbol{w}\|_2^2/k\right)}{\rho^2}\right)\bigg]\\    
+    &= \frac{1}{2}\bigg[1+k\log\left(1+\frac{\|\boldsymbol{w}\|_2^2}{k\sigma_Q^2}\right)\bigg]
+\end{align}
+Given the bound that corresponds to $j$ holds with probability $1-\delta_j$ for $\delta_j=\frac{6\delta}{\pi^2j^2}$, the log term in the bound can be written as:
+\begin{align*}
+    \log\frac{n}{\delta_j} &= \log\frac{n}{\delta} + \log\frac{\pi^2j^2}{6}\\
+    &\leq \log\frac{n}{\delta} + \log\frac{\pi^2k^2\log^2(c/(\rho^2 + \|\boldsymbol{w}\|_2^2/k))}{6}\\
+    &\leq \log\frac{n}{\delta} + \log\frac{\pi^2k^2\log^2(c/\rho^2)}{6}\\
+    &\leq \log\frac{n}{\delta} + \log\frac{\pi^2k^2\log^2(1+\exp(4n/k))}{6}\\
+    &\leq \log\frac{n}{\delta} + \log\frac{\pi^2k^2(2 +4n/k)^2}{6}\\
+    &\leq \log \frac{n}{\delta} + 2 \log\left(6n + 3 k\right)
+\end{align*}
+Therefore, the generalization bound can be written as follows:
+\begin{equation}\label{eq:almost_theorem}
+    \mathbb{E}_{\epsilon_i \sim \gN(0,\sigma)}[L_\mathscr{D}(\boldsymbol{w}+\boldsymbol{\epsilon})] \leq \mathbb{E}_{\epsilon_i \sim \gN(0,\sigma)}[L_\mathcal{S}(\boldsymbol{w}+\boldsymbol{\epsilon})] +\sqrt{\frac{\frac{1}{4}k\log\left(1+\frac{\|\boldsymbol{w}\|_2^2}{k\sigma^2}\right) + \frac{1}{4}+\log \frac{n}{\delta} + 2\log\left(6n + 3k\right)}{n-1}}
+\end{equation}
+In the above bound, we have $\epsilon_i \sim \gN(0,\sigma)$. Therefore, $\|\boldsymbol{\epsilon}\|_2^2$ has chi-square distribution and by Lemma 1 in \cite{laurent2000adaptive}, we have that for any positive $t$:
+\begin{equation}
+    P(\|\boldsymbol{\epsilon}\|_2^2 - k\sigma^2 \geq 2\sigma^2\sqrt{kt} + 2t\sigma^2) \leq \exp(-t)
+\end{equation}
+Therefore, with probability $1-1/\sqrt{n}$ we have that:
+$$\|\boldsymbol{\epsilon}\|_2^2\leq \sigma^2(2\ln(\sqrt{n})+k + 2\sqrt{k\ln(\sqrt{n})}) \leq \sigma^2k\left(1+\sqrt{\frac{\ln(n)}{k}}\right)^2\leq \rho^2$$
+Substituting the above value for $\sigma$ back to the inequality and using theorem's assumption gives us following inequality:
+\begin{align*}
+    L_\mathscr{D}(\boldsymbol{w}) &\leq (1-1/\sqrt{n})\max_{\|\boldsymbol{\epsilon}\|_2 \leq \rho} L_\mathcal{S}(\boldsymbol{w} + \boldsymbol{\epsilon}) + 1/\sqrt{n}\\
+    &+\sqrt{\frac{\frac{1}{4}k\log\left(1+\frac{\|\boldsymbol{w}\|_2^2}{\rho^2}\left(1+\sqrt{\frac{\log(n)}{k}}\right)^2\right) + \log\frac{n}{\delta} + 2\log\left(6n + 3k\right)}{n-1}}\\
+    &\leq \max_{\|\boldsymbol{\epsilon}\|_2 \leq \rho} L_\mathcal{S}(\boldsymbol{w} + \boldsymbol{\epsilon}) + \\
+    &+\sqrt{\frac{k\log\left(1+\frac{\|\boldsymbol{w}\|_2^2}{\rho^2}\left(1+\sqrt{\frac{\log(n)}{k}}\right)^2\right) + 4\log\frac{n}{\delta} + 8\log\left(6n + 3k\right)}{n-1}}
+\end{align*}
+
+\end{proof}
+
+
+\section{Additional Experimental Results}
+
+\subsection{SVHN and Fashion-MNIST}
+\label{appendix:svhn}
+
+We report in table \ref{tab:svhn_results} results obtained on SVHN and Fashion-MNIST datasets.
+On these datasets, SAM allows a simple WideResNet to reach or push state-of-the-art accuracy (0.99\% error rate for SVHN, 3.59\% for Fashion-MNIST).
+
+For SVHN, we used all the available data (73257 digits for training set + 531131 additional samples). For auto-augment, we use the best policy found on this dataset as described in \citep{autoaug} plus cutout \citep{cutout}. For Fashion-MNIST, the auto-augmentation line correspond to cutout only.
+
+
+\begin{table}[h]
+\caption{Results on SVHN and Fashion-MNIST.}
+\vspace{0.1cm}
+\label{tab:svhn_results}
+\centering
+\begin{tabular}{ll|cc|cc|}
+\cline{3-6}
+                                             &                                        & \multicolumn{2}{c|}{SVHN} & \multicolumn{2}{c|}{Fashion-MNIST} \\ \hline
+\multicolumn{1}{|l|}{Model}                  & Augmentation & SAM      & Baseline      & SAM           & Baseline          \\ \hline
+\multicolumn{1}{|l|}{Wide-ResNet-28-10}      & Basic         & $1.42_{\pm 0.02}$          & $1.58_{\pm 0.03}$         & $3.98_{\pm 0.05}$     & $4.57_{\pm 0.07}$              \\
+\multicolumn{1}{|l|}{Wide-ResNet-28-10}      & Auto augment  & $\textbf{0.99}_{\pm 0.01}$ & $1.14_{\pm 0.04}$          & $\textbf{3.61}_{\pm 0.06}$     & $3.86_{\pm 0.14}$              \\ \hline
+\multicolumn{1}{|l|}{Shake-Shake (26 2x96d)} & Basic        & $1.44_{\pm 0.02}$      & $1.58_{\pm 0.05}$         & $3.97_{\pm 0.09}$          & $4.37_{\pm 0.06}$              \\
+\multicolumn{1}{|l|}{Shake-Shake (26 2x96d)} & Auto augment & $1.07_{\pm 0.02}$      & $1.03_{\pm 0.02}$         & $\textbf{3.59}_{\pm 0.01}$  & $3.76_{\pm 0.07}$              \\ \hline
+\end{tabular}
+\end{table}
+
+\section{Experiment Details}
+
+\subsection{Hyperparameters for Experiments}
+\label{appendix:cifar_hparams}
+
+We report in table \ref{tab:cifar_hparam} the hyper-parameters selected by gridsearch for the CIFAR experiments, and the ones for SVHN and Fashion-MNIST in \ref{tab:mnist_hparam}. For CIFAR-10, CIFAR-100, SVHN and Fashion-MNIST, we use a batch size of 256 and determine the learning rate and weight decay used to train each model via a joint grid search prior to applying SAM; all other model hyperparameter values are identical to those used in prior work.
+
+For the Imagenet results (ResNet models), the models are trained for 100, 200 or 400 epochs on Google Cloud TPUv3 32 cores with a batch size of 4096. The initial learning rate is set to 1.0 and decayed using a cosine schedule. Weight decay is set to 0.0001 with SGD optimizer and momentum = 0.9.
+
+\begin{table}[h]
+\centering
+\caption{Hyper-parameter used to produce the CIFAR-\{10,100\} results}
+\label{tab:cifar_hparam}
+\begin{tabular}{|l|cccc|}
+\hline
+
+\multicolumn{1}{|c|}{CIFAR Dataset} & LR   & WD     & $\rho$ (CIFAR-10) & $\rho$ (CIFAR-100) \\ \hline
+WRN 28-10 (200 epochs)              & 0.1  & 0.0005 & 0.05          & 0.1            \\
+WRN 28-10 (1800 epochs)             & 0.05 & 0.001  & 0.05          & 0.1            \\
+WRN 26-2x6 ShakeShake             & 0.02 & 0.0010 & 0.02          & 0.05           \\
+Pyramid vanilla                     & 0.05 & 0.0005 & 0.05          & 0.2            \\
+Pyramid ShakeDrop (CIFAR-10)         & 0.02 & 0.0005 & 0.05          & -              \\
+Pyramid ShakeDrop (CIFAR-100)        & 0.05 & 0.0005 & -             & 0.05           \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Hyper-parameter used to produce the SVHN and Fashion-MNIST results}
+\label{tab:mnist_hparam}
+\centering
+\begin{tabular}{l|lccc|}
+\cline{2-5}
+                                               &            & LR   & WD     & $\rho$  \\ \hline
+\multicolumn{1}{|l|}{\multirow{2}{*}{SVHN}}    & WRN        & 0.01 & 0.0005 & 0.01 \\
+\multicolumn{1}{|l|}{}                         & ShakeShake & 0.01 & 0.0005 & 0.01 \\ \hline
+\multicolumn{1}{|l|}{\multirow{2}{*}{Fashion}} & WRN        & 0.1  & 0.0005 & 0.05 \\
+\multicolumn{1}{|l|}{}                         & ShakeShake & 0.1  & 0.0005 & 0.02 \\ \hline
+\end{tabular}
+\end{table}
+
+Finally, for the noisy label experiments, we also found $\rho$ by gridsearch, computing the accuracy on a (non-noisy) validation set composed of a random subset of 10\% of the usual CIFAR training samples. We report the validation accuracy of the bootstrapped version of SAM for different levels of noise and different $\rho$ in table \ref{tab:val_noise}.
+
+
+\begin{table}[h]
+\centering
+\begin{tabular}{c|cccc|}
+\cline{2-5}
+                           & \multicolumn{1}{c|}{20\%} & \multicolumn{1}{c|}{40\%} & \multicolumn{1}{c|}{60\%} & 80\%   \\ \hline
+\multicolumn{1}{|c|}{0}    & 15.0\%                    & 31.2\%                    & 52.3\%                    & 73.5\% \\
+\multicolumn{1}{|c|}{0.01} & 13.7\%                    & 28.7\%                    & 50.1\%                    & 72.9\% \\
+\multicolumn{1}{|c|}{0.02} & 12.8\%                    & 27.8\%                    & 48.9\%                    & 73.1\% \\
+\multicolumn{1}{|c|}{0.05} & 11.6\%                    & 25.6\%                    & 47.1\%                    & \textbf{21.0}\% \\
+\multicolumn{1}{|c|}{0.1}  & \textbf{4.6}\%                     & \textbf{6.0}\%                     & \textbf{8.7}\%                     & 56.1\% \\
+\multicolumn{1}{|c|}{0.2}  & 5.3\%                     & 7.4\%                     & 23.3\%                    & 77.1\% \\
+\multicolumn{1}{|c|}{0.5}  & 17.6\%                    & 40.9\%                    & 80.1\%                    & 89.9\% \\ \hline
+\end{tabular}
+\caption{Validation accuracy of the bootstrapped-SAM for different levels of noise and different $\rho$}
+\label{tab:val_noise}
+\end{table}
+
+\subsection{Finetuning Details}
+\label{appendix:finetuning}
+
+Weights are initialized to the values provided by the publicly available checkpoints, except the last dense layer, which change size to accomodate the new number of classes, that is randomly initialized. We train all models with weight decay $1e^{-5}$ as suggested in \citep{efficientnet}, but we reduce the learning rate to 0.016 as the models tend to diverge for higher values. We use a batch size of 1024 on Google Cloud TPUv3 64 cores and cosine learning rate decay. Because other works train with batch size of 256, we train for 5k steps instead of 20k. We freeze the batch norm statistics and use them for normalization, effectively using the batch norm as we would at test time \footnote{We found anecdotal evidence that this makes the finetuning more robust to overtraining.}. We train the models using SGD with momentum 0.9 and cosine learning rate decay. For Efficientnet-L2, we use this time a batch size 512 to save memory and adjusted the number of training steps accordingly.  For CIFAR, we use the same autoaugment policy as in the previous experiments. We do not use data augmentation for the other datasets, applying the same preprocessing as for the Imagenet experiments. We also scale down the learning rate to 0.008 as the batch size is now twice as small. We used Google Cloud TPUv3 128 cores. All other parameters stay the same.
+For Imagenet, we trained both models from checkpoint for 10 epochs using a learning rate of 0.1 and $\rho=0.05$. We do not randomly initialize the last layer as we did for the other datasets, but instead use the weights included in the checkpoint.
+
+\subsection{Experimental results with $\rho=0.05$}
+\label{appendix:no_rho_tuning}
+A big sensitivity to the choice of hyper-parameters would make a method less easy to use. To demonstrate that SAM performs even when $\rho$ is not finely tuned, we compiled the table for the CIFAR and the finetuning experiments using $\rho=0.05$. Please note that we already used $\rho=0.05$ for all Imagenet experiments. We report those scores in table \ref{tab:cifar_no_rho_tuning} and \ref{tab:finetuning_no_rho_tuning}.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll|cc|cc|}
+\cline{3-6}
+                                              &              & \multicolumn{2}{c|}{CIFAR-10} & \multicolumn{2}{c|}{CIFAR-100} \\ \hline
+\multicolumn{1}{|l}{Model}                    & Augmentation & $\rho=0.05$          & SGD      & rho=0.05           & SGD      \\ \hline
+\multicolumn{1}{|l|}{WRN-28-10 (200 epochs)}  & Basic        & \textbf{2.7}      & 3.5      & \textbf{16.5}      & 18.8     \\
+\multicolumn{1}{|l|}{WRN-28-10 (200 epochs)}  & Cutout       & \textbf{2.3}      & 2.6      & \textbf{14.9}      & 16.9     \\
+\multicolumn{1}{|l|}{WRN-28-10 (200 epochs)}  & AA           & \textbf{2.1}      & 2.3      & \textbf{13.6}      & 15.8     \\ \hline
+\multicolumn{1}{|l|}{WRN-28-10 (1800 epochs)} & Basic        & \textbf{2.4}      & 3.5      & \textbf{16.3}      & 19.1     \\
+\multicolumn{1}{|l|}{WRN-28-10 (1800 epochs)} & Cutout       & \textbf{2.1}      & 2.7      & \textbf{14.0}      & 17.4     \\
+\multicolumn{1}{|l|}{WRN-28-10 (1800 epochs)} & AA           & \textbf{1.6}      & 2.2      & \textbf{12.8}      & 16.1     \\ \hline
+\multicolumn{1}{|l|}{WRN 26-2x6 ss}           & Basic        & \textbf{2.4}      & 2.7      & \textbf{15.1}      & 17.0     \\
+\multicolumn{1}{|l|}{WRN 26-2x6 ss}           & Cutout       & \textbf{2.0}      & 2.3      & \textbf{14.2}      & 15.7     \\
+\multicolumn{1}{|l|}{WRN 26-2x6 ss}           & AA           & \textbf{1.7}      & 1.9      & \textbf{12.8}      & 14.1     \\ \hline
+\multicolumn{1}{|l|}{PyramidNet}              & Basic        & \textbf{2.1}      & 4.0      & \textbf{15.4}      & 19.7     \\
+\multicolumn{1}{|l|}{PyramidNet}              & Cutout       & \textbf{1.6}      & 2.5      & \textbf{13.1}      & 16.4     \\
+\multicolumn{1}{|l|}{PyramidNet}              & AA           & \textbf{1.4}      & 1.9      & \textbf{12.1}      & 14.6     \\ \hline
+\multicolumn{1}{|l|}{PyramidNet+ShakeDrop}    & Basic        & \textbf{2.1}      & 2.5      & \textbf{13.3}      & 14.5     \\
+\multicolumn{1}{|l|}{PyramidNet+ShakeDrop}    & Cutout       & \textbf{1.6}      & 1.9      & \textbf{11.3}      & 11.8     \\
+\multicolumn{1}{|l|}{PyramidNet+ShakeDrop}    & AA           & \textbf{1.4}      & 1.6      & \textbf{10.3}      & 10.6     \\ \hline
+\end{tabular}
+\caption{Results for the CIFAR-10/CIFAR-100 experiments, using $\rho=0.05$ for all models/datasets/augmentations}
+\label{tab:cifar_no_rho_tuning}
+\end{table}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|c|c|c|c|}
+\hline
+Dataset            & \begin{tabular}[c]{@{}c@{}}Efficientnet-b7 \\ + SAM (optimal)\end{tabular} & \begin{tabular}[c]{@{}c@{}}Efficientnet-b7 \\ + SAM ($\rho=0.05$)\end{tabular} & Efficientnet-b7 \\ \hline
+FGVC\_Aircraft     & 6.80                                                                       & 7.06                                                                        & 8.15            \\
+Flowers            & 0.63                                                                       & 0.81                                                                        & 1.16            \\
+Oxford\_IIIT\_Pets & 3.97                                                                       & 4.15                                                                        & 4.24            \\
+Stanford\_Cars     & 5.18                                                                       & 5.57                                                                        & 5.94            \\
+CIFAR-10            & 0.88                                                                       & 0.88                                                                        & 0.95            \\
+CIFAR-100           & 7.44                                                                       & 7.56                                                                        & 7.68            \\
+Birdsnap           & 13.64                                                                      & 13.64                                                                       & 14.30           \\
+Food101            & 7.02                                                                       & 7.06                                                                        & 7.17            \\ \hline
+\end{tabular}
+\caption{Results for the finetuning experiments, using $\rho=0.05$ for all datasets.}
+\label{tab:finetuning_no_rho_tuning}
+\end{table}
+
+
+
+\subsection{Ablation of the Second Order Terms}
+\label{appendix:second_order}
+As described in section 2, computing the gradient of the sharpness aware objective yield some second order terms that are more expensive to compute. To analyze this ablation more in depth, we trained a WideResNet-40x2 on CIFAR-10 using SAM with and without discarding the second order terms during training. We report the cosine similarity of the two updates in figure \ref{fig:cosine_fo_so}, along the training trajectory of both experiments. We also report the training error rate (evaluated at $\boldsymbol{w}+\hat{\boldsymbol{\epsilon}}(\boldsymbol{w})$) and the test error rate (evaluated at $\boldsymbol{w}$).
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{.5\textwidth}
+  \centering
+  \includegraphics[width=1\linewidth]{figures/sox_train_error.pdf}
+  \captionof{figure}{Training and test error for the first \\ and second order version of the algorithm.}
+  \label{fig:SAM_visual}
+\end{minipage}%
+\begin{minipage}{.5\textwidth}
+  \centering
+  \includegraphics[width=1\linewidth]{figures/sox_cosine.pdf}
+  \captionof{figure}{Cosine similarity between the first and second order updates.}
+  \label{fig:cosine_fo_so}
+\end{minipage}
+\end{figure}
+
+We observe that during the first half of the training, discarding the second order terms does not impact the general direction of the training, as the cosine similarity between the first and second order updates are very close to 1. However, when the model nears convergence, the similarity between both types of updates becomes weaker. Fortunately, the model trained without the second order terms reaches a lower test error, showing that the most efficient method is also the one providing the best generalization on this example. The reason for this is quite unclear and should be analyzed in follow up work.
+
+\subsection{Choice of p-norm}
+\label{appendix:pnorm}
+
+Our theorem is derived for $p=2$, although generalizations can be considered for $p \in [1, +\infty]$ (the expression of the bound becoming way more involved). Empirically, we validate that the choice $p=2$ is optimal by training a wide ResNet on CIFAR-10 with SAM for $p=\infty$ (in which case we have $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w}) = \rho \sign{(\nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w}))}$) and $p=2$ (giving $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w}) = \frac{\rho}{||\nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w})||_2^2} (\nabla_{\boldsymbol{w}} L_\mathcal{S}(\boldsymbol{w}))$). We do not consider the case $p=1$ which would give us a perturbation on a single weight.
+As an additional ablation study, we also use random weight perturbations of a fixed Euclidean norm: $\hat{\boldsymbol{\epsilon}}(\boldsymbol{w}) = \frac{\rho}{||\boldsymbol{z}||_2^2} \boldsymbol{z}$ with $\boldsymbol{z} \sim \gN(\boldsymbol{0},\boldsymbol{I}_d)$. We report the test accuracy of the model in figure \ref{fig:pnorm}.
+
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/pnorm.pdf}
+    \caption{Test accuracy for a WideResNet trained on CIFAR-10 with SAM, for different perturbation norms.}
+    \label{fig:pnorm}
+\end{figure}
+
+We observe that adversarial perturbations outperform random perturbations, and that using $p=2$ yield superior accuracy on this example.
+
+
+\subsection{Several Iterations in the Inner Maximization}
+\label{appendix:inner_grad}
+
+To empirically verify that the linearization of the inner problem is sensible, we trained a WideResNet on the CIFAR datasets using a variant of SAM that performs several iterations of projected gradient ascent to estimate $\max_{\boldsymbol{\epsilon}} L(\boldsymbol{w}+\boldsymbol{\epsilon})$. We report the evolution of $\max_{\boldsymbol{\epsilon}} L(\boldsymbol{w}+\boldsymbol{\epsilon}) - L(\boldsymbol{w})$ during training (where $L$ stands for the training error rate computed on the current batch) in Figure~\ref{fig:projected}, along with the test accuracy and the estimated sharpness ($\max_{\boldsymbol{\epsilon}} L(\boldsymbol{w}+\boldsymbol{\epsilon}) - L(\boldsymbol{w})$) at the end of training in Table~\ref{tab:projected}; we report means and standard deviations across 20 runs. 
+
+For most of the training, one projected gradient step (as used in standard SAM) is sufficient to obtain a good approximation of the $\boldsymbol{\epsilon}$ found with multiple inner maximization steps. We however observe that this approximation becomes weaker near convergence, where doing several iterations of projected gradient ascent yields a better $\boldsymbol{\epsilon}$ (for example, on CIFAR-10, the maximum loss found on each batch is about 3\% more when doing 5 steps of inner maximization, compared to when doing a single step). That said, as seen in Table~\ref{tab:projected}, the test accuracy is not strongly affected by the number of inner maximization iterations, though on CIFAR-100 it does seem that several steps outperform a single step in a statistically significant way.
+
+
+
+\begin{figure}
+\centering
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=1\linewidth]{figures/cifar10_projected.pdf}
+  \label{fig:sub1}
+\end{subfigure}%
+\begin{subfigure}{.5\textwidth}
+  \centering
+  \includegraphics[width=1\linewidth]{figures/cifar100_projected.pdf}
+  \label{fig:sub2}
+\end{subfigure}
+\caption{Evolution of $\max_{\boldsymbol{\epsilon}} L(\boldsymbol{w}+\boldsymbol{\epsilon}) - L(\boldsymbol{w})$ vs.~training step, for different numbers of inner projected gradient steps.}
+\label{fig:projected}
+\end{figure}
+
+
+\begin{table}[h]
+\begin{tabular}{|c|cc|cc|}
+\hline
+\multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Number of projected\\ gradient steps\end{tabular}} & \multicolumn{2}{c|}{CIFAR-10}     & \multicolumn{2}{c|}{CIFAR-100}     \\
+                                                                                               & Test error & Estimated sharpness & Test error  & Estimated sharpness \\ \hline
+1                                                                                              & $2.77_{\pm0.03}$ & $0.17_{\pm0.03}$          & $16.72_{\pm0.08}$ & $0.82_{\pm0.05}$          \\
+2                                                                                              & $2.76_{\pm0.03}$ & $0.82_{\pm0.03}$          & $16.59_{\pm0.08}$ & $1.83_{\pm0.05}$          \\
+3                                                                                              & $2.73_{\pm0.04}$ & $1.49_{\pm0.05}$          & $16.62_{\pm0.09}$ & $2.36_{\pm0.03}$          \\
+5                                                                                              & $2.77_{\pm0.03}$ & $2.26_{\pm0.05}$          & $16.60_{\pm0.06}$ & $2.82_{\pm0.04}$          \\ \hline
+\end{tabular}
+\caption{Test error rate and estimated sharpness ($\max_\epsilon L(w+\epsilon) - L(w)$) at the end of the training.}
+\label{tab:projected}
+\end{table}
+
+\end{document}

@@ -1,0 +1,271 @@
+
+\section{The HiPPO Framework: High-order Polynomial Projection Operators}
+\label{sec:framework}
+
+We motivate the problem of online function approximation with projections
+as an approach to learning memory representations
+(Section~\ref{subsec:hippo-setup}).
+Section~\ref{subsec:hippo-framework} describes the general
+HiPPO framework to derive memory updates, including a precise definition of the technical problem 
+we introduce, and an overview of our approach to solving it.
+Section~\ref{subsec:high_order_projection} instantiates the framework to recover
+the LMU and yield new memory updates (e.g.\ HiPPO-LagT), demonstrating the generality
+of the HiPPO framework.
+Section~\ref{sec:discretization} discusses how to convert the main continuous-time results into practical discrete versions.
+Finally in Section~\ref{subsec:low_order_projection} we show how gating
+in RNNs is an instance of HiPPO memory.
+
+
+\subsection{HiPPO Problem Setup}
+\label{subsec:hippo-setup}
+
+
+
+
+
+Given an input function $f(t) \in \mathbb{R}$ on $t \ge 0$, many problems require operating on the cumulative \emph{history} $f_{\le t} := f(x) \mid_{x \le t}$ at every time $t \ge 0$,
+in order to understand the inputs seen so far and make future predictions.
+Since the space of functions is intractably large, the history cannot be perfectly memorized and must be compressed; we propose the general approach of projecting it onto a subspace of bounded dimension.
+Thus, our goal is to maintain (online) this compressed representation of the history.
+In order to specify this problem fully, we require two ingredients: a way to quantify the approximation, and a suitable subspace.
+
+
+\paragraph{Function Approximation with respect to a Measure.}
+Assessing the quality of an approximation requires defining a distance in function space.
+Any probability measure $\mu$ on $[0, \infty)$ equips the space of square integrable functions with inner product
+$
+  \langle f, g \rangle_\mu = \int_0^\infty f(x) g(x) \d \mu(x),
+$
+inducing a Hilbert space structure $\mathcal{H}_\mu$ and corresponding norm $\| f \|_{L_2(\mu)} = \langle f, f \rangle_\mu^{1/2}$.
+
+\paragraph{Polynomial Basis Expansion.}
+Any $N$-dimensional subspace $\mathcal{G}$ of this function space is a suitable candidate for the approximation.
+The parameter $N$ corresponds to the order of the approximation, or the size of the compression;
+the projected history can be represented by the $N$ coefficients of its expansion in any basis of $\mathcal{G}$.
+For the remainder of this paper, we use the polynomials as a natural basis, so that $\mathcal{G}$ is the set of polynomials of degree less than $N$.
+We note that the polynomial basis is very general; for example, the Fourier basis $\sin(nx), \cos(nx)$ can be seen as polynomials on the unit circle $(e^{2\pi i x})^n$ (cf.\ \cref{sec:derivation-fourier}).
+In \cref{sec:hippo-framework-details}, we additionally formalize a more
+general framework that allows different bases other than polynomials by tilting the measure with another function.
+
+\paragraph{Online Approximation.}
+Since we care about approximating $f_{\le t}$ for every time $t$, we also let the measure vary through time.
+For every $t$, let $\mu^{(t)}$ be a measure supported on $(-\infty, t]$ (since $f_{\le t}$ is only defined up to time $t$).
+Overall, we seek some $g^{(t)}\in\mathcal{G}$ that minimizes $\|f_{\le t} - g^{(t)}\|_{L_2(\mu^{(t)})}$.
+Intuitively, the measure $\mu$ controls the importance of various parts of the input domain,
+and the basis defines the allowable approximations.
+The challenge is how to solve the optimization problem in closed form given $\mu^{(t)}$,
+and how these coefficients can be maintained online as $t \to \infty$.
+
+
+
+
+\subsection{General HiPPO framework}
+\label{subsec:hippo-framework}
+
+We provide a brief overview of the main ideas behind solving this problem, which provides a surprisingly simple and general strategy for many measure families $\mu^{(t)}$.
+This framework builds upon a rich history of the well-studied \emph{orthogonal polynomials} and related transforms in the signal processing literature.
+Our formal abstraction (\cref{def:hippo}) departs from prior work on sliding transforms in several ways, which we discuss in detail in \cref{sec:rw-ops}.
+For example, our concept of the time-varying measure allows choosing $\mu^{(t)}$ more appropriately, which will lead to solutions with qualitatively different behavior.
+\cref{sec:hippo-framework-details} contains the full details and formalisms of our framework.
+
+\paragraph{Calculating the projection through continuous dynamics.}
+As mentioned, the approximated function can be represented by the $N$ coefficients of its expansion in any basis;
+the first key step is to choose a suitable basis $\{g_n\}_{n < N}$ of $\mathcal{G}$.
+Leveraging classic techniques from approximation theory, a natural basis is the set of orthogonal polynomials for the measure $\mu^{(t)}$,
+which forms an orthogonal basis of the subspace.
+Then the coefficients of the optimal basis expansion are simply $c^{(t)}_n := \langle f_{\le t}, g_n \rangle_{\mu^{(t)}}$.
+
+The second key idea is to differentiate this projection in $t$, where
+differentiating through the integral (from the inner product
+$\langle f_{\leq t},  g_n \rangle_{\mu^{(t)}}$) will often lead to a self-similar relation
+allowing $\frac{d}{dt} c_n(t)$ to be expressed in terms of $(c_k(t))_{k\in [N]}$ and $f(t)$.
+Thus the coefficients $c(t) \in \R^N$ should evolve as an ODE, with dynamics determined by $f(t)$.
+
+\paragraph{The HiPPO abstraction: online function approximation.}
+\begin{definition}%
+    \label{def:hippo}
+    Given a time-varying measure family $\mu^{(t)}$ supported on $(-\infty, t]$, an
+    $N$-dimensional subspace $\mathcal{G}$ of polynomials, and a continuous
+    function $f \colon \mathbb{R}_{\geq 0} \to \mathbb{R}$,
+    HiPPO defines a \emph{projection} operator $\proj_t$ and a \emph{coefficient extraction} operator $\coef_t$ at every time $t$, with the following properties:
+    \begin{enumerate}[label=(\arabic*), topsep=0em, partopsep=0.0em, itemsep=0em, parsep=0.1em, leftmargin=2em]
+      \item $\proj_t$ takes the function $f$ restricted up to time $t$,
+      $f_{\leq t} \defeq f(x) \mid_{x \leq t}$, and maps it to a
+      polynomial $g^{(t)} \in \mathcal{G}$, that minimizes the approximation error $\|f_{\leq t} - g^{(t)}\|_{L_2(\mu^{(t)})}$.
+        \item $\coef_t: \mathcal{G} \to \mathbb{R}^N$ maps the polynomial $g^{(t)}$
+        to the coefficients $c(t) \in \mathbb{R}^N$ of the basis of orthogonal
+        polynomials defined with respect to the measure $\mu^{(t)}$.
+    \end{enumerate}
+    The composition $\coef \circ \proj$ is called $\hippo$, which is an operator
+    mapping a function $f: \R_{\geq 0} \to \R$ to the optimal projection coefficients
+    $c: \R_{\geq 0} \to \R^N$, i.e.\ $(\hippo(f))(t) = \coef_t(\proj_t(f))$.
+\end{definition}
+
+For each $t$, the problem of optimal projection
+$\proj_t(f)$ is well-defined by the above inner products,
+but this is intractable to compute naively.
+Our derivations (\cref{sec:derivations}) will show that
+the coefficient function $c(t) = \coef_t(\proj_t(f))$ has the form of an ODE
+satisfying $\frac{d}{dt} c(t) = A(t) c(t) + B(t) f(t)$ for some $A(t) \in \R^{N \times N}$, $B(t) \in \R^{N \times 1}$.
+Thus our results show how to tractably obtain $c^{(t)}$ \emph{online} by solving an
+ODE, or more concretely by running a discrete recurrence.
+When discretized, HiPPO takes in a sequence of real values and produces a
+sequence of $N$-dimensional vectors.
+
+
+
+
+
+
+Figure~\ref{fig:framework} illustrates the overall framework when we use uniform measures.
+Next, we give our main results showing $\hippo$ for several concrete instantiations of the framework.
+
+\begin{figure}
+  \centering
+  \includegraphics[width=\linewidth]{figures/hippo.pdf}
+  \caption{
+    \textbf{Illustration of the HiPPO framework.}
+    (1) For any function $f$, (2) at every time $t$ there is an optimal projection $g^{(t)}$ of $f$ onto the space of polynomials, with respect to a measure $\mu^{(t)}$ weighing the past.
+    (3) For an appropriately chosen basis, the corresponding coefficients $c(t)\in\R^N$ representing a compression of the history of $f$ satisfy linear dynamics.
+    (4) Discretizing the dynamics yields an efficient closed-form recurrence for online compression of time series $(f_k)_{k\in\N}$.
+  }
+  \label{fig:framework}
+\end{figure}
+
+
+\subsection{High Order Projection: Measure Families and HiPPO ODEs}
+\label{subsec:high_order_projection}
+
+Our main theoretical results are instantiations of HiPPO for various measure families $\mu^{(t)}$.
+We provide two examples of natural sliding window measures and the corresponding projection operators.
+The unified perspective on memory mechanisms allows us to derive these closed-form solutions with the same strategy, provided in
+Appendices \ref{sec:derivation-legt},\ref{sec:derivation-lagt}.
+The first explains the core Legendre Memory Unit (LMU)~\citep{voelker2019legendre} update in a principled way and characterizes its limitations,
+while the other is novel, demonstrating the generality of the HiPPO framework.
+\cref{sec:derivations} contrasts the tradeoffs of these measures
+(\cref{fig:measures}), contains proofs of their derivations, and derives
+additional HiPPO formulas for other bases such as Fourier (recovering the
+Fourier Recurrent Unit~\citep{zhang2018learning}) and Chebyshev.
+
+
+
+
+
+The \textbf{translated Legendre (LegT)} measures assign uniform weight to the most recent history $[t-\theta, t]$.
+There is a hyperparameter $\theta$ representing the length of the sliding window,
+or the length of history that is being summarized.
+The \textbf{translated Laguerre (LagT)} measures instead use the exponentially decaying measure, assigning more importance to recent history.
+\begin{equation*}
+    \textbf{LegT}: \mu^{(t)}(x) = \frac{1}{\theta} \mathbb{I}_{[t-\theta, t]}(x)
+    \qquad
+    \textbf{LagT}: \mu^{(t)}(x)
+    = e^{-(t-x)} \mathbb{I}_{(-\infty, t]}(x)
+    =
+    \begin{cases}
+      e^{x-t} & \mbox{if } x \le t \\
+      0 & \mbox{if } x > t
+    \end{cases}
+\end{equation*}
+
+
+
+
+
+\begin{theorem}
+  \label{thm:legt-lagt}
+  For LegT and LagT, the $\hippo$ operators satisfying \cref{def:hippo} are given by linear time-invariant (LTI) ODEs $\ddt c(t) = - A c(t) + B f(t)$, where $A \in \R^{N \times N}, B \in \R^{N \times 1}$:
+
+  \small
+  \begin{minipage}{.60\linewidth}
+    \textnormal{\textbf{LegT}:}
+    \vspace{-1em}
+    \begin{equation}
+      \label{eq:translated-legendre-dynamics}
+      A_{nk} =
+      \frac{1}{\theta}
+      \begin{cases}
+        (-1)^{n-k} (2n+1) & \mbox{if } n \ge k \\
+        2n+1 & \mbox{if } n \le k
+      \end{cases},
+      \quad
+      B_n = \frac{1}{\theta} (2n+1) (-1)^n
+    \end{equation}
+  \end{minipage}%
+  \hfill%
+  \begin{minipage}{.35\linewidth}
+    \textnormal{\textbf{LagT}:}
+    \vspace{-1em}
+    \begin{equation}
+      \label{eq:laguerre-dynamics}
+      A_{nk} =
+      \begin{cases}%
+        1 & \mbox{if } n \ge k \\
+        0 & \mbox{if } n < k \\
+      \end{cases},
+      \quad
+      B_n = 1
+    \end{equation}
+  \end{minipage}
+
+\end{theorem}
+
+
+
+
+
+Equation~\eqref{eq:translated-legendre-dynamics} proves the LMU update \citep[equation (1)]{voelker2019legendre}.
+Additionally, our derivation (Appendix~\ref{sec:derivation-legt}) shows that outside of the projections,
+there is another source of approximation.
+This sliding window update rule requires access to $f(t-\theta)$, which is no longer available;
+it instead assumes that the current coefficients $c(t)$ are an accurate enough model of the function $f(x)_{x \le t}$ that $f(t-\theta)$ can be recovered.
+
+
+
+
+
+\subsection{HiPPO recurrences: from Continuous to Discrete Time with ODE Discretization}
+\label{sec:discretization}
+
+Since actual data is inherently discrete (e.g.\ sequences and time series),
+we discuss how the HiPPO projection operators can be discretized using standard techniques,
+so that the continuous-time HiPPO ODEs become discrete-time linear recurrences.
+
+
+
+
+
+In the continuous case, these operators consume an input function $f(t)$ and produce an output function $c(t)$.
+The discrete time case (i) consumes an input sequence $(f_k)_{k \in \N}$, %
+(ii) implicitly defines a function $f(t)$ where $f(k \cdot \Delta t) = f_k$ for some step
+size $\Delta t$, (iii) produces a function $c(t)$ through the ODE dynamics,
+and (iv) discretizes back to an output sequence $c_k := c(k \cdot \Delta t)$.
+
+
+The basic method of discretizating an ODE $\frac{d}{dt} c(t) = u(t, c(t), f(t))$ chooses a step size $\Delta t$ and performs the discrete updates
+$c(t+\Delta t) = c(t) + \Delta t \cdot u(t, c(t), f(t))$.\footnote{This is known as the Euler method, used for illustration here; our experiments use the more numerically stable Bilinear and ZOH methods.
+\cref{sec:discretization-full} provides a self-contained overview of our full discretization framework.}
+In general, this process is sensitive to the \emph{discretization step size} hyperparameter $\Delta t$.
+
+Finally, we note that this provides a way to seamlessly handle timestamped data, even with missing values:
+the difference between timestamps indicates the (adaptive) $\Delta t$ to use in discretization~\citep{chen2018neural}.
+\cref{sec:discretization-full} contains a full discussion of discretization.
+
+
+
+
+\subsection{Low Order Projection: Memory Mechanisms of Gated RNNs}
+\label{subsec:low_order_projection}
+
+As a special case, we consider what happens if we do not incorporate higher-order polynomials in the projection problem.
+Specifically, if $N=1$, then the discretized version of HiPPO-LagT \eqref{eq:laguerre-dynamics} becomes
+$c(t + \Delta t) = c(t) + \Delta t(-Ac(t) + Bf(t)) = (1 - \Delta t)c(t) + \Delta t f(t)$, since $A = B = 1$.
+If the inputs $f(t)$ can depend on the hidden state $c(t)$ and the discretization step size $\Delta t$ is chosen adaptively (as a function of input $f(t)$ and state $c(t)$),
+as in RNNs, then this becomes exactly a \emph{gated} RNN.
+For instance, by stacking multiple units in parallel and choosing a specific update function,
+we obtain the GRU update cell as a special case.\footnote{The LSTM cell update is similar, with a parameterization known as ``tied'' gates \cite{greff2016lstm}.}
+In contrast to HiPPO which uses one hidden feature and projects it onto high order polynomials,
+these models use many hidden features but only project them with degree 1.
+This view sheds light on these classic techniques by showing how they can be derived from first principles.
+
+
+

@@ -1,0 +1,36 @@
+\section{Results}
+%\vspace*{-1mm}
+\subsection{DMControl} Sample-efficiency results for DMControl experiments are shown in Table \ref{table:500kscores} and in Figures \ref{fig:curl_main_result}, \ref{fig:curl_sample_efficiency}, and \ref{fig:curl_all_dmc}. Below are the key findings:
+
+(i) CURL is the \textbf{state-of-the-art image-based RL algorithm} on the majority (\textbf{5} out of \textbf{6}) DMControl environments that we benchmark on for sample-efficiency against existing pixel-based baselines. On DMControl100k, CURL achieves {\textbf{1.9x}} higher median performance than Dreamer \cite{hafner2019dream}, a leading model-based method, and is {\textbf{4.5x}} more data-efficient shown in Figure \ref{fig:curl_sample_efficiency}.
+
+(ii) CURL operating purely from pixels {\textbf{nearly matches} (and sometimes surpasses) \textbf{the sample efficiency of SAC operating from state}} on the majority of 16 DMControl environments tested shown in Figure \ref{fig:curl_all_dmc} and matches the median state-based score on DMControl500k shown in Figure \ref{fig:curl_main_result}. This is a {\textbf{first}} for any image-based RL algorithm, be it model-based, model-free, with or without auxiliary tasks.
+
+(iii) CURL solves (converges close to optimal score of 1000) on the majority of 16 DMControl experiments within {\textbf{500k}} steps. It also matches the state-based median score across the 6 extensively benchmarked environments in this regime.
+
+%\vspace*{-4mm}
+\subsection{Atari} 
+%\vspace*{-2mm}
+Results for Atari100k are shown in Table \ref{table:100katariscores}. Below are the key findings:
+
+(i) CURL achieves a median human-normalized score (HNS) of {\textbf{17.5\%}} while SimPLe and Efficient Rainbow DQN achieve 14.4\% and 16.1\% respectively. The mean HNS is 38.1\%, 44.3\%, and 28.5\% for CURL, SimPLe, and Efficient Rainbow DQN respectively. 
+
+(ii) CURL improves on top of Efficient Rainbow on {\bf 19} out of {\bf 26} Atari games. Averaged across 26 games, CURL improves on top of Efficient Rainbow by {\bf 1.3x}, while the median performance improvement over SimPLE and Efficient Rainbow are {\bf 1.2x} and {\bf 1.1x} respectively.
+
+(iii) CURL {\textbf{surpasses human performance}} on two games JamesBond (1.6 HNS), Krull (2.5 HNS).
+ \begin{figure}[ht]
+ \begin{center}
+   \centerline{\includegraphics[width=\columnwidth]{plots/dmc_median_scores.png}}
+   \caption{Performance of CURL coupled to SAC averaged across 10 seeds relative to SLACv1, PlaNet, Pixel SAC and State SAC baselines. At the 500k benchmark CURL matches the median score of state-based SAC. At 100k environment steps CURL achieves a 1.9x higher median score than Dreamer. For a direct comparison, we only compute the median across the 6 environments in \ref{table:500kscores} (4 for SLAC) and show learning curves for CURL across 16 DMControl experiments in \ref{fig:curl_all_dmc}.} 
+   \label{fig:curl_main_result}
+ \end{center}
+ \vskip -0.3in
+ \end{figure}
+
+%\vspace*{-4mm}
+
+\section{Ablation Studies}
+%\vspace*{-2mm}
+
+In Appendix \ref{appendix:ablation}, we present the results of ablation studies carried out to answer the following questions: (i) Does CURL learn only visual features or does it also capture temporal dynamics of the environment? (ii) How well does the RL policy perform if CURL representations are learned solely with the contrastive objective and no signal from RL? (iii) Why does CURL match state-based RL performance on some DMControl environments but not on others?
+

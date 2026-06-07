@@ -1,0 +1,55 @@
+\newcommand{\nqbm}{32.6}
+\newcommand{\nqsingle}{\tf{41.5}}
+\newcommand{\nqsinglehybrid}{39.0}
+\newcommand{\nqmulti}{\tf{41.5}}
+\newcommand{\nqmultihybrid}{38.8}
+
+\newcommand{\triviabm}{52.4}
+\newcommand{\triviasingle}{56.8}
+\newcommand{\triviasinglehybrid}{57.0}
+\newcommand{\triviamulti}{56.8}
+\newcommand{\triviamultihybrid}{\tf{57.9}}
+
+\newcommand{\sqbm}{38.1}
+\newcommand{\sqsingle}{29.8}
+\newcommand{\sqsinglehybrid}{36.7}
+\newcommand{\sqmulti}{24.1}
+\newcommand{\sqmultihybrid}{35.8}
+
+\newcommand{\webqbm}{29.9}
+\newcommand{\webqsingle}{34.6}
+\newcommand{\webqsinglehybrid}{35.2}
+\newcommand{\webqmulti}{\tf{42.4}}
+\newcommand{\webqmultihybrid}{41.1}
+
+\newcommand{\trecbm}{24.9}
+\newcommand{\trecsingle}{25.9}
+\newcommand{\trecsinglehybrid}{28.0}
+\newcommand{\trecmulti}{49.4}
+\newcommand{\trecmultihybrid}{\tf{50.6}}
+
+\begin{table*}[t]
+    \setlength\tabcolsep{5pt}
+    \centering
+    \begin{tabular}{llccccc} \toprule
+    \tf{Training} & \tf{Model} & \tf{NQ} & \tf{TriviaQA} & \tf{WQ} & \tf{TREC} & \tf{SQuAD} \\ \midrule
+    Single & {BM25+BERT}~\cite{lee2019latent} & 26.5 & 47.1 & 17.7 & 21.3 & 33.2 \\
+    Single & {ORQA}~\cite{lee2019latent}  & 33.3 & 45.0 & 36.4 & 30.1 & 20.2   \\
+    Single & {HardEM}~\cite{min2019discrete} & 28.1 & 50.9 & - & - & - \\
+    Single & {GraphRetriever}~\cite{min2019knowledge} & 34.5 & 56.0 & 36.4 & - & - \\
+    Single & {PathRetriever}~\cite{asai2020learning}  & 32.6 & - & - & - & \tf{56.5}\\
+    Single & {REALM}$_\textrm{Wiki}$~\cite{guu2020realm} & 39.2 & - & 40.2 & 46.8 & - \\ 
+    Single & {REALM}$_\textrm{News}$~\cite{guu2020realm} & 40.4 & - & 40.7 & 42.9 & - \\ 
+    \midrule
+    \multirow{3}{*}{Single} & BM25   & \nqbm & \triviabm & \webqbm & \trecbm & \sqbm \\
+    &\model/  & \nqsingle & \triviasingle & \webqsingle & \trecsingle & \sqsingle \\
+    &BM25+\model/  & \nqsinglehybrid & \triviasinglehybrid & \webqsinglehybrid & \trecsinglehybrid & \sqsinglehybrid \\
+    \midrule
+    \multirow{2}{*}{Multi} & \model/  & \nqmulti & \triviamulti & \webqmulti & \trecmulti & \sqmulti \\
+    &BM25+\model/ & \nqmultihybrid & \triviamultihybrid & \webqmultihybrid & \trecmultihybrid & \sqmultihybrid \\
+    \bottomrule
+    \end{tabular}
+    \caption{End-to-end QA (Exact Match) Accuracy. The first block of results are copied from their cited papers. {REALM}$_\textrm{Wiki}$ and {REALM}$_\textrm{News}$ are the same model but pretrained on Wikipedia and CC-News, respectively.
+    \ti{Single} and \ti{Multi} denote that our Dense Passage Retriever (DPR) is trained using individual or combined training datasets (all except SQuAD). For WQ and TREC in the \ti{Multi} setting, we fine-tune the reader trained on NQ.}
+    \label{tab:qa_em}
+\end{table*}

@@ -1,0 +1,97 @@
+\section{\modelnamelong}
+We now present \modelname.
+We first review a  meta architecture for mask classification that \modelname is built upon.
+Then, we introduce our new Transformer decoder with \emph{masked attention} which is the key to better convergence and results.
+Lastly, we propose training improvements that make \modelname  efficient and accessible.
+
+
+\subsection{Mask classification preliminaries}
+Mask classification architectures group pixels into $N$ segments by predicting $N$ binary masks, along with $N$ corresponding category labels. Mask classification is sufficiently general to address any segmentation task by assigning different semantics, \eg, categories or instances, to different segments. However, the challenge is to find good representations for each segment. For example, Mask R-CNN~\cite{he2017mask} uses bounding boxes as the representation which limits its application to semantic segmentation.
+Inspired by DETR~\cite{detr}, each segment in an image can be represented as a $C$-dimensional feature vector (``object query'') and can be processed by a Transformer decoder, trained with a set prediction objective.
+A simple meta architecture would consist of three components.
+A \emph{backbone} that extracts low-resolution features from an image. A \emph{pixel decoder} that gradually upsamples low-resolution features from the output of the backbone to generate high-resolution per-pixel embeddings. And finally a \emph{Transformer decoder} that operates on image features to process object queries. The final binary mask predictions are decoded from per-pixel embeddings with object queries. One successful instantiation of such a meta architecture is MaskFormer~\cite{cheng2021maskformer}, and we refer readers to \cite{cheng2021maskformer} for more details.
+
+
+\subsection{Transformer decoder with masked attention}
+\label{sec:method:arch:transformer_decoder}
+
+\modelname adopts the aforementioned meta architecture, with our proposed Transformer decoder (\figref{fig:arch} right) replacing the standard one. %
+The key components of our Transformer decoder include a \emph{masked attention} operator, which extracts  localized features by constraining cross-attention to within the foreground region of the predicted mask for each query, instead of
+attending to the full feature map.
+To handle small objects, we propose an efficient multi-scale strategy to utilize high-resolution features.
+It feeds successive feature maps from the pixel decoder's feature pyramid %
+into successive Transformer decoder layers in a round robin fashion.
+Finally, we incorporate optimization improvements that boost model performance without introducing additional computation.
+We now discuss these improvements in detail.
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/maskformerv2_arch.pdf}
+    \caption{\textbf{\modelname overview.} \modelname adopts the same meta architecture as MaskFormer~\cite{cheng2021maskformer} with a backbone, a pixel decoder and a Transformer decoder. We propose a new Transformer decoder with \emph{masked attention} instead of the standard cross-attention (\secref{sec:method:arch:transformer_decoder:mask_attn}). To deal with small objects, we propose an efficient way of utilizing high-resolution features from a pixel decoder by feeding one scale of the multi-scale feature to one Transformer decoder layer at a time (\secref{sec:method:arch:transformer_decoder:ms_feat}). In addition, we switch the order of self and cross-attention (\ie, our masked attention), make query features learnable, and remove dropout to make computation more effective (\secref{sec:method:arch:transformer_decoder:other}). Note that positional embeddings and predictions from intermediate Transformer decoder layers are omitted in this figure for readability.}
+    \label{fig:arch}
+\end{figure}
+
+\subsubsection{Masked attention}
+\label{sec:method:arch:transformer_decoder:mask_attn}
+
+Context features have been shown to be important for image segmentation~\cite{deeplabV2,deeplabV3,zhao2017pspnet}. However, recent studies~\cite{sun2021rethinking,gao2021smca} suggest that the slow convergence of Transformer-based models is due to global context in the cross-attention layer, as it takes many training epochs for cross-attention to learn to attend to localized object regions~\cite{sun2021rethinking}. We hypothesize that local features are enough to update query features and context information can be gathered through self-attention. For this we propose \emph{masked attention}, a variant of cross-attention that only attends within the foreground region of the predicted mask for each query.
+
+Standard cross-attention (with residual path) computes
+\begin{align}
+\mathbf{X}_{l} = \text{softmax}(\mathbf{Q}_{l}\mathbf{K}^{\text{T}}_{l})\mathbf{V}_{l} + \mathbf{X}_{l-1}.
+\end{align}
+Here, $l$ %
+is the layer index, $\mathbf{X}_{l} \in \mathbb{R}^{N \x C}$ refers to $N$ $C$-dimensional query features at the $l^{\text{th}}$ layer and $\mathbf{Q}_{l} = f_Q(\mathbf{X}_{l-1}) \in \mathbb{R}^{N \x C}$. $\mathbf{X}_{0}$ denotes input query features to the Transformer decoder.
+$\mathbf{K}_{l}, \mathbf{V}_{l} \in \mathbb{R}^{H_{l}W_{l} \x C}$
+are the image features under transformation $f_K(\cdot)$ and $f_V(\cdot)$ respectively, and $H_l$ and $W_l$ are the spatial resolution of image features that we will introduce next in \secref{sec:method:arch:transformer_decoder:ms_feat}. $f_Q$, $f_K$ and $f_V$ are linear transformations.
+
+Our masked attention modulates the attention matrix via
+\begin{align}
+  \mathbf{X}_{l} = \text{softmax}(\mathbfcal{M}_{l-1} + \mathbf{Q}_{l}\mathbf{K}^{\text{T}}_{l})\mathbf{V}_{l} + \mathbf{X}_{l-1}.
+\end{align}
+Moreover, the attention mask $\mathbfcal{M}_{l-1}$ at feature location $(x, y)$ is
+\begin{align}
+\mathbfcal{M}_{l-1}(x, y) = \left\{\begin{array}{ll}
+  0  & \text{if~} \mathbf{M}_{l-1}(x,y)=1 \\
+    -\infty & \text{otherwise}
+\end{array}\right..
+\end{align}
+Here, $\mathbf{M}_{l-1} \in \{0,1\}^{N \x H_{l}W_{l}}$ is the binarized output (thresholded at $0.5$) of the resized mask prediction of the previous ($l-1$)-th Transformer decoder layer. It is resized to the same resolution of $\mathbf{K}_{l}$. $\mathbf{M}_{0}$ is the binary mask prediction obtained from  $\mathbf{X}_{0}$, \ie, before feeding query features into the Transformer decoder.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\vspace{-2mm}
+\subsubsection{High-resolution features}
+\label{sec:method:arch:transformer_decoder:ms_feat}
+
+
+High-resolution features improve model performance, especially for small objects~\cite{detr}. However, this is computationally demanding. Thus, we propose an efficient multi-scale strategy to introduce high-resolution features while controlling the increase in computation. Instead of always using the high-resolution feature map, we utilize a feature pyramid which consists of both low- and high-resolution features and feed one resolution of the multi-scale feature to one Transformer decoder layer at a time.
+
+Specifically, we use the feature pyramid produced by the \emph{pixel decoder} with resolution $1/32$, $1/16$ and $1/8$ of the original image. For each resolution, we add both a sinusoidal positional embedding $e_{\text{pos}} \in \mathbb{R}^{H_{l}W_{l} \x C}$, following~\cite{detr}, and a learnable scale-level embedding $e_{\text{lvl}} \in \mathbb{R}^{1 \x C}$, following~\cite{zhu2021deformable}. We use those, from lowest-resolution to highest-resolution for the corresponding Transformer decoder layer as shown in \figref{fig:arch} left. We repeat this 3-layer Transformer decoder  $L$ times.  Our final Transformer decoder hence has $3L$ layers. More specifically, the first three layers receive a feature map of resolution $H_{1} = H/32$, $H_{2} = H/16$, $H_{3} = H/8$ and $W_{1} = W/32$, $W_{2} = W/16$, $W_{3} = W/8$, where $H$ and $W$ are the original image resolution. This pattern is repeated in a round robin fashion for all following layers.
+
+\subsubsection{Optimization improvements}
+\label{sec:method:arch:transformer_decoder:other}
+A standard Transformer decoder layer~\cite{vaswani2017attention} consists of three modules to process query features in the following order: a self-attention module, a cross-attention and a feed-forward network (FFN). Moreover, query features ($\mathbf{X}_{0}$) are \emph{zero initialized} before being fed into the Transformer decoder and are associated with \emph{learnable} positional embeddings. Furthermore, dropout is applied to both residual connections and attention maps.
+
+To optimize the Transformer decoder design, we make the following three improvements. First, we switch the order of self- and cross-attention (our new ``masked attention'') to make computation more effective: query features to the first self-attention layer are image-independent and do not have signals from the image, thus applying self-attention is unlikely to enrich information. Second, we make query features ($\mathbf{X}_{0}$) learnable as well (we still keep the learnable query positional embeddings), and learnable query features are directly supervised before being used in the Transformer decoder to predict masks ($\mathbf{M}_{0}$). We find these learnable query features function like a region proposal network~\cite{Ren2015a} and have the ability to generate mask proposals. Finally, we find dropout is not necessary and usually decreases performance. We thus  completely remove dropout in our decoder.
+
+
+\subsection{Improving training efficiency}
+\label{sec:method:arch:loss}
+
+
+One limitation of training universal architectures is the large memory consumption due to high-resolution mask prediction, making them less accessible than the more memory-friendly specialized architectures~\cite{he2017mask,chen2019hybrid}. For example, MaskFormer~\cite{cheng2021maskformer} can only fit a single image in a GPU with 32G memory. Motivated by PointRend~\cite{kirillov2020pointrend} and Implicit PointRend~\cite{cheng2021pointly}, which show a segmentation model can be trained with its mask loss calculated on $K$ randomly sampled points instead of the whole mask, we calculate the mask loss with sampled points in both the matching and the final loss calculation. More specifically, in the \emph{matching loss} that constructs the cost matrix for bipartite matching, we \emph{uniformly} sample the same set of $K$ points for all prediction and ground truth masks. In the \emph{final loss} between predictions and their matched ground truths, we sample different sets of $K$ points for different pairs of prediction and ground truth using \emph{importance sampling}~\cite{kirillov2020pointrend}. We set $K=12544$, \ie, $112 \x 112$ points. This new training strategy effectively reduces training memory by $3\x$, from 18GB to 6GB per image, making \modelname more accessible to users with limited computational resources.

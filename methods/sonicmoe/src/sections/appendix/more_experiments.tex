@@ -1,0 +1,75 @@
+In this section, we investigate the qualitative improvement from fine-grained MoE in Section~\ref{sec:appendix:granularity}. We also investigate the effect of rounding subroutines $\mathrm{round\_and\_sparsify}$ in Algorithm~\ref{alg:token_rounding} and the effects from microbatch size $T$ and tile size $\tileM$ for token rounding in Section~\ref{sec:appendix:ablation-microbatch-tileM}.
+
+\subsection{Effect of expert granularity} \label{sec:appendix:granularity}
+
+Here we validate the effectiveness of adopting fine-grained MoE. We fix the MoE activation ratio $\rho=K/E$ for the 0.5B and 1.4B model and we proportionally scale up $K$ and $E$ while linearly decreasing $n$ from row 1 to row 3 in Table~\ref{tab:moe-granularity:a} and~\ref{tab:moe-granularity:b}. 
+
+In general, we observe a better performance for $n=256$ than $n=1024$ which is also consistent with the MoE scaling trends mentioned in Table~\ref{tab:moe-scaling}. %, but such improvement might saturate.
+In Figure~\ref{fig:teasor} right subfigure, we find both \Algname~and cuBLAS can still sustain the throughput from $n=1024$ to $n=256$ under iso-FLOPs, but starting from $n=256$ FLOPs will drop linearly w.r.t. granularity. Therefore, we choose $n=256$ for all experiments in Table~\ref{tab:exp-sparse}.
+
+\input{Table/granularity}
+
+
+
+
+
+% \subsection{More ablation studies with token rounding} \label{sec:appendix:token_rounding_ablation}
+
+\subsection{Ablation study on different rounding subroutines for token rounding} \label{sec:appendix:ablation}
+We conduct ablation studies to study the effect of the different rounding subroutines on the trained MoE by TR. We compare token rounding with nearest rounding (``NR'') on per-expert token counts alongside other rounding methods. Specifically, we compare against stochastic rounding with per-expert token count (``SR''), always round up (``UP''), and always round down (``DOWN''). The results are shown in Table~\ref{tab:exp-ablation} and we find that our token rounding algorithm in general is robust to the specific rounding subroutines. 
+
+Following Algorithm~\ref{alg:token_rounding}, for expert $e$, we denote the expert frequency from the TC sorting as $f_e$, and the last $\tileM$-divisible expert frequency as $\rounddown{f_e}$, and the next $\tileM$-divisible expert frequency as $\roundup{f_e}$. We also denote the expert scores from TC sorting as $s_e$, the expert scores from the selected tokens in $\pi_e[:\rounddown{f_e}]$ as $\rounddown{s_e}$ and the scores for $\pi_e[:\roundup{f_e}]$ as $\roundup{s_e}$. We note that all rounding algorithms only make a \textit{binary decision} between discarding TC tokens and padding EC tokens for each expert. The following are simple heuristics to perform rounding:
+
+\input{algorithm/balance_on_expert_freq}
+
+\begin{itemize}
+    \item \textbf{NR-f: nearest rounding to $\tileM$-multiples via expert frequency}: We pad EC tokens if $\roundup{f_e} - f_e < f_e - \rounddown{f_e}$. ``NR-f'' is our default choice of token rounding and we use it for Table~\ref{tab:exp-sparse},~\ref{tab:exp-T-ablation},~\ref{tab:exp-tileM-ablation}, and Figures~\ref{fig:wasted_flops} and~\ref{fig:token_rounding_speed}.
+
+    \item \textbf{SR-f: stochastic rounding to $\tileM$-multiples via expert frequency}: We sample from $\mathrm{Bernoulli}\left(\dfrac{f_e-\rounddown{f_e}}{\tileM}\right)$ distribution for deciding whether to pad EC tokens for expert $e$.
+
+    \item \textbf{NR-s: nearest rounding to $\tileM$-multiples via expert scores}: We sample from the following distribution for deciding whether to pad EC tokens for expert $e$:
+
+    \vspace{-1.5em}
+    \begin{equation}
+        \mathrm{Bernoulli}\left(\dfrac{\sum_t s_{e,t}- \sum_t \rounddown{s_{e,t}}}{\sum_t \roundup{s_{e,t}} - \sum_t \rounddown{s_{e,t}}}\right)
+    \end{equation}
+
+    \item \textbf{Balance-f: balanced rounding to $\tileM$-multiples via expert frequency}: The Balance algorithm \citep{dwivedi2024kernel,lu2022grab,cooper2023coordinating} can be adapted to ensure the total number of routed tokens to all experts after tile-rounding is preserved regardless of the number of experts $E$. Algorithm~\ref{alg:balance-freq} is such an example that ensures
+
+    \vspace{-2em}
+    \begin{equation}
+        \max_{e\in [E]} \left|\lceil f_e\rfloor_{\tileM} - f_e \right| \leq \tileM/2, \qquad \left|\sum_{e=1}^E\lceil f_e\rfloor_{\tileM} - \sum_{e=1}^E f_e \right| \leq \tileM/2 
+    \end{equation}
+    \vspace{-1em}
+
+    where the other rounding subroutine will have an expected deviation of $O \left( \tileM\sqrt{E} \right)$ for $\sum_{e=1}^E\lceil f_e\rfloor_{\tileM}$.
+
+    \item \textbf{UP: always round up expert frequency as $\roundup{f_e}$}: We always pad EC tokens chosen in the second step of sorting in Algorithm~\ref{alg:token_rounding}. This gives a model TFLOPS lower-bound for Figure~\ref{fig:token_rounding_speed}. 
+
+    \item \textbf{DOWN: always round down expert frequency as $\rounddown{f_e}$}: We always discard TC top-$K$ tokens chosen in the first step of sorting in Algorithm~\ref{alg:token_rounding}. This gives a model TFLOPS upper-bound for Figure~\ref{fig:token_rounding_speed}.
+\end{itemize}
+
+\input{Table/rounding_ablation}
+
+\paragraph{Always discarding TC tokens (``DOWN'').} ``DOWN'' is a baseline in which we always drop the last TC tile if the expert frequency is not $\tileM$-divisible. This idea is similar to the idea of \textit{token dropping} in expert parallelism where the expert will sort and drop the token with the lowest scores when it receives too many tokens \citep{fedus2022switchtransformersscalingtrillion}. We note that ``DOWN'' produces the shortest MoE kernel runtime for any rounding algorithm. However, in Table~\ref{tab:exp-ablation}, we observe that ``DOWN'' yields a much higher validation perplexity than ``NR-f'', ``SR-f'' and ``NR-s''. Although we can expect a shorter MoE kernel runtime by always discarding TC tokens, such quality degradation might not be acceptable in practice.
+
+\paragraph{Always padding EC tokens (``UP'').} ``UP'' is a baseline in which we always pad extra EC tokens to the last TC tile if the expert frequency is not $\tileM$-divisible. Contrary to ``DOWN'', ``UP'' produces the longest MoE kernel runtime for any rounding algorithm. In Table~\ref{tab:exp-ablation}, we find that ``UP'' often produces lower validation perplexity, but the average downstream task accuracy is not necessarily higher than other rounding algorithms. Given the longer MoE kernel runtime but not necessarily better trained MoE quality, we do not recommend the usage of always rounding up. \textit{We speculate this is due to the train-test gap between TC and EC routing and ``UP'' reinforces the bias towards EC more strongly than other TR algorithms.} 
+
+
+For a balance between training efficiency and trained MoE quality, neither always discarding TC tokens nor padding EC tokens is the right solution. In Table~\ref{tab:exp-sparse}, we pick ``NR-f'' as the $\mathrm{round\_and\_sparsify}$ subroutine for TR's main experiments.  
+
+
+\subsection{Ablation study on the effects of microbatch size $T$ and tile size $\tileM$} \label{sec:appendix:ablation-microbatch-tileM}
+
+
+\paragraph{Effect of microbatch size $T$.} Since the token rounding is applied on the microbatch level, the choice of microbatch size $T$ will result in different qualitative results for TR. Note that this also holds true for EC routing. For example, EC over sequence will result in different model quality as EC over a text segment. In Table~\ref{tab:exp-T-ablation}, we vary the microbatch size while keeping the minibatch size (consumed tokens per optimization step) constant. 
+
+We find that TR will preserve its trained MoE quality when $\bar{T}_e/\tileM \ge 2$, but if $\bar{T}_e/\tileM = 1$ (the last row in both subtables), there is a noticeable quality degradation for both validation perplexity and downstream task performance. However, the trained MoE quality with $\bar{T}_e/\tileM = 1$ is still better than training with EC and finetuning with TC top-$K$ routing. 
+
+
+\paragraph{Effect of the tile quantization size $\tileM$.} Similarly in Table~\ref{tab:exp-tileM-ablation}, we can find that TR is generally robust w.r.t. $\tileM$ when $\bar{T}_e/\tileM \geq 2$, and when $\bar{T}_e/\tileM=1$ there is a noticeable degradation but the overall result is still better than EC baseline. 
+
+\input{Table/microbatch-ablation}
+
+
+\input{Table/tileM-ablation}

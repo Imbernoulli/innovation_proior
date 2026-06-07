@@ -1,0 +1,18 @@
+\begin{tabular}{cc|c|ccc}
+    \toprule
+    \multirow{2}{*}{teacher} & \multirow{2}{*}{C} & 
+    \multirow{2}{*}{PNMI} &
+    \multicolumn{3}{c}{dev-other WER (\%)} \\
+    & & & $\alpha = 1.0$ & $\alpha = 0.5$ & $\alpha = 0.0$ \\
+    \midrule\midrule
+    Chenone (supervised top-line)  & 8976 & 0.809 & 10.38 & 9.16 & 9.79 \\
+    \midrule
+    \multirow{3}{*}{K-means on MFCC} 
+    & 50  & 0.227 & 18.68 & 31.07 & 94.60 \\
+    & 100 & 0.243 & 17.86 & 29.57 & 96.37 \\
+    & 500 & 0.276 & 18.40 & 33.42 & 97.66 \\
+    \midrule
+    K-means on \textsc{Base}-it1-layer6 & 500 & 0.637 & 11.91 & 13.47 & 23.29 \\
+    K-means on \textsc{Base}-it2-layer9 & 500 & 0.704 & 10.75 & 11.59 & 13.79 \\
+    \bottomrule
+\end{tabular}

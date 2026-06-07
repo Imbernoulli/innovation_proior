@@ -1,0 +1,71 @@
+
+\newcommand{\trainingTimeMLPorNot}{$1$\xspace}
+\centering
+\setlength{\tabcolsep}{1pt}
+\sffamily
+\small
+\hspace{-1pt}%
+\definecolor{colorA}{rgb}{1.0,0.53,0.53}
+\definecolor{colorB}{rgb}{0.53,0.80,1.00}
+\begin{tabular}{cccc}
+Ours (MLP) & Linear & MLP & Reference \\
+ \makecell{\begin{tikzpicture}
+		\node[anchor=south west, inner sep=0] (image) at (0,0)
+		{\includegraphics[width=0.3912\linewidth]{mlp_or_not/nerf_mlp_spec.png}};
+		\begin{scope}[x={(image.south east)},y={(image.north west)}]
+ \draw[colorA, line width=0.2mm] (0.4461538461538462, 0.8461538461538461) rectangle (0.6430769230769231, 0.6492307692307693);
+ \draw[colorB, line width=0.2mm] (0.49230769230769234, 0.4307692307692308) rectangle (0.6892307692307692, 0.23384615384615381);
+ \draw[black, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+ \end{scope}
+	\end{tikzpicture}} &
+ \makecell{%
+		\begin{tikzpicture}
+			\node[anchor=south west, inner sep=0] (image) at (0,0)
+			{\includegraphics[width=0.18992759999999997\linewidth]{mlp_or_not/inset_linear_0.png}};
+			\begin{scope}[x={(image.south east)},y={(image.north west)}]
+				\draw[colorA, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+			\end{scope}
+		\end{tikzpicture}\\[-1pt]
+		\begin{tikzpicture}
+			\node[anchor=south west, inner sep=0] (image) at (0,0)
+			{\includegraphics[width=0.18992759999999997\linewidth]{mlp_or_not/inset_linear_1.png}};
+			\begin{scope}[x={(image.south east)},y={(image.north west)}]
+				\draw[colorB, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+			\end{scope}
+		\end{tikzpicture}%
+		}
+& \makecell{%
+		\begin{tikzpicture}
+			\node[anchor=south west, inner sep=0] (image) at (0,0)
+			{\includegraphics[width=0.18992759999999997\linewidth]{mlp_or_not/inset_base_0.png}};
+			\begin{scope}[x={(image.south east)},y={(image.north west)}]
+				\draw[colorA, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+			\end{scope}
+		\end{tikzpicture}\\[-1pt]
+		\begin{tikzpicture}
+			\node[anchor=south west, inner sep=0] (image) at (0,0)
+			{\includegraphics[width=0.18992759999999997\linewidth]{mlp_or_not/inset_base_1.png}};
+			\begin{scope}[x={(image.south east)},y={(image.north west)}]
+				\draw[colorB, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+			\end{scope}
+		\end{tikzpicture}%
+		}
+& \makecell{%
+		\begin{tikzpicture}
+			\node[anchor=south west, inner sep=0] (image) at (0,0)
+			{\includegraphics[width=0.18992759999999997\linewidth]{mlp_or_not/inset_reference_0.png}};
+			\begin{scope}[x={(image.south east)},y={(image.north west)}]
+				\draw[colorA, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+			\end{scope}
+		\end{tikzpicture}\\[-1pt]
+		\begin{tikzpicture}
+			\node[anchor=south west, inner sep=0] (image) at (0,0)
+			{\includegraphics[width=0.18992759999999997\linewidth]{mlp_or_not/inset_reference_1.png}};
+			\begin{scope}[x={(image.south east)},y={(image.north west)}]
+				\draw[colorB, line width=0.2mm] (0.0,0.0) rectangle (1.0,1.0);
+			\end{scope}
+		\end{tikzpicture}%
+		}
+
+\end{tabular}
+

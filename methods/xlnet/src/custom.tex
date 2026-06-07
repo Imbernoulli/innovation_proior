@@ -1,0 +1,115 @@
+
+
+% math
+\usepackage{amsmath,amsthm,amsfonts}
+\usepackage{amssymb}
+\usepackage{mathrsfs}
+%\usepackage[mathscr]{euscript}
+\usepackage{mathtools}
+%\usepackage{bm}
+\usepackage{stmaryrd} % llbracket & rrbracket
+\usepackage{colonequals}
+\usepackage{xifthen}
+
+% figure, table, itemize, enumerate
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{booktabs}
+\usepackage[inline]{enumitem}
+\usepackage{caption}
+\usepackage{subcaption}
+%\usepackage[dvipsnames]{xcolor}
+\usepackage{tikz,pgfplots}
+
+% theorem
+% %\theoremstyle{plain}
+\newtheorem{prop}{Proposition}
+\newtheorem{assum}{Assumption}
+\newtheorem{lemma}{Lemma}
+\newtheorem{defi}{Definition}
+\newtheorem{property}{Property}
+\newtheorem{coro}{Corollary}
+
+% script
+%\newcommand{\mb}[1]{\bm{#1}}
+\newcommand{\mb}[1]{\boldsymbol{\mathbf{#1}}}
+\newcommand{\mc}[1]{\mathcal{#1}}
+\newcommand{\mf}[1]{\mathfrak{#1}}
+\newcommand{\ms}[1]{\mathscr{#1}}
+\newcommand{\mbb}[1]{\mathbb{#1}}
+
+% math ops
+\DeclareMathOperator*{\argmax}{argmax\;}
+\DeclareMathOperator*{\argmin}{argmin\;}
+
+% paired delimiter
+\DeclarePairedDelimiter\roundbracket{(}{)}
+\DeclarePairedDelimiter\squarebracket{[}{]}
+\DeclarePairedDelimiter\curlybracket{\{}{\}}
+\makeatletter
+\def\rbr{\@ifnextchar[{\roundbracket}{\roundbracket*}}
+\def\sbr{\@ifnextchar[{\squarebracket}{\squarebracket*}}
+\def\cbr{\@ifnextchar[{\curlybracket}{\curlybracket*}}
+\makeatother
+
+% inlinelist
+\newlist{inlinelist}{enumerate*}{1}
+\setlist*[inlinelist,1]{%
+	label=(\roman*),
+}
+
+% math commands
+\newcommand{\dom}{\mathrm{dom}}
+\newcommand{\diff}{\mathrm{d}}
+\newcommand{\liff}{\ratio\Leftrightarrow}
+
+\newcommand{\set}[1]{\left\{ {#1} \right\}}
+\newcommand{\setgiven}[2]{\left\{{#1} \;\middle|\; {#2} \right\}}
+\newcommand{\seq}[1]{\left[ {#1} \right]}
+\newcommand{\tuple}[1]{\left( {#1} \right)}
+\newcommand{\idx}[1]{\llbracket {#1} \rrbracket}
+\newcommand{\tr}[1]{\mathrm{tr}\left( {#1} \right)}
+\newcommand{\abs}[1]{\left| {#1} \right|}
+\newcommand{\norm}[1]{\left\| {#1} \right\|}
+\newcommand{\diag}[1]{\mathrm{diag}\left({#1}\right)}
+\newcommand{\expon}[1]{e^{ {#1} }}
+\newcommand{\expo}[1]{\exp \left( {#1} \right)}
+\newcommand{\inner}[2]{\left\langle {#1}, {#2} \right\rangle}
+\newcommand{\divg}[3]{{#1}\left({#2} \;\middle\|\; {#3}\right)}
+
+\newcommand{\EXP}[1]{\exp\left({#1}\right)}
+\newcommand{\KL}[2]{\mathrm{KL}\left({#1} \| {#2} \right)}
+\newcommand{\CE}[2]{\mathrm{CE}\left({#1} \| {#2} \right)}
+
+\newcommand{\mx}[1]{\begin{matrix}#1\end{matrix}}
+\newcommand{\pmx}[1]{\begin{pmatrix}#1\end{pmatrix}}
+\newcommand{\bmx}[1]{\begin{bmatrix}#1\end{bmatrix}}
+\newcommand{\smx}[1]{\begin{smallmatrix}#1\end{smallmatrix}}
+\newcommand{\spmx}[1]{\left(\begin{smallmatrix}#1\end{smallmatrix}\right)}
+\newcommand{\sbmx}[1]{\left[\begin{smallmatrix}#1\end{smallmatrix}\right]}
+
+% math notations
+\newcommand{\C}{\mbb{C}}
+\newcommand{\R}{\mbb{R}}
+
+%
+\usepackage{pifont}% http://ctan.org/pkg/pifont
+\newcommand{\cmark}{\ding{51}}%
+\newcommand{\xmark}{\ding{55}}%
+
+\newcommand{\mask}{\texttt{\small [MASK]}}%
+\newcommand{\cls}{\texttt{\small [CLS]}}%
+\newcommand{\sep}{\texttt{\small [SEP]}}%
+\newcommand{\unk}{\texttt{unk}}
+\newcommand{\eos}{\texttt{\small eos}}
+\newcommand{\bos}{\texttt{\small bos}}
+
+
+\newcommand{\red}[1]{{\color{red}#1}}
+\newcommand{\blue}[1]{{\color{blue}#1}}
+\newcommand{\green}[1]{{\color{green}#1}}
+\newcommand{\brown}[1]{{\color{brown}#1}}
+\newcommand{\cyan}[1]{{\color{cyan}#1}}
+\newcommand{\purple}[1]{{\color{purple}#1}}
+\newcommand{\orange}[1]{{\color{orange}#1}}
+\newcommand{\magenta}[1]{{\color{magenta}#1}}

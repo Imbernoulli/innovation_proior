@@ -1,0 +1,232 @@
+\section{Examining Winning Tickets}
+\label{app:examining}
+
+In this Appendix, we examine the structure of winning tickets to gain insight into why winning tickets are able
+to learn effectively even when so heavily pruned.
+Throughout this Appendix, we study the winning tickets from the Lenet architecture trained on MNIST. Unless otherwise stated, we use the same hyperparameters
+as in Section \ref{sec:fc}: glorot initialization and adam optimization.
+
+\subsection{Winning Ticket Initialization (Adam)}
+
+Figure \ref{fig:adam-ticket-init} shows the distributions of winning ticket initializations for four different levels of $P_m$.
+To clarify, these are the distributions of the initial weights of the connections that have survived the pruning process.
+The blue, orange, and green lines show the distribution of weights for the first hidden layer, second hidden layer, and output
+layer, respectively. The weights are collected from five different trials of the lottery ticket experiment, but the distributions
+for each individual trial closely mirror those aggregated from across all of the trials. The histograms have been normalized so that
+the area under each curve is 1.
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_init_normalized0}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_init_normalized4}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_init_normalized8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_init_normalized12}
+\caption{The distribution of initializations in winning tickets pruned to the levels specified in the titles of each plot.
+The blue, orange, and green lines show the distributions for the first hidden layer, second hidden layer, and output layer of the
+Lenet architecture for MNIST when trained with the adam optimizer and the hyperparameters used in \ref{sec:fc}. The distributions
+have been normalized so that the area under each curve is 1.}
+\label{fig:adam-ticket-init}
+\end{figure}
+
+The left-most graph in Figure \ref{fig:adam-ticket-init} shows the initialization distributions for the unpruned networks. We use
+glorot initialization, so each of the layers has a different standard deviation. As the network is pruned, the first hidden layer
+maintains its distribution. However, the second hidden layer and the output layer become increasingly bimodal, with peaks on
+either side of 0. Interestingly, the peaks are asymmetric: the second hidden layer has more positive initializations remaining than
+negative initializations, and the reverse is true for the output layer.
+
+The connections in the second hidden layer and output layer that survive the pruning process
+tend to have higher magnitude-initializations.
+Since we find winning tickets by pruning the connections with the lowest magnitudes in each layer at the \emph{end},
+the connections with the lowest-magnitude initializations must still have the lowest-magnitude weights at the end of training.
+A different trend holds for the input layer: it maintains its distribution, meaning a connection's initialization has less relation
+to its final weight.
+
+\subsection{Winning Ticket Initializations (SGD)}
+
+We also consider the winning tickets obtained when training the network with SGD learning rate 0.8 (selected as described in Appendix \ref{app:mnist}).
+The bimodal distributions from Figure
+\ref{fig:adam-ticket-init} are present across all layers (see Figure \ref{fig:sgd-ticket-init}.
+The connections with the highest-magnitude initializations are more likely to survive the pruning process, meaning winning ticket
+initializations have a bimodal distribution with peaks on opposite sides of 0. Just as with the adam-optimized winning tickets, these
+peaks are of different sizes, with the first hidden layer favoring negative initializations and the second hidden layer and output layer
+favoring positive initializations. Just as with the adam results, we confirm that each individual trial evidences the same
+asymmetry as the aggregate graphs in Figure \ref{fig:sgd-ticket-init}.
+
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_init_normalized0}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_init_normalized4}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_init_normalized8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_init_normalized12}
+\caption{Same as Figure \ref{fig:adam-ticket-init} where the network is trained with SGD at rate 0.8.}
+\label{fig:sgd-ticket-init}
+\end{figure}
+
+\subsection{Reinitializing from Winning Ticket Initializations}
+Considering that the initialization distributions of winning tickets $\mathcal{D}_m$ are so different from the Gaussian distribution $\mathcal{D}$ used to initialize the unpruned network,
+it is natural to ask whether randomly reinitializing winning tickets from $\mathcal{D}_m$ rather than $\mathcal{D}$ will improve winning ticket performance.
+We do not find this to be the case. Figure \ref{fig:sample-from-same-ticket} shows
+the performance of winning tickets whose initializations are randomly sampled from the distribution of initializations contained in the winning tickets for adam.
+More concretely, let
+$\mathcal{D}_m = \{\theta_0^{(i)} | m^{(i)} = 1 \}$ be the set of initializations found in the winning ticket with mask $m$. We sample a new set of parameters
+$\theta'_0 \sim \mathcal{D}_m$ and train the network $f(x; m \odot \theta'_0)$. We perform this sampling on a per-layer basis. The results of this experiment are in
+Figure \ref{fig:sample-from-same-ticket}. Winning tickets reinitialized from $\mathcal{D}_m$ perform little better than when randomly reinitialized from $\mathcal{D}$.
+We attempted the same experiment with the SGD-trained winning tickets and found similar results.
+
+
+\begin{figure}
+\centering
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/sample_from_same_ticket_vanilla/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/sample_from_same_ticket_vanilla/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/sample_from_same_ticket_vanilla/accuracy}
+\caption{The performance of the winning tickets of the Lenet architecture for MNIST when the layers are randomly reinitialized from the distribution of
+initializations contained in the winning ticket of the corresponding size.}
+\label{fig:sample-from-same-ticket}
+\end{figure}
+
+\subsection{Pruning at Iteration 0}
+
+One other way of interpreting the graphs of winning ticket initialization distributions is as follows: weights that begin small stay small, get pruned, and never
+become part of the winning ticket. (The only exception to this characterization is the first hidden layer for the adam-trained winning tickets.) If this is the case, then
+perhaps low-magnitude weights were never important to the network and can be pruned from the very beginning. Figure \ref{fig:prune-at-iteration-zero} shows the
+result of attempting this pruning strategy. Winning tickets selected in this fashion perform even worse than when they are found by iterative pruning and randomly reinitialized.
+We attempted the same experiment with the SGD-trained winning tickets and found similar results.
+
+\begin{figure}
+\centering
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/prune_early_vanilla/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/prune_early_vanilla/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/prune_early_vanilla/accuracy}
+\caption{The performance of the winning tickets of the Lenet architecture for MNIST when magnitude pruning is performed before the network is ever trained. The
+network is subsequently trained with adam.}
+\label{fig:prune-at-iteration-zero}
+\end{figure}
+
+\subsection{Comparing Initial and Final Weights in Winning Tickets}
+
+In this subsection, we consider winning tickets in the context of the larger optimization process. To do so, we examine the initial and final weights of the unpruned network
+from which a winning ticket derives to determine whether weights that will eventually comprise a winning ticket exhibit properties that distinguish them from the rest
+of the network.
+
+We consider the magnitude of the difference between initial and final weights. One possible rationale for the success of winning tickets is that they already
+happen to be close to the optimum that gradient descent eventually finds, meaning that winning ticket weights
+should change by a smaller amount than the rest of the network. Another
+possible rationale is that winning tickets are well placed in the optimization landscape for gradient descent to optimize productively, meaning that winning ticket weights
+should change by a larger amount than the rest of the network. Figure \ref{fig:magnitude-of-change} shows that winning ticket weights tend to change by a larger amount
+then weights in the rest of the network, evidence that does not support the rationale that winning tickets are already close to the optimum.
+
+It is notable that such a
+distinction exists between the two distributions. One possible explanation for this distinction is that the notion of a winning
+ticket may indeed be a natural part of neural network optimization. Another is that magnitude-pruning biases the winning tickets we find toward those
+containing weights that change in the direction of higher magnitude.
+Regardless, it offers hope that winning tickets may be discernible earlier in the training process (or after
+a single training run), meaning that there may be more efficient methods for finding winning
+tickets than iterative pruning.
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/layer0_w/magnitude/legend_histogram_difference8}
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/layer0_w/magnitude/histogram_difference8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/layer1_w/magnitude/histogram_difference8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/output_w/magnitude/histogram_difference8}
+\caption{Between the first and last training iteration of the unpruned network, the magnitude by which weights in the network change. The blue line shows the distribution of magnitudes for weights
+that are not in the eventual winning ticket; the orange line shows the distribution of magnitudes for weights that are in the eventual winning ticket.}
+\label{fig:magnitude-of-change}
+\end{figure}
+
+Figure \ref{fig:direction-of-change} shows the directions of these changes. It plots the difference between the magnitude of the final weight and the magnitude of the
+initial weight, i.e., whether the weight moved toward or away from 0. In general, winning ticket weights are more likely to increase in magnitude (that is, move away from 0)
+than are weights that do not participate in the eventual winning ticket.
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/layer0_w/direction/legend_histogram_difference8}
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/layer0_w/direction/histogram_difference8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/layer1_w/direction/histogram_difference8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/output_w/direction/histogram_difference8}
+\caption{Between the first and last training iteration of the unpruned network, the magnitude by which weights move away from 0.
+The blue line shows the distribution of magnitudes for weights
+that are not in the eventual winning ticket; the orange line shows the distribution of magnitudes for weights that are in the eventual winning ticket.}
+\label{fig:direction-of-change}
+\end{figure}
+
+
+\subsection{Winning Ticket Connectivity}
+
+In this Subsection, we study the connectivity of winning tickets. Do some hidden units retain a large number of incoming connections while others fade away,
+or does the network retain
+relatively even sparsity among all units as it is pruned? We find the latter to be the case when examining the incoming
+connectivity of network units: for both adam and SGD, each unit retains a number of incoming connections
+approximately in
+proportion to the amount by which the overall layer has been pruned. Figures \ref{fig:adam-ticket-connectivity} and \ref{fig:sgd-ticket-connectivity} show the fraction of
+incoming connections that survive the pruning process for each node in each layer. Recall that we prune the output layer at half the rate as the rest of the network,
+which explains why it has more connectivity than the other layers of the network.
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_connectivity_incoming4}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_connectivity_incoming8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_connectivity_incoming12}
+\caption{The fraction of incoming connections that survive the pruning process for each node in each layer of the Lenet architecture for MNIST as trained with adam.}
+\label{fig:adam-ticket-connectivity}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_connectivity_incoming4}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_connectivity_incoming8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_connectivity_incoming12}
+\caption{Same as Figure \ref{fig:adam-ticket-connectivity} where the network is trained with SGD at rate 0.8.}
+\label{fig:sgd-ticket-connectivity}
+\end{figure}
+
+However, this is not the case for the outgoing connections. To the contrary, for the adam-trained networks, certain units retain far more outgoing connections than others
+(Figure \ref{fig:adam-ticket-connectivity-outgoing}). The distributions are far less smooth
+than those for the incoming connections, suggesting that certain features are far more
+useful to the network than others. This is not unexpected for a fully-connected network on a task like MNIST, particularly for the input layer: MNIST images contain centered
+digits, so the pixels around the edges are not likely to be informative for the network. Indeed, the input layer has two peaks, one larger peak for input units with a high number of outgoing
+connections and one smaller peak for input units with a low number of outgoing connections.
+Interestingly, the adam-trained winning tickets develop a much more uneven
+distribution of outgoing connectivity for the input layer than does the SGD-trained network (Figure \ref{fig:sgd-ticket-connectivity-outgoing}).
+
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_connectivity_outgoing4}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_connectivity_outgoing8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/vanilla/histogram_connectivity_outgoing12}
+\caption{The fraction of outgoing connections that survive the pruning process for each node in each layer of the Lenet architecture for MNIST as trained with adam.
+The blue, orange, and green lines are the outgoing connections from the input layer, first hidden layer, and second hidden layer, respectively.}
+\label{fig:adam-ticket-connectivity-outgoing}
+\end{figure}
+
+\begin{figure}
+\centering
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_connectivity_outgoing4}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_connectivity_outgoing8}%
+\includegraphics[width=.25\textwidth]{graphs/mnist/lenet/sgd_rate_sweep/histogram_connectivity_outgoing12}
+\caption{Same as Figure \ref{fig:adam-ticket-connectivity-outgoing} where the network is trained with SGD at rate 0.8.}
+\label{fig:sgd-ticket-connectivity-outgoing}
+\end{figure}
+
+\subsection{Adding Noise to Winning Tickets}
+
+In this Subsection, we explore the extent to which winning tickets are robust to Gaussian noise added to their initializations. In the main body of the paper,
+we find that randomly reinitializing a winning ticket substantially slows its learning and reduces its eventual test accuracy. In this Subsection, we study a less
+extreme way of perturbing a winning ticket. Figure \ref{fig:adam-noise} shows the effect of adding Gaussian noise to the winning ticket initializations. The standard
+deviation of the noise distribution of each layer is a multiple of the standard deviation of the layer's initialization Figure \ref{fig:adam-noise} shows noise distributions
+with standard deviation $0.5\sigma$, $\sigma$, $2\sigma$, and $3\sigma$. Adding Gaussian noise reduces the test accuracy of a winning ticket and slows its ability to learn, again
+demonstrating the importance of the original initialization. As more noise is added, accuracy decreases.
+However, winning tickets are surprisingly robust to noise. Adding noise of $0.5\sigma$ barely changes winning ticket accuracy.
+Even after adding noise of $3\sigma$, the winning tickets continue to outperform the random reinitialization experiment.
+
+\begin{figure}
+\centering
+\includegraphics[width=.8\textwidth]{graphs/mnist/lenet/noise/legend}
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/noise/iteration}%
+\includegraphics[width=.5\textwidth]{graphs/mnist/lenet/noise/accuracy}
+\caption{The performance of the winning tickets of the Lenet architecture for MNIST when Gaussian noise is added to the initializations. The standard deviations of
+the noise distributions for each layer are a multiple of the standard deviations of the initialization distributions; in this Figure, we consider multiples 0.5, 1, 2, and 3.}
+\label{fig:adam-noise}
+\end{figure}

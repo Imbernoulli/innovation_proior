@@ -1,0 +1,92 @@
+\section{Related Work}
+
+Our work builds upon a rich line of recent research on graph neural networks and graph classification. 
+
+\xhdr{General graph neural networks}
+A wide variety of graph neural network (GNN) models have been proposed in recent years, including methods inspired by convolutional neural networks \cite{Bru+2014,Def+2015,Duv+2015,hamilton2017inductive,kipf2017semi,Lei+2017,niepert2016learning, Vel+2018}, recurrent neural networks \cite{Li+2016}, recursive neural networks~\cite{bianchini2001,Sca+2009} and loopy belief propagation \cite{dai2016discriminative}. 
+Most of these approaches fit within the framework of ``neural message passing'' proposed by Gilmer \etal~\cite{Gil+2017}. 
+%\chris{For completeness we should also add the  earlier work of~\cite{Sca+2009}, he had these ideas seven years earlier}
+In the message passing framework, a GNN is viewed as a message passing algorithm where node representations are iteratively computed from the features of their neighbor nodes using a differentiable aggregation function.
+Hamilton \etal~\cite{Ham+2017a} provides a conceptual review of recent advancements in this area, and Bronstein \etal \cite{bronstein2017geometric} outlines connections to spectral graph convolutions. 
+
+\xhdr{Graph classification with graph neural networks}
+GNNs have been applied to a wide variety of tasks, including node classification \cite{hamilton2017inductive,kipf2017semi}, link prediction \cite{kipf2018}, graph classification \cite{dai2016discriminative,Duv+2015,zhang2018end}, and chemoinformatics~\cite{Mer+2005,Lus+2013,Fou+2017,Jin+2018,Sch+2017}. 
+In the context of graph classification---the task that we study here---a major challenge in applying GNNs is going from node embeddings, which are the output of GNNs, to a representation of the entire graph. 
+Common approaches to this problem include simply summing up or averaging all the node embeddings in a final layer \cite{Duv+2015}, introducing a ``virtual node'' that is connected to all the nodes in the graph \cite{Li+2016}, or aggregating the node embeddings using a deep learning architecture that operates over sets \cite{Gil+2017}.
+However, all of these methods have the limitation that they do not learn hierarchical representations (i.e., all the node embeddings are globally pooled together in a single layer), and thus are unable to capture the natural structures of many real-world graphs.
+Some recent approaches have also proposed applying CNN architectures to the concatenation of all the node embeddings \cite{niepert2016learning,zhang2018end}, but this requires a specifying (or learning) a canonical ordering over nodes, which is in general very difficult and equivalent to solving graph isomorphism. 
+
+Lastly, there are some recent works that learn hierarchical graph representations by combining GNNs with deterministic graph clustering algorithms \cite{Def+2015,simonovsky2017dynamic,Fey+2018}, following a two-stage approach. However, unlike these previous approaches, we seek to {\em learn} the hierarchical structure in an end-to-end fashion, rather than relying on a deterministic graph clustering subroutine.
+
+%\xiang{should we very briefly include some discussion about other methods like graph kernels for graph classification?}
+%\will{I don't think so, but give it a shot if you want. I am fixing other setctions. We cite kernels in the experiments. I mean, we could add cites here, but it should be an xhdr with one our to sentences just citing a review paper on kernel methods and maybe one or to other general graph classification stuff.}
+%\chris{Missing some work of T. Jakkola's group, he had at least two NIPS and one ICML papers}
+
+\cut{
+% Will: Let's try to move some of this to related work
+\rex{need to be removed probably. there are some points i think are important which is not illustrated in related work}
+To achieve this task. recent works have made several attempts.
+Recent attempts include the use of linearization of graphs. A graph can be linearized to a vector representation using ``canonical ordering'' \cite{niepert2016learning}. Pooling or striding is easy to carry out on the 1D representation. However, it is non-trivial to specify a canonical ordering that also preserves graph structure. For example, nodes that are distant in graph might be adjacent to each other in the linearized representation.
+
+Another intuitive pooling strategy is to pool using a graph clustering or coarsening strategy \cite{safro2015advanced}, which can be applied hierarchically and produce coarser and coarser graphs.
+However, a variety of clustering and coarsening strategies have been designed, and significant hand-engineering is required to find the best strategy for a specific classification task at hand.
+}
+
+
+
+\cut{
+\xhdr{Graph kernels}
+
+In recent years, various graph kernels have been proposed, which
+implicitly or explicitly map graphs to a Hilbert space. Gärtner \etal\cite{Gae+2003}
+and Kashima \etal~\cite{Kas+2003} simultaneously proposed
+graph kernels based on random walks, which count the number of walks
+two graphs have in common. Since then, random walk kernels have been
+studied intensively, e.g., see~\cite{Sug+2015}.
+Kernels based on shortest paths were first proposed in~\cite{Borgwardt2005}.
+
+A different line in the development of graph kernels focused
+particularly on scalable graph kernels. These kernels are typically
+computed efficiently by explicit feature maps, which allow to bypass
+the computation of a gram matrix, and allow applying scalable linear
+classification algorithms. Prominent examples are kernels based on
+subgraphs up to a fixed size, so called
+{graphlets}~\cite{She+2009}. Other approaches of this category encode
+the neighborhood of every node by different techniques, e.g.,
+see~\cite{Hid+2009, Neu+2016}, and most notably the
+Weisfeiler-Lehman subtree kernel~\cite{She+2011} and its higher-order
+variants~\cite{Mor+2017}. Subgraph and Weisfeiler-Lehman kernels have
+been successfully employed within frameworks for smoothed and deep
+graph kernels~\cite{Yan+2015,Yan+2015a}. Recent developments include
+assignment-based approaches~\cite{kriege2016valid,Nik+2017,Joh+2015} and
+spectral approaches~\cite{Kon+2016}. Although graph kernels have shown good performance in the past, they lack the ability to adapt to they give data distribution at hand, since they mostly rely on precomputed features. Moreover, they may not scale to large data sets due to the quadratic overhead to compute the gram matrix. 
+
+Niepert \etal~\cite{niepert2016learning} extracted canonical vector representations of neighborhoods of nodes,  based on heuristics such as the Weisfeiler-Lehman algorithm~\cite{She+2011}, to compute a graph embeddings and then used neural networks for the classification task. Moreover, recently graph neural networks (GNN) for node and graph classification became popular. Most of these
+approaches fit into the framework proposed by~\cite{Gil+2017}. Here a GNN is viewed as a message passing approach where node
+features are iteratively computed from the features of the
+node's neighbors by using a differentialable neighborhood aggregation function. The parameters of this function are 
+learned together with the parameters of the neural network used for the
+classification task in an end-to-end fashion. Up to now, naïve global mean pooling or precomputed clustering methods were applied to compute graph embeddings from the features of each single node.
+
+Notable instances of this model include Neural
+Fingerprints~\cite{Duv+2015}, Gated Graph Neural
+Networks~\cite{Li+2016}, and spectral approaches proposed
+in~\cite{Bru+2014,Def+2015,kipf2017semi}. Dai \etal\cite{dai2016discriminative}
+proposed an approach inspired by mean-field inference
+and Lei \etal\cite{Lei+2017} showed that the generated
+feature maps lie in the same Hilbert space as some popular graph
+kernels and successfully applied them in the domain of
+chemoinformatics~\cite{Jin+2018}. In~\cite{simonovsky2017dynamic} GNN were extended to include edge features and various precomputed pooling heuristics based on clustering methods were applied. Attention-based extensions were explored in~\cite{Vel+2018}. In order to make GNNs scale to large graphs Hamilton \etal\cite{hamilton2017inductive} and Chen \etal\cite{Che+2018} devised stochastic versions of GNNs. Recently, a differentiable pooling mechanism to compute graph embeddings based on node features using differentiable sorting was proposed~\cite{zhang2018end}.
+
+Moreover, GNNs were applied for protein-protein
+interaction prediction~\cite{Fou+2017} and quantum interactions in
+molecules~\cite{Sch+2017}. An approach for unsupervised learning based
+on GNNs was presented in~\cite{Gar+2017}. Early
+approaches were published in~\cite{Mer+2005} and~\cite{Sca+2009,
+Sca+2009a}. A survey can be found in~\cite{Ham+2017a}.
+
+}
+
+
+
+

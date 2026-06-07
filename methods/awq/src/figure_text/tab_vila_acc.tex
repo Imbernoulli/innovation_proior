@@ -1,0 +1,18 @@
+\begin{table*}
+    \setlength{\tabcolsep}{5pt}
+    \small
+    \centering
+\begin{tabular}{@{}lccccccccccc@{}}
+\toprule
+\textbf{Model (Accuracy$\uparrow$)} & VQAv2 & GQA & VizWiz & SQA-I & VQA-T & POPE & MME & MMB & SEED & llava-bench & MM-Vet \\
+\midrule
+VILA-7B           & 80.3 & 63.1 & 59.6   & 68.0  & 62.6  & 86.3  & 1489.4 & 69.8	   & 61.7 & 75.2        & 35.1   \\
+VILA-7B-AWQ       & 80.1 & 63.0 & 57.8   & 68.0  & 61.9  & 85.3  & 1486.3 & 68.8   & 61.3 & 75.8        & 35.9   \\
+VILA-13B          & 80.5 & 63.6 & 63.1   & 70.5  & 64.0  & 86.3  & 1553.6 & 73.8   & 62.8 & 78.3        & 42.6   \\
+VILA-13B-AWQ      & 80.4 & 63.6 & 63.0   & 71.2  & 63.5  & 87.0  & 1552.9 & 73.6   & 62.2 & 77.6        & 42.0   \\
+\bottomrule
+\end{tabular}
+\caption{INT4-g128 results of VILA-7B and VILA-13B~\cite{lin2023vila} on 11 visual-language benchmarks. \methodshort consistently shows lossless performance on all benchmarks. Benchmark names are abbreviated due to space limits. VQA-v2~\cite{goyal2017vqav2}; GQA~\cite{hudson2019gqa}; VisWiz~\cite{gurari2018vizwiz}; SQA$^\text{I}$: ScienceQA-IMG~\cite{lu2022learn}; VQA$^\text{T}$: TextVQA~\cite{singh2019textvqa}; POPE~\cite{li2023pope}; MME~\cite{fu2023mme}; MMB: MMBench~\cite{liu2023mmbench}; MMB$^\text{CN}$: MMBench-Chinese~\cite{liu2023mmbench}; SEED: SEED-Bench~\cite{li2023seed}; LLaVA$^\text{W}$: LLaVA-Bench (In-the-Wild)~\cite{liu2023llava}; MM-Vet~\cite{yu2023mmvet}.}
+\label{tab:vila_acc}
+
+\end{table*}

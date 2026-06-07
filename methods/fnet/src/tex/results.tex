@@ -1,0 +1,170 @@
+\section{Results}
+\label{sec:results}
+
+
+\subsection{Transfer learning}
+\label{subsec:transfer_learning}
+
+\begin{table}
+    \caption{Number of mixing layer operations (forward pass) and learnable parameters, excluding any task specific output projection layers. $n$ is the sequence length and $d_{h}$ is the model hidden dimension. The mixing layer operations are given on a per layer basis.}
+    \label{tab:model_params}
+    \centering
+    \setlength{\tabcolsep}{3pt}
+    \begin{tabular}{l | c | c  c}
+        \hline
+         & Mixing layer ops & \multicolumn{2}{c}{Model params} \\ 
+         Model & (per layer) & Base & Large \\  \hline \hline
+         BERT & $2 n^2 d_{h} + 4 n d_{h}^2$ & $112$M & $339$M \\
+         Linear & $n^2 d_{h} + n d_{h}^2$ & $94$M & $269$M \\
+         FNet (mat) & $n^2 d_{h} + n d_{h}^2$ & $83$M & $238$M \\
+         FNet (FFT) & $n d_{h} \log(n) +$ & $83$M & $238$M \\
+         & $n d_{h}\log(d_{h})$ & \\
+         Random & $n^2 d_{h} + nd_{h}^2$ & $83$M & $238$M \\
+         FF-only & $0$ & $83$M & $238$M \\ \hline
+    \end{tabular} 
+\end{table}
+
+\begin{table*}[tb]
+    \caption{GLUE Validation results on TPUs, after finetuning on respective tasks. We report the mean of accuracy and F1 scores for QQP and MRPC, Spearman correlations for STS-B and accuracy scores for all other tasks. The MNLI metrics are reported by the match/mismatch splits.
+    Average scores exclude any failure cases. After controlling for batch size and training steps, the GPU metrics (not shown) are similar.}
+    \label{tab:glue}
+    \centering
+    \begin{tabular}{l| c c c c c c c c | c}
+        \hline
+         Model  & MNLI & QQP & QNLI & SST-2 & CoLA & STS-B & MRPC & RTE & Avg. \\ \hline \hline
+         BERT-Base & \textbf{84/81} & \textbf{87} & \textbf{91} & 93 & 73 & \textbf{89} & \textbf{83} & \textbf{69} & \textbf{83.3} \\
+         Linear-Base & 74/75 & 84 & 80 & 94 & 67 & 67 & 83 & 69 & 77.0 \\
+         FNet-Base & 72/73 & 83 & 80 & \textbf{95} & 69 & 79 & 76 & 63 & 76.7 \\
+         Random-Base & 51/50 & 70 & 61 & 76 & 67 & 4 & 73 & 57 & 56.6 \\
+         FF-only-Base & 34/35 & 31 & 52 & 48 & 67 & FAIL & 73 & 54 & \ 49.3 \\ 
+         FNet-Hybrid-Base & 78/79 & 85 & 88 & 94 & \textbf{76} & 86 & 79 & 60 & 80.6 \\ \hline
+         BERT-Large & \textbf{88/88} & \textbf{88} & \textbf{92} & \textbf{95} & 71 & \textbf{88} & 86 & 66 & \textbf{84.7} \\
+         Linear-Large & 35/36 & 84 & 80 & 79 & 67 & 24 & 73 & 60 & 59.8 \\
+         FNet-Large & 78/76 & 85 & 85 & 94 & 78 & 84 & \textbf{88} & 69 & 81.9 \\
+         FNet-Hybrid-Large & 79/80 & 87 & 89 & 92 & \textbf{81} & \textbf{88} & 86 & \textbf{70} & 83.6 \\ \hline
+    \end{tabular}
+\end{table*}
+
+We compare FNet and Transformer architectures in a common transfer learning setting. For a fuller picture, we compare multiple models (see Table \ref{tab:model_params} for parameter counts in ``Base'' configuration): 
+\begin{itemize}
+    \item BERT-Base: a Transformer encoder model.
+    \item FNet encoder: we replace every self-attention sublayer with a Fourier sublayer.
+    \item Linear encoder: we replace each self-attention sublayer with a two learnable, dense, linear sublayers, one applied to the hidden dimension and one to the sequence dimension.
+    \item Random encoder: we replace each self-attention sublayer with a two constant random matrices, one applied to the hidden dimension and one applied to the sequence dimension.
+    \item Feed Forward-only (FF-only) encoder: we completely remove the self-attention sublayer; so that this model has no token mixing.
+\end{itemize}
+
+
+Despite its simplicity, the Linear baseline turns out to be surprisingly accurate and fast. Our Linear model is similar to the MLP-Mixer \citep{tolstikhin2021mlp} (for vision) and also the Random Synthesizer \citep{tay2020synthesizer}, but simplifies the latter model further by removing the multiple heads and softmax projections, resulting in just two matrix multiplications in the mixing sublayer. 
+% In our limited cursory experiments, we found no major accuracy benefits from the softmax or multiple head projections, although they did result in slightly decreased training speeds.
+
+It is reasonable to expect that the Linear encoder, which uses densely parameterized mixing layers, will learn more flexibly than FNet, which uses parameter-free mixing layers. As we will show, although the Linear-Base model outperforms FNet-Base slightly on GLUE ($0.3$ points), it has several efficiency drawbacks relative to FNet: it has a much larger memory footprint (see Table \ref{tab:lra_training_speed}), it is slower to train on regular $512$ sequence lengths (see Table \ref{tab:pretrain_speed}), and scales significantly worse on long sequence lengths (see Tables \ref{tab:lra_training_speed}-\ref{tab:lra_inference_speeds}).\footnote{On the other hand, the smaller sized Linear models do generally perform well on $512$ sequence lengths; see Figure \ref{fig:gpu_speed_accuracy}.} We also found that Linear-Large was more difficult to train due to gradient blow up (see ``Large'' scores in Table \ref{tab:glue}).
+
+\begin{table*}[tb]
+    \caption{Pre-training and inference speeds in milliseconds per batch of 64 examples on GPU ($8$ V100 chips) and 256 examples on TPU ($4\times4$ v3 chips), alongside GFLOPS for a forward pass of a single example. Speed-up multipliers relative to BERT are given in parentheses.}
+    \label{tab:pretrain_speed}
+    \centering
+    \begin{tabular}{l | c c | c c | c}
+        \hline
+         & \multicolumn{2}{c|}{Pre-training} & \multicolumn{2}{c|}{Inference} & GFLOPS  \\  
+         Model & GPU & TPU & GPU & TPU & /example \\ \hline \hline
+         BERT-Base & 305 & 213 & 82  & 32 & 98 \\
+         Linear-Base & 199 (1.5x) & 149 (1.4x) & 52 (1.6x)  & 20 (1.6x) & 71 (73\%) \\
+         FNet-Base & 169 (1.8x) & 128 (1.7x) & 46 (1.8x) & 23 (1.4x) & 62 (63\%) \\
+         Random-Base & 182 (1.7x) & 130 (1.6x) & 52 (1.6x) & 22 (1.4x) & 71 (73\%) \\
+         FF-only-Base & \textbf{162 (1.9x)} & \textbf{118 (1.8x)} & \textbf{43 (1.9x)} & \textbf{16 (2.0x)} & \textbf{59 (60\%)} \\
+         FNet-Hybrid-Base & 198 (1.5x) & 149 (1.4x) & 51 (1.6x) & 24 (1.3x) & 68 (69\%) \\ \hline
+         BERT-Large & OOM & 503 & 263 & 111 & 337 \\
+         Linear-Large & 592 & 397 (1.3x) & 170 (1.5x) & 108 (1.0x) & 247 (73\%) \\
+         FNet-Large & \textbf{511} & \textbf{275 (1.8x)} & \textbf{149 (1.8x)} & \textbf{82 (1.4x)} & \textbf{217 (64\%)} \\ 
+         FNet-Hybrid-Large & 541 & 294 (1.7x) & 157 (1.7x) & 84 (1.3x) & 227 (67\%)\\ \hline
+    \end{tabular}
+\end{table*}
+
+We adopt the same fixed ``Base'' and ``Large'' model and training configurations as for the original BERT \citep{devlin2018bert}, except that we pre-train on the much larger C4 dataset \citep{raffel2019exploring} and use a $32000$ SentencePiece vocabulary model \citep{kudo2018sentencepiece} (see Appendix \ref{app:mlm} for full pre-training details). For fine-tuning on the GLUE benchmark \citep{wang2018glue}, we found that different BERT runs with the same base learning rate could yield slightly different results. Consequently, for the Base (Large) models, we performed 3 (6) trials, respectively, for each base learning rate and reported the best result across all experiments. This reflects our observation that BERT-Large was less stable than BERT-Base, as noted in \citet{devlin2018bert}.
+
+We report the results for the best base learning rate (no early stopping) on the GLUE Validation split in Table \ref{tab:glue}.\footnote{WNLI is excluded in \citet{devlin2018bert}. BERT’s accuracy on WNLI is below baseline, unless a special training recipe is used. See also (12) in \url{https://gluebenchmark.com/faq.}}
+For Base models, results mirror the pre-training metrics (see Appendix \ref{app:mlm}): BERT performs best. FNet and the Linear model both  underperform BERT by $7.5-8\%$. Referring to Table \ref{tab:pretrain_speed}, we see that although less accurate, FNet trains significantly faster than BERT -- $80\%$ faster on GPUs and $70\%$ faster on TPUs -- and performs $63\%$ of BERT's FLOPS. Measured in isolation, the Fourier sublayers perform forward and backward passes an order of magnitude faster than the self-attention sublayers (see Appendix \ref{app:mixing_speeds}), but FNet's overall training speed is impeded by the feed-forward sublayers that all models share.
+
+\begin{figure*}[tb]
+    \centering
+    \includegraphics[width=\textwidth]{figures/gpu_speed_accuracy.png}
+    \caption{
+    Speed-accuracy trade-offs for GPU pre-training. The dashed line shows the Pareto efficiency frontier, indicating the best trade-offs. For smaller models (faster training speeds; left-hand side of figure), the FNet (yellow squares) and Linear (red triangles) models define the frontier, while for larger models (slower training speeds; right-hand side of figure), BERT (blue circles) and FNet-Hybrid (green stars) define the frontier.}
+    \label{fig:gpu_speed_accuracy}
+\end{figure*}
+
+Returning to Table \ref{tab:glue}: the FF-only model severely underperforms all other models: as expected, token mixing is critical to the expressivity of the model. For example, $50\%$ accuracy scores on the binary classification tasks (QNLI, SST-2, RTE), indicate that the model fails to learn the tasks. The weak accuracy of the Random model suggests that not just any mixing will do; rather, a structured mixing is required. We also include metrics from a hybrid FNet attention model. In the hybrid model, we replace the final two Fourier sublayers of FNet with self-attention sublayers -- other configurations are possible, but we generally found that replacing the final layers worked best; see Appendix \ref{app:hybrid_ablations}. With the addition of just two self-attention sublayers, the hybrid FNet models achieve $97\%$ and $99\%$ of their respective BERT counterpart's accuracies with only limited speed degradations (see Table \ref{tab:pretrain_speed}).
+
+Interestingly, the gap between BERT and FNet shrinks to just $3\%$ for Large models; this is likely due to FNet-Large being more stable during training than BERT-Large.\footnote{\citet{devlin2018bert} obtain a roughly $2.5$ average point boost on the \emph{Test} split going from BERT-Base to BERT-Large. We only see a roughly $1.5$ boost on the \emph{Validation} split, which may be due to reduced headroom.} The Linear-Large model severely underperforms its Base counterpart on GLUE benchmark due to training instabilities. We generally found that the Linear model and BERT were less stable than the models with no parameters in their mixing sublayers, namely the FNet, Random and FF-only models.
+
+The speed vs MLM accuracy curve for GPU ($8$ V100 chips) pre-training is shown in Figure \ref{fig:gpu_speed_accuracy} (see Appendix \ref{app:tpu} for TPU results). Both TPU and GPU models are trained for $1$ million steps as in \citet{devlin2018bert}. Motivated by the models considered in \citet{turc2019well}, we evaluated several model sizes; see Table \ref{tab:model_sizes} in Appendix \ref{app:mlm}. We found that the smaller model architectures benefited from larger learning rates, so we select the best result using $10^{-3}$ and $10^{-4}$ for all models.\footnote{We have opted to compare FNet with Transformer models as the latter are the most commonly used models in NLP transfer learning settings. It would also be interesting to compare FNet with convolutional-based models, although, to our knowledge, such models have only recently found limited success in pre-training NLP setups \citep{tay2021pre}; and even there, the authors did not consider the small model regime.}
+
+
+\begin{table*}[tb]
+    \caption{Accuracy, inference speed and memory usage results on the Long-Range Arena (LRA) benchmark.}
+    \label{tab:lra}
+    \begin{subtable}[t]{\textwidth}
+    \centering
+    \begin{tabular}{l | c c c c c c | c}
+        \hline
+         Model & ListOps & Text & Retrieval & Image & Pathfinder & Path-X & Avg.  \\ \hline \hline
+         Transformer (ours) & {36.06} & 61.54 & \textbf{59.67} & {41.51} & 80.38 & OOM & \textbf{55.83}  \\ 
+         Linear (ours) & 33.75 & 53.35 & 58.95 & 41.04 & \textbf{83.69} & FAIL & 54.16 \\
+         FNet (ours) & 35.33 & {65.11} & 59.61 & 38.67 & 77.80 & FAIL & 55.30  \\ \hline
+         Transformer (*) & 36.37 & 64.27 & 57.46 & 42.44 & 71.40 & FAIL & \underline{54.39} \\
+         Local Attention (*) & 15.82 & 52.98 & 53.39 & 41.46 & 66.63 & FAIL & 46.06 \\
+         Sparse Trans. (*) & 17.07 & 63.58 & \textbf{59.59} & \textbf{44.24} & 71.71 & FAIL & 51.24 \\
+         Longformer (*) & 35.63 & 62.85 & 56.89 & 42.22 & 69.71 & FAIL & 53.46 \\
+         Linformer (*) & 35.70 & 53.94 & 52.27 & 38.56 & \underline{76.34} & FAIL & 51.36 \\
+         Reformer (*) & \textbf{37.27} & 56.10  & 53.40 & 38.07 & 68.50 & FAIL & 50.67 \\
+         Sinkhorn Trans. (*) & 33.67 & 61.20 & 53.83 & 41.23 & 67.45 & FAIL & 51.39 \\
+         Synthesizer (*) & \underline{36.99} & 61.68 & 64.67 & 41.61 & 69.45 & FAIL & 52.88 \\
+         BigBird (*) & 36.05 & 64.02 & \underline{59.29} & 40.83 & 74.87 & FAIL & \textbf{55.01} \\
+         Linear Trans. (*) & 16.13 & \textbf{65.90} & 53.09 & 42.34 & 75.30 & FAIL & 50.55 \\
+         Performer (*) & 18.01 & \underline{65.40} & 53.82 & \underline{42.77} & 77.05 & FAIL & 51.41  \\ \hline
+    \end{tabular}
+    \caption{Accuracy results obtained on TPUs as in \citet{tay2020long}. Asterisked results quoted from \citet{tay2020long}. Average does not include the Path-X task, which all models fail (Transformer due to memory limits; others perform no better than chance).}
+    \label{tab:lra_accuracy}
+    \end{subtable}
+    \begin{subtable}[t]{\textwidth}
+    \centering
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{l | c c c c c | c c c c c}
+        \hline
+         & \multicolumn{5}{c|}{Training Speed (steps/s)} & \multicolumn{5}{c}{Peak Memory Usage (GB)} \\ 
+         Seq. length & 512 & 1024 & 2048 & 4096 & 8192 & 512 & 1024 & 2048 & 4096 & 8192  \\ \hline \hline
+         Transformer & 21 & 10 & 4 & OOM & OOM  & 1.6 & 4.0 & 12.2 & OOM & OOM \\
+         Linear & 34 (1.6x) & 19 (1.8x) & 9 (2.0x) & 4 & OOM & 0.9 & 1.6 & 2.8 & 6.9 & OOM  \\
+         FNet (FFT) &\textbf{43 (2.0x)} & \textbf{24 (2.3x)} & \textbf{14 (3.2x)} & \textbf{7} & \textbf{4} & \textbf{0.8} & \textbf{1.3} & \textbf{2.2} & \textbf{3.9} & \textbf{7.4}  \\
+         Performer & 28 (1.3x) & 15 (1.5x) & 9 (1.9x) & 4 & 2 & 1.1 & 1.9 & 3.1 & 5.5 & 10.4 \\ \hline
+    \end{tabular}
+    \caption{GPU training for sequence lengths up to 8192. Only the fastest efficient Transformer, namely Performer, from \citet{tay2020long} is shown. Left: training speeds (in steps per second; larger is better), with speed-up multipliers relative to the Transformer given in parentheses. Right: peak memory usage (in GB; smaller is better).}
+    \label{tab:lra_training_speed}
+    \end{subtable}
+    \begin{subtable}[t]{\textwidth}
+    \centering
+    \begin{tabular}{l | c c c c c c}
+        \hline
+         Seq. length & 512 & 1024 & 2048 & 4096 & 8192 & 16384 \\ \hline \hline
+         Transformer & 12 & 28 & 76 & 244 & OOM & OOM \\
+         Linear & 9 (1.4x) & 14 (2.0x) & 30 (2.6x) & 72 (3.4x) & 208 & OOM \\
+         FNet (FFT) & \textbf{8 (1.5x)} & \textbf{12 (2.3x)} & \textbf{23 (3.4x)} & \textbf{43 (5.7x)} & \textbf{83} & \textbf{164} \\
+         Performer & 11 (1.2x) & 17 (1.6x) & 32 (2.4x) & 60 (4.0x) & 116 & 238 \\ \hline
+    \end{tabular}
+    \caption{GPU inference speeds on the LRA Text classification task (in milliseconds per batch; smaller is better). Only the fastest efficient Transformer, Performer, from \citet{tay2020long} is shown. Speed up relative to the Transformer is given in parentheses.}
+    \label{tab:lra_inference_speeds}
+    \end{subtable}
+\end{table*}
+
+The GPU (Figure \ref{fig:gpu_speed_accuracy}), and TPU (Figure \ref{fig:tpu_speed_accuracy} in Appendix \ref{app:tpu}) results display the same trends. For larger, slower models, BERT and FNet-Hybrid define the Pareto speed-accuracy efficiency frontier. For smaller, faster models, FNet and the Linear model define the efficiency frontier.
+
+\subsection{Long-Range Arena (LRA) benchmark}
+\label{subsec:lra}
+
+Of the efficient Transformers evaluated on LRA benchmark by \citet{tay2020long}, their results suggest that (1) the vanilla Transformer is (by a small margin) the second most accurate model, and (2) the Performer \citep{choromanski2020rethinking} is the fastest model.  We benchmark FNet's accuracy against both of these models using \citet{tay2020long}'s codebase and running on the same hardware ($4\times4$ TPU v3 chips); the results are shown in Table \ref{tab:lra_accuracy}.\footnote{The ``Linear'' model in Table \ref{tab:lra} is the baseline model introduced in Section \ref{subsec:transfer_learning}.} To ensure a fair comparison, we also report the results of our own experiments for the vanilla Transformer (see Appendix \ref{app:lra} for details). 
+
+Table \ref{tab:lra_accuracy} suggests that, in aggregate, the (vanilla) Transformer and FNet obtain comparable results. Given that the Transformer is the second most accurate model evaluated by \citet{tay2020long} and that the relative differences in the average accuracy scores within Table \ref{tab:lra_accuracy} are small, our results suggest that FNet is competitive with the most accurate of the efficient Transformers on LRA.
+
+Turning to efficiency, in Table \ref{tab:lra_training_speed}, we provide training speed and memory usage statistics from our experiments on GPUs ($8$ V100 chips); see Appendix \ref{app:tpu} for results on TPUs. We perform a sweep over sequence lengths $\{512, 1024, 2048, 4096, 8192\}$. On GPUs, FNet is much faster than all other models across all sequence lengths, due to the highly efficient FFT implementation on GPUs.  Table \ref{tab:lra_training_speed} also indicates that FNet has a lighter memory footprint (this holds for both GPUs and TPUs; see extended results in Appendix \ref{app:tpu}). This is partly because FNet has no learnable parameters in its mixing sublayer, but also due to the FFT's efficiency, especially at longer sequence lengths. Lastly, Table \ref{tab:lra_inference_speeds} shows that training speed gains generally carry over to inference gains (see Appendix \ref{app:tpu} for detailed TPU results).
+

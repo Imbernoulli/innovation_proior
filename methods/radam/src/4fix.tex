@@ -1,0 +1,129 @@
+% % !TEX encoding = UTF-8
+% % !TEX Root = 0_main.tex
+% \section{Rectified Adaptive Learning Rate}
+
+% % In this section, we introduce our design of the variance calibration term.%, then move to improve Adam by ``centering'' its 2rd moment.
+
+% % \subsection{Variance Calibration}
+% In this section, we first derive an approximation to the variance of the moving average, then design a rectification term to address the undesirably large variance in the early stage. 
+
+% \subsection{Variance Rectification}
+% % In the proof of Theorem~\ref{theorem: variance_mono}, Equation~\ref{eqn:analytic-sqrt-var} gives the analytic form of $\Var[\psi]$, while $\nu$ is the degree of freedoms. 
+% In the previous section, Equation~\ref{eqn:analytic-sqrt-var} gives the analytic form of $\Var[\psi]$, where $\nu$ is the degree of freedoms. 
+% Here, we first provide an estimation of $\nu$, then derive a reliable and concise approximation.
+% % of $\Var[\psi]$.
+
+% As the exponential moving average (EMA) is widely used in eccomincs, it is usually interpretted as an approximation to the simple moving average (SMA)~\citep{nau2014forecasting}, \ie, 
+% % We first approximate the exponential moving average (EMA) with the simple moving average (SMA), which accords to the scaled inverse chi-square distribution, \ie, 
+% \begin{equation}
+% % \label{eqn:ema_sma}
+% \frac{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}{1-\beta_2^t} \approx \frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)}.
+% \end{equation}
+% where $f(t, \beta_2)$ is the length of the SMA which allows the SMA has the same ``center of mass'' with the EMA.
+% In other words, $f(t, \beta_2)$ satisfies:
+% $$
+% \frac{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i} (t+1-i)}{1-\beta_2^t} = \frac{\sum_{i = 1}^{f(t, \beta_2)} (t+1-i)}{f(t, \beta_2)}.
+% $$
+% Simplifies the above equation, we have:
+% $$
+% \frac{1}{1-\beta_2} - \frac{t  \beta_2^t}{1 - \beta_2^t}= \frac{f(t, \beta_2)+1}{2}
+% \quad\mbox{and}\quad 
+% f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1 - \frac{2 t \beta_2^t}{1 - \beta_2^t}.
+% $$
+% At the same time, $\frac{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2}{f(t, \beta_2)}$ accords to the scaled inverse chi-square distribution with $f(t, \beta_2)$ degrees of freedoms. 
+% Thus,
+% % \begin{equation*}
+%     $
+%     \frac{f(t, \beta_2)}{\sum_{i = 1}^{f(t, \beta_2)} g_{t+1-i}^2} \sim \sics(f(t, \beta_2), \frac{1}{\sigma^2})
+%     $
+%     % \quad\mbox{is an approximation of }\quad
+%     is an approximation to
+%     $
+%     \frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2} \sim \sics(\nu, \frac{1}{\sigma^2}).
+%     $
+% % \end{equation*}
+% Therefore, we treat $f(t, \beta_2)$ as an estimation of $\nu$. 
+% For ease of notation, we mark $f(t, \beta_2)$ as $\nu_t$. Also, we record $\frac{2}{1 - \beta_2} - 1$ as $\nu_\infty$ (maximum length of the approximated SMA), due to the inequality $f(t, \beta_2) \leq \lim_{t \to \infty} f(t, \beta_2) = \frac{2}{1 - \beta_2} - 1$.
+
+% In order to assure the adaptive factor has consistent variance, we use the following term to rectify the variance of $\nu_t$ to be the variance of $\nu_\infty$: 
+% \begin{equation}
+% r_t = \sqrt{\frac{\Var[\psi(.)]|_{\nu = \nu_t}}{\Var[\psi(.)]|_{\nu = \nu_\infty}}} = \sqrt{\frac{\frac{\nu_t}{\nu_t-2} - \frac{\nu_t \,2^{2\nu_t - 5}}{\pi}\gB(\frac{\nu_t-1}{2}, \frac{\nu_t-1}{2})^2}{\frac{\nu_\infty}{\nu_\infty-2} - \frac{\nu_\infty \,2^{2\nu_\infty - 5}}{\pi}\gB(\frac{\nu_\infty-1}{2}, \frac{\nu_\infty-1}{2})^2}}.
+% \label{eqn:analytic-rectification}
+% \end{equation}
+% However, Equation~\ref{eqn:analytic-rectification} is not numerical stable and cannot be calculated efficiently. 
+% Therefore, we try to derive a reliable and concise approximation to Equation~\ref{eqn:analytic-sqrt-var}.
+% Specifically, approximating $\sqrt{\psi^2(.)}$ to the first order~\citep{wolter2007taylor}, we have: 
+% \begin{equation}
+% \sqrt{\psi^2(.)} \approx \sqrt{\E[\psi^2(.)]} + \frac{1}{2\sqrt{\E[\psi^2(.)]}}(\psi^2(.) - \E[\psi^2(.)])
+% \quad\mbox{and}\quad
+% \Var[\psi(.)] \approx \frac{\Var[\psi^2(.)]}{4\E[\psi^2(.)]}
+% % \label{eqn:sqrt-var}
+% \end{equation}
+% Since $\psi^2(.) \sim \sics(\nu_t, \frac{1}{\sigma^2})$, we have:
+% \begin{equation}
+% \Var[\sqrt{\psi(.)}] \approx \frac{\nu_t}{2(\nu_t - 2) (\nu_t - 4) \sigma^2}.
+% \label{eqn:variance_appro}
+% \end{equation}
+% We conduct simulation experiments to examine Equation~\ref{eqn:variance_appro} and find it is a reliable approximation to Equation~\ref{eqn:analytic-sqrt-var}. 
+% Therefore, we rewrite Equation~\ref{eqn:analytic-rectification} as: 
+% \begin{equation}
+% r_t = \sqrt{\frac{(\nu_t - 4)(\nu_t - 2)\nu_\infty}{(\nu_\infty - 4)(\nu_\infty - 2)\nu_t}}.
+% \end{equation}
+
+% \subsection{RAdam}
+% Applying our rectification term to Adam, our final algorithm is summarized in Algorithm~\ref{algo:cadam}. 
+% Specifically, when the length of the approximated SMA is less or equal than 4, the variance of the adaptive learning rate is intractable and the adaptive learning rate is disabled.
+% Otherwise, we will calculate the variance rectification term and update parameters with the adaptive learning rate.
+% We notice that $r_t$ has a similar form with the heuristic ``warmup'' (using small learning rates in the first few epochs), which verifies our intuition that ``warmup'' works as a variance reduction technique. 
+
+
+% % Based on Equation~\ref{eqn:variance_appro} and \ref{eqn:ema_sma}, we have
+% % \begin{equation}
+% % \Var[\sqrt{\frac{1-\beta_2^t}{(1 - \beta_2)\sum_{i = 1}^t \beta_2^{t-i}g_i^2}}]
+% % \approx \Var[\sqrt{\frac{l_t}{\sum_{i=1}^{l_t} g_i^2}}]
+% % \approx \frac{l_t}{2(l_t - 2)(l_t - 4)\sigma^2}.
+% % \label{eqn:variance_appro_appro}
+% % \end{equation}
+% % In order to assure the adaptive factor has consistent variance, we design a calibration term to adjust the variance of $l_t$ to the variance for $l_\infty$: 
+% % In order to assure the adaptive factor has consistent variance, we design the following term to rectify the variance of $l_t$ to be the variance of $l_\infty$: 
+% % \begin{equation}
+% % c_t = \sqrt{\frac{(l_t - 4)(l_t - 2)l_\infty}{(l_\infty - 4)(l_\infty - 2)l_t}}.
+% % \end{equation}
+
+% % the raw moving average (since the bias-corrected moving average has a larger variance). 
+
+% % \subsection{Moving Variance based Adaptive Gradient}
+
+% % As mentioned by Adam, the second moment works in a similar way with variance. 
+% % Specifically, since $\Var[x] = \E[x^2] - \E[x]^2$, for parameters with the same $\E[g]$, the ones with larger variance would have larger second moment. 
+% % Here, we propose to replace the moving average of second momentum with the moving variance. 
+% % Specifically, our final algorithm is summarized in Algorithm~\ref{algo:cadam}. 
+
+% \begin{algorithm}[t]
+% \DontPrintSemicolon
+% \KwIn{$\{\alpha_t\}_{t = 1}^T$: step size, 
+% $\{\beta_1, \beta_2\}$: decay rate to calculate moving average and moving 2nd moment, \newline
+% $\theta_0$: initial parameter, $f(\theta)$: stochastic objective function.}
+% \KwOut{$\theta_t$: resulting parameters}
+% $m_0 \gets 0$ (Initialize moving average)\;
+% $v_0 \gets 0$ (Initialize moving variance)\;
+% $l_\infty \gets 2/(1 - \beta_2) - 1$ (Compute the maximum length of the approximated SMA)\;
+% \While{$t = \{1, \cdots, T\}$}{
+%     $g_t \gets \Delta_{\theta} f_t(\theta_{t - 1})$ (Calculate gradients w.r.t. stochastic objective at timestep t)\;
+%     $v_t \gets \beta_2 v_{t - 1} + (1 - \beta_2) g_t^2$ (Update exponential moving 2nd moment)\;
+%     $m_t \gets \beta_1 m_{t - 1} + (1 - \beta_1) g_t$ (Update exponential moving average)\;
+%     $\widehat{m_t} \gets m_t / (1 - \beta_1^t)$ (Compute bias-corrected moving average)\;
+%     $l_t \gets l_\infty - 2t\beta_2^t/(1 - \beta_2^t)$(Compute the length of the approximated SMA)\;
+%     \uIf{the variance is tractable, \ie, $l_t > 4$}{
+%         $\widehat{v_t} \gets \sqrt{v_t / (1 - \beta_2^{t})}$ (Compute bias-corrected moving 2nd moment)\;
+%         $r_t \gets \sqrt{\frac{(l_t - 4)(l_t - 2)l_\infty}{(l_\infty - 4)(l_\infty - 2)l_t}}$ (Compute the variance rectification term)\;
+%         $\theta_t \gets \theta_{t-1} - \alpha_t r_t \widehat{m_t} / \widehat{v_t}$ (Update parameters with adaptive momentum)\;
+%     }
+%     \Else{
+%         $\theta_t \gets \theta_{t-1} - \alpha_t \widehat{m_t}$ (Update parameters with un-adapted momentum)\;
+%     }
+% }
+% \Return{$\theta_T$}
+% \caption{Rectified Adam. All operations are element-wise. }
+% \label{algo:cadam}
+% \end{algorithm}

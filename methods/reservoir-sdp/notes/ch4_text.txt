@@ -1,0 +1,1599 @@
+
+===== page 1 [pdftotext] =====
+                         An Introduction to Optimization
+                         Models and Methods                                                                4
+
+
+Water resource systems are characterized by           modeling approaches are illustrated by their
+multiple interdependent components that toge-         application to some relatively simple water
+ther produce multiple economic, environmental,        resources planning and management problems.
+ecological, and social impacts. As discussed in       The purpose here is to introduce and compare
+the previous chapter, planners and managers           some commonly used optimization methods and
+working toward improving the design and per-          approaches. This is not a text on the state of the
+formance of these complex systems must identify       art of optimization modeling. More realistic and
+and evaluate alternative designs and operating        more complex problems usually require much
+policies, comparing their predicted performance       bigger and more complex models than those
+with desired goals or objectives. Typically, this     developed and discussed in this chapter, but
+identiﬁcation and evaluation process is accom-        these bigger and more complex models are often
+plished with the aid of optimization and simula-      based on the principles and techniques intro-
+tion models. While optimization methods are           duced here.
+designed to provide preferred values of system            The emphasis here is on the art of model
+design and operating policy variables—values          development—just how one goes about con-
+that will lead to the highest levels of system        structing and solving optimization models that
+performance—they are often used to eliminate          will provide information useful for addressing
+the clearly inferior options. Using optimization      and perhaps even solving particular problems. It
+for a preliminary screening followed by more          is unlikely anyone will ever use any of the
+detailed and accurate simulation is the primary       speciﬁc models developed in this or other chap-
+way we have, short of actually building physical      ters simply because the speciﬁc examples used to
+models, of estimating effective system designs        illustrate the approach to model development and
+and operating policies. This chapter introduces       solution will not be the ones they face. However,
+and illustrates the art of optimization model de-     it is quite likely water resource managers and
+velopment and use in analyzing water resources        planners will use these modeling approaches and
+systems. The models and methods introduced in         solution methods to analyze a variety of water
+this chapter are extended in subsequent chapters.     resource systems. The particular systems mod-
+                                                      eled and analyzed here, or any others that could
+                                                      have been used, can be the core of more complex
+4.1    Introduction                                   models needed to analyze more complex prob-
+                                                      lems in practice.
+This chapter introduces some optimization                 Water resources planning and management
+modeling approaches for identifying ways of           today is dominated by the use of optimization
+satisfying speciﬁed goals or objectives. The          and simulation models. Computer software is
+
+
+© The Author(s) 2017                                                                                 93
+D.P. Loucks and E. van Beek, Water Resource Systems Planning and Management,
+DOI 10.1007/978-3-319-44234-1_4
+
+===== page 2 [pdftotext] =====
+94                                                    4   An Introduction to Optimization Models and Methods
+
+becoming increasingly available for solving               mutually exclusive alternatives (only one of
+various types of optimization and simulation              which can be selected) each characterized by a
+models. However, no software currently exists             time series of beneﬁts and costs. Using various
+that will build models of particular water                methods involving the discount rate, the time
+resource systems. What and what not to include            series of beneﬁts and costs are converted to a
+and assume in models requires judgment, expe-             single net beneﬁt that can be compared with
+rience, and knowledge of the particular problems          other such net beneﬁts in order to identify the one
+being addressed, the system being modeled and             that is best. The values of the decision variables
+the decision-making environment—including                 (e.g., the design and operating policy variable
+what aspects can be changed and what cannot.              values) are known for each discrete alternative
+Understanding the contents of this and following          being considered. For example, consider again
+chapters and performing the suggested exercises           the tank design problem presented in the previ-
+at the end of each chapter can only be a ﬁrst step        ous chapter. Alternative tank designs could be
+toward gaining some judgment and experience in            identiﬁed, and then each could be evaluated, on
+model development.                                        the basis of cost and perhaps other criteria as
+    Before proceeding to a more detailed discus-          well. The best would be called the optimal one, at
+sion of optimization, a review of some methods            least with respect to the objective criteria used
+of dealing with time streams of economic                  and the discrete alternatives being considered.
+incomes or costs (engineering economics) may                 The optimization methods introduced in the
+be useful. Those familiar with this subject that is       following sections of this chapter extend those
+typically covered in applied engineering eco-             engineering economics methods. Some methods
+nomics courses can skip this next section.                are discrete, some are continuous. Continuous
+                                                          optimization methods, such as the model deﬁned
+                                                          by Eqs. 3.1–3.3 in Sect. 3.2 of the previous
+4.2    Comparing Time Streams                             chapter can identify the “best” tank design
+       of Economic Benefits and Costs                     directly without having to identify and compare
+                                                          numerous discrete, mutually exclusive alterna-
+All of us make decisions that involve future              tives. Just how such models can be solved will be
+beneﬁts and costs. The extent to which we value           discussed later in this chapter. For now, consider
+future beneﬁts or costs compared to present               the comparison of alternative discrete plans
+beneﬁts or costs is reflected by what is called a         p having different beneﬁts and costs over time.
+discount rate. While economic criteria are only              Let the net beneﬁt generated at the end of time
+one aspect of everything we consider when                 period t by plan p be designated simply as Bp(t).
+making decisions, they are often among the                Each plan is characterized by the time stream
+important ones. Economic evaluation methods               of net beneﬁts it generates over its planning
+involving discount rates can be used to consider          period Tp.
+and compare alternatives characterized by vari-
+ous beneﬁts and costs that are expected to occur               fBp ð1Þ; Bp ð2Þ; Bp ð3Þ; . . .; Bp ðTp Þ   ð4:1Þ
+now and in the future. This section offers a quick
+and basic review of the use of discount rates that            Clearly, if in any time period t the beneﬁts
+enable comparisons of alternative time series of          exceed the costs, then Bp ðtÞ [ 0; and if the costs
+beneﬁts and costs. Many economic optimization             exceed the beneﬁts, Bp ðtÞ\0. This section
+models incorporate discount rates in their eco-           deﬁnes two ways of comparing different beneﬁt,
+nomic objective functions.                                cost or net-beneﬁt time streams produced by
+   Engineering economic methods typically                 different plans perhaps having different planning
+focus on the comparison of a discrete set of              period durations Tp.
+
+===== page 3 [pdftotext] =====
+4.2 Comparing Time Streams of Economic Benefits and Costs                                                     95
+
+4.2.1       Interest Rates                                 each amount in the time series to what it is worth
+                                                           today, its present worth, that is, a single value at
+Fundamental to the conversion of a time series of          the present time. This present worth will depend
+incomes and costs to an equivalent single value, so        on the prevailing interest rate in each future time
+that it can be compared to other equivalent single         period. Assuming a value V0 is invested at the
+values of other time series, is the concept of the         beginning of a time period, e.g., a year, in a
+time value of money. From time to time, individ-           project or a savings account earning interest at a
+uals, private corporations, and governments need           rate r per period, then at the end of the period the
+to borrow money to do what they want to do. The            value of that investment is (1 + r)V0.
+amount paid back to the lender has two compo-                 If one invests an amount V0 at the beginning
+nents: (1) the amount borrowed and (2) an addi-            of period t = 1 and at the end of that period
+tional amount called interest. The interest amount         immediately reinvests the total amount (the
+is the cost of borrowing money, of having the              original investment plus interest earned), and
+money when it is loaned compared to when it is             continues to do this for n consecutive periods at
+paid back. In the private sector the interest rate, the    the same period interest rate r, the value, Vn, of
+added fraction of the amount owed that equals the          that investment at the end of n periods would be
+interest, is often identiﬁed as the marginal rate of
+return on capital. Those who have money, called                             Vn ¼ V0 ð 1 þ r Þ n             ð4:2Þ
+capital, can either use it themselves or they can
+lend it to others, including banks, and receive               This results from V1 ¼ V0 =ð1 þ r Þ at the end of
+interest. Assuming people with capital invest their        period 1, V2 ¼ V1 =ð1 þ rÞ ¼ V0 ð1 þ rÞ2 at the end
+money where it yields the largest amount of                of period 2, and so on until at the end of period n.
+interest, consistent with the risk they are willing to        The initial amount V0 is said to be equivalent
+take, most investors should be receiving at least the      to Vn at the end of n periods. Thus the present
+prevailing interest rate as the return on their capital.   worth or present value, V0, of an amount of
+   Any interest earned by an investor or paid by           money Vn at the end of period n is
+a debtor depends on the size of the loan, the
+duration of the loan, and the interest rate. The                           V0 ¼ Vn =ð 1 þ r Þ n             ð4:3Þ
+interest rate includes a number of considerations.
+One is the time value of money (a willingness to              Equation 4.3 is the basic compound interest
+pay something to obtain money now rather than              discounting relation needed to determine the
+to obtain the same amount later). Another is the           present value at the beginning of period 1 (or end
+risk of losing capital (not getting the full amount        of period 0) of net beneﬁts Vn that accrue at the
+of a loan or investment returned at some future            end of n time periods.
+time). A third is the risk of reduced purchasing              The total present value of the net beneﬁts
+capability (the expected inflation over time). The         generated by plan p, denoted V0p , is the sum of
+greater the risks of losing capital or purchasing          the values of the net beneﬁts Vp(t) accrued at the
+power, the higher the interest rate compared to            end of each time period t times the discount
+the rate reflecting only the time value of money           factor for that period t. Assuming the interest or
+in a secure and inflation-free environment.                discount rate r in the discount factor applies for
+                                                           the duration of the planning period, i.e., from
+                                                           t = 1 to t = Tp.
+4.2.2       Equivalent Present Value
+                                                                               X
+                                                                       V0p ¼            V p ðtÞ=ð1 þ r Þt   ð4:4Þ
+To compare projects or plans involving different                               t¼1;Tp
+time series of beneﬁts and costs, it is often con-
+venient to express these time series as a single              The present value of the net beneﬁts achieved
+equivalent value. One way to do this is to convert         by two or more plans having the same economic
+
+===== page 4 [pdftotext] =====
+96                                                       4   An Introduction to Optimization Models and Methods
+
+planning horizons Tp can be used as an economic                 This factor is often used to compute the
+basis for plan selection. If the economic lives or           equivalent annual end-of-year cost of engineer-
+planning horizons of projects differ, then the               ing structures that have a ﬁxed initial construc-
+present value of the plans may not be an appro-              tion cost C0 and annual end-of-year operation,
+priate measure for comparison and plan selection.            maintenance, and repair (OMR) costs. The
+A valid comparison of alternative plans using                equivalent uniform end-of-year total annual cost,
+present values is possible if all plans have the             TAC, equals the initial cost times the capital
+same planning horizon or if funds remaining at               recovery factor plus the equivalent annual
+the end of the shorter planning horizon are                  end-of-year uniform OMR costs.
+invested for the remaining time up until the longer
+planning horizon at the same interest rate r.                            TAC ¼ CRFn C0 þ OMR               ð4:8Þ
+
+                                                                For private investments requiring borrowed
+4.2.3       Equivalent Annual Value
+                                                             capital, interest rates are usually established, and
+                                                             hence ﬁxed, at the time of borrowing. However,
+If the lives of various plans differ, but the same
+                                                             beneﬁts may be affected by changing interest
+plans will be repeated on into the future, then one
+                                                             rates, which are not easily predicted. It is com-
+need to only compare the equivalent constant
+                                                             mon practice in beneﬁt–cost analyses to assume
+annual net beneﬁts of each plan. Finding the
+                                                             constant interest rates over time, for lack of any
+average or equivalent annual amount Vp is done
+                                                             better assumption.
+in two steps. First, one can compute the present
+                                                                Interest rates available to private investors or
+value, V0p , of the time stream of net beneﬁts,
+                                                             borrowers may not be the same rates that are used
+using Eq. 4.4. The equivalent constant annual
+                                                             for analyzing public investment decisions. In an
+beneﬁts, Vp, all discounted to the present must
+                                                             economic evaluation of public-sector invest-
+equal the present value, V0p .
+                                                             ments, the same relationships are used even
+                X                                            though government agencies are not generally
+        V0p ¼            V p =ð 1 þ r Þ t   or               free to loan or borrow funds on private money
+                t¼1;Tp
+                         X                       ð4:5Þ       markets. In the case of public-sector investments,
+        V p ¼ V0p =            1=ð1 þ r Þt                   the interest rate to be used in an economic anal-
+                      t¼1;Tp
+                                                             ysis is a matter of public policy; it is the rate at
+                                                             which the government is willing to forego current
+   Using a little algebra the average annual
+                                                             beneﬁts to its citizens in order to provide beneﬁts
+end-of-year beneﬁts Vp of the project or plan p is
+                                                             to those living in future time periods. It can be
+                                     
+   V p ¼ V0p rð1 þ rÞTp = ð1 þ rÞTp  1     ð4:6Þ            viewed as the government’s estimate of the time
+                                                             value of public monies or the marginal rate of
+   The capital recovery factor CRFn is the                   return to be achieved by public investments.
+                                                            These deﬁnitions and concepts of engineering
+expression rð1 þ rÞTp = ð1 þ rÞTp  1 in Eq. 4.6
+                                                             economics are applicable to many of the prob-
+that converts a ﬁxed payment or present value V0p
+                                                             lems faced in water resources planning and
+at the beginning of the ﬁrst time period into an
+                                                             management. Each of the equations above is
+equivalent ﬁxed periodic payment Vp at the end
+                                                             applicable to discrete alternatives whose decision
+of each time period. If the interest rate per period
+                                                             variables (investments over time) are known. The
+is r and there are n periods involved, then the
+                                                             equations are used to identify the best alternative
+capital recovery factor is
+                                                             from a set of mutually exclusive alternatives
+     CRFn ¼ ½rð1 þ rÞn =½ð1 þ rÞn  1          ð4:7Þ       whose decision variable values are known. More
+                                                             detailed discussions of the application of
+
+===== page 5 [pdftotext] =====
+4.2 Comparing Time Streams of Economic Benefits and Costs                                                        97
+
+engineering economics are contained in numer-              as well as other constrained optimization proce-
+ous texts on the subject. In the next section, we          dures is highly dependent on the mathematical
+introduce methods that can identify the best               structure of the model that in turn is dependent
+alternative among those whose decision variable            on the system being analyzed. Individuals tend to
+values are not known. For example, engineering             construct models in a way that will allow them to
+economic methods can identify, for example, the            use a particular optimization technique they think
+most cost-effective tank from among those whose            is best. Thus, it pays to be familiar with various
+dimension values have been previously selected.            types of optimization methods since no one
+The optimization methods that follow can iden-             method is best for all optimization problems.
+tify directly the values of the dimensions of most         Each has its strengths and limitations. The
+cost-effective tank.                                       remainder of this chapter introduces and illus-
+                                                           trates the application of some of the most com-
+                                                           mon constrained optimization techniques used in
+4.3    Nonlinear Optimization Models                       water resources planning and management.
+       and Solution Procedures                                 Consider a river from which diversions are
+                                                           made to three water-consuming ﬁrms that belong
+Constrained optimization involves ﬁnding the               to the same corporation, as illustrated in Fig. 4.1.
+values of decision variables given speciﬁed                Each ﬁrm makes a product. Water is needed in
+relationships that have to be satisﬁed. Con-               the process of making that product, and is the
+strained optimization is also called mathematical          critical resource. The three ﬁrms can be denoted
+programming. Mathematical programming tech-                by the index j = 1, 2, and 3 and their water al-
+niques include calculus-based Lagrange multi-              locations by xj. Assume the problem is to deter-
+pliers and various methods for solving linear and          mine the allocations xj of water to each of three
+nonlinear models including dynamic program-                ﬁrms (j = 1, 2, 3) that maximize the total net
+                                                                      P
+ming, quadratic programming, fractional pro-               beneﬁts,      j NBj ðxj Þ, obtained from all three
+gramming, and geometric programming, to                    ﬁrms. The total amount of water available is
+mention a few. The applicability of each of these          constrained or limited to a quantity of Q.
+
+
+
+
+Fig. 4.1 Three water-using ﬁrms obtain water from a river. The amounts xj allocated to each ﬁrm j will depend on the
+river flow Q
+
+===== page 6 [pdftotext] =====
+98                                                         4   An Introduction to Optimization Models and Methods
+
+
+
+
+Fig. 4.2 Concave net beneﬁt functions for three water users, j, and their slopes at allocations xj
+
+
+  Assume the net beneﬁts, NBj(xj), derived from                units must remain in the river. Introducing this
+water xj allocated to each ﬁrm j, are deﬁned by                constraint renders the previous solution infeasi-
+                                                               ble. In this case we want to ﬁnd the allocations
+                NB1 ðx1 Þ ¼ 6x1  x21              ð4:9Þ       that maximize the total net beneﬁts obtained from
+                                                               all ﬁrms subject to having only 6 flow units
+                                                               available for allocations. Using simple calculus
+               NB2 ðx2 Þ ¼ 7x2  1:5x22           ð4:10Þ       will not sufﬁce.
+
+
+               NB3 ðx3 Þ ¼ 8x3  0:5x23           ð4:11Þ       4.3.2      Solution Using Hill Climbing
+    These are concave functions exhibiting
+                                                               One approach for ﬁnding, at least approximately,
+decreasing marginal net beneﬁts with increasing
+                                                               the particular allocations that maximize the total
+allocations. These functions look like hills, as
+                                                               net beneﬁt derived from all ﬁrms in this example
+illustrated in Fig. 4.2.
+                                                               is an incremental steepest-hill-climbing method.
+                                                               This method divides the total available flow
+                                                               Q into increments and allocates each successive
+4.3.1        Solution Using Calculus                           increment so as to get the maximum additional
+                                                               net beneﬁt from that incremental amount of
+Calculus can be used to ﬁnd the allocations that               water. This procedure works in this example
+maximize each user’s net beneﬁts, simply by                    because each of the net beneﬁt functions is con-
+ﬁnding where the slope or derivative of the net                cave; in other words, the marginal beneﬁts
+beneﬁt function for each ﬁrm equals zero. The                  decrease as the allocation increases. This proce-
+derivative, dNB(x1)/dx1, of the net beneﬁt func-               dure is illustrated by the flow diagram in Fig. 4.3.
+tion for Firm 1 is (6 − 2x1) and hence the allo-                  Table 4.1 lists the results of applying the
+cation to Firm 1 that maximizes its net beneﬁts                procedure shown in Fig. 4.3 to the problem when
+would be 6/2 or 3. The corresponding allocations               (a) only 8 and (b) only 20 flow units are avail-
+for Firms 2 and 3 are 2.33 and 8, respectively.                able. Here a minimum river flow of 2 is required
+The total amount of water desired by all ﬁrms is               and is to be satisﬁed, when possible, before any
+the sum of each ﬁrm’s desired allocation, or                   allocations are made to the ﬁrms.
+13.33 flow units. However, suppose only 8 units                   The hill-climbing method illustrated in
+of flow are available for all three ﬁrms and 2                 Fig. 4.3 and Table 4.1 assigns each incremental
+
+===== page 7 [pdftotext] =====
+4.3 Nonlinear Optimization Models and Solution Procedures                                                  99
+
+
+
+
+Fig. 4.3 Steepest hill-climbing approach for ﬁnding allocation of a flow Qmax to the three ﬁrms, while meeting
+minimum river flow requirements R
+
+
+flow ΔQ to the use that yields the largest addi-        using any calculus-based optimization procedure
+tional (marginal) net beneﬁt. An allocation is          or algorithm.
+optimal for any total flow Q when the marginal
+net beneﬁts from each nonzero allocation are
+equal, or as close to each other as possible given      4.3.3       Solution Using Lagrange
+the size of the increment ΔQ. In this example,                      Multipliers
+with a ΔQ of 1 and Qmax of 8, it just happens that
+the marginal net beneﬁts associated with each           4.3.3.1 Approach
+allocation are all equal (to 4). The smaller the        As an alternative to hill-climbing methods, con-
+ΔQ, the more precise will be the optimal allo-          sider a calculus-based method involving
+cations in each iteration, as shown in the lower        Lagrange multipliers. To illustrate this approach,
+portion of Table 4.1, where ΔQ approaches 0.            a slightly more complex water-allocation exam-
+   Based on the allocations derived for various         ple will be used. Assume that the beneﬁt, Bj(xj),
+values of available water Q, as shown in                each water-using ﬁrm receives is determined, in
+Table 4.1, an allocation policy can be deﬁned.          part, by the quantity of product it produces and
+For this problem, the allocation policy that            the price per unit of the product that is charged.
+maximizes total net beneﬁts for any particular          As before, these products require water and water
+value of Q is shown in Fig. 4.4.                        is the limiting resource. The amount of product
+   This hill-climbing approach leads to optimal         produced, pj, by each ﬁrm j is dependent on the
+allocations only if all of the net beneﬁt functions     amount of water, xj, allocated to it.
+whose sum is being maximized are concave: that              Let the function Pj(xj) represent the maximum
+is, the marginal net beneﬁts decrease as the            amount of product, pj, that can be produced by
+allocation increases. Otherwise, only a local           ﬁrm j from an allocation of water xj. These are
+optimum solution can be guaranteed. This is true        called production functions. They are typically
+
+===== page 8 [pdftotext] =====
+100                                                    4   An Introduction to Optimization Models and Methods
+
+Table 4.1 Hill-climbing iterations for ﬁnding allocations that maximize total net beneﬁt given a flow of Qmax and a
+required (minimum) streamflow of R = 2
+
+
+
+
+Fig. 4.4 Water-allocation
+policy that maximizes total
+net beneﬁts derived from
+all three water-using ﬁrms
+
+===== page 9 [pdftotext] =====
+4.3 Nonlinear Optimization Models and Solution Procedures                                                         101
+
+concave: as xj increases the slope, dPj(xj)/dxj, of         be demanded and sold. These are the demand
+the production function, Pj(xj), decreases. For             functions for that product. These unit price or
+this example, assume the production functions               demand functions are shown in Fig. 4.5, where
+for the three water-using ﬁrms are                          the pj s are the amounts of each product pro-
+                                                            duced. The vertical axis of each graph is the unit
+                 P1 ðx1 Þ ¼ 0:4ðx1 Þ0:9          ð4:12Þ     price. To simplify the problem we are assuming
+                                                            linear demand functions, but this assumption is
+                                                            not a necessary condition.
+                 P2 ðx2 Þ ¼ 0:5ðx2 Þ0:8          ð4:13Þ        The optimization problem is to ﬁnd the water
+                                                            allocations, the production levels, and the unit
+                                                            prices that together maximize the total net beneﬁt
+                 P3 ðx3 Þ ¼ 0:6ðx3 Þ0:7          ð4:14Þ     obtained from all three ﬁrms. The water alloca-
+                                                            tions plus the amount that must remain in the
+   Next consider the cost of production. Assume             river, R, cannot exceed the total amount of water
+the associated cost of production can be expres-            Q available.
+sed by the following convex functions:                         Constructing and solving a model of this
+                                                            problem for various values of Q, the total amount
+                  C1 ¼ 3ðP1 ðx1 ÞÞ1:3            ð4:15Þ
+                                                            of water available, will deﬁne the three allocation
+                                                            policies as functions of Q. These policies can be
+                                                            displayed as a graph, as in Fig. 4.4, showing the
+                  C2 ¼ 5ðP2 ðx2 ÞÞ1:2            ð4:16Þ
+                                                            three best allocations given any value of Q. This
+                                                            of course assumes the ﬁrms can adjust to varying
+                 C3 ¼ 6ðP3 ðx3 ÞÞ1:15            ð4:17Þ     allocations. In reality this may not be the case
+                                                            (Chapter 9 examines this problem using more
+    Each ﬁrm produces a unique patented product,            realistic beneﬁt functions that reflect the degree
+and hence it can set and control the unit price of          to which ﬁrms can adapt to changing inputs over
+its product. The lower the unit price, the greater          time.)
+the demand and thus the more each ﬁrm can sell.                The model:
+Each ﬁrm has determined the relationship
+                                                                           Maximize Net benefit               ð4:18Þ
+between the unit price and the amount that will
+
+
+
+
+Fig. 4.5 Unit prices that will guarantee the sale of the speciﬁed amounts of products pj produced in each of the three
+ﬁrms (linear functions are assumed in this example for simplicity)
+
+===== page 10 [pdftotext] =====
+102                                                    4   An Introduction to Optimization Models and Methods
+
+
+   Subject to                                                 Derivatives:
+   Deﬁnitional constraints:
+                                                            @ðNet benefit)=@p1 ¼ 0
+      Net benefit ¼ Total return  Total cost                                  ¼ 12  2p1  1:3ð3Þp0:3
+                                                                                                   1
+                                             ð4:19Þ                                                    ð4:27Þ
+
+ Total return ¼ð12  p1 Þp1 þ ð20  1:5p2 Þp2               @ðNet benefit)=@p2 ¼ 0
+                  þ ð28  2:5p3 Þp3                                            ¼ 20  3p2  1:2ð5Þp0:2
+                                                                                                   2
+                                             ð4:20Þ                                                    ð4:28Þ
+
+ Total cost ¼ 3ðp1 Þ1:30 þ 5ðp2 Þ1:20 þ 6ðp3 Þ1:15         @ ðNet benefitÞ=@p3 ¼ 0
+                                           ð4:21Þ                              ¼ 28  5p3  1:15ð6Þp0:15
+                                                                                                    3
+                                                                                                       ð4:29Þ
+   Production functions deﬁning the relationship
+between water allocations xj and production pj
+                                                               The result (rounded off) is p1 = 3.2, p2 = 4.0,
+                  p1 ¼ 0:4ðx1 Þ   0:9
+                                             ð4:22Þ        and p3 = 3.9 to be sold for unit prices of 8.77,
+                                                           13.96, and 18.23, respectively, for a maximum
+                  p2 ¼ 0:5ðx2 Þ0:8           ð4:23Þ        net revenue of 155.75. This would require water
+                                                           allocations x1 = 10.2, x2 = 13.6, and x3 = 14.5,
+                  p3 ¼ 0:6ðx3 Þ0:7           ð4:24Þ        totaling 38.3 flow units. Any amount of water
+                                                           less than 38.3 will restrict the allocation to, and
+   Water-allocation restriction                            hence the product production at, one or more of
+                                                           the three ﬁrms.
+               R þ x1 þ x2 þ x3 ¼ Q          ð4:25Þ            If the total available amount of water is less
+                                                           than that desired, constraint Eq. 4.25 can be
+   One can ﬁrst solve this model for the values of         written as an equality, since all the water avail-
+each pj that maximize the total net beneﬁts,               able, less any that must remain in the river, R,
+assuming water is not a limiting constraint. This is       will be allocated. If the available water supplies
+equivalent to ﬁnding each individual ﬁrm’s                 are less than the desired 38.3 plus the required
+maximum net beneﬁts, assuming all the water that           streamflow R, then Eqs. 4.22–4.25 need to be
+is needed is available. Using calculus we can              added. These can be rewritten as equalities since
+equate the derivatives of the total net beneﬁt             they will be binding. Equation 4.25 in this case
+function with respect to each pj to 0 and solve            can always be an equality since any excess water
+each of the resulting three independent equations:         will be allocated to the river, R.
+                                                               To consider values of Q that are less than the
+Total Net benefit ¼ ½ð12  p1 Þp1 þ ð20  1:5p2 Þp2
+                                           h               desired 38.3 units, constraints 4.22–4.25 can be
+                   þ ð28  2:5p3 Þp3   3ðp1 Þ1:30        included in the objective function, Eq. 4.26, once
+                                             i             the right-hand side has been subtracted from the
+                   þ 5ðp2 Þ1:20 þ 6ðp3 Þ1:15
+                                                           left-hand side so that they equal 0. We set this
+                                             ð4:26Þ        function equal to L.
+
+===== page 11 [pdftotext] =====
+4.3 Nonlinear Optimization Models and Solution Procedures                                              103
+
+
+L ¼ ½ð12  p1 Þp1 þ ð20  1:5p2 Þp2 þ ð28  2:5p3Þp3      @L=@p3 ¼ 0 ¼ 28  5p3  1:15ð6Þp0:15  k3
+      h                                    i                                               3
+     3ðp1 Þ1:30 þ 5ðp2 Þ1:20 þ 6ðp3 Þ1:15                                                          ð4:33Þ
+         h               i       h              i
+     k1 p1  0:4ðx1 Þ0:9  k2 p2  0:5ðx2 Þ0:8             @L=@x1 ¼ 0 ¼ k1 0:9ð0:4Þx0:1
+                                                                                     1     k4      ð4:34Þ
+         h               i
+     k3 p3  0:6ðx3 Þ0:7  k4 ½R þ x1 þ x2 þ x3  Q
+                                                            @L=@x2 ¼ 0 ¼ k2 0:8ð0:5Þx0:2
+                                                                                     2     k4      ð4:35Þ
+                                              ð4:30Þ
+                                                            @L=@x3 ¼ 0 ¼ k3 0:7ð0:6Þx0:3
+                                                                                     3     k4      ð4:36Þ
+   Since each of the four constraint Eqs. 4.22–
+4.25 included in Eq. 4.30 equals zero, each can                @L=@k1 ¼ 0 ¼ p1  0:4ðx1 Þ0:9        ð4:37Þ
+be multiplied by a variable λi without changing
+the value of Eq. 4.30, or equivalently, Eq. 4.26.              @L=@k2 ¼ 0 ¼ p2  0:5ðx2 Þ0:8        ð4:38Þ
+These unknown variables λi are called the
+Lagrange multipliers of constraints i. The value               @L=@k3 ¼ 0 ¼ p3  0:6ðx3 Þ0:7        ð4:39Þ
+of each multiplier, λi, is the marginal value of the
+original objective function, Eq. 4.26, with
+respect to a change in the value of the amount              @L=@k4 ¼ 0 ¼ R þ x1 þ x2 þ x3  Q       ð4:40Þ
+produced, p, or in the case of constraint Eq. 4.25,
+the amount of water available, Q. We will show              These ten equations are the conditions neces-
+this shortly.                                            sary for a solution that maximizes Eq. 4.30, or
+   Differentiating Eq. 4.30 with respect to each         equivalently 4.26. They can be solved to obtain
+of the ten unknowns and setting the resulting            the values of the ten unknown variables. The
+equations to 0 yields:                                   solutions to these equations for various values of
+                                                         Q, (found in this case using LINGO) are shown in
+   @L=@p1 ¼ 0 ¼ 12  2p1  1:3ð3Þp0:3                    Table 4.2. (A free demo version of LINGO can be
+                                  1  k1
+                                                         obtained (downloaded) from www.LINDO.com.)
+                                              ð4:31Þ
+                                                         4.3.3.2     Meaning of Lagrange
+   @L=@p2 ¼ 0 ¼ 20  3p2  1:2ð5Þp0:2
+                                  2  k2
+                                                                     Multiplier λ
+                                              ð4:32Þ     In this example, Eq. 4.30 is the objective func-
+                                                         tion that is to be maximized. It is maximized or
+
+Table 4.2 Solutions to Eqs. 4.31–4.40
+
+===== page 12 [pdftotext] =====
+104                                                          4   An Introduction to Optimization Models and Methods
+
+minimized by equating to zero each of its partial                   There is no guarantee that a global optimum
+derivatives with respect to each unknown vari-                   solution will be found using calculus-based
+able. Equation 4.30 consists of the original net                 methods such as this one. Boundary conditions
+beneﬁt function plus each constraint i multiplied                need to be checked. Furthermore, since there is
+by a weight or multiplier λi. This equation is                   no difference in the Lagrange multipliers proce-
+expressed in monetary units. The added con-                      dure for ﬁnding a minimum or a maximum
+straints are expressed in other units: either the                solution, one needs to check whether in fact a
+quantity of product produced or the amount of                    maximum or minimum is being obtained. In this
+water available. Thus the units of the weights or                example, since each net beneﬁt function is con-
+multipliers λi associated with these constraints                 cave, a maximum will result.
+are expressed in monetary units per constraint                      The meaning of the values of the multipliers λi
+units. In this example, the multipliers λ1, λ2, and              at the optimum solution can be derived by
+λ3 represent the change in the total net beneﬁt                  manipulation of ∂L/∂λi = 0. Taking the partial
+value of the objective function (Eq. 4.26) per                   derivative of the Lagrange function, Eq. 4.43,
+unit change in the products p1, p2, and p3 pro-                  with respect to an unknown variable xj and set-
+duced. The multiplier λ4 represents the change in                ting it to zero results in
+the total net beneﬁt per unit change in the water                                                X
+available for allocation, Q − R.                                   @L=@xj ¼ 0 ¼ @F=@xj                ki @ ðgi ðX ÞÞ=@xj
+    Note in Table 4.2 that as the quantity of                                                      i
+
+available water increases, the marginal net ben-                                                                    ð4:44Þ
+eﬁts decrease. This is reflected in the values of
+each of the multipliers, λi. In other words, the net                Multiplying each term by ∂xj yields
+revenue derived from a quantity of product pro-                                        X
+duced at each of the three ﬁrms, and from the                                  @F ¼         ki @ ð gi ð X Þ Þ       ð4:45Þ
+                                                                                        i
+quantity of water available, is a concave function
+of those quantities, as illustrated in Fig. 4.2.                    Dividing each term by ∂bk associated with a
+    To review the general Lagrange multiplier                    particular constraint, say k, deﬁnes the meaning
+approach and derive the deﬁnition of the multi-                  of λk.
+pliers, consider the general constrained opti-
+                                                                               X
+mization problem containing n decision variables                    @F=@bk ¼        ki @ðgi ðXÞÞ=@bk ¼ kk ð4:46Þ
+xj and m constraint equations i.                                                  i
+
+
+      Maximize ðor minimize) FðXÞ                   ð4:41Þ          Equation 4.46 follows from the fact that
+                                                                 @ðgi ðXÞÞ=@bk equals 0 for constraints i ≠ k and
+subject to constraints                                           equals 1 for the constraint i = k. The latter is true
+                                                                 since bi = gi(X) and thus ∂(gi(X)) = ∂bi.
+      gi ðXÞ ¼ bi   i ¼ 1; 2; 3; . . .; m;          ð4:42Þ          From Eq. 4.46, each multiplier λi is the mar-
+                                                                 ginal change in the original objective function F
+where X is the vector of all xj. The Lagrange
+                                                                 (X) with respect to a change in the constant bi
+function L(X, λ) is formed by combining
+                                                                 associated with the constraint i. For nonlinear
+Eq. 4.42, each equaling zero, with the objective
+                                                                 problems, it is the slope of the objective function
+function of Eq. 4.41.
+                                                                 plotted against the value of bi.
+                         X                                          Readers can work out a similar proof if a slack
+  LðX; kÞ ¼ F ðXÞ           ki ð gi ð X Þ  bi Þ   ð4:43Þ
+                                                                 or surplus variable, Si, is included in inequality
+                         i
+                                                                 constraints to make them equations. For a less-
+    Solutions of the equations ∂L/∂xj = 0 for all                than-or-equal constraint gi(X) ≤ bi a squared
+decision variables xj and ∂L/∂λi = 0 for all con-                slack variable S2i can be added to the left-hand
+straints gi are possible local optima.
+                                                                 side to make it an equation gi ðXÞ þ S2i ¼ bi . For a
+
+===== page 13 [pdftotext] =====
+4.3 Nonlinear Optimization Models and Solution Procedures                                              105
+
+greater-than-or-equal constraint gi(X) ≥ bi a             A possible solution method for constrained
+squared surplus variable S2i can be subtracted         optimization problems containing continuous
+from the left-hand side to make it an equation         and/or discontinuous functions of any shape is
+gi ðXÞ  S2i ¼ bi . These slack or surplus variables   called discrete dynamic programming. Each
+are squared to ensure they are nonnegative, and        decision variable value can assume one of a set
+also to make them appear in the differential           of discrete values. For continuous valued objec-
+equations.                                             tive functions, the solution derived from discrete
+                                                       dynamic programming may therefore be only an
+       @L=@Si ¼ 0 ¼ 2Si ki ¼ Si ki          ð4:47Þ    approximation of the best one. For all practical
+                                                       purposes this is not a signiﬁcant limitation,
+   Equation 4.47 shows that either the slack or        especially if the intervals between the discrete
+surplus variable, S, or the multiplier, λ, will        values of the decision variables are not too large
+always be zero. If the value of the slack or sur-      and if simulation modeling is used to reﬁne the
+plus variable S is nonzero, the constraint is          solutions identiﬁed using dynamic programming.
+redundant. The optimal solution will not be               Dynamic programming is an approach that
+affected by the constraint. Small changes in the       divides the original optimization problem, with all
+values, b, of redundant constraints will not           of its variables, into a set of smaller optimization
+change the optimal value of the objective func-        problems, each of which needs to be solved before
+tion F(X). Conversely, if the constraint is bind-      the overall optimum solution to the original
+ing, the value of the slack or surplus variable        problem can be identiﬁed. The water supply allo-
+S will be zero. The multiplier λ can be nonzero if     cation problem, for example, needs to be solved
+the value of the function F(X) is sensitive to the     for a range of water supplies available to each ﬁrm.
+constraint value b.                                    Once this is done the particular allocations that
+   The solution of the set of partial differential     maximize the total net beneﬁt can be determined.
+Equations Eqs. 4.47 often involves a trial-and-
+error process, equating to zero a λ or a S for each
+inequality constraint and solving the remaining        4.4.1      Dynamic Programming
+equations, if possible. This tedious procedure,                   Networks and Recursive
+along with the need to check boundary solutions                   Equations
+when nonnegativity conditions are imposed,
+detracts from the utility of classical Lagrange        A network of nodes and links can represent each
+multiplier methods for solving all but relatively      discrete dynamic programming problem.
+simple water resources planning problems.              Dynamic programming methods ﬁnd the best
+                                                       way to get to, or go from, any node in that net-
+                                                       work. The nodes represent possible discrete
+4.4    Dynamic Programming                             states of the system that can exist and the links
+                                                       represent the decisions one could make to get
+The water-allocation problems in the previous          from one state (node) to another. Figure 4.6
+section assumed a net-beneﬁt function for each         illustrates a portion of such a network for the
+water-using ﬁrm. In those examples, these func-        three-ﬁrm allocation problem shown in Fig. 4.1.
+tions were continuous and differentiable, a con-       In this case the total amount of water available,
+venient attribute if methods based on calculus         Q − R, to all three ﬁrms is 10.
+(such as hill-climbing or Lagrange multipliers) are        Thus, dynamic programming models involve
+to be used to ﬁnd the best solution. In many           states, stages, and decisions. The relationships
+practical situations, these functions may not be so    among states, stages, and decisions are repre-
+continuous, or so conveniently concave for max-        sented by networks, such as that shown in
+imization or convex for minimization, making           Fig. 4.6. The states of the system are the nodes
+calculus-based methods for their solution difﬁcult.    and the values of the states are the numbers in the
+
+===== page 14 [pdftotext] =====
+106                                                  4   An Introduction to Optimization Models and Methods
+
+Fig. 4.6 A network
+representing some of the
+possible integer allocations
+of water to three
+water-consuming ﬁrms
+j assuming 10 units of
+water are available. The
+circles or nodes represent
+the discrete quantities of
+water available to users not
+yet allocated any water, and
+the links represent feasible
+allocation decisions xj to
+the next ﬁrm j
+
+
+
+
+nodes. Each node value in this example is the            river, is 10. Note from the ﬁrst row of Table 4.2
+quantity of water available to allocate to all           the exact allocation solution is x1 = 1.2,
+remaining ﬁrms, that is, to all connected links to       x2 = 3.7, and x3 = 5.1. Normally, we would not
+the right of the node. These state variable values       know this solution before solving for it using
+typically represent some existing condition either       dynamic programming, but since we do we can
+before making, or after having made, a decision.         reduce the complexity (number of nodes and
+The stages of the system are the different com-          links) of the dynamic programming network so
+ponents (e.g., ﬁrms) or time periods. Links              that the repetitive process of ﬁnding the best
+between (or connecting) initial and ﬁnal states          solution is clearer. Thus assume the range of x1
+represent decisions. The links in this example           is limited to integer values from 0 to 2, the range
+represent possible allocation decisions for each         of x2 is from 3 to 5, and the range of x3 is from 4
+of the three different ﬁrms. Each stage is a sep-        to 6. These range limits are imposed here just to
+arate ﬁrm. Each state is an amount of water that         reduce the size of the network. In this case, these
+remains to be allocated in the remaining stages.         assumptions will not affect or constrain the
+   Each link connects two nodes, the left node           optimal integer solution. If we did not make
+value indicating the state of a system before a          these assumptions the network would have, after
+decision is made, and the right node value indi-         the ﬁrst column of one node, three columns of
+cating the state of a system after a decision is         11 nodes, one representing each integer value
+made. In this case, the state of the system is the       from 0 to 10. Finer (noninteger) discretizations
+amount of water available to allocate to the             would involve even more nodes and connecting
+remaining ﬁrms.                                          links.
+   In the example shown in Fig. 4.6, the state               The links of Fig. 4.6 represent the water allo-
+and decision variables are represented by integer        cations. Note that the link allocations, the num-
+values—an admittedly fairly coarse discretiza-           bers on the links, cannot exceed the amount of
+tion. The total amount of water available, in            water available, that is, the number in the left
+addition to the amount that must remain in the           node of the link. The number in the right node is
+
+===== page 15 [pdftotext] =====
+4.4 Dynamic Programming                                                                                 107
+
+Fig. 4.7 Network as in
+Fig. 4.6 representing
+integer value allocations of
+water to three
+water-consuming ﬁrms.
+The circles or nodes
+represent the discrete
+quantities of water
+available, and the links
+represent feasible allocation
+decisions. The numbers on
+the links indicate the net
+beneﬁts obtained from
+these particular integer
+allocation decisions
+
+
+
+
+the quantity of water remaining after an allocation      (representing the allocation decisions we could
+has been made. The value in the right node, state        make) at each node (state) for each ﬁrm (stage).
+Sj+1, at the beginning of stage j + 1, is equal to the      Figure 4.7 shows the same network as in
+value in the left node, Sj, less the amount of water,    Fig. 4.6; however the numbers on the links rep-
+xj, allocated to ﬁrm j as indicated on the link.         resent the net beneﬁts obtained from the associ-
+Hence, beginning with a quantity of water S1 that        ated water allocations. For the three ﬁrms j = 1,
+can be allocated to all three ﬁrms, after allocating     2, and 3, the net beneﬁts, NBj(xj), associated with
+x1 to Firm 1 what remains is S2:                         allocations xj are
+
+                      S1  x1 ¼ S2            ð4:48Þ      NB1 ðx1 Þ ¼ maximumð12  p1 Þp1  3ðp1 Þ1:30
+                                                                   where p1  0:4ðx1 Þ0:9
+   Allocating x2 to Firm 2, leaves S3.
+                                                                                                     ð4:51Þ
+                      S2  x2 ¼ S3            ð4:49Þ
+                                                         NB2 ðx2 Þ ¼ maximumð20  1:5p2 Þp2  5ðp2 Þ1:20
+   Finally, allocating x3 to Firm 3 leaves S4.                    where p2  0:5ðx2 Þ0:8
+                                                                                                     ð4:52Þ
+                      S3  x3 ¼ S4            ð4:50Þ
+                                                         NB3 ðx3 Þ ¼ maximumð28  2:5p3 Þp3  6ðp3 Þ1:15
+   Figure 4.6 shows the different values of each
+of these states, Sj, and decision variables xj                    where p3  0:6ðx3 Þ0:7
+beginning with a quantity S1 = Q − R = 10. Our                                                       ð4:53Þ
+task is to ﬁnd the best path through the network,
+beginning at the leftmost node having a state               The discrete dynamic programming algorithm
+value of 10. To do this we need to know the net          or procedure is a systematic way to ﬁnd the best
+beneﬁts we will get associated with all the links        path through this network, or any other suitable
+
+===== page 16 [pdftotext] =====
+108                                                     4   An Introduction to Optimization Models and Methods
+
+network. What makes a network suitable for                  problem up into many optimization problems,
+dynamic programming is the fact that all the nodes          one for each possible discrete state (e.g., for each
+can be lined up in a sequence of vertical columns           node representing an amount of water available)
+and each link connects a node in one column to              in each stage (e.g., for each ﬁrm). Given a par-
+another node in the next column of nodes. No link           ticular state Sj and stage j—that is, a particular
+passes over or through any other column(s) of               node in the network—what decision (link) xj will
+nodes. Links also do not connect nodes in the               result in the maximum total net beneﬁts, desig-
+same column. In addition, the contribution to the           nated as Fj(Sj), given this state Sj for this and all
+overall objective value (in this case, the total net        remaining stages or ﬁrms j, j + 1, j + 2 … ? This
+beneﬁts) associated with each discrete decision             question must be answered for each node in the
+(link) in any stage or for any ﬁrm is strictly a            network before one can ﬁnd the overall best set
+function of the allocation of water to the ﬁrm. It is       of decisions for each stage: in other words, the
+not dependent on the allocation decisions associ-           best allocations to each ﬁrm (represented by the
+ated with other stages (ﬁrms) in the network.               best path through the network) in this example.
+    The main challenge in using discrete dynamic                Dynamic programming networks can be
+programming to solve an optimization problem is             solved in two ways—beginning at the most right
+to structure the problem so that it ﬁts this                column of nodes or states and moving from right
+dynamic programming network format. Perhaps                 to left, called the backward-moving (but forward-
+surprisingly, many water resources planning and             looking) algorithm, or beginning at the leftmost
+management problems do. But it takes practice to            node and moving from left to right, called the
+become good at converting optimization prob-                forward-moving (but backward-looking) algo-
+lems to networks of states, stages, and decisions           rithm. Both methods will ﬁnd the best path
+suitable for solution by discrete dynamic pro-              through the network. In some problems, how-
+gramming algorithms.                                        ever, only the backward-moving algorithm pro-
+    In this problem the overall objective is to             duces a useful solution. We will revisit this issue
+                       X                                    when we get to reservoir operation where the
+         Maximize            NBj ðxj Þ;       ð4:54Þ        stages are time periods.
+                         j
+
+
+where NBj(xj) is the net beneﬁt associated with an          4.4.2       Backward-Moving Solution
+allocation of xj to ﬁrm j. Equations 4.51–4.53                          Procedure
+deﬁne these net beneﬁt functions. As before, the
+index j represents the particular ﬁrm, and each             Consider the network in Fig. 4.7. Again, the
+ﬁrm is a stage for this problem. Note that the index        nodes represent the discrete states—water avail-
+or subscript used in the objective function often           able to allocate to all remaining users. The links
+represents an object (like a water-using ﬁrm) at a          represent particular discrete allocation decisions.
+place in space or a time period. These places or            The numbers on the links are the net beneﬁts
+time periods are called the stages of a dynamic             obtained from those allocations. We want to
+programming problem. Our task is to ﬁnd the best            proceed through the node-link network from the
+path from one stage to the next: in other words, the        state of 10 at the beginning of the ﬁrst stage to the
+best allocation decisions for all three ﬁrms.               end of the network in such a way as to maximize
+   Dynamic programming can be viewed as a                   total net beneﬁts. But without looking at all
+multistage decision-making process. Instead of              combinations of successive allocations we cannot
+deciding all three allocations in one single opti-          do this beginning at a state of 10. However, we
+mization procedure, like Lagrange multipliers,              can ﬁnd the best solution if we assume we have
+the dynamic programming procedure divides the               already made the ﬁrst two allocations and are at
+
+===== page 17 [pdftotext] =====
+4.4 Dynamic Programming                                                                                                109
+
+any of the nodes or states at the beginning of the               F3 ð5Þ ¼ MaximumfNB3 ðx3 Þg
+ﬁnal, third, stage with only one allocation deci-                        x3  5
+sion remaining. Clearly at each node representing
+                                                                         4  x3  6
+the water available to allocate to the third ﬁrm, the
+                                                                       ¼ Maximumf27:9; 31:1g ¼ 31:1 when x3 ¼ 5
+best decision is to pick the allocation (link) hav-
+ing the largest net beneﬁts.                                                                                       ð4:57Þ
+   Denoting F3(S3) as the maximum net beneﬁts
+we can achieve from the remaining amount of
+                                                                 F3 ð4Þ ¼ MaximumfNB3 ðx3 Þg
+water S3, then for each discrete value of S3 we
+can ﬁnd the x3 that maximizes F3(S3). Those                               x3  4
+shown in Fig. 4.7 include:                                                4  x3  6
+                                                                        ¼ Maximumf27:9g ¼ 27:9 when x3 ¼ 4
+F3 ð7Þ ¼ MaximumfNB3 ðx3 Þg
+      x3  7; the total flow available:
+                                                                                                                   ð4:58Þ
+      4  x3  6; the allowable range of allocations
+                                                                   These computations are shown on the network
+      = Maximumf27:9; 31:1; 33:7g ¼ 33:7 when x3 ¼ 6
+                                                                in Fig. 4.8. Note that there are no beneﬁts to be
+                                                       ð4:55Þ   obtained after the third allocation, so the decision
+                                                                to be made for each node or state prior to allo-
+F3 ð6Þ ¼ MaximumfNB3 ðx3 Þg
+                                                                cating water to Firm 3 is simply that which
+        x3  6
+                                                                maximizes the net beneﬁts derived from that last
+        4  x3  6
+                                                                (third) allocation. In Fig. 4.8 the links repre-
+      ¼ Maximumf27:9; 31:1; 33:7g ¼ 33:7 when x3 ¼ 6
+                                                                senting the decisions or allocations that result in
+                                                       ð4:56Þ   the largest net beneﬁts are shown with arrows.
+
+
+
+
+Fig. 4.8 Using the backward-moving dynamic program-             Stage 1 to obtain the allocation policy that maximizes
+ming method for ﬁnding the maximum remaining net                total net beneﬁts, F1(10). The minimum flow to remain in
+beneﬁts, Fj(Sj), and optimal allocations (denoted by the        the river, R, is in addition to the ten units available for
+arrows on the links) for each state in Stage 3, then for        allocation and is not shown in this network
+each state in Stage 2 and ﬁnally for the initial state in
+
+===== page 18 [pdftotext] =====
+110                                                     4   An Introduction to Optimization Models and Methods
+
+   Having computed the maximum net beneﬁts,                    Having computed the maximum net beneﬁts
+F3(S3), associated with each initial state S3 for           obtainable for each discrete state at the beginning
+Stage 3, we can now move backward (to the left) to          of Stage 2, that is, all the F2(S2) values, we can
+the discrete states S2 at the beginning of the second       move backward or left to the beginning of Stage
+stage. Again, these states represent the quantity of        1. For this beginning stage there is only one state,
+water available to allocate to Firms 2 and 3. Denote        the state of 10 we are actually in before making
+F2(S2) as the maximum total net beneﬁts obtained            any allocations to any of the ﬁrms. In this case,
+from the two remaining allocations x2 and x3 given          the maximum net beneﬁts, F1(10), we can obtain
+the quantity S2 water available. The best x2 depends        from given 10 units of water available, is
+not only on the net beneﬁts obtained from the
+allocation x2 but also on the maximum net beneﬁts           F1 ð10Þ ¼ MaximumfNB1 ðx1 Þ þ F2 ðS2 ¼ 10  x1 Þg
+obtainable after that, namely the just-calculated                    x1  10
+F3(S3) associated with the state S3 that results from                0  x1  2
+the initial state S2 and a decision x2. As deﬁned in                ¼ Maximumf0 þ 52:3; 3:7
+Eq. 4.49, this ﬁnal state S3 in Stage 2 obviously                     þ 49:7; 6:3 þ 46:8g ¼ 53:4 when x1 ¼ 1
+equals S2 − x2. Hence for those nodes at the
+                                                                                                         ð4:62Þ
+beginning of Stage 2 shown in Fig. 4.8:
+                                                                The value of F1(10) in Eq. 4.62 is the same as
+F2 ð10Þ ¼ MaximumfNB2 ðx2 Þ þ F3 ðS3 ¼ 10  x2 Þg
+                                                            the value of Eq. 4.54. This value is the maximum
+         x2  10                                            net beneﬁts obtainable from allocating the
+         3  x2  5                                         available 10 units of water. From Eq. 4.62 we
+        ¼ Maximumf15:7 þ 33:7; 18:6                         know that we will get a maximum of 53.4 net
+          þ 33:7; 21:1 þ 31:1g ¼ 52:3 when x2 ¼ 4           beneﬁts if we allocate 1 unit of water to Firm 1.
+                                              ð4:59Þ        This leaves 9 units of water to allocate to the two
+                                                            remaining ﬁrms. This is our optimal state at the
+F2 ð9Þ ¼ MaximumfNB2 ðx2 Þ þ F3 ðS3 ¼ 9  x2 Þg             beginning of Stage 2. Given a state of 9 at the
+        x2  9                                              beginning of Stage 2, we see from Eq. 4.60 that
+        3  x2  5
+                                                            we should allocate 4 units of water to Firm 2.
+                                                            This leaves 5 units of water for Firm 3. Given a
+       ¼ Maximumf15:7 þ 33:7; 18:6
+                                                            state of 5 at the beginning of Stage 3, Eq. 4.57
+         þ 31:1; 21:1 þ 27:9g ¼ 49:7                        tells us we should allocate all 5 units to Firm 3.
+          when x2 ¼ 4                                       All this is illustrated in Fig. 4.8.
+                                              ð4:60Þ            Compare this discrete solution with the con-
+                                                            tinuous one deﬁned by Lagrange multipliers as
+F2 ð8Þ ¼ MaximumfNB2 ðx2 Þ þ F3 ðS3 ¼ 8  x2 Þg             shown in Table 4.2. The exact solution, to the
+        x2  8                                              nearest tenth, is 1.2, 3.7, and 5.1 for x1, x2, and
+        3  x2  5 ðassume 4 instead of 5 since both        x3, respectively. The solution just derived from
+          will not affect optimal solutionÞ                 discrete dynamic programming that assumed
+                                                            only integer allocation values is 1, 4, and 5,
+       ¼ Maximumf15:7 þ 31:1; 18:6
+                                                            respectively.
+        þ 27:9g ¼ 46:8 when x2 ¼ 3                              To summarize, a dynamic programming
+                                              ð4:61Þ        model was developed for the following problem:
+
+   These maximum net beneﬁt functions, F2(S2),                            Maximize Net benefit           ð4:63Þ
+could be calculated for the remaining discrete
+states from 7 to 0.
+
+===== page 19 [pdftotext] =====
+4.4 Dynamic Programming                                                                                         111
+
+
+Subject to                                                       The values of each NBj(xj) are obtained from
+                                                              Eqs. 4.51 to 4.53.
+    Net benefit ¼ Total return  Total cost                      To solve for F1(S1) and each optimal alloca-
+                                                    ð4:64Þ    tion xj we must ﬁrst solve for all values of F3(S3).
+                                                              Once these are known we can solve for all values
+ Total return ¼ ð12  p1 Þp1 þ ð20  1:5p2 Þp2                of F2(S2). Given these F2(S2) values, we can
+                    þ ð28  2:5p3 Þp3                         solve for F1(S1). Equations 4.71 need to be
+                                                              solved before Eqs. 4.72 can be solved, and
+                                                    ð4:65Þ    Eqs. 4.72 need to be solved before Eqs. 4.73 can
+                                                              be solved. They need not be solved simultane-
+ Total cost ¼ 3ðp1 Þ1:30 þ 5ðp2 Þ1:20 þ 6ðp3 Þ1:15            ously, and they cannot be solved in reverse order.
+                                            ð4:66Þ            These three equations are called recursive equa-
+                                                              tions. They are deﬁned for the backward-moving
+                     p1  0:4ðx1 Þ0:9               ð4:67Þ    dynamic programming solution procedure.
+                                                                 There is a correspondence between the non-
+                                                              linear optimization model deﬁned by Eqs. 4.63–
+                     p2  0:5ðx2 Þ0:8               ð4:68Þ    4.70 and the dynamic programming model
+                                                              deﬁned by the recursive Eqs. 4.71–4.73. Note
+                                                              that F3(S3) in Eq. 4.71 is the same as
+                     p3  0:6ðx3 Þ0:7               ð4:69Þ
+                                                                    F3 ðS3 Þ ¼ Maximum NB3 ðx3 Þ             ð4:74Þ
+
+                   x1 þ x2 þ x3  10                ð4:70Þ       Subject to
+
+   The discrete dynamic programming version of                                      x 3  S3 ;               ð4:75Þ
+this problem required discrete states Sj repre-
+senting the amount of water available to allocate             where NB3(x3) is deﬁned in Eq. 4.53.
+to ﬁrms j, j + 1, …. It required discrete alloca-               Similarly, F2(S2) in Eq. 4.72 is the same as
+tions xj. Next it required the calculation of the
+maximum net beneﬁts, Fj(Sj), that could be                        F2 ðS2 Þ ¼ Maximum NB2 ðx2 Þ þ NB3 ðx3 Þ
+obtained from all ﬁrms j, beginning with Firm 3,                                                             ð4:76Þ
+and proceeding backward as indicated in
+Eqs. 4.71–4.73.                                                  Subject to
+
+ F3 ðS3 Þ ¼ maximumfNB3 ðx3 Þg over all x3  S3 ;                                x2 þ x3  S 2 ;             ð4:77Þ
+           for all discrete S3 values between 0 and 10
+                                                              where NB2(x2) and NB3(x3) are deﬁned in
+                                                    ð4:71Þ    Eqs. 4.52 and 4.53.
+                                                                Finally, F1(S1) in Eq. 4.73 is the same as
+F2 ðS2 Þ ¼ maximumfNB2 ðx2 Þ þ F3 ðS3 Þg
+                                                               F1 ðS1 Þ ¼ Maximum NB1 ðx1 Þ þ NB2 ðx2 Þ þ NB3 ðx3 Þ
+          over all x2  S2 and S3 ¼ S2  x2 ;   0  S2  10
+                                                                                                             ð4:78Þ
+                                                    ð4:72Þ
+                                                                 Subject to
+F1 ðS1 Þ ¼ maximumfNB1 ðx1 Þ þ F2 ðS2 Þg                                    x1 þ x2 þ x3  S1 ¼ 10;          ð4:79Þ
+          over all x1  S1 and S2 ¼ S1  x1 and S1 ¼ 10
+                                                    ð4:73Þ    where NB1(x1), NB2(x2), and NB3(x3) are deﬁned
+                                                              in Eqs. 4.51–4.53.
+
+===== page 20 [pdftotext] =====
+112                                                  4   An Introduction to Optimization Models and Methods
+
+  Alternatively, F3(S3) in Eq. 4.71 is the same as       successive states Sj and Sj+1 and the decision xj.
+                                                         In the above example, these transition functions
+F3 ðS3 Þ ¼ Maximumð28  2:5p3 Þp3  6ðp3 Þ1:15           are deﬁned by Eqs. 4.48–4.50, or, in general
+                                       ð4:80Þ            terms for all ﬁrms j, by
+  Subject to                                                               Sj þ 1 ¼ S j  x j          ð4:92Þ
+
+                p3  0:6ðx3 Þ0:7            ð4:81Þ
+
+                    x 3  S3                ð4:82Þ       4.4.3       Forward-Moving Solution
+                                                                     Procedure
+  Similarly, F2(S2) in Eq. 4.72 is the same as
+                                                         We have just described the backward-moving
+ F2 ðS2 Þ ¼ Maximumð20  1:5p2 Þp2
+                                                         dynamic programming algorithm. In that
+         þ ð28  2:5p3 Þp3  5ðp2Þ1:20 6ðp3Þ1:15        approach at each node (state) in each stage we
+                                            ð4:83Þ       calculated the best value of the objective function
+                                                         that can be obtained from all further or remaining
+  Subject to                                             decisions. Alternatively one can proceed for-
+                                                         ward, that is, from left to right, through a
+                p2  0:5ðx2 Þ0:8            ð4:84Þ       dynamic programming network. For the
+                                                         forward-moving algorithm at each node we need
+                p3  0:6ðx3 Þ0:7            ð4:85Þ       to calculate the best value of the objective
+                                                         function that could be obtained from all past
+                  x 2 þ x 3  S2            ð4:86Þ       decisions leading to that node or state. In other
+                                                         words, we need to ﬁnd how best to get to each
+  Finally, F1(S1) in Eq. 4.73 is the same as             state Sj+1 at the end of each stage j.
+                                                             Returning to the allocation example, deﬁne
+ F1 ðS1 Þ ¼ Maximumð12  p1 Þp1
+                                                         fj(Sj+1) as the maximum net beneﬁts from the
+          þ ð20  1:5p2 Þp2 þ ð28  2:5p3 Þp3            allocation of water to ﬁrms 1, 2, …, j, given the
+            h                                    i
+           3ðp1 Þ1:30 þ 5ðp2 Þ1:20 þ 6ðp3 Þ1:15         remaining water, state Sj+1. For this example, we
+                                                         begin the forward-moving, but backward-looking,
+                                            ð4:87Þ       process by selecting each of the ending states in the
+                                                         ﬁrst stage j = 1 and ﬁnding the best way to have
+  Subject to                                             arrived at (or to have achieved) those ending states.
+                                                         Since in this example there is only one way to get
+                p1  0:4ðx1 Þ0:9            ð4:88Þ
+                                                         to each of those states, as shown in Fig. 4.7 or
+                                                         Fig. 4.8 the allocation decisions, x1, given a value
+                p2  0:5ðx2 Þ0:8            ð4:89Þ
+                                                         for S2 are obvious.
+                p3  0:6ðx3 Þ0:7            ð4:90Þ               f1 ðS2 Þ ¼ maximumfNB1 ðx1 Þg
+                                                                                                       ð4:93Þ
+            x1 þ x2 þ x3  S1 ¼ 10          ð4:91Þ                      x1 ¼ 10  S2
+
+  The transition function of dynamic program-               Hence, f1(S2) is simply NB1(10 − S2). Once
+ming deﬁnes the relationship between two                 the values for all f1(S2) are known for all discrete
+
+===== page 21 [pdftotext] =====
+4.4 Dynamic Programming                                                                             113
+
+S2 between 0 and 10, move forward (to the right)     water at the end of Stage 3. The arrow tells us
+to the end of Stage 2 and ﬁnd the best allocations   that if we are to get to that state optimally, we
+x2 to have made given each ﬁnal state S3.            should allocate 5 units of water to Firm 3. Thus
+                                                     we must begin Stage 3, or end Stage 2, with
+  f2 ðS3 Þ ¼ maximumfNB2 ðx2 Þ þ f1 ðS2 Þg           10 − 5 = 5 units of water. To get to this state at
+            0  x2  10  S3               ð4:94Þ    the end of Stage 2 we should allocate 4 units of
+            S2 ¼ S3 þ x 2                            water to Firm 2. The arrow also tells us we
+                                                     should have had 9 units of water available at the
+   Once the values of all f2(S3) are known for all   end of Stage 1. Given this state of 9 at the end of
+discrete states S3 between 0 and 10, move for-       Stage 1, the arrow tells us we should allocate 1
+ward to Stage 3 and ﬁnd the best allocations x3 to   unit of water to Firm 1. This is the same allo-
+have made given each ﬁnal state S4.                  cation policy as obtained using the backward-
+                                                     moving algorithm.
+ f3 ðS4 Þ ¼ maximumfNB3 ðx3 Þ þ f2 ðS3 Þg
+            for all discrete S4 between 0 and 10:
+                                                     4.4.4      Numerical Solutions
+        0  x3  10  S4
+        S3 ¼ S4 þ x 3                                The application of discrete dynamic program-
+                                           ð4:95Þ    ming to most practical problems will usually
+                                                     require writing some software. There are no
+   Figure 4.9 illustrates a portion of the network   general dynamic programming computer pro-
+represented by Eqs. 4.93–4.95, and the fj(Sj+1)      grams available that will solve all dynamic pro-
+values.                                              gramming problems. Thus any user of dynamic
+   From Fig. 4.9, note the highest total net ben-    programming will need to write a computer
+eﬁts are obtained by ending with 0 remaining         program to solve a particular problem unless they
+
+Fig. 4.9 Using the
+forward-moving dynamic
+programming method for
+ﬁnding the maximum
+accumulated net beneﬁts,
+fj(Sj + 1), and optimal
+allocations (denoted by the
+arrows on the links) that
+should have been made to
+reach each ending state,
+beginning with the ending
+states in Stage 1, then for
+each ending state in Stage 2
+and ﬁnally for the ending
+states in Stage 3
+
+===== page 22 [pdftotext] =====
+114                                                     4   An Introduction to Optimization Models and Methods
+
+do it by hand. Most computer programs written               and to get this we should allocate 1 unit to Firm
+for solving speciﬁc dynamic programming                     1. This leaves 9 units of water for the remaining
+problems create and store the solutions of the              two allocations. From Table 4.4 we see that for a
+recursive equations (e.g., Eqs. 4.93–4.95) in               state of 9 units of water available we should
+tables. Each stage is a separate table, as shown in         allocate 4 units to Firm 2. This leaves 5 units.
+Tables 4.3, 4.4, and 4.5 for this example                   From Table 4.3 for a state of 5 units of water
+water-allocation problem. These tables apply to             available we see we should allocate all 5 of them
+only a part of the entire problem, namely that part         to Firm 3.
+of the network shown in Figs. 4.8 and 4.9. The                  Performing these calculations for various
+backward solution procedure is used.                        discrete total amounts of water available, say
+   Table 4.3 contains the solutions of Eqs. 4.55–           from 0 to 38 in this example, will deﬁne an
+4.58 for the third stage. Table 4.4 contains the            allocation policy (such as the one shown in
+solutions of Eqs. 4.59–4.61 for the second stage.           Fig. 4.5 for a different allocation problem) for
+Table 4.5 contains the solution of Eq. 4.62 for             situations when the total amount of water is less
+the ﬁrst stage.                                             than that desired by all the ﬁrms. This policy can
+   From Table 4.5 we see that, given 10 units of            then be simulated using alternative time series of
+water available, we will obtain 53.4 net beneﬁts            available amounts of water, such as streamflows,
+
+Table 4.3 Computing the values of F3(S3) and optimal allocations x3 for all states S3 in Stage 3
+
+
+
+
+Table 4.4 Computing the values of F2(S2) and optimal allocations x2 for all states S2 in Stage 2
+
+===== page 23 [pdftotext] =====
+4.4 Dynamic Programming                                                                                   115
+
+Table 4.5 Computing the values of F1(S1) and optimal allocations x1, for all states S1, in Stage 1
+
+
+
+
+to obtain estimates of the time series (or statis-         (Bellman 1957). The backward-moving solution
+tical measures of those time series) of net beneﬁts        algorithm is based on the principal that no matter
+obtained by each ﬁrm, assuming the allocation              what the state and stage (i.e., the particular node
+policy is followed over time.                              you are at), an optimal policy is one that pro-
+                                                           ceeds forward from that node or state and stage
+                                                           optimally. The forward-moving solution algo-
+4.4.5        Dimensionality                                rithm is based on the principal that no matter
+                                                           what the state and stage (i.e., the particular node
+One of the limitations of dynamic programming              you are at), an optimal policy is one that has
+is handling multiple state variables. In our               arrived at that node or state and stage in an
+water-allocation example, we had only one state            optimal manner.
+variable: the total amount of water available. We              This “principle of optimality” is a very simple
+could have enlarged this problem to include other          concept but requires the formulation of a set of
+types of resources the ﬁrms require to make their          recursive equations at each stage. It also requires
+products. Each of these state variables would              that either in the last stage (j = J) for a
+need to be discretized. If, for example, only              backward-moving algorithm, or in the ﬁrst stage
+m discrete values of each state variable are con-          (j = 1) for a forward-moving algorithm, the
+sidered, for n different state variables (e.g., types      future value functions, Fj+1(Sj+1), associated with
+of resources) there are mn different combinations          the ending state variable values, or past value
+of state variable values to consider at each stage.        functions, f0(S1), associated with the beginning
+As the number of state variables increases, the            state variable values, respectively, all equal some
+number of discrete combinations of state variable          known value. Usually that value is 0 but not
+values increases exponentially. This is called             always. This condition is needed in order to
+dynamic programming’s “curse of dimensional-               begin the process of solving each successive
+ity”. It has motivated many researchers to search          recursive equation.
+for ways of reducing the number of possible
+discrete states required to ﬁnd an optimal solu-
+tion to large multistate-variable problems.                4.4.7        Additional Applications
+
+                                                           Among the common dynamic programming
+4.4.6        Principle of Optimality                       applications in water resources planning are
+                                                           water allocations to multiple uses, infrastructure
+The solution of dynamic programming models or              capacity expansion, and reservoir operation.
+networks is based on a principal of optimality             The previous three-user water-allocation problem
+
+===== page 24 [pdftotext] =====
+116                                                            4   An Introduction to Optimization Models and Methods
+
+(Fig. 4.1) illustrates the ﬁrst type of application.               each future period t is no less than the capacity
+The other two applications are presented below.                    required Dt at the end of that period.
+
+4.4.7.1 Capacity Expansion                                               st þ 1  D t   for t ¼ 1; 2; . . .; T    ð4:99Þ
+How much infrastructure should be built, when
+and why? Consider a municipality that must plan                       There may also be constraints on the possible
+for the future expansion of its water supply sys-                  expansions in each period deﬁned by a set Ωt of
+tem or some component of that system, such as a                    feasible capacity additions in each period t:
+reservoir, aqueduct, or treatment plant. The
+                                                                                           xt 2 Xt               ð4:100Þ
+capacity needed at the end of each future period
+t has been estimated to be Dt. The cost, Ct(st, xt)                   Figure 4.10 illustrates this type of capacity
+of adding capacity xt in each period t is a function               expansion problem. The question is how much
+of that added capacity as well as of the existing                  capacity to add and when. It is a signiﬁcant
+capacity st at the beginning of the period. The                    problem for several reasons. One is that the cost
+planning problem is to ﬁnd that time sequence of                   functions Ct(st, xt) typically exhibit ﬁxed costs
+capacity expansions that minimizes the present                     and economies of scale, as illustrated in Fig. 4.11.
+value of total future costs while meeting the                      Each time any capacity is added there are ﬁxed as
+predicted capacity demand requirements. This is                    well as variable costs incurred. Fixed and variable
+the usual capacity expansion problem.                              costs that show economies of scale (decreasing
+   This problem can be written as an optimiza-                     average costs associated with increasing capacity
+tion model: The objective is to minimize the                       additions) motivate the addition of excess
+present value of the total cost of capacity                        capacity, capacity not needed immediately but
+expansion.                                                         expected to be needed in the future to meet an
+                      X                                            increased demand for additional capacity.
+         Minimize         Ct ðst ; xt Þ;      ð4:96Þ
+                                                                      The problem is also important because any
+                              t
+                                                                   estimates made today of future demands, costs
+where Ct(st, xt) is the present value of the cost of               and interest rates are likely to be wrong. The
+capacity expansion xt in period t given an initial                 future is uncertain. Its uncertainties increase the
+capacity of st.                                                    further the future. Capacity expansion planners
+   The constraints of this model deﬁne the mini-                   need to consider the future if their plans are to be
+mum required ﬁnal capacity in each period t, or                    cost-effective and not myopic from assuming
+equivalently the next period’s initial capacity, st+1,
+as a function of the known existing capacity s1
+and each expansion xt up through period t.
+                      X
+      st þ 1 ¼ s1 þ           xs   for t ¼ 1; 2; . . .; T
+                      s¼1;t
+
+                                                      ð4:97Þ
+
+   Alternatively these equations may be expres-
+sed by a series of continuity relationships:
+
+      st þ 1 ¼ st þ xt   for t ¼ 1; 2; . . .; T       ð4:98Þ
+                                                                   Fig. 4.10 A demand projection (solid blue line) and a
+   In this problem, the constraints must also                      possible capacity expansion schedule (red line) for
+ensure that the actual capacity st+1 at the end of                 meeting that projected demand over time
+
+===== page 25 [pdftotext] =====
+4.4 Dynamic Programming                                                                                              117
+
+
+
+
+Fig. 4.11 Typical cost function for additional capacity
+given an existing capacity. The cost function shows the
+ﬁxed costs, C0, required if additional capacity is to be
+added, and the economies of scale associated with the
+concave portion of the cost function                       Fig. 4.12 Network of discrete capacity expansion deci-
+                                                           sions (links) that meet the projected demand
+there is no future. Just how far into the future do
+they need to look? And what about the uncer-                  Hence, for each ﬁnal discrete state s2 in stage
+tainty in all future costs, demands, and interest          t = 1 ranging from D1 to the maximum demand
+rate estimates? These questions will be addressed          DT, deﬁne
+after showing how the problem can be solved for            f1 ðs2 Þ ¼ minfC1 ðs1 ; x1 Þg in which the discrete x1
+any ﬁxed-planning horizon and estimates of                          ¼ s2 and s1 ¼ 0
+future demands, interest rates, and costs.                                                                       ð4:101Þ
+    The constrained optimization model deﬁned
+by Eqs. 4.96–4.100 can be restructured as a                   Moving to stage t = 2, for the ﬁnal discrete
+multistage decision-making process and solved              states s3 ranging from D2 to DT,
+using either a forward or backward-moving dis-
+crete dynamic programming solution procedure.                f2 ðs3 Þ ¼ minfC2 ðs2 ; x2 Þ þ f1 ðs2 Þg
+The stages of the model will be the time periods                       over all discrete x2 between 0 ð4:102Þ
+t. The states will be either the capacity st+1 at the                  and s3  D1 and s2 ¼ s3  x2
+end of a stage or period t if a forward-moving
+solution procedure is adopted, or the capacity st,            Moving to stage t = 3, for the ﬁnal discrete
+at the beginning of a stage or period t if a               states s4 ranging from D3 to DT,
+backward-moving solution procedure is used.                       f3 ðs4 Þ ¼minfC3 ðs3 ; x3 Þ þ f2 ðs3 Þg
+    A network of possible discrete capacity states
+                                                                             over all discrete x3 between 0
+and decisions can be superimposed onto the
+demand projection of Fig. 4.9, as shown in                                   and s4  D2 and s3 ¼ s4  x3
+Fig. 4.12. The solid blue circles in Fig. 4.12                                                                   ð4:103Þ
+represent possible discrete states, St, of the sys-
+tem, the amounts of additional capacity existing              In general for all stages t between the ﬁrst and
+at the end of each period t − 1 or equivalently at         last:
+the beginning of period t.                                      ft ðst þ 1 Þ ¼ minfCt ðst ; xt Þ þ ft1 ðst Þg
+    Consider ﬁrst a forward-moving dynamic                               over all discrete xt between 0
+programming algorithm. To implement this,                                and st þ 1  Dt1 and st ¼ st þ 1  xt
+deﬁne ft(st+1) as the minimum cost of achieving a
+                                                                                                                 ð4:104Þ
+capacity st+1, at the end of period t. Since at the
+beginning of the ﬁrst period t = 1, the accumu-               For the last stage t = T and for the ﬁnal dis-
+lated least cost is 0, f0(s1) = 0.                         crete state sT+1 = DT,
+
+===== page 26 [pdftotext] =====
+118                                                       4   An Introduction to Optimization Models and Methods
+
+
+      fT ðsT þ 1 Þ ¼ minfCT ðsT ; xT Þ þ fT1 ðsT Þg          same network with the present value of the ex-
+                                                              pansion costs on each link. The values of the
+                     over all discrete xT
+                                                              states, the existing capacities, represented by the
+                     between 0 and DT  DT1                  nodes, are shown on the left vertical axis. The
+                   where sT ¼ sT þ 1  xT                     capacity expansion problem is solved on
+                                                ð4:105Þ       Fig. 4.14 using the forward-moving algorithm.
+                                                                  From the forward-moving solution to the
+    The value of fT(sT+1) is the minimum present              dynamic programming problem shown in
+value of the total cost of meeting the demand for             Fig. 4.14, the present value of the cost of the
+T time periods. To identify the sequence of                   optimal capacity expansion schedule is 23 units
+capacity expansion decisions that results in this             of money. Backtracking (moving left against the
+minimum present value of the total cost requires              arrows) from the farthest right node, this sched-
+backtracking to collect the set of best decisions xt          ule adds 10 units of capacity in period t = 1, and
+for all stages t. A numerical example will illus-             15 units of capacity in period t = 3.
+trate this.                                                       Next consider the backward-moving algo-
+                                                              rithm applied to this capacity expansion problem.
+A numerical example
+                                                              The general recursive equation for a
+Consider the ﬁve-period capacity expansion
+                                                              backward-moving solution is
+problem shown in Fig. 4.12. Figure 4.13 is the
+
+
+
+
+Fig. 4.13 A discrete capacity expansion network show-         path through the network can be done using forward or
+ing the present value of the expansion costs associated       backward-moving discrete dynamic programming
+with each feasible expansion decision. Finding the best
+
+===== page 27 [pdftotext] =====
+4.4 Dynamic Programming                                                                                      119
+
+
+
+
+Fig. 4.14 A capacity-expansion example, showing the         minimum cost to have reached that particular state at
+results of a forward-moving dynamic programming             the end of the particular time period t
+algorithm. The numbers next to the nodes are the
+
+
+
+ Ft ðst Þ ¼ minimumfCt ðst ; xt Þ þ Ft þ 1 ðst þ 1 Þg       gives us a time series of future capacity expan-
+           over all discrete xt from Dt  st to DT  st ;
+                                                            sion decisions for the next 5 time periods, what is
+                                                            important to decision-makers is what additional
+           for all discrete states st from Dt1 to DT
+                                                            capacity to add in the current period, i.e., now,
+                                                ð4:106Þ     not what capacity to add in future periods. Does
+                                                            the uncertainty of future demands and costs and
+where FT+1(DT) = 0 and as before each cost                  the 5-period planning horizon affect this ﬁrst
+function is the discounted cost.                            decision, x1? This is the question to ask. If the
+    Once again, as shown in Fig. 4.14, the mini-
+                                                            answer is no, then one can place some conﬁdence
+mum total present value cost is 23 if 10 units of           in the value of x1. If the answer is yes, then more
+additional capacity are added in period t = 1 and           study may be warranted to determine which
+15 in period t = 3.
+                                                            demand and cost scenario to assume, or, if
+    Now consider the question of the uncertainty            applicable, how far into the future to extend the
+of future demands, Dt, discounted costs, Ct(st, xt),        planning horizon.
+as well as to the fact that the planning horizon                Future capacity expansion decisions in time
+T is only 5 time periods. Of importance is just             periods 2, 3, and so on can be based on updated
+how these uncertainties and ﬁnite planning                  information and analyses carried out closer to the
+horizon affect our decisions. While the model
+
+===== page 28 [pdftotext] =====
+120                                                   4   An Introduction to Optimization Models and Methods
+
+
+
+
+Fig. 4.15 A capacity-expansion example, showing the       minimum remaining cost to have the particular capacity
+results of a backward-moving dynamic programming          required at the end of the planning horizon given the
+algorithm. The numbers next to the nodes are the          existing capacity of the state
+
+
+
+time those decisions are to be made. At those             distant time horizon, one can then ignore all but
+times, the forecast demands and economic cost             that ﬁrst decision, x1: that is, what to add now.
+estimates can be updated and the planning hori-           Then just before the beginning of the second
+zon extended, as necessary, to a period that again        period, the forecasting and analysis can be
+does not affect the immediate decision. Note that         redone with updated data to obtain an updated
+in the example problem shown in Figs. 4.14 and            solution for what if any capacity to add in period
+4.15, the use of 4 periods instead of 5 would have        2, and so on into the future. Thus, these
+resulted in the same ﬁrst-period decision. There          sequential decision making dynamic program-
+is no need to extend the analysis to 6 or more            ming models can be designed to be used in a
+periods.                                                  sequential decision-making process.
+   To summarize: What is important to
+decision-makers is what additional capacity to            4.4.7.2 Reservoir Operation
+add now. While the current period’s capacity              Reservoir operators need to know how much
+addition should be based on the best estimates of         water to release and when. Reservoirs designed to
+future costs, interest rates and demands, once a          meet demands for water supplies, recreation,
+solution is obtained for the capacity expansion           hydropower, the environment and/or flood con-
+required for this and all future periods up to some       trol need to be operated in ways that meet those
+
+===== page 29 [pdftotext] =====
+4.4 Dynamic Programming                                                                                      121
+
+demands in a reliable and effective manner. Since          zones are associated with higher reservoir relea-
+future inflows or storage volumes are uncertain,           ses. If the actual storage is relatively low, then
+the challenge, of course, is to determine the best         less water is usually released so as to hedge
+reservoir release or discharge for a variety of            against a continuing water shortage or drought.
+possible inflows and storage conditions that could            Release rules may also specify the desired
+exist or happen in each time period t in the future.       storage level for the time of year. The operator is
+   Reservoir release policies are often deﬁned in          to release water as necessary to achieve these
+the form of what are called “rule curves.” Fig-            target storage levels. Maximum and minimum
+ure 4.17 illustrates a rule curve for a single             release constraints might also be speciﬁed that
+reservoir on the Columbia River in the north-              may affect how quickly the target storage levels
+western United States. It combines components              can be met. Some rule curves deﬁne multiple
+of two basic types of release rules. In both of            target storage levels depending on hydrological
+these, the year is divided into various discrete           (e.g., snow pack) conditions in the upstream
+within-year time periods. There is a speciﬁed              watershed, or on the forecast climate conditions
+release for each value of storage in each                  as affected by ENSO cycles, solar geomagnetic
+within-year time period. Usually higher storage            activity, ocean currents and the like.
+
+
+
+
+Fig. 4.16 An example reservoir rule curve specifying       and maximum release rates and the maximum down-
+the storage targets and some of the release constraints,   stream channel rate of flow and depth changes that can
+given the particular current storage volume and time of    occur in each month
+year. The release constraints also include the minimum
+
+===== page 30 [pdftotext] =====
+122                                                         4   An Introduction to Optimization Models and Methods
+
+   Reservoir release rule curves for a year, such               it is useful to have at least an approximate idea of
+as that shown in Fig. 4.16, deﬁne a policy that                 the expected impact of different alternative poli-
+does not vary from one year to the next. The                    cies on various system performance measures or
+actual releases will vary, however, depending on                objectives. Policy objectives could be the maxi-
+the inflows and storage volumes that actually                   mization of expected annual net beneﬁts from
+occur. The releases are often speciﬁed indepen-                 downstream releases, reservoir storage volumes,
+dently of future inflow forecasts. They are typi-               hydroelectric energy and flood control, or the
+cally based only on existing storage volumes and                minimization of deviations from particular
+within-year periods—the two axes of Fig. 4.16.                  release, storage volume, hydroelectric energy or
+   Release rules are typically derived from trial               flood flow targets or target ranges. Discrete
+and error simulations. To begin these simulations               dynamic programming can be used to obtain
+
+
+
+
+Fig. 4.17 Network representation of the four-season             inflow of Qt during season t, the links indicate the
+reservoir release problem. Given any initial storage            possible release decisions corresponding to those in
+volume St at the beginning of a season t, and an expected       Table 4.7
+
+===== page 31 [pdftotext] =====
+4.4 Dynamic Programming                                                                                      123
+
+initial estimates of reservoir-operating policies            evaporation and seepage losses based on different
+that meet these and other objectives. The results            discrete combinations of initial and ﬁnal storage
+of discrete dynamic programming can be                       volumes for each within-year period t.
+expressed in the form shown in Fig. 4.17.                        Rounding these losses to the nearest integer
+                                                             value, Table 4.7 shows the net releases associ-
+A numerical example
+                                                             ated with initial and ﬁnal storage volumes. They
+As a simple example, consider a reservoir having
+                                                             are computed using Eq. 4.107. The information
+an active storage capacity of 20 million cubic
+                                                             in Table 4.7 allows us to draw a network repre-
+meters, or for that matter any speciﬁed volume
+                                                             senting each of the discrete storage volume states
+units. The active storage volume in the reservoir
+                                                             (the nodes), and each of the feasible releases (the
+can vary between 0 and 20. To use discrete
+                                                             links). This network for the four seasons t in the
+dynamic programming, this range of possible
+                                                             year is illustrated in Fig. 4.17.
+storage volumes must be divided into a set of
+                                                                 This reservoir-operating problem is a multi-
+discrete values. These will be the discrete state
+                                                             stage decision-making problem. As Fig. 4.17
+variable values. In this example let the range of
+                                                             illustrates, at the beginning of any season t, the
+storage volumes be divided into intervals of 5
+                                                             storage volume can be in any of the ﬁve discrete
+storage volume units. Hence, the initial storage
+                                                             states. Given the state, a release decision is to be
+volume, St, can assume values of 0, 5, 10, 15, and
+                                                             made. This release will depend on the state: the
+20 for all periods t.
+                                                             initial storage volume and the mean inflow, as
+   For each period t, let Qt be the mean inflow,
+                                                             well as the losses that may be estimated based on
+Lt(St, St+1) the evaporation and seepage losses
+                                                             the initial and ﬁnal storage volumes, as deﬁned in
+that depend on the initial and ﬁnal storage vol-
+                                                             Table 4.6. The release will also depend on what
+umes in the reservoir, and Rt the release or dis-
+                                                             is to be accomplished—that is, the objectives to
+charge from the reservoir. Each variable is
+                                                             be satisﬁed.
+expressed as volume units for the period t.
+                                                                 For this example, assume there are various
+   Storage volume continuity requires that in
+                                                             targets that water users would like to achieve.
+each period t the initial active storage volume, St,
+                                                             Downstream water users want reservoir operators
+plus the inflow, Qt, less the losses, Lt(St, St+1),
+                                                             to meet their flow targets. Individuals who use
+and release, Rt, equals the ﬁnal storage, or
+                                                             the lake for recreation want the reservoir opera-
+equivalently the initial storage, St+1, in the fol-
+                                                             tors to meet storage volume or storage level
+lowing period t + 1. Hence
+                                                             targets. Finally, individuals living on the down-
+                                                             stream floodplain want the reservoir operators to
+St þ Qt  Rt  Lt ðSt ; St þ 1 Þ ¼ St þ 1 for each period t:
+                                                             provide storage capacity for flood protection.
+                                                  ð4:107Þ Table 4.8 identiﬁes these different targets that are
+                                                             to be met, if possible, for the duration of each
+   To satisfy the requirement (imposed for con-
+                                                             season t.
+venience in this example) that each storage vol-
+                                                                 Clearly, it will not be possible to meet all
+ume variable be a discrete value over the range
+                                                             these storage volume and release targets in all
+from 0 to 20 in units of 5, the releases, Rt, must
+                                                             four seasons, given inflows of 24, 12, 6, and 18,
+be such that when Qt − Rt − Lt(St, St+1) is added
+                                                             respectively. Hence, the objective in this example
+to St the resulting value of St+1 is one of the ﬁve
+                                                             will be to do the best one can: to minimize a
+discrete numbers between 0 and 20.
+                                                             weighted sum of squared deviations from each of
+   Assume four within-year periods t in each year
+                                                             these targets. The weights reflect the relative
+(kept small for this illustrative example). In these
+                                                             importance of meeting each target in each season
+four seasons assume the mean inflows, Qt, are 24,
+                                                             t. Target deviations are squared to reflect the fact
+12, 6, and 18, respectively. Table 4.6 deﬁnes the
+
+===== page 32 [pdftotext] =====
+124                                                    4   An Introduction to Optimization Models and Methods
+
+Table 4.6 Evaporation and seepage losses based on initial and ﬁnal storage volumes for example reservoir-operating
+problem
+
+===== page 33 [pdftotext] =====
+4.4 Dynamic Programming                                                                                         125
+
+Table 4.7 Discrete releases associated with initial and ﬁnal storage volumes for example reservoir-operating problem
+
+===== page 34 [pdftotext] =====
+126                                                     4   An Introduction to Optimization Models and Methods
+
+Table 4.8 Storage volume and release targets for the example reservoir operation problem
+
+
+
+
+that the marginal “losses” associated with devi-               In the above equation, when t = 4, the last
+ations increase with increasing deviations. Small           period of the year, the following period t + 1 = 1,
+deviations are not as serious as larger deviations,         the ﬁrst period in the following year. Each ESt is
+and it is better to have numerous small deviations          the storage volume in excess of the flood storage
+rather than a few larger ones.                              target volume, TF. Each DRt is the difference
+   During the recreation season (periods 2 and 3),          between the actual release, Rt, and the target
+deviations below or above the recreation storage            release, TRt, when the release is less than the target.
+lake volume targets are damaging. During the                   The excess storage, ESt, above the flood target
+flood season (period 1), any storage volume in              storage TF at the beginning of each season t can
+excess of the flood control storage targets of 15           be deﬁned by the constraint:
+reduces the flood storage capacity. Deviations
+below that flood control target are not penalized.              St  TF þ ESt     for periods t ¼ 1 and 2:
+Flood control and recreation storage targets dur-
+                                                                                                      ð4:110Þ
+ing each season t apply throughout the season,
+thus they apply to the initial storage St as well as           The deﬁcit release, DRt, during period t can
+to the ﬁnal storage St+1 in appropriate periods t.          be deﬁned by the constraint:
+   The objective is to minimize the sum of total
+weighted squared deviations, TSDt, over all                    Rt  TRt  DRt       for all periods t:    ð4:111Þ
+seasons t from now on into the future:
+                        X                                      The ﬁrst component of the right side of
+          Minimize            TSDt ;          ð4:108Þ       Eq. 4.109 deﬁnes the weighted squared devia-
+                          t                                 tions from a recreation storage target, TS, at the
+                                                            beginning and end of season t. In this example
+where                                                       the recreation season is during periods 2 and 3.
+          h                              i                  The weights, wst, associated with the recreation
+TSDt ¼ wst ðTS  St Þ2 þ ðTS  St þ 1 Þ2                    component of the objective are 1 in periods 2 and
+            h                     i                       3. In periods 1 and 4 the weights, wst, are 0.
+      þ wf t ðESt Þ2 þ ðESt þ 1 Þ2 þ wrt DR2t
+                                                               The second component of Eq. 4.109 is for
+                                              ð4:109Þ       flood control. It deﬁnes the weighted squared
+
+===== page 35 [pdftotext] =====
+4.4 Dynamic Programming                                                                                            127
+
+deviations associated with storage volumes in         volume St and inflow Qt), we can calculate the
+excess of the flood control target volume, TF, at     release or ﬁnal storage volume in that period that
+the beginning and end of the flood season, period     minimizes the remaining sum of weighted
+t = 1. In this example, the weights, wft, are 1 for   squared deviations for all remaining seasons.
+period 1 and 0 for periods 2, 3, and 4. Note the      Denote this minimum sum of weighted squared
+conflict between flood control and recreation at      deviations for all n remaining seasons t as
+the end of period 1 or equivalently at the            Ftn ðSt ; Qt Þ. This value is dependent on the state
+beginning of period 2.                                (St, Qt), and stage, t, and the number n of
+   Finally, the last component of Eq. 4.109           remaining seasons. It is not a function of the
+deﬁnes the weighted squared deﬁcit deviations         decision Rt or St+1.
+from a release target, TRt, In this example all           This minimum sum of weighted squared
+release weights, wrt, equal 1.                        deviations for all n remaining seasons t is equal
+   Associated with each link in Fig. 4.17 is the      to
+release, Rt, as deﬁned in Table 4.7. Also associ-                               X
+ated with each link is the sum of weighted               Ftn ðSt ; Qt Þ ¼ min           TSDt ðSt ; Rt ; St þ 1 Þ
+squared deviations, TSDt, that result from the                                  t¼1;n
+
+particular initial and ﬁnal storage volumes and the                    over all feasible values of Rt ;
+storage volume and release targets identiﬁed in                                                              ð4:112Þ
+Table 4.8. They are computed using Eq. 4.109,
+with the releases deﬁned in Table 4.7 and targets     where
+deﬁned in Table 4.8, for each feasible combina-
+tion of initial and ﬁnal storage volumes, St and         St þ 1 ¼ St þ Qt  Rt  Lt ðSt ; St þ 1 Þ           ð4:113Þ
+St+1, for each of the four seasons or periods in a
+year. These computed weighted squared devia-          and
+tions for each link are shown in Table 4.9.
+   The goal in this example problem is to ﬁnd the       St  K; the capacity of the reservoir ð4:114Þ
+path through a multiyear network—each year of
+which is as shown in Fig. 4.17—that minimizes             The policy we want to derive is called a
+the sum of the squared deviations associated with     steady-state policy. Such a policy assumes the
+each of the path’s links. Again, each link’s          reservoir will be operating for a relatively long
+weighted squared deviations are given in              time with the same objectives and a repeatable
+Table 4.9. Of interest is the best path into the      hydrologic time series of seasonal inputs. We can
+future from any of the nodes or states (discrete      ﬁnd this steady-state policy by ﬁrst assuming that
+storage volumes) that the system could be in at       at some time all future beneﬁts, losses or penal-
+                                                             
+the beginning of any season t.                        ties, Ft ðSt ; Qt Þ, will be 0.
+   These paths can be found using the                     We can begin in that last season t of reservoir
+backward-moving solution procedure of discrete        operation and work backwards toward the pre-
+dynamic programming. This procedure begins at         sent, moving left through the network one season
+any arbitrarily selected time period or season        t at a time. We can continue for multiple years
+when the reservoir presumably produces no fur-        until the annual policy begins repeating itself
+ther beneﬁts to anyone (and it does not matter        each year. In other words, when the optimal Rt
+when that time is—just pick any time) and pro-        associated with a particular state (St, Qt) is the
+ceeds backward, from right to left one stage (i.e.,   same in two or more successive years, and this
+one time period) at a time, toward the present. At    applies for all states (St, Qt) in each season t, a
+each node (representing a discrete storage            steady-state policy has probably been obtained.
+
+===== page 36 [pdftotext] =====
+128                                                    4   An Introduction to Optimization Models and Methods
+
+Table 4.9 Total sum of squared deviations, TSDt, associated with initial and ﬁnal storage volumes
+
+
+
+
+These are calculated using Eqs. 4.109–4.111
+
+===== page 37 [pdftotext] =====
+4.4 Dynamic Programming                                                                                             129
+
+(A more deﬁnitive test of whether or not a                          If the decision variable is the ﬁnal storage
+steady-state policy has been reached will be                     volume, St+1, the constraints on that ﬁnal storage
+discussed later.) A steady-state policy will occur               volume are
+if the inflows, Qt, and objectives, TSDt (St, Rt,
+St+1), remain the same for speciﬁc within-year                                       0  St þ 1  20            ð4:119Þ
+periods from year to year. This steady-state pol-
+icy is independent of the assumption that the
+operation will end at some point.                                      St þ 1  St þ Qt  Lt ðSt ; St þ 1 Þ     ð4:120Þ
+    To ﬁnd the steady-state operating policy for
+this example problem, assume the operation ends                  and
+in some distant year at the end of season 4 (the
+right-hand side nodes in Fig. 4.17). At the end of                  Rt ¼ St þ Qt  St þ 1  Lt ðSt ; St þ 1 Þ   ð4:121Þ
+this season the number of remaining seasons, n,
+                                                                     Note that if the decision variable is St+1 in
+equals 0. The values of the remaining minimum
+                                                                season t, this decision becomes the state variable
+sums of weighted squared deviations, Ft ðSt ; Qt Þ
+                                                                 in season t + 1. In both cases, the storage vol-
+associated with each state (St, Qt), i.e., each node,
+                                                                 umes in each season are limited to discrete values
+equal 0. Since for this problem there is no future.
+                                                                 0, 5, 10, 15, and 20.
+Now we can begin the process of ﬁnding the best
+                                                                     Tables 4.10, 4.11, 4.12, 4.13, 4.14, 4.15, 4.16,
+releases Rt in each successive season t, moving
+                                                                 4.17, 4.18 and 4.19 show the values obtained
+backward to the beginning of stage t = 4, then
+                                                                 from solving the recursive equations for 10 suc-
+stage t = 3, then to t = 2, and then to t = 1, and
+                                                                 cessive seasons or stages (2.5 years). Each table
+then to t = 4 of the preceding year, and so on,
+                                                                 represents a stage or season t, beginning with
+each move to the left increasing the number of
+                                                                 Table 4.10 at t = 4 and the number of remaining
+remaining seasons n by one.
+                                                                 seasons n = 1. The data in each table are
+    At each stage, or season t, for each discrete
+                                                                 obtained from Tables 4.7 and 4.9. The last two
+state (St, Qt) we can compute the release Rt or
+                                                                 columns of each table represent the best release
+equivalently the ﬁnal storage volume St+1, that
+                                                                 and ﬁnal storage volume decision(s) associated
+minimizes
+                                                                 with the state (initial storage volume and inflow).
+Fnt ðSt ; Qt Þ ¼ MinimumfTSDt ðSt ; Rt ; St þ 1 Þ                    Note that the policy deﬁning the release or
+              þ Ftn1
+                   þ 1 ðSt þ 1 ; Qt þ 1 Þg for all 0  St  20
+                                                                 ﬁnal storage for each discrete initial storage
+                                                                 volume in season t = 3 in Table 4.12 is the same
+                                                    ð4:115Þ
+                                                                 as in Table 4.16, and similarly for season t = 4 in
+   The decision variable can be either the release,              Tables 4.13 and 4.17, and for season t = 1 in
+Rt, or the ﬁnal storage volume, St+1. If the deci-               Tables 4.14 and 4.18, and ﬁnally for season t = 2
+sion variable is the release, then the constraints               in Tables 4.15 and 4.19. The policy differs over
+on that release Rt are                                           each state, and over each different season, but not
+        Rt  St þ Qt  Lt ðSt ; St þ 1 Þ            ð4:116Þ      from year to year for any speciﬁed state and
+                                                                 season. This indicates we have reached a
+                                                                 steady-state policy. If we kept on computing the
+Rt  St þ Qt  Lt ðSt ; St þ 1 Þ  20 ðthe capacityÞ
+                                                                 release and ﬁnal storage policies for preceding
+                                                    ð4:117Þ      seasons, we would get the same policy as that
+                                                                 found for the same season in the following year.
+and
+                                                                 The policy is dependent on the state—the initial
+                                                                 storage volume in this case—and on the season t,
+   St þ 1 ¼ St þ Qt  Rt  Lt ðSt ; St þ 1 Þ        ð4:118Þ

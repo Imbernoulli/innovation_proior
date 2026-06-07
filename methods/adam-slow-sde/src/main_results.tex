@@ -1,0 +1,579 @@
+% \vspace{-0.15in}
+\section{Theoretical Analysis of Adam}\label{sec:theory}
+% \vspace{-0.1in}
+In this section, we generalize the slow SDE for SGD to a general class of adaptive gradient methods (AGMs), including Adam. We first present our novel slow SDE for a general class of AGMs, including Adam, and give an intuitive explanation for our results. Then, we discuss the difficulty of directly applying the slow SDE framework to Adam and other AGMs and how we resolve the problems. 
+% \paragraph{Additional Notations.} 
+%  \xinghan{deletable.} 
+\paragraph{A General Class of Adaptive Gradient Methods.}
+We define a general class of AGMs as follows:
+%Beyond Adam, our approach can cover the implicit bias of a class of general \textit{\textbf{A}daptive \textbf{G}radient \textbf{M}ethods} (AGMs) within a unified framework, whose step $k$ is defined as:
+% $H = (\log \frac{1}{\eta})\frac{1}{\eta}$ steps in a single round. First, we introduce the scope of methods we are interested in
+\begin{align*}
+    \vm_{k+1} &:= \beta_1 \vm_{k} + (1-\beta_1) \nabla \ell_{k}(\vtheta_{k}) \\
+    \vv_{k+1} &:= \beta_2 \vv_{k} + (1-\beta_2) V\!\left(\nabla\ell_{k}(\vtheta_{k}) \nabla\ell_{k}(\vtheta_{k})^\top\right) \\
+    \vtheta_{k+1} &:= \vtheta_{k} - \eta S(\vv_{k+1}) \vm_{k+1},
+\end{align*}
+% \xinghan{reworded the conditions. More compact compared to Section B.}
+% \xinghan{want to discuss this. Actually, the input space of S should have each entry > 0}
+% \xinghan{I deleted $S(\vv) \preceq \epsilon^{-1} \mI$ because it can be derived from smoothness and $\epsilon^{-1}$ is too ugly.}
+% \xinghan{Now $\rho_s$ is $O(1/\epsilon)$ and is ugly, but this is not that obvious}
+where $d$ is the dimension of the parameter $\vtheta$ and the first order momentum $\vm$, and $D$ is the dimension of the vector $\vv$ that encodes information related to second order momentum. For all optimizers but Shampoo in \Cref{tab:agms}, we set $D = d$, while for Shampoo we have $D = d_1^2 + d_2^2$ if the matrix-like parameters have shape $(d_1, d_2)$. See \Aref{app:shampoo} for a detailed explanation.
+
+The function $S: \Rgez^{D} \longrightarrow \mathbb{S}^d_{++}
+$ is a $\rho_s$-smooth function for some $\rho_s > 0$, which maps a non-negative vector $\vv \in \Rgez^{D}$ to a symmetric positive definite matrix $S(\vv) \in \mathbb{S}^d_{++}$.
+%\xinghan{do we need this? the following implies this}
+In addition, we require $S$ to satisfy $S(\vv) \succeq \frac{1}{R_0} \mI$  for some $R_0 > 0$ and any $\vv \in \Rgez^{D}$. We also require $V: \R^{d\times d} \longrightarrow \R^{D}$ to be a linear function that satisfies $V(\vg\vg^\top) \in \Rgez^{D}$ for all $\vg \in \R^d$, i.e., it always maps vector outer products to non-negative vectors.
+
+
+%``with positive semi-definite coefficients'', namely 
+
+A number of currently used optimization algorithms, such as RMSProp, Adam, Adam-mini, Adafactor\footnotemark[1], Adalayer, AdaSGD, and  Shampoo\footnotemark[2], all fit this framework. Note that we do not consider weight decays or bias corrections in these optimizers. Some examples of $V$ and $S$ functions are listed in \Cref{tab:agms}, including the AdamE-$\lambda$ optimizer that will be introduced in \cref{sec:diag} as a tool to tune the implicit bias of Adam.
+
+% \xinghan{10/13 TBD. Add a remark paragraph and state the case for shampoo: we cannot cover the theoretical version, but the empirical version is ok}
+
+% \footnotetext[1]{We ignore bias correction as our paper do.}
+\footnotetext[1]{We ignore update clipping, i.e. we adopt the Algorithm 2 in \citet{shazeer2018adafactor}.} 
+
+\footnotetext[2]{In practice, the Shampoo optimizer is often equipped with the exponential moving average (EMA) on the calculation of pre-conditioner~\citep{morwani2024new}. Here we adopt this practical version of Shampoo instead of the original one~\citep{gupta2018shampoo}.}
+% \xinghan{Added connections here}
+
+
+Prior to the results, we introduce two technical assumptions: $S$ satisfies a mild smoothness condition, and $1-\beta_1$ is of constant order.
+
+
+% We require each vector in the range of $V$ to have all of its entries non-negative, which aligns with a number of commonly used Adaptive Gradient Methods as listed in \Cref{tab:agms} and is compatible with the domain of $S$. We also involve a slight smoothness condition on $S$. Finally we require $1-\beta_1$ to be of constant level.
+
+
+% \begin{assumption}\label{amp:V-non-neg}
+%     For all $\vg \in \R^d$, all entries of $V(\vg \vg^\top)$ are non-negative.
+% \end{assumption}
+
+
+\begin{assumption}\label{amp:S-smooth}
+    The function $S$ is $\cC^4$-smooth on $\Rgez^{D}$.
+    % , i.e. the subspace where all entries of $\vv$ are non-negative.
+\end{assumption}
+
+
+% Lastly, since $\eta = o(1)$ but $1-\beta_1 = \O(1)$, we add a reasonable assumption as follows, which helps bound the convergence rate: 
+
+\begin{assumption}\label{amp:beta1-bound}
+    $\beta_1 \leq 0.9$.
+\end{assumption}
+
+% \xinghan{added details here}
+
+\begin{remark}\label{remark-0.9-mild}
+The threshold $0.9$ in \cref{amp:beta1-bound} can also be replaced by any constant below $1$, and the approximation rate in our result will remain unaffected. So we actually consider the regime where $b_1 := 1 - \beta_1$ is of constant order. For real-world Natural Language Processing (NLP) models, BERT \citep{devlin-etal-2019-bert}, Transformer \citep{vaswani2017attention} and GPT \citep{radford2018improving} all use $\beta_1=0.9$. In computer vision (CV), pix2pix \citep{isola2017image} uses $\beta_1=0.5$, while U-Net \citep{ronneberger2015u} and ViT \citep{dosovitskiy2020image} use $\beta_1=0.9$. Thus, assuming $\beta_1 \leq 0.9$ is consistent with standard practice across multiple aspects.
+\end{remark}
+
+% \kaifeng{point out $V$ for Adam, RMSprop in a table}
+
+% \begin{table}[b]
+%   \centering
+%   {
+%     \setlength{\belowcaptionskip}{-10pt}
+%     \caption{Examples of $V, S$ functions for some optimizers in the AGM Framework.\kaifeng{adasgd, adafactor}}
+%     \label{tab:agms}
+%   }
+%   \vspace{4pt}
+%   \begin{tabular}{cccc}
+%     \toprule     % 这里用的就是加粗后的 heavyrulewidth
+%     Optimizer & Function $V$ & Function $S$  & Remarks \\
+%     \midrule
+%     Adam & $V(\mM) = \diag(\mM)$ & $S(\vv) = \mathrm{Diag}(1/(\sqrt{\vv} + \epsilon))$ &  \\
+%     RMSProp & $V(\mM) = \diag(\mM)$ & $S(\vv) = \mathrm{Diag}(1/(\sqrt{\vv} + \epsilon))$ & $\beta_1=0$ \\
+%     Adam-mini & $V(\mM)_i = \frac{1}{|B(i)|}\sum_{j \in B(i)}M_{jj}$ & $S(\vv)=\mathrm{Diag}(1/(\sqrt{\vv} + \epsilon))$ & $B(i)$: parameter block containing $i$ \\
+%     Adalayer & 1 & 2 & 3 \\
+%     AdamE-$\lambda$ & $V(\mM) = \diag(\mM)$ & $S(\vv) =\mathrm{Diag}(1/(\vv^{\odot \lambda} + \epsilon))$ & \\
+%     \bottomrule
+%   \end{tabular}
+% \end{table}
+
+
+% \xinghan{put main results immediately here. delete alpha. Next argue that 'this is an approximation'}
+
+% \vspace{-0.18in}
+\subsection{Slow SDE Analysis for AGMs}
+% \vspace{-0.1in}
+%\kaifeng{under construction}
+
+%As previous works has claimed, when SGD approaches the manifold, in the normal space, its trajectory seems to follow a random Ornstein-Uhlenbeck-like process. While we focus on the dynamics in the target space, a slow but deterministic process appears, which drives the SGD to a flat solution $\vzeta \in \Gamma$ \citep{blanc2020implicit,damian2021label,li2021happens}.
+
+% \xinghan{'preconditioned gradient flow' not formally defined here, but will be defined in Sec. C}
+
+Our SDE for AGMs characterizes the training dynamics near the manifold $\Gamma$. First we rigorously define the preconditioned projection mapping $\Phi_\mS$ and the SDE projection formula as an extension to the $\Phi$ and $\mP_{\vzeta}$ mentioned in \cref{sec:prelim}, after which we present the SDE for AGMs we derived.
+\begin{definition}[Preconditioner Flow Projection]\label{def:preconditioner-flow}
+    Fix a point \( \theta_{\text{null}} \notin \Gamma \). Given a \textit{Positive Semi-Definite} matrix $\mS$, for \( x \in \mathbb{R}^d \), consider the preconditioner flow $\frac{\dd x(t)}{\dd t} = -\mS\nabla \mathcal{L}(x(t))$ with $x(0) = x$. We denote the preconditioner flow projection of \( x \) as \( \Phi_{\mS}(x) \), i.e. $\Phi_{\mS}(x) := \lim_{t \to +\infty} x(t)$ if the limit exists and belongs to $\Gamma$, and $\Phi_{\mS}(x) = \theta_{\text{null}}$ otherwise.
+\end{definition}
+\begin{definition}
+    For any $\vzeta \in \Gamma$ and any differential form $\mA \dd \mW_t + \vb \dd t$ in Itô calculus, where $\mA \in \R^{d \times d}$, and $b \in \R^{d}$, we use $\mP_{\vzeta,\mS}(\mA\dd \mW_t + \vb \dd t)$ as a shorthand for the differential form $\partial \Phi_{\mS}(\vzeta)\mA\dd \mW_t + \mS \left(\partial \Phi_{\mS}(\vzeta)\vb + \frac{1}{2}\partial^2 \Phi_{\mS}(\vzeta)[\mA\mA^\top]\right)\dd t$.
+\end{definition}
+\begin{definition}[Slow SDE for AGMs]
+    Given learning rate $\eta$ and the initial state $\vzeta_0\in \Gamma$, $\vv_0 \in \Rgez^D$, let $c := \frac{1-\beta_2}{\eta^2}$ be a constant and denote $\mS_t:=S(\vv(t))$, we define $\vzeta(t)$ as the solution of the following SDE with initial condition $\left(\vzeta(0),\vv(0)\right)=\left(\vzeta_0, \vv_0\right)$:
+    \begin{align}
+        \left\{\begin{array}{l}
+             \dd \vzeta(t) = P_{\vzeta(t),\mS(t)}\left(\underbrace{\mSigma_{\parallel}^{1/2}(\vzeta(t); \mS(t))\dd \mW_t}_{\textit{diffusion}} \underbrace{- \frac{1}{2}\mS(t)\nabla^3\cL(\vzeta)\left[\mSigma_{\diamond}(\vzeta(t); \mS(t))\right]\dd t}_{\textit{drift}}\right), \\
+             \dd \vv(t) = \underbrace{c \left(V(\mSigma(\vzeta)) - \vv\right) \dd t }_{\textit{preconditioner drift}}.
+        \end{array}\right. \label{equ:AGMs-SDE}
+    \end{align}
+    $\mSigma_{\diamond}(\vzeta; \mS) = 
+    \mS \mSigma(\vzeta) \mS -
+    \mSigma_{\parallel}(\vzeta; \mS)$,
+    $\mSigma_{\parallel}(\vzeta; \mS) = \partial \Phi_{\mS}(\vzeta)
+     \mS \mSigma(\vzeta) \mS \partial \Phi_{\mS}(\vzeta)$.
+\end{definition}
+
+% \kaifeng{refer to the table}
+
+Note that the drift term in $\dd \vzeta(t)$ can be interpreted as an \textit{adaptive semi-gradient descent} process, in that this term drives the dynamics towards optimizing an adaptive loss function \begin{align*}
+    \mu(\vzeta, \vv) = \langle \nabla^2 \cL(\vzeta), \mSigma_{\diamond}(\vzeta(t); \mS(t))\rangle
+\end{align*}
+as if $\mSigma_{\diamond}(\vzeta(t); \mS(t))$ has no dependence on $\vzeta$; also this gradient flow is preconditioned by a positive definite matrix $\mS(t)$. Recall that the drift term in the slow SDE for SGD can be seen as a semi-gradient descent. In the AGM framework, it takes $\Theta(\eta^{-2})$ time for the preconditioner $\mS(t)$ to make a significant (i.e. $\Theta(1)$) change, which coincides with the moving speed of the slow SDE of $\vzeta$. Therefore, compared to that of SGD, our SDE includes a new formula that tracks the motion of the preconditioner and injects adaptiveness accordingly in the semi-gradient descent process.
+
+We prove that $\vzeta(t)$ always stays on the manifold $\Gamma$. And next, we present our main theorem showing that the above SDE in \Cref{equ:AGMs-SDE} tracks the trajectory of Adam in a weak approximation sense.
+
+% \xinghan{my brain is messy now but I think we can merge 4.3 and 4.4 into 3.1+3.3 and 3.4, delete the smoothness of Gamma, and lower the smoothness of Sigma to C5? or C4?}
+
+% \xinghan{this is heritage of the rush. 4.3 and 4.4 here are rushed, but 3.1-3, 4.1 and 4.2 are rewrited in appendix first, and moved here}
+
+% \xinghan{My God! so many bugs! Never rush papers again}
+
+% \xinghan{I cleared the heritage of rushing. Re-check all assumptions in main results later (including the following)}
+
+% \begin{theorem}\label{thm:SDE-approximation}
+%     Let $T > 0$ be a constant, and let \Cref{amp:basic}--\ref{amp:beta1-bound} hold. There exist positive constants $\epsilon_0, C$ such that the following statement holds: 
+    
+%     Denote $K_0 := \lfloor C\log\frac{1}{\eta} \rfloor$ and $K := \lfloor
+%     T\eta^{-2} \rfloor$. Starting from any point whose $\ell_2$ distance from the manifold $\Gamma$ is at most $\epsilon_0$, we run an AGM for $K_0 + K$ steps. Let $\mX(t) := \left(\vzeta(t),\vv(t)\right)$ be the solution to \Cref{equ:AGMs-SDE} on $t \in [0, K]$, with initial condition
+% $$\vzeta(0)=\Phi\bigl(\vtheta_{K_0}\bigr)\in\Gamma,\quad \vv(0)=\vv_{K_0}\in\Rgez^D,$$
+% and for any $k \in \{0,1,\dots,K\}$, we denote $\bar\mX_{k}$ to be the projected state of AGM at step $K_0 + k$, i.e., $$\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right).$$ Then for any $\cC^3$‐smooth function $g(\vtheta)$,
+% \[
+%   \max_{k \in \{0,1,\dots,K\}}
+%   \Bigl|\mathbb{E}\bigl[g\!\left(\bar\mX_{k}\right)]
+%   -\mathbb{E}\bigl[g\!\left(\mX(k\eta^2)\right)]\Bigr|
+%   =\widetilde \O\bigl(\eta^{0.25}\bigr),
+% \]
+% where $\widetilde O(\cdot)$ hides logarithmic factors and constants independent of~$\eta$ but may depend on $g$.
+% \end{theorem}
+
+\begin{theorem}\label{thm:SDE-approximation}
+Let $T>0$ and suppose \Cref{amp:basic}--\ref{amp:beta1-bound} hold. 
+There exist constant $\epsilon_0,C>0$ such that the following statement holds for all sufficiently small learning rates $\eta$.
+Define step $K_0 := \lfloor C\log(1/\eta)\rfloor$ and $K := \lfloor T\,\eta^{-2}\rfloor$. 
+%Assume the initial parameter $\vtheta_0$ satisfies $\mathrm{dist}(\vtheta_0,\Gamma)\le \epsilon_0$.
+Run an AGM for $K_0+K$ iterations and obtain $\{(\vtheta_k, \vv_k)\}_{k=0}^{K_0+K}$, where the initial parameter $\vtheta_0$ 
+is an arbitrary point that satisfies $\mathrm{dist}(\vtheta_0,\Gamma)\le \epsilon_0$.
+Let $\mX(t)=(\vzeta(t),\vv(t))$ be the solution to \eqref{equ:AGMs-SDE} on $t\in[0,T]$ with initial condition 
+$$\mX(0) =
+\mX_0
+\in \Gamma \times \mathbb{R}_{\ge 0}^D, \quad \mX_0 := (\Phi_{\mS(\vv_{K_0})}(\vtheta_{K_0}), \vv_{K_0}).
+$$
+For any $k \in \{0, 1, \dots, K\}$,
+let $\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right)$ be the AGM state at step $K_0 + k$ projected onto $\Gamma$.
+%For any $k \in \{0,1,\dots,K\}$, we denote by $\bar\mX_{k}$ the AGM state at step $K_0 + k$ projected to $\Gamma$, i.e., $$\bar\mX_{k} := \left(\Phi_{\mS(\vv_{K_0 + k})}(\vtheta_{K_0+k}),\vv_{K_0+k}\right).$$
+Then for any $C^3$ function $g(\vtheta)$,
+\begin{align*}
+\max_{0\le k\le K}
+\left|
+\E\left[g\left(\bar\mX_{k}\right)\middle|\mX_0\right]
+-\E\left[g\left(\mX(k\eta^2)\right)\middle|\mX(0)=\mX_0\right]\right| 
+= \widetilde \O\left(\eta^{0.25}\right),
+\end{align*}
+where $\widetilde \O(\cdot)$ hides logarithmic factors and constants independent of $\eta$ (but possibly depending on $g$).
+\end{theorem}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Let $T>0$ be a constant and let $\mX(t) = \left(\vzeta(t),\vv(t)\right)$ be the solution to \Cref{equ:AGMs-SDE} with initial condition:
+% \[
+%   \vzeta(0)=\Phi\bigl(\vtheta_{0}\bigr)\in\Gamma,\quad \vv(0)=\vv_0\in\Rgez^D,
+% \]
+
+% and we define the projected state of AGM at time $t$ as $\bar\mX_{t} := \left(\Phi_{\mS_t}(\vtheta_{t}),\vv_{t}\right)$. For any $\cC^3$‐smooth function $g(\vtheta)$,
+% \[
+%   \max_{0\le t\le \frac{T}{\eta^2}}
+%   \Bigl|\mathbb{E}\bigl[g\!\left(\bar\mX_{t}\right)]
+%   -\mathbb{E}\bigl[g\!\left(\mX(t\eta^2)\right)]\Bigr|
+%   =\widetilde \O\bigl(\eta^{0.25}\bigr),
+% \]
+% where $\widetilde O(\cdot)$ hides logarithmic factors and constants independent of~$\eta$ but may depend on $g(\vtheta)$.
+
+%%%%%%%%%%%%%%%%
+
+
+% \begin{theorem}\label{thm:near-manifold}
+% for all $\O\left(\frac{1}{\eta}\log\frac{1}{\eta}\right)\le t\le\frac{T}{\eta^2}$, for $\delta= \O\bigl(\mathrm{poly}(\eta)\bigr)$, with probability at least $1-\delta$, it holds that $\Phi(\vtheta_{t})\in\Gamma$ and
+% \[
+%   \bigl\|\vtheta_{t}-\Phi_{\mS_{t}}(\vtheta_{t})\bigr\|_2
+%   =\O\left(\sqrt{\eta
+%     \log\frac{1}{\eta\delta}}\right),
+% \]
+% where the $\O(\cdot)$‐notation hides constants independent of $\eta,\alpha,\delta$.
+% \end{theorem}
+\Cref{thm:SDE-approximation} shows that with a small $\eta$, once AGM approaches the minimizer manifold, its long-horizon behavior within $\widetilde\O(\eta^{-2})$ steps is captured by the SDE in \Cref{equ:AGMs-SDE}. A more explicit version of \Cref{thm:SDE-approximation} can be found in \Aref{sec:formal-statement}.
+% \begin{table}[t]
+%   \centering
+%   {
+%     \caption{Examples of $V,S$ functions for some optimizers in the AGM Framework.}
+%     \label{tab:agms}}
+%   \begin{tabular}{cccc}
+%      \toprule
+%      Optimizer & Function $V$ & Function $S$ & Remarks \\
+%      \midrule
+%      \multirow{2}{*}{Adam}
+%        & \multirow{2}{*}{$V(\mM)=\diag(\mM)$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$}
+%        &  \\
+%        & & &  \\
+%      \addlinespace
+%      \multirow{2}{*}{Adam-mini}
+%        & \multirow{2}{*}{$V(\mM)_i=\frac{1}{|B(i)|}\sum_{j\in B(i)}M_{jj}$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$}
+%        & $i$-th parameter \\
+%        & & & in block $B(i)$. \\
+%      \addlinespace % <--- ADD THIS LINE HERE
+%      \multirow{2}{*}{Adalayer}
+%        & \multirow{2}{*}{$V(\mM)_i=\frac{1}{|L(i)|}\sum_{j\in L(i)}M_{jj}$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$}
+%        & $i$-th parameter \\
+%        & & & in layer $L(i)$. \\
+%      \addlinespace
+%      \multirow{2}{*}{AdamE‐$\lambda$}
+%        & \multirow{2}{*}{$V(\mM)=\diag(\mM)$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\vv^{\odot\lambda}+\epsilon)\bigr)$}
+%        &  \\
+%        & & &  \\
+%      \addlinespace
+%      \multirow{2}{*}{Shampoo}
+%        & \multicolumn{2}{c}{\multirow{2}{*}{\parbox{0.60\textwidth}{\centering Discussions on Shampoo and expressions of V and S are deferred to \cref{app:shampoo}.}}}
+%        &  \\
+%        & & & \\
+%      \bottomrule
+%   \end{tabular}
+%   % \vspace{-0.2in}
+% \end{table}
+
+% \begin{table}[t]
+%   \centering
+%   \begingroup
+%   % —— 紧凑设置（局部作用）——
+%   \scriptsize                         % 或者 \footnotesize / \tiny 视需要
+%   \setlength{\tabcolsep}{4pt}         % 列内边距（默认 ~6pt）
+%   \renewcommand{\arraystretch}{1.0}   % 表内行距（默认 1.0）
+%   % booktabs 横线与内容之间的垂直间距
+%    \captionsetup{font=footnotesize, labelfont=bf}
+%   \setlength{\abovetopsep}{0pt}
+%   \setlength{\belowbottomsep}{0pt}
+%   \setlength{\aboverulesep}{0pt}
+%   \setlength{\belowrulesep}{0pt}
+  
+%   % （如需使用 \cmidrule，也可：\setlength{\cmidrulesep}{0pt}）
+%   % ————————————————
+
+%   \caption{Examples of $V,S$ functions for some optimizers in the AGM Framework. \xinghan{add regularizer column, add sgd and rmsprop}}
+%   \label{tab:agms}
+%   \begin{tabular}{lccc}
+%      \toprule
+%      Optimizer & Functions $V\&S$ & Regularizaer & Remarks \\
+%      \midrule
+%      \multirow{2}{*}{Adam}
+%        & \multirow{2}{*}  {$V(\mM)=\diag(\mM)$} 
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$}
+%        &  \\
+%        & & &  \\
+%      % \addlinespace            % 尽量去掉；如必须保留可用 \addlinespace[1pt]
+%      \multirow{2}{*}{Adam-mini}
+%        & \multirow{2}{*}{$V(\mM)_i=\frac{1}{|B(i)|}\sum_{j\in B(i)}M_{jj}$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$}
+%        & $i$-th parameter \\
+%        & & & in block $B(i)$. \\
+%      % \addlinespace
+%      \multirow{2}{*}{Adalayer}
+%        & \multirow{2}{*}{$V(\mM)_i=\frac{1}{|L(i)|}\sum_{j\in L(i)}M_{jj}$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$}
+%        & $i$-th parameter \\
+%        & & & in layer $L(i)$. \\
+%      % \addlinespace
+%      \multirow{2}{*}{AdamE-$\lambda$}
+%        & \multirow{2}{*}{$V(\mM)=\diag(\mM)$}
+%        & \multirow{2}{*}{$S(\vv)=\mathrm{Diag}\bigl(1/(\vv^{\odot\lambda}+\epsilon)\bigr)$}
+%        &  \\
+%        & & &  \\
+%      % \addlinespace
+%      \multirow{2}{*}{Shampoo}
+%        & \multicolumn{2}{c}{\multirow{2}{*}{\parbox{0.60\textwidth}{\centering
+%          Discussions on Shampoo and expressions of $V$ and $S$ are deferred to \cref{app:shampoo}.}}}
+%        &  \\
+%        & & & \\
+%      \bottomrule
+%   \end{tabular}
+%   \endgroup
+% \end{table}
+
+% \begin{table}[t]
+%   \centering
+%   \begingroup
+%   % —— 紧凑设置（局部作用）——
+%   \scriptsize
+%   \setlength{\tabcolsep}{4pt}
+%   \renewcommand{\arraystretch}{1.0}
+%   \captionsetup{font=footnotesize, labelfont=bf}
+%   \setlength{\abovetopsep}{0pt}
+%   \setlength{\belowbottomsep}{0pt}
+%   \setlength{\aboverulesep}{0pt}
+%   \setlength{\belowrulesep}{0pt}
+%   % ————————————————
+
+%   \caption{Examples of $V,S$ functions for some optimizers in the AGM Framework. \xinghan{add regularizer column, add sgd and rmsprop}}
+%   \label{tab:agms}
+%   \begin{tabular}{lclc}
+%     \toprule
+%     Optimizer & Functions $V/S$ & Regularizer under Label Noise with $\epsilon =0$ & Remarks \\
+%     \midrule
+
+%     \multirow{2}{*}{SGD}
+%       & \multirow{2}{*}{—}
+%       & \multirow{2}{*}{$\tr(\mH)$}
+%       & \\[0pt]
+%       & 
+%       & & \\
+      
+%     \multirow{2}{*}{Adam}
+%       & \textbf{V: } $V(\mM)=\diag(\mM)$
+%       & \multirow{2}{*}{$\tr\left(\Diag(\mH)^{1/2}\right)$}
+%       & \\[0pt]
+%       & \textbf{S: } $S(\vv)=\mathrm{Diag}\!\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+%       & & \\
+
+%     \multirow{2}{*}{Rmsprop}
+%       & \textbf{V: } $V(\mM)=\diag(\mM)$
+%       & \multirow{2}{*}{$\tr\left(\Diag(\mH)^{1/2}\right)$}
+%       & \\[0pt]
+%       & \textbf{S: } $S(\vv)=\mathrm{Diag}\!\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+%       & & \\
+
+%     \multirow{2}{*}{Adam-mini}
+%       & \textbf{V: } $V(\mM)_i=\frac{1}{|B(i)|}\sum_{j\in B(i)} M_{jj}$
+%       & \multirow{2}{*}{$\sum_{i\in \{N\}}\tr\left(\Diag(\mH_{B(i)})^{1/2}\right)$}
+%       & $i$-th parameter \\[0pt]
+%       & \textbf{S: } $S(\vv)=\mathrm{Diag}\!\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+%       & & in block $B(i)$. \\
+
+%     \multirow{2}{*}{Adalayer}
+%       & \textbf{V: } $V(\mM)_i=\frac{1}{|L(i)|}\sum_{j\in L(i)} M_{jj}$
+%       & \multirow{2}{*}{$\sum_{i\in \{M\}}\tr\left(\Diag(\mH_{L(i)})^{1/2}\right)$}
+%       & $i$-th parameter \\[0pt]
+%       & \textbf{S: } $S(\vv)=\mathrm{Diag}\!\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+%       & & in layer $L(i)$. \\
+
+%     \multirow{2}{*}{AdamE-$\lambda$}
+%       & \textbf{V: } $V(\mM)=\diag(\mM)$
+%       & \multirow{2}{*}{$\tr\left(\Diag(\mH)^{1-\lambda}\right)$}
+%       & \\[0pt]
+%       & \textbf{S: } $S(\vv)=\mathrm{Diag}\!\bigl(1/(\vv^{\odot\lambda}+\epsilon)\bigr)$
+%       & & \\
+
+%     \multirow{2}{*}{Shampoo}
+%     & \textbf{V: } $V(\mM)=\diag(\mM)$
+%       & \multirow{2}{*}{—}
+%       & \\[0pt]
+%       & \textbf{S: } $S(\vv)=\mathrm{Diag}\!\bigl(1/(\vv^{\odot\lambda}+\epsilon)\bigr)$
+%       & & \\
+%       % & \multirow{2}{*}{\parbox{0.56\textwidth}{\textbf{V/S: } See \cref{app:shampoo} for discussions and explicit forms of $V$ and $S$.}}
+%       % & \multirow{2}{*}{—}
+%       % & \\[0pt]
+%       % & & & \\
+%     \bottomrule
+%   \end{tabular}
+%   \endgroup
+% \end{table}
+
+\setlength{\tabcolsep}{4pt}
+%\renewcommand{\arraystretch}{1.0}
+\setlength{\abovetopsep}{3pt}
+\setlength{\belowbottomsep}{3pt}
+\setlength{\aboverulesep}{3pt}
+\setlength{\belowrulesep}{3pt}
+
+\begin{table}[t]
+  \centering
+  \begingroup
+  \scriptsize
+  %\captionsetup{font=footnotesize, labelfont=bf}
+  \caption{\small Examples of optimizers in the AGM Framework. See \Aref{app:regularizer} for derivations of their implicit regularizers under label noise.}
+  \label{tab:agms}
+  \begin{tabular}{m{1.15cm}|m{5.25cm}|m{3.1cm}|m{3.2cm}}
+    \toprule
+    \multirow{2}{*}{Optimizer} & \multirow{2}{*}{Functions $V/S$} & Implicit Regularizer & \multirow{2}{*}{Remarks} \\
+    & & (Label Noise, $\epsilon = 0$) \\
+    \midrule
+
+    SGD
+    & \textbf{V: } $V(\mM)=\mathbf{1_d}$ \newline
+      \textbf{S: } $S(\vv)=\mI_d$
+    & $\tr\!\left(\mH\right)$~\citep{blanc2020implicit}
+    & \\
+    \cmidrule{1-4}
+
+    Adam
+    & \textbf{V: } $V(\mM)=\diag(\mM)$ \newline
+      \textbf{S: } $S(\vv)=\Diag\!\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+    & $\tr\!\left(\Diag(\mH)^{1/2}\right)$
+    & \\
+    \cmidrule{1-4}
+
+    RMSProp
+    & \textbf{V: } $V(\mM)=\diag(\mM)$ \newline
+      \textbf{S: } $S(\vv)=\Diag\!\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+    & $\tr\!\left(\Diag(\mH)^{1/2}\right)$
+    & Adam with $\beta_1 = 0$. \\
+    \cmidrule{1-4}
+
+    Adam-mini
+    & \textbf{V: } $V(\mM)_i =\frac{1}{|B_k|}\sum_{j\in B_k}M_{jj}$ for all $i \in B_k$ \newline
+      \textbf{S: } $S(\vv)=\Diag\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+    & $\sum_{i \in [N]} \sqrt{|B_i| \cdot \tr\left(\mH_{B_i}\right)}$
+    & Parameters are partitioned into blocks $\left\{B_1, B_2, \cdots, B_N\right\}$. \\
+    \cmidrule{1-4}
+
+    Adalayer
+    & \textbf{V: } $V(\mM)_i =\frac{1}{|L_k|}\sum_{j\in L_k}M_{jj}$ for all $i \in L_k$ \newline
+      \textbf{S: } $S(\vv)=\Diag\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+    & $\sum_{i \in [N]} \sqrt{|L_i| \cdot \tr \left(\mH_{L_i}\right)}$
+    & Parameters are grouped by layers $\left\{L_1, L_2, \cdots, L_N\right\}$. \\
+    \cmidrule{1-4}    
+    
+    AdamE-$\lambda$
+    & \textbf{V: } $V(\mM)=\diag(\mM)$ \newline
+      \textbf{S: } $S(\vv)=\Diag\!\bigl(1/(\vv^{\odot\lambda}+\epsilon)\bigr)$
+    & $\tr\!\left(\Diag(\mH)^{1-\lambda}\right)$
+    & See \Cref{subsec:adam-label-noise} for discussion.\\
+    \cmidrule{1-4}
+    
+    Shampoo
+      & \textbf{V: } $V(\mM)=(V_L(\mM),\,V_R(\mM))$ \newline
+        $\left[V_L(\mM)\right]_{i,j} = \sum_k M_{i,k,k.j},$ \newline
+        $\left[V_R(\mM)\right]_{i,j} = \sum_k M_{k,i,j,k}$ \newline
+        \textbf{S:} $S(\mV_L,\!\mV_R)\!=\!(\left(\mV_R\!+\!\epsilon\mI\right)^\top\!\otimes \left(\mV_L\!+\!\epsilon \mI\right))^{-1/2}$
+      & No explicit form
+      & For a single matrix parameter. \newline
+      See \Aref{app:shampoo} for discussion.\\ 
+    \bottomrule
+  \end{tabular}
+  \endgroup
+\end{table}
+    
+    % \multirow{2}{*}{Shampoo}
+    %   & \textbf{V: } $V(\mM) = (V_L(\mM), V_R(\mM))$
+    %   & \multirow{2}{*}{—}
+    %   & Details\\[1pt]
+    %   & \textbf{S: } $S\left(\mL, \mR\right) = \mR^\top \otimes \mL$
+    %   & & in \Cref{app:shampoo}\\
+% \vspace{-0.2in} 
+    % \multirow{3}{*}{Adam-mini}
+    %   & \textbf{V: } $V(\mM)_i =\frac{1}{|B_{\pi(i)}|}\sum_{j\in B_{\pi(i)}}M_{jj}$
+    %   & \multirow{3}{*}{$\sum_{i \in [N]} \sqrt{|B_i| \cdot \tr \mH_{B_i}}$}
+    %   & Blocks $\left\{B_1, B_2, \cdots, B_N\right\}$\\[1pt]
+    %   & \textbf{S: } $S(\vv)=\Diag\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+    %   & & partition $[d]$, and $i \in B_{\pi(i)}$. \\
+    %   &
+    %   &
+    %   &$N$: total number of blocks\\
+    % \cmidrule(lr){1-4}
+
+    % \multirow{3}{*}{Adalayer}
+    %   & \textbf{V: } $V(\mM)_i =\frac{1}{|L_{\pi(i)}|}\sum_{j\in L_{\pi(i)}}M_{jj}$
+    %   & \multirow{3}{*}{$\sum_{i \in [N]} \sqrt{|L_i| \cdot \tr \mH_{L_i}}$}
+    %   & Layers $\left\{B_1, B_2, \cdots, B_N\right\}$\\[1pt]
+    %   & \textbf{S: } $S(\vv)=\Diag\bigl(1/(\sqrt{\vv}+\epsilon)\bigr)$
+    %   & & partition $[d]$, and $i \in L_{\pi(i)}$. \\
+    %   &
+    %   &
+    %   &$N$: total number of layers\\
+    % \cmidrule(lr){1-4}
+
+% The second theorem indicates that, after Adam reaches this manifold, it does not depart but instead continues to wander within a neighborhood around it.
+% \vspace{-0.1in}
+\subsection{Interpretation of The Slow SDEs for AGMs}
+% \vspace{-0.1in}
+\paragraph{Adaptive Projection Operator.}  
+\Cref{eq:slow-sde-sgd} employs a fixed projection operator $P_{\vzeta}$ to constrain the SDE to the manifold. As a comparison, the slow SDE for AGM uses an adaptive projection $P_{\vzeta,\mS(t)}$ that depends on the current preconditioner $S(\vv(t))$. In other words, SGD’s projection is state‐independent, but AGM’s projection is state‐dependent. This adaptive projection alters the way the stochastic trajectory evolves on the manifold, giving rise to a different implicit bias in AGMs versus SGD.
+
+\paragraph{Effect of the Preconditioner on the Gradient Noise Covariance.}  
+Near the manifold, as the gradient of loss vanishes ($\nabla \cL(\vtheta) \to 0$), SGD’s wandering around becomes noise‐driven. For AGMs, the situation is more subtle.
+
+First, one can show that the momentum term does not affect the implicit bias, consistent with prior theory~\citep{wang2023marginal}. The reason why  $\beta_1$ does not affect the implicit bias is that, after the iteration approaches the manifold, the difference between the current gradient  $g_t$  and momentum $M_t$ becomes negligible in expectation.  
+
+Second, the AGM trajectory is influenced by its preconditioner. Concretely, the gradient‐noise covariance matrix $\mSigma$ is filtered through the preconditioner $\mS(t)$ into $\mS(t)\mSigma \mS(t)$ and then contributes to the SDE. Over a long time horizon, this modified noise term alters the deterministic drift direction, further distinguishing AGM’s dynamics from those of vanilla SGD.
+
+% \kaifeng{rewrite it into an informal and short version. merge to technical contributions}
+% \vspace{-0.1in}
+\subsection{Technical Difficulties and Proof Insights}\label{subsec:difficulty}
+% \vspace{-0.1in}
+% \xinghan{sec 4.3 did not pass my check. sec 4 has been reordered, but the connection and logic was not modified accordingly.}
+
+% \xinghan{For example, there are many 'first' or 'before' in 4.3.1, but main results have already been moved up now}
+
+\subsubsection{Convergence Guarantee of AGMs}
+
+\label{subsubsec:convergence}
+The core of our study is to consider the behavior of Adam's implicit bias around the minimizer manifold. However, to make our study self-contained, we first need to show that Adam can actually converge to the neighborhood of the minimizer manifold under our setting. This is non-trivial since Adam cannot provably converge to the minimizer manifold without any constraints. In fact, the convergence issue of Adam has been debated from its birth. \citet{reddi2018convergence} show that Adam does not converge to the optimal solution even in some simple convex settings. Recent work \citep{dereich2024convergence} gives Adam's ODE and shows that this ODE does not necessarily converge to the absorbing point of the gradient flow. 
+
+The magnitude of $1-\beta_2$ has been found to be an important factor influencing whether Adam converges. When $1-\beta_2$ is too large such that $\beta_2 < \beta_1^2$, Adam may not converge at all \citep{reddi2018convergence,zhang2024convergence}. In our analysis, we assume that $1-\beta_2 = \Theta(\eta^2)$, i.e., $1-\beta_2$ goes to zero as $\eta\to 0$ with a rate of $\eta^2$, a configuration we call the \emph{$2$-scheme}. 
+
+As stated in \Cref{sec:related}, there have been works proving the convergence of Adam using various kinds of assumptions and giving different forms of bounds. However, previous results cannot be simply applied in our analysis. Specifically, our analysis near manifold requires a high-probability bound on the optimality gap directly, and we have the 2-scheme assumption. Directly applying previous results in our setting yields bounds that are either loose or hold only in expectation, failing to meet the requirements of our analysis. Moreover, we expect a bound that holds for all AGMs, instead of only Adam.
+
+Therefore, we present the following statement of AGMs' convergence as a preparation for our subsequent study into their behavior near the manifold.
+% It is worth noting that, under our framework, the convergence result holds not only for Adam but for all AGMs.
+
+
+
+%\xinghan{This 'first' is very weird}
+% So next, to guarantee the convergence of Adam, we give some constraints first.
+
+% \begin{assumption}\label{amp:basic}
+%     $\cL$ is differentiable and closed within its open domain $\text{dom}(\cL) \subseteq \mathbb{R}^d$ and is bounded from below, i.e. $\cL^* = \text{inf}_{\vtheta}\cL(\vtheta) > -\infty$.
+% \end{assumption}
+
+% \begin{assumption}\label{amp:mu-pl}
+%     $\cL$ is $\mu$-PL, i.e.~$\forall \vtheta \in \mathbb{R}^d$:
+%     $$2\mu(\cL(\vtheta)-\cL^*) \leq \normtwo{\nabla \cL(\vtheta)}^2$$
+% \end{assumption}    
+
+% \begin{assumption}\label{amp:smooth}
+%     $\cL$ is $\rho$-smooth, i.e. $\forall \vtheta_1,\vtheta_2 \in \mathbb{R}^d $, $\normtwo{\nabla \cL(\vtheta_1) - \nabla \cL(\vtheta_2)} \leq \rho \normtwo{ \vtheta_1 - \vtheta_2}.$
+% \end{assumption}
+
+% \begin{assumption}\label{amp:gradient-bound}
+%      We assume that all $\nabla \cL(\vtheta)$ and $\normtwo{\vz_k}$ are L2-bounded; Specifically, there exists some constant $R$ s.t. $\forall \vtheta$ and $\forall k \in \N$, $ \normtwo{\nabla \cL(\vtheta)} \leq R$ and $ \normtwo{\nabla \ell_k(\vtheta)} \leq R$. We also assume that $R \geq \eta \cdot \mu$.
+% \end{assumption}
+
+% \begin{assumption}\label{amp:noise-bound}
+%     The gradient noise is unbiased and almost surely bounded, i.e. for some $B > 0$ and all $k \geq 0$, $\E_{k}[\nabla \ell_{k}(\vtheta_k)] = \nabla \cL(\vtheta_k)$, $\normtwo{\nabla \ell_{k}(\vtheta_k) - \nabla \cL(\vtheta_k)} \leq B, \quad a.s.$
+% \end{assumption}
+% Under the assumptions above, we can guarantee AGM's convergence. Indeed, the following theorem shows that after $\tilde{\O}(\frac{1}{\eta})$ steps, AGM can converge to the neighborhood of the minimizer manifold
+
+
+% \xinghan{!!! do we need state mu PL here}
+
+
+
+\begin{theorem}[Convergence Bound of AGMs, Stated Informally]\label{thm: convergence}
+Let Assumptions \ref{amp:smooth}, \ref{amp:gradient-bound} and \ref{amp:beta1-bound} hold, $1-\beta_2 = \Theta(\eta^2)$, and $\cL$ satisfy the Polyak-Łojasiewicz condition. With a small learning rate $\eta$, it holds with high probability for some $K = \O(\frac{1}{\eta}\log\frac{1}{\eta})$ that $\cL(\vtheta_{K})-\cL^* = \tilde{\O}(\eta)$. See \cref{thm:formal-convergence-1} for a formal statement.
+\end{theorem}
+% \vspace{-0.1in}
+\subsubsection{Key Insights in the Derivation of Slow SDEs for AGMs}
+After the AGMs reach the neighborhood of the minimizer manifold, we can derive an analysis similar to the one in the local SGD paper~\citep{gu2023and}. Specifically, we use SDEs to approximate the AGMs after they reach the manifold neighborhood. However, unlike the usual SDE approximation, the SDEs we use here can track the AGMs for a much longer period of time, up to $\O(\eta^{-2})$ rather than the $\tilde{\O}(\eta^{-1})$, which is more common in the previous papers. This type of SDE is termed ``\textit{slow SDE}'' by~\citet{gu2023and}.
+
+ There are two obstacles preventing us from directly applying the analysis of slow SDEs from SGDs to AGMs. First, the obtaining of slow SDEs requires an accurate calculation of the variation of the first-order and second-order moments of the parameters over a relatively large number of steps (a ``\textit{giant step}'' in the notation of \citet{gu2023and}), and in the case of SGD, due to the nature of its rotational equivariance, we can always consider its Hessian matrix as a diagonal array, as well as its corresponding minimizer manifold as a space extended by some full-space standard bases, which greatly simplifies the computation. However, it is not the case for AGMs. Due to the effect of preconditioners $S(\vv_k)$, the rotation equivariance is not satisfied here. 
+ 
+ To resolve this, we generalize the gradient flow projection in \citet{gu2023and,li2021happens} into a varying preconditioner flow projection. Based on this definition, reparameterizing to the original space lets us reuse the simple formulas employed previously \citep{gu2023and,li2021happens}.
+ % Utilizing this definition, after doing a reperemeterization to the original space, we can regain the calculation simplicity in previous works \citep{gu2023and,li2021happens}.
+ 
+ % The second reason is that when $\beta_2$ is too far from $1$, the preconditioner moves too fast, making it very hard to characterize the change of moments. In contrast,  when $\beta_2$ is too close to $1$, then the change of precondition is almost negligible, which is also not practical. To this end, we consider the case where $1- \beta_2 = \O(\eta^2)$. And we term it ``\textit{$2$-scheme}''. The subtlety here is that this proximity does not make the change in the preconditioner negligible; rather, the change in the preconditioner affects the form of the SDE, and because the change in the preconditioner is slow enough that we can track its change.
+
+The second reason is that when $\beta_2$ is far from $1$, the preconditioner changes too quickly, making the evolution of the moments hard to characterize. Conversely, when $\beta_2$ is extremely close to $1$, the preconditioner changes so little as to be impractical. Accordingly, we focus on the $2$-scheme: $1-\beta_2=\O(\eta^2)$. The key point is that this regime does not make the preconditioner’s evolution negligible; rather, its slow but nontrivial drift shapes the SDE and can be tracked analytically.
+
+

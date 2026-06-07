@@ -1,0 +1,46 @@
+\begin{table}[!ht]
+    \centering
+
+    \setlength{\tabcolsep}{2pt}
+    \renewcommand{\arraystretch}{1.15}
+    \fontsize{8pt}{10pt}\selectfont
+    
+    \begin{tabular}{@{\extracolsep{\fill}}l!{\vrule width 0.4pt}cccccc}
+    \toprule
+    \textbf{Features \textbackslash \ Methods} &
+    \textbf{\Algname} &
+    \textbf{ScatterMoE} &
+    \textbf{MoMoE} &
+    \textbf{MegaBlocks} &
+    \textbf{Megatron} &
+    \textbf{DeepGEMM} \\
+    \midrule
+    Gather fused with GMEM-to-SMEM load  (Sec.~\ref{sec:moe:prologue})             & \cmark & fwd \cmark, bwd \xmark  & fwd \cmark, bwd \xmark & \xmark & \xmark & \xmark \\
+
+    SwiGLU and dSwiGLU fused with epilogue (Sec.~\ref{sec:moe:epilogue})  & \cmark & \xmark & \cmark & \xmark & \cmark & NA \\
+
+    $dS$ computed as $\langle dA'_{e,t},\ A_{e,t}\rangle$ (Sec.~\ref{sec:moe:epilogue}, App.~\ref{sec:appendix:dS_computation}) & \cmark & \xmark & \xmark & \xmark & \cmark & NA \\
+
+    Backward epilogue that computes $dH$, $dS$ together (Sec.~\ref{sec:moe:epilogue})    & \cmark & \xmark & \xmark & \xmark & \xmark & NA \\
+    
+    Overlap MMA with epilogue/IO (Sec.~\ref{sec:moe:wgsp})  & \cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+    
+    % Grouped GEMM accepts contiguously-packed inputs   & \cmark & \cmark & \cmark & NA & \cmark & \cmark for $\mathbf{M}$, \xmark~for $\mathbf{K}$ \\
+
+    % Expert workload-aware tile scheduling  (Sec.~\ref{sec:moe:scheduling})    & \cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+
+    Do \emph{not} need a separate scatter kernel    & \cmark & \cmark & \cmark & \xmark & NA & NA \\
+
+    % expert aggregation kernel (Sec.~\ref{sec:moe:expert-agg}) & \cmark & \xmark & \xmark & \cmark & \xmark & NA \\
+
+    Efficient top-$K$ sorting (App.~\ref{sec:appendix:top-k}) & \cmark & \xmark & \xmark & \xmark & \xmark & NA \\
+
+    % MoE computation supports arbitrary routing inputs    & \cmark & \xmark & \xmark & \xmark & \cmark & NA \\
+
+    Do \emph{not} need shape-alignment efforts outside GEMM kernels   & \cmark & \cmark & \cmark & \xmark & \xmark & \xmark \\
+
+    \bottomrule
+    \end{tabular}
+    
+    \caption{\small Comparison between \Algname~and prior MoE kernels. \cmark~means that the kernel implements the feature or a functionality similar in semantics, and \xmark~means the feature is missing from the kernel. ``NA'' means that the feature is out of the expected scope. We use the $\mathrm{GroupedMLP}$ for Megatron and $\mathrm{ParallelDroplessMLP}$ for MegaBlocks. More discussion is included in Appendix~\ref{sec:appendix:kernel_comparison}.} \label{tab:kernel-comparison}
+\end{table}

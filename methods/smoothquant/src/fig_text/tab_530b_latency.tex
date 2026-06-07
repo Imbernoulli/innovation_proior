@@ -1,0 +1,21 @@
+\begin{table}[h]
+    \setlength{\tabcolsep}{7pt}
+    \small
+    \centering
+    \caption{When serving MT-NLG 530B, \method can reduce the memory by half at a similar latency using \emph{half} number of GPUs, which allows serving the 530B model within a single node.}
+    \begin{tabular}{llccc}
+        \toprule
+    {SeqLen} & {Prec.} & {\#GPUs}&  {Latency} & {Memory}  \\
+         \midrule 
+         128 & FP16 & 16 & 232ms & 1040GB   \\
+             & INT8 & 8 & 253ms & 527GB \\ \midrule
+         256 &  FP16 & 16 & 451ms & 1054GB  \\
+             &  INT8 & 8 & 434ms & 533GB \\ \midrule
+         512 &  FP16 & 16 & 838ms & 1068GB  \\
+             &  INT8 & 8  & 839ms & 545GB \\ \midrule
+        1024 &  FP16 & 16 & 1707ms & 1095GB \\
+             &  INT8 & 8  & 1689ms & 570GB \\
+        \bottomrule
+    \end{tabular}
+    \label{tab:530b_latency}
+\end{table}

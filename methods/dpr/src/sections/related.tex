@@ -1,0 +1,35 @@
+
+
+\section{Related Work}
+\label{sec:related}
+
+
+Passage retrieval has been %
+an important component for open-domain QA~\cite{voorhees1999trec}.
+It not only effectively reduces the search space for answer extraction, but also identifies the support context for users to verify the answer.
+Strong sparse vector space models like TF-IDF or BM25 have been used as the standard method applied broadly to various QA tasks~\citep[e.g.,][]{chen2017reading, yang2019end, Yang2019Data, nie2019revealing, min2019discrete, wolfson2020break}.
+Augmenting text-based retrieval with external structured information, such as knowledge graph and Wikipedia hyperlinks, has also been explored recently~\cite{min2019knowledge,asai2020learning}.
+
+
+The use of dense vector representations for retrieval has a long history since Latent Semantic Analysis~\cite{deerwester1990indexing}.
+Using labeled pairs of queries and documents, discriminatively trained dense encoders have become popular recently~\cite{yih2011learning, huang2013learning, gillick-etal-2019-learning}, with applications to cross-lingual document retrieval, ad relevance prediction, Web search and entity retrieval. Such approaches complement the sparse vector methods as they can potentially give high similarity scores to semantically relevant text pairs, even without exact token matching. The dense representation alone, however, is typically inferior to the sparse one.
+While not the focus of this work, dense representations from pretrained models, along with cross-attention mechanisms, have also been shown effective in passage or dialogue re-ranking tasks~\cite{nogueira2019passage,humeau2020poly}. 
+Finally, a concurrent work~\cite{khattab2020colbert} demonstrates the feasibility of full dense retrieval in IR tasks. Instead of employing the dual-encoder framework, they introduced a late-interaction operator on top of the BERT encoders.
+
+
+
+
+
+
+Dense retrieval for open-domain QA has been explored by~\citet{das2019multi}, who propose to retrieve relevant passages iteratively using reformulated question vectors.
+As an alternative approach that skips passage retrieval, \citet{seo2019real} propose to encode candidate answer phrases as vectors and directly retrieve the answers to the input questions efficiently.
+Using additional pretraining with the objective that matches surrogates of questions and relevant passages, \citet{lee2019latent} jointly train the question encoder and reader.
+Their approach outperforms the BM25 plus reader paradigm on multiple open-domain QA datasets in QA accuracy, and is further extended by REALM~\cite{guu2020realm}, which includes tuning the passage encoder asynchronously by re-indexing the passages during training.
+The pretraining objective has also recently been improved by \citet{Xiong2020ProgressivelyPD}.
+In contrast, our model provides a simple and yet effective solution that shows stronger empirical performance, without relying on additional pretraining or complex joint training schemes.
+
+\model/ has also been used as an important module in very recent work. For instance, extending the idea of leveraging hard negatives, \citet{Xiong2020ANCE} use the retrieval model trained in the previous iteration to discover new negatives and construct a different set of examples in each training iteration. Starting from our trained \model/ model, they show that the retrieval performance can be further improved. Recent work~\cite{Izacard2020fid, lewis2020rag} have also shown that DPR can be combined with generation models such as BART~\cite{lewis-etal-2020-bart} and T5~\cite{raffel2019T5}, achieving good performance on open-domain QA and other knowledge-intensive tasks.
+
+
+
+

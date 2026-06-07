@@ -1,0 +1,69 @@
+
+\section{Dense Passage Retriever (\model/)}
+\label{sec:retriever}
+
+
+We focus our research in this work on improving the \emph{retrieval} component in open-domain QA.
+Given a collection of $M$ text passages, the goal of our dense passage retriever (\model/) is to index all the passages in a low-dimensional and continuous space,
+such that it can retrieve efficiently the top $k$ passages relevant to the input question for the reader at run-time.
+Note that $M$ can be very large
+(e.g., 21 \text{million} passages in our experiments, described in Section~\ref{sec:wiki-preprocessing})
+and $k$ is usually small, such as $20$--$100$.
+
+
+\subsection{Overview}
+Our dense passage retriever (\model/) uses a dense encoder $E_P(\cdot)$ which maps any text passage to a $d$-dimensional real-valued vectors and builds an index for all the $M$ passages that we will use for retrieval.
+At run-time, \model/ applies a different encoder $E_Q(\cdot)$ that maps the input question to a $d$-dimensional vector, and retrieves $k$ passages
+of which vectors are the closest to the question vector. We define the similarity between the question and the passage using the dot product of their vectors:
+\begin{align}
+    \mathrm{sim}(q, p) = E_Q(q)^{\intercal} E_P(p).
+    \label{eq:sim}
+\end{align}
+Although more expressive model forms for measuring the similarity between a question and a passage do exist, such as networks consisting of multiple layers of cross attentions, the similarity function needs to be decomposable so that the representations of the collection of passages can be pre-computed.
+Most decomposable similarity functions are some transformations of Euclidean distance (L2). For instance, cosine is equivalent to inner product for unit vectors and the Mahalanobis distance is equivalent to L2 distance in a transformed space.
+Inner product search has been widely used and studied, as well as its connection to cosine similarity and L2 distance~\cite{mussmann2016learning,ram2012maximum}.
+As our ablation study finds other similarity functions perform comparably (Section~\ref{sec:sim_loss}; Appendix~\ref{sec:alt-sim}), we thus choose the simpler inner product function and improve the dense passage retriever by learning better encoders.
+
+\paragraph{Encoders}
+Although in principle the question and passage encoders can be implemented by any neural networks, in this work we use two independent BERT~\cite{devlin2018bert} networks (base, uncased) and take the representation at the \ttt{[CLS]} token as the output, so $d = 768$.
+
+\paragraph{Inference}
+During inference time, we apply the passage encoder $E_P$ to all the passages and index them using FAISS \cite{johnson2017billion} offline.
+FAISS is an extremely efficient, open-source library for similarity search and clustering of dense vectors, which can easily be applied to billions of vectors.
+Given a question $q$ at run-time, we derive its embedding $v_q = E_Q(q)$ and retrieve the top $k$ passages with embeddings closest to $v_q$.
+
+
+\subsection{Training}\label{sec:training}
+
+Training the encoders so that the dot-product similarity (Eq.~\eqref{eq:sim}) becomes a good ranking function for retrieval is essentially a \emph{metric learning} problem~\cite{kulis2013metric}.
+The goal is to create a vector space such that relevant pairs of questions and passages will have smaller distance (i.e., higher similarity) than the irrelevant ones, by learning a better embedding function.
+
+Let $\mathcal{D} = \{ \langle q_i, p^+_i, p^-_{i,1}, \cdots, p^-_{i,n} \rangle \}_{i=1}^m$ be the training data that consists of $m$ instances.
+Each instance contains one question $q_i$ and one relevant (positive) passage $p^+_i$, along with $n$ irrelevant (negative) passages $p^-_{i,j}$.
+We optimize the loss function as the negative log likelihood of the positive passage:
+\begin{eqnarray}
+&& L(q_i, p^+_i, p^-_{i,1}, \cdots, p^-_{i,n}) \label{eq:training} \\
+&=& -\log \frac{ e^{\mathrm{sim}(q_i, p_i^+)} }{e^{\mathrm{sim}(q_i, p_i^+)} + \sum_{j=1}^n{e^{\mathrm{sim}(q_i, p^-_{i,j})}}}. \nonumber
+\end{eqnarray}
+
+\paragraph{Positive and negative passages}
+For retrieval problems, it is often the case that positive examples are available explicitly, while negative examples need to be selected from an extremely large pool.
+For instance, passages relevant to a question may be given in a QA dataset, or can be found using the answer.
+All other passages in the collection, while not specified explicitly, can be viewed as irrelevant by default.
+In practice, how to select negative examples is often overlooked but could be decisive for learning a high-quality encoder.
+We consider three different types of negatives: (1) Random: any random passage from the corpus; (2) BM25: top passages returned by BM25 which don't contain the answer but match most question tokens; (3) Gold: positive passages paired with other questions which appear in the training set. We will discuss the impact of different types of negative passages and training schemes in Section~\ref{sec:ir_ablation}.
+Our best model uses gold passages from the same mini-batch and one BM25 negative passage.
+In particular, re-using gold passages from the same batch as negatives can make the computation efficient while achieving great performance.
+We discuss this approach below.
+
+\paragraph{In-batch negatives}
+Assume that we have $B$ questions in a mini-batch and each one is associated with a relevant passage. Let $\mathbf{Q}$ and $\mathbf{P}$ be the $(B\times d)$ matrix of question and passage embeddings in a batch of size $B$.
+$\mathbf{S} = \mathbf{Q}\mathbf{P}^T$ is a $(B\times B)$ matrix of similarity scores, where each row of which corresponds to a question, paired with $B$ passages.
+In this way, we reuse computation and effectively train on $B^2$ ($q_i$, $p_j$) question/passage pairs in each batch.
+Any ($q_i$, $p_j$) pair is a positive example when $i=j$, and negative otherwise.
+This creates $B$ training instances in each batch, where there are $B-1$ negative passages for each question.
+
+The trick of in-batch negatives has been used in the full batch setting~\cite{yih2011learning} and more recently
+for mini-batch~\cite{henderson2017efficient,gillick-etal-2019-learning}.
+It has been shown to be an effective strategy for learning a dual-encoder model %
+that boosts the number of training examples.

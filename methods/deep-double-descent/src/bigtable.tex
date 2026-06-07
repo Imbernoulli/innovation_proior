@@ -1,0 +1,78 @@
+\section{Summary table of experimental results}
+\label{sec:bigtable}
+
+\footnotesize
+\begin{tabular}{@{}llllllll@{}} 
+    \toprule
+    $ $ & $ $ & $ $ & $ $ & $ $ & \multicolumn{2}{c}{Double-Descent} \\ 
+    \cmidrule(l){6-7}
+    Dataset     & Architecture & Opt. & Aug. & \% Noise & Model    & Epoch     & Figure(s)\\ 
+    \midrule
+    CIFAR 10    & CNN           & SGD  & \cmark    & 0     & \xmark & \xmark & 
+                                                                        \ref{fig:cnn-cifar}, 
+                                                                        \ref{fig:mcnn_aug_large}\\
+                &               &       & \cmark    & 10    & \cmark & \cmark &
+                                                                        \ref{fig:cnn-cifar}, 
+                                                                        \ref{fig:mcnn_aug_large},
+                                                                        \ref{fig:more-mdd1appendix}\\
+                &               &       & \cmark    & 20    & \cmark & \cmark &
+                                                                        \ref{fig:cnn-cifar}, 
+                                                                        \ref{fig:mcnn_aug_large}\\
+                &               &       &           & 0     & \xmark & \xmark & \ref{fig:cnn-cifar},
+                                                                            \ref{fig:app-cnn10-10}\\
+                &               &       &           & 10    & \cmark & \cmark & \ref{fig:cnn-cifar}\\
+                &               &       &           & 20    & \cmark & \cmark & \ref{fig:cnn-cifar}\\
+                &               & SGD + w.d. & \cmark & 20 & \cmark & \cmark      & 
+                                                                        \ref{fig:cnn-weight-decay}\\
+                &               & Adam  &           & 0     & \cmark & -- & \ref{fig:app-cnn10-10} \\
+                & ResNet        & Adam  & \cmark    & 0     & \xmark & \xmark &                   
+                                                                \ref{fig:resnet-cifar},
+                                                                \ref{fig:epochDD-noise-dataset-arch}\\
+                &               &       & \cmark    & 5     & \cmark & -- &
+                                                                \ref{fig:resnet-cifar}\\
+                &               &       & \cmark    & 10    & \cmark & \cmark &
+                                                                \ref{fig:resnet-cifar},
+                                                                \ref{fig:epochDD-noise-dataset-arch}\\
+                &               &       & \cmark    & 15    & \cmark & \cmark &
+                                                                \ref{fig:resnet-cifar},
+                                                                \ref{fig:unified}\\
+                &               &       & \cmark    & 20    & \cmark & \cmark &
+                                                                \ref{fig:resnet-cifar},
+                                                                \ref{fig:epochDD-three-regimes},
+                                                                \ref{fig:epochDD-noise-dataset-arch}\\
+                % &               & Adam + w.d. & \cmark & 20 & \cmark & \cmark & 
+                %                                                 \ref{fig:weight-decay-dynamics} \\
+                &               & Various & \cmark  & 20    & --    & \cmark    
+                                                                & \ref{fig:epochDD-adam-lr},
+                                                                \ref{fig:epochDD-sgd-lr},
+                                                                \ref{fig:epochDD-mom-lr}\\
+                
+    (subsampled) & CNN          & SGD     & \cmark         & 10    & \cmark & -- & \ref{fig:sample-modeld}\\
+                &               & SGD     & \cmark         & 20    & \cmark & -- & 
+                                                                \ref{fig:sample-modeld},
+                                                                \ref{fig:grid}\\
+    (adversarial) & ResNet      & SGD     &           & 0     & Robust err.     & -- & \ref{fig:adv_training}\\
+    \addlinespace[0.5em]
+    CIFAR 100   
+                & ResNet        & Adam  & \cmark    & 0     & \cmark & \xmark & \ref{fig:resnet-cifar},
+                                                                    \ref{fig:app-cifar100-clean},
+                                                                    \ref{fig:epochDD-noise-dataset-arch}\\
+                &               &       & \cmark    & 10    & \cmark & \cmark & 
+                                                                    \ref{fig:resnet-cifar},
+                                                                    \ref{fig:epochDD-noise-dataset-arch}\\
+                &               &       & \cmark    & 20    & \cmark & \cmark & 
+                                                                    \ref{fig:resnet-cifar},
+                                                                    \ref{fig:epochDD-noise-dataset-arch}\\
+                & CNN        & SGD  &     & 0     & \cmark & \xmark & \ref{fig:app-cifar100-clean-sgd}\\
+    \addlinespace[0.5em]
+    IWSLT '14 de-en & Transformer & Adam &              & 0     & \cmark & \xmark & 
+                                                                            \ref{fig:more-mdd2},
+                                                                            \ref{fig:nlp-dynamics}\\
+    (subsampled) &  Transformer & Adam &                & 0     & \cmark & \xmark & \ref{fig:nlpdd}, \ref{fig:sml-nlp-dynamics} \\
+    WMT '14 en-fr & Transformer & Adam  &               & 0     & \cmark & \xmark & 
+                                                                            \ref{fig:more-mdd2},
+                                                                            \ref{fig:nlp-dynamics}\\
+    \bottomrule
+\end{tabular} \\
+%Missing: CIFAR 100 CNN, CIFAR 10 Resnet Aug, CIFAR 10 Resnet MSE, CIFAR 10 Resnet SGD, CIFAR 10 Resnet No Aug, CIFAR 10 Resnet var samples
+\normalsize

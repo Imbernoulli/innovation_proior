@@ -1,0 +1,225 @@
+% Autoregressive modeling is originally designed for sequential data like language or flatten visual tokens. The key insight of it is to capture the underlying temporal dependencies by factorizing the data likelihood into a product of conditional probabilities. For a token sequence $x = (x_1, x_2, \dots, x_T)$, this is expressed as:
+
+\vspace{-3pt}
+\subsection{Preliminary: autoregressive modeling via next-token prediction} \label{sec:ar}
+\vspace{-2pt}
+
+\firstpara{Formulation.}
+Consider a sequence of discrete tokens $x = (x_1, x_2, \dots, x_T)$, where $x_t \in [V]$ is an integer from a vocabulary of size $V$.
+The next-token autoregressive posits the probability of observing the current token $x_t$ depends only on its prefix $(x_1, x_2, \dots, x_{t-1})$.
+This \textbf{unidirectional token dependency assumption} allows for the factorization of the sequence $x$'s likelihood:
+% into the product of $T$ conditional probabilities:
+\begin{align}
+    p(x_1, x_2, \dots, x_T) = \prod_{t=1}^{T} p(x_t \mid x_1, x_2, \dots, x_{t-1}). \label{eq:ar}
+\end{align}
+Training an autoregressive model $p_\theta$ involves optimizing $p_\theta(x_t \mid x_1, x_2, \dots, x_{t-1})$ over a dataset.
+This is known as the ``next-token prediction'', and the trained $p_\theta$ can generate new sequences.
+
+\para{Tokenization.}
+Images are inherently 2D continuous signals.
+To apply autoregressive modeling to images via next-token prediction, we must:\, 1) tokenize an image into several \textit{discrete} tokens, and\, 2) define a 1D \textit{order} of tokens for unidirectional modeling.\, For 1), a quantized autoencoder such as~\cite{vqgan} is often used to convert the image feature map $f \in \mathbb{R}^{h\times w\times C}$ to discrete tokens $q \in [V]^{h\times w}$:
+\begin{align}
+    f = \mathcal{E}(im), \quad~~
+    q = \mathcal{Q}(f),
+\end{align}
+where $im$ denotes the raw image, $\mathcal{E}(\cdot)$ a encoder, and $\mathcal{Q}(\cdot)$ a quantizer.
+The quantizer typically includes a learnable codebook $Z \in \mathbb{R}^{V\times C}$ containing $V$ vectors.
+The quantization process $q = \mathcal{Q}(f)$ will map each feature vector $f^{(i,j)}$ to the code index $q^{(i,j)}$ of its nearest code in the Euclidean sense:
+% and the quantization process $q = \mathcal{Q}(f)$ is implemented by finding the Euclidean nearest code $q^{(i,j)}$ of each feature vector $f^{(i,j)}$ on feature map $f$:
+\begin{align}
+    q^{(i,j)} = \left( \argmin_{v \in [V]} \| \text{lookup}(Z, v) - f^{(i,j)} \|_2 \right) \in [V],
+\end{align}
+where $\text{lookup}(Z, v)$ means taking the $v$-th vector in codebook $Z$.
+To train the quantized autoencoder, $Z$ is looked up by every $q^{(i,j)}$ to get $\hat{f}$, the approximation of original $f$. Then a new image $\hat{im}$ is reconstructed using the decoder $\mathcal{D}(\cdot)$ given $\hat{f}$, and a compound loss $\mathcal{L}$ is minimized:
+\begin{align}
+    \hat{f} &= \text{lookup}(Z, q), % ~~ (\forall 1 \le i \le h, 1 \le j \le w), \\
+    \quad\quad\quad~~~ \hat{im} = \mathcal{D}(\hat{f}), \\
+    \mathcal{L} &= \|im - \hat{im}\|_2 + \|f - \hat{f}\|_2 + \lambda_{\text{P}} \mathcal{L}_{\text{P}}(\hat{im}) + \lambda_{\text{G}} \mathcal{L}_{\text{G}}(\hat{im}), \label{eq:vaeloss}
+\end{align}
+where $\mathcal{L}_{\text{P}}(\cdot)$ is a perceptual loss such as LPIPS~\cite{lpips}, $\mathcal{L}_{\text{G}}(\cdot)$ a discriminative loss like StyleGAN's discriminator loss~\cite{stylegan}, and $\lambda_{\text{P}}$, $\lambda_{\text{G}}$ are loss weights.
+Once the autoencoder $\{\mathcal{E}, \mathcal{Q}, \mathcal{D}\}$ is fully trained, it will be used to tokenize images for subsequent training of a unidirectional autoregressive model. 
+% image tokens for training a unidirectional autoregressive model later.
+
+\vspace{2pt}
+The image tokens in $q \in [V]^{h\times w}$ are arranged in a 2D grid.
+Unlike natural language sentences with an inherent left-to-right ordering, the order of image tokens must be explicitly defined for unidirectional autoregressive learning.
+Previous AR methods~\cite{vqgan,vit-vqgan,rq} flatten the 2D grid of $q$ into a 1D sequence $x = (x_1, \dots, x_{h\times w})$ using some strategy such as row-major raster scan, spiral, or z-curve order.
+Once flattened, they can extract a set of sequences $x$ from the dataset, and then train an autoregressive model to maximize the likelihood in \eqref{eq:ar} via next-token prediction.
+% Consequently, unlike nature language sentences whose token order is defined as left-to-right at hand, we have to specify how to sequentially order $q$ to get a 1D token sequence $x = (x_1, x_2, \dots, x_{h\times w})$.
+% This can be achieved through some flattening strategy such as row-major raster scan, spiral, or Z-curve order.
+% Once flattened, a set of sequences can be extracted from an image dataset.
+% An autoregressive model can then be trained by maximizing the likelihood in \eqref{eq:ar} via next-token prediction.
+
+
+\para{Discussion on the weakness of vanilla autoregressive models.}
+% A standard image encoder will yield a feature map $f$ where all vectors $f^{(i,j)}$ are correlated to each other.
+The above approach of tokenizing and flattening enable next-token autoregressive learning on images, but introduces several issues:
+
+\begin{enumerate}[label=\arabic*),topsep=1pt,itemsep=2pt,leftmargin=20pt]
+\item \textbf{Mathematical premise violation.}\, In quantized autoencoders (VQVAEs), the encoder typically produces an image feature map $f$ with inter-dependent feature vectors $f^{(i,j)}$ for all $i,j$.
+So after quantization and flattening, the token sequence $(x_1, x_2, \dots, x_{h\times w})$ retains \textit{bidirectional} correlations.
+This contradicts the \textit{unidirectional} dependency assumption of autoregressive models, which dictates that each token $x_t$ should only depend on its prefix $(x_1, x_2, \dots, x_{t-1})$.
+
+\item \textbf{Inability to perform some zero-shot generalization.}\, Similar to issue 1), The unidirectional nature of image autoregressive modeling restricts their generalizability in tasks requiring bidirectional reasoning. E.g., it cannot predict the top part of an image given the bottom part.
+
+\item \textbf{Structural degradation.}\, The flattening disrupts the spatial locality inherent in image feature maps. For example, the token $q^{(i,j)}$ and its 4 immediate neighbors $q^{(i\pm 1,j)}$, $q^{(i,j\pm 1)}$ are closely correlated due to their proximity.
+This spatial relationship is compromised in the linear sequence $x$, where \textit{uni}directional constraints diminish these \textit{cor}relations.
+
+\item \textbf{Inefficiency.}\, Generating an image token sequence $x = (x_1, x_2, \dots, x_{n\times n})$ with a conventional self-attention transformer incurs $\mathcal{O}(n^2)$ autoregressive steps and $\mathcal{O}(n^6)$ computational cost.
+% rendering the process highly inefficient.
+\end{enumerate}
+
+Issues 2) and 3) are evident (see examples above).
+Regarding issue 1), we present empirical evidence in \appref{app:dependency}.
+% analyzing the token dependencies in the popular quantized autoencoder~\cite{vqgan} and revealing significant bidirectional correlations.
+The proof of issue 3) is detailed in \appref{app:complexity}.
+These theoretical and practical limitations call for a rethinking of autoregressive models in the context of image generation.
+% These theoretical shortcomings and computational inefficiency necessitate a rethinking of autoregressive modeling for images.
+
+
+\vspace{8pt}
+\begin{figure}[htb]
+\begin{center}
+    \includegraphics[width=\linewidth]{fig/method_new.pdf}
+\end{center}
+\vspace{-4pt}
+\caption{\small
+\textbf{VAR involves two separated training stages.}
+\textbf{Stage 1:} a multi-scale VQ autoencoder encodes an image into $K$ token maps $R=(r_1, r_2, \dots, r_K)$ and is trained by a compound loss \eqref{eq:vaeloss}.
+For details on ``Multi-scale quantization'' and ``Embedding'', check \algref{alg:enc} and \ref{alg:dec}.
+% The trained VQVAE is used to produce token map ground truth $R=(r_1, r_2, \dots, r_K)$ for the next training stage.
+\,\textbf{Stage 2:} a VAR transformer is trained via next-scale prediction \eqref{eq:var}: it takes $(\texttt{[s]}, r_1, r_2, \dots, r_{K-1})$ as input to predict $(r_1, r_2, r_3, \dots, r_K)$. The attention mask is used in training to ensure each $r_k$ can only attend to $r_{\le k}$. Standard cross-entropy loss is used.
+% Average sparsity is represented by a dark diamond marker.
+\vspace{-4pt}
+}
+\label{fig:method}
+\end{figure}
+
+
+\subsection{Visual autoregressive modeling via next-scale prediction} \label{sec:var}
+\vspace{-2pt}
+
+
+\firstpara{Reformulation.}
+We reconceptualize the autoregressive modeling on images by shifting from ``next-token prediction'' to ``next-scale prediction'' strategy.
+Here, the autoregressive unit is \textit{an entire token map}, rather than \textit{a single token}.
+We start by quantizing a feature map $f \in \mathbb{R}^{h\times w\times C}$ into $K$ multi-scale token maps $(r_1, r_2, \dots, r_K)$, each at a increasingly  higher resolution $h_k\times w_k$, culminating in $r_K$ matches the original feature map's resolution $h\times w$.
+The autoregressive likelihood is formulated as:
+\begin{align}
+    p(r_1, r_2, \dots, r_K) = \prod_{k=1}^{K} p(r_k \mid r_1, r_2, \dots, r_{k-1}),  \label{eq:var}
+\end{align}
+where each autoregressive unit $r_k \in [V]^{h_k \times w_k}$ is the token map at scale $k$ containing $h_k \times w_k$ tokens, and the sequence $(r_1, r_2, \dots, r_{k-1})$ serves as the the ``prefix'' for $r_k$.
+During the $k$-th autoregressive step, all distributions over the $h_k \times w_k$ tokens in $r_k$ will be generated in parallel, conditioned on $r_k$'s prefix and associated $k$-th position embedding map.
+% Since $r_k$ has $h_k\times w_k$ tokens but $r_{k-1}$ only has $h_{k-1}\times w_{k-1}$ ones, $r_{k-1}$ will be interpolated to $h_k\times w_k$ before fed into the transformer to produce the distribution of $r_k$.
+This ``next-scale prediction'' methodology is what we define as visual autoregressive modeling (VAR), depicted on the right side of \figref{fig:method}.
+Note that in the training of VAR, a block-wise causal attention mask is used to ensure that each $r_k$ can only attend to its prefix $r_{\le k}$.
+During inference, kv-caching can be used and no mask is needed.
+% We term this approach Visual AutoRegressive modeling
+% \para{Autoregressive details.} At high level
+
+
+
+\para{Discussion.}
+% In VAR, we revisit the aforementioned three issues:
+VAR addresses the previously mentioned three issues as follows:
+
+\begin{enumerate}[label=\arabic*),topsep=0.7pt,itemsep=2pt,leftmargin=20pt]
+\item The mathematical premise is satisfied if we constrain each $r_k$ to depend only on its prefix, that is, the process of getting $r_k$ is solely related to $r_{\le k}$.
+This constraint is acceptable as it aligns with the natural, coarse-to-fine progression characteristics like human visual perception and artistic drawing (as we discussed in \secref{sec:intro}).
+Further details are provided in the \textit{Tokenization} below.
+% human visual perception or drawing, and will be detailed in the \textit{Tokenization} part.
+% This will be detailed later in the \textit{Tokenization} part.
+% This coarse-to-fine dependency can be natural because it is quite similar to how humans imagine a picture or make a drawing.
+
+\item The spatial locality is preserved as (i) there is no flattening operation in VAR, and (ii) tokens in each $r_k$ are fully correlated. The multi-scale design additionally reinforces the spatial structure.
+
+\item The complexity for generating an image with $n\times n$ latent is significantly reduced to $\mathcal{O}(n^4)$, see Appendix for proof.
+This efficiency gain arises from the \textit{parallel} token generation in each $r_k$.
+% We can now achieve a computation complexity of $\mathcal{O}(h^3w^3)$. The intuition behind this is, many tokens are able to be generated \textit{in parallel} now, such as all tokens in $r_K$ are obtained at the same time.
+\end{enumerate}
+
+\para{Tokenization.}
+We develope a new multi-scale quantization autoencoder to encode an image to $K$ multi-scale discrete token maps $R=(r_1, r_2, \dots, r_K)$ necessary for VAR learning \eqref{eq:var}.
+We employ the same architecture as VQGAN~\cite{vqgan} but with a modified multi-scale quantization layer.
+The encoding and decoding procedures with residual design on $f$ or $\hat{f}$ are detailed in algorithms \ref{alg:enc} and \ref{alg:dec}.
+We empirically find this residual-style design, akin to~\cite{rq}, can perform better than independent interpolation.
+\Algref{alg:enc} shows that each $r_k$ would depend only on its prefix $(r_1, r_2, \dots, r_{k-1})$.
+Note that a shared codebook $Z$ is utilized across all scales, ensuring that each $r_k$'s tokens belong to the same vocabulary $[V]$.
+To address the information loss in upscaling $z_k$ to $h_K\times w_K$, we use $K$ extra convolution layers $\{\phi_k\}_{k=1}^K$.
+No convolution is used after downsampling $f$ to $h_k\times w_k$.
+% The encoded token maps
+
+
+\begin{center}
+% \begin{small}
+\begin{minipage}[t]{0.5\linewidth}
+  % \vspace{0pt}
+  \centering
+  \scalebox{0.86}
+  {
+  \begin{algorithm}[H]
+    \caption{\small{~Multi-scale VQVAE Encoding}} \label{alg:enc}
+    \small{
+    \textbf{Inputs: } raw image $im$\;
+    \textbf{Hyperparameters: } steps $K$, resolutions $(h_k,w_k)_{k=1}^{K}$\;
+    % \textbf{Initiate: }
+    $f = \mathcal{E}(im)$, $R=[]$\;
+    % $f = \mathcal{E}(im)$\;
+    % $\hat{f} = 0$\;
+    \For {$k=1,\cdots,K$}
+    {
+    % $q = \mathcal{Q}(f)$\;
+    % $x = \text{flatten}(q)$\;
+    $r_k = \mathcal{Q}(\text{interpolate}(f, h_k, w_k))$\;
+    $R = \text{queue\_push}(R, r_k)$\;
+    $z_k = \text{lookup}(Z, r_k)$\;
+    $z_k = \text{interpolate}(z_k, h_K, w_K)$\;
+    $f = f - \phi_k(z_k)$\;
+    % \If {${\rm abs}(\hat{y}^{(k+1)}-\hat{y}^{(k)}) < ftol$} {Early stop.}
+    }
+    \textbf{Return: } multi-scale tokens $R$\;
+    }
+  \end{algorithm}
+  }
+\end{minipage}%
+\begin{minipage}[t]{0.5\linewidth}
+  % \vspace{0pt}
+  \centering
+  \scalebox{0.81}
+  {
+  \begin{algorithm}[H]
+    \caption{\small{~Multi-scale VQVAE Reconstruction}} \label{alg:dec}
+    \small{
+    \textbf{Inputs: } multi-scale token maps $R$\;
+    \textbf{Hyperparameters: } steps $K$, resolutions $(h_k,w_k)_{k=1}^{K}$\;
+    % \textbf{Initiate: }
+    $\hat{f} = 0 $\;
+    % $f = \mathcal{E}(im)$\;
+    % $\hat{f} = 0$\;
+    \For {$k=1,\cdots,K$}
+    {
+    % $q = \mathcal{Q}(f)$\;
+    % $x = \text{flatten}(q)$\;
+    $r_k = \text{queue\_pop}(R)$\;
+    $z_k = \text{lookup}(Z, r_k)$\;
+    $z_k = \text{interpolate}(z_k, h_K, w_K)$\;
+    $\hat{f} = \hat{f} + \phi_k(z_k)$\;
+    % $r_k = \mathcal{Q}(\text{interpolate}(f, h_k, w_k))$\;
+    % $R = \text{append}(R, r_k)$\;
+    % $\hat{f} = \text{lookup}(Z, r_k)$\;
+    % $f = f - \text{interpolate}(\hat{f}, h_K, w_K)$\;
+    % \If {${\rm abs}(\hat{y}^{(k+1)}-\hat{y}^{(k)}) < ftol$} {Early stop.}
+    }
+    $\hat{im} = \mathcal{D}(\hat{f}) $\;
+    \textbf{Return: } reconstructed image $\hat{im}$\;
+    }
+  \end{algorithm}
+  }
+\end{minipage}
+% \end{small}
+\end{center}
+
+
+
+\section{Implementation details} \label{sec:impl}
+\input{sec/3.2.impl}

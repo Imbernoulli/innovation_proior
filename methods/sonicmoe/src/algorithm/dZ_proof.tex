@@ -1,0 +1,169 @@
+
+\label{sec:appendix:proof}
+For an expert $e$, let
+\begin{equation}
+    X_{e}\!\in\!\R^{T_e\times d},\quad
+    W_{1,e}\!\in\!\R^{d\times 2n},\quad
+    W_{2,e}\!\in\!\R^{n\times d}
+\end{equation}
+
+The forward activation computation is given by:
+\begin{equation}
+    H_e = X_{e} W_{1,e}\in\R^{T_e\times 2n},\qquad
+    A_{e}=\mathrm{SwiGLU}(H_e)\in\R^{T_e\times n},\qquad
+    Y_{e}=A_{e}W_{2,e}\in\R^{T_e\times d}.
+\end{equation}
+
+The token aggregation with scores $S=\{s_{t,e}\}$ is given by
+\begin{equation}
+    O_t=\sum_{e} s_{t,e}\,Y_{e,t},\qquad dO_t \in \mathbb{R}^{1\times d} \text{ as the gathered results from } dO.
+\end{equation}
+
+We know
+\begin{align}
+    d Y_{e,t} = s_{t,e}\ dO_t
+    \quad\Longrightarrow\quad
+    dY_{e} = \mathrm{Broadcast}(\vs_e)\ dO_{e}. \label{eq:dY}
+\end{align}
+Define the Grouped GEMM output as $dA'_{e} := dO_{e}\ W_{2,e}^{\top}\in\R^{T_e\times n}$.
+
+Then from Equation~\ref{eq:dY}
+\begin{equation}
+    dA_{e} = dY_{e}\ W_{2,e}^{\top} = \mathrm{Broadcast}(\vs_e)\ dA'_{e}.
+\end{equation}
+
+
+The activation gradient for score $dS$ is\footnote{If we also consider expert biases, we will have  $dS_{e,t} = \langle dA'_{e,t},\ A_{e,t}\rangle + \langle dO_{e,t},\ \mathrm{Broadcast}(S_{e,t})\rangle$. The activation memory efficiency can still be preserved but we need to perform a separate computation for $\langle dO_{e,t},\ \mathrm{Broadcast}(S_{e,t})\rangle$ either via a separate kernel (\Algname's current choice) or fuse it with $dH$ Grouped GEMM mainloop. Please refer to the released code of~\Algname. }
+\begin{equation}
+\label{eq:ds-n-reduce}
+    \boxed{dS_{t,e}=\left\langle dO_t,\ Y_{e,t}\right\rangle
+      =\left\langle dO_t\ W_{2,e}^{\top},\ A_{e,t}\right\rangle
+      =\left\langle dA'_{e,t},\ A_{e,t}\right\rangle }.
+\end{equation}
+
+In addition, we can derive $dH_e$ from $dA_e$ and $A_e$ (recomputed from $H_e$) as:
+
+
+\begin{equation}
+    dH_e=\mathrm{dSwiGLU}(dA_{e},\ H_e).
+\end{equation}
+
+Using Equation~\ref{eq:dY},
+\begin{equation}
+    dW_{2,e}=A_{e}^{\top}\ dY_{e}
+        =A_{e}^{\top}\big(\mathrm{Broadcast}(\vs_e)\ dO_{e}\big)
+        =\big(\underbrace{\mathrm{Broadcast}(\vs_e)\ A_{e}}_{A'_{e}}\big)^{\!\top} dO_{e}.
+\end{equation}
+
+
+
+\subsection{Computational choices for $dS$} \label{sec:appendix:dS_computation}
+If we do not implement custom kernels and rely solely on PyTorch's autograd (AD) engine, we can add the expert weighting ($S$) either (1) before down-proj forward or (2) after down-proj forward. Both yield identical results for forward and backward, but the computation for $dS$ is different. For (1), we need to compute $\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$ which is used by \Algname~and Megatron\footnote{\scriptsize \url{https://github.com/NVIDIA/Megatron-LM/blob/44af130cc4568d324860646996b6a5bfd6c5e3e6/megatron/core/transformer/moe/experts.py\#L284}}. MoMoE\footnote{\scriptsize \url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/momoe.py\#L702}}, ScatterMoE\footnote{\scriptsize \url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/scattermoe/parallel_experts.py\#L79}}, and MegaBlocks\footnote{\scriptsize \url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/ops/binned_scatter.py\#L12}}\footnote{\scriptsize \url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/ops/binned_scatter.py\#L49}} compute $\left\langle dO_t,\ Y_{e,t}\right\rangle$ as required in (2).
+
+% Case (1) would use $\big\langle d\tilde X_{e,t},\ X_{e,t}\big\rangle$ and we will show it also yields correct $dS$ as follows:
+
+
+% \subsubsection{Deriving $dS$ from $d\tilde{X}$}
+
+% Starting from the standard MoE aggregation
+% \begin{equation}
+%     O_t = \sum_{e} s_{t,e} \, Y_{e,t}, 
+%     \qquad Y_{e,t} \in \R^{d},
+% \end{equation}
+% the AD engine gives the textbook expression
+% \begin{equation}
+%     dS_{t,e} = \left\langle dO_t,\ Y_{e,t} \right\rangle .
+% \end{equation}
+% This is the choice implicitly made when we implement the MoE routing as a scatter of $Y_{e,t}$ followed by a reduction over experts. In particular, MoMoE,\footnote{\scriptsize \url{https://github.com/tilde-research/MoMoE-impl/blob/d6e2d683185bfe4030265c3ca062564356faa61e/momoe/momoe.py\#L702}} ScatterMoE,\footnote{\scriptsize \url{https://github.com/shawntan/scattermoe/blob/47b5e1502e5a10e82c8e5945d761b877849871e7/scattermoe/parallel_experts.py\#L79}} and MegaBlocks\footnote{\scriptsize \url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/ops/binned_scatter.py\#L12}}\footnote{\scriptsize \url{https://github.com/databricks/megablocks/blob/78eea65fda01e638af36ae38853bc51efb04a4b4/megablocks/ops/binned_scatter.py\#L49}} all use $dS_{t,e} = \left\langle dO_t,\ Y_{e,t} \right\rangle$ as their implementation of the score gradient.
+
+% \paragraph{Case (1): weighting before the down-projection.}
+
+% \begin{equation}
+%     H_e = X_e W_{1,e} \in \R^{T_e \times 2n}, \qquad
+%     A_e = \operatorname{SwiGLU}(H_e) \in \R^{T_e \times n}, \qquad
+%     Y_e = A_e W_{2,e} \in \R^{T_e \times d}.
+% \end{equation}
+% We split $W_{1,e}$ along the hidden dimension into a ``gate'' and a ``value'' part,
+% \begin{equation}
+%     W_{1,e} = [W^{\mathrm{gate}}_{1,e},\ W^{\mathrm{val}}_{1,e}], \qquad
+%     H_e = [H^{\mathrm{gate}}_e,\ H^{\mathrm{val}}_e],
+% \end{equation}
+% where $H^{\mathrm{gate}}_e = X_e W^{\mathrm{gate}}_{1,e}$ and $H^{\mathrm{val}}_e = X_e W^{\mathrm{val}}_{1,e}$.  We now reparameterize the forward computation by applying $S$ on the inputs to the gate projection:
+% \begin{equation}
+%     \tilde{X}^{\mathrm{gate}}_e = \Broadcast(s_e)\, X_e, \qquad
+%     H^{\mathrm{gate}}_e = \tilde{X}^{\mathrm{gate}}_e W^{\mathrm{gate}}_{1,e}, \qquad
+%     H^{\mathrm{val}}_e = X_e W^{\mathrm{val}}_{1,e},
+% \end{equation}
+% and keep the rest of the computation unchanged,
+% \begin{equation}
+%     A_e = \operatorname{SwiGLU}([H^{\mathrm{gate}}_e, H^{\mathrm{val}}_e]), \qquad
+%     Y_e = A_e W_{2,e}, \qquad
+%     O_t = \sum_e Y_{e,t}.
+% \end{equation}
+% Under this parameterization, the scalar loss $L$ depends on $s_{t,e}$ only through $\tilde{X}^{\mathrm{gate}}_{e,t} = s_{t,e} X_t$. The chain rule therefore gives
+% \begin{equation}
+%     dS_{t,e}
+%     = \left\langle \frac{\partial L}{\partial \tilde{X}^{\mathrm{gate}}_{e,t}}, \,
+%                    \frac{\partial \tilde{X}^{\mathrm{gate}}_{e,t}}{\partial s_{t,e}} \right\rangle
+%     = \left\langle d\tilde{X}^{\mathrm{gate}}_{e,t},\ X_t \right\rangle,
+%     \label{eq:ds-xgate}
+% \end{equation}
+% where $d\tilde{X}^{\mathrm{gate}}_e \in \R^{T_e \times d}$ is the gradient with respect to the gated input.  From the SwiGLU backward in Equation~\eqref{eq:dH-from-dA}, the gate slice $dH^{\mathrm{gate}}_e$ is available, and we obtain
+% \begin{equation}
+%     d\tilde{X}^{\mathrm{gate}}_e = dH^{\mathrm{gate}}_e \left(W^{\mathrm{gate}}_{1,e}\right)^{\!\top}.
+% \end{equation}
+% Combining the identities $\langle u, M v \rangle = \langle M^{\top} u, v \rangle$ and the SwiGLU Jacobian shows that
+% \begin{equation}
+%     dS_{t,e}
+%     = \left\langle d\tilde{X}^{\mathrm{gate}}_{e,t}, X_t \right\rangle
+%     = \left\langle dA'_{e,t}, A_{e,t} \right\rangle
+%     = \left\langle dO_t,\ Y_{e,t} \right\rangle,
+% \end{equation}
+% so Cases~(1)--(3) are mathematically equivalent: they differ only in which intermediate tensors ($A_e$, $Y_e$, or the gated input $\tilde{X}^{\mathrm{gate}}_e$) we use to realize the same $dS_{t,e}$.
+
+
+% For a function $g$ and variable $\vu,\vv$, we have the reverse-mode identity as below ($\mathbb{J}_g(\vv)$ means the Jacobian of $g$ at $\vv$):
+% \begin{equation}
+%     \langle \vu,\ g(\vv)\rangle=\big\langle \mathbb{J}_g(\vv)^{\top}\vu,\ \vv\big\rangle.
+% \end{equation}
+
+% Since we know $A_{e,t} = \mathrm{SwiGLU}(H_{e,t})$ and apply the reverse-mode identity to Equation~\ref{eq:ds-n-reduce}, we will have
+% \begin{equation}
+%     \underbrace{dH_{e,t}}_{\in\R^{2n}} := \mathbb{J}_{\mathrm{SwiGLU}}(H_{e,t})^{\!\top}
+%     \underbrace{dA'_{e,t}}_{\in\R^{n}} \quad \text{and}\quad \underbrace{d\tilde X_{e,t}}_{\in\R^{d}} := dH_{e,t} W_{1,e}^{\top}.
+% \end{equation}
+
+
+
+% Then
+% \vspace{-2em}
+% \begin{align}
+%     \big\langle dA'_{e,t},\ A_{e,t}\big\rangle
+%     &= \big\langle \mathbb{J}_{\mathrm{SwiGLU}}(H_{e,t})^{\!\top} dA'_{e,t},\ H_{e,t}\big\rangle = \big\langle dH_{e,t}\ W_{1,e}^{\top},\ X_{e,t}\big\rangle \\
+%     &= \boxed{\big\langle d\tilde X_{e,t},\ X_{e,t}\big\rangle.}
+%     \label{eq:ds-d-reduce}
+% \end{align}
+
+% Hence the same scalar gradient $dS_{t,e}$ can be computed either as
+% a reduction over $n$ (Equation~\ref{eq:ds-n-reduce}) or as a reduction over $d$ (Equation~\ref{eq:ds-d-reduce}).  This justifies
+% fusing $dS$ either into the \emph{$dH$ epilogue} (\Algname's design) or into the
+% \emph{$d\tilde X$ epilogue} used by Megatron.
+
+
+
+% \paragraph{$\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$ as the activation memory- and computationally-efficient choice of $dS$ computation} 
+
+Note that $dS$ can be computed as any of $dS_{t,e}=\left\langle dA'_{e,t},\ A_{e,t}\right\rangle = \left\langle dO_t,\ Y_{e,t}\right\rangle$, however computing it as $dS_{t,e}=\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$ is a computationally and activation memory-efficient choice due to the following reasons:
+
+
+\begin{itemize}
+    \item \textbf{Additional HBM traffic ($0$ vs. $2TKd$ bytes)}: $\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$ requires $dA'_{e,t}$ and $A_{e,t}$ are already computed during the $dH$ kernel, so we can avoid extra unnecessary loads.
+
+    \item \textbf{Extra cached activation memory ($0$ vs. $2TKd$ bytes)}: One of the reasons why the cached activation memory for ScatterMoE, MoMoE and MegaBlocks fails to stay constant w.r.t. expert granularity is the required caching of $Y$ for computing $dS$.
+
+    % \item \textbf{All inputs will not induce extra load (i.e. exists on GEMM epilogue or already needed by other inputs): \xmark, \cmark, \xmark.}
+
+    \item \textbf{Parallel reduction rounds ($\log_2(n)$ vs. $\log_2(d)$)}: $\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$ reduces over $n$ while $\left\langle dO_t,\ Y_{e,t}\right\rangle$ reduces over $d$. This difference saves at least $\log_2(d/n)$ rounds of reduction.
+\end{itemize}
+
+% We still acknowledge there are drawbacks for $\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$: implementation modularity. Here we will have an asymmetry between forward and backward kernel functionalities if during forward we do not fuse $S$ with $Y$ kernel, and we will couple the $dS$ with $dH$ computation. But the computational benefits of $\left\langle dA'_{e,t},\ A_{e,t}\right\rangle$ are significant and should be highlighted.

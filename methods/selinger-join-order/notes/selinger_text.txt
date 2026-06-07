@@ -1,0 +1,812 @@
+
+===== page 1 [pdftotext] =====
+                                Access Path Selection
+                     in a Relational Database Management System
+                                                       P. Griffiths Selinger
+                                                           M. M. Astrahan
+                                                          D. D. Chamberlin
+                                                            R. A. Lorie
+                                                            T. G. Price
+
+                                  IBM Research Division, San Jose, California 95193
+
+
+
+
+ABSTRACT: In a high level query and data                                   access path for each table in the SQL state-
+manipulation language such as SQL, requests                                ment. Of the many possible choices, the
+are stated non-procedurally, without refer-                                optimizer chooses the one which minimizes
+ence to access paths. This paper describes                                 “total access cost” for performing the
+how System R chooses access paths for both                                 entire statement.
+simple (single relation) and complex que-
+ries (such as joins), given a user specifi-                                   This paper will address the issues of
+cation of desired data as a boolean                                        access   path    selection   for   queries.
+expression of predicates. System R is an                                   Retrieval for data manipulation (UPDATE,
+experimental   database  management   system                               DELETE) is treated similarly. Section 2
+developed to carry out research on the rela-                               will describe the place of the optimizer in
+tional model of data. System R was designed                                the processing of a SQL statement, and sec-
+and built by members of the IBM San Jose                                   tion 3 will describe the storage component
+Research Laboratory.                                                       access paths that are available on a single
+                                                                           physically stored table. In section 4 the
+                                                                           optimizer cost formulas are introduced for
+1. Introduction                                                            single table queries, and section 5 dis-
+                                                                           cusses the joining of two or more tables,
+   System R is an experimental database man-                               and their corresponding costs. Nested que-
+agement system based on the relational                                     ries (queries in predicates) are covered in
+model of data which has been under develop-                                section 6.
+ment at the IBM San Jose Research Laboratory
+since 1975 <1>. The software was developed
+as a research vehicle in relational data-                                  2. Processing of an SQL statement
+base, and is not generally available out-
+side the IBM Research Division.                                               A SQL statement is subjected to four
+                                                                           phases of processing. Depending on the ori-
+   This paper assumes familiarity with rela-                               gin and contents of the statement, these
+tional data model terminology as described                                 phases may be separated by arbitrary inter-
+in Codd <7> and Date <8>. The user interface                               vals of time. In System R these arbitrary
+in System R is the unified query, data def-                                time intervals are transparent to the sys-
+inition, and manipulation language SQL <5>.                                tem components which process a SQL state-
+Statements in SQL can be issued both from an                               ment. These mechanisms and a description of
+on-line     casual-user-oriented    terminal                               the processing of SQL statements from both
+interface and from programming languages                                   programs and terminals are further dis-
+such as PL/I and COBOL.                                                    cussed in <2>. Only an overview of those
+                                                                           processing steps that are relevant to
+   In System R a user need not know how the                                access path selection will be discussed
+tuples are physically stored and what                                      here.
+access paths are available (e.g. which col-
+umns have indexes). SQL statements do not                                     The four phases of statement processing
+require the user to specify anything about                                 are parsing, optimization, code generation,
+the access path to be used for tuple                                       and execution. Each SQL statement is sent to
+retrieval. Nor does a user specify in what                                 the parser, where it is checked for correct
+order joins are to be performed. The System                                syntax. A query block is represented by a
+R optimizer chooses both join order and an                                 SELECT list, a FROM list, and a WHERE tree,
+                                                                           containing, respectively the list of items
+                                                                           to be retrieved, the table(s) referenced,
+Copyright © 1979 by the ACM, Inc., used by permission. Permis-             and the boolean combination of simple pred-
+sion to make digital or hard copies is granted provided that copies        icates specified by the user. A single SQL
+are not made or distributed for profit or direct commercial advan-         statement   may  have   many  query   blocks
+tage, and that copies show this notice on the first page or initial        because a predicate may have one operand
+screen of a display along with the full citation.                          which is itself a query.
+Originally published in the Proceedings of the 1979 ACM SIGMOD
+International Conference on the Management of Data.                           If the parser returns without any errors
+Digital recreation by Eric A. Brewer, brewer@cs.berke-                     detected,   the   OPTIMIZER  component   is
+ley.edu, October 2002.                                                     called. The OPTIMIZER accumulates the names
+
+
+                                                                      23
+
+===== page 2 [pdftotext] =====
+of tables and columns referenced in the             presents a tuple-oriented interface (RSI)
+query and looks them up in the System R cat-        to its users. Although the RSS may be used
+alogs to verify their existence and to              independently of System R, we are concerned
+retrieve information about them.                    here with its use for executing the code
+                                                    generated by the processing of SQL state-
+   The catalog lookup portion of the OPTI-          ments in System R, as described in the pre-
+MIZER also obtains statistics about the             vious section. For a complete description
+referenced relations, and the access paths          of the RSS, see <1>.
+available on each of them. These will be
+used later in access path selection. After             Relations are stored in the RSS as a col-
+catalog lookup has obtained the datatype            lection of tuples whose columns are physi-
+and length of each column, the OPTIMIZER            cally contiguous. These tuples are stored
+rescans the SELECT-list and WHERE-tree to           on 4K byte pages; no tuple spans a page.
+check for semantic errors and type compati-         Pages are organized into logical units
+bility in both expressions and predicate            called segments. Segments may contain one
+comparisons.                                        or more relations, but no relation may span
+                                                    a segment. Tuples from two or more relations
+   Finally the OPTIMIZER performs access            may occur on the same page. Each tuple is
+path selection. It first determines the             tagged with the identification of the rela-
+evaluation order among the query blocks in          tion to which it belongs.
+the statement. Then for each query block,
+the relations in the FROM list are pro-                The primary way of accessing tuples in a
+cessed. If there is more than one relation          relation is via an RSS scan. A scan returns
+in a block, permutations of the join order          a tuple at a time along a given access path.
+and of the method of joining are evaluated.         OPEN, NEXT, and CLOSE are the principal com-
+The access paths that minimize total cost           mands on a scan.
+for the block are chosen from a tree of
+alternate path choices. This minimum cost              Two types of scans are currently avail-
+solution is represented by a structural             able for SQL statements. The first type is a
+modification of the parse tree. The result          segment scan to find all the tuples of a
+is an execution plan in the Access Specifi-         given relation. A series of NEXTs on a seg-
+cation Language (ASL) <10>.                         ment scan simply examines all pages of the
+                                                    segment which contain tuples, from any
+   After a plan is chosen for each query            relation, and returns those tuples belong-
+block and represented in the parse tree, the        ing to the given relation.
+CODE GENERATOR is called. The CODE GENERA-
+TOR is a table-driven program which trans-             The second type of scan is an index scan.
+lates ASL trees into machine language code          An index may be created by a System R user
+to execute the plan chosen by the OPTIMIZER.        on one or more columns of a relation, and a
+In doing this it uses a relatively small            relation may have any number (including
+number of code templates, one for each type         zero) of indexes on it. These indexes are
+of join method (including no join). Query           stored on separate pages from those con-
+blocks for nested queries are treated as            taining the relation tuples. Indexes are
+“subroutines” which return values to the            implemented as B-trees <3>, whose leaves
+predicates in which they occur. The CODE            are pages containing sets of (key, identi-
+GENERATOR is further described in <9>.              fiers of tuples which contain that key).
+                                                    Therefore a series of NEXTs on an index scan
+   During code generation, the parse tree is        does a sequential read along the leaf pages
+replaced by executable machine code and its         of the index, obtaining the tuple identifi-
+associated data structures. Either control          ers matching a key, and using them to find
+is immediately transferred to this code or          and return the data tuples to the user in
+the code is stored away in the database for         key value order. Index leaf pages are
+later execution, depending on the origin of         chained together so that NEXTs need not ref-
+the statement (program or terminal). In             erence any upper level pages of the index.
+either case, when the code is ultimately
+executed, it calls upon the System R inter-            In a segment scan, all the non-empty
+nal storage system (RSS) via the storage            pages of a segment will be touched, regard-
+system interface (RSI) to scan each of the          less of whether there are any tuples from
+physically stored relations in the query.           the desired relation on them. However, each
+These scans are along the access paths cho-         page is touched only once. When an entire
+sen by the OPTIMIZER. The RSI commands that         relation is examined via an index scan, each
+may be used by generated code are described         page of the index is touched only once, but
+in the next section.                                a data page may be examined more than once
+                                                    if it has two tuples on it which are not
+                                                    “close” in the index ordering. If the tuples
+3. The Research Storage System                      are inserted into segment pages in the index
+                                                    ordering, and if this physical proximity
+   The Research Storage System (RSS) is the         corresponding to index key value is main-
+storage subsystem of System R. It is respon-        tained, we say that the index is clustered.
+sible for maintaining physical storage of           A clustered index has the property that not
+relations, access paths on these relations,         only each index page, but also each data
+locking (in a multi-user environment), and          page containing a tuple from that relation
+logging and recovery facilities. The RSS
+
+
+                                               24
+
+===== page 3 [pdftotext] =====
+will be touched only once in a scan on that         index on SALARY matches the predicate ‘SAL-
+index.                                              ARY = 20000’. More precisely, we say that a
+                                                    predicate or set of predicates matches an
+   An index scan need not scan the entire           index access path when the predicates are
+relation. Starting and stopping key values          sargable and the columns mentioned in the
+may be specified in order to scan only those        predicate(s) are an initial substring of
+tuples which have a key in a range of index         the set of columns of the index key. For
+values. Both index and segment scans may            example, a NAME, LOCATION index matches
+optionally take a set of predicates, called         NAME = 'SMITH' AND LOCATION = 'SAN JOSE'. If
+search arguments (or SARGS), which are              an index matches a boolean factor, an access
+applied to a tuple before it is returned to         using that index is an efficient way to sat-
+the RSI caller. If the tuple satisfies the          isfy the boolean factor. Sargable boolean
+predicates, it is returned; otherwise the           factors can also be efficiently satisfied
+scan continues until it either finds a tuple        if they are expressed as search arguments.
+which satisfies the SARGS or exhausts the           Note that a boolean factor may be an entire
+segment or the specified index value range.         tree of predicates headed by an OR.
+This reduces cost by eliminating the over-
+head of making RSI calls for tuples which              During catalog lookup, the OPTIMIZER
+can be efficiently rejected within the RSS.         retrieves statistics on the relations in
+Not all predicates are of the form that can         the query and on the access paths available
+become SARGS. A sargable predicate is one of        on each relation. The statistics kept are
+the form (or which can be put into the form)        the following:
+“column comparison-operator value”. SARGS
+are expressed as a boolean expression of            For each relation T,
+such predicates in disjunctive normal form.
+                                                    - NCARD(T), the cardinality of relation T.
+4. Costs for single relation access paths           - TCARD(T), the number of pages in the seg-
+                                                       ment that hold tuples of relation T.
+   In the next several sections we will
+describe the process of choosing a plan for         - P(T), the fraction of data pages in the
+evaluating a query. We will first describe             segment that hold tuples of relation T.
+the simplest case, accessing a single rela-            P(T) = TCARD(T) / (no. of non-empty
+tion, and show how it extends and general-             pages in the segment).
+izes to 2-way joins of relations, n-way
+joins, and finally multiple query blocks
+(nested queries).                                   For each index I on relation T,
+   The OPTIMIZER examines both the predi-           - ICARD(I), number of distinct keys in index
+cates in the query and the access paths                 I.
+available on the relations referenced by
+the query, and formu1ates a cost prediction         - NINDX(I), the number of pages in index I.
+for each access plan, using the following
+cost formula:
+                                                       These statistics are maintained in the
+                                                    System R catalogs, and come from several
+   COST = PAGE FETCHES + W * (RSI CALLS).           sources. Initial relation loading and index
+                                                    creation initialize these statistics. They
+This cost is a weighted measure of I/O              are then updated periodically by an UPDATE
+(pages   fetched)    and   CPU   utilization        STATISTICS command, which can be run by any
+(instructions executed). W is an adjustable         user. System R does not update these statis-
+weighting factor between I/O and CPU. RSI           tics at every INSERT, DELETE, or UPDATE
+CALLS is the predicted number of tuples             because of the extra database operations
+returned from the RSS. Since most of System         and the locking bottleneck this would cre-
+R’s CPU time is spent in the RSS, the number        ate at the system catalogs. Dynamic updat-
+of RSI calls is a good approximation for CPU        ing of statistics would tend to serialize
+utilization. Thus the choice of a minimum           accesses that modify the relation contents.
+cost path to process a query attempts to               Using these statistics, the OPTIMIZER
+minimize total resources required.                  assigns a selectivity factor 'F' for each
+   During execution of the type-compatibil-         boolean factor in the predicate list. This
+ity and semantic checking portion of the            selectivity factor very roughly corresponds
+OPTIMIZER, each query block’s WHERE tree of         to the expected fraction of tuples which
+predicates is examined. The WHERE tree is           will satisfy the predicate. TABLE 1 gives
+considered to be in conjunctive normal              the selectivity factors for different kinds
+form, and every conjunct is called a boolean        of predicates. We assume that a lack of sta-
+factor. Boolean factors are notable because         tistics implies that the relation is small,
+every tuple returned to the user must sat-          so an arbitrary factor is chosen.
+isfy every boolean factor. An index is said            Query cardinality (QCARD) is the product
+to match a boolean factor if the boolean            of the cardinalities of every relation in
+factor is a sargable predicate whose refer-         the query block’s FROM list times the prod-
+enced column is the index key; e.g., an             uct of all the selectivity factors of that
+
+
+                                               25
+
+===== page 4 [pdftotext] =====
+                             TABLE 1       SELECTIVITY FACTORS
+
+
+column = value
+         F = 1 / ICARD(column index) if there is an index on column
+         This assumes an even distribution of tuples among the index key values.
+         F = 1/10 otherwise
+
+column1 = column2
+         F = 1/MAX(ICARD(column1 index), ICARD(column2 index))
+             if there are indexes on both column1 and column2
+         This assumes that each key value in the index with the smaller cardinality has a
+         matching value in the other index.
+         F = 1/ICARD(column-i index) if there is only an index on column-i
+         F = 1/10 otherwise
+
+column > value (or any other open-ended comparison)
+         F = (high key value - value) / (high key value - low key value)
+         Linear interpolation of the value within the range of key values yields F if the col-
+         umn is an arithmetic type and value is known at access path selection time.
+         F = 1/3 otherwise (i.e. column not arithmetic)
+         There is no significance to this number, other than the fact that it is less selec-
+         tive than the guesses for equal predicates for which there are no indexes, and that
+         it is less than 1/2. We hypothesize that few queries use predicates that are satis-
+         fied by more than half the tuples.
+
+column BETWEEN value1 AND value2
+         F = (value2 - value1) / (high key value - low key value)
+         A ratio of the BETWEEN value range to the entire key value range is used as the
+         selectivity factor if column is arithmetic and both value1 and value2 are known at
+         access path selection.
+         F = 1/4 otherwise
+         Again there is no significance to this choice except that it is between the default
+         selectivity factors for an equal predicate and a range predicate.
+
+column IN (list of values)
+         F = (number of items in list) * (selectivity factor for column = value)
+         This is allowed to be no more than 1/2.
+
+columnA IN subquery
+         F = (expected cardinality of the subquery result) / (product of the cardinalities of
+              all the relations in the subquery’s FROM-list).
+         The computation of query cardinality will be discussed below. This formula is derived
+         by the following argument:
+         Consider the simplest case, where subquery is of the form “SELECT columnB FROM rela-
+         tionC ...”. Assume that the set of all columnB values in relationC contains the set
+         of all columnA values. If all the tuples of relationC are selected by the subquery,
+         then the predicate is always TRUE and F = 1. If the tuples of the subquery are
+         restricted by a selectivity factor F’, then assume that the set of unique values in
+         the subquery result that match columnA values is proportionately restricted, i.e. the
+         selectivity factor for the predicate should be F’. F’ is the product of all the sub-
+         query’s selectivity factors, namely (subquery cardinality) / (cardinality of all pos-
+         sible subquery answers). With a little optimism, we can extend this reasoning to
+         include subqueries which are joins and subqueries in which columnB is replaced by an
+         arithmetic expression involving column names. This leads to the formula given above.
+
+(pred expression1) OR (pred expression2)
+         F = F(pred1) + F(pred2) - F(pred1) * F(pred2)
+
+(pred1) AND (pred2)
+         F = F(pred1) * F(pred2)
+         Note that this assumes that column values are independent.
+
+NOT pred
+           F = 1 - F(pred)
+
+
+
+
+                                             26
+
+===== page 5 [pdftotext] =====
+query block’s boolean factors. The number           GROUP BY or ORDER BY clauses, then the
+of expected RSI calls (RSICARD) is the prod-        cost for producing that interesting order-
+uct of the relation cardinalities times the         ing must be compared to the cost of the
+selectivity factors of the sargable boolean         cheapest unordered path plus the cost of
+factors, since the sargable boolean factors         sorting QCARD tuples into the proper
+will be put into search arguments which will        order. The cheapest of these alternatives
+filter out tuples without returning across          is chosen as the plan for the query block.
+the RSS interface.
+                                                       The cost formulas for single relation
+   Choosing an optimal access path for a            access paths are given in TABLE 2. These
+single relation consists of using these             formulas give index pages fetched plus
+selectivity factors in formulas together            data pages fetched plus the weighting fac-
+with the statistics on available access             tor times RSI tuple retrieval calls. W is
+paths. Before this process is described, a          the weighting factor between page fetches
+definition is needed. Using an index access         and RSI calls. Some situations give sev-
+path or sorting tuples produces tuples in           eral alternative formulas depending on
+the index value or sort key order. We say           whether the set of tuples retrieved will
+that a tuple order is an interesting order          fit entirely in the RSS buffer pool (or
+if that order is one specified by the query         effective buffer pool per user). We assume
+block’s GROUP BY or ORDER BY clauses.               for clustered indexes that a page remains
+                                                    in the buffer long enough for every tuple
+   For single relations, the cheapest access        to be retrieved from it. For non-clustered
+path is obtained by evaluating the cost for         indexes, it is assumed that for those
+each available access path (each index on           relations not fitting in the buffer, the
+the relation, plus a segment scan). The             relation   is   sufficiently  large   with
+costs will be described below. For each such        respect to the buffer size that a page
+access path, a predicted cost is computed           fetch   is   required   for  every   tuple
+along with the ordering of the tuples it            retrieval.
+will produce. Scanning along the SALARY
+index in ascending order, for example, will
+produce some cost C and a tuple order of            5. Access path selection for joins
+SALARY (ascending). To find the cheapest
+access plan for a single relation query, we            In 1976, Blasgen and Eswaran <4> exam-
+need only to examine the cheapest access            ined a number of methods for performing 2-
+path which produces tuples in each “inter-          way joins. The performance of each of
+esting” order and the cheapest “unordered”          these methods was analyzed under a variety
+access path. Note that an “unordered”               of relation cardinalities. Their evidence
+access path may in fact produce tuples in           indicates that for other than very small
+some order, but the order is not “interest-         relations, one of two join methods were
+ing”. If there are no GROUP BY or ORDER BY          always optimal or near optimal. The System
+clauses on the query, then there will be no         R optimizer chooses between these two
+interesting orderings, and the cheapest             methods. We first describe these methods,
+access path is the one chosen. If there are         and then discuss how they are extended for
+
+
+
+
+                                TABLE 2         COST FORMULAS
+
+
+                 SITUATION                                      COST (in pages)
+Unique index matching an equal predicate       1+1+W
+Clustered index I matching one or more         F(preds) * (NINDX(I) + TCARD) + W * RSICARD
+   boolean factors
+                                               F(preds) * (NINDX(I) + NCARD) + W * RSICARD or
+Non-clustered index I matching one or
+                                                  F(preds) * (NINDX(I) + TCARD) + W * RSICARD
+   more boolean factors
+                                                  if this number fits in the System R buffer
+Clustered index I not matching any             (NINDX(I) + TCARD) + W * RSICARD
+   boolean factors
+                                               (NINDX(I) + NCARD) + W * RSICARD
+Non-clustered index I not matching any
+                                                  or (NINDX(I) + TCARD) + W * RSICARD if
+   boolean factors
+                                                  this number fits in the System R buffer
+Segment scan                                   TCARD/P + W * RSICARD
+
+
+                                               27
+
+===== page 6 [pdftotext] =====
+n-way joins. Finally we specify how the join        tion being added to the join). Thus the
+order (the order in which the relations are         methods described above for two way joins
+joined) is chosen. For joins involving two          are easily generalized to n-way joins. How-
+relations, the two relations are called the         ever, it should be emphasized that the first
+outer relation, from which a tuple will be          2-way join does not have to be completed
+retrieved first, and the inner relation,            before the second 2-way join is started. As
+from which tuples will be retrieved, possi-         soon as we get a composite tuple for the
+bly depending on the values obtained in the         first 2-way join, it can be joined with
+outer relation tuple. A predicate which             tuples of the third relation to form result
+relates columns of two tables to be joined          tuples for the 3-way join, etc. Nested loop
+is called a join predicate. The columns ref-        joins and merge scan joins may be mixed in
+erenced in a join predicate are called join         the same query, e.g. the first two relations
+columns.                                            of a three-way join may be joined using
+                                                    merge scans and the composite result may be
+   The first join method, called the nested         joined with the third relation using a
+loops method, uses scans, in any order, on          nested loop join. The intermediate compos-
+the outer and inner relations. The scan on          ite relations are physically stored only if
+the outer relation is opened and the first          a sort is required for the next join step.
+tuple is retrieved. For each outer relation         When a sort of the composite relation is not
+tuple obtained, a scan is opened on the             specified, the composite relation will be
+inner relation to retrieve, one at a time,          materialized one tuple at a time to partic-
+all the tuples of the inner relation which          ipate in the next join.
+satisfy the join predicate. The composite
+tuples formed by the outer-relation-tuple /            We now consider the order in which the
+inner-relation-tuple  pairs   comprise the          relations are chosen to be joined. It should
+result of this join.                                be noted that although the cardinality of
+                                                    the join of n relations is the same regard-
+   The second join method, called merging           less of join order, the cost of joining in
+scans, requires the outer and inner rela-           different orders can be substantially dif-
+tions to be scanned in join column order.           ferent. If a query block has n relations in
+This implies that, along with the columns           its FROM list, then there are n factorial
+mentioned in ORDER BY and GROUP BY, columns         permutations of relation join orders. The
+of equi-join predicates (those of the form          search space can be reduced by observing
+Table1.columnl   =    Table2.column2)   also        that once the first k relations are joined,
+define “interesting” orders. If there is            the method to join the composite to the k+1-
+more than one join predicate, one of them is        st relation is independent of the order of
+used as the join predicate and the others           joining the first k; i.e. the applicable
+are treated as ordinary predicates. The             predicates are the same, the set of inter-
+merging scans method is only applied to             esting orderings is the same, the possible
+equi-joins, although in principle it could          join methods are the same, etc. Using this
+be applied to other types of joins. If one          property, an efficient way to organize the
+or both of the relations to be joined has no        search is to find the best join order for
+indexes on the join column, it must be              successively larger subsets of tables.
+sorted into a temporary list which is
+ordered by the join column.                            A heuristic is used to reduce the join
+                                                    order permutations which are considered.
+   The more complex logic of the merging            When possible, the search is reduced by con-
+scan join method takes advantage of the             sideration only of join orders which have
+ordering on join columns to avoid rescan-           join predicates relating the inner relation
+ning the entire inner relation (looking for         to the other relations already participat-
+a match) for each tuple of the outer rela-          ing in the join. This means that in joining
+tion. It does this by synchronizing the             relations tl,t2,...,tn only those orderings
+inner and outer scans by reference to match-        til,ti2,...,tin are examined in which for
+ing join column values and by “remembering”         all j (j=2,...,n) either
+where matching join groups are located.
+Further savings occur if the inner relation         (1) tij has at least one join predicate with
+is clustered on the join column (as would be        some relation tik, where k < j, or
+true if it is the output of a sort on the
+join column). “Clustering” on a column              (2) for all k > j, tik has no join predicate
+means that tuples which have the same value         with til,tit,...,or ti(j-1).
+in that column are physically stored close
+to each other so that one page access will          This means that all joins requiring Carte-
+retrieve several tuples.                            sian products are performed as late in the
+                                                    join sequence as possible. For example, if
+   N-way joins can be visualized as a               Tl,T2,T3 are the three relations in a query
+sequence of 2-way joins. In this visualiza-         block’s FROM list, and there are join pred-
+tion, two relations are joined together,            icates between Tl and T2 and between T2 and
+the resulting composite relation is joined          T3 on different columns than the Tl-T2 join,
+with the third relation, etc. At each step          then the following permutations are not
+of the n-way join it is possible to identify        considered:
+the outer relation (which in general is com-
+posite) and the inner relation (the rela-             Tl-T3-T2
+
+
+
+                                               28
+
+===== page 7 [pdftotext] =====
+  T3-Tl-T2                                          join order heuristic. Our experience is
+                                                    that typical cases require only a few thou-
+   To find the optimal plan for joining n           sand bytes of storage and a few tenths of a
+relations, a tree of possible solutions is          second of 370/158 CPU time. Joins of 8
+constructed. As discussed above, the search         tables have been optimized in a few seconds.
+is performed by finding the best way to join
+subsets of the relations. For each set of
+relations joined, the cardinality of the            Computation of costs
+composite relation is estimated and saved.
+In addition, for the unordered join, and for           The costs for joins are computed from the
+each interesting order obtained by the join         costs of the scans on each of the relations
+thus far, the cheapest solution for achiev-         and the cardinalities. The costs of the
+ing that order and the cost of that solution        scans on each of the relations are computed
+are saved. A solution consists of an ordered        using the cost formulas for single relation
+list of the relations to be joined, the join        access paths presented in section 4.
+method used for each join, and a plan indi-            Let C-outer(path1) be the cost of scan-
+cating how each relation is to be accessed.         ning the outer relation via path1, and N be
+If either the outer composite relation or           the cardinality of the outer relation
+the inner relation needs to be sorted before        tuples which satisfy the applicable predi-
+the join, then that is also included in the         cates. N is computed by:
+plan. As in the single relation case,
+“interesting” orders are those listed in            N = (product of the cardinalities of all
+the query block’s GROUP BY or ORDER BY                   relations T of the join so far) *
+clause, if any. Also every join column                   (product of the selectivity factors of
+defines an “interesting” order. To minimize              al1 applicable predicates).
+the number of different interesting orders          Let C-inner(path2) be the cost of scanning
+and hence the number of solutions in the            the inner relation, applying all applicable
+tree, equivalence classes for interesting           predicates. Note that in the merge scan join
+orders are computed and only the best solu-         this means scanning the contiguous group of
+tion for each equivalence class is saved.           the inner relation which corresponds to one
+For example, if there is a join predicate           join column value in the outer relation.
+E.DNO = D.DNO and another join predicate            Then the cost of a nested loop join is
+D.DNO = F.DNO then all three of these col-
+umns belong to the same order equivalence           C-nested-loop-join(pathl,path2)=
+class.                                                   C-outer(path1 + N * C-inner(path2)
+
+   The search tree is constructed by itera-            The cost of a merge scan join can be bro-
+tion on the number of relations joined so           ken up into the cost of actually doing the
+far. First, the best way is found to access         merge plus the cost of sorting the outer or
+each single relation for each interesting           inner relations, if required. The cost of
+tuple ordering and for the unordered case.          doing the merge is
+Next, the best way of joining any relation          C-merge(pathl,path2)=
+to these is found, subject to the heuristics             C-outer(path1) + N * C-inner(path2)
+for join order. This produces solutions for
+joining pairs of relations. Then the best              For the case where the inner relation is
+way to join sets of three relations is found        sorted into a temporary relation none of the
+by consideration of all sets of two rela-           single relation access path formulas in
+tions and joining in each third relation            section 4 apply. In this case the inner scan
+permitted by the join order heuristic. For          is like a segment scan except that the merg-
+each plan to join a set of relations, the           ing scans method makes use of the fact that
+order of the composite result is kept in the        the inner relation is sorted so that it is
+tree. This allows consideration of a merge          not necessary to scan the entire inner rela-
+scan join which would not require sorting           tion looking for a match. For this case we
+the composite. After the complete solutions         use the following formula for the cost of
+(all of the relations joined together) have         the inner scan.
+been found, the optimizer chooses the               C-inner(sorted list) =
+cheapest solution which gives the required               TEMPPAGES/N + W*RSICARD
+order, if any was specified. Note that if a
+solution exists with the correct order, no          where TEMPPAGES is the number of pages
+sort is performed for ORDER BY or GROUP BY,         required to hold the inner relation. This
+unless the ordered solution is more expen-          formula assumes that during the merge each
+sive than the cheapest unordered solution           page of the inner relation is fetched once.
+plus the cost of sorting into the required
+order.                                                 It is interesting to observe that the
+                                                    cost formula for nested loop joins and the
+   The number of solutions which must be            cost formula for merging scans are essen-
+stored is at most 2**n (the number of sub-          tially the same. The reason that merging
+sets of n tables) times the number of inter-        scans is sometimes better than nested loops
+esting result orders. The computation time          is that the cost of the inner scan may be
+to generate the tree is approximately pro-          much less. After sorting, the inner rela-
+portional to the same number. This number is        tion is clustered on the join column which
+frequently reduced substantially by the             tends to minimize the number of pages
+
+
+                                               29
+
+===== page 8 [pdftotext] =====
+fetched, and it is not necessary to scan the        EMP
+entire inner relation (looking for a match)                 NAME         DNO        JOB        SAL
+for each tuple of the outer relation.                       SMITH         50         12      8500
+                                                            JONES         50          5      15000
+   The cost of sorting a relation, C-
+sort(path), includes the cost of retrieving                 DOE           51          5      9500
+the data using the specified access path,
+sorting the data, which may involve several         DEPT
+passes, and putting the results into a tem-                   DNO    DNAME             LOC
+porary list. Note that prior to sorting the                   50     MFG               DENVER
+inner table, only the local predicates can                    51     BILLING           BOULDER
+be applied. Also, if it is necessary to sort
+a composite result, the entire composite                      52     SHIPPING          DENVER
+relation must be stored in a temporary rela-
+tion before it can be sorted. The cost of           JOB
+inserting the composite tuples into a tem-                    JOB    TITLE
+porary relation before sorting is included                     5     CLERK
+in C-sort(path).                                               6     TYPIST
+                                                               8     SALES
+Example of tree                                               12     MECHANIC
+   We now show how the search is done for
+the example join shown in Fig. 1. First we
+find all of the reasonable access paths for          SELECT    NAME,TITLE,SAL,DNAME
+single relations with only their local               FROM      EMP,DEPT,JOB
+predicates applied. The results for this             WHERE     TITLE=‘CLERK’
+example are shown in Fig. 2. There are three         AND       LOC=‘DENVER’
+access paths for the EMP table: an index on          AND       EMP.DNO=DEPT.DNO
+DNO, an index on JOB, and a segment scan.            AND       EMP.JOB=JOB.JOB
+The interesting orders are DNO and JOB. The
+index on DNO provides the tuples in DNO              “Retrieve the name, salary, job title, and department
+order and the index on JOB provides the              name of employees who are clerks and work for
+tuples in JOB order. The segment scan access         departments in Denver.”
+path is, for our purposes, unordered. For
+this example we assume that the index on JOB                   Figure 1. JOIN example
+is the cheapest path, so the segment scan
+path is pruned. For the DEPT relation there
+are two access paths, an index on DNO and a
+segment scan. We assume that the index on
+DNO is cheaper so the segment scan path is
+pruned. For the JOB relation there are two                  Access Paths for Single Relations
+access paths, an index on JOB and a segment
+scan. We assume that the segment scan path           • Eligible Predicates: Local Predicates Only
+is cheaper, so both paths are saved. The             • “Interesting” Orderings: DNO, JOB
+results just described are saved in the
+search tree as shown in Fig. 3. In the fig-
+ures, the notation C(EMP.DNO) or C(E.DNO)
+means the cost of scanning EMP via the DNO
+index, applying all predicates which are
+applicable given that tuples from the spec-
+ified set of relations have already been
+fetched. The notation Ni is used to repre-
+sent the cardinalities of the different
+partial results.
+   Next, solutions for pairs of relations
+are found by joining a second relation to
+the results for single relations shown in
+Fig. 3. For each single relation, we find
+access paths for joining in each second
+relation for which there exists a predicate
+connecting it to the first relation. First
+we consider access path selection for
+nested loop joins. In this example we assume
+that the EMP-JOB join is cheapest by access-
+ing JOB on the JOB index. This is likely
+since it can fetch directly the tuples with
+matching JOB (without having to scan the                                Figure 2.
+entire relation). In practice the cost of
+joining is estimated using the formulas
+given earlier and the cheapest path is cho-
+sen. For joining the EMP relation to the
+
+
+                                               30
+
+===== page 9 [pdftotext] =====
+DEPT relation we assume that the DNO index          merge without any sorting. However, it
+is cheapest. The best access path for each          might be cheaper to sort JOB using a rela-
+second-level relation is combined with each         tion scan as input to the sort and then do
+of the plans in Fig. 3 to form the nested           the merge.
+loop solutions shown in Fig. 4.
+                                                       Referring to Fig. 3, we see that the
+                                                    access path chosen for the DEPT relation is
+                                                    the DNO index. After accessing DEPT via this
+                                                    index, we can merge with EMP using the DHO
+                                                    index on EMP, again without any sorting.
+                                                    However, it might be cheaper to sort EMP
+                                                    first using the JOB index as input to the
+                                                    sort and then do the merge. Both of these
+                                                    cases are shown in Fig. 5.
+                                                       As each of the costs shown in Figs. 4 and
+                                                    5 are computed they are compared with the
+                                                    cheapest equivalent solution (same tables
+                                                    and same result order) found so far, and the
+Figure 3. Search tree for single relations          cheapest solution is saved. After this
+                                                    pruning, solutions for all three relations
+                                                    are found. For each pair of relations, we
+   Next we generate solutions using the             find access paths for joining in the remain-
+merging scans method. As we see on the left         ing third relation. As before we will extend
+side of Fig. 3, there is a scan on the EMP          the tree using nested loop joins and merging
+relation in DNO order, so it is possible to         scans to join the third relation. The search
+use this scan and the DNO scan on the DEPT          tree for three relations is shown in Fig. 6.
+relation to do a merging scans join, without        Note that in one case both the composite
+any sorting. Although it is possible to do          relation and the table being added (JOB) are
+the merging join without sorting as just            sorted. Note also that for some of the
+described, it might be cheaper to use the           cases, no sorts are performed at all. In
+JOB index on EMP, sort on DHO, and then             these cases, the composite result is mate-
+merge. Note that we never consider sorting          rialized one tuple at a time and the inter-
+the DEPT table because the cheapest scan on         mediate composite relation is never stored.
+that table is already in DNO order.                 As before, as each of the costs are computed
+                                                    they are compared with the cheapest solu-
+   For merging JOB with EMP, we only con-           tion.
+sider the JOB index on EMP since it is the
+cheapest access path for EMP regardless of
+order. Using the JOB index on JOB, we can
+
+
+
+
+            Figure 4. Extended search tree for second relation (nested loop join)
+
+
+
+                                               31
+
+===== page 10 [pdftotext] =====
+Figure 5. Extended search tree for second relation (merged join)
+
+
+
+
+       Figure 6. Extended search tree for third relation
+
+
+                              32
+
+===== page 11 [pdftotext] =====
+6. Nested Queries                                   acceptance or rejection of the candidate
+                                                    tuple. As an example, consider the query:
+   A query may appear as an operand of a
+predicate of the form “expression operator             SELECT NAME
+query”. Such a query is called a Nested                FROM EMPLOYEE X
+Query or a Subquery. If the operator is one            WHERE SALARY > (SELECT SALARY
+of the six scalar comparisons (=, -=, >, >=,                           FROM EMPLOYEE
+<, <=), then the subquery must return a sin-                           WHERE EMPLOYEE_NUMBER=
+gle value. The following example using the
+“=” operator was given in section 2:                                       X.MANAGER)
+                                                       This selects names of EMPLOYEE’s that
+   SELECT NAME                                      earn more than their MANAGER. Here X identi-
+   FROM EMPLOYEE                                    fies the query block and relation which fur-
+                                                    nishes   the   candidate   tuple   for   the
+   WHERE SALARY =                                   correlation. For each candidate tuple of
+      (SELECT AVG(SALARY)                           the top level query block, the MANAGER value
+       FROM EMPLOYEE)                               is used for evaluation of the subquery. The
+   If the operator is IN or NOT IN then the         subquery result is then returned to the
+   subquery may return a set of values. For         “SALARY >” predicate for testing acceptance
+   example:                                         of the candidate tuple.
+                                                       If a correlation subquery is not directly
+   SELECT NAME                                      below the query block it references but is
+   FROM EMPLOYEE                                    separated from that block by one or more
+   WHERE DEPARTMENT_NUMBER IN                       intermediate blocks, then the correlation
+      (SELECT DEPARTMENT_NUMBER                     subquery evaluation will be done before
+       FROM DEPARTMENT                              evaluation of the highest of the intermedi-
+       WHERE LOCATION='DENVER')                     ate blocks. For example:
+
+   In both examples, the subquery needs to          level 1   SELECT NAME
+be evaluated only once. The OPTIMIZER will                    FROM EMPLOYEE X
+arrange for the subquery to be evaluated                      WHERE SALARY >
+before the top level query is evaluated. If         level 2     (SELECT SALARY
+a single value is returned, it is incorpo-                       FROM EMPLOYEE
+rated into the top level query as though it                      WHERE EMPLOYEE-NUMBER =
+had been part of the original query state-          level 3        (SELECT MANAGER
+ment; for example, if AVG(SAL) above evalu-                         FROM ERPLOYEE
+ates to 15000 at execution time, then the                           WHERE EMPLOYEE-NUMBER =
+predicate becomes “SALARY = 15000". If the                             X.MANAGER))
+subquery can return a set of values, they
+are returned in a temporary list, an inter-         This selects names of EMPLOYEE’s that earn
+nal form which is more efficient than a             more than their MANAGER’s MANAGER. As
+relation but which can only be accessed             before, for each candidate tuple of the
+sequentially. In the example above, if the          level-1 query block, the EMPLOYEE.MANAGER
+subquery returns the list (17,24) then the          value is used for evaluation of the level-3
+predicate is evaluated in a manner similar          query block. In this case, because the level
+to the way in which it would have been eval-        3 subquery references a level 1 value but
+uated if the original predicate had been            does not reference level 2 values, it is
+DEPARTMENT_NUMBER IN (17,24).                       evaluated once for every new level 1 candi-
+                                                    date tuple, but not for every level 2 candi-
+   A subquery may also contain a predicate          date tuple.
+with a subquery, down to a (theoretically)
+arbitrary level of nesting. When such sub-             If the value referenced by a correlation
+queries do not reference columns from               subquery (X.MANAGER above) is not unique in
+tables in higher level query blocks, they           the set of candidate tuples (e.g., many
+are all evaluated before the top level query        employees have the same manager), the pro-
+is evaluated. In this case, the most deeply         cedure given above will still cause the sub-
+nested subqueries are evaluated first,              query   to   be    re-evaluated   for   each
+since any subquery must be evaluated before         occurrence of a replicated value. However,
+its parent query can be evaluated.                  if the referenced relation is ordered on the
+                                                    referenced column, the re-evaluation can be
+   A subquery may contain a reference to a          made conditional, depending on a test of
+value obtained from a candidate tuple of a          whether or not the current referenced value
+higher level query block (see example               is the same as the one in the previous can-
+below). Such a query is called a correlation        didate tuple. If they are the same, the pre-
+subquery. A correlation subquery must in            vious evaluation result can be used again.
+principle be re-evaluated for each candi-           In some cases, it might even pay to sort the
+date tuple from the referenced query block.         referenced relation on the referenced col-
+This re-evaluation must be done before the          umn in order to avoid re-evaluating subque-
+correlation subquery’s parent predicate in          ries unnecessarily. In order to determine
+the higher level block can be tested for            whether or not the referenced column values
+
+
+                                               33
+
+===== page 12 [pdftotext] =====
+are unique. the OPTIMIZER can use clues like              97-137.
+NCARD > ICARD, where NCARD is the relation            <2>  Astrahan, M. M. et al. System R: A
+cardinality and ICARD is the index cardi-                 Relational Database Management System.
+nality of an index on the referenced column.              To appear in Computer. [Appeared: IEEE
+                                                          Computer, 12(5), pp. 42-48, May 1979]
+7. Conclusion                                         <3>     Bayer,     R.     and     McCreight,     E.
+                                                          Organization and Maintenance of Large
+   The System R access path selection has                 Ordered Indices. Acta Informatica, Vol.
+been described for single table queries,                  1, 1972.
+joins, and nested queries. Evaluation work
+on comparing the choices made to the “right”          <4> Blasgen, M.W. and Eswaran, K.P. On the
+choice is in progress, and will be described              Evaluation of Queries in a Relational
+in a forthcoming paper. Preliminary results               Data Base System. IBM Research Report
+indicate that, although the costs predicted               RJl745. April, 1976.
+by the optimizer are often not accurate in            <5> Chamberlin, D.D., et al. SEQUEL2: A
+absolute value, the true optimal path is                  Unified Approach to Data Definition,
+selected in a large majority of cases. In                 Manipulation, and Control. IBM Journal
+many cases, the ordering among the esti-                  of Research and Development, Vol. 20,
+mated costs for all paths considered is pre-              No. 6, Nov. 1976, pp. 560-575.
+cisely the same as that among the actual
+measured costs.                                       <6> Chamberlin, D.D., Gray, J.N., and
+                                                          Traiger, I.L. Views, Authorization and
+   Furthermore, the cost of path selection                Locking in a Relational Data Base
+is not overwhelming. For a two-way join, the              System. ACM National Computer Conference
+cost   of   optimization  is   approximately              Proceedings, 1975, pp. 425-430.
+equivalent to between 5 and 20 database               <7> Codd, E.F. A Relational Model of Data
+retrievals. This number becomes even more                 for    Large    Shared     Data    Banks.   ACM
+insignificant when such a path selector is
+placed in an environment such as System R,                Communications, Vol. 13. No. 6, June,
+where application programs are compiled                   1970, pp. 377-387.
+once and run many times. The cost of optimi-          <8> Date, C.J. An Introduction to Data Base
+zation is amortized over many runs.                       Systems, Addison-Wesley, 1975.
+                                                      <9>   Lorie.     R.A.   and     Wade,    B.W.   The
+   The key contributions of this path selec-              Compilation of a Very High Level Data
+tor over other work in this area are the                  Language. IBM Research Report RJ2008,
+expanded use of statistics (index cardinal-
+ity, for example), the inclusion of CPU uti-              May, 1977.
+lization into the cost formulas, and the              <10> Lorie, R.A. and Nilsson, J.F. An
+method of determining join order. Many que-               Access Specification Language for a
+ries are CPU-bound, particularly merge                    Relational     Data     Base    System.     IBM
+joins for which temporary relations are                   Research Report RJ2218. April, 1978.
+created and sorts performed. The concept of           <11> Stonebraker, M.R., Wang, E., Kreps.
+“selectivity factor” permits the optimizer                P., and Held, G.D. The Design and
+to take advantage of as many of the query’s               Implementation of INGRES. ACM Trans. on
+restriction predicates as possible in the                 Database    Systems,      Vol.    1,   No.   3,
+RSS search arguments and access paths. By
+remembering “interesting ordering” equiva-                September, 1976, pp. 189-222.
+lence classes for joins and ORDER or GROUP            <12>     Todd,    S.    PRTV:      An     Efficient
+specifications, the optimizer does more                   Implementation for Large Relational Data
+bookkeeping than most path selectors, but                 Bases. Proc. International Conf. on.
+this additional work in many cases results                Very    Large    Data    Bases,     Framingham.
+in avoiding the storage and sorting of                    Mass., September, 1975.
+intermediate query results. Tree pruning              <13>     Wong,     E.,     and     Youssefi,     K.
+and tree searching techniques allow this                  Decomposition — A Strategy for Query
+additional bookkeeping to be performed                    Processing. ACM Transactions on Database
+efficiently. More work on validation of the
+optimizer cost formulas needs to be done,                 Systems, Vol. 1, No. 3 (Sept. 1976) pp.
+but we can conclude from this preliminary                 223-241.
+work that database management systems can             <14> Zloof, M.H. Query by Example. Proc.
+support non-procedural query languages with               AFIPS 1975 NCC, Vol. 44, AFIPS Press,
+performance comparable to those supporting                Montvale, N.J., pp. 431-437.
+the current more procedural languages.
+
+
+
+Cited and General References
+<1>     Astrahan, M. M. et al. System R:
+      Relational    Approach    to    Database
+      Management. ACM Transactions on Database
+      Systems, Vol. 1, No. 2, June 1976, pp.
+
+
+                                                 34

@@ -1,0 +1,26 @@
+\begin{wraptable}{r}{0.45\textwidth}
+    \centering
+    \setlength{\tabcolsep}{2pt}
+\small
+    \caption{\small Effects of cache size on \method's performance.
+    Increasing the cache size in \method doesn't consistently yield a decrease in perplexity, showing these models may not fully utilize the provided context.
+    Cache config $x$+$y$ denotes adding $x$ initial tokens with $y$ recent tokens.
+    Perplexity is evaluated on 400K tokens in the concatenated PG19 test set.
+    }
+    \vspace{-0.5em}
+    \label{tab:cache_size}
+    \begin{tabular}{lcccc}
+\toprule
+Cache     & 4+252   & 4+508   & 4+1020  & 4+2044  \\
+\midrule
+Falcon-7B  & 13.61 & 12.84 & \textbf{12.34} & 12.84 \\
+MPT-7B     & \textbf{14.12} & 14.25 & 14.33 & 14.99 \\
+Pythia-12B     &13.17 & 12.52 & \textbf{12.08} & 12.09 \\
+\midrule
+\midrule
+Cache     & 4+508   & 4+1020  & 4+2044  & 4+4092  \\
+\midrule
+Llama-2-7B & 9.73  & 9.32  & \textbf{9.08}  & 9.59   \\
+\bottomrule
+\end{tabular}
+\end{wraptable}

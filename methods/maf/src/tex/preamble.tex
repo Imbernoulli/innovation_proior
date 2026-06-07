@@ -1,0 +1,74 @@
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsmath, amsfonts}
+\usepackage{amsthm}
+\usepackage{nicefrac}
+\usepackage{microtype}
+\usepackage{bm}
+\usepackage{xr}
+\usepackage[algoruled, noline]{algorithm2e}
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{enumitem}
+\usepackage{color}
+\usepackage{caption}
+\usepackage{tabularx}
+
+\bibliographystyle{abbrvnat}
+\setlength{\bibsep}{\medskipamount}
+
+\newtheorem{proposition}{Proposition}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newcommand{\mat}[1]{\mathbf{#1}}
+\newcommand{\br}[1]{\mathopen{}\left(#1\right)\mathclose{}}
+\newcommand{\set}[1]{\left\{#1\right\}}
+\newcommand{\pair}[2]{\br{#1,#2}}
+\newcommand{\abs}[1]{\left|#1\right|}
+\newcommand{\norm}[1]{\left\|#1\right\|}
+\newcommand{\bigo}[1]{\mathcal{O}\br{#1}}
+\newcommand{\prob}[1]{p\br{#1}}
+\newcommand{\parprob}[2]{p_{#2}\br{#1}}
+\newcommand{\g}{\,|\,}
+\newcommand{\kl}[2]{D_{\mathrm{KL}}\br{#1\,\|\,#2}}
+\newcommand{\avg}[2]{{\mathop{\mathbb{E}}}_{#2}\br{#1}}
+\newcommand{\integral}[2]{\int#1\operatorname{d}\!#2}
+\newcommand{\nth}[1]{#1^{\text{th}}}
+\newcommand{\first}{1^{\text{st}}}
+\newcommand{\second}{2^{\text{nd}}}
+\newcommand{\sigm}[1]{\sigma\br{#1}}
+\newcommand{\diff}[1]{\operatorname{d}\!{#1}}
+\newcommand{\deriv}[2]{\frac{\partial{#1}}{\partial{#2}}}
+\newcommand{\gaussian}[2]{\mathcal{N}\br{#1,#2}}
+\newcommand{\gaussianx}[3]{\mathcal{N}\br{#1\g #2,#3}}
+\newcommand{\uniform}[3]{\mathcal{U}\br{#1\g #2,#3}}
+\newcommand{\todo}[1]{\textcolor{red}{#1}}
+\DeclareMathOperator{\logit}{logit}
+
+\newcommand{\ourtitle}{Masked Autoregressive Flow for Density Estimation}
+
+\newcommand{\supref}{\ref*}
+
+\newcommand{\myarraystretch}{1}
+\newcommand{\errbarsize}{\footnotesize}
+\captionsetup[table]{aboveskip=4pt}
+
+\author{
+George Papamakarios\\
+University of Edinburgh\\
+\texttt{g.papamakarios@ed.ac.uk}\\
+\And
+Theo Pavlakou\\
+University of Edinburgh\\
+\texttt{theo.pavlakou@ed.ac.uk}\\
+\And
+Iain Murray\\
+University of Edinburgh\\
+\texttt{i.murray@ed.ac.uk}\\
+}

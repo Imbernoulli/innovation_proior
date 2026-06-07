@@ -1,0 +1,90 @@
+\section{Conclusion and Discussion}
+\label{sec:discuss}
+We introduce a generalized double descent hypothesis: models and training procedures exhibit atypical behavior
+when their Effective Model Complexity
+is comparable to the number of train samples.
+% This hypothesis significantly generalizes prior work in double descent,
+% using a novel notion of model complexity.
+We provide extensive evidence for our hypothesis
+in modern deep learning settings,
+and show that it is robust to choices of dataset,
+architecture, and training procedures.
+In particular, we demonstrate ``model-wise double descent''
+for modern deep networks and
+characterize the regime where bigger models can perform worse.
+We also demonstrate ``epoch-wise double descent,''
+which, to the best of our knowledge, has not been previously proposed.
+Finally, we show that the double descent phenomenon can
+lead to a regime where training on more data leads to worse test performance.
+%All of the above phenomenon follow as natural consequences of our generalized double descent hypothesis.
+Preliminary results suggest that double descent also holds
+as we vary the amount of regularization for a fixed model
+(see Figure~\ref{fig:regular_ocean}).
+
+We also believe our characterization of the critical regime provides a useful
+way of thinking for practitioners---if a model and training procedure are
+just barely able to fit the train set, then small changes
+to the model or training procedure may yield unexpected behavior
+(e.g. making the model slightly larger or smaller, changing regularization, etc. may hurt test performance).
+
+\paragraph{Early stopping.} 
+We note that many of the phenomena that we highlight
+often do not occur with optimal early-stopping.
+% That is, when the training procedure keeps
+% a validation set, and returns the model at the train-epoch with best validation error.
+However, this is consistent with our
+generalized double descent hypothesis: 
+if early stopping prevents models from reaching $0$ train error
+then we would not expect to see double-descent, since 
+%we are not allowing the EMC to reach the number of train samples.
+the EMC does not reach the number of train samples.
+Further, we show at least one setting where model-wise double descent can still occur
+even with optimal early stopping
+(ResNets on CIFAR-100 with no label noise, see Figure~\ref{fig:app-cifar100-clean}).
+We have not observed settings where more data hurts
+when optimal early-stopping is used.
+However, we are not aware of reasons which preclude this from occurring.
+We leave fully understanding the optimal early stopping behavior of double descent
+as an important open question for future work.
+
+
+
+% In our framework, optimal early-stopping
+% can be interpreted as searching for the
+% optimal Effective Model Complexity among the 
+% then increasing model size does not correspond to
+% strictly increasing Effective Model Complexity (EMC)---
+
+\paragraph{Label Noise.}
+In our experiments, we observe double descent most strongly in settings with label noise.
+However, we believe this effect is not fundamentally about label noise,
+but rather about \emph{model mis-specification}.
+For example, consider a setting where the label noise is not truly random,
+but rather pseudorandom (with respect to the family of classifiers being trained).
+In this setting, the performance of the Bayes optimal classifier would not change
+(since the pseudorandom noise is deterministic, and invertible),
+but we would observe an identical double descent as with truly random label noise.
+Thus, we view adding label noise as merely a proxy for making distributions ``harder''---
+i.e. increasing the amount of model mis-specification.
+
+\paragraph{Other Notions of Model Complexity.}
+Our notion of \emph{Effective Model Complexity} is related to classical complexity notions
+such as Rademacher complexity, but differs in several crucial ways:
+(1) EMC depends on the \emph{true labels} of the data distribution,
+and (2) EMC depends on the training procedure, not just the model architecture.
+
+Other notions of model complexity which do not incorporate features (1) and (2)
+would not suffice to characterize the location of the double-descent peak.
+Rademacher complexity, for example, is determined by the
+ability of a model architecture to fit a randomly-labeled train set.
+But Rademacher complexity and VC dimension are both insufficient to 
+determine the model-wise double descent peak location, since they do
+not depend on the distribution of labels--- and our experiments show that adding label noise
+shifts the location of the peak.
+
+Moreover, both Rademacher complexity and VC dimension
+depend only on the model family and data distribution, and not
+on the training procedure used to find models.
+Thus, they are not capable of capturing train-time double-descent effects,
+such as ``epoch-wise'' double descent, and the effect of data-augmentation on
+the peak location.

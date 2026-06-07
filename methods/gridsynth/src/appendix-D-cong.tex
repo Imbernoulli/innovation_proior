@@ -1,0 +1,83 @@
+\section[Proof of Lemma 8.4]{Proof of Lemma~\ref{lem-n}}
+\label{appendix-n}
+
+\begin{definition}
+  Recall that $\delta=1+\omega$.
+  Every element $u\in\D[\omega]$ can be written in the form
+  \begin{equation}\label{eqn-delta-exponent}
+    u = \frac{1}{\delta^k} (a\omega^3+b\omega^2+c\omega+d),
+  \end{equation}
+  where $a,b,c,d\in\Z$ and $k\geq 0$.
+  The smallest $k$ such that $u$ can be written in this form is called
+  the {\em least $\delta$-exponent} of $u$.
+\end{definition}
+
+\begin{remark}\label{rem-delta-exp}
+  A calculation shows that
+  $\frac{1}{\delta}(a\omega^3+b\omega^2+c\omega+d)$ is equal to
+  \[ \frac12\left[\,(a-b+c-d)\omega^3 
+    + (a+b-c+d)\omega^2 
+    + (-a+b+c-d)\omega 
+    + (a-b+c+d)\,\right].
+  \]
+  It follows that an element
+  $a\omega^3+b\omega^2+c\omega+d\in\Z[\omega]$ is divisible by
+  $\delta$ if and only if $a+b+c+d$ is even.
+\end{remark}
+
+We can now prove Lemma~\ref{lem-n}, whose statement we 
+reproduce here.
+
+\begin{un-lemma}
+  Each of the numbers $n$ produced in step 2(a) of
+  Algorithm~\ref{alg-main} satisfies $n\geq 0$, and either $n=0$ or
+  $n\equiv1\mmod{8}$.
+\end{un-lemma}
+
+\begin{proof}
+  Recall that in step 2(a) of Algorithm~\ref{alg-main}, we are given
+  $u\in\D[\omega]$ such that $u\in\Disk$ and $u\bul\in\Disk$. We let
+  $\xi=1-u\da u$ and write $\xi\bul\xi=\frac{n}{2^\ell}$, where
+  $\ell\geq 0$ is minimal. We must show that $n\geq 0$, and that either
+  $n=0$ or $n\equiv 1\mmod{8}$.
+
+  The first claim is trivial, since by assumption $u\da u\leq 1$ and
+  $(u\da u)\bul\leq 1$, and therefore $\xi,\xi\bul\geq 0$, which
+  implies $n\geq 0$. For the second claim, write $u$ in the form
+  {\eqref{eqn-delta-exponent}}, with least $\delta$-exponent $k$.
+  
+  \begin{itemize}
+  \item Case 1: $k\leq 1$. In this case, one can show by a direct
+    calculation (for example with the help of the algorithm from
+    Proposition~\ref{prop-scaled1}) that the scaled two-dimensional
+    grid problem only has the 9 solutions $u=0$ and $u=\omega^j$,
+    where $j=0,\ldots,7$. In the first case, $n=1$, and in the
+    remaining 8 cases, $n=0$, so the claim follows.
+  \item Case 2: $k\geq 2$. We calculate
+    \[ u\da u = \frac{1}{(\delta\da\delta)^k}(A+B\sqrt 2),
+    \] 
+    where $A=a^2+b^2+c^2+d^2$ and $B=cd+bc+ab-da$. Note that, since
+    $k$ is the least $\delta$-exponent of $u$,
+    Remark~\ref{rem-delta-exp} implies that $a+b+c+d$ is odd. It
+    easily follows that $A$ is odd; moreover, since $B\equiv
+    (a+c)(b+d)\mmod{2}$, it also follows that $B$ is even.  Also note
+    that $(\delta\da\delta)^k = (\lambda\sqrt2)^k$ is an element
+    of $\Z[\sqrt2]$, and is divisible by $2$ since $k\geq
+    2$. Therefore, we have $(\delta\da\delta)^k = C+D\sqrt2$ for
+    some $C,D\in\Z$ where $C,D$ are both even. We further calculate
+    \[ \xi = 1-u\da u =
+    \frac{1}{(\delta\da\delta)^k}(C+D\sqrt2 - A -
+    B\sqrt 2)
+    = \frac{1}{(\delta\da\delta)^k}(x+y\sqrt2),
+    \]
+    where $x=C-A$ is odd and $y=D-B$ is even. Noting that
+    $(\delta\da\delta)\bul(\delta\da\delta)=2$ and that
+    $x^2-2y^2\equiv 1\mmod{8}$, we therefore have
+    \[ \xi\bul\xi = 
+    \frac{1}{((\delta\da\delta)\bul(\delta\da\delta))^k}(x^2-2y^2)
+    = \frac{1}{2^k}(x^2-2y^2).
+    \]
+    It follows that $\ell=k$ and $n=x^2-2y^2$, and therefore $n\equiv 1\mmod{8}$,
+    which was to be shown.\qedhere
+  \end{itemize}
+\end{proof}

@@ -1,0 +1,568 @@
+\section{Experiment}
+%In this section, we present a comprehensive study of {\ModelName} compared with a list on pre-trained models including BERT \cite{devlin2018bert}, RoBERTa \cite{liu2019roberta} and XLNet \cite{yang2019xlnet}. Then, we show the efficiency and effectiveness of  {\ModelName} on a wide spectrum of Natural Language Understanding benchmarks including GLUE \cite{wang2018glue}, SuperGLUE \cite{superglue2019_8589}, SQuAD v1.1 \cite{squad1}, SQuAD v2.0 \cite{squad2}, RACE, SWAG \cite{zellers2018swag} and Named-entity recognition (NER) in OntoNotes 5.0 \cite{ontonotes5}. For details of the benchmarks, please see Appendix ~\ref{sec:appendix}. 
+This section reports {\ModelName} results on various NLU tasks. 
+% We start with the main results of the {\ModelName} model followed by a detailed analysis from different aspects. 
+%. Second, we demonstrate the exceptional convergence property of {\ModelName} to show its strength in training efficiency. Last, we provide an ablation study to illustrate the contributions of the components introduced by {\ModelName}. More details about experimental settings and additional experiments are provided in Appendix.    
+
+%\subsection{Implementation Details}
+%We train our base model with the same setting as BERT\cite{devlin2018bert}, the only difference is that we use the BPE vocabulary from GPT-2 \cite{gpt22019}, as RoBERTa \cite{liu2019roberta}.
+%We train our large model with a batch size of 2048 for 1,000,000 steps with Wikipedia \footnote{https://dumps.wikimedia.org/enwiki}, bookcorpus \cite{bookcorpus}, openwebtext \cite{Gokaslan2019OpenWeb} and STORIES (a subset of CommonCrawl) \cite{trinh2018simple}. The total data size is about 80GB, after deduplicating the contents, we finally get about 76GB data for the pre-training. The learning rate is set to 4e-4, and warmup steps is set to 20000 steps. As RoBERTa \cite{liu2019roberta} we also adopted dynamic data batching. Other setting such as optimizer, learning rate scheduling is the same as BERT \cite{devlin2018bert}. We also adopted span masking as \cite{joshi2019spanbert}, and set the maximum span size to 3. As ELECTRA\cite{clark2020electra}, we also applied mask prediction objective as an auxiliary task, but the effect is marginal in our settings. \xiaodl{It requires exp to support this.}
+
+%For fine-tuning, we choose the learning rate among ${5e-6, 8e-6, 1e-5}$ for large model, and learning rate among${2e-5, 3e-5,4e-5}$ for base model. The training epochs are choosed among ${2,3,4,6,10}$ by the performance of dev set.
+%\xiaodl{@pengcheng, please provide detailed training time/\#GPUs.}
+\subsection{Main Results on NLU tasks}
+\label{subsec:main}
+Following previous studies of PLMs,
+% papers on BERT, RoBERTa and XLNet, 
+we report results using large and base models.
+%size with a comparison to all of them. 
+\subsubsection{Performance on Large Models}
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip3pt}l@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}| @{\hskip2pt}c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}}
+        \toprule
+        \multirow{2}{*}{\bf Model} & {CoLA} &{QQP} &{MNLI-m/mm} &SST-2 &STS-B&QNLI&RTE&MRPC& Avg.\\ 
+        & Mcc & Acc & Acc & Acc &Corr&Acc&Acc&Acc\\
+        \midrule
+        BERT$_{large}$ &60.6 &91.3  & 86.6/- & 93.2 &90.0&92.3&70.4&88.0 &84.05 \\ \hline
+        RoBERTa$_{large}$ &68.0 & 92.2  & 90.2/90.2 & 96.4 &92.4&93.9&86.6&90.9& 88.82 \\ \hline
+        XLNet$_{large}$& 69.0 & 92.3  & 90.8/90.8 & \textbf{97.0} &92.5&94.9&85.9&90.8 & 89.15 \\ \hline
+%ALBERT$_{xxlarge}$&  \textbf{71.4} & 92.2  & 90.8/- & 96.9 &\textbf{93.0}&95.3&\textbf{89.2}&90.9 &89.96 \\ \hline
+
+ELECTRA\textsubscript{large}&69.1 & \textbf{92.4} &90.9/- &96.9& 92.6&95.0 & 88.0&90.8 &89.46 \\ \hline
+        {\ModelName}$_{large}$ &\textbf{70.5} & 92.3 & \textbf{91.1/91.1} &96.8 & \textbf{92.8} &\textbf{95.3}&\textbf{88.3}& \textbf{91.9} &\textbf{90.00}\\
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Comparison results on the GLUE development set. 
+    }
+    \label{tab:glue}
+    \vspace{-2mm}
+\end{table*}
+
+% avg scores
+% 60.6	91.3	86.6	93.2	90	92.3	70.4	88	84.05
+% 68	92.2	90.2	96.4	92.4	93.9	86.6	90.9	88.825
+% 69	92.3	90.8	97	92.5	94.9	85.9	90.8	89.15
+% 71.4	92.2	90.8	96.9	93	95.3	89.2	90.9	89.9625
+% 69.1	92.4	90.9	96.9	92.6	95	88	90.8	89.4625
+% 70.5	92.3	91.2	96.7	92.5	95.3	88.1	93.4	90
+
+
+% \begin{table*}[htb!]
+%     \centering
+%     \begin{tabular}{@{\hskip3pt}l@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}| @{\hskip2pt}c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|@{\hskip2pt}c@{\hskip2pt}}
+%         \toprule
+%         \multirow{2}{*}{\bf Model} &{\bf Model} & {CoLA} &{QQP} &{MNLI-m/mm} &SST-2 &STS-B&QNLI&RTE&MRPC\\ 
+%         &{\bf Size}& Mcc & F1/Acc & Acc & Acc &Corr&Acc&Acc&Acc\\
+%         \midrule
+%         BERT$_{large}$ &335M &60.6 &91.3  & 86.6/- & 93.2 &90.0&92.3&70.4&88.0 \\ \hline
+%         RoBERTa$_{large}$& 355M& 68.0 & 92.2  & 90.2/90.2 & 96.4 &92.4&93.9&86.6&90.9 \\ \hline
+%         XLNet$_{large}$& 340M& 69.0 & 92.3  & 90.8/90.8 & \textbf{97.0} &92.5&94.9&85.9&90.8 \\ \hline
+% ALBERT$_{large}$& 340M& 69.0 & 92.3  & 90.8/90.8 & \textbf{97.0} &92.5&94.9&85.9&90.8 \\ \hline        
+%         {\ModelName}$_{large}$ &390M &\textbf{69.5} & \textbf{92.3} & \textbf{91.1/91.1} & 96.5 & \textbf{92.5} &\textbf{95.3} &\textbf{88.1}& \textbf{92.5}\\
+%         \bottomrule
+%         \end{tabular}
+%     \caption{
+%     Comparison results on the GLUE development set. 
+%     }
+%     \label{tab:glue}
+% \end{table*}
+
+We pre-train our large models following the setting of BERT~\citep{devlin2018bert}, except that we use the BPE vocabulary of ~\cite{radford2019language,liu2019roberta}.
+For training data, we use Wikipedia (English Wikipedia dump\footnote{https://dumps.wikimedia.org/enwiki/}; 12GB), BookCorpus~\citep{bookcorpus} (6GB), OPENWEBTEXT (public Reddit content~\citep{Gokaslan2019OpenWeb}; 38GB), and STORIES (a subset of CommonCrawl~\citep{trinh2018simple}; 31GB). 
+The total data size after data deduplication~\citep{shoeybi2019megatron} is about 78G. 
+Refer to Appendix A.2 for a detailed description of the pre-training dataset.
+
+We use 6 DGX-2 machines (96 V100 GPUs) to train the models. 
+A single model trained with 2K batch size and 1M steps takes about 20 days.
+Refer to Appendix \ref{sec:appendix} for the detailed hyperparamters. 
+% We use a batch size of 2048. Our training set contains Wikipedia \footnote{https://dumps.wikimedia.org/enwiki}, bookcorpus \cite{bookcorpus}, openwebtext \cite{Gokaslan2019OpenWeb} and STORIES (a subset of CommonCrawl) \cite{trinh2018simple}. The total data size after data deduplication is about 76GB. We set the learning rate as 2e-4, with the number of warm-up steps as 10000. Following RoBERTa \cite{liu2019roberta}, we  adopted dynamic data batching. We also include span masking\cite{joshi2019spanbert} as the additional masking strategy with the span size up to 3. For a single complete training, we use 6 DGX-2 machines with 96 V100 GPUs to train the model for 1M steps and it takes about 20 days. For fine-tuning, we choose a learning rate among $\{5e-6, 8e-6, 9e-6, 1e-5\}$ and train each of them up to 8 epochs.
+% We pick the best model according to the performance on the task-specific dev sets.
+
+We summarize the results on eight NLU tasks of GLUE~\citep{wang2018glue} in Table~\ref{tab:glue}, where DeBERTa is compared {\ModelName} with previous Transform-based PLMs of similar structures (i.e. 24 layers with hidden size of 1024) including BERT, RoBERTa, XLNet, ALBERT and ELECTRA.
+Note that RoBERTa, XLNet and ELECTRA are pre-trained on 160G training data while {\ModelName} is pre-trained on 78G training data. RoBERTa and XLNet are pre-trained for 500K steps with 8K samples in a step, which amounts to four billion training samples. 
+{\ModelName} is pre-trained for one million steps with 2K samples in each step.  
+This amounts to two billion training samples, approximately half of either RoBERTa or XLNet.  
+Table~\ref{tab:glue} shows that compared to BERT and RoBERTa, {\ModelName} performs consistently better across all the tasks. 
+Meanwhile, {\ModelName} outperforms XLNet in six out of eight tasks. 
+Particularly, the improvements on MRPC (1.1\% over XLNet and 1.0\% over RoBERTa), RTE (2.4\% over XLNet and 1.7\% over RoBERTa) and CoLA (1.5\% over XLNet and 2.5\% over RoBERTa) are significant. 
+{\ModelName} also outperforms other SOTA PLMs, i.e., ELECTRA\textsubscript{large} and XLNet\textsubscript{large}, in terms of average GLUE score.  
+%, ALBERT\textsubscript{xxlarge} \footnote{ The hidden dimension of ALBERT\textsubscript{xxlarge} is 4 times of DeBERTa and the computation cost is about 4 times of DeBERTa. } and 
+
+Among all GLUE tasks, MNLI is most often used as an indicative task to monitor the research progress of PLMs. 
+{\ModelName} significantly outperforms all existing PLMs of similar size on MNLI and creates a new state of the art. % for large models. 
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip2pt}l@{\hskip3pt}|@{\hskip2pt} c@{\hskip2pt}|| @{\hskip2pt}c@{\hskip2pt}@{\hskip2pt}c@{\hskip2pt}|@{\hskip2pt}c@{\hskip2pt}|@{\hskip2pt}c@{\hskip2pt}||@{\hskip2pt}c@{\hskip2pt}||@{\hskip2pt}c@{\hskip2pt}}
+        \toprule
+        \multirow{2}{*}{\bf Model} &{MNLI-m/mm} & {SQuAD v1.1} &{SQuAD v2.0} &RACE &ReCoRD  &SWAG & NER\\ 
+        & Acc & F1/EM & F1/EM &Acc&F1/EM& {Acc}   & F1\\
+        \midrule
+        BERT$_{large}$ & 86.6/-& 90.9/84.1 &81.8/79.0  &72.0 &-   &86.6 &92.8\\ \hline
+        ALBERT$_{large}$ & 86.5/-& 91.8/85.2 & 84.9/81.8 &75.2 &-  &-&- \\ \hline
+        RoBERTa$_{large}$ & 90.2/90.2& 94.6/88.9 & 89.4/86.5 &83.2 &90.6/90.0   &89.9 &93.4\\ \hline
+        XLNet$_{large}$ & 90.8/90.8& 95.1/89.7 & 90.6/87.9 &85.4 &-  &-&- \\ \hline
+        Megatron\textsubscript{336M} & 89.7/90.0 & 94.2/88.0 & 88.1/84.8 &83.0 &-   &-&- \\ \hline
+        {\ModelName}$_{large}$ & \textbf{91.1/91.1} &\textbf{95.5/90.1} & \textbf{90.7/88.0} & \textbf{86.8} &\textbf{91.4/91.0}   &\textbf{90.8} &\textbf{93.8}\\ \hline \hline
+        ALBERT$_{xxlarge}$ & 90.8/-& 94.8/89.3 & 90.2/87.4 &86.5 &-  &-&- \\ \hline
+        Megatron\textsubscript{1.3B} & 90.9/91.0 & 94.9/89.1 & 90.2/87.1 & 87.3 &- &-&- \\ \hline
+        Megatron\textsubscript{3.9B} & 91.4/91.4 & 95.5/90.0 & 91.2/88.5 &89.5&-  &-&- \\      
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Results on MNLI in/out-domain,  SQuAD v1.1, SQuAD v2.0, RACE, ReCoRD, SWAG, CoNLL 2003 NER development set. Note that missing results in literature are signified by ``-''.}
+    \label{tab:large}
+    \vspace{-4mm}
+\end{table*}
+
+% \begin{table*}[htb!]
+%     \centering
+%     \begin{tabular}{@{\hskip2pt}l@{\hskip3pt}|@{\hskip2pt} c@{\hskip2pt}|| @{\hskip2pt}c@{\hskip2pt}@{\hskip2pt}c@{\hskip2pt}|@{\hskip2pt}c@{\hskip2pt}|@{\hskip2pt}c@{\hskip2pt}||@{\hskip2pt}c@{\hskip2pt}||@{\hskip2pt}c@{\hskip2pt}}
+%         \toprule
+%         \multirow{2}{*}{\bf Model} &{MNLI-m/mm} & {SQuAD v1.1} &{SQuAD v2.0} &RACE &ReCoRD  &SWAG & NER\\ 
+%         & Acc & F1/EM & F1/EM &Acc&F1/EM& {Acc}   & F1\\
+%         \midrule
+%         BERT$_{large}$ \cite{devlin2018bert} & 86.6/-& 90.9/84.1 &81.8/79.0  &72.0 &-   &86.6 &92.8\\ \hline
+%         RoBERTa$_{large}$ \cite{liu2019roberta} & 90.2/90.2& 94.6/88.9 & 89.4/86.5 &83.2 &90.6/90.0   &89.9 &93.4\\ \hline
+%         XLNet$_{large}$ \cite{yang2019xlnet} & 90.8/90.8& 95.1/89.7 & 90.6/87.9 &85.4 &-  &-&- \\ \hline
+%         Megatron\textsubscript{336M} \cite{shoeybi2019megatron} & 89.7/90.0 & 94.2/88.0 & 88.1/84.8 &83.0 &-   &-&- \\ \hline
+%         {\ModelName}$_{large}$ & \textbf{91.1/91.1} &\textbf{95.5/90.1} & \textbf{90.7/88.0} & \textbf{86.8} &\textbf{91.4/91.0}   &\textbf{90.8} &\textbf{93.8}\\ \hline \hline
+%         Megatron\textsubscript{1.3B} \cite{shoeybi2019megatron} & 90.9/91.0 & 94.9/89.1 & 90.2/87.1 & 87.3 &- &-&- \\ \hline
+%         Megatron\textsubscript{3.9B} \cite{shoeybi2019megatron} & 91.4/91.4 & 95.5/90.0 & 91.2/88.5 &89.5&-  &-&- \\      
+%         \bottomrule
+%         \end{tabular}
+%     \caption{
+%     Results on MNLI in/out-domain,  SQuAD v1.1, SQuAD v2.0, RACE, ReCoRD, SWAG, CoNLL 2003 NER development set. Note that missing results in literature are signified by ``-''.}
+%     \label{tab:large}
+% \end{table*}
+%Besides the GLUE benchmark, we continue to demonstrate the great performance of {\ModelName} with additional established benchmarks, including SQuAD v1.1 \cite{squad1}, SQuAD v2.0 \cite{squad2}, RACE \cite{lai2017race}, ReCoRD \cite{zhang2018record}, SWAG \cite{zellers2018swag} and NER \cite{ontonotes5}, covering a wider range of NLU tasks. 
+
+%Besides the GLUE benchmark, we continue the evaluation 
+In addition to GLUE, DeBERTa is evaluated on three categories of NLU benchmarks: 
+(1) Question Answering: SQuAD v1.1 \citep{squad1}, SQuAD v2.0 \citep{squad2}, RACE \citep{lai2017race}, ReCoRD \citep{zhang2018record} and SWAG \citep{zellers2018swag}; 
+(2) Natural Language Inference: MNLI \citep{mnli2018}; and 
+(3) NER: CoNLL-2003.
+For comparison, we include 
+ALBERT\textsubscript{xxlarge}~\citep{lan2019albert}
+\footnote{ The hidden dimension of ALBERT\textsubscript{xxlarge} is 4 times of DeBERTa and the computation cost is about 4 times of DeBERTa.} and 
+Megatron~\citep{shoeybi2019megatron} with three different model sizes, denoted as Megatron\textsubscript{336M}, Megatron\textsubscript{1.3B} and Megatron\textsubscript{3.9B}, respectively, which are trained using the same dataset as RoBERTa. 
+Note that Megatron\textsubscript{336M} has a similar model size as other models mentioned above\footnote{T5~\citep{raffel2019t5} has more parameters (11B). \cite{raffel2019t5} only report the test results of T5 which are not comparable with other models.}. 
+
+We summarize the results in Table~{\ref{tab:large}}. 
+Compared to the previous SOTA PLMs with a similar model size (i.e., BERT, RoBERTa, XLNet,  ALBERT\textsubscript{large}, and Megatron\textsubscript{336M}),  {\ModelName} shows superior performance in all seven tasks. 
+Taking the RACE benchmark as an example, {\ModelName} significantly outperforms XLNet by +1.4\% (86.8\% vs. 85.4\%). 
+Although Megatron\textsubscript{1.3B} is three times larger than {\ModelName}, {\ModelName} outperforms it in three of the four benchmarks. We further report {\ModelName} on text generation tasks in Appendix~\ref{subsec:generation}.
+%All the results show the superior performance of {\ModelName} in various downstream tasks. 
+% We are confident that 
+% {\ModelName} could have performed even better with a larger model size. We leave it to future work.
+%and share larger models in its github repository once available.
+
+\subsubsection{Performance on Base Models}
+Our setting for base model pre-training is similar to that for large models. 
+The base model structure follows that of the BERT base model, i.e., $L=12, H=768, A=12$. 
+We use 4 DGX-2 with 64 V100 GPUs to train the base model. 
+It takes 10 days to finish a single pre-training of 1M training steps with batch size 2048. 
+We train {\ModelName} using the same 78G dataset, and compare it to RoBERTa and XLNet trained on 160G text data. 
+%For a detailed comparison of datasets for pre-training, please refer to Appendix A.2.  
+%Refer to Appendix~\ref{subsec:details} for detailed hyperparameters used for pre-training and fine-tuning.
+%The other difference with the Large model is that we use a different set of learning rates in the task-specific model fine-tuning, which are $\{2e-5, 3e-5,4e-5\}$. 
+
+We summarize the base model results in Table~\ref{tab:base-dev}. 
+Across all three tasks, {\ModelName} consistently outperforms RoBERTa and XLNet by a larger margin than that in large models.  
+For example, on MNLI-m, {\ModelName\textsubscript{base}} obtains +1.2\%  (88.8\% vs. 87.6\%) over RoBERTa\textsubscript{base}, and +2\% (88.8\% vs. 86.8\%) over XLNet\textsubscript{base}.
+%Simultaneously, 
+% \ModelName\textsubscript{base} achieves the best performance on all the tasks among all competing base models.
+% of around 120M parameters. 
+% This significant and consistent improvements continue to echo the great performance of {\ModelName}.   
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip2pt}l| c | c | c @{\hskip2pt}}
+        \toprule
+%        \multirow{2}{*}{\bf Model} & {SQuAD v1.1} &{SQuAD v2.0} &{MNLI-m/mm} \\ 
+        {\bf Model} &{MNLI-m/mm (Acc)} & {SQuAD v1.1 (F1/EM)} &{SQuAD v2.0 (F1/EM)}  \\ 
+       % & F1/EM & F1/EM & { Acc} \\
+        \midrule
+%        BERT$_{base}$ \cite{devlin2018bert} & 84.3/84.7 & 88.5/80.8 &76.3/73.7    \\ \hline
+        RoBERTa$_{base}$ & 87.6/- & 91.5/84.6 & 83.7/80.5  \\ \hline
+        XLNet$_{base}$ & 86.8/- & -/- & -/80.2  \\ \hline
+        {\ModelName}$_{base}$ & \textbf{88.8/88.5}  &\textbf{93.1/87.2} & \textbf{86.2/83.1}  \\
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Results on MNLI in/out-domain (m/mm), SQuAD v1.1 and v2.0   development set. 
+    }
+    \label{tab:base-dev}
+    \vspace{-3mm}
+\end{table*}
+
+
+% \subsection{Main Results on Generation Tasks}
+% We further evaluate DeBERTa on the task of auto-regressive language model (ARLM) using Wikitext-103~\citep{merity2016pointer}. 
+% To do so, we train a new version of DeBERTa, denoted as DeBERTa-MT. 
+% It is jointly pre-trained using the MLM and ARLM tasks as in UniLM \citep{dong2019unilm}. 
+% The pre-training hyper-parameters follows that of DeBERTa$_{base}$ except that we use fewer training steps (200k). For comparison, we use RoBERTa as baseline, and include GPT-2 and Transformer-XL as additional references.  
+% DeBERTa-AP is a variant of DeBERTa where absolute position embeddings are incorporated in the input layer as RoBERTa. 
+% For a fair comparison, all these models are base models pre-trained in a similar setting.
+% %is the model with the same structure as RoBERTa base model except training with auto-regressive attention mask to enable left-to-right language model. Similarly, 
+% %DeBERTa$_{base}$ is the model with the same model sturcture as DeBERTa base model. 
+% %In addition, DeBERTa-MT$_{base}$ is the model similar to DeBERTa$_{base}$ except jointly training with MLM and ARLM. RoBERTa$_{base}$, DeBERTa$_{base}$ and DeBERTa-MT$_{base}$ all share the same training hyper-parameter as DeBERTa base model except for we only training with 200k steps. One difference between our model with Transformer-XL is that we use the vocabulary of GPT instead of build vocabulary on Wikitext-103 training data.
+
+% \begin{table*}[htb!]
+%     \centering
+%     \begin{tabular}{@{\hskip2pt}l|@{\hskip2pt} c @{\hskip2pt}|@{\hskip2pt} c @{\hskip2pt}| c@{\hskip2pt} |@{\hskip2pt}c@{\hskip2pt}|@{\hskip2pt} c@{\hskip2pt}|@{\hskip2pt}c @{\hskip2pt}}
+%         \toprule
+%         {\bf Model} &{RoBERTa}& {DeBERTa-AP} & {DeBERTa} & {DeBERTa-MT} &{GPT-2} &{Transformer-XL}  \\ 
+%         \midrule
+%         Dev PPL & 21.6 & 20.7 & 20.5 & \textbf{19.5} & -& 23.1  \\ \hline
+%         Test PPL & 21.6 & 20.0 & 19.9 & \textbf{19.5} &  37.50& 24  \\
+%         \bottomrule
+%         \end{tabular}
+%     \caption{
+%     Language model results in perplexity (lower is better) on Wikitext-103 . 
+%     }
+%     \label{tab:wiki}
+%  %   \vspace{-3mm}
+% \end{table*}
+% Table~\ref{tab:wiki} summarizes the results on Wikitext-103. 
+% We see that {\ModelName}\textsubscript{base} obtains lower perplexities on both dev and test data, and joint training using MLM and ARLM reduces perplexity further. %, showing the effectiveness of {\ModelName}. 
+% That DeBERTa-AP is inferior to DeBERTa indicates that it is more effective to incorporate absolute position embeddings of words in the decoding layer as the EMD in DeBERTa than in the input layer as RoBERTa.
+% %as a comparison between different places to incorporate the absolute positions, 
+%we show that the DeBERTa approach via injecting the absolute positions in the decoder layer is better than the RoBERTa approach (i.e., DeBERTa (w/o EMD)) on the absolute positions. 
+%without the \textit{EMD}, the PPL on both dev and test gets worse showing the importance of this module.
+%The comparsion bresult shows $EMD$ performances better.
+%The results shows that the performance improvement of DeBERTa is consistant with both NLU and NLG. When jointly training with MLM, the performance of ALM can be further improved.
+
+\subsection{Model Analysis}
+%In this section, we focus on analyzing the factors leading to the good performance of {\ModelName}.  
+In this section, we first present an ablation study to quantify the relative contributions of different components introduced in {\ModelName}. 
+Then, we study the convergence property to characterize the model training efficiency. 
+%Due to the high training cost and long training time, it is infeasible for us to run many analysis experiments with the same setting as previous section. Therefore, 
+We run experiments for analysis using the base model setting: a model is pre-trained using 
+the Wikipedia + Bookcorpus dataset 
+for 1M steps with batch size 256 
+in 7 days on a DGX-2 machine with 16 V-100 GPUs.
+Due to space limit, we visualize the different attention patterns of {\ModelName} and RoBERTa in Appendix A.7. 
+%We use a batch size of 256 and pre-train the model for 1M steps. A single complete model pre-training takes about 7 days on a DGX-2 machine with 16 V-100 GPUs. 
+%More experimental settings could be found in Appendix \ref{sec:appendix}.
+
+%Figure~\ref{fig:conv} reports the training curve of the pre-trained {\ModelName\textsubscript{base}} on the MNLI  and SQuAD v2.0 development set. We first observe that {\ModelName\textsubscript{base}} outperforms across all the baseline systems with a large margin, where the detailed results are reported in Table~\ref{tab:base-dev}. Interestingly, {\ModelName\textsubscript{base}} is more efficient for the pre-training comparing with other baseline models. For example, {\ModelName\textsubscript{base}} reached the same performance as RoBERTa\textsubscript{base} on the MNLI development set by using only 30\% of training and BERT\textsubscript{base} by using around 35\%, demonstrating the efficiency of {\ModelName}. With more updates, the gap between {\ModelName} and these baseline models, e.g. BERT\textsubscript{base}, are even larger. We also have the similar observations on SQuAD v1.1, as shown in Figure~\ref{fig:conv} (b). 
+% \begin{table*}[htb!]
+%     \centering
+%     \begin{tabular}{l| c@{\hskip2pt}| @{\hskip2pt}c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}|c@{\hskip2pt}}
+%         \toprule
+%         \multirow{2}{*}{\bf Model} & {CoLA} &{QQP} &{MNLI-m/mm} &SST-2 &STS-B&QNLI&RTE&MRPC\\ 
+%         & Mcc & F1/Acc & Acc & Acc & Acc&Acc&Acc&Acc\\
+%         \midrule
+%         BERT$_{large}$ &60.6 &91.3  & 86.6/- & 93.2 &90.0&92.3&70.4&88.0 \\ \hline
+%         RoBERTa$_{large}$ & 68.0 & 92.2  & 90.2/90.2 & 96.4 &92.4&93.9&86.6&90.9 \\ \hline
+% %        XLNet$_{large}$ & 95.1/89.7 & 90.6/87.9  & 90.8/90.8 & 97.0 &85.4\\ \hline
+%         {\ModelName}$_{large}$ &\textbf{69.5} & \textbf{92.3} & \textbf{91.1/91.1} & \textbf{96.5} & 92.3 &\textbf{95.3} &\textbf{92.1}& \textbf{92.5}\\
+%         \bottomrule
+%         \end{tabular}
+%     \caption{
+%     Comparison results on the GLUE development set. 
+%     }
+%     \label{tab:glue}
+% \end{table*}
+
+
+%\subsubsection{Effectiveness}
+%\label{subsec:eff}
+%In order to evaluate the effectiveness of {\ModelName}, we compare it with a list of state-of-the-art pre-trained models including BERT \cite{devlin2018bert}, RoBERTa \cite{liu2019roberta}, XLNet \cite{yang2019xlnet}, and Megatron \cite{shoeybi2019megatron} on various representative benchmarks. They are SQuAD v1.1 \cite{squad1}, SQuAD v2.0 \cite{squad2}, MNLI \cite{mnli2018} from GLUE \cite{wang2018glue}, RACE \cite{lai2017race}, ReCoRD \cite{zhang2018record}, SWAG \cite{zellers2018swag} and NER \cite{ontonotes5}, covering a wide range NLU tasks including Machine Reading Comprehension (MRC), Natural Language Inference (NLI), Sequence Tagging (e.g. NER) etc.  The baseline models mainly include: \xiaodl{@pengcheng, would you check the data size?}
+%\begin{itemize}
+%    \item BERT\textsubscript{large} is the public released BERT large model from \cite{devlin2018bert}, trained on Wikipedia and BookCorpus (16G).
+%    \item RoBERTa\textsubscript{large} is the public released RoBERTa large model trained on even large raw text with additional CC-Stories, RealNews and OpenWebtext (160G in total).
+%    \item XLNet\textsubscript{large} is the public released XLNet large model trained on Wikipedia, BookCorpus, Giga 5, ClueWeb 2012-B and Common Crawl (158G in total).
+%    \item Megatron\textsubscript{336M}, Megatron\textsubscript{1.3B} and Megatron\textsubscript{3.9B} are also trained the same dataset of RoBERTa\textsubscript{large} with different model sizes. Note that Megatron\textsubscript{336M} has the similar model size with other's in this list. Moreover, it prevoides two much larger models which have 1.3B (Megatron\textsubscript{1.3B})  and 3.9B (Megatron\textsubscript{3.9B}) parameters, respectively \footnote{Although T5 \cite{raffel2019t5} has more parameters (11B), it only reports the test results and it is not comparable with other models.}. 
+%    \item {\ModelName\textsubscript{large}} is the proposed model used all training dataset as RoBERTa except CC-news (76G), resulting 80G raw text in total.
+%\end{itemize}
+%Table~\ref{tab:large} compares these four pre-trained models on seven NLU benchmarks which are in the same scale (around 330M parameters), and additional two extreme large models: Megatron\textsubscript{1.3B} and Megatron\textsubscript{3.9B}. {\ModelName\textsubscript{large}} consistently outperforms these four pre-trained models which are in the same scale of the model size across all the representative NLU benchmarks. For instance, on MNLI-m (the in-domain setting) {\ModelName\textsubscript{large}} gains 4.5\% over BERT\textsubscript{large},  0.3\% over XLNet\textsubscript{large}, 0.9\% over RoBERTa\textsubscript{large} and 0.4\% over \textsubscript{Megatron}, demonstrating the effectiveness of the proposed model. Furthermore, even comparing with the extreme large models: Megatron\textsubscript{1.9B} which has 1.3 billion parameters and Megatron\textsubscript{3.9B} which has as much as 3.9 billion parameters, {\ModelName\textsubscript{large}} still obtains a competitive result. This is rather remarkable by contrast these pre-trained baseline models which used more training data, e.g. 160G by RoBERTa\textsubscript{large} v.s. 80G by {\ModelName\textsubscript{large}}. We believe that with more training data and a larger model size, {\ModelName\textsubscript{large}} would obtain even better performance. Due to limit the computational resources, we will leave this as future work.
+% To make a fair comparison with state of the art BERT-like models, e.g. BERT\cite{devlin2018bert}, RoBERTa \cite{liu2019roberta}, XLNet \cite{yang2019xlnet}, we train our base model with Wikidata+BookCorpus with a total of 16GB data. We compare the performance on dev set of MNLI, SQUAD v1, SQUADv2, SST-2.
+% \subsection{Convergence Analysis}
+% The MNLI task is a well known task to evaluate the performance of representation learning.
+% We run MNLI task at checkpoints of every 10k steps with base model to evaluate the convergence performance of our model.
+
+% \section{Analysis}
+% In this section, we have a detailed analysis of {\ModelName} verifying the effectiveness of each proposed component. Then, we will show how to handle with long sequence inputs (e.g., more than 512 tokens) which are quite common in Machine Reading Comprehension (MRC), e.g. RACE.
+\subsubsection{Ablation study}
+\label{subsec:abs}
+%Here, we study the importance of each proposed component of {\ModelName} on four NLU tasks. Due to the limitation of time and computational resources, all the analysis is based on the base model which has 125M parameters. For a fair comparison, all the models are trained on Wikipedia and BookCorpus:
+%Before we perform any ablation study, we want to ensure that there are minimal side effects impacting the credibility of the experimental results. For this purpose, 
+To verify our experimental setting, we pre-train the RoBERTa base model from scratch.  
+%following {\ModelName}\textsubscript{base}. 
+The re-pre-trained RoBERTa model is denoted as RoBERTa-ReImp\textsubscript{base}. 
+%and treat it as a fair baseline for {\ModelName}. 
+To investigate the relative contributions of different components in {\ModelName}, we develop three variations:
+%of the original {\ModelName} model, i.e.:
+\begin{itemize}
+%    \item RoBERTa\textsubscript{base} is a RoBERTa base model from \cite{liu2019roberta}.
+%    \item RoBERTa-ReImp\textsubscript{base} is our re-implemented model with additional span masking \cite{joshi2019spanbert}. Note that all our models are built upon this implementation.
+%    \item {\ModelName\textsubscript{base}} is the proposed {\ModelName} base model.
+    \item {-\DecoderName} is the {\ModelName} base model without \DecoderName.
+    \item {-C2P} is the  {\ModelName} base model without the content-to-position term ((c) in Eq.~\ref{dis-att}).
+    \item {-P2C} is the {\ModelName} base model without the position-to-content term ((b) in Eq.~\ref{dis-att}). As XLNet also uses the relative position bias, this model is close to XLNet plus \DecoderName.
+\end{itemize}
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip1pt}l| c| cc|c@{\hskip1pt}}
+        \toprule
+        \multirow{2}{*}{\bf Model} &{MNLI-m/mm}& {SQuAD v1.1} &{SQuAD v2.0} &RACE\\ 
+         & { Acc}& F1/EM & F1/EM  & Acc\\
+        \midrule
+        BERT$_{base}$ \cite{devlin2018bert} & 84.3/84.7 & 88.5/81.0 &76.3/73.7   & 65.0 \\ %\hline        
+        RoBERTa$_{base}$ \cite{liu2019roberta} & 84.7/- & 90.6/- &79.7/-   & 65.6\\ %\hline
+        XLNet$_{base}$ \cite{yang2019xlnet}& 85.8/85.4 & -/- & 81.3/78.5  & 66.7\\ \hline
+        RoBERTa-ReImp$_{base}$ & 84.9/85.1 & 91.1/84.8 &79.5/76.0   & 66.8\\ \hline %base+MK+SPAN
+        {\ModelName}$_{base}$ & \textbf{86.3/86.2} &\textbf{92.1/86.1} & \textbf{82.5/79.3}  &\textbf{ 71.7}\\
+        -EMD & 86.1/86.1& 91.8/85.8 &81.3/78.0   & 70.3\\ %C2P+P2C+SPAN+MK
+        -C2P  & 85.9/85.7 & 91.6/85.8 &81.3/78.3   & 69.3\\ % P2C+SPAN+MK+MSD
+        -P2C  & 86.0/85.8 & 91.7/85.7 &80.8/77.6   & 69.6\\ % C2P+SPAN+MK+MSD
+        -(EMD+C2P) & 85.8/85.9 & 91.5/85.3 &80.3/77.2   & 68.1\\ % SPAN+MK        
+        -(EMD+P2C)  & 85.8/85.8& 91.3/85.1 &80.2/77.1    & 68.5\\ % C2P+SPAN+MK
+        \bottomrule
+        \end{tabular}
+    \caption{
+    Ablation study of the DeBERTa base model.
+    }
+    \label{tab:ablation}
+    %\vspace{-3mm}
+\end{table*}
+%Note that all the models are pre-trained on Wikipedia and BookCorpus for a fair comparison and other training setting is the same as BERT base.
+Table~\ref{tab:ablation} summarizes the results on four benchmark datasets. 
+%The re-implemented RoBERTa-ReImp\textsubscript{base} obtains the similar performance with the RoBERTa\textsubscript{base} in literature across all the four NLU tasks indicating a fairness of comparison. 
+First, RoBERTa-ReImp performs similarly to RoBERTa across all  benchmark datasets, verfiying that our setting is reasonable. 
+%Thus, we can confidently treat RoBERTa-ReImp as a solid baseline for comparison.
+%for {\ModelName}\textsubscript{base}. 
+% This also makes following comparison more truthful. 
+Second, we see that removing any one component in {\ModelName} results in a sheer performance drop. 
+For instance, removing EMD (-EMD) results in a loss of 1.4\% (71.7\% vs. 70.3\%) on RACE, 0.3\% (92.1\% vs. 91.8\%) on SQuAD v1.1, 1.2\% (82.5\% vs. 81.3\%) on SQuAD v2.0, 0.2\% (86.3\% vs. 86.1\%) and 0.1\% (86.2\% vs. 86.1\%) on MNLI-m/mm, respectively. 
+Similarly, removing either \textit{content-to-position} or  \textit{position-to-content} leads to inferior performance in all the benchmarks.
+As expected, removing two components results in even more substantial loss in performance. 
+%the disentangled attention, i.e., (b) in Eq\ref{dis-att} (i.e., -${C2P}$), lead to another drop of 3.5\% (70.3\% vs 66.8\%) on RACE, 1.2\% and 1.0\% on MNLI-m/mm, respectively, comparing with -${\DecoderName}$. 
+
+% This clearly implies the importance and contributions of all the components in {\ModelName}. 
+
+%We th to subtract a combination of two components and present their united impacts in the last two rows. It is clear that any of the united removal 
+%As expected, removing two components results in more significant performance deterioration. 
+%although all the results are still better than the baseline RoBERTa-ReImp\textsubscript{base}. 
+%This indicates that using either ${C2P}$ (corresponding to $-{\{EMD + P2C\}}$) or ${P2C}$  (corresponding to $-{\{EMD + C2P\}}$) is already significantly better than the simplified embedding summation method adopted by RoBERTa-ReImp\textsubscript{base}. 
+%This evidently endorses the superior and more thorough approach of characterizing the position bias in the {\ModelName} model. 
+
+
+% \begin{figure}[htb!]
+% \centering 
+% \includegraphics[width=1\linewidth]{figures/attention_map_02_v3_1.png}
+% \caption{Comparison  of attention patterns of the last layer among DeBERTa, RoBERTa and  DeBERTa variants (i.e. DeBERTa without EMD, C2P and P2C respectively). }
+% \label{fig:att-map}
+% %\vspace{-3mm}
+% \end{figure}
+% \subsubsection{Attention Patterns}
+% To understand why DeBERTa performs differently from RoBERTa, we present their attention patterns in the last self-attention layer in Figure~\ref{fig:att-map}, where
+% we also depict the attention patterns of the three DeBERTa variants %RoBERTa\textsubscript{base}, {\ModelName}\textsubscript{base} and its three variants 
+% for comparison. 
+% %We also compare the attention patterns of {\ModelName} and RoBERTa.  As shown in 
+% Comparing RoBERTa with {\ModelName}, we observe two obvious differences. 
+% First, RoBERTa has a clear diagonal line effect for a token to attend to itself, which is not observed in {\ModelName}. 
+% This could be attributed to the use of EMD, in which the vectors of the masked but unchanged tokens are replaced with their position embeddings.
+% %rather than the original content embedding. 
+% % Another similar observation comes from 
+% This seems to be verified by examining the attention pattern of DeBERTa-EMD, where the diagonal line effect is 
+% %more brilliant 
+% brighter than the original {\ModelName}. 
+% Second, there are vertical strips in the attention patterns of RoBERTa, which are mainly caused by high-frequent functional tokens (e.g., ``a'', ``the'', or punctuation). 
+% For {\ModelName}, the strip appears in the first column, which represents the \texttt{[CLS]} token. 
+% We conjecture that a dominant emphasis on the \texttt{[CLS]} token is desirable for a good pre-trained model since the vector of this token is often used as a contextual representation of the entire input sequence in downstream tasks. 
+% %On the other hand, if we look at the patterns the three RoBERTa variants, 
+% We also observe that the vertical strip effect is quite obvious in the patterns of the three {\ModelName} variants. 
+
+
+%This also reflects the necessity of combining all the components in the original {\ModelName} model. 
+
+%the attention of each token in DeBERta focuses much less on itself but more on $[CLS]$ token, which may indicate that {\ModelName} can gather global information faster. Moreover, context strips pattern, which are mainly caused by frequent functional tokens (e.g., a, the), is much weaker in {\ModelName} than RoBERTa showing that {\ModelName} is more efficient to focus on informative tokens and it explains why {\ModelName} is more efficient in training as in subsection~\ref{subse:eff}. 
+%The attention patterns from more examples are shown in Appendix~\ref{subsec:attention}.
+%%%%%%%%%%%%%%%
+% move to appendix
+%%%%%%%%%%%%%%%
+% \subsubsection{Pre-training Efficiency}
+% \label{subse:eff}
+% To investigate the efficiency of model pre-training, we plot the performance of the fine-tuned model on downstream tasks 
+% as a function of the number of pre-training steps. 
+% As shown in Figure~\ref{fig:conv}, for RoBERTa-ReImp$_{base}$ and {\ModelName}$_{base}$, we dump a checkpoint every 150K pre-training steps, and then fine-tune the checkpoint on two representative downstream tasks, MNLI and SQuAD v2.0, and then report the accuracy and F1 score, respectively.  
+% As a reference, we also report the final model performance of both the original RoBERTa$_{base}$~\citep{liu2019roberta} and XLNet$_{base}$~\citep{yang2019xlnet}. 
+% % and plot them as flat dot lines.  
+% The results show that {\ModelName}$_{base}$ consistently outperforms RoBERTa-ReImp$_{base}$ during the course of pre-training.
+% \begin{figure}[htb!]
+% \centering  
+% \subfloat[Results on MNLI development]{
+% \includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v3.png}
+% %\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+
+% }
+% \hfill
+% %\subfigure[Results on SQuAD v2.0 development]{\includegraphics[width=0.49\linewidth]{figures/deberta_squad_v2.png}}
+% \subfloat[Results on SQuAD v2.0 development]{\includegraphics[width=0.49\linewidth]{figures/deberta_squad_v3.png}}
+% 	\caption{Pre-training performance curve between {\ModelName} and its counterparts on the MNLI and SQuAD v2.0 development set.}
+% \label{fig:conv}
+% \end{figure}
+
+%%%%%%%%%%%%%%%%%
+% end
+%%%%%%%%%%%%%%%%%
+
+%, and converges faster.
+%to the performance of RoBERTa. 
+%Interestingly, during the whole training, {\ModelName} always this gap between 
+
+%Another important property of pre-training a model is its convergence speed to demonstrate how fast the downstream tasks can reach a reasonable accuracy after fine-tuning on it. On other hand, although the final {\ModelName} model is significantly better than the final RoBERTa model in various downstream tasks, an under-explored problem is whether these improvements are consistent during the entire training process, or some model will saturate quickly in early training stage.  For this purpose, we dump a model check point for each 100K pre-training steps in both RoBERTa-ReImp\textsubscript{base} and {\ModelName}\textsubscript{base}, and fine-tune them on two benchmark datasets: MNLI and SQuAD V2. We plot the training curve in Figure~\ref{fig:conv}. 
+%we dump the model checkpoint and fine-tune it for a downstream task. We plot the performance curve of the downstream tasks during the entire pre-training process in Figure~\ref{fig:conv}
+
+%To further understand the advantage in {\ModelName}, we study the pre-training efficiency of the {\ModelName}\textsubscript{base}, comparing it with its counterpart model RoBERTa\textsubscript{base} . We train both {\ModelName}\textsubscript{base} and RoBERTa\textsubscript{base} from scratch using the same data and settings. To distinguish it with the original RoBERTa\textsubscript{base} model, we name this new RoBERTa model produced by our pre-training RoBERTa-ReImp\textsubscript{base}. For each 100K pre-training steps, we dump the model checkpoint and fine-tune it for a downstream task. We plot the performance curve of the downstream tasks during the entire pre-training process in Figure~\ref{fig:conv}.
+
+%In this section, we investigate the efficiency of {\ModelName} comparing with a list of state-of-the-art pre-trained model including BERT \cite{devlin2018bert}, RoBERTa \cite{liu2019roberta} and XLNet \cite{yang2019xlnet}. In order to have a fair comparison, we train the {\ModelName\textsubscript{base}} model by using the standard pre-training datasets, which include Wikipedia and BookCorpus. The total size of text is 16GB. Then we compare the performance of pre-trained models in various representative downstream tasks, such as MNLI \cite{mnli2018} in GLUE and SQuAD v1.1 \cite{squad1}. The detailed description for the baseline models trained the same Wikpipedia and BookCorpus are introduced as follows:
+%\begin{itemize}
+%    \item \textbf{BERT\textsubscript{base}} is the standard BERT base model trained using the same settings as \cite{devlin2018bert}.
+%    \item \textbf{RoBERTa\textsubscript{base}} is a RoBERTa base model \cite{liu2019roberta} trained on the same data as BERT.    
+%    \item \textbf{RoBERTa-ReImp\textsubscript{base}} is a RoBERTa base model \cite{liu2019roberta} and we re-trained it using the exact the same setting of {\ModelName\textsubscript{base}}.
+%    \item \textbf{XLNet\textsubscript{base}} is a XLNet base model from \cite{yang2019xlnet}.   
+%    \item \textbf{\ModelName\textsubscript{base}} is our proposed model.   
+%\end{itemize}
+
+% \begin{figure}[h]
+%     \centering
+%   \includegraphics[width=1\textwidth,keepaspectratio,clip,trim=1.9cm 9.3cm 1.9cm 9.3cm]{figures/MNLI_Acc.pdf}
+% %     \includegraphics[width=1\textwidth,keepaspectratio,clip, trim=1mm 1mm 1mm 1mm]{figures/mnli_acc}
+% %    \includegraphics[width=1\textwidth,keepaspectratio,clip, trim=1mm 1mm 1mm 1mm]{figures/MNLI_Acc.svg}
+%     %\caption{DeBERTa base model performance on MNLI}
+%     \caption{Comparison of {\ModelName} with other state-of-the-art pre-trained models: BERT, RoBERTa and XLNet, on the MNLI development set.}
+%     \label{fig:conv}
+% \end{figure}
+
+%Our RoBERTa-ReImp\textsubscript{base} can converge to a similar point as the RoBERTa\textsubscript{base} in both datasets, indicating a fair comparison. Using MNLI in Figure~\ref{fig:conv}.a as example, {\ModelName} consistently outruns RoBERTa-ReImp\textsubscript{base} with a large margin. Remarkably, {\ModelName}\textsubscript{base} only needs 250K steps to reach the same performance of RoBERTa\textsubscript{base} trained by 1M steps. After 350K steps, {\ModelName}\textsubscript{base} surpasses the performance of XLNet\textsubscript{base} trained with 1M steps. The trend on the SQuAD V2.0 dataset is similar, as plotted in Figure~\ref{fig:conv} (b). All these show the extraordinary training efficiency of the {\ModelName} model.  
+
+% \subsubsection{Attention patterns}
+% To better understanding the effect of our two changes to the transformer structure, we visualize and compare the attention patterns of DeBERTa and RoBERTa. We found two obvious differences,
+% \begin{itemize}
+%     \item Self-exclusion pattern. Unlike RoBERTa, attention weight at the diagonal of DeBERTa is very small which is similar to \cite{yang2019xlnet}. We think this pattern is due to our modification on the MLM objective for unchanged tokens which encourage the model to leverage global context to decode the tokens instead of itself. 
+%     \item Content strips. While RoBERTa has obvious strips patterns which are often at some functional tokens, most of the attention weight in DeBERTa are distributed at the $[CLS]$ token and diagonal. This means DeBERTa are better at building contextual encoding via $[CLS]$ tokens which is often used in downstreaming NLU tasks.
+% \end{itemize}
+
+% Further by comparing the attention patterns of DeBERTa with different components, we found the self-exclusion pattern are due to the introduce of our modification on MLM. The content strips pattern will occur if we remove any of the components, e.g. $P2C$, $C2P$, $\DecoderName$, this demostrates that our combination of these three components works together to improve the contextual representation built upon $[CLS]$ tokens which improves the performance on downstreaming NLU tasks as a result.
+
+% \begin{figure}[htb!]
+% \centering 
+% \subfigure[]{
+% \includegraphics[width=0.99\linewidth]{figures/attention_map_02.png}
+% %\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+% }
+% \vfill
+% \subfigure[]{
+% \includegraphics[width=0.99\linewidth]{figures/attention_map_03.png}
+% %\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+% }
+% \vfill
+% \subfigure[]{
+% \includegraphics[width=0.99\linewidth]{figures/attention_map_04.png}
+% %\includegraphics[width=0.49\linewidth]{figures/deberta_mnli_v2.png}
+% }
+% \label{fig:att-01}
+% \caption{Comparison of DeBERTa and RoBERTa on the attention map of last layer  }
+% \end{figure}
+
+% \begin{figure}[htb!]
+% \centering 
+% \includegraphics[width=0.99\linewidth]{figures/attention_map_05.png}
+% \label{fig:att}
+% \caption{Comparison the attention map of last layer of DeBERTa with different components  }
+% \end{figure}
+
+% \begin{figure}[htb!]
+% \centering 
+% \includegraphics[width=0.99\linewidth]{figures/attention_map_06.png}
+% \label{fig:att}
+% \caption{Comparison the attention map of last layer of DeBERTa with different components  }
+% \end{figure}
+
+% \begin{figure}[htb!]
+% \centering 
+% \includegraphics[width=0.99\linewidth]{figures/attention_map_07.png}
+% \label{fig:att}
+% \caption{Comparison the attention map of last layer of DeBERTa with different components.}
+% \end{figure}
+
+\subsection{Scale up to 1.5 billion parameters}
+Larger pre-trained models have shown better generalization results \citep{raffel2019t5,brown2020language, shoeybi2019megatron}. 
+Thus, we have built a larger version of DeBERTa with 1.5 billion parameters, denoted as DeBERTa$_{1.5B}$.
+The model consists of 48 layers with a hidden size of 1,536 and 24 attention heads
+\footnote{See Table~\ref{tbl:hyper-pre-train} in Appendix for the model hyperparameters.}.
+DeBERTa$_{1.5B}$ is trained on a pre-training dataset amounting to 160G, similar to that in~\cite{liu2019roberta}, with a new vocabulary of size 128K constructed using the dataset.
+% More details of the hyperparameters are provided in Table~ \ref{tbl:hyper-pre-train}.
+%, and was trained using 160G data with a rebuilt vocabulary size of 128k \citep{liu2019roberta}. The detailed configuration of each model is specified in Table~\ref{tbl:hyper-pre-train}. In order to save the GPU memory, the projection matrices of relative position embedding $W_{k,r},W_{q,r}$ with $W_{k,c},W_{q,c}$ are shared in all attention layers. At last, a convolution layer is added aside with the first transformer layer to induce n-gram knowledge of sub-word encodings and the outputs are summed up to feed to next transformer layer. 
+ 
+To train DeBERTa$_{1.5B}$, we optimize the model architecture as follows. 
+First, we share the projection matrices of relative position embedding $W_{k,r},W_{q,r}$ with $W_{k,c},W_{q,c}$, respectively, in all attention layers to reduce the number of model parameters. Our ablation study in Table \ref{tab:v2} on base models shows that the projection matrix sharing reduces the model size while retaining the model performance.
+%Second, 
+%instead of using 78G data in our large and base model, the DeBERTa\textsubscript{1.5B} model is trained with. 
+%we increase the size of the pre-training dataset to 160G, similar to that in \citep{liu2019roberta}, with a new vocabulary of size 128K constructed using the dataset. 
+Second, a convolution layer is added aside the first Transformer layer to induce n-gram knowledge of sub-word encodings and their outputs are summed up before feeding to the next Transformer layer~\footnote{Please refer to Table~\ref{tab:xxlarge} in Appendix \ref{subsec:scale} for the ablation study of different model sizes, and Table \ref{tab:v2} in Appendix \ref{subsec:scale} for the ablation study of new modifications.}.
+
+%We also use a new virtual adversarial training algorithm, Scale-Invariant-Fine-Tuning (SiFT), a variant to the algorithm described in~\cite{miyato2018vat,jiang2019smart}, for fine-tuning.
+%SiFT is intended to improve model’s generalization using adversarial examples created by making small perturbations to the input. 
+%When fine-tuning DeBERTa to a downstream NLU task, the model is regularized so that given a task-specific example the model produces the same output distribution as it produces on an adversarial perturbation of that example. 
+%SiFT is derived from \citep{miyato2018vat,jiang2019smart}.
+%Unlike existing adversarial training methods that apply perturbations directly on the embeddings of input words, 
+%SiFT adds a normalization layer right before the perturbation layer such that
+%SiFT first normalizes the word embedding vectors into stochastic vectors, and then applies the perturbation to the normalized embedding vectors. 
+%We find that the normalization substantially improves the performance of the fine-tuned models in our experiments. 
+%We leave a comprehensive study of SiFT to future work.
+% substantially gain over baseline fine-tuning, it needs further study on more datasets to come to a  clear conclusion. We will leave it in our future exploration.
+
+Table~\ref{tab:superglue} reports the test results of SuperGLUE \citep{wang2019superglue} which is one of the most popular NLU benchmarks. 
+% of general language understanding 
+SuperGLUE consists of a wide of NLU tasks, including  
+Question Answering \citep{clark2019boolq, khashabi2018multirc, zhang2018record}, 
+Natural Language Inference \citep{rte1,rte2,rte3, rte5}, Word Sense Disambiguation \citep{pilehvar2019wic}, and Reasoning \citep{levesque2011winograd,roemmele2011choice}. 
+Since its release in 2019, top research teams around the world have been developing large-scale PLMs that have driven striking performance improvement on SuperGLUE. 
+
+The significant performance boost due to scaling DeBERTa to a larger model makes the single DeBERTa$_{1.5B}$ surpass the human performance on SuperGLUE for the first time in terms of macro-average score (89.9 versus 89.8) as of December 29, 2020, and the ensemble DeBERTa model (DeBERTa$_{Ensemble}$) sits atop the SuperGLUE benchmark rankings as of January 6, 2021, outperforming the human baseline by a decent margin (90.3 versus 89.8). 
+Compared to T5, which consists of 11 billion parameters, the 1.5-billion-parameter DeBERTa is much more energy efficient to train and maintain, and it is easier to compress and deploy to apps of various settings.
+
+%Compared to the pre-trained T5 11 billion parameters, DeBERTa\textsubscript{1.5B} outperforms the T5 model, which is the SOTA model containing 11 billion parameters, by 0.6 SuperGLUE score (89.9 vs. 89.3). 
+%More importantly, our 
+% DeBERTa\textsubscript{1.5B} also surpasses the human performance in overall score (89.9 vs. 89.8) for the first time as of December 29, 2020. 
+
+%Since larger models usually achieve a better performance \citep{raffel2019t5,brown2020language, shoeybi2019megatron}, we scale up the DeBERTa model to XXLarge size with 1.5 billion parameters. Besides the increase of model size, we introduced several improvements to the model structure. 
+%to further improve the model efficiency. 
+%First, we share projection matrix of relative position embedding $W_{k,r},W_{q,r}$ with $W_{k,c},W_{q,c}$ in all attention layers to save model parameters. Our ablation study on the base-size 12-layer model shows by sharing the projection matrix, the model performance almost keep the same.
+%Second, 
+%instead of using 78G data in our large and base model, the XXLarge model is trained with 
+%we increase the pre-training data to 160G data, similar size as \citep{liu2019roberta}, with a new vocabulary of 128K  built from this new data. Third, a convolution layer is added aside with the first transformer layer to induce n-gram knowledge of sub-word encodings and the outputs are summed up to feed to next transformer layer. The model is trained with the same hyper parameters as our large model in Table \ref{tbl:hyper-pre-train}. 
+\begin{table*}[htb!]
+    \centering
+    \begin{tabular}{@{\hskip2pt}l@{\hskip2pt}|@{\hskip2pt} @{\hskip1pt}c@{\hskip1pt}|@{\hskip2pt}c@{\hskip1pt}|@{\hskip2pt}c@{\hskip1pt}|c@{\hskip1pt}|c@{\hskip1pt}|c@{\hskip1pt}|c@{\hskip1pt}|c@{\hskip1pt}|@{\hskip2pt}c@{\hskip1pt}}
+        \toprule
+        \multirow{2}{*}{\bf Model} & BoolQ &CB&COPA&MultiRC&ReCoRD&RTE&WiC&WSC& Average\\ 
+         & Acc & F1/Acc & Acc &F1a/EM&F1/EM&Acc&Acc&Acc& Score\\
+        \midrule
+%%        DeBERTa$_{1.5B}$  &90.3  & 98.3/98.6 & 97 &89.1/66.3&93.9/93.7&94.5&76.8 &96.1&- \\ 
+%%        DeBERTa$_{1.5B}$+SiFT  &90.9  & 98.6/98.8 & 98 &89.6/66.7&94.5/94.1&95.0&77.1 &96.6&- \\ 
+        RoBERTa\textsubscript{large} & 87.1  & 90.5/95.2 & 90.6 &84.4/52.5&90.6/90.0&88.2&69.9 &89.0 &84.6\\  \hline
+        NEXHA-Plus                  & 87.8  & 94.4/96.0 & 93.6 &84.6/55.1&90.1/89.6&89.1&74.6 &93.2 &86.7\\  \hline
+        T5$_{11B}$ &91.2  & 93.9/96.8 & 94.8 &88.1/63.3&94.1/93.4&92.5&76.9 &93.8 &89.3\\ 
+        \hline
+        T5$_{11B}$+Meena &\textbf{91.3}  & \textbf{95.8/97.6} & 97.4 &88.3/63.0&94.2/93.5&92.7&\textbf{77.9} &95.9 &90.2\\ 
+        \hline \hline
+        Human  &89.0 & 95.8/98.9 & 100.0 &81.8/51.9&91.7/91.3&93.6&80.0 &100.0 &89.8\\  \hline \hline
+        DeBERTa$_{1.5B}$+SiFT &90.4  & 94.9/97.2 & 96.8&\textbf{88.2/63.7}&\textbf{94.5/94.1}&\textbf{93.2}&76.4 &	\textbf{95.9} & 89.9\\  
+        DeBERTa$_{Ensemble}$ &90.4  & 95.7/97.6 & \textbf{98.4}&88.2/63.7&94.5/94.1&93.2&77.5 &	95.9 & \textbf{90.3}\\
+        \bottomrule
+        \end{tabular}
+    \caption{
+    %Comparison results on the SuperGLUE(The top half of the table is the results on the development set and the bottom half of the table is the results on the testset.) 
+    SuperGLUE test set results scored using the SuperGLUE evaluation server. All the results are obtained from \href{https://super.gluebenchmark.com}{https://super.gluebenchmark.com} on January 6, 2021.
+    }
+    \label{tab:superglue}
+    
+\end{table*}
+%Based on the 1.5B pre-trained DeBERTa model, during the fine-tuning stage, we introduce a new adversarial training algorithm, called Scale-Invariant-Fine-Tuning(SiFT). The SiFT algorithm is derived from \citep{miyato2018vat,jiang2019smart}. Unlike existing adversarial training on NLP tasks which apply perturbation directly on the embedding space, SiFT adds a normalization layer right before of the perturbation layer , so thus the perturbation is applied on an uniform embedding space. Although the SiFT algorithm shows substantially gain over plain fine-tuning, it needs further study on more datasets to come to a  clear conclusion. We will leave it in our future exploration.
+%To evaluate DeBERTa$_{1.5B}$ on downstream tasks, we run fine-tuning experiments on SuperGLUE benchmark \citep{roemmele2011choice,khashabi2018looking,zhang2018record,dagan2006pascal,bar2006second,giampiccolo2007third,bentivogli2009fifth,pilehvar2018wic,rudinger2018winogender,poliak2018dnc,levesque2011winograd}.

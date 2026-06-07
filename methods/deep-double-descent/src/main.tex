@@ -1,0 +1,154 @@
+
+\documentclass{article} % For LaTeX2e
+\usepackage[table]{xcolor}
+\usepackage{ifthen, xkeyval, tikz, calc}
+
+\usepackage{iclr2020_conference,times}
+
+% Optional math commands from https://github.com/goodfeli/dlbook_notation.
+
+\input{math_commands.tex}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{graphicx}
+% \usepackage{svg}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{style}
+\usepackage{tikz}
+\usepackage{lipsum}
+\usepackage{booktabs}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily,
+  columns=fullflexible,
+  frame=single,
+  breaklines=true,
+  postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space},
+}
+\usepackage{pifont}% http://ctan.org/pkg/pifont
+\newcommand{\cmark}{\checkmark}%
+\newcommand{\xmark}{\ding{55}}%
+
+
+\graphicspath{{./figures/}}
+%\graphicspath{{./tmp_figures/}}
+
+% \let\marginpar\oldmarginpar
+\setlength{\marginparwidth}{5cm}
+% \newcommand{\Bnote}[1]{\textbf{[Boaz: #1]}}
+\usepackage{xargs}                      % Use more than one optional parameter in a new commands
+\usepackage[colorinlistoftodos,prependcaption, textwidth=3cm]{todonotes}
+
+
+\newcommandx{\gal}[2][1=]{\todo[linecolor=red, backgroundcolor=red!25,bordercolor=red,#1]{#2}}
+\newcommandx{\yamini}[2][1=]{\todo[linecolor=green, backgroundcolor=green!25,bordercolor=green,#1]{#2}}
+\newcommandx{\Bnote}[2][1=]{\todo[noprepend, linecolor=orange,backgroundcolor=orange!25,bordercolor=orange,#1]{#2}}
+
+%% Notes off via the below:
+% \newcommandx{\gal}[2][1=]{}
+% \newcommandx{\yamini}[2][1=]{}
+% \newcommandx{\Bnote}[2][1=]{}
+
+\newcommand\iwslt{IWSLT`14}
+
+\newcommand{\AdamTxt}{
+Optimized using Adam with learning rate $0.0001$ for 4K epochs, and data-augmentation.
+}
+
+\newcommand{\SGDTxt}{Optimized using SGD for 500K steps.}
+\newtheorem{hypothesis}{Hypothesis}
+
+
+
+\title{
+Deep Double Descent:\\
+Where Bigger Models and More Data Hurt
+}
+
+% Authors must not appear in the submitted version. They should be hidden
+% as long as the \iclrfinalcopy macro remains commented out below.
+% Non-anonymous submissions will be rejected without review.
+
+\author{Preetum Nakkiran\thanks{Work performed in part while Preetum Nakkiran was interning at OpenAI, with Ilya Sutskever.
+We especially thank Mikhail Belkin and Christopher Olah for helpful discussions throughout
+this work.
+Correspondence Email: \texttt{preetum@cs.harvard.edu}}
+\\Harvard University \And
+Gal Kaplun\thanks{Equal contribution}\\Harvard University
+\And
+Yamini Bansal\footnotemark[2]\\Harvard University
+\And Tristan Yang \\Harvard University \And
+Boaz Barak \\Harvard University
+% \thanks{ Use footnote for providing further information
+% about author (webpage, alternative address)---\emph{not} for acknowledging
+% funding agencies.  Funding acknowledgements go at the end of the paper.} \\
+\And
+\hspace{-1.9in}Ilya Sutskever\\
+\hspace{-1.9in}OpenAI
+%\texttt{ilyasu@openai.com}
+}
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to \LaTeX{} to determine where to break
+% the lines. Using \AND forces a linebreak at that point. So, if \LaTeX{}
+% puts 3 of 4 authors names on the first line, and the last on the second
+% line, try using \AND instead of \And before the third author name.
+
+\newcommand{\fix}{\marginpar{FIX}}
+\newcommand{\new}{\marginpar{NEW}}
+
+\iclrfinalcopy % Uncomment for camera-ready version, but NOT for submission.
+\listfiles
+\begin{document}
+
+
+\maketitle
+\vspace{-0.4cm}
+\input{abstract}
+\input{intro}
+% \input{old-intro}
+
+\input{setup.tex}
+
+\input{model_dd.tex}
+
+\input{epoch_dd}
+
+\input{sample_dd}
+
+% %\input{general_dd.tex}
+
+\input{discussion.tex}
+
+
+%\input{rffs}
+\subsubsection*{Acknowledgments}
+% Use unnumbered third level headings for the acknowledgments. All
+% acknowledgments, including those to funding agencies, go at the end of the paper.
+We thank Mikhail Belkin for extremely useful discussions in the early stages of this work.
+We thank Christopher Olah for suggesting the Model Size $\x$ Epoch visualization, which led to the investigation of epoch-wise double descent,
+as well as for useful discussion and feedback.
+We also thank Alec Radford, Jacob Steinhardt, and Vaishaal Shankar for helpful discussion and suggestions.
+P.N. thanks OpenAI, the Simons Institute, and the Harvard Theory Group for a research environment that enabled this kind of work.
+
+We thank Dimitris Kalimeris, Benjamin L. Edelman, and Sharon Qian,
+and Aditya Ramesh for comments on an early draft of this work.
+
+This work supported in part by NSF grant CAREER CCF 1452961, BSF grant 2014389, NSF USICCS proposal 1540428, a Google Research award, a Facebook research award, a Simons Investigator Award,
+a Simons Investigator Fellowship,
+and NSF Awards
+CCF 1715187,
+CCF 1565264, CCF 1301976, IIS 1409097,
+and CNS 1618026. Y.B. would like to thank the MIT-IBM Watson AI Lab for contributing computational resources for experiments.
+
+\bibliography{bib}
+\bibliographystyle{iclr2020_conference}
+
+\appendix
+%\input{more_discussion.tex}
+\input{appendix}
+
+\end{document}

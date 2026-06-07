@@ -1,0 +1,387 @@
+
+\subsection{Moment Calculation of AGMs Near Manifold}\label{sec:momen-calculation}
+% In this section, we will calculate the moments after the time of convergence.
+% \xinghan{There should be some parts resembling Def I.4 in localSGD right before this section and after the proof of convergence, i.e. a 'good' sequence. This part is TBD.}
+% Let $\tau = C_0 \cdot \frac{1}{\eta} \log \frac{1}{\eta}$, then with probability \xinghan{TBA}, all steps from $\tau$ to $\tau + 3\log_{\beta_1}(\eta) + \eta^2$ are good. Then we shift the timeline: let time $0$ to represent the time $\tau + 3\log_{\beta_1}(\eta)$ in reality, time $1$ represent the time $\tau + 3\log_{\beta_1}(\eta) + 1$ in reality, and so on. Note that all proofs throughout the rest part of this section will build on the goodness of the sequence, so they actually hold with probability at least $ 1-\delta$ for any $\delta = \O(\text{poly}(\eta))$. For simplicity, we omit these conditions, but readers should keep in mind that they exist.
+
+\paragraph{Additional Notations.}
+To utilize the analysis framework in \citet{gu2023andwhendoeslocal}, we first introduce some notations needed. Consistent with \citet{gu2023andwhendoeslocal}, we pretend that AGMs proceed with $H=\frac{1}{\eta}$ local steps, as a single worker (without multiple workers). We denote every $H$ steps as one round. Next, we define a ``giant step'', which encompasses $R_\grp=\frac{1}{\eta^{\beta}}$ rounds, corresponding to $R_\grp\cdot H$ steps. We consider a total timescope of $\frac{T}{\eta^2}$ steps, which corresponds to $\frac{T}{\eta^{1-\beta}}$ giant steps. 
+
+
+% We divide the timescope into $R_{\mathrm{grp}} = \lfloor\frac{1}{\eta^\beta} \rfloor$ rounds, with $H = \O(\frac{1}{\eta})$ local steps in each round. 
+For any $0 \leq s < R_{\mathrm{grp}}$ and $0 \leq t \leq H$, we use $\hat{\vtheta_{t}}^{(s)}$ and $\hat{\vtheta}_k$ (where $k = s H + t$) exchangeably to denote the parameter we get on the $t$-th local step of round $s$, which is also the $k$-th global step. Also note that for any $0 \leq s < R_{\text{grp}}$, $\hat{\vtheta}_{H}^{(s)}$ and $\hat{\vtheta}_{0}^{(s+1)}$ refer to the same thing. We define the notation $\hat{\vv}^{(s)}_t$, $\hat{\vm}^{(s)}_t$ and $\cE^{(s)}_t$ in the same way as we did for $\vtheta$. Furthermore, we define
+\begin{align*}
+    \hat{\vg}_t^{(s)} &:= \nabla \ell_{t}^{(s)}\left(\hat{\vtheta}_{t}^{(s)}\right),\;\hat{\mS}_k = S\left(\hat{\vv}_k\right),\;\hat{\mS}_t^{(s)} := S\left(\hat{\vv}_t^{(s)}\right),\;\hat{\mS}^{(s)}:=\hat{\mS}_0^{(s)},\;
+    \hat{\vphi}^{(s)}:=\vPhi_{\hat{\mS}^{(s)}}\left(\hat{\vtheta}_{0}^{(s)}\right),\\
+    \hat{\vx}_{t}^{(s)}&:= \hat{\vtheta}_{t}^{(s)} - \hat{\vphi}^{(s)},\;\Delta \hat{\vphi}^{(s)}:= \hat{\vphi}^{(s)} - \hat{\vphi}^{(0)},\;\mSigma_0:=\mSigma(\hat{\vphi}^{(0)}),\;\mP_{\parallel}:=\partial \vPhi_{\hat{\mS}^{(0)}}(\hat{\vphi}^{(0)}),\;\mP_{\perp}:= \mI - \mP_{\parallel},\\
+    \hat{\vq}_{t}^{(s)} &:= \E\left[\hat{\vx}_{t}^{(s)}\right],\;\hat{\mA}_{t}^{(s)}:= \E\left[\hat{\vx}_{t}^{(s)} \hat{\vx}_{t}^{(s)\top}\right],\;\hat{\mB}_{t}^{(s)}:= \E\left[\hat{\vx}_{t}^{(s)} \Delta \hat{\vphi}^{(s)\top}\right].
+\end{align*}
+% We present the moment formula in general in the next lemma
+% \begin{lemma}[Lemma I.27 in \citet{gu2023and}]
+% Given $\|\vtheta^{(0)}_0 - \vphi^{(0)}\|_2 = O(\sqrt{\eta \log\frac{1}{\eta}})$, for $0 \le s < R_{\mathrm{grp}}$, the first and second moments of $\vphi^{(s+1)} - \vphi^{(s)}$ are as follows
+%     \begin{align*}
+%          \E[\vphi^{(s+1)} - \vphi^{(s)}] &= \mP_{\parallel} \vq_{H}^{(s)} +\partial^2 \vPhi(\vphi^{(0)})[\mB_{H}^{(s)}] + \frac{1}{2}\partial^2\vPhi(\vphi^{(0)})[\mA_{H}^{(s)}]\\
+%         &\quad +\O\left(\E\left[ \|\Delta \vphi_{t}\|_2^2 \|\vx_{t}\|_2 + \|\Delta \vphi_{t}\|_2 \|\vx_{t}\|_2^2 + \|\vx_{t}\|_2^3 \right]\right),\\
+%         \E[(\vphi^{(s+1)} - \vphi^{(s)})(\vphi^{(s+1)} - \vphi^{(s)})^\top] &=  \mP_{\parallel} \mA_{H}^{(s)} \mP_{\parallel}  + \O\left(\E[\|\Delta \vphi_{t}\|_2 \|\vx_{t}\|_2^2+\lnormtwo{\vx_t}^3]\right).
+%     \end{align*}
+% \end{lemma}
+% The basic idea here is to get the explicit recursion of $\vq_{t}^{(s)} ,\mA_{t}^{(s)}$, and $\mB_{t}^{(s)}$, so we can get the expression of first and second moment. First we write out the update rule for these GAMs
+% \begin{align*}
+%     \vtheta_{t+1}^{(s)} &= \vtheta_{t}^{(s)} - \eta \mS_t^{(s)} \hat{\vm}_{t}^{(s)}\\
+%     &= \vtheta_{t}^{(s)} -\eta \mS_0 \nabla \cL(\vtheta_t^{(s)}) -\eta \left(\mS_t^{(s)} \hat{\vm}_{t}^{(s)} - \mS_0 \hat{\vm}_{t}^{(s)} + \mS_0 \hat{\vm}_{t}^{(s)} - \mS_0 \nabla \cL(\vtheta_t^{(s)}) \right)\\
+%     &=\vtheta_{t}^{(s)} -\eta \mS_0 \nabla \cL(\vtheta_t^{(s)}) -\eta \Delta \mS_t^{(s)} \hat{\vm}_{t}^{(s)} - \eta \mS_0 \left(\hat{\vm}_{t}^{(s)} - \nabla \cL(\vtheta_t^{(s)})\right)\\
+%     &= \vtheta_{t}^{(s)} -\eta \mS_0 \nabla \cL(\vtheta_t^{(s)}) - \eta \mS_0 (1-\beta_1) \sum_{k=1}^t\beta_1^{t-k}\vz_k -\eta \Delta \mS_t^{(s)} \hat{\vm}_{t}^{(s)} - \eta \mS_0 \left(\mM_t^{(s)} - \nabla \cL(\vtheta_t^{(s)})\right).
+% \end{align*}
+% where $\mS_0:= S(V(\mSigma_0))$, $\Delta \mS_{t}^{(s)}:=\mS_{t}^{(s)} - \mS_0$, and $\mM_{t+1}^{(s)} := \beta_1 \mM_{t}^{(s)} + (1-\beta_1)\nabla \cL(\vtheta_{t}^{(s)})$.
+
+\begin{corollary}\label{concentration-after-convergence}
+    % Given $\lnormtwo{\vtheta^{(0)}-\vphi^{(0)}} \leq C_0\sqrt{\eta \log \frac{1}{\eta}}$ where $C_0$ is a constant, then for $\delta = \O(\text{poly}(\eta))$, with probability at least $1 - \delta$, 
+    There exist constants $C_{9a}, C_{9b}, C_{9c}$ such that for all $0 \leq s < R_{\mathrm{grp}}$, $0 \leq t \leq H$, \begin{align*}
+        \lnormtwo{\hat{\vx}_{t}^{(s)}} & \leq C_{9a} \sqrt{\eta \log \frac{1}{\eta}}, \\
+        \lnormtwo{\hat{\vtheta}_{t}^{(s)} - \hat{\vtheta}_0^{(s)}} & \leq C_{9b} \sqrt{\eta \log \frac{1}{\eta}}, \\
+        \lnormtwo{\hat{\vphi}^{(s)}-\hat{\vphi}^{(0)}} & \leq C_{9c}\eta^{0.5-0.5\beta}\sqrt{\log \frac{1}{\eta}}.
+    \end{align*}
+\end{corollary}
+\begin{proof}
+    Substituting $\delta = \eta^{100}$. When $\cE$ holds, this follows directly from the definition of $\delta$-goodness; Otherwise, all $\hat{\vtheta}$ and $\hat{\vphi}$ are equal, and these quantities are equal to $\bf{0}$.
+\end{proof}
+
+% \xinghan{the subscript of this part (Lemma F.2-F.4) should be shifted}
+
+\paragraph{Impact of Momentum.} Our conclusion regrading to the impact of Momentum on the implicit bias is similar to the conclusion in \citet{wang2023marginal}: It does not impact the implicit bias. Further, our analysis is based on moment methods and can give exact error bounds. First, we state some technical lemmas in order to show that introducing momentum will not cause the gradient to deviate too much from itself, i.e. $\E[\hat{\vm}_t]$ is close to $\E[\hat{\vg}_t]$.  Once this guarantee is established, we can replace $\hat{\vm}_t$ with $\hat{\vg}_t$ in the moment calculation to simplify it. The general idea of the proof is to show that if $i$ is close to $t$, then $\E[\nabla\cL(\hat{\vtheta}_{i-1})]$ will become close to $\E[\nabla\cL(\hat{\vtheta}_{t-1})]$, and if $i$ is far from $t$, then the contribution of $\E[\nabla\cL(\hat{\vtheta}_{i-1})]$ would be negligible in $\E[\hat{\vm}_t]$. 
+
+\begin{lemma}\label{E-G-closeness}
+    For any $k \geq 0$, we have \begin{align*}
+        \lnormtwo{\E\left[\nabla \cL\left(\hat{\vtheta}_{k+1}\right) - \nabla \cL\left(\hat{\vtheta}_{k}\right)\right]} \leq C_{10} \eta^{1.5}
+    \end{align*}
+    for some constant $C_{10}$.
+\end{lemma}
+\begin{proof}
+    We have \begin{align*}
+        \nabla\cL(\hat{\vtheta}_{k+1}) - \nabla\cL(\hat{\vtheta}_k) &= \nabla^2 \cL (\hat{\vtheta}_k) (\hat{\vtheta}_{k+1} - \hat{\vtheta}_k) + \O\left(\lnormtwo{\hat{\vtheta}_{k+1} - \hat{\vtheta}_k}^2\right) \\
+        &= \nabla^2 \cL (\hat{\vtheta}_k) (\hat{\vtheta}_{k+1} - \hat{\vtheta}_k) + \O(\eta^2) + \O(\lnormtwo{\ve_{k}}),
+    \end{align*}
+    since $\lnormtwo{\hat{\vtheta}_{k+1} - \hat{\vtheta}_k} = \lnormtwo{\eta S\left(\hat{\vv}_k\right) \hat{\vm}_{k}-\ve_{k}} = \O(\eta)+ \O(\lnormtwo{\ve_{k}})$. Let $\Bar{k} = k - \log_{\beta_1}(\eta)$ be a threshold that is logarithmically close to $k$, then we have \begin{align*}
+        \nabla^2 \cL (\hat{\vtheta}_k) (\hat{\vtheta}_{k+1} - \hat{\vtheta}_k) &= \left(\nabla^2 \cL (\hat{\vtheta}_{\Bar{k}}) + \O\left(\lnormtwo{\hat{\vtheta}_k - \hat{\vtheta}_{\Bar{k}}}\right)\right)\left(\hat{\vtheta}_{k+1} - \hat{\vtheta}_k\right) \\
+        &= \nabla^2 \cL (\hat{\vtheta}_{\Bar{k}}) \left(\hat{\vtheta}_{k+1} - \hat{\vtheta}_k\right) + \O\left(\eta \cdot \log_{\beta_1}(\eta) \cdot \eta\right) + \O(\lnormtwo{\ve_{k}})\\
+        &= \eta \nabla^2 \cL (\hat{\vtheta}_{\Bar{k}}) S\left(\hat{\vv}_{k+1}\right) \hat{\vm}_{k+1} + \O\left(\eta^2 \log \frac{1}{\eta}\right) + \O(\lnormtwo{\ve_{k}}).
+    \end{align*}
+    Recentering the Hessian term to $\hat{\vtheta}_{\Bar{k}}$ allows us to take conditional expectation $\E_{\Bar{k}}$ on $S\left(\hat{\vv}_{k+1}\right) \hat{\vm}_{k+1}$: \begin{align*}
+        \E\left[\nabla^2 \cL (\hat{\vtheta}_{\Bar{k}}) S\left(\hat{\vv}_{k+1}\right) \hat{\vm}_{k+1}\right] &= \E\left[\nabla^2 \cL (\hat{\vtheta}_{\Bar{k}}) \E_{\Bar{k}}\left[S\left(\hat{\vv}_{k+1}\right) \hat{\vm}_{k+1}\right]\right].
+    \end{align*}
+    After that, notice that \begin{align*}
+        \lnormtwo{\E_{\Bar{k}}\left[S\left(\hat{\vv}_{k+1}\right) \hat{\vm}_{k+1}\right]} &= \lnormtwo{\E_{\Bar{k}}\left[S\left(\E_{\Bar{k}}\left[\hat{\vv}_{k+1}\right]\right) \hat{\vm}_{k+1}\right]} + \O(\lnormtwo{\hat{\vv}_{k+1} - \E_{\Bar{k}}\left[\hat{\vv}_{k+1}\right]}) \\
+        &= \lnormtwo{S\left(\E_{\Bar{k}}\left[\hat{\vv}_{k+1}\right]\right) \E_{\Bar{k}}[\hat{\vm}_{k+1}]} + \O(\lnormtwo{\hat{\vv}_{k+1} - \E_{\Bar{k}}\left[\hat{\vv}_{k+1}\right]}) \\
+        &= \O(\underbrace{\lnormtwo{\E_{\Bar{k}}[\hat{\vm}_{k+1}}}_{=:D_1}) + \O(\underbrace{\lnormtwo{\hat{\vv}_{k+1} - \E_{\Bar{k}}\left[\hat{\vv}_{k+1}\right]}}_{=:D_2})
+    \end{align*}
+    since $S$ and $\hat{\vm}$ are both bounded by constant scale. We figure out the orders of these two terms respectively: \begin{align*}
+        D_1 &= \lnormtwo{\E_{\Bar{k}}\left[\beta_1^{k-\Bar{k}+1}\hat{\vm}_{\Bar{k}} + (1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\hat{\vg}_i\right]} \\
+        &= \O\left(\beta_1^{\log_{\beta_1}(\eta)}\right) + \lnormtwo{\E_{\Bar{k}}\left[(1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\hat{\vg}_i\right]} \\
+        &= \O(\eta) + \lnormtwo{\E_{\Bar{k}}\left[(1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\nabla \cL(\hat{\vtheta}_i)\right]} \\
+        &= \O(\eta) + \O(\eta^{0.5}) = \O(\eta^{0.5})
+    \end{align*}
+    since $\nabla \cL$ is uniformly bounded by $\O(\eta^{0.5})$ after convergence (see \cref{convergence}); And \begin{align*}
+        D_2 &= (1-\beta_2)\sum_{i=\Bar{k}}^{k}\beta_2^{k-i}\left(V(\hat{\vg}_i\hat{\vg}_i^\top) - \E_{\Bar{k}}\left[V(\hat{\vg}_i\hat{\vg}_i^\top)\right]\right) \\
+        &= \O\left(b_2 \cdot (k - \Bar{k})\right) \\
+        &= \O\left(\eta^2 \log \frac{1}{\eta}\right),
+    \end{align*}
+    since $V$ is bounded by a constant scale. Now combining the above together, we have \begin{align*}
+        \lnormtwo{\E[\nabla\cL(\hat{\vtheta}_{k+1}) - \nabla\cL(\hat{\vtheta}_k)]} &= \eta\E\left[\nabla^2 \cL (\hat{\vtheta}_{\Bar{k}}) \E_{\Bar{k}}\left[S\left(\hat{\vv}_{k+1}\right) \hat{\vm}_{k+1}\right]\right] + \O\left(\eta^2 \log \frac{1}{\eta}\right) \\
+        & \quad + \O(\E[ \lnormtwo{e_{k}}]) \\
+        &= \eta \cdot \O(D_1 + D_2) + \O\left(\eta^2 \log \frac{1}{\eta}\right) + \O(\eta^{100}) \\
+        &= \O(\eta^{1.5}),
+    \end{align*}
+    which concludes the proof.
+\end{proof}
+With \Cref{E-G-closeness}, we are ready to deduce the closeness between $\E[\hat{\vm}_k]$ and $\E[\hat{\vg}_k]$.
+\begin{lemma}\label{E-mk-gk-closeness}
+    For any $k \geq 0$, let $\Bar{k} = k - 2\log_{\beta_1}(\eta)$, we have 
+    \begin{align*}
+        \lnormtwo{\E_{\Bar{k}}[\hat{\vm}_{k+1} - \hat{\vg}_{k+1}]} \leq C_{11} \eta^{1.5}\log\frac{1}{\eta}, \quad \text{a.s.}
+    \end{align*} 
+    Note that this also implies that $\lnormtwo{\E[\hat{\vm}_{k+1} - \hat{\vg}_{k+1}]} \leq C_{11} \eta^{1.5} \log \frac{1}{\eta}$.
+\end{lemma}
+
+% \xinghan{the sum should be corrected. use i <= bar(k) - 1}
+
+\begin{proof}
+    % Define $\mM_t = (1-\beta_1)\mM_{t-1} + \beta_1 \nabla \cL(\hat{\vtheta}_{t})$, and that $\mM_0 = \bold{0}$, so that $\mM_t$ is the momentum of the clean gradient.
+    Expanding $\E_{\Bar{k}}[\hat{\vm}_{k+1}]$, we have 
+    \begin{align*}
+        \E_{\Bar{k}}[\hat{\vm}_{k+1}] &= \E_{\Bar{k}}\left[(1-\beta_1)\sum_{i=1}^{k}\beta_1^{k-i}\hat{\vg}_i\right] \\
+        &= (1-\beta_1)\sum_{i=1}^{\Bar{k}-1}\beta_1^{k-i}\hat{\vg}_i + (1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\E_{\Bar{k}}[\hat{\vg}_{i}]\\
+        &= \underbrace{(1-\beta_1)\sum_{i=1}^{\Bar{k}-1}\beta_1^{k-i}\hat{\vg}_i}_{:=E_1} + \underbrace{(1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\nabla \cL(\hat{\vtheta}_{i})}_{:=E_2}\\
+    \end{align*}
+    % Similar to the proof of Lemma \ref{E-G-closeness}, we let $\Bar{k} = \max\left\{0, k - 2\log_{\beta_1}(\eta)\right\}$ be a threshold and use that to break $\E[\hat{\vm}_t]$ into two parts: $(1-\beta_1)\sum_{i=1}^{\Bar{k}}\beta_1^{k-i}\E[\nabla \cL(\hat{\vtheta}_{i})]$ and $(1-\beta_1)\sum_{\Bar{k} + 1}^{k}\beta_1^{k-i}\E[\nabla \cL(\hat{\vtheta}_{i})]$, which we call $E_1$ and $E_2$. 
+    Note that $E_1$ is neglegible:
+    \begin{align*}
+        \lnormtwo{E_1} &= \lnormtwo{(1-\beta_1)\sum_{i=1}^{\Bar{k}-1}\beta_1^{k-i}\hat{\vg}_i} \\
+        &=  (1-\beta_1)\sum_{i=1}^{\Bar{k}-1}\beta_1^{k-i} \cdot \O(1) \\
+        &\leq  (1-\beta_1)\sum_{i=2\log_{\beta_1}(\eta)}^{\infty}\beta_1^{i} \cdot \O(1)\\
+        &= \O\left( \beta_1 ^ {2\log_{\beta_1}(\eta)} \right) = \O\left( \eta^2 \right),
+    \end{align*}
+    and that $E_2$ is close to $\nabla\cL(\hat{\vtheta}_{k})$:
+    \begin{align*}
+        \lnormtwo{E_2 - \E[\nabla\cL(\hat{\vtheta}_{k})]} &= \lnormtwo{(1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\E[\nabla \cL(\hat{\vtheta}_{i})] - \E[\nabla \cL(\hat{\vtheta}_{k})]} \\
+        &= \lnormtwo{(1-\beta_1)\sum_{i=\Bar{k}}^{k}\beta_1^{k-i}\E\left[\nabla \cL(\hat{\vtheta}_{i}) - \nabla \cL(\hat{\vtheta}_{k})\right]} + \O(\eta^2) \\
+        &\leq  (1-\beta_1) \cdot \left(k - \Bar{k}\right) \cdot C_{10} \eta^{1.5} + \O(\eta^2). \quad \text{(by Lemma \ref{E-G-closeness})} \\
+        % &\leq C_4 \eta^{1.5} \log \frac{1}{\eta}.
+    \end{align*}
+    Combining the results of $E_1$ and $E_2$ gives
+    \begin{align*}
+        \lnormtwo{\E_{\Bar{k}}[\hat{\vm}_k - \hat{\vg}_k]} &\leq \lnormtwo{E_1} + \lnormtwo{E_2 - \E[\nabla\cL(\hat{\vtheta}_{k})]} \\
+        &\leq (1-\beta_1) \cdot 2\log_{\beta_1}(\eta) \cdot C_{10} \eta^{1.5} + \O(\eta^2) \\
+        & \leq C_{11} \eta^{1.5}\log\frac{1}{\eta}
+    \end{align*}
+    for some constant $C_{11}$, which completes the proof.
+\end{proof}
+
+\subsubsection{Moment Calculation Within a Giant Step}
+In this part, we aim to give the change of first and second moments of $\phi$ and $\hat{\vv}$, which is the basis of deriving the SDE for AGMs.
+
+Now there are only a few preparations left before we get into the direct part of the moment calculation. For all $0 \leq s < R_{\mathrm{grp}}$, $0 \leq t \leq H$. Note that $\lnormtwo{\hat{\vv}_{k+1} - \hat{\vv}_k} = (1-\beta_2) \lnormtwo{V\left(\hat{\vg}_k\hat{\vg}_k^\top\right) - \hat{\vv}_k} = \O(1-\beta_2) = \O(\eta^2)$, so combining with the Lipschitzness of $S$ gives $$\lnormtwo{\hat{\mS}_{k_2} - \hat{\mS}_{k_1}} = \O\left((k_2 - k_1) \eta^2\right)$$ for any $k_2 > k_1$ and $k_2 - k_1 = o\left(\eta^{-2}\right)$. Next, we begin our moment calculation analysis, starting from the update in a single step.
+\begin{lemma}\label{lma:update-rule}
+    For all $0 \leq k \leq R_{\mathrm{grp}}H$, it holds that
+    \begin{align*}
+        \E\left[\hat{\vtheta}_{k+1}\right] &= \E\left[\hat{\vtheta}_k - \eta\hat{\mS}_0 \hat{\vg}_k\right] + \O\left(\eta^{2.5-\beta}\right).
+    \end{align*}
+\end{lemma}
+\begin{proof}
+We write the update rule of AGM under a single step as
+\begin{align*}
+    \hat{\vtheta}_{k+1} &= \hat{\vtheta}_{k} - \eta \hat{\mS}_k \hat{\vm}_{k+1} - \ve_k \\
+    &= \hat{\vtheta}_{k} - \eta \left[ \hat{\mS}_k \hat{\vg}_k + \hat{\mS}_k \left(\hat{\vm}_{k+1} - \hat{\vg}_k\right) \right] - \ve_k \\
+    &= \hat{\vtheta}_{k} - \eta \left[ \hat{\mS}_0 \hat{\vg}_k + \underbrace{\left( \hat{\mS}_k - \hat{\mS}_0\right) \hat{\vg}_k}_{\Delta \hat{\vtheta}_1} +  \underbrace{\hat{\mS}_k \left(\hat{\vm}_{k+1} - \hat{\vg}_k\right)}_{\Delta \hat{\vtheta}_2} \right] - \ve_k,
+\end{align*}
+where we recall that $\ve_{k} :=- \1_{\bar{\cE}_k}(\hat{\vtheta}_{k} - \eta S(\hat{\vv}_{k+1}) \hat{\vm}_{k+1} ) + \1_{\bar{\cE}_k}\vphi_{\mathrm{null}}$.
+We can prove that $\Delta \hat{\vtheta}_1$ and $\Delta \hat{\vtheta}_2$ are small enough to be negligible in expectation for our following calculation.
+
+Specifically, if $k = 0$ then $\Delta \hat{\vtheta}_1 = \boldsymbol{0}$; and if $k > 0$, we can decompose $\E\left[\Delta \hat{\vtheta}_1 \right]$ as: \begin{align*}
+    \E\left[\Delta \hat{\vtheta}_1 \right] &= \E\left[\left(\hat{\mS}_{k-1} - \hat{\mS}_0\right) \hat{\vg}_k + \left(\hat{\mS}_k - \hat{\mS}_{k-1}\right) \hat{\vg}_k\right] \\
+    &= \E\left[\left(\hat{\mS}_{k-1} - \hat{\mS}_0\right) \nabla \cL\left(\hat{\vtheta}_k\right) \right] + \E\left[\left(\hat{\mS}_{k} - \hat{\mS}_{k-1}\right) \hat{\vg}_k \right] \\
+    &= \O((k-1)\eta^2 \cdot \eta^{0.5}) + \O(\eta^2) \\
+    &= \O(H \cdot R_{\mathrm{grp}} \cdot \eta^{2.5} + \eta^2) \\
+    &= \O(\eta^{1.5 - \beta}).
+\end{align*}
+Here, the second equality holds since the gradient noise term as step $k$ $\vz_k$ is conditioned on time $k$, when $\hat{\mS}_{k-1}$ has already been determined, thus we can take the conditional expectation. 
+
+For $\Delta \hat{\vtheta}_2$, let $\Bar{k} = k - 2\log_{\beta_1}(\eta)$, we have \begin{align*}
+    \E\left[\Delta \hat{\vtheta}_2\right] &= \E\left[\hat{\mS}_{\Bar{k}-1}\left(\hat{\vm}_{k+1}-\hat{\vg}_k\right) + \O\left(\eta^2 \log \frac{1}{\eta}\right)\right] \\
+    &= \E\left[\hat{\mS}_{\Bar{k}-1}\E_{\Bar{k}}\left[\left(\hat{\vm}_{k+1}-\hat{\vg}_k\right)\right] \right] + \O\left(\eta^2 \log \frac{1}{\eta}\right) \\
+    &= \O\left(\eta^{1.5} \log \frac{1}{\eta}\right) + \O\left(\eta^2 \log \frac{1}{\eta}\right) \\
+    &= \O\left(\eta^{1.5} \log \frac{1}{\eta}\right),
+\end{align*}
+where the second-to-last equality follows from Lemma \ref{E-mk-gk-closeness}. Finally, we have \begin{align*}
+    \E\left[\hat{\vtheta}_{k+1}\right] &= \E\left[\hat{\vtheta}_k - \eta\hat{\mS}_0 \hat{\vg}_k\right] + \O\left(\eta^{2.5-\beta}\right) + \O\left(\eta^{2.5} \log \frac{1}{\eta}\right) +\O(\eta^{100}) \\
+    &= \E\left[\hat{\vtheta}_k - \eta\hat{\mS}_0 \hat{\vg}_k\right] + \O\left(\eta^{2.5-\beta}\right) ,
+\end{align*}
+which concludes the proof.
+\end{proof}
+After getting the update rule of $\hat{\vtheta}_k$, we then derive the moment change during the single round with $\mH$ steps. To this end, we recall our modification of manifold projection from a ``Gradient Flow'' manner to a ``Preconditioned Flow'' manner in \Cref{def:preconditioned-gf}. 
+\begin{definition}[Preconditioned Flow Projection]
+    Fix a point \( \theta_{\text{null}} \notin \Gamma \). Given a \textit{Positive Semi-Definite} matrix $\mM$. For \( x \in \mathbb{R}^d \), consider the preconditioned flow $\frac{\dd x(t)}{\dd t} = -\mM\nabla \mathcal{L}(x(t))$ with $x(0) = x$. We denote the preconditioned flow projection of \( x \) as \( \Phi_{\mM}(x) \), i.e. $\Phi_{\mM}(x) := \lim_{t \to +\infty} x(t)$ if the limit exists and belongs to $\Gamma$, and $\Phi_{\mM}(x) = \theta_{\text{null}}$ otherwise.
+\end{definition}
+We decompose the preconditioner matrix in the very begining of the giant step as $\hat{\mS}_0=\hat{\mS}(\hat{\vv}_0)=\mP\mP$, where $\mP=\hat{\mS}^{1/2}_0$. We then provide the first moment calculation of $\hat{\vphi}$ in the following lemma. Before that, we first introduce the operator $\cV_\mH$.
+\begin{definition}
+    Given a Positive Semi-Definite matrix $\mH \in \R^{d\times d}$, whose $j$-th eigenvalue and the corresponding orthonormal eigenvector are denoted by $\lambda_j$ and $\vv_j$. We then define the operator $\cV_\mH(\cdot):\R^{d \times d} \to \R^{d \times d}$ as
+    \begin{align*}
+        \cV_{\mH}(\cdot) = \sum_{i,j:\lambda_i\neq0\vee\lambda_j\neq0} 
+        \frac{1}{\lambda_i+\lambda_j}\inp{\cdot}{\vv_i\vv_j{^\top}} \vv_i\vv_j^\top.
+    \end{align*}
+\end{definition}
+Intuitively, the above operator projects the one matrix into the basis of $\mH$ and sums up the corresponding components with weights $\frac{1}{\lambda_i+\lambda_j}$. Then we present our moment calculation lemma.
+\begin{lemma}\label{lma:1st-moment}
+The expectation of the change of the manifold projection every round is
+% \[
+% \E\left[ \hat{\vphi}^{(s+1)} - \hat{\vphi}^{(s)} \right] = \left\{
+% \begin{array}{ll}
+% -\frac{H \eta^2}{2} \hat{\mS}_0 \partial \Phi_{\hat\mS_0}(\phi^{(0)}) \hat{\mS}_0 \partial^2 \nabla \cL(\vphi_{(0)}) \left[\mP \cV_{\nabla^2 \cL'(\vphi'_{(0)})}( \mSigma_{0,\mP})\mP\right] + \tilde{\O}(\eta^{1.5-\beta}), & R_0 < s < R_{\mathrm{grp}} \\
+% \tilde{\O}(\eta), & s \leq R_0
+% \end{array}
+% \right.
+% \]
+\begin{align*}
+    \E\left[ \hat{\vphi}^{(s+1)} - \hat{\vphi}^{(s)} \right] = -\frac{H \eta^2}{2} \hat{\mS}_0 \partial \Phi_{\hat\mS_0}(\hat\vphi^{(0)}) \hat{\mS}_0 \partial^2 \nabla \cL(\hat\vphi_{(0)}) \left[\mP \cV_{\nabla^2 \cL'(\hat\vphi'_{(0)})}( \mSigma_{0,\mP})\mP\right] + \tilde{\O}(\eta^{1.5-\beta})
+\end{align*}
+for $R_0 < s < R_{\mathrm{grp}}$, and 
+\begin{align*}
+    \E\left[ \hat{\vphi}^{(s+1)} - \hat{\vphi}^{(s)} \right] = \tilde{\O}(\eta) 
+\end{align*}
+for $s \leq R_0$, where \( R_0 := \max\left\{\left\lceil \frac{10}{\lambda_{\max} \alpha} \log \frac{1}{\eta} \right\rceil, \left\lceil 2\log_{1/\beta} \frac{1}{\eta} \right\rceil \right\} \) and $\mSigma_{0,\mP}:= \mP \mSigma_0 \mP$.
+\end{lemma}
+\begin{proof}
+    First, we consider the scenario when $R_0< s < R_\grp$. Let $L'(\vx) := L(\mP \vx)$, then 
+    \begin{align*}
+        \nabla L'(\vx) &= \mP \nabla L(\mP \vx)\\
+        \nabla^2 L'(\vx) &= \mP \nabla^2 L(\mP \vx) \mP\\
+        \mSigma'(\vx) &= \mP \mSigma(\mP\vx) \mP\\
+        \partial^2 (\nabla L')(\vx) [\mM] &= \mP \partial^2 (\nabla L)(\mP \vx)[\mP \mM \mP].
+    \end{align*}
+    For a one-step GD update, we consider an auxiliary process $\{\hat{\vtheta}'_t\}$
+    \begin{align*}
+        \hat{\vtheta}'_{t+1} &= \hat{\vtheta}'_t - \eta \nabla \cL'(\hat{\vtheta}'_t) + \O\left(\eta^{2.5-\beta}\right)\\
+        &=\hat{\vtheta}'_t - \eta \mP\nabla \cL(\mP \hat{\vtheta}'_t) + \O\left(\eta^{2.5-\beta}\right).
+    \end{align*}
+    % Similarly, we define $\mA_t^{'(s)}:=\E[\vx_t^{'(s)}\vx_t^{'(s)\top}]$, $\vq_t^{'(s)}:=\E[\vx_t^{'(s)}]$, and $\mB_t^{'(s)}:=\E[\vx_t^{'(s)}\Delta\phi^{'(s)\top}]$, where $\phi(\vx)$ is the gradient flow projection of point $\vx$.
+    Similarly, we define \( \hat\mA_t^{'(s)} := \mathbb{E}[\hat\vx_t^{'(s)} \hat\vx_t^{'(s)\top}] \), \( \hat\vq_t^{'(s)} := \mathbb{E}[\hat\vx_t^{'(s)}] \), and \( \hat\mB_t^{'(s)} := \mathbb{E}[\hat\vx_t^{'(s)} \Delta \hat\phi^{'(s)\top}] \), and \( \Phi(\vx) \) is the gradient flow projection of point \( \vx \). We further define $\hat\vphi'(s):= \Phi(\hat\vtheta^{'(s)})$. 
+
+    Now we are interested in the update of $\mP \hat{\vtheta}'$, which is 
+    \begin{align}
+        \mP \hat{\vtheta}'_{t+1} = \mP \hat{\vtheta}'_t - \eta \hat{\mS}_0 \nabla \cL(\mP \hat{\vtheta}'_t) + \O\left(\eta^{2.5-\beta}\right).\label{equ:fix-pre-conditioner}
+    \end{align}
+    One can obviously see the update rule of $\mP\hat{\vtheta}'$ resembles the update rule of $\hat{\vtheta}$ in \Cref{lma:update-rule}. Now we set $\hat{\vtheta}' = \mP^{-1}\hat{\vtheta}$, then \Cref{equ:fix-pre-conditioner} is satisfied, and combining \Cref{equ:fix-pre-conditioner} and \Cref{lma:update-rule} gives
+    \begin{align*}
+        \vq_{t+1}^{'(s)} = \vq_{t+1}^{'(s)} - \eta \nabla \cL'(\hat{\vtheta}_{t}^{'(s)}) + \O\left(\eta^{2.5-\beta}\right).
+    \end{align*}
+    Notice that the above equation resembles the single update for SGD, which allows us to apply Lemma I.36 from \citet{gu2023andwhendoeslocal} for the update of $\hat{\vtheta}'$, with loss function $\cL'(\hat{\vtheta})$, number of workers $k=1$ and manifold projection $\Phi'(\hat{\vtheta})$, which gives
+    \begin{align*}
+    \mP \E\left[ \hat\vphi^{'(s+1)} - \hat\vphi^{'(s)} \right] &= \E\left[ \hat\vphi^{(s+1)} - \hat\vphi^{(s)} \right]\\
+    &=-\frac{H \eta^2}{2} \mP \mP\partial \Phi_{\hat\mS_0}(\hat\vphi^{(0)})\mP\mP \partial^2 \nabla \cL(\hat\vphi_{(0)}) [\mP \cV_{\nabla^2 \cL'(\hat\vphi'_{(0)})}(\mP \mSigma_0\mP)\mP] \\
+    &+ \tilde{O}(\eta^{1.5-\beta}),
+\end{align*}
+where the first equation uses the fact that $\mP\hat\vphi(\hat{\vtheta}')=\Phi_{\mS}(\hat{\vtheta})$, and it can be verified with the definitions of $\hat\vphi'$, $\Phi_\mS$, and $\hat{\vtheta}'$.  
+
+The proof when $s \le R_0$ is a direct conclusion of Lemma I.36 in \citet{gu2023andwhendoeslocal} since the $R_0 \propto \log \frac{1}{\eta}$ in our case.
+\end{proof}
+Notice the above equation for the moment of $\hat\phi$ contains $\phi'$. The next corollary eliminates $\phi'$ from the formula.
+\begin{corollary}\label{cly:1st-moment}
+The expectation of the change of manifold projection every round is:
+\[
+\E\left[ \phi^{(s+1)} - \phi^{(s)} \right] = \left\{
+\begin{array}{ll}
+\frac{H \eta^2}{2} \hat{\mS}_0 \partial^2 \Phi_{\hat{\mS}_0}(\phi^{(0)})[\hat{\mS}_0 \mSigma_0 \hat{\mS}_0] + \tilde{\O}(\eta^{1.5-\beta}), & R_0 < s < R_{\mathrm{grp}} \\
+\tilde{\O}(\eta), & s \leq R_0
+\end{array}
+\right.
+\]
+\end{corollary}
+\begin{proof}
+    Notice that for the preconditioned projection, we also have the corresponding transformation
+    \begin{align*}
+        \partial \Phi'(\vx') &= \mP \partial \Phi_{\hat{\mS}}(\mP \vx') \mP\\
+         \partial^2 \Phi'(\vx') [\mM] &= \mP \partial^2 \Phi(\vx')[\mP \mM \mP].
+    \end{align*}
+    The above two equations and Lemma I.36 in \citet{gu2023andwhendoeslocal} complete the proof.
+\end{proof}
+\begin{lemma}\label{lma:2nd-moment}
+The second moment of the change of manifold projection every round is
+\[
+\E\left[ (\hat\vphi^{(s+1)} - \hat\vphi^{(s)})(\hat\vphi^{(s+1)} - \hat\vphi^{(s)})^{\top} \right] = \left\{
+\begin{array}{ll}
+H \eta^2 \hat{\mS}_0 \mP_{\parallel,\hat\mS} \hat{\mS}_0 \mSigma_{0}\hat{\mS}_0\mP_{\parallel,\hat\mS}\hat{\mS}_0 + \tilde{O}(\eta^{1.5-\beta}), & R_0 < s < R_{\mathrm{grp}} \\
+\tilde{O}(\eta), & s \leq R_0
+\end{array}
+\right.
+\]
+where \( R_0 := \max\left\{\left\lceil \frac{10}{\lambda_{\max} \alpha} \log \frac{1}{\eta} \right\rceil, \left\lceil 2\log_{1/\beta} \frac{1}{\eta} \right\rceil \right\} \) and $\mP_{\parallel,\hat\mS}:=\partial \Phi_{\hat\mS}(\hat\vphi^{(0)})$.
+\end{lemma}
+\begin{proof}
+    According to Lemma I.37 in \citet{gu2023andwhendoeslocal}, we could write the second moment for $\hat{\vtheta}'$ as
+\[
+\E\left[ (\hat\vphi^{'(s+1)} - \hat\vphi^{'(s)})(\hat\vphi^{'(s+1)} - \hat\vphi^{'(s)})^{\top} \right] = \left\{
+\begin{array}{ll}
+H \eta^2 \mSigma_{0,\parallel}'+ \tilde{O}(\eta^{1.5-\beta}), & R_0 < s < R_{\mathrm{grp}} \\
+\tilde{\O}(\eta), & s \leq R_0.
+\end{array}
+\right.
+\]
+Notice that
+\begin{align*}
+    \Sigma_{0,\parallel}' &:= \partial \Phi(\hat\vphi^{'(0)}) \Sigma_{0}'\partial \Phi(\hat\vphi^{'(0)})\\
+    &= \mP\partial \Phi_{\hat\mS}(\hat\vphi^{(0)})\mP  \mP\Sigma_{0} \mP \mP\partial \Phi_{\hat\mS}(\hat\vphi^{(0)}) \mP.
+\end{align*}
+
+When $R_0 \le s < R_{\mathrm{grp}}$,
+\begin{align*}
+    \E\left[ (\hat\vphi^{(s+1)} - \hat\vphi^{(s)})(\hat\vphi^{(s+1)} - \hat\vphi^{(s)})^{\top} \right] &= \E\left[ \mP(\hat\vphi^{'(s+1)} - \hat\vphi^{'(s)})(\hat\vphi^{'(s+1)} - \hat\vphi^{'(s)})^{\top} \mP\right]\\
+    &= \hat{\mS}_0 \mP_{\parallel,\hat\mS} \hat{\mS}_0 \mSigma_{0}\hat{\mS}_0\mP_{\parallel,\hat\mS}\hat{\mS}_0.
+\end{align*}
+The proof when $s \le R_0$ is a direct conclusion of Lemma I.37 in \citet{gu2023andwhendoeslocal} since the $R_0 \propto \log \frac{1}{\eta}$ in our case.
+\end{proof}
+Then we give the moment change of $\hat\vphi$ within a single giant step.
+\begin{theorem}\label{thm;1st-2nd-moment-phi}
+    Given $\|\hat{\vtheta}^{(0)} - \hat\vphi^{(0)}\|_2=\O(\sqrt{\eta\log\frac{1}{\eta}})$, for $0<\beta<0.5$, the first and second moments of $\Delta \hat\vphi^{(R_\grp)} :=\hat\vphi^{(R_\grp)} -\hat\vphi^{(0)}$ are as follows:
+    \begin{align*}
+        \E[\Delta \hat\vphi^{(R_\grp)]}] &= \frac{\eta^{1-\beta}}{2} \hat{\mS}_0 \partial^2 \Phi_{\hat{\mS}_0}(\hat\vphi^{(0)})[\hat{\mS}_0\mSigma_0\hat{\mS}_0] + \tilde\O(\eta^{1.5-2\beta}) + \tilde\O(\eta),\\
+        \E[\Delta \hat\vphi^{(R_\grp)\top]}] &= \eta^{1-\beta}\hat{\mS}_0\mSigma_{\parallel}(\hat\vphi^{(0)},\hat{\mS}^{(0)})\hat{\mS}_0 + \tilde\O(\eta^{1.5-1.5\beta}) + \tilde\O(\eta),
+    \end{align*}
+    where $\mSigma_{\parallel}(\phi^{(0)},\hat{\mS}^{(0)}) := \mP_{\parallel,\hat\mS} \hat{\mS}_0 \mSigma_{0}\hat{\mS}_0\mP_{\parallel,\hat\mS}$.
+\end{theorem}
+\begin{proof}
+    First we prove the first moment change as
+    \begin{align*}
+        \E[\Delta \hat\vphi^{(R_\grp)}] &= \E[\sum_{s=0}^{R_\grp-1} \hat\vphi^{(s+1)} - \hat\vphi^{(s)}] \\
+        &= \sum_{s=0}^{R_0} \E[ \hat\vphi^{(s+1)} - \hat\vphi^{(s)}] + \sum_{s=R_0+1}^{R_\grp-1} \E[ \hat\vphi^{(s+1)} - \hat\vphi^{(s)}] \\
+        &= \frac{\eta^{1-\beta}}{2} \hat{\mS}_0 \partial^2 \Phi_{\hat{\mS}_0}(\hat\vphi^{(0)})[\hat{\mS}_0\mSigma_0\hat{\mS}_0] + \tilde\O(\eta^{1.5-2\beta}) + \tilde\O(\eta).
+    \end{align*}
+    The last equation is a direct conclusion of \Cref{cly:1st-moment}.
+
+    And for the second moment, we have
+    \begin{align*}
+        &\E\left[\left(\sum_{s=0}^{R_\grp-1} \hat\vphi^{(s+1)} - \hat\vphi^{(s)}\right)\left(\sum_{s=0}^{R_\grp-1} \hat\vphi^{(s+1)} - \hat\vphi^{(s)}\right)^{\top}\right] \\
+        &= \sum_{s=0}^{R_\grp-1} \E[(\hat\vphi^{(s+1)} - \hat\vphi^{(s)})(\hat\vphi^{(s+1)} - \hat\vphi^{(s)})^{\top}] \\
+        &~~~+ \sum_{s\neq s'} \E[(\hat\vphi^{(s+1)} - \hat\vphi^{(s)})]\E[(\hat\vphi^{(s'+1)} - \hat\vphi^{(s')})^{\top}]\\
+        &= \eta^{1-\beta}\hat{\mS}_0\mSigma_{\parallel}(\hat\vphi^{(0)},\hat{\mS}^{(0)})\hat{\mS}_0 + \tilde\O(\eta^{1.5-1.5\beta}) + \tilde\O(\eta),
+    \end{align*}
+    where the last equation uses $\E[(\hat\vphi^{(s+1)} - \hat\vphi^{(s)})]\E[(\hat\vphi^{(s'+1)} - \hat\vphi^{(s')})^{\top}] = \tilde\O(\eta^2)$.
+\end{proof}
+Next, we proceed with the updates of $\vv$.
+\begin{lemma}\label{lmm:1st-moment-v}
+    Given $c :=\frac{1-\beta_2}{\eta^2}$, and we have 
+    \begin{align*}
+        \E\left[\hat{\vv}_0^{(R_\grp)} -\hat{\vv}_0^{(0)}\right] = c \eta^{1-\beta} \left(V\left(\mSigma_0^{(0)}\right) - \hat{\vv}_0^{(0)}\right) + \O\left(\eta^{1.5-1.5\beta}\right).
+    \end{align*}
+\end{lemma}
+\begin{proof}
+    By the update rule of $\vv$, we have
+    \begin{align*}
+        \hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)} &= \hat{\vv}_H^{(s)} - \hat{\vv}_0^{(s)} \\
+        &= \beta_2^H \hat{\vv}_0^{(s)} + (1-\beta_2) \sum_{i=1}^{H} \beta_2^{H-i} \mV\left(\hat{\vg}_i^{(s)} {\hat{\vg}_i^{(s)^\top}}\right) - \hat{\vv}_0^{(s)} \\
+        &= \left(\beta_2^H - 1\right) \hat{\vv}_0^{(0)} + (1 - \beta_2)\sum_{i=1}^{H}\beta_2^{H-i} V\left(\hat{\vg}_i^{(s)} {\hat{\vg}_i^{(s)\top}}\right).
+    \end{align*}
+    Note that \begin{align*}
+        \E\left[\hat{\vg}_i^{(s)} {\hat{\vg}_i^{(s)^\top}}\right] &= \E\left[\mSigma(\hat{\vtheta}_i^{(s)})\right] \\
+        &= \E\left[\mSigma(\hat\vphi_0^{(0)} + \vx_i^{(s)})\right] \\
+        &= \E\left[\mSigma(\vphi_0^{(0)}) + \O\left(\eta^{0.5-0.5\beta}\right)\right] \\
+        &= \mSigma_0^{(0)} + \O\left(\eta^{0.5-0.5\beta}\right).
+    \end{align*}
+    Combining with the linearity of $\mV$, we conclude that \begin{align*}
+        \E\left[\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right] &= \left(\beta_2^H - 1\right) \hat{\vv}_0^{(0)} + \left(1 - \beta_2^H \right) \mV\left(\mSigma_0^{(0)}\right) + \O\left(\eta^{1.5-0.5\beta}\right) \\
+        \E\left[\hat{\vv}_0^{(s+1)}\right] &= \beta_2^H \hat{\vv}_0^{(s)} + \left(1 - \beta_2^H \right) \mV\left(\mSigma_0^{(0)}\right) + \O\left(\eta^{1.5-0.5\beta}\right).
+    \end{align*}
+    To transfer from $\hat{\vv}_0^{(0)}$ to arbitrary $\hat{\vv}_0^{(s)}$, we simply expand to get the result: \begin{align*}
+        \E\left[\hat{\vv}_0^{(s)}\right] &= \beta_2^{sH} \hat{\vv}_0^{(0)} + \left[\left(1 - \beta_2^H\right) V\left(\mSigma_0^{(0)}\right) + \O\left(\eta^{1.5-0.5\beta}\right)\right]\left(1 + \beta_2^H + \beta_2^{2H} + \dots + \beta_2^{(s-1)H}\right) \\
+         &= \beta_2^{sH} \hat{\vv}_0^{(0)} + \left[\left(1 - \beta_2^H\right) V\left(\mSigma_0^{(0)}\right) \right]\left(\frac{1-\beta_2^{sH}}{1-\beta_2^{H}}\right) + \O\left(\eta^{1.5-0.5\beta}\right) \cdot \O\left(\eta^{-\beta}\right) \\
+         &= \beta_2^{sH} \hat{\vv}_0^{(0)} + \left(1 - \beta_2^{sH}\right) V\left(\mSigma_0^{(0)}\right) + \O\left(\eta^{1.5-1.5\beta}\right).
+    \end{align*}
+    Thus we have
+    \begin{align*}
+        \E\left[\hat{\vv}_0^{(R_\grp)} -\hat{\vv}_0^{(0)}\right] = c \eta^{1-\beta} \left(V\left(\mSigma_0^{(0)}\right) - \hat{\vv}_0^{(0)}\right) + \O\left(\eta^{1.5-1.5\beta}\right).
+    \end{align*}
+    where the last equation uses the fact that $1-\beta_2^{R_\grp H} = 1 - (1 -c\eta^{1-\beta}) +O(\eta^{2-2\beta})=c\eta + O(\eta^2)$. 
+\end{proof}
+Also, for the second moment change of $\hat{\vv}$, we get the following lemma
+\begin{lemma}\label{lmm:2nd-moment-v}
+    The second moment change of $\hat{\vv}$ over a giant step is
+    \begin{align*}
+        \E\left[\left(\hat{\vv}_0^{(R_\grp)} - \hat{\vv}_0^{(0)}\right)\left(\hat{\vv}_0^{(R_\grp)} - \hat{\vv}_0^{(0)}\right)^{\top}\right] = \O(\eta^{2-\beta}).
+    \end{align*}
+\end{lemma}
+\begin{proof}
+    \begin{align*}
+        \E\big[\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)^{\top}\big] &= \E\Big[\left((\beta_2^H-1) + (1-\beta_2)\sum_{i=1}^H\beta_2^{H-i}V\left(\hat{\vg}_i^{(s)} {\hat{\vg}_i^{(s)^\top}}\right)\right)\\
+        &~~~~~~~~~~~~~\left((\beta_2^H-1) + (1-\beta_2)\sum_{i=1}^H\beta_2^{H-i}V\left(\hat{\vg}_i^{(s)} {\hat{\vg}_i^{(s)^\top}}\right)\right)^{\top}\Big]\\
+        &= \O\left((1-\beta_2^H)^{2}\right)=\O\left(\eta^2\right).
+    \end{align*}
+    \begin{align*}
+         \E\left[\left(\hat{\vv}_0^{(R_\grp)} - \hat{\vv}_0^{(0)}\right)\left(\hat{\vv}_0^{(R_\grp)} - \hat{\vv}_0^{(0)}\right)^{\top}\right] &=  \E\left[\left(\sum_{s=0}^{R_\grp-1}\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)\right)\left(\sum_{s=0}^{R_\grp-1}\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)^{\top}\right)\right]\\
+         &=\sum_{s=0}^{R_\grp-1} \E\left[\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)^{\top}\right] \\
+         &~~~+ \sum_{s\neq s'}\E\left[\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)\right]\E\left[\left(\hat{\vv}_0^{(s'+1)} - \hat{\vv}_0^{(s')}\right)^{\top}\right]\\
+         &=\O(\eta^{2-\beta}).
+    \end{align*}
+    The last equation uses 
+    $$\E\big[\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)^{\top}\big] = \O(\eta^2),$$
+    and 
+    $$\E\left[\left(\hat{\vv}_0^{(s+1)} - \hat{\vv}_0^{(s)}\right)\right]\E\left[\left(\hat{\vv}_0^{(s'+1)} - \hat{\vv}_0^{(s')}\right)^{\top}\right] = \O(3 - 3\beta).$$
+    The above equation completes the proof.
+\end{proof}

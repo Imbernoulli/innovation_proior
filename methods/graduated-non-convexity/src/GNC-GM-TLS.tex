@@ -1,0 +1,89 @@
+%!TEX root = main.tex
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\subsection{The \GNC Algorithm with GM and TLS Costs}
+% \subsection{The GNC Algorithm with GM and TLS Costs}
+\label{sec:GNC-GM-TLS}
+
+ 
+%satisfied for a large class of robust cost functions: 
+% many penalty functions 
+Here we tailor the \GNC algorithm to two cost functions, the 
+Geman McClure and the Truncated Least Squares costs, provide expressions for 
+the penalty term $\Phi_{\rho_\mu}$, and discuss how to solve the weight update step. 
+The proofs of the following propositions are given in the supplementary material~\cite{Yang20tr-GNC}. 
+% So far our development has been conceptual and general for many robust cost functions. We now instantiate the GNC algorithm by providing two examples to illustrate the graduated non-convexity governed by control parameter $\mu$, the corresponding outlier processes, and the dual weight update rules for Proposition~\ref{prop:primalDualOutlierProcess}.
+
+% \marginpar{proof or cite}
+\begin{proposition}[GNC-Geman McClure (\GNCGM)] \label{prop:GNCGM}
+Consider the Geman-McClure function and its \GNC surrogate with control parameter $\mu$, as introduced in Example~\ref{example:GM}. Then, the minimization of the surrogate function $\rho_\mu(\cdot)$ is equivalent to  the 
+outlier process with penalty term chosen as:
+\bea 
+\label{eq:outlierProcessGNCGM}
+\Phi_{\rho_\mu}(w_i) = \mu \barcsq (\sqrt{w_i} - 1)^2.
+\eea
+% \begin{example}[GNC-Geman McClure (\GNCGM)] The Geman-McClure function with control parameter $\mu$ is:
+% \bea \label{eq:formulationGNCGM}
+% \rho_{\mu}(x) = \frac{\mu x^2}{ \mu + x^2}.
+% \eea
+% Decreasing $\mu$ increases the non-convexity (see Fig.~\ref{fig:GNCplots}(a)). The outlier process for $\rho_{\mu}(x)$ is:
+% \bea \label{eq:outlierProcessGNCGM}
+% \Phi(w_i) = \mu(\sqrt{w_i} - 1)^2
+% \eea
+Moreover, defining the residual $\hatr_i^2 \doteq r^2(\vy_i, \vxx\at{t})$, 
+ the weight update at iteration $t$ can be solved in closed form as:
+% and the dual weight update rule is:
+\bea 
+\label{eq:dualWeightUpdateGNCGM}
+w_i\at{t} = \left( \frac{\mu \barcsq }{\hatr_i^2 + \mu \barcsq} \right)^2\!.
+\eea
+\end{proposition}
+
+% \LC{comment on stopping conditions}
+
+
+% \marginpar{proof or cite}
+\begin{proposition}[GNC-Truncated Least Squares (\GNCTLS)] \label{prop:GNCTLS}
+Consider the truncated least squares function and its \GNC surrogate with control parameter $\mu$, as introduced in Example~\ref{example:TLS}. Then, the minimization of the surrogate function $\rho_\mu(\cdot)$ is equivalent to  the 
+outlier process with penalty term:
+% The truncated least squares function with control parameter $\mu$ is:
+% \bea
+% \hspace{-2mm} \rho(x) = \begin{cases}
+% \scriptstyle{ x^2 } &  \scriptstyle{ x^2 \in \left[0, \frac{\mu \barcsq}{\mu + 1} \right] } \\
+%   \scriptstyle{ 2\barc | x | \sqrt{\mu(\mu+1)} - \mu (\barcsq + x^2)  } &  \scriptstyle{ x^2 \in \left[\frac{\mu \barcsq}{\mu + 1} , \frac{(\mu+1)\barcsq}{\mu} \right] }\\
+%  \scriptstyle{ \barcsq } &  \scriptstyle{ x^2 \in \left[\frac{(\mu+1)\barcsq}{\mu}, +\infty \right) }
+% \end{cases}.
+% \eea
+% Increasing $\mu$ increases the non-convexity (see Fig.~\ref{fig:GNCplots}(b)). The outlier process for $\rho_{\mu}(x)$ is:
+\bea \label{eq:outlierProcessGNCTLS}
+\Phi_{\rho_\mu}(w_i) = \frac{\mu (1-w_i)}{ \mu + w_i} \barcsq.
+\eea
+%
+Moreover, defining the residual $\hatr_i^2 \doteq r^2(\vy_i, \vxx\at{t})$, 
+ the weight update at iteration $t$ can be solved in closed form as:
+ %
+\bea \label{eq:dualWeightUpdateGNCTLS}
+w_i\at{t} = \begin{cases}
+0 & \text{ if } \hatr_i^2 \in \left[ \frac{\mu+1}{\mu}\barcsq, +\infty \right] \\
+\frac{\barc}{\hatr_i}\sqrt{\mu(\mu+1)} - \mu & \text{ if }  \hatr_i^2 \in \left[ \frac{\mu}{\mu+1}\barcsq ,\frac{\mu+1}{\mu}\barcsq \right] \\
+1 &\text{ if }  \hatr_i^2 \in \left[ 0,\frac{\mu}{\mu+1}\barcsq \right].
+\end{cases}
+\eea
+\end{proposition}
+
+\begin{remark}[Implementation Details] %[Initial $\mu$ and Stopping Conditions] 
+For \GNCGM, we start with a convex surrogate ($\mu\kern-0.5em\rightarrow\kern-0.5em\infty$) and decrease $\mu$ till we recover the original cost ($\mu\!\rightarrow \!1$). In practice, 
+calling $r_{\max}^2 \doteq \max_i( r^2(\vy_i, \vxx^{(0)}))$ the maximum residual after the first variable update,  we initialize $\mu \!= \!2r^2_{\max} / \barcsq$,
+ update $\mu \leftarrow \mu / 1.4$ at each outer iteration, 
+ and stop when $\mu$ decreases below $1$.
+For \GNCTLS, we start with a convex surrogate ($\mu\rightarrow 0$) and increase the $\mu$ till we recover the original cost ($\mu\kern-0.2em\rightarrow\kern-0.2em\infty$). In practice, 
+we initialize  $\mu \!= \!\barcsq / ( 2 r^2_{\max} - \barcsq )$,
+ update $\mu\!\leftarrow \!1.4 \mu$ at each outer iteration, 
+ and stop when the sum of the weighted residuals $\sumAllPointsi w_i \hatr_i^2$ converges.  
+ For each outer iteration we perform a single variable and weight update.\revise{~At the first iteration, all weights are set to 1 ($w_i^{(0)}=1, i=1,\dots,N$).} For both robust functions, we set the parameter $\barc$ to the maximum {error expected for the inliers, see Remarks 1-2 in~\cite{Yang19iccv-QUASAR}.}
+% The control parameter $\mu$ 
+% Define $r_{\max}^2 \doteq \max_i( r^2(\vy_i, \vxx^{(0)}) ) $ as the maximum residual of the first outer iteration, we initialize the initial $\mu$ for \GNCGM as $\mu_0 = r^2_{\max} / e^2$, and the initial $\mu$ for \GNCTLS as $\mu_0 = 1 / ( 2 r^2_{\max} / \barcsq - 1 )$. We stop \GNCGM when $\mu$ decreases below $1$, and we stop \GNCTLS when the sum of the weighted residuals $\sumAllPointsi w_i \hatr_i^2$ converges. 
+%\HY{The next section will show the convergence for \GNCTLS.}
+\end{remark}
+% \red{Proof for the dual weight update rules are presented in the Appendix.}
+

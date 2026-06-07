@@ -1,0 +1,30 @@
+\begin{table}[t]
+\centering
+\footnotesize
+\begin{tabular}{l|cccc|c}
+  & {\small baseline}        & PBA & Fast AA &   AA    &  RA \\
+  \hline 
+  \textbf{CIFAR-10} &&&&&\\
+Wide-ResNet-28-2 & 94.9 & - & - & \textbf{95.9} & 95.8  \\ 
+  Wide-ResNet-28-10 & 96.1 & \textbf{97.4} & 97.3 & \textbf{97.4} & 97.3  \\ 
+  Shake-Shake  & 97.1 & \textbf{98.0} & \textbf{98.0} & \textbf{98.0} & \textbf{98.0}  \\ 
+  PyramidNet  & 97.3 & \textbf{98.5} & 98.3 & \textbf{98.5} & \textbf{98.5} \\ 
+  \hline
+  \textbf{CIFAR-100} &&&&&\\
+  Wide-ResNet-28-2 & 75.4 & - & - & \textbf{78.5} & 78.3 \\  
+  Wide-ResNet-28-10 & 81.2 & \textbf{83.3} & 82.7 & 82.9 & \textbf{83.3}  \\ 
+  \hline  
+  \textbf{SVHN (core set)} &&&&&\\
+  Wide-ResNet-28-2 & 96.7 & -  & - & 98.0 & \textbf{98.3}  \\ 
+  Wide-ResNet-28-10 & 96.9 & -  & - & 98.1 & \textbf{98.3}  \\ 
+  \hline  
+  \textbf{SVHN} &&&&&\\
+  Wide-ResNet-28-2 & 98.2 & - & - & \textbf{98.7}  & \textbf{98.7} \\
+  Wide-ResNet-28-10 & 98.5 &98.9  & 98.8 & 98.9 & \textbf{99.0}  \\ 
+  \hline
+\end{tabular}
+\vspace{0.2cm}
+\caption{\textbf{Test accuracy (\%) on CIFAR-10, CIFAR-100, SVHN and SVHN core set}. Comparisons across default data augmentation (baseline), Population Based Augmentation (PBA)~\cite{ho2019population} and Fast AutoAugment (Fast AA)~\cite{lim2019fast}, AutoAugment (AA) \cite{cubuk2018autoaugment} and proposed RandAugment (RA). Note that baseline and AA are replicated in this work. SVHN core set consists of ~73K examples. The Shake-Shake model ~\cite{gastaldi2017shake} employed a 26 2$\times$96d configuration, and the
+PyramidNet model used the ShakeDrop regularization~\cite{yamada2018shakedrop}. Results reported by us are averaged over 10 independent runs. Bold indicates best results.}
+\label{tab:small_results}  
+\end{table}

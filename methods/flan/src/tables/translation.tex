@@ -1,0 +1,47 @@
+\begingroup
+\setlength{\tabcolsep}{3pt}
+\begin{table}[h]
+    \centering
+    \begin{tabular}{l ll ll ll}
+    \toprule
+     & \multicolumn{6}{c}{\textsc{Translation}} \\
+     \cmidrule(lr){2-7}
+     & \multicolumn{2}{c}{French} & \multicolumn{2}{c}{German} & \multicolumn{2}{c}{Romanian} \\
+     \cmidrule(lr){2-3}
+     \cmidrule(lr){4-5}
+     \cmidrule(lr){6-7}
+     & \datasetbleu{En$\rightarrow$Fr} & \datasetbleu{Fr$\rightarrow$En} & \datasetbleu{En$\rightarrow$De} & \datasetbleu{De$\rightarrow$En} & \datasetbleu{En$\rightarrow$Ro} & \datasetbleu{Ro$\rightarrow$En} \\
+     \midrule
+     Supervised model & 45.6$^c$ & 35.0$^d$ & 41.2$^e$ & 38.6$^f$ & 38.5$^g$ & 39.9$^g$ \\
+     
+     \glmname\ & \gptval{11.2}{}{31.5} & \gptval{7.2}{}{34.7} & \gptval{7.7}{}{26.7} & \gptval{20.8}{}{36.8} & \gptval{3.5}{}{22.9} & \gptval{9.7}{}{37.5} \\
+     
+     \gptname & \gptval{25.2}{28.3}{32.6} & \gptval{21.2}{33.7}{39.2} & \gptval{24.6}{26.2}{29.7} & \gptval{27.2}{30.4}{40.6} & \gptval{14.1}{20.6}{21.0} & \gptval{19.9}{38.6}{39.5} \\
+     
+     \midrule
+     \flan\ 137B zero-shot \\
+     \flanname & 
+     \flanval{32.0\wekindawin{6.8}}{2.0}{34.0\wewin{1.4}} & 
+     \flanval{35.6\wekindawin{14.4}}{1.5}{36.5\wekindawin{15.3}} & 
+     \flanval{24.2}{2.7}{27.0\wekindawin{2.4}} & 
+     \flanval{39.4\wekindawin{12.2}}{0.6}{39.8\wekindawin{12.6}} &  
+     \flanval{16.9\wekindawin{2.8}}{1.4}{18.4\wekindawin{4.3}} & 
+     \flanval{36.1\wekindawin{16.2}}{1.0}{36.7\wekindawin{16.7}} \\
+     
+     
+    \bottomrule
+    \end{tabular}
+    \caption{
+    Translation results (BLEU) for WMT'14 En/Fr and WMT'16 En/De and En/Ro. 
+    \explainflan\
+    $^c$\citet{edunov-etal-2018-understanding},
+    $^d$\citet{durrani-etal-2014-edinburghs},
+    $^e$\citet{wang2019multi},
+    $^f$\citet{sennrich-etal-2016-edinburgh},
+    $^g$\citet{liu-etal-2020-multilingual-denoising}.
+    \explainwewin\
+    \explainwekindawin\
+    }
+    \label{tab:translation}
+\end{table}
+\endgroup

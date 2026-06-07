@@ -1,0 +1,337 @@
+\section{Experiments\label{sec:experiments}}
+
+We show that adapters achieve parameter efficient transfer for text tasks.
+On the GLUE benchmark~\citep{wang2018glue},
+adapter tuning is within $0.4\%$ of full fine-tuning of BERT, but it adds only $3\%$ of the number of parameters trained by fine-tuning.
+We confirm this result on a further $17$ public classification tasks and SQuAD question answering.
+Analysis shows that adapter-based tuning automatically focuses on the higher layers of the network.
+
+\subsection{Experimental Settings}
+
+We use the public, pre-trained BERT Transformer network as our base model.
+To perform classification with BERT, we follow the approach in~\citet{devlin2018bert}.
+The first token in each sequence is a special ``classification token''.
+We attach a linear layer to the embedding of this token to predict the class label.
+
+Our training procedure also follows~\citet{devlin2018bert}.
+We optimize using Adam~\citep{kingma2014adam},
+whose learning rate is increased linearly over the first $10\%$ of the steps, and then decayed linearly to zero.
+All runs are trained on $4$ Google Cloud TPUs with a batch size of $32$.
+For each dataset and algorithm, we run a hyperparameter sweep and select the best model according to accuracy on the validation set.
+For the GLUE tasks, we report the test metrics provided by the submission website\footnote{\url{https://gluebenchmark.com/}}.
+For the other classification tasks we report test-set accuracy.
+
+We compare to fine-tuning, the current standard for transfer of large pre-trained models,
+and the strategy successfully used by BERT.
+For $N$ tasks, full fine-tuning requires $N{\times}$ the number of parameters of the pre-trained model.
+Our goal is to attain performance equal to fine-tuning, but with fewer total parameters, ideally near to $1{\times}$.
+
+\subsection{GLUE benchmark\label{sec:glue}}
+
+\begin{table*}[t]
+\centering
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{l|ll|rrrrrrrrr|r}
+\toprule
+{} & \pbox{3cm}{Total num\\ params} & \pbox{3cm}{Trained \\ params / task} & CoLA &     SST &    MRPC &   STS-B &     QQP & MNLI\textsubscript{m} & MNLI\textsubscript{mm} &    QNLI &     RTE &   Total \\
+\midrule
+BERT\textsubscript{LARGE} &  $9.0\times$ &   $100\%$ &  $60.5$ &  $94.9$ &  $89.3$ &  $87.6$ &  $72.1$ &  $86.7$ &  $85.9$ &  $91.1$ &  $70.1$ &  $80.4$ \\
+Adapters ($8$-$256$)      &  $1.3\times$ &   $3.6\%$ &  $59.5$ &  $94.0$ &  $89.5$ &  $86.9$ &  $71.8$ &  $84.9$ &  $85.1$ &  $90.7$ &  $71.5$ &  $80.0$ \\
+Adapters ($64$)           &  $1.2\times$ &   $2.1\%$ &  $56.9$ &  $94.2$ &  $89.6$ &  $87.3$ &  $71.8$ &  $85.3$ &  $84.6$ &  $91.4$ &  $68.8$ &  $79.6$ \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{
+Results on GLUE test sets scored using the GLUE evaluation server.
+MRPC and QQP are evaluated using F1 score.
+STS-B is evaluated using Spearman's correlation coefficient.
+CoLA is evaluated using Matthew's Correlation.
+The other tasks are evaluated using accuracy.
+Adapter tuning achieves comparable overall score ($80.0$) to full fine-tuning ($80.4$) using $1.3\times$ parameters in total, compared to $9\times$.
+Fixing the adapter size to $64$ leads to a slightly decreased overall score of $79.6$ and slightly smaller model.
+\label{tab:glue}}
+\end{table*}
+
+We first evaluate on GLUE.\footnote{
+We omit WNLI as in~\citet{devlin2018bert} because the no current algorithm beats the baseline of predicting the majority class.}
+For these datasets, we transfer from the pre-trained BERT\textsubscript{LARGE} model,
+which contains $24$ layers, and a total of $330$M parameters, see~\citet{devlin2018bert} for details.
+We perform a small hyperparameter sweep for adapter tuning:
+We sweep learning rates in $\{3 \cdot 10^{-5}, 3 \cdot 10^{-4}, 3 \cdot 10^{-3}\}$, and number of epochs in $\{3, 20\}$.
+We test both using a fixed adapter size (number of units in the bottleneck),
+and selecting the best size per task from $\{8, 64, 256\}$.
+The adapter size is the only adapter-specific hyperparameter that we tune.
+Finally, due to training instability, we re-run $5$ times with different random seeds and select the best model on the validation set.
+
+Table~\ref{tab:glue} summarizes the results.
+Adapters achieve a mean GLUE score of $80.0$, compared to $80.4$ achieved by full fine-tuning.
+The optimal adapter size varies per dataset. For example, $256$ is chosen for MNLI, whereas for the smallest dataset, RTE, $8$ is chosen.
+Restricting always to size $64$, leads to a small decrease in average accuracy to $79.6$.
+To solve all of the datasets in Table~\ref{tab:glue}, fine-tuning requires $9\times$ the total number of BERT parameters.\footnote{
+We treat MNLI\textsubscript{m} and MNLI\textsubscript{mm} as separate tasks with individually tuned hyperparameters.
+However, they could be combined into one model, leaving $8\times$ overall.}
+In contrast, adapters require only $1.3\times$ parameters.
+
+\subsection{Additional Classification Tasks}
+
+\renewcommand{\arraystretch}{0.9}
+\begin{table*}[t]
+\centering
+\begin{adjustbox}{max width=\textwidth}
+\begin{tabular}{l|rrrrr}
+\toprule
+Dataset &
+\pbox{5cm}{No BERT\\baseline} &
+\pbox{5cm}{BERT\textsubscript{BASE}\\Fine-tune} &
+\pbox{5cm}{BERT\textsubscript{BASE}\\Variable FT} &
+\pbox{5cm}{BERT\textsubscript{BASE}\\Adapters} \\
+\midrule
+20 newsgroups & $ 91.1 $ & $ 92.8 \pm 0.1 $ & $ 92.8 \pm 0.1 $ & $91.7 \pm 0.2$ \\
+Crowdflower airline & $ 84.5 $ & $ 83.6 \pm 0.3 $ & $ 84.0 \pm 0.1 $ & $ 84.5 \pm 0.2 $ \\
+Crowdflower corporate messaging & $ 91.9 $ & $ 92.5 \pm 0.5 $ & $ 92.4 \pm 0.6 $ & $ 92.9 \pm 0.3 $ \\
+Crowdflower disasters & $ 84.9 $ & $ 85.3 \pm 0.4 $ & $ 85.3 \pm 0.4 $ & $ 84.1 \pm 0.2 $ \\
+Crowdflower economic news relevance & $ 81.1 $ & $ 82.1 \pm 0.0 $ & $ 78.9 \pm 2.8 $ & $ 82.5 \pm 0.3 $ \\
+Crowdflower emotion & $ 36.3 $ & $ 38.4 \pm 0.1 $ & $ 37.6 \pm 0.2 $ & $ 38.7 \pm 0.1 $ \\
+Crowdflower global warming & $ 82.7 $ & $ 84.2 \pm 0.4
+ $ & $ 81.9 \pm 0.2 $ & $ 82.7 \pm 0.3 $ \\
+Crowdflower political audience & $ 81.0 $ & $ 80.9 \pm 0.3 $ & $ 80.7 \pm 0.8
+ $ & $ 79.0 \pm 0.5 $ \\
+Crowdflower political bias & $ 76.8 $ & $ 75.2 \pm 0.9 $ & $ 76.5 \pm 0.4 $ & $ 75.9 \pm 0.3 $ \\
+Crowdflower political message & $ 43.8 $ & $ 38.9 \pm 0.6 $ & $ 44.9 \pm 0.6 $ & $ 44.1 \pm 0.2 $ \\
+Crowdflower primary emotions & $ 33.5 $ & $ 36.9 \pm 1.6 $ & $ 38.2 \pm 1.0 $ & $ 33.9 \pm 1.4 $ \\
+Crowdflower progressive opinion & $ 70.6 $ & $ 71.6 \pm 0.5 $ & $ 75.9 \pm 1.3 $ & $ 71.7 \pm 1.1 $ \\
+Crowdflower progressive stance & $ 54.3 $ & $ 63.8 \pm 1.0 $ & $ 61.5 \pm 1.3 $ & $ 60.6 \pm 1.4 $ \\
+Crowdflower US economic performance & $ 75.6 $ & $ 75.3 \pm 0.1 $ & $ 76.5 \pm 0.4 $ & $ 77.3 \pm 0.1 $ \\
+Customer complaint database & $ 54.5 $ & $ 55.9 \pm 0.1 $ & $ 56.4 \pm 0.1 $ & $55.4 \pm 0.1$ \\
+News aggregator dataset & $ 95.2 $ & $ 96.3 \pm 0.0 $ & $ 96.5 \pm 0.0 $ & $ 96.2 \pm 0.0 $ \\
+SMS spam collection & $ 98.5 $ & $ 99.3 \pm 0.2 $ & $ 99.3 \pm 0.2 $ & $ 95.1 \pm 2.2 $ \\
+\midrule
+Average & $72.7$ & $73.7$ & $74.0$ & $73.3$  \\
+\midrule
+Total number of params & \textemdash & $17\times$ & $9.9\times$ & $1.19\times$   \\
+Trained params/task & \textemdash & $100\%$ & $52.9\%$ & $1.14\%$ \\
+\bottomrule
+\end{tabular}
+\end{adjustbox}
+\caption{
+Test accuracy for additional classification tasks.
+In these experiments we transfer from the BERT\textsubscript{BASE} model.
+For each task and algorithm, the model with the best validation set accuracy is chosen.
+We report the mean test accuracy and s.e.m. across runs with different random seeds.}
+\label{tab:hub_results}
+\vskip-3mm
+\end{table*}
+\renewcommand{\arraystretch}{1.0}
+
+To further validate that adapters yields compact, performant, models, we test on additional, publicly available, text classification tasks.
+This suite contains a diverse set of tasks:
+The number of training examples ranges from $900$ to $330$k,
+the number of classes ranges from $2$ to $157$,
+and the average text length ranging from $57$ to $1.9$k characters.
+Statistics and references for all of the datasets are in the appendix.
+
+For these datasets, we use a batch size of $32$.
+The datasets are diverse, so we sweep a wide range of learning rates:
+$\{1 \cdot 10^{-5}, 3 \cdot 10^{-5}, 1 \cdot 10^{-4}, 3 \cdot 10^{-3}\}$.
+Due to the large number of datasets, we select the number of training epochs from the set $\{20, 50, 100\}$ manually, from inspection of the validation set learning curves.
+We select the optimal values for both fine-tuning and adapters; the exact values are in the appendix.
+
+We test adapters sizes in $\{2, 4, 8, 16, 32, 64\}$.
+Since some of the datasets are small, fine-tuning the entire network may be sub-optimal.
+Therefore, we run an additional baseline: variable fine-tuning.
+For this, we fine-tune only the top $n$ layers, and freeze the remainder.
+We sweep $n\in\{1,2,3,5,7,9,11,12\}$.
+In these experiments, we use the BERT\textsubscript{BASE} model with $12$ layers,
+therefore, variable fine-tuning subsumes full fine-tuning when $n=12$.
+
+\begin{figure*}[t]
+\centering
+\vskip-1mm
+\begin{tabular}{cc}
+GLUE (BERT\textsubscript{LARGE}) & Additional Tasks (BERT\textsubscript{BASE}) \\
+\includegraphics[width=0.45\textwidth]{figures/glue_results_b.pdf}&
+\includegraphics[width=0.45\textwidth]{figures/extra_tasks_plot.pdf}
+\end{tabular}
+\vskip-2mm
+\caption{
+Accuracy versus the number of trained parameters, aggregated across tasks.
+We compare adapters of different sizes (orange) with fine-tuning the top $n$ layers, for varying $n$ (blue).
+The lines and shaded areas indicate the $20$th, $50$th, and $80$th percentiles across tasks.
+For each task and algorithm, the best model is selected for each point along the curve.
+For GLUE, the validation set accuracy is reported.
+For the additional tasks, we report the test-set accuracies.
+To remove the intra-task variance in scores,
+we normalize the scores for each model and task by subtracting the performance of full fine-tuning on the corresponding task.
+}
+\label{fig:tradeoff_alltasks}
+\end{figure*}
+
+\begin{figure*}[h!]
+\centering
+\vskip-1mm
+\begin{tabular}{cc}
+MNLI\textsubscript{m}(BERT\textsubscript{BASE}) & CoLA (BERT\textsubscript{BASE}) \\
+\includegraphics[width=0.45\linewidth]{figures/param_efficiency_mnli.pdf}&
+\includegraphics[width=0.45\linewidth]{figures/param_efficiency_cola.pdf}
+\end{tabular}
+\caption{
+Validation set accuracy versus number of trained parameters for three methods:
+(i) Adapter tuning with an adapter sizes $2^n$ for $n=0 \ldots 9$ (orange).
+(ii) Fine-tuning the top $k$ layers for $k=1\ldots 12$ (blue).
+(iii) Tuning the layer normalization parameters only (green).
+Error bars indicate $\pm 1$ s.e.m. across three random seeds.}
+\label{fig:tradeoff_glue}
+\vskip-3mm
+\end{figure*}
+
+Unlike the GLUE tasks, there is no comprehensive set of state-of-the-art numbers for this suite of tasks.
+Therefore, to confirm that our BERT-based models are competitive, we collect our own benchmark performances.
+For this, we run a large-scale hyperparameter search over standard network topologies.
+Specifically, we run the single-task Neural AutoML algorithm, similar to~\citet{zoph2017,wong2018transferautoml}.
+This algorithm searches over a space of feedforward and convolutional networks,
+stacked on pre-trained text embeddings modules publicly available via TensorFlow Hub\footnote{\url{https://www.tensorflow.org/hub}}.
+The embeddings coming from the TensorFlow Hub modules may be frozen or fine-tuned.
+The full search space is described in the appendix.
+For each task, we run AutoML for one week on CPUs, using $30$ machines.
+In this time the algorithm explores over $10$k models on average per task.
+We select the best final model for each task according to validation set accuracy.
+
+The results for the AutoML benchmark (``no BERT baseline''), fine-tuning, variable fine-tuning, and adapter-tuning are reported in Table~\ref{tab:hub_results}.
+The AutoML baseline demonstrates that the BERT models are competitive.
+This baseline explores thousands of models, yet the BERT models perform better on average.
+We see similar pattern of results to GLUE.
+The performance of adapter-tuning is close to full fine-tuning ($0.4\%$ behind).
+Fine-tuning requires $17\times$ the number of parameters to BERT\textsubscript{BASE} to solve all tasks.
+Variable fine-tuning performs slightly better than fine-tuning, whilst training fewer layers.
+The optimal setting of variable fine-tuning results in training $52\%$ of the network on average per task, reducing the total to $9.9\times$ parameters.
+Adapters, however, offer a much more compact model.
+They introduce $1.14\%$ new parameters per task, resulting in $1.19\times$ parameters for all $17$ tasks.
+
+\subsection{Parameter/Performance trade-off\label{sec:param_efficiency}}
+
+The adapter size controls the parameter efficiency, smaller adapters introduce fewer parameters, at a possible cost to performance.
+To explore this trade-off, we consider different adapter sizes, and compare to two baselines:
+(i) Fine-tuning of only the top $k$ layers of BERT\textsubscript{BASE}.
+(ii) Tuning only the layer normalization parameters.
+The learning rate is tuned using the range presented in Section~\ref{sec:glue}.
+
+Figure~\ref{fig:tradeoff_alltasks} shows the parameter/performance trade-off aggregated over all classification tasks in each suite (GLUE and ``additional'').
+On GLUE, performance decreases dramatically when fewer layers are fine-tuned.
+Some of the additional tasks benefit from training fewer layers, so performance of fine-tuning decays much less.
+In both cases, adapters yield good performance across a range of sizes two orders of magnitude fewer than fine-tuning.
+
+Figure~\ref{fig:tradeoff_glue} shows more details for two GLUE tasks: MNLI\textsubscript{m} and CoLA.
+Tuning the top layers trains more task-specific parameters for all $k>2$.
+When fine-tuning using a comparable number of task-specific parameters, the performance decreases substantially compared to adapters.
+For instance, fine-tuning just the top layer yields approximately $9$M trainable parameters and $77.8 \% \pm 0.1 \%$ validation accuracy on MNLI\textsubscript{m}.
+In contrast, adapter tuning with size $64$ yields approximately $2$M trainable parameters and $83.7\% \pm 0.1 \%$  validation accuracy.
+For comparison, full fine-tuning attains $84.4 \% \pm 0.02 \%$ on MNLI\textsubscript{m}.
+We observe a similar trend on CoLA.
+
+As a further comparison, we tune the parameters of layer normalization alone.
+These layers only contain point-wise additions and multiplications, so introduce very few trainable parameters: $40$k for BERT\textsubscript{BASE}.
+However this strategy performs poorly: performance decreases by approximately $3.5\%$ on CoLA and $4\%$ on MNLI.
+
+To summarize, adapter tuning is highly parameter-efficient, and produces a compact model with a strong performance, comparable to full fine-tuning.
+Training adapters with sizes $0.5-5\%$ of the original model,
+performance is within $1\%$ of the competitive published results on BERT\textsubscript{LARGE}.
+
+\subsection{SQuAD Extractive Question Answering}
+
+\begin{figure}[t]
+\centering
+\vskip-2mm
+\includegraphics[width=0.9\linewidth]{figures/squad_adapters_baseline.pdf}
+\caption{
+Validation accuracy versus the number of trained parameters for SQuAD v1.1.
+Error bars indicate the s.e.m. across three seeds, using the best hyperparameters.
+}
+\label{fig:squad}
+\vskip-5mm
+\end{figure}
+
+Finally, we confirm that adapters work on tasks other than classification by running on SQuAD v1.1~\citep{rajpurkar2018}.
+Given a question and Wikipedia paragraph, this task requires selecting the answer span to the question from the paragraph.
+Figure~\ref{fig:squad} displays the parameter/performance trade-off of fine-tuning and adapters on the SQuAD validation set.
+For fine-tuning, we sweep the number of trained layers, learning rate in $\{3\cdot 10^{-5}, 5\cdot 10^{-5}, 1\cdot 10^{-4}\}$, and number of epochs in $\{2,3,5\}$.
+For adapters, we sweep the adapter size, learning rate in $\{3\cdot 10^{-5}, 1\cdot 10^{-4}, 3\cdot 10^{-4}, 1\cdot 10^{-3}\}$, and number of epochs in $\{3,10,20\}$.
+As for classification, adapters attain performance comparable to full fine-tuning, while training many fewer parameters.
+Adapters of size $64$ ($2\%$ parameters) attain a best F1 of $90.4$\%, while fine-tuning attains $90.7$.
+SQuAD performs well even with very small adapters, those of size $2$ ($0.1\%$ parameters) attain an F1 of $89.9$.
+
+\subsection{Analysis and Discussion\label{sec:discussion}}
+
+We perform an ablation to determine which adapters are influential.
+For this, we remove some trained adapters and re-evaluate the model (without re-training) on the validation set.
+Figure~\ref{fig:ablation_and_init} shows the change in performance when removing adapters from all continuous layer spans.
+The experiment is performed on BERT\textsubscript{BASE} with adapter size $64$ on MNLI and CoLA.
+
+First, we observe that removing any single layer's adapters has only a small impact on performance.
+The elements on the heatmaps' diagonals show the performances of removing adapters from single layers, where largest performance drop is $2\%$.
+In contrast, when all of the adapters are removed from the network,
+the performance drops substantially:
+to $37\%$ on MNLI and $69\%$ on CoLA -- scores attained by predicting the majority class.
+This indicates that although each adapter has a small influence on the overall network, the overall effect is large.
+
+Second, Figure~\ref{fig:ablation_and_init} suggests that adapters on the lower layers have a smaller impact than the higher-layers.
+Removing the adapters from the layers $0-4$ on MNLI barely affects performance.
+This indicates that adapters perform well because they automatically prioritize higher layers.
+Indeed, focusing on the upper layers is a popular strategy in fine-tuning~\citep{howard2018universal}.
+One intuition is that the lower layers extract lower-level features that are shared among tasks, while the
+higher layers build features that are unique to different tasks.
+This relates to our observation that for some tasks, fine-tuning only the top layers outperforms full fine-tuning, see Table~\ref{tab:hub_results}.
+
+Next, we investigate the robustness of the adapter modules to the number of neurons and initialization scale.
+In our main experiments the weights in the adapter module were drawn from
+a zero-mean Gaussian with standard deviation $10^{-2}$, truncated to two standard deviations.
+To analyze the impact of the initialization scale on the performance, we test standard deviations in the interval $[10^{-7},1]$.
+Figure~\ref{fig:ablation_and_init} summarizes the results.
+We observe that on both datasets, the performance of adapters is robust for standard deviations below $10^{-2}$.
+However, when the initialization is too large, performance degrades, more substantially on CoLA.
+
+To investigate robustness of adapters to the number of neurons, we re-examine the experimental data from Section~\ref{sec:glue}.
+We find that the quality of the model across adapter sizes is stable,
+and a fixed adapter size across all the tasks could be used with small detriment to performance.
+For each adapter size we calculate the mean validation accuracy across the eight
+classification tasks by selecting the optimal learning rate and number of epochs\footnote{
+We treat here MNLI\textsubscript{m} and MNLI\textsubscript{mm} as separate tasks.
+For consistency, for all datasets we use accuracy metric and exclude the regression STS-B task.}.
+For adapter sizes $8$, $64$, and $256$, the mean validation accuracies are $86.2\%$, $85.8\%$ and $85.7\%$, respectively.
+This message is further corroborated by Figures~\ref{fig:tradeoff_glue} and~\ref{fig:squad},
+which show a stable performance across a few orders of magnitude.
+
+Finally, we tried a number of extensions to the adapter's architecture
+that did not yield a significant boost in performance.
+We document them here for completeness.
+We experimented with
+(i) adding a batch/layer normalization to the adapter,
+(ii) increasing the number of layers per adapter,
+(iii) different activation functions, such as tanh,
+(iv) inserting adapters only inside the attention layer,
+(v) adding adapters in parallel to the main layers, and possibly with a multiplicative interaction.
+In all cases we observed the resulting performance to be similar to the bottleneck proposed in Section~\ref{sec:bottleneckadapter}.
+Therefore, due to its simplicity and strong performance, we recommend the original adapter architecture.
+
+\begin{figure*}
+\centering
+\begin{tabular}[t]{ccc}
+MNLI\textsubscript{m} & CoLA & \\
+\includegraphics[height=3.7cm]{figures/mnli_ablation_heatmap.pdf}&
+\includegraphics[height=3.7cm]{figures/cola_ablation_heatmap.pdf}&
+\raisebox{-0.2cm}{\includegraphics[height=3.9cm]{figures/init_study.pdf}}
+\end{tabular}
+\caption{
+\textbf{Left, Center:}
+Ablation of trained adapters from continuous layer spans.
+The heatmap shows the relative decrease in validation accuracy to the fully trained adapted model.
+The \emph{y} and \emph{x} axes indicate the first and last layers ablated (inclusive), respectively.
+The diagonal cells, highlighted in green, indicate ablation of a single layer's adapters.
+The cell in the top-right indicates ablation of all adapters.
+Cells in the lower triangle are meaningless, and are set to $0\%$, the best possible relative performance.
+\textbf{Right:}
+Performance of BERT\textsubscript{BASE} using adapters with different initial weight magnitudes.
+The \emph{x}-axis is the standard deviation of the initialization distribution.
+}
+\label{fig:ablation_and_init}
+\vskip-4mm
+\end{figure*}

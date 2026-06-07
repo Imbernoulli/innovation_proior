@@ -1,0 +1,240 @@
+%\section{Experimental Results}
+We now present empirical results comparing $\lamb$ with existing optimizers on two important large batch training tasks: $\bert$ and $\resnet$-50 training. 
+%In the later part of the section, we also show the performance of $\lamb$ on a few small tasks involving CIFAR and MNIST datasets. 
+We also compare $\lamb$ with existing optimizers for small batch size ($<1K$) and small dataset (e.g. CIFAR, MNIST) (see Appendix).
+
+{\bf Experimental Setup. } To demonstrate its robustness, we use very minimal hyperparameter tuning for the $\lamb$ optimizer. Thus, it is possible to achieve better results by further tuning the hyperparameters. The parameters $\beta_1 $ and $\beta_2$ in Algorithm~\ref{alg:lamb} are set to $0.9$ and $0.999$ respectively in all our experiments; we only tune the learning rate. We use a polynomially decaying learning rate of $\eta_t = \eta_0 \times (1 - t/T)$ in Algorithm~\ref{alg:lamb}), which is the same as in $\bert$ baseline. This setting also works for all other applications in this paper.
+Furthermore, for $\bert$ and $\resnet$-50  training, we did not tune the hyperparameters of $\lamb$ while increasing the batch size. We use the square root of LR scaling rule to automatically adjust learning rate and linear-epoch warmup scheduling. %\textcolor{red}{Yang: explain what square root LR scaling is and linear epoch warmup is. Please provide details and connect them to the parameters of Algorithm~\ref{alg:lamb}} %\textcolor{red}{Yang: describe the whole experimental setup here e.g. TPU etc}. 
+We use TPUv3 in all the experiments.
+A TPUv3 Pod has 1024 chips and can provide more than 100 petaflops performance for mixed precision computing.
+%The details can be found in Tables \ref{table:hyper_parameters} and \ref{table:resnet_hyper_parameters} in Appendix.
+%\textcolor{blue}{Please show some data here.}
+To make sure we are comparing with solid baselines, we use grid search to tune the hyper-parameters for 
+%and an internal hyper-parameter tuning tool for  
+$\adam$, $\adagrad$, $\adamw$ ($\adam$ with weight decay), and $\lars$. We also tune weight decay for $\adamw$. All the hyperparameter tuning settings are reported in the Appendix. %{\color{red}(Cho: can we say using an internal tool?)}
+%{\color{blue}(Yang: internal means Google's. Please feel free to remove this sentence.)}
+Due to space constraints, several experimental details are relegated to the Appendix.
+
+
+%The LAMB optimizer does not expect the users to heavily tune the hyper-parameters.
+%Like Adam and AdamW, the users only need to input the learning rate.
+%We conduct a comparison between LAMB and existing optimizers.
+%Adam, AdamW, and LAMB have three additional hyper-parameters (${\beta}_1, {\beta}_2, \epsilon$). 
+%We did not tune these three hyper-parameters. We just use the default values. We only tune the learning rate. If the application uses learning rate warmup, we also tune the warmup epochs. 
+%To make sure we are comparing a solid baseline, we use grid search and an internal hyper-parameter tuning tool for Adam, Adagrad, AdamW, and LARS. We also tune weight decay for AdamW. All the hyper-parameter tuning spaces are in the appendix of this paper.
+%Besides BERT, LAMB performs well on a wide range of applications in our experiments.
+%Bulatov et al. reported LAMB was also successfully used in large-scale transformer models\footnote{https://medium.com/south-park-commons/scaling-transformer-xl-to-128-gpus-85849508ec35} recently.
+%\subsection{\textcolor{blue}{Implementation Details}}
+%We use Jacob Devlin's implementation on BERT's github\footnote{https://github.com/google-research/bert/blob/master/optimization.py} as the AdamW baseline (as of March 1st, 2019).
+%\textcolor{blue}{\textcolor{blue}{Remove the learning rate rampup in Adam and AdamW because warmup essentially has the same effect.}}
+
+\subsection{$\bert$ Training}
+%\subsubsection{Fair Comparison}
+%\textcolor{blue}{Based on our experience, we can trust validation loss.
+%For example, in ImageNet training with ResNet at 8K batch size, a lower validation loss actually leads to worse accuracy!}
+%\textcolor{blue}{sqrt root decay (poly power = 0.5) should be part of the algorithm because I did not find anything is better than that.}
+We first discuss empirical results for speeding up $\bert$ training. For this experiment, we use the same dataset as \cite{devlin2018bert}, which is a concatenation of Wikipedia and BooksCorpus with 2.5B and 800M words respectively. We specifically focus on the SQuAD task\footnote{https://rajpurkar.github.io/SQuAD-explorer/} in this paper. 
+%Stanford Question Answering Dataset (SQuAD) is a reading comprehension dataset which contains questions posed by crowdworkers on a set of Wikipedia articles, the answer to which is a segment of text from the provided reading passage. 
+The F1 score on SQuAD-v1 is used as the accuracy metric in our experiments. All our comparisons are with respect to the baseline $\bert$ model by \cite{devlin2018bert}. To train $\bert$, \citet{devlin2018bert} first train the model for 900k iterations using a sequence length of 128 and then switch to a sequence length of 512 for the last 100k iterations. This results in a training time of around 3 days on 16 TPUv3 chips. The baseline $\bert$ model\footnote{Pre-trained BERT model can be downloaded  from https://github.com/google-research/bert} achieves a F1 score of 90.395. To ensure a fair comparison, we follow the same SQuAD fine-tune procedure of~\cite{devlin2018bert} without modifying any configuration (including number of epochs and hyperparameters). As noted earlier, we could get even better results by changing the fine-tune configuration. For instance, by just slightly changing the learning rate in the fine-tune stage, we can obtain a higher F1 score of 91.688 for the batch size of 16K using $\lamb$. We report a F1 score of 91.345 in Table \ref{table:results}, which is the score obtained for the untuned version. Below we describe two different training choices for training $\bert$ and discuss the corresponding speedups.
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{ We use the F1 score on SQuAD-v1 as the accuracy metric. The baseline F1 score is the score obtained by the pre-trained model ($\bert$-Large) provided on $\bert$'s public repository (as of February 1st, 2019). We use TPUv3s in our experiments. We use the same setting as the baseline: the first 9/10 of the total epochs used a sequence length of 128 and the last 1/10 of the total epochs used a sequence length of 512. All the experiments run the same number of epochs. Dev set means the test data. It is worth noting that we can achieve better results by manually tuning the hyperparameters. The data in this table is collected from the untuned version.}
+\centering
+ 
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+Solver & batch size & steps & F1 score on dev set & TPUs & Time\\
+\hline
+\hline
+Baseline & 512 & 1000k & 90.395 & 16 & 81.4h\\
+\hline
+$\lamb$ & 512 & 1000k & 91.752 & 16 & 82.8h\\
+\hline
+$\lamb$ & 1k & 500k & 91.761 & 32 & 43.2h\\
+\hline
+$\lamb$ & 2k & 250k & 91.946 & 64 & 21.4h\\
+\hline
+$\lamb$ & 4k & 125k & 91.137 & 128 & 693.6m\\
+\hline
+$\lamb$ & 8k & 62500 & 91.263 & 256 & 390.5m\\
+\hline
+$\lamb$ & 16k & 31250 & 91.345 & 512 & 200.0m\\
+\hline
+$\lamb$ & 32k & 15625 & 91.475 & 1024 & 101.2m\\
+\hline
+\hline
+$\lamb$ & 64k/32k & 8599 & 90.584 & 1024 & 76.19m\\
+\hline
+%\textcolor{blue}{Our Method} & 128k/32k & --- & 89.559 & 1024 TPUs & ---\\
+%\hline
+\end{tabular}
+\label{table:results}
+\end{table}
+
+
+
+%We make sure all the fine-tune comparisons use the same hyper-parameters.
+
+%People with limited hardware resource should be able to reproduce our results. We can use a large batch size on a single machine regardless of the number of chips or amount of available memory. We can simply iterate over multiple batches and accumulates the resulting gradients before committing a weight update.
+%We confirm this simulation can reproduce the same results as the distributed implemenation.
+
+%\paragraph{Regular Training using $\lamb$} 
+%\textcolor{red}{Yang: What exactly needs to go here?}
+%The Tensor Processing Units \cite{jouppi2017datacenter} are powerful computational hardware for floating-point operations.
+%The baseline uses the  Wikipedia and BooksCorpus datasets \cite{zhu2015aligning} in the pretraining.
+
+
+For the first choice, we maintain the same training procedure as the baseline except for changing the training optimizer to $\lamb$. We run with the same number of epochs as the baseline but with batch size scaled from 512 to 32K. The choice of 32K batch size (with sequence length 512) is mainly due to memory limits of TPU Pod. Our results are shown in Table \ref{table:results}. By using the $\lamb$ optimizer, we are able to achieve a F1 score of 91.460 in 15625 iterations for a batch size of 32768 (14063 iterations for sequence length 128 and 1562 iterations for sequence length 512).
+With 32K batch size, we reduce $\bert$ training time from 3 days to around 100 minutes. 
+We achieved 49.1 times speedup by 64 times computational resources (76.7\% efficiency).
+We consider the speedup is great because we use the synchronous data-parallelism. 
+There is a communication overhead coming from transferring of the gradients over the interconnect.
+%The gradients have the same size of the trained models.
+For $\resnet$-50, researchers are able to achieve 90\% scaling efficiency because $\resnet$-50 has much fewer parameters (\# parameters is equal to \#gradients) than $\bert$ (25 million versus 300 million).
+%\textcolor{blue}{The optimizer's TensorFlow code and the trained model can be found at http://XXX}
+%\textcolor{blue}{It is worth noting that we did not change any configuration in the SQuAD fine-tune stage. We used the same number of epochs as the baseline in the finetune. Otherwise, the comparison will not be fair.}
+%\paragraph{Mixed-Batch Training using $\lamb$}
+
+To obtain further improvements, we use the {\bf Mixed-Batch Training} procedure with $\lamb$. 
+Recall that $\bert$ training involves two stages: the first 9/10 of the total epochs use a sequence length of 128, while the last 1/10 of the total epochs use a sequence length of 512. 
+For the second stage training, which involves a longer sequence length, due to memory limits, a maximum batch size of only 32768 can be used on a TPUv3 Pod. However, we can potentially use a larger batch size for the first stage because of a shorter sequence length. 
+%In particular, the batch size can be increased to 65536 for the first stage. 
+In particular, the batch size can be increased to 131072 for the first stage. 
+However, we did not observe any speedup by increasing the batch size from 65536 to 131072 for the first stage, thus, we restrict the batch size to 65536 for this stage. 
+%Prior to this work, \citet{smith2017don} also studied the mixed-batch training strategy. However, they increase the batch size during training while we decrease the batch size. 
+By using this strategy, we are able to make full utilization of the hardware resources throughout the training procedure. 
+Increasing the batch size is able to warm-up and stabilize the optimization process \citep{smith2017don}, but decreasing the batch size brings chaos to the optimization process and can cause divergence.
+In our experiments, we found a technique that is useful to stabilize the second stage optimization.
+Because we switched to a different optimization problem, it is necessary to re-warm-up the optimization.
+Instead of decaying the learning rate at the second stage, we ramp up the learning rate from zero again in the second stage (re-warm-up).
+As with the first stage, we decay the learning rate after the re-warm-up phase.
+With this method, we only need 8599 iterations and finish $\bert$ training in 76 minutes (100.2\% efficiency).
+
+
+%\subsection{\textcolor{blue}{Reduced-Epochs Training}}
+%\textcolor{blue}{Try only using seq=512 to train for 3K iterations}
+
+\paragraph{Comparison with $\adamw$ and $\lars$.}
+To ensure that our approach is compared to a solid baseline for the $\bert$ training, we tried three different strategies for tuning $\adamw$: (1) $\adamw$ with default hyperparameters (see \cite{devlin2018bert}) (2) $\adamw$ with the same hyperparameters as $\lamb$, and (3) $\adamw$ with tuned hyperparameters. $\adamw$ stops scaling at the batch size of 16K because it is not able to achieve the target F1 score (88.1 vs 90.4). 
+%Table \ref{table:adamw_16k} shows some of the tuning information.  
+The tuning information of $\adamw$ is shown in the Appendix.
+For 64K/32K mixed-batch training, even after extensive tuning of the hyperparameters, we fail to get any reasonable result with $\adamw$ optimizer. 
+%For example, we only got a F1 score of 5.492.
+We conclude that $\adamw$ does not work well in large-batch $\bert$ training or is at least hard to tune.
+%We also tried using the hyper-parameters of $\lamb$ to AdamW training. However, it also did not produce any reasonable result.
+We also observe that $\lamb$ performs better than $\lars$ for all batch sizes (see Table \ref{table:lars_lamb_bert}).
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{ $\lamb$ achieves a higher performance (F1 score) than $\lars$ for all the batch sizes. The baseline achieves a F1 score of 90.390. Thus, $\lars$ stops scaling at the batch size of 16K.}
+\centering
+
+\begin{tabular}{|c|c|c|c|c|c|c|c|}
+\hline
+Batch Size & 512 & 1K & 2K & 4K & 8K & 16K & 32K\\
+\hline
+\hline
+$\lars$ & 90.717 & 90.369 & 90.748 & 90.537 & 90.548 & 89.589 & diverge \\
+\hline
+$\lamb$ & 91.752 & 91.761 & 91.946 & 91.137 & 91.263 & 91.345 & 91.475 \\
+\hline
+\end{tabular}
+\label{table:lars_lamb_bert}
+\end{table}
+
+\subsection{ImageNet Training with ResNet-50.}
+ImageNet training with ResNet-50 is an industry standard metric that is being used in MLPerf\footnote{https://mlperf.org/}. 
+%According to Stanford Dawnbench \cite{coleman2017dawnbench}, ResNet-50 is the fastest model to achieve 93\% top-5 accuracy for ImageNet classification (as of April 1st, 2019).
+The baseline can get 76.3\% top-1 accuracy in 90 epochs \citep{goyal2017accurate}.
+All the successful implementations are based on momentum SGD \citep{he2016deep, goyal2017accurate} or $\lars$ optimizer \citep{ying2018image, jia2018highly, mikami2018imagenet, you2018imagenet,yamazaki2019yet}.
+Before our study, we did not find any paper reporting a state-of-the-art accuracy achieved by $\adam$, $\adagrad$, or $\adamw$ optimizer.
+In our experiments, even with comprehensive hyper-parameter tuning, $\adagrad$/$\adam$/$\adamw$ (with batch size 16K) only achieves 55.38\%/66.04\%/67.27\% top-1 accuracy.
+After adding learning rate scheme of \cite{goyal2017accurate},
+%\textcolor{red}{Yang: please refrain from using name of the author. Instead please provide a reference. This problems occurs at multiple places. Please edit.}, 
+the top-1 accuracy of $\adagrad$/$\adam$/$\adamw$ was improved to 72.0\%/73.48\%/73.07\%.
+However, they are still much lower than 76.3\%.
+The details of the tuning information are in the Appendix.
+Table \ref{table:resnet50_acc} shows that $\lamb$ can achieve the target accuracy.
+Beyond a batch size of 8K, $\lamb$'s accuracy is higher than the momentum.
+$\lamb$'s accuracy is also slightly better than $\lars$.
+At a batch size of 32K, $\lamb$ achieves 76.4\% top-1 accuracy while $\lars$ achieves 76.3\%.
+At a batch size of 2K, $\lamb$ is able to achieve 77.11\% top-1 accuracy while $\lars$ achieves 76.6\%.
+
+\iffalse
+\begin{figure*}[tb]
+\vspace{5pt}
+\centering
+\includegraphics[width=0.88\textwidth]{figs/imagenet_resnet50.png}
+\caption{$\lamb$ is able to achieve state-of-the-art accuracy in ImageNet/ResNet-50 training for large-batch training. The performance of momentum solver was reported by \citep{goyal2017accurate}. $\adam +$ means adding the learning rate scheme of \cite{goyal2017accurate} to $\adam$: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}. All the adaptive solvers were comprehensively tuned. The tuning information was in the appendix of this paper.}
+\label{fig:resnet50_acc}
+\vspace{-10pt}
+\end{figure*}
+\fi
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{ Top-1 validation accuracy of ImageNet/$\resnet$-50 training at the batch size of 16K (90 epochs). The performance of momentum was reported by \citep{goyal2017accurate}. + means adding the learning rate scheme of \cite{goyal2017accurate} to the optimizer: (1) 5-epoch warmup to stablize the initial stage; and (2) multiply the learning rate by 0.1 at 30th, 60th, and 80th epoch. The target accuracy is around 0.763 \citep{goyal2017accurate}. All the adaptive solvers were comprehensively tuned. The tuning information was in the Appendix.}
+\centering
+
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+%Optimizer & $\adagrad$/$\adagrad$+ & $\adam$/$\adam$+ & $\adamw$/$\adamw$+ & momentum & $\lamb$ \\
+optimizer & adagrad/adagrad+ & adam/adam+ & adamw/adamw+ & momentum & lamb \\
+\hline
+\hline
+Accuracy & 0.5538/0.7201 & 0.6604/0.7348 & 0.6727/0.7307 & 0.7520 & 0.7666  \\
+\hline
+%\textcolor{blue}{Our Method} & 128k/32k & --- & 89.559 & 1024 TPUs & ---\\
+%\hline
+\end{tabular}
+\label{table:resnet50_acc}
+\end{table}
+
+\subsection{Hyperparameters for scaling the batch size}
+For $\bert$ and ImageNet training, we did not tune the hyperparameters of $\lamb$ optimizer when increasing the batch size. We use the square root LR scaling rule and linear-epoch warmup scheduling to automatically adjust learning rate. The details can be found in Tables \ref{table:hyper_parameters} and \ref{table:resnet_hyper_parameters}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{Untuned $\lamb$ for $\bert$ training across different batch sizes (fixed \#epochs). We use square root LR scaling and linear-epoch warmup. For example, batch size 32K needs to finish 15625 iterations. It uses 0.2$\times$15625 = 3125 iterations for learning rate warmup. $\bert$'s baseline achieved a F1 score of 90.395. We can achieve an even higher F1 score if we manually tune the hyperparameters.}
+
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|c|}
+\hline
+Batch Size & 512 & 1K & 2K & 4K & 8K & 16K & 32K\\
+\hline
+\hline
+Learning Rate & $\frac{5}{2^{3.0}\times10^{3}}$ & $\frac{5}{2^{2.5}\times10^{3}}$ & $\frac{5}{2^{2.0}\times10^{3}}$ & $\frac{5}{2^{1.5}\times10^{3}}$ & $\frac{5}{2^{1.0}\times10^{3}}$ & $\frac{5}{2^{0.5}\times10^{3}}$ & $\frac{5}{2^{0.0}\times10^{3}}$\\
+\hline
+Warmup Ratio & $\frac{1}{320}$ & $\frac{1}{160}$ & $\frac{1}{80}$ & $\frac{1}{40}$ & $\frac{1}{20}$ & $\frac{1}{10}$ & $\frac{1}{5}$\\
+\hline
+F1 score & 91.752 & 91.761 & 91.946 & 91.137 & 91.263 & 91.345 & 91.475 \\
+\hline
+Exact Match & 85.090 & 85.260 & 85.355 & 84.172 & 84.901 & 84.816 & 84.939 \\
+\hline
+\end{tabular}
+\label{table:hyper_parameters}
+\end{table}
+
+\begin{table}[ht]
+\renewcommand{\arraystretch}{1.3}
+\caption{Untuned $\lamb$ for ImageNet training with $\resnet$-50 for different batch sizes (90 epochs). We use square root LR scaling and linear-epoch warmup. The baseline \cite{goyal2017accurate} gets 76.3\% top-1 accuracy in 90 epochs. Stanford DAWN Bench \citep{coleman2017dawnbench} baseline achieves 93\% top-5 accuracy. $\lamb$ achieves both of them. $\lamb$ can achieve an even higher accuracy if we manually tune the hyperparameters.}
+\centering
+\begin{tabular}{|c|c|c|c|c|c|c|c|}
+\hline
+Batch Size & 512 & 1K & 2K & 4K & 8K & 16K & 32K\\
+\hline
+\hline
+Learning Rate & $\frac{4}{2^{3.0}\times100}$ & $\frac{4}{2^{2.5}\times100}$ & $\frac{4}{2^{2.0}\times100}$ & $\frac{4}{2^{1.5}\times100}$ & $\frac{4}{2^{1.0}\times100}$ & $\frac{4}{2^{0.5}\times100}$ & $\frac{4}{2^{0.0}\times100}$\\
+\hline
+Warmup Epochs & 0.3125 & 0.625 & 1.25 & 2.5 & 5 & 10 & 20\\
+\hline
+Top-5 Accuracy & 0.9335 & 0.9349 & 0.9353 & 0.9332 & 0.9331 & 0.9322 & 0.9308 \\
+\hline
+Top-1 Accuracy & 0.7696 & 0.7706 & 0.7711 & 0.7692 & 0.7689 & 0.7666 & 0.7642 \\
+\hline
+%Exact Match & 85.090 & 85.260 & 85.355 & 84.172 & 84.901 & 84.816 & 84.939 \\
+%\hline
+\end{tabular}
+\label{table:resnet_hyper_parameters}
+\end{table}

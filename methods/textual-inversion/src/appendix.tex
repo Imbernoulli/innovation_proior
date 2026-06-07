@@ -1,0 +1,79 @@
+\section{Additional inversion approaches}
+
+In addition to the setups outlined in the core paper, we investigated two recent approaches to inversion: Bipartite DDIM-inversion~\citep{ramesh2022hierarchical,dhariwal2021diffusion} and pivotal tuning~\citep{roich2021pivotal}. Below we outline both methods and our experimental results.
+
+\paragraph{Bipartite inversion}
+\citet{dhariwal2021diffusion} demonstrated that the DDIM sampling~\citep{song2020denoising} process can be inverted through a closed-form iterative approach. Specifically, their approach can find a latent noise vector $x_T$ which will be denoised into a specific target image when the denoising process is conditioned on a given code $c_\theta(y)$. In \citep{ramesh2022hierarchical}, they further demonstrate that when the conditioning code is an output of CLIP, one can later modify this code using text-derived directions in CLIP's multi-modal embedding space, while keeping the initial noise, $x_T$, fixed. This induces semantic changes in the image while maintaining the general structure of the original object.
+
+\input{resources/figures/pti_and_bipartite}
+
+Here, we investigate a similar approach. However, rather than modifying the conditioning code $c_\theta(y)$ directly, we change the conditioning text $y$. Specifically, we first find an appropriate pseudo-word for our target concept. Then, we find $x_T$ for a given image of the concept using the text ``A photo of \pholdercolor" and the closed-form solution of~\citet{dhariwal2021diffusion}. Finally, we modify the conditioning text but keep $x_T$ frozen. The results are shown in \Cref{fig:advanced_inversion} (left). Here, we observe that when using LDM's typical guidance~\citep{ho2021classifier} scales ($5$-$10$), the denoiser network is unable to maintain the original object's structure through prompt changes. When reducing the guidance scale, the outline of the original image becomes visible. However, alignment with the prompt is poor.
+
+Such guidance-dependent structure drift has also been demonstrated for GLIDE~\citep{nichol2021glide}. However, this effect is reduced in DALL-E2~\citep{ramesh2022hierarchical} (their Figure 9). Notably, state-of-the-art models~\citep{saharia2022photorealistic,ramesh2022hierarchical} typically employ guidance scales ($\sim2$) which are significantly lower than LDM's --- within the range where we observe structure preservation, but no prompt-matching. This gives us hope that a bipartite inversion would allow better shape preservation in more powerful generative models.
+
+\paragraph{Pivotal Tuning}
+In the field of GAN inversion, it has been shown~\citep{roich2021pivotal,semantic2019bau} that one may largely avoid the reconstruction-editability tradeoff using a two-stage optimization process. First, an image is inverted into ``pivot'' code in a well-behaved region of the latent space, using standard optimization. This typically results in a highly editable code, but with poor identity preservation. As a second step, the generator is fine-tuned so that the first step's pivot code will more accurately reproduce the inverted image. It was further demonstrated that such localized tuning can maintain the appealing properties of the latent space and retain similar latent-editing capabilities.
+
+Here, we investigate a similar approach in order to improve reconstruction. We first optimize a pseudo-word using our baseline method. Then, we fine-tune the generator such that sentences of the form ``A photo of \pholdercolor" will better reconstruct the concept-specific training set images.
+
+Our initial investigation reveals that \naive applications of this approach lead to improved shape preservation, but also to a severe collapse of editing at high guidance scales. See \Cref{fig:advanced_inversion} (right) for examples.
+
+However, a more involved application of this same principle (\eg by combining it with a similar process to the bipartite-inversion outlined below, or by tuning around results produced with higher guidance scales) might overcome these issues. We leave such investigation to future work. 
+\clearpage
+
+\input{resources/figures/set_size_eval}
+
+\section{Effect of training set size}
+
+We investigated the effect of the concept's training set size on the results. Specifically, we consider the headless sculpture object of \Cref{fig:teaser} (top row). We inverted the object using our standard model but sweeped over dataset sizes ranging from a single image to $25$ samples. For ease of comparison, we further report the image-only, prompt-only, and human caption based scores for the same single object. The results are shown in ~\Cref{fig:set_size_eval}.
+
+Using additional images leads to optimized embeddings which reside farther away from real word embeddings, harming editability. Our method operates best when provided with $~5$ images.
+
+
+\section{Additional results}
+
+\input{resources/figures/generation_sup}
+
+We provide additional results of personalized generation using our method. In \Cref{fig:gen_sup} we show additional text-guided synthesis results.
+
+In \Cref{fig:uncurated_photo} we show large-scale galleries of uncurated results generated with the prompt ``A photo of \pholdercolor". In \Cref{fig:uncurated_prompt_1,fig:uncurated_prompt_2} we provide large-scale galleries of uncurated results generated with a wide assortment of prompts. These are intended to provide a sense of the quality of images produced and cherry-picking involved when generating the samples in the core paper. Note that these results also contain demonstrations of typical failure cases, such as difficult relational prompts (\Cref{fig:uncurated_prompt_1}, rows $2$, $5$).
+
+\input{resources/figures/uncurated_photo}
+
+\input{resources/figures/uncurated_prompt_1}
+\input{resources/figures/uncurated_prompt_2}
+
+\clearpage
+
+\section{Training prompt templates}
+Below we provide the list of text templates used when optimizing a pseudo-word:
+
+\begin{itemize}
+    \item ``a photo of a \pholder.",
+    \item ``a rendering of a \pholder.",
+    \item ``a cropped photo of the \pholder.",
+    \item ``the photo of a \pholder.",
+    \item ``a photo of a clean \pholder.",
+    \item ``a photo of a dirty \pholder.",
+    \item ``a dark photo of the \pholder.",
+    \item ``a photo of my \pholder.",
+    \item ``a photo of the cool \pholder.",
+    \item ``a close-up photo of a \pholder.",
+    \item ``a bright photo of the \pholder.",
+    \item ``a cropped photo of a \pholder.",
+    \item ``a photo of the \pholder.",
+    \item ``a good photo of the \pholder.",
+    \item ``a photo of one \pholder.",
+    \item ``a close-up photo of the \pholder.",
+    \item ``a rendition of the \pholder.",
+    \item ``a photo of the clean \pholder.",
+    \item ``a rendition of a \pholder.",
+    \item ``a photo of a nice \pholder.",
+    \item ``a good photo of a \pholder.",
+    \item ``a photo of the nice \pholder.",
+    \item ``a photo of the small \pholder.",
+    \item ``a photo of the weird \pholder.",
+    \item ``a photo of the large \pholder.",
+    \item ``a photo of a cool \pholder.",
+    \item ``a photo of a small \pholder.",
+\end{itemize}

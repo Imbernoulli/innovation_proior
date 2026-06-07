@@ -1,0 +1,33 @@
+
+\sffamily\small
+\setlength{\tabcolsep}{1.8pt}%
+\renewcommand{\arraystretch}{1}%
+\hspace*{-0.9mm}\begin{tabular}{cccccc}
+	\textbf{(a)} No encoding &
+	\makecell{\textbf{(b)} Frequency \\ \cite{mildenhall2020nerf}} &
+	\makecell{\textbf{(c)} Dense grid \\ Single resolution} &
+	\makecell{\textbf{(d)} Dense grid \\ Multi resolution} &
+	\makecell{\textbf{(e)} Hash table\ (ours) \\ $T=2^{14}$} &
+	\makecell{\textbf{(f)} Hash table\ (ours) \\ $T=2^{19}$} \\
+
+	\includegraphics[width=0.16\linewidth]{gargoyle_none.jpg} &
+	\includegraphics[width=0.16\linewidth]{gargoyle_frequency.jpg} &
+	\includegraphics[width=0.16\linewidth]{gargoyle_densegrid_1res.jpg} &
+	\includegraphics[width=0.16\linewidth]{gargoyle_densegrid.jpg} &
+	\includegraphics[width=0.16\linewidth]{gargoyle_base_14.jpg} &
+	\includegraphics[width=0.16\linewidth]{gargoyle_base.jpg} \\
+
+	\SI{411}{\kilo\nothing} + 0 parameters &
+	\SI{438}{\kilo\nothing} + 0 &
+	\SI{10}{\kilo\nothing} + \SI{33.6}{\mega\nothing} &
+	\SI{10}{\kilo\nothing} + \SI{16.3}{\mega\nothing} &
+	\SI{10}{\kilo\nothing} + \SI{494}{\kilo\nothing} &
+	\SI{10}{\kilo\nothing} + \SI{12.6}{\mega\nothing} \\
+	11:28 (mm:ss) / PSNR 18.56 &
+	12:45 / PSNR 22.90  &
+	1:09 / PSNR 22.35 &
+	1:26 / PSNR 23.62 &
+	1:48 / PSNR 22.61 &
+	1:47 / PSNR 24.58 \\
+\end{tabular}
+

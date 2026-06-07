@@ -1,0 +1,34 @@
+\section{Background}
+\subsection{Vector Quantized Variational AutoEncoder} \label{sec:vq}
+The VQ-VAE model \cite{VQVAE} can be better understood as a communication system. It comprises of an encoder that maps observations onto a sequence of discrete latent variables, and a decoder that reconstructs the observations from these discrete variables. Both encoder and decoder use a shared codebook. More formally, the encoder is a non-linear mapping from the input space, $x$, to a vector $E(x)$. This vector is then quantized based on its distance to the prototype vectors in the codebook $e_k, k \in 1 \ldots K$ such that each vector $E(x)$ is replaced by the index of the nearest prototype vector in the codebook, and is transmitted to the decoder (note that this process can be lossy).
+
+\begin{equation}\label{eq:quantize}
+    \text{Quantize}(E(\mathbf{x})) = \mathbf{e}_k \,\,\,\,\text{where}\, k = \argmin_j ||E(\mathbf{x}) - \mathbf{e}_j||
+\end{equation}
+
+\par
+The decoder maps back the received indices to their corresponding vectors in the codebook, from which it reconstructs the data via another non-linear function. To learn these mappings, the gradient of the reconstruction error is then back-propagated through the decoder, and to the encoder using the straight-through gradient estimator. 
+
+\par
+The VQ-VAE model incorporates two additional terms in its objective to align the vector space of the codebook with the output of the encoder. The \emph{codebook loss}, which only applies to the codebook variables, brings the selected codebook $\mathbf{e}$ close to the output of the encoder,  $E(\mathbf{x})$. The \emph{commitment loss}, which only applies to the encoder weights, encourages the output of the encoder to stay close to the chosen codebook vector to prevent it from fluctuating too frequently from one code vector to another. The overall objective is described in \eqref{eq:loss}, where $\mathbf{e}$ is the quantized code for the training example $\mathbf{x}$, $E$ is the encoder function and $D$ is the decoder function. The operator $sg$ refers to a stop-gradient operation that blocks gradients from flowing into its argument, and $\beta$ is a hyperparameter which controls the reluctance to change the code corresponding to the encoder output.
+% \vspace{-0.5cm}
+\begin{equation}\label{eq:loss}
+\mathcal{L}(\mathbf{x}, D(\mathbf{e}))  = ||\mathbf{x} - D(\mathbf{e})||_2^2 + ||sg[E(\mathbf{x})] - \mathbf{e}||_2^2 + \beta ||sg[\mathbf{e}] - E(\mathbf{x})||^2_2
+\end{equation}
+% \vspace{-0.5cm}
+
+As proposed in \cite{VQVAE}, we use the exponential moving average updates for the codebook, as a replacement for the codebook loss (the second loss term in Equation \eqref{eq:loss}):
+% \vspace{-0.5cm}
+\begin{equation*}
+\begin{aligned}
+N^{(t)}_i &:= N^{(t-1)}_i * \gamma + n^{(t)}_i (1 - \gamma), &
+m^{(t)}_i &:= m^{(t-1)}_i * \gamma + \sum_j^{n^{(t)}_i} E(x)^{(t)}_{i,j} (1 - \gamma), &
+e^{(t)}_i &:= \frac{m^{(t)}_i}{N^{(t)}_i} \\ 
+\end{aligned}
+\label{ema}
+\end{equation*}
+% \vspace{-0.5cm}
+where $n^{(t)}_i$ is the number of vectors in $E(x)$ in the mini-batch that will be quantized to codebook item $e_i$, and $\gamma$ is a decay parameter with a value between 0 and 1. We used the default $\gamma=0.99$ in all our experiments. We use the released VQ-VAE implementation in the Sonnet library~\footnote{\texttt{\scriptsize{\url{https://github.com/deepmind/sonnet/blob/master/sonnet/python/modules/nets/vqvae.py}}}}~\footnote{\texttt{\scriptsize{\url{https://github.com/deepmind/sonnet/blob/master/sonnet/examples/vqvae\_example.ipynb}}}}.
+
+\subsection{PixelCNN Family of Autoregressive Models}
+Deep autoregressive models are common probabilistic models that achieve state of the art results in density estimation across several data modalities \cite{gpt2, PixelSnail, ImageTransformer, oord2016wavenet}. The main idea behind these models is to leverage the chain rule of probability to factorize the joint probability distribution over the input space into a product of conditional distributions for each dimension of the data given all the previous dimensions in some predefined order: $p_\theta(\rvx) = \prod_{i=0}^{n} p_\theta(x_i|\rvx_{<i})$. Each conditional probability is parameterized by a deep neural network whose architecture is chosen according to the required inductive biases for the data.

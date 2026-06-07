@@ -1,0 +1,149 @@
+\documentclass[acmtog,authorversion,nonacm]{acmart}
+
+\usepackage{booktabs} % For formal tables
+
+\citestyle{acmauthoryear}
+\setcitestyle{square}
+
+
+\usepackage[ruled]{algorithm2e} % For algorithms
+\renewcommand{\algorithmcfname}{ALGORITHM}
+\SetAlFnt{\small}
+\SetAlCapFnt{\small}
+\SetAlCapNameFnt{\small}
+\SetAlCapHSkip{0pt}
+\IncMargin{-\parindent}
+\usepackage{tikz}
+\acmJournal{TOG}
+
+\usepackage{tabularx}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+
+\acmSubmissionID{463}
+
+\setcopyright{acmlicensed}
+
+
+
+\gdef\cropInsets{0}
+
+\graphicspath{{./Figures/}{./figs/result/}}
+
+\input{macros}
+\input{scene_names}
+
+\definecolor{hgblue}{RGB}{138,200,224}
+\definecolor{hgred}{RGB}{245,138,143}
+
+\definecolor{gold}{RGB}{221, 196, 65}
+\definecolor{silver}{RGB}{215, 215, 215}
+\definecolor{bronze}{RGB}{126, 66, 5}
+
+\begin{document}
+
+\title{Optimizing Camera Matrices through Rigid-Body Physics}
+
+\author{Thomas M\"uller}
+\affiliation{%
+  \institution{NVIDIA}
+   \city{Z\"urich}
+   \country{Switzerland}
+  }
+\email{tmueller@nvidia.com}
+
+\renewcommand\shortauthors{M\"uller}
+
+\begin{CCSXML}
+<ccs2012>
+   <concept>
+       <concept_id>10010147.10010169.10010170.10010174</concept_id>
+       <concept_desc>Computing methodologies~Massively parallel algorithms</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10010147.10010169.10010170.10010173</concept_id>
+       <concept_desc>Computing methodologies~Vector / streaming algorithms</concept_desc>
+       <concept_significance>300</concept_significance>
+       </concept>
+   <concept>
+       <concept_id>10010147.10010257.10010293.10010294</concept_id>
+       <concept_desc>Computing methodologies~Neural networks</concept_desc>
+       <concept_significance>500</concept_significance>
+       </concept>
+ </ccs2012>
+\end{CCSXML}
+
+\ccsdesc[300]{Computing methodologies~Massively parallel algorithms}
+\ccsdesc[300]{Computing methodologies~Vector / streaming algorithms}
+\ccsdesc[500]{Computing methodologies~Neural networks}
+
+\keywords{Image Synthesis, Neural Networks, Encodings, Hashing, GPUs, Parallel Computation, Function Approximation. }
+
+
+\begin{abstract}
+bla bla
+\end{abstract}
+
+\maketitle
+
+\newpage
+\section{Introduction} \label{Sec:Intro}
+
+Recent developments in inverse rendering have not only increased the demand for better scene reconstruction given camera parameters, but also for finding camera parameters given a specified scene (or a joint optimization of both).
+
+However, automatic differentiation onto a camera matric yields malformed rotational components, which prior work has addressed with matrix-logarithm-space parameterizations and screw transforms.
+
+We propose an alternative parameterization---rotational impulses, coupled with a rotational Adam optimizer---that is equivalent to log-space rotation generators while offering efficient, stable, computation through standard vector operations (dot and cross products) and being simple to understand.
+
+\section{Problem Description} \label{Sec:ProblemDescription}
+
+In this document, we define camera matrices as $\cam \in \R^{3\times4}$
+\begin{align}
+  \cam := \bigl[ \, \camRot \,\,\, \camPos \, \bigl] \,,
+\end{align}
+consisting of a rotation matrix $\camRot \in \R^{3\times3}$ representing the camera's orientation, and a translation vector $\camPos \in \R^3$ representing its position.
+
+The camera matrix determines the viewpoint of the (inverse) rendering problem in question.
+Namely, primary rays with origin $\origin$ and direction $\originDir$ in canonical camera space have the form
+\begin{align}
+  \pos = \camRot \cdot ( \origin + t \, \originDir ) + \camPos \,.
+\end{align}
+
+By a differentiable rendering algorithm (such as NeRF~\citep{mildenhall2020nerf}), we are given gradients of the loss $\Loss$ with respect to positions from primary ray equation, i.e.\ $\partial{\Loss} / \partial{\pos} \in \R^3$ and our goal is translate these gradients into meaningful updates to the camera matrix $\cam$.
+
+
+\section{Method} \label{Sec:Method}
+
+Updating the camera position $\camPos$ is easy: its effect on the loss is computed trivially as ${\partial{\Loss} / \partial{\camPos} = \partial{\Loss} / \partial{\pos}}$, permitting the use of gradient-based optimizers such as Adam~\citep{KingmaB14}.
+In the following, we will therefore focus solely on the question of how to update the camera rotation $\camRot$.
+
+\paragraph{Na{\"i}ve gradient descent.}
+The obvious procedure of computing the ${3\!\times\!3}$ gradient matrix ${\partial{\Loss} / \partial{\camRot}}$ and applying Adam immediately proves problematic: the resulting matrix is no longer valid rotation.
+Gradient descent is unaware of the fact, that we do not want it to utilize just 3 out of the available 9 degrees of freedom of the linear transform.
+
+\paragraph{Log-space rotations.}
+We can enforce this by exploiting the form of log-space rotation matrices. bla bla, prior work did this already but rely on autodiff, which leads to numeric difficulty due to typical implementations of matrix logarithms and exponentials.
+
+\paragraph{Impulse vectors.}
+The important realization is that the 3 values of a log-space rotation, when interpreted as a vector, are the \emph{axis of rotation}, with the vector's norm being the angle of rotation.
+In other words: the vector corresponds to the rotational \emph{impulse} induced by $\partial{\Loss} / \partial{\pos}$ and can be computed by a single cross product.
+
+Averaging many log-space gradients from a batch thus amounts to averaging their rotational impulses, which has a very intuitive interpretation: if the camera was a rigid body, then the resulting rotational impulse would be overall effect of each training sample's gradient pushing on it.
+
+\paragraph{Rotational Adam.}
+It seems tempting to directly apply Adam to impulse vectors and it turns out that this is physically quite meaningful.
+bla bla physical angular momentum, bla bla
+
+Lastly, we must be careful with how we represent $\partial{\camRot}$: it must not actually be in terms of an angle axis! (Arguments about commutativity)
+
+
+\begin{acks}
+bla bla
+\end{acks}
+
+
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{egbib}
+
+
+\end{document}

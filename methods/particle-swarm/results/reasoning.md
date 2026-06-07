@@ -1,0 +1,143 @@
+OK, let me think this through from scratch. I have a black box. I hand it a point x in some continuous, maybe high-dimensional space, and it hands me back a single number f(x) — a cost I want to minimize, or a quality I want to maximize, doesn't matter, I'll say minimize. I have no derivative. f might be a simulation, or the training error of a neural net as a function of its weights, or some hand-built objective with no formula I can differentiate. And it's nasty: lots of basins, lots of local minima, a global minimum hiding somewhere among them. All I can do is evaluate.
+
+So gradient descent is out — there's no gradient. Even if I finite-differenced one, on a landscape this lumpy it would just slide me into whichever pit I'm standing next to. Hill-climbing, Nelder-Mead from a single start, same problem: they find *a* minimum, the nearest one, and that's almost never the one I want. The honest difficulty is that a single trajectory commits to a basin the moment it starts moving.
+
+The obvious fix for "I keep getting stuck in the nearest basin" is: don't run one searcher, run many, started all over the space. If I scatter a hundred starts and hill-climb each, at least one of them probably starts in the global basin. But that's just random restarts, and it's wasteful — each searcher is an island. Searcher #37 might stumble into a fantastic region and searcher #4, grinding away in a mediocre pit, never hears about it. A hundred independent searches on a landscape where the good regions are sparse and scattered spends almost all its evaluations re-discovering the same mediocre pits.
+
+What I actually want is a *population* of candidates that share what they find. If one of them locates a promising region, the others should be able to learn from it and head over. That sharing is the thing random restarts throw away. And there's a suggestive observation from the natural world here: Wilson's point about fish schools and bird flocks, that an individual "can profit from the discoveries and previous experience of all other members of the school during the search for food," and that this advantage becomes decisive precisely "whenever the resource is unpredictably distributed in patches." Sparse, patchy resources — that *is* my multimodal landscape, "resource" = low f. So a search that lets candidates pool their discoveries should beat one where they don't, for exactly the reason it pays off for a real school.
+
+How do you build a population that shares discoveries? The reigning answer is genetic algorithms. Encode each candidate as a string, score it by fitness = f(x), and breed the population: select the fitter ones, crossover (splice two parents' substrings), mutate (flip bits). GAs genuinely handle multimodal black boxes, and Holland's whole framing of the "optimum allocation of trials" is about the explore/exploit tension I'm worried about. So this works. But it sits a little wrong for a *continuous* problem. Crossover recombines chunks of an encoding; it doesn't *move a point through space* toward a better region. And a GA individual has no persistence — it's a string that gets spliced and discarded. There's no notion of *this* candidate, with a trajectory, remembering "I personally did really well over *there*." On a continuous landscape I keep feeling like the candidates should be points that *fly* — that have positions and velocities and move — rather than strings that get cut and pasted.
+
+So let me chase the flying-points picture and see where it goes. People have simulated flocks. Reynolds' boids: each bird steers by three local rules against its neighbors — don't crowd them, match their heading, drift toward their local center — and out of those purely local interactions a fluid, coordinated flock *emerges*, with no global controller. The relevant lesson isn't the birds; it's that very simple per-agent rules, each agent looking only at local information, can produce rich collective motion. That's encouraging: maybe a simple per-candidate update rule can produce a coordinated *search*.
+
+But a flock just flocks — it mills around, it doesn't *find* anything. To make it optimize I need a quality signal in the loop. Heppner's variation has exactly that: he put a "roost" in the simulation, a fixed attractor the birds are pulled toward, and gave each agent a position-quality function — a "cornfield vector," something like Eval = sqrt((x−100)²) + sqrt((y−100)²), which is zero at the target and grows as you leave it. With the pull set high the flock got "sucked violently into the cornfield"; set low it swirled in and landed gently. So a flock plus a position-quality function actually *converges on the target*. That's the bridge from animation to optimization.
+
+Except — and this is the crux — Heppner's birds *know where the roost is*. The attractor's location is baked in. Real birds finding a cornfield, or my optimizer finding a global minimum, do *not* know the location in advance; that's the whole problem. So I can't just hand the swarm the answer as an attractor. The attractor has to be *built out of what the swarm itself discovers*. Where do I get an attractor when I don't know where the good region is? The only information I have is the evaluations the candidates have already made. So the attractor has to be assembled from those.
+
+Let me try the most naive version of "make a flock find an unknown target" and watch it break. Start with bare velocity matching — each agent copies its nearest neighbor's velocity. Run it. The flock quickly settles onto one unanimous, unchanging direction and just... cruises off. The whole population collapsed to a single behavior; it stopped searching. Pure imitation eats all the diversity. Flock simulators patch this with "craziness" — inject a random perturbation each step so the motion stays varied and lifelike. Fine, that keeps it from freezing, but craziness is just noise; it doesn't *direct* the search toward anything good. I've got two failed ingredients: imitation collapses, noise doesn't aim. I need something that aims at quality, assembled from the swarm's own evaluations.
+
+What does each candidate actually know? Two things, both buildable from past evaluations. First: each candidate can remember *the best position it has personally visited so far* and the value there — call it pbest. That's a per-candidate memory, the thing GAs threw away. Conceptually it's autobiographical: "the spot that's worked out best for me." Second: across the whole population, somebody has the best value anyone has found — call that position gbest, group-best. That's the shared, public piece — "the best the group knows about." Both are just bookkeeping over evaluations I'm already making. Neither requires knowing the true optimum.
+
+Now I have two home-grown attractors, and Heppner already showed me a flock falls into an attractor. So make each agent's velocity get pulled toward *both* of them. Per dimension, nudge the velocity in the direction of (pbest − present position), and in the direction of (gbest − present position). The first pull is the candidate returning toward the place that most satisfied it — a kind of nostalgia for its own best spot. The second is the candidate conforming toward the group's best-known spot — like adjusting your beliefs toward a publicized norm. And crucially these attractors *move*: every time some candidate evaluates a new, better point, gbest jumps there, and every candidate's own pbest updates as it goes. So the swarm isn't falling into a fixed cornfield; it's falling toward a *running consensus* about where the good region is, a consensus that keeps improving as the swarm explores. That's how a flock finds an unknown target: the target is its own best discovery so far.
+
+Let me write the first cut of the rule. For agent's velocity component vx, and its remembered-best coordinate pbestx, and the group-best coordinate pbestx[gbest]:
+
+    if present_x > pbestx:        vx = vx − rand()*p_increment      # I'm to the right of my best, push left
+    if present_x < pbestx:        vx = vx + rand()*p_increment      # I'm to the left, push right
+    ...same toward the group best with g_increment...
+
+and then present_x += vx. So it's a sign test: figure out which side of the attractor I'm on, kick the velocity that way by a random amount. Run it — it works, the agents do find the cornfield even with the target's location no longer hard-coded, driven purely by pbest and gbest. Good, the core idea is sound.
+
+But staring at it, the sign test is ugly and, more importantly, it throws away information. Whether I'm one unit from my best or a thousand units from it, I get the same size kick — the magnitude of (present − pbest) is discarded and only its sign survives. That's crude: an agent far from a good region should accelerate harder toward it than one already nearly on top of it. So replace the sign test with the actual difference:
+
+    vx = vx + rand()*p_increment*(pbestx − present_x)
+
+Now the pull is proportional to how far off I am — acceleration by distance. Same for the group term with (pbestx[gbest] − present_x). Cleaner, and it performs better. So the velocity update is becoming: keep your current velocity, then add a random-weighted pull toward your own best, plus a random-weighted pull toward the group's best.
+
+Why two separate pulls, though? Couldn't I fold them into one — pull toward, say, the midpoint of pbest and gbest, or toward a weighted average of the two "best" points? Let me try collapsing the two terms into a single attractor at the point midway between pbest and gbest per dimension. Run it. It does converge — but it converges *onto that midpoint*, whether or not the midpoint is actually any good. The swarm contracts to the average of two remembered-good locations and sits there, even when that average is in a valley between two basins and isn't an optimum at all. That's a real failure: the two distinct stochastic kicks, pulling independently, are what keep the swarm probing instead of contracting onto a fictitious average point. So I keep them separate — two terms, two independent random weights. The independence matters: r1 and r2 are drawn separately each step, so the relative strength of "go home to my own best" versus "go to the group's best" jitters from step to step, and that jitter is part of what keeps the search alive.
+
+What sets the size of the random weights? Right now there's a p_increment and a g_increment I'd have to tune, and worse, I'd have to *guess* whether p should be bigger than g. And there's a real cost to guessing wrong, which I can reason out from the two pulls. Crank p_increment up relative to g: each agent is dominated by the return-to-my-own-best pull, so isolated individuals just wander around their personal histories and the population never coheres — excessive wandering. Crank g_increment up relative to p: every agent is yanked hard toward the *current* group best, so the instant anyone finds a halfway-decent point the whole swarm piles onto it before anyone has explored elsewhere — premature convergence to a local minimum. The first is too much explore, the second too much exploit, and they're governed by the *ratio* of the two increments. Since I have no principled way to know the right ratio for an arbitrary black box, the safe default is to make them equal — equal pull toward individual and collective memory. That balance is the explore/exploit knob, and equal is the neutral setting.
+
+And what's a sensible absolute value? If I want the agent to, on average, head *toward* an attractor but sometimes *overshoot* it — and overshooting is good, because an agent that flies past the current best keeps probing the region on the far side rather than braking exactly onto it — then I want the random multiplier to have mean around 1 so the pull lands the agent near the attractor on average, with enough spread that it overflies maybe half the time. rand() is uniform on [0,1], mean ½. Multiply by 2 and the weight is uniform on [0,2], mean 1. So 2*rand() gives an expected pull that reaches the attractor and a coin-flip chance of overshooting. Set both increments to 2:
+
+    vx = vx + 2*rand()*(pbestx − present_x) + 2*rand()*(pbestx[gbest] − present_x)
+    present_x += vx
+
+That's the whole thing, a couple of lines. Before I trust it, I should strip out the scaffolding I inherited from the flock simulator and check none of it was load-bearing. Drop "craziness" — the random perturbation. Gone, and the optimizer is fine, actually slightly faster; the two stochastic pulls already supply all the randomness the search needs. Drop nearest-neighbor velocity matching — the imitate-your-neighbor rule. Gone too, works just as well, optimization is even a touch faster. With neighbor-matching removed it isn't really a flock anymore — there's no local alignment holding it in formation — it's a *swarm* of independent points each pulled by memory. So the name shifts: flock → swarm, and the population members, which carry velocity and acceleration, are *particles*.
+
+Now the dangerous part. Do I even need that leading vx — the agent's *current* velocity carried forward? It looks like momentum, and momentum makes the algorithm a bit harder to reason about. Let me test dropping it: set velocity fresh each step from the two pulls only,
+
+    vx = 2*rand()*(pbestx − present_x) + 2*rand()*(pbestx[gbest] − present_x)
+
+with no carried-over term. Run it. It's *much* worse — quite ineffective at finding global optima. That's a strong signal, and I should understand *why*, not just keep the term because it tested better. Without the carried velocity, each step the agent computes a fresh pull from its current position toward the two bests and steps exactly that way; it has no inertia, so it can't *overshoot and sail through* a good region — it brakes and reorients every single step, hugging the line between pbest and gbest. The carried velocity is what lets a particle build up speed, blow past the current consensus, and explore the unknown territory on the far side before the pulls reel it back. It's precisely the overshoot-and-probe behavior I wanted, made persistent. Momentum is the explore mechanism. So it stays — the current velocity is load-bearing, not decoration.
+
+I'll also notice this matches a coherent picture of what a swarm *should* do — Millonas' principles. The population does simple per-particle space/time computations (proximity); it responds to a quality signal, f, through pbest and gbest (quality); the independent stochastic kicks keep it from committing all its motion to one narrow channel (diverse response); it only changes its collective "mode" when gbest actually moves to a new region, not on every little fluctuation (stability); and it *does* re-orient when gbest jumps somewhere genuinely better (adaptability). Stability and adaptability are the two faces of explore/exploit again, and the design sits right in the middle of them.
+
+There's one more failure mode I have to deal with before this is usable, and it comes straight out of the velocity recursion. Look at it as a dynamical system in one dimension, ignoring the randomness for a moment: v ← v + a·(p − x), x ← x + v, with a the combined pull strength. That's a discrete oscillator — a mass on a spring. If a is too large, or if the velocity I'm carrying is already big, the position can overshoot the attractor by *more* than it was off to begin with, which makes the next pull bigger, which makes the next overshoot bigger... the velocity blows up and the particle flies off to infinity. The very momentum that gives me exploration can, unchecked, detonate the swarm. The blunt fix is to clamp it: pick a Vmax and never let |v| exceed it,
+
+    if vx >  Vmax: vx =  Vmax
+    if vx < −Vmax: vx = −Vmax
+
+so a particle can fly fast but not arbitrarily fast. Vmax becomes a real parameter — it caps the per-step step size and thereby caps how aggressively the swarm explores. Too small and the swarm can't cross the landscape; too big and it explodes. It works, but it grates: I've added a parameter whose only job is to suppress an instability, and its right value depends on the scale of the search space, which I'd rather not have to know.
+
+So let me look harder at *where* the explosion comes from. The carried velocity term in my update has an implicit coefficient of exactly 1 — I keep 100% of the previous velocity and *add* the pulls on top. That's the problem: 100% retention means energy only ever accumulates. What if I keep only a *fraction* of the previous velocity? Put a coefficient w on it:
+
+    v ← w·v + c1·r1·(pbest − x) + c2·r2·(gbest − x)
+    x ← x + v
+
+with c1, c2 the two acceleration constants (the old "increments," default 2) and r1, r2 the independent uniform randoms. Now w is doing something principled. With w < 1 the carried velocity *decays* each step — friction — so the oscillator is damped and energy bleeds off instead of compounding; the runaway is tamed at the source, and I may not need Vmax at all. And w isn't just a safety valve, it's the explore/exploit dial in disguise. Large w (near 1, or above) means the particle hangs onto most of its speed: it sails far, overshoots a lot, explores. Small w means the velocity dies quickly and the particle is governed almost entirely by the local pulls toward pbest and gbest: it brakes onto the consensus, exploits. So w *is* the inertia of the particle's motion, and it directly trades exploration for exploitation — the cleanest single knob I could ask for.
+
+That immediately suggests how to *use* it. A search wants to explore early — survey the whole landscape, find the right basin out of many — and exploit late — settle into that basin and refine. So don't hold w fixed: start it high to explore and let it decay toward low to exploit. A simple schedule is linear from about 0.9 down to about 0.4 across the run. Early on, w≈0.9, particles carry most of their speed and roam; by the end, w≈0.4, the carried velocity is largely killed each step and the swarm contracts onto the best region it found. That's the annealing of explore→exploit, expressed through one parameter, and it largely removes the need to hand-tune Vmax for scale.
+
+Let me make sure the damping is actually principled and I'm not just hoping w<1 is enough. Take the noise-free 1-D recurrence again with x measured from the attractor (set p = g at a common attractor a; let φ be the total pull coefficient c1+c2):
+
+    v ← w·v − φ·(x − a)
+    x ← x + v
+
+Write it as a linear map on the state (x−a, v). Its behavior is set by the eigenvalues of that 2×2 map. The particle stays bounded — the spring doesn't explode — only when those eigenvalues lie inside (or on) the unit circle, which constrains the pair (w, φ) together: you cannot make *both* the inertia and the total pull large. Push φ = c1+c2 up past a threshold and the eigenvalues leave the unit circle and the trajectory diverges no matter what; that's the explosion I saw with w=1 and big pulls. The resolution is to keep w below 1 *and* keep c1+c2 bounded — equivalently, multiply the whole update by a constriction factor χ that guarantees the eigenvalues sit on the unit circle by construction. Working that out for the deterministic system, with φ = c1+c2 > 4 you get χ = 2 / |2 − φ − sqrt(φ² − 4φ)|; the common pick φ = 4.1 gives χ ≈ 0.7298, and applying χ to every term is algebraically the same as running inertia with w = χ and effective constants χ·c_i. So inertia-with-w<1 and the constriction factor are the same stabilization seen from two angles: damp the carried velocity, bound the total pull, and the swarm is guaranteed not to blow up. With w≈0.7–0.9 decaying and c1=c2≈2, I'm safely inside that stable region, and Vmax becomes optional rather than essential.
+
+There's one design choice left that I glossed: gbest is *the single best of the entire swarm* — every particle is pulled toward the same one global best. That's a fully-connected social network, a star: news of the best point reaches everyone in one step. Fast, but it's the premature-convergence risk again — one early good point and the whole swarm dogpiles. The alternative is to make "best" *local*: connect the particles in a ring and let each be pulled toward the best in its own small neighborhood, not the global best. Good news then spreads slowly, hop by hop around the ring, so different regions of the swarm can keep exploring different basins in parallel before the information homogenizes — more robust on deceptive multimodal surfaces, at the price of slower convergence. So there are two natural variants — global-best (star) and local-best (ring) — trading convergence speed against robustness, and they differ only in how the social attractor is computed. I'll build the global-best version as the default and keep the neighborhood computation factored out so the ring version is a drop-in.
+
+Let me write it for real, vectorized over the whole swarm at once with numpy. Position and velocity are (N, D) arrays — N particles, D dimensions. Each particle carries its own pbest position and cost; the swarm carries the single gbest. Each step: evaluate every particle's current position, update each pbest where it improved, recompute gbest as the best pbest, then the velocity update and the position step.
+
+```python
+import numpy as np
+
+class Swarm:
+    def __init__(self, n_particles, dimensions, bounds, options):
+        lo, hi = bounds
+        # particles scattered uniformly across the box; velocities start small/random
+        self.position  = np.random.uniform(lo, hi, (n_particles, dimensions))
+        self.velocity  = np.random.uniform(0, 1, (n_particles, dimensions))
+        self.pbest_pos  = self.position.copy()               # each particle's own best-seen position (autobiographical memory)
+        self.pbest_cost = np.full(n_particles, np.inf)        # ...and its value
+        self.best_pos  = None                                 # the swarm's single best-seen position (gbest)
+        self.best_cost = np.inf
+        self.options   = options                              # {'w':..., 'c1':..., 'c2':...}
+
+def compute_pbest(swarm, current_cost):
+    # where the new position beats a particle's own record, it becomes the new pbest
+    improved = current_cost < swarm.pbest_cost
+    swarm.pbest_pos  = np.where(improved[:, None], swarm.position, swarm.pbest_pos)
+    swarm.pbest_cost = np.where(improved,          current_cost,   swarm.pbest_cost)
+
+def compute_gbest(swarm):
+    # star topology: gbest = the best pbest across the whole swarm
+    i = np.argmin(swarm.pbest_cost)
+    if swarm.pbest_cost[i] < swarm.best_cost:
+        swarm.best_cost = swarm.pbest_cost[i]
+        swarm.best_pos  = swarm.pbest_pos[i].copy()
+
+def compute_velocity(swarm, vmax=None):
+    w, c1, c2 = swarm.options['w'], swarm.options['c1'], swarm.options['c2']
+    shape = swarm.position.shape
+    # cognitive pull: toward my own best (simple nostalgia), random-weighted per dimension
+    cognitive = c1 * np.random.uniform(0, 1, shape) * (swarm.pbest_pos - swarm.position)
+    # social pull: toward the group's best (a publicized norm), independent random weight
+    social    = c2 * np.random.uniform(0, 1, shape) * (swarm.best_pos  - swarm.position)
+    # keep a fraction w of the carried velocity (inertia/momentum) and add the two pulls
+    v = w * swarm.velocity + cognitive + social
+    if vmax is not None:                      # optional clamp; with w<1 it's usually unnecessary
+        v = np.clip(v, -vmax, vmax)
+    swarm.velocity = v
+
+def compute_position(swarm, bounds=None):
+    swarm.position = swarm.position + swarm.velocity     # fly: x <- x + v
+    if bounds is not None:
+        lo, hi = bounds
+        swarm.position = np.clip(swarm.position, lo, hi)
+
+def optimize(f, n_particles, dimensions, bounds, options, iters):
+    swarm = Swarm(n_particles, dimensions, bounds, options)
+    for t in range(iters):
+        cost = f(swarm.position)            # one batched black-box evaluation of all particles
+        compute_pbest(swarm, cost)          # refresh individual memories
+        compute_gbest(swarm)                # refresh the shared best
+        compute_velocity(swarm)             # v <- w*v + c1*r1*(pbest-x) + c2*r2*(gbest-x)
+        compute_position(swarm)             # x <- x + v
+    return swarm.best_cost, swarm.best_pos
+```
+
+And to anneal explore→exploit, decay w across the run, e.g. `options['w'] = 0.9 - (0.9 - 0.4) * t / iters` at the top of the loop, with `c1 = c2 = 2`.
+
+So the whole causal chain: I have a gradientless, multimodal black box, so a single trajectory is hopeless and I need a population that *shares* discoveries — which a flock-with-a-quality-signal naturally does, except real searches don't know where the good region is, so I build the attractor out of the swarm's own evaluations: each particle's own best (cognitive memory) and the swarm's best (social memory). Pulling each particle's velocity toward both — keeping the two pulls separate because collapsing them converges onto a meaningless midpoint, and keeping the carried velocity because without that momentum the swarm can't overshoot-and-probe and fails to find global optima — gives v ← w·v + c1·r1·(pbest−x) + c2·r2·(gbest−x), x ← x+v. The inertia w is simultaneously the fix for the velocity-explosion instability (w<1 damps the oscillator, equivalently the constriction factor bounding c1+c2) and the single explore/exploit dial (high w roams, low w refines), so annealing it from ~0.9 to ~0.4 surveys the landscape early and settles late — a few lines of primitive arithmetic over a flying population.

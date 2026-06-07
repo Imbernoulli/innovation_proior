@@ -1,0 +1,44 @@
+\begingroup
+\setlength{\tabcolsep}{2.05pt}
+\begin{table}[h]
+    \centering
+    \begin{tabular}{l lll llll}
+    \toprule
+     & \multicolumn{3}{c}{\textsc{Reading Comprehension}} & \multicolumn{4}{c}{\textsc{Closed-Book QA}} \\
+     \cmidrule(lr){2-4} \cmidrule(lr){5-8}
+     & \datasetacc{BoolQ} & \datasetfone{MultiRC} & \datasetacc{OBQA} & \datasetacc{ARC-e} & \datasetacc{ARC-c} & \datasetem{NQ} & \datasetem{TQA} \\
+     
+     \midrule
+     Supervised model & \tfiveval{91.2} & \tfiveval{88.2} & \tfiveval{85.4} & \tfiveval{92.6} & \tfiveval{81.1} & \tfiveval{36.6} & \tfiveval{60.5} \\
+     
+     \glmname & \gptval{81.0}{}{79.7} & \gptval{60.0}{}{59.6} & \gptval{41.8}{}{50.6} & \gptval{76.4}{}{80.9} & \gptval{42.0}{}{49.4} & \gptval{3.2}{}{22.1} & \gptval{21.9}{}{63.3} \\
+     
+     \gptname & \gptval{60.5}{76.7}{77.5} & \gptval{72.9}{72.9}{74.8} & \gptval{57.6}{58.8}{65.4} & \gptval{68.8}{71.2}{70.1} & \gptval{51.4}{53.2}{51.5} & \gptval{14.6}{23.0}{29.9} & \gptval{64.3}{68.0}{71.2} \\
+     
+     \midrule
+     \flan\ 137B zero-shot \\
+     \flanname & 
+     \flanval{80.2\wewin{2.7}}{3.1}{82.9\wewin{5.4}} &
+     \flanval{74.5\wekindawin{2.4}}{3.7}{77.5\wewin{2.7}} &
+     \flanval{77.4\wewin{12.0}}{1.3}{78.4\wewin{13.0}} &
+     \flanval{79.5\wewin{8.6}}{0.8}{79.6\wewin{8.7}} &
+     \flanval{61.7\wewin{10.2}}{1.4}{63.1\wewin{11.6}} & 
+     \flanval{18.6\wekindawin{4.0}}{2.7}{20.7\wekindawin{6.1}} & 
+     \flanval{66.5\wekindawin{2.2}}{2.6}{68.1\wekindawin{3.8}} \\
+     
+     
+    
+    \bottomrule
+    \end{tabular}
+    
+    \vspace{-1mm}
+    \caption{
+    Results on reading comprehension and closed-book question answering.
+    \explainflan\
+    \explainwewin\
+    \explainwekindawin\
+    $^{a}$T5-11B.
+    }
+    \label{tab:read_comp}
+\end{table}
+\endgroup

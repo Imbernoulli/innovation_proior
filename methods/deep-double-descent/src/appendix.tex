@@ -1,0 +1,547 @@
+
+\input{bigtable.tex}
+
+\section{Appendix: Experimental Details}
+\label{sec:appendix_exp_details}
+
+\subsection{Models}
+We use the following families of architectures.
+The PyTorch~\cite{paszke2017automatic} specification of our ResNets and CNNs
+are available at \url{https://gitlab.com/harvard-machine-learning/double-descent/tree/master}.
+
+\paragraph{ResNets.}
+We define a family of ResNet18s of increasing size as follows.
+We follow the Preactivation ResNet18 architecture of \cite{he2016identity},
+using 4 ResNet blocks, each consisting of two BatchNorm-ReLU-Convolution layers. The layer widths for the 4 blocks are $[k, 2k, 4k, 8k]$ for varying $k \in \mathbb{N}$ and the strides are [1, 2, 2, 2].
+The standard ResNet18 corresponds to $k=64$ convolutional channels in the first layer.
+The scaling of model size with $k$ is shown in Figure~\ref{fig:resnet_params}.
+Our implementation is adapted from \url{https://github.com/kuangliu/pytorch-cifar}.
+
+\paragraph{Standard CNNs.}
+We consider a simple family of 5-layer CNNs,
+with four Conv-BatchNorm-ReLU-MaxPool layers and a fully-connected output layer.
+We scale the four convolutional layer widths as $[k, 2k, 4k, 8k]$. The MaxPool is [1, 2, 2, 8]. For all the convolution layers, the kernel size = 3, stride = 1 and padding=1. 
+This architecture is based on the ``backbone'' architecture from 
+\cite{mcnn}.
+For $k=64$, this CNN has 1558026 parameters and can reach $>90\%$ test accuracy on CIFAR-10 (\cite{cifar}) with data-augmentation.
+The scaling of model size with $k$ is shown in Figure~\ref{fig:mcnn_params}.
+
+
+\paragraph{Transformers.}
+We consider the encoder-decoder Transformer model from \cite{Vaswani}
+with 6 layers and 8 attention heads per layer, as implemented by fairseq \cite{ott2019fairseq}.
+We scale the size of the network by modifying the embedding dimension ($d_{\text{model}}$),
+and scale the width of the fully-connected layers proportionally ($d_{\text{ff}} = 4 d_{\text{model}}$).
+We train with 10\% label smoothing and no drop-out, for 80 gradient steps.
+
+\begin{figure}[!h]
+    \centering
+    \begin{subfigure}{.3\textwidth}
+      \includegraphics[width=\textwidth]{mcnn_parameters}
+      \caption{5-layer CNNs}
+    \label{fig:mcnn_params}
+    \end{subfigure}\hfill
+    \begin{subfigure}{.3\textwidth}
+      \includegraphics[width=\textwidth]{resnet_parameters}
+      \caption{ResNet18s}
+    \label{fig:resnet_params}
+    \end{subfigure}\hfill
+    \begin{subfigure}{.3\textwidth}
+      \includegraphics[width=\textwidth]{nlp_parameters}
+      \caption{Transformers}
+    \label{fig:resnet_params2}
+    \end{subfigure}
+    \label{fig:nparams}
+    \caption{Scaling of model size with our
+    parameterization of width \& embedding dimension.}
+\end{figure}
+
+\subsection{Image Classification: Experimental Setup}
+We describe the details of training for CNNs and ResNets below.
+
+\textbf{Loss function:} Unless stated otherwise, we use the cross-entropy loss for all the experiments.
+
+\textbf{Data-augmentation:} In experiments where data-augmentation was used, we apply \texttt{RandomCrop(32, padding=4)} and \texttt{RandomHorizontalFlip}. In experiments with added label noise, the label for all augmentations of a given training sample are given the same label.
+
+\textbf{Regularization:} No explicit regularization like weight decay or dropout was applied unless explicitly stated.
+
+\textbf{Initialization:} We use the default initialization provided by PyTorch for all the layers.
+
+\textbf{Optimization:}
+\begin{itemize}
+    \item \textbf{Adam:} Unless specified otherwise, learning rate was set at constant to $1\mathrm{e}{-4}$ and all other parameters were set to their default PyTorch values. 
+    \item \textbf{SGD:} Unless specified otherwise, learning rate schedule inverse-square root (defined below) was used with initial learning rate
+    $\gamma_{0} = 0.1$ and updates every $L = 512$ gradient steps. No momentum was used.
+\end{itemize}
+We found our results are robust to various other 
+natural choices of optimizers and learning rate schedule.
+We used the above settings because
+(1) they optimize well,
+and (2) they do not require experiment-specific hyperparameter tuning, and allow us to use the same optimization across many experiments.
+
+\textbf{Batch size}: All experiments use a batchsize of 128.
+
+\textbf{Learning rate schedule descriptions:}
+\begin{itemize}
+    \item \textbf{Inverse-square root $(\gamma_0, L)$}:
+    At gradient step $t$, the learning rate is set to
+    $\gamma(t) := \frac{\gamma_0}{\sqrt{1+\lfloor t / 512\rfloor}}$.
+    We set learning-rate with respect to number of gradient steps, and not epochs, in order to allow comparison between experiments with varying train-set sizes.
+    \item \textbf{Dynamic drop ($\gamma_0$, drop, patience)}: Starts with an initial learning rate of $\gamma_0$ and drops by a factor of 'drop' if the training loss has remained constant or become worse for 'patience' number of gradient steps.
+\end{itemize}
+
+\subsection{Neural Machine Translation: Experimental Setup}
+%IWSLT'14 German to English dataset
+%\url{http://workshop2014.iwslt.org/downloads/proceeding.pdf}
+
+Here we describe the experimental setup for the neural machine translation experiments.
+
+{\bf Training procedure.}
+
+In this setting, the distribution $\mathcal D$ consists of triples \[
+    (x, y, i)\;:\;x \in V_{src}^*,\;y \in V_{tgt}^*,\;i \in \{0, \dots, |y|\}
+\] where $V_{src}$ and $V_{tgt}$ are the source and target vocabularies, the string $x$ is a sentence in the source language, $y$ is its translation in the target language, and $i$ is the index of the token to be predicted by the model. We assume that $i|x, y$ is distributed uniformly on $\{0, \dots, |y|\}$.
+
+A standard probabilistic model defines an autoregressive factorization of the likelihood: \[
+    p_M(y|x) = \prod_{i = 1}^{|y|} p_M(y_i|y_{<i}, x).
+\]
+Given a set of training samples $S$, we define \[
+    \operatorname{Error}_S(M) = \frac 1{|S|} \sum_{(x, y, i) \in S} -\log p_M(y_i|y_{<i}, x).
+\]
+In practice, $S$ is \textit{not} constructed from independent samples from $D$, but rather by first sampling $(x, y)$ and then including all $(x, y, 0), \dots, (x, y, |y|)$ in $S$. 
+%However, assuming that sentence length is bounded by some $L$, samples more than $L$ apart are uncorrelated so the law of large numbers still holds. \todo{preetum see if you are happy}
+
+For training transformers, we replicate the optimization procedure specified in \cite{Vaswani} section 5.3, where the learning rate schedule consists of a ``warmup'' phase with linearly increasing learning rate followed by a phase with inverse square-root decay. We preprocess the data using byte pair encoding (BPE) as described in \cite{Sennrich2015NeuralMT}. We use the implementation provided by fairseq (\url{https://github.com/pytorch/fairseq}).
+
+
+\paragraph{Datasets.}
+The IWSLT '14 German to English dataset contains TED Talks as described in \cite{cettoloEtAl:EAMT2012}. The WMT '14 English to French dataset is taken from \url{http://www.statmt.org/wmt14/translation-task.html}.
+
+\iffalse
+We train on the label-smoothed loss: \[
+    -\mathcal L(M, (x, y, i)) = (1 - \lambda) \log p_M(y_i|x, y_{<i}) + \lambda \frac{1}{|V_{\text{tgt}}|} \sum_{k = 1}^{|V_{\text{tgt}}|} \log p_M(y_k|x, y_{<k})
+\]
+where we fix $\lambda = 0.1$ in our experiments. 
+\fi
+
+\iffalse
+We define the per-token \textit{label-smoothed} loss to be \[
+    -\mathcal L(M, (x, y, i)) = (1 - \lambda) \log p_M(y_i|x, y_{<i}) + \lambda \frac{1}{|V_{\text{tgt}}|} \sum_{k = 1}^{|V_{\text{tgt}}|} \log p_M(y_k|x, y_{<k})
+\]
+where $\lambda \in [0, 1]$ is the factor of label-smoothing.
+
+In practice, we do \textit{not} take independent samples from $\mathcal D$, but rather first sample sentence pairs $(x^{(1)}, y^{(1)}), \dots, (x^{(N)}, y^{(N)}) \sim p_{\mathcal D}(x, y)$ and compute the empirical loss: \[
+    \frac 1 {\sum_{n = 1}^N |y^{(n)}|}  \sum_{n = 1}^N \sum_{i = 1}^{|y^{(n)}|}\mathcal L(M, (x, y, i))
+\]
+However, assuming that sentence length is bounded by some $L$, the covariance between samples more than $L$ apart is 0, so the law of large numbers still holds.
+
+One benefit of this setting is that we directly report test loss as a measure of generalization performance in our experiments. 
+Unlike with images, log-likelihood is a preferred choice over accuracy in natural language tasks due to large vocabulary size (one can also view this as inherent uncertainty in the hypothetical ground truth distribution $p(y|x)$).
+Label smoothing ensures that test loss is meaningful in the overfitting limit because it prevents diverging test loss on incorrectly labelled examples as final layer weights grow to infinity.
+\fi
+
+%\subsubsection{Transformer}
+%We train a Transformer model from \cite{Vaswani}. The Transformer vectorizes input tokens vectorized to dimension $d_{model}$ and then maps them through a series of \textit{self-attention} layers.
+% In self-attention, vectors $a_i$ are linearly mapped to three vectors $q_i$, $k_i$, and $v_i$ of dimension $d_k$ which are then combined as \[
+%     b_i = \sum_{j = 1}^{|x|} \operatorname{softmax}\left(\frac{\langle q_i, k_j \rangle}{\sqrt{d_k}}\right)v_j.
+% \]
+% In multi-headed self-attention, the above procedure is repeated for $h$ different ``heads,'' or sets of linear transformations, which are then combined by concatenation (thus to preserve dimension across inputs/outputs this requires $d_k = d_{model}/h$). 
+
+% The \textit{encoder} module of the Transformer stacks alternating self-attention and single hidden-layer fully-connected layers that operate on the input $x$. The \textit{decoder} module similarly uses self-attention layers acting on inputs $y_{<i}$ with future values masked off in order to prevent degenerate solutions. Furthermore, the decoder alternates with \textit{encoder-decoder} attention layers, where $k$ and $v$ are taken from outputs of the encoder. The final representations from the decoder are then fed to a softmax layer over the target vocabulary size. Because the entire attention procedure is position-invariant, a position-specific embedding vector is also added to each $x_i$ and $y_i$ before the first layer.
+
+
+%The curious ability of heavily over-parameterized neural networks to fit the training data perfectly while maintaining small generalization error was brought into focus by \cite{ZhangBHRV16}, which showed that commonly used neural networks have enough capacity to fit data even with random labels. \cite{belkin2018reconciling} corroborated that this generalize-while-interpolating phenomenon extends beyond neural networks to kernel learning. Since then, there has been a flurry of research to square empirically successful practices in deep learning with our traditional understanding of the bias-variance trade-off.
+
+
+\subsection{Per-section Experimental Details}
+\label{sec:secexp}
+Here we provide full details for experiments in the body, when not otherwise provided.
+
+\textbf{Introduction: Experimental Details}
+Figure~\ref{fig:errorvscomplexity}: All models were trained using Adam with learning-rate 0.0001 for 4K epochs.
+Plotting means and standard deviations for 5 trials, with random network initialization.
+    
+\textbf{Model-wise Double Descent: Experimental Details}
+Figure~\ref{fig:mcnn_cf100}:
+Plotting means and standard deviations for 5 trials, with random network initialization.
+
+\textbf{Sample-wise Nonmonotonicity: Experimental Details}
+Figure~\ref{fig:sample-modeld}: All models are trained with SGD for 500K epochs,
+and data-augmentation. Bottom: Means and standard deviations from 5 trials
+ with random initialization, and random subsampling of the train set.
+
+\newpage
+\input{related.tex}
+
+\newpage
+\input{rffs}
+
+
+
+
+\newpage
+
+% \iffalse
+\section{Appendix: Additional Experiments}
+\subsection{Epoch-wise Double Descent: Additional results}
+\label{subsec:appendix_epoch}
+Here, we provide a rigorous evaluation of epoch-wise double descent for a variety of optimizers and learning rate schedules. We train ResNet18 on CIFAR-10 with data-augmentation and 20\% label noise with three different optimizers---Adam, SGD, SGD + Momentum (momentum set to 0.9) and three different learning rate schedules---constant, inverse-square root, dynamic drop for differnet values of initial learning rate. We observe that double-descent occurs reliably for all optimizers and learning rate schedules and the peak of the double descent curve shifts with the interpolation point. 
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{adam_const__train_test}
+        \caption{Constant learning rate}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{adam_gammaT__train_test}
+        \caption{Inverse-square root learning rate}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{adam_dynamic__train_test}
+        \caption{Dynamic learning rate}
+    \end{subfigure}
+    \caption{{\bf Epoch-wise double descent} for ResNet18 trained with Adam and multiple learning rate schedules
+    }
+    \label{fig:epochDD-adam-lr}
+\end{figure}
+
+A practical recommendation resulting from epoch-wise double descent is that stopping the training when the test error starts to increase may not always be the best strategy. In some cases, the test error may decrease again after reaching a maximum, and the final value may be lower than the minimum earlier in training. 
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{sgd_const__train_test}
+        \caption{Constant learning rate}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{sgd_gammaT__train_test}
+        \caption{Inverse-square root learning rate}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{sgd_dynamic__train_test}
+        \caption{Dynamic learning rate}
+    \end{subfigure}
+    \caption{{\bf Epoch-wise double descent} for ResNet18 trained with SGD and multiple learning rate schedules
+    }
+    \label{fig:epochDD-sgd-lr}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{momentum_const__train_test}
+        \caption{Constant learning rate}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{momentum_gammaT__train_test}
+        \caption{Inverse-square root learning rate}
+    \end{subfigure}
+    \begin{subfigure}[t]{.32\textwidth}
+        \centering
+        \includegraphics[width=0.99\linewidth]{momentum_dynamic__train_test}
+        \caption{Dynamic learning rate}
+    \end{subfigure}
+    \caption{{\bf Epoch-wise double descent} for ResNet18 trained with SGD+Momentum and multiple learning rate schedules
+    }
+    \label{fig:epochDD-mom-lr}
+\end{figure}
+
+\subsection{Model-Wise Double Descent: Additional Results}
+\label{subsec:appendix_model}
+\subsubsection{Clean Settings With Model-wise Double Descent}
+
+\textbf{CIFAR100, ResNet18}
+
+\begin{figure}[!ht]
+\centering
+\begin{minipage}{\textwidth}
+  \centering
+  \includegraphics[width=0.8\textwidth]{app-clean-cifar100-ocean}
+\end{minipage}%
+\\ \vspace{0.25cm}
+\includegraphics[width=0.7\textwidth]{app-clean-cifar100-dynamics}
+\caption{{\bf Top:} Train and test  performance as a function of both model size and train epochs. {\bf Bottom:} Test error dynamics of the same model (ResNet18, on CIFAR-100 with no label noise, data-augmentation and Adam optimizer trained for 4k epochs with learning rate 0.0001). Note that even with optimal early stopping this setting exhibits double descent.}
+\label{fig:app-cifar100-clean}
+\end{figure}
+
+\textbf{CIFAR100, Standard CNN}
+
+
+\begin{figure}[!h]
+\centering
+\begin{minipage}{\textwidth}
+  \centering
+  \includegraphics[width=0.8\textwidth]{pct-cifar100-mcnn-p0-sgd-noaug-ocean}
+\end{minipage}%
+\\ \vspace{0.25cm}
+\includegraphics[width=0.7\textwidth]{pct-cifar100-mcnn-p0-sgd-noaug}
+\caption{{\bf Top:} Train and test performance as a function of both model size and train epochs. {\bf Bottom:} Test error dynamics of the same models.
+5-Layer CNNs, CIFAR-100 with no label noise, no data-augmentation
+Trained with SGD for 1e6 steps.
+Same experiment as Figure~\ref{fig:mcnn_cf100}.
+}
+\label{fig:app-cifar100-clean-sgd}
+\end{figure}
+\newpage
+
+
+\subsubsection{Weight Decay}
+
+
+\begin{figure}[!h]
+\centering
+\begin{minipage}{0.55\textwidth}
+  \centering
+  \includegraphics[width=\textwidth]{figures/weight_decay_dynamics1}\\
+  \includegraphics[width=\textwidth]{figures/weight_decay_dynamics2}\\
+\end{minipage}\hfill
+\begin{minipage}{0.4\textwidth}
+\includegraphics[width=\textwidth]{figures/weight_decay}
+\end{minipage}
+\caption{{\bf Left:} Test error dynamics
+with weight decay of 5e-4 (bottom left) and without weight decay (top left). 
+{\bf Right:} Test and train error and \emph{test loss} for models with
+varying amounts of weight decay.
+All models are 5-Layer CNNs on CIFAR-10 with 10\% label noise,
+trained with data-augmentation and SGD for 500K steps.
+}
+\label{fig:cnn-weight-decay}
+\end{figure}
+
+Here, we now study the effect of varying the level of regularization on test error. We train CIFAR10 with data-augmentation and 20\% label noise on ResNet18 for weight decay co-efficients $\lambda$ ranging from 0 to 0.1. We train the networks using SGD + inverse-square root learning rate. Figure below shows a picture qualitatively very similar to that observed for model-wise double descent wherein "model complexity" is now controlled by the regularization parameter. This confirms our generalized double descent hypothesis along yet another axis of Effective Model Complexity.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{.45\textwidth}
+        \centering
+  \includegraphics[width=\textwidth]{weight_decay_epochDD_ocean_plot}
+        \caption{Test Error}
+    \end{subfigure}\hfill
+    \begin{subfigure}[t]{.45\textwidth}
+        \centering
+  \includegraphics[width=\textwidth]{weight_decay_epochDD_ocean_plot_train}
+        \caption{Train Loss}
+    \end{subfigure}
+    \caption{Generalized double descent for weight decay. We found that using the same initial learning rate for all weight decay values led to training instabilities. This resulted in some noise in the Test Error (Weight Decay $\times$ Epochs) plot shown above.}
+    \label{fig:regular_ocean}
+\end{figure}
+
+
+
+\newpage
+
+\subsubsection{Early Stopping does not exhibit double descent}
+
+\textbf{Language models}
+
+\begin{figure}[!h]
+        \centering
+  \includegraphics[width=0.8\textwidth]{figures/nlp-sml-dynamics-appendix}
+    \caption{Model-wise test error dynamics for a subsampled \iwslt~dataset.
+    Left: 4k samples, Right: 18k samples. 
+    Note that with optimal early-stopping, more samples is always better.}
+    \label{fig:sml-nlp-dynamics}
+\end{figure}
+
+\begin{figure}[h]
+        \centering
+  \includegraphics[width=0.8\textwidth]{figures/nlp-dynamics-appendix}
+    \caption{Model-wise test error dynamics for a \iwslt\  de-en and subsampled WMT`14 en-fr datasets.
+    {\bf Left}: \iwslt, {\bf Right}: subsampled (200k samples) WMT`14. 
+    Note that with optimal early-stopping, the test error is much lower for this task.}
+    \label{fig:nlp-dynamics}
+\end{figure}
+
+\textbf{CIFAR10, 10\% noise, SGD}
+
+\begin{figure}[h]
+\centering
+\begin{minipage}{0.7\textwidth}
+  \centering
+  \includegraphics[width=0.8\textwidth]{cnn-sgd-ocean}
+\end{minipage}%
+\\ \vspace{0.25cm}
+\includegraphics[width=0.7\textwidth]{figures/cnn-sgd--dynamics}
+\caption{{\bf Top:} Train and test  performance as a function of both model size and train epochs. {\bf Bottom:} Test error dynamics of the same model (CNN, on CIFAR-10 with 10\% label noise, data-augmentation and SGD optimizer with learning rate $\propto 1/\sqrt{T}$).}
+\label{fig:app-cnn10-10}
+\end{figure}
+
+\newpage
+
+\subsubsection{Training Procedure}
+
+\begin{figure}[h]
+        \centering
+  \includegraphics[width=0.5\textwidth]{adv_training_2}
+  \caption[width=0.8\linewidth]{
+{\bf Model-wise double descent for adversarial training}
+ResNet18s on CIFAR-10 (subsampled to 25k train samples)
+with no label noise.
+We train 
+for L2 robustness of radius $\eps=0.5$ and $\eps=1.0$,
+using 10-step PGD (\cite{goodfellow2014explaining, madry2017towards}).
+Trained using SGD (batch size 128) with learning rate $0.1$ for 400 epochs,
+then $0.01$ for 400 epochs.
+  }
+    \label{fig:adv_training}
+\end{figure}
+
+% \begin{figure}[!h]
+% \centering
+% \captionsetup{calcwidth=.9\linewidth}
+% \begin{minipage}[t]{.47\textwidth}
+%   \centering
+%   \includegraphics[width=\textwidth]{cifar10_mcnn_sgd_adam}
+%   \caption[width=0.8\linewidth]{{\bf SGD vs. Adam.}
+%   Training 5-Layer CNNs on CIFAR-10 with no label noise, and no data augmentation.
+%   Optimized using SGD for 500K gradient steps, and Adam for 4K epochs.}\label{fig:more-mdd1appendix}
+% \end{minipage}
+% % \begin{minipage}[t]{.49\textwidth}
+% %         \centering
+% %   \includegraphics[width=\textwidth]{nlp_de_en_fr}
+% %   \caption[width=0.8\linewidth]{{\bf Transformers on language translation tasks:} \iwslt\ German-to-English (160K sentences) and WMT`14 English-to-French
+% %   (subsampled to 200K sentences).
+% %   Test loss is measured as per-token perplexity.}
+% %   \label{fig:more-mdd-10appendix}
+% % \end{minipage}
+
+% \end{figure}
+
+
+\begin{figure}[!h]
+        \centering
+  \includegraphics[width=0.6\textwidth]{cifar10_mcnn_aug_pVar}
+    \caption{}
+    \label{fig:mcnn_aug_large}
+\end{figure}
+
+
+\newpage
+\subsection{Ensembling}
+
+
+\begin{figure}[!h]
+        \centering
+  \includegraphics[width=0.7\textwidth]{ens_intro_resnet_p15_clean}
+    \caption{{\bf Effect of Ensembling (ResNets, 15\% label noise). }
+    Test error of an ensemble of 5 models, compared to the base models.
+    The ensembled classifier is determined by plurality vote over the 5 base models.
+    Note that emsembling helps most around the critical regime.
+    All models are ResNet18s trained on CIFAR-10 with 15\% label noise,
+    using Adam for 4K epochs
+    (same setting as Figure~\ref{fig:errorvscomplexity}).
+    Test error is measured against the original (not noisy) test set,
+    and each model in the ensemble is trained using a train set with independently-sampled 15\% label noise.
+   } 
+    \label{fig:ens_resnet}
+\end{figure}
+
+\begin{figure}[!h]
+        \centering
+  \includegraphics[width=0.7\textwidth]{ens_mcnn_cf100}
+    \caption{{\bf Effect of Ensembling (CNNs, no label noise). }
+    Test error of an ensemble of 5 models, compared to the base models.
+    All models are 5-layer CNNs trained on CIFAR-10 with no label noise,
+    using SGD and no data augmentation.
+    (same setting as Figure~\ref{fig:mcnn_cf100}).
+   } 
+    \label{fig:ens_mcnn}
+\end{figure}
+
+
+
+
+% \iffalse
+% \begin{figure}[!h]
+%         \centering
+%   \includegraphics[width=0.8\textwidth]{weight_decay_time_dynamics.png}
+%     \caption{Test error dynamics for Resnet18 with 20\% label noise. {\bf Right:} Weight decay is 0. {\bf Left:} Standard value of weight decay for ResNet18(5e-4). Note that weight decay might help with early stopping but doesn't help when training for as long as possible. This could be explained by the fact that with weight decay the train loss is not 0, thus all the models in the figure are still in the critically parameterized regime.}. 
+%     \label{fig:weight-decay-dynamics}
+% \end{figure}
+% \fi
+
+
+
+
+
+
+
+
+
+\iffalse
+\begin{figure}[!h]
+        \centering
+  \includegraphics[width=0.5\textwidth]{cifar10_mcnn_aug_pVar}
+    \caption{5-layer CNNS on CIFAR, with data-augmentation.
+    }
+    \label{fig:mcnn_aug_large}
+\end{figure}
+\fi
+
+
+
+
+
+
+% \begin{figure}[!ht]
+% \centering
+% \begin{minipage}{.512\textwidth}
+%   \centering
+%   \includegraphics[width=1.05\textwidth]{ocean-test-onerun}
+% \end{minipage}%
+% \begin{minipage}{.488\textwidth}
+%   \centering
+%   \includegraphics[width=1.05\textwidth]{Rn-cifar10-p15-adam-aug-train-onerun}
+% \end{minipage}
+% \caption{Left: Test performance as a function of both model size and train epochs. The horizontal dotted line corresponds to model-wise double descent in the classical sense--varying model size while training for as long as possible. The vertical dotted line corresponds to epoch-wise double descent, with progression of train time the test error goes down then up and then down again. Right: Train performance of the same model (ResNet18, on CIFAR-10 with 15\% label noise, data-augmentation and Adam).}
+% \label{fig:unified-onerun}
+% \end{figure}
+
+\newpage
+
+%\subsection{Sample-wise non-monotonicity}
+
+
+
+
+
+
+
+
+
+
+% \begin{figure}[h!]
+%     \centering
+%     \includegraphics[width=0.6\textwidth]{tmp_mcnn_cifar10_labelnoise}
+%     \caption{Model-wise double-descent for CIFAR10 + label noise with 5-layer CNNs, no data-augmentation.}
+% \end{figure}
+
+
+
+
+
+
+% \clearpage
+% \pagebreak
+
+% \section{Code Listings}
+% \label{sec:code}
+
+% \subsection{5-Layer CNNs}
+% Here we define our parameterization of 5-layer CNNs, based on~\cite{mcnn}.
+% \lstinputlisting[language=Python]{mcnn.py}
+
+% \subsection{ResNet18s}
+% Here we define our parameterization of ResNet18s,
+% based on~\url{https://github.com/kuangliu/pytorch-cifar/blob/master/models/preact_resnet.py}
+% \lstinputlisting[language=Python]{resnet.py}
+

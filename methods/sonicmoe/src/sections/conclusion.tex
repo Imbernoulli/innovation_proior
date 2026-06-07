@@ -1,0 +1,7 @@
+% \wentao{todo: rewrite conclusion}
+We present \Algname, a co-design solution that jointly optimizes MoE architecture and GPU kernels to address the training challenges of granular and sparse MoEs.
+Our contributions include: (1) a memory-efficient algorithm that minimizes
+activation size as MoEs become more fine-grained, (2) GPU kernels that overlap IO with computation for throughput improvement, and (3) tile-aware token rounding that yields additional speedup without quality loss.
+Future directions include extending to low-precision and microscaling formats
+(FP8, MXFP8, MXFP4) for further memory savings, and overlapping communication
+with computation in distributed settings like expert parallelism. We envision future model architecture designs that optimize for quality per compute hour rather than just quality per FLOP—jointly considering algorithmic and hardware efficiency.

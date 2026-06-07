@@ -1,0 +1,142 @@
+\section{Methods}
+
+\subsection{Background}
+
+\paragraph{The Muon Optimizer}
+\label{sec:analysis:background}
+Muon~\citep{jordan2024muon} has recently been proposed to optimize neural network weights representable as matrices. At iteration $t$, given current weight $\mathbf{W}_{t-1}$, momentum $\mu$, learning rate $\eta_t$ and objective $\mathcal{L}_t$, the update rule of the Muon optimizer can be stated as follows:
+\begin{align}
+    \mathbf{M}_t &= \mu \mathbf{M}_{t-1} + \nabla\mathcal{L}_t(\mathbf{W}_{t-1}) \notag \\
+    \mathbf{O}_t &= \text{Newton-Schulz}(\mathbf{M}_t)\text{\footnotemark[1]} \label{eq:Ot}\\
+    \mathbf{W}_t &= \mathbf{W}_{t-1} - \eta_t \mathbf{O}_t \notag
+\end{align}
+ Here, $\mathbf{M}_t$ is the momentum of gradient at iteration $t$, set as a zero matrix when $t = 0$. In Equation~\ref{eq:Ot}, a Newton-Schulz iteration process~\citep{bernstein2024oldoptimizernewnorm} is adopted to approximately solve $(\mathbf{M}_t \mathbf{M}^{\mathrm{T}}_t)^{-1/2}\mathbf{M}_t$\footnotetext[1] {In practice, we follow~\citep{jordan2024muon} to use a Nesterov-style momentum by putting $\mu \mathbf{M}_t + \nabla\mathcal{L}_t(\mathbf{W}_{t-1})$ to the Newton-Schulz iteration instead of $\mathbf{M}_t$.}. Let $\mathbf{U}\mathbf{\Sigma} \mathbf{V}^\mathrm{T} = \mathbf{M}_t$ be the singular value decomposition (SVD) of $\mathbf{M}_t$, we will have $(\mathbf{M}_t \mathbf{M}^{\mathrm{T}}_t)^{-1/2}\mathbf{M}_t = \mathbf{U}\mathbf{V^T}$, which orthogonalizes $\mathbf{M}_t$. Intuitively, orthogonalization can ensure that the update matrices are isomorphic, preventing the weight from learning along a few dominant directions~\citep{jordan2024muon}.
+
+\paragraph{Newton-Schulz Iterations for Matrix Orthogonalization}
+Equation~\ref{eq:Ot} is calculated in an iterative process. At the beginning, we set $\mathbf{X}_0 = \mathbf{M}_t / \|\mathbf{M}_t\|_\mathrm{F}$. Then, at each iteration $k$, we update $\mathbf{X}_k$ from $\mathbf{X}_{k-1}$ as follows:
+\begin{align}
+    \mathbf{X}_k &= a \mathbf{X}_{k-1} + b (\mathbf{X}_{k-1} \mathbf{X}_{k-1}^\mathrm{T}) \mathbf{X}_{k-1} + c (\mathbf{X}_{k-1} \mathbf{X}_{k-1}^\mathrm{T})^2 \mathbf{X}_{k-1} \label{eq:iteration}
+\end{align}
+where $\mathbf{X}_N$ is the result of such process after $N$ iteration steps.
+Here $a$, $b$, $c$ are coefficients. In order to ensure the correct convergence of Equation~\ref{eq:iteration}, we need to tune the coefficients so that the polynomial $f(x) = a x + b x^3 + c x^5$ has a fixed point near 1. In the original design of \cite{jordan2024muon}, the coefficients are set to $a = 3.4445$, $b = -4.7750$, $c = 2.0315$ in order to make the iterative process converge faster for small initial singular values. In this work, we follow the same setting of coefficients.
+
+\paragraph{Steepest Descent Under Norm Constraints}
+\cite{bernstein2024oldoptimizernewnorm} proposed to view the optimization process in deep learning as steepest descent under norm constraints. From this perspective, we can view the difference between Muon and Adam~\citep{adam2015kingma, loshchilov2018decoupled} as the difference in norm constraints. Whereas Adam is a steepest descent under the a norm constraint dynamically adjusted from a Max-of-Max norm, Muon offers a norm constraint that lies in a static range of Schatten-$p$ norm for some large $p$~\citep{muoncase2024cesista}. When equation~\ref{eq:Ot} is accurately computed, the norm constraint offered by Muon will be the spectral norm. Weights of neural networks are used as operators on the input space or the hidden space, which are usually (locally) Euclidean~\citep{cesista2024firstordernormedopt}, so the norm constraint on weights should be an induced operator norm (or spectral norm for weight matrices). In this sense, the norm constraint offered by Muon is more reasonable than that offered by Adam.
+
+\subsection{Scaling Up Muon}
+\label{sec:analysis:rms}
+
+\paragraph{Weight Decay}
+
+While Muon performs significantly better than AdamW on a small scale as shown by \cite{jordan2024muon}, we found the performance gains diminish when we scale up to train a larger model with more tokens. We observed that both the weight and the layer output's RMS keep growing to a large scale, exceeding the high-precision range of bf16, which might hurt the model's performance. To resolve this issue, we introduced the standard AdamW (\cite{loshchilov2018decoupled}) weight decay mechanism into Muon\footnote{The original implementation of Muon omits weight decay. A recent concurrent work in Muon incorporates weight decay and demonstrates improved performance. See \href{https://github.com/KellerJordan/Muon/commit/e0ffefd4f7ea88f2db724caa2c7cfe859155995d}{this commit} and \href{https://x.com/kellerjordan0/status/1888320690543284449}{this discussion}.}. 
+
+
+\begin{align}
+\label{equation:weightdecay}
+    \mathbf{W}_t = \mathbf{W}_{t-1} - \eta_t (\mathbf{O}_t + \lambda \mathbf{W}_{t-1})
+\end{align}
+
+We experimented on Muon both with and without weight decay to understand its impact on the training dynamics of LLMs. Based on our scaling law research in Sec \ref{sec:exp:moonscalinglaw}, we trained an 800M parameters model with 100B tokens ($\sim5\times$ optimal training tokens). Figure \ref{fig_weight_decay} shows validation loss curves of the model trained with AdamW, vanilla Muon (without weight decay), and Muon with weight decay. While vanilla Muon initially converges faster, we observed that some model weights grew too large over time, potentially limiting the model's long-term performances. Adding weight decay addressed this issue - the results demonstrate that Muon with weight decay outperforms both vanilla Muon and AdamW, achieving lower validation loss in the over-train regime. Therefore, we adjusted our update rule to equation \ref{equation:weightdecay}, where $\lambda$ is the weight decay ratio.
+
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/fig_weight_decay.pdf}
+    \caption{\small Validation loss curves for AdamW (\textcolor[HTML]{2ecc71}{green}), Muon without weight decay (\textcolor[HTML]{e74c3c}{red}), and Muon with weight decay (\textcolor[HTML]{3498db}{blue}).} 
+    \label{fig_weight_decay} 
+\end{figure}
+
+
+
+\paragraph{Consistent update RMS}
+An important property of Adam and AdamW (\cite{adam2015kingma}, \cite{loshchilov2018decoupled}) is that they maintain a theoretical update RMS around 1\footnote{Due to Adam's $\beta_1 < \beta_2$ and $\epsilon > 0$, the actual update RMS is usually less than 1.}. However, we show that Muon's update RMS varies depending on the shape of the parameters, according to the following lemma:
+
+\begin{lemma}
+\label{lemma:updaterms}
+For a full-rank matrix parameter of shape $[A, B]$, its theoretical Muon update RMS is $\sqrt{1/\max(A,B)}$ .
+\end{lemma}
+
+The proof can be found in the Appendix \ref{sec:appendix:updaterms}. We monitored Muon's update RMS during training and found it typically close to the theoretical value given above. We note that such inconsistency can be problematic when scaling up the model size:
+
+\begin{itemize}
+    \item When $\max(A,B)$ is too large, e.g. the dense MLP matrix, the updates become too small, thus limiting the model's representational capacity and leading to suboptimal performances; 
+    
+    \item When $\max(A,B)$ is too small, e.g. treating each KV head in GQA (\cite{shazeer2019fasttransformerdecodingwritehead}) or MLA (\cite{deepseekai2024deepseekv3technicalreport}) as a separate parameter, the updates become too large, thus causing training instabilities and leading to suboptimal performances as well.
+\end{itemize}
+
+In order to maintain consistent update RMS among matrices of different shapes, we 
+propose to scale the Muon update for each matrix by its $\sqrt{\max(A, B)}$ to cancel the effect of Lemma~\ref{lemma:updaterms} \footnote{\cite{jordan2024muon}'s original implementation scales the updates by $\sqrt{\max(1, A/B)}$, which is equivalent to our proposal (up to a global scale) if all matrices have the same second dimension; \cite{pethick2025trainingdeeplearningmodels} and \cite{JiachengX} discussed a similar issue on update scaling factors concurrently to our work. } . 
+Experiments in Sec~\ref{sec:exp:rms} show that this strategy is beneficial for optimization.
+
+\paragraph{Matching update RMS of AdamW}
+
+Muon is designed to update matrix-based parameters. In practice, AdamW is used in couple with Muon to handle non-matrix based parameters, like RMSNorm, LM head, and embedding parameters. 
+We would like the optimizer hyper-parameters (learning rate $\eta$, weight decay $\lambda$) to be shared among
+matrix and non-matrix parameters. 
+
+We propose to match Muon's update RMS to be similar to that of AdamW. From empirical observations, AdamW's update RMS is usually around 0.2 to 0.4. Therefore, we scale Muon's update RMS to this range by the following adjustment:
+
+\begin{align}
+\mathbf{W}_t = \mathbf{W}_{t-1} - \eta_t (0.2\cdot\mathbf{O}_t\cdot\sqrt{\max(A,B)} + \lambda \mathbf{W}_{t-1})
+\end{align}
+
+ We validated this choice with empirical results (see Appendix \ref{sec:appendix:updaterms} for details). 
+Moreover, we highlighted that with this adjustment, Muon can directly \textbf{reuse} the learning rate and weight decay tuned for AdamW. 
+
+\paragraph{Other Hyper-parameters} Muon contains two other tunnable hyper-parameters: Newton-Schulz iteration steps and momentum $\mu$. We empirically observe that when setting $N$ to $10$, the iterative process will yield a more accurate orthogonalization result than $N=5$, but it won't lead to better performances. Hence we set $N = 5$ in this work for the sake of efficiency. We do not see a consistent performance gain in tuning momentum, so we chose 0.95, same as \cite{jordan2024muon}.
+
+\subsection{Distributed Muon}
+\label{sec:analysis:distrib}
+
+\paragraph{ZeRO-1 and Megatron-LM}
+\cite{Rajbhandari_2020} introduced the ZeRO-1 technique that partitions the expensive optimizer states (e.g. master weights, momentum) all over the cluster. Megatron-LM \citep{shoeybi2020megatronlmtrainingmultibillionparameter} integrated ZeRO-1 into its native parallel designs. Based on Megatron-LM's sophisticated parallel strategies, e.g. Tensor-Parallel (TP), Pipeline Parallel (PP), Expert Parallel (EP) and Data Parallel (DP), the communication workload of ZeRO-1 can be reduced from gathering all over the distributed world to only gathering over the data parallel group.
+
+\paragraph{Method}
+ZeRO-1 is efficient for AdamW because it calculates updates in an element-wise fashion. However, Muon requires the full gradient matrix to calculate the updates. Therefore, vanilla ZeRO-1 is not directly applicable to Muon. We propose a new distributed solution based on ZeRO-1 for Muon, referred to as Distributed Muon. Distributed Muon follows ZeRO-1 to partition the optimizer states on DP, and introduces two additional operations compared to a vanilla Zero-1 AdamW optimizer:
+
+\begin{enumerate}
+    \item \texttt{DP Gather.} For a local DP partitioned master weight ($1/DP$ the size of the model weight), this operation is to gather the corresponding partitioned gradients into a full gradient matrix. 
+    
+    \item \texttt{Calculate Full Update.} After the above gathering, perform Newton-Schulz iteration steps on the full gradient matrix as described in Sec \ref{sec:analysis:background}. Note that we will then discard part of the full update matrix, as we only need the partition corresponding to the local parameters to perform update.
+\end{enumerate}
+
+
+The implementation of Distributed Muon is described in Algorithm \ref{alg:distribmuon}. The additional operations introduced by Distributed Muon are colored in blue.
+
+\begin{algorithm}[t]
+\caption{Distributed Muon}
+\label{alg:distribmuon}
+\begin{algorithmic}[1]
+\REQUIRE{Full Gradients $\mathbf{G}$, DP partitioned Momentum $\mathbf{m}$, DP partitioned parameters $\mathbf{p}$, momentum $\mu$.}
+\STATE // Reduce-scatter $G$ on DP for correct gradients
+\STATE $\mathbf{g} = \text{reduce\_scatter($\mathbf{G}$, dp\_group)}$ 
+\STATE // Apply momentum to $\mathbf{g}$   using local partitioned momentum $\mathbf{m}$
+\STATE $\mathbf{g}' = \text{update\_with\_momentum}(\mathbf{g}, \mathbf{m}, \mu)$
+\STATE \textcolor{blue}{// DP Gather: gathering $\mathbf{g'}$ across DP into a full matrix $\mathbf{G}$}
+\STATE \textcolor{blue}{$\mathbf{G} = \text{gather($\mathbf{g'}$, dp\_group)}$}
+\STATE \textcolor{blue}{// Calculate Muon update}
+\STATE \textcolor{blue}{$\mathbf{U} = \text{Newton-Schulz}(\mathbf{G})$ }
+\STATE \textcolor{blue}{// Discard the rest of $\mathbf{U}$ and only keep the local partition  ${\mathbf{u}}$, then apply the update rule}
+\STATE $\mathbf{p}' = \text{apply\_update}(\mathbf{p}, \mathbf{u})$
+\STATE // All-gather updated $\mathbf{p'}$ into $\mathbf{P}$ 
+\STATE $\mathbf{P} = \text{all\_gather($\mathbf{p'}$, dp\_group)}$
+\STATE // Return the update RMS for logging
+\RETURN $\sqrt{\mathbf{u}^2.\texttt{mean}()}$ 
+\end{algorithmic}
+\end{algorithm}
+
+
+\paragraph{Analysis}
+We compared Distributed Muon to a classic ZeRO-1 based distributed AdamW (referred as Distributed AdamW for simplicity) in several aspects:
+
+\begin{itemize}
+\item \texttt{Memory Usage.} Muon uses only one momentum buffer, while AdamW uses two momentum buffers. Therefore, the additional memory used by the Muon optimizer is half of Distributed AdamW.
+
+\item \texttt{Communication Overhead.} For each device, the additional DP gathering is only required by the local DP partitioned parameters $\mathbf{p}$. Therefore, the communication cost is less than the reduce-scatter of $\mathbf{G}$ or the all-gather of $\mathbf{P}$. Besides, Muon only requires the Newton-Schulz iteration steps in bf16, thus further reducing the communication overhead to 50\% comparing to fp32. Overall, the communication workload of Distributed Muon is $(1, 1.25]$ of that of Distributed AdamW. The upper-bound is calculated as that the communication of Distributed Muon is 4 (fp32 $\mathbf{G}$ reduce-scatter) + 2 (bf16 Muon gather) + 4 (fp32 $\mathbf{P}$ all-gather), while Distributed AdamW is 4 + 4. In practice, as we usually train with multiple DP, the empirical additional cost usually is closer to the lower-bound 1.\footnote{If TP is enabled, Distributed Muon needs an extra bf16 TP gather on TP group.}.
+
+\item \texttt{Latency.} Distributed Muon has larger end-to-end latencies than Distributed AdamW because it introduces additional communication and requires running Newton-Schulz iteration steps. However, this is not a significant issue because (a) only about 5 Newton-Schultz iteration steps are needed for a good result (discussed in Sec \ref{sec:analysis:rms}), and (b) the end-to-end latency caused by the optimizer is negligible compared to the model's forward-backward pass time (e.g. usually 1\% to 3\%). Moreover, several engineering techniques, such as overlapping gather and computation, and overlapping optimizer reduce-scatter with parameter gather, can further reduce latency.
+
+
+\end{itemize}
+
+When training large-scale models in our distributed cluster, Distributed Muon has no noticeable latency overhead compared to its AdamW counterparts. We will soon release a pull request that implements Distributed Muon for the open-source Megatron-LM \citep{shoeybi2020megatronlmtrainingmultibillionparameter} project.

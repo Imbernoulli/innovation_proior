@@ -1,0 +1,62 @@
+\subsection{Preliminaries: Multi-head attention layers}
+\label{sec:mha} 
+
+Since our model is based on the Transformer architecture, we remind here the general form of attention mechanisms we use for exhaustivity. The attention mechanism follows \cite{Vaswani2017AttentionIA}, except for the details of positional encodings (see Equation \ref{eq:posenc}) that follows \cite{Cordonnier2019OnTR}.
+
+\subsubsection{Multi-head} The general form of \emph{multi-head attention} with $M$ heads of dimension $\dmodel$ is a function with the following signature (using  $\dk = \frac{\dmodel}{M}$, and giving matrix/tensors sizes in underbrace)
+\begin{equation}
+    \mhattn:\underbrace{\xq}_{\dmodel\times \Nq}, \underbrace{\xkv}_{\dmodel\times \Nkv}, \underbrace{\weit}_{M\times 3\times \dk \times \dmodel}, \underbrace{\proj}_{\dmodel\times \dmodel} \mapsto \underbrace{\xqout}_{\dmodel\times \Nq}
+\end{equation}
+where $\xq$ is the \emph{query sequence} of length $\Nq$, $\xkv$ is the \emph{key-value sequence} of length $\Nkv$ (with the same number of channels $\dmodel$ for simplicity of exposition), $\weit$ is the weight tensor to compute the so-called query, key and value embeddings, and $\proj$ is a projection matrix. The output is the same size as the query sequence. To fix the vocabulary before giving details, multi-head \emph{self-}attention ($\mhsattn$) is the special case $\xq = \xkv$, i.e. 
+\begin{equation}
+    \mhsattn(X, \weit, \proj) = \mhattn(X, X, \weit,\proj)\,.\label{eq:selfatt}
+\end{equation}
+
+The multi-head attention is simply the concatenation of $M$ single attention heads followed by a projection with $\proj$. The common practice \cite{Vaswani2017AttentionIA} is to use residual connections, dropout and layer normalization. In other words, denoting $\xqout = \mhattn(\xq, \xkv, \weit, \proj)$ and $\bar{\bar{X}}^{(q)}$ the concatenation of attention heads, we have
+\begin{align}
+    \xqbb&= [\attn(\xq, \xkv, \weit_1) ; ... ; \attn(\xq, \xkv, \weit_M)]\\
+    \xqout &= {\rm layernorm}\big(\xq + {\rm dropout}(\proj\xqbb)\big)\,,\label{eq:layernormresdropout}
+\end{align}
+where [;] denotes concatenation on the channel axis. 
+
+\subsubsection{Single head} An attention head with weight tensor $\weit'\in\Re^{3\times \dk\times \dmodel}$, denoted by $\attn(\xq, \xkv, \weit')$, depends on additional positional encoding $\posq \in\Re^{\dmodel\times \Nq}$ and $\poskv\in\Re^{\dmodel\times \Nkv}$. 
+It starts by computing so-called query, key and value embeddings after adding the query and key positional encodings \cite{Cordonnier2019OnTR}:
+\begin{equation}
+    [\ques; \keys; \vals] = [\weit'_1 (\xq+\posq);\weit'_2 (\xkv+\poskv); \weit'_3 \xkv]
+\end{equation}
+where $T'$ is the concatenation of $T'_1,T'_2,T'_3$. The \emph{attention weights} $\alpha$ are then computed based on the softmax of dot products between queries and keys, so that each element of the query sequence attends to all elements of the key-value sequence ($i$ is a query index and $j$ a key-value index):
+\begin{equation}
+    \alpha_{i,j} = \frac{e^{\frac{1}{\sqrt{\dk}}\ques_i^T\keys_j}}{Z_i} \text{~~where~} Z_i = \sum_{j=1}^{\Nkv}  e^{\frac{1}{\sqrt{\dk}}\ques_i^T\keys_{j}}\,.\label{eq:posenc}
+\end{equation}
+In our case, the positional encodings may be learnt or fixed, but are shared across all attention layers for a given query/key-value sequence, so we do not explicitly write them as parameters of the attention. We give more details on their exact value when describing the encoder and the decoder. The final output is the aggregation of values weighted by attention weights:  The $i$-th row is given by 
+$%
+    \attn_i(\xq, \xkv, \weit') = \sum_{j=1}^{\Nkv} \alpha_{i,j} \vals_j
+$.
+
+\subsubsection{Feed-forward network (FFN) layers} The original transformer alternates multi-head attention and so-called FFN layers \cite{Vaswani2017AttentionIA}, which are effectively multilayer 1x1 convolutions, which have $Md$ input and output channels in our case. The FFN we consider is composed of two-layers of 1x1 convolutions with ReLU activations. There is also a residual connection/dropout/layernorm after the two layers, similarly to \eqref{eq:layernormresdropout}.
+
+\subsection{Losses}
+
+For completeness, we present in detail the losses used in our approach. All  losses are normalized by the number of objects inside the batch. Extra care must be taken for distributed training: since each GPU receives a sub-batch, %
+it is not sufficient to normalize by the number of objects in the local batch, 
+since in general the sub-batches are not balanced across GPUs. 
+Instead, it is important to normalize by the total number of objects in all sub-batches.
+
+\subsubsection{Box loss}
+ Similarly to \cite{RomeraParedes2015RecurrentIS,ren2017end}, we use a soft version of Intersection over Union in our loss,  together with a $\ell_1$ loss on $\hb$:
+ \begin{equation}
+     \bloss{b_{\sigma(i)}, \hb_i} = \lambda_{\rm iou}\iouloss{b_{\sigma(i)}, \hb_i} + \lambda_{\rm L1}||b_{\sigma(i)}- \hb_i||_1\,,
+     \label{eq:bloss}
+ \end{equation}
+ where $\lambda_{\rm iou}, \lambda_{\rm L1}\in\Re$ are hyperparameters and $\iouloss{\cdot}$ is the generalized IoU \cite{Rezatofighi_2018_CVPR}:
+ \begin{equation}
+     \iouloss{b_{\sigma(i)}, \hb_i} = 1 - \bigg(\frac{ | b_{\sigma(i)}\cap \hb_i|}{|b_{\sigma(i)}\cup \hb_i|} - \frac{|B(b_{\sigma(i)},\hb_i)  \setminus b_{\sigma(i)} \cup \hb_i|}{|B(b_{\sigma(i)},\hb_i)|}\bigg)\,.
+ \end{equation}
+ $|.|$ means ``area'', and the union and intersection of box coordinates are used as shorthands for the boxes themselves. The areas of unions or intersections are computed by $\min/\max$ of the linear functions of $b_{\sigma(i)}$ and $\hb_i$, which makes the loss sufficiently well-behaved for stochastic gradients. $B(b_{\sigma(i)},\hb_i)$ means the largest box containing $b_{\sigma(i)},\hb_i$ (the areas involving $B$ are also computed based on $\min/\max$ of linear functions of the box coordinates).
+ 
+\subsubsection{DICE/F-1 loss~\cite{milletari2016v}}
+The DICE coefficient is closely related to the Intersection over Union. If we denote by $\hat{m}$ the raw mask logits prediction of the model, and $m$ the binary target mask, the loss is defined as:
+\begin{equation}
+\diceloss{m, \hat{m}} = 1 - \frac{2 m\sigma(\hat{m}) + 1}{\sigma(\hat{m}) + m + 1}
+\end{equation}
+where $\sigma$ is the sigmoid function. This loss is normalized by the number of objects.

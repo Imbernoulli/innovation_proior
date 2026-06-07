@@ -1,0 +1,81 @@
+\documentclass{article}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subfigure}
+\usepackage{booktabs}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{amsfonts}
+\usepackage{bbm}
+\usepackage{comment}
+\usepackage{mathtools}
+\newcommand{\squeezeup}{\vspace{-2.5mm}}
+\usepackage[normalem]{ulem}
+\usepackage{hyperref}
+\usepackage{color}
+\usepackage{setspace}
+
+\definecolor{codeblue}{rgb}{0.25,0.5,0.5}
+\definecolor{keywords}{rgb}{0.08,0.54,.02}
+\lstset{
+  backgroundcolor=\color{white},
+  basicstyle=\fontsize{8.4pt}{8.4pt}\ttfamily\selectfont,
+  columns=fullflexible,
+  breaklines=true,
+  captionpos=b,
+  commentstyle=\fontsize{8.4pt}{8.4pt}\color{codeblue},
+  keywordstyle=\color{keywords}\fontsize{8.4pt}{8.4pt},
+  morekeywords={for,in,max},
+}
+
+
+\usepackage[accepted]{icml2020}
+
+\icmltitlerunning{CURL: Contrastive Unsupervised Representations for Reinforcement Learning}
+
+\begin{document}
+
+\twocolumn[
+\icmltitle{CURL: Contrastive Unsupervised Representations for Reinforcement Learning}
+
+\icmlsetsymbol{equal}{*}
+
+
+\begin{icmlauthorlist}
+\icmlauthor{Aravind Srinivas$^*$}{bair}
+\icmlauthor{Michael Laskin$^*$}{bair}
+\icmlauthor{Pieter Abbeel}{bair}
+\end{icmlauthorlist}
+
+\icmlaffiliation{bair}{University of California, Berkeley, BAIR}
+
+\icmlcorrespondingauthor{Aravind Srinivas, Michael Laskin}{aravind\_srinivas, mlaskin@berkeley.edu}
+
+\icmlkeywords{Contrastive Learning, Reinforcement Learning}
+\vskip 0.3in ]
+
+\printAffiliationsAndNotice{\icmlEqualContribution} % 
+\input{abstract}
+\input{introduction}
+\input{related}
+%\vspace*{-4mm}
+\input{background}
+\input{experiments}
+%\vspace*{-4mm}
+\input{results}
+%\vspace*{-4mm}
+\input{conclusion}
+
+\newpage
+\bibliography{main}
+\bibliographystyle{icml2020}
+
+% \newpage\null\newpage
+\newpage
+\appendix
+\input{appendix}
+\input{log}
+\input{rad}
+
+\end{document}
+

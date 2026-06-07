@@ -1,0 +1,71 @@
+\section{Model Parallel Transformers} 
+\label{model_par}
+
+We take advantage of the structure of transformer networks to create a simple model parallel implementation by adding a few synchronization primitives. A transformer layer consists of a self attention block followed by a two-layer, multi-layer perceptron (MLP) as shown in Figure \ref{fig:gpt2-transformer}. We introduce model parallelism in both of these blocks separately.
+
+ We start by detailing the MLP block. The first part of the block is a GEMM followed by a GeLU nonlinearity:
+ \begin{equation}
+    Y = \textrm{GeLU}(XA)
+    \label{eq:mlp-firstgemm}
+ \end{equation}
+ One option to parallelize the GEMM is to split the weight matrix $A$ along its rows and input $X$ along its columns as:
+ \begin{equation}
+    X = [X_1, X_2], \
+    A=\begin{bmatrix}
+        A_1 \\
+        A_2
+    \end{bmatrix}.
+ \end{equation}
+ This partitioning will result in $Y = \textrm{GeLU}(X_1A_1 + X_2A_2)$. Since GeLU is a nonlinear function, $\textrm{GeLU}(X_1A_1 + X_2A_2)\neq \textrm{GeLU}(X_1A_1)+\textrm{GeLU}(X_2A_2)$ and this approach will require a synchronization point before the GeLU function. 
+ 
+ Another option is to split $A$ along its columns $A=[A_1, A_2]$. This partitioning allows the GeLU nonlinearity to be independently applied to the output of each partitioned GEMM:
+ \begin{equation}
+    [Y_1, Y_2]= [\textrm{GeLU}(XA_1), \textrm{GeLU}(XA_2)] 
+ \end{equation}
+ This is advantageous as it removes a synchronization point. Hence, we partition the first GEMM in this column parallel fashion and split the second GEMM along its rows so it takes the output of the GeLU layer directly without requiring any communication as shown in Figure \ref{fig:model-para-mlp}a. The output of the second GEMM is then reduced across the GPUs before passing the output to the dropout layer. This approach splits both GEMMs in the MLP block across GPUs and requires only a single all-reduce operation in the forward pass ($g$ operator) and a single all-reduce in the backward pass ($f$ operator). These two operators are conjugates of each other and can be implemented in PyTorch with only a few lines of code. As an example, the implementation of the $f$ operator is provided below:
+
+\begin{figure}[t!]
+%\vspace{-2mm}
+\begin{center}
+  \includegraphics[scale=0.15]{./mlp_mp_2.png}
+\\
+(a) MLP
+\\
+  \includegraphics[scale=0.2]{./attention_mp_2.png}
+\\
+(b) Self-Attention
+\\
+  \vspace{-2mm}
+  \caption{Blocks of Transformer with Model Parallelism. $f$ and $g$ are conjugate. $f$ is an identity operator in the forward pass and all reduce in the backward pass while $g$ is an all reduce in the forward pass and identity in the backward pass.}
+  \label{fig:model-para-mlp}
+\end{center}
+\vspace{-6mm}
+\end{figure}
+
+\begin{lstlisting}[language=Python, caption={Implementation of $f$ operator. $g$ is similar to $f$ with identity in the backward and all-reduce in the forward functions.}]
+class f(torch.autograd.Function):
+    def forward(ctx, x):
+        return x
+    def backward(ctx, gradient):
+        all_reduce(gradient)
+        return gradient
+\end{lstlisting}
+
+As shown in Figure \ref{fig:model-para-mlp}b, for the self attention block we exploit inherent parallelism in the multihead attention operation, partitioning the GEMMs associated with key ($K$), query ($Q$), and value ($V$) in a column parallel fashion such that the matrix multiply corresponding to each attention head is done locally on one GPU. This allows us to split per attention head parameters and workload across the GPUs, and doesn’t require any immediate communication to complete the self-attention. The subsequent GEMM from the output linear layer (after self attention) is parallelized along its rows and takes the output of the parallel attention layer directly, without requiring communication between the GPUs. This approach for both the MLP and self attention layer fuses groups of two GEMMs, eliminates a synchronization point in between, and results in better scaling. This enables us to perform all GEMMs in a simple transformer layer using only two all-reduces in the forward path and two in the backward path (see Figure \ref{fig:gpt2-transformerpasses}).
+
+\begin{figure}
+\begin{center}
+ \includegraphics[scale=0.22]{./passesmp_2.png}
+ \caption{Communication operations in a transformer layer. There are 4 total communication operations in the forward and backward pass of a single model parallel transformer layer.}
+ \label{fig:gpt2-transformerpasses}
+ \vspace{-6mm}
+\end{center}
+\end{figure}
+
+The transformer language model has an output embedding with the dimension of hidden-size ($H$) times vocabulary-size ($v$). Since the vocabulary size is on the order of tens of thousands of tokens for modern language models (for example, GPT-2 used a vocabulary size of 50,257), it is beneficial to parallelize the output embedding GEMM. However, in transformer language models, the output embedding layer shares weights with the input embedding, requiring modifications to both. We parallelize the input embedding weight matrix $E_{H\times v}$ along the vocabulary dimension $E=[E_1, E_2]$ (column-wise). Since each partition now only contains a portion of the embedding table, an all-reduce ($g$ operator) is required after the input embedding. For the output embedding, one approach is to perform the parallel GEMM $[Y_1, Y_2] = [XE_1, XE_2]$ to obtain the logits, add an all-gather $Y=\textrm{all-gather}([Y_1, Y_2])$, and send the results to the cross-entropy loss function. However, for this case, the all-gather will communicate $b\times s\times v$ elements ($b$ is the batch-size and $s$ is the sequence length) which is huge due to vocabulary size being large. To reduce the communication size, we fuse the output of the parallel GEMM $[Y_1, Y_2]$ with the cross entropy loss which reduces the dimension to $b \times s$. Communicating scalar losses instead of logits is a huge reduction in communication that improves the efficiency of our model parallel approach.
+
+Much of our model parallel approach can be characterized as techniques aimed at reducing communication and keeping the GPUs compute bound.
+Rather than having one GPU compute part of the dropout, layer normalization, or residual connections and broadcast the results to other GPUs, we choose to duplicate the computation across GPUs. Specifically, we maintain duplicate copies of layer normalization parameters on each GPU, and take the output of the model parallel region and run dropout and residual connection on these tensors before feeding them as input to the next model parallel regions. To optimize the model we allow each model parallel worker to optimize its own set of parameters. Since all values are either local to or duplicated on a GPU, there is no need for communicating updated parameter values in this formulation.
+
+We present further details about the hybrid model and data parallelism and handling random number generation in Appendix \ref{sec:modelpar:supp} for reference. In summary, our approach as described above is simple to implement, requiring only a few extra all-reduce operations added to the forward and backward pass. It does not require a compiler, and is orthogonal and complementary to the pipeline model parallelism advocated by approaches such as \cite{GPipe}. 
+

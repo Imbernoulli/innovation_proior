@@ -1,0 +1,25 @@
+\section{Related Work}
+\label{sec:related_work}
+
+
+The earliest attempts to scale up deep reinforcement learning relied on distributed asynchronous SGD \cite{NIPS2012_4687} with multiple workers.
+Examples include distributed A3C \cite{A3C2016} and Gorila \cite{DBLP:journals/corr/NairSBAFMPSBPLM15}, a distributed version of Deep Q-Networks \cite{mnih15human}. Recent alternatives to asynchronous SGD for RL include using evolutionary processes \cite{salimans2017evolution}, distributed BA3C \cite{DBLP:journals/corr/abs-1801-02852} and Ape-X \cite{horgan2018distributed} which has a distributed replay but a synchronous learner.
+
+There have also been multiple efforts that scale up reinforcement learning by utilising GPUs. One of the simplest of such methods is batched A2C \cite{DBLP:journals/corr/ClementeMC17}.
+At every step, batched A2C produces a batch of actions and applies them to a batch of environments.
+Therefore, the slowest environment in each batch determines the time it takes to perform the entire batch step (see Figure \ref{batched_a2c_timeline} and \ref{batched_a2_1c_timeline}). In other words, high variance in environment speed can severely limit performance.
+Batched A2C works particularly well on Atari environments, because rendering and game logic are computationally very cheap in comparison to the expensive tensor operations performed by reinforcement learning agents.
+However, more visually or physically complex environments can be slower to simulate and can have high variance in the time required for each step. Environments may also have variable length (sub)episodes causing a slowdown when initialising an episode.
+
+
+
+
+
+The most similar architecture to IMPALA is GA3C \cite{babaeizadeh2016ga3c}, which also uses asynchronous data collection to more effectively utilise GPUs. It decouples the acting/forward pass from the gradient calculation/backward pass by using dynamic batching. The actor/learner asynchrony in GA3C 
+leads to instabilities during learning, which \cite{babaeizadeh2016ga3c} only partially mitigates by adding a small constant to action probabilities during the estimation of the policy gradient.
+In contrast, IMPALA uses the more principled V-trace algorithm.
+
+Related previous work on off-policy RL include \cite{precup2000eligibility,precup01offpolicy,Wawrzynski09,geist2014off,o2016pgq} and \cite{harutyunyan16qlambda}.
+The closest work to ours is the Retrace algorithm  \cite{munos2016safe} which introduced an off-policy correction for multi-step RL, and has been used in several agent architectures \cite{Ziyu2017,Reactor2017}. Retrace requires learning state-action-value functions $Q$ in order to make the off-policy correction.
+However, many actor-critic methods such as A3C learn a state-value function $V$ instead of a state-action-value function $Q$.
+V-trace is based on the state-value function.

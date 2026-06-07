@@ -1,0 +1,22 @@
+\begin{table}
+\centering
+\setlength{\tabcolsep}{2pt}
+\small
+\caption{\small Accuracy (in \%) on the ARC-[Easy, Challenge] datasets. Questions were concatenated and answered in a streaming manner to mimic a real-world chat setting. The dense baseline fails due to Out-of-Memory (OOM) errors. Window attention has poor accuracy. \method has comparable results with the one-shot sample-by-sample baseline. Window attention and \method use cache sizes of 1024.}
+\label{tab:instruct_qa}
+\vspace{-1em}
+\begin{tabular}{lcccccc}
+\toprule
+Model     & \multicolumn{2}{c}{Llama-2-7B-Chat} &\multicolumn{2}{c}{Llama-2-13B-Chat}        & \multicolumn{2}{c}{Llama-2-70B-Chat}  \\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Dataset   & Arc-E                & Arc-C                & Arc-E                & Arc-C                & Arc-E                & Arc-C                 \\
+\midrule
+One-shot    & 71.25              & 53.16              & 78.16              & 63.31              & 91.29              & 78.50               \\
+\midrule
+Dense     & \multicolumn{6}{c}{OOM}   \\
+Window    & 3.58               & 1.39               & 0.25               & 0.34               & 0.12               & 0.32                \\
+\method & 71.34              & 55.03              & 80.89              & 65.61              & 91.37              & 80.20              \\
+\bottomrule
+\end{tabular}
+\vspace{-1.5em}
+\end{table}

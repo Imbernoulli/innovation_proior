@@ -1,0 +1,170 @@
+\documentclass[../hippo.tex]{subfiles}
+\begin{document}
+
+\section{Related Work}
+\label{sec:related-work}
+
+Our work touches on a variety of topics and related work, which we explore in detail.
+
+\subsection{Signal Processing and Orthogonal Polynomials}
+\label{sec:rw-ops}
+
+\subsubsection{Sliding transforms}
+The technical contributions in this work build on a rich history of approximation theory in signal processing.
+Our main framework -- orthogonalizing functions with respect to time-varying measures (Section~\ref{sec:framework}) -- are related to ``online'' versions of classical signal processing transforms.
+In short, these methods compute \emph{specific transforms} on \emph{sliding windows} of \emph{discrete sequences}.
+Concretely, they calculate $c_{n,k} = \sum_{i=0}^{N-1} f_{k+i} \psi(i, n)$ given signal $(f_k)$, where $\{\psi(i, n)\}$ is a discrete orthogonal transform.
+Our technical problem differs in several key aspects:
+\begin{description}%
+  \item[Specific discrete transforms]
+    Examples of sliding transforms considered in the literature include the sliding DFT~\cite{farhang1994generalized,jacobsen2003sliding,jacobsen2004update,duda2010accurate}, sliding DCT~\cite{kober2004fast}, sliding discrete (Walsh-)Hadamard transform~\cite{mozafari2007efficient,ouyang2009fast,wu2012sliding}, Haar~\cite{macias2005efficient}, sliding discrete Hartley transform~\cite{kober2007fast}, and sliding discrete Chebyshev moments~\cite{chen2015fast}.
+    While each of these address a specific transform, we present a general approach (\cref{sec:framework}) that addresses several transforms at once.
+    Furthermore, we are unaware of sliding transform algorithms for the OPs we consider here, in particular the Legendre and Laguerre polynomials.
+    Our derivations in \cref{sec:derivations} cover Legendre, (generalized) Laguerre, Fourier, and Chebyshev continuous sliding transforms.
+  \item[Fixed-length sliding windows]
+    All mentioned works operate in the sliding window setting, where a fixed-size context window on the discrete signal is taken into account.
+    Our measure-based abstraction for approximation 
+    allows considering a new type of \emph{scaled} measure where the window size increases over time, leading to methods with qualitatively different theoretical (\cref{sec:theory_legs}) and empirical properties (\cref{subsec:exp-timescale}).
+    We are not aware of any previous works addressing this scaled setting.
+  \item[Discrete vs. continuous time]
+    Even in the fixed-length sliding window case,
+    our solutions to the ``translated measure'' problems (e.g., HiPPO-LegT \cref{sec:derivation-legt})
+    solve a continuous-time sliding window problem on an underlying continuous signal, then discretize.
+
+    On the other hand, the sliding transform problems calculate transforms directly on a discrete stream.
+    Discrete transforms are equivalent to calculating projection coefficients on a measure (equation \eqref{eq:coefficient}) by Gaussian quadrature,
+    which assumes the discrete input is subsampled from a signal at the quadrature nodes~\citep{chihara}.
+    However, since these nodes are non-uniformly spaced in general, the sliding discrete transform is not consistent with a discretization of an underlying continuous signal.
+
+    Thus, our main abstraction (\cref{def:hippo}) has a fundamentally different interpretation than standard transforms,
+    and our approach of first calculating the dynamics of the underlying continuous-time problem (e.g.\ equation~\eqref{eq:coefficient-dynamics}) is correspondingly new.
+
+    We remark that our novel \emph{scaled measures} are fundamentally difficult to address with a standard discrete-time based approach.
+    These discrete sliding methods require a fixed-size context in order to have consistent transform sizes,
+    while the scaled measure would require solving transforms with an increasing number of input points over time.
+
+\end{description}
+
+
+\subsubsection{OPs in ML}
+More broadly, orthogonal polynomials and orthogonal polynomial transforms have recently found applications in various facets of machine learning.
+For example, \citet{dao2017gaussian} leverage the connection between orthogonal polynomials and quadrature to derive rules for computing kernel features in machine learning.
+More directly, \cite{thomas2018learning} apply parametrized families of structured matrices directly inspired by orthogonal polynomial transforms (\citep{de2018two}) as layers in neural networks.
+Some particular families of orthogonal polynomials such as the Chebyshev polynomials have desirable approximation properties that find many well-known classical uses in numerical analysis and optimization.
+More recently, they have been applied to ML models such as graph convolutional neural networks\citep{defferrard2016convolutional}, and generalizations such as Gegenbauer and Jacobi polynomials have been used to analyze optimization dynamics\cite{yang2019mean,berthier2020accelerated}.
+Generalization of orthogonal polynomials and Fourier transform, expressed as
+products of butterfly matrices, have found applications in automatic algorithm
+design~\citep{dao2019learning}, model compression~\citep{alizadeh2019butterfly},
+and replacing hand-crafted preprocessing in speech
+recognition~\citep{dao2020kaleidoscope}.
+Orthogonal polynomials are known to have various efficiency results~\citep{de2018two}, and we conjecture that \cref{prop:efficiency} on the efficiency of HiPPO methods can be extended to arbitrary measures besides the ones considered in this work.
+
+
+
+\subsection{Memory in Machine Learning}
+
+\paragraph{Memory in sequence models}
+
+
+Sequential or temporal data in areas such as language, reinforcement learning, and continual learning can involve increasingly long dependencies.
+However, direct parametric modeling cannot handle inputs of unknown and potentially unbounded lengths.
+Many modern solutions
+such as attention~\citep{vaswani2017attention} and dilated convolutions~\citep{bai2018empirical},
+are functions on finite windows, thus
+sidestepping the need for an explicit memory representation.
+While this suffices for certain tasks,
+these approaches can only process a finite context window instead of an entire sequence.
+Naively increasing the window length poses significant compute and memory challenges.
+This has spurred various approaches to extend this fixed context window
+subjected to compute and storage constraints~\citep{trellisnet, wu2019pay,
+  dai2019transformer, child2019generating, sukhbaatar2019adaptive,
+  rae2019compressive, kitaev2020reformer, roy2020efficient}.
+
+We instead focus on the core problem of online processing and memorization of
+continuous and discrete signals,
+and anticipate that the study of this
+foundational problem will be useful in improving a variety of models.
+
+
+\paragraph{Recurrent memory}
+Recurrent neural networks are a natural tool for modeling sequential data online, with the appealing property of having unbounded context; in other words they can summarize history indefinitely.
+However, due to difficulties in the optimization process (vanishing/exploding gradients~\citep{pascanu2013difficulty}), particular care must be paid to endow them with longer memory.
+The ubiquitous LSTM~\citep{lstm} and simplifications such as the
+GRU~\citep{chung2014empirical} control the update with gates to smooth the
+optimization process.
+With more careful parametrization, the addition of gates alone make RNNs significantly more robust and able to address long-term dependencies~\citep{gu2020improving}.
+\citet{tallec2018can} show that gates are in fact fundamental for recurrent dynamics by allowing time dilations.
+Many other approaches to endowing RNNs with better memory exist, such as noise injection~\citep{gulcehre2016noisy} or non-saturating gates~\citep{chandar2019towards}, which can suffer from instability issues.
+A long line of work controls the spectrum of the recurrent updates with (nearly-) orthogonal matrices to control gradients~\citep{arjovsky2016unitary},
+but have been found to be less robust across different tasks~\citep{henaff2016recurrent}.
+
+\subsection{Directly related methods}
+
+\paragraph{LMU}
+The main result of the Legendre Memory Unit~\citep{voelker2018improving,voelker2019dynamical,voelker2019legendre} is a direct instantiation of our framework using the LegT measure (\cref{subsec:high_order_projection}).
+The original LMU is motivated by neurobiological advances and approaches the problem from the opposite direction as us:
+it considers approximating spiking neurons in the frequency domain, while we directly solve an interpretable optimization problem in the time domain.
+More specifically, they consider time-lagged linear time invariant (LTI) dynamical systems and approximate the dynamics with Pad{\'e} approximants;
+\citet{voelker2019legendre} observes that the result also has an interpretation in terms of Legendre polynomials,
+but not that it is the optimal solution to a natural projection problem.
+This approach involves heavier machinery, and we were not able to find a complete proof of the update mechanism~\citep{voelker2018improving,voelker2019dynamical,voelker2019legendre}.
+
+In contrast, our approach directly poses the relevant online signal approximation problem, which ties to orthogonal polynomial families and leads to simple derivations of several related memory mechanisms (\cref{sec:derivations}). %
+Our interpretation in time rather than frequency space, and associated derivation (\cref{sec:derivation-legt}) for the LegT measure, reveals a different set of approximations stemming from the sliding window,
+which is confirmed empirically (\cref{sec:exp-hippo-ablations}).
+
+As the motivations of our work are substantially different from \citet{voelker2019legendre}, yet finds the same memory mechanism in a special case,
+we highlight the potential connection between these sequence models and biological nervous systems as an area of exploration for future work, such as alternative interpretations of our methods in the frequency domain.
+
+We remark that the term LMU in fact refers to a specific recurrent neural network architecture, which interleaves the projection operator with other specific neural network components.
+By contrast, we use HiPPO to refer to the projection operator in isolation (\cref{thm:legt-lagt}), which is a function-to-function or sequence-to-sequence operator independent of model.
+HiPPO is integrated into an RNN architecture in \cref{sec:experiments}, with slight improvements to the LMU architecture, as ablated in \cref{sec:pmnist-details,sec:copying-details}.
+As a standalone module, HiPPO can be used as a layer in other types of models.
+
+
+
+
+\paragraph{Fourier Recurrent Unit}
+
+The Fourier Recurrent Unit (FRU)~\citep{zhang2018learning} uses Fourier basis
+(cosine and sine) to express the input signal, motivated by the discrete Fourier
+transform.
+In particular, each recurrent unit computes the discrete Fourier transform of
+the input signal for a randomly chosen frequency.
+It is not clear how discrete transform with respect to other bases (e.g.,
+Legendre, Laguerre, Chebyshev) can in turn yield similar memory mechanisms.
+We show that FRU is also an instantiation of the HiPPO framework
+(\cref{sec:derivation-fourier}), where the Fourier basis can be viewed as
+orthogonal polynomials $z^n$ on the unit circle $\{ z \colon \abs{z} = 1 \}$.
+
+\citet{zhang2018learning} prove that if a timescale hyperparameter is chosen appropriately,
+FRU has bounded gradients, thus avoiding vanishing and exploding gradients.
+This essentially follows from the fact that $(1 - \Delta t)^T = \Theta(1)$ if the discretization
+step size $\Delta t = \Theta(\frac{1}{T})$ is chosen, if the time horizon $T$ is known (cf.\ \cref{sec:discretization-full,sec:hippo-theory}).
+It is easily shown that this property is not intrinsic to the FRU but to sliding window methods,
+and is shared by all of our translated measure HiPPO methods (all but HiPPO-LegS in \cref{sec:derivations}).
+We show the stronger property that HiPPO-LegS, which uses scaling rather than sliding windows, also enjoys bounded gradient guarantees,
+without needing a well-specified timescale hyperparameter (\cref{prop:gradient-bound}).
+
+\paragraph{Neural ODEs}
+
+HiPPO produces linear ODEs that describe the dynamics of the coefficients.
+Recent work has also incorporated ODEs into machine learning models.
+\citet{chen2018neural} introduce neural ODEs, employing general nonlinear ODEs
+parameterized by neural networks in the context of normalizing flows and time
+series modeling.
+Neural ODEs have shown promising results in modeling irregularly sampled time
+series~\citep{kidger2020neural}, especially when combined with
+RNNs~\citep{rubanova2019latent}.
+Though neural ODEs are expressive~\citep{dupont2019augmented, zhang2019approximation},
+due to their complex parameterization, they often suffer from slow
+training~\citep{quaglino2020snode, finlay2020train, massaroli2020stable} because
+of their need for more complicated ODE solvers.
+On the other hand, HiPPO ODEs are linear and are fast to solve with classical
+discretization techniques in linear systems, such as Euler method, Bilinear
+method, and Zero-Order Hold (ZOH)~\citep{iserles2009first}.
+
+
+
+\end{document}
+

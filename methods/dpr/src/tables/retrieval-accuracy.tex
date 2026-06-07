@@ -1,0 +1,59 @@
+
+\ignore{
+\begin{table*}[!ht]
+    \centering
+    \begin{tabular}{llcccc} \toprule
+    $k$ & Retriever & {Natural Questions} & {TriviaQA} & {WebQuestions} & {CuratedTREC} \\
+    \midrule
+    \multirow{2}{*}{5} &
+    BM25   & 41.6 & 54.4 & 36.8 & 54.9  \\
+    & Dense  & \tf{67.0} & \tf{69.7} & \tf{63.9} & \tf{79.9}  \\
+    & Dense+ & & & & \\
+    \midrule
+    \multirow{2}{*}{20} &
+        BM25   & 57.9 & 66.9 & 55.0 & 70.9  \\
+    & Dense  & \tf{79.4} & \tf{78.8} & \tf{75.0} & \tf{89.1}  \\
+    & Dense+ & & & & \\
+    \midrule
+    \multirow{2}{*}{50} &
+        BM25   & 67.7 & 72.8 & 64.5 & 80.3  \\
+    & Dense  & \tf{83.8} & \tf{82.5} & \tf{80.5} & \tf{92.6}  \\
+    & Dense+ & & & & \\
+    \midrule
+    \multirow{2}{*}{100} &
+        BM25   & 73.2 & 76.7 & 71.1 & 84.1 \\
+    & Dense  & \tf{86.0} & \tf{84.7} & \tf{82.9} & \tf{93.9}  \\
+    & Dense+ & & & & \\
+    \bottomrule
+    \end{tabular}
+    \caption{Top-$K$ retrieval accuracy, measured as the percentage that top $k$ retrieved passages that contain an answer. The numbers are reported on the testing set.}
+    \label{tab:qa_ir}
+\end{table*}
+
+}
+
+
+
+
+\begin{table*}[t!]
+    \setlength\tabcolsep{5pt}
+    \centering
+    \small
+    \begin{tabular}{ll|ccccc|ccccc}
+    \toprule
+    \tf{Training} & \tf{Retriever} & \multicolumn{5}{c}{\tf{Top-20}} & \multicolumn{5}{|c}{\tf{Top-100}} \\
+    & & NQ & TriviaQA & WQ & TREC & SQuAD & NQ & TriviaQA & WQ & TREC & SQuAD \\ \midrule
+    None & BM25 & 59.1 & 66.9 & 55.0 & 70.9 & 68.8 & 73.7 & 76.7 & 71.1 & 84.1 & 80.0 \\
+    \midrule
+    \multirow{2}{*}{Single} &\model/ & 78.4 & 79.4 & 73.2 & 79.8 & 63.2 & 85.4 & \textbf{85.0} & 81.4 & 89.1 & 77.2 \\
+    &BM25 + \model/ & 76.6 & 79.8 & 71.0 & 85.2 & \textbf{71.5} & 83.8 & 84.5 & 80.5 & 92.7 & \textbf{81.3} \\
+    \midrule
+    \multirow{2}{*}{Multi} &\model/ & \textbf{79.4} & 78.8 & \textbf{75.0} & \textbf{89.1} & 51.6 & \textbf{86.0} & 84.7 & \textbf{82.9} & 93.9 & 67.6 \\
+    &BM25 + \model/ & 78.0 & \textbf{79.9} & 74.7 & 88.5 & 66.2 & 83.9 & 84.4 & 82.3 & \textbf{94.1} & 78.6 \\ \bottomrule
+    \end{tabular}
+     \caption{Top-20 \& Top-100 retrieval accuracy on test sets, measured as the percentage of top 20/100 retrieved passages that contain the answer. \ti{Single} and \ti{Multi} denote that our Dense Passage Retriever (DPR) was trained using individial or combined training datasets (all the datasets excluding SQuAD). See text for more details.} %
+
+    \label{tab:qa_ir}
+\end{table*}
+
+

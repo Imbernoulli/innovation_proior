@@ -1,0 +1,22 @@
+\begin{table}[ht]
+\caption{\textbf{Transfer learning: image classification.} We benchmark learned representations on the image classification task by training linear classifiers on fixed features. We report top-1 accuracy on Places-205 and iNat18 datasets, and classification mAP on VOC07. Top-3 best self-supervised methods are underlined.}
+\label{tab:linear_transfer}
+\vskip 0.15in
+\begin{center}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Method & Places-205 & VOC07 & iNat18 \\
+\midrule
+Supervised & 53.2 & 87.5 & 46.7\\
+\midrule
+SimCLR & 52.5 & 85.5 & 37.2 \\
+MoCo-v2 & 51.8 & \underline{86.4} & 38.6 \\
+SwAV (w/o multi-crop) & 52.8 & \underline{86.4} & 39.5 \\
+SwAV & \underline{56.7} & \underline{88.9} & \underline{48.6} \\
+BYOL & \underline{54.0} & \underline{86.6} & \underline{47.6} \\
+\AlgoName{} (ours) & \underline{54.1} & 86.2 & \underline{46.5} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\vskip -0.1in
+\end{table}

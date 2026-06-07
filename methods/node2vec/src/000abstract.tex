@@ -1,0 +1,30 @@
+% !TEX root = paper-node2vec.tex
+
+%% Old Aditya's version
+\hide{
+Prediction tasks over nodes and edges in an information network require careful effort in engineering features for learning algorithms. Recent research in the broader field of representation learning has led to significant progress in automating prediction by learning the features themselves. In this paper, we propose the \nodevec framework for learning distributed feature representations for nodes in graphs. In \nodevec, we maximize a likelihood objective over mappings which preserve neighbourhood distances in higher dimensional spaces. From an algorithm design perspective, we exploit the freedom to define neighbourhoods for nodes and provide an explanation for the effect of our choice of neighborhood on the learned representations. For each node, we simulate biased random walks based on an efficient network-aware search strategy and the nodes appearing in the random walk define neighbourhoods. Our search strategy accounts for the relative influence nodes exert in a network. More importantly, it generalizes prior work alluding to naive search strategies by providing flexibility in exploring neighborhoods. We illustrate how this flexibility is key to learning richer representations corresponding to distinct, but not exclusive equivalence notions of interest (homophilous and structural equivalence), one or both of which might be expressed in the downstream prediction task. Lastly, we bootstrap feature representations for nodes to generate features for pairs of nodes for edge-based prediction tasks. Our empirically evaluations on multi-label classification (over nodes) and link prediction over several real-world networks from diverse domains demonstrate the efficacy of \nodevec over existing state-of-the-art techniques.
+}
+
+Prediction tasks over nodes and edges in networks require careful effort in engineering features used by learning algorithms. Recent research in the broader field of representation learning has led to significant progress in automating prediction by learning the features themselves. However, present feature learning approaches are not expressive enough to capture the diversity of connectivity patterns observed in networks. 
+%largely insensitive to local patterns unique to networks. 
+%\jure{Last sentence is not the best sentece, consider revising it.}
+
+%Here we propose \nodevec, a framework for learning 
+% distributed 
+%feature representations for nodes in graphs. In \nodevec, we maximize a likelihood-based objective, which preserves distances between network neighborhoods of nodes by mapping the nodes to a higher dimensional space.
+% \critique{(a). Explain how the striked lines connect. What are you optimizing over, what are the constraints(if any) (b). On a rethink, using high-dimensional might be wrong. Most people like to think high dimensionality as a bane in the context of curse of dimensionality. The more common terminology for feature learning seems to be low dimensional.}
+Here we propose \nodevec, an algorithmic framework for learning continuous feature representations for nodes in networks. In \nodevec, we learn a mapping of nodes to a low-dimensional space of features that maximizes the likelihood of preserving network neighborhoods of nodes.
+%
+We define a flexible notion of a node's network neighborhood and design a biased random walk procedure, which efficiently explores diverse neighborhoods.
+%
+%From an algorithm design perspective, we design biased random walks, which efficiently explore diverse network neighborhoods and lead to richer high-dimensional representations.
+%
+%Our algorithm generalizes prior work by providing flexibility in exploring network neighborhoods and we demonstrate that this added flexibility is the key to learning richer representations.
+%\critique{what did the prior work do? also, flexible used too many times}
+Our algorithm generalizes prior work which is based on rigid notions of network neighborhoods, and we argue that the added flexibility in exploring neighborhoods is the key to learning richer representations.
+
+% Our empirical evaluations on multi-label classification and link prediction tasks in several real-world networks from a diverse set of domains demonstrate the efficacy of node2vec over existing state-of-the-art techniques. 
+% \critique{Rok's suggestion. I like it, active sounds better than passive}
+We demonstrate the efficacy of \nodevec over existing state-of-the-art techniques on multi-label classification and link prediction in several real-world networks from diverse domains.
+%
+Taken together, our work represents a new way for efficiently learning state-of-the-art task-independent representations in complex networks. % that are useful for downstream prediction tasks.

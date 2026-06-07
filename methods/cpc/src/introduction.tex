@@ -1,0 +1,20 @@
+\section{Introduction}
+
+Learning high-level representations from labeled data with layered differentiable models in an end-to-end fashion is one of the biggest successes in artificial intelligence so far. These techniques made manually specified features largely redundant and have greatly improved state-of-the-art in several real-world applications \cite{krizhevsky2012imagenet, hinton2012deep, sutskever2014sequence}. However, many challenges remain, such as data efficiency, robustness or generalization. 
+
+Improving representation learning requires features that are less specialized towards solving a single supervised task. For example, when pre-training a model to do image classification, the induced features transfer reasonably well to other image classification domains, but also lack certain information such as color or the ability to count that are irrelevant for classification but relevant for e.g. image captioning \cite{showandtell}. Similarly, features that are useful to transcribe human speech may be less suited for speaker identification, or music genre prediction. Thus, unsupervised learning is an important stepping stone towards robust and generic representation learning.
+
+Despite its importance, unsupervised learning is yet to see a breakthrough similar to supervised learning: modeling high-level representations from raw observations remains elusive. Further, it is not always clear what the ideal representation is and if it is possible that one can learn such a representation without additional supervision or specialization to a particular data modality.
+
+One of the most common strategies for unsupervised learning has been to predict future, missing or contextual information. This idea of predictive coding \cite{elias1955predictive, atal1970adaptive} is one of the oldest techniques in signal processing for data compression. In neuroscience, predictive coding theories suggest that the brain predicts observations at various levels of abstraction \cite{rao1999predictive, friston2005theory}. Recent work in unsupervised learning has successfully used these ideas to learn word representations by predicting neighboring words \cite{mikolov2013efficient}. For images, predicting color from grey-scale or the relative position of image patches has also been shown useful \cite{zhang2016colorful, Doersch_2015_ICCV}.
+We hypothesize that these approaches are fruitful partly because the context from which we predict related values are often conditionally dependent on the same shared high-level latent information. And by casting this as a prediction problem, we automatically infer these features of interest to representation learning.
+
+In this paper we propose the following: first, we compress high-dimensional data into a much more compact latent embedding space in which conditional predictions are easier to model. Secondly, we use powerful autoregressive models in this latent space to make predictions many steps in the future. Finally, we rely on Noise-Contrastive Estimation \cite{gutmann2010noise} for the loss function in similar ways that have been used for learning word embeddings in natural language models, allowing for the whole model to be trained end-to-end. We apply the resulting model, Contrastive Predictive Coding (CPC) to widely different data modalities, images, speech, natural language and reinforcement learning, and show that the same mechanism learns interesting high-level information on each of these domains, outperforming other approaches.
+
+\begin{figure*}[t!]
+  \center
+  \includegraphics[width=0.90\textwidth]{figures/contrastive_repr4.pdf}
+  \caption{Overview of Contrastive Predictive Coding, the proposed representation learning approach. Although this figure shows audio as input, we use the same setup for images, text and reinforcement learning.}
+  \label{fig:overview}
+\end{figure*}
+

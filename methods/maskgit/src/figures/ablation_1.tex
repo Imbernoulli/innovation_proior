@@ -1,0 +1,49 @@
+\setlength{\tabcolsep}{5pt}
+\begin{table}[!t]
+\small
+    \centering
+    {\small
+    \resizebox{0.7\linewidth}{!}{
+        \begin{tabular}{lc cccc}
+            \toprule
+            {\large$\gamma$} &  %\bfseries{Sampling method}  &
+              & $T$ & \bfseries{FID}  $\downarrow$ & \bfseries{IS} $\uparrow$ & \bfseries{NLL} \\
+            \midrule
+            Exponential & 
+            % & 7  & 7.63 & 160.9 & 4.83 \\
+            & 8  & 7.89 & 156.3 & 4.83 \\
+            Cubic & 
+            & 9 & 7.26 & 165.2 & 4.63  \\ 
+            Square & 
+            & 10 & 6.35 & 179.9 & 4.38  \\ 
+            \textbf{Cosine} & 
+            & 10 & \textbf{6.06} & \textbf{181.5} & 4.22 \\    
+            Linear & 
+            & 16 & 7.51 & 113.2 & 3.75  \\
+            Square Root &
+            & 32 & 12.33 & 99.0 & 3.34 \\  
+            Logarithmic  &
+            & 60 & 29.17 & 47.9 &  3.08\\
+            % Exponential & 
+            % & 16  & 6.62 & 166.5 & 4.83 \\
+            % Cubic & 
+            % & 32 & 6.12 & 170.9 & 4.63  \\ 
+            % Square & 
+            % & 64 & 5.55 & 179.8 & 4.38  \\ 
+            % \textbf{Cosine} & 
+            % & 64 & \textbf{5.14} & \textbf{184.0} & 4.22 \\    
+            % Linear & 
+            % & 256 & 6.09 & 132.6 & 3.75  \\
+            % Square Root &
+            % & 256 & 9.26 & 120.7 & 3.34 \\  
+            % Logarithmic  &
+            % & 256 & 21.18 & 63.2 &  3.08\\
+    \bottomrule
+    \end{tabular}
+    }
+    }
+    \vspace{-.1cm}
+    \caption{\textbf{Ablation results on the mask scheduling functions.} We report the best FID, IS, and Negative Log-Likelihood loss for each candidate scheduling function. }
+    \label{tab:ablation}
+\vspace{-3mm}
+\end{table}
