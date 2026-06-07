@@ -1,0 +1,358 @@
+OK, let me think this through from scratch. I've got an `n × n` matrix of ratings `r_ij` — how good
+person `i` is at job `j` — and I have to hand out the jobs, one per person, one person per job, so
+the total rating is as large as possible. A legal hand-out is a permutation `j_1, …, j_n` of the
+columns, and I want the one maximizing `r_{1 j_1} + ⋯ + r_{n j_n}`. The brute-force answer is to try
+all `n!` permutations and keep the best, and that's fine for `n = 4` but it's `4.8 × 10^8` for
+`n = 12`, which I am not going to enumerate by hand. So enumeration is out, and I need to *exploit*
+something about the structure.
+
+The obvious structural observation is that this is a linear program. Write `x_ij = 1` if I give job
+`j` to person `i` and `0` otherwise; the constraints "one job per person, one person per job" are
+just `Σ_j x_ij = 1` for every row and `Σ_i x_ij = 1` for every column, with `x_ij ≥ 0`, and I'm
+maximizing `Σ_ij r_ij x_ij`, a linear objective. So I could throw the simplex method at it. But that
+feels like the wrong tool, and it's worth being precise about why. A `10 × 10` instance is a linear
+program with `100` variables and `20` equality constraints — and it's brutally degenerate: every
+assignment is a vertex where `90` of the `100` variables are zero, lots of bases describe the same
+vertex, and simplex grinds through degenerate pivots that don't move the objective. The machine in
+front of me in 1953 can barely fit a general LP of that size at all. There has to be a method that
+uses the fact that this isn't a generic LP — its constraint matrix is all `0`'s and `1`'s, the
+incidence structure of a bipartite graph — instead of pretending it's arbitrary.
+
+Before I even look for an algorithm, let me get the dual, because the dual is where the certificate
+will come from. To each row attach a number `u_i` and to each column a number `v_j`. The linear-
+programming dual of "max `Σ r_ij x_ij` subject to unit row/column sums, `x ≥ 0`" is: minimize
+`Σ_i u_i + Σ_j v_j` subject to `u_i + v_j ≥ r_ij` for every `(i, j)`. I'll read `u_i + v_j` as a
+"budgeted value" jointly allotted to person `i` and job `j`, and the dual feasibility condition
+`u_i + v_j ≥ r_ij` says the budget for the pair is at least the rating. Now here is the thing I want
+to lean on — weak duality, and it's a one-liner. Take *any* assignment (any permutation) and *any*
+budget `(u, v)` satisfying `u_i + v_j ≥ r_ij`. Sum the inequality over the `n` chosen pairs:
+
+    Σ_{chosen (i,j)} r_ij ≤ Σ_{chosen (i,j)} (u_i + v_j).
+
+But in an assignment each row index and each column index appears exactly once, so the right side is
+just `Σ_i u_i + Σ_j v_j` — the whole budget, regardless of which permutation I chose. So
+
+    (value of ANY assignment) ≤ Σ_i u_i + Σ_j v_j = (cost of ANY feasible budget).
+
+That's the lever. Every feasible budget is an upper bound on every assignment. If I can ever exhibit
+*one* assignment and *one* budget where these two numbers are equal, then that assignment can't be
+beaten (it equals an upper bound) and that budget can't be lowered (it equals a lower bound), and
+I've solved both problems at once — and the budget is a *certificate* a skeptic can check by hand.
+So my real goal is sharper than "find a good assignment": find an assignment and a budget that meet.
+And the question becomes, *when* do they meet? Sum the inequalities; equality holds iff every one of
+the `n` chosen pairs is *tight*, `u_i + v_j = r_ij`, with no slack. So I want an assignment that uses
+only tight pairs. That's complementary slackness, and it's now the whole game: pick a budget, look at
+its tight pairs, and try to find a full assignment living entirely among them.
+
+Now, is there even any reason to believe a budget exists whose tight pairs admit a full assignment?
+This is where I get nervous, because in general an integer program's LP relaxation can have a
+fractional optimum and there's a gap. But here the geometry saves me. The feasible region — nonneg-
+ative matrices with all row and column sums `1` — is the set of doubly-stochastic matrices, and
+Birkhoff showed in 1946 that those are *exactly* the convex hull of the permutation matrices. So
+when I maximize a linear function over this polytope, the optimum is attained at a vertex, and the
+vertices *are* permutation matrices. There's no fractional trap: the LP optimum is automatically an
+honest assignment. (The same fact in constraint-matrix language: the bipartite row/column incidence
+matrix is totally unimodular, so every vertex of the polytope has integer coordinates, and with unit
+right-hand sides those integers are `0`/`1`.) Good — so an optimal budget whose tight pairs carry a
+full assignment must exist. I just have to construct the pair.
+
+So let me deliberately strip the problem down to its bones and solve the easiest possible version
+first, because if I can't handle that I can't handle anything. Suppose every rating is just `0` or
+`1` — a *qualification* matrix, `1` meaning person `i` can do job `j` at all. Forget budgets for a
+moment; the question collapses to: how many `1`'s can I pick with no two in the same row or column?
+That's a maximum *matching* in a bipartite graph (rows on one side, columns on the other, an edge
+where there's a `1`), and a full assignment exists iff the maximum matching has `n` edges.
+
+How do I grow a matching, and — more importantly — how do I *know* when it's maximum without trying
+everything? Start from any set of independent `1`'s. If some unassigned person qualifies for an
+unassigned job, just add it; the matching grows. The interesting case is when no such direct
+addition exists but the matching still isn't full. Then I try a *transfer*: person `i_1` is qualified
+for an unassigned job `j_0`, but `i_1` is already holding job `j_1`; move `i_1` to `j_0`, which frees
+`j_1`; maybe someone else `i_2` qualified for `j_1` is holding `j_2`; move them, freeing `j_2`; and
+so on. This is exactly an **alternating path**: it alternates between "qualified-but-not-assigned"
+edges and "currently-assigned" edges. If such a chain ever ends by freeing up a job that some *un*-
+assigned person can take — i.e. both ends of the chain are unmatched — then flipping every edge along
+the chain (assigned↔unassigned) increases the number of matched pairs by exactly one. That's an
+**augmenting path**, and the symmetric difference of the matching with it is a strictly bigger
+matching.
+
+The question is when I should give up — when is the matching truly maximum? I claim: precisely when
+no augmenting path exists. One direction is obvious — if an augmenting path exists the matching grows,
+so a maximum matching has none. The converse is the content. Suppose `M` is not maximum and `M*` is
+bigger; look at their symmetric difference `M △ M*`. Every vertex touches at most one `M`-edge and at
+most one `M*`-edge, so this difference breaks into simple paths and cycles that *alternate* between
+`M` and `M*` edges. Cycles have equal numbers of each. Since `M*` has more edges overall, some path
+must have more `M*`-edges than `M`-edges — and an alternating path with one extra `M*`-edge starts
+and ends with `M*`-edges, meaning both its endpoints are exposed in `M`. That path is augmenting with
+respect to `M`. So if `M` has no augmenting path, no bigger `M*` can exist — `M` is maximum. Good:
+the matching subroutine is "search for an augmenting path from an exposed vertex; if found, augment;
+if not, stop," and I can find such a path by a reachability search along alternating edges.
+
+Now the crucial part for the *certificate*. When the augmenting search fails, what have I actually
+got? Run the alternating search from every exposed row simultaneously and mark every vertex it
+reaches. No augmenting path means the search never reaches an exposed column. Stare at the marked set.
+Take the rows that are *not* reachable together with the columns that *are* reachable — call those the
+cover. Every `1` of the matrix is covered by this set: a `1` at `(i, j)` with `i` reachable but `j`
+not reachable would extend the alternating search to `j`, contradiction, so any `1` has either its
+row unreachable (covered) or its column reachable (covered). And the size of this cover equals the
+size of the matching — each matched edge contributes exactly one covering line, unmatched-but-
+reachable rows contribute none. So I've simultaneously produced a matching and a set of *lines* (rows
+or columns) covering all the `1`'s, of equal size. Since any line can cover at most one edge of a
+matching, no cover can be smaller than the matching, and no matching can be bigger than any cover —
+they squeeze each other. **The maximum number of independent `1`'s equals the minimum number of lines
+covering all `1`'s.** This is König's theorem, and it's the 0/1 case of the very duality I wrote down
+at the start — independent marks are the primal, covering lines are the dual — proved here completely
+constructively. When the matching is full (`n` edges) I have my assignment; when it isn't, König
+hands me a cover with *fewer than `n` lines*, and that small cover is going to be exactly the tool I
+need to fix the budget.
+
+So now back up to the real problem with general integer ratings. I have a budget `(u, v)` that's
+dual-feasible (`u_i + v_j ≥ r_ij`), and I look only at its **tight** pairs, the ones with
+`u_i + v_j = r_ij`. Those tight pairs form a 0/1 qualification matrix — put a `1` exactly where it's
+tight — and I run the König machine on it. Two outcomes. If the tight pairs admit a *full* matching,
+then I have an assignment using only tight pairs, complementary slackness holds, weak duality is met
+with equality, and by the argument at the very top this assignment is optimal and the budget proves
+it. Done. But if the maximum matching on the tight pairs has fewer than `n` edges, König tells me the
+tight `1`'s are covered by fewer than `n` lines — and now I have to *change the budget* to create new
+tight pairs, without ever violating `u_i + v_j ≥ r_ij`, and in a way that makes progress.
+
+Here's where I have to be careful, because it would be easy to break feasibility. König's cover is a
+set of `r` rows and `s` columns, `r + s < n`, covering all the current tight pairs. Equivalently it
+splits things into "essential" (in the cover) and "inessential" (out of it). Look at the
+*inessential* region — inessential rows crossed with inessential columns. None of those pairs is
+tight (if one were, it'd be an uncovered `1`, but the cover covers all `1`'s), so every pair `(i, j)`
+there has genuine slack `u_i + v_j - r_ij > 0`. Let
+
+    δ = min over inessential rows i, inessential columns j of (u_i + v_j − r_ij),
+
+the smallest slack anywhere in that uncovered block; `δ > 0`. Now the budget update: subtract `δ`
+from `u_i` on every *inessential* row, and add `δ` to `v_j` on every *essential* (covered) column.
+Let me check the two things that must hold — feasibility preserved, and dual objective strictly down
+— because the whole termination argument rides on them.
+
+Feasibility: which pairs `(i, j)` could have their `u_i + v_j` *decrease*? Only ones where I lowered
+something and didn't raise it. I lowered `u_i` exactly on inessential rows; I raised `v_j` on
+essential columns. So `u_i + v_j` drops only when `i` is inessential *and* `j` is inessential (an
+essential column would have gained the same `δ` back). But that's precisely the uncovered block where
+I took the minimum slack `δ`. For such a pair the new value is `u_i + v_j − δ`, and since
+`u_i + v_j − r_ij ≥ δ` there by the definition of `δ`, I still have `u_i + v_j − δ ≥ r_ij`.
+Feasibility holds — and the pair that *achieved* the minimum becomes newly tight, which is exactly
+the new `1` I wanted to expose. Every other pair: an essential row with anything keeps its `u_i`, so
+no decrease; an inessential row with an essential column loses `δ` from `u` but gains `δ` from `v`,
+net zero. So the only pairs that move down are in the safe block, and they stay feasible. Good.
+
+Dual objective: the total budget is `Σ_i u_i + Σ_j v_j`. I subtracted `δ` from each of the
+`n − r` inessential rows and added `δ` to each of the `s` essential columns, so the change is
+`−δ(n − r) + δ s = −δ(n − r − s) = −δ(n − (r + s))`. And König gave me `r + s < n`, so `n − (r + s)`
+is a positive integer, and the budget strictly *decreases* by at least `δ`. (With integer ratings I
+can start the budget at integers — e.g. `u_i =` row maximum, `v_j = 0` — and `δ` comes out a positive
+integer, so each step drops the budget by at least `1` and stays integral.) Since the budget is
+bounded below by zero and drops by a positive integer each time, only finitely many updates can
+happen; between updates the matching only grows (bounded by `n`); so the whole process terminates,
+and it can only terminate by the tight pairs admitting a full matching — which is the optimal,
+certified assignment. This is Egerváry's step lifting König from `0/1` to integers: a finite sequence
+of König problems, stitched together by budget updates that each expose at least one new tight pair.
+
+Let me make sure I see *why* the update direction is what it is and not the opposite, because the
+signs are the whole thing. I want to *create* a tight pair in the uncovered block, where every pair
+currently has positive slack `u_i + v_j − r_ij`. To make one of those equalities, I must *shrink*
+`u_i + v_j` there, which means lowering `u` on the inessential rows (or, symmetrically, lowering `v`
+on the inessential columns — rows and columns enter the problem symmetrically, so either works, and a
+careful implementation picks whichever keeps the potentials nonnegative). But if I only lower `u` on
+inessential rows and touch nothing else, I'd wreck feasibility for pairs of an inessential row with an
+*essential* column — those might already be tight, and lowering `u_i` would push `u_i + v_j` below
+`r_ij`. The fix is to add the same `δ` back to the essential columns' `v_j`, which exactly cancels the
+loss on those pairs while leaving the uncovered block to shrink. That's why the update is "subtract
+from uncovered rows, add to covered columns" — it's the unique adjustment that shrinks the uncovered
+block by `δ`, leaves everything else feasible, and lowers the dual objective.
+
+Now I want to turn this into something I can actually run by hand, and there's a beautiful
+simplification: instead of carrying `(u, v)` and recomputing tightness, I can fold the budget *into
+the matrix* and track only reduced numbers. Define the **reduced matrix** `a_ij = u_i + v_j − r_ij ≥ 0`
+(the slacks). Tight pairs are exactly the zeros of `a`. The whole method becomes operations on `a`
+that keep it nonnegative and preserve which assignment is optimal — and the key fact is that *adding a
+constant to a whole row or column of the matrix doesn't change the optimal assignment*, because every
+assignment picks exactly one entry from that row (or column) and so every assignment's total shifts by
+the same constant. So I'm free to subtract row constants and column constants at will, hunting for a
+configuration of zeros that admits a full assignment. Concretely (now phrasing it as a *minimization*
+of cost `c_ij`, which is the same problem with a sign flip, and is cleaner to reduce):
+
+Subtract from each row its row-minimum — now every row has at least one zero and all entries are
+`≥ 0`. Then subtract from each column its column-minimum — every column has a zero too. The zeros are
+my tight pairs; an assignment lying entirely on zeros would have reduced cost `0`, hence be optimal.
+So I try to place `n` independent zeros (a full matching on the zeros) by the augmenting-path routine.
+If I get `n`, I'm done. If not, König gives me the minimum set of lines covering all the zeros; fewer
+than `n` lines. The uncovered entries are all strictly positive; let `d` be the smallest uncovered
+entry. The budget update "subtract `δ` from inessential rows, add to essential columns" becomes, in
+reduced-matrix terms: **subtract `d` from every uncovered row and add `d` to every covered column.**
+Let me track each cell to be sure: an entry whose row is uncovered and whose column is uncovered
+gets `−d` only, so it loses `d` (good — a new zero appears where the minimum was); an entry in a
+covered row and covered column gets `+d` only, so it gains `d`; an entry in an uncovered row but
+covered column gets `−d + d = 0`, unchanged; and an entry in a covered row and uncovered column is
+touched by neither, also unchanged. All entries stay `≥ 0` because `d` was the
+smallest uncovered value, so the uncovered cells can't go negative. Repeat: re-match on the new zeros,
+re-cover, re-subtract, until a full set of independent zeros appears. Every cover step strictly lowers
+the dual objective, so this halts. (The bookkeeping is identical whether I phrase the update as
+"uncovered rows minus / covered columns plus" or the mirror "covered rows plus / uncovered columns
+minus" — they differ by a global constant on the matrix and reach the same zeros.)
+
+That's the matrix form, and it's exactly what I'd do with pencil on a tableau. But for a machine I'd
+rather not re-scan the whole matrix and recompute a maximum matching from scratch every iteration —
+that's wasteful. Let me think about the operation count and tighten it. The expensive bits are
+recomputing the matching and re-covering at every dual update. There's a cleaner way to organize the
+same primal–dual logic so the work per added matched pair is `O(n^2)` and the whole thing is `O(n^3)`:
+process the rows one at a time, and for each new row grow a *single* shortest augmenting path in the
+tight subgraph, raising the duals just enough, on the fly, to extend that path — rather than
+recomputing a global matching after a global dual update.
+
+Here's the reorganization. Keep potentials `u_i, v_j` (dual-feasible, reduced cost
+`c_ij − u_i − v_j ≥ 0`) and a partial matching `p[j] =` the row matched to column `j`. To add row
+`i`, I do a Dijkstra-like search over columns: maintain `minv[j]`, the smallest reduced cost of
+reaching column `j` along an alternating path grown so far, and a predecessor `way[j]` so I can
+trace the path back. Repeatedly pick the unused column `j1` with the smallest `minv[j1]`; call that
+value `δ`. That `δ` is exactly the König minimum-uncovered-slack, computed incrementally for *this*
+path: I shift the potentials by `δ` — raise `u` on the rows already on the path and lower `v` on the
+columns already on the path (net zero on tight edges, keeping them tight), and lower the running
+`minv` of the columns not yet reached by `δ` — which keeps everything dual-feasible and makes the edge
+into `j1` tight. If column `j1` is free (unmatched), the alternating path has reached an exposed
+column: I've found the augmenting path, and I flip it by walking `way[]` back, matching this new row.
+If `j1` is matched to some row, I step into that row and continue growing the path. Each row costs one
+such search, `O(n^2)`; `n` rows give `O(n^2 · n) = O(n^3)` — strongly polynomial, independent of the
+size of the costs. This is the same primal–dual method — dual-feasible potentials, tight-edge
+matching, König-minimum dual updates, complementary-slackness optimality — just amortized so each
+dual update is the local minimum slack of one growing augmenting path instead of a global rescan.
+
+Let me write the fast form first, then I'll keep the literal matrix form alongside since it's the one
+that makes the König/Egerváry steps visible. I'll work in `1`-based indices with a dummy column `0`
+to anchor each path, exactly as the path bookkeeping wants.
+
+```python
+INF = float("inf")
+
+def hungarian_potential(cost):
+    """Min-cost assignment, primal-dual O(n^3) shortest-augmenting-path form.
+    Maintains dual potentials u,v with reduced cost cost[i][j]-u[i]-v[j] >= 0;
+    each row grows one augmenting path on the tight subgraph, raising duals by
+    the minimum slack (the Koenig/Egervary step) until a free column is reached.
+    """
+    n, m = len(cost), len(cost[0])         # allow m >= n (rectangular)
+    u = [0]*(n+1); v = [0]*(m+1)           # dual potentials (feasible throughout)
+    p = [0]*(m+1)                          # p[j] = row matched to column j (0 = free)
+    way = [0]*(m+1)                        # predecessor column, to trace the path
+    for i in range(1, n+1):
+        p[0] = i; j0 = 0                   # start the path at dummy column 0, row i
+        minv = [INF]*(m+1)                 # min reduced cost reaching each column
+        used = [False]*(m+1)               # columns already on the path
+        while True:
+            used[j0] = True
+            i0 = p[j0]; delta = INF; j1 = -1
+            for j in range(1, m+1):        # relax: extend the alternating path
+                if not used[j]:
+                    cur = cost[i0-1][j-1] - u[i0] - v[j]   # reduced cost (slack)
+                    if cur < minv[j]:
+                        minv[j] = cur; way[j] = j0
+                    if minv[j] < delta:
+                        delta = minv[j]; j1 = j            # smallest slack = the Koenig min
+            for j in range(0, m+1):        # dual update by delta: tight edges stay tight
+                if used[j]:
+                    u[p[j]] += delta; v[j] -= delta        # raise u, lower v on the path
+                else:
+                    minv[j] -= delta                       # shrink slack off the path
+            j0 = j1
+            if p[j0] == 0:                 # reached a free column -> augmenting path found
+                break
+        while j0:                          # flip the path via the predecessor chain
+            j1 = way[j0]; p[j0] = p[j1]; j0 = j1
+    assign = [0]*n
+    for j in range(1, m+1):
+        if p[j] != 0:
+            assign[p[j]-1] = j-1
+    total = sum(cost[i][assign[i]] for i in range(n))
+    return assign, total
+```
+
+And the literal tableau form, which is the same primal–dual logic written as pencil-and-paper matrix
+moves — row reduce, column reduce, match the zeros, König-cover them, subtract the minimum uncovered
+value off the uncovered rows and add it onto the covered columns, repeat:
+
+```python
+def hungarian_matrix(cost):
+    """Min-cost assignment, classic matrix form (square cost)."""
+    n = len(cost)
+    a = [row[:] for row in cost]
+    for i in range(n):                       # row reduction: every row gets a zero
+        r = min(a[i])
+        for j in range(n): a[i][j] -= r
+    for j in range(n):                       # column reduction: every column gets a zero
+        c = min(a[i][j] for i in range(n))
+        for i in range(n): a[i][j] -= c
+
+    while True:
+        match_col = [-1]*n; match_row = [-1]*n
+        def aug(i, seen):                    # Kuhn augmenting-path match on the zeros
+            for j in range(n):
+                if a[i][j] == 0 and not seen[j]:
+                    seen[j] = True
+                    if match_row[j] == -1 or aug(match_row[j], seen):
+                        match_col[i] = j; match_row[j] = i; return True
+            return False
+        for i in range(n): aug(i, [False]*n)
+        if all(c != -1 for c in match_col):  # full set of independent zeros -> optimal
+            assign = match_col[:]
+            return assign, sum(cost[i][assign[i]] for i in range(n))
+
+        # Koenig minimum vertex cover from the maximum matching on zeros:
+        row_marked = [match_col[i] == -1 for i in range(n)]   # start from exposed rows
+        col_marked = [False]*n
+        changed = True
+        while changed:                       # alternate: reach cols via 0s, rows via match
+            changed = False
+            for i in range(n):
+                if row_marked[i]:
+                    for j in range(n):
+                        if a[i][j] == 0 and not col_marked[j]:
+                            col_marked[j] = True; changed = True
+            for j in range(n):
+                if col_marked[j] and match_row[j] != -1 and not row_marked[match_row[j]]:
+                    row_marked[match_row[j]] = True; changed = True
+        covered_rows = [not row_marked[i] for i in range(n)]  # cover = unmarked rows + marked cols
+        covered_cols = col_marked
+
+        d = min(a[i][j] for i in range(n) for j in range(n)   # minimum uncovered slack
+                if not covered_rows[i] and not covered_cols[j])
+        for i in range(n):                   # subtract d off uncovered rows, add d to covered cols
+            for j in range(n):
+                if not covered_rows[i]: a[i][j] -= d
+                if covered_cols[j]:     a[i][j] += d
+```
+
+Let me sanity-check the whole chain on a small maximization and against brute force. For a
+maximization with rating matrix `R`, I flip signs (`cost = −R`) and minimize, then negate the total
+back. Take `R = [[8,7,9,9],[5,2,7,8],[5,1,4,8],[2,2,2,6]]`: both forms return the assignment
+`(1→1, 2→3, 3→4, 4→2)` with rating sum `8 + 7 + 8 + 2 = 25`, and a full permutation enumeration on
+this `4 × 4` agrees that `25` is the maximum. Running both forms against brute force on a few hundred
+random small integer matrices, the optimal cost matches every time.
+
+```python
+def brute_force(cost):
+    import itertools
+    n = len(cost); best, bestp = INF, None
+    for perm in itertools.permutations(range(n)):
+        s = sum(cost[i][perm[i]] for i in range(n))
+        if s < best: best, bestp = s, perm
+    return list(bestp), best
+```
+
+So the causal chain: the assignment problem is a linear program, but a degenerate one where generic
+simplex is the wrong tool, so I write its dual and read off weak duality — every feasible budget
+`(u, v)` bounds every assignment, and they meet exactly when the assignment uses only *tight* pairs
+`u_i + v_j = r_ij` (complementary slackness). Birkhoff/total-unimodularity guarantees such a meeting
+pair exists. Solving the all-`0/1` (qualification) special case by augmenting paths gives König's
+min–max identity — maximum independent marks = minimum covering lines — and the cover it produces
+when the matching is short is exactly the handle to fix the budget: subtract the minimum uncovered
+slack `δ` from the inessential rows and add it to the essential columns (Egerváry's step), which
+keeps the budget feasible, exposes a new tight pair, and strictly lowers the dual objective, so the
+process terminates at a full tight matching certified optimal. Folding the budget into a reduced
+matrix turns this into the pencil-and-paper tableau — row/column reduction, match the zeros,
+König-cover, subtract-the-uncovered-minimum — and amortizing the dual updates into one shortest
+augmenting path per row turns the same logic into the `O(n^3)` potential form.
