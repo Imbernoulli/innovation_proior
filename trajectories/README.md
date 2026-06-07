@@ -94,6 +94,20 @@ as the natural next move from the strongest baseline's failure mode, gets its ow
 its `feedback.md` quotes those real numbers; otherwise the finale feedback states what one would
 want to validate, with no invented numbers.
 
+## Conventions settled on the pilot (`rl-intrinsic-exploration`)
+
+- **Feedback files are slug-less and numbered:** `01-feedback.md` … `NN-feedback.md` (the finale gets one too).
+- **Finale feedback with no leaderboard row:** still write the numbered `NN-feedback.md`, but it states
+  the *bar to beat* (the strongest baseline's real numbers) + what one would want to validate — **zero
+  invented numbers**. Only quote real numbers if the task's `leaderboard.csv` actually has an agent/strong
+  row implementing the finale.
+- **A created standalone trace's full workspace lives under `methods/<slug>/`** (not `~/paper2reasoning`):
+  `methods/<slug>/{src,notes,results}/`, matching existing `methods/` entries. Commit `results/*.md`, the
+  `.codex_review.json`, `notes/*.md`, and the `.tex/.bbl/.bib`; leave raw `src.tar.gz`/`.png` untracked.
+- **Reused baselines are taken as-is.** Do not regenerate or re-run the Codex gate on a pre-existing
+  `methods/<slug>/` even if its `.codex_review.json` is `false`/missing — re-auditing the existing library
+  is a separate task. (Note any such case in your report.)
+
 ## Website
 
 `trajectories/` gets a sibling view to `methods/` (a `trajectories.json` index + a reading mode that
