@@ -18,7 +18,7 @@ What makes this hard is coupling. If a stage carries little safety stock and ins
 
 **The pieces already assembled along the guaranteed-service line.** Graves (1988) observed that for a serial line the optimal placement can be found as a **shortest path**. Inderfurth (1991, 1993), Inderfurth & Minner (1998), and Minner (1997) extended the dynamic-programming idea to **assembly** networks (many suppliers feeding one stage) and **distribution** networks (one stage feeding many). Graves & Willems (1996) developed comparable results for assembly and distribution. So by 1998 the guaranteed-service framework had efficient algorithms for serial, assembly, and distribution structures separately — but not a single algorithm covering a network that mixes convergent and divergent structure.
 
-**The motivating observation from practice.** In real product flows (e.g., the assembly of a consumer electronics product with tens of components, several internal subassemblies, a distribution center, and shipment to customers) firms tended to spread safety stock across nearly every stage, partly because each function optimized its own buffer locally. Re-examining such a chain as a whole repeatedly reveals that only a *few* strategic locations need safety stock and the rest can run make/replenish-to-order — but finding those locations by hand is infeasible, and local optimization never finds them.
+**The motivating observation from practice.** In real product flows (e.g., the assembly of a consumer electronics product with tens of components, several internal subassemblies, a distribution center, and shipment to customers) firms tended to spread safety stock across nearly every stage, partly because each function optimized its own buffer locally. That creates the operational hypothesis behind the planning problem: some stages should act as decoupling points with inventory, while others may be able to replenish-to-order, but finding that split by hand is infeasible, and local optimization never sees the network tradeoff.
 
 **The bounded-demand idea and operating flexibility.** The guaranteed-service philosophy rests on one modeling move: assume demand over any horizon $\tau$ is **bounded** by a known function $D(\tau)$ (e.g. $D(\tau) = \tau\mu + z\,\sigma\sqrt{\tau}$ for the normal case), set safety stock to cover that bound, and assume that on the rare occasions demand exceeds the bound the firm resorts to **extraordinary measures** — expediting, overtime, subcontracting — rather than letting the stockout ripple through the network. This is contrary to most stochastic-demand inventory models and is the modeling decision that makes a 100% service guarantee finite and the whole network problem deterministic. It matches how managers actually reason: they are far more comfortable specifying "100% service over a covered range of demand" than estimating a shortage cost for an external customer.
 
@@ -38,7 +38,7 @@ What makes this hard is coupling. If a stage carries little safety stock and ins
 
 The natural test bed is a supply chain modeled as a network of stages with: a deterministic production lead time $T_j$ per stage (waiting + processing + transport to put the item in inventory, assumed independent of order size — no capacity limit); a per-unit holding cost $h_j$; arc multipliers $\phi_{ij}$ (units of upstream item $i$ per downstream unit $j$); independent end-item demand only at nodes with no successors, stationary with mean $\mu_j$ and standard deviation $\sigma_j$; and a maximum service time $s_j$ at each demand node, set by the marketplace. The topology classes of interest are serial, assembly, distribution, and **spanning-tree** networks that mix convergent and divergent regions. The yardsticks present at the time are the prior guaranteed-service DPs for serial / assembly / distribution, and the stochastic-service (Clark–Scarf echelon) solution where it applies.
 
-The metric is the **total safety-stock holding cost** (and, secondarily, total inventory holding cost including the pipeline/work-in-process stock $T_j\mu_j$, which is fixed). A diagnostic comparison of interest is the cost penalty of *requiring* guaranteed internal service times versus allowing internal service to be stochastic; for a small set of serial test problems (Poisson demand, mean $\lambda\in\{10,50\}$, truncation percentile $\alpha\in\{0.90,0.98\}$; lead-time triples $(T_1,T_2,T_3)\in\{(4,4,4),(1,3,8),(8,3,1)\}$; holding triples $(1,0.5,0.2),(1,0.66,0.33),(1,0.8,0.5)$) this penalty quantifies how much the guaranteed-service simplification costs.
+The metric is the **total safety-stock holding cost** (and, secondarily, total inventory holding cost including the pipeline/work-in-process stock $T_j\mu_j$, which is fixed). A diagnostic comparison of interest is the cost penalty of *requiring* guaranteed internal service times versus letting internal service levels emerge from the chosen base stocks; for a small set of serial test problems (Poisson demand, mean $\lambda\in\{10,50\}$, truncation percentile $\alpha\in\{0.90,0.98\}$; lead-time triples $(T_1,T_2,T_3)\in\{(4,4,4),(1,3,8),(8,3,1)\}$; holding triples $(1,0.5,0.2),(1,0.66,0.33),(1,0.8,0.5)$) this penalty quantifies how much the guaranteed-service simplification costs.
 
 ## Code framework
 
@@ -68,36 +68,60 @@ class Network:
         self.G = nx.DiGraph()
         self.stages = {}
         self.phi = {}
-    def add_stage(self, stage): ...
-    def add_arc(self, i, j, phi=1.0): ...
-    def predecessors(self, k): ...   # suppliers of k
-    def successors(self, k): ...     # customers of k
+
+    def add_stage(self, stage):
+        pass
+
+    def add_arc(self, i, j, phi=1.0):
+        pass
+
+    def predecessors(self, k):
+        pass
+
+    def successors(self, k):
+        pass
 
 
 def single_stage_safety_stock(stage, net_replenishment_time):
-    """Safety stock at one stage for a given exposure window tau.
-    SS = z * sigma * sqrt(tau)."""
+    """Safety stock at one stage for a given exposure window tau."""
     z = stage.demand_bound_constant
     sigma = stage.demand_std
     tau = net_replenishment_time
     return z * sigma * math.sqrt(max(0, tau))
 
 
-def propagate_demand(network):
-    """Push end-item means and variances upstream through the arcs to get
-    each stage's net demand mean and standard deviation. TODO."""
+def preprocess_tree(network):
+    """Fill net demand moments, demand-bound constants, and maximum replenishment times."""
     pass
 
 
-def place_safety_stock(network):
-    """Choose, for every stage, how much safety stock to hold (and the implied
-    service commitments) so the final customer gets its guaranteed service at
-    minimum total holding cost across the whole network.
+def relabel_nodes(network):
+    """Relabel a tree so each nonfinal stage has one larger adjacent stage."""
+    pass
 
-    This is the network-wide optimization to be designed. It must respect the
-    coupling between adjacent stages and run fast on networks with tens of
-    stages.
-    TODO.
-    """
+
+def optimize_committed_service_times(network):
+    """Choose outbound service commitments and implied inbound waits jointly."""
+    pass
+
+
+def _cst_dp_tree(network):
+    """Enumerate one-dimensional service-time states and store argmins."""
+    pass
+
+
+def _calculate_theta_out(network, stage_index, outbound_time, theta_in, theta_out):
+    pass
+
+
+def _calculate_theta_in(network, stage_index, inbound_time, theta_in, theta_out):
+    pass
+
+
+def _calculate_c(network, stage_index, outbound_time, inbound_time, theta_in, theta_out):
+    pass
+
+
+def _backtrack_cst(network, best_cst_adjacent, best_inbound_time):
     pass
 ```

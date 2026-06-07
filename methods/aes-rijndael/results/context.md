@@ -1,5 +1,3 @@
-# Context: designing a transparent, brute-force-resistant block cipher
-
 ## Research question
 
 The incumbent symmetric block cipher of the 1990s standardizes 64-bit blocks under a key with only 56 effective key bits. Two problems make it untenable as the cipher of the next decades.
@@ -38,7 +36,7 @@ The natural yardstick is resistance to public cryptanalytic attacks, expressed s
 
 ## Code framework
 
-The available primitives are byte arithmetic in GF(2^8) and an SPN harness that iterates a keyed round. The open design slots are the byte substitution, the byte-position and byte-mixing transform, and the key-expansion recursion that together must yield a provable active-S-box bound.
+The available primitives are byte arithmetic in GF(2^8), XOR round-key injection, and a generic SPN harness that iterates a keyed round. The open design slot is the round transformation; the key schedule and stream wrapper are placeholders showing how that round will be used.
 
 ```python
 # GF(2^8) with modulus m(x) = x^8 + x^4 + x^3 + x + 1  (0x11B)
@@ -62,7 +60,7 @@ def gf_mul(a, b):
 
 # --- the round transformation ---
 def round_transform(state, round_index, n_rounds):
-    pass  # TODO: fill in the byte substitution and byte diffusion steps
+    pass  # TODO: fill in the round transformation
 
 def add_round_key(state, round_key):
     for i in range(len(state)):

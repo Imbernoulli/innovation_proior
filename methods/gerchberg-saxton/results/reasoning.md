@@ -16,7 +16,7 @@ That's beautiful and it's exactly the operation I can do with the data I have �
 
 So the iteration writes itself. Start with the object-plane amplitude and a guessed phase: `x_k = |f| · e^{iφ_{k-1}}`. Fourier transform to the diffraction plane: `X_k = FT(x_k) = |X_k| e^{iψ_k}`. Now I'm sitting in `M_F`'s domain holding a field with the wrong modulus `|X_k|` but some phase `ψ_k`. Project: keep `ψ_k`, overwrite the modulus with the *measured* `|F|`: `Y_k = |F| · e^{iψ_k}`. Inverse transform back to the object plane: `y_k = IFT(Y_k) = |y_k| e^{iφ_k}`. Project onto `M_o`: keep `φ_k`, overwrite modulus with `|f|`. That gives the next estimate `x_{k+1} = |f| e^{iφ_k}`, and I loop. Four steps — transform, reset modulus, transform back, reset modulus — two FFTs an iteration. That's the whole algorithm and it only ever uses `|f|`, `|F|`, and the FFT.
 
-I should ask: does this actually get better, or could it wander? Let me try to prove the modulus mismatch can't grow. Define the diffraction-plane error as the total squared gap between the modulus I computed and the modulus I'm forced to, `E_k² = N Σ_n (|X_k[n]| − |F[n]|)²` (I'll carry the `N` because of how the DFT splits its normalization — it makes this comparable to the object-plane error through Parseval). And the object-plane error after the inverse transform, `e_k² = Σ_n (|y_k[n]| − |f[n]|)²`.
+I should ask: does this actually get better, or could it wander? Let me try to prove the modulus mismatch can't grow. I need to be explicit about the DFT scaling, because the error comparison depends on it. Use the phase-retrieval convention `F_m = (1/N)Σ_n f_n exp(-2πinm/N)` and `f_n = Σ_m F_m exp(2πinm/N)`, so Parseval is `Σ|f|² = NΣ|F|²`. Define the diffraction-plane error as the total squared gap between the modulus I computed and the modulus I'm forced to, `E_k² = N Σ_n (|X_k[n]| − |F[n]|)²`. And the object-plane error after the inverse transform is `e_k² = Σ_n (|y_k[n]| − |f[n]|)²`.
 
 Start from `E_k`. By construction `Y_k = |F| e^{iψ_k}` has the *same phase* `ψ_k` as `X_k`, so `|X_k| − |Y_k|` are real and `||X_k| − |F||` is exactly `|X_k − Y_k|` pulled out by the common phase factor: `E_k² = N Σ |X_k − Y_k|²`. Now `X_k − Y_k` is the DFT of `x_k − y_k` (the DFT is linear, and `X_k=FT x_k`, `Y_k=FT y_k`). Parseval's identity says `N Σ|X_k − Y_k|² = Σ|x_k − y_k|²`. So
 
@@ -40,7 +40,7 @@ The left side is `E_{k+1}²`. Parseval turns the right side into `Σ|x_{k+1} −
 
   `E_{k+1} ≤ e_k ≤ E_k.`
 
-The error is monotone non-increasing, every iteration, forever. Each of the four steps is either a unitary transform (distance-preserving, by Parseval) or a nearest-point projection (distance-non-increasing). The scalar mismatch cannot diverge. That's a real guarantee, and it's the reason this thing is trustworthy enough to just run.
+The error is monotone non-increasing, every iteration, forever. Each of the four steps is either a Fourier-domain hop with the matching Parseval scaling or a nearest-point projection. The scalar mismatch cannot diverge. That's a real guarantee, and it's the reason this thing is trustworthy enough to just run.
 
 Now — does monotone-decreasing mean it *solves* the problem? Stare at this for a second. No. Monotone and bounded below by zero means the error has a limit, not that the field sequence has reached a true intersection. The sets `M_o` and `M_F` are products of *circles* — non-convex. With convex sets, alternating projection finds the intersection (or the closest pair) and you're safe. With non-convex sets, the iteration can settle into a fixed point where neither projection moves you appreciably and yet you are *not* at a true intersection — the error has bottomed out at a positive value. Geometrically: the nearest point on a circle is unique and well-behaved, but two families of circles linked by an FFT can trap a trajectory in a basin that isn't the global one. So I should expect: fast progress for a few iterations, then long plateaus where the error barely budges, possibly stalling well short of zero.
 
@@ -58,7 +58,7 @@ Quantitatively: let `⟨|V|⟩` be the average delivered amplitude over the spot
 
   `w_m^{(k)} = w_m^{(k-1)} · ⟨|V|⟩ / |V_m|.`
 
-Why multiplicative, why ratio-to-the-mean, why this exact form? Multiplicative keeps weights positive — an amplitude can't go negative — and it compounds gently. Ratio-to-the-mean rather than to some absolute target means I'm only correcting the *spread*, not the overall level, so the total power I'm pushing into the array (the efficiency) stays roughly put while the unevenness gets squeezed out. And — this is the clincher — look at the fixed point. When the spots finally *are* uniform, `|V_m| = ⟨|V|⟩` for all `m`, the ratio is 1, and the weights stop changing. The uniform state is exactly the resting state of this update. Any rule with that fixed point and positivity would do; this is the simplest one. (If I'd rather write it in intensities, `I_m = |V_m|²`, the same rule reads `w_m ← w_m · √(I_target/I_m)` with `I_target = ⟨|V|⟩²` for this update — the square root is just because intensity is amplitude squared; it's the identical update.)
+Why multiplicative, why ratio-to-the-mean, why this exact form? Multiplicative keeps weights positive — an amplitude can't go negative — and it compounds gently. Ratio-to-the-mean rather than to some absolute brightness level means I'm correcting the *spread* directly; the efficiency is then something I monitor rather than a level I bake into the update. And — this is the clincher — look at the fixed point. When the spots finally *are* uniform, `|V_m| = ⟨|V|⟩` for all `m`, the ratio is 1, and the weights stop changing. The uniform state is exactly the resting state of this update. Any rule with that fixed point and positivity would do; this is the simplest one. (If I'd rather write it in intensities, `I_m = |V_m|²`, the same rule reads `w_m ← w_m · √(I_target/I_m)` with `I_target = ⟨|V|⟩²` for this update — the square root is just because intensity is amplitude squared; it's the identical update.)
 
 I fold this one line into the GS loop. Each iteration I still do the GS phase bookkeeping — forward-propagate, read each spot's complex field `V_m`, keep its phase `θ_m = arg V_m` (that's the GS "keep computed phase" move, applied per spot), and on the way back I build the SLM field from the *weighted* target amplitudes `w_m` instead of from flat 1's. Then I refresh the weights from how the spots actually came out. If the delivered amplitudes become equal, the ratio becomes 1 everywhere and the weights freeze. This is weighted Gerchberg–Saxton, and it's just GS with one feedback line that says "reweight the targets until the outputs are even."
 
@@ -67,40 +67,41 @@ Let me write it as code I'd actually run. The phase-retrieval / image-synthesis 
 ```python
 import numpy as np
 
-def gs(target, n_iter=30):
-    # target: 2-D array, the desired Fourier-plane amplitude (an image, normalized 0..1)
-    h, w = target.shape
-    illumination = 1.0                       # phase-only SLM, flat beam: |A| fixed
+def synthesize_phase(target_amplitude, illumination=1.0, n_iter=30):
+    # target_amplitude: desired Fourier-plane amplitude, normalized 0..1
+    h, w = target_amplitude.shape
     phase = np.random.rand(h, w)             # random seed breaks centrosymmetry / lets us restart
     u = np.empty((h, w), dtype=complex)
+    I = None
     for _ in range(n_iter):
         u = illumination * np.exp(1j * phase)        # M_o: amplitude fixed at |A|, keep phase
         U = np.fft.fftshift(np.fft.fft2(u))          # lens: SLM plane -> target plane
         I = np.abs(U) ** 2                           # delivered intensity (for metrics)
         psi = np.angle(U)                            # phase the transform produced...
-        U = target * np.exp(1j * psi)                # M_F: keep that phase, reset amp to target
+        U = target_amplitude * np.exp(1j * psi)      # M_F: keep that phase, reset amp to target
         u = np.fft.ifft2(np.fft.ifftshift(U))        # lens: target plane -> SLM plane
         phase = np.angle(u)                          # ...and keep ONLY the phase (drop amplitude)
     return phase, I                                  # phase = the hologram to write on the SLM
 ```
 
-Every line is a step I derived: `exp(1j*phase)` with fixed illumination is the projection onto `M_o`; `fft2/fftshift` is the lens; `target * exp(1j*psi)` is the nearest-point projection onto `M_F` (keep phase, reset modulus); `ifft2`; `np.angle(u)` discards the amplitude the inverse transform wanted, enforcing phase-only. The random seed is the symmetry-breaker.
+Every line is a step I derived: `exp(1j*phase)` with fixed illumination is the projection onto `M_o`; `fft2/fftshift` is the lens; `target_amplitude * exp(1j*psi)` is the nearest-point projection onto `M_F` (keep phase, reset modulus); `ifft2`; `np.angle(u)` discards the amplitude the inverse transform wanted, enforcing phase-only. The random seed is the symmetry-breaker.
 
 Weighted GS is the same loop with the feedback line. I carry a weight image `w` over the target spots; before re-imposing the target amplitude I scale it by how short each point fell:
 
 ```python
-def wgs(target, n_iter=30):
+def synthesize_balanced_phase(target_amplitude, n_iter=30):
     def normalization(a):
         a_min = a.min()
         a_max = a.max()
         return (a - a_min) / (a_max - a_min + 1e-12)
 
-    h, w = target.shape
-    mask = (target == 1)                     # the spots we care about
+    h, w = target_amplitude.shape
+    mask = (target_amplitude == 1)           # the spots we care about
     phase = np.random.rand(h, w)
-    weights = target.astype(float).copy()    # start weights at the requested amplitudes
-    prev_w = target.astype(float).copy()
+    weights = target_amplitude.astype(float).copy()
+    prev_w = target_amplitude.astype(float).copy()
     u = np.empty((h, w), dtype=complex)
+    I = None
     for _ in range(n_iter):
         u = np.exp(1j * phase)               # flat illumination |A| = 1
         U = np.fft.fftshift(np.fft.fft2(u))
@@ -108,7 +109,7 @@ def wgs(target, n_iter=30):
         Inorm = normalization(I)
         psi = np.angle(U)
         # feedback: too-dim spots get heavier, too-bright lighter; fixed point = uniform
-        weights[mask] = np.sqrt(target[mask] / np.maximum(Inorm[mask], 1e-12)) * prev_w[mask]
+        weights[mask] = np.sqrt(target_amplitude[mask] / np.maximum(Inorm[mask], 1e-12)) * prev_w[mask]
         weights = normalization(weights)
         prev_w = weights.copy()
         U = weights * np.exp(1j * psi)       # impose the WEIGHTED target amplitude, keep GS phase
@@ -117,24 +118,26 @@ def wgs(target, n_iter=30):
     return phase, I
 ```
 
-The only change from GS is the weight update and using `weights` in place of `target` when I re-impose the modulus. In the binary-image numpy version, the feedback line is the same ratio idea written against the normalized delivered intensity on the target pixels: dim pixels have small `Inorm`, so `sqrt(target/Inorm)` raises their weights; bright pixels get a smaller multiplier. `* prev_w` makes it multiplicative, and the min-max normalization keeps the level bounded so the update keeps correcting relative spread.
+The only change from GS is the weight update and using `weights` in place of `target_amplitude` when I re-impose the modulus. In the binary-image numpy version, the feedback line is the same ratio idea written against the normalized delivered intensity on the target pixels: dim pixels have small `Inorm`, so `sqrt(target_amplitude/Inorm)` raises their weights; bright pixels get a smaller multiplier. `* prev_w` makes it multiplicative, and the min-max normalization keeps the level bounded so the update keeps correcting relative spread.
 
-For a genuine spot *array* it's often cleaner to skip the full grid FFT and propagate directly to the `M` spot coordinates, since I only have a handful of points. Each spot `m` carries a complex field `V_m = (1/N) Σ_j exp(i(φ_j − Δ_j^m))`, where `Δ_j^m = (2π/λf)(x_j x_m + y_j y_m) + (z_m π/λf²)(x_j² + y_j²)` is the known ramp that focuses light to `(x_m,y_m,z_m)` — a tilt for the lateral position, a Fresnel quadratic for the axial one. Backward propagation builds the SLM phase from the weighted, phased spots, `φ_j = arg Σ_m w_m e^{i(Δ_j^m + θ_m)}`; forward propagation reads each `V_m` back out; then keep `θ_m = arg V_m` and update `w_m`:
+For a genuine spot *array* it's often cleaner to skip the full grid FFT and propagate directly to the `M` spot coordinates, since I only have a handful of points. With flat illumination, each spot `m` carries a complex field `V_m = (1/N) Σ_j exp(i(φ_j − Δ_j^m))`; with a non-flat pupil I multiply each term by the known illumination amplitude. Here `Δ_j^m = (2π/λf)(x_j x_m + y_j y_m) + (z_m π/λf²)(x_j² + y_j²)` is the known ramp that focuses light to `(x_m,y_m,z_m)` — a tilt for the lateral position, a Fresnel quadratic for the axial one. Backward propagation builds the SLM phase from the weighted, phased spots, `φ_j = arg Σ_m w_m e^{i(Δ_j^m + θ_m)}`; forward propagation reads each `V_m` back out; then keep `θ_m = arg V_m` and update `w_m`:
 
 ```python
-def wgs_spots(Delta, illumination, n_iter=30):
-    # Delta[j,m] is the propagation phase from SLM pixel j to spot m;
+def synthesize_spot_phase(delta, illumination, n_iter=30):
+    # delta[j,m] is the propagation phase from SLM pixel j to spot m;
     # illumination is the fixed per-pixel |A|.
-    _, M = Delta.shape
+    N, M = delta.shape
     theta = np.random.rand(M) * 2*np.pi      # random per-spot phase offset (the SR seed)
     w = np.ones(M)                           # equal weights to start
+    phi = np.zeros(N)
+    I = np.zeros(M)
     for _ in range(n_iter):
         # backward: superpose single-spot ramps, weighted and phased, keep only phase -> hologram
-        field = (w * np.exp(1j*theta))[None, :] * np.exp(1j*Delta)      # (N_pix, M)
+        field = (w * np.exp(1j*theta))[None, :] * np.exp(1j*delta)      # (N_pix, M)
         phi = np.angle(field.sum(axis=1))                              # phi_j = arg sum_m ...
         # forward: propagate the hologram back to each spot
         A = illumination * np.exp(1j*phi)
-        V = (A[:, None] * np.exp(-1j*Delta)).sum(axis=0) / A.size      # V_m
+        V = (A[:, None] * np.exp(-1j*delta)).sum(axis=0) / N           # V_m
         I = np.abs(V)**2
         theta = np.angle(V)                                            # GS: keep computed phase
         w = w * (np.mean(np.abs(V)) / np.abs(V))                       # WGS: reweight toward the mean

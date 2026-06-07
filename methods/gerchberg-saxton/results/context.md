@@ -30,7 +30,7 @@ For a useful solution one needs an iteration that (i) uses nothing but the two k
 
 The natural test objects are: (a) a two-plane pair `(|f|, |F|)` synthesized from a known complex function (often a smooth profile times a Gaussian) so the true phase is available for comparison; (b) a grayscale target image to be reproduced in the Fourier plane by a phase-only mask; (c) a 2-D or 3-D array of focal spots — a square grid, or a 3×3×3 cubic lattice — for optical trapping. Hardware-side settings: a liquid-crystal SLM with ~512–768 pixels across, 8-bit grayscale mapped linearly to a 0–2π phase retardation, illuminated by a uniform or Gaussian beam; a focusing objective of focal length `f` and wavelength `λ` (e.g. 532 or 800 nm).
 
-The standard yardsticks are modulus/phase agreement and three power metrics. The summed-squared modulus error (object plane `e_k = (Σ_n (|y_k[n]| − |f[n]|)²)^{1/2}`, diffraction plane `E_k = (N Σ_n (|X_k[n]| − |F[n]|)²)^{1/2}`, the `√N` making the two comparable through Parseval). For spot arrays, with `I_m = |V_m|²` the fraction of power in spot `m`: the **efficiency** `e = Σ_m I_m` (power landing in wanted spots) and the **uniformity** `u = 1 − (max I_m − min I_m)/(max I_m + min I_m)` (which is 1 when all spots are equal). A percent-RMS spread of the spot intensities about their mean is the companion measure. Iteration count to reach a tolerance, and wall-clock time, complete the protocol.
+The standard yardsticks are modulus/phase agreement and three power metrics. With the phase-retrieval DFT convention `F_m = (1/N)Σ_n f_n exp(-2πinm/N)`, Parseval gives `Σ|f|² = NΣ|F|²`, so the summed-squared modulus error is scaled as object plane `e_k = (Σ_n (|y_k[n]| − |f[n]|)²)^{1/2}` and diffraction plane `E_k = (N Σ_n (|X_k[n]| − |F[n]|)²)^{1/2}`. For spot arrays, with `I_m = |V_m|²` the fraction of power in spot `m`: the **efficiency** `e = Σ_m I_m` (power landing in wanted spots) and the **uniformity** `u = 1 − (max I_m − min I_m)/(max I_m + min I_m)` (which is 1 when all spots are equal). A percent-RMS spread of the spot intensities about their mean is the companion measure. Iteration count to reach a tolerance, and wall-clock time, complete the protocol.
 
 ## Code framework
 
@@ -48,26 +48,44 @@ def forward(u):          # SLM/object plane -> target/Fourier plane (a lens)
 def backward(U):         # target/Fourier plane -> SLM/object plane
     return np.fft.ifft2(np.fft.ifftshift(U))
 
+def normalization(a):
+    a_min = a.min()
+    a_max = a.max()
+    return (a - a_min) / (a_max - a_min + 1e-12)
+
 def uniformity(intensity, mask):
     I = intensity[mask == 1] / np.max(intensity)
     return 1.0 - (I.max() - I.min()) / (I.max() + I.min())
 
-def efficiency(intensity, target, mask):
-    return np.sum(intensity[mask == 1]) / np.sum(target[mask == 1])
+def image_efficiency(norm_intensity, target, mask):
+    return np.sum(norm_intensity[mask == 1]) / np.sum(target[mask == 1])
 
-def synthesize_phase(target_amplitude, illumination, n_iter):
+def spot_efficiency(spot_intensity):
+    return np.sum(spot_intensity)
+
+def synthesize_phase(target_amplitude, illumination=1.0, n_iter=30):
     """Return a phase-only mask whose Fourier transform approximates
-    target_amplitude, under the fixed `illumination` amplitude.
-    The iteration that does this is what must be derived."""
+    target_amplitude, under the fixed `illumination` amplitude."""
     phase = np.random.rand(*target_amplitude.shape)   # initial guess
     # TODO: choose the transform-domain replacement rule and the object-plane
     #       phase-only replacement rule.
     pass
 
-def synthesize_spot_phase(delta, illumination, n_iter):
+def synthesize_balanced_phase(target_amplitude, n_iter=30):
+    """Return a phase-only mask for target points whose relative intensities
+    should be made even."""
+    phase = np.random.rand(*target_amplitude.shape)
+    weights = target_amplitude.astype(float).copy()
+    prev_w = weights.copy()
+    # TODO: choose how observed intensity should revise the target amplitudes
+    #       before the transform-domain replacement rule is applied.
+    pass
+
+def synthesize_spot_phase(delta, illumination, n_iter=30):
     """Return a phase-only mask for a set of focal spots.
     `delta[j, m]` is the known propagation phase from pixel j to spot m."""
-    phase = np.random.rand(delta.shape[1]) * 2 * np.pi
+    theta = np.random.rand(delta.shape[1]) * 2 * np.pi
+    weights = np.ones(delta.shape[1])
     # TODO: choose how the single-spot phase ramps are combined, how the
     #       resulting mask is projected back to phase-only form, and how the
     #       spot fields are re-read.

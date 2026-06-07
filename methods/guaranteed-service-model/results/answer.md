@@ -33,7 +33,7 @@ On a **spanning tree**, any subnetwork connects to the rest through exactly one 
 1. **Relabel** nodes $1..N$ so node $k<N$ has exactly one larger-labeled neighbor $p(k)$: repeatedly label a node adjacent to $\le 1$ other unlabeled node (a leaf of the remaining subgraph). $N_k$ = the subnetwork on labels $\{1..k\}$ connected to $k$.
 2. **Per-stage cost** (min-convolution):
 $$c_k(S,SI)=h_k\big[D_k(SI+T_k-S)-(SI+T_k-S)\mu_k\big]+\!\!\sum_{(i,k)\in A,\,i<k}\!\!f_i(SI)+\!\!\sum_{(k,j)\in A,\,j<k}\!\!g_j(S).$$
-$f_i$ (min cost of $N_i$ vs. $i$'s outbound time) is **nonincreasing**, so set the supplier's outbound to $SI$; $g_j$ (min cost of $N_j$ vs. $j$'s inbound time) is **nondecreasing**, so set the customer's inbound to $S$ — collapsing each child min to one evaluation.
+$f_i$ (min cost of $N_i$ vs. $i$'s outbound time) is **nonincreasing**, so the clean recurrence sets the supplier's outbound time to the boundary $SI$; $g_j$ (min cost of $N_j$ vs. $j$'s inbound time) is **nondecreasing**, so it sets the customer's inbound time to the boundary $S$. The implementation still enumerates the feasible child ranges $S_i\le SI$ and $SI_j\ge S$ to preserve external caps and store argmins for backtracking.
 3. **Functional equations**:
 $$f_k(S)=\min_{\max(0,S-T_k)\le SI\le M_k-T_k} c_k(S,SI),\qquad g_k(SI)=\min_{0\le S\le SI+T_k} c_k(S,SI),$$
 with $M_k=T_k+\max\{M_i:(i,k)\in A\}$ the maximum replenishment time.
@@ -52,7 +52,13 @@ def min_of_dict(values):
     arg = min(values, key=values.get)
     return values[arg], arg
 
-def place_safety_stock(tree):
+def optimize_committed_service_times(tree):
+    for n in tree.sink_nodes:
+        if n.demand_source.mean is None:
+            raise ValueError(f"Sink node {n.index} needs a demand mean.")
+        if n.demand_source.standard_deviation is None:
+            raise ValueError(f"Sink node {n.index} needs a demand standard deviation.")
+
     tree = preprocess_tree(tree)
     tree = relabel_nodes(tree)
     opt_cst_relabeled, opt_cost = _cst_dp_tree(tree)
@@ -106,7 +112,7 @@ def _calculate_theta_out(tree, k_index, S, theta_in, theta_out):
     lo = max(k.external_inbound_cst, local_S - k.processing_time)
     hi = k.max_replenishment_time - k.processing_time
     for SI in range(lo, hi + 1):
-        cost, best_upstream_S, best_downstream_SI = (
+        cost, _, best_upstream_S, best_downstream_SI = (
             _calculate_c(tree, k_index, local_S, SI, theta_in, theta_out)
         )
         if cost < best:
@@ -122,7 +128,7 @@ def _calculate_theta_in(tree, k_index, SI, theta_in, theta_out):
     local_SI = max(SI, k.external_inbound_cst)
     hi = min(local_SI + k.processing_time, k.external_outbound_cst)
     for S in range(hi + 1):
-        cost, best_upstream_S, best_downstream_SI = (
+        cost, _, best_upstream_S, best_downstream_SI = (
             _calculate_c(tree, k_index, S, local_SI, theta_in, theta_out)
         )
         if cost < best:
@@ -158,7 +164,7 @@ def _calculate_c(tree, k_index, S, SI, theta_in, theta_out):
             add_cost, best_downstream_SI[j] = min_of_dict(values)
             cost += add_cost
 
-    return cost, best_upstream_S, best_downstream_SI
+    return cost, k.holding_cost * safety_stock, best_upstream_S, best_downstream_SI
 
 def _backtrack_cst(tree, best_cst_adjacent, best_SI):
     min_k, max_k = min(tree.node_indices), max(tree.node_indices)
@@ -195,7 +201,7 @@ def _backtrack_cst(tree, best_cst_adjacent, best_SI):
 
 ## Notes
 
-- **GSM vs. stochastic-service (Clark & Scarf 1960).** The stochastic-service model lets upstream stages stock out, so replenishment delays are random; it uses echelon base stocks and is exact for serial/assembly but does not collapse to a one-variable DP on mixed trees, and service times are outcomes. The GSM makes service times *decisions* via bounded demand + extraordinary measures, yielding the concave, tree-decomposable problem above. The cost of requiring guaranteed internal service is modest — on the order of a quarter more safety-stock cost, and a few percent more total inventory cost, than relaxing it — bought in exchange for tractability and easy coordination of assembly inputs.
+- **GSM vs. stochastic-service (Clark & Scarf 1960).** The stochastic-service model lets upstream stages stock out, so replenishment delays are random; it uses echelon base stocks and is exact for serial/assembly but does not collapse to a one-variable DP on mixed trees, and service times are outcomes. The GSM makes service times *decisions* via bounded demand + extraordinary measures, yielding the concave, tree-decomposable problem above; the relaxed serial problem below is the natural diagnostic for the inventory cost of requiring internal guarantees.
 - **Relaxed internal guarantees.** In a serial line without guaranteed internal service, external 100% service is equivalent to $B_1+\cdots+B_i\ge D(T_1+\cdots+T_i)$ for every $i$. With nonnegative echelon holding costs, the exchange argument shifts slack from $B_k$ to $B_{k+1}$ without increasing cost, so all cumulative constraints bind: $B_1=D(T_1)$ and $B_i=D(T_1+\cdots+T_i)-D(T_1+\cdots+T_{i-1})$.
 - **Multiple successors.** Combine downstream demand bounds for upstream stage $i$ via $D_i(\tau)=\tau\mu_i+\left(\sum_{(i,j)}\{\phi_{ij}(D_j(\tau)-\tau\mu_j)\}^p\right)^{1/p}$, $p\ge1$ ($p=1$ no pooling, $p=2$ independent-stream pooling); a modeling input the DP consumes.
 - **Lineage.** Single-stage base stock → Simpson (1958) serial all-or-nothing → Graves (1988) serial shortest path; Inderfurth (1991, 1993), Minner (1997), Inderfurth & Minner (1998) assembly/distribution DPs → the spanning-tree DP unifying all of them.

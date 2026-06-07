@@ -1,5 +1,3 @@
-# Constrained receding-horizon control of linear plants
-
 ## Research question
 
 Given a plant with a known discrete-time linear model `x_{k+1} = A x_k + B u_k`, find a feedback control law that regulates the state to a setpoint *while respecting hard limits the plant physically imposes*: actuators that saturate (a valve is between fully closed and fully open; a motor delivers bounded torque; a power converter bounded voltage), actuator slew-rate limits (the input can only change so fast per step), and state/output limits (a tank level, a temperature, a pressure, a battery state-of-charge must stay inside a safe band). The control must anticipate these limits before they are hit, not react after a violation, and it must do so for multivariable plants where inputs and outputs are coupled.
@@ -16,11 +14,11 @@ The infinite prediction horizon endows this law with strong stabilizing properti
 
 The load-bearing limitation: the entire derivation assumes the law `u = -Kx` is *applied exactly*. It contains no mechanism for hard limits. When `-Kx` commands an input beyond the actuator's range, the real plant clips it; the applied input is no longer `-Kx`, and the optimality and stability guarantees — which rest on that exact law — no longer hold. There is no notion of "approach a state limit but do not cross it." The reasons LQG had little impact on the process industries, despite its theoretical strength, are recorded as: constraints; process nonlinearities; model uncertainty; unique performance criteria; and cultural factors. The first is the one that breaks the math: constraints on inputs, states, and outputs were simply not addressed in LQG theory (Kwakernaak & Sivan 1972 added output, offset-free, target extensions, but not hard constraints).
 
-Two older ideas sit underneath the fix. First, the moving-horizon / receding-horizon idea: Propoi (1963) described a moving-horizon controller, and Lee & Markus (1967) wrote it down explicitly — measure the current state, rapidly compute an open-loop optimal control over a horizon, apply the first portion, then re-measure and repeat. Second, quadratic programming: minimizing a convex quadratic subject to linear inequality constraints is among the simplest optimization problems, solvable reliably by standard codes, with a unique minimizer when the Hessian is positive definite.
+Two older ideas are available. First, the moving-horizon / receding-horizon idea: Propoi (1963) described a moving-horizon controller, and Lee & Markus (1967) wrote it down explicitly — measure the current state, rapidly compute an open-loop optimal control over a horizon, apply the first portion, then re-measure and repeat. Second, quadratic programming: minimizing a convex quadratic subject to linear inequality constraints is among the simplest optimization problems, solvable reliably by standard codes, with a unique minimizer when the Hessian is positive definite.
 
 Two empirical facts about existing plants set up the problem:
 - Real actuators saturate and have rate limits; real states/outputs have hard safety bands. A controller that ignores them either violates safety or runs needlessly conservative.
-- For an unstable plant, a controller that optimizes over a *too-short* finite horizon can drive the state into a region from which the constraints can no longer be satisfied (loss of feasibility), or can fail to converge at all — a known pathology of short-horizon optimization that does not afflict the infinite-horizon LQR.
+- For a constrained plant with integrating or unstable modes, a controller that optimizes over a *too-short* finite horizon can drive the state into a region from which the constraints can no longer be satisfied (loss of feasibility), or can fail to converge at all — a known pathology of short-horizon optimization that does not afflict the infinite-horizon LQR.
 
 ## Baselines
 
@@ -72,7 +70,7 @@ class Controller:
         #       (P_qp, q_qp, A_qp, l_qp, u_qp) for the QP solver.
         pass
 
-    def setup(self, x0):
+    def setup(self):
         # TODO: build the optimization for the current state and hand it to the solver
         pass
 

@@ -1,4 +1,4 @@
-# Rijndael / AES — the Advanced Encryption Standard
+# AES (Rijndael)
 
 ## Problem
 
@@ -14,8 +14,8 @@ Both differential and linear cryptanalysis reduce a multi-round attack to a prod
 over the **active S-boxes** of the best trail, of a per-box factor strictly below 1.
 So security is governed by two separable quantities: how small each active S-box's
 worst factor can be made (a local, nonlinear-layer problem) and how many S-boxes
-every trail is *forced* to activate (a global, linear-layer problem). AES (Rijndael)
-addresses both provably.
+every trail is *forced* to activate (a global, linear-layer problem). The design
+addresses both with public, checkable bounds.
 
 - **SubBytes (confusion).** One byte S-box S(x) = A(x⁻¹), the multiplicative inverse
   in GF(2⁸) (with 0↦0) followed by an invertible GF(2) affine map. The inverse gives
@@ -31,18 +31,20 @@ addresses both provably.
   column's bytes into four different columns. Interlocking the two makes the branch
   number compound: **every differential or linear trail over four rounds activates
   ≥ 25 = 5×5 S-boxes**, so any four-round trail has probability ≤ (2⁻⁶)²⁵ = 2⁻¹⁵⁰,
-  far under the 2⁻¹²⁷ single-trail threshold for a 128-bit block — a bound
-  recomputable from the matrix and the shift offsets.
+  far under the 2⁻¹²⁷ single-trail threshold for a 128-bit block. This is a
+  trail bound, not a claim about a summed differential hull, and it is recomputable
+  from the matrix and the shift offsets.
 - **AddRoundKey + key schedule.** Key-alternating: round keys enter only by XOR, which
   keeps the active-S-box bound independent of the key value. KeyExpansion derives the
   round keys with mostly XOR, perturbed once per group by RotWord + SubWord + a round
   constant Rcon[j] (left byte x^{j-1} in GF(2⁸)) to inject nonlinearity and per-round
-  asymmetry against slide and related-key attacks.
+  asymmetry, removing the simple schedule symmetries slide and related-key attacks
+  would look for.
 
 ## Algorithm
 
-State: 16 bytes as a 4×4 array. GF(2⁸) modulus m(x) = x⁸+x⁴+x³+x+1 (0x11B);
-xtime(b) = b·{02}.
+State: 16 bytes as a 4×4 byte array; the code below stores it as four column
+lists. GF(2⁸) modulus m(x) = x⁸+x⁴+x³+x+1 (0x11B); xtime(b) = b·{02}.
 
 Cipher (Nr = 10/12/14 rounds for 128/192/256-bit keys):
 
@@ -64,8 +66,9 @@ MixColumns matrix (per column, over GF(2⁸)):
 [ 03 01 01 02 ]
 ```
 
-S-box: b̃ = x⁻¹ (0↦0), then b'_i = b̃_i ⊕ b̃_{(i+4)%8} ⊕ b̃_{(i+5)%8} ⊕ b̃_{(i+6)%8}
-⊕ b̃_{(i+7)%8} ⊕ c_i with c = 0x63.
+S-box: b̃ = x⁻¹ (0↦0), then, with bit indices counted from the least significant
+bit, b'_i = b̃_i ⊕ b̃_{(i+4)%8} ⊕ b̃_{(i+5)%8} ⊕ b̃_{(i+6)%8} ⊕ b̃_{(i+7)%8}
+⊕ c_i with c = 0x63.
 
 **CTR mode** turns the 128-bit permutation into a stream cipher:
 keystreamᵢ = AES_K(counterᵢ), cᵢ = pᵢ ⊕ keystreamᵢ, counter incremented per block.

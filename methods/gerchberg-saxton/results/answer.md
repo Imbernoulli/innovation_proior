@@ -10,17 +10,17 @@ Cast it as a feasibility problem: find a field lying in two sets, `M_o = {g : |g
 
   `P(x) = a · x/|x| = a · e^{i·arg x}` (minimizes `|x − a e^{iθ}|²`; if `x = 0`, choose any phase convention).
 
-Alternating projection onto the two sets, with an FFT coupling them, is the **Gerchberg–Saxton algorithm**. Because each step is a unitary transform (distance-preserving, Parseval) or a nearest-point projection (distance-non-increasing), the modulus-mismatch error is monotone non-increasing:
+Alternating projection onto the two sets, with an FFT coupling them, is the **Gerchberg–Saxton algorithm**. Because each step is either a Fourier-domain hop with the matching Parseval scaling or a nearest-point projection, the modulus-mismatch error is monotone non-increasing:
 
   `E_{k+1} ≤ e_k ≤ E_k`,
 
-with `e_k² = Σ_n (|y_k[n]| − |f[n]|)²` (object plane) and `E_k² = N Σ_n (|X_k[n]| − |F[n]|)²` (Fourier plane). Non-convexity means this monotone error decrease does not guarantee a global solution — the iteration can plateau at a local fixed point — so one seeds with a random phase (which also breaks the centrosymmetric-input degeneracy) and may restart.
+with `e_k² = Σ_n (|y_k[n]| − |f[n]|)²` (object plane) and `E_k² = N Σ_n (|X_k[n]| − |F[n]|)²` (Fourier plane), using the convention `F_m = (1/N)Σ_n f_n exp(-2πinm/N)`. Non-convexity means this monotone error decrease does not guarantee a global solution — the iteration can plateau at a local fixed point — so one seeds with a random phase (which also breaks the centrosymmetric-input degeneracy) and may restart.
 
 For an equal-amplitude spot array, plain GS gives *non-uniform* spot intensities and ghost spots, because a phase-only mask cannot split power evenly among structured equal-amplitude targets. **Weighted GS (WGS/GSW)** fixes this by treating the per-spot target amplitudes as adaptive weights and driving the *delivered* intensities to uniformity:
 
   `w_m^{(k)} = w_m^{(k-1)} · ⟨|V|⟩ / |V_m|`  (equivalently `w_m ← w_m · √(I_target/I_m)` with `I_target = ⟨|V|⟩²`),
 
-where `V_m` is the delivered complex field at spot `m`, `I_m = |V_m|²`, and `⟨·⟩` averages over spots. The uniform state `|V_m| = ⟨|V|⟩` is the fixed point of this update (weights stop changing). Multiplicative keeps weights positive; ratio-to-the-mean corrects only the spread, preserving efficiency.
+where `V_m` is the delivered complex field at spot `m`, `I_m = |V_m|²`, and `⟨·⟩` averages over spots. The uniform state `|V_m| = ⟨|V|⟩` is the fixed point of this update (weights stop changing). Multiplicative keeps weights positive; ratio-to-the-mean corrects the spread directly while efficiency is tracked separately.
 
 Metrics: efficiency `e = Σ_m I_m` (power in wanted spots), uniformity `u = 1 − (max I_m − min I_m)/(max I_m + min I_m)` (→ 1 when equal).
 
@@ -40,34 +40,34 @@ Image-target GS and WGS with numpy FFTs (phase-only SLM, flat illumination):
 ```python
 import numpy as np
 
-def gs(target, n_iter=30):
-    """target: desired Fourier-plane amplitude (image, normalized to [0,1]).
+def synthesize_phase(target_amplitude, illumination=1.0, n_iter=30):
+    """target_amplitude: desired Fourier-plane amplitude, normalized to [0,1].
     Returns (phase mask to write on the SLM, final delivered intensity)."""
-    h, w = target.shape
+    h, w = target_amplitude.shape
     phase = np.random.rand(h, w)                       # random seed
     I = None
     for _ in range(n_iter):
-        u = np.exp(1j * phase)                         # |A| = 1 fixed, keep phase  (project onto M_o)
+        u = illumination * np.exp(1j * phase)          # |A| fixed, keep phase  (project onto M_o)
         U = np.fft.fftshift(np.fft.fft2(u))            # lens: SLM -> target plane
         I = np.abs(U) ** 2
         psi = np.angle(U)
-        U = target * np.exp(1j * psi)                  # keep phase, reset modulus (project onto M_F)
+        U = target_amplitude * np.exp(1j * psi)        # keep phase, reset modulus (project onto M_F)
         u = np.fft.ifft2(np.fft.ifftshift(U))          # lens: target -> SLM plane
         phase = np.angle(u)                            # discard amplitude -> phase-only hologram
     return phase, I
 
 
-def wgs(target, n_iter=30):
+def synthesize_balanced_phase(target_amplitude, n_iter=30):
     """Weighted GS: drive the spot intensities to uniformity."""
     def normalization(a):
         a_min = a.min()
         a_max = a.max()
         return (a - a_min) / (a_max - a_min + 1e-12)
 
-    h, w = target.shape
-    mask = (target == 1)                               # locations we care about
+    h, w = target_amplitude.shape
+    mask = (target_amplitude == 1)                     # locations we care about
     phase = np.random.rand(h, w)
-    weights = target.astype(float).copy()
+    weights = target_amplitude.astype(float).copy()
     prev_w = weights.copy()
     I = None
     for _ in range(n_iter):
@@ -76,8 +76,8 @@ def wgs(target, n_iter=30):
         I = np.abs(U) ** 2
         Inorm = normalization(I)
         psi = np.angle(U)
-        # canonical numpy feedback: w <- w * sqrt(I_target / normalized I)
-        weights[mask] = np.sqrt(target[mask] / np.maximum(Inorm[mask], 1e-12)) * prev_w[mask]
+        # feedback: w <- w * sqrt(I_target / normalized I)
+        weights[mask] = np.sqrt(target_amplitude[mask] / np.maximum(Inorm[mask], 1e-12)) * prev_w[mask]
         weights = normalization(weights)                # bound level, correct relative spread
         prev_w = weights.copy()
         U = weights * np.exp(1j * psi)                 # impose WEIGHTED target amplitude, keep GS phase
@@ -86,25 +86,27 @@ def wgs(target, n_iter=30):
     return phase, I
 ```
 
-Spot-array WGS by direct Fourier-optics propagation (no full-grid FFT; `Delta[j,m]` is the per-pixel ramp `Δ_j^m = (2π/λf)(x_j x_m + y_j y_m) + (z_m π/λf²)(x_j²+y_j²)` that focuses light to spot `m`):
+Spot-array WGS by direct Fourier-optics propagation (no full-grid FFT; `delta[j,m]` is the per-pixel ramp `Δ_j^m = (2π/λf)(x_j x_m + y_j y_m) + (z_m π/λf²)(x_j²+y_j²)` that focuses light to spot `m`):
 
 ```python
 import numpy as np
 
-def wgs_spots(Delta, illumination, n_iter=30):
-    """Delta: (N_pixels, M) propagation phases; illumination: (N_pixels,) fixed |A|.
+def synthesize_spot_phase(delta, illumination, n_iter=30):
+    """delta: (N_pixels, M) propagation phases; illumination: (N_pixels,) fixed |A|.
     Returns (hologram phase phi_j, efficiency e, uniformity u)."""
-    N, M = Delta.shape
+    N, M = delta.shape
     theta = np.random.rand(M) * 2 * np.pi              # random per-spot phase (random-superposition seed)
     w = np.ones(M)                                     # equal weights to start
+    phi = np.zeros(N)
+    I = np.zeros(M)
     e = u = None
     for _ in range(n_iter):
         # backward propagation: weighted, phased superposition of single-spot ramps -> SLM phase
-        field = (w * np.exp(1j * theta))[None, :] * np.exp(1j * Delta)    # (N, M)
-        phi = np.angle(field.sum(axis=1))                                 # phi_j = arg sum_m w_m e^{i(Delta_jm + theta_m)}
+        field = (w * np.exp(1j * theta))[None, :] * np.exp(1j * delta)    # (N, M)
+        phi = np.angle(field.sum(axis=1))                                 # phi_j = arg sum_m w_m e^{i(delta_jm + theta_m)}
         # forward propagation: hologram back to each spot
         A = illumination * np.exp(1j * phi)
-        V = (A[:, None] * np.exp(-1j * Delta)).sum(axis=0) / N            # V_m
+        V = (A[:, None] * np.exp(-1j * delta)).sum(axis=0) / N            # V_m
         I = np.abs(V) ** 2
         theta = np.angle(V)                                              # GS: keep computed per-spot phase
         w = w * (np.mean(np.abs(V)) / np.abs(V))                         # WGS weight update

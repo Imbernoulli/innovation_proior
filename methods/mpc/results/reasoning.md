@@ -1,4 +1,4 @@
-Let me start from the thing that's actually broken, because the controller I already trust has a hole in it. I have a plant I can write as a discrete linear model `x_{k+1} = A x_k + B u_k`, and for the quadratic cost `sum_k (x_k'Q x_k + u_k'R u_k)` I know the answer cold: dynamic programming gives a quadratic value function `x'Sx`, the inner minimization over `u` is unconstrained and strictly convex because `R>0`, so it solves in closed form and the optimal control is linear feedback `u = -Kx` with `K=(R+B'SB)^{-1}B'SA` and `S` from the Riccati equation. That law is optimal, it's MIMO, it's one matrix equation, and on the infinite horizon `x'Sx` is a Lyapunov function so the closed loop is stable. I'm not going to re-derive any of that — it's settled.
+Let me start from the thing that's actually broken, because the controller I already trust has a hole in it. I have a plant I can write as a discrete linear model `x_{k+1} = A x_k + B u_k`, and for the quadratic cost `sum_k (x_k'Q x_k + u_k'R u_k)` I know the answer cold: dynamic programming gives a quadratic value function `x'Sx`, the inner minimization over `u` is unconstrained and strictly convex because `R>0`, so it solves in closed form and the optimal control is linear feedback `u = -Kx` with `K=(R+B'SB)^{-1}B'SA` and `S` from the Riccati equation. That law is optimal, it's MIMO, it's one matrix equation, and on the infinite horizon `x'Sx` is a Lyapunov function so the closed loop is stable. This is the settled baseline I am trying not to lose.
 
 Every step of that derivation assumed I get to apply `-Kx` *exactly*. But my actuator can't deliver an arbitrary number. A valve goes from fully shut to fully open and no further; a motor has a maximum torque; a power converter a maximum voltage; and the input can only *change* so fast per step. So `u` lives in a box `u in U`, and on top of that the state has its own hard limits — a tank level, a pressure, a temperature, a battery's state of charge that must stay in a safe band, so `x in X`. When `-Kx` asks for an input outside `U`, the real plant just clips it. And the moment it clips, the input applied is not `-Kx` anymore, so the optimality argument is gone and — worse — the Lyapunov argument is gone too, because the discrete decrease `V(Ax-BKx)-V(x) = -(x'Qx+x'K'RKx)` was computed *for the exact optimal input*. Clipping can destabilize a loop that was provably stable. And there's no version of `-Kx` that says "ride the constraint": in a process plant the money is made by sitting a controlled variable as close to its limit as you dare without crossing, and a linear gain has no concept of "approach but don't violate."
 
@@ -12,9 +12,9 @@ I don't actually need a closed-form law over all of state space, though. I need,
     s.t.  x_{k+1} = A x_k + B u_k,   x_0 = x(t),
           u_k in U,  x_k in X,  k = 0..N-1.
 
-The decision variable is the entire input sequence, not just the next input — I'll come back to why I keep the whole sequence even though I'll only use the first one, and to what that terminal term `x_N'P x_N` is doing, because right now `P` is just a placeholder.
+The decision variable is the entire input sequence, not just the next input. Even if the controller eventually applies only `u_0`, the later moves are how the optimization prices delayed consequences and future state limits. The terminal term `x_N'P x_N` is the only place the finite window can remember the cost beyond step `N`; for the moment `P` is the unknown tail-cost weight I still have to pin down.
 
-Now, what kind of optimization is this? The cost is a sum of quadratic forms, so quadratic in the decision variables. The dynamics are linear equalities. The box limits `u in U`, `x in X` are linear inequalities. A quadratic objective with linear equality and inequality constraints is a quadratic program — convex, because (as I'll check) the Hessian is positive definite, which means a unique global minimizer and a reliable solve with standard codes. That's the trade I'm making: I gave up the closed-form Riccati gain, and in exchange I got a problem that's *one of the simplest things an optimizer can chew on*, and it eats the constraints natively.
+Now, what kind of optimization is this? The cost is a sum of quadratic forms, so quadratic in the decision variables. The dynamics are linear equalities. The box limits `u in U`, `x in X` are linear inequalities. A quadratic objective with linear equality and inequality constraints is a quadratic program; with the input penalty making the Hessian positive definite, it is convex with a unique global minimizer and a reliable solve with standard codes. That's the trade I'm making: I gave up the closed-form Riccati gain, and in exchange I got a problem that's *one of the simplest things an optimizer can chew on*, and it eats the constraints natively.
 
 Let me actually build the QP, because the structure matters and there are two ways to do it. The honest way to see it is to eliminate the states. The model says `x_0 = x(t)`, `x_1 = Ax(t)+Bu_0`, `x_2 = A^2x(t)+ABu_0+Bu_1`, and so on — every future state is the current state propagated plus a convolution of the inputs so far. Stack `X = [x_0;x_1;...;x_N]` and `U_0 = [u_0;...;u_{N-1}]`. Then
 
@@ -39,11 +39,11 @@ I've computed an optimal *sequence* `u_0*,...,u_{N-1}*` from `x(t)`. The naive t
 
 Why this is the right thing and not a hack: re-solving from the measured state is what injects feedback. The open-loop sequence is a function of `x(t)` fixed at `t`; re-measuring and re-optimizing makes the *applied* input a function of the *current* state `x(t+1)`, which is the definition of feedback and the source of disturbance rejection and robustness to model error. It's the same instinct as measuring the state before each LQR multiply — except here the "law" is an optimization rather than a matrix. And the payoff for paying that per-step solve cost is precisely the constraints: because I re-impose `u in U` and `x in X` over the whole look-ahead window every time, the input I actually apply *never* violates a limit, and a state limit `N` steps out is *anticipated now* and steered around before it's reached. That anticipation is exactly what a clipped `-Kx` could never do. This is, recognizably, the old moving-horizon idea — Lee & Markus wrote it down in 1967, "measure the current state, compute the open-loop control, use the first portion, then measure again and repeat," and Propoi sketched it earlier — but now it's practical because the per-step problem is a convex QP a standard solver dispatches inside one sampling interval.
 
-I should pin down what the decision variable being the *whole* sequence buys me, since I only ever apply `u_0`. Two things, and both are essential. The cost over the horizon plus the terminal term is a *proxy for the infinite-horizon cost* — it's how the controller knows that an input which looks cheap now leads somewhere expensive later. And the future inputs are what let me satisfy a *future* state constraint: to promise that `x` won't blow through a limit three steps out, I have to plan the inputs that keep it inside, even though I'll re-plan them next step. Drop the look-ahead and you can't anticipate; that's the whole game.
+The whole sequence earns its keep in two ways, even though I only ever apply `u_0`. The cost over the horizon plus the terminal term is a *proxy for the infinite-horizon cost* — it's how the controller knows that an input which looks cheap now leads somewhere expensive later. And the future inputs are what let me satisfy a *future* state constraint: to promise that `x` won't blow through a limit three steps out, I have to plan the inputs that keep it inside, even though I'll re-plan them next step. Drop the look-ahead and you can't anticipate; that's the whole game.
 
 Before I trust this, I have to worry about something, because I just replaced an *infinite*-horizon optimal control (LQR), which was provably stable and always feasible, with a *finite*-horizon one solved repeatedly. Truncating the horizon is not free. Two things can break.
 
-Take feasibility first. At `x(t)` the QP has a solution — fine. Does that guarantee the *next* QP, from `x(t+1)`, also has one? Not in general. Picture an unstable plant — say `x_{k+1} = [[1,1],[0,1]]x_k + [[0],[1]]u_k`, a double integrator, with a bounded input `|u|<=1` and a state box. With a short horizon, the optimizer is shortsighted: it minimizes cost over `N` steps and happily lets the state drift toward a region where, given the bounded input, there's *no* sequence that can keep it inside the box anymore. The current QP is feasible, applies its first input, the state moves — and now the next QP has no feasible point at all. The controller has driven itself into a corner it can't get out of. So "feasible now" does not imply "feasible forever"; that's a property I have to *engineer*, call it persistent feasibility.
+Take feasibility first. At `x(t)` the QP has a solution — fine. Does that guarantee the *next* QP, from `x(t+1)`, also has one? Not in general. Picture even the constrained double integrator `x_{k+1} = [[1,1],[0,1]]x_k + [[0],[1]]u_k`, with a bounded input `|u|<=1` and a state box. With a short horizon, the optimizer is shortsighted: it minimizes cost over `N` steps and happily lets the state drift toward a region where, given the bounded input, there's *no* sequence that can keep it inside the box anymore. The current QP is feasible, applies its first input, the state moves — and now the next QP has no feasible point at all. The controller has driven itself into a corner it can't get out of. So "feasible now" does not imply "feasible forever"; that's a property I have to *engineer*, call it persistent feasibility.
 
 How do I guarantee it? The clean fix is to add a *terminal constraint*: require `x_N in X_f`, with `X_f subset X`, and choose `X_f` to be control invariant under admissible inputs — from any point in `X_f` there is a `v in U` such that `Ax+Bv` is still in `X_f`. The argument is a one-step shift. Suppose the QP at `x(t)` is feasible with sequence `u_0*,...,u_{N-1}*` and predicted states ending in `x_N in X_f`. At `t+1` the true state is `x_1 = Ax(t)+Bu_0*`. Build a candidate for the new problem by shifting: `u_1*,...,u_{N-1}*` carries the prediction through the old `x_N`, and then invariance gives one more admissible input `v` with `Ax_N+Bv in X_f` to fill the last slot. All the old state and input constraints are inherited by the shifted prediction, the terminal state is again in `X_f`, and the appended input is admissible by construction. If slew-rate limits are part of the constraint set, I either augment the state with the previously applied input or require the terminal choice to satisfy the last planned rate bound `Dumin <= v-u_{N-1}* <= Dumax`; the shift proof is the same after that bookkeeping. So feasibility at `t` produces feasibility at `t+1`: persistent feasibility holds whenever the terminal set is invariant for the full admissible constraint set. (If I don't want an explicit `X_f`, the alternative is to make `N` long enough that the look-ahead reaches into the controllable region on its own — but the terminal-set version is the guarantee I can actually certify.)
 
@@ -75,7 +75,7 @@ i.e. `(A-BK)'S(A-BK) - S + Q + K'RK = 0`. That's the discrete Lyapunov equation 
 
 The input itself is not the only actuator quantity that matters. Real valves and motors also cannot jump instantaneously, and a controller that exploits large alternating moves is usually exploiting the model more than the plant. So the cost should see the input increment `Δu_k = u_k - u_{k-1}` with weight `Q_Δu`: the running cost gets a `Δu_k'Q_Δu Δu_k` term. That damps an over-aggressive controller, buys robustness to model error because small moves cannot exploit a wrong model as hard, and lets the actuator's slew-rate limit `Δu in [Δu_min, Δu_max]` enter as another linear constraint. It also conditions the QP numerically. To carry `Δu` I have to remember the last applied input `u_{-1}` as an extra parameter, exactly the way I remember `x(t)`.
 
-I also cannot treat every constraint the same way. Input limits are physical — the actuator simply can't exceed them, so they stay *hard*. But a *state/output* limit can become infeasible: a big disturbance can shove the state to where no admissible input keeps it inside the box, and then the QP has no solution and the controller is dead at the worst moment. So in practice I soften the state/output constraints — introduce a slack variable `eps >= 0`, allow `x in X` to be violated by `eps`, and add a large penalty, either `l1` or `l2`, on `eps`. The QP then returns the least-violating solution while inputs stay strictly within their hard box. The bare controller without slack is the clean core; the slack is the deployment wrapper.
+I also cannot treat every constraint the same way. Input limits are physical — the actuator simply can't exceed them, so they stay *hard*. But a *state/output* limit can become infeasible: a big disturbance can shove the state to where no admissible input keeps it inside the box, and then the QP has no solution and the controller is dead at the worst moment. So in practice I soften the state/output constraints — introduce signed slack variables in the state-bound rows and add a large quadratic penalty on them. A positive slack relaxes one side of a two-sided box, a negative slack relaxes the other, and the penalty makes either violation expensive. The QP then returns the least-violating solution while inputs stay strictly within their hard box. The bare controller without slack is the clean core; the slack is the deployment wrapper.
 
 From one step to the next, the QP barely changes — only the right-hand side moves through the new `x(t)` and new `u_{-1}`. The Hessian, the constraint matrix, and the cost shape stay fixed. So I set the solver up once and on each step just update the parameter vectors and re-solve from the previous solution as a warm start. That's what makes the per-step solve fast enough to run online.
 
@@ -92,17 +92,19 @@ class MPCController:
     """Linear constrained receding-horizon controller.
 
     Plant:  x_{k+1} = Ad x_k + Bd u_k   (discrete LTI)
-    OSQP solves 1/2 z'Pz + q'z. Each step solve, from the measured state,
-    the finite-horizon QP
-        min  sum_{k=0}^{N-1} (x_k-xref)'Qx(x_k-xref) + (u_k-uref)'Qu(u_k-uref)
-                            + Du_k'QDu Du_k
-             + (x_N-xref)'QxN(x_N-xref)
+    OSQP solves 1/2 z'Pz + q'z; constants are omitted, so P=Q and q=-Q xref
+    encode the half-scaled tracking objective. Each step solve, from the
+    measured state, the finite-horizon QP
+        min  1/2 * (sum_{k=0}^{N-1} ((x_k-xref)'Qx(x_k-xref)
+                                     + (u_k-uref)'Qu(u_k-uref)
+                                     + Du_k'QDu Du_k)
+                    + (x_N-xref)'QxN(x_N-xref))
         s.t. x_{k+1} = Ad x_k + Bd u_k,  x_0 = x(t)
              xmin <= x_k <= xmax,  umin <= u_k <= umax
              Dumin <= u_k - u_{k-1} <= Dumax
     apply only u_0, re-measure, re-solve (receding horizon).
-    QxN is the LQR terminal cost; optional xfmin/xfmax tighten x_N to a
-    terminal box.
+    QxN can be set to the LQR terminal cost; optional xfmin/xfmax tighten
+    x_N to a terminal box.
     """
 
     def __init__(self, Ad, Bd, Np=20, x0=None, xref=None, uref=None, uminus1=None,
@@ -142,7 +144,7 @@ class MPCController:
         Ad, Bd = self.Ad, self.Bd
 
         # --- cost: block-diagonal Hessian over (x_0..x_N, u_0..u_{N-1}) ---
-        # state part: Qx on x_0..x_{N-1}, terminal QxN on x_N (the LQR tail cost)
+        # state part: Qx on x_0..x_{N-1}, terminal QxN on x_N
         P_x = sparse.block_diag(
             [sparse.kron(sparse.eye(Np, format='csc'), self.Qx), self.QxN],
             format='csc')
@@ -228,11 +230,11 @@ class MPCController:
         self.prob.update(l=self.l, u=self.u, q=self.q)
 ```
 
-The terminal weight `QxN` is where the LQR connection lives — set it to the discrete Riccati solution:
+The terminal weight `QxN` is where the LQR connection lives — set it to the discrete Riccati solution when the terminal region is chosen so the LQR move is admissible:
 
 ```python
 def lqr_terminal(Ad, Bd, Q, R):
-    """Terminal cost = LQR infinite-horizon value matrix S (and gain K).
+    """Terminal cost option: LQR infinite-horizon value matrix S (and gain K).
     Splicing x_N'S x_N onto the horizon makes the finite-horizon cost stand in
     for the infinite-horizon cost, so the receding-horizon loop is stabilizing."""
     S = scipy.linalg.solve_discrete_are(Ad, Bd, Q, R)

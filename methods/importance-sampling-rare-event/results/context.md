@@ -1,5 +1,3 @@
-# Context: estimating tiny failure probabilities by simulation
-
 ## Research question
 
 Many engineered systems are specified by a probability of failure that is required to be *extremely small*. A digital communication link is quoted a target bit-error rate (BER) or outage probability of 10⁻⁶, 10⁻⁹, or lower; an ultra-reliable link must deliver a packet correctly with probability 0.99999 or better. The quantity of interest is
@@ -14,9 +12,9 @@ The pain point is the rarity itself. When p_f is on the order of 10⁻⁹, a fai
 
 **The crude Monte Carlo estimator and its variance.** To estimate p_f = E_p[1_A] one draws X₁,…,X_n i.i.d. from p, sets the Bernoulli variable S_i = 1_A(X_i), and averages: p̂ = (1/n) Σ S_i. Each S_i has mean μ = p_f and variance σ² = p_f(1 − p_f). The standard error is σ/√n and the confidence interval has half-width proportional to σ/√n. What matters for a tiny probability is *relative* accuracy: the ratio σ/μ = √((1 − p_f)/p_f) ≈ p_f^(−1/2), which grows without bound as p_f → 0. Pinning the relative error to a fixed level therefore needs a sample size that scales like 1/p_f; this binomial scaling is the wall that simulation of rare events runs into.
 
-**Variance reduction by changing the sampling distribution.** A separate, older idea in Monte Carlo practice is that the same expectation can be written as an average over a *different* sampling distribution, as long as each sample is reweighted to compensate. If q is another density that is positive wherever the integrand is non-zero, then E_p[h(X)] = ∫ h(x)p(x)dx = ∫ h(x)[p(x)/q(x)]q(x)dx = E_q[h(X) p(X)/q(X)]. The multiplicative factor p/q is the *likelihood ratio*. Choosing q so that the integrand has small variance under q reduces the number of samples needed. The classical analysis of which q is best is a variational one: for a non-negative integrand, the variance-minimizing sampling density is proportional to the integrand times the nominal density (Kahn & Marshall, 1953) — a result that minimizes, and in the idealized case zeroes, the estimator variance, but whose normalizing constant is the unknown integral itself.
+**Variance reduction by changing the sampling distribution.** A separate, older idea in Monte Carlo practice is that the same expectation can be written as an average over a *different* sampling distribution, as long as each sample is reweighted to compensate. If q is another density that is positive wherever the integrand is non-zero, then E_p[h(X)] = ∫ h(x)p(x)dx = ∫ h(x)[p(x)/q(x)]q(x)dx = E_q[h(X) p(X)/q(X)]. The multiplicative factor p/q is the *likelihood ratio*. Choosing q so that the integrand has small variance under q reduces the number of samples needed. The variational analysis of which q is best says that, for a non-negative integrand, the variance-minimizing sampling density is proportional to the integrand times the nominal density — a result that minimizes, and in the idealized case zeroes, the estimator variance, but whose normalizing constant is the unknown integral itself.
 
-**Light-tailed tails and large deviations.** For the noise distributions that arise in communications — Gaussian thermal noise above all — the tails are light: the probability of a large excursion decays exponentially. The natural way to make a rare excursion typical is to *shift the distribution* in the direction of the failure set. For a distribution with a moment generating function K(θ) = E[e^{θX}], the family e^{θx}p(x)/K(θ) is an exponential reweighting ("tilting" or "twisting") of p that moves probability mass toward larger x. For a random walk with negative drift that must climb to a high level b before ruin, there is a special tilt — set by the value γ solving E[e^{γΔ}] = 1 (the Lundberg constant) — that *reverses the drift*, so the tilted walk reaches level b with probability one and the rare crossing becomes a sure event under q (Sigman, IEOR 4703 notes; Asmussen & Glynn). Large-deviations theory says this exponential change of measure is the one with the correct asymptotic decay rate.
+**Light tails and large deviations.** For the noise distributions that arise in communications — Gaussian thermal noise above all — the tails are light: the probability of a large excursion decays exponentially. The natural way to make a rare excursion typical is to *shift the distribution* in the direction of the failure set. For a distribution with a moment generating function K(θ) = E[e^{θX}], the family e^{θx}p(x)/K(θ) is an exponential reweighting ("tilting" or "twisting") of p that moves probability mass toward larger x. For a random walk with negative drift that must climb to a high level b before ruin, there is a special tilt — set by the value γ solving E[e^{γΔ}] = 1 (the Lundberg constant) — that *reverses the drift*, so the tilted walk reaches level b with probability one and the rare crossing becomes a sure event under q (Sigman, IEOR 4703 notes; Asmussen & Glynn). Large-deviations theory says this exponential change of measure is the one with the correct asymptotic decay rate.
 
 **The rare-event phenomena in communications.** These motivate why tiny p_f must be estimated at all, and where the failure mass concentrates:
 - *Decoding errors at high SNR.* For coded BPSK over an additive-white-Gaussian-noise channel, the word/bit error probability falls off sharply with signal-to-noise ratio; in the operating regime the error event is dominated by the rare noise realizations that push the received vector across a decision boundary near the minimum-distance neighbour. The closed-form uncoded BPSK BER is Q(√(2 Eb/N0)), a convenient yardstick.
@@ -60,28 +58,19 @@ def theoretical_ber(ebn0_db):
     ebn0 = 10.0 ** (ebn0_db / 10.0)
     return 0.5 * erfc(np.sqrt(ebn0))
 
-def channel(mean, sigma, n, rng):
-    """Return n scalar AWGN samples y = mean + noise."""
-    return mean + sigma * rng.standard_normal(n)
-
-def is_error(y):
-    """Failure set A for BPSK with x = +1: a sign flip."""
-    return (y < 0.0)
-
 # --- crude baseline: draw from the true model, count failures ---------------
 def crude_mc_ber(ebn0_db, n, rng):
     sigma = ebn0_to_sigma(ebn0_db)
-    x = 1.0
-    y = channel(x, sigma, n, rng)
-    errors = is_error(y).astype(float)
+    y = 1.0 + sigma * rng.standard_normal(n)
+    errors = (y < 0.0).astype(float)
     return errors.mean(), errors.var(ddof=1) / n
 
 # --- rare-event estimator slot ---------------------------------------------
-def rare_event_estimator(ebn0_db, n, rng, theta=None):
+def accelerated_ber_estimator(ebn0_db, n, rng, parameter=None):
     """Estimate P(A) when A is too rare to count directly.
 
-    TODO: draw from some better sampling distribution q instead of p,
-    and correct each sample so the estimate stays unbiased for P(A).
+    TODO: design an estimator that observes enough failures to estimate P(A)
+    without losing unbiasedness or empirical variance reporting.
     """
     pass
 ```

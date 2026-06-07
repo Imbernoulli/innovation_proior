@@ -47,9 +47,9 @@ Each term is the exponential of a quadratic with positive curvature, so M is con
 
     θ̂ = Σ 1_A(y_i)(y_i − x) e^{−(y_i−x)θ̂/σ²} / Σ 1_A(y_i) e^{−(y_i−x)θ̂/σ²}
 
-because the common e^{θ̂²/(2σ²)} factor cancels. The fixed point is the failure-weighted mean noise excursion. A safe, asymptotically-optimal default is **drift reversal**, θ = −x, putting the tilted mean on the decision boundary so A becomes roughly a coin flip; θ can then be refined adaptively from the failures the tilted sampler produces, with the appropriate likelihood factor if those samples came from an earlier tilt.
+because the common e^{θ̂²/(2σ²)} factor cancels. The fixed point is the failure-weighted mean noise excursion. A safe default is the **boundary shift**, θ = −x, putting the tilted mean on the decision boundary so A becomes roughly a coin flip; θ can then be refined adaptively from the failures the tilted sampler produces, with the appropriate likelihood factor if those samples came from an earlier tilt. The analogous drift-reversing exponential tilt is asymptotically optimal for negative-drift random-walk crossings; for the BPSK Gaussian tail, θ = −x gives the correct leading exponential rate while adaptive θ tuning handles the remaining finite-sample variance.
 
-**Pitfall.** Over-tilting (|θ| too large, in the direction of A) makes q lighter-tailed than p over part of A, so the few relevant samples carry enormous weights p/q and the variance can exceed crude MC, even diverge. Keep q's support and tails covering all of {1_A p ≠ 0}. When p/q is known only up to a constant, use the self-normalized estimator p̂ = Σ 1_A w / Σ w (small O(1/n) bias, more stable).
+**Pitfall.** Over-tilting (|θ| too large, in the direction of A) can make q under-cover the boundary layer where 1_A p is largest, so the few relevant samples carry enormous weights p/q and the variance can exceed crude MC, even diverge. Keep q's support and tails covering all of {1_A p ≠ 0}. When p/q is known only up to a constant, use the self-normalized estimator p̂ = Σ 1_A w / Σ w (small O(1/n) bias, more stable).
 
 ## Algorithm
 
@@ -74,30 +74,20 @@ def theoretical_ber(ebn0_db):
     ebn0 = 10.0 ** (ebn0_db / 10.0)
     return 0.5 * erfc(np.sqrt(ebn0))
 
-def channel(mean, sigma, n, rng):
-    """Return n scalar AWGN samples y = mean + noise."""
-    return mean + sigma * rng.standard_normal(n)
-
-def is_error(y):
-    """Failure set A for BPSK with x = +1: a sign flip."""
-    return y < 0.0
-
 def crude_mc_ber(ebn0_db, n, rng):
     """Plain Monte Carlo: send +1, error if the noise flips the sign."""
     sigma = ebn0_to_sigma(ebn0_db)
-    x = 1.0
-    y = channel(x, sigma, n, rng)                       # nominal y ~ N(x, sigma^2)
-    errors = is_error(y).astype(float)                  # rare set A = {y < 0}
+    y = 1.0 + sigma * rng.standard_normal(n)            # nominal y ~ N(1, sigma^2)
+    errors = (y < 0.0).astype(float)                    # rare set A = {y < 0}
     return errors.mean(), errors.var(ddof=1) / n
 
-def rare_event_estimator(ebn0_db, n, rng, theta=None):
+def accelerated_ber_estimator(ebn0_db, n, rng, parameter=None):
     """Importance sampling by translating the noise mean toward the boundary."""
     sigma = ebn0_to_sigma(ebn0_db)
     x = 1.0
-    if theta is None:
-        theta = -x                                      # drift reversal: tilted mean -> 0
-    y = channel(x + theta, sigma, n, rng)               # tilted y ~ N(x + theta, sigma^2)
-    in_a = is_error(y)
+    theta = -x if parameter is None else parameter      # boundary shift: tilted mean -> 0
+    y = (x + theta) + sigma * rng.standard_normal(n)    # tilted y ~ N(x + theta, sigma^2)
+    in_a = y < 0.0
     log_w = (-2.0 * (y - x) * theta + theta**2) / (2.0 * sigma**2)
     contrib = np.zeros(n)
     contrib[in_a] = np.exp(log_w[in_a])                 # 1_A * likelihood ratio p/q
@@ -109,7 +99,7 @@ if __name__ == "__main__":
         n = 200_000
         p_true = theoretical_ber(ebn0_db)
         p_mc, v_mc = crude_mc_ber(ebn0_db, n, rng)
-        p_is, v_is = rare_event_estimator(ebn0_db, n, rng)
+        p_is, v_is = accelerated_ber_estimator(ebn0_db, n, rng)
         print(f"Eb/N0={ebn0_db:2d} dB  true={p_true:.3e}  "
               f"MC={p_mc:.3e}(var {v_mc:.1e})  IS={p_is:.3e}(var {v_is:.1e})  "
               f"var-ratio={v_mc / max(v_is, 1e-300):.0f}x")

@@ -22,7 +22,7 @@ This is a convex **quadratic program** (quadratic cost, linear equality dynamics
 
 A finite horizon, re-solved repeatedly, is **not** automatically feasible or stabilizing the way the infinite-horizon LQR is.
 
-- **Persistent feasibility.** Feasible now does not imply feasible next step: a short horizon can drive an unstable plant into a region where, given the bounded input, no admissible sequence keeps the state in the box. Fix: a **terminal constraint** `x_N in X_f`, with `X_f subset X`, and `X_f` control invariant under admissible inputs. Then a one-step shift of the optimal sequence, appended with one more admissible terminal move, is feasible for the next problem, so feasibility propagates. With slew-rate limits, the previous input is included in the state or the appended terminal move is required to satisfy the last rate bound.
+- **Persistent feasibility.** Feasible now does not imply feasible next step: a short horizon can drive a plant with integrating or unstable modes into a region where, given the bounded input, no admissible sequence keeps the state in the box. Fix: a **terminal constraint** `x_N in X_f`, with `X_f subset X`, and `X_f` control invariant under admissible inputs. Then a one-step shift of the optimal sequence, appended with one more admissible terminal move, is feasible for the next problem, so feasibility propagates. With slew-rate limits, the previous input is included in the state or the appended terminal move is required to satisfy the last rate bound.
 
 - **Stability via terminal cost.** Minimizing a finite-horizon cost need not force decay. Let `J*(x)` be the QP optimal value. Shifting the optimal sequence and appending the terminal control `v` on `X_f` gives the bound
   `J*(x^+) <= J*(x) - q(x,u_0*) - p(x_N) + q(x_N,v) + p(Ax_N+Bv)`.
@@ -33,12 +33,12 @@ A finite horizon, re-solved repeatedly, is **not** automatically feasible or sta
 ## Practical knobs
 
 - **Move/rate penalty `Q_Δu` on `Δu = u_k - u_{k-1}`:** damps aggressiveness, adds robustness to model error, conditions the QP, and lets the actuator **slew-rate** limit `Δu in [Δu_min, Δu_max]` enter as a linear constraint. Requires carrying the last applied input `u_{-1}` as a parameter.
-- **Hard inputs, soft states:** input limits are physical (hard); state/output limits are softened with a slack `eps >= 0` and a large `l1`/`l2` penalty so a disturbance can't make the QP infeasible — it returns the least-violating solution while inputs stay strictly within their box.
+- **Hard inputs, soft states:** input limits are physical (hard); state/output limits can be softened with signed slack variables in the state-bound rows and a large quadratic penalty, as in the full sparse implementation, so a disturbance can't make the QP infeasible — it returns the least-violating solution while inputs stay strictly within their box.
 - **Warm start:** consecutive QPs differ only in the right-hand side (`x(t)`, `u_{-1}`); set the solver up once and warm-start each re-solve so it finishes within one sampling interval.
 
 ## Code
 
-The code uses the OSQP sparse/banded formulation: decision vector `(x_0..x_N, u_0..u_{N-1})`, dynamics as equalities, box and slew-rate constraints as bounds, and only the first input applied.
+The code uses the OSQP sparse/banded formulation: decision vector `(x_0..x_N, u_0..u_{N-1})`, dynamics as equalities, box and slew-rate constraints as bounds, and only the first input applied. This is the no-slack core; the deployment variant adds the signed slack block described above.
 
 ```python
 import numpy as np
@@ -49,10 +49,12 @@ import osqp
 
 class MPCController:
     """Linear constrained receding-horizon controller (sparse OSQP form).
-    OSQP solves 1/2 z'Pz + q'z. Each step: solve the finite-horizon QP
-    from the measured state, apply only the first input, re-measure, re-solve.
-    QxN is the LQR terminal cost; optional xfmin/xfmax tighten x_N to a
-    terminal box.
+    OSQP solves 1/2 z'Pz + q'z; constants are omitted, so P=Q and q=-Q xref
+    encode the half-scaled tracking objective. Each step: solve the
+    finite-horizon QP from the measured state, apply only the first input,
+    re-measure, re-solve.
+    QxN can be set to the LQR terminal cost; optional xfmin/xfmax tighten
+    x_N to a terminal box.
     """
     def __init__(self, Ad, Bd, Np=20, x0=None, xref=None, uref=None, uminus1=None,
                  Qx=None, QxN=None, Qu=None, QDu=None,
@@ -149,7 +151,7 @@ class MPCController:
 
 
 def lqr_terminal(Ad, Bd, Q, R):
-    """Terminal cost = discrete-LQR value matrix S (and gain K). Splicing
+    """Terminal cost option: discrete-LQR value matrix S (and gain K). Splicing
     x_N'S x_N onto the horizon makes the finite-horizon cost stand in for the
     infinite-horizon cost, so the receding-horizon loop is stabilizing."""
     S = scipy.linalg.solve_discrete_are(Ad, Bd, Q, R)
