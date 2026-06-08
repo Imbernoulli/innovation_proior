@@ -1,0 +1,100 @@
+# Context
+
+## Research question
+
+Can an unknown quantum state be copied? Concretely: is there a single physical device — a "quantum Xerox," an amplifier, a measuring-and-rewriting machine — that takes in *one* system prepared in some state $|\psi\rangle$ that the operator does **not** know, and puts out *two* systems each in that same state $|\psi\rangle$? Classically the answer is trivially yes: a bit can be read and rewritten, a letter photocopied, a file backed up. The question is whether quantum mechanics permits the same.
+
+The stakes are not academic bookkeeping. A faithful copier would be a universal solvent for the strange limitations of quantum measurement. Measuring an unknown state in the wrong basis disturbs it and gives only one bit of an answer; but if you could first clone the state into many identical copies, you could measure each copy in a different basis and reconstruct the full unknown state without ever disturbing the original. It would also rescue a tempting scheme for faster-than-light communication: share an entangled pair between two distant parties; one party measures her half in a basis of her choice, collapsing the distant half into a corresponding ensemble; if the far party can clone his single received particle and measure the copies, he reads off *which basis* was chosen — instantaneously, across any distance. A working cloner would let entanglement carry a signal.
+
+So the question carries a sharp tension. Either quantum mechanics allows a copier — and then it appears to license superluminal signaling, in conflict with relativistic causality — or it forbids one, and we owe a precise reason *why*, expressed entirely inside the linear formalism, plus an accounting of exactly which states (if any) escape the prohibition.
+
+## Background
+
+The arena is the standard linear formalism of quantum mechanics, all of which predates the question.
+
+A physical system is described by a unit vector in a complex Hilbert space $\mathcal{H}$ — a complete inner-product space. For a two-level system (a photon's polarization, a spin-$\tfrac12$ particle) the space is $\mathbb{C}^2$ with an orthonormal basis $\{|0\rangle,|1\rangle\}$, and a general state is a **superposition** $|\psi\rangle = a|0\rangle + b|1\rangle$ with $|a|^2+|b|^2=1$. The inner product $\langle\psi|\phi\rangle$ is the central numerical object: $|\langle\psi|\phi\rangle|^2$ is the probability that a system prepared as $|\phi\rangle$ passes a test for $|\psi\rangle$, so orthogonal states ($\langle\psi|\phi\rangle=0$) are perfectly distinguishable and non-orthogonal ones are not.
+
+The evolution of a closed system is **linear and unitary**: between interactions the state moves by $|\psi\rangle \mapsto U|\psi\rangle$ where $U$ is a fixed linear operator with $U^\dagger U = I$. Linearity is not a convenience; it is built into the Schrödinger equation, whose right-hand side is linear in the state. Unitarity is the statement that total probability is conserved and that distinct possibilities stay distinguishable — operationally, $U$ preserves inner products: $\langle U\psi|U\phi\rangle = \langle\psi|\phi\rangle$. Any device that processes a quantum system without measurement — an amplifier, a "copier," a gate — is modeled as such a unitary after including the target register and any machine degrees of freedom.
+
+Composite systems live in a **tensor product**: a copier acts on the system together with a target register and whatever internal degrees of freedom it carries, $\mathcal{H}_{\text{sys}} \otimes \mathcal{H}_{\text{target}} \otimes \mathcal{H}_{\text{machine}}$. A generic vector in a tensor product is **entangled** — not a product of states of the parts — and this is exactly the resource the EPR signaling scheme tries to exploit.
+
+**Measurement disturbs.** A measurement projects the state onto an eigenstate of the measured observable; an unknown state measured in a basis it does not align with is irreversibly altered, and a single measurement yields at most one classical outcome, not the continuum of amplitudes $(a,b)$. This is the operational pain that a cloner would dissolve: copies would let you measure "around" the disturbance.
+
+Several pre-existing pieces of physics frame the copying question directly:
+
+- **Stimulated emission and amplification.** When a polarized photon meets an excited atom it can trigger emission of a second photon of the *same* polarization — superficially a copy. But spontaneous emission unavoidably adds photons of random polarization (noise), so a laser gain tube does not output a clean duplicate of an arbitrary input polarization; it outputs a messy, partly-random state entangled with the gain medium. Whether *some* cleverer amplifier could do better was open.
+
+- **The Einstein–Podolsky–Rosen pair (1935), in Bohm's spin form.** A spin-zero system decays into two spin-$\tfrac12$ particles flying apart in the singlet state. Measuring particle I along $z$ forces particle II into the corresponding opposite $z$-eigenstate; choosing instead to measure along $x$ forces II into the corresponding opposite $x$-eigenstate. The marginal state on II alone is the same either way: $\rho_{II}=\mathrm{Tr}_I(\rho_{I,II})=I/2$, equivalently $\tfrac12|z_+\rangle\langle z_+|+\tfrac12|z_-\rangle\langle z_-|=\tfrac12|x_+\rangle\langle x_+|+\tfrac12|x_-\rangle\langle x_-|=I/2$. This is what ordinarily prevents the choice of axis from being detectable at II.
+
+- **Herbert's FLASH proposal (Herbert 1982, *Found. Phys.* 12:1171).** "First Laser-Amplified Superluminal Hookup." It takes the EPR setup and inserts, at particle II, a multiplying device meant to produce many copies of II's post-collapse state; measuring the burst of copies would reveal which axis the distant experimenter chose, achieving faster-than-light signaling. The proposal hinges entirely on the existence of the multiplier — a cloner. (It was published, controversially, *because* a referee judged that finding its error would teach the community something; see Peres 2003, *Fortschr. Phys.* 51:458.)
+
+## Baselines
+
+The prior art is the set of attempts and near-misses at exactly this copying question.
+
+- **Amplification by stimulated emission** (laser physics). Core idea: an inverted medium amplifies an incoming mode, and stimulated photons share the input's polarization/mode. Limitation: spontaneous emission injects noise that is fundamentally tied to the gain; the output for an *arbitrary* input polarization is not a faithful pair but a noisy, entangled state. It copies the *intensity* envelope, not the unknown quantum state. As a "cloner" it fails, but it does not by itself explain *why* the failure is unavoidable rather than a matter of better engineering.
+
+- **Park (1970), "The concept of transition in quantum mechanics," *Found. Phys.* 1:23.** Inside a paper arguing (heretically, against the projection postulate) that nondisturbing measurements are possible, Park studies a unitary $T$ that would transfer the state of a spin $S$ onto a spin $M$ while leaving $S$ intact: $T(a|\alpha\rangle+b|\beta\rangle)|\alpha\rangle = (a|\alpha\rangle+b|\beta\rangle)(a|\alpha\rangle+b|\beta\rangle)$. Expanding by linearity and projecting onto $\langle\alpha\alpha|$ he derives, for the choices $(a{=}1,b{=}0)$, $(a{=}0,b{=}1)$, $(a{=}b{=}\tfrac1{\sqrt2})$, the three values $1$, $0$, and the requirement $\tfrac1{\sqrt2}$ — which combine to the contradiction $\tfrac1{\sqrt2}=\tfrac12$. This *is* a proof that an unknown spin state cannot be copied. Its limitation as prior art is one of framing and reach: it is buried as a byproduct of an unorthodox measurement-theory argument, not stated as a general theorem, not connected to amplification or to signaling, and it went essentially uncited for that result.
+
+- **Wiesner's conjugate coding (written c.1970, published 1983, *SIGACT News* 15:78).** Quantum money: encode secret information in qubits prepared in one of two conjugate (mutually unbiased) bases, so a counterfeiter who does not know the basis cannot reliably read or duplicate a bill. The impossibility of copying is *used* but left implicit — Wiesner argues operationally ("if one copy can be made, many can, then the state could be determined") without isolating a clean impossibility theorem from the linear formalism. The gap: the principle is assumed, not proved, and not named.
+
+- **The EPR no-signaling folklore.** It was understood that the *marginal* statistics at one wing of an entangled pair do not depend on the distant measurement choice, so ordinary local measurements at II cannot detect Alice's axis. Limitation: this is stated at the level of measurement statistics and does not, by itself, rule out a *new kind* of operation (like Herbert's multiplier) that processes II before measuring — which is precisely the loophole FLASH drives through. What is missing is a statement about which *operations* are physically allowed.
+
+The common gap across all four: no clean, general, formalism-level theorem saying *an arbitrary unknown state cannot be copied*, derived directly from linearity/unitarity, with an exact characterization of the exception (orthogonal states) and an explicit tie to the signaling question.
+
+## Evaluation settings
+
+This is a theoretical result; the natural yardsticks are the standard two-level systems and the thought-experiments in which copying would matter, all available beforehand:
+
+- **The qubit / two-level system**: photon polarization with the rectilinear pair $\{|\!\updownarrow\rangle,|\!\leftrightarrow\rangle\}$ and the diagonal pair, or a spin-$\tfrac12$ with $\{s_z=\pm\tfrac12\}$ and $\{s_x=\pm\tfrac12\}$. These are where any claimed copier or no-copier statement must be checked first.
+- **The EPR/Bohm entangled pair** as the setting for the signaling thought-experiment (Alice picks an axis on wing I; what can Bob do on wing II?).
+- **The amplifier / measuring-machine model**: a unitary on system $\otimes$ blank target $\otimes$ machine ancilla, the abstraction of any "copy onto fresh paper" device.
+- The relevant figures of merit a putative copier would be judged by: exact fidelity of the two outputs to the input on *every* input state (perfect, deterministic cloning), and consistency with no-signaling, expressed as the existence or nonexistence of a single unitary $U$.
+
+## Code framework
+
+A minimal scaffold for reasoning about a candidate copier on one qubit: set up the Hilbert space, the unitary/inner-product primitives, and leave the copier itself as an empty slot to be analyzed.
+
+```python
+import numpy as np
+
+# --- Hilbert space of one qubit: states are unit vectors in C^2 ---
+ket0 = np.array([1, 0], dtype=complex)
+ket1 = np.array([0, 1], dtype=complex)
+
+def superpose(a, b):
+    """A general qubit state a|0> + b|1>, |a|^2+|b|^2 = 1."""
+    return a * ket0 + b * ket1
+
+def inner(psi, phi):
+    """<psi|phi>, the inner product unitary evolution must preserve."""
+    return np.vdot(psi, phi)
+
+def tensor(*kets):
+    """Composite state on the tensor-product space (system (x) target (x) ...)."""
+    out = kets[0]
+    for k in kets[1:]:
+        out = np.kron(out, k)
+    return out
+
+def is_unitary(U):
+    """Any closed-system device is a unitary: U^dagger U = I."""
+    return np.allclose(U.conj().T @ U, np.eye(U.shape[0]))
+
+# --- The device under question: a fixed copier acting on system (x) blank ---
+# It would have to satisfy, for the SAME U and EVERY state |psi>,
+#       U ( |psi> (x) |blank> ) = |psi> (x) |psi>.
+BLANK = ket0
+
+def cloner_unitary():
+    """The hypothetical state-independent copier U on C^2 (x) C^2."""
+    # TODO: does such a U exist? Construct it, or derive the obstruction.
+    pass
+
+def clone(U, psi):
+    """Apply a candidate copier to |psi>|blank> and return the output."""
+    # TODO: U @ tensor(psi, BLANK); compare against the true clone tensor(psi, psi).
+    pass
+```
+
+The open slot is `cloner_unitary` / `clone`: a single fixed unitary required to copy *every* input. Everything else — the state space, superposition, the inner product, the unitarity test, the tensor product with a blank target — already exists. The work is to decide whether that slot can be filled.
