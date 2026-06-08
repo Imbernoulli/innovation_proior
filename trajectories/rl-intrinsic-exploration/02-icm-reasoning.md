@@ -1,8 +1,8 @@
-The no-bonus run told me exactly what's missing, and it told me in numbers. On Frostbite all three seeds found reward (mean 215, tight 96–280) — there the first payoff is reachable by entropy jitter alone, so vanilla PPO is fine. But on Tutankham two of three seeds flatlined at *exactly* zero on every metric (mean 36.5 is really "one lucky seed, two that never saw a reward"), and on Private Eye the per-seed returns were {0, 100, −1000} for a *negative* mean of −300 — the −1000 is the tell: with no directed exploration the agent wanders into the game's penalties as readily as its rewards. So the diagnosis is sharp, and it is not a learning-rate or a credit-assignment problem. Where the reward is sparse the policy gradient $\mathbb{E}[\nabla\log\pi\,(\sum_t r_t)]$ is zero almost everywhere, because there is nothing to be advantaged over; the agent only learns if it *happens* to stumble onto the goal, and stochastic action noise will not carry it across hundreds of reward-free steps. It's a *signal* problem. So I have to manufacture a reward from the agent's own experience — an intrinsic signal $r^i$ the policy maximizes alongside the (mostly zero) extrinsic $r^e$, total $r_t=r_t^i+r_t^e$, large in states the agent hasn't mastered, so "go somewhere new" becomes something the policy gradient can actually ascend. That should rescue exactly the games PPO couldn't touch — the ones where the first reward is out of reach of random jitter.
+The no-bonus run told me exactly what's missing, and it told me in numbers. On Frostbite all three seeds found reward (mean 215, tight 96–280) — there the first payoff is reachable by entropy jitter alone, so vanilla PPO is fine. But on Tutankham two of three seeds flatlined at *exactly* zero on every metric (mean 36.5 is really "one lucky seed, two that never saw a reward"), and on Private Eye the per-seed returns were {0, 100, −1000} for a *negative* mean of −300 — the −1000 is the tell: with no directed exploration the agent wanders into the game's penalties as readily as its rewards. So the failure that actually bites is sharp, and it is not a learning-rate or a credit-assignment problem. Where the extrinsic reward is sparse — a single payoff hundreds of reward-free steps away, zero everywhere else — the policy gradient $\mathbb{E}[\nabla\log\pi\,(\sum_t r_t)]$ is zero almost always; the agent only learns if it *happens* to reach the goal, and stochastic action noise won't carry it across hundreds of reward-free steps. It's a *signal* problem. So I have to manufacture a reward from the agent's own experience — an intrinsic signal $r^i$ the policy maximizes alongside the (mostly zero) extrinsic $r^e$, total $r_t=r_t^i+r_t^e$, large in states the agent hasn't mastered, so "go somewhere new" becomes something the policy gradient can actually ascend. That should rescue exactly the games PPO couldn't touch — the ones where the first reward is out of reach of random jitter.
 
 What should $r^i$ be? The two obvious families are novelty (reward rarely-visited states, needs a density model over images) and prediction error (reward states whose consequences the agent predicts badly, needs a dynamics model). Prediction error appeals to me because it directly captures "the agent is learning something about how the world responds to it." So: build a forward model that predicts $s_{t+1}$ from $s_t$ and $a_t$, and reward the agent in proportion to how wrong it is. The cleanest version predicts the next *observation* — the pixels — and uses the pixel error as $r^i$.
 
-Let me check whether that actually does what I want before I commit to it, because a bad bonus is worse than none — PPO's −1000 Private Eye seed already shows that the wrong drive is *actively harmful*. Picture the agent on one of these Atari screens with some patch of the image flickering in a way it cannot control — a scrolling background, an animated sprite, the boundary churn that sticky actions induce. The pixel content there is essentially unpredictable, so the pixel-prediction error stays high *forever*, the intrinsic reward stays high forever, and the agent is permanently paid to gawk at the flicker. It never moves on. Novelty-counting has the identical disease: every noisy frame looks novel. So pixel-prediction error is worse than useless here; it would trap exploration on noise, which on Private Eye is precisely how you end up camping next to a penalty instead of crossing the gap.
+Let me check whether that actually does what I want before I commit, because a bad bonus is worse than none — PPO's −1000 Private Eye seed already shows the wrong drive is *actively harmful*. Imagine the agent on one of these Atari screens with some patch of the image flickering in a way it cannot control — a scrolling background, an animated sprite, the boundary churn that sticky actions induce. The pixel content there is essentially unpredictable, so the pixel-prediction error stays high *forever*, the intrinsic reward stays high forever, and the agent is permanently paid to gawk at the flicker. It never moves on. The same thing happens with a television showing static, with shadows from other moving objects, with any distractor — any source of visual variation that is inherently unpredictable but completely inconsequential becomes an inexhaustible curiosity reward. Novelty-counting has the identical disease: every noisy frame looks novel. So pixel-prediction error is worse than useless here; it actively traps exploration on noise, which on Private Eye is precisely how you end up camping next to a penalty instead of crossing the gap. And there's a separate objection — predicting raw pixels is hard, and it's not even clear it's the right thing to spend capacity on.
 
 The remedy "reward only what's hard-but-learnable" is the right intuition, but estimating learnability has no feasible algorithm. Let me instead diagnose *what kind* of variation I want the reward to respond to. Everything that can change the agent's observation is one of three things: (1) stuff the agent can control, (2) stuff it can't control but that affects it — a hazard bearing down on it, say, (3) stuff out of its control and not affecting it — the flicker. I want curiosity to care about (1) and (2) and be completely *blind* to (3). The trouble with pixel prediction is that pixels mix all three indiscriminately, and (3) dominates the error budget precisely because it's unpredictable.
 
@@ -10,72 +10,101 @@ So the real question isn't "forward model or not" — it's "forward model in *wh
 
 Suppose I just train a forward model in some learned $\phi$, jointly learning $\phi$ to make the forward prediction easy. Watch what happens — the optimizer discovers that the cheapest way to make forward error small is to make $\phi$ *constant*. A $\phi$ that maps everything to the same vector is perfectly predictable (error zero) and utterly useless. A feature space optimized to be *predictable* collapses. So I can't anchor $\phi$ with the forward task; I need a different task that *forces* $\phi$ to retain action-relevant information and forbids the trivial collapse.
 
-The inverse problem is exactly that anchor. Instead of predicting the future from the action, predict the *action* from the present and the future: given $\phi(s_t)$ and $\phi(s_{t+1})$, recover $a_t$. This is self-supervised — the tuples $(s_t,a_t,s_{t+1})$ come for free from the agent acting — and it pins $\phi$ the way I want. To recover the action that took $s_t$ to $s_{t+1}$, $\phi$ *must* encode whatever in the scene changed because of the action: category (1), and to the extent (2) matters for distinguishing actions it keeps that too. But it has *no incentive* to encode (3): the flicker doesn't help predict which action the agent took, so a $\phi$ trained purely to predict the action will simply not represent it. And it can't collapse to a constant, because a constant $\phi$ destroys the information needed to recover the action. The inverse task is the thing that makes $\phi$ both non-degenerate and noise-blind.
+The inverse problem is exactly that anchor. Instead of predicting the future from the action, predict the *action* from the present and the future: given $\phi(s_t)$ and $\phi(s_{t+1})$, recover $a_t$. This is self-supervised — the tuples $(s_t,a_t,s_{t+1})$ come for free from the agent acting — and it pins $\phi$ the way I want. To recover the action that took $s_t$ to $s_{t+1}$, $\phi$ *must* encode whatever in the scene changed because of the action: that's category (1), and to the extent (2) matters for distinguishing actions it keeps that too. But it has *no incentive* to encode (3): the flicker doesn't help predict which action the agent took, so a $\phi$ trained purely to predict the action will simply not represent it. And it can't collapse to a constant, because a constant $\phi$ destroys the information needed to recover the action and the inverse loss would be terrible. The inverse task is the thing that makes $\phi$ both non-degenerate and noise-blind.
 
 Let me write the two models. The encoder produces $\phi(s)$. The inverse model $g$ takes the two encodings and predicts the action,
-$$\hat a_t=g\big(\phi(s_t),\phi(s_{t+1});\theta_I\big),$$
+$$\hat a_t=g\big(\phi(s_t),\phi(s_{t+1})\big),$$
 trained to minimize a discrepancy $L_I(\hat a_t,a_t)$. For discrete actions $g$ outputs a softmax over actions and minimizing $L_I$ is maximum likelihood under a multinomial — ordinary cross-entropy. Now, *in the feature space $g$ has carved out*, train the forward model $f$ to predict the next features from the current features and the action,
-$$\hat\phi(s_{t+1})=f\big(\phi(s_t),a_t;\theta_F\big),\qquad L_F=\tfrac12\big\|\hat\phi(s_{t+1})-\phi(s_{t+1})\big\|_2^2.$$
-And the intrinsic reward is precisely that forward error, scaled:
-$$r_t^i=\frac{\eta}{2}\big\|\hat\phi(s_{t+1})-\phi(s_{t+1})\big\|_2^2,\qquad \eta>0.$$
+$$\hat\phi(s_{t+1})=f\big(\phi(s_t),a_t\big),\qquad L_F=\tfrac12\big\|\hat\phi(s_{t+1})-\phi(s_{t+1})\big\|^2,$$
+and the intrinsic reward is precisely that forward error:
+$$r_t^i=\tfrac12\big\|\hat\phi(s_{t+1})-\phi(s_{t+1})\big\|^2.$$
 Read what this reward means: it is large exactly when the agent meets a transition whose *action-relevant consequence* it cannot yet predict — a genuinely novel piece of controllable dynamics — and it decays as the forward model learns that transition, so the agent is pushed onward to the next unmastered piece of controllable structure. The flicker contributes nothing because it's not in $\phi$. That's the noisy-TV cure, and it falls out of the choice of feature space, not from any extra mechanism.
 
-One thing I must be careful about: the forward error feeds the policy reward, but I must *not* train the ICM to maximize that reward. If I let the policy objective push on $\theta_I,\theta_F$, the system could cheat — make $\phi$ unpredictable on purpose to inflate the reward. The forward error has to be an honest measure of the model's ignorance, so the ICM is trained *only* on its own losses $L_I,L_F$ from observed transitions, and the policy is trained *only* to maximize the (intrinsic + extrinsic) reward. They share the reward signal but not the gradient through it:
-$$\min_{\theta_P,\theta_I,\theta_F}\Big[\,-\lambda\,\mathbb{E}_{\pi(s_t;\theta_P)}\big[\textstyle\sum_t r_t\big]\;+\;(1-\beta)\,L_I\;+\;\beta\,L_F\,\Big],$$
-where the first term touches only $\theta_P$ through the reward (with $r_t^i$ a fixed signal w.r.t. the policy) and the ICM terms touch only $\theta_I,\theta_F$. $\beta\in[0,1]$ trades inverse against forward loss; I keep it small — the inverse task is the one that must *shape* $\phi$ — say $\beta=0.2$, and $\lambda=0.1$. The policy optimizer is the fixed PPO loop; it consumes the scalar $r_t$ regardless of where it came from. The architecture is the inverse/forward pair over a shared conv encoder; concretely:
+One thing I must be careful about: the forward error feeds the policy reward, but I must *not* let the policy gradient push on the ICM's parameters. If it could, the system would cheat — make $\phi$ unpredictable on purpose to inflate the reward. So the bonus is computed under `detach()` (a signal, not a path), the ICM is trained *only* on its own losses, and the policy is trained *only* to maximize the reward. They share the reward, not the gradient through it.
+
+Now make it concrete *in this task's edit surface*, because the loop is fixed and I only get to fill in `IntrinsicBonusModule` and `mix_advantages`. The fixed PPO loop hands me 4-frame $84\times84$ stacks, a shared policy/value network with *two* value heads (extrinsic and intrinsic) and their own discounts ($\gamma=0.999$ extrinsic, `int_gamma`$=0.99$ intrinsic), and the helpers `last_frame`, `RunningMeanStd`, `RewardForwardFilter`. So I don't build A3C or an LSTM — the substrate already values two reward streams. My job is just the bonus. The encoder is the standard Atari conv stack on the single most recent frame, flattened to a 256-dim $\phi$: Conv(1,32,8,s4)–Conv(32,64,4,s2)–Conv(64,64,3,s1), ReLU throughout, then Linear($7\!\cdot\!7\!\cdot\!64,256$). The inverse model is Linear($512,256$)→Linear($256,$ actions) on the concatenation $[\phi(s_t),\phi(s_{t+1})]$ (cross-entropy to $a_t$); the forward model is Linear($256+$actions$,256$)→Linear($256,256$) on $[\phi(s_t),\text{onehot}(a_t)]$. The bonus is the half-mean-squared forward error, detached; the module loss is $L_I+0.2\,L_F$ (the inverse task must dominate so $\phi$ is shaped by it, not by the forward task that could collapse it). I whiten the frame into the encoder with a running mean/std (clip $\pm5$), initialized from a short random rollout, and normalize the rollout's intrinsic stream by a running return-std so the bonus scale is consistent. Mixing the two advantage streams is the one line `mix_advantages` controls: $A=\text{ext\_coef}\cdot A_E+\text{int\_coef}\cdot A_I$.
 
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+class IntrinsicBonusModule(nn.Module):
+    """Intrinsic Curiosity Module baseline."""
 
-PHI_DIM = 288    # 42->21->11->6->3 with k3 s2 p1; 3*3*32 = 288
-HID = 256
-BETA = 0.2       # inverse-vs-forward loss weight
-LAMBDA = 0.1     # policy-gradient vs ICM weight
-ETA = 1.0        # intrinsic-reward scale
-
-class Encoder(nn.Module):
-    # phi(s): four convs, 32 filters, 3x3, stride 2, pad 1, ELU. Shared by inverse+forward.
-    def __init__(self):
+    def __init__(self, action_dim: int, device: torch.device, args: Args):
         super().__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(4, 32, 3, stride=2, padding=1), nn.ELU(),
-            nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU(),
-            nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU(),
-            nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU(),
+        self.action_dim = action_dim
+        self.device = device
+        self.args = args
+        self.obs_rms = RunningMeanStd(shape=(1, 1, 84, 84))
+        self.reward_rms = RunningMeanStd()
+        self.discounted_reward = RewardForwardFilter(args.int_gamma)
+
+        feature_output = 7 * 7 * 64
+        self.encoder = nn.Sequential(
+            layer_init(nn.Conv2d(1, 32, 8, stride=4)), nn.ReLU(),
+            layer_init(nn.Conv2d(32, 64, 4, stride=2)), nn.ReLU(),
+            layer_init(nn.Conv2d(64, 64, 3, stride=1)), nn.ReLU(),
+            nn.Flatten(),
+            layer_init(nn.Linear(feature_output, 256)), nn.ReLU(),
         )
-    def forward(self, s):
-        return self.conv(s).flatten(1)                 # (B, 288)
+        self.inverse_model = nn.Sequential(                      # [phi(s_t), phi(s_{t+1})] -> action
+            layer_init(nn.Linear(512, 256)), nn.ReLU(),
+            layer_init(nn.Linear(256, action_dim), std=0.01),
+        )
+        self.forward_model = nn.Sequential(                      # [phi(s_t), a_t] -> phi_hat(s_{t+1})
+            layer_init(nn.Linear(256 + action_dim, 256)), nn.ReLU(),
+            layer_init(nn.Linear(256, 256)),
+        )
 
-class ICM(nn.Module):
-    def __init__(self, n_actions):
-        super().__init__()
-        self.n_actions = n_actions
-        self.phi = Encoder()
-        # inverse model: [phi(s_t), phi(s_{t+1})] -> action logits  (anchors phi)
-        self.inverse = nn.Sequential(nn.Linear(2 * PHI_DIM, HID), nn.ReLU(),
-                                     nn.Linear(HID, n_actions))
-        # forward model in feature space: [phi(s_t), a_t] -> phi_hat(s_{t+1})
-        self.forward_net = nn.Sequential(nn.Linear(PHI_DIM + n_actions, HID), nn.ReLU(),
-                                         nn.Linear(HID, PHI_DIM))
+    def initialize(self, envs) -> None:
+        bootstrap = []                                           # warm obs-norm with a random rollout
+        total_steps = self.args.num_steps * self.args.num_iterations_obs_norm_init
+        for _ in range(total_steps):
+            random_actions = np.random.randint(0, envs.single_action_space.n, size=(self.args.num_envs,))
+            sampled_obs, _, _, _ = envs.step(random_actions)
+            bootstrap.append(sampled_obs[:, 3:4, :, :])
+            if len(bootstrap) >= self.args.num_steps:
+                self.obs_rms.update(np.concatenate(bootstrap, axis=0)); bootstrap.clear()
 
-    def losses_and_reward(self, s_t, a_t, s_tp1):
-        phi_t, phi_tp1 = self.phi(s_t), self.phi(s_tp1)
-        a_onehot = F.one_hot(a_t, self.n_actions).float()
-        logits = self.inverse(torch.cat([phi_t, phi_tp1], dim=1))   # predict action -> CE
-        L_I = F.cross_entropy(logits, a_t)
-        phi_hat = self.forward_net(torch.cat([phi_t, a_onehot], dim=1))  # predict next features
-        per_sample = 0.5 * (phi_hat - phi_tp1).pow(2).sum(dim=1)
-        L_F = per_sample.mean()
-        r_i = (ETA * per_sample).detach()              # intrinsic reward: a signal, not a path
-        return L_I, L_F, r_i
+    def trainable_parameters(self):
+        return list(self.parameters())
 
-def icm_objective(L_I, L_F):
-    return (1 - BETA) * L_I + BETA * L_F               # ICM trained ONLY on its own losses
-# total reward to PPO: r_t = r_t^i + r_t^e ; policy term updates only theta_P.
+    def _normalize_obs(self, obs: torch.Tensor) -> torch.Tensor:
+        mean = torch.from_numpy(self.obs_rms.mean).to(self.device)
+        var = torch.from_numpy(self.obs_rms.var).to(self.device)
+        return ((last_frame(obs) - mean) / torch.sqrt(var)).clip(-5, 5).float()
+
+    def _one_hot(self, actions: torch.Tensor) -> torch.Tensor:
+        return F.one_hot(actions.long(), num_classes=self.action_dim).float()
+
+    def update_batch_stats(self, batch_obs, batch_next_obs) -> None:
+        self.obs_rms.update(last_frame(batch_next_obs).cpu().numpy())
+
+    def compute_bonus(self, obs, next_obs, actions) -> torch.Tensor:
+        obs_feat = self.encoder(self._normalize_obs(obs))
+        next_feat = self.encoder(self._normalize_obs(next_obs))
+        pred_next_feat = self.forward_model(torch.cat([obs_feat, self._one_hot(actions)], dim=1))
+        return 0.5 * (pred_next_feat - next_feat).pow(2).mean(dim=1).detach()      # r^i, a signal
+
+    def normalize_rollout_rewards(self, rollout_intrinsic) -> torch.Tensor:
+        discounted = np.stack(
+            [self.discounted_reward.update(r) for r in rollout_intrinsic.cpu().numpy()], axis=0)
+        flat = discounted.reshape(-1)
+        self.reward_rms.update_from_moments(float(flat.mean()), float(flat.var()), int(flat.size))
+        return rollout_intrinsic / float(np.sqrt(self.reward_rms.var + 1e-8))
+
+    def loss(self, batch_obs, batch_next_obs, batch_actions) -> torch.Tensor:
+        obs_feat = self.encoder(self._normalize_obs(batch_obs))
+        next_feat = self.encoder(self._normalize_obs(batch_next_obs))
+        pred_next_feat = self.forward_model(torch.cat([obs_feat, self._one_hot(batch_actions)], dim=1))
+        pred_action = self.inverse_model(torch.cat([obs_feat, next_feat], dim=1))
+        inverse_loss = F.cross_entropy(pred_action, batch_actions.long())          # anchors phi
+        forward_loss = 0.5 * (pred_next_feat - next_feat.detach()).pow(2).mean()
+        return inverse_loss + 0.2 * forward_loss                                   # inverse dominates
+
+
+def mix_advantages(ext_advantages, int_advantages, args: Args) -> torch.Tensor:
+    return args.ext_coef * ext_advantages + args.int_coef * int_advantages
 ```
 
-So the delta from step 1 is concrete: replace the empty bonus module with one that learns a controllable-state encoder by inverse dynamics, predicts the next controllable state with a forward model, and emits the forward error as $r^i$; mix the intrinsic advantage in alongside the extrinsic one. Reading the step-1 shape, here is what I expect this to fix and where I'm unsure. Tutankham should *stabilize* — every seed should at least find the reward now that "explore the controllable world" is rewarded, so the two dead seeds that flatlined under PPO should come alive. Frostbite could jump, because curiosity keeps pushing the agent into new controllable configurations beyond the first ice-floe reward PPO already found. Private Eye is the open question, and I can already feel the risk in the construction: the bonus is a forward-prediction error that *decays as the forward model masters local dynamics*, and Private Eye's payoff is not just far but sits past a long stretch whose local dynamics are quickly learned — so curiosity may run out of drive at the first mastered region before it crosses the gap. If that happens, the diagnosis for the next step is already written: I'd need a novelty signal that doesn't decay the moment local dynamics are learned.
+So the delta from step 1 is concrete: where PPO left `compute_bonus` returning zeros and `mix_advantages` dropping the intrinsic stream, I now learn a controllable-state encoder by inverse dynamics, predict the next controllable state with a forward model, emit the detached forward error as $r^i$, and add the intrinsic advantage in. Reading the step-1 shape, here is what I expect this to fix and where I'm unsure. Tutankham should *stabilize* — every seed should at least find the reward now that "explore the controllable world" is rewarded, so the two dead seeds that flatlined under PPO should come alive. Frostbite could jump, because curiosity keeps pushing the agent into new controllable configurations beyond the first ice-floe reward PPO already found. Private Eye is the open question, and I can already feel the risk in the construction: the bonus is a forward-prediction error that *decays as the forward model masters local dynamics*, and Private Eye's payoff sits past a long stretch whose local dynamics are quickly learned — so curiosity may run out of drive at the first mastered region before it crosses the gap. If that happens, the diagnosis for the next step is already written: I'd need a novelty signal that doesn't decay the moment local dynamics are learned.
 
-The causal chain in one breath: PPO's measured failure is a *signal* problem — sparse reward means a zero policy gradient, so two of three Tutankham seeds and all of Private Eye find nothing and one Private Eye seed goes to −1000 → manufacture an intrinsic reward from prediction error → but pixel-prediction error is captured forever by uncontrollable flicker (noisy-TV), because pixels mix controllable, affecting, and irrelevant change → so predict in a learned feature space $\phi$ that keeps only action-relevant content → a $\phi$ trained to be *predictable* collapses, so anchor it with the *inverse* task of recovering $a_t$ from $\phi(s_t),\phi(s_{t+1})$, which forces action-relevant content and forbids collapse → use the forward error in that space as $r^i$, noise-blind by construction, trained only on $L_I,L_F$ so it can't be gamed, fed to the fixed PPO loop — expecting Tutankham and Frostbite to recover, and watching Private Eye for the decay I suspect is coming.
+The causal chain in one breath: PPO's measured failure is a *signal* problem — sparse reward means a zero policy gradient, so two of three Tutankham seeds and all of Private Eye find nothing and one Private Eye seed goes to −1000 → manufacture an intrinsic reward from prediction error → but pixel-prediction error is captured forever by uncontrollable flicker (noisy-TV), because pixels mix controllable, affecting, and irrelevant change → so predict in a learned feature space $\phi$ that keeps only action-relevant content → a $\phi$ trained to be *predictable* collapses, so anchor it with the *inverse* task of recovering $a_t$ from $\phi(s_t),\phi(s_{t+1})$, which forces action-relevant content and forbids collapse → use the detached forward error in that space as $r^i$, trained only on $L_I+0.2L_F$ so it can't be gamed, dropped into the task's `IntrinsicBonusModule` and mixed by `int_coef·A_I+ext_coef·A_E` — expecting Tutankham and Frostbite to recover, and watching Private Eye for the decay I suspect is coming.

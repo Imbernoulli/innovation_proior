@@ -299,11 +299,6 @@
         label: "Step " + s.n + " · " + who + " · Reasoning",
         url: s.reasoning ? (base + s.reasoning) : ("methods/" + s.slug + "/results/reasoning.md")
       });
-      blocks.push({
-        kind: "answer",
-        label: "Step " + s.n + " · " + who + " · Answer",
-        url: "methods/" + s.slug + "/results/answer.md"
-      });
       if (s.feedback) {
         blocks.push({
           kind: "feedback",
