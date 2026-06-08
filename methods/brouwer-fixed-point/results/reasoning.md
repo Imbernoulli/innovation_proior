@@ -1,0 +1,126 @@
+Let me start from the thing I can actually feel, before any machinery. I take a closed disk, lay another copy of it on top, and stir the top one — any continuous motion of the disk into itself, no tearing, points allowed to pile up, the only rule is that nothing leaves the disk. The claim I keep bumping into is that some point of the disk lands exactly on itself. I want to know whether that is forced, and why.
+
+In one dimension it's forced and I can see the whole reason at once. Let `f : [a,b] → [a,b]` be continuous, and look at `g(x) = f(x) − x`. At the left end `f(a)` is somewhere in `[a,b]`, so `f(a) ≥ a`, so `g(a) ≥ 0`. At the right end `f(b) ≤ b`, so `g(b) ≤ 0`. A continuous function that is `≥0` at one end and `≤0` at the other has a zero in between — that's the intermediate value theorem — and a zero of `g` is exactly a point with `f(x*) = x*`. Done.
+
+I want to extract what actually did the work there, because I'll need to carry it upward. Two things. First, it was the *boundary* that forced it: `f` is not allowed to push the endpoints outward, and that one-sided pressure at both ends is what guarantees the sign flip. Second, watch what happens if I open the interval. On `(0,1)`, take `f(x) = x²`. Then `f(x) < x` for every `x` in there, `g` is strictly negative everywhere, no zero. The fixed point "wants" to be at `0`, but `0` isn't in the domain — it leaked out the open end. So closedness isn't bookkeeping; it's the hypothesis that keeps the fixed point from escaping through a hole in the domain. I file that away hard: whatever I build in higher dimensions must break exactly when I open the domain or punch a hole in it.
+
+Now I try to go up a dimension and the one-dimensional trick dies immediately. The proof rested on `g(x) = f(x) − x` being a *scalar* whose sign I could chase, and on `ℝ` being ordered so that "changes sign" means "passes through zero." In the plane `f(x) − x` is a vector; "it points one way at this corner and the other way at that corner" doesn't pin a point, because a vector can rotate all the way around without ever being zero. So there is no single `g` to chase. The mechanism has to be genuinely different.
+
+Let me at least figure out what *kind* of thing could possibly do it, by thinking about when the conclusion is false. Stir a flat annulus — a disk with a hole — by rotating it a fixed angle. Continuous, maps the annulus to itself, and nothing is fixed; every point moves along its circle. So the conclusion is false for the annulus and true (I believe) for the disk, and the only difference between them is the hole. Same lesson from the sphere: the antipodal map sends every point to its opposite, continuous, no fixed point — and a sphere is "all boundary, no inside." So the property I need is something the *filled* disk has and the holed/hollow shapes lack. Not an analytic estimate — a fact about the *shape*, about the domain being filled in, its boundary not bounding any hole. That smells like a topological invariant, an integer attached to the domain that is `0` for "filled" and nonzero for "has a hole." I should be hunting for an invariant, not an inequality.
+
+Suppose, for contradiction, `f : Dⁿ → Dⁿ` is continuous and has *no* fixed point. Then for every `x`, the two points `x` and `f(x)` are distinct. Two distinct points determine a direction and a ray. Which ray do I draw? I want to manufacture a map of the disk onto its boundary sphere, because *that* is the object that should be impossible — pushing a filled ball out onto its shell. Let me try: from `f(x)`, draw the ray through `x`, and keep going until it first hits the boundary sphere `Sⁿ⁻¹`; call that hit `r(x)`.
+
+Let me check this `r` does what I want. It's defined everywhere because `x ≠ f(x)` always — exactly the no-fixed-point hypothesis — so the direction `d(x)=x−f(x)` never degenerates. Concretely `r(x) = x + t(x)d(x)`, where `t(x) ≥ 0` is the exit time solving `|x + t d(x)|² = 1`. The quadratic is
+
+`|d(x)|²t² + 2x·d(x)t + |x|² − 1 = 0`,
+
+and the nonnegative exit root is
+
+`t(x)=(-x·d(x)+sqrt((x·d(x))²+|d(x)|²(1−|x|²)))/|d(x)|²`.
+
+The denominator never vanishes and the expression is continuous in `x`. For an interior point, `|x|<1`, this is the unique positive exit time; for a boundary point, `t=0` is already a solution. And now the key property: if `x` is *already on the boundary*, then the ray from `f(x)` through `x` exits at `x` itself. Indeed, for `t>0`,
+
+`|x+t(x−f(x))|² = 1 + 2t(1−x·f(x)) + t²|x−f(x)|² > 1`,
+
+because `|x|=1`, `|f(x)|≤1`, and `1−x·f(x)=0` would force `f(x)=x`, which the contradiction hypothesis excludes. So `t(x)=0` on `Sⁿ⁻¹`, hence `r(x)=x` for every boundary point. That's a retraction: a continuous map of the whole solid ball onto its boundary sphere that is the identity on that sphere.
+
+(I notice why the ray had to start at `f(x)` and pass *through* `x`, not the reverse. I need `r` to fix the boundary. Shooting from `f(x)` outward through `x` makes the boundary point `x` the exit when `x` is on the shell. If I'd shot from `x` through `f(x)`, a boundary `x` would map to some *other* exit point and the boundary wouldn't be fixed — I'd have a map, but not a retraction, and the impossibility I'm about to use is about retractions.)
+
+So a fixed-point-free `f` hands me a continuous retraction of the ball onto its boundary sphere. If I can show no such retraction exists, the assumption "`f` has no fixed point" collapses, and the fixed point is forced. The whole theorem has turned into a single statement about the *shape*: you cannot continuously squash a filled ball out onto its own shell while holding the shell fixed. That is exactly the "filled vs. holed" distinction I was chasing — and it's plausibly impossible because doing it would mean the ball secretly has the hole that its boundary sphere encircles, which it doesn't.
+
+Now I have to actually prove no retraction exists, and I have two ways to see the obstruction. Let me do the invariant version first because it's the cleanest statement of *why*. A retraction `r : Dⁿ → Sⁿ⁻¹` with `r(x)=x` on the sphere means, writing `i : Sⁿ⁻¹ ↪ Dⁿ` for the inclusion, that `r ∘ i = id` on the sphere. For `n≥2`, apply the `(n−1)`-dimensional homology functor, which turns continuous maps into homomorphisms of abelian groups and respects composition and identities. I get `r_* ∘ i_* = id` on `H_{n−1}(Sⁿ⁻¹)`. But `H_{n−1}(Sⁿ⁻¹) ≅ ℤ` — the sphere has exactly one `(n−1)`-dimensional hole — whereas the solid ball is filled, contractible, `H_{n−1}(Dⁿ) = 0`. So `i_*` lands in `0` and `r_*` comes out of `0`; their composite is the zero map. The identity of `ℤ` would have to equal the zero map. `1 = 0` in `ℤ` is false. No retraction. The lowest case is the same obstruction in reduced `H_0`, or more vividly in connectedness: `D¹ = [−1,1]` is connected, its boundary `S⁰` is two separate points, and a continuous map can't tear a connected thing into two pieces while fixing each piece, because the continuous image of a connected set is connected.
+
+That's the reason in its purest form: the boundary sphere carries a nonzero invariant — call it degree — that the filled ball kills, and a retraction would have to transport the nonzero through the zero. I can even say it in pure degree language: the identity map of `Sⁿ⁻¹` has degree `1`; if a sphere map extending the identity over the whole ball existed, the radial contraction inside the ball would turn that extension into a homotopy from the identity to a constant map, which has degree `0`. Degree is a homotopy invariant, so `1 = 0` — impossible.
+
+But I'm uneasy leaning the *entire* theorem on the homology of spheres, because rigorously building that machine — chains, boundaries, the computation `H_{n−1}(Sⁿ⁻¹)=ℤ` for `n≥2` and reduced `H_0` in the lowest case, homotopy invariance — is itself a mountain, and it feels heavier than the elementary thing I'm trying to certify. The invariant is morally an integer I'm counting. I'd like to count it directly, on a triangulation, with nothing but parity. If the rigidity of the sphere is really just "an integer that can't be zero," there ought to be a finite, hand-checkable shadow of that integer living on a subdivided simplex.
+
+Let me chase that. I'll triangulate the domain very finely and try to read the obstruction off a *labeling* of the vertices. The natural impulse: at each vertex of the triangulation, record some coarse, discrete summary of which way `f` moves it — a color drawn from finitely many directions. If `f` had a fixed point, the colors near it would have to do something; if `f` has *no* fixed point, the colors are forced to swirl consistently. I want to find a labeling rule for which "the colors must contain a fully-mixed little cell somewhere" is a forced combinatorial fact, and then squeeze the mesh to zero and watch that little cell collapse onto a fixed point.
+
+So let me forget `f` for a moment and ask the purely combinatorial question: when is a fully-mixed cell *forced*? Set up the cleanest possible coloring problem. Take a simplex `Δⁿ` — the `n`-dimensional triangle: `n+1` corners, the filled-in hull. Triangulate it into little simplices (cells), meeting face-to-face. Color every vertex of the triangulation with one of `n+1` colors `{0,1,…,n}`, under two rules that mimic a boundary condition: each of the `n+1` corners of the big simplex gets its own distinct color, and any vertex lying on a face of the big simplex may only use the colors of *that face's* corners. This is the Sperner labeling. Call a little cell **rainbow** if its `n+1` vertices show all `n+1` colors. Claim: there is always at least one rainbow cell — and in fact an *odd* number of them.
+
+Let me prove it, and let me insist on "odd," not just "≥1," because — I can already feel the induction coming — parity is what will let dimension `n−1` push into dimension `n`. "At least one" doesn't compose; "odd" does.
+
+Dimension one first, to ground everything. The simplex is a segment with endpoints colored `0` (left) and `1` (right); interior vertices colored `0` or `1` freely. A little edge is rainbow if its ends are `0` and `1`. Walk from left to right and watch the color. It starts at `0`, ends at `1`, so it changes an odd number of times, and each change is exactly one rainbow edge. Odd number of rainbow edges. (And at least one exists: take the leftmost vertex colored `1`; the vertex just left of it is `0`, so that edge is rainbow.) Good — the one-dimensional parity is just "the endpoints disagree."
+
+Dimension two, because I want to *see* the engine before I trust it in general. Triangle, corners colored `0,1,2`. I'll call an edge of the triangulation a **door** if its two endpoints are colored `{0,1}`. Think of each little triangle as a room and each door as a doorway between rooms (or to the outside). Count the doors *per room*. A room with vertices `(0,1,2)` — a rainbow triangle — has exactly one `{0,1}` edge: one door. A room with vertices `(0,1,1)` or `(0,0,1)` has exactly two `{0,1}` edges: two doors. Any other room (no `0` and `1` together, e.g. `(0,0,0)`, `(0,0,2)`, `(1,2,2)`) has zero doors. So *rainbow rooms are exactly the one-door rooms.*
+
+Now the handshake. Some doors are on the outer boundary of the big triangle (a door lying on the big triangle's own edge), some are interior, shared by two rooms. Consider all the walks you can take through doors: every room has `0`, `1`, or `2` doors, so the "rooms-and-doors" structure is a union of disjoint paths and cycles. A path must start and end either at a one-door room (a rainbow room) or at an outside door. So if I count endpoints of paths: the number of rainbow rooms and the number of outside doors have the *same parity*. And what are the outside doors? They're `{0,1}` edges lying on the boundary of the big triangle — but a `{0,1}` edge can only sit on the big triangle's `0–1` side (the other two sides forbid the pair `{0,1}` by the face rule). On that one side I have a one-dimensional Sperner labeling with ends `0` and `1`, so by the dimension-one result there is an *odd* number of `{0,1}` edges there. Odd number of outside doors ⇒ odd number of rainbow rooms. The two-dimensional lemma falls straight out of the one-dimensional one.
+
+I can see the whole induction now, so let me write the general counting cleanly, because the bookkeeping is where errors hide. Triangulate `Δⁿ`, Sperner-label it with colors `{0,1,…,n}`. I count, across all cells, the facets — the `(n−1)`-dimensional faces of little cells — that carry exactly the colors `{1,2,…,n}`. These are the almost-rainbow facets missing only color `0`. Let `R` be the number of rainbow cells, `C` the number of cells whose labels use exactly the colors `{1,…,n}` and no `0`, and `D` the ownership count of facets colored exactly `{1,…,n}`.
+
+Count `D` cell-by-cell. A rainbow cell has every color once; its facets are the cell minus one vertex; the facet colored `{1,…,n}` is the one obtained by dropping the unique vertex colored `0` — exactly **one** such facet per rainbow cell. A `C`-cell has `n+1` vertices labeled only by the `n` colors `{1,…,n}`, so exactly one of those colors is repeated; dropping either copy of that repeated color leaves one copy of every color `{1,…,n}` — exactly **two** such facets. Any other cell contributes **zero**: if it misses some color among `{1,…,n}`, every facet misses that color too; if it contains `0` and is not rainbow, then after deleting any one vertex the remaining facet either still contains `0` or still misses one of the colors `{1,…,n}`. Counting facets by the cells that own them gives `R·1 + C·2 = R + 2C`.
+
+Now count the same facets a second way, by *where they sit*. An interior facet of the triangulation is shared by exactly two cells; a facet on the boundary of `Δⁿ` belongs to exactly one cell. Let `D_O` be the number of `{1,…,n}`-colored facets on the boundary, `D_I` the number in the interior. Then the ownership count is `D_O·1 + D_I·2`. The two counts of the same thing must agree:
+
+`R + 2C = D_O + 2·D_I`.
+
+Reduce modulo `2`: the `2C` and `2D_I` vanish, leaving `R ≡ D_O (mod 2)`. The parity of rainbow cells equals the parity of correctly-colored boundary facets — beautiful, because it has pushed an `n`-dimensional count onto an `(n−1)`-dimensional boundary.
+
+Where can a `{1,…,n}`-colored facet live on the boundary of `Δⁿ`? By the face rule, the colors `1,…,n` can all appear together only on the face of `Δⁿ` spanned by the corners colored `1,…,n` — and on every other boundary face at least one of those colors is forbidden. So all of `D_O` lives on that single `(n−1)`-dimensional face, which is itself a Sperner-labeled `(n−1)`-simplex (its corners carry the distinct colors `1,…,n`, and the face rule restricts to it). By the induction hypothesis, that face has an *odd* number of rainbow `(n−1)`-cells — and a rainbow `(n−1)`-cell of that face is precisely a `{1,…,n}`-colored facet. So `D_O` is odd. Therefore `R` is odd. The induction is complete: every Sperner-labeled triangulation of every simplex has an odd number of rainbow cells, in every dimension. In particular at least one rainbow cell always exists. That is Sperner's lemma, and it is the entire topological obstruction reduced to counting doors.
+
+Now I have to connect this back to the fixed point, and the bridge is the labeling rule — the slot I left empty. I work on the standard simplex `Δⁿ = {x ∈ ℝⁿ⁺¹ : x_i ≥ 0, Σ x_i = 1}`, where points *are* their barycentric coordinates, which is exactly the data Sperner wants. Let `f : Δⁿ → Δⁿ` be continuous and suppose, for contradiction, it has no fixed point.
+
+What does "`f` moves `x`" look like in these coordinates? Both `x` and `f(x)` are nonnegative and sum to `1`: `Σ x_i = Σ f(x)_i = 1`. If `f(x) ≠ x`, the coordinates can't all increase and can't all decrease — the sums are equal — so there is at least one coordinate `i` with `f(x)_i < x_i` (and at least one with `f(x)_i > x_i`). So at every point, *some* coordinate is being pushed down. That's my color: color `x` by an index `i` with `f(x)_i < x_i` (pick any such `i` if several; note this requires `x_i > 0`, which holds since `f(x)_i ≥ 0` forces `x_i > f(x)_i ≥ 0`).
+
+I have to check this is a legal Sperner labeling, and it's lovely that the simplex's own geometry makes it so. Take the corner `e_l` (all weight on coordinate `l`): there `x_l = 1` and every other `x_i = 0`, and a zero coordinate cannot be decreasing because `f(x)_i ≥ 0 = x_i`, so the only coordinate that can decrease is `l` itself. Corner `e_l` is forced to color `l`, so distinct corners get distinct colors. On a face of `Δⁿ` — the set where some collection of coordinates is pinned to `0` — those zero coordinates again cannot be decreasing, so the color must come from the coordinates that are alive on that face, i.e. from the face's own corners. The face rule holds automatically. The hypothesis "`f` has no fixed point" is what guarantees a decreasing coordinate *exists* at every vertex, so the labeling is even well-defined. The boundary condition I needed in one dimension — `f` can't push the endpoints outward — has reincarnated as the simplex's face structure forcing the colors inward.
+
+So Sperner applies to every triangulation. Refine: take triangulations whose mesh sizes go to `0`. Each one has a rainbow cell, and I choose one. Let the `m`-th chosen rainbow cell have vertices `x^{(m,0)}, …, x^{(m,n)}`, carrying all `n+1` colors. The simplex is compact, so some subsequence of the first vertices `x^{(m,0)}` converges, say to `x*`; and since the chosen cell's diameter is bounded by the mesh, every vertex of that same cell converges to the same `x*` along the subsequence. Now read off what each color was telling me. For each color `i ∈ {0,…,n}`, choose the vertex `v_i^{(m)}` in the rainbow cell colored `i`; then `f(v_i^{(m)})_i < (v_i^{(m)})_i`, and along the subsequence `v_i^{(m)}` also tends to `x*`. Continuity gives `f(x*)_i ≤ x*_i`. This holds for *every* coordinate `i = 0,…,n`:
+
+`f(x*)_i ≤ x*_i` for all `i`.
+
+But `Σ f(x*)_i = Σ x*_i = 1`. A coordinatewise inequality `≤` whose two sides have equal sum can only be equality in every coordinate. So `f(x*)_i = x*_i` for all `i`, i.e. `f(x*) = x*`. That contradicts "no fixed point." Therefore `f` has a fixed point. The rainbow cell — a tiny region where *every* coordinate is simultaneously being pushed down by some nearby point — shrinks, in the limit, to a point where no coordinate can strictly decrease, and a point that nothing pushes off any coordinate is fixed.
+
+That's the simplex. To get the closed ball — and any compact convex body — I just need that the fixed-point property is preserved by homeomorphism, and that each nonempty compact convex set is homeomorphic to a closed ball in its own affine dimension. Suppose `h : Δᵈ → K` is a homeomorphism and `f : K → K` is continuous. Then `h⁻¹ ∘ f ∘ h : Δᵈ → Δᵈ` is continuous, so by what I just proved it has a fixed point `z`: `h⁻¹(f(h(z))) = z`, i.e. `f(h(z)) = h(z)`, so `h(z)` is a fixed point of `f`. The property transfers. If `K` is a single point, this is trivial. Otherwise let `d` be the dimension of the affine hull of `K`, choose `p` in the relative interior of `K`, and for each unit direction `u` in that affine hull let `ρ(u)=max{t≥0 : p+tu∈K}`. Compactness makes the maximum finite, convexity and relative interior make it positive in every direction, and the radial function is continuous. The map `ru ↦ p+rρ(u)u`, with `0≤r≤1`, is a homeomorphism from the closed `d`-ball onto `K`; the closed `d`-ball is homeomorphic to `Δᵈ`. So the closed ball, the cube, the filled triangle, and lower-dimensional compact convex sets all inherit the fixed point in the correct dimension. (And I can re-read the failures: the open ball isn't compact, so the convergent-subsequence step breaks and the limit point can sit outside; the annulus isn't convex/has a hole, so it isn't homeomorphic to a simplex and the rotation counterexample survives.)
+
+Let me also make sure the two routes I found are really the same obstruction wearing two costumes, because I want the parity count to *be* the reason the retraction can't exist, not a separate accident. A fixed-point-free self-map gives a retraction by the ray construction at the top; conversely, if a retraction `r : Dⁿ → Sⁿ⁻¹` existed, the map `x ↦ −r(x)` would be a continuous self-map of the ball with no fixed point, since interior points would be sent to the boundary and boundary points `x` would be sent to `−x`. The homology argument says no retraction because, for `n≥2`, `H_{n−1}` of the sphere is `ℤ` and of the ball is `0`, with reduced `H_0` saying the analogous thing for the interval. The Sperner argument says the no-fixed-point assumption makes the decreasing-coordinate coloring available on every refinement; Sperner forces rainbow cells; compactness turns those cells into a fixed point, contradicting the assumption. I should be precise here: Sperner's odd count is the mod-2 shadow of the degree obstruction, not the full integer-valued degree itself. That shadow is already enough. The identity side is odd, an extension over the filled ball would be even, and the parity cannot change under the allowed refinement and boundary rules. Sperner is the bookkeeping that computes that obstruction by hand, with no homology machinery.
+
+So the causal chain, start to finish: a fixed point is an existence claim I can't solve directly, so I negate it and find that a fixed-point-free continuous self-map of the ball would let me build a continuous retraction of the ball onto its boundary sphere; such a retraction is impossible because the boundary sphere carries a nonzero topological invariant (degree, equivalently `H_{n−1} = ℤ` for `n≥2`, with reduced `H_0` in the interval case) that the filled ball annihilates, so the identity of the sphere can't be extended over the ball; Sperner's lemma gives the elementary mod-2 version of that obstruction, forcing an odd number of fully-colored cells in every Sperner-labeled triangulation by an induction that pushes an `n`-dimensional door-count onto its `(n−1)`-dimensional boundary; and feeding `f` into that machine through the coloring "label `x` by a coordinate `f` decreases" produces, at every mesh, a rainbow cell whose collapse under refinement (by compactness) lands on a point where all coordinates satisfy `f(x*)_i≤x*_i`, hence, by equal sums, all coordinates are equal — a fixed point. Closedness keeps that point from leaking out; convexity (no hole) is what makes the domain homeomorphic, in its affine dimension, to the simplex where the parity lives.
+
+```python
+import numpy as np
+
+# Witness of the combinatorial core: the Sperner labeling that encodes a
+# continuous self-map f of the standard simplex, the forced fully-labeled
+# cell, and the refinement limit that yields a fixed point.
+
+def label_vertex(x, f, tol=0.0):
+    """Sperner color of x in barycentric coords: an index i with f(x)_i < x_i.
+    Exists whenever f(x) != x, since sum(x)=sum(f(x))=1 forbids all coords
+    rising; legal because a zero coordinate can't be the decreasing one, so
+    corners get their own color and face-vertices stay within the face."""
+    fx = f(x)
+    decreasing = np.flatnonzero(fx < x - tol)
+    if len(decreasing) == 0:
+        raise ValueError("label undefined at a fixed point or numerical tie")
+    return int(decreasing[0])            # any decreasing coordinate will do
+
+def is_rainbow(cell_labels, n_colors):
+    """A cell is rainbow iff its n+1 vertices show all n+1 colors."""
+    return len(set(cell_labels)) == n_colors
+
+def fully_labeled_cells(vertices, cells, f):
+    """Return the rainbow cells in a Sperner-labeled triangulation.
+    Sperner's lemma guarantees this list has odd, hence nonzero, length."""
+    labels = [label_vertex(v, f) for v in vertices]
+    n_colors = vertices.shape[1]                       # = n+1 for Delta^n
+    rainbow = []
+    for cell in cells:                                 # cell: indices of n+1 verts
+        if is_rainbow([labels[i] for i in cell], n_colors):
+            rainbow.append(cell)
+    return rainbow
+
+def fixed_point_approximants(f, simplex_vertices, refine, n_refinements):
+    """Return centroids of rainbow cells along a mesh-to-zero refinement.
+    Any convergent subsequence has limit x* with f(x*)=x*: in the limit
+    f(x*)_i <= x*_i for every i, and equal sums force equality."""
+    vertices, cells = simplex_vertices, [tuple(range(len(simplex_vertices)))]
+    centroids = []
+    for _ in range(n_refinements):
+        vertices, cells = refine(vertices, cells)       # mesh -> 0
+        rainbow = fully_labeled_cells(vertices, cells, f)
+        if not rainbow:
+            raise AssertionError("Sperner violated")   # cannot happen
+        cell = rainbow[0]
+        centroids.append(np.mean([vertices[i] for i in cell], axis=0))
+    return centroids
+```

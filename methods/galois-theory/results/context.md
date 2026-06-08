@@ -1,0 +1,78 @@
+# Context: the conditions for solubility of equations by radicals
+
+## Research question
+
+Given a polynomial equation
+$$x^n + a_1 x^{n-1} + a_2 x^{n-2} + \cdots + a_n = 0,$$
+can its roots always be written as a *formula in radicals* — a finite expression built from the coefficients $a_i$ using addition, subtraction, multiplication, division, and the extraction of $m$-th roots? For $n=2,3,4$ the answer is a famous yes. For $n=5$ it has been open for two and a half centuries. The precise question is therefore twofold: (i) **for which individual equations** does such a formula exist, and (ii) **is there a single general formula** valid for every equation of degree $n$, the way the quadratic formula handles every quadratic?
+
+What a real solution would have to achieve is more than a yes/no verdict on the quintic. The lower-degree solutions were each found by a different clever substitution; nobody had a *reason* why the trick exists for $n\le 4$ and seems to fail for $n=5$. A satisfying answer must expose the structural feature of an equation that decides solvability — an invariant attached to the equation that one can inspect, that explains the classical successes as special cases, and that tells you in advance whether the search for a radical formula is hopeless.
+
+## Background
+
+**The classical solutions.** The quadratic was solved in antiquity by completing the square. The cubic $x^3+px+q=0$ was solved by del Ferro, Tartaglia, and Cardano (*Ars Magna*, 1545): set $x=u+v$, impose $3uv=-p$, and $u^3,v^3$ are the two roots of a quadratic (the *resolvent*), giving
+$$x = \sqrt[3]{-\tfrac q2 + \sqrt{\tfrac{q^2}4+\tfrac{p^3}{27}}} + \sqrt[3]{-\tfrac q2 - \sqrt{\tfrac{q^2}4+\tfrac{p^3}{27}}}.$$
+The quartic was solved by Ferrari (published by Cardano): introduce a parameter, complete a square on both sides, and the condition for the right-hand side to be a perfect square is a *resolvent cubic*. In each case a higher equation is solved by descending through an auxiliary equation of lower degree.
+
+**Lagrange's unification (1770–71).** Lagrange asked what all these tricks have in common. His answer: each works by forming a function of the roots whose values, as the roots are permuted, are *fewer than $n!$*, and which therefore satisfies an equation of that lower degree. For the cubic with roots $x_1,x_2,x_3$ and $\omega$ a primitive cube root of unity, the *Lagrange resolvent*
+$$t = (x_1 + \omega x_2 + \omega^2 x_3)^3$$
+takes only $2$ distinct values as the $6$ permutations of the three roots are applied (the even permutations fix it, the odd ones swap it with its partner), so $t$ is a root of a quadratic — the resolvent quadratic. The quartic similarly yields a function taking $3$ values, hence a resolvent cubic. The pattern that makes a degree drop is a function whose stabilizer under permutation is large. When Lagrange applied the same construction to the quintic, the natural resolvent function took $6$ distinct values: the auxiliary equation has degree $6 > 5$, higher than the one being solved. The method does not reduce the problem; it inflates it. This was the first structural hint that the quintic might be different in kind, and it located the obstruction in the *permutations of the roots* and the number of values a function takes under them.
+
+**Permutations of the roots as the carrier of the difficulty.** Lagrange's resolvents made the count "how many values does a function of the roots take under permutations" the governing quantity. Cauchy (1815) developed the calculus of permutations (substitutions) systematically — composition, cycles, the result that the number of distinct values of a function of $n$ letters divides $n!$ and obeys strong divisibility constraints. The state of the art was thus: the roots themselves are inaccessible, but the *symmetry among them* is a finite combinatorial object one can compute with, and the classical solvability of $n\le 4$ is somehow a fact about that symmetry.
+
+**The notion of "rational" is relative to what is adjoined.** A polynomial is reducible if it factors over the coefficient field; irreducible otherwise. But reducibility depends on which quantities are treated as known. Adjoining a quantity (declaring it known) can make an irreducible polynomial reducible — for example, when a root of one of Gauss's cyclotomic auxiliary equations $\frac{x^n-1}{x-1}=0$ ($n$ prime) is adjoined, that equation splits into factors. So "rational" means *expressible as a rational function of the coefficients together with whatever has been adjoined*, and solving an equation is precisely the act of enlarging the field of known quantities, one radical at a time, until the roots themselves become rational. Gauss (1801) had already shown that the cyclotomic equation is always solvable by radicals, by exploiting the cyclic structure of the powers of a primitive root.
+
+## Baselines
+
+**Cardano–Ferrari resolvent method (cubic, quartic).** Core idea: descend to a lower-degree auxiliary equation by forming an algebraic combination of the roots that the symmetric functions can reach. Gap: it is a collection of degree-specific tricks with no statement of when such a descent is possible. It gives no invariant and no obstruction; it cannot say why the quintic resists.
+
+**Lagrange resolvents (1770).** Core idea: every classical solution is a resolvent whose degree equals the number of distinct values of a root-function under permutation; relate solvability to permutation groups of the roots. The actual mechanism: choose $\rho = x_1 + \omega x_2 + \cdots + \omega^{n-1} x_n$ with $\omega$ a primitive $n$-th root of unity; its $n$-th power has a stabilizer in $S_n$, and the orbit size is the resolvent degree. Gap: Lagrange found that for $n=5$ the resolvent has degree $6$ and concluded only that *his* method failed — he could not prove that *no* method succeeds. He had the right object (permutations of roots) but no criterion separating solvable from unsolvable, and no proof of impossibility.
+
+**Ruffini's impossibility argument (1799).** Core idea: assuming a radical solution, study the permutations that the radical expression admits, and derive a contradiction for $n=5$; he effectively worked with what we would now recognize as the action of permutations on the tower of radical extensions, and used divisibility properties of the order of permutation groups. Gap: the proof ran to roughly 500 pages, was largely ignored, and contained a genuine hole — Ruffini assumed without proof that the auxiliary radicals in a solution can be replaced by natural irrationalities attached to the roots, with the needed roots of unity included. That reduction was not established, so the argument was incomplete.
+
+**Abel's impossibility proof (1824–26).** Core idea: suppose the general quintic is solvable; build the field by adjoining radicals of prime exponent one at a time; at the step where the polynomial first becomes reducible, the adjoined radical $\rho=\sqrt[p]{\eta}$ must have relative degree exactly $p$ over the previous field (else it would not lower the degree), and once the relevant roots of unity are present its conjugates are $\rho,\varepsilon\rho,\varepsilon^2\rho,\dots$; tracking the resulting factorizations and the permutations they impose on the five roots produces a contradiction. Abel also closed Ruffini's gap by proving the natural-irrationalities reduction: the auxiliary algebraic quantities can be taken from the root field together with the needed roots of unity. The actual mechanism is a careful induction over the radical tower with prime-exponent steps and the conjugate-radical bookkeeping. Gap: Abel proves the *general* quintic unsolvable, but his argument is about the form of radical expressions and does not yield, for an *arbitrary given* equation, a computable invariant that decides solvability; nor does it explain in one stroke why $n\le 4$ succeed. It answers (ii) for the general equation but not (i), and supplies no unifying object.
+
+**Gauss's cyclotomic solution (1801).** Core idea: the equation $\frac{x^p-1}{x-1}=0$ for prime $p$ is solvable by radicals because the $p-1$ primitive roots are the powers of one of them, and their permutation structure is cyclic of order $p-1$; nesting "periods" of the cyclic structure gives the radical formula. Gap: it is one beautiful solvable family, with the cyclic structure exploited by hand; it is not a general theory, but it is the prototype that a *cyclic* layer of symmetry corresponds to a single radical extraction.
+
+## Evaluation settings
+
+The natural objects against which a theory of solubility would be tested are the classical worked cases and the resistant ones, all of which predate any general criterion: the general quadratic, cubic, and quartic (which must come out *solvable*, recovering the Cardano–Ferrari formulas as special cases); the general quintic and higher (the standing open challenge); Gauss's cyclotomic equations $\frac{x^p-1}{x-1}=0$, $p$ prime (known solvable, the cyclic prototype); the binomial equations $x^n - a = 0$ (solvable once roots of unity are available); and the modular equations of elliptic-function theory (a hard family of specific equations whose solvability is in question). The yardsticks are: does the criterion certify each classical solution as solvable, does it draw the line at degree $5$, and can it decide an *individual* equation (for instance one of prime degree) rather than only the generic one. The arithmetic tools available for the test are factorization over $\mathbb{Q}$, the Eisenstein-type irreducibility checks, root-counting via the intermediate value theorem to locate real versus complex roots, and Cauchy's permutation-divisibility constraints.
+
+## Code framework
+
+```
+# Inputs and primitives available at the start:
+#   - a base field F of currently-known quantities: rational functions of the
+#     coefficients together with adjoined quantities.
+#   - a polynomial f(x) in F[x], assumed without repeated roots.
+#   - permutations of the roots (substitutions, after Lagrange/Cauchy); the count of
+#     distinct values a function of the roots takes under them divides n!.
+#   - Gauss: x^p - 1 and binomial x^n - a are handled once nth roots of unity are present.
+
+def base_field_of_known_quantities(coeffs, adjoined):
+    # rational functions of the coefficients and the adjoined quantities
+    pass  # the relative notion of "rational"
+
+def invariant_attached_to_equation(f, F):
+    # TODO: the object — defined purely from f and F — that controls solvability.
+    #       Lagrange points at permutations of the roots.
+    pass
+
+def what_solving_does_to_the_invariant(invariant, adjoin_prime_radical):
+    # TODO: how the invariant changes when one prime-degree radical is adjoined.
+    pass
+
+def criterion_for_solvability_by_radicals(f, F):
+    # TODO: the necessary-and-sufficient condition, stated on the invariant,
+    #       that decides whether f is solvable by radicals.
+    pass
+
+def verdict_for_the_general_quintic():
+    # TODO: apply the criterion to the general degree-5 equation.
+    pass
+
+# A single witness equation, to be checked once the criterion exists:
+def witness_quintic():
+    # an explicit degree-5 polynomial over Q to test the verdict against.
+    pass
+```

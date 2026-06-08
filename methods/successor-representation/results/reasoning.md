@@ -1,0 +1,109 @@
+Let me start from where it actually hurts. I have a temporal-difference learner — Sutton's method — estimating the long-run discounted return of each state of a Markov chain by bootstrapping: it pushes the estimate at the current state toward the reward plus the discounted estimate at the next state, and over many transitions that consistency propagates value backward through the chain. It works. It even has a convergence proof for the linear case, when each state is represented by a feature vector and the value is a weighted sum of features. But it is slow, and I keep coming back to the same nagging fact: how slow it is depends almost entirely on what features I hand it. The learning rule is fixed; the representation is the free choice; and nobody can tell me what the representation should be. So that is the real problem — not "how do I do TD," but "what is the right way to describe a state to a TD learner."
+
+Why does the representation matter so much? Because in the linear case, choosing features *is* choosing the approximation scheme, and the whole power of a linear scheme comes from generalization: when I update the weights after visiting one state, every other state whose feature vector overlaps with this one's also has its value estimate moved. If the overlap is well-chosen, one experience teaches me about many states and learning is fast. If it is ill-chosen, I am either learning a lookup table one cell at a time, or worse, I am smearing value across states that should not share it. So the question sharpens: which states *should* share value, i.e. which states should have similar feature vectors?
+
+For an ordinary, static prediction problem the received wisdom is clear — distributed representations win, as long as the distribution matches the task: points that are near in feature space should have near solutions. The trouble is the word "near." Here the task is not static. The value of a state is not a property of the state in isolation; it is a discounted sum over everything that happens *after* I leave it. So if I want value to generalize correctly, the geometry I impose has to respect the temporal future, not some spatial layout I picked in advance.
+
+Take the value of a state. Under a fixed policy in the absorbing-chain setup, it satisfies the Bellman consistency the TD learner is enforcing: the overall expected return of a state is its immediate expected return plus the overall returns of the states it can transition to. Stack the immediate expected returns into a vector h, stack the values into a vector, and let Q be the transition matrix among the non-absorbing states. Then the value vector is
+
+  h + Qh + Q²h + Q³h + …
+
+— immediate return, plus what I get one step out, plus two steps out, and so on. Because Q is substochastic (probability leaks out to the absorbing states), this geometric series converges, and it sums to
+
+  (I − Q)⁻¹ h.
+
+So the value of a state is a *biased sum of the values of its successors* — the bias being exactly how often, and how far in the future, each successor is reached. Stare at that. The estimated value of state *i* is partly the estimated values of the states that follow *i*. For a linear approximator, the only way the weights can make value(i) close to a blend of value(j) for *i*'s successors *j*, automatically, is if the *feature vector* of *i* already resembles the feature vectors of those successors — sits a small Euclidean distance from them, with the degree of resemblance set by how strongly *i* leads to each *j*. That is what "near" has to mean. Two states should have similar features to exactly the extent that they have similar futures.
+
+So now I know what I want from a representation, stated as a constraint rather than a recipe: the feature vector of a state should encode *which states it tends to lead to, and how often, weighted by how soon*. Let me try to write down the most literal possible object satisfying that. Start at state *i* and ask, for every other state *j*, how much future occupancy of *j* do I expect — counting a visit now as full weight and visits further out as discounted? One step: the probability of being at *j* immediately, which is the *ij* entry of Q. Two steps: the *ij* entry of Q². And the current step itself, the *ij* entry of the identity. Sum it:
+
+  [I]_ij + [Q]_ij + [Q²]_ij + … = [(I − Q)⁻¹]_ij.
+
+So the vector I want to represent state *i* with is just *row i of (I − Q)⁻¹* — the expected future occupancy of every state, starting from *i*. Call it the successor representation of *i*. A state is described by the states that succeed it.
+
+And here is the thing that makes me sit up. The value vector was (I − Q)⁻¹ h. The representation I just derived is (I − Q)⁻¹ itself. So if I let M be the matrix whose row *i* is the successor representation of state *i*, then M = (I − Q)⁻¹, and the value vector is
+
+  value = M h.
+
+Value is the successor representation times the immediate-reward vector. The very matrix that I want as my feature representation is the matrix that turns immediate reward into long-run value. That is not a coincidence I engineered; it fell out of writing down "expected future occupancy." Let me write it elementwise, because I want to feel it: the value of state *s* is the sum over all states *s′* of (expected discounted future occupancy of *s′* starting from *s*) times (immediate expected reward at *s′*). Value factorizes into a part that is *purely about the dynamics* — where do I end up and how often — and a part that is *purely about reward* — what is each place worth. The successor representation is the dynamics half; the reward vector is the reward half; and the value is their product.
+
+Let me push on what that buys me with the linear learner, concretely, because I suspect it is dramatic. Suppose I really do use M as my features — each state's feature vector is its row of M. What are the optimal weights w* — the ones making the linear approximation exactly equal to the true value? In the linear scheme the predicted value at a state is its feature row dotted with w, so the predicted value vector is M w*. I want that to equal the true value, which I just said is M h. So I need M w* = M h, and since M = (I−Q)⁻¹ is invertible, the solution is simply
+
+  w* = h.
+
+The optimal weights are the immediate expected returns. That is striking. All of the temporal structure — every Q, Q², the entire discounted future — has been *absorbed into the features*, leaving the weights to carry nothing but the immediate, one-step, memoryless reward, which is insensitive to all the temporal dependencies that come from transitions among non-absorbing states. The hard part of the problem, the part that made TD slow, has been compiled into the representation. The weights left to learn are the easy, local part.
+
+I should check that this really kills the slowness, not just relocate it. Why was TD slow in the first place? Because the transition matrix shows up in the update — each weight change has to thread value backward through Q, step by step, and that propagation is what takes many sweeps. I have to be careful with notation here. The feature matrix I just derived has rows as state features, so its prediction is M w. Sutton's batch algebra collects the state feature vectors as columns in a matrix X, so the same predicted-value vector is Xᵀw̄; for my row-feature matrix M, that column-feature X is Mᵀ. In Sutton's column-feature notation, the mean update after each full pass to absorption is
+
+  w̄_{n+1} = w̄_n + α X D (h + Q Xᵀ w̄_n − Xᵀ w̄_n),
+
+where α is the learning rate and D is the diagonal matrix of average visit counts per state per sequence. Read off the value-space version: writing the predicted-value error as Xᵀw̄ − r̄, the recursion becomes
+
+  (Xᵀ w̄_{n+1} − r̄) = [I − α Xᵀ X D (I − Q)] (Xᵀ w̄_n − r̄).
+
+There it is — the (I − Q) sitting in the contraction. The temporal coupling is baked into how fast the error shrinks. Now use the successor feature columns X̄, whose transpose is the row occupancy matrix M = (I − Q)⁻¹. The predicted values are still X̄ᵀw̄ = M w̄, and the parenthesis in the weight update becomes h + Q M w̄ − M w̄ = h − (I − Q)M w̄ = h − w̄. So the update collapses, in Sutton's column notation, to
+
+  w̄_{n+1} = w̄_n + α X̄ D (h − w̄_n),  i.e.  (w̄_{n+1} − h) = (I − α X̄ D)(w̄_n − h).
+
+The (I − Q) is gone. Q has *disappeared from the update equation*, exactly as it would for a non-temporal task that had no transition matrix at all. If I translate the same line back to my row-feature matrix, X̄ is Mᵀ, but the prediction convention remains M w and the fixed point remains w = h. The recursion now just relaxes the weights toward h directly — toward the immediate returns — with no temporal threading left to do. And since X̄, equivalently M, is invertible, Sutton's convergence guarantee carries straight over: the predicted values still converge to the true returns, so the weights still converge to h. I would expect the variance of these estimates to be lower, too, than for a representation that keeps the temporal component in the weights, like the punctate identity — precisely because that component has been removed from the thing being estimated noisily and put into the fixed features.
+
+Now the obvious objection, and I have to take it seriously or this is empty. I have a representation that makes value learning trivial — but the representation itself is (I − Q)⁻¹, and if I do not know the dynamics, I do not have Q, so I cannot just write it down. Have I actually solved anything, or have I moved the whole difficulty into "now go learn this big matrix of future occupancies"? It looks like I have converted one temporal prediction problem — predict future reward — into a whole *set* of temporal prediction problems — predict the future occupancy of every state. That seems like a bad trade.
+
+Except — look again at what an occupancy is. The expected future occupancy of state *j* starting from *i* is itself a discounted sum over time: how often, discounted, will I be at *j* in the future. That is structurally *the same kind of object* as a value — a discounted-sum-over-the-future prediction. And I already have a beautiful machine for learning discounted-sum-over-the-future predictions from experience without knowing the dynamics: temporal-difference learning. So I do not need any new machinery at all. I take the TD update I already have, and instead of feeding it the reward signal, I feed it the *occupancy indicator*. Represent each state punctately, one indicator per state. Starting from *i* and following the chain, the running prediction of how often the indicator for *j* is on, for all future steps, is exactly the expected future occupancy of *j* from *i* — exactly the successor representation entry I want. So I learn it by the same bootstrapping: push the current state's occupancy-prediction toward the (just-observed indicator plus discounted) occupancy-prediction of the next state.
+
+Let me write that update with reward replaced by occupancy. Let M̂ be my estimate of the successor representation, so M̂(s, ·) is the predicted future-occupancy vector for state *s* — one number for every state. On a transition from sₜ to sₜ₊₁, the TD target for row sₜ is: a one-hot indicator e(sₜ) marking "I am at sₜ right now," plus the discounted prediction from the next state, γ M̂(sₜ₊₁, ·). The error is
+
+  δ(·) = e(sₜ) + γ M̂(sₜ₊₁, ·) − M̂(sₜ, ·),
+
+and the update is M̂(sₜ, ·) ← M̂(sₜ, ·) + α δ(·). This is TD(0) verbatim — the same form as the value update — with one difference that matters: the error is *vector-valued*. There is one prediction error per successor state, because I am predicting a whole occupancy vector at once, not a single scalar return. That is the whole cost of the trick: instead of one bootstrapped scalar I bootstrap a vector of them. No new algorithm, no model, no opaque hidden layer learned by backpropagation; the same temporal-difference engine, pointed at occupancies.
+
+Now I want to state the discount cleanly, because so far convergence has come from absorption rather than from an explicit control discount. For control I want to weigh future returns exponentially less the later they arrive — a discount factor γ. The occupancy in my representation should be weighed down by exactly the same amount: a visit *t* steps in the future counts as γ^t. So with P the full stochastic transition matrix of the policy and γ in [0,1), the successor representation is
+
+  M = I + γP + γ²P² + γ³P³ + … = (I − γP)⁻¹,
+
+and entrywise M(s, s′) = the expected sum over future time of γ^t times the indicator that I am at s′ at time t, starting from s — the expected discounted future occupancy of s′ from s. The value is
+
+  V(s) = Σ_{s′} M(s, s′) R(s′),  i.e.  V = M R,
+
+with R the immediate expected reward at each state. Same factorization as before, now with γ explicit. (I − γP)⁻¹ is exactly the operator that maps reward to value — Σ γ^t P^t — so the successor representation is nothing but that operator exposed as a feature matrix. The discounting in the representation and the discounting in the value are forced to be the same; they are the same geometric series read two ways.
+
+Let me make sure I believe the navigation intuition that started all this, the barrier. Coarse coding — a CMAC tiling — gives two cells similar features when they are close in the grid metric. Over an open maze that is fine, because grid-near cells really are similar distances from the goal. But two cells on opposite sides of a barrier are grid-near and share CMAC features, while their actual distances-to-goal are wildly different because you have to walk around. The fixed spatial metric generalizes between them and poisons learning right there. Now picture the successor representation of a cell, learned by letting the agent wander the maze with no goal at all. Its occupancy vector decays exponentially outward from the cell in a roughly spatial way — like a coarse-coding bump — *except* across the barrier, where the agent simply cannot reach the far side without a long detour, so the predicted future occupancy of cells on the far side is tiny. The representation bends around the barrier on its own. Two cells separated by the barrier now have *dissimilar* features even though they are grid-near, because their futures genuinely diverge. The generalization is temporal and task-derived, not metric and a-priori. That is precisely the fix the barrier demanded, and it required no hand-designed metric — only experience of the dynamics.
+
+And notice the wandering-with-no-goal part is not a footnote; it is a real advantage. The successor representation depends only on the policy and the dynamics, not on the reward. So I can learn the entire predictive map *before any reward is ever delivered* — latent learning. The agent explores, builds M, and then the moment a goal appears it only has to learn the local reward vector R and read off value as M R. The representation does not have to be relearned when the reward shows up, because it never knew about the reward to begin with.
+
+That tradeoff is the real character of this thing, and I want to place it against the alternatives honestly. At one extreme sits a model-free value learner with features tied directly to states — punctate, or coarse coding. Cheap to use, but value is bound to states, so when the reward changes anywhere, the bootstrapped estimates have to be propagated all over again; and the generalization is either none (punctate) or wrong-where-it-matters (fixed metric). At the other extreme sits learning a full world model — the complete transition matrix or state-action map — and planning with it. Maximally flexible: it is a veridical, goal-independent map, and a local change to the dynamics is a local change to the model, which you can immediately re-plan with. But a full model is the most expensive object to learn and to compute value from, and you still have to iterate value out of it over the whole space every time something changes.
+
+The successor representation sits *between* these. It is more than model-free-with-state-features, because it has factored out the temporal structure into M, so value computation is one product M R and a reward change propagates *instantly* — change R, recompute V = M R, done, with no re-running of any temporal learning, because the reward was never entangled with the dynamics. And it is less than a full model, deliberately: it does not store the one-step transition structure, only the *compiled* discounted visitation counts. That is its weakness, and I should name it precisely. Because M is a compiled form of the transition statistics — it has thrown away "state A goes to state B with such-and-such probability" and kept only "B will tend to be visited, eventually, this much" — a change to the *dynamics* is not local in M. If the barrier moves, the future-occupancy pattern of many cells changes at once, and M has to be relearned, slowly, by the TD-on-occupancies updates. A reward change is free; a transition change is costly. This is the exact dual of the value function itself, which is a compiled form of the *reward* statistics: there, a reward change is costly and you must relearn V, while here we have arranged for reward changes to be cheap by holding the dynamics separately. The compilation is what buys the efficiency, and the same compilation is what costs the flexibility.
+
+I can see how the related attempts line up against this. Anderson's backprop-through-a-TD-network also learns a hidden representation tuned for TD prediction, but by a completely general technique that makes no explicit reference to states' successors — it has to *discover* that successor-similarity is the right structure, blindly. Here I have *derived* that the right structure is successor occupancy and built it in directly. Sutton and Pinette's recurrent net actually computes the same future-occupancy vector — drive a one-hot state through the transition matrix in a settling recurrence and the activations converge to (I − Q)⁻¹ applied to that state — but they use it by augmenting Q so the recurrence predicts return directly, and because the prediction is the fixed point of an iterated recurrence, it is extremely sensitive to errors in the estimated Q. Storing M explicitly as a representation, and learning it by direct TD rather than by an unrolled recurrence, avoids that fragility, at the price that I cannot instantly re-derive M from a small change to the model the way an explicit Q would let me. And the full-model schemes (Dyna, active-exploration planners) are simply buying more flexibility than I am, for more cost; in fact a learned model could be used *on top* of the successor representation to refine it. The successor representation is the point on the spectrum where you pay the model-free price and get a good chunk of the model-based flexibility — specifically, all of the flexibility that is about reward and none of the flexibility that is about dynamics.
+
+So the whole chain, said once more in causal order. TD value learning is slow, and its speed is set by the representation, because value is a discounted sum over a state's futures and a linear learner can only exploit that if a state's features resemble its successors' features. The most literal representation with that property is the expected discounted future occupancy of every state — row of (I − γP)⁻¹ — which I name the successor representation M. The very same matrix that I want as features is the operator mapping reward to value, so value factorizes as V = M R, separating dynamics from reward; and under this representation the optimal weights are just the immediate reward, the entire temporal component having been compiled into the features, so Q drops out of the learning update and value estimation becomes a fast, plausibly lower-variance problem. M itself is unknown when the dynamics are unknown, but each occupancy is a discounted-sum-over-the-future just like a value, so M is learnable from raw experience by the very same temporal-difference rule, with the reward target replaced by a one-hot occupancy target and a vector-valued error. Because M depends only on dynamics and R only on reward, the map can be learned latently before any reward, reward changes propagate to value for free, and the method lands cleanly between model-free value learning and full model-based planning.
+
+```python
+import numpy as np
+
+# The successor representation in closed form, when the dynamics ARE known:
+#   M(s, s') = E[ sum_t gamma^t * 1(s_t = s') | s_0 = s ] = row s of (I - gamma P)^-1.
+# This is the operator that maps reward to value, exposed as a feature matrix.
+def successor_representation(P, gamma):
+    n = P.shape[0]
+    return np.linalg.inv(np.eye(n) - gamma * P)        # M = (I - gamma P)^-1
+
+# Value factorizes: dynamics (M) times reward (R). One matvec; no temporal sweep.
+def value(M, R):
+    return M @ R                                       # V = M R
+
+# When the dynamics are UNKNOWN: learn M from experience by TD(0), feeding the
+# occupancy indicator where the value learner fed reward. Same bootstrap shape;
+# the only change is the error is vector-valued -- one prediction error per
+# successor state -- because each row predicts a whole occupancy vector.
+def td_learn_sr(sample_next_state, n_states, gamma, alpha, n_steps, rng):
+    M_hat = np.zeros((n_states, n_states))
+    s = rng.integers(n_states)
+    for _ in range(n_steps):
+        s_next = sample_next_state(s)
+        onehot = np.zeros(n_states); onehot[s] = 1.0    # "I am at s right now"
+        delta = onehot + gamma * M_hat[s_next] - M_hat[s]   # vector-valued TD error
+        M_hat[s] += alpha * delta                       # TD(0), occupancy in place of reward
+        s = s_next
+    return M_hat
+```

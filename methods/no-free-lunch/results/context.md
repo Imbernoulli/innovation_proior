@@ -1,0 +1,159 @@
+# Context: matching algorithms to problems in black-box search and learning
+
+## Research question
+
+By the mid-1990s there is an abundance of general-purpose "black-box" optimizers — evolutionary
+algorithms, simulated annealing, hill climbing, tabu search — and, in parallel, an abundance of supervised
+learning algorithms — decision trees, nearest neighbors, neural nets, Bayesian methods. A practitioner
+facing a new problem must pick one. The folklore is that some of these are simply *better*: that a
+well-designed evolutionary algorithm beats random search "on average," that hill climbing beats hill
+descending when you want a maximum, that simpler hypotheses (Occam's razor) generalize better.
+
+The precise question is: **is any of this true with no assumption about the problem?** Given two search
+algorithms a₁ and a₂, how does the set of cost functions on which a₁ beats a₂ compare to the set on which
+a₂ beats a₁? Given two learning algorithms, is there an *a priori* reason — a reason that holds before you
+say anything about which problems are likely — to prefer one over the other? If a solution to this question
+existed, it would have to either (i) exhibit an algorithm that is better than another averaged over *all*
+problems, or (ii) prove that no such algorithm can exist and therefore that every claim of superiority is
+secretly a claim about the problem distribution. The pain point is that the whole field benchmarks
+algorithms on a handful of test functions and then generalizes — and nobody has a formal statement of what,
+if anything, such a benchmark licenses you to conclude about other problems.
+
+## Background
+
+**The problem of induction (Hume, 1748).** Every inference from observed data to an unobserved case rests on
+a Uniformity Principle: that "instances, of which we have had no experience, must resemble those, of which
+we have had experience." Hume's dilemma shows this principle cannot be justified. A demonstrative (a priori)
+argument fails because the negation involves no contradiction — "it implies no contradiction that the course
+of nature may change, and that an object seemingly like those which we have experienced, may be attended
+with different or contrary effects." A probable (empirical) argument fails because it already assumes the
+principle — it "proceed[s] upon the supposition, that the future will be conformable to the past," which is
+"taking that for granted, which is the very point in question." So there is no assumption-free justification
+for generalizing from a training set to new points. This is a philosophical statement; it carries no
+quantitative claim about specific algorithms.
+
+**Conservation of generalization performance (Schaffer, 1994).** Define a learner's generalization
+performance GP as its test accuracy minus the accuracy of random guessing — positive when it beats chance,
+negative when it does worse. Schaffer argues that summed (averaged) over *all* possible learning tasks,
+total GP is zero: "positive performance in some learning situations must be offset by an equal degree of
+negative performance in others," so "no learning bias can outperform any other bias over the space of all
+possible learning tasks." The immediate consequence is that a simplicity bias like Occam's razor cannot help
+on all problems; whatever it gains on a subset it pays for on the complement. This is stated for
+classification accuracy relative to chance; it is a conservation *intuition* rather than a statement about
+the full distribution P(c) of costs, it does not give a geometry or a per-problem (minimax) refinement, and
+its airtightness depends on cleanly separating the part of the error that is mere memorization of the
+training set from the part that is genuine generalization.
+
+**Off-training-set error.** Generalization is about test points the learner has *not* seen. In-sample or
+IID-test error mixes two different things: how well the learner reproduces the training labels (which can be
+pure memorization) and how well it predicts unseen inputs (the only thing induction is about). A clean
+statement about "distinctions between learners" must therefore be made on **off-training-set (OTS)** error —
+the average loss restricted to inputs q outside the training set's input list d_X. With a noise-free target
+f, a hypothesis h, a loss function L(h(q), f(q)), and a test point q ∉ d_X, OTS error is
+Σ_{q∉d_X} L(h(q), f(q)) π(q) for some weighting π over test points. The zero-one ("homogeneous") loss — one
+unit per disagreement — is the cleanest case.
+
+**Bias and variance.** The standard decomposition of squared-error risk is
+E[(y − ĥ)²] = bias² + variance + noise. A learner trades the two: a rigid, simple learner has high bias and
+low variance; a flexible learner the reverse. Averaging several deterministic learners reduces variance
+without changing bias, by the convexity identity (z − [α+β]/2)² ≤ ½(z−α)² + ½(z−β)². But this is a trade-off
+*within an assumed problem distribution*; it does not say the trade is conserved across all problems, and it
+does not say the average beats any single fixed learner on the off-training-set zero-one problem.
+
+**The prevailing wisdom and its diagnostic gap.** Practitioners "match" algorithms to problems all the time,
+but on a heuristic basis; benchmark papers report an algorithm winning on a few sample functions and
+implicitly generalize. The diagnostic fact that sets up the whole investigation is well known: the amount of
+revisiting an algorithm does (re-evaluating points it has already seen) is a complicated, algorithm-and-
+problem-dependent quantity that distorts oracle-based performance counts and cannot simply be filtered out.
+No one has a model of "the underlying mathematical skeleton of optimization theory" — the structure that
+holds before any probability distribution over particular problems is imposed.
+
+## Baselines
+
+The prior methods a no-assumption result would be measured against (and would reframe):
+
+- **Random search.** Sample distinct points of 𝒳 uniformly without replacement, keep the best. The trivial
+  baseline everyone assumes is beatable. Its expected best-so-far depends only on the cost histogram of f,
+  not on any cleverness. Gap: there is no proof that any algorithm beats it averaged over all problems.
+
+- **Hill climbing / hill descending.** From the current point, examine neighbors and move to the best (lowest
+  for descending, highest for climbing); iterate, with random restarts to escape local optima. Exploits
+  local cost structure. Gap: its advantage is asserted relative to "typical" landscapes, never relative to
+  the set of all landscapes.
+
+- **Simulated annealing (Kirkpatrick et al.).** A Metropolis walk with a cooling temperature, accepting
+  uphill moves with probability ~exp(−Δ/T). Mimics statistical mechanics. Gap: same — its performance is
+  argued on problems with exploitable structure, with no assumption-free baseline.
+
+- **Evolutionary algorithms.** Maintain a population, select by fitness, recombine and mutate. Mimic natural
+  selection. The most popular black-box optimizers of the period. Gap: hundreds of variants, each claimed
+  superior on benchmark suites, with no theory of what the benchmarks imply for other problems.
+
+- **Tabu search (Glover).** Hill climbing with a memory of recently visited points, forbidden for a while, to
+  avoid cycling and revisiting. Relevant because it makes explicit that *remembering where you have been* is
+  separable from the search policy.
+
+- **Branch and bound.** Uses the cost structure of partial solutions to prune. Deliberately outside the
+  black-box class, because it relies on knowing more than the oracle returns.
+
+- **Cross-validation and Occam's razor (as learning baselines).** Choose among candidate learners by held-out
+  performance; prefer simpler hypotheses. The default model-selection and inductive-bias heuristics. Gap:
+  neither has an assumption-free justification — it is unproven that choosing the *best*-out-of-sample
+  candidate beats choosing the *worst* one, once you average over all targets.
+
+## Evaluation settings
+
+The natural yardsticks that exist at the time. For optimization: a finite search space 𝒳 and a finite set of
+cost values 𝒴 (as on any digital computer, 32- or 64-bit values), a cost function ("objective"/"energy")
+f: 𝒳 → 𝒴, an algorithm run for m distinct function evaluations, and a performance measure read off the
+ordered sequence of cost values seen — typically the best-so-far min_i d_m^y(i), or how fast the best-so-far
+drops, or how the search tracks a moving optimum for time-varying problems. The oracle model: count function
+evaluations (here, *distinct* evaluations) rather than wall-clock time. For learning: a finite input space
+𝒳 and output space 𝒴, a target f (possibly a noisy input–output relation φ), a training set d of m examples,
+a hypothesis h, a loss function L (zero-one the canonical homogeneous case), and the **off-training-set**
+error as the metric — average loss over test inputs q ∉ d_X. The space of all problems is
+ℱ = 𝒴^𝒳, of size |𝒴|^|𝒳|. The benchmark function suites and standard datasets are the existing comparison
+substrate; the protocol question — what a comparison on a subset of problems licenses about the rest — is
+exactly what is unresolved.
+
+## Code framework
+
+A small scaffold for measuring black-box search needs only a finite domain and codomain, a way to
+evaluate a problem, a way to run an algorithm for m distinct steps and record the cost sequence, a
+performance read-off, and the ability to enumerate the space of all problems for small sizes. The empty slot
+is the *quantity that summarizes algorithm-versus-problem behavior averaged over all problems* — the
+object whose dependence on the algorithm is the open question.
+
+```python
+import itertools
+
+# --- existing primitives ---------------------------------------------------
+def all_cost_functions(X, Y):
+    """Enumerate every f: X -> Y. There are |Y|^|X| of them."""
+    for values in itertools.product(Y, repeat=len(X)):
+        yield dict(zip(X, values))
+
+def run(algorithm, f, m):
+    """Run a black-box algorithm for m DISTINCT evaluations of f.
+    A sample is the ordered list of (x, f(x)) at distinct visited points x;
+    the algorithm maps the current sample to a new, previously-unvisited x."""
+    sample = []                      # ordered list of (x, y) at distinct x
+    seen = set()
+    for _ in range(m):
+        x = algorithm(sample)        # next point, must be unvisited
+        assert x not in seen, "algorithm must return an unvisited point"
+        seen.add(x)
+        sample.append((x, f[x]))
+    return [y for (_, y) in sample]  # the cost sequence d_m^y
+
+def performance(cost_sequence):
+    """A read-off of the sample, e.g. best (minimum) cost so far."""
+    return min(cost_sequence)
+
+# --- the open quantity -----------------------------------------------------
+def summed_over_all_problems(algorithm, X, Y, m, observed):
+    """Sum over ALL cost functions f of P(observed cost-sequence | f, m, algorithm).
+    The open question: does this depend on `algorithm` at all?"""
+    # TODO: does this sum depend on `algorithm`? That is the open question.
+    pass
+```

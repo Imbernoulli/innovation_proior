@@ -1,0 +1,89 @@
+# Context: continuous self-maps and the search for an unavoidable fixed point
+
+## Research question
+
+The question is deceptively concrete. Take a region of space with no holes — a closed disk, a solid ball, a filled triangle, a cube, any nonempty compact convex body — and stir it: apply *any* continuous map of the body into itself. Must some point come back to exactly where it started? In symbols: is it true that for every continuous `f : X → X`, with `X` a closed ball (or nonempty compact convex set) in ℝⁿ, there exists `x*` with `f(x*) = x*`?
+
+In dimension one the answer is yes and the reason is elementary (below). What is wanted is the *n*-dimensional statement, for arbitrary continuous `f` — not merely smooth `f`, not merely affine `f`. The difficulty is that a fixed point is an *existence* claim about an unknown point of an infinite set, with no formula to solve: continuity is the only structure available, and continuity alone does not let you "watch" the iteration converge (it generally doesn't). A solution would have to manufacture the point out of nothing but compactness, convexity (no holes), and continuity — and ideally do so by a method that does not depend on differentiability, since the map is only assumed continuous.
+
+Why it matters: such a theorem would be a universal certificate of equilibrium. Wherever a continuous process maps a compact convex state-space into itself — an iterated transformation, a system of simultaneous relations, a self-referential assignment — it would guarantee a self-consistent state exists, with no need to construct it. The catch is that the guarantee must survive the weakest hypothesis (continuity), and the obstacle to losing it must be pinned to the *shape* of the domain (a hole destroys it).
+
+## Background
+
+**The one-dimensional case is free, and it already exposes what matters.** Let `f : [a,b] → [a,b]` be continuous and set `g(x) = f(x) − x`. Because `f(a) ≥ a` and `f(b) ≤ b`, we have `g(a) ≥ 0 ≥ g(b)`. The Intermediate Value Theorem (Bolzano, Cauchy) gives a zero `x*` of `g`, i.e. `f(x*) = x*`. Two features of this proof are load-bearing and survive to all dimensions: (i) it is the boundary behavior — `f` cannot push the endpoints outward — that forces a sign change; (ii) it fails the instant the domain is opened. On the open interval `(0,1)` the map `f(x) = x²` has `f(x) < x` everywhere and no fixed point: the would-be fixed point `0` has leaked out of the domain. So **compactness/closedness is not a technicality**; it is exactly the hypothesis that keeps the fixed point from escaping to a missing boundary.
+
+**Continuity of the domain's shape matters too.** Rotating an annulus by a fixed angle is a continuous self-map with no fixed point. The annulus has a hole; the disk does not. So whatever proof works must use a property the disk has and the annulus lacks — informally, that the disk is "filled in," that its boundary sphere does not bound a hole inside. This points at a topological invariant of the domain, not an analytic estimate.
+
+**Degree and the index of a map (the tool of the period).** By 1910 the way to attach an integer to a continuous map was the **Kronecker index / mapping degree**, generalizing the winding number. For a map of a sphere to itself, the degree counts (with orientation sign) how many times the image sweeps over a generic point; it is invariant under continuous deformation (homotopy). Maps of different degree are not homotopic. The identity map of a sphere has degree 1; a constant map has degree 0; the antipodal map of `Sⁿ⁻¹` has degree `(−1)ⁿ`. **Hadamard (1910)**, in an appendix to Tannery's *Introduction à la théorie des fonctions d'une variable*, used the Kronecker index to prove the fixed-point theorem for *differentiable* self-maps of the ball. The index/degree is the right kind of object — a deformation-invariant integer — but Hadamard's argument leans on differentiability (it needs the Jacobian to count preimages with sign), so it does not reach the merely-continuous case.
+
+**The homology of the sphere (the obstruction, in its clean modern form).** The same invariant has a homological face: for `n≥2`, `H_{n−1}(Sⁿ⁻¹) ≅ ℤ` is infinite cyclic, while the solid ball is contractible, `H_{n−1}(Dⁿ) = 0` (in dimension `1`, the same statement is the reduced `H_0` obstruction, or just connectedness of the interval versus its two-point boundary). The sphere "detects an (n−1)-dimensional hole"; the ball, being filled, detects none. This single inequality is the whole obstruction to filling the sphere from inside, and it is the precise sense in which the disk differs from the annulus.
+
+**The combinatorial substitute for the invariant.** Tracking a degree continuously requires real machinery. There is a mod-2 shadow of the same obstruction that needs no analysis at all, only counting on a triangulation: a parity statement about how colors must distribute over a subdivided simplex (Sperner's labeling, established in 1928 in the course of new proofs of invariance of dimension/domain). The promise of this route is that the topological rigidity of the sphere — the thing that forbids filling it — can be expressed as an *odd number* that survives every refinement of a triangulation, an entirely finite and elementary fact. A simplex can be triangulated arbitrarily finely; if a fully-colored sub-cell is forced to exist at every scale, compactness collects those cells to a single point in the limit, and that point is where the analytic statement (a fixed point) reappears.
+
+**Triangulation as a finite probe.** The standing technique for turning a continuous statement into something countable is to triangulate the domain and read finitely many vertex data at each mesh. For the parity route the map itself need not be replaced by a simplicial approximation: it is enough to sample `f` at the vertices, encode the displacement `f(x)−x` as a face-respecting color, and then pass to a compactness limit as the mesh shrinks.
+
+## Baselines
+
+The prior approaches a new proof would be measured against, and the specific gap each leaves:
+
+- **IVT / one-dimensional fixed point (Bolzano–Cauchy).** Core idea: a continuous real function changing sign has a root; apply to `g(x)=f(x)−x`. Math: `g(a)≥0≥g(b) ⇒ ∃ x*, g(x*)=0`. Gap: it is intrinsically one-dimensional — there is no order on ℝⁿ, no single `g` whose sign change localizes a point. It tells you *compactness is essential* but gives no higher-dimensional mechanism.
+
+- **Kronecker-index / degree, differentiable case (Hadamard 1910).** Core idea: attach a deformation-invariant integer (the degree) to the boundary map; a fixed-point-free map would force the same boundary map to have degree both `1` and `0`. Math: under the no-fixed-point assumption, `g(x)=(x−f(x))/|x−f(x)|` is defined on all of `Dⁿ`, while on `Sⁿ⁻¹` the maps `g_t(x)=(x−t f(x))/|x−t f(x)|`, `0≤t≤1`, homotope the identity (`t=0`) to `g|_{Sⁿ⁻¹}` (`t=1`), so the boundary degree is `1`; but any sphere map that extends over `Dⁿ` has degree `0`. Gap: the classical index proof realizes degree by signed preimage counts such as `Σ_{x∈F⁻¹(p)} sign det(dF_x)`, which needs differentiability or substantial topological machinery to replace the Jacobian count.
+
+- **Homological non-retraction.** Core idea: there is no continuous retraction of the ball onto its boundary sphere, because applying `H_{n−1}` to `r∘i = id_{Sⁿ⁻¹}` factors the identity of `ℤ` through `H_{n−1}(Dⁿ)=0` (or, when `n=1`, applying reduced `H_0` factors through `\tilde H_0(D¹)=0`), which is impossible. Gap: it is *equivalent* to the fixed-point theorem (each gives the other), so as a standalone it is not more elementary — and proving the homology of spheres rigorously is itself substantial machinery (singular/simplicial homology, exactness), heavier than the statement it certifies.
+
+- **Sperner labeling / parity on a triangulation (Sperner 1928).** Core idea: color the vertices of a triangulated simplex so corners get distinct colors and a vertex on a face uses only that face's colors; then the number of fully-colored cells is odd. Math: an induction giving `R ≡ D_O (mod 2)` where `R` is the count of rainbow cells and `D_O` the count of correctly-colored boundary facets. Gap (as a *baseline*, before it is connected to fixed points): on its own it is a statement about colorings; the bridge from "an odd number of rainbow cells at every mesh" to "a continuous map has a fixed point" (the decreasing-coordinate displacement labeling and the compactness limit) is exactly what remains to be built.
+
+## Evaluation settings
+
+This is a theorem, so the yardstick is logical, not empirical. The natural test domains and the standard of success that existed at the time:
+
+- **Domains.** The closed unit ball `Dⁿ = {x∈ℝⁿ : |x|≤1}`; the standard simplex `Δⁿ = {x∈ℝⁿ⁺¹ : x_i≥0, Σx_i=1}`; the closed square/cube; and, by homeomorphism inside the affine hull, any nonempty compact convex subset of ℝⁿ. Negative controls that any correct statement must *not* cover: the open ball (for example `x ↦ (x+e_1)/2` on the open unit ball, whose only fixed point would be the missing boundary point `e_1`, or `x²` on `(0,1)`), the sphere itself (the antipodal map is fixed-point-free), and the annulus/torus (rotation) — the failures that pin the hypotheses to compact + convex/no-hole.
+- **Hypotheses to stress.** Continuity only (no differentiability, no contraction/Lipschitz assumption — a contraction would give the fixed point for free by iteration, which is *not* available here). The proof must use compactness essentially and must localize to the shape of the domain.
+- **Standard of success.** A complete proof for all `n`, reducing to a finite/elementary certificate at each scale and passing to a limit; reproducible by hand on the low-dimensional cases (`n=1` interval, `n=2` triangle/square) and inductively extendable. "Validation" means: every step checked, the parity count exact, the limit argument airtight, and the counterexamples (open/holed domains) correctly excluded.
+
+## Code framework
+
+The artifact is a theorem and its proof. The natural computational scaffold is only a small checker that *witnesses* the combinatorial core on a concrete triangulation: triangulate a simplex, label its vertices, verify the parity claim, and track the shrinking cells whose limiting cluster point is fixed. Ordinary geometric utilities (barycentric coordinates, a triangulation routine, a finite vertex/cell data structure) are assumed; the open slots are the labeling rule that encodes a self-map, the parity count that forces a fully-labeled cell, and the refinement loop that extracts approximating cells.
+
+```python
+import numpy as np
+
+# --- standard geometric utilities ---
+
+def barycentric(point, simplex_vertices):
+    """Barycentric coords of `point` with respect to an affine simplex."""
+    A = np.vstack([simplex_vertices.T, np.ones(len(simplex_vertices))])
+    b = np.append(point, 1.0)
+    return np.linalg.solve(A, b)
+
+def triangulate(simplex_vertices, mesh):
+    """Subdivide a simplex into cells of diameter < `mesh`.
+    Returns (vertices, cells) via a barycentric/edgewise subdivision."""
+    raise NotImplementedError  # standard simplicial subdivision
+
+# --- proof slots ---
+
+def label_vertex(x, f):
+    """The labeling rule that encodes a continuous self-map f at vertex x.
+    TODO: choose a color in {0..n} determined by how f moves x; must be a
+    legal corner/face-respecting labeling."""
+    pass
+
+def fully_labeled_cells(vertices, cells, labels):
+    """Find cells whose vertices carry all n+1 distinct labels.
+    TODO: the count of these is the combinatorial invariant of interest."""
+    pass
+
+def parity_invariant(vertices, cells, labels):
+    """The lemma: the number of fully-labeled cells is forced (odd).
+    TODO: the counting identity that makes existence unavoidable."""
+    pass
+
+def fixed_point_from_refinement(f, simplex_vertices, meshes):
+    """Reduction: as mesh -> 0, fully-labeled cells shrink toward cluster
+    points; any such limit point is a fixed point of f.
+    TODO: refine, extract a fully-labeled cell per scale, take the
+    compactness limit, conclude f(x*) = x*."""
+    pass
+```

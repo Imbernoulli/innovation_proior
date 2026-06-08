@@ -1,0 +1,154 @@
+Let me start from the thing that actually bothers me, which is a benchmark table. Somebody runs their favorite evolutionary algorithm on a dozen test functions, it beats simulated annealing on nine of them, and they conclude the evolutionary algorithm is "better." Better at what? On those twelve functions, sure. But the whole point of a general-purpose optimizer is that you point it at a *new* function you haven't seen. So the claim being made, the one nobody states out loud, is: good behavior on these twelve transfers to the thirteenth. And I want to know whether that transfer is real or whether it's smuggling in an assumption about which functions the thirteenth is likely to be.
+
+Hume already worried about exactly this shape of inference, two and a half centuries ago, just not about algorithms. Every step from "what I've seen" to "what I haven't seen" leans on a principle that the unseen resembles the seen, and Hume's argument is that you can't justify that principle without either a contradiction-free leap or a circle. A demonstrative argument can't establish it, because there's no contradiction in the world simply changing its behavior on the cases you haven't tested. And an empirical argument — "it's worked before" — assumes the very thing it's trying to prove. I find this maddening as philosophy because it's all words; there's no theorem, no algorithm, no number. But it smells like the same gap. An algorithm that's done well on the functions it's evaluated so far is, in effect, trusting that the unevaluated part of the function resembles the evaluated part in some exploitable way. If that trust is unjustifiable in general, then "this optimizer is better" should also be unjustifiable in general. Let me see if I can turn the philosophy into counting.
+
+Schaffer got partway there for learning. His conservation law says: measure a learner's generalization performance as how much it beats random guessing, and that quantity, summed over all possible learning tasks, is zero. Beat chance somewhere, lose to chance by the same amount somewhere else. Which means a simplicity bias — Occam's razor — can't be a universal good; it helps on some tasks and pays for it on others. That's the right *flavor*. But it's loose. It's about accuracy-minus-chance for classification; it doesn't tell me about the whole distribution of outcomes, it doesn't say anything per-problem (only the grand average), and it doesn't obviously port to optimization where there's no "chance baseline" floating around. I want something sharper and I want it for search too. So let me build the object carefully and see if I can prove the conservation directly.
+
+First, the setup. I'll keep everything finite — which is honest, because anything on a computer is finite anyway. A search space 𝒳 with |𝒳| points, a set of possible cost values 𝒴 with |𝒴| values. A "problem" is just a cost function f : 𝒳 → 𝒴 — it assigns a cost to each point. How many problems are there? For each of the |𝒳| points I independently pick one of |𝒴| values, so the space ℱ of all problems has |𝒴|^|𝒳| members. That's a gigantic but finite number, and finiteness is what's going to let me *count*.
+
+Now, what is an algorithm? I want the most innocent possible model that still covers simulated annealing, evolutionary algorithms, hill climbing. An algorithm looks at the points it's already visited together with their costs, and decides where to look next. So a "sample" after m steps is an ordered list d_m = {(d_m^x(1), d_m^y(1)), …, (d_m^x(m), d_m^y(m))} — the x's it visited, in order, paired with the costs it got. And the algorithm a is a map from the current sample to the next point to visit.
+
+Here's a snag I have to deal with before it poisons everything: revisiting. Real optimizers forget; they re-evaluate the same point over and over, and how often they do that depends in a tangled way on *both* the algorithm and the function. If I count raw oracle calls, that tangle sits inside every comparison and I can't filter it out cleanly. So I'll define the algorithm to map a sample to a *new, previously unvisited* point, and I'll count only distinct evaluations. Tabu search already shows that remembering where you've been is a separable concern, so this isn't a real loss of generality — any wasteful algorithm can be made non-wasteful by remembering — and it makes the bookkeeping exact. The sample contains only distinct points; the next point is always one I haven't seen. Good. (This does exclude branch-and-bound, which peeks at the cost structure of partial solutions — but that's fine, it's not black-box, it knows more than the oracle tells it.)
+
+Performance is whatever I read off the cost sequence d_m^y — the minimum so far if I'm minimizing, say. The exact read-off won't matter, which I should remember.
+
+Now I want to phrase the comparison probabilistically, and let me justify that rather than just doing it. Even a deterministic algorithm benefits from this framing for three reasons. One, it'll let me extend to stochastic algorithms later without redoing the work. Two, it gives me a clean consistent calculus for the proof. Three — and this is the one I actually care about — the interesting unknown isn't really the algorithm, it's the *problem*. When someone "uses the same optimizer for all traveling-salesman instances of a certain kind," they're acting as though there's a probability distribution P(f) over cost functions and they're not distinguishing within the class. So let me carry a distribution P(f) over problems, the prior, encoding whatever I do or don't know about the function at hand. The performance of algorithm a run for m steps on function f is captured by P(d_m^y | f, m, a): the probability of getting cost-sequence d_m^y. For a deterministic algorithm that's just 0 or 1 — there's exactly one sequence it produces — but writing it as a probability lets P(f) carry the ignorance.
+
+And now the question I actually want to answer, in one line: compare the set of f's on which a₁ beats a₂ to the set on which a₂ beats a₁. The cleanest version: hold the observed cost-sequence d_m^y fixed and sum P(d_m^y | f, m, a) over all problems f. If that sum turns out to depend on a, then some algorithms are intrinsically more likely to produce good sequences when you average over all problems, and "better in general" means something. If it *doesn't* depend on a — if Σ_f P(d_m^y | f, m, a) is the same number for every algorithm — then no algorithm is favored by the space of all problems, and every claim of superiority is a claim about P(f).
+
+Let me just try to compute Σ_f P(d_m^y | f, m, a) and watch what happens.
+
+Start at m = 1, the very first step. Before it has seen anything, the algorithm's first move is some fixed point — call it d_1^x — determined by a alone (it has no sample to look at yet). It evaluates and gets the cost f(d_1^x). So the only possible first cost value is f(d_1^x), and
+
+  Σ_f P(d_1^y | f, m=1, a) = Σ_f δ(d_1^y, f(d_1^x)),
+
+where δ is the Kronecker delta — one when its arguments agree, zero otherwise. Now sum that delta over *all* cost functions f. The delta is one exactly for those f whose value at the single point d_1^x equals the observed d_1^y. At that one point f is pinned. But at the *other* |𝒳| − 1 points, f can be anything — each of those points independently takes any of |𝒴| values. So the number of f's satisfying the delta is |𝒴|^{|𝒳|−1}. Therefore
+
+  Σ_f P(d_1^y | f, m=1, a) = |𝒴|^{|𝒳|−1}.
+
+Stare at that. It does not contain a. The algorithm chose *where* to take its first sample, but the count of functions giving a particular cost there doesn't care which point it picked — by symmetry every point has the same number of functions passing any given value through it. The first step already washes the algorithm out. That's the seed. Now I want to climb from m to m+1 and show the washing-out persists, by induction.
+
+Inductive hypothesis: for every cost-sequence, Σ_f P(d_m^y | f, m, a) is independent of a. I want the same for m+1.
+
+Write the length-(m+1) sequence as the first m values together with the (m+1)-th. Once the first m cost values are fixed, the deterministic algorithm has also fixed the first m visited points recursively, so the full size-m sample d_m is known. A sample of size m+1 is that size-m sample plus one new pair, so
+
+  P(d_{m+1}^y | f, m+1, a) = P(d_{m+1}^y(m+1) | d_m, f, m+1, a) · P(d_m^y | f, m+1, a).
+
+The second factor is the probability of the first m cost values; running the algorithm one extra step doesn't change the distribution over the first m it already produced, so P(d_m^y | f, m+1, a) = P(d_m^y | f, m, a). Good, that factor is the thing my hypothesis already controls.
+
+The first factor is where the new point enters. Given the size-m sample, the algorithm deterministically picks the next point: x = a(d_m^x, d_m^y), some specific new location. So the probability that the next x is that location is δ(x, a(d_m)). And once the location is fixed, the new cost value is whatever f says there: it depends only on the new x and on f, P(d_{m+1}^y(m+1) | f, x) = δ(d_{m+1}^y(m+1), f(x)). Summing over the only free 𝒳-value, the new x, and folding in that x = a(d_m):
+
+  Σ_f P(d_{m+1}^y | f, m+1, a) = Σ_f δ(d_{m+1}^y(m+1), f(a(d_m))) · P(d_m^y | f, m, a).
+
+Now the thing to look at is where the delta pins f. It pins f only at the single point a(d_m) — and a(d_m) is, by construction, a point *not* in the size-m sample, since the algorithm always returns an unvisited point. So I split f into three independent chunks: its values on the m points already in the sample, its value at the one new point a(d_m), and its values on all the *other* points — the ones neither in the sample nor equal to a(d_m). How many of those other points are there? |𝒳| − m − 1. And f is completely unconstrained on them: each takes any of |𝒴| values, contributing the off-sample, off-new-point count |𝒴|^{|𝒳|−m−1}.
+
+For the size-m sum, once the m sampled values are fixed, the unvisited part has |𝒳|−m free points, so every compatible partial function has |𝒴|^{|𝒳|−m} full extensions. For the size-(m+1) sum, the new point is no longer free: the Kronecker delta keeps exactly one of its |𝒴| possible values, and only the remaining |𝒳|−m−1 points are free, giving |𝒴|^{|𝒳|−m−1} extensions. The same compatible size-m partial functions are being counted, but with one fewer free |𝒴|-choice. Therefore the recursion is
+
+  Σ_f P(d_{m+1}^y | f, m+1, a) = (1/|𝒴|) · Σ_f P(d_m^y | f, m, a).
+
+And the right-hand side is independent of a by the inductive hypothesis. So the left-hand side is independent of a. The induction closes.
+
+Let me make sure I believe the intuition and not just the algebra. What did the proof actually use? Only this: when you sum over *all* f, the cost the function will hand the algorithm at the next point — a point the algorithm hasn't seen — ranges over all |𝒴| values with perfectly equal multiplicity, no matter how the algorithm chose that point. The function's behavior off the visited set is, under the uniform sum, completely decoupled from the visited set. The algorithm's entire intelligence lives in *where it decides to look next given what it's seen*. But where it looks next is always an unseen point, and the value there is, averaged over all f, a flat draw. So the algorithm's cleverness about the seen part buys it exactly nothing about the unseen part. Past performance, summed over all problems, has no bearing on future performance. That is the No Free Lunch theorem: **Σ_f P(d_m^y | f, m, a) is independent of a**, and therefore for any performance measure Φ you like, the average over all f of P(Φ(d_m^y) | f, m, a) is the same for every algorithm. Every algorithm ties.
+
+There's a bijection sitting underneath this that I want to name, because it's the cleanest way to *see* the cancellation, and it's what makes "Schaffer's conservation" exact. Take any algorithm a₁ and consider the functions on which it does well, by whatever measure. Now take a second algorithm a₂. For any fixed observed cost pattern, the unseen values can be relabeled without changing the size of ℱ, because the relabeling is a bijection on functions. Under that relabeling, whatever next value a₁'s cleverness was "expecting," there are equally many functions that hand it any other value. For fixed cost sequences the counts match literally; for a general performance score the signed wins and losses cancel when weighted by their amounts. That's why the sum is conserved — it's a counting identity over ℱ, the philosophical worry of Hume turned into bookkeeping over a finite set.
+
+I should double check I haven't quietly assumed the uniform distribution is "the truth." I haven't, and it matters that I'm honest about it. The sum I proved a-independent is the *unweighted* sum over f, which is the same as the average under a uniform P(f). I am absolutely not claiming the world hands you uniformly random cost functions — that would be a bizarre claim. The uniform sum is a *tool*. It's the skeleton of optimization theory before any particular prior puts flesh on it. What the theorem says is that the skeleton plays no favorites; any preference between algorithms therefore has to come entirely from the flesh, from P(f) being non-uniform and a being aligned with it. Let me make that precise, because "aligned" should be a real statement, not a hand-wave.
+
+Go back to the performance over a prior: P(d_m^y | m, a) = Σ_f P(d_m^y | m, a, f) P(f). Read the two functions of f under the sum as vectors indexed by f: let v⃗ have components P(d_m^y | m, a, f) and let p⃗ have components P(f). Then
+
+  P(d_m^y | m, a) = v⃗ · p⃗,
+
+an inner product. The algorithm shows up only through v⃗; the prior only through p⃗. Now, what did NFL just tell me about v⃗? For a deterministic algorithm each component is 0 or 1, and Σ_f P(d_m^y | m, a, f) — the *length-squared-ish* sum of that 0/1 vector, in fact just its number of ones — is independent of a. So as a varies, the vector v⃗ keeps the same number of ones, the same length, and (since the all-ones direction is the uniform prior) the same projection onto the diagonal. All the algorithm vectors live on a cone around the diagonal, same length, same diagonal-component, differing only in *which way* they tilt off the diagonal. So performance = how well v⃗'s tilt aligns with p⃗'s tilt. If p⃗ is uniform — points straight down the diagonal — every v⃗ has identical inner product with it, and that *is* NFL, seen geometrically. The only way to do better than another algorithm is to have your v⃗ tilt toward where the real P(f) tilts. There is no free lunch precisely because the diagonal is symmetric; lunch is paid for by matching the prior. Years of TSP research, in this language, have produced algorithms whose v⃗ tilts toward the implicit p⃗ of real traveling-salesman instances. That's the whole content of "domain knowledge."
+
+This already kills several pieces of folklore in one stroke. Hill climbing versus hill descending for finding a maximum: averaged over all f, identical. Any algorithm versus random search: identical — and symmetrically, any algorithm does worse than random as readily as better than random, over all problems. Cross-validation, in the learning version: choosing the candidate learner with the *best* held-out score does no better, averaged over all targets, than choosing the one with the *worst* held-out score. That last one I find genuinely unsettling, so let me make sure I see why. Cross-validation's whole justification is "the candidate that generalized best on held-out data will generalize best on new data." But that's an induction from held-out to new, and NFL says that induction has no assumption-free warrant: anti-cross-validation, picking the worst held-out candidate, wins over all targets exactly as often as cross-validation does. To prefer cross-validation you need an assumption relating the held-out behavior to the unseen targets — an assumption that has never actually been formalized. So even cross-validation is a free lunch you're not entitled to without a prior.
+
+Now I have to be careful about one thing, because it's the most common way people misread this. NFL is a statement about the *average over f*. It says nothing, by itself, about any *single* f, and nothing about *head-to-head* per-function behavior. Could it be that algorithm a₁, while tied with a₂ on average, has a better worst-case profile — that there are functions where a₁ beats a₂ by a lot, but none where a₁ loses by a lot? That's a different question, and NFL doesn't forbid it. Let me look.
+
+Define it sharply. Use a performance score where larger is better. Say a₁ is head-to-head minimax-superior to a₂ if there's some k > 0 such that for at least one f, a₁ beats a₂ by k, and there is no f for which a₁ loses to a₂ by k. In words: there are functions on which a₁ beats a₂ badly, but none on which a₁ does substantially worse. NFL forces the *sum* of the differences over f to be zero — every k of advantage somewhere is paid by disadvantage somewhere — but it says nothing about the *shape* of that signed distribution of differences. The advantage could be concentrated in a few large spikes while the disadvantage is spread thin over many functions, none individually as large. The sum cancels; the minimax profile doesn't.
+
+And in fact this asymmetry is real. Consider the distribution, over all f, of the pair (z, z') where z is the histogram of costs a₁ produces and z' the histogram a₂ produces. NFL makes the marginals match. But the *joint* need not be symmetric under swapping z and z': with three search points and three cost values, I can construct two algorithms and a function where a₁ produces one histogram and a₂ another, while no function realizes the exact swapped pair. Knowing only the cost values two algorithms produced on the same unknown f, I can sometimes infer which algorithm produced which — even though, on average, neither is better. So NFL equalizes the average while leaving room for per-function, head-to-head distinctions. That's not a contradiction with NFL; it's the precise sense in which "all algorithms are equal" is an average statement and not a per-problem one.
+
+This is enough to keep the average theorem honest. It does not tell me that no other prior-independent comparison exists; it tells me exactly which comparison has been flattened. If I care about a minimax profile rather than the average, I have to analyze that profile directly.
+
+Let me port the whole thing to supervised learning cleanly, because the philosophical payload — Hume — really lives there, and because I want to nail down the one subtlety that the optimization version hides. In learning the "problem" is a target f mapping inputs to outputs (possibly a noisy relation φ), the algorithm produces a hypothesis h, and the cost is the loss L(h(q), f(q)) on a test input q. The subtlety is *which* test inputs. If I let the test set overlap the training set, then a lookup-table learner that just memorizes the training labels looks great — but that's not generalization, that's recall. Generalization is exactly the off-training-set part: average the loss only over q *not* in the training inputs d_X. So I define the cost on off-training-set error, and now the question "are there a priori distinctions between learners?" is asked about the only thing induction is actually about.
+
+Run the same machinery. The probability of an off-training-set cost c, for a uniform P(f) and a homogeneous loss like zero-one, summed over all targets, factorizes the same way: the target's values on the test points are unconstrained by the training data and range over all of 𝒴 with equal multiplicity, so the sum decouples and comes out independent of the learning algorithm. The trick that makes it transparent is to notice that in the relevant NFL sum the roles of the target f and the hypothesis h are interchangeable — summing over all targets with h fixed gives the same constant as summing over all hypotheses with f fixed — so the learner's choice of h is irrelevant once you average over targets. P(c | d) is the same for every learning algorithm. For zero-one OTS loss, the weighted target average cancels for learner A against learner B, and the corresponding average over relabeled priors cancels as well. Occam's razor included: a simplicity bias is a particular tilt of v⃗, and over the uniform sum it's worth nothing.
+
+The sharp learning version is even more unsettling when I pin down the sign. Suppose I compare a majority rule, which chooses the candidate hypothesis that agrees more with the data, to an anti-majority rule, which chooses the one that agrees less. Now fix a target φ and a training set d, assume no training noise, and restrict attention to candidate hypotheses h₁, h₂ that are close to φ in IID zero-one error, with error below some ε < 1. I would expect majority to have the safer OTS error, but the zero-one calculation gives the opposite restricted sum:
+
+  Σ_{h₁,h₂} [E(C_OTS | h₁,h₂,φ,d, anti-majority) − E(C_OTS | h₁,h₂,φ,d, majority)] < 0.
+
+So, over that restricted hypothesis class, anti-majority has lower summed off-training-set error than majority. The point is not that anti-majority is wise; it is that even "both hypotheses fit the target well under the IID error" is not the missing assumption that connects observed agreement to unseen agreement. Low training-style error, by itself, still does not buy OTS generalization. Which is Hume, exactly: the training set is uninformative about the unseen points once I refuse to assume the unseen resembles the seen.
+
+Now the flat-profile fact belongs here, in learning, not in arbitrary black-box search. For the random learning algorithm under homogeneous OTS loss, E(C | f, m) is the same constant for every target f, so max_f E(C | f, m) = min_f E(C | f, m). That makes the random learner head-to-head minimax-superior to every other learner: it never makes a target-specific bet, so its per-target profile has no flare. Whether I should *care* about minimax rather than expected cost is a separate matter — expected cost is what NFL flattens, and minimax is a different preference — but it's intriguing that if natural selection is the judge, it might well use head-to-head behavior: a species whose learning is occasionally catastrophic on some environment goes extinct on that environment, so over a sequence of environments the survivor is the one with the better head-to-head minimax profile, not the better average.
+
+And one bias-variance check, because the decomposition is the standard intuition and I want to know where it stands relative to all this. Averaging several deterministic learners reduces variance without touching bias — the convexity identity (z − [α+β]/2)² ≤ ½(z−α)² + ½(z−β)² guarantees the averaged learner's squared error is no worse than the mean of the individuals'. So averaging beats *randomly picking one of them per problem*. But — and this is the NFL-flavored caveat — it does *not* beat any single fixed learner on the off-training-set zero-one problem. Variance reduction is a real effect within an assumed problem distribution; it is not a free lunch over all problems. The bias-variance trade-off is a trade *within* a prior; NFL is the assumption-free backbone it sits on, and the backbone says the trade is conserved.
+
+So the picture is complete and it inverts the question I started with. There is no algorithm that is better than another averaged over all problems — not in optimization, not in learning, not even random versus clever, not even cross-validation versus its own opposite. Every bit of an algorithm's advantage on some problems is paid for, through the same weighted counting cancellation, on the complementary problems. Therefore all real performance comes from the prior: from P(f) being non-uniform and the algorithm's v⃗ being aligned with that non-uniformity. "Inductive bias" is not a flaw to be eliminated and not an optional add-on; it is the *only* source of generalization, the flesh on the skeleton, and a learner's quality is exactly the match between its built-in assumptions and the structure of the problems it'll actually face. Hume said you can't justify induction without an assumption; this says the assumption is the whole game, and quantifies precisely how much it's worth — everything.
+
+The statement I can now leave on the table is clean. Let 𝒳 and 𝒴 be finite, let ℱ = 𝒴^𝒳 be the space of all cost functions, let a map each sample of distinct visited points to a new unvisited point, and let d_m^y be the sequence of cost values. Then for any d_m^y and any m,
+
+  Σ_{f ∈ ℱ} P(d_m^y | f, m, a)  is independent of a.
+
+Consequently, for any performance measure Φ, the uniform average over f of P(Φ(d_m^y) | f, m, a) is independent of a: every algorithm has identical expected performance averaged over all problems.
+
+The proof is the induction I just walked through. At m = 1 the algorithm's first point d_1^x is fixed by a, the only possible cost value is f(d_1^x), and the sum over f of δ(d_1^y, f(d_1^x)) pins one point while leaving |𝒳|−1 points free, so it equals |𝒴|^{|𝒳|−1}. In the step, the next point a(d_m) is unvisited; the delta for d_{m+1}^y(m+1) pins that one new value, the |𝒳|−m−1 off-sample and off-new points contribute |𝒴|^{|𝒳|−m−1}, and compared with the |𝒴|^{|𝒳|−m} free extensions in the size-m sum this gives exactly
+
+  Σ_f P(d_{m+1}^y | f, m+1, a) = (1/|𝒴|) Σ_f P(d_m^y | f, m, a).
+
+The right-hand side is algorithm-independent by the hypothesis, so the induction closes.
+
+```python
+# Brute-force verification of the counting identity.
+# For every algorithm, summed over ALL cost functions f, the distribution of
+# the observed cost-sequence is identical. We check it exhaustively on a tiny
+# space where |Y|^|X| is enumerable.
+import itertools
+from collections import Counter
+
+X = [0, 1, 2, 3]          # search space
+Y = [0, 1]                # cost values
+m = 3                     # distinct evaluations
+
+def all_functions():
+    for vals in itertools.product(Y, repeat=len(X)):
+        yield dict(zip(X, vals))      # f : X -> Y
+
+def run(algorithm, f, m):
+    sample = []                       # ordered (x, y) at distinct x
+    seen = set()
+    for _ in range(m):
+        x = algorithm(sample)         # next point, must be unvisited
+        assert x in X and x not in seen
+        seen.add(x)
+        sample.append((x, f[x]))
+    return tuple(y for _, y in sample)  # the cost sequence d_m^y
+
+# Two genuinely different algorithms:
+def fixed_order(sample):              # always probe 0,1,2,3 in order
+    return len(sample)
+def greedy_then_scan(sample):         # go to an unseen neighbor of the best-so-far
+    if not sample:
+        return 0
+    seen = {x for x, _ in sample}
+    best_x = min(sample, key=lambda p: p[1])[0]
+    for cand in (best_x + 1, best_x - 1, *X):
+        if cand in X and cand not in seen:
+            return cand
+
+# Sum P(d_m^y | f, m, a) over ALL f  ==  count of f's giving each cost-sequence.
+def histogram_over_all_f(algorithm):
+    h = Counter()
+    for f in all_functions():
+        h[run(algorithm, f, m)] += 1
+    return h
+
+hist_A = histogram_over_all_f(fixed_order)
+hist_B = histogram_over_all_f(greedy_then_scan)
+assert hist_A == hist_B            # identical: no free lunch
+assert set(hist_A.values()) == {len(Y) ** (len(X) - m)}
+# every observed cost-sequence is produced by the same number of cost functions,
+# regardless of which algorithm produced it.
+```
+
+The causal chain, in one breath: I distrusted a benchmark generalizing to unseen functions; Hume says such generalization can't be justified without an assumption and Schaffer suggests the gains and losses must cancel, so I built the finite space of all cost functions, modeled an algorithm as a map from distinct visited points to an unvisited point, and asked whether Σ_f P(d_m^y | f, m, a) depends on the algorithm; an induction on the sample size showed the algorithm's choice of the next, unseen point is — summed over all functions — handed a flat draw of cost values, so the sum is algorithm-independent, which is No Free Lunch; geometrically the algorithm is an inner product v⃗ · p⃗ whose every deterministic v⃗ has the same length and the same projection on the uniform diagonal, so the only way to win is to tilt toward a non-uniform prior; the average flatness still permits head-to-head minimax asymmetries, and in learning the same off-training-set counting makes zero-one generalization independent of the learner under the uniform target average — so generalization comes entirely from inductive bias matching the problem, which is the assumption Hume said you can never get for free, now priced at exactly everything.

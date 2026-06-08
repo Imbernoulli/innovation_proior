@@ -1,0 +1,207 @@
+I want to prove that parity is hard for constant-depth circuits, and I want to do it *quantitatively* — not just "hard" but with a number attached, how big the circuit must be as I squeeze the depth. So let me start where the pain actually is. I have a circuit of $\wedge$ and $\vee$ gates, unbounded fan-in, depth some constant $k$, and it computes $\mathrm{PARITY}(x_1,\dots,x_n)=x_1\oplus\cdots\oplus x_n$. I want to show the number of gates $S$ has to be enormous. And the only honest handle I have on a circuit this shapeless — arbitrary fan-in, $n^k$ gates — is that it's *shallow*. Depth $k$. So whatever I do, I have to exploit shallowness, and the obvious way to exploit "few levels" is to peel levels off one at a time until there are none left and the circuit can't possibly still be doing something hard.
+
+First let me clean the object up so it's a tree I can reason about layer by layer. Negations: by De Morgan I push every $\neg$ down to the leaves, at most doubling the size, so now negations live only on input literals $x_i, \bar x_i$. Two adjacent gates of the same type merge into one. So without loss of generality the circuit is a strictly *alternating* tree — a level of $\vee$'s, then a level of $\wedge$'s, then $\vee$'s, … — with literals at the bottom. Depth $k$ means $k$ levels of gates. Good. Now "reduce depth by one" has a concrete meaning: turn $k$ alternating levels into $k-1$.
+
+How would I drop a level? Look at the bottom two levels. They form a bunch of depth-2 sub-circuits, each one an AND of ORs or an OR of ANDs. Take an AND-of-ORs block sitting under an $\wedge$ at level three. If only I could rewrite that block as an *OR-of-ANDs* computing the same function, then its top gate becomes an $\vee$, and it sits directly under… wait, it sits under the level-3 $\wedge$? No — let me look again. The block's top gate is the level-2 gate. If the block is currently AND-of-ORs, its top (level-2) gate is an $\wedge$, and above it at level 3 is an $\vee$ (alternating). If I flip the block to OR-of-ANDs, its top gate becomes an $\vee$, now adjacent to the level-3 $\vee$ — two $\vee$'s in a row — and they merge. The level-2 gate is gone. Depth $k\to k-1$. That's the move. Every function can be written either way (DNF or CNF), so the rewrite is always *possible*.
+
+So why isn't this a one-line proof? Because the rewrite blows up the size. An AND of $w$ ORs, each of fan-in $t$, when I expand it into a DNF by distributing, becomes an OR of up to $t^{w}$ ANDs. I started with a small depth-$k$ circuit and produced a *huge* depth-$(k-1)$ circuit. I've gained nothing — I can't induct on a circuit that grew exponentially each round.
+
+So that's the wall: the depth-reduction move exists but is unaffordable in general. I need to make the blocks *cheap* to switch. And the only thing that makes an AND-of-ORs cheap to convert to an OR-of-ANDs is for it to genuinely *depend on few variables* — if the block, as a function, only really looks at $s$ variables, then both its DNF and its CNF have width $\le s$ and I switch for free. So I don't need the block to be small as written; I need the function it computes to be *simple*, in the sense of having a short decision tree.
+
+Decision-tree depth. If a function $f$ has a decision tree of depth $\le s$ — you query at most $s$ variables on any path before you know the answer — then $f$ is *simultaneously* a width-$s$ DNF and a width-$s$ CNF. Take the paths to 1-leaves: each is an AND of the $\le s$ literals along it, OR them together, that's a width-$s$ DNF. Take the paths to 0-leaves of $f$, negate, De Morgan: a width-$s$ CNF. So a shallow decision tree is exactly the symmetric object that lets me present the block in *whichever* normal form merges with the layer above. Decision-tree depth is the right currency. I want: after I do something, every bottom block has tiny decision-tree depth.
+
+But the bottom blocks of a worst-case small circuit do *not* have tiny decision-tree depth as given. So I have to *make* them simple. I can't change the circuit, but I can change the *input distribution* — I can fix some of the variables and see what's left. Set a bunch of $x_i$ to constants and study the induced sub-function on the survivors.
+
+The asymmetry I keep coming back to is that parity *survives* fixing. If I set any subset of the bits to constants, the induced function on the rest is still $x_{i_1}\oplus\cdots\oplus x_{i_m}$, possibly XOR a constant — still parity (or its negation) on the free variables. It never simplifies, never trivializes; a parity on $m$ free variables still needs full decision-tree depth $m$ and still needs DNF/CNF size $2^{m-1}$. But a *small low-width AND-of-ORs* does not survive fixing — fix most of its variables and almost every clause gets a literal set the killing way and collapses to a constant; the block falls apart into something depending on a handful of variables. So fixing variables is a wedge I can drive between "parity" and "any small circuit that claims to compute it": the same operation that leaves parity fully complex melts the small circuit. If I keep driving the wedge, the circuit must simplify all the way to a constant while parity refuses to — contradiction, unless the circuit was huge to begin with.
+
+Which variables do I fix, and to what? I don't know an explicit set of fixings that simplifies *every* small block — finding one explicitly looks hopeless. So use the probabilistic method: fix variables *at random* and only argue that a good fixing *exists*. Let me parameterize. A random restriction $\rho\in R_p$: independently for each $i$, keep $x_i$ free (a "$\ast$") with probability $p$, else set it to $0$ or $1$, each with probability $(1-p)/2$. Expected number of survivors is $pn$. Small $p$ kills more, simplifies the blocks harder; but small $p$ also leaves fewer survivors, and I need survivors left at the end for the parity base case to bite. That tension — $p$ small enough to simplify, large enough to keep variables — is the knob I'll have to tune.
+
+This is exactly the route Furst, Saxe and Sipser took. They hit the circuit with $\rho$ at $p=1/\sqrt n$ and argued the bottom $\vee$-gates shrink to constant fan-in: a *wide* clause almost surely gets some literal set to the value that forces it (an $\vee$ forced to $1$, an $\wedge$ to $0$), and a *narrow* clause almost surely keeps fewer than a constant number of free variables. Then a second restriction shrinks the depth-2 blocks, and they collapse a level. Iterate $k$ times, hit Lupanov's wall that a depth-2 parity circuit is exponential, done. And it works — but only to a *super-polynomial* bound. Let me see exactly where it leaks, because that's what I have to fix.
+
+The leak is the *probability*. FSS's estimate that a given bottom gate fails to simplify is only *polynomially* small — something like $n^{-c/4}$. But there are up to $n^k$ gates, and I need *all* of them to simplify simultaneously, so I union-bound: total failure $\le n^k\cdot n^{-c/4}$. To beat that I must take $c$ comparable to $k$, and the constant $c$ is buried in "constant fan-in $c$", which then feeds the next round, where it has to grow again. Each round inflates the constants. After $k$ rounds you've lost super-polynomially. The depth bound that falls out is only about $\log n$, not the $\log n/\log\log n$ I'd want for a tight exponential statement. Ajtai got essentially the same ceiling from the finite-model-theory side, via $\Sigma^1_1$ formulae — same super-polynomial wall.
+
+Yao broke the exponential barrier by replacing the crude per-gate estimate with a much sharper labeling argument and got a genuinely exponential bound. But two things in Yao bother me. His switch is *approximate*: he shows the restricted AND-of-small-ORs *agrees on most inputs* with an OR-of-small-ANDs, not that it *equals* one. Approximation error then has to be carried through all $k$ layers, and it makes the rest of the argument heavy. And his constants aren't sharp — the exponent comes out like $n^{1/4k}$ with depth-dependent junk, so there's no clean tight tradeoff. I want both fixes at once: an **exact** switch (the restricted block genuinely *equals* a small-depth decision tree, hence a small-width formula of either type, so zero error propagates), and an **exponentially sharp** failure probability, sharp enough that one union bound over poly-many gates costs almost nothing.
+
+The statement I need has to separate the two switching forms. Take a depth-2 block $G$ that's an AND of ORs, each OR of fan-in $\le t$. Hit it with $\rho\in R_p$. It is enough for switching if $G|_\rho$ can be written as an OR of ANDs all of width $<s$; a decision-tree statement is a cleaner symmetric version, because a depth-$s$ decision tree gives both normal forms. I want a failure bound of the form
+$$\Pr[\text{switching fails at width }s]\ \le\ \alpha^s,$$
+with $\alpha=\Theta(pt)$ — concretely something like $\alpha\le 5pt$. Why this shape, $s$ in the exponent and $\alpha\propto pt$? Because $s$ is the width target I'm union-bounding against; if the failure probability decays like $\alpha^s$ I can make it beat $n^k$ by taking $s$ logarithmic in the circuit size, and $\alpha\propto pt$ says "small $p$ and small fan-in $t$ each help linearly". FSS's fatal polynomial decay was exactly the failure to get the width target into the exponent. If a bottom block has a shallow decision tree, it switches to either normal form; if Håstad's minterm version says every minterm is small, it switches to the OR-of-ANDs form directly. The lemma is the whole game; everything else is bookkeeping.
+
+Let me try to prove the decision-tree version first, in the fixed-star model where the restriction has exactly $r=\sigma n$ stars. Why should such a restriction so reliably make a small-width DNF collapse? Stare at the failure event itself: a restriction is "bad" if $G|_\rho$ still needs a deep decision tree. If I could show every bad restriction can be *compressed* — described uniquely by something from a much smaller set — then bad ones are rare, and that compression ratio is the probability bound. Let me chase that.
+
+Set up the canonical decision tree of $G|_\rho$, because "decision-tree depth $>d$" needs to mean a *specific* long path I can point at. Order the terms of $G$ once and for all — wait, $G$ is an AND of ORs, but the encoding is cleanest if I think of a *DNF* $F$ (an OR of AND-terms $T_1,T_2,\dots$ of width $\le w$) and show its restriction collapses; by the symmetric DT fact the AND-of-ORs case is identical after a De Morgan flip, so let me just do the DNF and not lose generality. Order the terms $T_1,T_2,\dots$. The canonical decision tree $\mathcal C(F|_\rho)$: scan for the first term $T_{i_1}$ not killed by $\rho$; let $U_1=(T_{i_1})|_\rho$ be its surviving literals; query *all* variables of $U_1$, in index order, building a complete binary subtree on them. Exactly one branch sets $U_1$ true — that's a 1-leaf; on every other branch, $T_{i_1}$ is now dead, so recurse on the first surviving term of the further-restricted DNF. Keep going. This tree computes $F|_\rho$, and if $\mathrm{DTdepth}(F|_\rho)>d$ then *some* root-to-node path in $\mathcal C$ has length $>d$. Take the lexicographically-leftmost such path and trim it to fix exactly $d$ variables; call that partial assignment $\pi$. So $\rho\pi$ has $d$ fewer $\ast$'s than $\rho$, and crucially $F|_{\rho\pi}$ is still non-constant (the path was still "undecided" at depth $d$).
+
+I will *encode* the bad restriction $\rho$ by a restriction with $d$ *fewer* stars, plus a little side information, in a way I can invert. Stars are the expensive thing to specify — telling you where $r$ stars sit among $n$ variables costs about $\binom{n}{r}$, and $d$ fewer stars is a factor $\approx (r/n)^d$ smaller a set. If the side information is cheap, "bad" gets squeezed into a much smaller space, and that ratio *is* the probability bound.
+
+The naive encoding $\rho\mapsto\rho\pi$ fails because, looking at $\rho\pi$ as just a restriction in $R_{r-d}$, I can't tell which $d$ fixings were $\pi$ and which were $\rho$ — I'd need $\sim d\log n$ bits to point at the $\pi$-variables among all $n$, and that $n^d$ cost cancels the whole gain. Walk the path block by block. In the first block, $\pi$ assigned the $d_1$ variables of $U_1$ some way that kept $F$ undecided; instead of recording *that* assignment, record $\gamma_1$, the assignment that makes $U_1$ *true*. Encode with $\gamma_1$, not $\pi_1$. Why is that better? Because $\rho\gamma_1$ *sets $U_1$ to true*, so in $F|_{\rho\gamma_1}$ the term $T_{i_1}$ is the **first term forced to 1** (every earlier term was already killed by $\rho$, hence still killed). So from the encoded restriction alone the decoder can *find* $T_{i_1}$ — it's the first satisfied term — and then it only needs to know *which* of the $\le w$ variables *inside* $T_{i_1}$ are the ones $\gamma_1$ fixed. That's $d_1$ pointers into a width-$w$ term: $d_1\log w$ bits, not $d_1\log n$. Plus $d_1$ more bits to say how $\pi_1$ (the real path assignment) differed from $\gamma_1$ on those same variables, so the decoder can reconstruct $\pi_1$ and continue. Replace $\gamma_1$ by $\pi_1$, move to the next block: $\rho\pi_1$ now kills $U_1$, find the next surviving term $T_{i_2}$, repeat. The blocks have sizes $d_1+d_2+\cdots=d$.
+
+So the encoding is $\rho\mapsto \big(\rho\gamma_1\gamma_2\cdots\gamma_\ell\ \in R_{r-d}\big)\ +\ \text{auxiliary }(d\log w + 2d)\text{ bits}$, and it's *injective*: the decoder repeatedly finds the first satisfied (or, in the last block, first undetermined) term, reads off which of its $\le w$ variables are the $\gamma$-variables from the aux pointers, recovers $\gamma_i$ and $\pi_i$, and rolls the restriction forward. Injective into $R_{r-d}\times\{0,1\}^{\,d\log w+2d}$.
+
+Count it. Number of restrictions with exactly $j$ stars is $\binom{n}{j}2^{n-j}$. So
+$$
+\Pr[\text{bad}]\ \le\ \frac{\binom{n}{r-d}2^{n-(r-d)}\cdot(4w)^{d}}{\binom{n}{r}2^{n-r}}
+=\frac{\binom{n}{r-d}}{\binom{n}{r}}\,2^{d}(4w)^{d}.
+$$
+The aux bits gave $2^{\,d\log w + 2d}=(4w)^d$. And
+$$
+\frac{\binom{n}{r-d}}{\binom{n}{r}}=\frac{r(r-1)\cdots(r-d+1)}{(n-r+d)(n-r+d-1)\cdots(n-r+1)}\ \le\ \Big(\frac{r}{n-r+d}\Big)^{d}\ \le\ \Big(\frac{r}{n-r}\Big)^{d}.
+$$
+Write $\sigma=r/n$ for the star fraction. Then $r/(n-r)=\sigma/(1-\sigma)$, and
+$$
+\Pr[\text{bad}]\ \le\ \Big(\tfrac{\sigma}{1-\sigma}\Big)^{d}\cdot 2^{d}(4w)^{d}\ =\ \Big(\tfrac{8\sigma w}{1-\sigma}\Big)^{d}.
+$$
+With $\sigma\le 1/5$, $\tfrac{1}{1-\sigma}\le \tfrac54$, so $\Pr[\text{bad}]\le (10\sigma w)^{d}$. There it is — failure probability $(10\sigma w)^d=(\Theta(1)\cdot p\,t)^d$ with $d$ in the exponent, exactly the shape FSS couldn't get and exactly what a union bound over poly-many gates will eat. The star-fraction $\sigma$ plays the role of $p$, the width $w$ the role of $t$. Good — and notice there's *no dependence on the size of $F$*, only on its width; that's what lets the union bound be cheap.
+
+I should pin the constant down honestly rather than hand-wave "$\Theta(1)$", because the corollary about exact depth needs it. The cleanest fully-rigorous route does the same idea but as an induction on the number of OR-clauses, tracking conditional probabilities, and it lands on an *exact* algebraic constant. Let me carry it through, because I don't want to gesture at the bound I'm leaning the whole theorem on.
+
+Stronger statement, set up for induction: let $G=\bigwedge_{i=1}^{q}G_i$ where each $G_i$ is an OR of fan-in $\le t$; let $F$ be an arbitrary function; $\rho\in R_p$. Write $\mathrm{min}(G)\ge s$ for the event "$G|_\rho$ has a minterm of size $\ge s$" — a minterm is a minimal partial assignment forcing $G|_\rho$ to $1$, and $G$ has a large minterm exactly when its OR-of-ANDs (minterm) representation needs a wide AND, which is the bad event for switching this AND-of-ORs block. I claim
+$$
+\Pr\big[\mathrm{min}(G)\ge s \ \big|\ F|_\rho\equiv 1\big]\ \le\ \alpha^{s},
+$$
+where $\alpha$ is the unique positive root of $\big(1+\tfrac{4p}{(1+p)\alpha}\big)^{t}=\big(1+\tfrac{2p}{(1+p)\alpha}\big)^{t}+1$ — I don't yet see why this is the right constant, but I'll let the induction *produce* this equation and only afterward read off that $\alpha<5pt$, with the golden ratio surfacing in the small-$pt$ asymptotics. The conditioning on $F|_\rho\equiv1$ looks gratuitous but I'll see in a second that I *need* a free function $F$ in the hypothesis or the induction won't close — the conditioning keeps changing as I peel clauses, so the inductive statement has to allow an arbitrary one. Taking $F\equiv1$ at the end recovers the plain lemma, and absence of a large minterm means $G|_\rho$ itself is an OR of ANDs of width $<s$.
+
+Induct on $q$. Base $q=0$: $G\equiv1$, it has the empty minterm, $\mathrm{min}(G)\ge s$ is impossible for $s\ge1$, probability $0\le\alpha^s$. Now the step. Look at the first clause $G_1$. Either $\rho$ forces $G_1$ to $1$ or it doesn't, and I bound the conditional probability by the max of the two cases:
+$$
+\Pr[\mathrm{min}(G)\ge s\mid F|_\rho\equiv1]\le \max\Big(\Pr[\cdots\mid F|_\rho\equiv1\wedge G_1|_\rho\equiv1],\ \Pr[\cdots\mid F|_\rho\equiv1\wedge G_1|_\rho\not\equiv1]\Big).
+$$
+If $G_1|_\rho\equiv1$, then $G|_\rho=\bigwedge_{i\ge2}G_i|_\rho$, a product of $q-1$ clauses, and the conditioning becomes $(F\wedge G_1)|_\rho\equiv1$ — still "some function $\equiv1$", which is allowed because my hypothesis quantified over *all* $F$. By induction this is $\le\alpha^s$. That's precisely why I needed the arbitrary $F$: peeling a clause folds it into the conditioning.
+
+If $G_1|_\rho\not\equiv1$, write $G_1=\bigvee_{i\in T}x_i$ with $|T|\le t$ — I may assume positive literals since $R_p$ is symmetric in $0/1$ and I can rename $x_i\leftrightarrow\bar x_i$. Split $\rho=\rho_1\rho_2$, $\rho_1$ on the variables of $T$, $\rho_2$ on the rest. "$G_1$ not forced to $1$" means $\rho_1$ sets no $T$-variable to $1$, i.e. $\rho_1(x_i)\in\{0,\ast\}$ for $i\in T$. Now, since $G_1$ isn't already true, *every* minterm of $G|_\rho$ must make $G_1$ true, so it must set some $T$-variable to $1$ — meaning that variable was left $\ast$ by $\rho_1$. Partition minterms by $Y$ = the nonempty subset of $T$-variables the minterm touches; those $Y$-variables were stars of $\rho_1$, written $\rho_1(Y)=\ast$. Then
+$$
+\Pr[\mathrm{min}(G)\ge s\mid F|_\rho\equiv1\wedge G_1|_{\rho_1}\not\equiv1]\le \sum_{\emptyset\ne Y\subseteq T}\Pr[\rho_1(Y)=\ast\mid\cdots]\cdot\Pr[\mathrm{min}(G)_Y\ge s\mid\cdots\wedge\rho_1(Y)=\ast].
+$$
+Two factors. The first: ignoring $F$ for a moment, conditioned on $\rho_1(x_i)\in\{0,\ast\}$ for $i\in T$, each such variable is $\ast$ with conditional probability $\tfrac{p}{p+(1-p)/2}=\tfrac{2p}{1+p}$ and $0$ otherwise, independently, so $\Pr[\rho_1(Y)=\ast\mid G_1|_{\rho_1}\not\equiv1]=\big(\tfrac{2p}{1+p}\big)^{|Y|}$. Does adding back the condition $F|_\rho\equiv1$ hurt? It only *helps*: requiring more variables to be $\ast$ can't be made *more* likely by also knowing some function is forced to $1$ — Mike Saks's clean way to see this is the elementary identity $\Pr[A\mid B\wedge C]\le\Pr[A\mid C]\iff\Pr[B\mid A\wedge C]\le\Pr[B\mid C]$; with $A=(\rho_1(Y)=\ast)$, $B=(F|_\rho\equiv1)$, $C=(G_1|_{\rho_1}\not\equiv1)$, I just need $\Pr[F|_\rho\equiv1\mid \rho_1(Y)=\ast\wedge C]\le\Pr[F|_\rho\equiv1\mid C]$, which is clear: forcing more variables to be undetermined can't increase the chance a function is pinned to $1$. So the first factor stays $\le\big(\tfrac{2p}{1+p}\big)^{|Y|}$.
+
+The second factor: think of a minterm as $\gamma_1$ (its assignment to the $Y$-variables) followed by $\gamma_2$ (the part outside $T$). The $\gamma_1$-part must make $G_1$ true and so cannot be all-$0$ on $Y$: there are $2^{|Y|}-1$ choices. The variables in $T\setminus Y$ are not allowed to appear in this minterm, so after fixing $\rho_1$ and $\gamma_1$ I can either maximize over the allowed $\rho_1$'s or, equivalently, freeze the remaining $T\setminus Y$ variables in all possible ways and look at the resulting product of the remaining clauses. That is still a product of ORs of fan-in $\le t$ with one fewer top clause, under another condition of the form "some function is forced to $1$." The outside part must have size at least $s-|Y|$, so the induction hypothesis gives $\le\alpha^{s-|Y|}$. Hence the second factor contributes $(2^{|Y|}-1)\,\alpha^{s-|Y|}$. Putting the two together and summing (the $Y=\emptyset$ term is $0$, so I include it freely):
+$$
+\sum_{Y\subseteq T}\Big(\tfrac{2p}{1+p}\Big)^{|Y|}(2^{|Y|}-1)\,\alpha^{s-|Y|}
+=\alpha^{s}\sum_{i=0}^{|T|}\binom{|T|}{i}\Big[\Big(\tfrac{4p}{(1+p)\alpha}\Big)^{i}-\Big(\tfrac{2p}{(1+p)\alpha}\Big)^{i}\Big]
+=\alpha^{s}\Big[\big(1+\tfrac{4p}{(1+p)\alpha}\big)^{|T|}-\big(1+\tfrac{2p}{(1+p)\alpha}\big)^{|T|}\Big].
+$$
+This is $\le\alpha^s$ exactly when $\big(1+\tfrac{4p}{(1+p)\alpha}\big)^{|T|}-\big(1+\tfrac{2p}{(1+p)\alpha}\big)^{|T|}\le1$, and since $|T|\le t$ it suffices that $\alpha$ make the $t$-version equal to $1$:
+$$
+\Big(1+\tfrac{4p}{(1+p)\alpha}\Big)^{t}=\Big(1+\tfrac{2p}{(1+p)\alpha}\Big)^{t}+1.
+$$
+That's the equation defining $\alpha$ — write $\beta=\alpha^{-1}$ and it reads $(1+4q\beta)^t=(1+2q\beta)^t+1$ with $q=\tfrac{p}{1+p}$; there's a unique positive root. The golden ratio appears when I solve the small-$pt$ asymptotics. If $\alpha=cpt$ and $p$ is small, then $q/\alpha\sim 1/(ct)$, so the defining equation tends to $e^{4/c}=e^{2/c}+1$. Let $z=e^{2/c}$; then $z^2=z+1$, so $z=\phi=\tfrac{1+\sqrt5}{2}$ and $c=2/\ln\phi$. Thus
+$$
+\alpha=\frac{2}{\ln\phi}\,pt+O(p^2t)<5pt\quad\text{for small }p.
+$$
+Both cases give $\le\alpha^s$, the max is $\le\alpha^s$, induction closes. Setting $F\equiv1$: $\Pr[\mathrm{min}(G)\ge s]\le\alpha^s$, and "no minterm of size $\ge s$" means $G|_\rho$ is an OR of ANDs each of size $<s$. The switch is exact and fails with probability $\le\alpha^s\le(5pt)^s$. This minterm lemma and the fixed-star decision-tree lemma above are not the same statement, but they have the same decisive feature: the width target sits in the exponent, and the base is a constant times the restriction density times the bottom fan-in.
+
+Now assemble the parity lower bound, because the lemma is the engine but I still have to drive it down all $k$ levels and not run out of variables. Let $C$ be a depth-$k$ circuit of size $S$ computing $\mathrm{PARITY}_n$. Normalize to the leveled alternating tree, literals at leaves; the normalization costs at most a polynomial in $S$, which only nudges constants. The bottom two layers are depth-2 blocks; say the bottom layer is $\wedge$'s, so the bottom-two-layers are DNFs.
+
+I have to handle one nuisance first: the lemma wants *small width* $w$ at the bottom, but the circuit's bottom gates could have huge fan-in. So I spend one preliminary restriction $\rho_0$ at a generous $p_0=1/100$ to chop the bottom fan-in down. A bottom OR gate of fan-in $L>w:=20\log S$ survives unforced only if every literal is either left $\ast$ or set to the non-forcing value; that probability is
+$$
+\Big(p_0+\frac{1-p_0}{2}\Big)^L=\Big(\frac{1+p_0}{2}\Big)^L\le 0.505^w\ll\frac1S.
+$$
+The same bound holds for an AND gate with the forcing value reversed. Union over the $\le S$ bottom gates: with positive probability every initially wide bottom gate is killed, and every bottom gate that remains nonconstant had original fan-in at most $w$. Fix such a $\rho_0$. Now I have a depth-$k$ circuit with bottom fan-in $\le w=20\log S$ on $\approx n/100$ live variables — and it still computes $\pm\mathrm{PARITY}$, because parity survives.
+
+Now the main loop. One round: hit the current circuit with a fresh $\rho\in R_p$ at star-fraction $\sigma=\tfrac{1}{20w}$, with switching target $s=w$. Each bottom DNF (width $\le w$) fails to collapse to a depth-$w$ decision tree with probability at most
+$$
+(10\sigma w)^{w}=\Big(10\cdot\tfrac{1}{20w}\cdot w\Big)^{w}=\big(\tfrac12\big)^{w}=\big(\tfrac12\big)^{20\log S}=\frac{1}{S^{20}}.
+$$
+Union over the $\le S$ bottom depth-2 blocks: with probability $\ge 1-S^{-19}>0$, *every* bottom block simultaneously becomes a depth-$w$ decision tree, hence a width-$w$ CNF. Re-express each as that CNF: its top gate flips from $\wedge$ to $\vee$, meets the $\vee$ above, the two $\vee$-layers merge, and the depth drops to $k-1$ — with bottom fan-in still $\le w$. The number of live variables shrinks by the star-fraction: $m\to\sigma m$. I should be precise about what is being counted here. The switch may display many new bottom clauses if I write out the CNF, but the higher-level skeleton only loses a level, and Håstad's induction tracks the number of depth-at-least-2 subcircuits together with bottom fan-in. In the decision-tree presentation, the displayed bottom expansion is at most $2^w=S^{20}$ per switched block, and this only changes the final size constant if one insists on ordinary gate count. The exact switch is what matters: no approximation error has to be carried through the next restriction. Fix a good $\rho$ and repeat.
+
+Do this $k-2$ times, taking the circuit from depth $k$ down to depth $2$. The number of surviving variables is
+$$
+m\ \approx\ n\cdot\sigma^{\,k-2}\ =\ \frac{n}{(20w)^{\,k-2}}\ =\ \frac{n}{(400\log S)^{\,k-2}}
+$$
+(folding in the $\sigma$ from each round and the $\tfrac1{100}$ from $\rho_0$ into the constant). At the end I have a depth-2 circuit — a DNF or CNF — computing $\mathrm{PARITY}|_{\text{restrictions}}$, which is $\pm\mathrm{PARITY}$ on $m$ variables. By Lupanov's wall, a depth-2 parity circuit on $m$ variables needs size $\ge 2^{m-1}$, and even more basically every bottom term or clause must have width $m$: drop any one literal from a parity minterm and the value flips. In Håstad's bottom-fan-in bookkeeping the final depth-2 circuit still has bottom fan-in $\le w$, so I must have $w\ge m$, hence
+$$
+20\log S\ =\ w\ \gtrsim\ m\ =\ \frac{n}{(400\log S)^{k-2}}\ \Longrightarrow\ (400\log S)^{k-1}\ \gtrsim\ n.
+$$
+In the usual size shorthand, after absorbing the standard switching display overhead into the constant, the same base case is written as
+$$
+S\ \ge\ 2^{m-1}\ \Longrightarrow\ \log S\ \gtrsim\ m\ =\ \frac{n}{(400\log S)^{k-2}}\ \Longrightarrow\ (400\log S)^{k-1}\ \gtrsim\ n\ \Longrightarrow\ \log S\ \ge\ \Omega\!\big(n^{1/(k-1)}\big).
+$$
+So a depth-$k$ circuit for parity has size $S\ge 2^{\Omega(n^{1/(k-1)})}$. Exponential, and there are no hidden $k$-dependent constants in the $\Omega$, so I can read off the corollary: a *polynomial*-size parity circuit ($\log S=O(\log n)$) forces $(400\log S)^{k-1}\gtrsim n$, i.e. $(k-1)\log(400\log S)\ge \log n - O(1)$, i.e.
+$$
+k\ \ge\ \frac{\log n}{c+\log\log n}\quad\text{for some constant }c.
+$$
+That's tight: parity *does* have poly-size depth-$O(\log n/\log\log n)$ circuits, and the depth-$k$ upper construction of size $\sim n\,2^{n^{1/(k-1)}}$ matches the lower bound up to the constant in the exponent. So $\mathrm{PARITY}\notin AC^0$ — no constant depth $k$ with poly size can do it, because $\log n/\log\log n\to\infty$ beats every constant.
+
+The chain now runs in one direction: random restriction kills small blocks but leaves parity intact; the fixed-star encoding gives $\Pr[\mathrm{DTdepth}(F|_\rho)>d]\le(10\sigma w)^d$, and Håstad's independent-$R_p$ induction gives the exact minterm switch with $\alpha<5pt$; choosing $\sigma=1/(20w)$ and $d=s=w=20\log S$ makes per-block failure $1/S^{20}$; a union bound over $\le S$ bottom blocks switches them all and merges a layer; $k-2$ rounds reach depth $2$ on $m\approx n/(400\log S)^{k-2}$ live variables; parity survives as $\pm\mathrm{PARITY}_m$; Lupanov's depth-2 base case forces the final bottom fan-in or size to be large; therefore $\log S\ge\Omega(n^{1/(k-1)})$, and polynomial size needs depth at least $\log n/(c+\log\log n)$. The whole proof leans on one quantitative fact — failure probability with the width target in the exponent — and the reason FSS got only super-polynomial is exactly that their bound was polynomial in $n$ rather than exponentially small in the switching width.
+
+```python
+# The argument as an executable sanity-checker for the combinatorial core:
+# (1) a random restriction collapses a small-width DNF to a shallow decision tree,
+# (2) PARITY survives every restriction with full decision-tree depth.
+# Small-n brute force — it does NOT prove the asymptotic bound, it spot-checks the
+# two facts the proof rests on.
+
+import random
+from itertools import product
+
+def parity(bits):
+    s = 0
+    for b in bits:
+        s ^= b
+    return s
+
+def restrict(values, rho):
+    """rho: dict var->{0,1,'*'}; return the induced truth table over the '*' vars
+    as a flat tuple of outputs, indexed by the free-variable assignments in order."""
+    free = sorted(i for i, v in rho.items() if v == '*')
+    table = []
+    for assign in product((0, 1), repeat=len(free)):
+        full = dict(rho)
+        for i, b in zip(free, assign):
+            full[i] = b
+        table.append(values(tuple(full[i] for i in sorted(full))))
+    return tuple(table), free
+
+from functools import lru_cache
+
+@lru_cache(maxsize=None)
+def _dt(table):
+    """Optimal decision-tree depth of a function given as its 2^m truth table.
+    Memoized on the subfunction so it runs in time ~ #distinct subfunctions."""
+    if all(b == table[0] for b in table):               # constant -> depth 0
+        return 0
+    m = (len(table)).bit_length() - 1                    # number of free variables
+    best = m
+    for v in range(m):                                   # branch on free var v
+        half = 1 << (m - 1 - v)
+        t0, t1 = [], []                                  # cofactors x_v = 0 / 1
+        for blk in range(0, len(table), 2 * half):
+            t0.extend(table[blk:blk + half])
+            t1.extend(table[blk + half:blk + 2 * half])
+        best = min(best, 1 + max(_dt(tuple(t0)), _dt(tuple(t1))))
+    return best
+
+def dt_depth(table, free):
+    return _dt(tuple(table))
+
+def random_restriction(n, p):
+    return {i: ('*' if random.random() < p else random.randint(0, 1)) for i in range(n)}
+
+def small_dnf(terms):
+    """terms: list of dicts var->0/1 (a literal pattern); function = OR of ANDs."""
+    def f(bits):
+        for t in terms:
+            if all(bits[i] == b for i, b in t.items()):
+                return 1
+        return 0
+    return f
+
+if __name__ == "__main__":
+    random.seed(0)
+    n, t = 14, 3                      # width-3 DNF on 14 vars (brute force stays small)
+    terms = [ {random.randrange(n): random.randint(0,1) for _ in range(t)} for _ in range(40) ]
+    f = small_dnf(terms)
+
+    # (1) hit the small-width DNF with a low-sigma random restriction: DT-depth collapses.
+    sigma = 1 / (20 * t)
+    depths = []
+    for _ in range(300):
+        rho = random_restriction(n, sigma)        # restriction covers ALL n variables
+        table, free = restrict(f, rho)            # induced function on the few free vars
+        depths.append(dt_depth(table, free))
+    print("small DNF restricted: max DT-depth seen =", max(depths), "(switching lemma: stays tiny)")
+
+    # (2) PARITY survives every restriction; exhaust all 3^6 restrictions.
+    for rho_values in product((0, 1, '*'), repeat=6):
+        rho = dict(enumerate(rho_values))
+        table, free = restrict(parity, rho)
+        assert dt_depth(table, free) == len(free), "parity must need full DT-depth"
+    print("PARITY: DT-depth == #free vars on all 3^6 restrictions  (never trivializes)")
+```

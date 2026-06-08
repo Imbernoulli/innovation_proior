@@ -341,3 +341,109 @@ have a usable self-account even if not listed here.)
   `Search & SAT`, `Systems & compilers`.
 - The earlier `ALGORITHM_CANDIDATES.md` was memory-drafted and pedagogical; this file supersedes it
   for the task-oriented, web-grounded effort.
+
+## ▶ ORPHAN INGEST (in progress) — 58 complete-but-unreviewed-and-unindexed methods
+
+58 methods have full results/ (3 md) + src/ (arXiv LaTeX) + are in-frame clean (rsnHdr=0, no meta
+titles), BUT their .codex_review.json is a PLACEHOLDER (codex_reviewed:false, outcome:none) and they
+are NOT in methods.json. These are colleague/early ML methods (PEFT, quantization, retrieval, speech,
+prompting, LLM, NAS): refs/ were never pushed (local-only) but src/ LaTeX is present, so they are
+genuine — just never Codex-gated nor indexed.
+
+PLAN: per method — subagent runs real Codex review-and-fix (ground in src+results) + self-reverify,
+then upgrade .codex_review.json to completed/subagent-codex-reverify. Then ingest all into methods.json
+(domain by method type) centrally + commit + push. Batch ~7-8 at low Codex concurrency (token-race).
+NOTE: dreamerv3 is 2/3 (missing one md) — finish it separately.
+
+Batch 1 launched: adapter, awq, rag, whisper, chain-of-thought, gptq, nasnet.
+
+## ▣ THEORY TRACK (user-authorized 2026-06-07) — STOP-ADVANCING lifted for this track
+
+User asked to add **theory** examples (ML/RL theory, statistical learning, probability/inference,
+physics, pure math, TCS/crypto) — the kind where what separates a *good* theorist is a single
+teachable INSIGHT (the right definition, the right reframe, the right invariant), not brute force.
+None of the slugs below collide with existing methods (scanned). Run **in waves of 10**, finish a
+wave before launching the next. Each method = one `general-purpose` subagent following
+`.claude/skills/paper-to-reasoning/SKILL.md` in full, workspace `methods/<slug>/`.
+
+**User's standing emphases for this track (encode in every subagent prompt):**
+1. **Mine the author's self-account for its REASONING, not anecdote** (skill §1.2b) — the technical
+   "why I chose this / what I abandoned / what this definition was really for", not naming stories or
+   night-drive legends. Self-account is NOT mandatory; where absent, reconstruct from primary+antecedents.
+2. **Complete reasoning, NO simplification** — every load-bearing derivation/lemma/proof lived out
+   inline (main-text + appendix depth); gesturing is a failure.
+3. **Code NOT required** — these are theory; the landing artifact is the precise theorem+proof /
+   final formula / mechanism (skill §1.4, §2.2). No forced code.
+Standard gates still apply: three-source grounding into `refs/`, in-frame first-person `reasoning.md`
+(no headers/meta titles), per-method Codex review → `.codex_review.json`, never touch `methods.json`.
+
+| wave | slugs |
+| --- | --- |
+| **W1 flagship** | bellman-dynamic-programming · temporal-difference-learning · policy-gradient-theorem · adaboost-boosting · vc-dimension · heisenberg-matrix-mechanics · diffie-hellman-public-key · feynman-path-integral · james-stein-shrinkage · cantor-diagonalization |
+| **W2 RL theory** | q-learning-watkins · bandit-ucb-lai-robbins · reinforce-score-function · conservative-policy-iteration · natural-policy-gradient · gittins-index · thompson-sampling · td-lambda-eligibility-traces · successor-representation · potential-based-reward-shaping |
+| **W3 stat-learning** | pac-learning-valiant · rademacher-complexity · pac-bayes · svm-max-margin · kernel-trick-representer · no-free-lunch · benign-overfitting · implicit-regularization-gd · mdl-rissanen · online-convex-optimization |
+| **W4 prob/inference** | probabilistic-method-erdos · lovasz-local-lemma · concentration-of-measure · em-algorithm · variational-inference-elbo · metropolis-hastings-mcmc · hamiltonian-monte-carlo · mirror-descent · second-moment-method · particle-filter-smc |
+| **W5 physics** | dirac-equation · special-relativity · equivalence-principle-gr · noether-theorem · gauge-principle-yang-mills · boltzmann-entropy · planck-quantization · bcs-cooper-pairs · bell-inequality · landau-order-parameter |
+| **W6 math** | godel-incompleteness · turing-halting · galois-theory · von-neumann-minimax · nash-equilibrium-existence · riemann-analytic-continuation · furstenberg-ergodic-szemeredi · yoneda-lemma · brouwer-fixed-point · szemeredi-regularity |
+| **W7 TCS/crypto** | cook-levin-np-completeness · pcp-theorem · yao-minimax-principle · natural-proofs-barrier · parity-not-in-ac0 · rsa-trapdoor · semantic-security-gm · zero-knowledge-gmr · ip-equals-pspace · pseudorandomness-ggm |
+| **W8 extensions** | ucrl2-optimism-mdp · pac-mdp-rmax · maxent-inverse-rl · off-policy-evaluation-doubly-robust · structural-risk-minimization · differential-privacy · bayesian-occam-factor · spontaneous-symmetry-breaking · berry-phase · flp-impossibility |
+
+Status (2026-06-07):
+- **W1 DONE — 10/10 Codex-confirmed** (`.codex_review.json` codex_reviewed:true on all ten), in-frame
+  clean (0 headers, 5 context sections, no leaks), three-source grounded, methods.json untouched.
+  james-stein + heisenberg ended before their Codex finished → main agent ran their Codex review
+  manually (both completed, markers written).
+- **W2 DONE — 10/10 Codex-confirmed**, 0 headers, 5 sections, no leaks, methods.json untouched. The
+  foreground-block-on-Codex fix worked (all 10 self-wrote their markers). Notable: q-learning restored
+  Watkins' recorded "couldn't prove Q(λ) converges" wall; gittins agent caught a Codex-INTRODUCED error
+  (Normal shift-scale multiplier) and fixed it; several used same-author theses/textbooks as the
+  self-account backbone (Kakade thesis for CPI, Watkins thesis, Sutton-Barto).
+- **W3 DONE — 10/10 Codex-confirmed**, 0 headers, 5 sections, no leaks, methods.json untouched.
+  Self-accounts mined: Wahba 2019 (representer), Rissanen obituary/Festschrift (MDL), Wolpert 2020
+  retrospective (NFL). Several primaries paywalled (Lai-Robbins, ABR-1964 kernel, Rissanen-1978,
+  Wolpert-1996 front-half) but cross-verified across ≥2 faithful secondaries per skill §1.0.
+- **W4 launched** (probability/inference, 10): probabilistic-method-erdos, lovasz-local-lemma,
+  concentration-of-measure, em-algorithm, variational-inference-elbo, metropolis-hastings-mcmc,
+  hamiltonian-monte-carlo, mirror-descent, second-moment-method, particle-filter-smc.
+- **W4 DONE — 10/10 Codex-confirmed**, 0 headers, 5 sections, no leaks, methods.json untouched.
+  Self-accounts mined: Gubernatis-2005/Rosenbluth-Genesis (Metropolis), the primaries' own candid
+  motivation (Thompson §1, Gordon-1993 §3.3). Several primaries paywalled (Duane-1987 HMC, Nemirovski-
+  Yudin-1983, McDiarmid-1989, Rissanen) but cross-verified across ≥2 faithful secondaries.
+- **W5 launched** (physics, 10): dirac-equation, special-relativity, equivalence-principle-gr,
+  noether-theorem, gauge-principle-yang-mills, boltzmann-entropy, planck-quantization, bcs-cooper-pairs,
+  bell-inequality, landau-order-parameter.
+- **W5 DONE — 10/10 Codex-confirmed**, 0 headers, 5 sections, no leaks, methods.json untouched.
+  Rich self-accounts this wave: Yang's "Conversation" ([A,A] cancellation), Einstein Kyoto/Glasgow/
+  Autobiog. (special-rel + equiv-principle), Dirac Nobel+Varenna, Planck Nobel-1920 (NOT the desperation
+  anecdote), BCS three 1972 Nobel lectures, Bell "Bertlmann's socks". Codex caught real math bugs in
+  most (γ-matrix def, CHSH bracket pairing, YM normalization, Planck R-sign).
+- **W6 launched** (pure math, 10): godel-incompleteness, turing-halting, galois-theory,
+  von-neumann-minimax, nash-equilibrium-existence, riemann-analytic-continuation,
+  furstenberg-ergodic-szemeredi, yoneda-lemma, brouwer-fixed-point, szemeredi-regularity.
+- **W6 DONE — 10/10 Codex-confirmed.** Session limit hit mid-W6: all 10 deliverables were written
+  (lint-clean) but Codex was interrupted; on quota restore the main agent dispatched review-only
+  subagents (no regen) to run Codex per method — initial burst of 5 tripped a transient SERVER-side
+  rate-limit (von-neumann failed, retried clean). Lesson: review-only bursts hit Codex near-simultaneously;
+  keep ≤3 concurrent or add rate-limit-retry. Codex caught real math errors: godel (provability not
+  relativized to c), furstenberg ("upper density finitely additive" — false), brouwer (degree→mod-2),
+  galois (radical→solvable step), riemann (RH silently assumed in explicit formula).
+- **W7 launched** (TCS/crypto, 10): cook-levin-np-completeness, pcp-theorem, yao-minimax-principle,
+  natural-proofs-barrier, parity-not-in-ac0, rsa-trapdoor, semantic-security-gm, zero-knowledge-gmr,
+  ip-equals-pspace, pseudorandomness-ggm.
+- **W7 DONE — 10/10 Codex-confirmed.** Codex caught real math errors: yao (Thm-4 factor 1/s not 1/8),
+  parity-ac0 (α = (2/ln φ)pt), pcp (FGLSS graph size), and natural-proofs agent REVERTED a Codex-introduced
+  good-atom flip. rsa agent ended early but its detached Codex finished and the resumed agent wrote the marker.
+- **W8 launched** (extensions, 10): ucrl2-optimism-mdp, pac-mdp-rmax, maxent-inverse-rl,
+  off-policy-evaluation-doubly-robust, structural-risk-minimization, differential-privacy,
+  bayesian-occam-factor, spontaneous-symmetry-breaking, berry-phase, flp-impossibility.
+- Running tally: **70 theory traces done+Codex-confirmed (W1–W7), W8 in flight → 80 total.**
+- ⏭ REMAINING FINISHING WORK (after W8 drains): register all 80 into methods.json centrally
+  ({slug,title,domain,arxiv|doi|url}); commit; (optional) website ingest. NOT yet done — subagents never
+  touch methods.json. Suggested domains: Reinforcement learning / Statistical learning theory /
+  Probability & inference / Physics / Pure mathematics / TCS & cryptography.
+- **Prompt fix from W2 onward:** subagents MUST run Codex review in the FOREGROUND and BLOCK until it
+  completes before ending (write `.codex_review.json` first). Only skip-waiting if Codex hits a
+  usage/rate/quota limit ("out of money") → `codex_reviewed:false` + manual re-derivation. This fixes
+  the W1 james-stein/heisenberg "ended while Codex still running" failure.
+- Self-account hooks discovered this run (added to SELF_ACCOUNT_SOURCES.md): Bellman *Eye of the
+  Hurricane*, Schapire *Explaining AdaBoost*, Diffie *First Ten Years of PKC*, Chervonenkis recollections.
