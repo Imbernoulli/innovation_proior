@@ -436,11 +436,36 @@ Status (2026-06-07):
 - **W8 launched** (extensions, 10): ucrl2-optimism-mdp, pac-mdp-rmax, maxent-inverse-rl,
   off-policy-evaluation-doubly-robust, structural-risk-minimization, differential-privacy,
   bayesian-occam-factor, spontaneous-symmetry-breaking, berry-phase, flp-impossibility.
-- Running tally: **70 theory traces done+Codex-confirmed (W1–W7), W8 in flight → 80 total.**
-- ⏭ REMAINING FINISHING WORK (after W8 drains): register all 80 into methods.json centrally
-  ({slug,title,domain,arxiv|doi|url}); commit; (optional) website ingest. NOT yet done — subagents never
-  touch methods.json. Suggested domains: Reinforcement learning / Statistical learning theory /
-  Probability & inference / Physics / Pure mathematics / TCS & cryptography.
+## ✅ THEORY TRACK COMPLETE — 120/120 done, Codex-confirmed, registered, pushed
+
+Final snapshot (2026-06-08). All twelve waves of 10 are finished: deliverables written, in-frame
+clean (0 reasoning.md headers, 5 context sections, no leaks), three-source grounded, each with a real
+`.codex_review.json` (`codex_reviewed:true, outcome:"completed"`). All 120 registered in methods.json
+(254→497) and pushed to `session-cs-math-anchors` in per-wave commits (last: 0b45c6f).
+
+| wave | theme | commit |
+| --- | --- | --- |
+| W1–W8 | flagship · RL theory · stat-learning · prob/inference · physics · pure math · TCS/crypto · extensions | 5677c25 (80 in one) |
+| W9 | modern RL & nonconvex-optimization theory (6 Chi-Jin–line) | c94d2e8 |
+| W10 | classical convex & stochastic optimization | ad67d74 |
+| W11 | information theory, coding & quantum | 542b6ba |
+| W12 | algorithms, geometry & combinatorics | 0b45c6f |
+
+**Operational lessons banked this run** (for the next batch):
+- Subagents that ended on "I'll wait for the monitor" BEFORE their Codex finished left markers missing
+  (W1 james-stein/heisenberg, several W8/W12). Fix that worked from W2 on: prompt them to run Codex in
+  the FOREGROUND and BLOCK to completion; many later self-recovered by blocking on the detached PID.
+- Bursting 10 generation agents (or even 5 review-only) can trip SERVER-side rate-limiting and the
+  occasional session/login drop. Per-wave commit+push checkpoints made every such hiccup recoverable.
+- Codex caught genuine math errors in a large fraction (γ-matrix def, CHSH bracket, a Bernstein-sign
+  typo in a *primary*, α=(2/ln φ)pt, "upper density finitely additive" false claim, many-good-choices
+  ≥1/n, FJLT p-th-power, …) — the independent pass is load-bearing, not a rubber stamp. Twice an agent
+  REVERTED a Codex-introduced regression — keep the "verify, don't rubber-stamp" instruction.
+- refs/ is NOT gitignored: commit only `methods/<slug>/results/{*.md,.codex_review.json}` + methods.json,
+  never `git add methods/<slug>/` (would pull in large PDFs).
+
+REMAINING (optional): website ingest of the 120; arxiv ids in methods.json left "N/A" (mostly pre-arXiv
+classics) — backfill from each method's refs/ if desired.
 - **Prompt fix from W2 onward:** subagents MUST run Codex review in the FOREGROUND and BLOCK until it
   completes before ending (write `.codex_review.json` first). Only skip-waiting if Codex hits a
   usage/rate/quota limit ("out of money") → `codex_reviewed:false` + manual re-derivation. This fixes
