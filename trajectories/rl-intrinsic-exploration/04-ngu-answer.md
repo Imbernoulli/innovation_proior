@@ -1,5 +1,3 @@
-# Step 4 — NGU (Never Give Up), distilled
-
 **Problem (from step 3).** RND broke Private Eye open (one seed at 2756) but is fragile — negative
 `auc`, a dead seed — because its novelty is purely *lifelong* and monotonically decreasing: once a
 region's global novelty wears off, nothing re-pays the agent to walk back through cleared rooms,

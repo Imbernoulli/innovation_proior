@@ -1,5 +1,3 @@
-# Step 1 — PPO (no intrinsic bonus), distilled
-
 **Problem.** Sparse-reward Atari: the policy gradient is built from the environment reward, which is
 zero on almost every transition, so there is nothing to ascend and undirected action noise cannot
 carry the agent across hundreds of reward-free steps. The base learner must at least be reliable and

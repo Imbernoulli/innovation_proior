@@ -1,5 +1,3 @@
-# Step 3 — RND (random network distillation), distilled
-
 **Problem (from step 2).** ICM stabilized the reachable games but its forward error *decays locally* —
 it died before crossing Private Eye's long gap (flat zero) — and its three coupled networks made
 Frostbite a one-seed jackpot. Wanted: a *global*, slowly-decaying, far *simpler* novelty signal.

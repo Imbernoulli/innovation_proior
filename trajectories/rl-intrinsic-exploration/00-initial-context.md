@@ -1,5 +1,3 @@
-# Initial context: the intrinsic-exploration edit surface
-
 ## Research question
 
 Sparse-reward, hard-exploration Atari: on games where a positive reward can be hundreds of

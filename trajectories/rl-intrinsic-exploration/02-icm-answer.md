@@ -1,5 +1,3 @@
-# Step 2 — ICM (intrinsic curiosity module), distilled
-
 **Problem (from step 1).** With no bonus, sparse-reward games where the first reward is out of reach of
 random noise barely move. A reward must be manufactured from the agent's own experience — but
 pixel-prediction-error curiosity is captured forever by uncontrollable flicker (the noisy-TV trap).
