@@ -298,26 +298,29 @@
         url: "methods/" + meta.initial_context + "/results/context.md"
       });
     }
+    // Number only the baselines (the real MLS-Bench rungs); the finale is the NEW method
+    // the trajectory develops, not another baseline — label it distinctly.
+    var nBaselines = (meta.steps || []).filter(function (s) { return !s.finale; }).length;
+    var bi = 0;
     (meta.steps || []).forEach(function (s) {
       var who = s.method || s.slug;
+      var fin = !!s.finale;
+      var stepTag = fin ? ("Finale · " + who + " · new method")
+                        : ("Baseline " + (++bi) + "/" + nBaselines + " · " + who);
       // Multi-round reasoning (with the reflection on the previous result embedded) lives in the
       // trajectory when authored; step 1 falls back to the single-round methods/<slug> trace.
       blocks.push({
-        kind: "reasoning",
-        label: "Step " + s.n + " · " + who + " · Reasoning",
+        kind: "reasoning", finale: fin,
+        label: stepTag + " · Reasoning",
         url: s.reasoning ? (base + s.reasoning) : ("methods/" + s.slug + "/results/reasoning.md")
       });
       if (s.answer) {
-        blocks.push({
-          kind: "answer",
-          label: "Step " + s.n + " · " + who + " · Answer",
-          url: base + s.answer
-        });
+        blocks.push({ kind: "answer", finale: fin, label: stepTag + " · Answer", url: base + s.answer });
       }
       if (s.feedback) {
         blocks.push({
-          kind: "feedback",
-          label: s.finale ? ("Step " + s.n + " · " + who + " · the bar to beat") : ("Feedback after step " + s.n),
+          kind: "feedback", finale: fin,
+          label: fin ? (stepTag + " · the bar to beat") : ("Feedback after baseline " + bi),
           url: base + s.feedback
         });
       }
@@ -344,7 +347,7 @@
       .then(function (parts) {
         if (token !== fetchToken) return;
         var html = parts.map(function (p) {
-          return '<section class="traj-step traj-' + p.block.kind + '">' +
+          return '<section class="traj-step traj-' + p.block.kind + (p.block.finale ? " traj-is-finale" : "") + '">' +
             '<div class="traj-badge">' + escapeHtml(p.block.label) + "</div>" +
             '<div class="traj-step-body">' + parseMd(p.text) + "</div></section>";
         }).join("");
