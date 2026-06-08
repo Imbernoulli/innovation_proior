@@ -58,7 +58,7 @@ trajectories/<task>/
 ```
 
 The website renders, in order: the **initial context** (`initial_context_file`), then for each step
-its **reasoning** → **feedback** (numbers). (`initial_context: "<slug>"` is still supported as a legacy
+its **reasoning** → **answer** → **feedback** (numbers; baselines only). (`initial_context: "<slug>"` is still supported as a legacy
 fallback that reuses `methods/<slug>/results/context.md`, but a MLS-Bench trajectory uses
 `initial_context_file`.)
 
@@ -72,9 +72,13 @@ you'd make** for that baseline. The single-round `methods/<slug>` code (often 42
 is *not* what the step shows — only the derivation is borrowed; the code is re-expressed in the
 scaffold.
 
-**No answer block.** The step's reasoning already lands the full scaffold code, so the trajectory does
-not render a separate answer (it would duplicate, and the `methods/` answer shows the non-scaffold
-paper code). The `methods/<slug>` answers stay as-is for Methods mode.
+**Reasoning vs answer (code lives in the answer).** Each step has a **reasoning** (the full derivation,
+prose) and an **answer** (the distilled "成品式" summary — problem / key idea / why / hyperparameters —
+plus the scaffold code). The scaffold code block lives in the **answer only**, not the reasoning, so the
+stacked trajectory view shows it once: the reasoning derives the method and hands off to the answer
+("the full scaffold module is in the answer"), the answer lands it. Authored locally
+(`<i>-<slug>-answer.md`); the `methods/<slug>` answers stay as-is for Methods mode (they show the
+non-scaffold paper code and are not reused here).
 
 **Finale has no feedback.** The last step is the endpoint; it carries no `feedback` file. (Its bar /
 "what I'd validate" lives at the close of its reasoning, against the strongest baseline's real numbers.)

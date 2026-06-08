@@ -307,6 +307,13 @@
         label: "Step " + s.n + " · " + who + " · Reasoning",
         url: s.reasoning ? (base + s.reasoning) : ("methods/" + s.slug + "/results/reasoning.md")
       });
+      if (s.answer) {
+        blocks.push({
+          kind: "answer",
+          label: "Step " + s.n + " · " + who + " · Answer",
+          url: base + s.answer
+        });
+      }
       if (s.feedback) {
         blocks.push({
           kind: "feedback",

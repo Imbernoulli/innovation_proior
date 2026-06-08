@@ -28,41 +28,7 @@ The surrogate is half a step; I still need Â_t, a value fit, and exploration. F
 
 This is exactly the loop the scaffold fixes for me, and one detail of it is load-bearing for everything that follows: it keeps **two** value heads, extrinsic and intrinsic, with their own discounts (`gamma=0.999`, `int_gamma=0.99`), computes per-stream advantages, and exposes the combination as `mix_advantages`. That structure exists *so that* a future intrinsic reward can be valued separately from the extrinsic one — the loop is already built for the bonus I haven't designed yet. The hygiene is also given and worth naming: orthogonal init (tiny gain 0.01 on the policy head so the agent starts near-uniform; 1.0 on value heads), Adam ε = 1e-5, LR anneal, per-minibatch advantage normalization, global grad-norm clip 0.5.
 
-So at step 1 the base learner is settled, and my edit is the *trivial* one: leave the intrinsic module empty. `compute_bonus` returns zeros, the module trains nothing and registers no parameters, and `mix_advantages` drops the intrinsic stream so the policy ascends only `ext_coef · A_E` — pure PPO on the clipped extrinsic reward.
-
-```python
-# EDITABLE region of custom_intrinsic_exploration.py — step 1: no bonus (PPO only)
-class IntrinsicBonusModule(nn.Module):
-    """Baseline: no intrinsic reward."""
-
-    def __init__(self, action_dim: int, device: torch.device, args: Args):
-        super().__init__()
-        self.action_dim = action_dim
-        self.device = device
-        self.args = args
-
-    def initialize(self, envs) -> None:
-        return None
-
-    def trainable_parameters(self):
-        return []
-
-    def update_batch_stats(self, batch_obs: torch.Tensor, batch_next_obs: torch.Tensor) -> None:
-        return None
-
-    def compute_bonus(self, obs, next_obs, actions) -> torch.Tensor:
-        return torch.zeros(obs.shape[0], device=self.device)          # no bonus
-
-    def normalize_rollout_rewards(self, rollout_intrinsic) -> torch.Tensor:
-        return torch.zeros_like(rollout_intrinsic)
-
-    def loss(self, batch_obs, batch_next_obs, batch_actions) -> torch.Tensor:
-        return torch.zeros((), device=self.device)
-
-
-def mix_advantages(ext_advantages, int_advantages, args: Args) -> torch.Tensor:
-    return args.ext_coef * ext_advantages                            # intrinsic stream dropped
-```
+So at step 1 the base learner is settled, and my edit is the *trivial* one: leave the intrinsic module empty. `compute_bonus` returns zeros, the module trains nothing and registers no parameters, and `mix_advantages` drops the intrinsic stream so the policy ascends only `ext_coef · A_E` — pure PPO on the clipped extrinsic reward (the distilled module is in the answer).
 
 Now reason about what this floor must do, because that's the entire point of running it. PPO ascends the advantage built from the environment reward. When reward is dense, exploration is free — the stochastic policy plus the entropy bonus jiggle the agent around, it bumps into rewards, the advantage points somewhere useful. When reward is *sparse*, the advantage is zero almost everywhere: there's nothing to ascend, because the agent has seen no reward to be advantaged over. Its only exploration is the undirected noise of the action distribution, and on a hard-exploration game that noise won't carry it across hundreds of reward-free steps to the first payoff. So vanilla PPO with no bonus is the weakest thing I can run *by construction* — no mechanism for directed exploration — and on the games where directed exploration is the whole problem it should mostly find nothing, and on a deceptive game where wrong moves carry penalties it can be dragged *negative*, since undirected wandering hits penalties as readily as rewards.
 

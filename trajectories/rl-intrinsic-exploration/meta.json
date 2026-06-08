@@ -2,15 +2,51 @@
   "task": "rl-intrinsic-exploration",
   "title": "RL Intrinsic Exploration: sparse-reward novelty bonus",
   "domain": "Reinforcement learning",
-  "metrics": ["tutankham-v5", "frostbite-v5", "private-eye-v5"],
-  "metric_columns": ["eval_return", "auc", "nonzero_rate"],
+  "metrics": [
+    "tutankham-v5",
+    "frostbite-v5",
+    "private-eye-v5"
+  ],
+  "metric_columns": [
+    "eval_return",
+    "auc",
+    "nonzero_rate"
+  ],
   "initial_context_file": "00-initial-context.md",
   "steps": [
-    { "n": 1, "slug": "ppo", "method": "PPO (no intrinsic bonus)", "reasoning": "01-ppo-reasoning.md", "feedback": "01-feedback.md" },
-    { "n": 2, "slug": "icm", "method": "ICM (intrinsic curiosity module)", "reasoning": "02-icm-reasoning.md", "feedback": "02-feedback.md" },
-    { "n": 3, "slug": "rnd", "method": "RND (random network distillation)", "reasoning": "03-rnd-reasoning.md", "feedback": "03-feedback.md" },
-    { "n": 4, "slug": "ngu", "method": "NGU (Never Give Up)", "reasoning": "04-ngu-reasoning.md", "finale": true }
+    {
+      "n": 1,
+      "slug": "ppo",
+      "method": "PPO (no intrinsic bonus)",
+      "reasoning": "01-ppo-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ppo-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "icm",
+      "method": "ICM (intrinsic curiosity module)",
+      "reasoning": "02-icm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-icm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "rnd",
+      "method": "RND (random network distillation)",
+      "reasoning": "03-rnd-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-rnd-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "ngu",
+      "method": "NGU (Never Give Up)",
+      "reasoning": "04-ngu-reasoning.md",
+      "finale": true,
+      "answer": "04-ngu-answer.md"
+    }
   ],
   "ranking_basis": "ppo weakest by design (no bonus; two of three games barely move, Private Eye mean negative). icm < rnd: RND is the only baseline to register meaningful Private Eye eval_return (952 mean, 2756 on one seed), while ICM is identically zero there; ICM's larger Frostbite mean is one-seed-driven and high-variance.",
-  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_intrinsic_exploration.py: IntrinsicBonusModule + mix_advantages, scaffold from edits/*.edit.py). All step reasonings are authored here (multi-round for i>1: based on the single-round methods/<slug> trace but with the reflection on the previous baseline's measured result embedded throughout, and the code swapped to the task scaffold). The methods/<slug> single-round traces are left untouched. The finale (ngu) has no feedback (no leaderboard row, and it is the endpoint)."
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_intrinsic_exploration.py: IntrinsicBonusModule + mix_advantages, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces are untouched."
 }
