@@ -1,0 +1,52 @@
+{
+  "task": "dl-activation-function",
+  "title": "DL Activation Function Design: from fixed self-gated curves to a learnable one",
+  "domain": "Deep learning",
+  "metrics": [
+    "resnet20-cifar10",
+    "vgg16bn-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc_resnet20-cifar10",
+    "test_acc_vgg16bn-cifar100",
+    "test_acc_mobilenetv2-fmnist"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "silu",
+      "method": "SiLU / Swish (x*sigmoid(x))",
+      "reasoning": "01-silu-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-silu-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "mish",
+      "method": "Mish (x*tanh(softplus(x)))",
+      "reasoning": "02-mish-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-mish-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "gelu",
+      "method": "GELU (x*Phi(x))",
+      "reasoning": "03-gelu-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-gelu-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "acon",
+      "method": "ACON-C (learnable smooth-maximum activation)",
+      "reasoning": "04-acon-reasoning.md",
+      "finale": true,
+      "answer": "04-acon-answer.md"
+    }
+  ],
+  "ranking_basis": "Weak->strong by mean best-test-accuracy across the three metrics on the is_final,true baseline:* rows (seed 42, the only configured seed): silu (92.72/70.38/94.69, mean 85.93) < mish (92.78/70.50/94.70, mean 85.99) < gelu (93.11/71.38/94.75, mean 86.41). GELU is strongest, separating most on the deep vgg16bn-cifar100 run (+0.88 over mish); the near-ceiling resnet20-cifar10 and mobilenetv2-fmnist runs barely move across baselines.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (the CustomActivation nn.Module in pytorch-vision/custom_activation.py, lines 32-49; scaffold default ReLU; baseline fills from edits/{silu,mish,gelu}.edit.py). Same-named baseline != paper: the task fixes silu to nn.SiLU (F.silu, beta=1, no learnable params), NOT the paper's learnable-beta Swish; gelu to F.gelu; mish to x*tanh(F.softplus(x)) -- all parameter-free, so the steps register nothing in __init__, unlike the methods/<slug> paper traces. The finale (ACON-C) is the one rung that adds learnable per-channel parameters, sized lazily in forward so __init__ stays argument-free (the scaffold instantiates CustomActivation() with no args everywhere). Each step = reasoning (full derivation, prose, no code) -> answer (distilled summary + the scaffold code) -> feedback (numbers only, baselines; finale has none). methods/{silu,mish,gelu,acon}/ single-round traces are the derivation reference and stay untouched."
+}
