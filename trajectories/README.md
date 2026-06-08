@@ -72,6 +72,20 @@ you'd make** for that baseline. The single-round `methods/<slug>` code (often 42
 is *not* what the step shows — only the derivation is borrowed; the code is re-expressed in the
 scaffold.
 
+**A same-named baseline can be a very different method here — derive against THIS task, not the paper.**
+A baseline named `rnd`/`icm`/`gat`/`lion`/… in a task can differ *substantially* from the same-named
+`methods/<slug>` trace, because the task adapts it to its own research question and harness. The
+authority is always the task's `edits/<baseline>.edit.py`, read line by line. Both the **code and the
+reasoning** must match *that* implementation, not the paper's. Concrete example from this pilot: the
+paper RND's signature move is a *non-episodic* intrinsic return; but this task's loop masks the
+intrinsic stream with the same done-mask as the extrinsic one (`int_nextnonterminal = ext_nextnonterminal`,
+bonus × `(1−next_done)`), so the intrinsic stream is **episodic** here and differs only in discount —
+the reasoning must *not* import the non-episodic story. Likewise this task's ICM bonus is `0.5·mean`
+MSE with loss `L_I + 0.2·L_F` on 84×84 frames in a two-value-head PPO — not the paper's η/2·sum, A3C,
+42×42, or LSTM. Before writing a step: diff the task baseline against the `methods/` trace, list what
+the task *doesn't* expose (e.g. NGU's UVFA/recurrent heads), and reconstruct the reasoning so it lands
+exactly the task's implementation — explicitly noting any paper machinery the harness omits.
+
 **Reasoning vs answer (code lives in the answer).** Each step has a **reasoning** (the full derivation,
 prose) and an **answer** (the distilled "成品式" summary — problem / key idea / why / hyperparameters —
 plus the scaffold code). The scaffold code block lives in the **answer only**, not the reasoning, so the
@@ -152,8 +166,10 @@ One sub-agent owns one task, end to end:
    editable file/line range in `config.json`. This is the code every step must show.
 3. Rank the baselines weak→strong from the `is_final,true` `baseline:*` rows.
 4. For each baseline: reuse `methods/<slug>/` as the *derivation reference* if it exists; else create it
-   via the skill (grounded + Codex-reviewed) and add it to `methods.json`. Either way the trajectory
-   re-expresses its code in the task scaffold.
+   via the skill (grounded + Codex-reviewed) and add it to `methods.json`. Either way, **diff the task's
+   `edits/<baseline>.edit.py` against the `methods/` trace first** — a same-named baseline can be a very
+   different method here. The trajectory's code *and* reasoning must match the task's implementation, not
+   the paper's; note any paper machinery the harness omits.
 5. Choose + create the finale method's standalone `methods/` trace the same way.
 6. Author `trajectories/<task>/`: `00-initial-context.md` (the task scaffold, default fill), every
    step's `<i>-<slug>-reasoning.md` (multi-round for i>1, code = the literal scaffold edit), the
