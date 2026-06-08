@@ -305,7 +305,7 @@
     (meta.steps || []).forEach(function (s) {
       var who = s.method || s.slug;
       var fin = !!s.finale;
-      var stepTag = fin ? ("Finale · " + who + " · new method")
+      var stepTag = fin ? ("Finale · " + who + " · stronger published method")
                         : ("Baseline " + (++bi) + "/" + nBaselines + " · " + who);
       // Multi-round reasoning (with the reflection on the previous result embedded) lives in the
       // trajectory when authored; step 1 falls back to the single-round methods/<slug> trace.

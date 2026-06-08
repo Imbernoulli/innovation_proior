@@ -151,12 +151,25 @@ follow the same voice with one relaxation:
 
 ## Finale
 
-The last step lands on a **real, known method that is genuinely stronger** than the best baseline
-(grounded, verifiable — not a speculative invention). It is motivated in its multi-round reasoning's opening as the natural
-next move from the strongest baseline's failure mode, and gets its own full standalone `methods/`
-trace. It carries **no feedback file** — it is the endpoint; the bar it must clear (the strongest
-baseline's real numbers) and what one would validate live at the close of its own reasoning, with no
-invented numbers.
+The last step may put a **stronger/strongest method that the task did not originally include** as the
+endpoint — but ONLY a **real, published** method, never an invented one. Three hard requirements,
+non-negotiable:
+
+1. **Find the reference.** The method must be a genuinely published technique with a real citation
+   (paper + arXiv/venue). No speculative or "designed-here" methods. It gets its own full standalone
+   `methods/` trace grounded in the retrieved primary source.
+2. **Carefully check the code implementation.** The finale's scaffold answer code (the fill of the
+   task's edit surface) must be a *correct, faithful* implementation, verified line-by-line against the
+   method's **canonical reference implementation** (official repo / the paper's equations). Re-express
+   it in the task scaffold without breaking the algorithm; confirm it runs and matches the reference's
+   math.
+3. **Codex review.** Run the write-enabled Codex review gate on the finale (and re-verify its
+   changelog), with explicit focus on code-vs-reference correctness; write `.codex_review.json`.
+
+It is motivated in its reasoning's opening as the natural next move from the strongest baseline's
+failure mode. It carries **no feedback file** — it is the endpoint; the bar it must clear (the
+strongest baseline's real numbers) and what one would validate live at the close of its own reasoning,
+with no invented numbers.
 
 ## Website
 
