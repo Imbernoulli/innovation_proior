@@ -1,6 +1,6 @@
 {
   "task": "graph-node-classification",
-  "title": "Graph Node Classification: deeper message passing past the over-smoothing wall",
+  "title": "Graph Node Classification: iterating the message-passing baselines",
   "domain": "Graph & mesh",
   "metrics": [
     "Cora",
@@ -36,16 +36,9 @@
       "reasoning": "03-gcn-reasoning.md",
       "answer": "03-gcn-answer.md",
       "feedback": "03-gcn-feedback.md"
-    },
-    {
-      "n": 4,
-      "slug": "gcnii",
-      "method": "GCNII (initial residual + identity mapping)",
-      "reasoning": "04-gcnii-reasoning.md",
-      "answer": "04-gcnii-answer.md",
-      "finale": true
     }
   ],
   "ranking_basis": "Weak->strong by mean accuracy across Cora/CiteSeer/PubMed on the is_final,true baseline:* rows (seed-averaged mean rows). graphsage weakest: mean acc (0.7923+0.6603+0.7693)/3 = 0.7407, dragged by CiteSeer 0.6603 with the largest seed spread {0.679,0.674,0.628} (uniform mean aggregation, no degree damping). gat next: (0.8260+0.7077+0.7777)/3 = 0.7705 (learned attention lifts Cora and CiteSeer's floor but CiteSeer stays noisy). gcn strongest baseline: (0.8207+0.7177+0.7863)/3 = 0.7749 (principled fixed symmetric normalization, lowest variance, best PubMed/CiteSeer stability). Finale GCNII lands past gcn by breaking the shared two-layer/over-smoothing wall.",
-  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_nodecls.py: CustomMessagePassingLayer + CustomGNN, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only); the code block lives in the answer, not the reasoning. methods/<slug> single-round traces (gcn/gat/graphsage reused as derivation reference; gcnii created new) are untouched. Task-baseline vs methods/ diff: (1) GraphSAGE here is full-batch transductive mean aggregation with NO neighborhood sampling (the paper's signature minibatch sampler is absent — the fixed loop trains full-batch on the whole graph), separate lin_self(bias)+lin_neigh + F.normalize; the methods/graphsage trace's sampling/pool/LSTM aggregators and unsupervised loss are not exposed. (2) GAT here uses the att_src/att_dst additive-score split, 8 concat heads then 1 averaged head, dropout 0.6 on features and attention coefficients, ELU — matches the paper shape; PyG MessagePassing implementation rather than the methods/gat TF1 dense-mask version. (3) GCN here is exactly the renormalized symmetric convolution = the scaffold default fill. (4) Finale GCNII: hidden width fixed at 64 and a 1.05x-largest-baseline parameter budget cap depth at L=16 (the paper's 64-layer Cora config exceeds the budget); scaffold-fixed dropout 0.5 and a single weight-decay scalar replace the paper's 0.6/0.7 dropout and split conv/dense L2 -- the identity mapping carries the weight regularization. seeds: leaderboard baseline rows carry {42,123,456}+mean; config.json evaluates seed 42."
+  "notes": "Trajectory over the task's existing MLS-Bench baselines only (weak->strong); each step reflects on the previous baseline's measured numbers. No invented/imported method; the endpoint is the strongest existing baseline. Code+reasoning grounded in the task's edits/*.edit.py; methods/<slug> single-round traces untouched.",
+  "endpoint": "GCN (renormalized graph convolution)"
 }

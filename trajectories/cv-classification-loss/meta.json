@@ -1,6 +1,6 @@
 {
   "task": "cv-classification-loss",
-  "title": "CV Classification Loss: from confidence reshaping to a robust bounded loss",
+  "title": "CV Classification Loss: iterating the classification losses",
   "domain": "Computer vision",
   "metrics": [
     "resnet56-cifar100",
@@ -35,16 +35,9 @@
       "reasoning": "03-label-smoothing-reasoning.md",
       "feedback": "03-feedback.md",
       "answer": "03-label-smoothing-answer.md"
-    },
-    {
-      "n": 4,
-      "slug": "bi-tempered",
-      "method": "Robust Bi-Tempered Logistic Loss",
-      "reasoning": "04-bi-tempered-reasoning.md",
-      "finale": true,
-      "answer": "04-bi-tempered-answer.md"
     }
   ],
   "ranking_basis": "weak->strong by mean test accuracy over the three is_final,true baseline:* rows (seed 42): focal_loss 79.997 (71.67/74.18/94.14) < poly_loss 80.120 (71.56/74.06/94.74) < label_smoothing 80.283 (71.36/74.67/94.82). focal weakest (its easy-example down-weighting starves the balanced easy pool, lowest mobilenetv2-fmnist at 94.14); poly_loss next (raising the leading polynomial coefficient lifts the easy pool to 94.74 but leaves the two CIFAR-100 pairs flat-to-down); label_smoothing strongest (bounding the one-hot logit runaway lifts vgg16bn-cifar100 to 74.67 and holds the easy pair at 94.82).",
-  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (pytorch-vision/custom_loss.py, the compute_loss(logits, targets, config) function, lines 246-266; scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, no code) -> answer (distilled summary + the scaffold loss code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. Single seed (42) per config.json, so each baseline's per-config value is also its mean across seeds. Baselines differ from their paper versions: focal_loss here is multiclass-softmax (pt = exp(-CE), (1-pt)^2 * CE) with NO alpha balancing, NO sigmoid/binary form, and NO prior-pi output-layer bias (the paper RetinaNet form is binary sigmoid with alpha and a prior bias); poly_loss is exactly Poly-1 (CE + 2.0*(1-pt)) with multiclass-softmax pt, matching the paper's one-line image-classification form; label_smoothing is F.cross_entropy(..., label_smoothing=0.1), the standard (1-eps)one_hot+eps/C with eps=0.1. methods/focal-loss and methods/label-smoothing single-round traces reused as derivation references; methods/poly-loss created (Codex-reviewed); finale methods/bi-tempered created (Codex-reviewed). Finale (Bi-Tempered Logistic Loss, Amid et al.) carries no feedback; its bar (label_smoothing's 71.36/74.67/94.82) and what to validate live at the close of its reasoning. The paper reports CIFAR-100 ResNet-56 (this task's strongest arch) clean-label gains, and the loss subsumes label smoothing as an optional target softening."
+  "notes": "Trajectory over the task's existing MLS-Bench baselines only (weak->strong); each step reflects on the previous baseline's measured numbers. No invented/imported method; the endpoint is the strongest existing baseline. Code+reasoning grounded in the task's edits/*.edit.py; methods/<slug> single-round traces untouched.",
+  "endpoint": "Label smoothing (eps=0.1)"
 }
