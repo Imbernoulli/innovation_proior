@@ -4,13 +4,13 @@
   "domain": "Reinforcement learning",
   "metrics": ["tutankham-v5", "frostbite-v5", "private-eye-v5"],
   "metric_columns": ["eval_return", "auc", "nonzero_rate"],
-  "initial_context": "ppo",
+  "initial_context_file": "00-initial-context.md",
   "steps": [
-    { "n": 1, "slug": "ppo", "method": "PPO (no intrinsic bonus)", "feedback": "01-feedback.md" },
+    { "n": 1, "slug": "ppo", "method": "PPO (no intrinsic bonus)", "reasoning": "01-ppo-reasoning.md", "feedback": "01-feedback.md" },
     { "n": 2, "slug": "icm", "method": "ICM (intrinsic curiosity module)", "reasoning": "02-icm-reasoning.md", "feedback": "02-feedback.md" },
     { "n": 3, "slug": "rnd", "method": "RND (random network distillation)", "reasoning": "03-rnd-reasoning.md", "feedback": "03-feedback.md" },
-    { "n": 4, "slug": "ngu", "method": "NGU (Never Give Up)", "reasoning": "04-ngu-reasoning.md", "feedback": "04-feedback.md", "finale": true }
+    { "n": 4, "slug": "ngu", "method": "NGU (Never Give Up)", "reasoning": "04-ngu-reasoning.md", "finale": true }
   ],
   "ranking_basis": "ppo weakest by design (no bonus; two of three games barely move, Private Eye mean negative). icm < rnd: RND is the only baseline to register meaningful Private Eye eval_return (952 mean, 2756 on one seed), while ICM is identically zero there; ICM's larger Frostbite mean is one-seed-driven and high-variance.",
-  "notes": "Step-1 (ppo) reasoning is reused verbatim from methods/ppo (no prior result to reflect on). Steps 2-4 use a multi-round reasoning authored here: based on the single-round methods/<slug> trace but with the reflection on the previous baseline's measured result embedded throughout. The methods/<slug> single-round traces are left untouched. Answers and the initial context are reused from methods/<slug>."
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_intrinsic_exploration.py: IntrinsicBonusModule + mix_advantages, scaffold from edits/*.edit.py). All step reasonings are authored here (multi-round for i>1: based on the single-round methods/<slug> trace but with the reflection on the previous baseline's measured result embedded throughout, and the code swapped to the task scaffold). The methods/<slug> single-round traces are left untouched. The finale (ngu) has no feedback (no leaderboard row, and it is the endpoint)."
 }

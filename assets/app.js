@@ -283,7 +283,15 @@
   // duplication); only the reflection + numbers-only feedback are trajectory-local.
   function trajBlocks(t, meta, base) {
     var blocks = [];
-    if (meta.initial_context) {
+    if (meta.initial_context_file) {
+      // MLS-Bench-based trajectory: the initial context is authored locally (the task's scaffold).
+      blocks.push({
+        kind: "context",
+        label: "Initial context",
+        url: base + meta.initial_context_file
+      });
+    } else if (meta.initial_context) {
+      // Otherwise reuse a baseline's methods/ context verbatim.
       blocks.push({
         kind: "context",
         label: "Initial context · " + meta.initial_context,

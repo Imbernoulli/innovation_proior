@@ -5,11 +5,12 @@ holds **iterative** ones: how a researcher, working a single MLS-Bench research 
 baseline ladder from weak to strong and finally lands one improvement past the strongest baseline.
 Each trajectory is one MLS-Bench task.
 
-A trajectory is a **playlist of the full `methods/` traces**, in weak→strong order, glued together
-with the connective tissue of real research: it opens on the weakest baseline's full context, plays
-each baseline's complete reasoning and answer, drops in the **measured numbers** after each, and
-embeds in each next baseline's reasoning a **reflection** diagnosing why the previous one landed
-where it did. It reuses, never duplicates — the heavy content lives once in `methods/`.
+A trajectory is the **iterative climb itself**, in weak→strong order, grounded in the task's real edit
+surface: it opens on the task scaffold, derives each baseline's method as a fill of that scaffold,
+drops in the **measured numbers** after each, and embeds in each next baseline's reasoning a
+**reflection** diagnosing why the previous one landed where it did. The `methods/<slug>` single-round
+traces are the reference for each derivation (and stay untouched for Methods mode); the trajectory
+re-expresses each in this task's scaffold and threads the reflections through.
 
 ## The two artifacts per task
 
@@ -29,14 +30,15 @@ derivations (the `methods/` reasoning files run ~100–250 lines; that is the ba
 
 ### 2. The cumulative trajectory — lives in `trajectories/<task>/`
 
-The **context** and **answer** are referenced from `methods/` (reused verbatim). The **reasoning** is
-where the iteration lives: for `i>1` it is a *multi-round reasoning authored here*, and for `i=1` it is
-the single-round `methods/<slug>` trace (nothing to reflect on yet). Files:
+Everything the trajectory *shows* is authored here and grounded in the **task's real edit surface**
+(the MLS-Bench scaffold); the `methods/<slug>` traces are the reference for the *derivation*, not the
+code. Files:
 
 ```
 trajectories/<task>/
-  meta.json                       # the playlist: initial_context slug + ordered steps
-  <i>-<slug>-reasoning.md         # steps i>1: the MULTI-ROUND reasoning (see below)
+  meta.json                       # the playlist: initial-context file + ordered steps
+  00-initial-context.md           # the task scaffold, authored here (see below)
+  <i>-<slug>-reasoning.md         # every step's reasoning (multi-round for i>1)
   <i>-feedback.md                 # NUMBERS ONLY — the measured leaderboard result of step i
 ```
 
@@ -46,19 +48,36 @@ trajectories/<task>/
 {
   "task": "...", "title": "...", "domain": "...",
   "metrics": ["..."], "metric_columns": ["eval_return", "auc", "..."],
-  "initial_context": "<weakest-baseline-slug>",
+  "initial_context_file": "00-initial-context.md",
   "steps": [
-    { "n": 1, "slug": "<weakest>", "method": "<display name>", "feedback": "01-feedback.md" },
+    { "n": 1, "slug": "<weakest>", "method": "<display name>", "reasoning": "01-<weakest>-reasoning.md", "feedback": "01-feedback.md" },
     { "n": 2, "slug": "<next>", "method": "...", "reasoning": "02-<next>-reasoning.md", "feedback": "02-feedback.md" },
-    { "n": 3, "slug": "<finale>", "method": "...", "reasoning": "03-<finale>-reasoning.md", "feedback": "03-feedback.md", "finale": true }
+    { "n": 3, "slug": "<finale>", "method": "...", "reasoning": "03-<finale>-reasoning.md", "finale": true }
   ]
 }
 ```
 
-The website renders, in order: the **initial context** (`methods/<initial_context>/results/context.md`,
-full), then for each step its **reasoning** (the step's `reasoning` file if present, else
-`methods/<slug>/results/reasoning.md`) → **answer** (`methods/<slug>/results/answer.md`, full) →
-**feedback** (numbers).
+The website renders, in order: the **initial context** (`initial_context_file`), then for each step
+its **reasoning** → **feedback** (numbers). (`initial_context: "<slug>"` is still supported as a legacy
+fallback that reuses `methods/<slug>/results/context.md`, but a MLS-Bench trajectory uses
+`initial_context_file`.)
+
+**Scaffold-grounded code (MLS-Bench trajectories).** Because the trajectory *is* the MLS-Bench task,
+the **initial context and every step's code are the task's real edit surface** — the exact region the
+agent edits (e.g. `custom_*.py`: the editable class + functions), in the scaffold's vocabulary, with
+the loop's provided helpers. Not the methods' generic paper implementations. Read the task's
+`edits/*.edit.py` (the per-baseline scaffold fills) and `edits/<scaffold>.py` (the template); the
+initial context shows the **default** scaffold fill, and each step's reasoning lands the **literal edit
+you'd make** for that baseline. The single-round `methods/<slug>` code (often 42×42 / a paper harness)
+is *not* what the step shows — only the derivation is borrowed; the code is re-expressed in the
+scaffold.
+
+**No answer block.** The step's reasoning already lands the full scaffold code, so the trajectory does
+not render a separate answer (it would duplicate, and the `methods/` answer shows the non-scaffold
+paper code). The `methods/<slug>` answers stay as-is for Methods mode.
+
+**Finale has no feedback.** The last step is the endpoint; it carries no `feedback` file. (Its bar /
+"what I'd validate" lives at the close of its reasoning, against the strongest baseline's real numbers.)
 
 What you author per step:
 - **`<i>-<slug>-reasoning.md`** (steps `i>1`): the **multi-round reasoning**. It is *based on* the
@@ -76,15 +95,16 @@ What you author per step:
 - **`<i>-feedback.md`**: **numbers only.** The real leaderboard rows for that baseline — per seed and
   mean, across every metric — as Markdown tables, with a single factual lead line naming the source
   row (`baseline:<slug>`, `is_final,true`). **No "reading the dynamics" prose, no interpretation.**
-  (Interpretation belongs in the *next* reflection, not the feedback.) If the finale has no leaderboard
-  row, its `feedback.md` states that in one line and shows the strongest baseline's numbers as the bar
-  — still no invented numbers.
+  (Interpretation belongs in the *next* step's reasoning, not the feedback.) The **finale carries no
+  feedback file** (see above); the bar it must clear lives at the close of its own reasoning.
+- **`01-<weakest>-reasoning.md`** (step 1): there is no prior result to reflect on, so it just
+  establishes the baseline within the scaffold (why start here, the default fill, what to watch). Short.
 
 ## Context scaling — weaker baseline sees less
 
-There is exactly **one** context, the Initial Context, and it is the **weakest** baseline's full
-`context.md`. From there context accumulates: the effective ground entering step *i* is
-`initial context + every earlier reasoning + answer + feedback`. So later (stronger) steps carry
+There is exactly **one** authored Initial Context — the task scaffold (`00-initial-context.md`). From
+there context accumulates: the effective ground entering step *i* is
+`initial context + every earlier reasoning + feedback`. So later (stronger) steps carry
 strictly more information than earlier (weaker) ones, and the weakest baseline reasons from the
 thinnest ground. This falls out of the cumulative structure; nothing per-step is hand-trimmed.
 
@@ -106,9 +126,9 @@ follow the same voice with one relaxation:
 The last step lands on a **real, known method that is genuinely stronger** than the best baseline
 (grounded, verifiable — not a speculative invention). It is motivated in its multi-round reasoning's opening as the natural
 next move from the strongest baseline's failure mode, and gets its own full standalone `methods/`
-trace. If the task's leaderboard has a real row implementing it, its `feedback.md` quotes those real
-numbers; otherwise the feedback shows the strongest baseline's numbers as the bar, with no invented
-numbers.
+trace. It carries **no feedback file** — it is the endpoint; the bar it must clear (the strongest
+baseline's real numbers) and what one would validate live at the close of its own reasoning, with no
+invented numbers.
 
 ## Website
 
@@ -123,11 +143,16 @@ One sub-agent owns one task, end to end:
 
 1. Read this file, `methods/adam/results/*` (exemplar of the atomic-trace bar), and
    `.claude/skills/paper-to-reasoning/SKILL.md`.
-2. Read `~/MLS-Bench/tasks/<task>/{task_description.md,config.json,leaderboard.csv}`.
+2. Read `~/MLS-Bench/tasks/<task>/{task_description.md,config.json,leaderboard.csv}` **and the task's
+   edit surface** — `edits/*.edit.py` (per-baseline scaffold fills), the scaffold template, and the
+   editable file/line range in `config.json`. This is the code every step must show.
 3. Rank the baselines weak→strong from the `is_final,true` `baseline:*` rows.
-4. For each baseline: reuse `methods/<slug>/` if it exists; else create it via the skill (grounded +
-   Codex-reviewed) and add it to `methods.json`.
+4. For each baseline: reuse `methods/<slug>/` as the *derivation reference* if it exists; else create it
+   via the skill (grounded + Codex-reviewed) and add it to `methods.json`. Either way the trajectory
+   re-expresses its code in the task scaffold.
 5. Choose + create the finale method's standalone `methods/` trace the same way.
-6. Author only `trajectories/<task>/`: `meta.json`, the per-step multi-round `reasoning` files (steps
-   i>1), and the numbers-only `feedback` files. Add the task to `trajectories.json`.
+6. Author `trajectories/<task>/`: `00-initial-context.md` (the task scaffold, default fill), every
+   step's `<i>-<slug>-reasoning.md` (multi-round for i>1, code = the literal scaffold edit), the
+   numbers-only `<i>-feedback.md` for the baselines (not the finale), and `meta.json`. Add the task to
+   `trajectories.json`.
 7. `git add` + commit immediately (this repo is shared across sessions).
