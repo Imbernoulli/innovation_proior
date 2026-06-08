@@ -27,9 +27,42 @@ training objective, added to the PPO loss), `trainable_parameters()`, `normalize
 `initialize(envs)` / `update_batch_stats(...)` (optional warm-up / running stats), and
 `mix_advantages(ext, int, args)` (how the two advantage streams combine).
 
-The starting point is the scaffold default: **no intrinsic reward** — `compute_bonus` returns zeros and
-`mix_advantages` keeps only `ext_coef * ext_advantages`. Each later method replaces these two
-definitions and nothing else.
+The starting point is the scaffold default: **no intrinsic reward**. Each later method replaces exactly
+these two definitions and nothing else.
+
+```python
+# EDITABLE region of custom_intrinsic_exploration.py — default fill (no bonus)
+class IntrinsicBonusModule(nn.Module):
+    """Default baseline: no intrinsic reward."""
+
+    def __init__(self, action_dim: int, device: torch.device, args: Args):
+        super().__init__()
+        self.action_dim = action_dim
+        self.device = device
+        self.args = args
+
+    def initialize(self, envs) -> None:                              # optional warm-up
+        return None
+
+    def trainable_parameters(self):                                  # params handed to the optimizer
+        return []
+
+    def update_batch_stats(self, batch_obs: torch.Tensor, batch_next_obs: torch.Tensor) -> None:
+        return None
+
+    def compute_bonus(self, obs, next_obs, actions) -> torch.Tensor: # per-transition bonus, (B,)
+        return torch.zeros(obs.shape[0], device=self.device)
+
+    def normalize_rollout_rewards(self, rollout_intrinsic) -> torch.Tensor:
+        return torch.zeros_like(rollout_intrinsic)
+
+    def loss(self, batch_obs, batch_next_obs, batch_actions) -> torch.Tensor:  # added to the PPO loss
+        return torch.zeros((), device=self.device)
+
+
+def mix_advantages(ext_advantages, int_advantages, args: Args) -> torch.Tensor:
+    return args.ext_coef * ext_advantages                           # intrinsic stream dropped
+```
 
 ## Evaluation settings
 
