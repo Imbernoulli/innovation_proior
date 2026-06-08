@@ -1,51 +1,16 @@
 {
   "task": "rl-intrinsic-exploration",
+  "title": "RL Intrinsic Exploration: sparse-reward novelty bonus",
+  "domain": "Reinforcement learning",
   "metrics": ["tutankham-v5", "frostbite-v5", "private-eye-v5"],
-  "metric_labels": ["eval_return", "auc", "nonzero_rate"],
-  "baselines_weak_to_strong": [
-    {
-      "slug": "ppo",
-      "method": "PPO (no intrinsic bonus)",
-      "rank": 1,
-      "key_numbers": {
-        "private-eye-v5": {"eval_return_mean": -300.0, "auc_mean": -240.104923, "nonzero_rate_mean": 0.6666666666666666, "per_seed_eval_return": [0.0, 100.0, -1000.0]},
-        "tutankham-v5": {"eval_return_mean": 36.53333333333333, "auc_mean": 32.366815333333335, "nonzero_rate_mean": 0.3333333333333333, "per_seed_eval_return": [0.0, 109.6, 0.0]},
-        "frostbite-v5": {"eval_return_mean": 215.33333333333334, "auc_mean": 191.88474699999998, "nonzero_rate_mean": 1.0, "per_seed_eval_return": [280.0, 270.0, 96.0]}
-      }
-    },
-    {
-      "slug": "icm",
-      "method": "ICM (intrinsic curiosity module)",
-      "rank": 2,
-      "key_numbers": {
-        "private-eye-v5": {"eval_return_mean": 0.0, "auc_mean": -29.291328333333336, "nonzero_rate_mean": 0.0, "per_seed_eval_return": [0.0, 0.0, 0.0]},
-        "tutankham-v5": {"eval_return_mean": 109.0, "auc_mean": 86.63458866666667, "nonzero_rate_mean": 1.0, "per_seed_eval_return": [112.6, 106.0, 108.4]},
-        "frostbite-v5": {"eval_return_mean": 1156.0, "auc_mean": 1125.2130276666667, "nonzero_rate_mean": 1.0, "per_seed_eval_return": [232.0, 3066.0, 170.0]}
-      }
-    },
-    {
-      "slug": "rnd",
-      "method": "RND (random network distillation)",
-      "rank": 3,
-      "key_numbers": {
-        "private-eye-v5": {"eval_return_mean": 952.0, "auc_mean": -84.23005, "nonzero_rate_mean": 0.6666666666666666, "per_seed_eval_return": [0.0, 100.0, 2756.0]},
-        "tutankham-v5": {"eval_return_mean": 100.33333333333333, "auc_mean": 68.38185333333332, "nonzero_rate_mean": 0.9333333333333332, "per_seed_eval_return": [116.2, 102.2, 82.6]},
-        "frostbite-v5": {"eval_return_mean": 250.66666666666666, "auc_mean": 223.25686166666665, "nonzero_rate_mean": 1.0, "per_seed_eval_return": [216.0, 250.0, 286.0]}
-      }
-    }
+  "metric_columns": ["eval_return", "auc", "nonzero_rate"],
+  "initial_context": "ppo",
+  "steps": [
+    { "n": 1, "slug": "ppo", "method": "PPO (no intrinsic bonus)", "feedback": "01-feedback.md" },
+    { "n": 2, "slug": "icm", "method": "ICM (intrinsic curiosity module)", "reflection": "02-icm-reflection.md", "feedback": "02-feedback.md" },
+    { "n": 3, "slug": "rnd", "method": "RND (random network distillation)", "reflection": "03-rnd-reflection.md", "feedback": "03-feedback.md" },
+    { "n": 4, "slug": "ngu", "method": "NGU (Never Give Up)", "reflection": "04-ngu-reflection.md", "feedback": "04-feedback.md", "finale": true }
   ],
-  "ranking_basis": "ppo is weakest by design (no intrinsic bonus; two of three games barely move, Private Eye mean negative). icm < rnd because on the hard-exploration axis the task prioritizes, RND is the only baseline to register meaningful Private Eye eval_return (952 mean, 2756 on one seed, nonzero on 2/3 seeds), while ICM is identically zero on Private Eye (nonzero_rate 0.0). ICM's larger Frostbite mean is one-seed-driven (3066 on seed 123; 232/170 on the others) and high-variance; RND's Frostbite is lower but stable, and RND cracks the game neither ppo nor icm can.",
-  "finale": {
-    "slug": "ngu",
-    "method": "NGU (Never Give Up)",
-    "arxiv": "2002.06038",
-    "rationale": "Natural next step from RND's failure mode: RND's novelty is purely lifelong/global and never resets, so once a region is globally familiar nothing pulls the agent to re-traverse it — exactly what Private Eye needs episode after episode (RND's Private Eye auc stays negative, one seed dead). NGU keeps RND verbatim as a lifelong modulator and adds the missing within-episode timescale: a per-episode kNN pseudo-count over an inverse-dynamics controllable-state memory that resets each episode, combined multiplicatively with a floor so it never gives up re-exploring."
-  },
-  "files": [
-    "00-initial-context.md",
-    "01-ppo-reasoning.md", "01-ppo-answer.md", "01-feedback.md",
-    "02-icm-reasoning.md", "02-icm-answer.md", "02-feedback.md",
-    "03-rnd-reasoning.md", "03-rnd-answer.md", "03-feedback.md",
-    "04-ngu-reasoning.md", "04-ngu-answer.md", "04-feedback.md"
-  ]
+  "ranking_basis": "ppo weakest by design (no bonus; two of three games barely move, Private Eye mean negative). icm < rnd: RND is the only baseline to register meaningful Private Eye eval_return (952 mean, 2756 on one seed), while ICM is identically zero there; ICM's larger Frostbite mean is one-seed-driven and high-variance.",
+  "finale_note": "NGU (arXiv:2002.06038) keeps RND verbatim as a lifelong modulator and adds a per-episode kNN pseudo-count over an inverse-dynamics controllable-state memory that resets each episode."
 }

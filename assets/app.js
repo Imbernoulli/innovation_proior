@@ -278,18 +278,46 @@
       });
   }
 
-  // filename -> {kind,label} for a trajectory step
-  function stepLabel(file) {
-    var name = file.replace(/\.md$/, "");
-    if (/^00-initial-context$/.test(name)) return { kind: "context", label: "Initial context" };
-    var fb = name.match(/^(\d+)-feedback$/);
-    if (fb) return { kind: "feedback", label: "Feedback after step " + Number(fb[1]) };
-    var m = name.match(/^(\d+)-(.+)-(reasoning|answer)$/);
-    if (m) {
-      var phase = m[3].charAt(0).toUpperCase() + m[3].slice(1);
-      return { kind: m[3], label: "Step " + Number(m[1]) + " · " + m[2] + " · " + phase };
+  // Build the ordered list of render blocks for a trajectory from its meta.json.
+  // The reasoning/answer/context blocks REUSE the full methods/<slug>/ traces (no
+  // duplication); only the reflection + numbers-only feedback are trajectory-local.
+  function trajBlocks(t, meta, base) {
+    var blocks = [];
+    if (meta.initial_context) {
+      blocks.push({
+        kind: "context",
+        label: "Initial context · " + meta.initial_context,
+        url: "methods/" + meta.initial_context + "/results/context.md"
+      });
     }
-    return { kind: "other", label: name };
+    (meta.steps || []).forEach(function (s) {
+      var who = s.method || s.slug;
+      if (s.reflection) {
+        blocks.push({
+          kind: "reflection",
+          label: "Step " + s.n + " · reflecting on the previous result",
+          url: base + s.reflection
+        });
+      }
+      blocks.push({
+        kind: "reasoning",
+        label: "Step " + s.n + " · " + who + " · Reasoning",
+        url: "methods/" + s.slug + "/results/reasoning.md"
+      });
+      blocks.push({
+        kind: "answer",
+        label: "Step " + s.n + " · " + who + " · Answer",
+        url: "methods/" + s.slug + "/results/answer.md"
+      });
+      if (s.feedback) {
+        blocks.push({
+          kind: "feedback",
+          label: s.finale ? ("Step " + s.n + " · " + who + " · the bar to beat") : ("Feedback after step " + s.n),
+          url: base + s.feedback
+        });
+      }
+    });
+    return blocks;
   }
 
   function loadTrajectory(t) {
@@ -300,20 +328,19 @@
     fetch(base + "meta.json", { cache: "no-cache" })
       .then(function (res) { if (!res.ok) throw new Error("meta.json HTTP " + res.status); return res.json(); })
       .then(function (meta) {
-        var files = (meta && meta.files) || [];
-        if (!files.length) throw new Error("meta.json has no files[]");
-        return Promise.all(files.map(function (f) {
-          return fetch(base + f, { cache: "no-cache" })
-            .then(function (r) { return r.ok ? r.text() : "*Missing file: `" + f + "`*"; })
-            .then(function (text) { return { file: f, text: text }; });
+        var blocks = trajBlocks(t, meta, base);
+        if (!blocks.length) throw new Error("meta.json produced no steps");
+        return Promise.all(blocks.map(function (b) {
+          return fetch(b.url, { cache: "no-cache" })
+            .then(function (r) { return r.ok ? r.text() : "*Missing: `" + b.url + "`*"; })
+            .then(function (text) { return { block: b, text: text }; });
         }));
       })
       .then(function (parts) {
         if (token !== fetchToken) return;
         var html = parts.map(function (p) {
-          var s = stepLabel(p.file);
-          return '<section class="traj-step traj-' + s.kind + '">' +
-            '<div class="traj-badge">' + escapeHtml(s.label) + "</div>" +
+          return '<section class="traj-step traj-' + p.block.kind + '">' +
+            '<div class="traj-badge">' + escapeHtml(p.block.label) + "</div>" +
             '<div class="traj-step-body">' + parseMd(p.text) + "</div></section>";
         }).join("");
         trajContentEl.innerHTML = html;
