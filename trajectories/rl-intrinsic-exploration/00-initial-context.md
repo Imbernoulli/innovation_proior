@@ -8,6 +8,34 @@ so it never learns. The single thing being designed is the **intrinsic-bonus mod
 per-transition signal added on top of the (mostly zero) extrinsic reward to make exploration directed
 instead of a random walk. Everything else about the agent is fixed.
 
+## Prior art before the first rung (policy-optimization lineage)
+
+The base learner the first rung uses — PPO — is itself the resolution of a line of policy-optimization
+methods. These are the baselines that precede the ladder; the fixed substrate below is what they
+converged to.
+
+- **Deep Q-learning (DQN, Mnih et al. 2015).** Learns Q(s,a;θ) with experience replay and a target
+  network, minimizing the TD error toward R + γ max_{a'} Q(s',a';θ⁻). Cracked Atari from pixels, but is
+  built around a discrete argmax (awkward for continuous control) and is brittle — reward-scale or
+  hyperparameter changes break it. Gap: not general across action spaces, unreliable.
+- **Vanilla policy gradients (REINFORCE, Williams 1992).** Ascend ĝ = Ê_t[∇_θ log π_θ(a_t|s_t) Â_t]
+  directly — general and simple, continuous or discrete. But each sample feeds one gradient step
+  (data-inefficient), and the step size is treacherous: too large collapses the policy irrecoverably,
+  and multi-epoch reuse of one batch is *not* justified (the surrogate is valid only at the current θ).
+  Gap: cannot safely reuse data.
+- **TRPO (Schulman et al. 2015b).** Maximizes Ê_t[r_t(θ) Â_t] subject to a KL trust region
+  Ê_t[KL[π_old, π_θ]] ≤ δ, solved by natural-gradient steps (Fisher-vector products + conjugate
+  gradient + a line search). Reliable, but heavy second-order machinery, essentially one step per batch
+  (no cheap K-epoch reuse), and architecture-hostile — the KL on the output distribution is smeared by
+  parameter sharing or stochastic units. Gap: reliable but heavy and sharing-hostile.
+- **Parallel actor-critic (A3C/A2C, Mnih et al. 2016).** Many actors on env copies, a single network
+  **sharing** a policy head and a value head, n-step bootstrapped advantages, and an **entropy bonus**
+  against premature determinism. Gap: still one gradient step per batch with no trust region, so a
+  shared-parameter step can be destructive.
+- **GAE (Schulman et al. 2015a).** The variance-reduced advantage the base learner reuses: with
+  δ_t = R_t + γV(s_{t+1}) − V(s_t), Â_t = Σ_l (γλ)^l δ_{t+l}, the λ knob trading bias (λ→0, just δ_t)
+  for variance (λ→1, Monte-Carlo). λ ≈ 0.95 is the usual sweet spot.
+
 ## The fixed substrate
 
 A two-stream PPO loop is frozen and must not be touched: Atari preprocessing (grayscale $84\times84$,
