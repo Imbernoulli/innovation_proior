@@ -86,6 +86,16 @@ MSE with loss `L_I + 0.2·L_F` on 84×84 frames in a two-value-head PPO — not 
 the task *doesn't* expose (e.g. NGU's UVFA/recurrent heads), and reconstruct the reasoning so it lands
 exactly the task's implementation — explicitly noting any paper machinery the harness omits.
 
+**Length / completeness bar (HARD — the most common failure).** Each step's reasoning is a **complete
+derivation**, matching the depth of that baseline's single-round `methods/<slug>/results/reasoning.md`:
+it walks *every* load-bearing derivation step and justifies *every* non-obvious design choice, with the
+reflection on the prior result woven through. A short stub is a failure even if it's "correct."
+Concrete floor: **no step reasoning is shorter than ~1500 words** (code excluded), and most land
+**1800–2500+**; the reference rl-intrinsic-exploration steps run 1485–2231 words — match that. If a
+single-round trace covers material the task harness removes, drop only that; otherwise the trajectory
+step is *as long and complete* as the single-round derivation (plus the embedded reflection). When in
+doubt, longer and more complete. A 600-word step is wrong — expand it.
+
 **Reasoning vs answer (code lives in the answer).** Each step has a **reasoning** (the full derivation,
 prose) and an **answer** (the distilled "成品式" summary — problem / key idea / why / hyperparameters —
 plus the scaffold code). The scaffold code block lives in the **answer only**, not the reasoning, so the
