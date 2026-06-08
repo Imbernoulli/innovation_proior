@@ -6,16 +6,19 @@ episode after episode, which is exactly what the game needs.
 **Key idea.** Split novelty into two timescales. A reset-able *within-episode* kNN pseudo-count
 $r^{\text{epi}}_t=1/(\sqrt{\sum_{N_k}K(f(x_t),f_i)}+c)$ over an episodic memory of
 controllable-state embeddings (inverse-dynamics $f$, reused from step 2), with a scale-free inverse
-kernel (normalized by the running $k$-th-NN distance $d_m^2$), a cluster floor $\xi$ for near-duplicates,
-and a saturation cap $s_m$. Modulate it by RND's *lifelong* error as $\alpha_t=1+(\text{err}-\mu_e)/\sigma_e$,
-combined **multiplicatively with a floor at 1**: $i_t=r^{\text{epi}}_t\cdot\operatorname{clip}(\alpha_t,1,L)$.
+kernel normalized by a running $d_m^2$ updated from the full list of $k$ NN squared distances (mean
+of the list, not only the $k$-th distance), a cluster floor $\xi$ for near-duplicates, and a saturation
+cap $s_m$. Modulate it by RND's *lifelong* error as
+$\alpha_t=1+(\text{err}-\mu_e)/\sigma_e$, combined **multiplicatively with a floor at 1**:
+$i_t=r^{\text{epi}}_t\cdot\operatorname{clip}(\alpha_t,1,L)$.
 
 **Why it works.** The floor lets the lifelong factor only *amplify* globally-novel regions, never kill
 the episodic drive — so even on cleared rooms the agent keeps re-exploring (it never gives up); where
 the episodic term saturates, the product is zero, closing the camping exploit. In the limit
 $\alpha\to1$ it reduces to pure episodic novelty, the part that must not decay.
 
-**Scaffold edit / hyperparameters.** $P=32$, $k=10$, $\xi=0.008$, $c=10^{-3}$, $s_m=8$, $L=5$.
+**Scaffold edit / hyperparameters.** $P=32$, $k=10$, $\epsilon=10^{-3}$, $\xi=0.008$, $c=10^{-3}$,
+$s_m=8$, $L=5$.
 Encoder + inverse model (controllable state), frozen-target + deeper-predictor RND (lifelong), a
 per-env episodic memory reset at each episode boundary. The natural form also holds a UVFA family
 $Q(x,a,\beta_i)$ from $\beta_0=0$ (pure exploit) to $\beta=0.3$ with discounts $0.997\to0.99$ and a
@@ -64,32 +67,32 @@ def gamma_schedule(n=N_BETAS, gamma_max=GAMMA_MAX, gamma_min=GAMMA_MIN):
 
 class EpisodicMemory:
     """Per-env within-episode memory of controllable-state embeddings, reset each episode.
-    Holds a running average d_m^2 of the k-th-NN squared distance for scale-free kernels."""
+    Holds a running average d_m^2 of the kNN squared distances for scale-free kernels."""
     def __init__(self, n_envs, device):
         self.device = device
         self.slots = [[] for _ in range(n_envs)]          # M = {f(x_0),...,f(x_{t-1})} per env
-        self.d2_m = np.ones(n_envs, dtype=np.float64)     # running mean of k-th-NN squared distance
+        self.d2_m = np.ones(n_envs, dtype=np.float64)     # running mean of the kNN squared distances
 
     def reset(self, env_idx):                              # called at every episode boundary
         self.slots[env_idx] = []
 
     def episodic_reward(self, env_idx, emb):              # emb: f(x_t), shape (P,)
         M = self.slots[env_idx]
-        self.slots[env_idx] = M + [emb]                   # append AFTER reading
         if len(M) == 0:
-            return float(1.0 / C)                         # empty sum: 1 / (sqrt(0) + c)
-        d2 = ((torch.stack(M) - emb) ** 2).sum(dim=1)     # squared distances to memory
-        k = min(K, d2.numel())
-        d2_k, _ = torch.topk(d2, k, largest=False, sorted=True)
-        d2_k = d2_k.cpu().numpy().astype(np.float64)
-        self.d2_m[env_idx] = 0.99 * self.d2_m[env_idx] + 0.01 * d2_k[-1]  # k-th NN distance
-        d_n = d2_k / max(self.d2_m[env_idx], 1e-12)        # normalize to typical-neighbor units
-        d_n = np.maximum(d_n - XI, 0.0)                    # cluster: tiny distances -> 0
-        k_v = EPS / (d_n + EPS)                            # inverse kernel
-        s = np.sqrt(k_v.sum()) + C                         # sqrt(sum_{N_k} K) + c
-        if s > S_M:                                        # saturated this episode -> no bonus
-            return 0.0
-        return float(1.0 / s)                              # 1/sqrt(n)
+            r_epi = float(1.0 / C)                         # empty sum: 1 / (sqrt(0) + c)
+        else:
+            d2 = ((torch.stack(M) - emb) ** 2).sum(dim=1)  # squared distances to memory
+            k = min(K, d2.numel())
+            d2_k, _ = torch.topk(d2, k, largest=False, sorted=True)
+            d2_k = d2_k.cpu().numpy().astype(np.float64)
+            self.d2_m[env_idx] = 0.99 * self.d2_m[env_idx] + 0.01 * d2_k.mean()  # Alg.1: update with full d_k list
+            d_n = d2_k / max(self.d2_m[env_idx], 1e-12)    # Alg.1: d_n = d_k / d_m^2
+            d_n = np.maximum(d_n - XI, 0.0)                # cluster: tiny distances -> 0
+            k_v = EPS / (d_n + EPS)                        # inverse kernel
+            s = np.sqrt(k_v.sum()) + C                     # sqrt(sum_{N_k} K) + c
+            r_epi = 0.0 if s > S_M else float(1.0 / s)     # saturated -> 0, else 1/s
+        M.append(emb.detach())                             # append after reward; M holds past states
+        return r_epi
 
 
 class IntrinsicBonusModule(nn.Module):

@@ -21,11 +21,13 @@ $1/\sqrt{n}$ (Strehl & Littman 2008) with the count approximated by a kernel sum
 nearest neighbors:
 $$r^{\text{episodic}}_t=\frac{1}{\sqrt{\sum_{f_i\in N_k}K(f(x_t),f_i)}+c},\qquad
 K(x,y)=\frac{\epsilon}{\dfrac{d^2(x,y)}{d_m^2}+\epsilon}.$$
-$d$ is Euclidean distance; $d_m^2$ is a running average of the $k$-th-NN squared distance, making
+$d$ is Euclidean distance; $d_m^2$ is a running average of the kNN squared distances, updated from
+the full list $d_k$ (the mean of the $k$ neighbor squared distances, not only the $k$-th one), making
 the kernel scale-free per game. Computation (Alg. 1): get the $k$ NN squared distances $d_k$; update
-$d_m^2$; normalize $d_n=d_k/d_m^2$; **cluster** $d_n\leftarrow\max(d_n-\xi,0)$ so near-duplicate
-frames count as the same state; $K_v=\epsilon/(d_n+\epsilon)$; $s=\sqrt{\sum K_v}+c$; if $s>s_m$ the
-state is saturated this episode and $r^{\text{episodic}}_t=0$, else $1/s$.
+$d_m^2$ with that list; normalize $d_n=d_k/d_m^2$; **cluster** $d_n\leftarrow\max(d_n-\xi,0)$ so
+near-duplicate frames count as the same state; $K_v=\epsilon/(d_n+\epsilon)$;
+$s=\sqrt{\sum K_v}+c$; if $s>s_m$ the state is saturated this episode and
+$r^{\text{episodic}}_t=0$, else $1/s$.
 Constants: $p=32$, $k=10$, $\epsilon=10^{-3}$, $c=10^{-3}$, $\xi=0.008$, $s_m=8$.
 
 **Controllable-state embedding $f$ (inverse dynamics).** $f$ is trained jointly with a one-hidden-
@@ -85,23 +87,27 @@ class EpisodicMemory:
     def __init__(self, n_envs, device):
         self.device = device
         self.slots = [[] for _ in range(n_envs)]
-        self.d2_m = np.ones(n_envs, dtype=np.float64)        # running k-th-NN squared distance
+        self.d2_m = np.ones(n_envs, dtype=np.float64)        # running mean of the kNN squared distances
 
     def reset(self, i):
         self.slots[i] = []
 
     def episodic_reward(self, i, emb):
-        M = self.slots[i]; self.slots[i] = M + [emb]
+        M = self.slots[i]
         if not M:
-            return float(1.0 / C)                              # empty sum: 1 / (sqrt(0) + c)
-        d2 = ((torch.stack(M) - emb) ** 2).sum(dim=1)
-        k = min(K, d2.numel())
-        d2_k = torch.topk(d2, k, largest=False, sorted=True)[0].cpu().numpy().astype(np.float64)
-        self.d2_m[i] = 0.99 * self.d2_m[i] + 0.01 * d2_k[-1]    # running k-th-NN squared distance
-        d_n = np.maximum(d2_k / max(self.d2_m[i], 1e-12) - XI, 0.0)   # normalize + cluster
-        k_v = EPS / (d_n + EPS)
-        s = np.sqrt(k_v.sum()) + C
-        return 0.0 if s > S_M else float(1.0 / s)            # saturation cap; else 1/sqrt(n)
+            r_epi = float(1.0 / C)                           # empty sum: 1 / (sqrt(0) + c)
+        else:
+            d2 = ((torch.stack(M) - emb) ** 2).sum(dim=1)
+            k = min(K, d2.numel())
+            d2_k = torch.topk(d2, k, largest=False, sorted=True)[0].cpu().numpy().astype(np.float64)
+            self.d2_m[i] = 0.99 * self.d2_m[i] + 0.01 * d2_k.mean()   # Alg.1: update with full d_k list
+            d_n = d2_k / max(self.d2_m[i], 1e-12)             # Alg.1: d_n = d_k / d_m^2
+            d_n = np.maximum(d_n - XI, 0.0)                  # cluster
+            k_v = EPS / (d_n + EPS)
+            s = np.sqrt(k_v.sum()) + C
+            r_epi = 0.0 if s > S_M else float(1.0 / s)
+        M.append(emb.detach())
+        return r_epi
 
 
 class IntrinsicBonusModule(nn.Module):

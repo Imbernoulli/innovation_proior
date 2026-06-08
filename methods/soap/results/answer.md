@@ -26,20 +26,19 @@ Between refreshes the in-basis second moment keeps adapting, which is exactly wh
 
 ## Algorithm (per m×n layer)
 
-State: Shampoo factors L (m×m), R (n×n); eigenbases Q_L, Q_R; Adam moments M, V (m×n, V in the rotated
-basis). Per step t with gradient G:
+State: Shampoo factors L (m×m), R (n×n); eigenbases Q_L, Q_R; Adam moments M, V (both m×n and stored
+in the rotated basis). Per step t with gradient G:
 
 ```
 G'  = Q_Lᵀ G Q_R                       # rotate gradient into the eigenbasis (diagonal preconditioning)
-M   = β₁ M + (1−β₁) G                  # first moment in the ORIGINAL space
-M'  = Q_Lᵀ M Q_R                       # rotate momentum in (survives basis drift)
+M   = β₁ M + (1−β₁) G'                 # first moment EMA of the PROJECTED gradient, in the basis
 V   = β₂ V + (1−β₂) (G' ⊙ G')          # second moment IN the basis, every step
-N'  = M' / (√V + ε)                    # Adam step in the rotated frame
+N'  = M / (√V + ε)                     # Adam step in the rotated frame
 N   = Q_L N' Q_Rᵀ                      # rotate back to the original space
 W   = W − η · c_t · N                  # c_t = √(1−β₂ᵗ)/(1−β₁ᵗ)
 W   = W − ηλ W                         # decoupled weight decay, applied outside the Adam moments
 L   = β₂ L + (1−β₂) G Gᵀ ; R = β₂ R + (1−β₂) Gᵀ G    # update Shampoo factors
-if t % f == 0:  Q_L = QR(L Q_L);  Q_R = QR(R Q_R)    # refresh basis (power iter + QR; eigh on first)
+if t % f == 0:  sort axes, reindex V, then Q_L = QR(L Q_L); Q_R = QR(R Q_R)
 ```
 
 Boundary cases: 1D parameters use plain AdamW (no preconditioner); for huge (vocabulary-sized)
@@ -48,9 +47,11 @@ recovers Adam. The first step only initializes L, R and the basis and skips the 
 never projected through a basis built from itself). On a basis refresh, momentum is reprojected into the
 new basis, and the second-moment table is kept aligned with the sorted basis axes.
 
-The implementation can store the first moment in the current basis between refreshes. When the basis
+The implementation stores the first moment in the current basis between refreshes. When the basis
 changes, it projects that stored moment back to the original coordinates and then into the new basis,
-which preserves the same original-space momentum invariant as the algorithm above.
+which preserves the original-space momentum invariant. An implementation that instead stores the first
+moment in original coordinates and rotates it fresh each step is equivalent while the basis is constant
+between refreshes, provided the rotated second moment is reindexed on refresh.
 
 ## Hyperparameters
 

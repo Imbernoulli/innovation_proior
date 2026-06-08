@@ -23,6 +23,8 @@ def compute_loss(logits, targets, config):
     t1 = t2 = 1 recovers softmax cross-entropy.
     """
     t1, t2, num_iters = 0.8, 1.2, 5
+    if t1 == 1.0 and t2 == 1.0:
+        return F.cross_entropy(logits, targets)
 
     def log_t(u, t):
         return torch.log(u) if t == 1.0 else (u.pow(1.0 - t) - 1.0) / (1.0 - t)
@@ -47,7 +49,9 @@ def compute_loss(logits, targets, config):
 
     y = F.one_hot(targets, config['num_classes']).to(logits.dtype)  # one-hot target
     p = tempered_softmax(logits, t2)                               # heavy-tailed probs
-    term1 = (y * (log_t(y + 1e-10, t1) - log_t(p, t1))).sum(dim=-1)        # bounded log-loss
+    if t1 == 1.0:
+        return (y * (torch.log(y + 1e-10) - torch.log(p))).sum(dim=-1).mean()
+    term1 = (y * (log_t(y, t1) - log_t(p, t1))).sum(dim=-1)        # bounded log-loss
     term2 = (1.0 / (2.0 - t1)) * (y.pow(2.0 - t1) - p.pow(2.0 - t1)).sum(dim=-1)  # normalizer
     return (term1 - term2).mean()
 ```

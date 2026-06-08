@@ -22,11 +22,11 @@ order-$K$ polynomial filter with *arbitrary* coefficients (vanilla GCN's are fix
 to over-smooth and genuinely use a deep receptive field.
 
 **Scaffold edit / hyperparameters.** One GCNII conv in `CustomMessagePassingLayer`; `CustomGNN` =
-input-FC → $L$ convs (all $H\to H$, carrying $\mathbf H^{(0)}$) → output-FC, ignoring the passed
-`num_layers=2`. The fixed hidden width ($H=64$) and the $1.05\times$-largest-baseline parameter budget cap
-depth at $L=16$ (64 layers would exceed Cora's ~194k budget) — still 8× deeper than every baseline and
-past the over-smoothing wall. $\alpha=0.1$, $\lambda=0.5$; scaffold-fixed dropout 0.5, lr 0.01, single
-weight decay (no split $L_2$), relying on the identity mapping for weight regularization.
+input-FC → $L$ convs (all $H\to H$, carrying $\mathbf H^{(0)}$) → output-FC, ignoring the
+passed `num_layers=2`. The fixed hidden width ($H=64$) and the $1.05\times$-largest-baseline parameter
+budget cap depth at $L=16$ (64 layers would exceed Cora's ~194k budget) — still 8× deeper than every
+baseline and past the over-smoothing wall. $\alpha=0.1$, $\lambda=0.5$; scaffold-fixed dropout 0.5, lr
+0.01, single weight decay (no split $L_2$), relying on the identity mapping for weight regularization.
 
 **The bar to beat.** gcn: Cora 0.8207, CiteSeer 0.7177, PubMed 0.7863. Falsifiable: the biggest gain
 should be on CiteSeer (where the two-hop wall most plausibly capped the baselines — clearly past 0.7177);
@@ -96,5 +96,5 @@ class CustomGNN(nn.Module):
             h = F.dropout(h, p=self.dropout, training=self.training)
             h = F.relu(conv(h, edge_index, h0, self.ALPHA, self.LAMBDA, i + 1))
         h = F.dropout(h, p=self.dropout, training=self.training)
-        return self.fc_out(h)                               # class logits
+        return self.fc_out(h)                               # class logits (loop applies cross-entropy)
 ```

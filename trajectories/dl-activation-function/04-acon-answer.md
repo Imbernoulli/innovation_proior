@@ -3,10 +3,10 @@
 and the gains are decaying. The remaining lever is to stop fixing the curve and let each channel learn
 its own — under the same frozen pipeline, editing only `CustomActivation`.
 
-**Key idea.** SiLU/ReLU/PReLU are all members of the Maxout family `max(η_a(x), η_b(x))`; the smooth
-maximum `S_β(x_1,…,x_n)=Σ x_i e^{βx_i}/Σ e^{βx_i}` bridges hard-max to a smooth curve. Its two-piece
-form is `S_β(η_a,η_b)=(η_a−η_b)·σ(β(η_a−η_b))+η_b`, and `S_β(x,0)=x·σ(βx)` is exactly SiLU — so the
-ladder's curves are frozen instances of one construction. Make the pieces learnable per channel:
+**Key idea.** ReLU/PReLU are members of the Maxout family `max(η_a(x), η_b(x))`; the smooth maximum
+`S_β(x_1,…,x_n)=Σ x_i e^{βx_i}/Σ e^{βx_i}` bridges hard-max to a smooth curve. Its two-piece form is
+`S_β(η_a,η_b)=(η_a−η_b)·σ(β(η_a−η_b))+η_b`, and `S_β(x,0)=x·σ(βx)` is exactly SiLU — so the ladder's
+curves are frozen instances of one construction. Make the pieces learnable per channel:
 
 `ACON-C:  f(x) = (p_1−p_2)·x·σ(β(p_1−p_2)x) + p_2 x`,  init `p_1=β=1, p_2=0`.
 
@@ -21,10 +21,11 @@ hundredths–tenths here). ACON-C adds two things they cannot express. (1) Its f
 per-channel control of gradient bounds and nonlinear degree is exactly the freedom the fixed ladder
 lacked, and it has the most to exploit on the deep/high-capacity run where every prior gain concentrated.
 
-**Edit mechanics.** `CustomActivation()` is built with no args at every call site, so size `p_1, p_2, β`
-*lazily on the first forward* from the channel axis (`x.shape[1]` for 4-D conv maps, last dim for the
-2-D classifier activation), as broadcasting `nn.Parameter`s. The forward is the ACON-C formula:
-differentiable, shape-preserving. The new parameters join the same frozen SGD/cosine optimizer via
+**Edit mechanics.** `CustomActivation()` is built with no args at every call site, so register lazy
+`p_1, p_2, β` placeholders in `__init__` and materialize them on the first forward from the channel axis
+(`x.shape[1]` for 4-D conv maps, last dim for the 2-D classifier activation), as broadcasting
+`nn.Parameter`s. The forward is the ACON-C formula: differentiable, shape-preserving. Because the lazy
+parameters are registered before the first forward, they join the same frozen SGD/cosine optimizer via
 `model.parameters()`; nothing else (schedule, init, data, loop) changes.
 
 **Hyperparameters.** Per-channel `p_1, p_2, β`, init `1, 0, 1` (= SiLU at start). No new training
@@ -55,24 +56,28 @@ class CustomActivation(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.p1 = None
-        self.p2 = None
-        self.beta = None
+        self.p1 = nn.parameter.UninitializedParameter()
+        self.p2 = nn.parameter.UninitializedParameter()
+        self.beta = nn.parameter.UninitializedParameter()
+
+    def _param_shape(self, x):
+        if x.dim() == 2:
+            return (1, x.shape[-1])
+        if x.dim() > 2:
+            return (1, x.shape[1], *([1] * (x.dim() - 2)))
+        return (x.shape[0],)
 
     def _init_params(self, x):
-        if x.dim() >= 2:
-            channels = x.shape[1]
-            shape = [1, channels] + [1] * (x.dim() - 2)
-        else:
-            channels = x.shape[-1]
-            shape = [channels]
-        kw = dict(device=x.device, dtype=x.dtype)
-        self.p1 = nn.Parameter(torch.ones(shape, **kw))
-        self.p2 = nn.Parameter(torch.zeros(shape, **kw))
-        self.beta = nn.Parameter(torch.ones(shape, **kw))
+        shape = self._param_shape(x)
+        self.p1.materialize(shape, device=x.device, dtype=x.dtype)
+        self.p2.materialize(shape, device=x.device, dtype=x.dtype)
+        self.beta.materialize(shape, device=x.device, dtype=x.dtype)
+        nn.init.ones_(self.p1)
+        nn.init.zeros_(self.p2)
+        nn.init.ones_(self.beta)
 
     def forward(self, x):
-        if self.p1 is None:
+        if isinstance(self.p1, nn.parameter.UninitializedParameter):
             self._init_params(x)
         diff = (self.p1 - self.p2) * x
         return diff * torch.sigmoid(self.beta * diff) + self.p2 * x

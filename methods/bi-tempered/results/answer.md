@@ -32,7 +32,7 @@ def exp_t(u, t):
     """Tempered exponential; heavy-tailed for t > 1 on negative inputs."""
     if t == 1.0:
         return torch.exp(u)
-    return torch.relu(1.0 + (1.0 - t) * u).pow(1.0 / (1.0 - t))
+    return torch.clamp(1.0 + (1.0 - t) * u, min=0.0).pow(1.0 / (1.0 - t))
 
 
 def compute_normalization_fixed_point(activations, t, num_iters=5):
@@ -59,8 +59,12 @@ class _BiTemperedLogisticLoss(torch.autograd.Function):
     def forward(ctx, logits, targets, t1, t2, num_iters):
         p = tempered_softmax(logits, t2, num_iters)
         y = F.one_hot(targets, logits.shape[-1]).to(dtype=logits.dtype)
-        loss = -log_t(p.gather(-1, targets[..., None]).squeeze(-1), t1)
-        loss = loss - (1.0 / (2.0 - t1)) * (1.0 - p.pow(2.0 - t1).sum(dim=-1))
+        if t1 == 1.0:
+            loss = y * (torch.log(y + 1e-10) - torch.log(p))
+        else:
+            loss = y * (log_t(y, t1) - log_t(p, t1))
+            loss = loss - (1.0 / (2.0 - t1)) * (y.pow(2.0 - t1) - p.pow(2.0 - t1))
+        loss = loss.sum(dim=-1)
         ctx.save_for_backward(p, y)
         ctx.t1 = t1
         ctx.t2 = t2

@@ -19,9 +19,9 @@ ReLU), and `β` is a temperature: `β→∞` ⇒ `max` (nonlinear, "activate"), 
 point `p_1=1, p_2=0` recovers Swish).
 
 **meta-ACON:** generate the switch from the input, `β = G(x)`, instead of storing only a fixed scalar.
-Channel-wise SE-style routing `β_c = σ(W_1 W_2 · GAP(x))` (reduction `r=16`) gives per-sample,
-per-channel non-linear degree at negligible parameter cost; the implementation uses a two-layer
-1×1-convolution bottleneck with BatchNorm after each convolution before the sigmoid.
+Channel-wise SE-style routing `β = σ(BN_2(W_2(BN_1(W_1(GAP(x))))))` (reduction `r=16`) gives
+per-sample, per-channel non-linear degree at negligible parameter cost; the implementation uses a
+two-layer 1×1-convolution bottleneck with BatchNorm after each convolution before the sigmoid.
 
 **Why it works.** For `p_1>p_2` and `β>0`, `ACON-C`'s derivative asymptotes to slopes `p_1` (`x→+∞`)
 and `p_2` (`x→−∞`); its max/min (from `(y−2)e^y=y+2`, where `y=(p_1−p_2)βx` and the nonzero roots are
@@ -32,8 +32,9 @@ bounds — two knobs Swish conflated. meta-ACON adds per-sample adaptivity, whic
 mechanism to test where a fixed curve has little remaining headroom. Channel-wise meta-ACON's routing
 is the SE module; the activation additionally reshapes its gradient via `p_1, p_2`.
 
-**Hyperparameters.** ACON-C: per-channel `p_1, p_2, β`, initialized as `p_1=1`, `p_2=0`, `β=1`.
-meta-ACON: SE bottleneck reduction `r=16`
+**Hyperparameters.** ACON-C: per-channel `p_1, p_2, β`, initialized as `p_1=1`, `p_2=0`, `β=1`
+(an intentional SiLU-start choice; the official `acon.py` samples `p_1,p_2` from `randn`). meta-ACON:
+SE bottleneck reduction `r=16`
 with an implementation floor of `r` bottleneck channels; use ACON-C as the underlying form. Drop in
 for ReLU/Swish.
 
@@ -52,7 +53,7 @@ class AconC(nn.Module):
         self.beta = nn.Parameter(torch.ones(1, width, 1, 1))
 
     def forward(self, x):
-        diff = self.p1 * x - self.p2 * x
+        diff = (self.p1 - self.p2) * x
         return diff * torch.sigmoid(self.beta * diff) + self.p2 * x
 
 
@@ -72,6 +73,6 @@ class MetaAconC(nn.Module):
     def forward(self, x):
         ctx = x.mean(dim=2, keepdim=True).mean(dim=3, keepdim=True)
         beta = torch.sigmoid(self.bn2(self.fc2(self.bn1(self.fc1(ctx)))))
-        diff = self.p1 * x - self.p2 * x
+        diff = (self.p1 - self.p2) * x
         return diff * torch.sigmoid(beta * diff) + self.p2 * x
 ```

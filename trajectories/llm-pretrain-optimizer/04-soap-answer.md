@@ -19,7 +19,10 @@ over the 2D *hidden* weights (attention/MLP projections — `c_attn`, `c_proj`, 
 `torch.optim.AdamW` over the embedding / LM head / 1D params, via a `CombinedOptimizer` exposing the
 merged `param_groups`. SOAP's effective LR is in Adam's range (the rotated-space step *is* an Adam step),
 so it rides the base cosine schedule with no large `lr_scale`; the one genuinely new knob is
-`precondition_frequency`. Weight decay 0.1 decoupled on the 2D side; `get_lr` and grad-clip untouched.
+`precondition_frequency`. This distilled task scaffold keeps the first moment in original coordinates
+and rotates it with the current basis each step; by linearity this is equivalent to canonical SOAP's
+in-basis first moment between refreshes, and the rotated second moment is reindexed when the basis axes
+are sorted. Weight decay 0.1 decoupled on the 2D side; `get_lr` and grad-clip untouched.
 
 **The bar (no run yet — finale).** Must clear Muon's val_loss 2.1995 and its downstream accuracies
 (arc_easy 60.19, hellaswag 36.85, winogrande 52.17) on the single-seed FineWeb run at 12,030 iterations.
@@ -49,20 +52,29 @@ on.
         class SOAP(torch.optim.Optimizer):
             """AdamW run in the eigenbasis of Shampoo's (L, R) preconditioner. 2D layers only."""
             def __init__(self, params, lr=3e-3, betas=(0.95, 0.95), eps=1e-8,
-                         weight_decay=0.0, precondition_frequency=10):
+                         weight_decay=0.0, precondition_frequency=10, shampoo_beta=-1.0):
                 defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay,
-                                precondition_frequency=precondition_frequency)
+                                precondition_frequency=precondition_frequency,
+                                shampoo_beta=shampoo_beta)
                 super().__init__(params, defaults)
 
             @staticmethod
             def _eigh_basis(P):
-                _, Q = torch.linalg.eigh(P + 1e-30 * torch.eye(P.shape[0], device=P.device))
-                return torch.flip(Q, dims=[1])                 # descending eigenvalue order
+                P32 = P.float()
+                eye = torch.eye(P32.shape[0], device=P32.device, dtype=P32.dtype)
+                _, Q = torch.linalg.eigh(P32 + 1e-30 * eye)
+                return torch.flip(Q, dims=[1]).to(P.dtype)     # descending eigenvalue order
 
             @staticmethod
-            def _qr_basis(P, Q_prev):
-                Q, _ = torch.linalg.qr(P @ Q_prev)             # one power-iteration step + QR
-                return Q
+            def _qr_basis(P, Q_prev, V, dim):
+                # sort the carried basis by estimated eigenvalue, keeping V aligned to the axes
+                P32, Q32 = P.float(), Q_prev.float()
+                est_eig = torch.diag(Q32.T @ P32 @ Q32)
+                idx = torch.argsort(est_eig, descending=True)
+                V = V.index_select(dim, idx)
+                Q32 = Q32[:, idx]
+                Q32, _ = torch.linalg.qr(P32 @ Q32)            # one power-iteration step + QR
+                return Q32.to(Q_prev.dtype), V
 
             @torch.no_grad()
             def step(self):
@@ -70,6 +82,7 @@ on.
                     beta1, beta2 = group['betas']
                     lr, eps, wd = group['lr'], group['eps'], group['weight_decay']
                     f = group['precondition_frequency']
+                    shampoo_beta = group['shampoo_beta'] if group['shampoo_beta'] >= 0 else beta2
                     for p in group['params']:
                         if p.grad is None or p.grad.dim() != 2:
                             continue
@@ -80,8 +93,10 @@ on.
                             state['step'] = 0
                             state['exp_avg'] = torch.zeros_like(p)
                             state['exp_avg_sq'] = torch.zeros_like(p)
-                            state['L'] = G @ G.T
-                            state['R'] = G.T @ G
+                            state['L'] = torch.zeros(m, m, device=G.device, dtype=G.dtype)
+                            state['R'] = torch.zeros(n, n, device=G.device, dtype=G.dtype)
+                            state['L'].add_(G @ G.T, alpha=1 - shampoo_beta)
+                            state['R'].add_(G.T @ G, alpha=1 - shampoo_beta)
                             state['QL'] = self._eigh_basis(state['L'])
                             state['QR'] = self._eigh_basis(state['R'])
                             continue
@@ -99,14 +114,16 @@ on.
                         step_size = lr * (1 - beta2 ** t) ** 0.5 / (1 - beta1 ** t)
                         N = QL @ (M_rot / denom) @ QR.T        # rotate the Adam step back
 
-                        p.mul_(1 - lr * wd)                   # decoupled weight decay
                         p.add_(N, alpha=-step_size)
+                        if wd > 0:
+                            p.add_(p, alpha=-lr * wd)          # decoupled weight decay
 
-                        state['L'].mul_(beta2).add_(G @ G.T, alpha=1 - beta2)
-                        state['R'].mul_(beta2).add_(G.T @ G, alpha=1 - beta2)
+                        state['L'].mul_(shampoo_beta).add_(G @ G.T, alpha=1 - shampoo_beta)
+                        state['R'].mul_(shampoo_beta).add_(G.T @ G, alpha=1 - shampoo_beta)
                         if t % f == 0:                        # refresh basis only every f steps
-                            state['QL'] = self._qr_basis(state['L'], QL)
-                            state['QR'] = self._qr_basis(state['R'], QR)
+                            QL, V = self._qr_basis(state['L'], QL, V, 0)  # reindex 2nd moment to new axes
+                            QR, V = self._qr_basis(state['R'], QR, V, 1)
+                            state['QL'], state['QR'], state['exp_avg_sq'] = QL, QR, V
 
         fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
         use_fused = fused_available and device_type == 'cuda'
