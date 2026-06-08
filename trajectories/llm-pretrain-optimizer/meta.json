@@ -1,6 +1,6 @@
 {
   "task": "llm-pretrain-optimizer",
-  "title": "LLM Pretraining Optimizer: iterating the optimizer baselines",
+  "title": "LLM Pretraining Optimizer: lowering val loss past AdamW",
   "domain": "Optimization",
   "metrics": [
     "gpt-345m",
@@ -40,9 +40,16 @@
       "reasoning": "03-muon-reasoning.md",
       "feedback": "03-feedback.md",
       "answer": "03-muon-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "soap",
+      "method": "SOAP (Adam in Shampoo's eigenbasis)",
+      "reasoning": "04-soap-reasoning.md",
+      "finale": true,
+      "answer": "04-soap-answer.md"
     }
   ],
   "ranking_basis": "Ranked weak->strong by gpt-345m val_loss (lower better) from the is_final,true baseline:* rows, seed 42, corroborated by lm-eval-345m downstream accuracy (higher better). adamw_nesterov weakest (val_loss 2.3231; arc_easy 55.18, hellaswag 32.75) < lion (2.2028; 58.21, 35.64) < muon strongest (2.1995; arc_easy 60.19, hellaswag 36.85, winogrande 52.17). Trend: each rung that changes the update geometry to respect more weight-matrix structure (diagonal momentum refinement -> uniform sign -> per-singular-direction orthogonalization) lowers val loss. Finale SOAP extends past Muon's instantaneous orthogonalization to an accumulated, history-aware non-diagonal preconditioner.",
-  "notes": "Trajectory over the task's existing MLS-Bench baselines only (weak->strong); each step reflects on the previous baseline's measured numbers. No invented/imported method; the endpoint is the strongest existing baseline. Code+reasoning grounded in the task's edits/*.edit.py; methods/<slug> single-round traces untouched.",
-  "endpoint": "Muon (Newton-Schulz orthogonalization) + AdamW"
+  "notes": "MLS-Bench trajectory for tasks/llm-pretrain-optimizer. Initial context and every step's code are the task's real edit surface (custom_pretrain.py configure_optimizers / get_lr / CONFIG_OVERRIDES, from edits/*.edit.py), NOT the methods' generic paper code. Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + scaffold code); code lives in the answer. Reused methods/lion and methods/muon as derivation references (untouched). Created methods/adamw-nesterov (NAdam) and the finale methods/soap via the paper-to-reasoning skill (grounded + Codex-reviewed). Task-vs-paper diffs noted in each step: task Lion uses harness betas (0.9,0.95) and lr*0.3 (not Lion's 0.9/0.99 & 0.1x-lr/10x-wd); task Muon uses EMA+Nesterov momentum, QKV-split Newton-Schulz, ratio scale max(1,A/B)^0.5 + lr_scale=0.02/lr & CONFIG_OVERRIDES lr=1e-3 (not the canonical 0.2*sqrt(max(A,B)) plain-SGD-momentum form). Finale (SOAP) carries no feedback file and claims no numbers; its bar (muon val_loss 2.1995) lives at the close of its reasoning."
 }

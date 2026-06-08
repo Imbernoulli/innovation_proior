@@ -118,7 +118,7 @@
 
     var matches = source.filter(function (m) {
       if (!q) return true;
-      var hay = (m.title + " " + keyOf(m) + " " + m.domain + " " + (m.endpoint || m.finale || "")).toLowerCase();
+      var hay = (m.title + " " + keyOf(m) + " " + m.domain + " " + (m.finale || "")).toLowerCase();
       return hay.indexOf(q) !== -1;
     });
 
@@ -164,8 +164,8 @@
         a.className = "nav-link" + (k === activeKey ? " is-active" : "");
         a.href = isTraj ? ("#t/" + k) : ("#" + k + "/" + current.tab);
         a.setAttribute(isTraj ? "data-task" : "data-slug", k);
-        var sub = (isTraj && (m.endpoint || m.finale))
-          ? '<span class="nav-link-sub">→ ' + escapeHtml(m.endpoint || m.finale) + "</span>"
+        var sub = (isTraj && m.finale)
+          ? '<span class="nav-link-sub">→ ' + escapeHtml(m.finale) + "</span>"
           : "";
         a.innerHTML = '<span class="nav-link-title">' + escapeHtml(m.title) + "</span>" + sub;
         if (k === activeKey) a.setAttribute("aria-current", "page");
@@ -298,8 +298,8 @@
         url: "methods/" + meta.initial_context + "/results/context.md"
       });
     }
-    // Trajectories iterate the task's existing baselines (weak->strong); number them Baseline i/N.
-    // (Legacy: a step may carry finale:true; kept for back-compat but no longer used.)
+    // Number only the baselines (the real MLS-Bench rungs); the finale is the NEW method
+    // the trajectory develops, not another baseline — label it distinctly.
     var nBaselines = (meta.steps || []).filter(function (s) { return !s.finale; }).length;
     var bi = 0;
     (meta.steps || []).forEach(function (s) {

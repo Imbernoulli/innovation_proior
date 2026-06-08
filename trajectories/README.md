@@ -1,14 +1,12 @@
 # Innovation Trajectories
 
 Where `methods/` holds **atomic** reasoning traces (how one method was derived), `trajectories/`
-holds **iterative** ones: they **simulate the process of the task's baselines iterating** — climbing
-the task's *existing* MLS-Bench baselines from weak to strong, each step reflecting on the previous
-baseline's measured result. Each trajectory is one MLS-Bench task.
+holds **iterative** ones: how a researcher, working a single MLS-Bench research question, climbs the
+baseline ladder from weak to strong and finally lands one improvement past the strongest baseline.
+Each trajectory is one MLS-Bench task.
 
-**Existing baselines only — no invented/imported "new method."** The steps are exactly the task's real
-baselines (the ones in `config.json` / the leaderboard), ranked weak→strong; the endpoint is the
-**strongest existing baseline**, not a method brought in from the literature. Do not develop or graft a
-finale. The trajectory opens on the task scaffold, derives each baseline as a fill of that scaffold,
+A trajectory is the **iterative climb itself**, in weak→strong order, grounded in the task's real edit
+surface: it opens on the task scaffold, derives each baseline's method as a fill of that scaffold,
 drops in the **measured numbers** after each, and embeds in each next baseline's reasoning a
 **reflection** diagnosing why the previous one landed where it did. The `methods/<slug>` single-round
 traces are the reference for each derivation (and stay untouched for Methods mode); the trajectory
@@ -26,7 +24,9 @@ derivations (the `methods/` reasoning files run ~100–250 lines; that is the ba
 
 - **Reuse first.** Many baselines already exist in `methods/` (check `methods.json` and
   `methods/<slug>/`). If a trace exists, *reuse it as-is* — do not regenerate, do not re-run its Codex
-  gate. Only the *missing* baselines are created (and added to `methods.json`).
+  gate. Only the *missing* baselines are created.
+- The **finale** (the real, known-better method the trajectory lands on) also gets a full standalone
+  trace in `methods/`, created the same way, plus a `methods.json` entry.
 
 ### 2. The cumulative trajectory — lives in `trajectories/<task>/`
 
@@ -49,16 +49,13 @@ trajectories/<task>/
   "task": "...", "title": "...", "domain": "...",
   "metrics": ["..."], "metric_columns": ["eval_return", "auc", "..."],
   "initial_context_file": "00-initial-context.md",
-  "endpoint": "<strongest baseline display name>",
   "steps": [
     { "n": 1, "slug": "<weakest>", "method": "<display name>", "reasoning": "01-<weakest>-reasoning.md", "feedback": "01-feedback.md" },
-    { "n": 2, "slug": "<middle>",  "method": "...", "reasoning": "02-<middle>-reasoning.md",  "feedback": "02-feedback.md" },
-    { "n": 3, "slug": "<strongest>", "method": "...", "reasoning": "03-<strongest>-reasoning.md", "feedback": "03-feedback.md" }
+    { "n": 2, "slug": "<next>", "method": "...", "reasoning": "02-<next>-reasoning.md", "feedback": "02-feedback.md" },
+    { "n": 3, "slug": "<finale>", "method": "...", "reasoning": "03-<finale>-reasoning.md", "finale": true }
   ]
 }
 ```
-(One step per existing baseline — typically 3. Every step is a real baseline with a leaderboard row, so
-every step has a `feedback`, including the last; the strongest baseline is the endpoint.)
 
 The website renders, in order: the **initial context** (`initial_context_file`), then for each step
 its **reasoning** → **answer** → **feedback** (numbers; baselines only). (`initial_context: "<slug>"` is still supported as a legacy
@@ -107,9 +104,8 @@ stacked trajectory view shows it once: the reasoning derives the method and hand
 (`<i>-<slug>-answer.md`); the `methods/<slug>` answers stay as-is for Methods mode (they show the
 non-scaffold paper code and are not reused here).
 
-**Every baseline has feedback.** Each step is a real baseline with a leaderboard row, so each has a
-numbers-only `feedback` — including the last (strongest) one, whose feedback is simply the endpoint's
-measured result.
+**Finale has no feedback.** The last step is the endpoint; it carries no `feedback` file. (Its bar /
+"what I'd validate" lives at the close of its reasoning, against the strongest baseline's real numbers.)
 
 What you author per step:
 - **`<i>-<slug>-reasoning.md`** (steps `i>1`): the **multi-round reasoning**. It is *based on* the
@@ -127,10 +123,10 @@ What you author per step:
 - **`<i>-feedback.md`**: **numbers only.** The real leaderboard rows for that baseline — per seed and
   mean, across every metric — as Markdown tables, with a single factual lead line naming the source
   row (`baseline:<slug>`, `is_final,true`). **No "reading the dynamics" prose, no interpretation.**
-  (Interpretation belongs in the *next* step's reasoning, not the feedback.)
-- **`01-<weakest>-reasoning.md`** (step 1): there is no prior result to reflect on, so it establishes
-  the weakest baseline within the scaffold (why start here, the full derivation, what to watch) — still
-  a **complete, full-length derivation** to the same bar as every other step, not a short stub.
+  (Interpretation belongs in the *next* step's reasoning, not the feedback.) The **finale carries no
+  feedback file** (see above); the bar it must clear lives at the close of its own reasoning.
+- **`01-<weakest>-reasoning.md`** (step 1): there is no prior result to reflect on, so it just
+  establishes the baseline within the scaffold (why start here, the default fill, what to watch). Short.
 
 ## Context scaling — weaker baseline sees less
 
@@ -153,15 +149,18 @@ follow the same voice with one relaxation:
   artifact (prior-art ancestors cited by author/year are fine); derive, don't gesture; no fabricated
   numbers.
 
-## Endpoint (no finale)
+## Finale
 
-There is **no finale and no invented method**. The last step is simply the **strongest existing
-baseline**, with its own measured `feedback` as the conclusion. The trajectory simulates the baselines
-iterating to that endpoint — nothing is grafted on past it.
+The last step lands on a **real, known method that is genuinely stronger** than the best baseline
+(grounded, verifiable — not a speculative invention). It is motivated in its multi-round reasoning's opening as the natural
+next move from the strongest baseline's failure mode, and gets its own full standalone `methods/`
+trace. It carries **no feedback file** — it is the endpoint; the bar it must clear (the strongest
+baseline's real numbers) and what one would validate live at the close of its own reasoning, with no
+invented numbers.
 
 ## Website
 
-`trajectories.json` (root) indexes the set (`[{task, title, domain, endpoint}]`). The site has a
+`trajectories.json` (root) indexes the set (`[{task, title, domain, finale}]`). The site has a
 **Methods | Trajectories** mode switch; trajectory mode reads each task's `meta.json` and composes the
 reading view from the referenced `methods/` files + the local reasoning/feedback files. Add one
 `trajectories.json` entry per completed task.
@@ -181,9 +180,9 @@ One sub-agent owns one task, end to end:
    `edits/<baseline>.edit.py` against the `methods/` trace first** — a same-named baseline can be a very
    different method here. The trajectory's code *and* reasoning must match the task's implementation, not
    the paper's; note any paper machinery the harness omits.
-5. Author `trajectories/<task>/`: `00-initial-context.md` (the task scaffold, default fill), every
-   baseline's `<i>-<slug>-reasoning.md` (full-length; multi-round for i>1, code lives in the answer),
-   `<i>-<slug>-answer.md` (distilled + scaffold code), the numbers-only `<i>-feedback.md` for every
-   baseline, and `meta.json` (with `endpoint` = strongest baseline). Add the task to `trajectories.json`.
-   No finale/new-method step.
+5. Choose + create the finale method's standalone `methods/` trace the same way.
+6. Author `trajectories/<task>/`: `00-initial-context.md` (the task scaffold, default fill), every
+   step's `<i>-<slug>-reasoning.md` (multi-round for i>1, code = the literal scaffold edit), the
+   numbers-only `<i>-feedback.md` for the baselines (not the finale), and `meta.json`. Add the task to
+   `trajectories.json`.
 7. `git add` + commit immediately (this repo is shared across sessions).

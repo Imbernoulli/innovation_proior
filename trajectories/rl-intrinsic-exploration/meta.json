@@ -1,6 +1,6 @@
 {
   "task": "rl-intrinsic-exploration",
-  "title": "RL Intrinsic Exploration: iterating the sparse-reward novelty bonus",
+  "title": "RL Intrinsic Exploration: sparse-reward novelty bonus",
   "domain": "Reinforcement learning",
   "metrics": [
     "tutankham-v5",
@@ -37,9 +37,16 @@
       "reasoning": "03-rnd-reasoning.md",
       "feedback": "03-feedback.md",
       "answer": "03-rnd-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "ngu",
+      "method": "NGU (Never Give Up)",
+      "reasoning": "04-ngu-reasoning.md",
+      "finale": true,
+      "answer": "04-ngu-answer.md"
     }
   ],
   "ranking_basis": "ppo weakest by design (no bonus; two of three games barely move, Private Eye mean negative). icm < rnd: RND is the only baseline to register meaningful Private Eye eval_return (952 mean, 2756 on one seed), while ICM is identically zero there; ICM's larger Frostbite mean is one-seed-driven and high-variance.",
-  "notes": "Trajectory over the task's existing MLS-Bench baselines only (weak->strong); each step reflects on the previous baseline's measured numbers. No invented/imported method; the endpoint is the strongest existing baseline. Code+reasoning grounded in the task's edits/*.edit.py; methods/<slug> single-round traces untouched.",
-  "endpoint": "RND (random network distillation)"
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_intrinsic_exploration.py: IntrinsicBonusModule + mix_advantages, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces are untouched."
 }
