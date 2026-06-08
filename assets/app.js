@@ -292,17 +292,12 @@
     }
     (meta.steps || []).forEach(function (s) {
       var who = s.method || s.slug;
-      if (s.reflection) {
-        blocks.push({
-          kind: "reflection",
-          label: "Step " + s.n + " · reflecting on the previous result",
-          url: base + s.reflection
-        });
-      }
+      // Multi-round reasoning (with the reflection on the previous result embedded) lives in the
+      // trajectory when authored; step 1 falls back to the single-round methods/<slug> trace.
       blocks.push({
         kind: "reasoning",
         label: "Step " + s.n + " · " + who + " · Reasoning",
-        url: "methods/" + s.slug + "/results/reasoning.md"
+        url: s.reasoning ? (base + s.reasoning) : ("methods/" + s.slug + "/results/reasoning.md")
       });
       blocks.push({
         kind: "answer",

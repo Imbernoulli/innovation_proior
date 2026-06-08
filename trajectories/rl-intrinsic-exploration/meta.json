@@ -7,10 +7,10 @@
   "initial_context": "ppo",
   "steps": [
     { "n": 1, "slug": "ppo", "method": "PPO (no intrinsic bonus)", "feedback": "01-feedback.md" },
-    { "n": 2, "slug": "icm", "method": "ICM (intrinsic curiosity module)", "reflection": "02-icm-reflection.md", "feedback": "02-feedback.md" },
-    { "n": 3, "slug": "rnd", "method": "RND (random network distillation)", "reflection": "03-rnd-reflection.md", "feedback": "03-feedback.md" },
-    { "n": 4, "slug": "ngu", "method": "NGU (Never Give Up)", "reflection": "04-ngu-reflection.md", "feedback": "04-feedback.md", "finale": true }
+    { "n": 2, "slug": "icm", "method": "ICM (intrinsic curiosity module)", "reasoning": "02-icm-reasoning.md", "feedback": "02-feedback.md" },
+    { "n": 3, "slug": "rnd", "method": "RND (random network distillation)", "reasoning": "03-rnd-reasoning.md", "feedback": "03-feedback.md" },
+    { "n": 4, "slug": "ngu", "method": "NGU (Never Give Up)", "reasoning": "04-ngu-reasoning.md", "feedback": "04-feedback.md", "finale": true }
   ],
   "ranking_basis": "ppo weakest by design (no bonus; two of three games barely move, Private Eye mean negative). icm < rnd: RND is the only baseline to register meaningful Private Eye eval_return (952 mean, 2756 on one seed), while ICM is identically zero there; ICM's larger Frostbite mean is one-seed-driven and high-variance.",
-  "finale_note": "NGU (arXiv:2002.06038) keeps RND verbatim as a lifelong modulator and adds a per-episode kNN pseudo-count over an inverse-dynamics controllable-state memory that resets each episode."
+  "notes": "Step-1 (ppo) reasoning is reused verbatim from methods/ppo (no prior result to reflect on). Steps 2-4 use a multi-round reasoning authored here: based on the single-round methods/<slug> trace but with the reflection on the previous baseline's measured result embedded throughout. The methods/<slug> single-round traces are left untouched. Answers and the initial context are reused from methods/<slug>."
 }
