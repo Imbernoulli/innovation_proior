@@ -1,0 +1,126 @@
+Let me get the problem stated cleanly before I reach for anything. There is a function $M(x)$ — the expected response at level $x$ — and I want the level $\theta$ where $M(\theta)=\alpha$. I know $M$ is monotone and that the root is unique. But I cannot evaluate $M$. All I can do is run an experiment at a level $x$ of my choosing and get back a single random number $Y(x)$ whose mean is $M(x)$ and whose distribution I don't know. So every look at $M$ comes wrapped in noise, and I have to pick the levels $x_1,x_2,\dots$ one at a time, each from everything I've seen, so that $x_n\to\theta$.
+
+If I could see $M$ exactly this would be a solved problem — a hundred years solved. Newton: $x_{n+1}=x_n-(M(x_n)-\alpha)/M'(x_n)$, quadratic convergence near the root. Or even cruder, a fixed-gain rule $x_{n+1}=x_n+a(\alpha-M(x_n))$: since $M$ is increasing, when $x_n$ sits above $\theta$ we have $M(x_n)>\alpha$ so $\alpha-M(x_n)<0$ and the step pulls me down; below $\theta$ it pushes me up. Linearize around $\theta$, $M(x)-\alpha\approx M'(\theta)(x-\theta)$, and the error obeys $x_{n+1}-\theta\approx(1-aM'(\theta))(x_n-\theta)$ — a contraction for $0<a<2/M'(\theta)$, geometric convergence. Lovely. The whole reason it works is that I get to read the *exact* residual $M(x_n)-\alpha$ at each step and step deterministically against it.
+
+So the naive thing is: just substitute. I don't have $M(x_n)$, I have a noisy draw $y_n$ with $\mathbb E[y_n\mid x_n]=M(x_n)$. Plug it in: $x_{n+1}=x_n+a(\alpha-y_n)$. Does that work? Let me push on it. Write $y_n=M(x_n)+\xi_n$ where $\xi_n$ is mean-zero noise. Then $x_{n+1}-\theta=(x_n-\theta)+a(\alpha-M(x_n))-a\xi_n=(1-aM'(\theta))(x_n-\theta)-a\xi_n$ near $\theta$. The first part still contracts the *mean* error, fine. But look at the noise term: every step I inject a fresh $-a\xi_n$. Take variances at the fixed point: if $x_n$ has settled, $\mathrm{Var}(x_{n+1})\approx(1-aM'(\theta))^2\mathrm{Var}(x_n)+a^2\sigma^2$, and solving the stationary equation the variance settles to roughly $a\sigma^2/(2M'(\theta))$ — a positive constant proportional to $a$. So $x_n$ doesn't converge to $\theta$ at all; it converges to a noisy cloud around $\theta$, a cloud whose size is set by $a$. The fixed gain has no way to ever turn the noise off. Wall.
+
+The textbook cure for noise is averaging. The law of large numbers: if I sit at one level $x$ and draw $m$ responses, $\bar Y_m(x)\to M(x)$ with spread $\sigma/\sqrt m$. So I could pin $M(x)$ down to $\pm\varepsilon$ for about $\sigma^2/\varepsilon^2$ experiments, get a near-exact value, and *then* feed that into Newton or the fixed-gain map, which I already know converge on exact values. That clearly works in principle. Let me count the cost though, because something feels wasteful. To run Newton I'd estimate $M$ accurately at a sequence of points; or to be safe I'd estimate $M$ across a grid and root-find on the estimated curve. Either way I'm spending $\sigma^2/\varepsilon^2$ samples *per level I evaluate* — and almost every level I evaluate is not $\theta$. I'm paying to learn the height of $M$ at places whose height I do not care about; I only ever wanted one number, the crossing point. The estimation and the search are two separate machines and the estimation machine keeps doing work the search machine throws in the bin. That is the real pain: averaging decouples *measuring* from *moving*.
+
+Stare at the two failures side by side. Fixed-gain-on-noise moves every step but never damps the noise. Average-then-step damps the noise but wastes the samples on levels off the root. I want a single rule where each observation does *both* jobs — moves me, and contributes to averaging out the noise — without me ever holding still to average. Can one update do double duty?
+
+In the fixed-gain rule the noise never died because $a$ was constant. What if the gain shrinks? Take a step $x_{n+1}=x_n+a_n(\alpha-y_n)$ with $a_n\to0$. Then late steps inject less and less noise — the $a_n\xi_n$ terms get small — so maybe the cloud collapses. But if $a_n\to0$ too eagerly I create the opposite disaster: the steps become so tiny that they sum to a finite total distance, and if I start far from $\theta$ I literally cannot get there — I run out of travel before I arrive. So the gain has to vanish, to kill the noise, but not so fast that I'm trapped. Two pulls in opposite directions on the *same* knob. That smells like there should be two conditions on $\{a_n\}$, one lower-ish (don't shrink too fast — keep enough total travel) and one upper-ish (shrink fast enough — keep total noise finite). Let me try to make those precise by actually tracking the error, because hand-waving about clouds isn't a proof.
+
+The clean object to track is the mean squared error. Let
+$$b_n=\mathbb E[(x_n-\theta)^2].$$
+If I can show $b_n\to0$ I'm done — that gives convergence in quadratic mean, hence in probability. So expand $b_{n+1}$ using the update $x_{n+1}-x_n=a_n(\alpha-y_n)$:
+$$b_{n+1}=\mathbb E\big[(x_n-\theta)+a_n(\alpha-y_n)\big]^2=\mathbb E\big[(x_n-\theta)^2\big]+a_n^2\,\mathbb E\big[(\alpha-y_n)^2\big]+2a_n\,\mathbb E\big[(x_n-\theta)(\alpha-y_n)\big].$$
+Take the cross term and condition on $x_n$ first, since that's where the noise lives. Given $x_n$, the only random thing is $y_n$, and $\mathbb E[y_n\mid x_n]=M(x_n)$, so
+$$\mathbb E\big[(x_n-\theta)(\alpha-y_n)\big]=\mathbb E\big[(x_n-\theta)(\alpha-M(x_n))\big]=-\,\mathbb E\big[(x_n-\theta)(M(x_n)-\alpha)\big].$$
+Let me name the two pieces:
+$$d_n=\mathbb E\big[(x_n-\theta)(M(x_n)-\alpha)\big],\qquad e_n=\mathbb E\big[(\alpha-y_n)^2\big]=\mathbb E\!\Big[\int(y-\alpha)^2\,dH(y\mid x_n)\Big].$$
+Then the cross term is $2a_n\cdot(-d_n)=-2a_nd_n$ and I get the recursion
+$$b_{n+1}-b_n=a_n^2\,e_n-2a_n\,d_n.$$
+This is the whole game in one line. The error changes by a noise-injection term $a_n^2e_n$ that pushes it *up*, and a drift term $-2a_nd_n$ that — if $d_n\ge0$ — pulls it *down*. Everything hinges on the sign of $d_n$.
+
+Check the sign carefully, because if it's wrong the whole thing inverts. $d_n=\mathbb E[(x_n-\theta)(M(x_n)-\alpha)]$. Look at the integrand pointwise. $M$ is nondecreasing with $M(\theta)=\alpha$. If $x>\theta$ then $M(x)\ge\alpha$, so $M(x)-\alpha\ge0$, and $x-\theta>0$ — product $\ge0$. If $x<\theta$ then $M(x)\le\alpha$ so $M(x)-\alpha\le0$, and $x-\theta<0$ — product of two negatives, $\ge0$ again. At $x=\theta$ it's zero. So $(x-\theta)(M(x)-\alpha)\ge0$ for every $x$, hence $d_n\ge0$ always. Good — monotonicity is exactly what guarantees the drift term is a *descent* term. And it lines up with the cruder picture: the deterministic part of my step is $a_n(\alpha-M(x_n))$, which is negative when $x_n>\theta$ and positive when $x_n<\theta$ — always toward $\theta$. The sign is right.
+
+Now I can see the two conditions fall out of this recursion rather than out of intuition. First the noise. The responses are bounded — say $|Y|\le C$ with probability one (the 0/1 bioassay case is the extreme, $C=1$) — so $e_n=\mathbb E[(\alpha-y_n)^2]\le(C+|\alpha|)^2$, a fixed finite bound, uniformly in $n$. Then the total noise injected over all time is
+$$\sum_n a_n^2\,e_n\le(C+|\alpha|)^2\sum_n a_n^2,$$
+and this is finite precisely when $\sum_n a_n^2<\infty$. There's the upper pull, made exact: $\sum a_n^2<\infty$ is the condition that the *cumulative second-moment noise term* I pour into the iterate is finite. For this proof I only need a uniform bound on that second moment; I do not need the full response distribution.
+
+So suppose $\sum a_n^2<\infty$. Sum the recursion from $1$ to $n$:
+$$b_{n+1}=b_1+\sum_{j=1}^n a_j^2 e_j-2\sum_{j=1}^n a_j d_j.$$
+Both $b_{n+1}\ge0$ and the $a^2e$ series converges to something finite, so the only way the right side can stay nonnegative is for the drift series to be controlled:
+$$2\sum_{j=1}^n a_j d_j\le b_1+\sum_{j=1}^n a_j^2 e_j\le b_1+(C+|\alpha|)^2\sum_j a_j^2<\infty.$$
+Since every $a_jd_j\ge0$, this is a bounded increasing partial sum, so the positive series $\sum_n a_n d_n$ *converges*. And then, reading the summed recursion again, $\lim_{n\to\infty}b_n=b$ exists, with $b\ge0$. So $\sum a_n^2<\infty$ alone already buys me: the error stabilizes to *some* limit $b$, and the total drift $\sum a_nd_n$ is finite. The noise is tamed. What it does *not* yet give me is $b=0$ — the iterate could stabilize at the wrong place, a fixed nonzero cloud, if the drift simply petered out before reaching the root.
+
+So the remaining question is sharp: $\sum a_nd_n<\infty$. There are two ways that sum can be finite. Either $\theta$ was reached, so $d_n\to0$ because the error vanished — the good case — or the gains $a_n$ shrank so fast that $\sum a_n d_n$ converged *despite* $d_n$ staying bounded away from zero — the trap. I need to forbid the trap. The way to forbid it is to make $\sum a_n$ itself diverge, so that finiteness of $\sum a_nd_n$ *cannot* be blamed on the $a_n$'s and must instead come from $d_n$ collapsing. That's the lower pull, and now I see why it's exactly $\sum a_n=\infty$: it's the condition that the gains carry infinite total weight, so a weighted sum $\sum a_nd_n$ can only converge if the thing being weighted, $d_n$, actually dies.
+
+Let me turn that into a real argument and not just a slogan, because "must come from $d_n$ collapsing" needs $d_n$ to be tied back to $b_n$. The link is the local slope of $M$. Suppose I can find nonnegative numbers $k_n$ with
+$$d_n\ge k_n\,b_n,\qquad\text{and}\qquad\sum_n a_n k_n=\infty.$$
+Then from $\sum a_n d_n<\infty$ and $d_n\ge k_nb_n\ge0$ I get $\sum_n a_n k_n b_n<\infty$. But $\sum a_nk_n=\infty$. A divergent weight series against a convergent weighted sum means the weighted quantity $b_n$ has to dip below any $\varepsilon$ infinitely often — if $b_n$ stayed $\ge\varepsilon$ from some point on, $\sum a_nk_nb_n\ge\varepsilon\sum a_nk_n=\infty$, contradiction. So $b_n<\varepsilon$ infinitely often. And I already proved $b_n$ *converges* to a limit $b$. A convergent sequence that drops below every $\varepsilon$ infinitely often must converge to $0$. Therefore $b=0$. That's it — $b_n\to0$, $x_n\to\theta$ in quadratic mean and in probability.
+
+I owe two things: that such a $k_n$ exists, and that $\sum a_nk_n=\infty$ reduces to $\sum a_n=\infty$. For the first, the natural choice is the smallest slope of $M$ over the region $x_n$ can possibly be in. How far can $x_n$ roam? Each step changes $x$ by at most $a_{n-1}|\alpha-y_{n-1}|\le a_{n-1}(C+|\alpha|)$, so by induction $x_n$ stays, with probability one, within
+$$A_n=|x_1-\theta|+(C+|\alpha|)(a_1+\dots+a_{n-1})$$
+of $\theta$. On that band define
+$$k_n=\inf_{0<|x-\theta|\le A_n}\frac{M(x)-\alpha}{x-\theta}.$$
+This is exactly the worst-case slope of the residual over the reachable band, and it's $\ge0$ by monotonicity. Then, integrating against the law $P_n$ of $x_n$ which is supported on $|x-\theta|\le A_n$,
+$$d_n=\int_{|x-\theta|\le A_n}(x-\theta)(M(x)-\alpha)\,dP_n(x)\ge\int k_n(x-\theta)^2\,dP_n(x)=k_n b_n,$$
+using $(M(x)-\alpha)=\frac{M(x)-\alpha}{x-\theta}(x-\theta)\ge k_n(x-\theta)$ in the sense that $(x-\theta)(M(x)-\alpha)\ge k_n(x-\theta)^2$. Good, the bound $d_n\ge k_nb_n$ holds with this slope.
+
+Now I need $\sum a_nk_n=\infty$, and here I see why a quantitative non-degeneracy of $M$ at $\theta$ is needed. Take the clean case where $M$ doesn't just touch $\alpha$ but crosses it with a strictly positive jump — say $M(x)\le\alpha-\delta$ for $x<\theta$ and $M(x)\ge\alpha+\delta$ for $x>\theta$, some $\delta>0$. Then for any $x$ in the band, $\frac{M(x)-\alpha}{x-\theta}\ge\frac{\delta}{|x-\theta|}\ge\frac{\delta}{A_n}$, so $k_n\ge\delta/A_n$. Therefore
+$$\sum_n a_n k_n\ge\delta\sum_n\frac{a_n}{A_n}=\delta\sum_n\frac{a_n}{|x_1-\theta|+(C+|\alpha|)(a_1+\dots+a_{n-1})}.$$
+The denominator is an affine function of the partial sum $S_{n-1}=a_1+\dots+a_{n-1}$. If $S_n\to\infty$, then $\sum_n a_n/(B+LS_{n-1})$ diverges by comparison with the increments of $\log(B+LS_n)$; if $S_n$ stays bounded, the series is bounded by a constant times $\sum_n a_n$ and converges. So this is exactly the same condition as
+$$\sum_n\frac{a_n}{a_1+\dots+a_{n-1}}=\infty,$$
+which is equivalent here to $\sum_n a_n=\infty$. So the lower pull is precisely divergent total gain, and it does exactly the job I wanted: it prevents the drift from stalling short of the root.
+
+Let me also handle the smooth case, where I don't want to assume the artificial jump $\delta$ but only that $M$ is nondecreasing, $M(\theta)=\alpha$, and $M'(\theta)>0$. Write $M(x)-\alpha=(x-\theta)[M'(\theta)+\varepsilon(x-\theta)]$ with $\varepsilon(t)\to0$ as $t\to0$ — this is just the derivative definition at $\theta$. Pick $\delta_0>0$ small enough that $\varepsilon(t)\ge-\tfrac12M'(\theta)$ for $|t|\le\delta_0$; then on $|x-\theta|\le\delta_0$ the slope $\frac{M(x)-\alpha}{x-\theta}\ge\tfrac12M'(\theta)>0$. Outside that little interval but inside the band, monotonicity gives $\frac{M(x)-\alpha}{x-\theta}\ge\frac{M(\theta+\delta_0)-\alpha}{A_n}\ge\frac{\delta_0 M'(\theta)/2}{A_n}$ (and symmetrically below). So across the whole band $k_n\ge\frac{\delta_0M'(\theta)}{2A_n}$, again the $K/A_n$ shape with $K=\delta_0M'(\theta)/2>0$. Same conclusion: $\sum a_nk_n=\infty$ whenever $\sum a_n/A_n=\infty$, i.e. whenever $\sum a_n=\infty$. So the strict positive slope at the root, $M'(\theta)>0$, is the quantitative non-degeneracy I needed; without it the drift could vanish too fast near $\theta$ and the iterate could stall.
+
+So both pulls are now exact and they're the two conditions on the gains:
+$$\sum_n a_n^2<\infty\quad(\text{noise injected is finite — the iterate stabilizes}),\qquad\sum_n a_n=\infty\quad(\text{total travel/drift is infinite — it can only stabilize at }\theta).$$
+And I should check they're not contradictory — is there even a sequence satisfying both? The harmonic-type gain $a_n=c/n$ does it: $\sum 1/n^2=\pi^2/6<\infty$ and $\sum 1/n=\infty$. More generally any $c'/n\le a_n\le c''/n$ works, and one checks the ratio condition too: $\sum_n\frac1{n(1+\tfrac12+\dots+\tfrac1{n-1})}=\infty$ since the inner partial sum grows only like $\log n$. So $a_n=1/n$ is a clean sufficient balance: its squares are summable while the gains themselves still carry infinite total travel.
+
+Step back and look at what just happened, because the recursion $b_{n+1}-b_n=a_n^2e_n-2a_nd_n$ has a reading I should make explicit. Condition the whole thing on the past $\mathcal F_n$ instead of taking full expectations, and let $V(x)=(x-\theta)^2$ be a squared-error potential. The same expansion gives
+$$\mathbb E[V(x_{n+1})\mid\mathcal F_n]=V(x_n)-2a_n(x_n-\theta)(M(x_n)-\alpha)+a_n^2\,\mathbb E[(\alpha-y_n)^2\mid x_n].$$
+The middle term is $\le0$ (monotonicity), the last term is $\le a_n^2(C+|\alpha|)^2$, nonnegative. So $V(x_n)$ is *almost* a supermartingale: its conditional expectation doesn't quite never-increase, but it only ever increases by the summable amount $a_n^2(C+|\alpha|)^2$. If that extra push were absent, Doob's theorem would immediately give me $V(x_n)\to$ finite limit a.s. The push isn't absent — but it's summable, and that's exactly the situation the almost-supermartingale convergence theorem is built for: a nonnegative $Z_n$ with $\mathbb E[Z_{n+1}\mid\mathcal F_n]\le(1+\eta_n)Z_n+\gamma_n-\psi_n$ where $\sum\eta_n<\infty$, $\sum\gamma_n<\infty$ a.s. concludes that $Z_n$ converges to a finite limit *almost surely* and, as a bonus, $\sum\psi_n<\infty$ a.s. Match it up: $Z_n=V(x_n)$, $\eta_n=0$ (or absorb a bounded-variance growth into $\eta_n=a_n^2\sigma^2$ if the noise bound is $\mathbb E[(\alpha-y_n)^2\mid x_n]\le\sigma^2(1+V(x_n))$ rather than uniformly bounded), $\gamma_n=a_n^2(C+|\alpha|)^2$, and the drift $\psi_n=2a_n(x_n-\theta)(M(x_n)-\alpha)\ge0$. Both $\sum\eta_n,\sum\gamma_n<\infty$ follow from $\sum a_n^2<\infty$. So $V(x_n)\to V_\infty$ a.s. and $\sum_n a_n(x_n-\theta)(M(x_n)-\alpha)<\infty$ a.s. The pathwise version of $\sum a_nd_n<\infty$. Then the very same slope argument — $\sum a_n=\infty$ plus $k_n\ge K/A_n$ forces the drift not to stall — pins $V_\infty=0$, i.e. $x_n\to\theta$ *almost surely*, upgrading the in-quadratic-mean statement to almost sure convergence. Same two conditions, doing the same two jobs: $\sum a_n^2<\infty$ makes the squared-error potential settle, $\sum a_n=\infty$ makes it settle at the root.
+
+Let me make sure the procedure actually closes on the concrete problem I started with — the noisy quantile. There $F$ is the unknown response curve, $F(\theta)=\alpha$, $F'(\theta)>0$, and at level $x_n$ I observe $y_n\in\{0,1\}$ with $\Pr[y_n=1\mid x_n]=F(x_n)$. So the mean response is $M(x)=F(x)$, nondecreasing with strictly positive slope at $\theta$ — exactly my hypotheses — and the responses are bounded ($|y_n|\le1$), so the noise bound holds. The rule
+$$x_{n+1}=x_n+a_n(\alpha-y_n),\qquad a_n=\tfrac{a}{n},$$
+with $x_1$ my best initial guess, therefore drives $x_n\to\theta$, and it never needed to know $F$ — it's distribution-free, the level moves down on a response ($y_n=1$) and up on a non-response ($y_n=0$), each by a shrinking amount. If I'd rather not trust a single Bernoulli draw per step I can group $r$ observations at a level and use their mean $\bar y_n$ in place of $y_n$; the recursion $x_{n+1}-x_n=a_n(\alpha-\bar y_n)$ has the same $M(x)=F(x)$ and the same proof goes through — that's the knob between pure single-step and full averaging, and the theory says I don't *need* to turn it; $r=1$ already converges. The averaging-then-rootfind baseline was solving a harder problem than I had.
+
+Now the variant where I don't have a root to hit but a *peak* to climb — maximize $M(x)$, i.e. find $\theta$ with $M'(\theta)=0$, again seeing only noisy values of $M$. The root-finding rule wanted the residual $M(x_n)-\alpha$; here the analogue is the derivative $M'(x_n)$, which I'd love to step along: $z_{n+1}=z_n+a_nM'(z_n)$ climbs to the peak when $M'$ changes sign through $\theta$ (increasing before, decreasing after — so $M'$ plays the role $M-\alpha$ played, with a sign that points toward $\theta$). But I can't observe $M'$, I can only observe noisy *values* of $M$. So estimate the slope by a symmetric difference: probe at $z_n+c_n$ and $z_n-c_n$, get independent noisy responses $y_{2n}\sim H(\cdot\mid z_n+c_n)$ and $y_{2n-1}\sim H(\cdot\mid z_n-c_n)$, and form
+$$z_{n+1}=z_n+a_n\,\frac{y_{2n}-y_{2n-1}}{c_n}.$$
+The bracket has conditional mean $\frac{M(z_n+c_n)-M(z_n-c_n)}{c_n}$, which tends to $2M'(z_n)$ as $c_n\to0$. The factor $2$ only rescales the effective gain; the sign is what matters for climbing. So in expectation this is the climb rule I wanted, and I'd expect the same squared-error recursion to govern it. Let me see what new condition the difference quotient forces, because I'm now dividing noisy quantities by a small $c_n$ and that should be dangerous.
+
+Run the same $b_n=\mathbb E[(z_n-\theta)^2]$ expansion. The step is $a_n\cdot\frac{y_{2n}-y_{2n-1}}{c_n}$, so the noise term in $b_{n+1}-b_n$ is $\frac{a_n^2}{c_n^2}\mathbb E[(y_{2n}-y_{2n-1})^2]$. There it is — the variance of the difference is order $\sigma^2$, but it's now multiplied by $a_n^2/c_n^2$, *inflated* by $1/c_n^2$ because I divided by the small probe width. So for the cumulative noise to stay finite I no longer need $\sum a_n^2<\infty$; I need the stronger
+$$\sum_n\frac{a_n^2}{c_n^2}<\infty.$$
+That's the price of estimating a derivative from values: the smaller the probe, the noisier the slope estimate, the faster the gains must shrink. And there's a *second* new effect — bias. This difference quotient is not exactly the local slope signal; under the weak regularity I can control its near-peak positive part by a constant times $c_n$, so the accumulated harmless part is controlled by
+$$\sum_n a_n c_n<\infty,$$
+and of course $c_n\to0$ makes the two probes collapse to the current point, plus $\sum a_n=\infty$ as before to reach the peak and not stall. Four conditions now: $c_n\to0$, $\sum a_n=\infty$, $\sum a_nc_n<\infty$, $\sum a_n^2/c_n^2<\infty$. They pull against each other through $c_n$: a large $c_n$ makes $\sum a_n^2/c_n^2$ easier but leaves more finite-difference bias; a small $c_n$ shrinks that bias but inflates variance. The sweet spot is a power law — try $a_n=1/n$, $c_n=n^{-1/3}$: then $\sum a_n=\sum 1/n=\infty$; $\sum a_nc_n=\sum n^{-4/3}<\infty$; $\sum a_n^2/c_n^2=\sum n^{-2}n^{2/3}=\sum n^{-4/3}<\infty$. Both tails land on $\sum n^{-4/3}$, a balanced schedule for the probe width.
+
+The convergence proof for the peak-climber is the same machine. The squared-error recursion (now with the inflated noise term) sums to give, since $b_{n+1}\ge0$, that the positive noise series $\sum a_n^2 e_n/c_n^2$ converges (using $\sum a_n^2/c_n^2<\infty$ and the bounded second moment), and that the drift series is controlled. The drift here is $\sum \frac{a_n}{c_n}\mathbb E[(z_n-\theta)\,\mathbb E\{y_{2n}-y_{2n-1}\mid z_n\}]$, and the regularity condition that makes it a genuine descent is the analogue of $M'(\theta)>0$: that $M$ rises strictly before $\theta$ and falls strictly after, so $(z-\theta)\cdot[M(z+c)-M(z-c)]<0$ off the peak — a Lipschitz-type upper bound on the slope so a single mis-step can't fling $z_n$ to infinity, and a positive lower bound $\inf\frac{|M(z+c)-M(z-c)|}{c}>0$ away from $\theta$ so the climb doesn't go flat. With those, $\liminf\mathbb E\{K_n\mid|z_n-\theta|\}=0$ along the divergent $\sum a_n$, a subsequence of $z_n$ converges to $\theta$ stochastically, and then a Chebyshev bound on the summed recursion (choosing the tail of $\sum a_n^2/c_n^2$ and $\sum a_nc_n$ small) pins the *whole* sequence: $z_n\to\theta$ in probability. Same skeleton — bounded-variance noise term controlled by the square-summability-type condition, monotone-toward-peak drift forced not to stall by the divergent-gain condition.
+
+So the thing I land on, stripped to its core: to find where a noisily-observed monotone function crosses a level, do not average many samples at each point and then root-find — take one noisy sample and a small step against it, $x_{n+1}=x_n+a_n(\alpha-y_n)$, and let the gains satisfy $\sum a_n=\infty$ so you can reach the root from anywhere and the drift can't stall, and $\sum a_n^2<\infty$ so the total injected noise is finite and the iterate settles. Each observation then does double duty — its mean steers, its noise averages out across steps weighted by the shrinking $a_n$. The squared error $b_n=\mathbb E[(x_n-\theta)^2]$ obeys $b_{n+1}-b_n=a_n^2e_n-2a_nd_n$ with $d_n\ge0$ guaranteed by monotonicity; $\sum a_n^2<\infty$ makes the cumulative $a_n^2e_n$ finite so $b_n$ converges and $\sum a_nd_n<\infty$; $\sum a_n=\infty$ with the slope bound $d_n\ge(K/A_n)b_n$ forces that limit to be zero — convergence in quadratic mean, and via the almost-supermartingale reading of the same recursion, almost surely. The gradient-free cousin replaces the residual by a finite difference $\frac{y_{2n}-y_{2n-1}}{c_n}$ to climb to a peak, paying for the division with a stronger noise condition $\sum a_n^2/c_n^2<\infty$ and a bias-control condition $\sum a_nc_n<\infty$, balanced at $a_n=1/n,c_n=n^{-1/3}$.
+
+```python
+import numpy as np
+
+# Root-finding: locate theta where M(x) = alpha, M monotone, observed only through
+# a noisy response y with E[y|x] = M(x).
+def step_size(n, a=1.0):
+    # a_n = a/n: a simple schedule with square-summable noise weights
+    # and divergent total travel.
+    return a / n
+
+def root_find(observe, alpha, x0, n_steps, a=1.0):
+    x = x0
+    for n in range(1, n_steps + 1):
+        y = observe(x)                       # ONE noisy measurement at the current level
+        x = x + step_size(n, a) * (alpha - y)  # small step against it:
+        #   deterministic part a_n*(alpha - M(x)) points toward theta (M increasing),
+        #   noise part a_n*(M(x)-y) shrinks with a_n and averages out across steps.
+    return x
+
+# Quantile / bioassay special case: M(x)=F(x), y in {0,1}, Pr[y=1|x]=F(x).
+#   response (y=1) lowers x, non-response (y=0) raises it -- distribution-free.
+def estimate_quantile(observe_bernoulli, alpha, x0, n_steps, a=1.0):
+    return root_find(observe_bernoulli, alpha, x0, n_steps, a)
+
+# Maximization: climb to the peak theta of M using only noisy values.
+# Compare two nearby probes; the larger side determines the step direction.
+def kw_step(n, a=1.0):
+    a_n = a / n             # sum a_n = inf  (reach the peak)
+    c_n = n ** (-1.0 / 3.0) # c_n -> 0; with a_n=1/n both bias and variance tails ~ sum n^{-4/3}
+    return a_n, c_n         #   sum a_n c_n      = sum n^{-4/3} < inf  (finite-difference bias summable)
+                            #   sum a_n^2 / c_n^2 = sum n^{-4/3} < inf  (noise inflated by 1/c_n^2 still summable)
+
+def maximize(observe, z0, n_steps, a=1.0):
+    z = z0
+    for n in range(1, n_steps + 1):
+        a_n, c_n = kw_step(n, a)
+        y_plus  = observe(z + c_n)            # noisy value just above
+        y_minus = observe(z - c_n)            # noisy value just below
+        slope_est = (y_plus - y_minus) / c_n  # -> 2*M'(z) as c_n -> 0; factor absorbed in a_n
+        z = z + a_n * slope_est              # step UP the estimated slope toward the peak
+    return z
+```
