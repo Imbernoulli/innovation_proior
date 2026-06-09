@@ -8,7 +8,7 @@ The precise question: **can we get the modelling power of an arbitrarily rich (e
 
 ## Background
 
-**Linear methods access data only through inner products.** This is the structural fact everything below exploits. The dual perceptron maintains weights $w = \sum_t \alpha_t y_t x_t$ and classifies by $\mathrm{sign}\,\langle w, x\rangle = \mathrm{sign}\sum_t \alpha_t y_t \langle x_t, x\rangle$. Dual least-squares and discriminant analysis are the same story: the solution is a combination of the training inputs, and both fitting and prediction touch the data only via $\langle x_i, x_j\rangle$ and $\langle x_i, x\rangle$.
+**Linear methods are confined to flat boundaries and are written in inner products.** A linear classifier or regressor can only carve the input space with hyperplanes, so problems that are not linearly separable lie outside its reach. The way such methods are written down is in terms of inner products: the dual perceptron maintains weights $w = \sum_t \alpha_t y_t x_t$ and classifies by $\mathrm{sign}\,\langle w, x\rangle = \mathrm{sign}\sum_t \alpha_t y_t \langle x_t, x\rangle$; dual least-squares and discriminant analysis are similar, with fitting and prediction expressed via $\langle x_i, x_j\rangle$ and $\langle x_i, x\rangle$.
 
 **Positive-definite functions and Gram matrices.** Given a symmetric function $k:\mathcal X\times\mathcal X\to\mathbb R$ and points $x_1,\dots,x_m$, the Gram matrix is $K=(k(x_i,x_j))$. $k$ is called *positive definite* if every such Gram matrix satisfies $\sum_{i,j} c_i c_j K_{ij}\ge 0$ for all real $c$. A real symmetric matrix is positive semidefinite exactly when all its eigenvalues are nonnegative; equivalently $c^\top K c\ge 0$ for all $c$. Two immediate consequences for a positive-definite $k$: $k(x,x)\ge 0$ (the $1\times1$ Gram matrix), and a Cauchy–Schwarz-type bound $k(x,x')^2\le k(x,x)\,k(x',x')$ (from positivity of the $2\times2$ Gram matrix).
 
@@ -40,7 +40,7 @@ Natural yardsticks include nonlinear classification tasks where an explicit feat
 
 ## Code framework
 
-A linear learner whose only contact with the data is an inner-product matrix already exists. The scaffold below leaves open the similarity between two points and the finite coefficient solve that would replace a direct search over a large feature space.
+A linear learner whose only contact with the data is an inner-product matrix already exists. The scaffold below leaves open the similarity between two points and the solve that fits the model from that matrix.
 
 ```python
 import numpy as np
@@ -65,9 +65,8 @@ def is_admissible(G):
 
 def fit(X, y, reg):
     G = gram_matrix(X)
-    # TODO: replace a direct weight-vector search with a finite solve
-    #       in coefficients over the training points when justified.
-    coef = None  # TODO
+    # TODO: solve the learning problem from G, X, y, reg.
+    coef = None
     return coef
 
 def predict(coef, X_train, x):

@@ -4,7 +4,7 @@
 
 By the late 1920s the dominant program in the foundations of mathematics asked for a single formal system — a fixed list of symbols, axioms, and mechanical rules of inference — rich enough to express ordinary arithmetic, in which every truth expressible in the system's language can be *derived* by those rules, and whose freedom from contradiction can itself be established by elementary ("finitary") means. Two properties were demanded together: **consistency** (no formula and its negation are both derivable) and **completeness** (for every closed formula `A`, either `A` or its negation `¬A` is derivable, so the axioms decide every question that can be posed). The decade's optimism held that the great systems of the day — *Principia Mathematica*, Zermelo–Fraenkel set theory, the Peano axioms with the logic of *Principia* — already had these properties, or would once the consistency proof was supplied; it was assumed, for instance, that Peano arithmetic decides every arithmetical statement.
 
-The precise question is therefore: **can one such formal system, strong enough to express the addition and multiplication of the whole numbers, be both consistent and complete — and can its consistency be proved by means formalizable within it?** A solution in the affirmative would secure all of classical mathematics on a finitary base. The pain point is that no one had a method even to *survey* what a fixed system can and cannot prove: a proof is an external, syntactic object, and there was no way to reason arithmetically about the totality of proofs. Any attack on completeness had to find a way to talk about provability itself from inside the system.
+The precise question is therefore: **can one such formal system, strong enough to express the addition and multiplication of the whole numbers, be both consistent and complete — and can its consistency be proved by means formalizable within it?** A solution in the affirmative would secure all of classical mathematics on a finitary base. The pain point is that no one had a method even to *survey* what a fixed system can and cannot prove: a proof is an external, syntactic object, and there was no settled way to reason about the totality of proofs from within the system at all.
 
 ## Background
 
@@ -14,7 +14,7 @@ The precise question is therefore: **can one such formal system, strong enough t
 
 **Peano arithmetic and primitive recursion (Dedekind, Peano; Skolem 1923).** Arithmetic is axiomatized by `0`, the successor function `f`, the axioms `¬(fx = 0)`, `fx = fy ⊃ x = y`, and induction, with addition and multiplication. The class of **primitive recursive functions** — built from the constant and successor functions by composition (substituting earlier functions into the argument places of an earlier one) and by the recursion scheme `Φ(0, x⃗) = Ψ(x⃗)`, `Φ(k+1, x⃗) = μ(k, Φ(k, x⃗), x⃗)` — captures a large, manifestly *effective* class: for every argument tuple the value can be computed in finitely many steps, and for a primitive recursive relation `R` it can be *decided* whether `R(x⃗)` holds. Closure properties are elementary: composition and recursion of primitive recursive functions are primitive recursive; the characteristic functions of `¬R`, `R ∨ S`, `R & S`, and of equalities between primitive recursive functions are primitive recursive; and bounded quantification and bounded minimization — `(∃x ≤ Φ)R`, `(x ≤ Φ)R`, `εx[x ≤ Φ & R]` (least such `x`, or `0`) — preserve the class. These closure facts are what make checkable syntactic properties computable.
 
-**The semantic paradoxes — the Liar and Richard's antinomy (Richard 1905).** The **Liar**: a sentence asserting its own falsity ("this sentence is false") cannot consistently be assigned a truth value — if true it is false, if false it is true. **Richard's antinomy**: the phrases of a fixed language that define real numbers can be enumerated `E₁, E₂, …`; one then *defines* a new real that differs from the `n`-th defined real in its `n`-th decimal — a number "not definable by any `Eₙ`," yet just defined by this very procedure. Both turn on a self-referential or diagonal construction applied to a *semantic* notion (truth, definability). In a stratified system like *Principia* these were blocked by forbidding the self-reference; the standing lesson was that semantic notions applied to their own language breed contradiction. The diagnostic lesson is that a construction that lets a sentence speak of *its own truth or definability* is poison, but the same self-applying, diagonal *shape* of argument is extraordinarily powerful.
+**The semantic paradoxes — the Liar and Richard's antinomy (Richard 1905).** The **Liar**: a sentence asserting its own falsity ("this sentence is false") cannot consistently be assigned a truth value — if true it is false, if false it is true. **Richard's antinomy**: the phrases of a fixed language that define real numbers can be enumerated `E₁, E₂, …`; one then *defines* a new real that differs from the `n`-th defined real in its `n`-th decimal — a number "not definable by any `Eₙ`," yet just defined by this very procedure. Both turn on a self-referential or diagonal construction applied to a *semantic* notion (truth, definability). In a stratified system like *Principia* these were blocked by forbidding the self-reference; the standing lesson was that semantic notions applied to their own language breed contradiction. The diagnostic lesson is that a construction that lets a sentence speak of *its own truth or definability* is poison.
 
 **Effective enumerability of syntax.** Because the alphabet is fixed and finite (up to the supply of variables) and formulas and proofs are finite strings, the formulas of a system can be listed mechanically, and the formulas with exactly one free numerical variable — call these *class-strings* — can be arranged in a definite order `R(1), R(2), R(3), …`. Substituting a numeral into the free variable of a class-string is a mechanical operation on strings. These are basic facts about any system with a fixed grammar.
 
@@ -28,9 +28,9 @@ The prior methods are the strategies by which one would have tried to settle con
 
 - **The model-theoretic / completeness route (Gödel 1929; Skolem, Löwenheim).** Attempt: show a theory complete by showing every consistent extension has a model, or that the theory's models all agree on every sentence. This succeeds for pure first-order logic. Gap: a theory of arithmetic has *many* models (the standard numbers and non-standard ones), so model existence does not force the theory to decide every sentence; the method establishes completeness of logic but not of arithmetic, and it does not produce an undecided sentence.
 
-- **Truth-definitional reduction of consistency (the natural next step in 1930).** Attempt: to reduce the consistency of analysis to that of arithmetic, represent the higher-type objects (real numbers) by arithmetical predicates and verify the analysis axioms; this requires a *truth predicate for arithmetic*, a formula `True(x)` holding exactly of the (codes of) true arithmetical sentences. Core idea: if truth is arithmetically expressible, semantic verification becomes internal arithmetic. Gap: semantic notions such as truth are precisely where the Liar and Richard-style diagonal constructions become dangerous, because self-application threatens to turn "this sentence is not true" into an internal contradiction. Any viable attack has to keep the diagonal power while avoiding a semantic truth predicate.
+- **Truth-definitional reduction of consistency (the natural next step in 1930).** Attempt: to reduce the consistency of analysis to that of arithmetic, represent the higher-type objects (real numbers) by arithmetical predicates and verify the analysis axioms; this requires a *truth predicate for arithmetic*, a formula `True(x)` holding exactly of the (codes of) true arithmetical sentences. Core idea: if truth is arithmetically expressible, semantic verification becomes internal arithmetic. Gap: semantic notions such as truth are precisely where the Liar and Richard-style diagonal constructions become dangerous, because self-application threatens to turn "this sentence is not true" into an internal contradiction, so the route stalls exactly where it tries to make truth internally available.
 
-- **Stratification against self-reference (Principia's ramified types).** Attempt: forbid the paradoxes structurally by typing, so no formula can refer to itself or its own semantic status. Gap: this prevents *some* self-reference at the object level, but it does not prevent an *external*, arithmetical mirror of the system's syntax — once formulas and proofs are coded as numbers, statements *about* provability become ordinary arithmetical statements that the typing restrictions do not touch.
+- **Stratification against self-reference (Principia's ramified types).** Attempt: forbid the paradoxes structurally by typing, so no formula can refer to itself or its own semantic status. Gap: this prevents *some* self-reference at the object level, but the typing restrictions govern only what formulas may say about objects *of the system*; they place no constraint on what statements *about* the system's own syntax — its formulas and proofs as finite combinatorial objects — might or might not be expressible by other means.
 
 ## Evaluation settings
 
@@ -44,7 +44,7 @@ The natural yardsticks are the fixed formal systems themselves and the standard 
 
 ## Code framework
 
-The starting scaffold is the fixed system whose syntax is to be studied, the mechanical operations on its strings, and the class of effective numerical functions. The missing bridge from syntax to arithmetic is left as `# TODO`.
+The starting scaffold is the fixed system whose syntax is to be studied, the mechanical operations on its strings, and the class of effective numerical functions. What connects these two givens — and the construction it would support — is left as `# TODO`.
 
 ```python
 # ---- The fixed formal system P (Peano axioms under the logic of Principia) ----
@@ -81,22 +81,9 @@ def provable(y):
 def primitive_recursive(...):
     ...
 
-def encode(symbol_or_series):
-    # TODO: a one-to-one map from basic symbols and finite series of them to natural numbers,
-    # decodable by an effective operation, so that "formula", "proof", "provable" become
-    # numerical properties.
+# TODO: relate the syntactic side (is_formula / is_proof / provable, operating on strings)
+#   to the effective numerical side (primitive_recursive), and build whatever construction
+#   that relation makes possible.
+def contribution():
     raise NotImplementedError
-
-# TODO: the syntactic relations, expressed over codes, shown to lie in the effective class:
-#   numeral(n)         -- the symbol-string f...f0 naming the number n
-#   Sub(x, v, y)       -- substitute string y for variable v in formula x
-#   Form(x), Ax(x), Fl(x,y,z), Bw(x)   -- formula / axiom / immediate-consequence / proof-schema
-#   proof_of(x, y)     -- x is a proof of formula y
-#   provable_code(x)   -- exists y: proof_of(y, x)
-
-# TODO: representability -- a way to turn a true fact about a decidable numerical relation
-#   into a PROVABLE formula of P, so that arithmetic about proofs can be carried INSIDE P.
-
-# TODO: a diagonal substitution operation for one-variable class-strings, producing
-#   closed formulas whose proof status can be compared with their numeral instances.
 ```

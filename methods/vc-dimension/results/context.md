@@ -88,9 +88,8 @@ Pascal-type recurrence
 
 with closed form Φ(n, r) = Σ_{k=0}^{n} C(r, k), which is polynomial in r of degree n (for r > n) —
 sharply smaller than the trivial 2^r. So for linear threshold classes, the number of distinct labelings
-of r points can grow polynomially even when the class itself is infinite. This number, attached to a
-finite sample rather than to the class's cardinality, is the quantity that might replace N in a union
-bound.
+of r points can grow polynomially even when the class itself is infinite — a count attached to a finite
+sample rather than to the class's cardinality.
 
 ## Baselines
 
@@ -123,9 +122,9 @@ criterion is distribution-free (holds for every P) or distribution-dependent.
 ## Code framework
 
 The computational pieces already available are empirical frequencies on a sample, the single-event
-Chebyshev bound, and a finite-class union bound. The missing piece is the function that, for an infinite
-class, plays the role that N plays for a finite one: a measure of how many genuinely different ways the
-class can label a sample, and the deviation bound built from it.
+Chebyshev bound, and a finite-class union bound. For an infinite class the union bound has nothing finite
+to sum over — log N is unbounded — so the distribution-free deviation tail for sup over S is not yet
+computable; the slot for it is empty.
 
 ```python
 import numpy as np
@@ -142,17 +141,10 @@ def finite_class_sample_size(N, kappa, eta):
     """Union-bound sample size for a finite class of N rules."""
     return (np.log(N) - np.log(eta)) / kappa
 
-def class_capacity(S, l):
-    """Effective 'number of distinguishable events' of class S on l points.
-    For a finite class this is just |S|; for an infinite class we do not yet
-    know what to put here."""
-    # TODO: the combinatorial capacity quantity that replaces N
-    pass
-
 def uniform_deviation_tail(S, l, eps):
     """P( sup_{A in S} |nu_A - P_A| > eps ): the object we want to bound,
-    simultaneously over the whole class, with no dependence on P."""
-    # TODO: pass from the infinite class S to its capacity on the sample,
-    #       then to a distribution-free tail bound
+    simultaneously over the whole class, with no dependence on P. For an
+    infinite S the finite-class union bound above does not apply."""
+    # TODO
     pass
 ```

@@ -24,7 +24,7 @@ The single most important phenomenon is **interference**. A basis state can be r
 
 **Continued fractions.** Every rational `c/q` has a finite continued-fraction expansion `[a_0, a_1, …]`, computed by a simple recurrence; its convergents `p_n/q_n` are exactly the best rational approximations, and there is at most one fraction with bounded denominator within a small enough window of a given real number (Hardy–Wright, Ch. X; Knuth).
 
-**The discrete Fourier transform and the FFT.** The DFT of length `q` sends `|a⟩` to `q^{-1/2} Σ_c exp(2πi ac/q)|c⟩`. Classically the fast Fourier transform (Cooley–Tukey; Knuth) computes it in `O(q log q)` arithmetic operations by recursively exploiting the factorization of `q`. The DFT is the natural tool for detecting *periodicity*: if a signal has period `r`, its transform concentrates on multiples of `q/r`.
+**The discrete Fourier transform and the FFT.** The DFT of length `q` sends `|a⟩` to `q^{-1/2} Σ_c exp(2πi ac/q)|c⟩`. Classically the fast Fourier transform (Cooley–Tukey; Knuth) computes it in `O(q log q)` arithmetic operations by recursively exploiting the factorization of `q`. It is the standard transform associated with the additive structure of `Z_q`.
 
 **The diagnostic that reframes everything — Simon's problem (Simon 1994).** Bernstein–Vazirani (1993) gave the first superpolynomial oracle separation, but their problem looked contrived. Simon (1994) gave a natural one: a black-box `f` on `n`-bit strings promised to satisfy `f(x) = f(y)` iff `x ⊕ y ∈ {0, s}` for a hidden `s`. Classically, finding `s` needs `Θ(2^{n/2})` queries (you must collide). Simon's quantum algorithm needs `O(n)`. Its mechanism is the load-bearing observation: put the input register in uniform superposition; compute `f` into a second register; *measure the second register*, collapsing the first onto a single coset `{x_0, x_0 ⊕ s}`; apply a Fourier transform over the binary vector space `(Z_2)^n` (a layer of Hadamards) to the first register; measure, obtaining a random `y` with `y · s = 0`; repeat to collect `n−1` independent linear constraints and solve for `s`. The transform turns a *hidden period* (here the period is the shift `s` of an XOR-translation) into *measurable* interference. This is the existence proof that a Fourier transform on a superposition can extract a period exponentially faster than any classical method — for a problem nobody could call contrived.
 
@@ -32,9 +32,9 @@ The single most important phenomenon is **interference**. A basis state can be r
 
 **Classical factoring — the number field sieve** (Lenstra–Lenstra–Manasse–Pollard; Lenstra–Lenstra 1993). The asymptotically best classical factorer: collect integers `x` with `x² ≡ y (mod N)` and `y` smooth, sieve to find a subset whose product is a perfect square, obtaining `u² ≡ v² (mod N)`, then `gcd(u−v, N)` is likely a nontrivial factor. Running time `exp(c (log N)^{1/3}(log log N)^{2/3})` — subexponential but still superpolynomial in `log N`. This is the wall a polynomial-time method must beat. *Gap:* no periodic structure is exploited; the cost is in the smooth-relation search, which stays superpolynomial.
 
-**Miller's reduction (Miller 1976).** Factoring `N` reduces to computing multiplicative orders, assuming (in Miller's deterministic version) the extended Riemann hypothesis; the randomized version needs no unproven hypothesis. Choose random `x` with `gcd(x, N) = 1`, find the order `r` of `x`, and, if `r` is even and `x^{r/2} ≢ -1 (mod N)`, form `gcd(x^{r/2} − 1, N)`. *Gap left open:* it converts factoring into order-finding, but order-finding itself has no known classical polynomial-time algorithm — so on a classical machine this is a reduction to an equally hard problem. It hands the next worker a precise target: *find a fast way to compute the order of an element*, i.e. the period `r` of `a → x^a (mod N)`.
+**Miller's reduction (Miller 1976).** Factoring `N` reduces to computing multiplicative orders, assuming (in Miller's deterministic version) the extended Riemann hypothesis; the randomized version needs no unproven hypothesis. Choose random `x` with `gcd(x, N) = 1`, find the order `r` of `x`, and, if `r` is even and `x^{r/2} ≢ -1 (mod N)`, form `gcd(x^{r/2} − 1, N)`. *Gap left open:* it converts factoring into order-finding, but order-finding itself has no known classical polynomial-time algorithm — so on a classical machine this is a reduction to an equally hard problem. The open question it leaves is whether the order of an element can be computed fast by some other means.
 
-**Simon's algorithm (Simon 1994).** The quantum period-finder for XOR-periodicity over `(Z_2)^n`, described above. *Gaps:* (i) it is an *oracle* result, with no claim about a natural problem; (ii) its "period" `s` lives in a binary vector space and is extracted by a Fourier transform over `(Z_2)^n` (Hadamards) — it does not handle a period that is an arbitrary *integer* `r` in a cyclic group `Z_q`; (iii) it needs the unknown structure to be an exact subgroup, with the function constant on cosets. To attack order-finding one needs the analogue over the cyclic group: a quantum Fourier transform over `Z_q`, and a way to cope with `r` not dividing `q` exactly.
+**Simon's algorithm (Simon 1994).** The quantum period-finder for XOR-periodicity over `(Z_2)^n`, described above. *Gaps:* (i) it is an *oracle* result, with no claim about a natural problem; (ii) its "period" `s` lives in a binary vector space, and the only transform it invokes is the layer of Hadamards — the machinery as stated reaches no further than `Z_2`-style periodicity; (iii) it needs the unknown structure to be an exact subgroup, with the function constant on cosets, and the algorithm is silent on what happens when the hidden repetition is not perfectly aligned with the register.
 
 **Deutsch–Jozsa / Bernstein–Vazirani.** Earlier separations. *Gap:* exact or contrived; nothing placed outside BPP for a problem of independent interest.
 
@@ -72,12 +72,11 @@ class QuantumRegister:
 # --- missing period-finding subroutine ---
 def find_period(x, N):
     """Given x and N, return (a candidate for) the period r of a -> x^a mod N.
-    A fast version would need to:
-      1. put a register in uniform superposition over a in [0, q)
-      2. compute x^a mod N into a second register (reversible modexp)
-      3. <<< the transform that turns the hidden period r into a measurable
-             outcome -- TODO: to be designed >>>
-      4. measure; classically post-process the outcome into r   # TODO
+    A fast version has available:
+      - a register in uniform superposition over a in [0, q)
+      - x^a mod N computed into a second register (reversible modexp)
+      - unitary operations and measurement on the register
+    # TODO: build the period-finding subroutine
     """
     raise NotImplementedError
 

@@ -75,11 +75,13 @@ limit* of the quantum composition. This is the decisive seed.
 construction at the level of a *correspondence* and stopped short of three things. (1) He wrote
 "corresponds to" / "analogous," never "equals," and never pinned a *constant of
 proportionality* relating `⟨q_{t+dt}|q_t⟩` to `e^{iLdt/ℏ}` — so the relation is suggestive, not
-computational. (2) He never assembled the picture into an explicit integral *over trajectories* —
-a quantity computed by summing `e^{iS/ℏ}` over all space-time paths between fixed endpoints,
-with a definite measure. (3) He never ran the infinitesimal relation *forward* to show it
-*reproduces Schrödinger's equation*; the equivalence to ordinary quantum mechanics was
-asserted by analogy, not derived. These three gaps are exactly what a solution must close.
+computational. (2) He never assembled the infinitesimal correspondence and the composition law
+into a single explicit object computing a finite-time amplitude as a self-contained functional of
+the trajectory between fixed endpoints — the infinitesimal hint and the kernel composition are
+left as separate remarks, with no stated measure tying them together. (3) He never ran the
+infinitesimal relation *forward* to show it *reproduces Schrödinger's equation*; the equivalence
+to ordinary quantum mechanics was asserted by analogy, not derived. These three gaps are exactly
+what a solution must close.
 
 ## Baselines
 
@@ -101,9 +103,9 @@ and must reproduce.
 - **Dirac's 1933 Lagrangian-in-QM proposal.** The closest prior art: it *does* bring the
   Lagrangian and `S` into quantum mechanics and *does* recover least action as `ℏ → 0` (see
   Background). *Gap*: stops at "corresponds to" with no fixed proportionality constant, no
-  explicit sum-over-paths object, and no forward derivation of Schrödinger's equation from
-  the infinitesimal kernel. It is the platform the new construction stands on and the precise
-  thing it must complete.
+  single self-contained finite-time object built from the infinitesimal correspondence, and no
+  forward derivation of Schrödinger's equation from the infinitesimal kernel. It is the platform
+  the new construction stands on and the precise thing it must complete.
 
 - **Wentzel–Kramers–Brillouin (WKB) / semiclassical wave.** Writes `ψ ≈ A e^{iS_cl/ℏ}` with
   `S_cl` the classical action, valid when `ℏ` is small compared with the action scale. *Gap*: an
@@ -156,29 +158,23 @@ def L(x, xdot, m, V):
 
 def slice_action(x_next, x, eps, m, V):
     """Classical action ∫ L dt over one short slice of duration eps,
-    evaluated along the classical path between the endpoints.
-    For small eps this is well-approximated by reading xdot ≈ (x_next - x)/eps
-    and evaluating the scalar potential at the arrival point."""
+    evaluated between the endpoints. For small eps the velocity can be read
+    as xdot ≈ (x_next - x)/eps."""
     xdot = (x_next - x) / eps
-    return L(x_next, xdot, m, V) * eps         # = (m/2)*((x_next-x)/eps)**2*eps - eps*V(x_next)
-
-def normalization(eps, m):
-    # TODO: the per-slice constant required by the eps->0 identity limit.
-    raise NotImplementedError
+    return L(x_next, xdot, m, V) * eps
 
 def short_time_kernel(x_next, x, eps, m, V):
-    # TODO: the single-slice propagator built from slice_action and normalization.
+    # TODO: the single-slice propagator over one slice of duration eps.
     raise NotImplementedError
 
 def propagator(x_final, x_initial, t, N, m, V):
     """Compose N short-time kernels by integrating over the N-1 intermediate
-    coordinates — the discretized 'sum over intermediate positions'.
-    As N->inf with eps=t/N->0, this approaches the finite-time propagator."""
-    # TODO: build the (N-1)-fold integral ∏ short_time_kernel over intermediate x_i.
+    coordinates. As N->inf with eps=t/N->0, this approaches the finite-time
+    propagator."""
+    # TODO: compose N single-slice kernels over the intermediate coordinates.
     raise NotImplementedError
 
 def evolve_one_slice(psi_grid, x_grid, eps, m, V):
-    """psi(x', t+eps) = ∫ short_time_kernel(x', x) psi(x, t) dx, on a grid.
-    The integrand is fixed by the short-time kernel."""
+    """psi(x', t+eps) = ∫ short_time_kernel(x', x) psi(x, t) dx, on a grid."""
     raise NotImplementedError
 ```

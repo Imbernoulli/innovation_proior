@@ -38,9 +38,9 @@ A subtle fact about these "ideal" lengths matters later: the per-symbol Shannon 
 
 **Shannon's code.** Take lengths l_i = ⌈log_D(1/p_i)⌉ directly. This satisfies Kraft and lands within one digit of entropy, but it is built per-symbol from the rounded ideal length, and that rounding is wasteful. When one symbol is very likely (say p = 0.9999), the paired rare symbol can be assigned far more digits than an optimal tree would give it. It is a bound-achieving recipe, not a minimum-achieving one.
 
-**Shannon–Fano coding** (Shannon 1948; Fano, MIT Technical Report 65, 1949). This is the strongest constructive competitor, and it works **top-down**. Sort the messages in decreasing order of probability. Split the sorted list into two consecutive groups whose total probabilities are as nearly equal as possible; assign 0 to one group and 1 to the other. Recurse inside each group, splitting again into near-equal-probability halves, until every group holds a single message. Each split contributes one digit to the codes in that group. Read as a tree, this grows from the root (all messages) down to the leaves (single messages), making at each step the division that looks best *locally* — the most balanced split available. It is intuitive and it achieves L(C) ≤ H + 2. But the near-equal split is a greedy choice made at the top, where the structure of the tail of the tree is not yet known, and it does **not** in general minimize Σ p_i l_i. One can exhibit distributions where the balanced top-down split produces a strictly longer code than the true optimum. This is the precise gap: a construction that is *close* and *intuitive* but provably *not* the minimum.
+**Shannon–Fano coding** (Shannon 1948; Fano, MIT Technical Report 65, 1949). This is the strongest constructive competitor, and it works **top-down**. Sort the messages in decreasing order of probability. Split the sorted list into two consecutive groups whose total probabilities are as nearly equal as possible; assign 0 to one group and 1 to the other. Recurse inside each group, splitting again into near-equal-probability halves, until every group holds a single message. Each split contributes one digit to the codes in that group. Read as a tree, this grows from the root (all messages) down to the leaves (single messages), making at each step the division that looks best *locally* — the most balanced split available. It is intuitive and it achieves L(C) ≤ H + 2. But the near-equal split is a greedy choice made at the top, where the structure of the tail of the tree is not yet known, and it does **not** in general minimize Σ p_i l_i. One can exhibit distributions where the balanced split produces a strictly longer code than the true optimum. This is the precise gap: a construction that is *close* and *intuitive* but provably *not* the minimum.
 
-The exchange observation these baselines invite — but do not exploit — is this: in *any* optimal code, a more probable message can never have a longer code than a less probable one. If it did, swapping their two codes (shorter to the more probable message) would lower Σ p_i l_i. So an optimal code can always be taken with lengths anti-ordered to probabilities: p_1 ≥ p_2 ≥ … ≥ p_N forces l_1 ≤ l_2 ≤ … ≤ l_N. The least-probable messages can be placed among the longest codes. Neither baseline is built around this certainty; both decide the high-level (short-code) structure first.
+What both baselines share is a direction of work: each fixes the short codewords first — Shannon by rounding each symbol's ideal length in isolation, Shannon–Fano by committing the first balanced split at the root — and only afterwards determines the deep structure of the tree. Whether that order is the right one to *guarantee* the minimum, rather than merely a code close to it, is left open.
 
 ## Evaluation settings
 
@@ -48,7 +48,7 @@ The natural yardstick is the average code length L = Σ p_i l_i (equivalently th
 
 ## Code framework
 
-The pieces that already exist: a min-priority-queue over weighted items, and a tree-walk that reads a digit off each edge. The construction itself — *which* nodes to combine and in what order so that the resulting tree is provably minimum — is the empty slot.
+The pieces that already exist: a min-priority-queue over weighted items, and a tree-walk that reads a digit off each edge. The construction itself — the procedure that, from the probabilities, produces the provably minimum tree — is the empty slot.
 
 ```python
 import heapq
@@ -59,7 +59,7 @@ def optimal_prefix_lengths(probs):
     # min-heap over current nodes by weight already exists
     heap = [(p, i, sym) for i, (sym, p) in enumerate(probs.items())]
     heapq.heapify(heap)
-    # TODO: the combination rule that yields a provably optimal tree
+    # TODO: the construction that yields a provably optimal tree
     pass
 
 def assign_codewords(tree, D=2):
@@ -71,4 +71,4 @@ def average_length(probs, lengths):
     return sum(probs[s] * lengths[s] for s in probs)
 ```
 
-The slot to fill is the rule inside `optimal_prefix_lengths` — which two (or, for a *D*-ary alphabet, which *D*) nodes to coalesce at each step, and the argument that doing so cannot miss the optimum.
+The slot to fill is the rule inside `optimal_prefix_lengths` — the procedure that builds the tree from the probabilities, and the argument that it cannot miss the optimum.
