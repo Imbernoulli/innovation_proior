@@ -18,11 +18,9 @@ as the context it can see, and the words that disambiguate it lie on both sides.
 The pain point is concrete: the prevailing way to pre-train on unlabeled text is
 a language model — predict the next word — and a next-word predictor is
 intrinsically one-directional. The representations it produces only ever encode
-left context. A solution would have to pre-train a network in which a single
-representation of each token is jointly conditioned on left **and** right context
-in every layer, learned from unlabeled text alone, and transferable to both
-sentence-level and token-level tasks with essentially no task-specific
-architecture engineering.
+left context. Whatever pre-training recipe one adopts has to be learnable from
+unlabeled text alone and transferable to both sentence-level and token-level
+tasks with essentially no task-specific architecture engineering.
 
 ## Background
 
@@ -50,12 +48,10 @@ layer normalization. Self-attention computes, for every pair of positions,
 softmax(QKᵀ/√d_k)V — the 1/√d_k factor keeps the dot products from growing with
 dimension and pushing the softmax into saturation; multiple heads let the model
 attend to several relations at once; the feed-forward inner dimension is
-conventionally 4× the hidden size. Crucially, self-attention is **inherently
-order-agnostic and all-to-all** — a position can attend to any other position in
-either direction — so directionality is not a property of the architecture but of
-whatever masking is imposed on the attention and whatever objective is used to
-train it. To use a Transformer as a left-to-right language model, one imposes a
-causal (triangular) attention mask so position t cannot attend to positions > t.
+conventionally 4× the hidden size. Self-attention is **all-to-all** — a position
+can attend to any other position in either direction. To use a Transformer as a
+left-to-right language model, one imposes a causal (triangular) attention mask so
+position t cannot attend to positions > t.
 Position information is injected through positional encodings (sinusoidal in the
 original, but a learned position-embedding table is an equally valid option).
 
@@ -103,17 +99,11 @@ language-model objective, not chosen — and it is exactly wrong for token-level
 tasks, where both-sided context is essential, and leaves performance on the table
 even for sentence-level tasks.
 
-**The structural obstacle both inherit.** One might ask why GPT doesn't simply
-drop the causal mask and let the Transformer attend in both directions while
-still training as a language model. It cannot. If the hidden state at position i
-is trained to recover token i, an unmasked encoder can carry token i's own input
-embedding into that hidden state in the first layer. If the next-token convention
-is kept instead, the hidden state at position i-1 can attend directly to position
-i in the first unmasked layer. In deeper stacks, even local attempts to block the
-direct edge do not solve the problem, because neighboring states that have seen a
-token can pass it back on the next layer. The causal mask is precisely the device
-that blocks this leakage for the left-to-right model, which is why
-unidirectionality and the standard language-model objective are welded together.
+**What both inherit.** Both recipes take the unidirectionality (or
+shallow-bidirectionality) of the language-model objective as given: GPT trains a
+single left-to-right model under a causal mask, ELMo trains separate left-to-right
+and right-to-left models. Neither departs from the next-word objective that the
+field has settled on for learning from unlabeled text.
 
 ## Evaluation settings
 

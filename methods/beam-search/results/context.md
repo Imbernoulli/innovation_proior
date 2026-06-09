@@ -1,4 +1,4 @@
-# Context: bounded-breadth search over a combinatorial decision graph
+# Context: fast approximate search over a combinatorial decision graph
 
 ## Research question
 
@@ -39,9 +39,8 @@ up the guarantee on purpose.
 **Backtracking is expensive in a large graph.** A search that commits to a path,
 hits a dead end, and unwinds to try another wastes the work along the abandoned
 path; in a deep graph with a large effective branching factor the unwinding
-dominates. A discipline that *never backtracks* — that sweeps forward layer by
-layer and never revisits an earlier layer — runs in a predictable amount of time
-proportional to depth. This is the property a fast forward decoder wants.
+dominates, so backtracking is the dominant cost for any committed-path method
+at this scale.
 
 **Dynamic programming collapses a graph exactly, when the graph is small
 enough.** When the partial-solution state is summarized by a small label (e.g. a
@@ -58,8 +57,7 @@ accurate one.** Ranking a partial solution by how promising it is requires an
 evaluation function. A cheap local score (the immediate cost of the last
 decision) is fast but myopic; an accurate global score (an estimate of the total
 cost of the best completion) is what actually orders nodes well, but it is
-costly to compute. Any breadth-limiting scheme has to decide how much evaluation
-to spend, and on how many nodes.
+costly to compute. Both scoring functions are available off the shelf.
 
 These pieces — a layered decision graph, a frontier, an evaluation function, a
 desire to avoid backtracking, and an exact full-breadth sweep that is correct
@@ -103,8 +101,8 @@ breadth.
 The shape of the gap is now sharp. Full-breadth disciplines (BFS, A\*,
 branch-and-bound, full-label DP) are exact but pay exponential or full-label
 breadth; the single greedy path pays linear cost but keeps so little breadth
-that one bad turn ruins it. Nothing on the table sits in between with a knob to
-trade breadth for cost.
+that one bad turn ruins it. The available disciplines cluster at these two
+extremes.
 
 ## Evaluation settings
 
@@ -134,7 +132,7 @@ the achieved objective and runtime against the exact reference where one exists.
 The primitives already exist: a problem exposes an initial state, a way to
 enumerate a state's children (the decisions available at the next layer), and an
 evaluation function that scores a state. What is missing is the search
-discipline that decides, layer by layer, which states to keep. That is the empty
+discipline itself — the rule for which states to explore. That is the empty
 slot below.
 
 ```python
@@ -153,8 +151,7 @@ def children(state, problem):
 
 def evaluate(state, problem):
     """Score a (partial) state -- higher is more promising. A cheap local score
-    and an expensive accurate score are both available; which to use, and on how
-    many states, is part of what the search must decide."""
+    and an expensive accurate score are both available."""
     ...
 
 def exact_full_breadth(problem):
@@ -167,7 +164,6 @@ def exact_full_breadth(problem):
     ...
 
 def search(problem):
-    # TODO: the bounded-breadth forward discipline we are about to design --
-    # how many states to carry from one layer to the next, and how to rank them.
+    # TODO: the search discipline to design.
     pass
 ```

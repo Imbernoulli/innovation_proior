@@ -43,24 +43,22 @@ hypothesized that the purpose of early sensory processing is to recode highly re
 into a *factorial code* — a representation whose components are statistically independent. This
 "redundancy-reduction" principle has been used to explain organization in the visual pathway (Barlow
 2001) and has seeded learning algorithms based on decorrelating units (Földiák 1990; Linsker 1988;
-Redlich 1993; Schmidhuber 1996; Deco & Parra 1997). The principle gives two desiderata for a good
-representation that are *different from* "just agree": components should be informative, and distinct
-components should not duplicate each other's information.
+Redlich 1993; Schmidhuber 1996; Deco & Parra 1997). The principle is a statement about single-signal
+coding — it concerns the internal statistics of one representation — and was not posed in the
+two-view joint-embedding setting.
 
 **Information-theoretic framing.** The Information Bottleneck (Tishby, Pereira & Bialek 2000; Tishby &
 Zaslavsky 2015) formalizes "keep what matters, drop the nuisance" as a trade-off between mutual
 informations. In the two-view setting, with original image `X`, distorted view `Y`, and representation
 `Z = f(Y)`, minimizing `I(Z,Y) - beta I(Z,X)` penalizes information about the distorted input while
 rewarding information about the underlying sample. For a deterministic encoder, `H(Z|Y)=0`, and under
-a Gaussian model the entropy of a representation is `(1/2)log|Cov|`. Decorrelating units (driving the
-covariance toward diagonal/identity) is then a tractable proxy for maximizing this Gaussian entropy —
-and a *parametric* one, unlike non-parametric entropy estimators which suffer the curse of
-dimensionality and need many samples.
+a Gaussian model the entropy of a representation is `(1/2)log|Cov|`, a *parametric* quantity that
+can be estimated from second moments — unlike non-parametric entropy estimators, which suffer the
+curse of dimensionality and need many samples.
 
 **Whitening.** Classical whitening (ZCA, Cholesky-based) transforms features to have identity
-covariance — zero mean, unit variance, zero cross-correlation. A representation whose batch covariance
-is the identity is decorrelated by definition. Doing this as a hard, differentiable operation inside
-training is one route to "non-redundant" features.
+covariance — zero mean, unit variance, zero cross-correlation. It is classically applied as an
+explicit, hard transform of the data.
 
 ## Baselines
 

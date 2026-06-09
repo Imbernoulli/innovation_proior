@@ -16,7 +16,7 @@ On the phenomenological side, several deep ideas are already on the table. Gorte
 
 The decisive empirical clue to the *mechanism* is the isotope effect, found in 1950 independently by Maxwell and by Reynolds, Serin, Wright and Nesbitt: $T_c$ scales with ionic mass as $M^{-1/2}$. Since the ion mass enters only through the lattice vibrations, the lattice — the phonons — must be involved. In the same year Fröhlich independently predicts on theoretical grounds that the electron–phonon interaction drives superconductivity.
 
-A combination of two facts sharply restricts which electrons matter. Pippard's coherence length, fed through the uncertainty principle, gives the momentum spread of the states that build the superconducting wavefunction: $\Delta x \sim \xi_0 \Rightarrow \Delta p \sim \hbar/\xi_0 \sim 10^{-4} p_F$. So only electronic states within about $10^{-4} p_F$ of the Fermi surface — about $10^{-4}$ of the electrons — are significantly involved, and they have their energies lowered by of order $kT_c$. This is consistent with the observed condensation energy: about $10^{-4}kT_c$ per electron, equivalently of order $N(0)(kT_c)^2$ in density-of-states units. The problem is thus a condensation in momentum space of electrons in a thin shell at the Fermi surface.
+A combination of two facts sharply restricts which electrons matter. Pippard's coherence length, fed through the uncertainty principle, gives the momentum spread of the states that build the superconducting wavefunction: $\Delta x \sim \xi_0 \Rightarrow \Delta p \sim \hbar/\xi_0 \sim 10^{-4} p_F$. So only electronic states within about $10^{-4} p_F$ of the Fermi surface — about $10^{-4}$ of the electrons — are significantly involved, and they have their energies lowered by of order $kT_c$. This is consistent with the observed condensation energy: about $10^{-4}kT_c$ per electron, equivalently of order $N(0)(kT_c)^2$ in density-of-states units. So the active degrees of freedom are confined to electrons in a thin shell at the Fermi surface.
 
 The microscopic origin of the attraction is also in hand. Eliminating the linear electron–phonon coupling by a canonical transformation (Fröhlich; then Bardeen and Pines, including Coulomb screening through the Bohm–Pines collective model) leaves a true electron–electron interaction mediated by virtual phonon exchange. Its matrix element for scattering a pair from $(\mathbf{k},\mathbf{k}')$ near the Fermi surface is
 
@@ -34,7 +34,7 @@ These are the microscopic attempts that exist and the precise way each falls sho
 
 **Heisenberg–Koppe theory.** Based on the long-wavelength Coulomb interaction producing density fluctuations that localize a small fraction of the electrons. It does not isolate the small phonon-driven correlation that the isotope effect points to.
 
-**Schafroth / Blatt–Butler localized-pair Bose condensation.** The idea that electrons bind into pairs which, behaving as bosons, undergo a Bose–Einstein condensation. Attractive in spirit, because a pair of fermions is a boson and Bose condensation already explains superfluid $^4$He. The gap it leaves: it pictures tightly bound, spatially *localized* pairs forming a dilute Bose gas. But the coherence length says the pairs are enormous, $\sim 10^{-4}$ cm; with $\sim 10^{-4}$ of the electrons involved, the mean spacing between condensed electrons is $\sim 10^{-6}$ cm, so within the volume of one pair lie the centers of $\sim (10^{-4}/10^{-6})^3 \sim 10^6$ other pairs. The pairs overlap massively — this is not a dilute gas of bosons, and a treatment that ignores the fermionic inner structure of the pairs and the Pauli principle among them cannot be right.
+**Schafroth / Blatt–Butler localized-pair Bose condensation.** The idea that electrons bind into pairs which, behaving as bosons, undergo a Bose–Einstein condensation. Attractive in spirit, because a pair of fermions is a boson and Bose condensation already explains superfluid $^4$He. The gap it leaves: it pictures tightly bound, spatially *localized* pairs forming a dilute Bose gas. But the coherence length says the pairs are enormous, $\sim 10^{-4}$ cm; with $\sim 10^{-4}$ of the electrons involved, the mean spacing between condensed electrons is $\sim 10^{-6}$ cm, so within the volume of one pair lie the centers of $\sim (10^{-4}/10^{-6})^3 \sim 10^6$ other pairs. The pairs overlap massively — this is not a dilute gas of bosons, and the dilute-Bose-condensation treatment does not apply in that regime.
 
 ## Evaluation settings
 
@@ -42,7 +42,7 @@ The natural yardsticks are the measured properties of real superconductors. The 
 
 ## Code framework
 
-The computational scaffold is a generic mean-field / variational harness for electrons in a thin shell about the Fermi surface. It has the density of states at the Fermi level $N(0)$, the energy variable $\xi$ measured from $\mathcal{E}_F$, a Debye/phonon cutoff $\hbar\omega_D$ defining the shell, a root-finder, and a numerical integrator. The unknown pieces are the interaction used inside the shell, the variational state, and the self-consistency condition it produces.
+The computational scaffold is a generic harness for electrons in a thin shell about the Fermi surface. It has the density of states at the Fermi level $N(0)$, the energy variable $\xi$ measured from $\mathcal{E}_F$, a Debye/phonon cutoff $\hbar\omega_D$ defining the shell, a root-finder, and a numerical integrator. The interaction used inside the shell, and what is built from it, are left open.
 
 ```python
 import numpy as np
@@ -63,19 +63,12 @@ def effective_interaction(xi, xip):
     """
     pass
 
-# --- open slots ---
+# --- open slot ---
 
-def two_particle_bound_state(N0, hbar_omega_D, V):
-    """Does adding a pair above the filled sea produce a state below the
-    bottom of the two-particle continuum?
-    # TODO: solve the eigenvalue condition for the added pair.
-    """
-    pass
-
-def self_consistent_order_parameter(N0, hbar_omega_D, V):
-    """Minimize the many-body energy over the variational pairing amplitudes
-    and solve the resulting self-consistency condition for the gap.
-    # TODO: specify the variational state, its energy, and the resulting equation.
+def ground_state(N0, hbar_omega_D, V):
+    """Characterize the ground state of the electrons in the shell under the
+    effective interaction, and any energy scale it sets.
+    # TODO: fill in.
     """
     pass
 ```

@@ -4,7 +4,7 @@
 
 For a pair of quantum systems prepared together and then separated to great distance, quantum mechanics predicts that the outcomes of measurements on the two systems are correlated, and in special cases perfectly correlated. Einstein, Podolsky and Rosen took this to mean the quantum state cannot be the whole story: if I can predict with certainty the result of a measurement on the far system by measuring the near one, and if nothing I do to the near system can physically disturb the far one, then the far result must already be fixed — an element of reality — even though the wave function does not contain it. The proposed cure is to *supplement* the wave function with additional ("hidden") variables that restore both determinism and locality.
 
-The question that matters is whether this is a genuine physical issue or a matter of taste. Is there any conceivable measurement whose outcome would come out one way if the world is governed by such locally-predetermined variables and a different way if it is governed by quantum mechanics? A satisfactory resolution would have to do exactly this: extract, from the bare assumptions of locality and predetermination, a quantitative statement about the statistics of distant measurements that quantum mechanics contradicts — so that an experiment, not a philosophical argument, decides. It must do so for *any* such hidden-variable account, not one specific model, and in a form that makes clear which apparatus assumptions an experiment has to control.
+The question that matters is whether this is a genuine physical issue or a matter of taste. Is there any conceivable measurement whose outcome would come out one way if the world is governed by such supplemented variables and a different way if it is governed by quantum mechanics? A satisfactory resolution would have to settle the matter by experiment, not by philosophical argument — and to do so for *any* such hidden-variable account, not one specific model, and in a form that makes clear which apparatus assumptions an experiment has to control.
 
 ## Background
 
@@ -16,17 +16,17 @@ The question that matters is whether this is a genuine physical issue or a matte
 
 **von Neumann's "impossibility" (1932) and its standing.** Against hidden variables stood a celebrated theorem of von Neumann, widely read as a proof that no hidden-variable completion of quantum mechanics is mathematically possible — and so as having closed the EPR question in advance. Its essential assumption is that the expectation functional is *additive over all observables*: Exp(R + S) = Exp(R) + Exp(S), required to hold even when R and S are represented by *noncommuting* operators and so are not simultaneously measurable. For quantum-mechanical ensembles this additivity is a true (if peculiar) fact. von Neumann demanded it also of the hypothetical dispersion-free (hidden-variable) states, and from it derived a contradiction. Jauch and Piron (1963) and the corollary drawn from Gleason (1957) reach the same negative conclusion from analogous assumptions about commuting projection operators and their values.
 
-**The diagnostic that the "impossibility" leans on an unreasonable demand.** One can build, explicitly, a hidden-variable scheme that reproduces all quantum predictions for a single spin-½ system: let a real parameter λ together with the spinor fix every measurement outcome, averaging over λ to recover the quantum statistics. Such a model exists and is consistent — so something in von Neumann's hypotheses must be too strong. The culprit is the additivity demand. A measurement of a sum of *noncommuting* observables is not built from separate measurements of the terms; it requires a *distinct* experimental arrangement (σ_x with one magnet orientation, σ_y with another, σ_x + σ_y with a third), and the eigenvalues of the parts do not add to the eigenvalue of the sum. So additivity of *expectation values* is a special property of quantum ensembles, with no claim on the value an individual hidden-variable state assigns — which need only reproduce the quantum averages *after averaging over λ*. The "impossibility" proofs forbid only hidden-variable states whose outcomes are forced to be context-independent in a way nothing requires. They leave the physically motivated demand — that distant systems be independent — entirely untouched.
+**A concrete single-spin counterexample exists.** One can build, explicitly, a hidden-variable scheme that reproduces all quantum predictions for a single spin-½ system: let a real parameter λ together with the spinor fix every measurement outcome, averaging over λ to recover the quantum statistics. Such a model exists and is consistent — so something in the "impossibility" hypotheses must be too strong, and the standing of those theorems against *every* hidden-variable theory is in doubt.
 
 ## Baselines
 
-**von Neumann 1932 (the standing no-go result).** Idea: characterize states by an expectation functional Exp on observables; assume linearity/additivity of Exp over arbitrary Hermitian operators; show no dispersion-free Exp exists, so no hidden variables. Gap: the additivity axiom is imposed on individual hidden states, where it is unmotivated — a measurement of a non-commuting sum is a different experiment, so the values need not add. The theorem therefore rules out only a strawman class of hidden-variable theories and says nothing about locality.
+**von Neumann 1932 (the standing no-go result).** Idea: characterize states by an expectation functional Exp on observables; assume linearity/additivity of Exp over arbitrary Hermitian operators; show no dispersion-free Exp exists, so no hidden variables. Gap: the additivity axiom is imposed on individual hidden states as well as on quantum ensembles, and it is far from obvious that an individual hidden state owes the same property; the single-spin counterexample above already shows the theorem's hypotheses are too strong somewhere.
 
-**Jauch–Piron 1963 / Gleason-corollary.** Idea: work with projection operators (yes/no observables, eigenvalues 0,1); assume additivity of expectation values for *commuting* projections plus a logical-looking conjunction axiom (if ⟨a⟩=⟨b⟩=1 then ⟨a∧b⟩=1); derive a contradiction with dispersion-free states. Gleason's theorem gives a sharper version in dimension ≥ 3. Gap: although only commuting operators are named explicitly, the conclusion is forced by an *implicit* non-contextuality — the value assigned to a projection is required to be the same regardless of which other compatible measurement it is measured alongside, even though those require different apparatus. Reject that hidden assumption and the no-go evaporates.
+**Jauch–Piron 1963 / Gleason-corollary.** Idea: work with projection operators (yes/no observables, eigenvalues 0,1); assume additivity of expectation values for *commuting* projections plus a logical-looking conjunction axiom (if ⟨a⟩=⟨b⟩=1 then ⟨a∧b⟩=1); derive a contradiction with dispersion-free states. Gleason's theorem gives a sharper version in dimension ≥ 3. Gap: the same worry recurs — assumptions tailored to quantum ensembles are pressed onto the individual hidden states whose existence is in question, so it is unclear which class of hidden-variable theories is genuinely excluded.
 
 **Bohm's 1952 hidden-variable theory.** Idea: an explicit, deterministic, hidden-variable completion of wave mechanics (particle positions as the hidden variables, guided by the wave function) that reproduces all quantum predictions — a living counterexample to the claim that hidden variables are impossible. Its trajectory equations are, however, grossly *nonlocal*: when the joint wave function is non-factorable, the trajectory of particle 1 depends on the distant analyzing field acting on particle 2. Gap: it shows hidden variables *can* exist, but at the price of explicit action at a distance — leaving open whether *every* hidden-variable account must be nonlocal, or whether a *local* one is possible.
 
-**The "naive realist" model (the obvious local picture).** Idea: the source emits each pair with oppositely oriented magnetic axes (chosen at random); each Stern–Gerlach magnet deflects a particle up or down according to whether its axis points more nearly along or against the local field. This reproduces the perfect anticorrelation at aligned settings trivially and locally. Gap: it must be checked at *non-aligned* settings, where matching the special cases is no longer enough; the whole angular dependence has to be compared with the cosine.
+**The "naive realist" model (the obvious local picture).** Idea: the source emits each pair with oppositely oriented magnetic axes (chosen at random); each Stern–Gerlach magnet deflects a particle up or down according to whether its axis points more nearly along or against the local field. This reproduces the perfect anticorrelation at aligned settings trivially and locally. Gap: whether it also matches the quantum prediction away from the aligned and orthogonal settings has not been worked out — only the special cases have been checked.
 
 ## Evaluation settings
 
@@ -34,7 +34,7 @@ The natural physical realization is Bohm's gedanken experiment: a source emittin
 
 ## Code framework
 
-A bare correlation-experiment harness. We can simulate any candidate local model and compute, from its outcome functions, the correlations it predicts at chosen settings — and separately compute the quantum prediction — so the two can be compared. What we do *not* yet have is the general statement an arbitrary local hidden-variable model must obey; that is the empty slot.
+A bare correlation-experiment harness. We can simulate any candidate local model and compute, from its outcome functions, the correlations it predicts at chosen settings — and separately compute the quantum prediction — so the two can be compared. The empty slot is below.
 
 ```python
 import numpy as np
@@ -60,9 +60,9 @@ def correlation_of_model(model, a, b, n=10**6):
     B = model.outcome_B(b, lam)
     return float(np.mean(A * B))
 
-def local_realism_bound(*correlations):
-    """The constraint that EVERY local hidden-variable model must satisfy,
-    relating correlations at different settings. This is the thing to find."""
-    # TODO: derive the inequality on the correlations from locality + shared lambda
+def distinguish_local_from_quantum(*correlations):
+    """Given correlations measured at several settings, decide whether they
+    are compatible with the local hidden-variable form above."""
+    # TODO
     pass
 ```
