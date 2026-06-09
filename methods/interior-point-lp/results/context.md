@@ -9,14 +9,14 @@ minimize    cᵀx
 subject to  Ax = b,  x ≥ 0,     A ∈ ℝ^{m×n},
 ```
 
-find an algorithm that is **both** provably polynomial-time **and** fast in practice. By the early 1980s these two requirements pointed at completely different algorithms, and no single method delivered both. A satisfactory solution would have to (a) come with a worst-case bound polynomial in `n` and in `L`, the bit-length of the data, and (b) actually beat the simplex method on the large sparse problems that arise in operations research. The structural bet that would make this possible is to abandon the polytope's vertices and instead drive a strictly feasible point `x > 0` through the **interior** of the feasible region toward the optimum.
+find an algorithm that is **both** provably polynomial-time **and** fast in practice. By the early 1980s these two requirements pointed at completely different algorithms, and no single method delivered both. A satisfactory solution would have to (a) come with a worst-case bound polynomial in `n` and in `L`, the bit-length of the data, and (b) actually beat the simplex method on the large sparse problems that arise in operations research.
 
 ## Background
 
 A linear program's feasible region is a polyhedron. The optimum, if it exists, is attained at a vertex. Two facts about the geometry frame everything:
 
 - The number of vertices can be exponential in `n`. Any method that visits vertices risks visiting exponentially many.
-- The interior of the polyhedron is a smooth convex set. On it, the objective `cᵀx` is linear and the boundary `x ≥ 0` can be encoded by a smooth penalty. This opens the door to the machinery of smooth convex optimization — gradients, Hessians, Newton's method — none of which the combinatorial vertex picture admits.
+- The interior of the polyhedron is a smooth convex set, on which the objective `cᵀx` is linear. The combinatorial vertex picture and the smooth convex picture are very different settings for an algorithm.
 
 **The barrier idea (Frisch 1955; Fiacco–McCormick 1968).** To keep an iterate strictly inside `{x > 0}` one replaces the hard constraint by the **logarithmic barrier**
 
@@ -34,7 +34,7 @@ over `{x : Ax = b, x > 0}` gives, for each `t`, a unique strictly feasible minim
 
 **Why the barrier fell out of favor.** Classical analysis of SUMT predicted that the subproblems become **increasingly ill-conditioned** as `t → ∞`: near the boundary the Hessian of `φ` blows up, so the unconstrained minimization slows down and accumulates round-off. By the late 1960s and 1970s the log-barrier had lost favor for precisely this reason. Crucially, **no polynomial-time guarantee was ever claimed** for it; the prevailing wisdom was that following the barrier to the end was numerically treacherous.
 
-**Newton's method and its frame-dependence.** Newton's method solves `∇f(x) = 0` by the iteration `x⁺ = x − [∇²f(x)]⁻¹∇f(x)` and converges quadratically near a nondegenerate minimizer. But the classical statement of *where* quadratic convergence begins depends on the condition number of `∇²f(x*)` and the Lipschitz constant of `∇²f`, both of which depend on the arbitrary choice of Euclidean coordinates — even though the Newton step itself is affine-invariant. This mismatch (an affine-invariant method with a frame-dependent convergence theory) was the gap that blocked any clean global, complexity-style statement about Newton on the barrier.
+**Newton's method.** Newton's method solves `∇f(x) = 0` by the iteration `x⁺ = x − [∇²f(x)]⁻¹∇f(x)` and converges quadratically near a nondegenerate minimizer. The Newton step itself is affine-invariant: under a linear change of coordinates the iterates map over exactly. The classical statement of *where* quadratic convergence begins, however, is stated in terms of the condition number of `∇²f(x*)` and the Lipschitz constant of `∇²f`.
 
 **Local rescaling (Dikin 1967).** A separate thread: at a strictly interior point `x̄`, inscribe the ellipsoid `{x : Σⱼ(xⱼ−x̄ⱼ)²/x̄ⱼ² ≤ 1}` (large where coordinates are large, small where they are small, so it stays inside the orthant) and take a steepest-descent step of the objective inside it. This affine scaling rescales the problem so that the current point sits at the "center" of a round body, where a gradient step is well-behaved.
 
@@ -52,7 +52,7 @@ over `{x : Ax = b, x > 0}` gives, for each `t`, a unique strictly feasible minim
 
 ## Evaluation settings
 
-The natural yardstick is the standard-form LP `min cᵀx s.t. Ax = b, x ≥ 0` (and its inequality form `min cᵀx s.t. Ax ≤ b`), with the constraint matrix `A ∈ ℝ^{m×n}` typically large and **sparse** as in operations-research and network applications. The metrics that matter: worst-case arithmetic-operation count as a function of `n` and `L`; iteration count to reduce the duality gap below a tolerance `ε`; and, for practice, wall-clock time and iteration count on benchmark LPs against the simplex method, where exploiting sparsity in the linear-algebra kernel (solving systems with matrix `A D² Aᵀ`) is decisive. Numerical robustness — whether round-off accumulates or is self-correcting across iterations — is part of the comparison.
+The natural yardstick is the standard-form LP `min cᵀx s.t. Ax = b, x ≥ 0` (and its inequality form `min cᵀx s.t. Ax ≤ b`), with the constraint matrix `A ∈ ℝ^{m×n}` typically large and **sparse** as in operations-research and network applications. The metrics that matter: worst-case arithmetic-operation count as a function of `n` and `L`; iteration count to reduce the duality gap below a tolerance `ε`; and, for practice, wall-clock time and iteration count on benchmark LPs against the simplex method, where exploiting sparsity in whatever linear-algebra kernel the iteration relies on is decisive. Numerical robustness — whether round-off accumulates or is self-correcting across iterations — is part of the comparison.
 
 ## Code framework
 

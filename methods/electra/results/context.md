@@ -73,8 +73,7 @@ data points from samples drawn from a known noise distribution (Gutmann &
 Hyvärinen 2010). The classifier's logits, at optimum, encode the ratio between
 the data density and the noise density, so a discriminative real-vs-noise task
 can teach a model about the data distribution without an explicit softmax over
-all outcomes. This reframing — *generative estimation recast as discriminative
-classification against a proposal distribution* — is a key conceptual tool.
+all outcomes.
 
 **Contrastive / negative-sampling word representations.** Early word-embedding
 methods used exactly this move. The continuous-bag-of-words model with negative
@@ -82,8 +81,7 @@ sampling (Mikolov et al. 2013) predicts a token from its surrounding context, bu
 rather than a full softmax it trains a binary classifier to distinguish the true
 token from tokens drawn from a simple unigram-frequency proposal distribution.
 The encoder there is a bag of vectors and the proposal is fixed (corpus
-frequencies); the structure — *binary classification of real token vs.
-proposal-distribution token, conditioned on context* — is the template.
+frequencies).
 
 **Generative adversarial networks.** GANs (Goodfellow et al. 2014) couple a
 generator that produces synthetic samples with a discriminator that tells real
@@ -139,9 +137,9 @@ deep contextual ones.
 
 **Noise-contrastive estimation (Gutmann & Hyvärinen 2010).** Learn a
 distribution by classifying data against samples from a fixed noise distribution.
-*Gap:* formulated for density estimation with a *fixed* noise distribution; it
-does not, by itself, specify a deep bidirectional text encoder or a *learned*,
-context-dependent proposal distribution that keeps the negatives challenging.
+*Gap:* formulated for density estimation with a *fixed* noise distribution, and
+not, by itself, for a deep bidirectional text encoder; with a fixed noise
+distribution the negatives it contrasts against do not adapt to context.
 
 **Adversarial text generation / GAN discriminators (Goodfellow et al. 2014;
 Radford et al. 2015; Fedus et al. 2018).** Train a generator to fool a

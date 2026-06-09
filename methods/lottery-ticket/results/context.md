@@ -113,9 +113,8 @@ mask m is reported as P_m = ‖m‖₀ / |θ|, the fraction of weights remaining
 
 The primitives that exist: a network whose weights can be trained by SGD/Adam, a data loader, a
 training loop with early stopping, and a magnitude-pruning routine that, given a layer's weights,
-zeros out the smallest. What is missing is *what to do with the survivors' values* and *how to
-sequence prune-and-train* so that a sparse network becomes trainable from a fixed starting point. The
-scaffold leaves those as empty slots.
+zeros out the smallest. How to combine these into a procedure that yields a sparse network trainable
+from a fixed starting point is left as an empty slot.
 
 ```python
 import numpy as np
@@ -139,10 +138,6 @@ def prune_by_percent_once(percent, mask, final_weight):
     cutoff = sorted_weights[cutoff_index]
     return np.where(np.abs(final_weight) <= cutoff, 0, mask)
 
-def reset_survivors(mask, theta_0, trained_weights):
-    """What value should each surviving weight take before the next round? THE open question. TODO."""
-    pass
-
 def find_subnetwork(model, num_rounds, prune_percent, num_iters):
     theta_0 = initialize(model)
     mask = {k: np.ones_like(v) for k, v in theta_0.items()}
@@ -150,6 +145,6 @@ def find_subnetwork(model, num_rounds, prune_percent, num_iters):
     for _ in range(num_rounds):
         trained, metrics = train(model, weights, mask, num_iters)
         mask = {k: prune_by_percent_once(prune_percent, mask[k], trained[k]) for k in mask}
-        weights = reset_survivors(mask, theta_0, trained)   # TODO: fill this in
+        # TODO: prepare weights for the next round
     return mask, weights
 ```

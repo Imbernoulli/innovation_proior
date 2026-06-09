@@ -18,9 +18,9 @@ The relevant phenomena to keep in mind: the search space of programs is infinite
 
 **AdamW (Loshchilov & Hutter 2019).** mₜ = β₁mₜ₋₁ + (1−β₁)gₜ; vₜ = β₂vₜ₋₁ + (1−β₂)gₜ²; θ ← θ − η(mₜ/(√vₜ + ε) + λθ), with bias correction. Strong, near-universal default. Limitations a successor would target: two moment buffers (memory), extra hyperparameters (ε and, for Adafactor, factorization knobs), and the fact that it was never *searched* — possibly leaving better rules undiscovered.
 
-**signSGD / signSGD-momentum (Bernstein et al. 2018).** θ ← θ − η·sign(g) (or sign of a gradient EMA). Uniform step magnitude, memory-light, large-batch friendly. Gap: its momentum rule is fixed and simple — the momentum buffer it signs is just a single EMA of g; it has no mechanism that separates "what to remember" from "how to step."
+**signSGD / signSGD-momentum (Bernstein et al. 2018).** θ ← θ − η·sign(g) (or sign of a gradient EMA). Uniform step magnitude, memory-light, large-batch friendly. Gap: its momentum rule is fixed and simple — the momentum buffer it signs is just a single EMA of g, with one constant governing the whole rule.
 
-**NAdam (Dozat 2016).** Folds the freshly-updated first moment together with the current gradient when computing the step (Nesterov-style look-ahead inside Adam). Combines g and m for the update but keeps Adam's coupled second moment and does not decouple momentum *tracking* from momentum *application*.
+**NAdam (Dozat 2016).** Folds the freshly-updated first moment together with the current gradient when computing the step (Nesterov-style look-ahead inside Adam). Combines g and m for the update but keeps Adam's coupled second moment.
 
 **Neural Optimizer Search — PowerSign / AddSign (Bello et al. 2017).** RL over fixed-operand expression trees produced sign-based update rules. Gap: restricted search space (can't alter momentum tracking), and the results did not generalize to real large-scale tasks.
 

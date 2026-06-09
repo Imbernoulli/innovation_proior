@@ -55,10 +55,10 @@ Several facts about these primitives set up the problem. The uniform superpositi
 worthless for search: it spreads amplitude equally, so a measurement returns a uniformly random
 item — success probability `1/N`, no better than a single classical guess. Quantum parallelism
 ("examine all `N` states at once") is therefore a trap; the difficulty is never breadth, it is getting
-the amplitude to *concentrate* on the one state you want before you measure. A phase rotation can flip
-the sign of the target's amplitude without disturbing any magnitude, but a sign is invisible to
-measurement on its own — some further operation must convert that hidden sign into a visible
-magnitude. And the classical information-theoretic intuition that "you must look at `Θ(N)` items"
+the amplitude to *concentrate* on the one state you want before you measure. The available primitives
+that act differently on a chosen state — notably the selective phase rotation — change amplitudes by a
+sign or phase only, and a measurement sees just `|amplitude|²`, so any such tagging is on its own
+invisible at readout. And the classical information-theoretic intuition that "you must look at `Θ(N)` items"
 hangs over everything as the benchmark to beat.
 
 The one prior quantum speedup of comparable fame, Shor's (1994) polynomial-time factoring algorithm,
@@ -102,19 +102,17 @@ needed to identify the marked state with at least constant success probability (
 probability `≥ 1/2`). The instance family is parameterized by the database size `N=2ⁿ`, with a single
 marked item among `N`; the relevant regime is large `N`. Two reference points frame any result. The
 classical baseline is `Θ(N)` queries. The information-theoretic question — "how few queries can *any*
-quantum algorithm use, given no structure?" — is posed in the oracle model, where one studies how much
-a `T`-query quantum algorithm's final state can depend on the answer to any single query; this is the
+quantum algorithm use, given no structure?" — is posed in the oracle (black-box) model; this is the
 setting in which a matching lower bound would be proved. Success is measured purely in asymptotic query
 count and in the success probability achieved after a prescribed number of iterations; the precise
-iteration count, not just its order, is part of the protocol because the algorithm's behavior is not
-monotone in the number of iterations.
+iteration count, and not just its order, is reported as part of the protocol.
 
 ## Code framework
 
 The implementation skeleton starts with the primitives already available: uniform-superposition
 preparation (Walsh–Hadamard on the all-zeros register), a coherent oracle for the condition `C`, the rule
-that all operations are unitary, and a final measurement. The unknown pieces are the useful unitary query
-action, the unitary that turns the query's hidden phase information into amplitude, and the stopping rule.
+that all operations are unitary, and a final measurement. What to do with the register between
+preparation and measurement — the per-iteration unitary processing and how long to run it — is left open.
 
 ```python
 import numpy as np
@@ -129,21 +127,20 @@ def oracle(state, marked):
     #       and (b) actually useful for concentrating amplitude on `marked`?
     pass
 
-def after_query_unitary(state):
-    # TODO: the operator (also unitary) that turns the oracle's effect into a
-    #       measurable increase of the marked amplitude. Unknown at this point.
+def iteration_step(state, marked):
+    # TODO: the per-iteration unitary processing applied to the register
+    #       (may involve the oracle above). Unknown at this point.
     pass
 
 def search(N, marked, iterations):
     state = uniform_superposition(N)
     for _ in range(iterations):
-        state = oracle(state, marked)     # TODO
-        state = after_query_unitary(state)  # TODO
+        state = iteration_step(state, marked)  # TODO
     # measure: probability of outcome i is |state[i]|**2
     probs = np.abs(state) ** 2
     return probs
 
 def optimal_iterations(N):
-    # TODO: how many repetitions? Is more always better, or is there a sweet spot?
+    # TODO: how many repetitions to run?
     pass
 ```

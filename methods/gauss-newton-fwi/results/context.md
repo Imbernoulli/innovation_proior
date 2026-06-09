@@ -64,10 +64,9 @@ makes it a minefield.
 A third fact concerns conditioning. The waves spread geometrically as they propagate, so their
 amplitude — and hence the raw gradient's amplitude — decays with depth and distance from the
 sources; near-source grid points are illuminated far more strongly than deep ones. A raw
-steepest-descent step therefore over-updates the shallow model and barely touches the deep model. The
-second-order information that would correct this is the Hessian of the misfit; its dominant,
-geometrical-spreading part is what a usable method must somehow account for, exactly or approximately,
-to get a well-scaled update.
+steepest-descent step therefore over-updates the shallow model and barely touches the deep model, and
+nothing in a first-order gradient on its own rebalances the two — the step inherits the same depth
+imbalance as the illumination.
 
 ## Baselines
 
@@ -107,9 +106,9 @@ and correlating it with the forward (source) wavefield — the gradient *is* a m
 operator. Core idea: the residual, injected at the receivers and propagated by the adjoint of the
 wave operator, plays the role of the costate field; its correlation with the incident wavefield gives
 the model update. This is the imaging principle (Claerbout) read as a gradient: the source wavefield
-and a receiver-side wavefield correlated at zero time lag light up the reflectors. The open thing is
-to assemble this into a *full* iterative waveform-fitting scheme — the exact gradient with the right
-time-derivative weighting, second-order (Gauss–Newton) scaling, and the cure for the non-convexity.
+and a receiver-side wavefield correlated at zero time lag light up the reflectors. As presented in the
+migration literature it remains a stand-alone imaging step rather than a complete iterative
+waveform-fitting procedure.
 
 **Gauss–Newton / Newton in frequency-space inversion (Pratt, Shin & Hicks 1998, *Gauss–Newton and
 full Newton methods in frequency-space seismic waveform inversion*).** The least-squares structure
@@ -118,9 +117,9 @@ Fréchet (Born) derivative G = ∂r/∂m, approximate the Hessian by H_GN = Re(G
 δm = −H_GN⁻¹ ∇J. Core idea: the Gauss–Newton Hessian deconvolves the gradient by the geometrical
 spreading and illumination, giving a far better-scaled update than steepest descent; its diagonal is
 the zero-lag autocorrelation of the partial-derivative wavefields. Its limitation at field scale is
-that H_GN is enormous and dense — forming or inverting it is itself the bottleneck — so practical
-schemes need a cheap surrogate (a diagonal pseudo-Hessian / source-illumination preconditioner, or a
-matrix-free conjugate-gradient solve of the Gauss–Newton system).
+that H_GN is enormous and dense — with millions of model parameters it cannot be formed, stored, or
+inverted directly, and that cost is the bottleneck that has kept the full second-order step out of
+reach at survey scale.
 
 ## Evaluation settings
 
@@ -144,8 +143,7 @@ The primitives that already exist: a finite-difference acoustic wave-equation st
 injection and receiver interpolation, a forward operator that can save the wavefield, a routine that
 forms the data residual against observed traces and evaluates the least-squares misfit, and a generic
 descent loop with a line search. The empty computational slot is the model-space derivative of that
-misfit; a second empty slot is the optional curvature scaling that turns a raw gradient into a useful
-descent direction.
+misfit — how to turn the residual into an update of every grid-cell parameter.
 
 ```python
 from devito import Function
@@ -171,19 +169,15 @@ class AcousticWaveSolver:
         self.space_order = space_order
 
     def forward(self, src=None, rec=None, u=None, save=None, **kwargs):
-        """Run the existing forward operator; optionally save u for a later derivative."""
+        """Run the existing forward operator; optionally save the wavefield u."""
         pass
 
     def model_gradient(self, residual, u, grad=None, **kwargs):
         # TODO: derivative of the misfit with respect to every grid-cell parameter.
         pass
 
-    def linearized_data(self, dm, src=None, rec=None, u=None, **kwargs):
-        # TODO: action of the residual Jacobian on a model perturbation for curvature scaling.
-        pass
-
-def descent_direction(g, solver, u_by_shot=None, mode="diagonal"):
-    # TODO: choose raw steepest descent or curvature-scaled descent.
+def descent_direction(g, solver, u_by_shot=None):
+    # TODO: map the raw gradient to a descent direction.
     pass
 
 def invert(model, solver, observed_data, n_iter):

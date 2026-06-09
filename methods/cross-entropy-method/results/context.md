@@ -26,17 +26,17 @@ with the *likelihood ratio* W(x) = f(x; u)/g(x). The estimator ℓ̂ = (1/N) Σ 
 
     g*(x) = 1_{S(x)≥γ} f(x; u) / ℓ,
 
-i.e. the nominal law restricted to the rare set and renormalized. Under g* the integrand 1_{S≥γ} f/g* equals ℓ identically, so the estimator has *zero* variance and one sample suffices. But g* contains the unknown ℓ in its normalizer — it presupposes the answer. It is unusable as a recipe, yet it states exactly what a good sampler should look like: live on {S ≥ γ}, and be shaped like f there.
+i.e. the nominal law restricted to the rare set and renormalized. Under g* the integrand 1_{S≥γ} f/g* equals ℓ identically, so the estimator has *zero* variance and one sample suffices. But g* contains the unknown ℓ in its normalizer — it presupposes the answer. As a written-down density it is unusable as a recipe.
 
 **Kullback–Leibler divergence (cross-entropy).** A standard measure of dissimilarity between two densities g and h is
 
     D(g, h) = E_g[ ln(g(X)/h(X)) ] = ∫ g ln g dx − ∫ g ln h dx.
 
-It is non-negative, zero iff g = h, and not symmetric. The second term, −∫ g ln h, is the *cross-entropy* of h relative to g; only this term depends on h, so minimizing D over a parametric h means maximizing ∫ g ln h.
+It is non-negative, zero iff g = h, and not symmetric. The second term, −∫ g ln h, is called the *cross-entropy* of h relative to g.
 
 **Maximum likelihood and exponential families.** Given data x₁,…,x_N modelled as i.i.d. f(·; v), the maximum-likelihood estimate is v̂ = argmax_v Σ_i ln f(x_i; v). For a natural exponential family (Bernoulli, Gaussian, exponential, …) the stationary equation ∇_v Σ ln f(x_i; v) = 0 has a closed form: the fitted parameter is a sample moment of the data. For Bernoulli f(x; p) = p^x(1−p)^{1−x}, ∂_p ln f = (x − p)/[p(1−p)], so p̂ = (1/N) Σ x_i, the fraction of ones. For a Gaussian N(μ, σ²), ∂_μ ln f = (x − μ)/σ² and ∂_{σ²} ln f = −1/(2σ²) + (x − μ)²/(2σ⁴), so μ̂ = mean and σ̂² = variance of the data. For an exponential mean-parameterized density, v̂ = sample mean.
 
-**Exponential tilting / change of measure for light tails.** For light-tailed laws, the way to make a tail event typical without distorting the exponential decay rate is to reweight f by an exponential and renormalize — an exponential family of tilts. For a random walk that must climb to a far level, large-deviations theory points to an exponential tilt that reverses the drift and makes the crossing typical under the new measure. So a *parametric reference v* shifting the nominal law toward the rare set is the natural class of importance densities — the open question is which v.
+**Exponential tilting / change of measure for light tails.** For light-tailed laws, the way to make a tail event typical without distorting the exponential decay rate is to reweight f by an exponential and renormalize — an exponential family of tilts. For a random walk that must climb to a far level, large-deviations theory points to an exponential tilt that reverses the drift and makes the crossing typical under the new measure. These tilts form an exponential family, so a single reference parameter indexes the candidate change of measure.
 
 **The recurring structure that ties the two problems together.** A maximization can be turned into a sequence of rare-event estimation problems: introduce the family of indicators {1_{S(x)≥γ}} and the *associated stochastic problem* ℓ(γ) = E_u[1_{S(X)≥γ}]. When γ approaches γ*, the set {S ≥ γ} shrinks to the optimizer(s), and a density that puts its mass on {S ≥ γ} therefore concentrates on x*. Both faces reduce to the same question: *how do you find a sampling density concentrated on {S ≥ γ}, when you cannot afford to wait for that set to be hit by chance?*
 
@@ -50,9 +50,9 @@ It is non-negative, zero iff g = h, and not symmetric. The second term, −∫ g
 
     v = argmin_v E_w[ 1_{S(X)≥γ} W(X; u, v) W(X; u, w) ],
 
-estimated from a sample under w. This targets exactly the right objective, but the program is a generally non-convex numerical optimization with no closed-form solution even for nice families; it is awkward to run inside an adaptive loop. The gap: tractability — there is no sample-moment update.
+estimated from a sample under w. This targets exactly the right objective, but the program is a generally non-convex numerical optimization with no closed-form solution even for nice families; it is awkward to run inside an adaptive loop. The gap: tractability — each step demands an inner numerical search.
 
-**Randomized search heuristics for optimization.** Simulated annealing (accept-with-Boltzmann-probability local moves), tabu search (memory-guided local search), genetic algorithms and ant-colony optimization (population-based recombination / pheromone reinforcement) all attack max S(x) by maintaining and perturbing candidate solutions. They are general and often effective, but each is a bundle of problem-specific operators and schedules (temperature cooling, mutation/crossover rates, pheromone evaporation) tuned by hand; none defines a single mathematical objective whose optimum *is* the parameter update. The gap: a principled, self-tuning updating rule derived from the sampling distribution itself, rather than hand-designed move operators.
+**Randomized search heuristics for optimization.** Simulated annealing (accept-with-Boltzmann-probability local moves), tabu search (memory-guided local search), genetic algorithms and ant-colony optimization (population-based recombination / pheromone reinforcement) all attack max S(x) by maintaining and perturbing candidate solutions. They are general and often effective, but each is a bundle of problem-specific operators and schedules (temperature cooling, mutation/crossover rates, pheromone evaporation) tuned by hand; none defines a single mathematical objective whose optimum *is* the parameter update. The gap: the update rule is hand-designed rather than self-tuning, a bundle of tuned operators with no underlying principle fixing it.
 
 ## Evaluation settings
 
@@ -106,6 +106,6 @@ def adaptive_optimize(objective, mu, sigma, rho, N, alpha, n_iter, tol, rng):
         X = mu + sigma * rng.standard_normal((N, len(mu)))
         scores = np.array([objective(x) for x in X])
         mu_hat, sigma_hat = refit_gaussian(X, scores, rho)         # TODO
-        # TODO: blend the refit with the current parameters and stop on collapse.
+        # TODO: update the sampling parameters from the refit and decide when to stop.
         pass
 ```

@@ -26,33 +26,24 @@ with probability `(k - chosen)/(N - i + 1)`, or by generating skip gaps from the
 hypergeometric/beta structure. All of these consume `N` somewhere: either as the modulus for
 index generation or as the parameter of the skip distribution.
 
-The load-bearing facts we get to use:
+Some standard facts about uniform variates that are available off the shelf:
 
-- **Sampling without replacement as order statistics.** If we attach to each item an
-  independent uniform key `u_i ~ U(0,1)`, then the items holding the `k` smallest keys are a
-  uniform random `k`-subset — every subset is equally likely because the keys are iid and
-  ties have probability zero. This converts "choose a random subset" into "keep the
-  extreme-`k` of a stream of iid reals", which is something a one-pass scan *can* maintain.
 - **Order statistics of uniforms are closed-form.** The maximum of `k` iid `U(0,1)` variables
   has CDF `Pr[max <= x] = x^k`. By inverse transform, a draw of that maximum is `U^{1/k}` for
   a single `U ~ U(0,1)`. More generally the `k`-th smallest of many uniforms has a Beta
-  distribution. These let us reason about a "threshold" key in closed form.
-- **Geometric gaps from a constant acceptance probability.** If, with a *fixed* per-item
-  acceptance probability `p`, we scan items independently, the number skipped before the next
-  acceptance is geometric: `Pr[gap = g] = (1-p)^g p`. Its inverse CDF gives a gap directly as
-  `floor( log(U)/log(1-p) )` — so a whole run of rejections can be jumped over with a single
-  uniform draw instead of one draw per item.
-- **The harmonic-sum count of changes.** If the `i`-th item is accepted with probability
-  `k/i`, the expected number of acceptances across `i = k+1,...,N` is
-  `k(H_N - H_k) = k * ln(N/k) + O(k)`, where `H_m = sum_{i<=m} 1/i`. Acceptances are
-  therefore *rare* relative to `N` — only logarithmically many — which is the structural hint
-  that per-item work is wasteful.
+  distribution.
+- **The geometric distribution by inverse transform.** If a fair test with a *fixed* success
+  probability `p` is repeated independently, the number of failures before the first success
+  is geometric: `Pr[gap = g] = (1-p)^g p`. Its inverse CDF gives a gap directly as
+  `floor( log(U)/log(1-p) )` from a single uniform draw `U`.
+- **The harmonic numbers.** `H_m = sum_{i<=m} 1/i`, and `H_N - H_k = ln(N/k) + O(1/k)`. Sums
+  of terms of the form `1/i` over a range therefore grow only logarithmically in the range.
 
 The pain point that frames everything: any method that does a constant amount of work *per
-record* must do `Theta(N)` work and draw `Theta(N)` random numbers, even though only
-`~k ln(N/k)` records ever actually enter the sample. On the hardware of the time, generating
-a high-quality uniform variate is expensive enough that this `Theta(N)` draw count is the
-real bottleneck, not the I/O.
+record* must do `Theta(N)` work and draw `Theta(N)` random numbers across the whole stream.
+On the hardware of the time, generating a high-quality uniform variate is expensive enough
+that this `Theta(N)` draw count is the real bottleneck, not the I/O — so if only a small
+fraction of records ever influence the final sample, most of those draws are wasted.
 
 ## Baselines
 
@@ -94,8 +85,8 @@ enough that `N >> k`.
 
 A streaming harness already exists: items arrive one at a time, we hold a small buffer, and we
 emit the buffer at end-of-stream. The uniform RNG, arrays, iterators, and binary heaps are all
-standard primitives. What is missing is the selection rule, the schedule for deciding when an
-item should enter without knowing `N`, and the weighted analogue of that rule.
+standard primitives. What is missing is the rule for deciding when an item should enter
+without knowing `N`, a faster variant of that rule, and the weighted analogue.
 
 ```python
 import math, random, heapq
@@ -125,27 +116,18 @@ def sample_stream(stream, k):
     return s.sample()
 
 class FastStreamSampler:
-    """Same contract as StreamSampler, but admissions are generated in gaps."""
+    """Same input/output contract as StreamSampler; a faster internal strategy."""
     def __init__(self, k):
         self.k = k
         self.buffer = []
         self.i = 0
-        self.schedule_state = None
-        self.next_i = None
-
-    def _schedule_next(self):
-        # TODO: draw the next accepted position from the current schedule state.
-        pass
 
     def add(self, item):
         self.i += 1
         if len(self.buffer) < self.k:
             self.buffer.append(item)
-            if len(self.buffer) == self.k:
-                # TODO: initialize the schedule state and first accepted position.
-                pass
-        elif self.i == self.next_i:
-            # TODO: replace one buffered item, update the schedule state, and schedule the next entry.
+        else:
+            # TODO
             pass
 
     def sample(self):
@@ -160,11 +142,11 @@ def sample_stream_fast(stream, k):
 def sample_stream_weighted(stream, k):
     heap = []
     for item, weight in stream:
-        # TODO: compute a weight-dependent score and keep the best k scores in heap.
+        # TODO
         pass
     return [item for _score, item in heap]
 
 def sample_stream_weighted_fast(stream, k):
-    # TODO: same weighted output, but jump by accumulated weight rather than by item count.
+    # TODO
     pass
 ```

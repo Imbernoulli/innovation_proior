@@ -59,7 +59,7 @@ def cond_fn(x, t, **kwargs):
     pass
 
 def denoised_fn(x_start):
-    # TODO: optional projection that preserves known pixels during editing.
+    # TODO: optional projection on the predicted clean image.
     pass
 
 def build_upsample_kwargs(model_up, prompt, low_res, batch_size, text_ctx, device):

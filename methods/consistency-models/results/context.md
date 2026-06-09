@@ -32,7 +32,7 @@ with c_skip(σ) = σ_data² / (σ² + σ_data²), c_out(σ) = σ·σ_data / √(
 
 **Why iterative sampling is slow.** Each solver step is one (or, for Heun, two) evaluations of s_φ. Even the best ODE solvers need more than ten steps for competitive samples; the SDE samplers need many more. This is the bottleneck.
 
-**Diagnostic facts.** (i) Faster numerical solvers (DDIM, DPM-solver, GENIE) reduce but do not eliminate the step count — they still need at least about ten evaluations. (ii) Distillation methods that first generate a large dataset of teacher samples and then regress a one-step student (Luhman & Luhman 2021; Zheng et al. 2022) pay a large offline cost to synthesize that dataset. (iii) The deterministic PF ODE defines, for each noise sample at t = T, a *single* trajectory ending at a *single* data point — the map from endpoint to origin is well-defined along each trajectory. (iv) Tweedie's identity: for a Gaussian-perturbed density p_t = p_data ⊗ N(0, t² I), the score has the closed-form posterior-mean expression ∇ log p_t(x_t) = −E[(x_t − x)/t² | x_t], an exact, unbiased relation between the score and the unknown clean point.
+**Diagnostic facts.** (i) Faster numerical solvers (DDIM, DPM-solver, GENIE) reduce but do not eliminate the step count — they still need at least about ten evaluations. (ii) Distillation methods that first generate a large dataset of teacher samples and then regress a one-step student (Luhman & Luhman 2021; Zheng et al. 2022) pay a large offline cost to synthesize that dataset. (iii) Because μ = 0 and the kernel is Gaussian, the PF ODE is deterministic: for each noise sample at t = T there is a *single* trajectory ending at a *single* data point.
 
 ## Baselines
 
@@ -53,7 +53,7 @@ with c_skip(σ) = σ_data² / (σ² + σ_data²), c_out(σ) = σ·σ_data / √(
 
 ## Code framework
 
-An EDM-style harness already has denoiser preconditioning, the rho = 7 noise grid, Euler/Heun steps for the empirical PF ODE, U-Net backbones, EMA utilities, and a minibatch training loop. The open pieces are the fast sampler's parameterization, the pair construction used to train it, and the sampler that reuses it for one or more evaluations.
+An EDM-style harness already has denoiser preconditioning, the rho = 7 noise grid, Euler/Heun steps for the empirical PF ODE, U-Net backbones, EMA utilities, and a minibatch training loop. The fast generator, the objective that trains it, and the sampler that runs it are left open.
 
 ```python
 import torch as th
@@ -138,18 +138,17 @@ class KarrasDenoiser:
         teacher_diffusion=None,
         noise=None,
     ):
-        # TODO: sample adjacent noise levels, build a target point, and match
-        # the online fast sampler to an EMA target sampler
+        # TODO: define the training objective for the fast generator
         pass
 
 
 def sample_fast_once(denoiser, x, sigmas, generator=None):
-    # TODO: evaluate the fast sampler once
+    # TODO: evaluate the fast generator once
     pass
 
 
 def iterative_refinement_sampler(denoiser, x, sigmas, generator, ts, sigma_min, sigma_max, rho, steps):
-    # TODO: alternate fast sampling with noise injection on a Karras grid
+    # TODO: trade extra compute for quality across multiple evaluations
     pass
 
 

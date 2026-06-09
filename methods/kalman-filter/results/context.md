@@ -4,7 +4,7 @@ A physical system evolves in time — a vehicle moving, a particle drifting, a s
 
 There is a known optimal theory for this when the signal and noise are *stationary* random processes with known spectra: form the minimum-mean-square linear filter. But the systems that matter — a spacecraft on a midcourse trajectory, a target being tracked, any time-varying plant — are *not* stationary, the measurements arrive at irregular discrete instants, only some coordinates of the state are observed, and the answer has to be computed on a digital machine with limited memory and limited time. The precise problem is to produce, at each instant, the optimal estimate of the full (possibly unobserved) state, in a form that (i) handles nonstationary and time-varying dynamics with one method, (ii) requires only the data actually available, and (iii) is cheap enough to run online — updating the estimate as each new measurement comes in rather than reprocessing the whole past.
 
-The stakes are practical and immediate. The available optimal theory is frequency-domain, stationary, and delivers the answer as a filter impulse response that is hard to synthesize and "poorly suited to machine computation," with the difficulty growing rapidly as the problem gets bigger. A method that worked in the time domain, on the state directly, recursively, and on a computer would not be a refinement of that theory — it would make optimal estimation usable for the kind of dynamic, nonstationary, partially observed systems the available theory cannot touch.
+The stakes are practical and immediate. The available optimal theory is frequency-domain, stationary, and delivers the answer as a filter impulse response that is hard to synthesize and "poorly suited to machine computation," with the difficulty growing rapidly as the problem gets bigger. A method that escaped these limitations would not be a refinement of that theory — it would make optimal estimation usable for the kind of dynamic, nonstationary, partially observed systems the available theory cannot touch.
 
 ## Background
 
@@ -34,7 +34,7 @@ The stakes are practical and immediate. The available optimal theory is frequenc
 
 **Recursive least squares (Gauss).** Core idea: update a least-squares estimate as each observation arrives — new estimate = old estimate + gain × (new measurement − predicted measurement), with the normal-equations (information) matrix updated incrementally. Algorithm: maintain `x̂` and the information/covariance matrix; on each measurement, compute the gain, correct `x̂`, update the matrix. Gap: it is for a *static* unknown parameter `x` with deterministic measurement model and no dynamics — no notion of a state that *evolves* between measurements, no process noise, no stochastic propagation of uncertainty in time. It is the recursion machinery without the dynamic, stochastic model.
 
-**State-space optimal regulator / LQR (state-transition method).** Core idea: for a linear plant `x(t+1)=Φ̂x(t)+M̂u(t)` and quadratic cost, the optimal control is a time-varying linear feedback `u*(t) = −∆̂*(t)x(t)`, with the feedback gain and cost matrix generated backward by a matrix Riccati recursion. Algorithm: solve the Riccati recursion for the gain sequence; apply the feedback. Gap: a *control* problem, deterministic and noise-free, assuming the full state is measured exactly — not an estimation problem at all. But it lives in exactly the state-space/time-domain/Riccati world that the spectral estimation theory does not, and its Riccati machinery is suggestively similar to what a recursive estimator would need.
+**State-space optimal regulator / LQR (state-transition method).** Core idea: for a linear plant `x(t+1)=Φ̂x(t)+M̂u(t)` and quadratic cost, the optimal control is a time-varying linear feedback `u*(t) = −∆̂*(t)x(t)`, with the feedback gain and cost matrix generated backward by a matrix Riccati recursion. Algorithm: solve the Riccati recursion for the gain sequence; apply the feedback. Gap: a *control* problem, deterministic and noise-free, assuming the full state is measured exactly — not an estimation problem at all. It lives in the state-space/time-domain/Riccati world, which the spectral estimation theory does not.
 
 ## Evaluation settings
 
@@ -42,7 +42,7 @@ The natural problems against which a state estimator of this kind would be exerc
 
 ## Code framework
 
-The available pieces are linear-algebra primitives (matrix multiply, transpose, inverse), arrays for a finite-dimensional state-space model, and the random-process model "white noise through a linear system." A numerical estimator can therefore be scaffolded as a small recursive object. The unresolved body is how the state uncertainty, measurement residual, gain, and covariance update should be chosen so that the recursion is optimal instead of merely plausible.
+The available pieces are linear-algebra primitives (matrix multiply, transpose, inverse), arrays for a finite-dimensional state-space model, and the random-process model "white noise through a linear system." A numerical estimator can therefore be scaffolded as a small object holding the model and the running estimate. How that estimate should be formed and carried so that it is optimal instead of merely plausible is the unresolved body.
 
 ```python
 import numpy as np
@@ -66,7 +66,7 @@ class RecursiveStateEstimator:
         self.dim_u = dim_u
 
         self.x = zeros((dim_x, 1))             # current state estimate
-        self.P = eye(dim_x)                    # TODO: uncertainty carried by the estimator
+        self.P = eye(dim_x)                    # uncertainty carried by the estimator
         self.Q = eye(dim_x)                    # covariance of white process forcing
         self.B = None                          # optional control-input matrix
         self.F = eye(dim_x)                    # state transition matrix
@@ -76,10 +76,7 @@ class RecursiveStateEstimator:
         self.M = zeros((dim_x, dim_z))         # optional process-measurement cross covariance
         self.z = np.array([[None] * dim_z]).T
 
-        self.K = zeros((dim_x, dim_z))         # TODO: correction gain
-        self.y = zeros((dim_z, 1))             # TODO: measurement residual
-        self.S = zeros((dim_z, dim_z))         # TODO: residual covariance
-        self.SI = zeros((dim_z, dim_z))        # TODO: inverse residual covariance
+        # TODO: any auxiliary quantities the update rule turns out to need
         self._I = eye(dim_x)
         self.inv = np.linalg.inv
 
@@ -92,11 +89,10 @@ class RecursiveStateEstimator:
         self._mahalanobis = None
 
     def predict(self, u=None, B=None, F=None, Q=None):
-        # TODO: propagate x and P through the dynamics before the next measurement.
+        # TODO: advance the estimate to just before the next measurement.
         pass
 
     def update(self, z, R=None, H=None):
-        # TODO: use z to form the residual, determine the gain,
-        #       correct x, update P, and save the updated state.
+        # TODO: fold the new measurement z into the estimate.
         pass
 ```

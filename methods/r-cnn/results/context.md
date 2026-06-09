@@ -61,9 +61,9 @@ small, data-driven, class-independent set with very high recall (around 99% at ~
 a "fast" mode yields roughly 2000 proposals per image.
 
 **Transfer learning when labels are scarce.** The standard remedy for too-little task data was
-*unsupervised* pre-training followed by supervised fine-tuning. A different option, less
-explored for this setting, is *supervised* pre-training on a large auxiliary labeled task and
-then fine-tuning on the small target task.
+*unsupervised* pre-training followed by supervised fine-tuning. Whether other forms of
+pre-training help when a large auxiliary *labeled* dataset is available was, for this setting,
+largely unexplored.
 
 **Fixed-input CNNs and warping.** The classification CNN requires a fixed 227×227 input.
 A region proposal is an arbitrary rectangle, so it must be transformed to that size. Options
@@ -122,11 +122,8 @@ The available primitives are: a region-proposal routine that returns a few thous
 boxes per image; a pre-trained convolutional classification network usable as a fixed-input
 feature extractor (forward pass to a chosen layer); standard image utilities (crop, resize,
 mean subtraction); linear-SVM training with hard-negative mining; ridge regression in closed
-form; and a greedy non-maximum-suppression routine. The scaffold wires these together and
-leaves empty the slots the method must fill: how an arbitrary-shaped proposal becomes a
-fixed-size network input, how the network is adapted from classification to the detection
-domain, what targets and decision rules train the per-class classifier, and how a coarse
-proposal box is refined.
+form; and a greedy non-maximum-suppression routine. The scaffold wires these primitives
+together and leaves the design of the detector itself unfilled.
 
 ```python
 import numpy as np
@@ -148,52 +145,8 @@ def nms(boxes, scores, iou_thresh):
     return keep_indices
 
 
-def prepare_region(image, box, target_size=227):
-    # TODO: turn an arbitrary-shaped proposal into a fixed-size CNN input
-    raise NotImplementedError
-
-
-def finetune_cnn(cnn, proposals, ground_truth):
-    # TODO: adapt the classification network to the detection domain;
-    #       which proposals are positives/negatives, and how to sample a minibatch
-    raise NotImplementedError
-
-
-class PerClassClassifier:
-    """One linear scorer per class, trained on CNN features of proposals."""
-    def __init__(self, num_classes):
-        self.num_classes = num_classes
-        self.W = None  # TODO
-
-    def assign_labels(self, proposals, ground_truth):
-        # TODO: define positives and negatives for training the classifier
-        raise NotImplementedError
-
-    def train(self, features, labels):
-        # TODO: fit the per-class scorers (with hard-negative mining)
-        raise NotImplementedError
-
-    def score(self, features):
-        # TODO: feature @ weights -> per-class scores
-        raise NotImplementedError
-
-
-class BoxRefiner:
-    """Refine a coarse proposal box toward the ground-truth box."""
-    def fit(self, pool5_feats, proposals, ground_truth):
-        # TODO: choose a target parameterization and fit it from features
-        raise NotImplementedError
-
-    def apply(self, pool5_feats, proposals):
-        # TODO: map proposal boxes to refined boxes
-        raise NotImplementedError
-
-
-def detect(image, cnn, classifier, refiner):
-    boxes = selective_search(image)
-    inputs = np.stack([prepare_region(image, b) for b in boxes])
-    feats = cnn_forward(inputs, layer="fc7")
-    scores = classifier.score(feats)
-    # TODO: refine boxes, then per-class greedy NMS
+def detect(image, cnn, ...):
+    # TODO: using the primitives above, build a detector that turns the
+    #       classification CNN into one that localizes objects on this image.
     raise NotImplementedError
 ```

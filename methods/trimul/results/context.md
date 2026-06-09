@@ -41,8 +41,6 @@ inequality on every triple is the first necessary condition; higher-order
 Euclidean distance-matrix constraints further restrict which finite metric spaces can live in
 three dimensions. A representation that predicts each `z_ij` without reference to its
 neighboring edges will, generically, propose distance sets that no real structure can satisfy.
-The constraint that should regularize edge `(i, j)` physically lives in the *other two edges* of
-the triangles through `(i, j)`.
 
 **Coevolution and contact prediction.** Correlated mutations between two alignment columns have
 long been read as evidence of spatial contact. This is why an MSA is the input and why the pair
@@ -50,8 +48,7 @@ representation is the place where structure must be reasoned about.
 
 **Gating as learned selection.** The surrounding architecture already uses sigmoid gates as a
 differentiable, per-channel "should this contribute?" filter — e.g. the MSA gated self-attention
-computes `g = sigmoid(Linear(·))` and multiplies it onto the attention output. Gates are the
-standard tool here for letting the network softly choose which signals to keep.
+computes `g = sigmoid(Linear(·))` and multiplies it onto the attention output.
 
 ## Baselines
 
@@ -61,25 +58,21 @@ standard tool here for letting the network softly choose which signals to keep.
 factorizations of Child et al. 2019) factorizes attention over an `H × W` grid into attention
 along rows then along columns, costing `O(N)` interactions per axis instead of the full `O(N²)`
 over all grid cells. The core idea: for a fixed `i`,
-let `z_{ik}` attend over all `k`; or for a fixed `j`, let `z_{kj}` attend over all `k`. The gap:
-each such operation couples an edge to other edges *sharing one endpoint along a single axis*. It
-never combines the **two incident edges of a triangle at once** — for a target `(i, j)` it can
-look at `(i, k)` (same row) or at `(k, j)` (same column), but not at the pair `(i, k)` and
-`(k, j)` together in one update. So it cannot directly model the triple constraint
-`d_ij ≤ d_ik + d_kj`. That precise blind spot is what an update must close.
+let `z_{ik}` attend over all `k`; or for a fixed `j`, let `z_{kj}` attend over all `k`. Each such
+operation couples an edge only to other edges *sharing one endpoint along a single axis*: for a
+target `(i, j)` it can look at `(i, k)` (same row) or at `(k, j)` (same column), in separate
+operations along separate axes.
 
 **Per-pair MLP / convolution on the distance map.** Treating the pair map like an image and
 running 2D convolutions or per-pixel MLPs (the dominant pre-attention approach to contact maps)
 has the same flaw at the level of geometry: a local receptive field on the `(i, j)` plane mixes
-*nearby pairs in index space*, not the *third-node* neighbors `(i, k), (k, j)` that actually
-constrain the triangle. Spatial locality in `(i, j)` is unrelated to geometric adjacency.
+*nearby pairs in index space*, which has no relation to geometric adjacency — spatial locality in
+`(i, j)` is unrelated to which residues actually constrain a given distance.
 
 **Generic graph message passing.** A graph network updates a node or edge by aggregating over
-its neighbors. The natural aggregation for an *edge* `(i, j)` is over a third node `k`, combining
-the two edges incident to that triangle. Standard message-passing frameworks support this in
-principle, but leave open *what function* combines two edge vectors and aggregates over the apex
-`k`, and how to do it at `O(N³)` rather than something worse — the design the update must pin
-down.
+its neighbors. Standard message-passing frameworks are generic: they fix neither *what function*
+combines feature vectors nor the aggregation pattern, and an unconstrained aggregation over the
+complete edge set can be much costlier than `O(N³)`.
 
 ## Evaluation settings
 
@@ -98,8 +91,8 @@ residues, so per-block memory and the `O(N³)` cost are first-class constraints.
 
 The available primitives are a layer-normalized linear layer, rowwise and columnwise dropout,
 a standard gated multi-head attention module, a pair-transition MLP, and the trunk's block loop.
-The pair representation enters each block already formed; what is missing is the operator that
-mixes edges through a third residue so the pair map can move toward a consistent geometry.
+The pair representation enters each block already formed; what is missing is the update operator
+that lets the pair map move toward a consistent geometry.
 
 ```python
 import torch
@@ -146,12 +139,11 @@ class PairStack(nn.Module):
         self.pair_transition = PairTransition(c_z, n=4)
         self.dropout_row = DropoutRowwise(pair_dropout)
         self.dropout_col = DropoutColumnwise(pair_dropout)
-        # TODO: build the edge-consistency operator that routes pair features
-        # through a third residue.
+        # TODO: build the pair-update operator(s).
 
     def forward(self, z, pair_mask):
         # z: [*, N, N, c_z]
-        # TODO: insert the edge-consistency residual update(s).
+        # TODO: insert the pair-update residual update(s).
         z = z + self.pair_transition(z, mask=pair_mask)
         return z
 ```

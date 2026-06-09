@@ -23,7 +23,7 @@ the average uncertainty in $X$. For a pair $(X,Y)\sim p(x,y)$, the joint entropy
 $$H(X \mid Y) = \sum_y p(y)\, H(X \mid Y=y) = -\sum_{x,y} p(x,y)\log p(x\mid y),$$
 the uncertainty about $X$ that remains after $Y$ is revealed. Mutual information is $I(X;Y) = H(X) - H(X\mid Y)$. Two structural properties matter:
 
-- **Chain rule for entropy** (Cover–Thomas Thm 2.2.1): $H(X,Y) = H(X) + H(Y\mid X)$, and in conditional form $H(E,X\mid Z) = H(X\mid Z) + H(E\mid X,Z)$. This is the single algebraic identity that lets one introduce an auxiliary variable and re-expand a joint entropy two different ways.
+- **Chain rule for entropy** (Cover–Thomas Thm 2.2.1): $H(X,Y) = H(X) + H(Y\mid X)$, and in conditional form $H(U,V\mid Z) = H(V\mid Z) + H(U\mid V,Z)$. A joint entropy can be peeled apart in either order.
 - **Conditioning reduces entropy**: $H(X\mid Y) \le H(X)$, with equality iff $X \perp Y$. Extra information never increases uncertainty on average.
 - A maximum-entropy fact: $H(X) \le \log|\mathcal X|$, with equality iff $X$ is uniform — the entropy of a variable known to live in a set of size $m$ is at most $\log m$.
 - $H(X\mid Y) = 0 \iff X$ is a deterministic function of $Y$ (zero residual uncertainty means exact recoverability).
@@ -83,9 +83,8 @@ def prob_error_of_estimator(joint, g):
     return float(pe)
 
 def error_lower_bound(joint, base=2):
-    """Lower bound on P_e for ANY estimator, from the residual uncertainty H(X|Y).
-    TODO: return the nonnegative floor on P_e implied by H(X|Y)
-    and the alphabet size |X|."""
+    """Lower bound on P_e that holds for ANY estimator.
+    TODO: fill in."""
     pass
 
 # harness: pick a joint p(x,y), the optimal (MAP) estimator, compare P_e to the bound

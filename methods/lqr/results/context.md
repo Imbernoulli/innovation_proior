@@ -26,7 +26,7 @@ Two newer bodies of theory are arriving precisely at this moment and are the loa
 
     V°_t + min_u [ L(x,u,t) + V°_x · (Fx + Gu) ] = 0.
 
-The minimizing `u` here is automatically a function of the current state `x` (through `V°_x`) — this is exactly the feedback structure the frequency-domain methods and the open-loop variational methods could not deliver. The catch: the HJB PDE is generally intractable; for it to become a usable algorithm you need a special structure that collapses the PDE to something finite-dimensional.
+The minimizing `u` here is automatically a function of the current state `x` (through `V°_x`) — this is exactly the feedback structure the frequency-domain methods and the open-loop variational methods could not deliver. The catch: the HJB PDE is generally intractable — a PDE in `n` state variables — and for a general nonlinear problem there is no closed-form solution.
 
 **Lyapunov's second method.** Stability of `ẋ = f(x)` can be certified without solving the ODE by exhibiting a function `V(x) > 0` whose time-derivative along trajectories is negative; then trajectories run downhill to the equilibrium. This is the tool that will let one *prove* the closed loop is stable rather than assume it. A relevant cautionary fact about the design space: it is commonly assumed, tacitly and incorrectly, that a controller which minimizes a cost is automatically stabilizing — minimizing a finite cost does **not** by itself force trajectories to decay, so stability is a separate property that must be established, not taken for granted.
 
@@ -40,7 +40,7 @@ The minimizing `u` here is automatically a function of the current state `x` (th
 
 **Calculus-of-variations / maximum-principle optimal control.** Core idea: directly minimize `∫L dt` subject to the dynamics, via Euler–Lagrange / the Hamiltonian and costate. Math/algorithm: Hamiltonian `H = L + ⟨ξ, Fx + Gu⟩`, stationarity in `u`, the canonical state/costate equations, and a two-point boundary-value problem; the second-variation condition `∂²L/∂u² ≥ 0` for a minimum. Gap: *open-loop and local* — it returns an extremal `u*(t)` for one boundary condition, requiring a fresh boundary-value solve for every initial state, rather than a closed-form feedback law `u = k(x)` computable from the present state.
 
-**Dynamic programming / HJB.** Core idea: the cost-to-go `V°(x,t)` and the principle of optimality give a PDE whose pointwise minimizer is a state-feedback law. Math/algorithm: `V°_t + min_u[L + V°_x·(Fx+Gu)] = 0`. Gap: the PDE is generically intractable (the curse of dimensionality); it is a feedback *characterization*, not yet an algorithm, until a structural assumption makes it solvable in closed form.
+**Dynamic programming / HJB.** Core idea: the cost-to-go `V°(x,t)` and the principle of optimality give a PDE whose pointwise minimizer is a state-feedback law. Math/algorithm: `V°_t + min_u[L + V°_x·(Fx+Gu)] = 0`. Gap: the PDE is generically intractable (the curse of dimensionality); it is a feedback *characterization*, not yet an algorithm one can run on a general plant.
 
 ## Evaluation settings
 
@@ -48,7 +48,7 @@ The natural objects to test such a controller on are linear state-space plants `
 
 ## Code framework
 
-The primitives that already exist: dense linear algebra (matrix products, inverse/solve, eigen- and Schur decompositions), an ODE integrator for simulating `ẋ = Fx + Gu`, and the ability to assemble the plant matrices `(A, B)` and symmetric weight matrices `(Q, R)` from a physical model. The slot to be filled is the synthesis routine that turns `(A, B, Q, R)` into a feedback gain, plus the matrix equation it rests on.
+The primitives that already exist: dense linear algebra (matrix products, inverse/solve, eigen- and Schur decompositions), an ODE integrator for simulating `ẋ = Fx + Gu`, and the ability to assemble the plant matrices `(A, B)` and symmetric weight matrices `(Q, R)` from a physical model. The slot to be filled is the synthesis routine that turns `(A, B, Q, R)` into a feedback gain.
 
 ```python
 import numpy as np
@@ -56,23 +56,11 @@ import scipy.linalg
 from scipy.integrate import odeint
 
 
-def solve_cost_to_go_matrix(A, B, Q, R):
-    """Return the symmetric matrix S that characterizes the optimal
-    quadratic cost-to-go for  dx/dt = A x + B u  with running cost
-    x'Q x + u'R u  (Q = Q' >= 0, R = R' > 0).
-
-    The matrix is fixed by a still-to-be-derived matrix equation in
-    (A, B, Q, R); solving that equation is the whole problem.
-    """
-    # TODO: derive the matrix equation S must satisfy and solve it.
-    pass
-
-
 def feedback_gain(A, B, Q, R):
-    """Return the constant state-feedback gain K, the cost matrix S, and
-    the closed-loop poles for the infinite-horizon quadratic cost."""
-    # TODO: S = solve_cost_to_go_matrix(A, B, Q, R)
-    # TODO: K = (some closed form in R, B, S)
+    """Return the constant state-feedback gain K and the closed-loop poles
+    for the infinite-horizon quadratic cost  J = ∫ (x'Q x + u'R u) dt,
+    with plant  dx/dt = A x + B u  (Q = Q' >= 0, R = R' > 0)."""
+    # TODO
     pass
 
 

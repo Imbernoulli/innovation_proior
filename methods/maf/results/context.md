@@ -57,15 +57,12 @@ density estimation.
 
 **The realization that links the two families.** Kingma et al. (2016) pointed out that an
 autoregressive model, *viewed as a data generator*, is a differentiable transformation of an
-external source of randomness u (the random numbers a sampler draws). That transformation has a
-triangular Jacobian by construction, and for suitable (e.g. Gaussian) conditionals it is invertible
-— so it is *literally a normalizing flow*. This opens the door to making a single autoregressive
-model more flexible by *stacking*: let one model describe the random numbers consumed by the next.
+external source of randomness u (the random numbers a sampler draws): with conditionals
+parameterized by per-coordinate functions of the earlier coordinates, the sampler maps u to x
+coordinate by coordinate.
 
-**Batch normalization as a flow layer.** Batch normalization (Ioffe & Szegedy 2015) is an
-elementwise affine rescaling, hence invertible with a tractable Jacobian, so it can legally sit
-between layers of a flow; Real NVP already used it between coupling layers and found it sped up and
-stabilized training.
+**Batch normalization.** Batch normalization (Ioffe & Szegedy 2015) is an elementwise affine
+rescaling. Real NVP used it between its coupling layers and found it sped up and stabilized training.
 
 # Baselines
 
@@ -78,8 +75,7 @@ the recurrent form (GPU-unfriendly), and sensitivity to the variable order.
 parameters in one pass. *Math/algorithm:* binary masks enforce the autoregressive property; with a
 single-Gaussian conditional per dimension it is a one-pass exact density estimator. *Gap:* a single
 MADE with single-Gaussian conditionals has *unimodal* conditionals, so its expressiveness is
-limited; one fixed order is baked in. (Two ways to add flexibility: richer conditionals — MADE MoG
-with C Gaussian components — or, the question here, stacking.)
+limited; one fixed order is baked in.
 
 **Inverse Autoregressive Flow (IAF; Kingma et al. 2016).** A flow whose layer is the affine
 autoregressive recursion x_i = u_i·exp(α_i) + μ_i with μ_i, α_i computed from the *random numbers*
@@ -119,9 +115,7 @@ validation. Comparison points from the literature include Deep RNADE (Uria et al
 # Code framework
 
 The primitives needed already exist: a masked linear layer (a `Linear` whose weight is multiplied by a
-fixed binary mask), an Adam optimizer, and tensor reshaping. The open slots are the autoregressive
-conditioner network, the invertible affine recursion that turns it into a flow layer, the invertible
-normalization layer to place between flow layers, and the stacked-flow log-likelihood.
+fixed binary mask), an Adam optimizer, and tensor reshaping. The model itself is to be built.
 
 ```python
 import torch
@@ -138,51 +132,13 @@ class MaskedLinear(nn.Linear):
     def forward(self, x):
         return F.linear(x, self.mask * self.weight, self.bias)
 
-class AutoregressiveConditioner(nn.Module):
-    """A masked feedforward net that, in one pass, outputs per-coordinate parameters obeying the
-    autoregressive property (coordinate i depends only on earlier coordinates)."""
+class DensityModel(nn.Module):
     def __init__(self, dim, hidden_dims):
         super().__init__()
-        # TODO: stack MaskedLinear + ReLU; design degree-based masks enforcing autoregression.
-        pass
-    def forward(self, x):
-        # TODO: return the parameters of each conditional for all i at once.
-        pass
-
-class FlowLayer(nn.Module):
-    """One invertible layer: maps data x to base-space u (forward) and back (backward),
-    returning the log|det Jacobian| it contributes."""
-    def __init__(self, dim, hidden_dims):
-        super().__init__()
-        self.net = AutoregressiveConditioner(dim, hidden_dims)
-    def forward(self, x):
-        # TODO: x -> u with a tractable triangular-Jacobian transform; return (u, log_det).
-        pass
-    def backward(self, u):
-        # TODO: u -> x (the exact inverse); return (x, log_det).
-        pass
-
-class NormLayer(nn.Module):
-    """An invertible elementwise normalization to place between flow layers."""
-    def __init__(self, dim):
-        super().__init__()
-        pass
-    def forward(self, x):
-        # TODO: normalize; return (u, log_det).
-        pass
-    def backward(self, u):
-        pass
-
-class Flow(nn.Module):
-    def __init__(self, dim, n_layers, hidden_dims):
-        super().__init__()
-        self.layers = nn.ModuleList()
-        # TODO: stack FlowLayer (+ NormLayer) n_layers times.
-    def forward(self, x):
-        # TODO: push x through all layers to base space, summing log-determinants.
+        # TODO: build the model.
         pass
     def log_prob(self, x):
-        # TODO: base log-density at f(x) + summed log-determinant.
+        # TODO: return the exact log-density of x.
         pass
 
 def make_optimizer(params, deep=True):

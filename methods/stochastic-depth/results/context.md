@@ -22,17 +22,17 @@ The relevant prior work is the lineage of methods for training very deep nets an
 
 Two diagnostic facts about existing systems that frame the work:
 - Dropout's regularizing benefit is known to weaken when combined with Batch Normalization; experiments on 110-layer ResNets with BN show essentially no improvement from Dropout at various rates. So a different stochastic mechanism is needed for deep BN-ResNets.
-- He et al.'s record-setting results came partly from an *ensemble* of ResNets of varying depth — suggesting depth diversity itself is valuable.
+- He et al.'s record-setting results came partly from an *ensemble* of ResNets of varying depth.
 
-A structural fact about the architecture that the method will exploit: in these ResNets the input to a residual block is always non-negative, because it is the output of a preceding ReLU (or, for the first block, of an initial Conv-BN-ReLU stem). A ReLU applied to a non-negative input is the identity.
+A structural fact about the architecture: in these ResNets the input to a residual block is always non-negative, because it is the output of a preceding ReLU (or, for the first block, of an initial Conv-BN-ReLU stem).
 
 ## Baselines
 
-**Constant-depth ResNet.** The network as built: L residual blocks, each H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})), all blocks active every iteration. Strong, but its training cost scales with the full depth L, and very deep variants (1000+ layers) suffer vanishing gradients / diminishing feature reuse and overfit. Gap: no mechanism to make the *effective* training depth smaller than the deployed depth.
+**Constant-depth ResNet.** The network as built: L residual blocks, each H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})), all blocks active every iteration. Strong, but its training cost scales with the full depth L, and very deep variants (1000+ layers) suffer vanishing gradients / diminishing feature reuse and overfit. Gap: every layer is paid for in full on every iteration, so training cost and the gradient/forward chain length are locked to the deployed depth.
 
-**Dropout on a deep ResNet.** Add Dropout inside or around the blocks for regularization. Gap: makes the network *thinner* (drops individual activations) but not *shorter* — it does nothing about the long gradient/forward chains of a deep net — and its benefit largely vanishes in the presence of Batch Normalization.
+**Dropout on a deep ResNet.** Add Dropout inside or around the blocks for regularization. Gap: it masks individual activations, leaving the depth of the gradient/forward chains untouched, and its benefit largely vanishes in the presence of Batch Normalization.
 
-**Highway Networks.** Gated skip connections that can route around layers. Gap: the gates are learned and parameterized (extra parameters, always on at test in a fixed learned way); they do not stochastically and freely shorten the network during training, and ResNet already showed the simpler identity skip trains better.
+**Highway Networks.** Gated skip connections that can route around layers. Gap: the gates are learned and parameterized (extra parameters, fixed in a learned way at test time), and ResNet already showed the simpler identity skip trains better.
 
 ## Evaluation settings
 
@@ -43,7 +43,7 @@ A structural fact about the architecture that the method will exploit: in these 
 
 ## Code framework
 
-The primitive that exists is a ResNet built from residual blocks, each with a transformation branch f_ℓ and an identity/projection skip, composed into a deep stack with a classifier head. The block already has the identity path the method needs; the open question is a per-block training/test rule and a per-block scalar that governs it.
+The primitive that exists is a ResNet built from residual blocks, each with a transformation branch f_ℓ and an identity/projection skip, composed into a deep stack with a classifier head. The block exposes an unused per-block hyper-parameter slot whose role and use are the open design question.
 
 ```python
 import torch
@@ -63,14 +63,14 @@ class ResidualBlock(nn.Module):
         )
         self.skip = self._make_skip(in_ch, out_ch, stride)
         self.relu = nn.ReLU(inplace=True)
-        self.block_hparam = block_hparam   # TODO: what is this per-block scalar, and how is it used?
+        self.block_hparam = block_hparam   # TODO: what is this per-block hyper-parameter, and how is it used?
 
     def _make_skip(self, in_ch, out_ch, stride):
         # identity, with avg-pool downsample and zero-pad channels when widening
         ...
 
     def forward(self, x):
-        # TODO: training-time and test-time behavior of the residual branch
+        # TODO: how the residual branch behaves (see open design question)
         return self.relu(self.f(x) + self.skip(x))
 
 class ResNet(nn.Module):

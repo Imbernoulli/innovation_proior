@@ -37,8 +37,8 @@ a **supporting hyperplane** to the graph of $F$ at $t$. Such a support exists at
 a convex function (in the interior of its domain), and for a max-type function
 $F = \max_i g_i$ a subgradient at $t$ is simply $\nabla g_h(t)$ for any index $h$ active at $t$
 (or a convex combination of the active gradients) — so the first-order information is cheap and
-available even where there is no gradient. On the compact working set, the convergence argument
-uses a uniform support-slope bound, $\lVert g\rVert \le K < \infty$.
+available even where there is no gradient. On a compact working set the support slopes are
+bounded, $\lVert g\rVert \le K < \infty$.
 
 **The supporting-hyperplane / separation picture.** A closed convex set is the intersection of
 all the halfspaces containing it; equivalently, a point not in a closed convex set can be
@@ -71,9 +71,8 @@ moves along the projected negative gradient and so needs differentiability of th
 a tractable projection onto the (curved) feasible set; for a nonsmooth $F$ there is no gradient
 to project, and projecting onto a general curved convex set is itself hard. The problem we most
 want to solve — minimax / Chebyshev fitting — has a kinked objective, so smooth descent methods
-do not even get started. What *does* work, robustly and at scale, is LP. So the field's
-prevailing wisdom points to a leverage move: find a way to make the one reliable hammer, LP, do
-the work of solving a curved convex program.
+do not even get started. What *does* work, robustly and at scale, is LP — but LP, as it stands,
+solves only linear programs, not curved convex ones.
 
 ## Baselines
 
@@ -82,7 +81,6 @@ the work of solving a curved convex program.
   vertices. Exact, fast, and reusable: re-optimizing after adding a constraint costs little. Its
   limitation as a baseline for *our* problem is simply that it solves **linear** programs only —
   it cannot directly minimize a curved convex objective or handle a curved feasible set.
-  Everything below is about how to feed our curved problem to it.
 
 - **Dual method for LP** (Lemke 1954) and **revised simplex** plumbing (Dantzig–Orden–Wolfe
   1955). These matter as baselines because they decide *how cheaply* an iterative scheme that
@@ -105,17 +103,16 @@ the work of solving a curved convex program.
   separating linear inequality, re-solve" is a complete and effective scheme. The gap relative to
   our problem: Gomory's cuts are tailored to *integrality* (the unwanted point is a fractional
   vertex, and the cut is derived from the simplex tableau), not to *convex feasibility* (where
-  the unwanted point is one that violates a curved convex constraint). What carries over is the
-  architecture; what must change is how each cut is generated.
+  the unwanted point is one that violates a curved convex constraint).
 
 - **Remez / Chebyshev exchange and the support-plane idea** (Remez; Cheney–Goldstein's "Newton's
   method for convex programming," *Numer. Math.* 1 (1959) 253–268). Core idea for the
   semi-infinite Chebyshev problem: a convex function is the upper envelope of its support planes,
   so an infinite system of linear inequalities (one per support point) can be approached by a
   finite, growing subset, and the convex hypersurface is replaced by its support planes during
-  computation. The gap: stated for Chebyshev approximation / semi-infinite linear systems, it is
-  the same engine our method needs, waiting to be turned into a constraint-generation loop driven
-  by an LP solver with a convergence proof on a compact set.
+  computation. The gap: it is stated for Chebyshev approximation / semi-infinite linear systems,
+  and is not posed as a general method for convex programs with a convergence guarantee on a
+  compact set.
 
 ## Evaluation settings
 
@@ -134,9 +131,8 @@ the certified objective gap and the LP work needed to reach a target accuracy.
 
 A reusable scaffold starts from an LP solver that minimizes a linear form over a polyhedron and
 can be re-solved cheaply after adding a row, plus a first-order oracle that, at a query point,
-returns a convex value and a subgradient (a supporting hyperplane). The empty slots are the
-linear inequality formed from that oracle call and the relaxed master subproblem that produces
-the next query.
+returns a convex value and a subgradient (a supporting hyperplane). The one empty slot is the
+procedure that uses these two primitives to solve the curved convex program.
 
 ```python
 import numpy as np
@@ -152,24 +148,8 @@ def convex_oracle(x):
     (a subgradient). Pre-existing primitive."""
     ...  # returns (value, subgradient)
 
-class OuterApproximation:
-    """Generic enclose-and-refine loop over a convex feasible/objective set,
-    driven by an LP solver."""
-    def __init__(self, initial_polyhedron):
-        self.A_ub, self.b_ub = initial_polyhedron   # P_0 ⊇ feasible set
-        self.cuts = []
-
-    def make_cut(self, x):
-        # TODO: from the oracle at x, produce a linear inequality that
-        #       keeps the whole solution set but excludes x.
-        pass
-
-    def master_subproblem(self):
-        # TODO: the relaxed problem over the current polyhedron whose
-        #       solution is the next query point (and a bound).
-        pass
-
-    def step(self):
-        # TODO: solve master -> query; oracle -> cut; append cut; update bounds.
-        pass
+def solve_convex_program(c, initial_polyhedron, lp_minimize_linear, convex_oracle):
+    # TODO: using only the LP solver and the first-order oracle above,
+    #       solve  min c^T x  s.t.  x in R = {x : G(x) <= 0}.
+    ...
 ```

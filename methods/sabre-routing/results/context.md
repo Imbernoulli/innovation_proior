@@ -36,7 +36,7 @@ The natural yardstick is a set of quantum circuits of varying size and function 
 
 ## Code framework
 
-The primitives that already exist: a circuit representation, a device `CouplingMap` with methods to test adjacency, list neighbors, and compute pairwise distances, a layout object mapping logical qubits to physical qubits, and an all-pairs-shortest-path routine (Floyd-Warshall). A routing pass consumes a circuit plus a coupling map and emits a hardware-compliant circuit; a layout pass consumes a circuit plus a coupling map and emits an initial mapping. The empty bodies below are the generic slots where movement selection and initial-layout selection still have to be designed.
+The primitives that already exist: a circuit representation, a device `CouplingMap` with methods to test adjacency, list neighbors, and compute pairwise distances, a layout object mapping logical qubits to physical qubits, and an all-pairs-shortest-path routine (Floyd-Warshall). A routing pass consumes a circuit plus a coupling map and emits a hardware-compliant circuit; a layout pass consumes a circuit plus a coupling map and emits an initial mapping. The empty bodies below are the generic slots where the routing strategy and the initial-mapping strategy still have to be designed.
 
 ```python
 from collections import defaultdict
@@ -47,16 +47,6 @@ def all_pairs_shortest_path(coupling_map):
     # D[i][j] = shortest-path edge distance between physical qubits i and j.
     pass  # TODO
 
-# --- circuit structure: 2-qubit-gate dependency DAG + front layer ---
-def build_dag(circuit):
-    # Nodes = 2-qubit gates; edge gi->gj if they share a qubit and gi precedes gj.
-    # Single-qubit gates impose no mapping constraint.
-    pass  # TODO
-
-def front_layer(dag):
-    # Gates with no unexecuted predecessor (indegree 0): runnable now.
-    pass  # TODO
-
 
 class Router:
     """Consume circuit + coupling map, emit a hardware-compliant circuit."""
@@ -64,17 +54,7 @@ class Router:
         self.coupling_map = coupling_map
         self.D = all_pairs_shortest_path(coupling_map)
 
-    def candidate_swaps(self, F, layout):
-        # The set of SWAPs worth trying, given the current front layer.
-        pass  # TODO
-
-    def score(self, F, layout, swap):
-        # How good is the layout this SWAP would produce?
-        pass  # TODO
-
     def run(self, circuit, initial_layout):
-        # Iterate over the DAG: execute what is adjacent, otherwise pick
-        # and insert a SWAP, until every gate has been emitted.
         pass  # TODO
 
 
@@ -85,6 +65,5 @@ class InitialMapper:
         self.router = router
 
     def run(self, circuit):
-        # Produce an initial logical->physical mapping for the circuit.
         pass  # TODO
 ```

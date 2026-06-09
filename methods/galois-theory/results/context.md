@@ -32,7 +32,7 @@ takes only $2$ distinct values as the $6$ permutations of the three roots are ap
 
 **Abel's impossibility proof (1824–26).** Core idea: suppose the general quintic is solvable; build the field by adjoining radicals of prime exponent one at a time; at the step where the polynomial first becomes reducible, the adjoined radical $\rho=\sqrt[p]{\eta}$ must have relative degree exactly $p$ over the previous field (else it would not lower the degree), and once the relevant roots of unity are present its conjugates are $\rho,\varepsilon\rho,\varepsilon^2\rho,\dots$; tracking the resulting factorizations and the permutations they impose on the five roots produces a contradiction. Abel also closed Ruffini's gap by proving the natural-irrationalities reduction: the auxiliary algebraic quantities can be taken from the root field together with the needed roots of unity. The actual mechanism is a careful induction over the radical tower with prime-exponent steps and the conjugate-radical bookkeeping. Gap: Abel proves the *general* quintic unsolvable, but his argument is about the form of radical expressions and does not yield, for an *arbitrary given* equation, a computable invariant that decides solvability; nor does it explain in one stroke why $n\le 4$ succeed. It answers (ii) for the general equation but not (i), and supplies no unifying object.
 
-**Gauss's cyclotomic solution (1801).** Core idea: the equation $\frac{x^p-1}{x-1}=0$ for prime $p$ is solvable by radicals because the $p-1$ primitive roots are the powers of one of them, and their permutation structure is cyclic of order $p-1$; nesting "periods" of the cyclic structure gives the radical formula. Gap: it is one beautiful solvable family, with the cyclic structure exploited by hand; it is not a general theory, but it is the prototype that a *cyclic* layer of symmetry corresponds to a single radical extraction.
+**Gauss's cyclotomic solution (1801).** Core idea: the equation $\frac{x^p-1}{x-1}=0$ for prime $p$ is solvable by radicals because the $p-1$ primitive roots are the powers of one of them, and their permutation structure is cyclic of order $p-1$; nesting "periods" of the cyclic structure gives the radical formula. Gap: it is one beautiful solvable family, with the cyclic structure exploited by hand; it is not a general theory, and it gives no account of why the cyclic case yields while the generic equation might not.
 
 ## Evaluation settings
 
@@ -53,17 +53,8 @@ def base_field_of_known_quantities(coeffs, adjoined):
     # rational functions of the coefficients and the adjoined quantities
     pass  # the relative notion of "rational"
 
-def invariant_attached_to_equation(f, F):
-    # TODO: the object — defined purely from f and F — that controls solvability.
-    #       Lagrange points at permutations of the roots.
-    pass
-
-def what_solving_does_to_the_invariant(invariant, adjoin_prime_radical):
-    # TODO: how the invariant changes when one prime-degree radical is adjoined.
-    pass
-
 def criterion_for_solvability_by_radicals(f, F):
-    # TODO: the necessary-and-sufficient condition, stated on the invariant,
+    # TODO: a necessary-and-sufficient condition, defined purely from f and F,
     #       that decides whether f is solvable by radicals.
     pass
 

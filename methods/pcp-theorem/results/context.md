@@ -17,10 +17,9 @@ technique to settle it. The goal: a *general method to prove inapproximability* 
 polynomial-time algorithm approximates problem Π within factor c unless P = NP." The obstacle is that
 a standard Karp reduction preserves the *exact* optimum but is brittle near the optimum: a solution
 that is merely close-to-optimal in the target can pull back to a close-to-optimal solution of the
-source, so any "gap" between yes-instances and no-instances dissolves. What is needed is a
-**gap-producing reduction** — one that maps yes-instances to instances of large optimum and
-no-instances to instances of provably small optimum, with the gap surviving — and there was no
-general source of such gaps.
+source, so any "gap" between yes-instances and no-instances dissolves. Every reduction technique on
+hand has this character, and none keeps yes- and no-instances separated by a fixed margin once one
+looks past the exact optimum.
 
 **Q2 — How weak can a proof-verifier be and still check all of NP?** A second, internal-to-complexity
 question. NP, by definition, is the class whose membership proofs a deterministic poly-time verifier
@@ -73,34 +72,30 @@ NP ⊆ PCP(polylog n, polylog n). Feige–Goldwasser–Lovász–Safra–Szegedy
 more query-efficient verifier, NP ⊆ PCP(log n·log log n, log n·log log n), implicitly defining the
 parameters "number of random bits" and "number of proof bits read" as the quantities to minimize.
 
-**The gap connection (FGLSS), the diagnostic that fused Q1 and Q2.** FGLSS made the decisive
-observation linking proof checking to approximation. From an (r, q)-restricted verifier build a graph:
-vertices are pairs (random string ρ, a local "view" = an accepting setting of the q queried bits for
-ρ); connect two vertices if their views are mutually consistent (no proof location is assigned two
-different values). If a random string has at most a accepting local views, the graph has at most
-2^r·a vertices; for q queried bits, a ≤ 2^q. A clique in this graph is exactly a single proof string
-consistent across many random strings. If x is a yes-instance, the honest proof gives an accepting view
-for *every* ρ, so the graph has a clique of size 2^{r}; if x is a no-instance with soundness error s,
-every proof is accepted on at most an s-fraction of ρ, so the largest clique is at most s·2^{r}. The
-clique-size **gap** is the verifier's **soundness gap**. Hence: a low-query PCP for NP *manufactures* a
-hardness-of-approximation gap for clique, and the smaller the query count, the sharper the
-inapproximability factor. With the then-known NP ⊆ PCP(log n·log log n, log n·log log n) this already
-showed clique cannot be approximated within any constant unless NP ⊆ DTIME(n^{O(log log n)}). The
-barrier to a clean "P = NP" conclusion, and to inapproximability of MAX-3SAT (not just clique), was that
-the query count was *not constant*.
+**The gap connection (FGLSS), a construction that touches both questions.** FGLSS gave a graph
+construction associating a clique-style instance to a restricted verifier: from an (r, q)-restricted
+verifier build a graph whose vertices are pairs (random string ρ, a local "view" = an accepting setting
+of the q queried bits for ρ), with edges between mutually consistent views (no proof location assigned
+two different values). If a random string has at most a accepting local views, the graph has at most
+2^r·a vertices; for q queried bits, a ≤ 2^q. With the then-known
+NP ⊆ PCP(log n·log log n, log n·log log n) this graph route gave a partial statement about clique — a
+super-constant separation under the assumption NP ⊄ DTIME(n^{O(log log n)}). It did not reach a clean
+"P = NP" conclusion, nor any statement at all about MAX-3SAT (as opposed to clique): both the randomness
+and the query count of the available verifier were too large.
 
 **The state of play, stated as a target.** PCP(0, poly n) = NP (the static verifier);
 PCP(poly n, poly n) = MIP = NEXP. NP sits at randomness 0. The open question: does NP have an *exact*
-PCP characterization at randomness O(log n) — and how few proof bits can the verifier read? If NP were
-contained in PCP(o(log n), o(log n)), the FGLSS reduction would shrink clique instances to sublinear
-size and iteration would put clique, hence NP, in P. So O(log n) randomness is the natural floor. The
-query count was the prize.
+PCP characterization at randomness O(log n) — and how few proof bits can the verifier read? Randomness
+below O(log n) is suspect: a verifier with 2^{r} = poly(n) runs is the regime where its behaviour can be
+enumerated in polynomial time, which is why O(log n) reads as the natural floor. The query count was the
+prize.
 
 ## Baselines
 
 - **The static NP verifier (Cook 1971 / Karp 1972 / Levin 1973).** x ∈ L ⇒ ∃π accepted; x ∉ L ⇒ all π
-  rejected; verifier reads *all* of π. Limitation: reads the whole proof, deterministic, gives zero
-  soundness gap, hence no inapproximability leverage.
+  rejected; verifier reads *all* of π. Limitation: reads the whole proof, deterministic, and accepts a
+  false statement with probability 0 only because it reads everything — there is no soundness gap and no
+  randomized access to exploit.
 - **IP = PSPACE (LFKN 1990 sum-check; Shamir 1992).** Randomized verifier + one all-powerful prover,
   many rounds; arithmetize a quantified Boolean formula and run sum-check. Limitation: a single prover
   can adapt across rounds, the verifier reads prover messages "in plaintext," and the class is PSPACE —
@@ -111,13 +106,12 @@ query count was the prize.
   program is to scale the *engine* down by a logarithm while crushing the query count to O(1).
 - **Transparent / holographic proofs (Babai–Fortnow–Levin–Szegedy 1991): NP ⊆ PCP(polylog, polylog).**
   First scale-down to NP, checkable in polylog time on an encoded input. Limitation: both randomness
-  *and* query count are polylog — randomness above O(log n) and queries far above O(1), so the FGLSS gap
-  is sub-constant.
-- **FGLSS 1991: NP ⊆ PCP(log n·log log n, log n·log log n), and the PCP→clique gap reduction.** The
-  query-efficient verifier plus the graph construction turning soundness into a clique gap. Limitations:
-  (i) the randomness is log n·log log n, not O(log n), so the conclusion is NP ⊆ DTIME(n^{O(log log n)}),
-  not NP = P; (ii) the query count is non-constant, so the gap (hence inapproximability factor) is not a
-  constant — it gives only N^{1/poly log} for clique and *nothing* for MAX-3SAT, vertex cover, etc.
+  *and* query count are polylog — randomness above O(log n) and queries far above O(1).
+- **FGLSS 1991: NP ⊆ PCP(log n·log log n, log n·log log n), and the verifier→clique graph construction.**
+  The query-efficient verifier plus the graph associating a clique instance to a restricted verifier.
+  Limitations: (i) the randomness is log n·log log n, not O(log n), so the conclusion is
+  NP ⊆ DTIME(n^{O(log log n)}), not NP = P; (ii) the query count is non-constant, so what the graph route
+  yields is only N^{1/poly log} for clique and *nothing* for MAX-3SAT, vertex cover, etc.
 - **Approximation-preserving reductions and MAX SNP (Papadimitriou–Yannakakis 1991).** A syntactic
   class (defined via second-order logic à la Fagin 1974) of optimization problems closed under an
   approximation-preserving reduction, with complete problems MAX-3SAT, MAX-CUT, vertex cover, metric
@@ -179,30 +173,14 @@ def arithmetize_3CNF(phi):
     # AND/OR/NOT -> field (x*y, 1-x, sums over {0,1}); 3-CNF -> low-degree poly
     pass
 
-# ---- Open slots --------------------------------------------------------------
+# ---- Open slot ---------------------------------------------------------------
 
 class Verifier:
     """An (r(n), q(n))-restricted verifier: uses r(n) random bits, reads q(n)
        proof symbols, accepts true x with prob 1, rejects false x with prob<=1/2."""
     def run(self, x, proof_oracle, randomness):
-        # TODO: build the (log n, O(1)) verifier for an NP-complete language.
-        #   - encode the witness as a LOW-DEGREE object (arithmetization)  [TODO]
-        #   - check it locally (low-degree test + an assignment/consistency
-        #     test + query aggregation) reading only O(1) symbols           [TODO]
-        #   - get the answer size down to O(1) by PROOF COMPOSITION         [TODO]
+        # TODO: build the (log n, O(1)) verifier for an NP-complete language,
+        #       and work out what its existence does or does not say about the
+        #       approximation status of the optimization problems above.
         pass
-
-def pcp_to_gap_reduction(x, V):
-    """Turn the verifier V into a hardness-of-approximation gap instance."""
-    # TODO: for each random string r, the q queried bits + accept-predicate
-    #       become one constraint / a few 3-CNF clauses; aggregate over all r.
-    #   yes-instance  -> gap-free (all constraints satisfiable)
-    #   no-instance   -> >= constant fraction of constraints unsatisfiable
-    pass
-
-def gap_to_pcp_verifier(reduction):
-    """The converse: a gap instance gives a verifier that samples one constraint."""
-    # TODO: compute the constraint system; expect proof = assignment; pick a
-    #       random constraint with O(log n) bits; query its O(1) variables.
-    pass
 ```

@@ -95,15 +95,15 @@ distribution (no density or randomness assumption on messages), and for *every* 
 the adversary might try to compute (the identity, a predicate, a hash — recursive or not). The standing
 hardness benchmarks are: factoring n = p·q for large primes (the assumed-hard problem behind RSA/Rabin),
 and deciding quadratic residuosity mod a composite of unknown factorization on Jacobi-+1 inputs.
-Comparisons of a-posteriori versus a-priori message probabilities (Shannon's perfect-secrecy criterion)
-provide the conceptual target, now to be relaxed to polynomially bounded adversaries.
+Shannon's perfect-secrecy criterion (a-posteriori message probabilities equal to the a-priori ones)
+is the information-theoretic reference point, but it is unachievable with short keys against the
+unbounded adversary it presumes.
 
 ## Code framework
 
 A public-key scheme over the integers mod n can already rely on standard number-theoretic primitives
 (Jacobi symbol, Euler's criterion, CRT square roots) and the usual public-key harness (key generation,
-encrypt, decrypt). The open slots are the public auxiliary value, the secret trapdoor, the role of
-randomness in encryption, and the test that decryption applies.
+encrypt, decrypt). The encoding rule and the corresponding key material are left open.
 
 ```python
 from math import gcd
@@ -115,16 +115,13 @@ def is_qr_mod_prime(a, p): ... # Euler's criterion: a^((p-1)/2) mod p == 1
 # --- public-key harness ---
 def keygen(k):
     # pick two k-bit primes p, q; n = p*q.
-    # TODO: choose any public auxiliary value and the corresponding trapdoor secret.
+    # TODO: fill in the key material.
     public_key = None   # TODO
     secret_key = None   # TODO
     return public_key, secret_key
 
 def encrypt(message, public_key):
     # TODO: choose the encoding rule.
-    #   Open questions:
-    #     - deterministic map or randomized sampler?
-    #     - whole-message block or independent components?
     pass
 
 def decrypt(ciphertext, secret_key):

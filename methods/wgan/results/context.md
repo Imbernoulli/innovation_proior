@@ -17,13 +17,11 @@ The implicit-sample approach — fix a prior `z ~ p(z)`, push it through `g_thet
 `P_theta`, vary `theta` to bring `P_theta` close to `P_r` — sidesteps densities entirely
 and can represent manifold-supported distributions. The open question is how to measure
 "close": which distance `rho(P_theta, P_r)` should be the training loss? The choice is not
-cosmetic. A distance defines which sequences of distributions converge; a *weaker* distance
-makes convergence easier, which makes the map `theta -> P_theta` more likely to be
-continuous, which makes `theta -> rho(P_theta, P_r)` a continuous (and ideally
-differentiable) loss we can do gradient descent on. So the precise goal is: find a distance
-between distributions that (a) stays finite and continuous even when the two supports do not
-overlap, (b) yields informative gradients with respect to the generator parameters, and
-(c) can be estimated and differentiated cheaply from samples with a neural network.
+cosmetic. A distance defines which sequences of distributions converge, and the
+training loss `theta -> rho(P_theta, P_r)` can only be descended by gradient methods if it is
+continuous in `theta` — yet, as the diagnostics below record, the distances in current use go
+flat or infinite exactly in the non-overlapping-support regime that the manifold geometry forces.
+The problem is to find a training loss that survives that regime.
 
 # Background
 
@@ -88,9 +86,8 @@ strong topology up to a constant; the unit ball of an RKHS gives Maximum Mean Di
 (Gretton et al. 2012), which needs no auxiliary network
 (kernel trick) but costs `O(samples^2)` and in high dimensions needs very large batches to
 be a reliable statistic (Ramdas et al. 2014). Energy-based GANs (Zhao et al. 2016) can be
-shown to optimize total variation at the optimal energy. The lesson collected here is that
-the *function class* in an IPM, not the formula, determines whether the resulting loss has a
-weak topology and clean gradients.
+shown to optimize total variation at the optimal energy. Different choices of the function
+class `F` thus yield IPMs that recover quite different distances and topologies.
 
 # Baselines
 

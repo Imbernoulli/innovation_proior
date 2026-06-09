@@ -123,25 +123,13 @@ def density(G, X, Y):
 
 def is_uniform_pair(G, A, B, eps):
     """Does (A,B) behave like a random block at tolerance eps?
-    TODO: define a usable local-discrepancy condition and, separately,
-    the certificate of failure (witness subsets) when it does not hold."""
-    pass
-
-def block_score(G, A, B):
-    """A per-pair scalar that a good partition should make large.
-    TODO: choose the functional whose monotone behaviour under refinement
-    will drive the whole argument."""
-    pass
-
-def partition_score(G, parts):
-    """Aggregate the per-pair scores over a partition.
-    TODO: sum block_score over pairs of parts; this must be bounded a priori."""
+    TODO: fill in."""
     pass
 
 def refine(G, parts, eps):
     """Given a partition that is not yet good enough, produce a finer one.
-    TODO: use the failure certificates of the bad pairs to cut the parts,
-    re-balance to equal sizes, and sweep leftovers into an exceptional set."""
+    TODO: fill in; re-balance to equal sizes and sweep leftovers into an
+    exceptional set."""
     pass
 
 def decompose(G, eps, m):
@@ -149,13 +137,7 @@ def decompose(G, eps, m):
     Open question: does this loop
     terminate after a number of steps bounded independently of |V(G)|?"""
     parts = initial_equipartition(G, m)        # m equal parts + exceptional set
-    while not partition_is_good(G, parts, eps): # TODO: 'good' = few non-uniform pairs
+    while not partition_is_good(G, parts, eps): # 'good' = few non-uniform pairs
         parts = refine(G, parts, eps)
     return parts
-
-def reduced_object(G, parts, eps, d):
-    """The bounded-size weighted blueprint built from a good partition:
-    a vertex per part, a weighted edge per uniform pair of density >= d.
-    TODO: this is the object that should control subgraph counts in G."""
-    pass
 ```

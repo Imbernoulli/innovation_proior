@@ -56,7 +56,7 @@ one on the noise-prediction MSE), which improves samples but is no longer the li
 implementations of the discrete-time loss compute intermediate quantities very close to 1, where floating
 point is least precise; practitioners resort to 64-bit arithmetic to get correct results. (3) The noise
 schedule (the shape of `SNR(t)`) is hand-designed — β-linear, cosine — and treated as a fixed hyperparameter;
-different schedules give very different bounds and very different estimator variance. (4) At the lowest noise
+different schedules give very different bounds. (4) At the lowest noise
 levels the marginal `q(z_t)` is sharply peaked because 8-bit pixel data is discrete; a denoiser that processes
 data only through smooth convolutions struggles to capture this fine-scale structure, and likelihood (unlike
 FID) is acutely sensitive to it.
@@ -109,8 +109,7 @@ denoisers trained with Adam, exponential-moving-average parameters for evaluatio
 The pieces below already exist before the method: a data pipeline that yields integer pixel batches, an
 optimizer, a U-Net-style convolutional backbone that maps a noisy image (plus a scalar time/level embedding)
 to an output of the same shape, and a training loop that averages a per-example loss. The contribution will
-fill the empty slots: the exact corruption marginal, the three-part bound, the transition loss, the schedule,
-and the input featurization.
+fill the empty slots below.
 
 ```python
 import jax, jax.numpy as jnp
@@ -134,7 +133,7 @@ class EncDec(nn.Module):
 
 class NoiseSchedule(nn.Module):
     """Maps t in [0,1] to a scalar level controlling how much signal vs noise.
-    TODO: decide the functional form and whether/how it is learned."""
+    TODO: decide the functional form."""
     @nn.compact
     def __call__(self, t):
         raise NotImplementedError
@@ -150,7 +149,7 @@ class GenerativeModel(nn.Module):
         # TODO: encode x; define the corruption marginal q(z_t|x);
         # TODO: reconstruction term  E_q[-log p(x|z_0)]
         # TODO: prior term           KL(q(z_1|x) || p(z_1))
-        # TODO: the per-transition / continuous-time corruption loss
+        # TODO: the corruption loss over the chain of transitions
         # return the three terms whose sum is the negative bound
         raise NotImplementedError
 
@@ -160,7 +159,7 @@ class GenerativeModel(nn.Module):
 
 
 def featurize_input(z):
-    # TODO: how to present z to the denoiser so it can model fine pixel-level detail
+    # TODO: how to present z to the denoiser
     return z
 
 

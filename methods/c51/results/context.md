@@ -52,25 +52,19 @@ return's CDF; Tamar et al., 2016, learning the return variance under linear appr
 Prashanth & Ghavamzadeh, 2013, a risk-sensitive actor-critic). Mannor & Tsitsiklis (2011) give
 negative results on computing variance-constrained optimal solutions.
 
-**The Wasserstein metric.** For two CDFs $F,G$ over the reals the Wasserstein (Mallows /
-Kantorovich) metric is
+**Metrics between distributions.** Several established notions of distance between probability
+distributions are available off the shelf. Transport-based distances such as the Wasserstein
+(Mallows / Kantorovich) metric, for two CDFs $F,G$ over the reals,
 $$d_p(F,G)=\inf_{U,V}\|U-V\|_p=\Big(\int_0^1\big|F^{-1}(u)-G^{-1}(u)\big|^p\,du\Big)^{1/p},$$
-the infimum over all couplings, attained by the inverse-CDF (quantile) coupling. It is a
-*horizontal*, transport-based distance between distributions: it measures how far probability
-mass must be moved, and so is finite and well-behaved even when two distributions have disjoint
-supports. It satisfies, for a scalar $a$ and a random variable $A$ independent of $U,V$:
-$d_p(aU,aV)\le|a|\,d_p(U,V)$ (P1, scaling), $d_p(A+U,A+V)\le d_p(U,V)$ (P2, shift), and
-$d_p(AU,AV)\le\|A\|_p\,d_p(U,V)$ (P3). By contrast, "vertical" / overlap-based discrepancies —
-total variation, Kullback-Leibler divergence, the Kolmogorov sup-CDF distance — assign maximal
-distance to disjoint-support distributions regardless of how close their supports are, and have
-no scaling property analogous to P1. Chung & Sobel (1987) already exhibited that the
+the infimum over couplings, attained by the inverse-CDF (quantile) coupling. Overlap-based
+discrepancies — total variation, Kullback-Leibler divergence, the Kolmogorov sup-CDF distance —
+compare probability mass at matched locations. Chung & Sobel (1987) already exhibited that the
 distribution-level operator fails to contract in total variation.
 
 **Instability of greedy updates.** Independently of distributions, it is known that the greedy
 (control) update can be poorly behaved under approximation: Tsitsiklis & Van Roy (1996) and
 Gordon (1995) document oscillation/"chattering" of greedy policies, and Harutyunyan et al. (2016)
-revisit related instabilities. This is relevant because anything that softens or averages the
-greedy update may inherit better stability.
+revisit related instabilities.
 
 **Empirical motivation.** Veness et al. (2015) obtained very fast learning on Atari by directly
 predicting Monte-Carlo returns with a density model (Compress and Control), leaving open whether

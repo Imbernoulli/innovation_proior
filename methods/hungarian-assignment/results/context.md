@@ -62,15 +62,10 @@ extends the matching or terminates, and when no transfer can free a column the c
 maximum, and the lines through the "essential" rows/columns form a cover of exactly that size.
 
 **Egerváry's generalization (integers).** J. Egerváry (1931; the relevant paper was translated from
-Hungarian in 1953) extended König from 0/1 matrices to integer-weighted ones. His device is exactly
-the dual potentials: maintain integers `u_i, v_j` with `u_i + v_j ≥ r_ij`, call a position `(i, j)`
-**tight** (or "qualified") when `u_i + v_j = r_ij`, and observe that an assignment using only tight
-positions, together with the dual `(u, v)`, satisfies weak duality with equality — hence both are
-optimal. The tight positions form a 0/1 qualification matrix, so finding a best assignment among
-tight positions is a König problem. When no full assignment exists among the tight positions,
-Egerváry's contribution is the rule for adjusting `(u, v)` to expose new tight positions while
-keeping `u_i + v_j ≥ r_ij` and *decreasing* the dual objective `Σ u_i + Σ v_j`. Thus the integer
-problem reduces to a finite sequence of König (0/1) problems linked by dual updates.
+Hungarian in 1953) extended König's min–max theorem from 0/1 matrices to integer-weighted ones,
+phrasing the result in terms of integer row and column numbers `u_i, v_j`. König's 0/1 statement is
+thus known to be a special case of a result about integer-weighted matrices, though Egerváry's paper
+states the theorem rather than packaging it as an algorithm for general ratings.
 
 **Augmenting paths (the matching engine).** Finding a maximum matching in a bipartite graph is done
 by alternating/augmenting paths. An **alternating path** alternates between non-matching and
@@ -83,10 +78,12 @@ exposed vertex), augment, and stop when none exists — at which point König's 
 the vertices reachable by alternating paths.
 
 **The computational pressure.** Available linear-programming machinery treats the assignment
-instance as a dense collection of variables and degenerate constraints, while the combinatorial
-view exposes a small certificate: a matching and a covering family of lines, or a matching and dual
-potentials. The practical pull is to replace a generic tableau calculation by repeated matching and
-dual-adjustment steps whose intermediate states can be inspected directly.
+instance as a dense collection of variables and degenerate constraints, and its intermediate
+tableau states bear no visible relation to the combinatorial objects (matchings, covers) that make
+the answer checkable by hand. König's constructive 0/1 procedure, by contrast, runs only on
+qualification matrices and does not by itself act on general integer ratings, so neither available
+tool is both fast on this structure and equipped with a hand-checkable certificate for the full
+integer problem.
 
 ## Baselines
 
@@ -128,21 +125,15 @@ permutations.
 
 ## Code framework
 
-Available pieces: a cost/rating matrix, the dual potentials with their feasibility test, a
-tight-position (qualification) matrix derived from the potentials, a bipartite maximum-matching
-routine via augmenting paths, and a brute-force checker for small instances. The remaining slot is
-the assignment loop that combines matching with a dual update.
+Available pieces: a cost/rating matrix, a bipartite maximum-matching routine via augmenting paths,
+a König minimum-line-cover routine that reads a cover off such a matching, and a brute-force checker
+for small instances. The solver itself is left to be filled in.
 
 ```python
 INF = float("inf")
 
 def cost_at(cost, i, j):
     return cost[i][j]
-
-def tight_positions(cost, u, v):
-    """Positions (i,j) with reduced cost c_ij - u_i - v_j == 0, given dual (u,v)."""
-    n = len(cost)
-    return [[cost[i][j] - u[i] - v[j] == 0 for j in range(n)] for i in range(n)]
 
 def bipartite_max_matching(adj):
     """Maximum matching on a 0/1 adjacency.
@@ -156,8 +147,8 @@ def min_vertex_cover_from_matching(adj, match_col, match_row):
     pass
 
 def solve_assignment(cost):
-    """Fill in the primal-dual assignment loop."""
-    # TODO: combine tight-edge matching, cover extraction, and potential update.
+    """Return an optimal assignment (permutation) and its total cost."""
+    # TODO: fill in.
     pass
 
 def brute_force(cost):

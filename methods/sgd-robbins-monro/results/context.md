@@ -16,7 +16,7 @@ The deterministic version of this problem is classical. If $M(x)$ is *known* exa
 
 The statistical machinery for "measure a mean through noise" is equally classical and points the opposite way. To estimate $M(x)$ at a single fixed $x$, the law of large numbers says: draw $m$ independent responses $Y^{(1)}(x),\dots,Y^{(m)}(x)$, average them, and the sample mean $\bar Y_m(x)$ concentrates around $M(x)$ with error of order $\sigma/\sqrt{m}$ (the central limit theorem sharpens this to a $1/\sqrt m$ Gaussian width). So pinning $M(x)$ down to within $\varepsilon$ costs on the order of $\sigma^2/\varepsilon^2$ experiments — *at that one level $x$*. This is the standard, trusted way to fight noise: repeat and average.
 
-Two further pieces of background are load-bearing. First, the theory of martingales: Doob's convergence theorem says a nonnegative supermartingale (a sequence whose conditional expectation never increases, $\mathbb{E}[Z_{n+1}\mid \mathcal F_n] \le Z_n$) converges almost surely to a finite limit. This is the natural tool whenever a nonnegative "energy" can be shown to drift downward in expectation. Second, and more elementary, the bias–variance character of a step size: in any noisy update of the form $x_{n+1} = x_n + a\cdot(\text{noisy signal})$, a large gain $a$ moves fast but injects a lot of the observation's noise into the iterate, while a small gain injects little noise but moves slowly. With a *fixed* gain $a$ the retained noise has variance on the order of $a$ and never disappears, so the iterate settles into a permanent jitter rather than a point.
+Two further pieces of background are load-bearing. First, the theory of martingales: Doob's convergence theorem says a nonnegative supermartingale (a sequence whose conditional expectation never increases, $\mathbb{E}[Z_{n+1}\mid \mathcal F_n] \le Z_n$) converges almost surely to a finite limit. This is the natural tool whenever a nonnegative "energy" can be shown to drift downward in expectation. Second, and more elementary, the bias–variance character of a step size: a large gain moves fast but injects a lot of the observation's noise into the iterate, while a small gain injects little noise but moves slowly.
 
 There is also a known phenomenon about the obvious composite strategy. Suppose we estimate $M$ on a grid by averaging at each grid point, then root-find on the estimated curve. The averaging cost $\sigma^2/\varepsilon^2$ is paid *at every grid point*, including points far from $\theta$ where the value of $M$ is irrelevant to locating the root. The sampling budget is spent establishing the whole curve to high precision when all we wanted was one level-crossing. This is the diagnostic pain that any efficient method must avoid: estimation and search are decoupled, and the estimation half does work that the search half throws away.
 
@@ -38,7 +38,7 @@ so the mean response is $M(x)=F(x)$ and the noise is Bernoulli. The yardstick is
 
 ## Code framework
 
-The available machinery is just a noisy oracle, an empty search routine, and a step-size schedule. The missing piece is the body of `root_find`.
+The available machinery is just a noisy oracle, an empty search routine, and a step-size schedule.
 
 ```python
 import numpy as np
@@ -70,6 +70,6 @@ def root_find(observe, alpha, x0, n_steps):
 # --- maximization variant (peak of M, gradient unobservable) ---
 def maximize(observe, x0, n_steps):
     """Reach the maximizer of M using only noisy values of M (no analytic gradient)."""
-    # TODO: how to estimate the slope from noisy values, and how fast to shrink the probe width?
+    # TODO
     pass
 ```

@@ -6,7 +6,7 @@ The aim is to design a *basic* convolutional architecture that achieves the best
 
 The dominant trend is bigger: the most accurate CNNs stack hundreds of layers and thousands of channels and cost billions of FLOPs. The opposite extreme — the best accuracy achievable in a budget of only tens to hundreds of MFLOPs — is comparatively unexplored as an *architecture* problem. Much prior efficiency work takes a "basic" network and then prunes it, compresses it, or quantizes it to low-bit; the question here is different: what is the most efficient *basic architecture* one can design directly for these very small budgets?
 
-The sharp problem hides in where the FLOPs actually go. The state-of-the-art efficient building blocks (depthwise separable convolutions, grouped 3×3 convolutions) make the *spatial* convolution cheap — but they leave the **1×1 (pointwise) convolutions dense**, and in a small network the pointwise convolutions then dominate the cost. So the precise question: in the tiny-budget regime, how do you cut the cost of the pointwise convolutions too, without crippling the network's ability to mix information across channels — and thereby, for a fixed FLOP budget, afford *more channels* (which a tiny network badly needs, since too few channels cannot carry enough information)?
+The sharp problem hides in where the FLOPs actually go. The state-of-the-art efficient building blocks (depthwise separable convolutions, grouped 3×3 convolutions) make the *spatial* convolution cheap — but they leave the **1×1 (pointwise) convolutions dense**, and in a small network the pointwise convolutions then dominate the cost. So the precise question: in the tiny-budget regime, how do you bring down the cost of the pointwise convolutions too — and thereby, for a fixed FLOP budget, afford *more channels* (which a tiny network badly needs, since too few channels cannot carry enough information)?
 
 ## Background
 
@@ -17,7 +17,6 @@ By mid-2017 several efficient-convolution ideas are established, and the relevan
 - **Depthwise separable convolution.** Factor a standard convolution into a *depthwise* convolution (one filter per input channel, no cross-channel mixing) followed by a *pointwise* `1×1` convolution (which does the channel mixing). The depthwise step is extremely cheap in theory. Used to build state-of-the-art lightweight models. A practical caveat: depthwise convolution has a poor compute-to-memory-access ratio, so on low-power mobile hardware it is hard to implement efficiently and is best applied sparingly.
 - **No nonlinearity after a depthwise convolution.** Established practice (Xception): putting a ReLU right after a depthwise convolution hurts, so the rectifier is omitted there.
 - **Batch Normalization** after convolutions, and ReLU as the nonlinearity, are standard in residual/grouped blocks.
-- **A latent primitive.** A "random sparse convolution" — a random channel permutation followed by a grouped convolution — exists in an early CNN library, but was used for a different purpose and seldom exploited.
 
 The diagnostic observation that motivates the whole design: in a grouped-3×3 residual network at small scale, the *pointwise* (1×1) convolutions occupy the overwhelming majority of the multiply-adds — about 93% of a residual unit's compute when only the 3×3 layers are grouped (cardinality 32). So in a tiny network the dense pointwise convolutions are what force the channel count to stay small under the budget, and a too-small channel count is exactly what limits accuracy in tiny networks (thin feature maps cannot carry enough information). A second diagnostic, about regularization: very small networks tend to *underfit* rather than overfit, so they want lighter weight decay and gentler data augmentation than large networks.
 
@@ -36,12 +35,12 @@ The diagnostic observation that motivates the whole design: in a grouped-3×3 re
 - **ImageNet-2012 classification, 1000 classes.** Metric: single-crop top-1 error — center 224×224 crop from a 256× resized image — on the validation set. Models are compared at *matched FLOP budgets* (≈140 MFLOPs, ≈40 MFLOPs, ≈13 MFLOPs) so accuracy differences reflect the architecture, not the budget.
 - **MS COCO object detection** as a transfer test of the learned features.
 - **Cost metric.** FLOPs (multiply-adds), held fixed across compared models. Crucially, *actual* inference latency on real mobile hardware (an off-the-shelf ARM core) is also a first-class metric, because theoretical FLOPs and wall-clock speed can diverge (e.g. depthwise convolution's poor memory-access behavior).
-- **Controlled comparisons that exist at the time.** Vary the number of groups `g` at fixed complexity (adapting channel widths to hold FLOPs constant); toggle a candidate cross-channel-mixing operation on and off; swap the whole building block for the ResNet / ResNeXt / Xception-style / VGG-like alternatives at the same budget.
+- **Controlled comparisons that exist at the time.** Vary the number of groups `g` at fixed complexity (adapting channel widths to hold FLOPs constant); ablate individual components of a building block on and off; swap the whole building block for the ResNet / ResNeXt / Xception-style / VGG-like alternatives at the same budget.
 - **Training protocol (inherited from the grouped-residual recipe, with small-net adjustments).** SGD, batch 1024 across 4 GPUs, ~3×10⁵ iterations; lighter weight decay (4e-5) and a linearly decayed learning rate (0.5 → 0), with less aggressive scale augmentation — because tiny networks underfit.
 
 ## Code framework
 
-The available code is a residual-network image-classification harness whose convolution primitive supports a `groups` argument (grouped and depthwise convolution). The libraries supply grouped/depthwise convolution, batch normalization, ReLU, pooling, an SGD optimizer with a linear LR schedule, and a cross-entropy loss. The scaffold is the harness with two empty slots: the cross-channel-mixing operation, and the efficient building unit that the stages repeat.
+The available code is a residual-network image-classification harness whose convolution primitive supports a `groups` argument (grouped and depthwise convolution). The libraries supply grouped/depthwise convolution, batch normalization, ReLU, pooling, an SGD optimizer with a linear LR schedule, and a cross-entropy loss. The scaffold is the harness with one empty slot: the efficient building unit that the stages repeat.
 
 ```python
 import torch
@@ -59,18 +58,11 @@ def depthwise_conv3x3(channels, stride=1):
                      padding=1, groups=channels, bias=False)
 
 
-def mix_channels(x, groups):
-    # TODO: the cross-channel mixing operation. After a grouped convolution,
-    # each output channel depends only on its own group's inputs. Something is
-    # needed here to let information move between groups. Open.
-    raise NotImplementedError
-
-
 class Unit(nn.Module):
     # TODO: the efficient building unit we'll design. Known going in: a residual
     # block of bottleneck shape (reduce -> spatial -> expand) added onto a
     # shortcut. Open: which of its convolutions are grouped vs dense vs depthwise,
-    # where the cross-channel mixing goes, and how the stride-2 (downsampling)
+    # what (if anything) goes between them, and how the stride-2 (downsampling)
     # variant matches and combines the shortcut.
     def __init__(self, in_ch, out_ch, groups=3, stride=1):
         super().__init__()
@@ -84,7 +76,7 @@ class Net(nn.Module):
     # Fixed by the residual template: a 3x3/stride-2 stem + maxpool, then three
     # stages that repeat `Unit` (first unit per stage downsamples; channels
     # double per stage; bottleneck = 1/4 of output channels), global average
-    # pool, and a classification FC. The unit and the mixing op are the slots.
+    # pool, and a classification FC. The building unit is the slot.
     def __init__(self, groups=3, num_classes=1000, scale=1.0):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 24, kernel_size=3, stride=2, padding=1, bias=False)

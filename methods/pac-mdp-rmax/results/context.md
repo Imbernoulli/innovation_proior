@@ -43,7 +43,7 @@ The natural yardstick is a finite, general MDP given by N states and k actions p
 
 ## Code framework
 
-The generic harness for a model-based RL algorithm has three pieces: a representation of the empirical model, an MDP planner (value iteration, which already exists), and the online loop. The unresolved part is what to put in place of the unknown parts of the model and how to decide when an estimate may be trusted.
+The generic harness for a model-based RL algorithm has three pieces: a representation of the empirical model, an MDP planner (value iteration, which already exists), and the online loop. The unresolved part is what the agent should do about the slots it has not yet pinned down.
 
 ```python
 import numpy as np
@@ -81,9 +81,8 @@ def value_iteration(P, R, gamma, horizon):
 
 def build_planning_model(emp: EmpiricalModel, params):
     """Given running statistics, produce the transition/reward model
-    for planning and the rule for deciding which state-action estimates
-    are trustworthy enough to use as-is versus how to treat the rest."""
-    # TODO: how to fill in not-yet-trustworthy (s,a); the trust threshold.
+    handed to the planner each round."""
+    # TODO: turn the running statistics into the model the planner sees.
     pass
 
 

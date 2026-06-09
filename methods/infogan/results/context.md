@@ -51,22 +51,18 @@ far required supervision. The load-bearing concepts a solution rests on:
 - **Mutual information.** For random variables `X, Y`,
   `I(X; Y) = H(X) − H(X|Y) = H(Y) − H(Y|X)`, the reduction in uncertainty about one from observing the
   other. `I(X; Y) = 0` iff `X` and `Y` are independent; it is maximal when one is a deterministic,
-  invertible function of the other. Read as a design target: if a latent code and a generated image
-  have high mutual information, the information in the code is *preserved* in the image and cannot have
-  been thrown away.
+  invertible function of the other.
 
 - **Variational Information Maximization (Barber & Agakov, 2003).** Mutual information involving a
   posterior `P(c|x)` that cannot be evaluated can still be *lower-bounded* by introducing an auxiliary
   distribution `Q(c|x)` that approximates the true posterior. The bound becomes tight as `Q` approaches
   `P(·|x)`. Similar mutual-information objectives have been used to drive clustering (Bridle et al.,
-  1992; Krause et al., 2010). This is the tool that converts an intractable information target into
-  something differentiable.
+  1992; Krause et al., 2010).
 
 - **The Helmholtz machine and Wake-Sleep (Dayan et al., 1995; Hinton et al., 1995).** A generative
   model `P(x|c)` paired with a learned recognition model `Q(c|x)`, trained by alternating a "wake"
   phase (update the generator on data passed through the recognition net) and a "sleep" phase (update
-  the recognition net on the generator's own dreamed samples). The template for bolting a recognition
-  network onto a generator.
+  the recognition net on the generator's own dreamed samples).
 
 ## Baselines
 
@@ -125,12 +121,10 @@ The benchmarks, datasets, and protocol that form the natural yardstick:
 ## Code framework
 
 The available substrate is a stable convolutional adversarial-training harness (the
-strided-conv / batchnorm / leaky-ReLU recipe with Adam) into which a structured latent input and a
-recognition mechanism must be added. What exists: a generator that takes a single latent vector, a
-discriminator/classifier body, a binary cross-entropy adversarial loss, and the alternating update
-loop. What is missing: how to *structure* the latent input so that part of it carries semantics, an
-auxiliary mechanism to *recover* that structured part from a generated image, and the loss that ties
-the two together.
+strided-conv / batchnorm / leaky-ReLU recipe with Adam). What exists: a generator that takes a single
+latent vector, a discriminator/classifier body, a binary cross-entropy adversarial loss, and the
+alternating update loop. What is missing is whatever it takes to make a single latent coordinate
+correspond to a single semantic factor without supervision.
 
 ```python
 import torch
@@ -142,34 +136,27 @@ class Generator(nn.Module):
     # maps a latent vector -> an image (stable up-convolutional architecture)
     def __init__(self):
         super().__init__()
-        # TODO: how should the latent INPUT be structured so that part of it
-        #       carries recoverable semantic factors?
         self.net = None
     def forward(self, latent):
         pass
 
 class Discriminator(nn.Module):
-    # shared convolutional body + a real/fake head
+    # convolutional body + a real/fake head
     def __init__(self):
         super().__init__()
         self.body = None                  # conv stack (leaky-ReLU, batchnorm)
         self.validity_head = None         # -> scalar P(real)
-        # TODO: an auxiliary head that RECOVERS the structured part of the latent
-        #       from the generated image, and its output parameterization
     def forward(self, x):
         pass
 
 adversarial_loss = nn.BCELoss()           # the GAN game's loss
-# TODO: the loss that forces the generator to actually USE the structured latent,
-#       and how it is optimized jointly with the recovery mechanism
+# TODO: ?
 
 def train_step(real, opt_g, opt_d):
     # 1) update D on real vs. fake (adversarial)
     # 2) update G to fool D (adversarial)
-    # 3) TODO: an update that maximizes how recoverable the structured latent is
     pass
 ```
 
-This harness can train a stable convolutional adversarial pair, but it has no notion of a structured
-latent code, no mechanism to recover one, and no objective tying a latent coordinate to a semantic
-factor — those are the open problems.
+This harness can train a stable convolutional adversarial pair, but nothing in it ties a latent
+coordinate to a semantic factor — that is the open problem.

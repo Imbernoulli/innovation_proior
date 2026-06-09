@@ -16,7 +16,7 @@ The disruption: Vision Transformers (Dosovitskiy et al. 2021) split an image int
 
 A few load-bearing concepts and diagnostic facts about existing systems:
 - A modern training recipe alone is known to lift a plain ResNet-50 well above its original reported accuracy — recent studies (Bello et al. 2021; Wightman et al. 2021) show this. The original torchvision ResNet-50 reports 76.1% top-1 on ImageNet-1K trained for 90 epochs.
-- Depthwise convolution mixes information only across spatial positions, per channel; a 1×1 convolution mixes only across channels. Self-attention likewise computes a spatially-varying weighted sum applied per channel, and its MLP mixes channels — the two families share a "separate spatial and channel mixing" structure.
+- Depthwise convolution mixes information only across spatial positions, per channel; a 1×1 convolution mixes only across channels. Self-attention computes a spatially-varying weighted sum over tokens, and the Transformer MLP operates per token across channels.
 - BatchNorm, while standard in ConvNets, has known intricacies — dependence on batch statistics, train/test discrepancy, and interactions with running averages — that can hurt models in some regimes; LayerNorm, used throughout Transformers, is per-sample and sidesteps these. Directly swapping LayerNorm for BatchNorm in a vanilla ResNet is known to degrade accuracy (Wu & Johnson 2021).
 - GELU (Hendrycks & Gimpel 2016), x·Φ(x) with Φ the standard Gaussian CDF, is a smooth variant of ReLU used in BERT, GPT, and ViT.
 - LayerScale (Touvron et al. 2021, CaiT): a per-channel learnable diagonal applied to each residual branch's output, initialized to a small value so each block begins close to identity, which eases optimization of deep stacks.
@@ -44,7 +44,7 @@ The natural points of comparison are the strong models a new backbone would be m
 
 ## Code framework
 
-The primitives that already exist: PyTorch `nn.Conv2d` (including grouped/depthwise via `groups`), `nn.Linear`, `nn.GELU`, normalization layers, and the stochastic-depth `DropPath` and truncated-normal init from `timm`. A staged backbone is built from a stem, a sequence of resolution stages each made of repeated residual blocks, optional downsampling between stages, a global pool, and a linear classifier head. The contribution will live inside the residual block and the stem/downsampling structure.
+The primitives that already exist: PyTorch `nn.Conv2d` (including grouped/depthwise via `groups`), `nn.Linear`, `nn.GELU`, normalization layers, and the stochastic-depth `DropPath` and truncated-normal init from `timm`. A staged backbone is built from a stem, a sequence of resolution stages each made of repeated residual blocks, optional downsampling between stages, a global pool, and a linear classifier head.
 
 ```python
 import torch

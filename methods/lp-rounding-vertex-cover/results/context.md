@@ -61,12 +61,10 @@ unit weights, an integral cover needs 2 vertices, but setting every x_v = 1/2 sa
 constraint (1/2 + 1/2 = 1) at total cost 3/2 < 2. So the fractional optimum can be strictly below the
 integral optimum — the relaxation is a true relaxation, not an exact reformulation.
 
-**A structural curiosity of the vertex-cover polyhedron.** Beyond merely being solvable, the vertex-cover LP
-has special structure. Each edge constraint touches exactly two variables, and each bound constraint touches
-one. In matrices with this two-variables-per-inequality shape, every nonseparable square block has determinant
-0, ±1 or ±2; separable matrices split into such blocks. That determinant structure is the algebraic source of
-half-integrality: basic (extreme-point) solutions of the vertex-cover LP take only the values 0, 1/2, 1. This
-makes the relationship between the fractional and integral problems unusually tight.
+**A structural feature of the vertex-cover polyhedron.** Beyond merely being solvable, the vertex-cover LP
+has special structure: each edge constraint touches exactly two variables, and each bound constraint touches
+one. This two-variables-per-inequality shape is unusual among linear programs and is worth keeping in view
+when reasoning about the extreme points the simplex method returns.
 
 ## Baselines
 
@@ -95,16 +93,14 @@ The natural yardstick is worst-case approximation ratio: the supremum over all i
 returned)/OPT, proved analytically rather than measured. Instances are weighted and unweighted graphs G with
 vertex weights w : V → Q₊. Relevant input regimes for the analysis are general graphs, planar/cubic graphs
 (where exactness is still NP-hard), and bipartite graphs (where the LP is integral and the problem is
-polynomial via König's theorem). The lower bound to charge against is OPT_f, the optimum of the LP
-relaxation, computed by a polynomial LP solver (ellipsoid / interior point / simplex) or, exploiting the
-two-variables-per-inequality structure, by a minimum-cut computation on an auxiliary bipartite graph. The
-objects of study — the matching/edge-packing lower bound, the fractional optimum, the running time of LP
-solving and of min-cut — all exist independently of any particular cover algorithm.
+polynomial via König's theorem). The candidate lower bounds in play — the matching/edge-packing certificate
+and the optimum of the LP relaxation, computed by a polynomial LP solver (ellipsoid / interior point /
+simplex) — all exist independently of any particular cover algorithm, and so do their running times.
 
 ## Code framework
 
-The graph, the weights, an LP solver and a min-cut routine already exist. The unfinished procedure receives a
-fractional LP optimum and must return an integral cover together with the certificate used to bound its cost.
+The graph, the weights and an LP solver already exist. The unfinished procedure must return an integral cover
+together with whatever certificate is used to bound its cost.
 
 ```python
 import networkx as nx
@@ -122,10 +118,8 @@ def solve_lp(lp):
     pass  # TODO: call an LP solver; request or recover a basic optimum when needed
 
 def fractional_to_cover(x_star):
-    """Turn the fractional optimum x* into an integral vertex cover, with a cost
-       guarantee relative to OPT_f. The rule for which vertices to keep, and the
-       proof that the result is feasible and within a constant factor, go here."""
-    pass  # TODO: choose vertices from x_star and certify the cost
+    """Produce an integral vertex cover and the certificate that bounds its cost."""
+    pass  # TODO
 
 def vertex_cover_approx(G, w):
     lp = build_vertex_cover_lp(G, w)

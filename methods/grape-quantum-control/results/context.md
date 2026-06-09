@@ -50,12 +50,11 @@ performance index.
 (Pontryagin's maximum principle; Bryson & Ho, *Applied Optimal Control*, 1975;
 Krotov, *Global Methods in Optimal Control*, 1996). The central device is a
 **co-state / adjoint variable** λ that obeys a *backward* differential equation whose
-terminal condition is fixed by the cost. Once λ and the forward state x are known,
-the gradient of the cost with respect to the control at *every* time is a simple
-local inner product ∂(cost)/∂u(t) = ⟨λ, ∂f/∂u⟩ — obtained from **one forward sweep
-of the state plus one backward sweep of the adjoint**, regardless of how finely time
-is discretized. These principles are textbook material in applied optimal control;
-what is open is their use for *coupled* quantum spin dynamics.
+terminal condition is fixed by the cost; in the classical theory it accompanies the
+forward state x and enters the optimality conditions through inner products of the form
+⟨λ, ∂f/∂u⟩. These principles are textbook material in applied optimal control; how they
+bear on the *coupled* quantum-spin gradient — where the dynamics is a product of slice
+propagators rather than a scalar cost integral — is open.
 
 **The cost of finite-difference gradients.** Before this, gradient-based optimization
 of coupled-spin pulse sequences almost exclusively used the **difference method**:
@@ -79,10 +78,9 @@ J-couplings mediate transfer — had not been opened up to many-parameter gradie
 optimization, precisely because of the difference-method cost above.
 
 **Validity scale for a per-slice linearization.** If a slice is short enough that
-Δt ≪ ‖H0 + Σ_k u_k H_k‖^{-1}, then to first order the within-slice evolution of a
-control operator H_k barely rotates, and the first-order change of a slice propagator
-under a small change of its control amplitude is governed by H_k itself. This sets the
-discretization scale at which a linearized gradient is trustworthy.
+Δt ≪ ‖H0 + Σ_k u_k H_k‖^{-1}, then across that slice a control operator barely rotates
+under the evolution. This sets the discretization scale at which any first-order,
+linearized treatment of a slice propagator can be trusted.
 
 **The shape of the optimization landscape.** For a controllable finite-level quantum
 system with adequate (essentially unconstrained) control resources, the fidelity as a
@@ -174,9 +172,7 @@ def performance(U_list, target):
 def gradient(U_list, H_ctrl, target, dt):
     """Partial derivative of `performance` w.r.t. every control amplitude u[k,j].
     The whole point is to get all m*N derivatives without re-propagating per control."""
-    # TODO: forward sweep of the state/propagator,
-    # TODO: backward sweep of the target (the adjoint),
-    # TODO: combine them slice-by-slice into the gradient.
+    # TODO: compute the m*N partial derivatives
     pass
 
 def optimize(H0, H_ctrl, target, T, N, m, iters, eps):

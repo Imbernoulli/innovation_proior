@@ -24,9 +24,9 @@ The pain point is sharp. Standard numerical quadrature is hopeless: a grid with 
 
 **Importance sampling and where it strains.** The textbook remedy is importance sampling: to estimate J = ∫ f(x) p(x) dx = E_p(f), draw instead from a more convenient density q and use Ĵ = (1/N) Σ_i f(x_i) p(x_i)/q(x_i), correcting each draw by the weight w(x) = p(x)/q(x). With a well-chosen q this concentrates draws where they matter. But in a large number of dimensions the weights w(x) for a fixed sample size are typically either almost all extremely small or, for a few draws, extremely large; the estimate is then controlled by a handful of samples and its variance is unreliable. Finding a q close enough to the target to keep the weights tame is itself the hard part in high dimension. And in the raw unbiased form this also asks for p's absolute normalizer; a self-normalized ratio can cancel that constant, but it does not remove the high-dimensional weight collapse.
 
-**Markov chains and stationary distributions.** A finite Markov chain on states with transition probabilities p_ij = Pr{X(t+1)=j | X(t)=i} has, when it is irreducible (every state reachable from every other in finitely many steps), a unique stationary distribution π satisfying π = πP, i.e. Σ_i π_i p_ij = π_j for all j. With aperiodicity, the distribution started anywhere converges to π, and time averages of a function along a single realization, Σ_t f(X(t))/N, converge to the stationary expectation E_π(f) as N → ∞ (and are asymptotically normal). The classical use of such chains in simulation — for instance in following radiation transport through matter — was the reverse of what is needed here: there the per-step transition law P(i→j) is given by the physics a priori, and one *computes* the resulting stationary distribution p(i). The object here is the opposite: the distribution π is the thing specified in advance, and the transition law that would make π stationary is unknown.
+**Markov chains and stationary distributions.** A finite Markov chain on states with transition probabilities p_ij = Pr{X(t+1)=j | X(t)=i} has, when it is irreducible (every state reachable from every other in finitely many steps), a unique stationary distribution π satisfying π = πP, i.e. Σ_i π_i p_ij = π_j for all j. With aperiodicity, the distribution started anywhere converges to π, and time averages of a function along a single realization, Σ_t f(X(t))/N, converge to the stationary expectation E_π(f) as N → ∞ (and are asymptotically normal). In the classical use of such chains in simulation — for instance in following radiation transport through matter — the per-step transition law P(i→j) is given by the physics a priori, and one *computes* the resulting stationary distribution p(i). Here the distribution π = p = Boltzmann is the thing specified in advance, while no transition law is given.
 
-**Acceptance–rejection sampling.** A standard way to draw from a density f(x) (known up to a constant) is acceptance–rejection: find a density h and a constant c with f(x) ≤ c·h(x) everywhere, draw a candidate Z from h and an independent u ∼ Uniform(0,1), and accept Z if u ≤ f(Z)/(c·h(Z)), otherwise discard it and draw a fresh independent candidate. Accepted draws are exact, independent samples from f. The catch is the blanket: one must find an h and a c that dominate f everywhere, which is hard in high dimension, and if c is large the acceptance probability c^{−1} is tiny so almost everything is rejected. The accept/reject *idea* — propose, then keep or throw away by a probability test — is the seed; what it lacks is a way to avoid the global dominating envelope.
+**Acceptance–rejection sampling.** A standard way to draw from a density f(x) (known up to a constant) is acceptance–rejection: find a density h and a constant c with f(x) ≤ c·h(x) everywhere, draw a candidate Z from h and an independent u ∼ Uniform(0,1), and accept Z if u ≤ f(Z)/(c·h(Z)), otherwise discard it and draw a fresh independent candidate. Accepted draws are exact, independent samples from f. The catch is the blanket: one must find an h and a c that dominate f everywhere, which is hard in high dimension, and if c is large the acceptance probability c^{−1} is tiny so almost everything is rejected. The method stalls on the requirement of a global dominating envelope: each rejected candidate is discarded and a fresh independent one drawn, with no use made of where the chain already is.
 
 ## Baselines
 
@@ -44,7 +44,7 @@ The natural testbed is a system of N interacting particles in a box with periodi
 
 ## Code framework
 
-Available pieces: an unnormalized log weight, a uniform random-number source, a candidate generator for tentative local changes, a state container with boundary handling, and an averaging loop. The open slot is the transition rule that turns the current configuration into the next one while using only computable local quantities.
+Available pieces: an unnormalized log weight, a uniform random-number source, a candidate generator for tentative local changes, a state container with boundary handling, and an averaging loop. The open slot is the rule that turns the current configuration into the next one.
 
 ```python
 import numpy as np
@@ -59,8 +59,7 @@ def candidate_rule(state, rng):
     """Generate a tentative next state from the current state.
 
     If the candidate density is already available, return the forward and
-    reverse log densities with the candidate; symmetric local moves can report
-    the same value in both directions.
+    reverse log densities alongside the candidate.
     """
     ...
 
@@ -69,8 +68,7 @@ def transition(state, log_weight, candidate_rule, rng):
     """Produce the next state from the current state.
 
     The missing rule decides how a tentative local change becomes the next
-    state so that long-run averages are taken against the intended weight,
-    using only ratios or differences that can be computed.
+    state so that long-run averages come out against the intended weight.
     """
     # TODO: decide how the tentative change becomes the next state
     pass
@@ -85,7 +83,6 @@ def sample(state0, log_weight, candidate_rule, n_steps, rng):
     return samples
 
 def estimate(samples, observable):
-    """Ensemble average of an observable over the collected configurations,
-    counting EVERY step (including repeats), weighting them evenly."""
+    """Ensemble average of an observable over the collected configurations."""
     return np.mean([observable(c) for c in samples], axis=0)
 ```

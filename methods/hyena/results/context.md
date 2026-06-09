@@ -25,7 +25,7 @@ The question is whether there is a token-mixing operator whose cost grows *subqu
 - **Gated State Spaces** (`mehta2022long`): gating composed with one long SSM convolution. Gap: a single gate-and-convolution is a limited data-controlled operator; it underperforms on associative recall.
 - **H3** (`dao2022hungry`): motivated by the recall gap of the above, uses two gates and two convolutions — a short (shift-SSM) convolution and a long (diagonal-SSM) one — `z_t = k_t (φ * v)_t`, `y_t = q_t (ψ * z)_t`. Its surrogate interaction matrix factorizes as `A(q,k) = D_q S_ψ D_k S_φ` (diagonal gates `D_q, D_k` times Toeplitz convolution matrices), evaluable in `O(L log L)`. Gap: fixed to three projections and two convolutions, and tied to SSM (not free-form) filters.
 - **Frequency-domain and continuous-kernel convolutions**: FNO (`li2020fourier`, filters parametrized by a fixed number of frequency modes) and CKConv (`romero2021ckconv`, FFN-parametrized continuous kernels). Gap: used as plain convolutions — long-range but not data-controlled.
-- **Structured fast-matvec decompositions** (butterfly / Monarch, `dao2019learning`, `dao2022monarch`): represent a dense matrix as a product of sparse factors, with the number of factors trading off against expressivity; a template for building an expressive operator out of cheap factors.
+- **Structured fast-matvec decompositions** (butterfly / Monarch, `dao2019learning`, `dao2022monarch`): represent a dense matrix as a product of sparse factors, with the number of factors trading off against expressivity.
 
 ## Evaluation settings
 
@@ -39,7 +39,7 @@ Natural comparison points: Transformer / FlashAttention, H3, GSS, AFT-conv, RWKV
 
 ## Code framework
 
-The pieces below already exist: linear projections, an FFT-based long convolution, depthwise `Conv1d`, and a standard residual block / training loop. The filter generator and the token-mixing rule are the empty slots.
+The pieces below already exist: linear projections, an FFT-based long convolution, depthwise `Conv1d`, and a standard residual block / training loop. The mixing operator is the empty slot.
 
 ```python
 import math
@@ -60,7 +60,6 @@ def fftconv(u, k, D):
 
 class LongFilter(nn.Module):
     # A filter as long as the sequence, with a parameter count independent of L.
-    # TODO: choose a parametrization t -> h_t that decouples length from #params.
     def __init__(self, d_model, seq_len, **kwargs):
         super().__init__()
         raise NotImplementedError
@@ -76,22 +75,16 @@ class LongFilter(nn.Module):
 
 class SequenceMixer(nn.Module):
     # Token-mixing operator: maps u (B, L, D) -> y (B, L, D).
-    # TODO: a subquadratic, data-controlled operator with unrestricted context.
+    # TODO: a subquadratic operator meeting the three properties above.
     def __init__(self, d_model, l_max, order=2, filter_order=64, **kwargs):
         super().__init__()
         self.d_model = d_model
         self.l_max = l_max
         self.order = order
-        # TODO: choose how many input-dependent projections to produce.
-        self.in_proj = None
         self.out_proj = nn.Linear(d_model, d_model)
-        # TODO: decide whether a cheap local depthwise filter belongs here.
-        self.short_filter = None
-        # TODO: the long-range, parameter-efficient filtering component.
-        self.filter_fn = None
 
     def forward(self, u):
-        # TODO: project u, mix across the sequence, project back.
+        # TODO: fill in the mixer.
         raise NotImplementedError
 
 

@@ -61,7 +61,7 @@ draws $\{x^{(i)}\}_{i=1}^N$ from a density carries the same information as the d
 limit $N \to \infty$: any expectation $\int \varphi(x) p(x) dx$ is estimated by
 $\frac{1}{N}\sum_i \varphi(x^{(i)})$, with error decaying as $O(1/\sqrt N)$ *regardless of the
 dimension* of the space. This is the standard Monte Carlo fact about samples standing in for
-densities, and it is the lever the whole field rests on.
+densities.
 
 **Reweighting one sample into another (importance sampling).** If draws are easy from a density
 $g$ but we want a sample from $h \propto f$ (a positive function $f$, normaliser unknown), importance
@@ -80,9 +80,8 @@ Then $\theta^*$ is approximately distributed as $h$, with the approximation impr
 their CDF argument shows
 $\Pr(\theta^* \le a) \to \int_{-\infty}^a h$. This is "weighted resampling": the ordinary bootstrap
 resamples with equal probability, here the probabilities are tilted by $f/g$. It needs $h$ only up
-to proportionality — exactly the situation in Bayesian updating, where $p(\theta\mid x) \propto
-\ell(\theta;x)\,p(\theta)$, so resampling a prior sample with weights equal to the likelihood yields
-a posterior sample. The same caveat reappears: the less $h$ resembles $g$, the larger $N$ needed.
+to proportionality, where $h \propto f$ with $f$ a known unnormalised function and the normaliser
+unavailable. The same caveat reappears: the less $h$ resembles $g$, the larger $N$ needed.
 Rubin (1988) had named this the SIR (sampling/importance-resampling) algorithm.
 
 **The empirical motivation: where the Gaussian baseline fails.** The diagnostic failure that sets

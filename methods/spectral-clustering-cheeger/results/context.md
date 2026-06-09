@@ -106,9 +106,9 @@ thresholding it yields a cut whose conductance is bounded by a function of $\lam
 
 **Continuous Cheeger inequality (Cheeger 1970, Buser 1982).** $\lambda_1(M)\ge h(M)^2/4$ is exactly
 the lower-bound direction we want, but for manifolds and the Laplace–Beltrami operator, not for the
-combinatorial graph Laplacian. It tells us a discrete analogue is plausible and even predicts the
-*shape* of the bound (a square), but the manifold proof (a co-area / level-set argument on smooth
-functions) does not transfer verbatim, and it says nothing about extracting a discrete cut.
+combinatorial graph Laplacian. It tells us a discrete analogue is plausible, but the manifold proof
+(a co-area / level-set argument on smooth functions) does not transfer verbatim, and it says nothing
+about extracting a discrete cut.
 
 ## Evaluation settings
 
@@ -163,10 +163,9 @@ def smallest_eigenpairs(M, k):
     order = np.argsort(vals)
     return vals[order], vecs[:, order]
 
-def relax_and_round(adj):
+def find_cut(adj):
     """Map a graph to a low-conductance cut S.
-    # TODO: relax the NP-hard cut to a continuous eigenvector problem,
-    #       solve it, and round the eigenvector back to a vertex set.
+    # TODO: fill in.
     """
     pass
 ```

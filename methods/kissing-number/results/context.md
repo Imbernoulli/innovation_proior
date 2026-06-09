@@ -22,13 +22,13 @@ The deep structural fact that makes upper bounds tractable lives on the sphere, 
 (k + n - 2) P_{k+1}^{(n)}(t) = (2k + n - 2) t P_k^{(n)}(t) - k P_{k-1}^{(n)}(t),
 ```
 
-normalized so `P_k^{(n)}(1) = 1`, and orthogonal on `[-1, 1]` with respect to the weight `(1 - t^2)^{(n-3)/2}` — the weight that arises when you integrate a function of `<x, y>` over `S^{n-1}`. For `n = 3` these are the Legendre polynomials; for `n = 4`, Chebyshev polynomials of the second kind. The single load-bearing fact about them is the **addition theorem** (traceable to Herglotz, via Müller): if `{S_{k,l}}_{l=1..m}` is an orthonormal basis for the degree-`k` spherical harmonics (dimension `m = m(k,n) = binom(k+n-2, k) + binom(k+n-3, k-1)`), then
+normalized so `P_k^{(n)}(1) = 1`, and orthogonal on `[-1, 1]` with respect to the weight `(1 - t^2)^{(n-3)/2}` — the weight that arises when you integrate a function of `<x, y>` over `S^{n-1}`. For `n = 3` these are the Legendre polynomials; for `n = 4`, Chebyshev polynomials of the second kind. A classical identity attached to them is the **addition theorem** (traceable to Herglotz, via Müller): if `{S_{k,l}}_{l=1..m}` is an orthonormal basis for the degree-`k` spherical harmonics (dimension `m = m(k,n) = binom(k+n-2, k) + binom(k+n-3, k-1)`), then
 
 ```
 P_k^{(n)}(<x, y>) = (omega_n / m) * sum_{l=1}^m S_{k,l}(x) S_{k,l}(y),
 ```
 
-with `omega_n` the surface area of `S^{n-1}`. This expresses `P_k^{(n)}(<x,y>)` as an inner product of feature vectors `(S_{k,1}(x), ..., S_{k,m}(x))` — a positive-definite kernel on the sphere (Schoenberg's characterization of positive-definite functions on spheres, 1942). The empirical lesson from the lattice configurations is equally important: in the candidate optima the set of inner products that *actually occur* between distinct vectors is tiny and very symmetric — for normalized `E_8` it is exactly `{-1, -1/2, 0, 1/2}`, and for Leech `{-1, -1/2, -1/4, 0, 1/4, 1/2}`. These configurations are also spherical designs (their harmonic moments vanish to high degree). Those two facts — few inner products, high design strength — are properties of the *configurations*, knowable by inspecting the lattices, and they are what a tight upper-bound certificate will have to exploit.
+with `omega_n` the surface area of `S^{n-1}`. (Schoenberg's 1942 work characterizes which functions of `<x,y>` are positive-definite on spheres.) The empirical lesson from the lattice configurations is also on record: in the candidate optima the set of inner products that *actually occur* between distinct vectors is tiny and very symmetric — for normalized `E_8` it is exactly `{-1, -1/2, 0, 1/2}`, and for Leech `{-1, -1/2, -1/4, 0, 1/4, 1/2}`. These configurations are also spherical designs (their harmonic moments vanish to high degree). Those two facts — few inner products, high design strength — are properties of the *configurations*, knowable by inspecting the lattices.
 
 ## Baselines
 
@@ -48,7 +48,7 @@ The yardstick is the table of kissing numbers for `n` up to about `32`, comparin
 
 ## Code framework
 
-Pre-existing numerical primitives: a way to generate orthogonal polynomials by their three-term recurrence, polynomial arithmetic (multiply, evaluate, change of basis), and a linear-program / convex solver. The open slot is a routine that takes a candidate one-variable polynomial and decides whether it turns into a numerical upper bound for a spherical code with angle parameter `s`.
+Pre-existing numerical primitives: a way to generate orthogonal polynomials by their three-term recurrence, polynomial arithmetic (multiply, evaluate, change of basis), and a linear-program / convex solver. The open slot is whatever routine the approach turns out to need on top of these primitives.
 
 ```python
 import numpy as np
@@ -69,15 +69,11 @@ def polynomial_from_roots(roots_with_mult):
     """Build a one-variable polynomial from prescribed real roots."""
     pass
 
-def sampled_lp_candidate(n, degree, s=0.5, grid=801):
-    """Set up the grid-relaxed coefficient LP used to search for a candidate f."""
-    # TODO: choose variables c_k, impose c_0=1, c_k>=0, and sample f(t)<=0.
-    pass
-
-def certificate_bound(fpoly, n, s=0.5):
-    """Return the upper-bound value produced by a candidate polynomial."""
-    # TODO: identify the coefficient and sign checks that make f(1)/c_0 valid.
+def upper_bound_from_candidate(fpoly, n, s=0.5):
+    """Decide whether a candidate one-variable polynomial yields a numerical
+    upper bound for a spherical code with angle parameter s, and return it."""
+    # TODO: fill in.
     pass
 ```
 
-The empty slots separate the two tasks: how to search for a small candidate by a coefficient LP, and what algebraic checks make `f(1)/c_0` a valid certificate.
+The empty slot is left to whatever the approach turns out to require.

@@ -89,8 +89,7 @@ Hamming-weight-symmetric objective the evolution is stuck at weight `w = n` whil
 optimum is at `w = 0` (Farhi, Goldstone, Gutmann, 2002, `quant-ph/0201031`). So "make `T`
 large" is both physically out of reach and not reliably correct.
 
-*Three mathematical tools sit on the table for converting this analog story into something
-shallow.* **Trotterization** (the Lie–Trotter product formula): for non-commuting `A` and `B`,
+*Three standard mathematical tools sit on the table.* **Trotterization** (the Lie–Trotter product formula): for non-commuting `A` and `B`,
 `e^{−i(A+B)t} = (e^{−iA t/N} e^{−iB t/N})^N + O(t²/N)`, so a continuous evolution under a sum of
 two terms can be approximated by alternating short evolutions under each term separately, with
 error controllable by taking more, smaller steps. **The Perron–Frobenius theorem**: the
@@ -99,10 +98,9 @@ hypercube of bit strings, so its top eigenstate is non-degenerate and separated 
 equivalently, the shifted Hamiltonian `Σ_i ½(1 − σˣ_i)` has the same easy state as its
 non-degenerate ground state. That is the gap-positivity structure an extremal-state adiabatic
 path needs. **The variational principle**: for any Hermitian `C` and any normalized state `|ψ⟩`,
-`⟨ψ|C|ψ⟩ ≤ C_max`, the largest eigenvalue. So if one prepares a *family* of states `|ψ(θ)⟩`
-and maximizes `⟨ψ(θ)|C|ψ(θ)⟩` over `θ`, the result is a rigorous lower bound on what the
-optimization can claim and an honest measure of progress — you can never exceed the true
-optimum, and any increase you find is real expected objective value.
+`⟨ψ|C|ψ⟩ ≤ C_max`, the largest eigenvalue. Any state's expected objective is thus a rigorous
+lower bound on the true optimum — one can never exceed it, and an expectation value is an honest
+quantity to report.
 
 *Classical yardsticks for the example problems.* For MaxCut, the Goemans–Williamson semidefinite-
 programming rounding achieves ratio `0.878` on general graphs; for cubic (3-regular) graphs

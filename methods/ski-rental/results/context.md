@@ -24,7 +24,7 @@ A motivating empirical observation sharpens the question. Traces of programs on 
 
 **Always-buy / always-rent.** Buying on day one is 1-competitive when the horizon is long but unbounded-competitive when the horizon is 1 (you pay B, OPT pays 1). Renting forever is 1-competitive when the horizon is short but unbounded when it is long (you pay x, OPT pays B). Neither bounds the ratio; both are dominated by the break-even rule, which is why the cutoff is the only sensible degree of freedom.
 
-**Naive mixtures of two cutoffs.** Splitting probability between two cutoffs, e.g. choosing A_{a₁} with probability ½ and A_{a₂} with probability ½, already beats 2: against the worst horizon the expected cost is a strict average of two deterministic costs and the adversary can no longer aim at a single known cutoff. This shows randomization helps but leaves open which distribution over cutoffs is best and how far below 2 one can push.
+**Where the deterministic family stalls.** Every member of the one-parameter cutoff family A_a is, by the analysis above, defeated by an oblivious adversary that ends the horizon exactly at the known buy-day, pinning the ratio at 2 − 1/B. The deterministic family exhausts the obvious degrees of freedom and leaves no member below 2.
 
 ## Evaluation settings
 
@@ -49,9 +49,7 @@ def best_det_ratio(B):
     pass
 
 def buy_day_distribution(B):
-    # the on-line player's randomization over buy days {1,...,B}:
-    # TODO: choose the probability of each buy day so the
-    #       per-horizon competitive ratio is as small (and as flat) as possible
+    # TODO: the on-line player's rule over buy days {1,...,B}
     pass
 
 def expected_ratio_exact(B):

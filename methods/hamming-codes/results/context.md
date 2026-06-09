@@ -56,9 +56,9 @@ ever say *something is wrong* — never *which bit*, and never *fix it*.
 **The parity check, examined to its fundamentals.** A parity check appends one bit so that the
 total number of 1s over a chosen set of positions is even. A single bit flip among those
 positions changes the count from even to odd, so the check fails — detecting any single error
-(indeed any odd number of errors). The two facts that turn out to be the levers: a parity check
-is only a *detector* by itself, and — crucially — a parity check **need not cover all the
-positions; it may be taken over selected positions only.** Under the white-noise channel model
+(indeed any odd number of errors). Two properties are worth recording: a parity check
+is only a *detector* by itself, and a parity check need not cover all the
+positions — it may be taken over selected positions only. Under the white-noise channel model
 (each position equally and independently likely to flip with small probability p, so np small),
 single errors dominate multiple errors, which is why a single-error-correcting scheme is the
 right first target. How long to make the block n is an engineering judgment: small blocks spend
@@ -112,8 +112,7 @@ message length, not like a constant factor of 3.
 
 **Residue/replication-style shortcuts in general.** Core idea: lean on some representation in
 which the cost looks cheaper. Gap: these either don't localize errors or pay elsewhere; none
-gives single-error *location and repair* at low redundancy. The open slot is precisely a code
-whose check structure pinpoints the failed bit.
+gives single-error *location and repair* at low redundancy.
 
 ## Evaluation settings
 
@@ -125,8 +124,8 @@ to be minimized; (2) **correcting/detecting power** — single-error correction 
 target, with single-error-correction-plus-double-error-detection as the next rung; (3)
 **exactness** — the decoder must recover the original message for every input that suffers at
 most the number of errors the code claims to handle, and must do so by computation at the
-receiver, with no retransmission. The natural analytic instruments are a counting bound on how
-many distinct error situations k check bits can name, and the geometry of the unit n-cube under
+receiver, with no retransmission. The natural analytic instruments are elementary counting and
+the geometry of the unit n-cube under
 the L1 (bit-difference) metric — minimum distance between legal symbols, and packing of disjoint
 spheres around them.
 
@@ -136,9 +135,8 @@ The primitives already available: bits as 0/1 lists; XOR (addition mod 2, i.e. `
 the arithmetic of parity; the ability to take a parity check over *any chosen subset* of
 positions; and binary representations of integers. The scaffold is an encoder that places m
 message bits and some check bits into an n-bit codeword, and a decoder that inspects the
-received word and (somehow) both flags and repairs a corrupted bit. The slots to be filled: how
-many check bits, where they sit, which positions each check covers, how the pattern of failed
-checks is turned into an action, and whether one additional check can flag the two-error case.
+received word and (somehow) both flags and repairs a corrupted bit. How the check bits are
+chosen and arranged, and how the decoder turns what it observes into a repair, is left open.
 
 ```python
 def encode(data_bits, detect_double=False):

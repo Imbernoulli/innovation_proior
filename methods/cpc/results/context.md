@@ -4,7 +4,7 @@ Supervised learning dominates because labels point a model at exactly the featur
 
 The goal is a single, *generic*, unsupervised recipe that extracts useful high-level representations from high-dimensional sequential data — audio waveforms, images, text, sequences of agent observations — without labels and without modality-specific engineering, such that a simple linear probe on top of the frozen representation recovers the high-level factors (phonemes, speaker identity, object categories, sentiment). A solution must (i) discard low-level, local detail and noise, (ii) keep the slowly-varying global structure that spans many steps, and (iii) be computationally cheap enough to train end-to-end on raw high-dimensional inputs.
 
-The central tension: the obvious unsupervised objective — predict the future / missing / surrounding observation — forces a model that can *generate* high-dimensional data, and generation is exactly the part we do not care about. An image carries thousands of bits; the high-level latent we want (a class label) is on the order of ten bits. A model that must reconstruct every pixel spends its capacity on the thousands of bits of texture and noise and may never isolate the ten bits that matter. The question is how to define a prediction-based unsupervised objective that targets *only the shared, predictable structure* between context and future, never the raw signal.
+The central tension: the obvious unsupervised objective — predict the future / missing / surrounding observation — forces a model that can *generate* high-dimensional data, and generation is exactly the part we do not care about. An image carries thousands of bits; the high-level latent we want (a class label) is on the order of ten bits. A model that must reconstruct every pixel spends its capacity on the thousands of bits of texture and noise and may never isolate the ten bits that matter. The question is how to define a prediction-based unsupervised objective that does not stall on generating the raw signal.
 
 ## Background
 
@@ -14,7 +14,7 @@ The central tension: the obvious unsupervised objective — predict the future /
 
 **Mutual information.** The information shared between two variables x and c is
   I(x;c) = Σ_{x,c} p(x,c) log [ p(x|c) / p(x) ].
-The quantity inside the log is a *density ratio* p(x|c)/p(x), not a density. This matters: capturing what x and c share is a statement about that ratio, not about the individual distributions. For deterministic encoders, the MI between encoded representations is bounded above by the MI between the raw inputs, so maximizing MI in latent space is a principled surrogate for keeping shared input information.
+For deterministic encoders, the MI between encoded representations is bounded above by the MI between the raw inputs, so maximizing MI in latent space is a principled surrogate for keeping shared input information.
 
 **Noise-Contrastive Estimation (Gutmann & Hyvärinen 2010).** A method to fit an unnormalized model p̃_θ(x) without computing its partition function. Draw data from the true distribution and "noise" from a known distribution, and train a logistic classifier to tell data from noise; the optimal classifier's parameters recover the model up to normalization. The intractable normalizing constant is sidestepped — turned into a discrimination problem against samples. NCE was adopted to train neural language models efficiently (Mnih & Teh 2012; Jozefowicz et al. 2016).
 
@@ -45,7 +45,7 @@ Metrics throughout are linear-probe classification accuracy on frozen features (
 
 ## Code framework
 
-The primitives that already exist: a strided 1-D convolutional encoder, a recurrent autoregressive summarizer (GRU, Cho et al. 2014), linear layers, standard module initialization, an Adam optimizer, and a minibatch training loop. The open slot is the sampled objective that relates a context vector to future encoded observations.
+The primitives that already exist: a strided 1-D convolutional encoder, a recurrent autoregressive summarizer (GRU, Cho et al. 2014), linear layers, standard module initialization, an Adam optimizer, and a minibatch training loop. The open slot is the unsupervised objective that relates a context vector to future observations.
 
 ```python
 import torch
@@ -77,8 +77,7 @@ class SequenceRepresentation(nn.Module):
         # autoregressive summarizer of the past latents -> context c_t
         self.gru = nn.GRU(512, 256, num_layers=1, bidirectional=False, batch_first=True)
 
-        # TODO: the learned relation between c_t and future latents z_{t+k}
-        #       and the objective that trains it.
+        # TODO: the objective relating c_t to future observations.
 
         self._init_recurrent_weights()
         self.apply(self._weights_init)
@@ -108,7 +107,7 @@ class SequenceRepresentation(nn.Module):
 
     def forward(self, x, hidden):
         # encode -> z, summarize prefix -> c_t
-        # TODO: build the training signal between c_t and future z_{t+k}.
+        # TODO: build the training signal.
         raise NotImplementedError
 
     def extract(self, x, hidden):

@@ -81,24 +81,15 @@ Bounds are stated asymptotically in n, on [0,1]² (equivalently any fixed convex
         strip T_xy(4ε/d) of width 4ε/d about the base line ℓ_xy.
 
     Lower bound (the probabilistic deletion method):
-        the engine is fixed — oversample uniformly in the square, then delete points that sit in
+        the engine is fixed — oversample uniformly in the square, then remove points that sit in
         small (forbidden) triangles, so that the survivors span no triangle below the threshold ε.
-        Empty slots: how much to oversample (the slack N relative to n, and the threshold ε the
-        expected count of forbidden triples can support); and what to delete — whether one vertex
-        per bad triple suffices (the Ω(1/n²) baselines), or the deletion must be replaced by an
-        independent-set selection in the forbidden-triple 3-graph, preceded by a cleanup that
-        strips the very-close pairs and the short-cycle (2-, 3-, 4-cycle) crowding obstructions so
-        the hypergraph is uncrowded and the AKPSS bound yields the extra (log n)^{1/2} factor.
+        Empty slot: how much to oversample (the slack N relative to n, and the threshold ε the
+        expected count of forbidden triples can support), and how the removal step is carried out.
 
-    Upper bound (incidence geometry / radial projection):
+    Upper bound (incidence geometry):
         the tools are fixed — translate the endpoint-only scarcity of the forbidden strips into
-        an incidence count between the points and the lines supporting short pairs, and control it
-        with the energy estimate Σ 1/d(τ)² ≳ n² log n and the two-scale (high-low) incidence
-        comparison, backed by radial-projection / direction-spread bounds.
-        Empty slot: which incidence inequality is made to drive the bound — Schmidt's weighted-strip
-        energy argument, Roth's quasi-orthogonal two-scale comparison, or the high-low split with
-        Marstrand / Orponen–Shmerkin–Wang projection estimates — and how its scale parameters are
-        balanced to extract the polynomial saving in the exponent.
+        an incidence count between the points and the lines supporting short pairs.
+        Empty slot: how that scarcity is converted into a quantitative bound on Δ.
 
     Output: the largest provable min-area for the construction (ideally via a certified selection
             rule, not a mere existence proof) and the smallest universal exponent/log-power forced.

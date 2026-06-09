@@ -36,7 +36,7 @@ with mini-batch SGD and backpropagation. This pipeline — batch normalization (
 
 ## Code framework
 
-Pre-existing primitives: PyTorch convnet backbones (AlexNet, VGG), the supervised training loop with a softmax classifier and cross-entropy, mini-batch SGD with momentum, a faiss k-means with PCA/whitening, and a `Sampler` interface for the data loader. The supervised pipeline exists in full. What does not yet exist is where the *labels* come from when there are none, and the machinery to keep that label source from degenerating.
+Pre-existing primitives: PyTorch convnet backbones (AlexNet, VGG), the supervised training loop with a softmax classifier and cross-entropy, mini-batch SGD with momentum, a faiss k-means with PCA/whitening, and a `Sampler` interface for the data loader. The supervised pipeline exists in full; the unsupervised setting it would have to run in does not.
 
 ```python
 import torch
@@ -55,12 +55,11 @@ def preprocess_features(npdata, pca=256):
 
 def run_kmeans(x, k):
     # faiss k-means; returns a cluster assignment per row
-    # TODO: how empty clusters are prevented from collapsing the solution
+    # TODO
     pass
 
 class PseudoLabelSampler(torch.utils.data.Sampler):
-    # TODO: how images are sampled given (arbitrary) cluster assignments,
-    #       so that the network does not collapse onto a few dominant clusters
+    # TODO
     def __init__(self, N, images_lists):
         pass
     def __iter__(self):
@@ -77,13 +76,13 @@ class Backbone(nn.Module):
         pass
 
 # one round of unsupervised training
-def deepcluster_round(model, dataset, k, optimizer):
+def training_round(model, dataset, k, optimizer):
     feats = compute_features(model, dataset)          # forward pass over the whole dataset
     feats = preprocess_features(feats)
-    assignments = run_kmeans(feats, k)                # pseudo-labels  (TODO: stable against trivial solutions)
-    # TODO: what to do with model.top_layer given that cluster identities are arbitrary this round
+    assignments = run_kmeans(feats, k)                # cluster assignments
+    # TODO
     train_dataset = assign_pseudolabels(dataset, assignments)
-    sampler = PseudoLabelSampler(len(train_dataset), assignments)   # TODO
+    sampler = PseudoLabelSampler(len(train_dataset), assignments)
     loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, sampler=sampler)
     crit = nn.CrossEntropyLoss()
     for x, pseudo_y in loader:

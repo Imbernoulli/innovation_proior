@@ -42,14 +42,11 @@ The second is built on spatial pyramid pooling: pool a region into several grid 
 multiple H×W grids) and concatenate, yielding a fixed-length vector regardless of region size.
 
 **Multi-task learning.** When several tasks share a representation, training them jointly can
-improve each, because the shared trunk is shaped by all of them at once (Caruana). This is the
-theoretical reason to expect a single network trained for classification *and* box regression
-together to beat training them in isolated stages.
+improve each, because the shared trunk is shaped by all of them at once (Caruana).
 
-**Robust regression losses.** An L2 regression loss is sensitive to outliers and, when the
+**Regression losses.** An L2 regression loss is sensitive to outliers and, when the
 regression targets are unbounded, can produce exploding gradients that demand careful
-learning-rate tuning. A robust alternative behaves quadratically near zero and linearly in the
-tails, bounding the gradient magnitude of large residuals.
+learning-rate tuning.
 
 ## Baselines
 
@@ -67,11 +64,10 @@ feature map for the whole image once, then extract each proposal's feature by sp
 the corresponding region of that map into a fixed-length vector. This gives 10–100× faster test time
 and ~3× faster training. But it keeps the multi-stage pipeline (feature extraction → log-loss
 fine-tuning → SVMs → box regressors), still writes features to disk, and — crucially — its
-fine-tuning algorithm *cannot update the convolutional layers beneath the pooling layer*. The reason:
-training samples (proposals) are drawn one-per-image, so each sample's receptive field can span the
-entire image; back-propagating through the pooling layer from samples coming from many different
-images is extremely inefficient, so the conv trunk is frozen. Freezing the conv layers limits the
-accuracy of very deep networks.
+fine-tuning algorithm *cannot update the convolutional layers beneath the pooling layer*; only the
+fully connected layers above the pooling are adapted. Freezing the conv trunk limits the
+accuracy of very deep networks, whose deep conv features are exactly what one would most want to
+adapt to detection.
 
 **OverFeat and proposal-network detectors.** Other systems that train a classifier and a box
 localizer, but with stage-wise training and/or a separate localization network rather than one

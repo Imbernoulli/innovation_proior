@@ -4,7 +4,7 @@
 
 The problem is *learning to predict*: using past experience with a partially known dynamical system to forecast its future behavior — whether a chess position leads to a win, whether a cloud formation brings rain, how far the market will move, whether a word in a waveform is about to be recognized. These predictions arrive not as isolated questions but along a *temporal sequence*: a walk evolves state by state, a game unfolds move by move, a year of economic data accumulates day by day, and at each step partial evidence about the eventual outcome is revealed. The eventual outcome is known only at the end (a multi-step prediction problem), but informative changes happen all along the way.
 
-A solution has to do two things well. It must be *cheap and incremental* — usable on a stream of input as it arrives, without storing the whole sequence and dumping all the computation at the end. And it must make *efficient use of experience* — converge fast and predict accurately from a finite, often small, amount of data. The tension is that the obvious learning signal, the gap between a prediction and the true outcome, is only available at the very end of a sequence and is a single noisy draw. The question is whether the *sequential structure itself* — the relation between one prediction and the next — can be turned into a learning signal that is both cheaper to compute and statistically better.
+A solution has to do two things well. It must be *cheap and incremental* — usable on a stream of input as it arrives, without storing the whole sequence and dumping all the computation at the end. And it must make *efficient use of experience* — converge fast and predict accurately from a finite, often small, amount of data. The tension is that the obvious learning signal, the gap between a prediction and the true outcome, is only available at the very end of a sequence and is a single noisy draw. The open question is whether the *sequential structure itself* — discarded by the obvious framing — can be exploited to make learning both cheaper to compute and statistically better.
 
 ## Background
 
@@ -14,7 +14,7 @@ The field's understanding of *credit assignment* splits two ways. **Structural**
 
 Three threads sit behind any attempt at sequential prediction. From **optimal control**, Bellman (1957) characterized an optimal return (value) function by a functional equation — the Bellman equation — and the family of methods that solve it iteratively became dynamic programming. These methods are *iterative and incremental* in the sense that they reach the answer by successive approximation, each new estimate built from the current estimates of neighboring states; but they require a full model of the system's transition probabilities and sweep the entire state space, and they suffer the curse of dimensionality. From **animal learning psychology**, the notion of a *secondary reinforcer* — a stimulus that, having been paired with food or pain, takes on reinforcing power of its own — captures the idea that a *prediction* of reward can itself act as reward, letting credit pass back along a chain. From **engineering learning rules**, the Widrow-Hoff delta rule gave a robust incremental way to drive weights by an error signal.
 
-A diagnostic fact about supervised prediction sets up the whole problem. Consider a two-person game with a state long known to be "bad" (loses 90% of the time). A novel state is encountered, the play passes through the bad state, and the game happens to end in a *win*. A supervised method pairs the novel state with the win and concludes the novel state is good. But the novel state led to a position known to usually lose; what happened afterward was luck. The intuitively right conclusion — the novel state is bad — comes from comparing it to the *next* prediction, not to the noisy final outcome. The final outcome is corrupted by random factors that occur *after* the state being evaluated; a subsequent prediction can be a less noisy performance standard. That statistical fact about sequential prediction is the crux the field has not exploited.
+A diagnostic fact about supervised prediction sets up the whole problem. Consider a two-person game with a state long known to be "bad" (loses 90% of the time). A novel state is encountered, the play passes through the bad state, and the game happens to end in a *win*. A supervised method pairs the novel state with the win and concludes the novel state is good. But the novel state led to a position known to usually lose; what happened afterward was luck. The intuitively right conclusion is that the novel state is bad. The final outcome is corrupted by random factors that occur *after* the state being evaluated, so it can be a poor standard against which to judge that state — a statistical fact about sequential prediction that the supervised framing does not account for.
 
 ## Baselines
 
@@ -24,13 +24,13 @@ where α is a learning rate. The scalar error z − wᵀx_t is the gap between p
 
 **Rescorla-Wagner model of Pavlovian conditioning (Rescorla & Wagner, 1972).** Learning occurs when events violate expectations: the change in a conditioned stimulus's associative strength is driven by the discrepancy between the actual reinforcement λ on the trial and the composite prediction V̄ = Σ_i V_i X_i summed over present stimuli,
   ΔV_i = β (λ − V̄) · α_i X_i,
-with β, α_i positive constants and X_i an indicator that stimulus i is present. This is structurally the Widrow-Hoff rule in psychological clothing (λ ↔ z, V̄ ↔ prediction), and it accounts for blocking and overshadowing through competition for a limited amount of "surprise" λ − V̄. Gap: it is a *trial-level* model — it collapses an entire trial into one λ and one update and is blind to the *timing of stimuli within a trial*, which empirically matters a great deal (the CS–US interstimulus interval strongly shapes learning). It also mispredicts second-order conditioning: when a stimulus B is paired with an already-trained A (no US present, so λ = 0), the model can only predict B's association decreasing or staying flat, yet animals form a positive B association. A real-time model is needed, one in which the effective reinforcement varies *within* the trial.
+with β, α_i positive constants and X_i an indicator that stimulus i is present. This is structurally the Widrow-Hoff rule in psychological clothing (λ ↔ z, V̄ ↔ prediction), and it accounts for blocking and overshadowing through competition for a limited amount of "surprise" λ − V̄. Gap: it is a *trial-level* model — it collapses an entire trial into one λ and one update and is blind to the *timing of stimuli within a trial*, which empirically matters a great deal (the CS–US interstimulus interval strongly shapes learning). It also mispredicts second-order conditioning: when a stimulus B is paired with an already-trained A (no US present, so λ = 0), the model can only predict B's association decreasing or staying flat, yet animals form a positive B association. These failures are tied to its trial-level resolution, with a single λ standing in for the entire within-trial time course.
 
 **Samuel's checker player (Samuel, 1959).** The earliest use of a successive-prediction idea. The evaluation of a board position is treated as a prediction of how the game will turn out from there; for each pair of successive positions, the difference between their evaluations ("delta") is used to adjust the earlier position's evaluation toward the later one (the later one computed by a minimax-backed-up lookahead search). Gap: there is *no terminal grounding* — no position has an a priori correct evaluation and the last position's value is never tied to the actual game outcome, so the consistency constraint "each evaluation should match its successor's" is satisfied by useless constant functions. Samuel patched this with a non-modifiable piece-advantage term and, when self-play made the program worse, by zeroing the largest weight. The update was ad hoc and never analyzed for convergence.
 
-**Dynamic programming (Bellman, 1957).** The value function V obeys V(s) = E[r + γ V(s′)], and DP solves this by iterating an estimate of V using the current estimates of successor states — it *bootstraps*, updating estimates from other estimates. Gap: it requires the transition model and sweeps the whole state space; it is a planning method given a model, not a method for learning from raw experience.
+**Dynamic programming (Bellman, 1957).** The value function V obeys V(s) = E[r + γ V(s′)], and DP solves this by iterating an estimate of V using the current estimates of successor states. Gap: it requires the transition model and sweeps the whole state space; it is a planning method given a model, not a method for learning from raw experience.
 
-**Witten's adaptive controller (Witten, 1977).** Contains the earliest published rule of the form that updates a discounted-cost prediction by the discrepancy (c_{t+1} + γ P_{t+1}) − P_t, embedded inside an adaptive controller for a Markov environment. Gap: it lived inside a controller, was never isolated or named, and its sketched convergence argument was incomplete (the stated theorem appears not to hold).
+**Witten's adaptive controller (Witten, 1977).** Contains the earliest published update rule for a discounted-cost prediction, embedded inside an adaptive controller for a Markov environment. Gap: it lived inside a controller, was never isolated or named, and its sketched convergence argument was incomplete (the stated theorem appears not to hold).
 
 **Adaptive Heuristic Critic / bucket brigade (Barto, Sutton & Anderson, 1983; Sutton, 1984; Holland, 1986).** Successive-prediction updates used as components of larger trial-and-error control systems — a critic that learns to predict reward, or production-rule strengths passed back along chains. Gap: studied only inside complex systems, entangled with control and action selection, never analyzed on their own as prediction methods, never proved to converge to correct predictions.
 
@@ -42,7 +42,7 @@ The metric is root-mean-squared error between learned and ideal predictions, ave
 
 ## Code framework
 
-The scaffold is a harness for multi-step prediction over observation-outcome sequences. A linear predictor and the conventional wait-for-the-outcome supervised update already exist; the slot to be filled is the rule that turns the *sequence of predictions* into incremental weight changes.
+The scaffold is a harness for multi-step prediction over observation-outcome sequences. A linear predictor and the conventional wait-for-the-outcome supervised update already exist; one slot is left to be filled by an alternative incremental update rule.
 
 ```python
 import numpy as np
@@ -70,14 +70,13 @@ class SupervisedPredictor:
         return w + dw   # must wait for outcome; O(m) state held until the end
 
 class SequencePredictor:
-    """Placeholder for a streaming rule: drive weight changes from the relation
-    between temporally successive predictions, computed as the sequence is
-    experienced rather than after the outcome is known."""
+    """Placeholder for a streaming rule computed as the sequence is experienced,
+    rather than after the outcome is known."""
     def __init__(self):
         self.running_summary = None   # per-sequence state to be defined
 
     def step(self, w, x_t, x_next, reward, alpha):
-        # TODO: increment w from successive predictions, incrementally
+        # TODO: produce an incremental weight change at this step
         pass
 
     def end_of_sequence(self):

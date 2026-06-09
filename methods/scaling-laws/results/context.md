@@ -12,15 +12,15 @@ Transformer language models clearly get better as they get bigger, are trained o
 
 **Batch-size / training-efficiency theory.** The relationship between batch size, number of steps, and compute is governed by a critical batch size $B_{\text{crit}}$ (McCandlish et al., 2018): below it, increasing the batch buys faster training at almost no extra compute; above it, returns diminish. The theory predicts $(S/S_{\text{min}} - 1)(E/E_{\text{min}} - 1) = 1$ for training to a fixed loss, with $S_{\text{min}}$ the minimum steps and $E_{\text{min}}$ the minimum examples, and $B_{\text{crit}} \equiv E_{\text{min}}/S_{\text{min}}$. $B_{\text{crit}}$ tracks the gradient noise scale, depends on the *loss attained* (not directly on model size), and grows as the loss falls. This is the tool needed to compare runs done at different (non-optimal) batch sizes on a common footing.
 
-**Risk intuition for the functional forms.** Two intuitions shape the ansatz. Overfitting at large dataset size should scale like the dataset variance, $\propto 1/D$, motivating an analytic $1/D$ expansion. And a loss model should be invariant in form under a change of vocabulary/tokenization, which only rescales the loss by an overall factor — so any normalization constants ($N_c$, $D_c$) must be free to absorb that rescaling and carry no fundamental meaning.
+**Tokenization changes the loss only by a scale.** Changing the vocabulary or tokenization scheme leaves the model unchanged but rescales the measured cross-entropy by an overall factor (a different number of "tokens" carrying the same information). So any normalization constants tied to units of loss carry no fundamental meaning across tokenizations.
 
 ## Baselines
 
-**Pre-existing scaling observations (Hestness et al., 2017; Rosenfeld et al., 2019).** Established that generalization error follows power laws in data and model size across several domains. Core idea: empirically fit error-vs-scale and observe power-law regions. The gap: not specific to Transformer language models, not unified into a joint $L(N,D)$ law, and not carried through to a compute-optimal allocation rule — they chart the phenomenon without delivering the predictive allocation recipe.
+**Pre-existing scaling observations (Hestness et al., 2017; Rosenfeld et al., 2019).** Established that generalization error follows power laws in data and model size across several domains. Core idea: empirically fit error-vs-scale and observe power-law regions. Where it stalls: the trends are reported per-factor and not specific to Transformer language models, and they stop at charting the phenomenon — they are not carried through to a quantitative recipe for choosing model and data size under a budget.
 
 **Hyperparameter-tuning / shape-search practice.** The prevailing way to improve a model was to tune architecture (depth/width/heads) and optimization at a fixed size. The gap this leaves: the empirical near-independence of loss from shape at fixed $N$ means this effort yields only a few percent, while scaling $N$, $D$, $C$ yields orders of magnitude — so shape search is the wrong lever, and there was no quantitative law saying so.
 
-**Single-factor extrapolation.** One can fit $L(N)$ alone, or $L(D)$ alone, or the empirical $L(C)$ at fixed batch size. Each is a real baseline trend but incomplete: $L(N)$ ignores finite data and overfitting; $L(D)$ ignores capacity; and an $L(C)$ measured at a fixed, non-critical batch size conflates compute-efficiency with the underlying trend and so extrapolates poorly. The gap: a trustworthy compute law needs runs standardized to the critical batch size and a joint law tying the factors together.
+**Single-factor extrapolation.** One can fit $L(N)$ alone, or $L(D)$ alone, or the empirical $L(C)$ at fixed batch size. Each is a real baseline trend but incomplete: $L(N)$ ignores finite data and overfitting; $L(D)$ ignores capacity; and an $L(C)$ measured at a fixed, non-critical batch size conflates compute-efficiency with the underlying trend and so extrapolates poorly. Where it stalls: taken one factor at a time, these trends cannot say how the factors trade off, and the fixed-batch $L(C)$ remains contaminated by batch inefficiency.
 
 ## Evaluation settings
 
@@ -28,7 +28,7 @@ The measured quantity is autoregressive cross-entropy test loss (nats/token) on 
 
 ## Code framework
 
-The primitives that already exist: linear-regression / curve-fitting in log space (NumPy/SciPy), and the Transformer hyperparameter conventions. Given a set of training runs — each a tuple of scale quantities and the converged/early-stopped loss — the pieces to fill in are the parameter- and compute-counting helpers, the single-variable power-law fit, the joint loss model and its fit, the finite-data stopping estimate, and the routine that turns fitted exponents into the compute-optimal allocation.
+The primitives that already exist: linear-regression / curve-fitting in log space (NumPy/SciPy), and the Transformer hyperparameter conventions. Given a set of training runs — each a tuple of scale quantities and the converged/early-stopped loss — the pieces to fill in start from the parameter- and compute-counting helpers and the single-variable power-law fit; the remaining slots are left open below.
 
 ```python
 import numpy as np
@@ -50,8 +50,7 @@ def fit_power_law(X, L):
 
 
 def joint_loss(N, D, params):
-    # TODO: a single law L(N, D) reducing to the N-only and D-only laws in the
-    #       appropriate limits, with finite-D overfitting built in.
+    # TODO: a loss model L(N, D) over the two scales jointly.
     pass
 
 
@@ -61,13 +60,11 @@ def fit_joint_loss(runs):
 
 
 def early_stopping_lower_bound(N, D, params, S_c, alpha_S):
-    # TODO: estimate the earliest finite-data stopping step from the gap between
-    #       the finite-D loss and the infinite-D loss for the same model size.
+    # TODO.
     pass
 
 
 def compute_optimal_exponents(alpha_N, alpha_S, alpha_B):
-    # TODO: from the per-factor exponents, derive how the optimal model size,
-    #       batch, steps, and data should scale with the compute budget.
+    # TODO: how the controllable scales should grow with the compute budget.
     pass
 ```

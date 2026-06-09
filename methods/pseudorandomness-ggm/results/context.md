@@ -59,15 +59,8 @@ inverse is the discrete logarithm. A subtle, load-bearing fact about one-way per
 inverse being *hard to compute in full* does NOT make individual bits of the input unpredictable —
 f(x) determines x information-theoretically, and known one-way candidates satisfy algebraic
 identities (from RSA's x, y and inverses one reads off the inverse at x·y), so most bits of x leak.
-What one needs is a single *hard-core* bit: a predicate B(x), efficiently computable from x, such
-that given only f(x) no efficient algorithm predicts B(x) better than 1/2 + negligible. In the
-discrete-log setting f(s)=g^s mod p, this can be phrased as the principal-square-root bit of the
-image g^s: given s it is just the most significant half-interval bit of the index, while given only
-g^s it asks whether that group element is the g-principal square root of its square. An exact oracle
-for that predicate peels a discrete logarithm bit by bit from right to left; an oracle with only a
-noticeable edge is amplified by random self-reduction, multiplying the target by g^{2r} and
-averaging via the weak law of large numbers. So under the discrete-log assumption that predicate is
-hard-core.
+So inverting f is hard as a whole, yet that hardness does not obviously localize to any particular
+output of an efficiently-computable predicate on x.
 
 **The proof tool that keeps recurring.** When two distributions are connected by a chain of
 intermediate "hybrid" distributions, each adjacent pair differing by one application of a
@@ -80,8 +73,7 @@ negligible. This hybrid argument is the recurring engine of the field.
 generator whose *next bit* is unpredictable. Brassard, and Blum–Goldwasser–Micali, asked whether the
 exponentially-long pad such a generator implicitly defines could be *randomly accessed* — could one
 compute the i-th bit, for i up to 2^k, in poly(k) time, and would such random access be
-"randomness preserving"? That easy-access question is exactly the doorway from generating a long
-random-looking *string* to indexing a random-looking *function*.
+"randomness preserving"? That question is on the table, unresolved.
 
 ## Baselines
 
@@ -96,14 +88,11 @@ unpredictable number need not *look* random (high-order bits can be biased), so 
 slice into uniform-looking bits, and it gives no clean per-bit guarantee.
 
 **Blum–Micali cryptographically-strong sequence generator (the immediate ancestor).** From a
-one-way permutation f on a domain D and a hard-core predicate B (for discrete-exp: f(s)=g^s mod p,
-B(s) is the MSB/principal-root bit of the image g^s), produce bits by walking the orbit of f and reading
-off the hard-core bit at each step. They define security by the *next-bit test*: for every efficient
+one-way permutation f on a domain D (e.g. discrete-exp f(s)=g^s mod p), produce a bit sequence from a
+secret seed. They define security by the *next-bit test*: for every efficient
 predictor C and every i, Pr[C(b_1…b_i) = b_{i+1}] < 1/2 + negligible — no efficient observer of the
-prefix guesses the next bit better than a coin. They prove their generator passes this test by
-reduction: a next-bit predictor, fed the hard bits of the orbit, becomes an algorithm that predicts
-B(x) from f(x), contradicting the predicate's hardness; and the predicate's hardness reduces to
-discrete log. Two gaps this leaves open. (i) Passing the *next-bit* test is one specific test —
+prefix guesses the next bit better than a coin. They prove their generator passes this test by a
+reduction to the intractability of discrete log. Two gaps this leaves open. (i) Passing the *next-bit* test is one specific test —
 does it imply passing *all* efficient tests (true indistinguishability from uniform)? Blum and
 Micali conjecture so and note Yao's claim of equivalence, but the next-bit test alone is not
 obviously the universal notion. (ii) The construction gives a polynomial-length consecutive
@@ -138,32 +127,27 @@ interchangeably, the Boolean circuit with poly(k) gates.
 
 ## Code framework
 
-The primitives that already exist before the construction: a candidate one-way permutation and its
-hard-core bit, plus a generic distinguisher harness. The contribution will fill the empty stubs —
-how to stretch the seed, and how to turn stretching into an indexed family of functions.
+The primitives that already exist before the construction: a candidate one-way permutation and a
+generic distinguisher harness. The empty stubs below are the objects sought — a string generator and
+a keyed function family — left to be filled in.
 
 ```python
 from typing import Callable
 
-# --- already-available hardness primitives (candidates) -----------------
+# --- already-available hardness primitive (candidate) -------------------
 def one_way_permutation(x: int, k: int) -> int:
     """Efficiently computable bijection on k-bit strings; believed hard to invert.
     e.g. modular exponentiation x -> g^x mod p."""
     ...  # provided by a number-theoretic assumption
 
-def hard_core_bit(x: int, k: int) -> int:
-    """A predicate easy to compute from x but, given only f(x), unpredictable
-    better than 1/2 + negligible.  one provably-unpredictable bit per x."""
-    ...
-
-# --- the slot the contribution fills: stretch a seed --------------------
+# --- empty slot: the string generator -----------------------------------
 def generator(seed: bytes) -> bytes:
     """Deterministic, efficient. Stretch a short random seed into a longer
     string that no efficient test can tell from uniform."""
-    # TODO: this is the object we must invent (a pseudorandom generator)
+    # TODO
     pass
 
-# --- the slot beyond that: index exponentially many functions -----------
+# --- empty slot: the keyed function family ------------------------------
 class KeyedFunctionFamily:
     """Pick a member with a few random bits (the key); evaluate it at any
     input in poly time; the family must be indistinguishable, under oracle
@@ -172,7 +156,7 @@ class KeyedFunctionFamily:
         self.key = key
 
     def evaluate(self, x: bytes) -> bytes:
-        # TODO: this is the second object we must invent
+        # TODO
         pass
 
 # --- the test we must defeat -------------------------------------------

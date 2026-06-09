@@ -28,8 +28,8 @@ The load-bearing concepts:
   downsamples and grants local translation tolerance. Stacking conv+pool builds a hierarchy of features.
 - **Receptive field.** Each unit deep in the net "sees" a patch of the input image; the size of that patch
   is the receptive field. With stride-1 convolutions and no pooling between them, stacking conv layers
-  grows the receptive field additively: a unit after two 3×3 layers sees a 5×5 input patch, after three a
-  7×7 patch. With pooling or large strides, resolution is lost and the field grows faster but coarser.
+  grows the receptive field additively as the per-layer footprints overlap. With pooling or large strides,
+  resolution is lost and the field grows faster but coarser.
 - **ReLU** (rectified linear units, max(0,x)) replaced saturating nonlinearities and sped up training of
   deep nets considerably; it is the standard hidden-layer nonlinearity.
 - **Regularization for big models:** dropout (randomly zeroing activations in the fully-connected layers

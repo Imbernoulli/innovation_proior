@@ -58,16 +58,13 @@ standard deviation `σ` from its weights and then samples `y ~ N(μ, σ²)`. The
 says *where* to explore and `σ` says *how widely*; the two are separately controllable, unlike a
 single-parameter Bernoulli unit where one number fixes both the action and the spread.
 
-**The likelihood-ratio idea in simulation.** Outside connectionism, an independent line in
-operations research had been computing the gradient of an expectation with respect to parameters
-*of the sampling distribution*. The trick (Aleksandrov, Sysoyev & Shemeneva 1968; later the
-"score function method" of Rubinstein and the "likelihood ratio method", Glynn 1990) rests on
-`∇ log p = ∇p / p` and on interchanging differentiation and integration:
-`∇_θ E_p[f] = ∫ f ∇p = ∫ f p (∇p/p) = E_p[f ∇log p]`, so the gradient of an expectation is itself
-an expectation that can be Monte-Carlo estimated, *and the integrand `f` need never be
-differentiated*. The standing requirements are differentiability of the density in `θ` and the
-validity of swapping `∇` and `∫`. This is the same mathematics the connectionist problem needs,
-arrived at from a different field.
+**Estimating gradients of expectations in simulation.** Outside connectionism, an independent line
+in operations research had taken up the problem of computing the gradient of an expectation with
+respect to parameters *of the sampling distribution itself* — as opposed to parameters sitting in
+an integrand over a fixed distribution (Aleksandrov, Sysoyev & Shemeneva 1968; later the "score
+function method" of Rubinstein and the "likelihood ratio method", Glynn 1990). The standing
+technical requirements in that literature are differentiability of the density in the parameter and
+the validity of interchanging differentiation and integration.
 
 **The temporal credit-assignment problem.** When the network has loops, or the environment
 delays its payoff, a single `r` arrives at the *end* of a stretch of activity and must be

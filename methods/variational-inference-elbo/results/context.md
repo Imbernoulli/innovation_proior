@@ -14,10 +14,10 @@ out not to be:
 The obstruction is the same object in both: the evidence integral. For discrete `z` it is a
 sum over exponentially many configurations of the hidden variables; for continuous `z` it is
 a high-dimensional integral with no closed form. The numerator `p(x, z)` is cheap; the
-denominator is what makes inference hard. A method that resolved this would have to produce a
-usable stand-in for `p(z | x)` *without* ever evaluating `p(x)` — and, ideally, hand back a
-computable estimate of `p(x)` as a by-product, deterministically and fast enough to fit many
-models or very large data.
+denominator is what makes inference hard. What is wanted is a posterior usable for downstream
+questions, plus the evidence for scoring, on models too large or too numerous for the exact
+route below — and the open question is whether anything useful can be said about `p(z | x)`
+or `p(x)` at all when the evidence integral cannot be evaluated.
 
 The pain is not hypothetical. In the QMR-DT medical-diagnosis network — roughly 600 disease
 nodes over 4000 symptom nodes, with noisy-OR conditional probabilities — the diseases couple
@@ -54,16 +54,13 @@ fit, sampling is an awkward fit.
 `KL(q ‖ p) = Σ_z q(z) log [q(z) / p(z)]` (Kullback & Leibler 1951). It is non-negative, zero
 iff `q = p`, and asymmetric: `KL(q ‖ p) ≠ KL(p ‖ q)`. The two directions ask different
 computational questions — `KL(q ‖ p)` is an expectation under `q`, while `KL(p ‖ q)` is an
-expectation under `p`. This asymmetry is load-bearing for anything that wants a *computable*
-measure of how far an approximation is from a target it cannot evaluate.
+expectation under `p`.
 
 **Jensen's inequality and convex duality.** For a concave function (the logarithm), Jensen's
 inequality gives `log E[Y] ≥ E[log Y]`, turning the log of an average into an average of logs
 — a lower bound. Convex-duality theory supplies the parallel view for log-sum-exp: if
 `f(u) = log Σ_z exp(u_z)`, then its Fenchel conjugate is `f*(q) = Σ_z q_z log q_z` on the
-probability simplex and `+∞` outside it, so `f(u) = sup_q {qᵀu − f*(q)}`. These are the
-standard tools for replacing an intractable nonlinear object by a tractable bounded one, fit
-by optimizing the variational parameter.
+probability simplex and `+∞` outside it, so `f(u) = sup_q {qᵀu − f*(q)}`.
 
 **Mean-field theory from statistical physics.** In statistical mechanics, intractable
 interacting-spin systems are approximated by replacing each spin's interaction with its
@@ -74,10 +71,10 @@ into neural networks: for a Boltzmann machine they replaced the stochastic corre
 estimated by Gibbs sampling with deterministic mean-field fixed-point equations, approximating
 the correlation between two units by the product of their individual mean activations. On
 their test cases the deterministic mean-field computation ran 10–30 times faster than Gibbs
-sampling at roughly equivalent accuracy. The crucial pre-existing idea here is the **fully
+sampling at roughly equivalent accuracy. The pre-existing idea here is the **fully
 factorized approximation** — treat coupled variables as independent, each described by a
-single average — together with the observation that this can be both fast and accurate when
-averaging phenomena dominate.
+single average — which on those cases was both fast and accurate when averaging phenomena
+dominate, but was derived only for the specific models it was applied to.
 
 **The EM algorithm as a bound.** Expectation–Maximization (Dempster, Laird & Rubin 1977) finds
 maximum-likelihood parameters `θ` in latent-variable models by alternating an E step
@@ -91,9 +88,7 @@ showed `F(P̃, θ) = −KL(P̃ ‖ p(z | x, θ)) + log p(x | θ)`, so for fixed 
 maximizing `F` is exactly the posterior `p(z | x, θ)` (the E step), and the M step maximizes
 `F` over `θ` — EM is **coordinate ascent on `F`**. `F` is, up to a sign, the variational free
 energy of statistical physics, with `−log p(x, z | θ)` playing the role of the energy of a
-state. This decomposition — an objective equal to "expected log-joint plus entropy" and also
-to "log-evidence minus a KL to the true posterior" — supplies a general inference objective.
-Its limitation as stated is that the E step *assumes the posterior `p(z | x, θ)` is
+state. Its limitation as stated is that the E step *assumes the posterior `p(z | x, θ)` is
 computable*; precisely the assumption that fails for the dense graphical models above.
 
 ## Baselines
@@ -148,23 +143,20 @@ The natural yardsticks that already exist for an approximate-inference method:
   worked instance, a Bayesian mixture of unit-variance Gaussians with a Gaussian prior on the
   component means (`K` components, `n` observations) — small enough to derive every update by
   hand and to compare against an exactly computable answer.
-- **Metrics.** The marginal likelihood / evidence `p(E)` (or its log) as both the quantity to
-  bound and the score for model comparison; the achieved value of any bound on `log p(x)`,
-  used to monitor convergence and to compare approximations (a tighter bound is a better
-  approximation); the KL divergence from the approximation to the true posterior where the
+- **Metrics.** The marginal likelihood / evidence `p(E)` (or its log) as the score for model
+  comparison; the KL divergence from an approximation to the true posterior where the
   posterior is available; held-out predictive likelihood on a test set; and wall-clock time to
   a usable answer (the axis on which deterministic methods are meant to beat sampling).
 - **Comparators / protocol.** Gibbs sampling (and Hamiltonian Monte Carlo on the continuous
   examples) as the sampling baselines; exact inference wherever the model is small enough to
-  run it, to measure approximation error directly; the same model fit from several random
-  initializations, since any non-convex objective over the approximating family will have
-  multiple local optima and the protocol must report sensitivity to initialization.
+  run it, to measure approximation error directly; and the same model fit from several random
+  initializations, since any iterative fitting procedure may be sensitive to its starting
+  point and the protocol must report that sensitivity.
 
 ## Code framework
 
 The reusable pieces are a cheaply evaluated log-joint, per-coordinate log-factors, and an
-outer loop with a convergence check. The missing pieces are a tractable stand-in for the
-posterior, a computable score for it, and an update rule.
+outer loop with a convergence check. What goes inside the loop is left open.
 
 ```python
 import numpy as np
@@ -184,38 +176,34 @@ def log_evidence_exact(x, params):
     raise NotImplementedError  # exponential in the worst case
 
 
-# ---- A tractable surrogate for p(z | x) ----
-# Its form, score, and update rule are the open slots.
+# ---- The approach to inference ----
 
-class PosteriorApproximation:
-    """A tractable stand-in q for the intractable posterior p(z | x).
+class Inference:
+    """How to answer posterior/evidence queries when log_evidence_exact is off-limits.
 
-    We do not yet know:
-      - what family q should live in (its factorization / parametric form),
-      - what objective tells us q is 'close' to p(z | x) without touching p(x),
-      - the rule that improves q.
+    TODO: open — to be designed.
     """
     def __init__(self, model_params):
-        pass  # TODO: parameters of the approximating family
+        pass  # TODO
 
-    def objective(self, x):
-        # TODO: a score we can actually compute (no p(x)) and push uphill
+    def step(self, x):
+        # TODO
         raise NotImplementedError
 
-    def update(self, x):
-        # TODO: one step that provably improves the objective
+    def score(self, x):
+        # TODO: some computable progress measure
         raise NotImplementedError
 
 
 def fit(x, model_params, max_iters=100, tol=1e-6):
-    """Outer loop: improve the approximation until the objective stops moving."""
-    q = PosteriorApproximation(model_params)
+    """Outer loop: iterate until a progress measure stops moving."""
+    inf = Inference(model_params)
     prev = -np.inf
     for _ in range(max_iters):
-        q.update(x)               # TODO: one improvement step
-        score = q.objective(x)    # TODO: computable progress measure
+        inf.step(x)               # TODO
+        score = inf.score(x)      # TODO
         if abs(score - prev) < tol:
             break
         prev = score
-    return q
+    return inf
 ```

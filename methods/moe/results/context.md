@@ -142,29 +142,17 @@ class Expert(nn.Module):
 
 
 class ConditionalLayer(nn.Module):
-    """A drop-in layer that should hold many experts but cost the compute of only
-    a few per example. The contribution goes here."""
+    """A drop-in layer that holds many experts but should cost the compute of only
+    a few per example."""
     def __init__(self, input_size, output_size, num_experts, hidden_size, k):
         super().__init__()
         self.experts = nn.ModuleList(
             [Expert(input_size, output_size, hidden_size) for _ in range(num_experts)]
         )
-        # TODO: trainable gating that emits a SPARSE weight vector over experts
-        pass
-
-    def gate(self, x):
-        # TODO: produce per-example weights over experts, mostly zero,
-        #       trainable end-to-end, and not prone to collapsing onto a few experts
+        # TODO: your approach here
         pass
 
     def forward(self, x):
-        # TODO: y = sum over experts of gate(x)_i * expert_i(x), skipping zeros;
-        #       also return an auxiliary loss that keeps expert utilization balanced
+        # TODO: your approach here
         pass
-
-
-def route_to_experts(inputs, gates, experts):
-    # TODO: build a small input batch for each expert from the examples whose
-    #       gate is nonzero, run each expert once, recombine weighted by the gates
-    pass
 ```

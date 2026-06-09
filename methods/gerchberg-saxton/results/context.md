@@ -12,7 +12,7 @@ For a useful solution one needs an iteration that (i) uses nothing but the two k
 
 **Fourier optics of a lens.** A thin lens performs an optical Fourier transform: the complex field in the front focal plane and the field in the back focal plane are a Fourier pair. So "image plane / diffraction plane" and "SLM plane / target plane" are the same mathematical relationship, `F = FT(f)`, realized in glass. A phase mask written on the SLM at the back focal plane therefore controls, through a single FFT, the field delivered to the target plane. For a single off-axis focal spot at `(x_m,y_m,z_m)` the required pixel phase is a known linear-plus-quadratic ramp `Δ_j^m = (2π/λf)(x_j x_m + y_j y_m) + (z_m π/λf²)(x_j²+y_j²)`; a lateral shift is a blazed grating, an axial shift is a Fresnel lens term.
 
-**Constraint sets and projections.** A set of complex fields with a *prescribed modulus* and free phase is a product of circles in the complex plane — geometrically a non-convex set. The nearest member of such a set to a given field is found by keeping the field's phase and resetting its modulus to the prescribed value. Two such moduli, in two Fourier-conjugate planes, define two non-convex sets whose intersection is the sought solution.
+**The fixed-modulus condition.** Each constraint in these problems prescribes the *modulus* of the field at every pixel while leaving its phase free. Pointwise, "this complex number must have modulus `a`" admits a whole circle of radius `a` in the complex plane — the constraint is satisfiable in infinitely many ways, and the set of fields meeting it is not convex. There are two such modulus conditions, one in each of the two Fourier-conjugate planes, and the true wave must satisfy both at once.
 
 **Diagnostic facts.** Two empirical observations frame the problem. First, an iteration that only resets moduli and transforms back and forth is observed to drive the modulus-mismatch error *down rapidly for a few iterations and then onto long plateaus*, sometimes stagnating with a characteristic low-contrast stripe pattern across the reconstruction (J. R. Fienup, *Phase retrieval algorithms: a comparison*, Appl. Opt. 21, 1982); the plateau is a convergence problem (a local, not global, minimum), not a uniqueness problem. Second, in the spot-array synthesis case, the simplest recipes — taking the complex superposition of the single-spot phase ramps with random offsets ("random superposition") — produce holograms with good speed but *poor uniformity and spurious "ghost" spots*, because a phase-only mask cannot split power evenly among a structured set of equal-amplitude targets (a phenomenon long noted in holographic-tweezers work, e.g. Curtis, Koss & Grier, *Opt. Commun.* 207, 2002). These two facts — slow stagnation, and non-uniform spot intensities — are exactly what a better algorithm must overcome.
 
@@ -22,7 +22,7 @@ For a useful solution one needs an iteration that (i) uses nothing but the two k
 
 **Random superposition (SR / "random mask").** For an array of `M` target spots, each spot `m` has a known single-spot phase ramp `Δ_j^m`. Superpose them with random per-spot phase offsets `θ_m` and keep only the phase: `φ_j = arg Σ_m exp(i(Δ_j^m + θ_m))` (Lesem–Hirsch–Jordan kinoform lineage; used for tweezers by Curtis–Koss–Grier 2002). Core idea: each ramp focuses one spot; the random offsets decorrelate them so interference doesn't pile all the energy into one place. Algorithm: one pass, no iteration, `O(MN)`. **Gap:** the random offsets give no control over how power actually divides — efficiency is mediocre and uniformity is poor, with ghost spots; acceptable for crude real-time steering, inadequate when even intensities are required.
 
-**Error-reduction / iterative Fourier-transform without weighting.** The generic iterate: transform the current SLM field to the target plane, replace its modulus by the target modulus (keeping phase), transform back, replace its modulus by the fixed illumination modulus (keeping phase), repeat (Fienup 1982 calls the generalized form "error-reduction"). Core idea: alternately satisfy each plane's modulus constraint. Algorithm: two FFTs per iteration, `O(N² log N)`. It provably never increases the modulus-mismatch error and is closely related to steepest-descent error minimization (Fienup 1982, §III and Appendix). **Gap:** convergence stalls on plateaus at non-global minima (the non-convex sets have spurious fixed points); and when applied to an equal-amplitude spot array it inherits the non-uniformity problem above — equal *target* amplitudes do not yield equal *delivered* spot intensities.
+**Iterative Fourier-transform schemes.** Beyond the one-pass recipes, a family of methods iterates between the two planes with an FFT, enforcing the known modulus in each plane in turn (Fienup 1982 surveys this "error-reduction" family). Algorithm: two FFTs per iteration, `O(N² log N)`. **Gap:** in practice such iterations make fast progress for a few tens of iterations and then crawl along plateaus, sometimes stalling well short of a solution (the non-convex modulus conditions admit spurious fixed points); and when applied to an equal-amplitude spot array they inherit the non-uniformity problem above — equal *target* amplitudes do not yield equal *delivered* spot intensities.
 
 **Feedback variants (input–output family).** Replacing the object-plane reset with a feedback rule that drives constraint-violating points toward zero — the input–output and hybrid input–output (HIO) algorithms (Fienup 1978–1982) — converges much faster on the single-intensity, support-constrained astronomy problem and escapes many plateaus. Core idea: the three transform-and-reset steps are a nonlinear system whose input need not be the current best estimate but a *driving function*; pushing the input by `β·(violation)` steers the output. **Gap (for this setting):** HIO targets the single-modulus-plus-support problem and does not by itself address per-spot intensity *uniformity* in a multi-spot array; it is a different cure for the stagnation symptom, not for the unevenness symptom.
 
@@ -67,27 +67,20 @@ def synthesize_phase(target_amplitude, illumination=1.0, n_iter=30):
     """Return a phase-only mask whose Fourier transform approximates
     target_amplitude, under the fixed `illumination` amplitude."""
     phase = np.random.rand(*target_amplitude.shape)   # initial guess
-    # TODO: choose the transform-domain replacement rule and the object-plane
-    #       phase-only replacement rule.
+    # TODO: fill in the loop body.
     pass
 
 def synthesize_balanced_phase(target_amplitude, n_iter=30):
     """Return a phase-only mask for target points whose relative intensities
     should be made even."""
     phase = np.random.rand(*target_amplitude.shape)
-    weights = target_amplitude.astype(float).copy()
-    prev_w = weights.copy()
-    # TODO: choose how observed intensity should revise the target amplitudes
-    #       before the transform-domain replacement rule is applied.
+    # TODO: fill in the loop body.
     pass
 
 def synthesize_spot_phase(delta, illumination, n_iter=30):
     """Return a phase-only mask for a set of focal spots.
     `delta[j, m]` is the known propagation phase from pixel j to spot m."""
-    theta = np.random.rand(delta.shape[1]) * 2 * np.pi
-    weights = np.ones(delta.shape[1])
-    # TODO: choose how the single-spot phase ramps are combined, how the
-    #       resulting mask is projected back to phase-only form, and how the
-    #       spot fields are re-read.
+    theta = np.random.rand(delta.shape[1]) * 2 * np.pi   # per-spot phase offsets (SR seed)
+    # TODO: fill in the loop body.
     pass
 ```

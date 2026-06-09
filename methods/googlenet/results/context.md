@@ -14,7 +14,7 @@ So the precise goal: obtain the accuracy that a much larger, deeper, and wider n
 
 **The sparsity argument.** There is a theoretical reason to believe the fundamental fix is *sparse* connectivity, not bigger dense layers. A result on learnability of deep representations states, informally, that if the data's distribution is representable by a large, very sparse deep network, then a good network topology can be constructed layer by layer: analyze the correlation statistics of the activations and cluster together units whose outputs are highly correlated; those clusters become the units of the next layer. This resonates with the Hebbian principle — neurons that fire together wire together — which suggests the prescription is useful in practice even when the strict mathematical preconditions don't hold exactly.
 
-**The hardware wall that blocks naive sparsity.** Despite the theory, non-uniform sparse computation is a poor fit for current infrastructure: even reducing arithmetic operations 100× does not pay off, because the overhead of irregular memory lookups and cache misses dominates, and dense matrix multiply on highly tuned libraries keeps getting faster. So a literal sparse network is impractical. However, the sparse-numerical-linear-algebra literature offers a hint: clustering a sparse matrix into *relatively dense submatrices* yields strong practical performance for sparse matrix multiplication. That points to a middle path — approximate a sparse structure with dense pieces that the hardware likes — but the concrete architecture that realizes it is exactly what is missing.
+**The hardware wall that blocks naive sparsity.** Despite the theory, non-uniform sparse computation is a poor fit for current infrastructure: even reducing arithmetic operations 100× does not pay off, because the overhead of irregular memory lookups and cache misses dominates, and dense matrix multiply on highly tuned libraries keeps getting faster. So a literal sparse network is impractical. The sparse-numerical-linear-algebra literature is the nearest adjacent fact: clustering a sparse matrix into *relatively dense submatrices* yields strong practical performance for sparse matrix multiplication. The standing tension is that the theory argues for sparsity while the hardware rewards only dense, regular computation, and prior architectures sit on one horn or the other.
 
 **Diagnostic facts that frame the design.** The useful facts before designing a new block are structural rather than benchmark numbers. Fully-connected classifier heads dominate the parameter count in the prevailing large convnets, while Network-in-Network has already made a parameter-free global-average-pooling head a plausible alternative. Dropout remains the standard guard against feature co-adaptation. And the strong performance of relatively *shallow* networks on this task is itself a clue: the features in the middle of a deep network ought already to be quite discriminative.
 
@@ -26,7 +26,7 @@ So the precise goal: obtain the accuracy that a much larger, deeper, and wider n
 
 **Layer-enlargement line (Zeiler & Fergus, 2014; Sermanet et al., 2013).** Work that improved on AlexNet largely by increasing layer size and by processing images at multiple scales (and applying the same convnet to localization and detection). Confirms that width and multi-scale help, but continues to scale dense layers, so the compute/parameter problem only grows.
 
-**Network-in-Network (Lin et al., 2013).** The most direct ancestor. Two contributions. (i) Replace a convolution's linear filter with a tiny per-patch multilayer perceptron ("mlpconv"), which, applied convolutionally, is exactly a stack of **1×1 convolutions** followed by ReLU — a learned, nonlinear recombination of channels at each spatial location, dropping cleanly into existing pipelines and raising representational power. (ii) Replace the fully-connected head with **global average pooling**: average each final feature map to a single value, producing a class-confidence vector with *no parameters*, which also acts as a structural regularizer against overfitting. Gap it leaves: it is still a single-scale stack; 1×1 convolutions are used to add nonlinearity, not yet exploited as a *dimension-reduction* device to control compute, and there is no explicit story for keeping a large, multi-scale network within a fixed budget.
+**Network-in-Network (Lin et al., 2013).** The most direct ancestor. Two contributions. (i) Replace a convolution's linear filter with a tiny per-patch multilayer perceptron ("mlpconv"), which, applied convolutionally, is exactly a stack of **1×1 convolutions** followed by ReLU — a learned, nonlinear recombination of channels at each spatial location, dropping cleanly into existing pipelines and raising representational power. (ii) Replace the fully-connected head with **global average pooling**: average each final feature map to a single value, producing a class-confidence vector with *no parameters*, which also acts as a structural regularizer against overfitting. Gap it leaves: it is still a single-scale stack; its 1×1 convolutions are introduced only to add per-location nonlinearity, and there is no explicit story for keeping a large, multi-scale network within a fixed budget.
 
 **Region-based detection (Girshick et al., 2014).** For detection, the leading approach proposes category-agnostic regions from low-level cues and then classifies each region with a CNN — establishing the two-stage proposal-plus-classify pipeline that a strong classification backbone would plug into. (Relevant as the downstream consumer of a better backbone, not as a classification baseline.)
 
@@ -70,24 +70,9 @@ class FeatureBlock(nn.Module):
         pass
 
 
-class SideHead(nn.Module):
-    """An optional training-time classifier attached to an intermediate
-    point of the network. Whether it is needed, where it attaches, and how
-    its loss is combined are open questions."""
-    def __init__(self, in_channels, num_classes):
-        super().__init__()
-        # TODO: a small classifier on top of intermediate features.
-        pass
-
-    def forward(self, x):
-        # TODO
-        pass
-
-
 class Net(nn.Module):
-    def __init__(self, num_classes=1000, aux=True):
+    def __init__(self, num_classes=1000):
         super().__init__()
-        self.aux = aux
 
         # A conventional stem: a few plain convs, pooling, response norm.
         self.conv1 = ConvUnit(3, 64, kernel_size=7, stride=2, padding=3)
@@ -102,7 +87,8 @@ class Net(nn.Module):
         # resolution between stages. Widths/arrangement TODO once the block
         # is designed.
         self.body = nn.ModuleList()  # TODO: fill with FeatureBlock(...) stages
-        self.side_heads = nn.ModuleDict()  # TODO: any training-time side heads.
+        # TODO: whatever training-time machinery (if any) the design turns
+        # out to need to make a deep stack trainable.
 
         # The head: how to turn the final feature maps into class scores
         # without an overfitting-prone fully-connected stack is itself a
@@ -113,13 +99,13 @@ class Net(nn.Module):
     def forward(self, x):
         x = self.lrn1(self.pool1(self.conv1(x)))
         x = self.pool2(self.lrn2(self.conv3(self.conv2(x))))
-        # TODO: run the body (and side heads during training), then the head.
+        # TODO: run the body (plus any training-time machinery), then the head.
         pass
 
 
 def compute_loss(outputs, target):
     """Cross-entropy on the main output, plus whatever auxiliary terms the
     design introduces."""
-    # TODO: combine the main loss with any side-head losses.
+    # TODO: combine the main loss with any auxiliary terms the design adds.
     return F.cross_entropy(outputs, target)
 ```

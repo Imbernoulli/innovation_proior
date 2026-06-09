@@ -26,7 +26,7 @@ Several load-bearing facts about the robot and about prior local methods set up 
 
 **Two-stage histogram methods — virtual force field and vector field histogram (Borenstein & Koren; Ulrich & Borenstein).** Build an occupancy grid / polar histogram of the free space from proximity sensors, pick a desired travel direction from the histogram, then turn that direction into a steering command. Fast and adaptive to unforeseen changes. Gap: the direction-then-steer split is again only valid under infinite forces; it does not check whether the commanded direction is reachable given the robot's acceleration limits, so at speed it can command turns the robot cannot execute.
 
-**Curvature-velocity method (Simmons, 1996).** Formulates local obstacle avoidance as a *constrained optimization in velocity space*: the decision variables are the translational and rotational velocities (v, ω); constraints come from physical limits (maximum velocities and accelerations) and from the obstacle configuration; the robot picks the (v, ω) that satisfies all constraints and maximizes an objective trading off speed, safety, and goal-directedness. This is the decisive move — reasoning about commands directly in velocity space, where the trajectories are circular arcs (constant curvature), so the dynamics can be expressed as constraints on (v, ω). Gap it leaves open: the way the acceleration limits enter the constraint set, and the way obstacle safety is enforced, are not derived directly from the synchro-drive motion equations — there is room for a cleaner, dynamics-derived restriction of the reachable velocities and a sharper admissibility (braking) condition.
+**Curvature-velocity method (Simmons, 1996).** Formulates local obstacle avoidance as a *constrained optimization*: the decision variables are the translational and rotational velocities (v, ω); constraints come from physical limits (maximum velocities and accelerations) and from the obstacle configuration; the robot picks the (v, ω) that satisfies all constraints and maximizes an objective trading off speed, safety, and goal-directedness. Gap it leaves open: the way the acceleration limits enter the constraint set, and the way obstacle safety is enforced, are imposed as side constraints rather than read off the synchro-drive motion equations, so the constraint set is not tied tightly to what the robot can physically do and stop from over the next interval.
 
 **Pure pursuit (path tracking).** Given a path to follow, pick a lookahead point on it and command the circular arc that reaches that point, recomputing as the robot advances. It confirms that arcs are the right control primitive but tracks a *given* path: it does no obstacle reasoning and offers no guarantee that the commanded arc is dynamically feasible.
 
@@ -36,7 +36,7 @@ The natural testbed is a real synchro-drive indoor robot (a B21-class platform) 
 
 ## Code framework
 
-What already exists: a robot state `[x, y, yaw, v, omega]`; a motion model that steps the pose forward under a commanded `(v, omega)` for a small time `dt` along the resulting circular arc; the robot's hardware limits (max/min translational speed, max rotational speed, max translational and rotational accelerations) and loop period; a robot footprint; and a local obstacle list from the proximity sensors. The control loop calls a planner each tick to turn the current state, the goal, and the obstacles into the next `(v, omega)`. The empty slot is the velocity-space selector: the bounds it searches, the candidate rollout, and the score that chooses one command.
+What already exists: a robot state `[x, y, yaw, v, omega]`; a motion model that steps the pose forward under a commanded `(v, omega)` for a small time `dt` along the resulting circular arc; the robot's hardware limits (max/min translational speed, max rotational speed, max translational and rotational accelerations) and loop period; a robot footprint; and a local obstacle list from the proximity sensors. The control loop calls a planner each tick to turn the current state, the goal, and the obstacles into the next `(v, omega)`. The empty slot is the planner: how it generates candidate commands, rolls them out against the obstacles, and scores one to execute.
 
 ```python
 import math
@@ -92,11 +92,6 @@ def predict_trajectory(x_init, v, w, config):
     return traj
 
 
-def calc_candidate_velocity_bounds(x, config):
-    # TODO: choose the velocity bounds to search this tick.
-    pass
-
-
 def calc_to_goal_cost(trajectory, goal):
     # TODO: score the predicted pose relative to the goal.
     pass
@@ -107,13 +102,9 @@ def calc_obstacle_cost(trajectory, ob, config):
     pass
 
 
-def calc_control_and_trajectory(x, bounds, config, goal, ob):
-    # TODO: grid the candidate velocities, roll each one out, and keep the best.
-    pass
-
-
-def local_velocity_control(x, config, goal, ob):
-    # TODO: compute bounds, select a command, and return the command plus rollout.
+def plan(x, config, goal, ob):
+    # TODO: generate candidate commands, roll each one out, score them,
+    # and return the chosen command plus its predicted rollout.
     pass
 
 
@@ -122,7 +113,7 @@ def main(goal):
     config = Config()
     obstacles = ...  # local obstacle points from the proximity sensors
     while True:
-        u, _ = local_velocity_control(x, config, goal, obstacles)
+        u, _ = plan(x, config, goal, obstacles)
         x = motion(x, u, config.dt)
         if math.hypot(x[0] - goal[0], x[1] - goal[1]) <= config.robot_radius:
             break

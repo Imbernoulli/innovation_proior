@@ -28,7 +28,7 @@ where `G` is the Green's function — the response at `x` to a unit point source
 F(κ * v) = F(κ) · F(v),     κ * v = F⁻¹( F(κ) · F(v) ).
 ```
 
-A convolution, which costs `O(N²)` if done directly, can therefore be computed by two Fourier transforms and a pointwise product; on a uniform grid the Fast Fourier Transform does each transform in `O(N log N)`. The Fourier transform also recurs throughout deep learning — in universal-approximation arguments and in accelerating convolutions.
+A convolution, which costs `O(N²)` if done directly, can therefore be computed by two Fourier transforms and a pointwise product; on a uniform grid the Fast Fourier Transform does each transform in `O(N log N)`.
 
 **The mesh-dependence pain point, measured.** A fully convolutional surrogate trained on the 1-D viscous Burgers map does not hold its error under refinement: its relative error rises from about `0.10` at `s = 256` to above `0.32` at `s = 8192`. The learned filters are tied to the training grid spacing, so refinement changes the finite-dimensional problem the network sees. That diagnostic motivates defining the model in function space rather than as one fixed array-to-array map.
 
@@ -66,7 +66,7 @@ The natural yardsticks, by family: for the time-independent problems, a pointwis
 
 ## Code framework
 
-The primitives that already exist: a tensor/autodiff library with an FFT (`torch.fft`), standard layers (`nn.Linear`, the 1×1 convolutions `nn.Conv{1,2,3}d`), pointwise nonlinearities, the Adam optimizer with a step learning-rate schedule, and a relative-`L²` loss for function-valued regression. Data arrives as point samples on a uniform grid, with the grid coordinates available to concatenate as extra input channels. The missing piece is the global layer that maps one sampled function representation to another.
+The primitives that already exist: a tensor/autodiff library with an FFT (`torch.fft`), standard layers (`nn.Linear`, the 1×1 convolutions `nn.Conv{1,2,3}d`), pointwise nonlinearities, the Adam optimizer with a step learning-rate schedule, and a relative-`L²` loss for function-valued regression. Data arrives as point samples on a uniform grid, with the grid coordinates available to concatenate as extra input channels. The scaffold below leaves one layer unspecified.
 
 ```python
 import torch

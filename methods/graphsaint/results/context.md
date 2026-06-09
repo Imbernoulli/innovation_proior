@@ -49,8 +49,7 @@ to the magnitude of each term's contribution; the Cauchy–Schwarz inequality gi
 **Connectivity within a minibatch.** For a GCN specifically, a node's representation is only as good
 as its access to its neighbors during propagation. If a minibatch contains a node but few or none of
 the neighbors it needs at the previous layer, that node's computed representation is impoverished —
-the minibatch is "too sparse," and accuracy suffers. So *inter-layer connectivity* inside a
-minibatch is itself a quantity to protect.
+the minibatch is "too sparse," and accuracy suffers.
 
 ## Baselines
 
@@ -116,8 +115,7 @@ graph attention networks (Veličković et al. 2018).
 
 The primitives that exist: a GCN layer doing normalized neighbor aggregation, an Adam optimizer, a
 cross-entropy / multi-label loss, and sparse adjacency in CSR form. What is missing is the *minibatch
-construction* — how to carve the large graph into manageable pieces and how to make the resulting
-gradient faithful. The scaffold leaves the sampler and the reweighting as empty slots.
+construction* for training a GCN on a large graph. The scaffold leaves that as an empty slot.
 
 ```python
 import numpy as np
@@ -146,21 +144,15 @@ class GCN(nn.Module):
             h = F.relu(torch.sparse.mm(adj_norm, W(h)))   # σ( Â · (W h) )
         return self.out(h)
 
-def sample_minibatch(adj_train):
-    """Produce one minibatch from the training graph. THE missing piece. TODO."""
-    pass
-
-def reweight(loss_per_node, aggregation):
-    """Correct the minibatch estimate so it matches the full-graph quantity. TODO."""
+def make_minibatch(adj_train):
+    """Construct one minibatch for GCN training on the large graph. TODO."""
     pass
 
 def train(adj_train, features, labels, model, opt, num_steps):
-    # preprocessing: set up the sampler and any normalization coefficients
-    # TODO: prepare_minibatching(adj_train)
     for _ in range(num_steps):
-        # batch = sample_minibatch(adj_train)        # the carved-out piece
+        # batch = make_minibatch(adj_train)
         # logits = model(batch.adj_norm, features[batch.nodes])
-        # loss   = weighted_loss(logits, labels[batch.nodes])   # TODO: reweight
+        # loss   = loss_fn(logits, labels[batch.nodes])
         # opt.zero_grad(); loss.backward(); opt.step()
         pass
 ```

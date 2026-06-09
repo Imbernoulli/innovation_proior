@@ -4,7 +4,7 @@
 
 A model that consumes a signal one step at a time must, at every instant, hold a usable summary of *everything it has seen so far*. The history grows without bound, but storage is fixed. So the real problem is: maintain, online and incrementally, a bounded-size representation of the cumulative history of an input — a representation rich enough that downstream predictions can be made from it, and cheap enough to update as each new value arrives.
 
-Two things make this hard. First, "summarize the past" is underspecified until we say *how much each moment of the past matters* and *what a good summary even means* — there is no notion of approximation quality without a yardstick in function space. Second, whatever recurrence maintains the summary must do so without privileging a particular timescale: if the same signal is presented faster or slower, or sampled irregularly, the summary should degrade gracefully rather than break. A solution would need (i) a single principle that explains existing memory mechanisms rather than yet another heuristic, (ii) the ability to address dependencies of any length without a prior on the sequence length or sampling rate, and (iii) provable guarantees — in particular control over how gradients propagate backward through time, and over how fast the approximation error shrinks with the size of the representation.
+Two things make this hard. First, "summarize the past" is underspecified until we say *how much each moment of the past matters* and *what a good summary even means* — there is no agreed-upon yardstick for whether one bounded summary is better than another. Second, whatever recurrence maintains the summary must do so without privileging a particular timescale: if the same signal is presented faster or slower, or sampled irregularly, the summary should degrade gracefully rather than break. A solution would need (i) a single principle that explains existing memory mechanisms rather than yet another heuristic, (ii) the ability to address dependencies of any length without a prior on the sequence length or sampling rate, and (iii) provable guarantees — in particular control over how gradients propagate backward through time, and over how fast the approximation error shrinks with the size of the representation.
 
 ## Background
 
@@ -15,7 +15,7 @@ Two things make this hard. First, "summarize the past" is underspecified until w
 The Legendre polynomials in particular are orthogonal under the *uniform* measure on [−1,1], with normalization (2n+1)/2 ∫_{−1}^1 P_n P_m dx = δ_{nm}, endpoint values P_n(1)=1 and P_n(−1)=(−1)^n, and derivative recurrences
 - (2n+1)P_n = P_{n+1}' − P_{n−1}', P_{n+1}' = (n+1)P_n + xP_n',
 
-which combine to give P_n' = (2n−1)P_{n−1} + (2n−5)P_{n−3} + … and (x+1)P_n'(x) = nP_n + (2n−1)P_{n−1} + (2n−3)P_{n−2} + …. The key structural fact for what follows: the derivative of a degree-n orthogonal polynomial is a polynomial of degree n−1, hence a finite linear combination of lower-order members of the same family. Generalized Laguerre polynomials play the analogous role for the weight x^α e^{−x} on [0,∞), with the recurrence d/dx L_n^{(α)} = −(L_0^{(α)} + … + L_{n−1}^{(α)}).
+which combine to give P_n' = (2n−1)P_{n−1} + (2n−5)P_{n−3} + … and (x+1)P_n'(x) = nP_n + (2n−1)P_{n−1} + (2n−3)P_{n−2} + …. As with any orthogonal family, the derivative of a degree-n member is a polynomial of degree n−1. Generalized Laguerre polynomials play the analogous role for the weight x^α e^{−x} on [0,∞), with the recurrence d/dx L_n^{(α)} = −(L_0^{(α)} + … + L_{n−1}^{(α)}).
 
 **Differentiating through moving integrals.** When a quantity is an integral over a domain whose limits move with a parameter t, its derivative picks up boundary terms (the Leibniz rule): ∂_t ∫_{α(t)}^{β(t)} h(x,t) dx = ∫ ∂_t h dx + β'(t) h(β(t),t) − α'(t) h(α(t),t). Equivalently, writing the limits as an indicator 𝟙_{[α,β]} and differentiating distributionally, ∂_t 𝟙_{[α(t),β(t)]} = β'(t)δ_{β(t)} − α'(t)δ_{α(t)} with Dirac deltas.
 
@@ -41,7 +41,7 @@ The natural yardsticks for a long-range memory mechanism, all predating any new 
 
 ## Code framework
 
-What already exists: numpy/scipy for linear algebra and special functions (Legendre/Laguerre evaluation, matrix exponentials, triangular solves), and PyTorch for the trainable layer and its recurrence. The pieces below are the known scaffold; the one empty slot is the memory operator itself — the rule that maps an input value to an updated bounded-size state — together with the matrices that define it.
+What already exists: numpy/scipy for linear algebra and special functions (Legendre/Laguerre evaluation, matrix exponentials, triangular solves), and PyTorch for the trainable layer and its recurrence. The piece below is the known scaffold; the one empty slot is the memory operator itself — the rule that maps an incoming input value to an updated bounded-size state, plus a way to read an approximation of the past history back out of that state.
 
 ```python
 import numpy as np
@@ -51,14 +51,6 @@ import torch.nn.functional as F
 from scipy import signal, linalg as la, special as ss
 
 
-def build_transition(measure, N):
-    """Return (A, B): the matrices defining the continuous-time state update
-    dc/dt = A c + B f for a chosen notion of 'what to remember'.
-    The choice of A, B is exactly the contribution to be derived."""
-    # TODO: derive A (N x N) and B (N, 1) from a stated approximation principle
-    raise NotImplementedError
-
-
 class MemoryOperator(nn.Module):
     """Maintains a length-N summary c of an online scalar signal f.
     forward: sequence of inputs -> sequence of length-N states.
@@ -66,19 +58,14 @@ class MemoryOperator(nn.Module):
     def __init__(self, N, **kwargs):
         super().__init__()
         self.N = N
-        A, B = build_transition(..., N)            # TODO
-        # TODO: discretize the continuous update into a step recurrence
-        #       c_k = A_k c_{k-1} + B_k f_k  (Euler / bilinear / ZOH)
-        self.register_buffer('A', torch.as_tensor(A))
-        self.register_buffer('B', torch.as_tensor(B))
-        # TODO: basis-evaluation matrix to map coefficients back to a signal
-        self.eval_matrix = None
+        # TODO: define the online update rule that maps each incoming value
+        #       to an updated length-N state, and whatever fixed data it needs.
 
     def forward(self, inputs):                      # inputs: (length, ...)
-        # TODO: roll the recurrence c_k = A_k c_{k-1} + B_k f_k
+        # TODO: roll the update over the sequence -> (length, ..., N)
         pass
 
     def reconstruct(self, c):
-        # TODO: c -> approximation of f over the represented window
+        # TODO: c -> approximation of f over the represented history
         pass
 ```

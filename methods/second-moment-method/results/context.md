@@ -35,20 +35,18 @@ almost always** — a complete and clean conclusion in the "disappearance" direc
 a quantity that is enormous on a vanishingly rare event and 0 the rest of the time (Alon–Spencer use
 "the number of deaths from nuclear war in the next year": E[X] can be argued to be very large, yet
 one hopes Pr(X ≠ 0) ≈ 0). A large or even diverging mean, alone, certifies nothing about typical
-existence. The missing ingredient is a control on how *spread out* X is.
+existence; the expectation cannot see how the mass of X is distributed around it.
 
 **Chebyshev's inequality.** For X with mean µ and variance σ² = Var[X] = E[(X−µ)²], Chebyshev says
 Pr[|X − µ| ≥ λσ] ≤ 1/λ² for any λ > 0. The proof is Markov applied to (X−µ)²:
 Pr(|X−µ| ≥ α) = Pr((X−µ)² ≥ α²) ≤ E[(X−µ)²]/α² = Var[X]/α². This is the elementary fact that ties a
-small variance to concentration around the mean — the one extra piece of information beyond E[X] that
-a "disappearance/appearance" argument is missing.
+small variance to concentration around the mean.
 
 **Variance of a sum of indicators.** When X = X₁ + ⋯ + X_m is a sum, Var[X] = Σᵢ Var[Xᵢ] +
 Σ_{i≠j} Cov[Xᵢ, Xⱼ], with Cov[Y,Z] = E[YZ] − E[Y]E[Z], and Cov = 0 for independent variables. For
 **indicators** Xᵢ = 1_{Aᵢ} with pᵢ = Pr[Aᵢ]: Var[Xᵢ] = pᵢ(1−pᵢ) ≤ pᵢ = E[Xᵢ], so the diagonal sums
 to at most E[X]; only the off-diagonal covariances between *dependent* events carry the rest of the
-variance. This is the structural fact that makes variance computations tractable for combinatorial
-counts: the whole difficulty concentrates in the pairwise dependencies.
+variance.
 
 **The Paley–Zygmund inequality (1932).** A reverse-Chebyshev anti-concentration bound: for Z ≥ 0 and
 t ∈ [0,1], Pr[Z > tE[Z]] ≥ (1−t)² E[Z]²/E[Z²]. It lower-bounds the chance that a nonnegative variable
@@ -69,8 +67,7 @@ Establishing a threshold has exactly two halves: an "almost never below" half (f
 **The number-theory precedent (Turán 1934).** Let ν(n) be the number of distinct prime divisors of n.
 Hardy and Ramanujan (1917) showed almost all n ≤ N have ≈ ln ln N prime factors by an intricate
 argument. Turán re-proved it by writing ν as a sum of near-independent indicators X_p = 1_{p|x} for a
-random x, computing mean and variance, and applying Chebyshev — a strikingly short proof that became
-the template for "compute E and Var of a count, then Chebyshev."
+random x and arguing about the resulting count — a strikingly short proof compared with the original.
 
 ## Baselines
 
@@ -88,9 +85,9 @@ the template for "compute E and Var of a count, then Chebyshev."
 
 - **Erdős–Rényi (1960) threshold computations.** Establish thresholds for several graph properties.
   For the appearance of a fixed subgraph they identify the threshold and prove it. *Gap*: at this
-  stage the "almost always above threshold" direction is handled case by case; what is wanted is a
-  single, clean criterion — a condition on the variance (or on the pairwise dependency sum) that
-  mechanically yields Pr[X > 0] → 1 and X ∼ E[X] for any such counting variable.
+  stage the "almost always above threshold" direction is handled case by case; there is no single,
+  transferable criterion that mechanically yields Pr[X > 0] → 1 and X ∼ E[X] for an arbitrary
+  counting variable once the mean is large.
 
 ## Evaluation settings
 
@@ -115,7 +112,7 @@ Metrics throughout: whether Pr[X > 0] → 1 (existence almost surely), whether X
 A pure existence/threshold result; the only natural code is a small numerical sanity check that a
 counting variable's mean and the existence/disappearance flip line up across a candidate threshold.
 The pre-existing primitives are an RNG and basic graph bookkeeping. The empty slots are the count and
-its mean; the proof supplies the separate spread/dependency estimate.
+its mean; whatever the proof needs beyond that is supplied separately.
 
 ```python
 import itertools, random

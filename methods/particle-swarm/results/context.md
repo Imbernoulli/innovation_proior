@@ -20,13 +20,13 @@ Anything that follows a gradient is out — there is no gradient, and even a num
 
 **Five principles of swarm intelligence (Millonas, 1994).** A swarm worth the name should obey: *proximity* (carry out simple space/time computations), *quality* (respond to quality factors in the environment), *diverse response* (not commit all activity to narrow channels), *stability* (not change behavior mode on every environmental fluctuation), and *adaptability* (change mode when it is worth the cost). Stability and adaptability are two sides of one coin: a good search must hold steady yet re-orient when something genuinely better appears.
 
-**Explore-exploit and the cost of imbalance.** Any population search must balance wandering (explore) against converging (exploit). In flock-with-attractor experiments, weighting an agent's pull toward its *own* best discovery too heavily produces excessive wandering of isolated individuals; weighting the pull toward the *group's* best too heavily makes the flock rush prematurely into a local optimum. Roughly equal weighting searches the domain most effectively. A momentum/velocity term that carries prior motion forward causes agents to *overshoot* attractors and thereby keep probing the regions between known-good points, rather than braking exactly onto the first good point found.
+**Explore-exploit and the cost of imbalance.** Any population search must balance wandering (explore) against converging (exploit). Lean too far toward dispersing the population and it never concentrates enough to sharpen an answer; lean too far toward pulling everyone to the single best-so-far and the population rushes prematurely into the first decent basin it stumbles on, before the landscape has been surveyed. Neither extreme searches a multimodal domain well, and there is no a-priori-known right balance for an arbitrary black box.
 
 ## Baselines
 
-**Genetic algorithms (Holland; Davis 1991).** The dominant population-based black-box optimizer of the time. Encode candidate solutions as strings (a "chromosome"), assign each a scalar *fitness* = f(x), and evolve the population by selection (fitter strings reproduce more), crossover (recombine two parents' substrings), and mutation (random bit flips). GAs handle multimodal, non-differentiable f and maintain diversity through the population, and Holland's analysis of the "optimum allocation of trials" frames the explore/exploit trade-off precisely. Gaps: GAs operate by *recombining* discrete encodings rather than moving points through the continuous space; they discard the notion of an individual's *trajectory* and per-individual *memory* of where it personally did well; and they require choosing an encoding, crossover and mutation operators, and selection pressure.
+**Genetic algorithms (Holland; Davis 1991).** The dominant population-based black-box optimizer of the time. Encode candidate solutions as strings (a "chromosome"), assign each a scalar *fitness* = f(x), and evolve the population by selection (fitter strings reproduce more), crossover (recombine two parents' substrings), and mutation (random bit flips). GAs handle multimodal, non-differentiable f and maintain diversity through the population, and Holland's analysis of the "optimum allocation of trials" frames the explore/exploit trade-off precisely. Gaps: GAs operate by *recombining* discrete encodings rather than moving points through the continuous space; a GA individual is a string that gets spliced and discarded from generation to generation, with no persisting identity or trajectory of its own; and they require choosing an encoding, crossover and mutation operators, and selection pressure.
 
-**Evolutionary programming / evolution strategies.** Mutation-driven population search over real-valued vectors with selection, no crossover. Heavily stochastic, like GAs, and likewise without a notion of a candidate's persisting velocity or its own best-visited location.
+**Evolutionary programming / evolution strategies.** Mutation-driven population search over real-valued vectors with selection, no crossover. Heavily stochastic, like GAs, and likewise without any notion of a candidate that persists and moves through the space across generations.
 
 **Hill-climbing with random restarts.** Local search from many seeds. Simple and gradient-free, but each restart is independent — no sharing of discoveries between starts — so on a sparse multimodal landscape it wastes most of its evaluations re-exploring.
 
@@ -34,11 +34,11 @@ Anything that follows a gradient is out — there is no gradient, and even a num
 
 ## Evaluation settings
 
-The natural yardsticks are standard continuous black-box test functions, evaluated by the number of evaluations / iterations to reach a target value and by the best value attained. Highly multimodal cases stress the explore side: Schaffer's f6 (a very ridged, deceptive 2-D surface with many local optima), Rastrigin (a paraboloid studded with a regular lattice of local minima), Griewank, and Ackley; Rosenbrock's curved valley stresses the exploit/refinement side; the Sphere function is a unimodal sanity check. Typical protocol: a few tens of candidates, a fixed dimensionality (e.g. 10), a cap on iterations (e.g. 1000) or a "no-improvement for k iterations" stopping rule, averaged over many independent runs. Applied settings include training feedforward neural-network weights as a black box — the exclusive-or net (a 2-3-1 architecture, 13 weights) and a classifier on the Fisher Iris data — scored by sum-squared error or classification accuracy, to be compared against backpropagation. Acceleration parameters are commonly fixed equal (around 2). No outcomes are recorded here, only the settings.
+The natural yardsticks are standard continuous black-box test functions, evaluated by the number of evaluations / iterations to reach a target value and by the best value attained. Highly multimodal cases stress the explore side: Schaffer's f6 (a very ridged, deceptive 2-D surface with many local optima), Rastrigin (a paraboloid studded with a regular lattice of local minima), Griewank, and Ackley; Rosenbrock's curved valley stresses the exploit/refinement side; the Sphere function is a unimodal sanity check. Typical protocol: a few tens of candidates, a fixed dimensionality (e.g. 10), a cap on iterations (e.g. 1000) or a "no-improvement for k iterations" stopping rule, averaged over many independent runs. Applied settings include training feedforward neural-network weights as a black box — the exclusive-or net (a 2-3-1 architecture, 13 weights) and a classifier on the Fisher Iris data — scored by sum-squared error or classification accuracy, to be compared against backpropagation. No outcomes are recorded here, only the settings.
 
 ## Code framework
 
-The pieces that already exist: numpy for vectorized array math, a uniform random generator, and an objective function `f(X)` that maps a batch of candidate positions of shape `(n_particles, dimensions)` to a vector of costs of shape `(n_particles,)`. A container holds the per-candidate state, and a driver loop repeatedly evaluates and updates it. The two update rules — how a candidate's state changes each step, and how the population's shared knowledge is computed — are the empty slots.
+The pieces that already exist: numpy for vectorized array math, a uniform random generator, and an objective function `f(X)` that maps a batch of candidate positions of shape `(n_particles, dimensions)` to a vector of costs of shape `(n_particles,)`. A container holds the per-candidate state, and a driver loop repeatedly evaluates the population and updates it. What bookkeeping each candidate keeps, and the rule by which the population is updated each step from the new evaluations, are the empty slots.
 
 ```python
 import numpy as np
@@ -48,37 +48,19 @@ class Population:
     def __init__(self, n_particles, dimensions, bounds, options):
         lo, hi = bounds
         self.position = np.random.uniform(lo, hi, (n_particles, dimensions))
-        self.state    = None        # TODO: any per-candidate dynamics we decide to carry
-        self.mem_pos  = self.position.copy()          # each candidate's own best-seen position
-        self.mem_cost = np.full(n_particles, np.inf)  # ...and its value
-        self.best_pos  = None       # shared knowledge: the population's best-seen position
-        self.best_cost = np.inf
-        self.options   = options    # the few tunable parameters of the update rule
+        # TODO: whatever additional per-candidate state and population-level
+        # bookkeeping the update rule turns out to need
+        self.options  = options    # the few tunable parameters of the update rule
 
-def update_memory(pop, current_cost):
-    """Refresh each candidate's own best-seen position/value from the new evaluation."""
-    pass  # TODO
-
-def update_shared_best(pop):
-    """Compute the population-level shared knowledge from the candidates' memories."""
-    pass  # TODO
-
-def step_state(pop):
-    """The per-candidate update rule: how each candidate's dynamics change this step,
-    pulled by individual memory and shared knowledge."""
-    pass  # TODO
-
-def step_position(pop):
-    """Move each candidate according to its updated dynamics."""
+def update(pop, current_cost):
+    """The update rule: given the new evaluation of every candidate's current
+    position, move the population for the next step."""
     pass  # TODO
 
 def optimize(f, n_particles, dimensions, bounds, options, iters):
     pop = Population(n_particles, dimensions, bounds, options)
     for _ in range(iters):
         cost = f(pop.position)
-        update_memory(pop, cost)
-        update_shared_best(pop)
-        step_state(pop)
-        step_position(pop)
-    return pop.best_cost, pop.best_pos
+        update(pop, cost)
+    return pop  # best-so-far, however the update rule chooses to track it
 ```

@@ -17,7 +17,7 @@ The load-bearing technical idea already in the air is the **random restriction**
 - **Parity is indestructible under restriction.** For any $\rho$, $\mathrm{PARITY}|_\rho$ is again $\mathrm{PARITY}$ (or its negation) on the free variables — fixing some bits only XORs a constant into the answer. A function of $m$ free variables that equals $\pm\mathrm{PARITY}$ still has full decision-tree depth $m$ and still needs DNF/CNF size $2^{m-1}$. Restriction never trivializes parity.
 - **A small low-width depth-2 block almost surely *collapses* under restriction.** If an AND-of-ORs (or OR-of-ANDs) has small clauses, a random restriction with small $p$ kills most clauses (one wrongly-set literal kills a term) and leaves the rest depending on very few variables; with high probability the induced function is computed by a tiny decision tree. This collapse is what FSS exploited at the bottom layer of small circuits — wide gates almost surely get forced, narrow gates rarely keep many free variables.
 
-The bridge between the two is the equivalence: **a function of decision-tree depth $\le t$ is simultaneously a width-$t$ DNF and a width-$t$ CNF** (read the 1-leaves as AND-terms, the 0-leaves of the complement as OR-clauses). So if a bottom DNF collapses to a shallow decision tree, it can be *re-expressed as a CNF of the same small width* and merged with the AND layer above it, dropping the circuit depth by one. That is the mechanism that turns "collapse" into "depth reduction". The whole problem is then quantitative: how *unlikely* is the collapse to fail, and does that probability beat a union bound over all gates?
+A standard fact relates the two normal forms through decision trees: **a function of decision-tree depth $\le t$ is simultaneously a width-$t$ DNF and a width-$t$ CNF** (read the 1-leaves as AND-terms, the 0-leaves of the complement as OR-clauses). FSS's depth-reduction step rested on facts of this kind: a depth-2 sub-block that becomes simple under restriction can be presented in either normal form. The whole problem is then quantitative: how *unlikely* is the collapse to fail, and does that probability beat a union bound over all gates?
 
 ## Baselines
 
@@ -27,9 +27,9 @@ The bridge between the two is the equivalence: **a function of decision-tree dep
 
 **Yao (1985), the first exponential bound.** Yao replaced FSS's crude per-gate estimate with a labeling/encoding argument that drives the switching-failure probability **exponentially** small, yielding the first genuinely exponential lower bound and the first oracle achieving the hierarchy separations. Two gaps remained. First, Yao's switch was only **approximate**: the restricted AND-of-small-ORs was shown to *agree on most inputs* with an OR-of-small-ANDs, not to equal it; tracking that approximation error through $k$ successive layers complicated the rest of the proof substantially. Second, his constants were not sharp — the exponent came out like $n^{1/4k}$ with depth-dependent constants, so it did not yield a clean tight size–depth tradeoff or clean corollaries about the exact depth of poly-size circuits.
 
-**Sipser, the depth-hierarchy functions.** Sipser defined read-once alternating AND/OR trees $f_k^m$ of depth $k$ — linear size at depth $k$ by construction — and proved (via the same restriction technique) that at depth $k-1$ they require super-polynomial size. This frames the *depth-hierarchy* question (each extra level is provably useful) and, like the parity bound, is bottlenecked by exactly how sharply a random restriction switches a layer; a sharper switching estimate would upgrade Sipser's super-polynomial separation to exponential and tighten the gap to one level.
+**Sipser, the depth-hierarchy functions.** Sipser defined read-once alternating AND/OR trees $f_k^m$ of depth $k$ — linear size at depth $k$ by construction — and proved (via the same restriction technique) that at depth $k-1$ they require super-polynomial size. This frames the *depth-hierarchy* question (each extra level is provably useful) and, like the parity bound, stalls at the same place: the separation it proves is only super-polynomial, capped by how sharply a random restriction switches a layer.
 
-The common gap across all of these: the proofs all reduce depth by switching a layer under a random restriction, and they are all capped by the *quality of the switching estimate*. FSS/Ajtai: polynomial failure probability ⇒ super-polynomial. Yao: exponential but **approximate** and with non-sharp constants ⇒ exponential but messy and not tight. What is missing is a switching estimate that is at once **exact** (the restricted block *equals* a small-width formula of the other type) and **exponentially sharp** (failure probability $\alpha^s$ for a target width $s$, with $\alpha=\Theta(pt)$), so that a single clean union bound and induction give a near-optimal exponential tradeoff.
+The common pattern across all of these: the proofs all reduce depth by switching a layer under a random restriction, and where they stall is traceable to the failure probability they can prove for that switch. FSS/Ajtai: the per-gate estimate is only polynomially small, and the union bound over $n^k$ gates then forces the fan-in constant to grow each round, so the conclusion caps out at super-polynomial. Yao: the per-gate estimate is driven exponentially small, but the switch it certifies is only *approximate* (the restricted block agrees with the other normal form on most inputs rather than equalling it), so the approximation error has to be tracked through every layer, and the resulting exponent carries depth-dependent constants rather than a clean tight tradeoff.
 
 ## Evaluation settings
 
@@ -42,7 +42,7 @@ The yardstick is purely analytic — the natural quantities to pin down, with no
 
 ## Code framework
 
-This is a theorem to be proved, so the natural "scaffold" is the skeleton of the argument plus a small executable sanity-check harness for the combinatorial objects (decision trees, restrictions) — the empty slots are exactly where the switching estimate and the induction will go.
+This is a theorem to be proved, so the natural "scaffold" is the skeleton of the argument plus a small executable sanity-check harness for the combinatorial objects (decision trees, restrictions) — the empty slots are where the probabilistic estimate and the depth-reduction argument will go.
 
 ```python
 from itertools import product
@@ -86,12 +86,10 @@ def dt_depth(f, free_vars):
 # ---- open proof slots -------------------------------------------------------
 
 def switching_bound(p, t, s):
-    """The crux: an upper bound on
+    """An upper bound on
          Pr_{rho in R_p}[ DTdepth( (AND-of-small-ORs)|rho ) >= s ]
-    for a depth-2 block whose clauses have fan-in <= t.
-    The whole lower bound hinges on how good this bound is:
-      - polynomially small  -> only super-polynomial circuit lower bound
-      - exponentially small in s, of the form (C * p * t)^s -> exponential lower bound
+    for a depth-2 block whose clauses have fan-in <= t. The strength of the
+    final circuit lower bound is governed by how strong this estimate is.
     TODO: derive the right-hand side and prove it."""
     pass  # TODO
 

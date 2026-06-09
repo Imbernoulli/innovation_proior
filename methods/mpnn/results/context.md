@@ -16,9 +16,9 @@ The goal is a learned surrogate that reproduces the DFT label to within "chemica
 
 **Why hand-engineered descriptors fall short.** The prevailing approach in chemistry ML is to convert a molecule into a fixed-length vector by a hand-designed rule, then feed that vector to an off-the-shelf regressor (kernel ridge regression, random forests, a plain MLP). The descriptors build symmetries into the input by hand. This has two intrinsic limits, both observed in prior work: representations that *are* isomorphism-invariant (e.g. atom-centered symmetry functions) tend to break when the chemistry gets richer — more than three atomic species, or compositions not seen in training; and representations that are *not* invariant (e.g. a matrix indexed by atom order) force the downstream model to learn the invariance from data augmentation, wasting capacity. Either way, the features are frozen: they cannot adapt to the property being predicted.
 
-**The diagnostic that motivates a neural graph model.** The situation parallels computer vision before convolutional nets: strong hand-engineered features plus a generic classifier, held back by a shortage of empirical evidence that a neural architecture with the *right inductive bias* can win. The symmetries of atomic systems point at neural networks that operate on graph-structured data and respect isomorphism. Several such models had already been proposed — and, examined closely, they share a recurring computational shape: every node keeps a hidden vector; the node repeatedly pulls information from its neighbors and revises its hidden vector; finally a graph-level pooling step reads out all the node vectors into one prediction. Each model dresses this shape in its own notation, which obscures how closely related they are and makes it hard to tell which design details actually matter.
+**The diagnostic that motivates a neural graph model.** The situation parallels computer vision before convolutional nets: strong hand-engineered features plus a generic classifier, held back by a shortage of empirical evidence that a neural architecture with the *right inductive bias* can win. The symmetries of atomic systems point at neural networks that operate on graph-structured data and respect isomorphism. Several such models had already been proposed, each in its own notation, which obscures how closely related they are and makes it hard to tell which design details actually matter.
 
-**The pieces such a model rests on.** A neighbor-aggregation step that sums (or otherwise symmetrically combines) over a node's neighbors is automatically permutation-equivariant: the output at each node does not depend on the order in which neighbors are listed. A recurrent cell (e.g. a GRU) gives a stable, parameter-tied way to fold an aggregated message into a node's state across repeated rounds. A *permutation-invariant* pooling over the final node states (a sum, or a more expressive order-invariant set encoder) turns the per-node states into a single graph vector. Composing these yields a model that is isomorphism-invariant by construction.
+**The building blocks available.** The toolbox of operations that respect set/graph symmetry is well known: order-insensitive reductions over a collection (sums, averages, and more expressive order-invariant set encoders), recurrent cells (e.g. a GRU) for folding new information into a running state with tied parameters, and the standard differentiable layers. The open question is how to assemble such pieces into an architecture that reads a molecular graph and predicts a property while respecting isomorphism.
 
 ## Baselines
 
@@ -70,23 +70,18 @@ class GraphPropertyModel(torch.nn.Module):
         super().__init__()
         self.lin0 = Linear(num_node_features, dim)   # pad atom features to width dim
 
-        # TODO: the per-round neighbour-aggregation + node-update operator
-        #       (how a node forms a message from its neighbours and revises
-        #        its hidden state) — the core contribution.
-        self.propagate = None  # TODO
+        # TODO: the architecture that maps the molecular graph (node features,
+        #       edge_index, edge_attr) to a single fixed-size vector per graph,
+        #       invariant to permutations of the atoms — the contribution.
+        self.body = None  # TODO
 
-        # TODO: the permutation-invariant graph-level readout
-        #       that collapses the set {h_v} into one vector.
-        self.readout = None    # TODO
-
-        self.lin_out = Linear(dim, 1)  # final regression head (width TBD by readout)
+        self.lin_out = Linear(dim, 1)  # final regression head
 
     def forward(self, data):
         h = F.relu(self.lin0(data.x))
-        # TODO: run T rounds of message passing over data.edge_index / edge_attr,
-        #       updating each node's hidden state.
-        # TODO: g = self.readout(h, data.batch)   # invariant pooling -> graph vector
-        # TODO: return self.lin_out(g).view(-1)
+        # TODO: process the graph (data.edge_index / data.edge_attr / data.batch)
+        #       into one fixed-size, permutation-invariant vector g per graph,
+        #       then return self.lin_out(g).view(-1)
         raise NotImplementedError
 
 # ---- training loop (exists) -------------------------------------------------

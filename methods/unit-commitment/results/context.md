@@ -24,7 +24,7 @@ Each of these is a constraint that links hour t to earlier hours, so the commitm
 
 **The shift to mixed-integer programming.** The alternative is to write the entire commitment problem as a single mixed-integer linear program and hand it to a general branch-and-cut solver. This became the industry approach in the mid-2000s (US system operators transitioned away from Lagrangian-relaxation heuristics toward MILP around 2005), driven by maturing commercial solvers; the estimated cost savings from better schedules are very large (on the order of billions of dollars annually across the US grid, per retrospective accounts). The decisive technical issue, established repeatedly in the optimization literature, is that *how* the MILP is written matters enormously. Two formulations with identical integer-feasible sets can have very different **LP relaxations** (the problem with the binaries allowed to take fractional values). Branch-and-cut prunes its search tree using LP-relaxation bounds; a formulation whose LP relaxation hugs the convex hull of the integer-feasible set (a *tight* formulation) yields strong bounds and a shallow tree, while a loose one forces the solver to enumerate enormously. But a tighter description usually needs more variables and constraints, which slows each node — so practical formulation design is a **tightness-versus-compactness** trade-off, judged empirically against a solver.
 
-**What was known about tightening the pieces.** Several structural results predate the compact MILP target here. Garver (1962) already modeled a generator with three binary state variables — on (u), turned-on (v), turned-off (w) — and with piecewise-linear production costs. Lee et al. (2004) showed that, using the single on/off variable alone, the convex hull of the minimum up/down-time constraints needs exponentially many inequalities (though it can be separated in polynomial time). Malkin (2003) and Rajan & Takriti (2005) independently showed that *adding the turn-on variable* collapses this to an O(T) facet description — the tightest compact encoding of min up/down. Arroyo & Conejo (2000) gave linear ramp-up/ramp-down and shut-down constraints. Nowak & Römisch (2000) gave a discrete (hot/cold) representation of time-dependent start-up cost. These are the building blocks a compact, reasonably-tight MILP would assemble.
+**Prior work on the individual pieces.** A body of literature predates the compact MILP target here and studies how to encode the individual thermal constraints. Garver (1962) modeled a generator with binary state variables and with piecewise-linear production costs. Lee et al. (2004) studied the convex hull of the minimum up/down-time constraints expressed in the single on/off variable alone, characterizing how many inequalities a complete description requires. Arroyo & Conejo (2000) gave linear ramp-up/ramp-down and shut-down constraints. Nowak & Römisch (2000) gave a discrete (hot/cold) representation of time-dependent start-up cost. These formulation studies are the inherited prior art on the individual constraints.
 
 ## Baselines
 
@@ -34,7 +34,7 @@ Each of these is a constraint that links hour t to earlier hours, so the commitm
 
 **Lagrangian relaxation (LR).** The pre-MILP workhorse. Relax the coupling demand/reserve constraints with multipliers; the Lagrangian decomposes into independent single-unit subproblems, each solved by a small dynamic program; iterate the multipliers by subgradient steps to drive the system constraints toward satisfaction. Scales to large fleets because the work is per-unit. Its gaps: a nonzero **duality gap** for this nonconvex problem (the dual bound undershoots the true optimum); a relaxed solution that is typically primal-**infeasible** and needs heuristic recovery (Lagrangian heuristics, list-scheduling repairs); and sensitivity to subgradient step-size and repair tuning. It delivers a bound and a feasible-ish schedule, not a provably near-optimal one.
 
-**Earlier MILP formulations.** Before the compact target here, MILP encodings of UC existed but were heavy — they used more binary variables (e.g. separate binaries to *select* the start-up cost category, or to index commitment transitions) and more constraints than necessary, and/or relaxations that were loose. The result was MILPs that either had weak LP bounds (slow branch-and-cut) or large node sizes, limiting them to small systems. The open gap: a formulation with *fewer* binaries and constraints whose LP relaxation is still tight enough that a commercial branch-and-cut solver handles realistic fleets within operational time limits — precisely modeling the time-dependent start-up cost and the inter-temporal min up/down and ramp constraints as linear inequalities.
+**Earlier MILP formulations.** Before the compact target here, MILP encodings of UC existed but were heavy — they used more binary variables (e.g. separate binaries to *select* the start-up cost category, or to index commitment transitions) and more constraints than necessary, and/or relaxations that were loose. The result was MILPs that either had weak LP bounds (slow branch-and-cut) or large node sizes, leaving realistic fleets out of reach within operational time limits and limiting them to small systems.
 
 ## Evaluation settings
 
@@ -42,7 +42,7 @@ The natural yardstick is a set of thermal-fleet test systems: a small canonical 
 
 ## Code framework
 
-A pre-existing algebraic-modeling stack (an MILP modeling layer such as Pyomo over a branch-and-cut solver) supplies the primitives: declare index sets, declare continuous and binary variables over those sets, write linear constraints and a linear objective, and call a solver. The economic-dispatch core — a continuous LP that splits demand among fixed-on units — is the easy, already-understood slot. The empty stubs are the commitment binaries and the *linearization* of each combinatorial rule: how to force a started unit to stay up (and a shut unit to stay down) for its minimum time using linear inequalities, how to charge the correct time-dependent start cost without a combinatorial category search, how to represent the convex production cost piecewise, and how to couple consecutive-hour outputs by ramp limits — then hand the assembled model to branch-and-cut.
+A pre-existing algebraic-modeling stack (an MILP modeling layer such as Pyomo over a branch-and-cut solver) supplies the primitives: declare index sets, declare continuous and binary variables over those sets, write linear constraints and a linear objective, and call a solver. The economic-dispatch core — a continuous LP that splits demand among fixed-on units — is the easy, already-understood slot. The empty stubs are the commitment binaries and the *linearization* of each combinatorial rule: how to force a started unit to stay up (and a shut unit to stay down) for its minimum time, how to charge the correct time-dependent (hot/cold) start cost, how to represent the convex production cost, and how to couple consecutive-hour outputs by ramp limits — then hand the assembled model to branch-and-cut.
 
 ```python
 import pyomo.environ as pyo
@@ -58,8 +58,7 @@ def build_uc(gens, T, demand, reserve):
     # --- the combinatorial layer: empty stubs ---
 
     def commitment_vars(m):
-        # TODO: binary on/off status u[g,t] (and any auxiliary state variables
-        #       that make the time-coupling constraints linear and tight)
+        # TODO: the binary on/off decision variables for the commitment layer
         pass
 
     def generation_limits(m):
@@ -75,8 +74,7 @@ def build_uc(gens, T, demand, reserve):
 
     def startup_cost(m):
         # TODO: charge a time-dependent start cost (hot vs cold) that depends on
-        #       how many hours the unit has been off, as linear constraints —
-        #       without a separate combinatorial search over start categories.
+        #       how many hours the unit has been off, as linear constraints.
         pass
 
     def production_cost(m):

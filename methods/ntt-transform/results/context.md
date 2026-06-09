@@ -16,13 +16,11 @@ The goal is to compute these products in quasi-linear time `O(n log n)` instead 
 
 **Negacyclic versus cyclic.** A length-`n` transform built from an `n`-th root of unity computes convolution modulo `x^n - 1` (cyclic). The cryptographic ring uses `x^n + 1`, the `2n`-th cyclotomic polynomial for `n` a power of two. Convolution modulo `x^n + 1` is the **negacyclic** (negative-wrapped) convolution: `c_k = Σ_{i+j=k} a_i b_j - Σ_{i+j=k+n} a_i b_j`, where the terms that "wrap past degree `n`" enter with a minus sign instead of folding back additively. The wrap sign is the only difference from the cyclic case, and it mirrors the relation `x^n ≡ -1 (mod x^n + 1)`.
 
-**Modulus structure and modular reduction.** For an `n`-th root of unity one needs `q ≡ 1 (mod n)`; for the `2n`-th root demanded by the negacyclic case one needs `q ≡ 1 (mod 2n)`. Historically the convenient choices were Fermat primes `2^{2^k}+1`, for which `q - 1 = 2^{2^k}` is a pure power of two so plenty of `2`-power roots of unity live in `Z_q`, and Mersenne primes `2^p - 1`, where `2^p ≡ 1 (mod q)` makes reduction modulo `q` cheap (note `q - 1 = 2^p - 2 = 2(2^{p-1}-1)` carries only a single factor of two, so Mersenne primes are chosen for cheap reduction rather than for an abundance of radix-2 roots). More generally, primes of Proth form `q = k·2^m + 1` with small `k` make `q ≡ 1 (mod 2n)` easy to satisfy whenever `2n | 2^m`. The inner loop of any modular transform is dominated by reduction modulo `q` after each multiply; the standard general-purpose techniques are **Montgomery reduction** (work in a residue system `x̃ = x·R mod q` so reduction of a product is a multiply-add-shift with no division) and **Barrett reduction** (replace the division in `⌊x/q⌋` by a precomputed reciprocal). For a modulus of the special form `q = k·2^m + 1`, the relation `k·2^m ≡ -1 (mod q)` lets one split `C = C_0 + 2^m C_1` and reduce via `kC ≡ kC_0 - C_1 (mod q)`, a shift-and-subtract that changes the residue class by a tracked factor of `k`, in the spirit of Montgomery's representation.
+**Modulus structure and modular reduction.** An `n`-th root of unity exists in `Z_q` exactly when `q ≡ 1 (mod n)`; a `2n`-th root exactly when `q ≡ 1 (mod 2n)`, the stronger congruence. Historically the convenient choices were Fermat primes `2^{2^k}+1`, for which `q - 1 = 2^{2^k}` is a pure power of two so plenty of `2`-power roots of unity live in `Z_q`, and Mersenne primes `2^p - 1`, where `2^p ≡ 1 (mod q)` makes reduction modulo `q` cheap (note `q - 1 = 2^p - 2 = 2(2^{p-1}-1)` carries only a single factor of two, so Mersenne primes are chosen for cheap reduction rather than for an abundance of radix-2 roots). More generally, primes of Proth form `q = k·2^m + 1` with small `k` make `q ≡ 1 (mod 2n)` easy to satisfy whenever `2n | 2^m`. The inner loop of any modular transform is dominated by reduction modulo `q` after each multiply; the standard general-purpose techniques are **Montgomery reduction** (work in a residue system `x̃ = x·R mod q` so reduction of a product is a multiply-add-shift with no division) and **Barrett reduction** (replace the division in `⌊x/q⌋` by a precomputed reciprocal). For a modulus of the special form `q = k·2^m + 1`, the relation `k·2^m ≡ -1 (mod q)` lets one split `C = C_0 + 2^m C_1` and reduce via `kC ≡ kC_0 - C_1 (mod q)`, a shift-and-subtract that changes the residue class by a tracked factor of `k`, in the spirit of Montgomery's representation.
 
 **Diagnostic facts about the design space.**
 - Routing integer convolutions through complex floating-point FFTs is exact only if the accumulated round-off stays below `1/2` so the final rounding recovers the true integer sums; the required mantissa precision grows with `n` and the coefficient magnitude. In a finite field this difficulty simply does not exist — every operation is exact (Pollard 1971, §7).
 - For the cyclic case, a single prime `p` with `p ≡ 1 (mod d)` and `p` larger than twice the largest convolution coefficient suffices; otherwise several primes `p_i ≡ 1 (mod d)` — all supporting the same transform length `d` — with product `P = Π p_i` exceeding the coefficient bound are used, and the result is reassembled coefficient-wise by the Chinese Remainder Theorem (Pollard 1971, §3).
-- The radix-2 butterfly is identical over `C` and over `Z_p`: replacing the complex root `e^{2πk/d}` by `r^k` throughout, and complex add/multiply by modular add/multiply, leaves the dataflow unchanged.
-- Two roots of unity must coexist in the same ring for the negacyclic case: an `n`-th root `ω` and a `2n`-th root `ψ` with `ψ^2 = ω` and `ψ^n = -1` (existence guaranteed by `2n | q - 1`).
 
 ## Baselines
 
@@ -40,7 +38,7 @@ The natural yardsticks are the two application regimes. For big-integer / big-po
 
 ## Code framework
 
-The pieces already on hand: exact modular arithmetic in `Z_q` (`+`, `-`, `*`, and modular inverse via extended Euclid or Fermat), a routine to find a primitive root of `Z_q^*` and hence roots of unity, a bit-reversal permutation, and a schoolbook convolution to check against. The radix-2 Cooley–Tukey butterfly is known as a complex-arithmetic primitive. What is missing is the transform specialized to the finite field, and the mechanism that turns a length-`n` transform (which computes the cyclic convolution modulo `x^n - 1`) into the negacyclic one modulo `x^n + 1`.
+The pieces already on hand: exact modular arithmetic in `Z_q` (`+`, `-`, `*`, and modular inverse via extended Euclid or Fermat), a routine to find a primitive root of `Z_q^*` and hence roots of unity, a bit-reversal permutation, and a schoolbook convolution to check against. The radix-2 Cooley–Tukey butterfly is known as a complex-arithmetic primitive. What is not yet in hand is a fast, exact route from these pieces to the product in `Z_q[x]/(x^n + 1)`.
 
 ```python
 import math
@@ -71,22 +69,8 @@ def brv(x, bits):
         x >>= 1
     return r
 
-def roots_of_unity(q, n):
-    # TODO: produce an n-th root of unity and (for the x^n+1 ring) a 2n-th root,
-    # from a generator of Z_q^*.
-    pass
-
-def fast_transform(a, root, q):
-    # TODO: a Cooley-Tukey radix-2 transform carried out in Z_q instead of C.
-    pass
-
-def inverse_transform(a, root, q):
-    # TODO: the inverse, including the 1/n scaling.
-    pass
-
 def ring_multiply(f, g, q):
-    # TODO: multiply f*g in Z_q[x]/(x^n + 1) using the transforms above,
-    # including whatever handling x^n + 1 (rather than x^n - 1) requires.
+    # TODO: multiply f*g in Z_q[x]/(x^n + 1) exactly, in O(n log n) modular operations.
     pass
 
 def schoolbook_negacyclic(f, g, q):

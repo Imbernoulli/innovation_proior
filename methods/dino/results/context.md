@@ -40,7 +40,7 @@ The hard part is specific. The most attractive label-free objectives ask a netwo
 
 - **Pretraining data.** A large unlabeled image collection (ImageNet-1k images, labels withheld during pretraining).
 - **Transfer probes on frozen features.** (1) *Linear probe*: freeze the backbone, train a supervised linear classifier on top, report top-1 accuracy. (2) *Weighted k-nearest-neighbor*: freeze the backbone, store training-set features, classify a query by weighted vote over its `k` nearest stored features (e.g. `k = 20`, cosine similarity with temperature). The k-NN probe needs no training, no augmentation, and no hyperparameter sweep — a clean, low-variance read on feature quality. Also low-shot variants (1% / 10% of labels) and transfer to other classification datasets.
-- **Diagnostic measurements used during development.** Track the *entropy* of the teacher's output distribution and the *KL divergence* between teacher and student outputs over training — these detect and distinguish the collapse modes. Compare a teacher's accuracy against the student's throughout training. Vary batch size, output dimensionality, head depth, augmentation scale ranges, and the temperature/momentum hyperparameters to see which settings collapse.
+- **Diagnostic measurements used during development.** Monitor the statistics of the encoder's outputs over training to detect when a run has slid toward a degenerate, input-independent solution, and compare the quality of the two networks (when a second network is in play) against each other. Vary batch size, output dimensionality, head depth, augmentation scale ranges, and any temperature/momentum hyperparameters to see which settings collapse.
 
 ## Code framework
 

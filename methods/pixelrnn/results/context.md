@@ -16,9 +16,9 @@ Natural images are high-dimensional and highly structured, so a good density mod
 
 **Residual learning.** Very deep networks are hard to train; residual connections (He et al., 2015) — adding a layer's input to its output — speed convergence and propagate signal directly through depth, and were the enabling trick for training networks of many layers.
 
-**Modeling pixels as continuous vs discrete.** Prior pixel models used *continuous* distributions for pixel intensities (Theis & Bethge, 2015; Uria et al., 2013), which require a parametric assumption about the shape of the conditional density and make multimodality awkward. A discrete distribution over the 256 intensity values, by contrast, can be arbitrarily multimodal with no assumption about its shape.
+**Modeling pixels as continuous vs discrete.** Prior pixel models used *continuous* distributions for pixel intensities (Theis & Bethge, 2015; Uria et al., 2013), which require a parametric assumption about the shape of the conditional density and make multimodality awkward, even though observed pixel conditionals in real images are often sharply multimodal. Pixel intensities are in fact taken from a fixed set of 256 values.
 
-**Masked weights.** To make a network output, at every spatial position simultaneously, a conditional that depends only on the *already-seen* pixels, one can zero out the weights that would connect a position to itself or to future positions — a masking idea also used in MADE (Germain et al., 2015) and in masked-weight variational autoencoders (Gregor et al., 2013).
+**Masked weights.** Zeroing out selected connections in a network's weights — constraining which inputs each output may depend on — is an established technique, used in MADE (Germain et al., 2015) and in masked-weight variational autoencoders (Gregor et al., 2013).
 
 ## Baselines
 
@@ -36,39 +36,19 @@ Natural images are high-dimensional and highly structured, so a good density mod
 
 ## Code framework
 
-Pre-existing primitives: PyTorch `nn.Module`, `nn.Conv2d`, `nn.LSTM`-style gating, batch norm, ReLU, an Adam optimizer, and `F.cross_entropy`. A plain convolution that outputs, at every spatial position, a vector of logits over the 256 intensity values already exists. What does not yet exist is the mechanism that forbids each position from seeing itself or future pixels while still computing every position at once, and the recurrent layers that reach long-range context.
+Pre-existing primitives: PyTorch `nn.Module`, `nn.Conv2d`, `nn.LSTM`-style gating, batch norm, ReLU, an Adam optimizer, and `F.cross_entropy`. A plain convolution that outputs, at every spatial position, a vector of logits over the 256 intensity values already exists. The network components that turn this into a working conditional model for `p(x_i | x_{<i})` remain to be designed.
 
 ```python
 import torch
 from torch import nn
 import torch.nn.functional as F
 
-class CausalConv2d(nn.Conv2d):
-    # TODO: a convolution whose receptive field excludes the current and future pixels,
-    # so that position i depends only on x_{<i}. Two variants will be needed:
-    # one for the first layer (stricter) and one for the rest.
-    def __init__(self, variant, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # TODO: build a 0/1 mask over the kernel and apply it to the weights
-        pass
-    def forward(self, x):
-        pass
-
-class RecurrentImageLayer(nn.Module):
-    # TODO: a layer that propagates an LSTM state across the spatial grid to reach
-    # long-range context, computing a whole row/diagonal at once via convolution.
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        pass
-    def forward(self, x):
-        pass
-
 class PixelModel(nn.Module):
     # outputs, per pixel, a distribution over the 256 intensity values
     def __init__(self, fm=128, n_layers=8):
         super().__init__()
-        # TODO: first (strict) causal layer -> stack of causal / recurrent layers
-        #       -> head that emits 256 logits per pixel position
+        # TODO: design the layers that map an input image to the per-pixel
+        #       conditionals, then a head that emits 256 logits per pixel position
         self.body = None     # TODO
         self.head = None     # TODO
     def forward(self, x):

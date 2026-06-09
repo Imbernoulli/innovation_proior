@@ -20,9 +20,11 @@ So $s_j$ is a *quadratic form* in the voltage vector $V$. Writing $\Phi_j=\tfrac
 
 **The radial conic insight (Jabr, 2006).** For a radial (tree) distribution network, the load-flow equations can be recast as a *conic* program. Introduce per-bus $u_i\propto|V_i|^2$ and per-branch $R_{ij}\propto\mathrm{Re}(V_iV_j^{*})$, $I_{ij}\propto\mathrm{Im}(V_iV_j^{*})$. The power-flow equations become *linear* in $(u,R,I)$, and the single bilinear identity $|V_i|^2|V_j|^2=\mathrm{Re}(V_iV_j^{*})^2+\mathrm{Im}(V_iV_j^{*})^2$ becomes a rotated second-order cone $2u_iu_j\ge R_{ij}^2+I_{ij}^2$. The load-flow problem is then a second-order cone program, solvable in polynomial time by interior-point methods, with the bus angles recovered afterward by walking the tree. The limitation Jabr leaves open: for a *meshed* network the angles must be consistent around every cycle (an arctangent constraint), which the conic relaxation drops — so the conic formulation is faithful only on radial topologies.
 
-**Semidefinite lifting of a QCQP.** The classical convexification of a QCQP uses the identity $V^H M V=\mathrm{tr}(M\,VV^H)$. Define $W:=VV^H$. Then every quadratic form is a *linear* functional $\mathrm{tr}(MW)$ of the matrix $W$, and $W=VV^H$ holds for some $V$ exactly when $W\succeq0$ and $\mathrm{rank}\,W=1$. All the nonconvexity of the QCQP collapses into the single constraint $\mathrm{rank}\,W=1$; $W\succeq0$ is convex. A useful companion fact: by Schur's complement, a constraint that an apparent-power magnitude (a sum of squares of linear-in-$W$ terms) be bounded, or that a convex quadratic cost be bounded, can be written as a linear matrix inequality — so the lifted feasible set is described by linear matrix inequalities, i.e. a semidefinite program.
+**Matrix-form tools for quadratic forms.** A scalar quadratic form obeys the algebraic identity $V^H M V=\mathrm{tr}(M\,VV^H)$, relating it to the outer-product matrix $VV^H$. Separately, by Schur's complement a bound on a sum of squares of linear terms, or on a convex quadratic cost, can be re-expressed as a linear matrix inequality, the building block of semidefinite programming. These are standard pieces of the QCQP / conic-optimization toolkit.
 
-**Strong duality of SDPs and Perron–Frobenius.** The dual of a semidefinite program is again a semidefinite program, and under a Slater (strict-feasibility) condition strong duality holds, so the primal and dual optimal values coincide. A second structural fact about the network: the off-diagonal entries of $\mathrm{Re}\{Y\}$ are $-\mathrm{Re}\{y_{ij}\}$, and line/transformer resistances are nonnegative, so those off-diagonals are non-positive; $\mathrm{Re}\{Y\}$ is a passive admittance whose diagonal-plus-row-sum is nonnegative. A symmetric, irreducible matrix with non-positive off-diagonals has, by the Perron–Frobenius theorem, a *simple* smallest eigenvalue — provided the graph it represents is strongly connected. Lossless transformers (zero resistance) leave their entries out of $\mathrm{Re}\{Y\}$ and can disconnect that graph; a tiny resistance ($\sim10^{-5}$ pu) reconnects it.
+**Strong duality of SDPs.** The dual of a semidefinite program is again a semidefinite program, and under a Slater (strict-feasibility) condition strong duality holds, so the primal and dual optimal values coincide. The Perron–Frobenius theorem is a standard tool for such matrices: a symmetric, irreducible matrix with non-positive off-diagonals has a *simple* smallest eigenvalue (irreducibility meaning the graph it represents is strongly connected).
+
+**Sign structure of the admittance data.** The off-diagonal entries of $\mathrm{Re}\{Y\}$ are $-\mathrm{Re}\{y_{ij}\}$, and line/transformer resistances are nonnegative physical quantities, so those off-diagonals are non-positive; $\mathrm{Re}\{Y\}$ is a passive admittance whose diagonal-plus-row-sum is nonnegative. One modeling artifact to note in the benchmark data: transformers are commonly modeled as *lossless* (zero resistance), so they contribute nothing to $\mathrm{Re}\{Y\}$ and are absent from the graph it induces.
 
 ## Baselines
 
@@ -40,7 +42,7 @@ The natural yardsticks are the standard IEEE benchmark transmission systems — 
 
 ## Code framework
 
-A pre-method scaffold. The data and conic-solver primitives already exist; the empty slots are exactly where the relaxation will go.
+A pre-method scaffold. The data and conic-solver primitives already exist; the solver itself is the empty slot.
 
 ```python
 import numpy as np
@@ -66,21 +68,12 @@ def injection_quadratic_forms(Y):
         J.append(e @ e.T)
     return Phi, Psi, J
 
-# --- THE SLOT: a convex surrogate for the nonconvex AC feasible set --------
-def solve_relaxed_opf(Y, s_d, limits, cost):
-    """Build and solve a CONVEX problem whose optimum lower-bounds AC-OPF,
-    then test whether that optimum is in fact AC-feasible (and if so recover
-    the voltages). The convex surrogate and the exactness test are the
-    contribution; left empty here."""
-    # TODO: lift the quadratic OPF to a matrix variable
-    # TODO: impose the convex part of "W = V V^H", drop the nonconvex part
-    # TODO: solve the resulting convex program
-    # TODO: certificate + recover V if the surrogate is tight
-    raise NotImplementedError
-
-def recover_voltage(W_or_dual):
-    """Map the convex solution back to complex bus voltages V when the
-    relaxation is exact."""
+# --- THE SLOT: a tractable global approach to the nonconvex AC-OPF ----------
+def solve_opf(Y, s_d, limits, cost):
+    """Return an operating point (bus voltages V) that minimizes generation
+    cost subject to the AC power-flow constraints, ideally with some way to
+    judge after the fact how close it is to the global optimum. Left empty
+    here."""
     # TODO
     raise NotImplementedError
 ```

@@ -26,7 +26,7 @@ The object that ties everything together is the **discounted future-state distri
 
 a genuine probability distribution over states (the 1−γ normalizes it); as γ → 1 it approaches the stationary distribution. Two scalar objectives sit on top: η_D(π) = E_{s~D}[V_π(s)], the discounted return from the true start distribution, and more generally η_μ(π) = E_{s~μ}[V_π(s)] for any state distribution μ. A policy that is optimal simultaneously maximizes V_π(s) at every state, hence maximizes both.
 
-A capability assumed available is a **restart distribution**: the agent can draw its next state from a fixed distribution μ of our choosing. This is weaker than a full generative model (we do not get to query an arbitrary (s,a) for its next-state distribution) but much stronger than "irreversible" single-trajectory experience. If μ is chosen relatively uniform, a restart obviates the need for explicit exploration — we can gather information about states the current policy would rarely reach on its own.
+A capability assumed available is a **restart distribution**: the agent can draw its next state from a fixed distribution μ of our choosing. This is weaker than a full generative model (we do not get to query an arbitrary (s,a) for its next-state distribution) but much stronger than "irreversible" single-trajectory experience. A restart lets us gather information about states the current policy would rarely reach on its own.
 
 The load-bearing diagnostic facts about *existing* methods:
 
@@ -58,7 +58,7 @@ The natural yardsticks at this time are MDPs constructed to stress exploration a
 
 ## Code framework
 
-The available scaffold has simulator/restart access, value and advantage estimation by rollouts, a regression fit, and an as-yet-undetermined policy-update step. The unresolved part is the shape of the update: how the current policy and a candidate policy are combined, and with what step.
+The available scaffold has simulator/restart access and value and advantage estimation by rollouts. The policy-update step is left unresolved.
 
 ```python
 import numpy as np
@@ -85,24 +85,22 @@ def estimate_advantage(mdp, policy, s, a):
     raise NotImplementedError  # TODO: rollout estimator for A_policy(s,a)
 
 def fit_candidate(mdp, policy):
-    """Regression: fit advantages, return a candidate policy pi' that picks
-    high-advantage actions on average under d_{policy, mu}."""
-    raise NotImplementedError  # TODO: average-error regression -> candidate pi'
+    """Regression: fit advantages, return a candidate policy pi'."""
+    raise NotImplementedError  # TODO: regression -> candidate pi'
 
 class Policy:
     def sample(self, s):     # TODO: action distribution at s
         raise NotImplementedError
 
 def policy_update(policy, candidate, advantage_estimate):
-    """The missing piece: combine the current policy with the candidate, and with
-    what step, so that performance is guaranteed not to drop. Shape unknown."""
-    raise NotImplementedError  # TODO: the update rule + how to set its step
+    """Produce the next policy from the current policy and the candidate."""
+    raise NotImplementedError  # TODO: the update rule
 
 def learn(mdp, policy):
     while True:
         candidate = fit_candidate(mdp, policy)
-        adv = ...                      # TODO: how good is the candidate, on average?
-        if adv <= EPS:                 # TODO: when is further improvement unguaranteed?
+        adv = ...                      # TODO: a stopping quantity to test the candidate
+        if adv <= EPS:                 # TODO: halting criterion
             return policy
         policy = policy_update(policy, candidate, adv)
 ```

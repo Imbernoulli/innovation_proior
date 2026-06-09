@@ -51,8 +51,7 @@ a Gaussian in each component, so the speeds follow f(v) ∝ v² exp(−mv²/2kT)
 functional equation: assume the three components are independent, f(u,v,w)=g(u)g(v)g(w), and that the
 distribution depends only on the speed u²+v²+w². Taking logarithms, ln g(u)+ln g(v)+ln g(w) is a
 function of u²+v²+w² alone, which forces ln g(s) = A + B s, i.e. g ∝ e^{Bv²} with B<0. The mean
-kinetic energy fixes the temperature: ½m⟨v²⟩ = (3/2)kT. The same algebra — an *additive* constraint
-forcing an *exponential* — leaves a useful clue for any molecular account. Maxwell himself judged this
+kinetic energy fixes the temperature: ½m⟨v²⟩ = (3/2)kT. Maxwell himself judged this
 derivation "precarious": it shows only that *if* the gas is Maxwellian, collisions preserve it; it is a
 self-consistency check on a stationary state, not a proof that an arbitrary gas *approaches* it, and it
 makes no contact with entropy.
@@ -68,8 +67,8 @@ is a strict function of the microstate can be a monotone function of time as a t
 alone. Any honest account of why entropy increases must therefore carry a probabilistic ingredient,
 not just a mechanical one. There is also a structural constraint from mechanics that any candidate
 must respect: by Liouville's theorem the volume a system occupies in position–momentum space is
-conserved along the motion, dξ…dw = dΞ…dW, so entropy cannot simply be the logarithm of an occupied
-phase-space volume — that volume never changes.
+conserved along the motion, dξ…dw = dΞ…dW, so any candidate built directly out of that phase-space
+volume inherits its constancy and cannot itself change with time.
 
 ## Baselines
 
@@ -122,33 +121,16 @@ The derivation is analytic; the useful computation is a finite enumeration of th
 so exact table values can be compared with the large-N approximation:
 
 ```python
-from math import factorial, log
+# A fixed set of molecules shares a fixed total energy in discrete units, each
+# molecule sitting on one of the energy levels 0, 1, ..., max_level.
 
-# A fixed set of molecules shares a fixed total energy in discrete units.
-# A macrostate records how many molecules sit at each energy level.
-
-def enumerate_macrostates(n, total_units, max_level):
+def enumerate_configurations(n, total_units, max_level):
     """All level-occupation tuples (w_0,...,w_p) with sum w_i = n and sum i*w_i = total_units."""
-    # TODO: list the macrostates consistent with the number and energy constraints
+    # list the level occupations consistent with the molecule-number and energy constraints
     pass
 
-def arrangements(macrostate):
-    """How many labeled-molecule configurations realize this macrostate."""
-    # TODO: the counting rule that assigns each macrostate its multiplicity
-    pass
-
-def most_probable(n, total_units, max_level):
-    """The macrostate the gas should sit in at equilibrium."""
-    # TODO: select the macrostate by the criterion the theory will identify
-    pass
-
-def state_quantity(macrostate):
-    """The molecular quantity that is to play the role of thermodynamic entropy."""
-    # TODO: the function of the multiplicity that makes this quantity additive
-    pass
-
-def equilibrium_distribution(n, total_units):
-    """The occupation numbers w_i in the large-n limit."""
-    # TODO: the closed form the maximization yields for w_i vs. energy level i
+def state_quantity(occupation):
+    """The molecular quantity, to be defined, attached to a given level-occupation tuple."""
+    # TODO: the quantity the theory will identify
     pass
 ```

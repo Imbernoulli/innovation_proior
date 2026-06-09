@@ -41,8 +41,7 @@ each with a cost discussed under Baselines.
 *symmetric* if its value is unchanged under any permutation of those arguments;
 addition and multiplication are the elementary examples. A symmetric function that
 takes $n$ vectors and returns one vector is exactly the tool for collapsing an
-unordered set into an order-independent summary. The element-wise *maximum* of a set
-of vectors is such a function. The relevant theoretical backdrop is the universal
+unordered set into an order-independent summary. The relevant theoretical backdrop is the universal
 approximation property of multilayer perceptrons: a single hidden layer with enough
 units can approximate any continuous function on a compact domain — which suggests
 that if the *form* of an order-invariant architecture is right, enough capacity can
@@ -61,9 +60,7 @@ showed that a network can learn to *canonicalize* its input: a small sub-network
 predicts a spatial transformation that is applied to the data before the main network
 sees it, making the main network's job invariant to that family of transformations.
 For images this required a specially built sampling-and-interpolation layer, which
-introduces aliasing. The relevant observation for point data is that applying an
-affine transformation to points is *just a matrix multiplication of the coordinates*
-— no resampling, no aliasing.
+introduces aliasing.
 
 **Sets and sequences.** One alternative for handling unordered input is to treat the
 set as a sequence and use a recurrent network, training on randomly permuted
@@ -102,8 +99,7 @@ trained away (per *Order Matters*), and recurrent models do not scale their
 order-robustness to the thousands of elements typical of point clouds.
 
 **Spatial transformer networks (Jaderberg et al. 2015).** The mechanism for learnable
-input canonicalization, but built for images with a resampling layer that aliases —
-the point-cloud setting admits a simpler, alias-free alignment.
+input canonicalization, but built for images with a resampling layer that aliases.
 
 ## Evaluation settings
 
@@ -129,7 +125,7 @@ axis, an affine transform of point coordinates by matrix multiplication, the Ada
 optimizer, and a softmax cross-entropy loss. What does *not* yet exist is the overall
 shape of the network: how to collapse the unordered per-point features into a single
 order-invariant descriptor, how to make the result invariant to rigid/affine motion,
-and how to give per-point predictions access to both local and global information.
+and how to produce per-point predictions.
 
 ```python
 import torch
@@ -158,14 +154,12 @@ class SetAggregator(nn.Module):
 class AlignmentNet(nn.Module):
     """Make the representation invariant to rigid/affine motion of the cloud."""
     def forward(self, x):
-        # TODO: predict a transform to canonicalize the input / features?
+        # TODO
         raise NotImplementedError
 
 class Net(nn.Module):
     def forward(self, points):                  # points: (B, 3, N)
-        # TODO: per-point features -> order-invariant global descriptor
-        #       -> class scores; and, for per-point output, combine the global
-        #          descriptor with each point's local feature
+        # TODO: produce class scores for the whole cloud, and per-point scores
         raise NotImplementedError
 
 def loss_fn(pred, label, feature_transform):

@@ -15,7 +15,7 @@ VaR is written into banking regulation, so it is the natural target. The problem
 1. **As a function of `w`, VaR is non-convex and nonsmooth, with many local minima.** A quantile of a `w`-dependent distribution changes identity as the ordering of scenarios changes; gradient/convex methods land on local optima that are not global. For scenario-based linear loss models the VaR-in-`w` surface is piecewise linear with kinks, not a convex objective.
 2. **VaR ignores the magnitude of losses beyond the threshold and is not subadditive.** Two portfolios with identical VaR can have wildly different tails past `ζ` — a thin overshoot vs. a fat catastrophe. And combining positions can make VaR *increase*, contradicting the intuition that diversification reduces risk.
 
-What a usable solution must achieve: a tail-risk measure that (i) is **convex in `w`** so it can be minimized to a global optimum, (ii) **accounts for how bad the tail is** beyond the quantile, (iii) is **coherent** in the axiomatic sense below, and (iv) reduces, for scenario data, to something a solver can handle at large scale — ideally a **linear program**.
+What a usable solution must achieve: a tail-risk measure that (i) is **convex in `w`** so it can be minimized to a global optimum, (ii) **accounts for how bad the tail is** beyond the quantile, (iii) is **coherent** in the axiomatic sense below, and (iv) remains tractable for a solver at large scale on scenario data.
 
 ## Background
 
@@ -76,7 +76,6 @@ class TailRiskEfficientPortfolio:
         self.alpha = alpha                        # confidence level
         self.lower, self.upper = weight_bounds
         self.w = cp.Variable(self.n)              # portfolio weights
-        pass                                # TODO: auxiliary variables
 
     def _feasible_region(self, market_neutral=False):
         cons = [self.w >= self.lower, self.w <= self.upper]
@@ -84,12 +83,12 @@ class TailRiskEfficientPortfolio:
         return cons
 
     def _tail_risk_expr(self):
-        # TODO: a CONVEX expression in self.w (and auxiliaries) for the
-        # level-alpha tail-risk of the loss, computed from the scenario panel.
+        # TODO: the level-alpha tail-risk objective of the loss,
+        # computed from the scenario panel.
         pass
 
     def _tail_risk_constraints(self):
-        # TODO: linear/convex constraints tying the auxiliaries to scenario losses.
+        # TODO: any constraints the objective requires.
         pass
 
     def min_tail_risk(self, market_neutral=False):

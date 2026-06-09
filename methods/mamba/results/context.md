@@ -6,7 +6,7 @@ Sequence models are the backbone of foundation models across language, audio, ge
 
 The question is whether a sequence model can match attention's modeling quality while scaling *linearly* in sequence length, with a *constant-size* per-step state at inference. A large literature of subquadratic architectures — linear attention, gated convolutions, recurrent models, structured state space models — answers the efficiency half: they are cheap and they scale. But on information-dense discrete modalities, language above all, they have consistently fallen short of attention. So the real question is sharper: what is the *specific* capability these efficient models lack, and can it be restored without giving up their linear-time scaling?
 
-A useful way to frame it: sequence modeling is the problem of compressing context into a state. Attention sits at one extreme — it compresses nothing (it stores the whole context), which is why it is both powerful and expensive. A recurrent model with a finite state sits at the other extreme — cheap, but only as good as what its fixed-size state managed to keep. The goal is a model whose bounded state nonetheless retains everything that matters, which means the act of compression has to depend on the *content* of the data, not just its position.
+A useful way to frame it: sequence modeling is the problem of compressing context into a state. Attention sits at one extreme — it compresses nothing (it stores the whole context), which is why it is both powerful and expensive. A recurrent model with a finite state sits at the other extreme — cheap, but only as good as what its fixed-size state managed to keep. The goal is a model whose bounded state nonetheless retains everything that matters — which raises the question of what governs the act of compression, and what the efficient models are doing differently when they fail to keep it.
 
 ## Background
 
@@ -28,7 +28,7 @@ Once discretized, the system is a linear recurrence h_t = Ā h_{t−1} + B̄ x_t
 
 The recurrence is convenient for step-by-step autoregressive inference (constant work per step); the convolution is convenient for training, because the whole sequence is known in advance and the convolution can be evaluated in parallel with an FFT. This duality — that an LTI linear recurrence *is* a global convolution — is the engine of efficiency for this whole family. It holds only because the dynamics are constant in time: a single kernel can be reused at every position precisely because (Ā, B̄, C) do not change.
 
-**Structured SSMs (S4 and descendants).** Computing the convolution kernel for the HiPPO A is not trivial, because that A cannot be stably diagonalized. S4 (Gu et al., 2021/2022) resolves this by writing A in normal-plus-low-rank form and reducing to a diagonal-plus-low-rank computation, then evaluating the kernel through a truncated generating function, a Cauchy kernel, the Woodbury identity, and an inverse FFT, all in O(N + L). Later work (DSS; S4D, Gu et al., 2022) showed the low-rank correction can be dropped: a purely *diagonal* A works essentially as well, so A reduces to N numbers per channel, with simple initializations such as A_n = −(n+1) (real) or A_n = −1/2 + n·i (complex). Applied with a state of size N to a length-L, D-channel, batch-B input, the SSM runs independently per channel; the full hidden state has size B·L·D·N, which is N times larger than the input — the seed of an efficiency problem if it ever had to be materialized.
+**Structured SSMs (S4 and descendants).** Computing the convolution kernel for the HiPPO A is not trivial, because that A cannot be stably diagonalized. S4 (Gu et al., 2021/2022) resolves this by writing A in normal-plus-low-rank form and reducing to a diagonal-plus-low-rank computation, then evaluating the kernel through a truncated generating function, a Cauchy kernel, the Woodbury identity, and an inverse FFT, all in O(N + L). Later work (DSS; S4D, Gu et al., 2022) showed the low-rank correction can be dropped: a purely *diagonal* A works essentially as well, so A reduces to N numbers per channel, with simple initializations such as A_n = −(n+1) (real) or A_n = −1/2 + n·i (complex). Applied with a state of size N to a length-L, D-channel, batch-B input, the SSM runs independently per channel; the full hidden state has size B·L·D·N, which is N times larger than the input.
 
 **The parallel associative scan.** A first-order linear recurrence h_t = a_t h_{t−1} + b_t need not be computed sequentially even when a_t, b_t vary with t. Pairs (a, b) compose under an associative operator
 
@@ -44,9 +44,9 @@ and a work-efficient parallel scan (Blelloch, 1990; Martin & Cundy, 2018) comput
 
 A complementary observation about state size: a larger recurrent state N should compress more context and improve quality, but in a naive recurrence it multiplies the materialized state and the memory traffic by N. This is the expressivity-versus-speed tension — one would like to expand the state without paying for it.
 
-**Gating and its hidden connection to discretization.** Classical gated RNNs (LSTM, GRU) control information flow with input-dependent gates, e.g. h_t = (1 − g_t) h_{t−1} + g_t x_t with g_t = σ(Linear(x_t)). Such gates are powerful but were historically tied to small states (N = 1), heuristic forms, and vanishing-gradient/efficiency problems from their sequential nature. It is a known result (Funahashi & Nakamura, 1993; Tallec & Ollivier, 2018) that gating is what an input-dependent discretization step Δ looks like — i.e. gates are discretized continuous dynamics. Older gated, time-wise-linear RNNs (QRNN, Bradbury et al., 2016; SRU, Lei et al., 2017) already made the recurrence parallelizable via the scan, but kept N = 1 and used heuristic gates.
+**Classical gated RNNs.** Classical gated RNNs (LSTM, GRU) control information flow with input-dependent gates, e.g. h_t = (1 − g_t) h_{t−1} + g_t x_t with g_t = σ(Linear(x_t)). Such gates are powerful but were historically tied to small states (N = 1), heuristic forms, and vanishing-gradient/efficiency problems from their sequential nature. Older gated, time-wise-linear RNNs (QRNN, Bradbury et al., 2016; SRU, Lei et al., 2017) already made the recurrence parallelizable via the scan, but kept N = 1 and used heuristic gates.
 
-**IO-aware kernels.** On GPUs most operations other than dense matrix multiply are bounded by memory bandwidth, not arithmetic (Williams et al., 2009). FlashAttention (Dao et al., 2022) exploited this: fuse the attention computation into a single kernel that keeps intermediates in fast on-chip SRAM, never writing the large score matrix to slow high-bandwidth memory (HBM), and recompute what is needed in the backward pass rather than storing it. This is the template for making any memory-bound sequence operator fast.
+**IO-aware kernels.** On GPUs most operations other than dense matrix multiply are bounded by memory bandwidth, not arithmetic (Williams et al., 2009). FlashAttention (Dao et al., 2022) exploited this: fuse the attention computation into a single kernel that keeps intermediates in fast on-chip SRAM, never writing the large score matrix to slow high-bandwidth memory (HBM), and recompute what is needed in the backward pass rather than storing it.
 
 ## Baselines
 
@@ -100,7 +100,7 @@ def ssm_recurrence(dA, dB, C, x):
     return torch.stack(ys, dim=1)
 
 def C_at(C, t):
-    # TODO: how C indexes time (constant vs per-step) is a design choice
+    # TODO: how C indexes into time is a design choice
     pass
 
 
@@ -111,8 +111,7 @@ class SequenceMixer(nn.Module):
     def __init__(self, d_model, d_state=16, expand=2):
         super().__init__()
         self.d_model = d_model
-        # TODO: architecture, parameters, input-dependent choices, and the
-        #       efficient computation path for the recurrence.
+        # TODO: define the mixer's parameters and computation.
 
     def forward(self, x):           # x: (B, L, D)
         # TODO: produce y: (B, L, D)

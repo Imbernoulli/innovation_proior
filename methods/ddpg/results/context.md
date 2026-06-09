@@ -16,7 +16,7 @@ At terminal transitions, the continuation term is zero, so a sampled bootstrap t
 
 **Deep value functions can be stabilized.** The deep Q-network line (Mnih et al., 2013, 2015) made large neural Q-learning practical in discrete-action domains by using a replay buffer and a target network. Replay stores transitions and samples uniform minibatches, breaking the short-range correlation of consecutive environment steps and reusing data. A target network computes bootstrap targets with parameters that do not move on the same optimizer step as the fitted network, reducing the feedback loop in which a regressor chases a target produced by itself.
 
-**The diagnostic that motivates the continuous-action case.** Discretizing a continuous action vector invokes the curse of dimensionality: a 7-DOF arm with just three choices per joint already has `3^7 = 2187` joint actions, and finer torque control increases the grid exponentially. Discretization also discards metric structure: nearby torques become unrelated symbols. Keeping actions continuous preserves that structure, but then a neural `Q(s,a)` does not provide a cheap greedy action. The missing ingredient is a way to represent and improve the greedy action without solving a fresh inner maximization at every step.
+**The diagnostic that motivates the continuous-action case.** Discretizing a continuous action vector invokes the curse of dimensionality: a 7-DOF arm with just three choices per joint already has `3^7 = 2187` joint actions, and finer torque control increases the grid exponentially. Discretization also discards metric structure: nearby torques become unrelated symbols. Keeping actions continuous preserves that structure, but then a neural `Q(s,a)` does not provide a cheap greedy action: recovering it still requires a fresh inner maximization over the real action vector at every step.
 
 **Exploration noise for deterministic controllers.** A deterministic controller needs an explicit behavior-noise process during data collection. Independent Gaussian action noise is the simplest option and is easy to implement as `a = μ(s) + σξ`. For inertial physical systems, a temporally correlated process is also a natural prior: the zero-mean Ornstein-Uhlenbeck Euler update with unit step is `x ← x + θ_ou(-x) + σξ`, so perturbations persist for several timesteps while still reverting toward zero.
 
@@ -62,7 +62,7 @@ class MLPActor(nn.Module):
     # Maps a state to a real-valued action vector within the action bounds.
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation, act_limit):
         super().__init__()
-        # TODO: the policy network we will design
+        # TODO
         pass
     def forward(self, obs):
         # TODO
@@ -72,7 +72,7 @@ class MLPQFunction(nn.Module):
     # Estimates expected return for a (state, action) pair.
     def __init__(self, obs_dim, act_dim, hidden_sizes, activation):
         super().__init__()
-        # TODO: the value network we will design
+        # TODO
         pass
     def forward(self, obs, act):
         # TODO

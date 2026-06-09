@@ -117,9 +117,7 @@ every query head must now attend through the *same* key/value subspace. This
 tends to degrade quality relative to multi-head attention. It can also make
 training less stable — models trained this way are prone to loss spikes during
 pre-training and to divergence when fine-tuned on long-input tasks. And the cut
-is all-or-nothing: it goes straight from $h$ key/value heads to one, with nothing
-in between, even though larger models (with more heads, and relatively less
-bandwidth pressure) might prefer a less drastic reduction. Finally, a model is
+is all-or-nothing: it goes straight from $h$ key/value heads to one. Finally, a model is
 either built this way or not — existing high-quality multi-head checkpoints, of
 which there are many publicly available, cannot benefit without retraining.
 
@@ -188,27 +186,21 @@ class AttentionConfig:
         self,
         hidden_size,
         num_heads,
-        num_key_value_heads=None,
         attention_dropout=0.0,
         attention_bias=False,
     ):
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
-        self.num_key_value_heads = num_key_value_heads  # TODO: choose the key/value layout.
-        self.num_key_value_groups = None  # TODO: derive the query-to-key/value mapping.
         self.attention_dropout = attention_dropout
         self.attention_bias = attention_bias
 
 
-def repeat_key_value_heads(hidden_states, n_rep):
-    # TODO: map cached key/value tensors to the query-head layout required
-    # by the score matmul, without changing what is stored in the cache.
-    pass
-
-
 class DecoderAttention(nn.Module):
-    """Decoder attention with a key/value cache for autoregressive decoding."""
+    """Decoder attention with a key/value cache for autoregressive decoding.
+
+    Baseline multi-head form: one key head and one value head per query head.
+    """
     def __init__(self, config, layer_idx=0):
         super().__init__()
         self.config = config
@@ -216,26 +208,35 @@ class DecoderAttention(nn.Module):
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_heads
         self.head_dim = config.head_dim
-        self.num_key_value_heads = config.num_key_value_heads
-        self.num_key_value_groups = config.num_key_value_groups
         self.attention_dropout = config.attention_dropout
         self.q_proj = nn.Linear(
             config.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias
         )
-        # TODO: choose the key/value projections and their cached shape.
-        self.k_proj = None  # TODO
-        self.v_proj = None  # TODO
+        self.k_proj = nn.Linear(
+            config.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias
+        )
+        self.v_proj = nn.Linear(
+            config.hidden_size, self.num_heads * self.head_dim, bias=config.attention_bias
+        )
         self.o_proj = nn.Linear(
             config.hidden_size, config.hidden_size, bias=config.attention_bias
         )
 
     def forward(self, hidden_states, attention_mask=None, past_key_value=None):
+        # TODO: reduce the cached key/value state streamed at each decode step
+        # while still presenting tensors the score matmul below can consume.
         bsz, q_len, _ = hidden_states.size()
         query_states = self.q_proj(hidden_states)
-        key_states = None    # TODO: project and shape cached keys
-        value_states = None  # TODO: project and shape cached values
+        key_states = self.k_proj(hidden_states)
+        value_states = self.v_proj(hidden_states)
 
         query_states = query_states.view(
+            bsz, q_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        key_states = key_states.view(
+            bsz, q_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        value_states = value_states.view(
             bsz, q_len, self.num_heads, self.head_dim
         ).transpose(1, 2)
 
@@ -243,9 +244,6 @@ class DecoderAttention(nn.Module):
             key_states, value_states = past_key_value.update(
                 key_states, value_states, self.layer_idx
             )
-
-        key_states = repeat_key_value_heads(key_states, self.num_key_value_groups)
-        value_states = repeat_key_value_heads(value_states, self.num_key_value_groups)
 
         attn_weights = torch.matmul(
             query_states, key_states.transpose(2, 3)
@@ -262,14 +260,8 @@ class DecoderAttention(nn.Module):
 
 def convert_attention_checkpoint(pretrained_attention, config):
     """Initialize a structurally modified attention layer from a trained
-    multi-head checkpoint, re-using its weights."""
-    # TODO: build the new key/value projections from the trained per-head
-    # projections.
-    pass
-
-
-def continue_pretraining(model, pretrain_step_fn, original_steps, alpha=0.05):
-    # TODO: run the existing pre-training recipe long enough for the edited
-    # attention structure to adapt.
+    multi-head checkpoint, re-using its weights, then adapt it."""
+    # TODO: build the modified attention layer from the trained checkpoint and
+    # let it adapt to the new structure.
     pass
 ```

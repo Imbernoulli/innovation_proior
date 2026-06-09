@@ -10,11 +10,11 @@ The precise problem: given the evidence of two small samples — of $n_1$ trials
 
 **Probability of one unknown exceeding another.** The natural quantity to judge two treatments by is the probability $P$ that one treatment is better than the other *given the data so far*. If each unknown success probability $p_i$ is treated as a random quantity with a prior, and we observe successes and failures, Bayes' theorem ("the well-known Principle of Bayes") turns the prior into a posterior over $p_i$. With the natural state of ignorance — each $p_i$ *a priori* equally likely to lie in any two equal sub-intervals of $(0,1)$, i.e. a uniform prior — the posterior density after $r$ successes and $s$ failures in $n=r+s$ trials is $(n+1)!/(r!\,s!)\,p^{r}(1-p)^{s}$, a $\mathrm{Beta}(r+1,s+1)$ density. This is exactly the integrand of the incomplete Beta function.
 
-**Pearson's incomplete-Beta machinery.** The tail probabilities of such densities — $\int_p^1$ of $p^{r}q^{s}$ — were already standard equipment. Karl Pearson had tabulated and studied the incomplete Beta function $I_p(u,v)=B_p(u,v)/B(u,v)$ (Phil. Mag. 1907; Biometrika 1924, 1928), and J. H. Müller (Biometrika 1930–31) had set out the $I_p(u,v)$ ratio notation with $u=r+1,\,v=s+1$. Pearson had also shown that such Beta tails equal the sum of the first several terms of a hypergeometric series, and had solved the related finite-urn sampling problem (probability that an urn of $N=R+S$ members contains no more than $R$ marked, given a sample of $r$ marked and $s$ unmarked). The earliest work in this direction is catalogued by Todhunter's *History of the Mathematical Theory of Probability* (1865). So the apparatus to compute "probability that one Beta-distributed quantity exceeds another, or a threshold" existed in pieces; what was missing was a *reduced, exact, hand-computable* evaluation of the probability that one unknown success probability exceeds a *second* unknown one, from two independent samples.
+**Pearson's incomplete-Beta machinery.** The tail probabilities of such densities — $\int_p^1$ of $p^{r}q^{s}$ — were already standard equipment. Karl Pearson had tabulated and studied the incomplete Beta function $I_p(u,v)=B_p(u,v)/B(u,v)$ (Phil. Mag. 1907; Biometrika 1924, 1928), and J. H. Müller (Biometrika 1930–31) had set out the $I_p(u,v)$ ratio notation with $u=r+1,\,v=s+1$. Pearson had also shown that such Beta tails equal the sum of the first several terms of a hypergeometric series, and had solved the related finite-urn sampling problem (probability that an urn of $N=R+S$ members contains no more than $R$ marked, given a sample of $r$ marked and $s$ unmarked). The earliest work in this direction is catalogued by Todhunter's *History of the Mathematical Theory of Probability* (1865). So the apparatus addressed the probability that a single Beta-distributed quantity exceeds a *fixed* threshold, and the finite-urn sampling problem; the published machinery of Pearson and Müller stops at the one-sample, fixed-threshold case and at large-sample approximations, with "bounds to approximation [...] not considered generally" for small samples.
 
 **Computation by hand.** Any such evaluation has to be tabulable. The relevant fact is the binomial-coefficient "pyramid" (Pascal's triangle): each interior entry is the sum of the two nearest entries in the row above (Glaisher 1917 tabulated these). Recurrences of this additive kind are what make a probability table buildable without a computer.
 
-**The cost of acting on $P$.** Two crude disciplines are on the table for *using* such a probability to act. The "alternate case method" splits assignment evenly between the treatments until a decision is made. The opposite is to decide immediately and irrevocably for the apparently-better treatment. The latter has a clear failure mode: if the apparently-better treatment is in fact the worse, *every* future individual pays the full gap between the treatments — an expected sacrifice of $(1-P)$ per future individual, forever. With small samples $P$ is genuinely uncertain, so an irrevocable decision risks a permanent stream of avoidable losses. This observation frames everything: with meagre data, *how confidently* you act should track *how much* the data actually warrants.
+**The cost of acting on $P$.** Two crude disciplines are on the table for *using* such a probability to act. The "alternate case method" splits assignment evenly between the treatments until a decision is made. The opposite is to decide immediately and irrevocably for the apparently-better treatment. The latter has a clear failure mode: if the apparently-better treatment is in fact the worse, *every* future individual pays the full gap between the treatments — an expected sacrifice of $(1-P)$ per future individual, forever. With small samples $P$ is genuinely uncertain, so an irrevocable decision risks a permanent stream of avoidable losses. The even split has the opposite failure mode: it keeps paying the gap on half of all individuals even after $P$ has moved well away from $\tfrac12$. So both crude disciplines mishandle the uncertainty in $P$, in opposite directions.
 
 ## Baselines
 
@@ -55,15 +55,9 @@ def posterior_density(p, r, s):
     norm = math.factorial(n + 1) / (math.factorial(r) * math.factorial(s))
     return norm * (p ** r) * ((1 - p) ** s)
 
-def prob_exceeds(r1, s1, r2, s2):
-    # The probability that the second unknown probability exceeds the first,
-    # given two independent samples.  This is the quantity we lack a clean,
-    # hand-computable, exact evaluation of.
-    pass  # TODO: derive the reduced exact formula
-
 def allocate_next(arm1: Arm, arm2: Arm):
     # Decide which treatment the NEXT individual receives, given the evidence.
-    pass  # TODO: the allocation rule
+    pass  # TODO
 
 def run(stream):
     arm1, arm2 = Arm(), Arm()

@@ -97,8 +97,7 @@ directions `D_k(x) = g_k(x) − g'_k(x) + (B_k/B_{k-1}) D_{k-1}(x)`. **Gap:** ev
 followed by a projection onto the object constraints, so the search keeps colliding with the
 constraint set; a fixed step size is suboptimal (the gradient is tiny on plateaus, so one needs a
 large `h` there but a small `h` elsewhere to stay stable), and adaptively tuning `h` is itself
-unsolved. What is wanted is a scheme that satisfies the object constraints *inherently* while
-reducing the Fourier error, rather than alternately fighting them.
+unsolved.
 
 ## Evaluation settings
 

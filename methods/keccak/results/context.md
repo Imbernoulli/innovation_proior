@@ -2,7 +2,7 @@
 
 ## Research question
 
-We want a cryptographic hash function: a map from arbitrary-length messages to fixed-length digests that is collision-resistant, preimage-resistant, and second-preimage-resistant — and, more demandingly, that exhibits *no* structural weakness a random oracle would not have. The deployed hash functions of the day (MD5, SHA-0/1, SHA-2, RIPEMD) are all built the same way, and that shared construction has begun to fail in two distinct senses at once. First, the compression functions at their core are falling to collision search (MD5 collisions are practical; SHA-1 collisions are within theoretical reach). Second, even granting a perfect compression function, the *construction wrapping it* leaks properties a random oracle does not have — most visibly, length-extension. The question is whether there is a different way to build a variable-input, variable-output hash whose security can be stated as a single compact claim ("as strong as a random oracle up to a stated bound") and whose only deviation from that ideal is something we can quantify and push arbitrarily far down with one parameter.
+We want a cryptographic hash function: a map from arbitrary-length messages to fixed-length digests that is collision-resistant, preimage-resistant, and second-preimage-resistant — and, more demandingly, that exhibits *no* structural weakness a random oracle would not have. The deployed hash functions of the day (MD5, SHA-0/1, SHA-2, RIPEMD) are all built the same way, and that shared construction has begun to fail in two distinct senses at once. First, the compression functions at their core are falling to collision search (MD5 collisions are practical; SHA-1 collisions are within theoretical reach). Second, even granting a perfect compression function, the *construction wrapping it* leaks properties a random oracle does not have — most visibly, length-extension. The question is whether there is a different way to build a variable-input, variable-output hash whose security can be stated as a single compact claim ("as strong as a random oracle up to a stated bound") and whose deviation from that ideal is something we can quantify and bound rather than merely hope for.
 
 ## Background
 
@@ -32,7 +32,7 @@ The yardstick is the security a truncated random oracle provides for a digest of
 
 ## Code framework
 
-The primitives that already exist: fixed-width bitwise operations (rotate, XOR, AND, NOT) on machine words, byte packing into and out of a fixed-size state, and a generic iterated-hashing harness that pads an input and processes it block by block. The slots a new design will fill are the fixed-length primitive on the state and the variable-input/variable-output mode wrapped around it.
+The primitives that already exist: fixed-width bitwise operations (rotate, XOR, AND, NOT) on machine words, byte packing into and out of a fixed-size state, and a generic iterated-hashing harness that pads an input and processes it block by block. What a new design has to supply is left as an empty slot below.
 
 ```python
 def rol64(a, n):
@@ -44,16 +44,7 @@ def load64(b):                # little-endian bytes -> 64-bit lane
 def store64(a):               # 64-bit lane -> little-endian bytes
     return list((a >> (8 * i)) & 0xFF for i in range(8))
 
-def fixed_primitive(state):
-    """A fixed-length transformation on the state. # TODO"""
-    pass
-
-def pad(message_bytes, rate_in_bytes):
-    """Extend the message to a multiple of the absorbed block size,
-    injectively. # TODO: the exact rule."""
-    pass
-
-def hash(rate, capacity, input_bytes, output_len):
-    """Variable-input, variable-output mode built on fixed_primitive. # TODO"""
+def hash(input_bytes, output_len):
+    """Variable-input, variable-output cryptographic hash. # TODO"""
     pass
 ```

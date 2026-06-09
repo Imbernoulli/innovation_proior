@@ -19,9 +19,7 @@ Two mature but separate theories answer versions of this, and each pays a price 
 The goal that would resolve this: a generalization bound that (a) accepts an informative, data-independent
 prior the way Bayes does, so I can encode which hypotheses I expect to be good; yet (b) holds
 **distribution-free**, like PAC, assuming nothing about whether the prior matches reality; and (c) does not
-become vacuous merely because the hypothesis class is continuous. A solution would have to find a complexity
-measure that is simultaneously prior-shaped, finite for continuous classes, and provably controllable without
-assuming the prior is true.
+become vacuous merely because the hypothesis class is continuous. No existing bound meets all three at once.
 
 ## Background
 
@@ -69,8 +67,7 @@ log E_{c∼P} e^{h(c)} = sup_Q { E_{c∼Q} h(c) − KL(Q‖P) },
 
 with the supremum attained at the Gibbs distribution `dQ ∝ e^{h} dP`. Equivalently, for *any* `Q` absolutely
 continuous w.r.t. `P`, `E_{c∼Q} h(c) ≤ KL(Q‖P) + log E_{c∼P} e^{h(c)}`. Here `KL(Q‖P) = E_{c∼Q} ln(dQ/dP)` is
-the Kullback–Leibler divergence (relative entropy). This identity transports an expectation under one measure
-to an expectation under another, and the price of transport is exactly the divergence between them.
+the Kullback–Leibler divergence (relative entropy). It is a standard piece of large-deviations machinery.
 
 **Bayesian model averaging / Gibbs predictors.** Averaging predictions under a posterior, and the special case
 of an exponentially-weighted ("Gibbs") posterior `dQ_β ∝ e^{−β ℓ̂} dP`, were established devices — weighted
@@ -113,22 +110,21 @@ hypotheses, not a single simple one.
 
 ## Evaluation settings
 
-The natural yardstick is a distribution-free generalization guarantee on a stochastic predictor:
-draw `h ∼ Q`, predict with `h`, and measure the expected risk `E_{h∼Q} ℓ(h)` against its empirical
-counterpart `E_{h∼Q} ℓ̂(h, S)`. The relevant regimes to check a candidate bound against: a finite class of
+The yardstick is a distribution-free generalization guarantee that stays non-vacuous where the baselines fail.
+The relevant regimes to check a candidate bound against: a finite class of
 `M` hypotheses; a countable class with a prior `P`; and — the decisive case — a **continuous** class
 (parameters in `R^n` with a prior density), where singleton-mass baselines go vacuous. The settings of interest
 include realizable concept learning (0–1 loss with a target in the class), the agnostic / unrealizable case
 (arbitrary bounded loss), and bounded log loss for density models. Sample sizes range from moderate (where
 one would like the bound to be numerically tight, not merely asymptotic) upward. The quality criteria are:
-does the bound hold simultaneously for all posteriors `Q`, including data-dependent ones; is it computable
+does the bound remain valid even when the learner chooses what to certify after seeing the data; is it computable
 from the sample so it can be reported as a certificate alongside the predictor; and is it tight enough in the
 small-empirical-loss regime to be non-vacuous.
 
 ## Code framework
 
 The starting point is a generic risk-estimation harness over a hypothesis space with a prior. What is missing is
-a data-dependent generalization certificate for randomized predictors.
+a data-dependent generalization certificate that stays finite where the Occam baseline goes vacuous.
 
 ```python
 import numpy as np
@@ -159,11 +155,11 @@ def occam_bound(emp_risk_h, prior_mass_h, m, delta):
 
 # --- open certificate interface -----------------------------------------
 
-def generalization_certificate(Q, P, emp_risks, m, delta):
-    """Upper bound, holding with prob >= 1 - delta simultaneously for ALL Q,
-    on the true risk of the randomized predictor drawn from Q.
-    Must stay finite for continuous classes and be computable from the sample.
+def generalization_certificate(P, emp_risks, m, delta):
+    """Upper bound, holding with prob >= 1 - delta over the sample,
+    on the true risk, computable from the sample and remaining finite
+    where the Occam baseline above goes vacuous.
     """
-    # TODO: finite, empirical complexity-controlled bound
+    # TODO
     pass
 ```

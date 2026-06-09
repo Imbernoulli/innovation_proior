@@ -52,8 +52,7 @@ is the sequential recursion
   y_0 = μ_0 + σ_0·ε_0,   y_i = μ_i(y_{1:i-1}) + σ_i(y_{1:i-1})·ε_i,   ε ~ N(0, I),
 
 whose cost is proportional to the dimensionality D and is inherently sequential, so these models are
-not directly attractive as posteriors to sample from. But the same structure makes the *inverse* map
-ε_i = (y_i − μ_i)/σ_i interesting, which is the lever the method will pull.
+not directly attractive as posteriors to sample from.
 
 **Building blocks available.** Masked autoregressive networks (MADE) and masked/causal convolutions
 (PixelCNN, WaveNet) give cheap, parallel autoregressive functions. ResNets (He et al. 2015, 2016)
@@ -152,20 +151,18 @@ class Encoder(nn.Module):
 class RefiningStep(nn.Module):
     """One invertible refinement of the latent sample, conditioned on context, with a tractable
     log-determinant."""
-    def __init__(self, dim, hidden, context_dim, forget_bias=1.5):
+    def __init__(self, dim, hidden, context_dim):
         super().__init__()
         self.net = AutoregressiveNN(dim, hidden, context_dim)
-        self.forget_bias = forget_bias
     def forward(self, z, h):
         # TODO: transform z invertibly; return (z_new, log_density_delta).
         pass
 
 class FlexiblePosterior(nn.Module):
-    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden, reverse_between_steps=True):
+    def __init__(self, x_dim, z_dim, context_dim, n_steps, hidden):
         super().__init__()
         self.encoder = Encoder(x_dim, z_dim, context_dim, hidden)
         self.steps = nn.ModuleList()  # TODO: n_steps RefiningStep layers
-        self.reverse_between_steps = reverse_between_steps
     def sample_and_log_prob(self, x):
         # TODO: draw the initial sample, refine through the steps, accumulate log q(z|x).
         pass

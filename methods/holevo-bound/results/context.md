@@ -49,30 +49,24 @@ of the Shannon entropy. The load-bearing properties: it is concave,
 maximum at the maximally mixed state; for any ensemble `{p_x,ρ_x}` realizing a density
 operator `ρ`, the eigenvalue distribution `λ(ρ)` is majorized by `p`, hence `S(ρ) ≤ H(p)`
 with equality only when the states are mutually orthogonal — so mixing non-orthogonal pure
-states irretrievably loses distinguishability. For a block-diagonal "classical-quantum" state
-`ρ_XA = Σ_x p_x |x⟩⟨x| ⊗ ρ_x`, the entropies decompose cleanly:
-`S(X) = H(p)`, `S(A) = S(Σ_x p_x ρ_x)`, `S(XA) = H(p) + Σ_x p_x S(ρ_x)`.
+states irretrievably loses distinguishability.
 
-**Quantum relative entropy and measured distinguishability.** `D(ρ‖σ) = Tr ρ(log ρ − log σ)`.
+**Quantum relative entropy.** `D(ρ‖σ) = Tr ρ(log ρ − log σ)`.
 By Klein's inequality `D(ρ‖σ) ≥ 0`, with equality iff `ρ = σ` on the relevant support. The
 quantum mutual information of a bipartite state is
-`I(A;B) = S(A) + S(B) − S(AB) = D(ρ_AB‖ρ_A ⊗ ρ_B) ≥ 0`. A direct measurement-specific fact is
-the key one: if a fixed POVM produces classical distributions
-`q_y = Tr(E_y ρ)` and `r_y = Tr(E_y σ)`, then
-`D(q‖r) ≤ D(ρ‖σ)`. One proves this without the fully general data-processing theorem by reducing
-the POVM to a projective measurement through Naimark dilation and applying the variational form
-of quantum relative entropy to the observable
-`H = Σ_y log(q_y/r_y) P_y`. The unrestricted monotonicity of `D` under arbitrary quantum
-channels, and the equivalent strong-subadditivity formulation, are deeper entropy principles;
-the measurement/cq instance is the one needed here.
+`I(A;B) = S(A) + S(B) − S(AB) = D(ρ_AB‖ρ_A ⊗ ρ_B) ≥ 0`. A variational characterization is
+available, `D(ρ‖σ) = sup_K {Tr(ρK) − log Tr(2^K σ)}` over Hermitian `K`. Whether the deeper
+entropy principles — unrestricted monotonicity of `D` under arbitrary quantum channels, and the
+equivalent strong-subadditivity of von Neumann entropy — hold is, in their full generality, a
+separate and harder matter; the classical analogues follow from convexity but the quantum
+statements are not in hand here as general theorems.
 
 **Quantum measurements / POVMs.** The most general measurement is a positive
 operator-valued measure `{E_y}` with `E_y ≥ 0` and `Σ_y E_y = I`; on a state `ρ` it yields
 outcome `y` with probability `Tr(E_y ρ)`. Equivalently (Stinespring/Naimark) it is an isometry
 into a larger space followed by a projective measurement; equivalently it is a quantum channel
 `A → AY`, `ρ ↦ Σ_y M_y ρ M_y† ⊗ |y⟩⟨y|` with `M_y†M_y = E_y`, which records the outcome in a
-fresh classical register `Y`. This last form turns "the receiver measures" into a CPTP map,
-the object on which data-processing acts.
+fresh classical register `Y`. This last form expresses "the receiver measures" as a CPTP map.
 
 **Distinguishability facts that anchor tightness.** Mutually orthogonal states are perfectly
 distinguishable: projecting onto the support of each `ρ_x` gives `p(y|x) = δ_{xy}`, hence

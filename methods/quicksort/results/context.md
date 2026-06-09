@@ -113,8 +113,8 @@ def sort(a):
     # TODO: the method.
     pass
 
-# An auxiliary fixed block of store we are allowed to manage by hand,
-# if the method needs to remember work it has postponed. On this machine
-# the language gives us no automatic stack, so any such list is ours to administer.
-work_store = []  # TODO: only if the method needs to postpone and resume sub-tasks
+# An auxiliary fixed block of store we are allowed to manage by hand, if the
+# method needs one. On this machine the language gives us no automatic stack,
+# so any such block is ours to administer.
+work_store = []  # TODO: only if the method needs it
 ```

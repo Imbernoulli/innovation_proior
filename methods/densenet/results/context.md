@@ -51,9 +51,9 @@ the shortcut is formed:
 Despite different topologies, they share one mechanism: **short connections from layers near the
 input to layers near the output.**
 
-**Concatenation as a combine operation.** The Inception module (Szegedy et al., 2015) combines the
-outputs of differently-sized filters by **concatenation** rather than summation, to increase the
-diversity of features feeding the next stage. Szegedy et al. (2016) also observe that features
+**The Inception module.** The Inception module (Szegedy et al., 2015) combines the
+outputs of differently-sized filters within a module by stacking them along the channel axis, to
+feed the next stage a more diverse set of inputs. Szegedy et al. (2016) also observe that features
 within a single convolutional layer are strongly correlated — one can aggregate channels into
 fewer without much accuracy loss — which suggests conventional layers waste capacity producing
 redundant feature-maps.
@@ -122,10 +122,11 @@ connections *randomly and transiently*; the architecture underneath is still a s
 full-width residual net.
 
 **Inception / GoogLeNet (Szegedy et al., 2015, 2016).** Builds width via "Inception modules" that
-concatenate the outputs of parallel filters of different sizes within a module, and uses 1×1
-bottlenecks for efficiency. It demonstrates concatenation as a viable combine operation and strong
-accuracy at lower cost than VGG. Gap: concatenation is confined *within* a module, not used to wire
-distant layers together; the design is comparatively complex.
+stack the outputs of parallel filters of different sizes along the channel axis within a module, and
+uses 1×1 bottlenecks for efficiency. It achieves strong accuracy at lower cost than VGG. Gap: the
+within-module stacking operates only on the immediate parallel branches and is local to a single
+module; the design is comparatively complex and does not address cross-layer signal flow in deep
+stacks.
 
 ## Evaluation settings
 

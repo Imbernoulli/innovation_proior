@@ -49,9 +49,10 @@ the `|b*_i|` lower-bound the lengths of all lattice vectors that "reach" index
 `i`. The `b*_i` themselves are generally *not* in the lattice — only the `b_i`
 are — but their lengths are the invariant the geometry cares about.
 
-A basis is "good" exactly when these GS lengths do not collapse too quickly as
-`i` grows: if `|b*_i|` stays comparable to `|b*_{i-1}|`, then no lattice vector
-can be much shorter than `|b_1|`, and `|b_1|` itself is controlled.
+How the GS lengths `|b*_1|, ..., |b*_n|` are arranged along the basis is thus
+tied, through the lower bound above, to how short the lattice's vectors — and
+`b_1` in particular — can be forced to be; what a basis must satisfy to pin this
+down is exactly what a reduction notion has to make precise.
 
 **Classical reduction theory.** The idea of choosing a canonical, near-orthogonal
 basis goes back to the theory of quadratic forms: Lagrange (1773) and Gauss
@@ -82,10 +83,9 @@ classical theory are load-bearing here:
 
 **The gap.** Classical high-rank reduction gives the best bases but no
 polynomial-time algorithm; the rank-2 Gauss step is polynomial and exact but
-only handles two vectors. What is missing is a *relaxed* notion of reducedness,
-weak enough that a Gauss-style rounding-and-swapping process provably converges
-in polynomially many steps on any rank, yet strong enough that the output still
-guarantees a short `b_1`.
+only handles two vectors. Between them sits the open territory: no known
+reduction notion combines a polynomial-time guarantee at arbitrary rank with a
+provable bound on the shortness of `b_1`.
 
 ## Baselines
 
@@ -158,12 +158,8 @@ def gram_schmidt(B):
 
 def reduce_basis(B):
     """Apply unimodular (det +-1) integer moves to B until it is 'reduced enough'.
-    TODO: decide what 'reduced' means (a per-vector size condition plus a
-          condition on the Gram-Schmidt lengths), which local move restores it,
-          and prove the move-count is polynomial.
+    TODO: decide what 'reduced enough' means, which local moves drive an
+          arbitrary basis to that state, and prove the move-count is polynomial.
     """
-    # TODO: size-reduction step (round a Gram-Schmidt coefficient, subtract).
-    # TODO: the test on adjacent Gram-Schmidt lengths that triggers a swap.
-    # TODO: the swap, and how to advance/retreat through the basis.
     pass
 ```

@@ -22,14 +22,7 @@ The field at this point is built on a small, sharp set of tools, all from the th
 R₁ = min_{P_x(y)}  I(X;Y)    subject to   ∫∫ P(x,y) ρ(x,y) dx dy ≤ v₁,
 ```
 
-the minimum mutual information over all systems meeting the fidelity budget, and stated (Theorem 21) that this `R₁` is exactly the channel capacity needed: a channel of capacity `C ≥ R₁` can carry the source at fidelity `→ v₁`, and `C < R₁` cannot. A partial Lagrange-multiplier solution was given, `P_y(x) = B(x) e^{−λ ρ(x,y)}`, showing the optimal backward conditional declines exponentially in the distance. This is the precise object whose properties, proofs, computation, and examples remain to be worked out — especially in the cleaner discrete case, and with the full two-sided coding theorem.
-
-**The structural clue: a min/max duality.** Set side by side,
-```
-C = max_{P(x)} I(X;Y)          (capacity: maximize over inputs)
-R = min_{P_x(y): E[ρ(X,Y)]≤D} I(X;Y)        (rate at fidelity: minimize over channels under a distortion budget),
-```
-the two problems are mirror images — one a maximization over input distributions giving a concave-`∩` capacity-cost curve, the other a minimization over channels giving what should be a convex-`∪` rate-fidelity curve. Capacity finds the *source* best matched to a fixed channel; the rate problem finds the *channel* best matched to a fixed source. This duality is suggestive but not yet exploited or proved out.
+the minimum mutual information over all systems meeting the fidelity budget, and stated (Theorem 21) that this `R₁` is exactly the channel capacity needed: a channel of capacity `C ≥ R₁` can carry the source at fidelity `→ v₁`, and `C < R₁` cannot. A partial Lagrange-multiplier solution was given, `P_y(x) = B(x) e^{−λ ρ(x,y)}`, showing the optimal backward conditional declines exponentially in the distance. It is stated for the continuous case with only a sketched argument; the discrete case, the properties of this quantity, how to compute it, and concrete worked examples are left open.
 
 ## Baselines
 
@@ -37,9 +30,9 @@ The prior art a theory of lossy rate would be measured against — what existed 
 
 - **Lossless source coding / entropy (the `H(X)` theorem).** Core idea: index the `≈2^{nH(X)}` typical sequences; rate `→ H(X)`, error `→ 0`; converse `R ≥ H(X)`. The actual math: AEP + counting the typical set. **Gap:** it answers only `D=0`. For exact reproduction it is the whole story, but it is silent for any positive tolerance and returns `+∞` for a continuous source. It is the `D→0` endpoint of the wanted curve, not the curve.
 
-- **Scalar quantization / PCM.** Core idea: partition the source range into cells, send a cell index, reproduce by the cell's representative (e.g. its centroid). For one bit on a `N(0,σ²)` source, the two half-lines with centroid reproduction give expected squared error `(π−2)/π · σ² ≈ 0.363 σ²`. **Gap:** it is purely a *per-symbol*, dimension-one operation with no theory of how low the error *could* go. It gives a number for a particular scheme, not a fundamental limit, and (as will become visible) it leaves rate on the table by refusing to code several symbols jointly.
+- **Scalar quantization / PCM.** Core idea: partition the source range into cells, send a cell index, reproduce by the cell's representative (e.g. its centroid). For one bit on a `N(0,σ²)` source, the two half-lines with centroid reproduction give expected squared error `(π−2)/π · σ² ≈ 0.363 σ²`. **Gap:** it is purely a *per-symbol*, dimension-one operation with no theory of how low the error *could* go. It gives a number for a particular scheme, not a fundamental limit, and operates on one symbol at a time.
 
-- **Channel capacity and the channel-coding theorem `C = max I`.** Core idea: random codebook, joint-typicality decoding, sphere packing; rates `<C` reliable, `>C` not. The math: `2^{nR}` random codewords, the probability of a confusable second codeword is `≈2^{−n(C−R)}`. **Gap:** it solves the *transmission* problem (getting bits across a noisy channel), not the *representation* problem (how many bits a source-with-tolerance even produces). But its machinery — random coding, typicality, the `2^{nI}` counting — is exactly the machinery a lossy source theorem will need, run in the opposite direction (covering instead of packing).
+- **Channel capacity and the channel-coding theorem `C = max I`.** Core idea: random codebook, joint-typicality decoding, sphere packing; rates `<C` reliable, `>C` not. The math: `2^{nR}` random codewords, the probability of a confusable second codeword is `≈2^{−n(C−R)}`. **Gap:** it solves the *transmission* problem (getting bits across a noisy channel), not the *representation* problem (how many bits a source-with-tolerance even produces). Its machinery — random coding, typicality, the `2^{nI}` counting, sphere packing — is developed only for the transmission setting.
 
 - **The continuous-source fidelity definition (`R₁ = min I` under budget `v₁`) and Theorem 21.** Core idea and math: as quoted in Background — the min-mutual-information-under-fidelity-budget definition, the claim that it equals the required channel capacity, and the exponential variational solution. **Gap:** it is stated for the continuous case with a sketched proof; the *discrete* case is not worked out, the function's properties (convexity, endpoints, how to compute it) are not developed, and the concrete examples (error-probability distortion, Gaussian squared error) are not evaluated. It is a definition and a one-directional theorem awaiting a full theory.
 
@@ -89,10 +82,8 @@ def entropy_bits(p):
 
 def rate_at_distortion(P_x, D_matrix, D_budget):
     """The fundamental bits/symbol to reproduce the source within average
-    distortion D_budget. TODO: define the right functional of the joint
-    distribution and minimize it over all test channels meeting the budget."""
-    # TODO: choose the cost to minimize (a functional of the joint p(x, x_hat))
-    # TODO: minimize that cost over { q(x_hat|x) : E[d] <= D_budget }
+    distortion D_budget."""
+    # TODO: define and evaluate the fundamental rate of the source at this budget
     raise NotImplementedError
 
 # --- block coding harness ---------------------------------------------------

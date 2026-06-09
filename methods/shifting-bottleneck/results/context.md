@@ -89,8 +89,7 @@ disjunctive graph, solved by branch and bound that orients disjunctive edges and
 paths. It supplies the key structural fact used later: a machine `k` is *critical* for a selection
 `S` if its selection `S_k` contributes an arc to a longest (critical) path in `D_S`; any schedule
 strictly better than `S` must reverse at least one arc on every critical path. This is exact but
-expensive, and "critical" is a yes/no label — it partitions machines into critical and non-critical
-without saying *how much* each one matters.
+expensive, and "critical" is a yes/no label — it partitions machines into critical and non-critical.
 
 **Branch and bound for the one-machine problem (McMahon & Florian 1975; Carlier 1982).** Exact
 algorithms for `1|r_j,q_j|C_max`. McMahon & Florian solved instances up to ~80 jobs; Carlier (1982)
@@ -141,16 +140,10 @@ def solve_one_machine_lmax(tasks):
     #       or an equivalent exact single-machine solver.
     pass
 
-def heads_and_due_dates(graph, ops):
-    """For every operation in `ops`, summarize the rest of the shop into a
-    release time and a due date via longest paths in the current graph."""
-    # TODO: r_op = completion_to(op) - d_op ;  f_op = makespan - completion_from(op) + d_op
-    pass
-
 class Scheduler:
     """The strategy that orders the machines. To be designed."""
     def solve(self, graph):
-        # TODO: choose machine orders using the single-machine solver and refine them.
+        # TODO: decide the machine orders.
         pass
 
 def evaluate_makespan(instance, orientation):

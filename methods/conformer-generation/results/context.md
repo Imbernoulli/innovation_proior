@@ -113,8 +113,7 @@ under-sample.
 molecule, place each fragment from a library of preferred geometries, and enumerate combinations of
 preferred torsion values. *Gap:* relies on a curated fragment/template library and combinatorial
 enumeration; coverage is bounded by the library, and stitching fragments while respecting ring
-closure and long-range clashes is awkward. It does, however, make the point that *experimental torsion
-preferences are the missing ingredient* — a point a distance-geometry method could absorb directly.
+closure and long-range clashes is awkward.
 
 **Force-field / stochastic search (e.g. low-mode or random-start MMFF minimization).** Start from
 random or perturbed coordinates and minimize/sample on a molecular-mechanics surface. *Gap:* needs
@@ -131,15 +130,14 @@ an ensemble and measures how well some generated conformer matches the experimen
 heavy-atom RMSD after optimal alignment (e.g. the minimum RMSD over the ensemble, as a function of
 ensemble size), alongside the wall-clock cost per molecule. The CSD torsion-angle histograms — the
 empirical distributions of each torsion motif across many crystal structures — are themselves a
-pre-existing resource that any knowledge-based method would draw on.
+pre-existing resource.
 
 ## Code framework
 
 The primitives that already exist: an RDKit molecule from a graph, explicit-hydrogen handling,
 embedding-parameter objects, bounds-matrix construction, triangle smoothing, metric-matrix embedding,
 an error-function minimizer over distance/chirality terms, conformer pruning, and the MMFF/UFF force
-fields. The open slot is the source of non-generic geometric knowledge used during embedding and
-refinement.
+fields. The embedding-parameter object has an open slot left to be filled.
 
 ```python
 from rdkit import Chem
@@ -156,7 +154,7 @@ def make_embedding_parameters(seed):
     return params
 
 def add_geometric_knowledge(params):
-    # TODO: choose what non-generic geometric knowledge informs embedding/refinement.
+    # TODO: fill in.
     pass
 
 def embed_ensemble_from_graph(mol, n_confs, seed, do_forcefield_cleanup=False):

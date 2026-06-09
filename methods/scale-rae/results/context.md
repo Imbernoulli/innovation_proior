@@ -83,14 +83,12 @@ existing components frame the problem:
   yields only marginal gains on ImageNet reconstruction, moderate gains on diverse web imagery (e.g.,
   YFCC), but essentially no improvement on rendered-text reconstruction until *text-specific* data is
   added — at which point text reconstruction improves sharply (rFID on a text-rendering set dropping
-  from ~2.64 with ImageNet-only data to ~1.62 once text data is included). Composition, not raw scale,
-  governs the hard domains.
-- *The wide head is a width crutch.* Its benefit tracks how much the backbone width exceeds the latent
-  dimension: large at a 0.5B backbone (whose width barely clears 1152), shrinking as the backbone
-  grows past ~2.4B where hidden sizes (>=2048) already exceed the latent dimension comfortably.
-- *Noise-augmented decoding is early-training regularization.* Its gains are visible while the
-  denoiser is still far from convergence (before ~15k steps) and become negligible afterward; too
-  large a `tau` makes decoder training fail to converge, so it is capped (~0.2).
+  from ~2.64 with ImageNet-only data to ~1.62 once text data is included).
+- *The wide head was tied to a narrow backbone.* It was introduced on ImageNet-scale denoisers whose
+  width (~1024) fell short of the latent dimension (1152); modern T2I transformers at billions of
+  parameters already carry hidden widths of 2048 and up.
+- *Noise-augmented decoding has a stability cap.* Too large a `tau` makes decoder training fail to
+  converge, so it is capped (~0.2).
 - *VAE latents are insufficient for perception.* Unified systems that try to use a VAE latent for
   generation still need a separate semantic encoder for understanding, which is exactly why two-tower
   designs persist.

@@ -68,18 +68,15 @@ converged gray design at the midpoint to recover a black/white pattern can
 collapse the figure of merit (in a reported metalens example the merit fell from
 ≈18.2 to ≈4.7), because the thresholded structure is a different device.
 
-**The adjoint idea from neighboring fields.** Shape and topology optimization in
-mechanical engineering and fluid mechanics, and sensitivity analysis for quantum
-electronic device design, had already established the adjoint method: for an
-objective constrained by a PDE, the gradient with respect to *all* design
-variables can be obtained from one extra ("adjoint") solve of a closely related
-system, instead of one solve per variable. Geometry-projection and perturbation
-theory for Maxwell with shifting material boundaries supplied the pieces for
-applying this to electromagnetism. The level-set method of Osher and Sethian
-represents a shape implicitly as the zero contour of a function and evolves it
-under a velocity field — a natural way to keep a two-phase, binary material
-distribution while still admitting a very large number of boundary degrees of
-freedom.
+**Sensitivity analysis and shape representations in neighboring fields.** Shape
+and topology optimization in mechanical engineering and fluid mechanics, and
+sensitivity analysis for quantum electronic device design, are mature fields that
+routinely optimize objectives constrained by a PDE. Perturbation theory for
+Maxwell with shifting material boundaries, and geometry-projection techniques,
+have been worked out as tools for relating a change in material layout to a
+change in the fields. The level-set method of Osher and Sethian represents a
+shape implicitly as the zero contour of a function and evolves it under a
+velocity field, admitting a very large number of boundary degrees of freedom.
 
 ## Baselines
 
@@ -142,9 +139,7 @@ N = NX * NY
 # --- parameterize the permittivity over the design region --------------------
 def map_design(rho):
     """Map a vector of design variables rho to the permittivity weights that
-    the forward solver places in the design region. The whole contribution
-    lives here: how to go from free variables to a manufacturable two-material
-    pattern."""
+    the forward solver places in the design region."""
     pass  # TODO
 
 # --- build the forward problem and a figure-of-merit readout -----------------
@@ -163,9 +158,8 @@ def forward_F(design_weights):
 # --- the gradient of F w.r.t. EVERY design variable --------------------------
 def grad_F(design_weights):
     """Return dF/d(design variable) for all variables at once. The naive route
-    (finite differences) costs one solve per variable and is infeasible; this
-    stub is the slot for a cheap full gradient."""
-    pass  # TODO  -- N+1 solves is hopeless; needs a better idea
+    (finite differences) costs one solve per variable and is infeasible."""
+    pass  # TODO  -- N+1 solves is hopeless
 
 # --- optimization loop -------------------------------------------------------
 def main():

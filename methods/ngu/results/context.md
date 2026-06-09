@@ -9,14 +9,12 @@ bonus in use shares one structural property: it is a *transient* signal that **v
 agent gathers experience. That is exactly what you want for pushing the frontier outward once, and
 exactly what you do *not* want for *maintaining* exploration: after the bonus on a region has
 decayed, nothing pulls the agent back through it, even when traversing it again is the only way to
-reach the next undiscovered area. The precise problem: design an exploration bonus that (i) rapidly
-discourages revisiting a state *within* the current episode, so the agent keeps covering new ground
-every episode; (ii) gives extra emphasis to states that are still novel *across* episodes without
-letting lifelong familiarity erase the within-episode drive; (iii) ignores parts of the observation
-the agent's actions cannot influence; and — because baking a non-vanishing exploratory drive into a
-single value function would permanently distort the policy — (iv) admits a way to *separate* the
-exploratory policy from a clean exploitative one, so dense-reward games are not sacrificed for the
-sake of the hard ones.
+reach the next undiscovered area. The precise problem: design an exploration bonus that keeps an
+agent covering new ground on the hardest games without dying out as the environment becomes
+familiar, and do so without (as the noisy-TV literature shows) being fooled into paying novelty for
+variation the agent's actions cannot influence — all while not sacrificing performance on
+dense-reward games, where any persistent exploratory drive baked into a single value function would
+permanently distort the policy.
 
 # Background
 
@@ -62,30 +60,27 @@ component, separable from how the novelty signal is then computed.
 embeddings in slots and read them by nearest-neighbor lookup with a smooth kernel (Blundell et al.
 2016; Pritzel et al. 2017, Neural Episodic Control), using the inverse kernel
 $K(x,y)=\epsilon/(d^2(x,y)/d_m^2+\epsilon)$ with a per-task running distance scale $d_m^2$. Such a
-memory can hold the embeddings seen *so far in one episode* and answer "how close is the current
-state to anything I've seen this episode?" — the natural substrate for a *within-episode* count.
+memory can hold a set of embeddings and answer "how close is the current state to anything in the
+set?" by a smooth nearest-neighbor lookup.
 
 **Universal value functions (UVFA).** Schaul et al. (2015) approximate a whole family of value
 functions $V(s;g)$ with one network conditioned on a goal/parameter $g$, sharing representation
-across the family. Conditioning a value function on the *intrinsic-reward weight* would let a single
-network represent both a purely exploratory and a purely exploitative policy and switch between
-them — and the exploratory members act as auxiliary tasks (Jaderberg et al. 2016) that keep the
-shared representation improving even with no extrinsic reward.
+across the family. When such a family is trained jointly, members that carry little or no extrinsic
+signal act as auxiliary tasks (Jaderberg et al. 2016) that keep the shared representation improving
+even with no extrinsic reward.
 
 **Distributed recurrent value-based RL (R2D2).** Kapturowski et al. (2019) combine an LSTM state,
 prioritized experience replay, off-policy $n$-step / Retrace value learning (Munos et al. 2016), and
 many parallel actors feeding a central replay — the regime where exploration must operate at scale.
 A subtlety: adding a *non-stationary* intrinsic reward to the reward stream can turn the MDP into a
-POMDP; feeding the intrinsic reward (and the conditioning weight) to the network *as input* keeps
-the problem Markovian from the agent's view.
+POMDP; a known remedy is to feed the quantities that make the reward non-stationary to the network
+*as input*, which keeps the problem Markovian from the agent's view.
 
 **The Random Disco Maze diagnostic.** A $21\times21$ gridworld where the wall colors are re-sampled
 randomly every step, so the agent almost never sees the same pixel-state twice. The setting isolates
 the failure mode a novelty signal has to avoid: raw-observation novelty is overwhelmed by irrelevant
 color churn, so a pixel-keyed bonus can pay the agent for standing still while the world changes
-around it. A workable representation has to collapse the colors and preserve the agent's
-action-relevant position; a workable novelty signal has to care about distinct positions covered
-within the current episode.
+around it. The diagnostic is scored by the fraction of distinct grid positions the agent visits.
 
 # Baselines
 

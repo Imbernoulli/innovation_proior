@@ -45,33 +45,28 @@ alone but, coupled by mutual inhibition, settle into anti-phase oscillation — 
 alternation a flexor/extensor joint needs. Sensory feedback (notably foot-contact and load
 sensing) is known to strongly modulate the timing of the swing→stance and stance→swing
 transitions in animals; load under the foot can delay lift-off, and ground contact can trigger
-the switch to stance. This biological picture suggests that a locomotion controller need not
-explicitly command every joint angle: a low-dimensional rhythmic source, modulated by a few
-parameters and coupled to the body through feedback, can produce the full high-dimensional
-coordinated movement.
+the switch to stance. The biological picture is thus one in which coordinated high-dimensional
+movement emerges without every joint angle being explicitly commanded.
 
 **Limit cycles and phase oscillators.** A stable limit cycle is an isolated closed trajectory of
 a dynamical system that nearby trajectories converge to; transient perturbations are forgotten as
-the state returns to the cycle. The Andronov–Hopf normal form is the canonical generator of one:
-in polar coordinates ṙ = α(μ − r²)r, θ̇ = ω, the radius converges to r = √μ and the phase
-advances uniformly at ω. The amplitude (μ) and frequency (ω) are explicit, separable parameters,
-and the cycle is harmonic and structurally stable — its shape does not change as ω is varied.
-Other oscillators (Van der Pol, Rayleigh, matsuoka half-centre models) also produce limit cycles
-but their waveform shape changes with their parameters.
+the state returns to the cycle. Several oscillator families are known to produce limit cycles —
+the Andronov–Hopf normal form (in polar coordinates ṙ = α(μ − r²)r, θ̇ = ω, the radius converging
+to r = √μ and the phase advancing at ω), as well as Van der Pol, Rayleigh, and Matsuoka
+half-centre models. They differ in how their amplitude, frequency, and waveform shape relate to
+the underlying parameters.
 
 **Coupled phase oscillators (synchrony).** The Kuramoto model studies how a population of phase
 oscillators synchronizes under coupling: φ̇_i = ω_i + Σ_j K_ij sin(φ_j − φ_i). The sinusoidal
 coupling pulls phase differences toward stable fixed points; with a phase-bias term
 sin(φ_j − φ_i − Φ_ij) the locked state sits at φ_j − φ_i = Φ_ij. Such models do not explain how
-rhythm arises; they take oscillators as given and characterize what their *couplings* do — which
-is precisely the question of how to set inter-leg phasing. Relatedly, the theory of *symmetric
-coupled cell networks* (Golubitsky and Stewart; Golubitsky, Stewart, Buono and Collins's modular
-network for legged locomotion, 1998) shows that the symmetry of a network of identical coupled
-cells forces the existence of symmetric periodic solutions — and that the standard quadruped
-gaits correspond to the symmetry subgroups of a four-cell ring. The H/K theorem characterizes
-which spatio-temporal symmetry patterns (hence which gaits) a coupled network can support and
-makes the stable one selectable by the coupling, independent of the individual cell's internal
-dynamics.
+rhythm arises; they take oscillators as given and characterize what their *couplings* do.
+Relatedly, the theory of *symmetric coupled cell networks* (Golubitsky and Stewart; Golubitsky,
+Stewart, Buono and Collins's modular network for legged locomotion, 1998) shows that the symmetry
+of a network of identical coupled cells forces the existence of symmetric periodic solutions —
+and that the standard quadruped gaits correspond to the symmetry subgroups of a four-cell ring.
+The H/K theorem characterizes which spatio-temporal symmetry patterns (hence which gaits) a
+coupled network can support, independent of the individual cell's internal dynamics.
 
 **The brittleness of open-loop scripted gaits.** A direct alternative is to author each joint's
 trajectory as an explicit clocked function of time (e.g. sinusoids or splines played back from a
@@ -101,17 +96,17 @@ controller is meant to remove.
   actuated joint as a phase oscillator with constant natural frequency, coupled sinusoidally with
   fixed weights and phase biases. Core math: φ̇_i = ω_i + Σ_j K_ij sin(φ_j − φ_i − Φ_ij), output
   a sinusoid of the phase. Strength: robust phase-locking and synchrony, re-locks after
-  perturbation. Gap left open: a plain phase oscillator has a *single* frequency, so the swing
-  and stance portions of a stride share one duration — yet biology decouples them (speed sits in
-  stance, swing stays constant); and a bare phase variable still needs an amplitude/limit-cycle
-  layer and a principled way to *select* a specific gait's symmetric solution as the stable one.
+  perturbation. Gap left open: a plain phase oscillator carries a single frequency and a bare
+  phase with no amplitude of its own, and the coupling weights are set by hand rather than tied
+  to which gait the network ought to settle into.
 
 - **Symmetric coupled-cell network gait design.** Use network symmetry (Golubitsky–Stewart) to
   guarantee that walk/trot/pace/bound exist as symmetric periodic solutions of a four-cell ring
   and to make one of them stable by choosing the coupling. Core result: the H/K theorem ties
-  admissible spatio-temporal symmetry patterns to subgroup pairs. Gap left open on its own: it
-  specifies the coupling architecture and which gait is stable, but not the per-leg oscillator
-  whose swing/stance shape and durations actually drive the joints, nor how feedback enters.
+  admissible spatio-temporal symmetry patterns to subgroup pairs. Gap left open on its own: the
+  theory characterizes the coupling architecture and the abstract symmetric solution at the level
+  of identical cells, leaving open what each cell's internal dynamics is, what actually drives the
+  joints, and how the world enters the loop.
 
 ## Evaluation settings
 
@@ -138,31 +133,31 @@ the rhythm dynamics and gait-coupling left as empty slots.
 import numpy as np
 
 class RhythmGenerator:
-    """One oscillatory unit per leg; produces a periodic signal per leg with
-    controllable amplitude, frequency, and inter-leg phasing. The internal
-    dynamics and the inter-leg coupling are the slots to be designed."""
+    """One rhythmic unit per leg; emits a periodic per-leg signal that the rest of
+    the pipeline turns into foot targets. The per-leg dynamics and how the legs are
+    coordinated are left as empty slots to be designed."""
 
     def __init__(self, n_legs=4, dt=0.001, **params):
         self.n = n_legs
         self.dt = dt
-        # per-leg oscillator state (e.g. amplitude/phase or x/y); TODO: choose representation
+        # per-leg internal state; TODO: choose representation
         self.state = np.zeros((2, n_legs))
         self.params = params
         self._set_gait_coupling(params.get("gait", "TROT"))
 
     def _set_gait_coupling(self, gait):
-        # TODO: the coupling that pins the inter-leg phase offsets defining each gait
+        # TODO: whatever makes the chosen gait the produced inter-leg pattern
         self.coupling = None
 
     def _integrate(self):
-        # TODO: per-leg limit-cycle dynamics + inter-leg coupling, one Euler step
+        # TODO: advance the per-leg state and the inter-leg interaction, one step
         pass
 
     def update(self):
-        """Advance the oscillators and emit desired foot positions (x, z) per leg."""
+        """Advance the units and emit desired foot positions (x, z) per leg."""
         self._integrate()
-        x = np.zeros(self.n)   # TODO: map oscillator state -> fore/aft foot position
-        z = np.zeros(self.n)   # TODO: map oscillator state -> foot height (lift in swing)
+        x = np.zeros(self.n)   # TODO: map state -> fore/aft foot position
+        z = np.zeros(self.n)   # TODO: map state -> foot height (lift in swing)
         return x, z
 
 

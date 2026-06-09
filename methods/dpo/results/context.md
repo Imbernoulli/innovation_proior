@@ -192,14 +192,12 @@ def sequence_logprob(model, input_ids, loss_mask):
 
 def preference_objective(policy_chosen_lp, policy_rejected_lp,
                          ref_chosen_lp, ref_rejected_lp, beta):
-    """The contribution: a single-stage loss on π_θ from preference pairs.
+    """Map a preference pair to a scalar loss on π_θ.
 
-    No reward model, no value function, no on-policy sampling. Map each
-    completion to an implicit score, contrast preferred vs dispreferred.
+    Inputs are the four sequence log-probs (policy and reference, on the
+    chosen and rejected completions) and beta.
     """
-    # TODO: define the implicit per-completion score from π_θ and π_ref
-    # TODO: form the preferred-minus-dispreferred contrast
-    # TODO: turn the contrast into a binary-cross-entropy / logistic loss
+    # TODO: define the training objective on the policy
     pass
 
 def train_step(batch, beta):

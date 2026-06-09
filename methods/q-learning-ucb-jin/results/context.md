@@ -38,7 +38,7 @@ The natural yardstick is *regret* on a finite tabular episodic MDP, $\mathrm{Reg
 
 ## Code framework
 
-The pieces that exist before the method does: an episodic-MDP rollout loop, a Q-table indexed by $(h,x,a)$, greedy action selection, and an incremental value update whose *step size* and *exploration term* are exactly the open slots.
+The pieces that exist before the method does: an episodic-MDP rollout loop, a Q-table indexed by $(h,x,a)$, greedy action selection, and an incremental value update with open slots to be filled in.
 
 ```python
 import numpy as np
@@ -55,23 +55,21 @@ class TabularValueLearner:
     """Online model-free learner: keeps a Q-table and visit counts, nothing else."""
     def __init__(self, S, A, H):
         self.S, self.A, self.H = S, A, H
-        self.Q = np.zeros((H, S, A))          # optimistic initial value -> TODO set below
+        self.Q = np.zeros((H, S, A))          # initial value -> TODO set below
         self.V = np.zeros((H + 1, S))
         self.N = np.zeros((H, S, A), dtype=int)
-        self._init_optimism()
+        self._init_values()
 
-    def _init_optimism(self):
-        # TODO: initialize Q (and V) to encode "everything looks good until proven otherwise"
+    def _init_values(self):
+        # TODO: choose the initial Q (and V) values.
         pass
 
     def step_size(self, t):
         # TODO: the learning rate as a function of visit count t.
-        #       Must forget stale targets fast enough yet average enough samples.
         raise NotImplementedError
 
     def exploration_bonus(self, t):
-        # TODO: the optimism term added to the Bellman target after t visits.
-        #       Must dominate the statistical fluctuation of the update so that Q stays an upper bound.
+        # TODO: the term added to the Bellman target after t visits.
         raise NotImplementedError
 
     def update(self, h, x, a, reward, x_next):

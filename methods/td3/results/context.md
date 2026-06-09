@@ -32,7 +32,7 @@ and symmetrically for $Q^B$. The action is chosen by $Q^A$ but valued by $Q^B$; 
 
 **Deep deterministic policy gradient (Lillicrap et al. 2015).** The state-of-the-art continuous-control actor-critic and the method to beat. It combines the deterministic policy gradient with deep-Q machinery: a deep actor $\pi_\phi$ and a single deep critic $Q_\theta$, both with soft-updated target networks $\pi_{\phi'},Q_{\theta'}$; an experience replay buffer for off-policy minibatch training; exploration by adding temporally-correlated Ornstein–Uhlenbeck noise to actions. The critic minimizes the mean-squared Bellman error to $y=r+\gamma Q_{\theta'}(s',\pi_{\phi'}(s'))$; the actor ascends $Q_\theta$ by the deterministic policy gradient. Its gaps: a single critic is subject to overestimation with no mechanism against it; nothing addresses the variance accumulated by bootstrapping or the tight actor-critic feedback loop; deterministic targets concentrate on narrow value peaks; and it is notoriously sensitive to hyperparameters and random seeds.
 
-**SARSA / Expected SARSA (Sutton & Barto; van Seijen et al. 2009).** On-policy TD control whose target uses the action actually taken (or an average over the policy's action distribution) rather than a maximizing action: $y=r+\gamma Q(s',a')$, $a'\sim\pi$. Values learned this way are "safer" — they account for the consequences of perturbed actions rather than assuming the single best action is always executed. Not directly a competitor for continuous control, but the source of the idea that a value target can be deliberately smoothed over nearby actions.
+**SARSA / Expected SARSA (Sutton & Barto; van Seijen et al. 2009).** On-policy TD control whose target uses the action actually taken (or an average over the policy's action distribution) rather than a maximizing action: $y=r+\gamma Q(s',a')$, $a'\sim\pi$. Values learned this way are "safer" — they account for the consequences of perturbed actions rather than assuming the single best action is always executed. Not directly a competitor for continuous control.
 
 ## Evaluation settings
 
@@ -40,7 +40,7 @@ The natural yardstick is the suite of continuous-control tasks in the MuJoCo phy
 
 ## Code framework
 
-The primitives below already exist: a deep-learning library with autodiff and the Adam optimizer, MLP layers, an MSE loss, an environment with continuous state/action vectors, and a replay buffer. The actor-critic value-learning loop is also standard. Open design slots remain in the critic architecture, the bootstrap target, the policy-update schedule and objective, target-network maintenance, and whether the target action is used as-is.
+The primitives below already exist: a deep-learning library with autodiff and the Adam optimizer, MLP layers, an MSE loss, an environment with continuous state/action vectors, and a replay buffer. The actor-critic value-learning loop is also standard. Where the modifications go is left open.
 
 ```python
 import copy, torch, torch.nn as nn, torch.nn.functional as F
@@ -58,12 +58,12 @@ class Actor(nn.Module):
         return self.max_action * torch.tanh(self.l3(a))
 
 class Critic(nn.Module):
-    # state-action value estimator(s); how many to keep is a design choice -> TODO
+    # state-action value estimator
     def __init__(self, state_dim, action_dim):
         super().__init__()
-        pass  # TODO: value-estimation architecture
+        pass  # TODO
     def forward(self, s, a):
-        pass  # TODO: return the value estimate(s) used to form the target
+        pass  # TODO
 
 class Agent:
     def __init__(self, state_dim, action_dim, max_action, discount=0.99, tau=0.005):
@@ -82,11 +82,10 @@ class Agent:
     def train(self, replay_buffer, batch_size=256):
         state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
         with torch.no_grad():
-            next_action = self.actor_target(next_state)  # TODO: how is the target action formed?
-            target_Q = None                              # TODO: how is the bootstrap target formed from the critic(s)?
+            next_action = self.actor_target(next_state)
+            target_Q = None                              # TODO: form the bootstrap target
             target_Q = reward + not_done * self.discount * target_Q
         # TODO: critic regression to target_Q
-        # TODO: when, and against which value estimate, is the actor updated?
-        # TODO: soft target updates theta' <- tau*theta + (1-tau)*theta'
+        # TODO: actor update and soft target updates theta' <- tau*theta + (1-tau)*theta'
         pass
 ```

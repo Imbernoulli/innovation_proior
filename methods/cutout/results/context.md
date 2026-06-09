@@ -2,7 +2,7 @@
 
 Modern convolutional networks carry tens to hundreds of millions of parameters — the representational power needed for hard vision tasks, but also a standing invitation to overfit. The two regularizers that work best in practice are data augmentation (flips, crops, color jitter — cheap, ubiquitous, effective) and dropout (randomly zeroing hidden activations to break the co-adaptation of feature detectors). Dropout, however, is conspicuously *weaker inside convolutional layers* than inside fully-connected ones, and the variants invented to fix that tend to lose their edge the moment batch normalization or data augmentation is also present — at which point plain dropout quietly wins again.
 
-The question is whether there is a regularizer that genuinely helps a *convolutional* network, that keeps helping when stacked on top of batch normalization and standard augmentation, that costs almost nothing, and that is trivial to implement. A good answer would have to engage with *why* dropout weakens in conv layers — and exploit that diagnosis rather than fight it.
+The question is whether there is a regularizer that genuinely helps a *convolutional* network, that keeps helping when stacked on top of batch normalization and standard augmentation, that costs almost nothing, and that is trivial to implement.
 
 ## Background
 
@@ -10,9 +10,9 @@ The question is whether there is a regularizer that genuinely helps a *convoluti
 
 **Why dropout weakens in convolutional layers.** Two reasons, both diagnostic. First, convolutional layers already have far fewer parameters than fully-connected layers, so they need less regularization to begin with. Second — and this is the load-bearing observation — *neighboring pixels in an image carry nearly the same information*. If dropout zeroes a single activation (or input pixel), the information it held is still passed forward by its still-active neighbors; the removal is undone by redundancy. The consequence is that dropout in conv layers does not produce the bagging/model-averaging effect it produces in FC layers; it merely makes feature detectors a little more robust to noise.
 
-**Per-map dropout variants and their ceiling.** SpatialDropout (Tompson et al., 2015) drops entire feature maps rather than individual activations, sidestepping the neighbor-redundancy problem within a map. Max-drop (Park & Kwak, 2016) drops the maximal activation across maps/channels. These help in isolation, but both were found to underperform plain dropout once batch normalization is in the network. A structural commonality: each operates on feature maps *individually*, so a feature removed from one map can still be present in another, leaving an inconsistent, noisy representation rather than a clean removal.
+**Per-map dropout variants and their ceiling.** SpatialDropout (Tompson et al., 2015) drops entire feature maps rather than individual activations, sidestepping the neighbor-redundancy problem within a map. Max-drop (Park & Kwak, 2016) drops the maximal activation across maps/channels. These help in isolation, but both were found to underperform plain dropout once batch normalization is in the network. A structural commonality: each operates on feature maps *individually*, so a feature removed from one map can still be present in another, leaving an inconsistent, noisy representation.
 
-**Reconstruct-from-context precedents.** Denoising autoencoders (Vincent et al., 2010) corrupt the input by erasing random *individual* pixels and train the model to reconstruct it — forcing useful features but only local context. Context encoders (Pathak et al., 2016) erase a large *contiguous* region and require reconstruction, which forces a *global* understanding of image content and yields higher-level features. The lesson carried forward: removing a contiguous block (not scattered pixels) is what forces a model to reason about the whole image — though this had been used for self-supervised representation learning, not for supervised classification.
+**Reconstruct-from-context precedents.** Denoising autoencoders (Vincent et al., 2010) corrupt the input by erasing random *individual* pixels and train the model to reconstruct it — forcing useful features but only local context. Context encoders (Pathak et al., 2016) erase a large *contiguous* region and require reconstruction, which forces a *global* understanding of image content and yields higher-level features — though this had been used for self-supervised representation learning, not for supervised classification.
 
 **Augmentation as occlusion.** Within the augmentation lineage (LeCun's affine transforms; Krizhevsky's AlexNet flips/crops/PCA-color), the closest prior is Bengio et al.'s practice of overlaying scratches and partial occlusions on characters. Object occlusion is itself a pervasive real-world condition in recognition, tracking, and pose estimation — a model that has only ever seen unoccluded objects is brittle when a key part is hidden.
 
@@ -34,7 +34,7 @@ The yardsticks are natural-image recognition benchmarks at 32×32: CIFAR-10 and 
 
 ## Code framework
 
-The available ingredients are a CIFAR/SVHN dataset, a torchvision transform pipeline (random crop, horizontal flip, tensor conversion, per-channel normalization), a loader yielding minibatches, a residual network, a cross-entropy criterion, and an SGD training loop. The open slot is a *transform* — a callable applied to each image during data loading — that perturbs the input, and the place it would be inserted into the pipeline.
+The available ingredients are a CIFAR/SVHN dataset, a torchvision transform pipeline (random crop, horizontal flip, tensor conversion, per-channel normalization), a loader yielding minibatches, a residual network, a cross-entropy criterion, and an SGD training loop. The open slot is a single callable to be filled in.
 
 ```python
 import numpy as np
@@ -43,16 +43,16 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 
 
-class InputPerturbation(object):
+class NewTransform(object):
     """A transform applied to each image tensor during data loading.
-    Returns a perturbed image of the same shape; label is untouched."""
+    Returns an image of the same shape; label is untouched."""
 
     def __init__(self):
         pass
 
     def __call__(self, img):
         # img: a (C, H, W) tensor, already normalized
-        # TODO: perturb the input here and return it.
+        # TODO: fill in.
         pass
 
 
@@ -61,7 +61,7 @@ transform_train = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.ToTensor(),
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616)),
-    # the new input-perturbation transform would be appended here
+    # the new transform would be appended here
 ])
 trainset = datasets.CIFAR10(root='~/data', train=True, download=False,
                             transform=transform_train)

@@ -51,7 +51,7 @@ A concurrent observation: a multi-resolution Transformer pyramid can be built by
 
 ## Code framework
 
-The pre-method scaffold below is a generic Transformer-backbone-for-vision harness: the pieces that already exist (patchify stem, a stack of pre-norm Transformer blocks whose attention sublayer is a replaceable slot, a downsampling step between stages, a classification head, the DeiT-style training loop). The attention sublayer and the inter-stage downsampling are left as empty slots — they are exactly where the contribution will go.
+The pre-method scaffold below is a generic Transformer-backbone-for-vision harness: the pieces that already exist (patchify stem, a stack of pre-norm Transformer blocks whose attention sublayer is a replaceable slot, a downsampling step between stages, a classification head, the DeiT-style training loop). Some sublayers are left as empty slots to be filled in.
 
 ```python
 import torch
@@ -88,8 +88,7 @@ class Attention(nn.Module):
     # The attention sublayer to be designed. Pre-method: only the generic interface is known.
     def __init__(self, dim, num_heads):
         super().__init__()
-        # TODO: how is the QKᵀ interaction restricted to make cost linear in image size,
-        #       how is geometric position injected, and how do distant regions still talk?
+        # TODO: design the attention sublayer.
         pass
 
     def forward(self, x):

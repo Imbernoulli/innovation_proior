@@ -23,8 +23,7 @@ A solution must do three things at once that single-agent learning does not. It 
 performance against the *best response to whatever policy is currently deployed* (an adaptive
 opponent), not against a fixed target; it must handle the fact that the opponent's action
 affects both the reward *and* the next state, so the opponent shapes exploration itself; and it
-must produce policies that are good *against their best responses*, not merely policies whose
-*value estimate* is near the equilibrium value. The goal is a self-play algorithm with a
+must, in the end, output deployable policies and not merely numbers. The goal is a self-play algorithm with a
 sublinear, ideally $\tilde O(\sqrt{T})$, regret against best responses, and a matching
 sample-complexity (PAC) guarantee for $\epsilon$-approximate Nash, under no structural
 assumption on the game and no access to a simulator.
@@ -96,17 +95,16 @@ method would have to either use or rule out.
 
 - **UCBVI (Azar et al. 2017)** — single-agent optimistic value iteration; bonus-augmented
   empirical Bellman backup; $Q^{\mathrm{up}}\ge Q^\star$ invariant; $\tilde O(\sqrt{H^2SAT})$.
-  *Gap*: one optimistic estimate and a single greedy policy; there is no second agent, no notion
-  of optimism against an opponent's best response, and "greedy" is well-defined only because the
-  per-state object is a vector, not a matrix.
+  *Gap*: built for a single agent — there is no second player, and "greedy" is well-defined only
+  because the per-state object is a vector, not a matrix.
 - **Q-learning + UCB (Jin et al. 2018)** — model-free, online, $\alpha_t=(H+1)/(H+t)$,
   bonus $\beta_t=c\sqrt{H^3\iota/t}$, $\tilde O(\sqrt{H^3SAT})$, $S$-linear via sample
-  independence. *Gap*: single agent; produces a Markov greedy policy with a *value* guarantee,
-  which in a game would not certify performance against a best response.
+  independence. *Gap*: single agent; its greedy policy and value guarantee are the same statement
+  in an MDP, where a near-optimal value estimate comes with a near-optimal greedy policy.
 - **Nash-Q / minimax-Q (Hu & Wellman 2003; Littman 1994)** — model-free Markov-game updates
   that set $V$ to the per-state Nash/minimax value. *Gap*: asymptotic / data-already-covers-state
-  assumptions; no exploration bonus, no finite-sample regret, and a single $Q$ cannot
-  simultaneously serve a maximizer and a minimizer who need optimism in *opposite* directions.
+  assumptions; no exploration bonus, no finite-sample regret, and a single $Q$ estimate carries no
+  uncertainty quantification to drive exploration for either player.
 - **Wei et al. 2017; Jia et al. 2019 / Sidford et al. 2019** — finite-sample self-play / turn-based
   results. *Gap*: a global reachability assumption, or a simulator — both remove the
   exploration challenge that the general setting forces.
@@ -166,15 +164,14 @@ class EmpiricalModel:
         return self.Rsum[h, s, a, b] / n
 
 def bonus(n, S, H, iota):
-    # confidence radius for the empirical backup
-    return np.sqrt(S * H**2 * iota / max(n, 1))
+    # confidence radius for the empirical backup; the exact scaling in S, H
+    # follows from the concentration analysis for this backup
+    return np.sqrt(H**2 * iota / max(n, 1))   # placeholder radius, refine as needed
 
 # ----- per-state play rule -----
 def per_state_play(value_estimates, s, h):
     """Given the agents' value estimate(s) at state s, step h, decide what each
-    player plays here, and read off the state value(s) used by the backup.
-    The final algorithm fixes the number of estimates and the per-state
-    equilibrium notion."""
+    player plays here, and read off the state value(s) used by the backup."""
     # TODO: implement the per-state play rule.
     raise NotImplementedError
 
@@ -184,8 +181,7 @@ def backup(model, value_estimates, h, S, A, B, H, iota):
         for a in range(A):
             for b in range(B):
                 n  = model.N[h, s, a, b]
-                # TODO: optimistic Q backup(s) — how many, and signed how,
-                #       depends on per_state_play's requirements.
+                # optimistic Q backup, per per_state_play's requirements
                 pass
         per_state_play(value_estimates, s, h)   # set policy & state value(s)
 

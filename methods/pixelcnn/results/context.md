@@ -95,9 +95,9 @@ signal-propagation problem with extra gates.
 
 - **MADE (Germain et al., 2015).** A single autoencoder whose weight matrices are masked so output `i`
   depends only on inputs `< i`, giving all conditionals in one pass; averaging over masks/orderings
-  improves it. The masking idea is exactly the right primitive for respecting an ordering, but MADE is
-  a fully-connected autoencoder with a fixed input size and no spatial weight sharing, so it does not
-  exploit the 2-D translation structure of images and does not scale to large images.
+  improves it. But MADE is a fully-connected autoencoder with a fixed input size and no spatial weight
+  sharing, so it does not exploit the 2-D translation structure of images and does not scale to large
+  images.
 
 - **RIDE / spatial LSTM, and RNADE (Theis & Bethge, 2015; Uria et al., 2013).** A 2-D recurrent net
   emits, per pixel, the parameters of a **continuous** conditional density (a mixture of Gaussian
@@ -138,9 +138,10 @@ signal-propagation problem with extra gates.
 ## Code framework
 
 Available building blocks: a data pipeline that yields integer-valued image tensors, convolution
-layers, LSTM-style gates, residual addition, categorical cross-entropy, and an optimizer plus a
-training loop. The empty slot is the image-to-conditionals architecture: it must emit a categorical
-distribution at every position while ensuring that position `i` never depends on positions `≥ i`.
+layers, LSTM-style gates, residual addition, cross-entropy and other density losses, and an optimizer
+plus a training loop. The empty slot is the image-to-conditionals architecture: it must emit a
+per-position conditional distribution while ensuring that position `i` never depends on positions
+`≥ i`.
 
 ```python
 import torch
@@ -158,10 +159,10 @@ train_loader = DataLoader(
 # A convolution whose receptive field must be restricted so position i never
 # reads positions >= i. The mechanism that enforces this is the open problem.
 class OrderedConv2d(nn.Conv2d):
-    def __init__(self, mask_type, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # TODO: build and apply the connectivity restriction. The mask_type slot
-        #       will distinguish the raw-input layer from later feature layers.
+        # TODO: build and apply whatever connectivity restriction enforces the
+        #       variable order, then convolve.
         pass
 
     def forward(self, x):
@@ -169,40 +170,33 @@ class OrderedConv2d(nn.Conv2d):
         return super().forward(x)
 
 
-class GatedActivation(nn.Module):
-    def forward(self, x):
-        # TODO: decide whether the conditional predictor needs a multiplicative gate.
-        pass
-
-
 class OrderedImageLayer(nn.Module):
     def __init__(self, in_ch, out_ch, kernel_size=3, first_layer=False):
         super().__init__()
-        # TODO: fill the ordered layer. It may be a simple ordered convolution or a
-        #       split spatial computation, but it must preserve the variable order.
+        # TODO: fill the ordered layer however it best preserves the variable order.
         pass
 
-    def forward(self, above_state, row_state):
-        # TODO: return updated states plus any layer-to-output contribution.
+    def forward(self, state):
+        # TODO: return updated state plus any layer-to-output contribution.
         pass
 
 
-# The full image model: ordered layers -> per-position distribution.
+# The full image model: ordered layers -> per-position conditional.
 class ImageDensityModel(nn.Module):
     def __init__(self, in_ch=1, n_values=256, n_layers=10, channels=64,
-                 split_state=True, head_channels=64):
+                 head_channels=64):
         super().__init__()
-        # TODO: choose and stack the ordered layers, then emit n_values logits per
-        #       position for the categorical conditional.
+        # TODO: choose and stack the ordered layers, then emit the per-position
+        #       conditional distribution.
         pass
 
     def forward(self, x):
-        # TODO: return logits of shape (batch, n_values, H, W).
+        # TODO: return the per-position conditional parameters.
         pass
 
 
-def nll_loss(logits, target_pixels):
-    # TODO: exact negative log-likelihood = sum of per-position categorical losses.
+def nll_loss(outputs, target_pixels):
+    # TODO: exact negative log-likelihood = sum of per-position losses.
     pass
 
 

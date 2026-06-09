@@ -58,7 +58,8 @@ without label noise whenever the model family mis-specifies the true distributio
 
 **Random Fourier Features (Rahimi & Recht 2008).** A random-feature model — a two-layer network whose
 first layer is a fixed random map of width d and whose second layer is trained with MSE — is the
-clean analytic testbed: its effective complexity is exactly its width d.
+clean analytic testbed: a single scalar (the width d) sets its size, and the regression is solvable in
+closed form.
 
 ## Baselines
 
@@ -79,10 +80,10 @@ The prior accounts of the complexity–error relationship that a unified view mu
   complexity-altering knobs, and is demonstrated mostly on simple (non-deep, non-SGD) models.
 
 - **Classical complexity measures (Rademacher complexity, VC dimension).** Quantify a model family's
-  capacity to fit (e.g. randomly-labeled) data. Gap as a locator of the peak: they depend only on the
-  architecture and data *inputs*, not on the *true labels* (so they cannot explain why adding label
-  noise *moves* the peak) and not on the *training procedure* (so they cannot capture epoch-wise or
-  data-augmentation effects).
+  capacity to fit (e.g. randomly-labeled) data. Gap as a locator of the peak: they are functions of the
+  architecture and data *inputs* alone — they assign one value to a fixed family on fixed inputs,
+  unchanged by the actual label distribution or by how long, or with what augmentation/regularization,
+  a model is trained.
 
 ## Evaluation settings
 
@@ -111,8 +112,7 @@ interpolation threshold), and early-stopping behavior.
 
 The primitives that exist: trainable architectures whose size is set by a width hyperparameter, the
 optimizer factory, a loss, a label-noising step, and a training loop that records train and test
-error over epochs. The empty slots are the fitting-capacity quantity and the sweeps that compare
-errors as one knob changes at a time.
+error over epochs. The empty slots are left for the analysis to fill in.
 
 ```python
 import numpy as np
@@ -138,8 +138,8 @@ def train(model, train_data, test_data, optimizer, num_steps, fixed, record_ever
     # TODO
     pass
 
-def effective_complexity(procedure, distribution, sample_grid, trials, epsilon=EPS):
-    """Largest sample count on which the procedure reaches approximately zero training error."""
+def analysis(fixed):
+    """Derive and compute the quantity the study turns on, from the primitives above."""
     # TODO
     pass
 

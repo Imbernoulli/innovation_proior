@@ -14,7 +14,7 @@ What a solution must achieve: define a single quantity, a "maximum match," that 
 
 **Gaps cost something.** A gap is an evolutionary event (an insertion or deletion) and should be charged for; otherwise free gaps let any two sequences be slid into spurious agreement. The natural device is a penalty subtracted from the score for each gap, possibly depending on the gap's length or direction, acting as a barrier: a gap is worth taking only if the extra matches it makes possible outweigh the barrier. With the penalty set to zero, every possible gap is allowed; with a penalty as large as the theoretical maximum match, gaps are effectively forbidden and the comparison collapses to summing along unbroken diagonals (the simple frame-shift comparison).
 
-**The hammer that fits: dynamic programming.** Bellman's principle of optimality (1950s) says that an optimal solution is built from optimal solutions of its subproblems: if the best path from corner to corner passes through an intermediate point, the portion up to that point is itself the best path to that point. When subproblems overlap, one tabulates their answers instead of recomputing them, turning an exponential search into a table fill. The same idea had surfaced for strings: Levenshtein (1966, *Soviet Physics Doklady* 10:707–710) defined the **edit distance** between two strings — the minimum number of single-character insertions, deletions and substitutions to turn one into the other — and proved it a metric. Edit distance is computed by filling an (n+1)×(m+1) table with `lev(i,0)=i`, `lev(0,j)=j`, and `lev(i,j)=min(lev(i−1,j)+1, lev(i,j−1)+1, lev(i−1,j−1)+[aᵢ≠bⱼ])` in O(nm) time. This is the *minimization* twin of the problem here: minimizing edits versus maximizing matched residues live on the very same grid of prefix-vs-prefix subproblems.
+**A hammer in the air: dynamic programming.** Bellman's principle of optimality (1950s) is the general method for problems with overlapping subproblems: when the same subproblem recurs, one tabulates its answer instead of recomputing it. The same circle of ideas had surfaced for strings: Levenshtein (1966, *Soviet Physics Doklady* 10:707–710) defined the **edit distance** between two strings — the minimum number of single-character insertions, deletions and substitutions to turn one into the other — and proved it a metric. Edit distance is a *minimization* over strings, in some sense a mirror of the maximization-of-matched-residues problem here; whether the two are close enough to share machinery is not obvious in advance.
 
 **Why it matters biologically.** Primary structure largely determines tertiary structure, so sequence similarity is evidence of common ancestry. A reliable maximum-match score, together with a way to judge it against the score of randomly shuffled sequences, would let one accept or reject the hypothesis that two proteins are related by chance — and, when the scoring is tied to codon differences, even estimate the minimum number of mutations separating them (the evolutionary-distance idea of Margoliash, Needleman & Stewart 1963 and Zuckerkandl & Pauling 1965).
 
@@ -32,7 +32,7 @@ The natural test material is pairs of real proteins of known sequence: small, we
 
 ## Code framework
 
-The primitives that already exist: two sequences as strings, a per-pair scoring function, and a scalar gap penalty. A dynamic-programming table over prefix pairs is the natural vehicle; what is missing is the recurrence that fills it and the procedure that reads the best layout back out.
+The primitives that already exist: two sequences as strings, a per-pair scoring function, and a scalar gap penalty. What is missing is the procedure that turns these into a maximum-match score and reports the layout that attains it.
 
 ```python
 def score_pair(a, b, match=1.0, mismatch=0.0):
@@ -42,26 +42,10 @@ def score_pair(a, b, match=1.0, mismatch=0.0):
 
 GAP = 1.0  # penalty charged per gapped position; tunable barrier
 
-DIAG, UP, LEFT = (1, 1), (1, 0), (0, 1)
-
-def build_table(seqA, seqB, gap=GAP, score=score_pair):
-    """Fill an (len(seqA)+1) x (len(seqB)+1) table whose cell (i, j) is the best
-    attainable score of comparing the first i residues of seqA with the first j of
-    seqB, under the order-preserving / gap-penalized rules.
-    Return the table and the predecessor choices needed to reconstruct the layout."""
-    # TODO: allocate score and predecessor tables
-    # TODO: boundary conditions for leading gaps
-    # TODO: the recurrence that makes each cell follow from smaller cells
-    pass
-
-def traceback(seqA, seqB, ptr):
-    """Walk back from the terminal cell to the origin, emitting the matched layout
-    (with gap symbols), so the reported score corresponds to an actual alignment."""
+def align(seqA, seqB, gap=GAP, score=score_pair):
+    """Return the maximum-match score of comparing seqA against seqB under the
+    order-preserving / gap-penalized rules, together with the layout (with gap
+    symbols) that attains it, computed without enumerating gapped alignments."""
     # TODO
     pass
-
-def align(seqA, seqB, gap=GAP, score=score_pair):
-    F, ptr = build_table(seqA, seqB, gap, score)
-    a_aln, b_aln = traceback(seqA, seqB, ptr)
-    return F[len(seqA)][len(seqB)], a_aln, b_aln
 ```

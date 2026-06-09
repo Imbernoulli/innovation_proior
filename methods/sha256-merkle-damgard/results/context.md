@@ -67,20 +67,18 @@ grew.
 map as f(a,b)=E_a(b) (key a, plaintext b) exposes the problem: for any target c,
 solving E_a(b)=c for (a,b) is trivial — pick any key a and set b=E_a^{-1}(c). The
 map is a permutation in its data argument and hence invertible, so an adversary can
-steer its output at will and collide it without effort. A within-ISO proposal of
-the era patched this to f(a,b)=E_a(b)⊕b: re-injecting the plaintext after
-encryption destroys the easy invertibility, and there was reason to hope this
-patched f could be argued collision-resistant from properties of E alone. That XOR
-feed-forward is the load-bearing trick — the idea that re-mixing the input into the
-output is what turns an invertible cipher round into a one-way compression.
+steer its output at will and collide it without effort. The era's proposals to
+build a compression function out of a block cipher all had to contend with this
+invertibility, and it was an open question whether any of them could be argued
+collision-resistant from properties of E alone.
 
 **Length matters for composition.** A subtle pre-method fact: if you chain
-compressions over message blocks but ignore message *length*, the composite can be
+compressions over message blocks but treat padding naively, the composite can be
 collided without ever colliding the compression. Two messages that differ only by
 how the final block is filled — e.g. one that genuinely ends in some zero bits
 versus one that was padded with zeros to the block boundary — can drive the chain
-to the same final value. Any composition theorem will therefore need the padding to
-encode length so that messages of different lengths cannot share a final block.
+to the same final value. Whatever a composition argument needs from the padding,
+plain zero-fill does not supply it.
 
 **The ideal-cipher model.** For arguing collision resistance of a cipher-based
 compression function, the relevant idealization treats the block cipher E as an
@@ -127,8 +125,8 @@ visibly hide no trapdoor.
 - **Merkle's "meta-method" (independent, concurrent).** The same chaining intuition —
   iterate a fixed compression over message blocks from a fixed IV. Gap relative to
   what we want: a clean *proof* of the composition without extra assumptions on the
-  parameters needs a few additional ingredients (notably the length encoding) that a
-  bare meta-method leaves implicit.
+  parameters needs a few additional ingredients that a bare meta-method leaves
+  implicit.
 
 ## Evaluation settings
 
@@ -154,8 +152,8 @@ The primitives that already exist: 32-bit word arithmetic with rotations/shifts 
 addition mod 2^32, byte/word (de)serialization in big-endian order, and a fixed
 public IV. The shape of an iterated hash — pad, split into fixed-size blocks, fold
 each block into a running chaining value from the IV, emit the final value — is the
-known skeleton. The two slots the method must fill are the *padding rule* (which
-must encode length) and the *compression function* itself.
+known skeleton. The two slots the method must fill are the *padding rule* and the
+*compression function* itself.
 
 ```python
 WORD_MASK = 0xffffffff
@@ -170,14 +168,11 @@ def shr(x, n):
 IV = []          # TODO: the fixed starting chaining value
 
 def pad(message: bytes) -> bytes:
-    # TODO: append a separator + zeros + an encoding of the message length,
-    # so the result is a whole number of blocks AND messages of different
-    # length can never share a final block.
+    # TODO: the padding rule that turns the message into a whole number of blocks.
     pass
 
 def compress(state, block: bytes):
     # TODO: the fixed-input compression function f(state, block) -> new state.
-    # Must be collision-resistant and non-invertible as a map of `state`.
     pass
 
 def hash_message(message: bytes) -> str:

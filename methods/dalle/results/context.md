@@ -10,9 +10,9 @@ For years, text-to-image systems were evaluated on small datasets (MS-COCO, CUB-
 
 **Scaling autoregressive transformers.** When compute, model size, and data are scaled carefully, autoregressive transformers (Vaswani et al., 2017) reach impressive quality across modalities: text (Radford et al., 2019), images modeled as pixel sequences (Chen et al., 2020), audio (Dhariwal et al., 2020). This suggests modeling text and image jointly as a single autoregressive *token* stream.
 
-**Why not model pixels directly.** Using pixels as the image tokens is infeasible at high resolution: a 256×256×3 image is ~200k values, far too long a sequence for a transformer's quadratic attention. Worse, likelihood objectives over pixels tend to prioritize short-range dependencies (Salimans et al., 2017), so most of the modeling capacity is spent on high-frequency texture rather than the low-frequency structure that makes objects recognizable. A useful approach must first *compress* the image into a short sequence of tokens that preserve recognizable structure.
+**Why not model pixels directly.** Using pixels as the image tokens is infeasible at high resolution: a 256×256×3 image is ~200k values, far too long a sequence for a transformer's quadratic attention. Worse, likelihood objectives over pixels tend to prioritize short-range dependencies (Salimans et al., 2017), so most of the modeling capacity is spent on high-frequency texture rather than the low-frequency structure that makes objects recognizable. Modeling the raw pixel stream directly thus stalls on both sequence length and where the capacity goes.
 
-**Two-stage discrete-token compression.** Vector-quantized autoencoders (van den Oord et al., 2017; Razavi et al., 2019) established a two-stage recipe: first learn an autoencoder that maps an image to a small grid of *discrete* codes (and back), then fit a powerful autoregressive model over those codes. This decouples a fast feed-forward compressor from a slow expressive prior, and shrinks the sequence the prior must model by orders of magnitude. The discreteness makes the code grid a categorical sequence — exactly what an autoregressive transformer over a shared text+image vocabulary needs.
+**Two-stage discrete-token compression.** Vector-quantized autoencoders (van den Oord et al., 2017; Razavi et al., 2019) established a two-stage recipe: first learn an autoencoder that maps an image to a small grid of *discrete* codes (and back), then fit a powerful autoregressive model over those codes. This decouples a fast feed-forward compressor from a slow expressive prior, and shrinks the sequence the prior must model by orders of magnitude. In the established uses, the prior over the codes is class-conditional or unconditional and the codes are modeled by convolutional autoregressive priors.
 
 **Variational autoencoders and the ELBO.** The autoencoder side is naturally framed as a VAE (Kingma & Welling, 2013; Rezende et al., 2014): an encoder `q_φ(z|x)`, a decoder `p_θ(x|z)`, a prior, trained on the evidence lower bound `E_{q_φ(z|x)}[log p_θ(x|z)] − D_KL(q_φ(z|x) ‖ p(z))`. Upweighting the KL term by `β > 1` (Higgins et al., 2016) is a known knob on the latent channel.
 
@@ -36,11 +36,11 @@ For years, text-to-image systems were evaluated on small datasets (MS-COCO, CUB-
 
 - **Datasets.** A collected dataset of 250 million internet image-text pairs (incorporating Conceptual Captions, Wikipedia text-image pairs, and a filtered subset of YFCC100M; aspect ratios restricted to [1/2, 2]) for the large model; Conceptual Captions (3.3M pairs) for smaller preliminary models. Zero-shot evaluation on MS-COCO and CUB-200 (never trained on their captions).
 - **Metrics.** Fréchet Inception Distance and Inception Score on MS-COCO (zero-shot); human evaluation (which of two samples is more realistic / better matches a caption); qualitative inspection of compositionality, text rendering, and image-to-image translation. Data-overlap controls account for the MS-COCO validation images that leak through YFCC100M.
-- **Protocol.** Stage 1: train the discrete autoencoder on images alone, by gradient descent on the relaxed ELBO, with annealing schedules for the relaxation temperature and step size and a ramp on the KL weight. Stage 2: freeze the autoencoder; BPE-encode captions (≤256 tokens, vocab 16384), encode images to a 32×32 grid of tokens (vocab 8192), concatenate, and train an autoregressive transformer with cross-entropy. Generate by sampling token streams from the transformer and reranking the decoded images with a contrastive model.
+- **Protocol.** The generative model is trained on the image-text pairs and then evaluated zero-shot; captions are BPE-encoded (≤256 tokens, vocab 16384). At generation time a caption is supplied and images are produced for scoring against the metrics above.
 
 ## Code framework
 
-Pre-existing primitives: PyTorch `nn.Module`, convolutional ResNet blocks, `MaxPool2d` / nearest-neighbor upsampling, the Adam/AdamW optimizer, a BPE tokenizer, a decoder-only transformer with attention masks, and `F.cross_entropy`. A convolutional encoder/decoder and an autoregressive transformer over a token vocabulary already exist as components. What does not yet exist is how to bridge them: how the encoder's *categorical* output is turned into a differentiable training signal, the pixel likelihood the decoder is scored under, and how text and image tokens are joined into one modeled stream.
+Pre-existing primitives: PyTorch `nn.Module`, convolutional ResNet blocks, `MaxPool2d` / nearest-neighbor upsampling, the Adam/AdamW optimizer, a BPE tokenizer, a decoder-only transformer with attention masks, and `F.cross_entropy`. A convolutional encoder/decoder and an autoregressive transformer over a token vocabulary already exist as components. What does not yet exist is how they fit together into a working training procedure.
 
 ```python
 import torch
@@ -67,12 +67,11 @@ class ImageDecoder(nn.Module):
         pass  # returns per-pixel reconstruction statistics
 
 def categorical_to_differentiable(logits, tau):
-    # TODO: turn the encoder's categorical distribution into a differentiable,
-    #       sampleable representation we can backprop the ELBO through.
+    # TODO
     pass
 
 def reconstruction_log_prob(x, decoder_out):
-    # TODO: the pixel likelihood the decoder is scored under (must respect bounded pixel range)
+    # TODO
     pass
 
 class TokenTransformer(nn.Module):
@@ -90,7 +89,7 @@ def train_stage1(encoder, decoder, img, tau, beta, opt):
     z = categorical_to_differentiable(logits, tau)       # TODO
     out = decoder(z)
     recon = -reconstruction_log_prob(img, out)           # TODO
-    kl = None                                            # TODO: KL of categorical q vs uniform prior
+    kl = None                                            # TODO
     loss = recon + beta * kl                             # TODO assemble
     opt.zero_grad(); loss.backward(); opt.step()
 
@@ -99,6 +98,6 @@ def train_stage2(encoder, transformer, text_tokens, img, opt):
     image_tokens = encoder(img).argmax(dim=1).flatten(1) # TODO: how tokens are extracted for the prior
     stream = torch.cat([text_tokens, image_tokens], dim=1)
     logits = transformer(stream[:, :-1])
-    loss = F.cross_entropy(logits.transpose(1, 2), stream[:, 1:])   # TODO: text/image weighting
+    loss = F.cross_entropy(logits.transpose(1, 2), stream[:, 1:])   # TODO
     opt.zero_grad(); loss.backward(); opt.step()
 ```

@@ -4,8 +4,7 @@ A recently introduced detector (DETR; Carion et al.) had shown that object detec
 direct set prediction with a Transformer encoder-decoder and a bipartite-matching loss, removing the
 anchors, the hand-tuned assignment rules, and the non-maximum-suppression post-process that every
 prior detector relied on. It was elegant and competitive on large objects — but it had two crippling
-practical deficits, and both trace back to the same source: a Transformer attention layer, applied to
-image feature maps, treats *every* spatial location as a key. First, it converges painfully slowly,
+practical deficits. First, it converges painfully slowly,
 needing roughly an order of magnitude more training epochs than a standard detector. Second, it
 detects small objects poorly, because the natural fix for small objects — high-resolution and/or
 multi-scale feature maps — is unaffordable: encoder self-attention is quadratic in the number of
@@ -14,8 +13,7 @@ spatial locations, so high resolution blows up compute and memory.
 The precise question: can the attention mechanism at the heart of this set-prediction detector be
 redesigned so that it (a) converges in a normal training budget and (b) affords high-resolution,
 multi-scale feature maps for small-object detection — while keeping the end-to-end, NMS-free,
-set-prediction formulation intact? A solution must attack the "attend to all locations" property
-that causes both problems at once.
+set-prediction formulation intact?
 
 ## Background
 
@@ -45,9 +43,7 @@ rigidity in ordinary convolution. A regular conv samples its input on a fixed gr
 augments each grid point with a *learned* offset, y(p₀) = Σ_n w(p_n)·x(p₀ + p_n + Δp_n), where the
 offsets Δp_n are predicted from the features by a sibling convolution and vary per location. Because
 the offset locations are fractional, the sampled values are computed by bilinear interpolation,
-x(p) = Σ_q G(q, p)·x(q), which is differentiable in p. The lesson: a layer can adaptively gather
-information from a *small, learned set of locations* anywhere in the map, rather than from a fixed or
-exhaustive neighborhood.
+x(p) = Σ_q G(q, p)·x(q), which is differentiable in p.
 
 **Multi-scale features.** Modern detectors handle the huge range of object sizes with multi-scale
 feature maps — a feature pyramid (FPN; Lin et al.) builds high-resolution, semantically strong maps
@@ -95,9 +91,7 @@ encoder/decoder blocks, a bilinear-sampling operator (e.g. grid_sample) for gath
 fractional locations, the set-based bipartite-matching detection loss, and routine box utilities
 (normalized-coordinate conversion, sigmoid/inverse-sigmoid). The scaffold wires a backbone, a
 multi-scale feature stack, an encoder/decoder, and the detection heads together, and leaves empty the
-slots the method must fill: the attention operator that processes feature maps (the piece whose
-all-location cost has to be replaced), how each query gets a spatial reference, and how a box is
-predicted relative to it.
+slots the method must fill.
 
 ```python
 import torch
@@ -110,12 +104,11 @@ def sigmoid_inverse(x):
 
 
 class AttentionOverFeatureMaps(nn.Module):
-    """The attention operator whose 'attend to every pixel' cost must be redesigned.
-    Aggregates feature-map content for each query around a spatial reference."""
+    """The attention operator that processes feature maps for each query."""
     def __init__(self, d_model=256, n_heads=8, n_levels=4):
         super().__init__()
         self.d_model, self.n_heads, self.n_levels = d_model, n_heads, n_levels
-        # TODO: how does a query gather feature-map content efficiently?
+        # TODO
 
     def forward(self, query, reference_point, feature_maps, spatial_shapes):
         # TODO: produce an updated query feature from the feature maps
@@ -129,7 +122,7 @@ class Encoder(nn.Module):
         self.layers = nn.ModuleList([layer for _ in range(num_layers)])
 
     def forward(self, feature_maps, spatial_shapes, pos):
-        # TODO: each pixel attends over the feature maps around its own location
+        # TODO: each pixel attends over the feature maps
         raise NotImplementedError
 
 
@@ -154,9 +147,8 @@ class SetDetector(nn.Module):
         self.encoder = None
         self.decoder = None
         self.query_embed = nn.Embedding(num_queries, d_model)
-        self.reference_point = None          # TODO: a spatial reference per query
         self.class_head = None               # TODO: per-query classifier
-        self.box_head = None                 # TODO: per-query box, relative to its reference
+        self.box_head = None                 # TODO: per-query box
 
     def forward(self, images):
         feats = self.backbone(images)

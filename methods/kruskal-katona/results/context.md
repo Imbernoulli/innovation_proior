@@ -40,21 +40,21 @@ $k|\mathcal{F}| \le (n-k+1)|\partial\mathcal{F}|$, giving $|\partial\mathcal{F}|
 tight and it does not even identify the extremal configuration. The real answer is sublinear and
 $n$-free, and the whole difficulty is getting it exactly.
 
-The guiding intuition for the extremal shape is concentration: to keep the boundary small, pack the
-sets onto as few elements as possible, because overlapping subsets get shared. The cleanest packing is
-a **clique**: take all $k$-subsets of a small ground set $[a]$, i.e. $\mathcal{F} = [a]^{(k)}$ with
-$|\mathcal{F}| = \binom{a}{k}$. Its shadow is all of $[a]^{(k-1)}$, of size $\binom{a}{k-1}$ — every
-$(k-1)$-subset of $[a]$ is reused by many $k$-sets, so the boundary is as economical as possible.
-When $m$ is not exactly a binomial coefficient $\binom{a}{k}$, the natural move is to take the largest
-clique that fits, then a clique one layer thinner on top of it, and so on — a **greedy clique
-decomposition** of $m$.
+A heuristic for the extremal shape is concentration: to keep the boundary small, one wants the sets to
+share their $(k-1)$-subsets as much as possible, which suggests packing them onto as few elements as
+possible. The cleanest packing is a **clique**: take all $k$-subsets of a small ground set $[a]$, i.e.
+$\mathcal{F} = [a]^{(k)}$ with $|\mathcal{F}| = \binom{a}{k}$. Its shadow is all of $[a]^{(k-1)}$, of
+size $\binom{a}{k-1}$ — every $(k-1)$-subset of $[a]$ is reused by many $k$-sets. But a clique only
+exists when $m$ is exactly a binomial coefficient $\binom{a}{k}$; for a general count $m$ there is no
+obvious canonical family, and even at round counts "the clique looks best" is not a proof.
 
-Two pieces of standard machinery make this precise. The first is the **binomial (cascade)
-representation** of a natural number: a "base-binomial" analogue of binary expansion in which $m$ is
-written as a sum of binomial coefficients with strictly decreasing top arguments and indices. The
-second is the **colexicographic order** on $k$-sets, $A < B \iff \max(A \triangle B) \in B$, in which
-sets containing larger elements come later; its initial segments are exactly the greedy clique-stacks,
-and they are independent of the ambient $n$. Both were familiar objects in finite-set combinatorics.
+Several standard objects from finite-set combinatorics are available as raw material. Numbers admit
+**binomial (cascade) representations** — "base-binomial" analogues of binary expansion writing a
+number as a sum of binomial coefficients with strictly decreasing top arguments and indices. And one
+can order $k$-sets in various ways; among them are the **lexicographic order** (by the smallest
+differing element) and the **colexicographic order**, $A < B \iff \max(A \triangle B) \in B$, in which
+sets containing larger elements come later. Whether any of these is the right language for the problem
+is not settled here. Both were familiar objects in the field.
 
 The field around this question — extremal set theory of the early-to-mid 1960s — already had two of
 its central pillars in place. **Sperner's theorem** (1928) bounds the size of an antichain in $B_n$ by
@@ -97,9 +97,8 @@ These are the prior results and techniques a sharp shadow bound would have to be
 - **The shifting/compression heuristic (in embryo).** The operation "if a set uses a large element,
   swap it for a smaller unused one" preserves cardinality and intuitively makes a family more
   concentrated. Core idea: monotone transformations toward a canonical extremal family. Gap at this
-  point: it was folklore-level rather than a packaged theorem; nobody had yet shown that some such
-  operation provably never increases the shadow and drives an arbitrary family all the way to the
-  colex initial segment. Establishing exactly that is the work.
+  point: it was folklore-level rather than a packaged theorem — its effect on the shadow had not been
+  analysed, and it had not been turned into a proof of any extremal bound.
 
 ## Evaluation settings
 
@@ -107,27 +106,24 @@ The natural yardsticks are exactness and attainment, not a benchmark number. A p
 measured against:
 
 - **All $(m,k)$, not just nice ones.** The bound must be stated for every count $m$ and every
-  uniformity $k$, via the cascade representation, and must reduce to $\binom{a}{k-1}$ when
-  $m = \binom{a}{k}$.
+  uniformity $k$, not only for the round counts $m = \binom{a}{k}$ where a clique exists.
 
 - **Tightness / extremal families.** For each $m$ there must be an explicit family achieving the
-  bound — the candidate being the first $m$ sets in colex order — and ideally a characterisation of
-  *when* the extremal family is unique up to relabelling (e.g. forced to be a clique at
-  $m = \binom{a}{k}$).
+  bound, and ideally a characterisation of *when* the extremal family is unique up to relabelling
+  (e.g. whether it is forced to be a clique at $m = \binom{a}{k}$).
 
-- **Closed-form usability.** A version that is easy to compute with — extending binomial coefficients
-  $\binom{x}{k} = x(x-1)\cdots(x-k+1)/k!$ to real $x$ — so the bound can be plugged into other proofs
-  without manipulating cascades, agreeing with the exact bound at the integer points $m = \binom{n}{k}$.
+- **Closed-form usability.** Ideally a version that is easy to compute with and to plug into other
+  proofs, rather than only an exact-but-cumbersome arithmetic condition.
 
 - **Downstream corollaries.** Whether the bound recovers known landmark results — the Erdős–Ko–Rado
-  theorem via complementation, and the characterisation of $f$-vectors of simplicial complexes — since
-  a correct sharp shadow inequality should imply them cleanly.
+  theorem and the characterisation of $f$-vectors of simplicial complexes — since a correct sharp
+  shadow inequality should imply them cleanly.
 
 ## Code framework
 
-The computational scaffold is small: enumerate $k$-subsets, compute a shadow by brute force, evaluate
-binomial coefficients, and order sets. The missing slots are the closed-form predicted minimum shadow
-and the extremal construction.
+The computational scaffold is small: enumerate $k$-subsets, compute a shadow by brute force, and
+evaluate binomial coefficients. The missing slots are the predicted minimum shadow and the family that
+attains it.
 
 ```python
 from itertools import combinations
@@ -146,15 +142,10 @@ def all_k_sets(n, k):
     """The k-th layer of the Boolean lattice over [n]."""
     return [frozenset(c) for c in combinations(range(1, n + 1), k)]
 
-def order_key(S):
-    # TODO: the order on k-sets whose initial segments are the extremal families.
-    pass
-
 def min_shadow_size(m, k):
     """
-    TODO: the closed-form minimum of |shadow(F)| over all families F of m
-    k-sets. Should depend only on m and k, not on the ambient n, and equal
-    comb(a, k-1) when m == comb(a, k).
+    TODO: the minimum of |shadow(F)| over all families F of m k-sets,
+    as a function of m and k.
     """
     pass
 

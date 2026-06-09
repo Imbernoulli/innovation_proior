@@ -95,7 +95,7 @@ The mathematical material that exists and is load-bearing for any number-theoret
 - **Modular exponentiation is cheap.** Computing m^e mod n costs at most 2 log₂ e modular
   multiplications by repeated squaring and multiplication; the cost grows only as the cube of the digit
   length of n.
-- **Recovering an exponent's secret from a multiple of φ(n).** Miller (1975) showed that given any
+- **A multiple of φ(n) is as good as the factorization.** Miller (1975) showed that given any
   multiple of φ(n), n can be factored.
 - A related but distinct line: Pohlig & Hellman study exponentiation ciphers done modulo a **prime**.
   There the order of the multiplicative group, p − 1, is public.
@@ -139,25 +139,25 @@ The mathematical material that exists and is load-bearing for any number-theoret
 The natural yardsticks are not benchmark datasets but the four defining properties (a)–(d) and the
 computational asymmetry they demand:
 
-- **Correctness.** Does deciphering invert enciphering for *every* admissible message M in [0, n)?
-  (For a permutation, every ciphertext must be a valid message and vice versa.) For signatures,
-  additionally enciphering-after-deciphering must return M.
+- **Correctness.** Does deciphering invert enciphering for *every* admissible message M, with no
+  message silently corrupted? (For a permutation, every ciphertext must be a valid message and vice
+  versa.) For signatures, additionally enciphering-after-deciphering must return M.
 - **Forward cost.** Encryption/decryption must be feasible at the chosen size: a 200-digit message
   encryptable in seconds on a general-purpose computer; cost growing no faster than the cube of the
   digit-length of n.
 - **Inversion cost without the trap door.** The number of operations an attacker needs to recover the
-  plaintext (or the secret key) from public data — measured against the best known algorithms for the
-  underlying hard problem (factoring; discrete logarithm). The relevant scale is set by published
-  factoring estimates: e.g. for the fastest factoring method known at the time, n of 50 / 100 / 200 /
-  300 decimal digits costs roughly 10^10 / 10^15 / 10^23 / 10^29 operations. A meaningful target is a
-  cryptanalytic-to-legitimate cost *ratio* of 10^6 or more — the ratio at which Diffie–Hellman's matrix
-  example failed.
-- **Key generation cost.** Producing the keys must be cheap: finding two ~100-digit primes (probabilistic
-  primality testing) and inverting an exponent modulo φ(n) (extended Euclid).
+  plaintext (or the secret key) from public data — measured against the best known algorithms for
+  whatever hard problem the construction ends up resting on. As a rough sense of the scale such
+  estimates can reach, the best discrete-logarithm methods need on the order of q^{1/2} operations for
+  a modulus of bit-length log₂ q. A meaningful target is a cryptanalytic-to-legitimate cost *ratio* of
+  10^6 or more — the ratio at which Diffie–Hellman's matrix example failed.
+- **Key generation cost.** Producing the keys — whatever they turn out to be — must itself be cheap,
+  using only the available machinery (probabilistic primality testing, extended Euclid), so that
+  setting up a user is fast even at ~100-digit sizes.
 - **Reductions among attacks.** The strongest evidence available, absent a proof of security, is to
-  show that the obvious break routes (factor n; compute φ(n); recover d) are each *no easier than*
-  factoring n — i.e. that breaking the scheme by any of these reduces to a problem already studied,
-  and resisted attack, for centuries.
+  show that the obvious routes for breaking a candidate scheme each reduce to some problem already
+  studied, and resisted attack, over a long history — so that defeating the scheme is no easier than
+  solving a long-standing hard problem.
 
 ## Code framework
 

@@ -37,7 +37,7 @@ The natural yardsticks at the time are small but real linear programs solvable o
 
 ## Code framework
 
-What already exists is dense linear algebra on a matrix of numbers: building a system from coefficients, and Gaussian elimination / row operations to solve a square system. Around that, a scaffold for "find the best feasible plan" needs a way to state the model, a way to find *some* feasible starting plan, and an empty slot for a local rule that moves from one feasible plan to a better one.
+What already exists is dense linear algebra on a matrix of numbers: building a system from coefficients, and Gaussian elimination / row operations to solve a square system. Around that, a scaffold for "find the best feasible plan" needs a way to state the model and an empty slot for whatever procedure carries the stated objective to its optimum.
 
 ```python
 import numpy as np
@@ -52,32 +52,9 @@ def to_standard_form(A_ub, b_ub, c):
     pass  # TODO: append identity columns for slacks; flip signs so b >= 0
 
 
-def choose_improving_column(tableau, tol=1e-9, smallest_index_ties=False):
-    """Read the current objective row and choose a column that can improve it."""
-    pass  # TODO: local optimality test and entering-column rule
-
-
-def choose_blocking_row(tableau, basis, column, n_rows,
-                        tol=1e-9, smallest_index_ties=False):
-    """Choose the row whose current basic value blocks the proposed move."""
-    pass  # TODO: leaving-row rule, or report that no row blocks
-
-
-def apply_row_operation(tableau, basis, row, column):
-    """Use Gaussian elimination to exchange one column in the basis."""
-    pass  # TODO: normalize the pivot row and clear the column elsewhere
-
-
-def solve_tableau(tableau, basis, n_rows, tol=1e-9,
-                  smallest_index_ties=False, maxiter=1000, nit0=0):
-    """Repeat local improving moves until no such move remains."""
-    pass  # TODO: loop over choosing a column, choosing a row, and eliminating
-
-
-def solve_linear_program(c, A, b, tol=1e-9, maxiter=1000,
-                         smallest_index_ties=False):
+def solve_linear_program(c, A, b, tol=1e-9, maxiter=1000):
     """Find the best non-negative solution of A x = b for the cost vector c."""
-    pass  # TODO: build a starting plan, then optimize the stated objective
+    pass  # TODO: an as-yet-undetermined procedure for reaching the optimum
 ```
 
-The empty slots are the decisions that ordinary row operations do not supply by themselves: deciding whether a local improvement exists, deciding which column and row participate in the exchange, carrying out the exchange, and constructing a starting basis before the stated objective can be optimized.
+The empty slot is the part ordinary row operations do not supply by themselves: a procedure that finds the best feasible plan rather than merely solving a square system.

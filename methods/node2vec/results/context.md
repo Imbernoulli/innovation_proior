@@ -16,15 +16,15 @@ Real networks exhibit a mixture: some node distinctions are community-driven, ot
 - *Breadth-first sampling (BFS):* sample only immediate neighbors. This gives an accurate microscopic characterization of u's local neighborhood — and because the same near nodes recur across samples, it has low variance — which is exactly what is needed to read off structural roles (hub, bridge). But for any fixed budget it explores only a tiny portion of the graph.
 - *Depth-first sampling (DFS):* sample nodes at increasing distance from u. This gives a macroscopic view, reaching distant communities — useful for inferring homophily — but with a fixed budget it has high variance, and very distant sampled nodes may be only weakly representative of u.
 
-So BFS-like neighborhoods favor structural-equivalence embeddings and DFS-like neighborhoods favor homophily embeddings. The two extremes are both rigid; what is missing is a knob that interpolates between them per network.
+So BFS-like neighborhoods favor structural-equivalence embeddings and DFS-like neighborhoods favor homophily embeddings. Each extreme, taken alone, commits to a single fixed notion of similarity.
 
-**The distributional hypothesis and Skip-gram.** In NLP, the distributional hypothesis says words in similar contexts have similar meanings. Skip-gram (word2vec) operationalizes this: learn a vector for each word that maximizes the probability of its context words within a sliding window, optimized by SGD with negative sampling. Because text is linear, the "context window" is unambiguous. The analogy to networks requires turning a (non-linear) graph into sequences of nodes — and the *sampling strategy* that produces those sequences is then the crucial, underdetermined design choice.
+**The distributional hypothesis and Skip-gram.** In NLP, the distributional hypothesis says words in similar contexts have similar meanings. Skip-gram (word2vec) operationalizes this: learn a vector for each word that maximizes the probability of its context words within a sliding window, optimized by SGD with negative sampling. Because text is linear, the "context window" is unambiguous. The analogy to networks requires turning a (non-linear) graph into sequences of nodes — and because a graph has no inherent linear order, how those sequences are produced is left open.
 
 **Alias sampling.** A method to draw from a fixed discrete distribution over n outcomes in O(1) time per draw after O(n) preprocessing. Relevant because if per-step transition probabilities along a walk can be precomputed, each step of the walk is O(1).
 
 ## Baselines
 
-**DeepWalk (Perozzi et al. 2014).** Treats the network as a "document": generate node sequences by *uniform* (first-order) truncated random walks — at each step move to a uniformly random neighbor — then feed these sequences to Skip-gram (with hierarchical softmax) to learn node vectors. Gap: the uniform walk is a single, rigid sampling strategy with no control over BFS-like vs DFS-like exploration, so the embeddings cannot be steered toward homophily or structural equivalence as the network demands.
+**DeepWalk (Perozzi et al. 2014).** Treats the network as a "document": generate node sequences by *uniform* (first-order) truncated random walks — at each step move to a uniformly random neighbor — then feed these sequences to Skip-gram (with hierarchical softmax) to learn node vectors. Gap: the uniform walk is a single, fixed sampling strategy, so the resulting embeddings reflect one fixed blend of node similarities regardless of which notion a given network or task rewards.
 
 **LINE (Tang et al. 2015).** Directly optimizes objectives preserving first-order proximity (adjacent nodes) and second-order proximity (shared-neighbor nodes), essentially a BFS-style, immediate-neighborhood objective with a context of one. Gap: rigid and local; no mechanism for macroscopic, DFS-style exploration.
 
@@ -60,11 +60,10 @@ def alias_draw(J, q):              # O(1) draw (exists)
 class NodeFeatureLearner:
     def __init__(self, G, **params):
         self.G = G
-        # TODO: any parameters that control HOW neighborhoods are sampled
+        # TODO: any parameters the sampling procedure needs
 
     def preprocess_transition_probs(self):
-        # TODO: the transition rule for the walk -- what biases the next step?
-        #       (uniform? edge weight? something that can be tuned BFS<->DFS?)
+        # TODO: define how the next node in a sequence is chosen
         pass
 
     def walk(self, start, length):

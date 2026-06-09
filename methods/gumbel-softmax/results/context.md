@@ -47,9 +47,7 @@ Minka, 2014). If one adds i.i.d. `Gumbel(0,1)` noise to the log-probabilities an
 `argmax`, the index returned is distributed exactly as `Categorical(π)`. The `Gumbel(0,1)`
 distribution has CDF `F(g) = exp(-e^{-g})` and is sampled by inverse transform as
 `g = -log(-log u)`, `u ~ U(0,1)`; it is **max-stable** (the maximum of i.i.d. Gumbels is again
-Gumbel), which is exactly the property that makes the noisy-argmax identity hold. Second, the
-non-differentiability lives entirely in the `argmax`: the noise injection and the log-prob shift
-are smooth; only the final hard selection is not.
+Gumbel), which is exactly the property that makes the noisy-argmax identity hold.
 
 A second relevant fact is empirical, about the *cost* of the existing workaround for discrete
 latents. In a semi-supervised generative model with a categorical class variable `y` and a Gaussian

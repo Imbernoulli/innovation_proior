@@ -51,7 +51,7 @@ def make_transforms():
     color = [get_color_distortion(), GaussianBlur()]
     base = [T.RandomHorizontalFlip(0.5), T.Compose(color), T.ToTensor(),
             T.Normalize(mean=[0.485,0.456,0.406], std=[0.228,0.224,0.225])]
-    # TODO: how many views, at which resolutions/scales, and how codes use them
+    # TODO: how many views, and how they are sampled
     raise NotImplementedError
 
 class ViewsDataset(datasets.ImageFolder):
@@ -70,7 +70,7 @@ class Encoder(nn.Module):
             nn.Linear(2048, hidden_mlp), nn.BatchNorm1d(hidden_mlp),
             nn.ReLU(inplace=True), nn.Linear(hidden_mlp, output_dim),
         )
-        # TODO: the head that turns a normalized embedding into the training target / scores
+        # TODO: whatever extra module the learning signal requires
         self.head = None
 
     def forward(self, inputs):
@@ -79,15 +79,9 @@ class Encoder(nn.Module):
         # TODO: produce whatever the loss needs from z
         return z
 
-# ---- the targets that supply the learning signal (the contribution goes here) ----
-def compute_targets(z):
-    # TODO: turn embeddings into per-view training targets WITHOUT explicit pairwise
-    #       negative comparison, and WITHOUT collapsing to a constant
-    pass
-
-# ---- per-image loss across views (the contribution goes here) ----
+# ---- the per-view learning signal ----
 def loss_across_views(views_outputs):
-    # TODO: enforce that the views of one image agree, given the targets above
+    # TODO: define the training objective over the views of each image
     pass
 
 # ---- training loop: known scaffold ----
@@ -95,8 +89,6 @@ def train(loader, model, optimizer, lr_schedule):
     for it, views in enumerate(loader):
         for g in optimizer.param_groups: g["lr"] = lr_schedule[it]
         outputs = model(torch.cat(views))
-        with torch.no_grad():
-            targets = compute_targets(outputs)           # TODO
         loss = loss_across_views(outputs)                # TODO
         optimizer.zero_grad(); loss.backward(); optimizer.step()
 ```

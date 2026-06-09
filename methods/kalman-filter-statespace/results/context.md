@@ -52,10 +52,9 @@ point in `Y(t)` to `x` in mean-square. This is standard in the probability liter
 conditional expectation, not merely the best linear approximation to it. The supporting facts: linear
 functions (hence conditional expectations) of a Gaussian process are themselves Gaussian; orthogonal
 zero-mean Gaussian variables are independent; and for any process with given means and covariances
-there is a unique Gaussian process matching them. Consequences: (a) a Gaussian belief stays Gaussian
-under a linear map plus independent Gaussian noise, so it is fully described by its mean and
-covariance — two moments are a sufficient statistic; (b) in the Gaussian case the best linear estimator
-*is* the globally optimal estimator, so restricting to linear estimators costs nothing.
+there is a unique Gaussian process matching them. Consequences: (a) the image of a Gaussian under a
+linear map plus independent Gaussian noise is again Gaussian, hence described by its first two moments;
+(b) in the Gaussian case the best linear estimator coincides with the globally optimal estimator.
 
 **State and state transition.** A dynamic system is described by its *state* — the least information
 about the past needed to predict the future — evolving by a first-order recursion. A linear
@@ -167,8 +166,7 @@ def time_update(belief, model, u=None):
 
 def measurement_update(belief, model, z):
     """Fold a new noisy measurement z_k into the belief.
-    TODO: combine the predicted belief with z, weighting each by how
-    trustworthy it is, and reduce the uncertainty accordingly."""
+    TODO: combine the predicted belief with z."""
     pass
 
 def run_filter(model, belief, measurements, controls=None):

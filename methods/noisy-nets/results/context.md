@@ -58,17 +58,15 @@ not learned end-to-end by the RL loss, and the noise is restricted to Gaussian.
 **Noise injection in optimisation.** Adding vanishing, non-trainable noise to weights is a known
 optimisation aid (graduated optimisation, Hazan et al., 2016; neural diffusion, Mobahi, 2016) and
 weight-uncertainty methods (Bayes-by-Backprop, Blundell et al., 2015; variational inference over
-weights, Graves, 2011) maintain an explicit distribution over weights. These differ from what is
-needed here: the former uses noise that vanishes on a fixed schedule and is not learned; the
-latter is aimed at a posterior/compression objective, not at driving exploration with a noise
-intensity tuned by the task reward.
+weights, Graves, 2011) maintain an explicit distribution over weights. In both, the noise
+serves a different end than exploration: the former uses noise that vanishes on a fixed schedule
+and is not learned, and the latter is aimed at a posterior/compression objective.
 
 **The reparameterisation trick.** If a weight is written $w=\mu+\sigma\,\varepsilon$ with
 $\varepsilon$ a fixed-statistics noise, then any loss $L(w)$ becomes a function of
 $(\mu,\sigma)$ and its expectation $\bar L(\mu,\sigma)=\mathbb{E}_\varepsilon[L(\mu+\sigma\varepsilon)]$
 is differentiable in $\mu,\sigma$ with gradients estimable by a single Monte-Carlo sample
-(Kingma & Welling, 2014; Blundell et al., 2015). This is the lever that lets a *noise scale*
-be trained by ordinary backprop.
+(Kingma & Welling, 2014; Blundell et al., 2015).
 
 # Baselines
 
@@ -115,10 +113,7 @@ Evaluation suspends learning every 1M environment frames and runs the current ag
 frames, with episodes truncated at 108K frames; scores averaged over 3 seeds. Performance is
 summarised by the human-normalised score
 $100\times(\text{Score}_{\text{agent}}-\text{Score}_{\text{Random}})/(\text{Score}_{\text{Human}}-\text{Score}_{\text{Random}})$,
-aggregated as mean and median across the 57 games. A natural internal diagnostic is to track,
-per noisy layer, the mean-absolute learned noise scale
-$\bar\Sigma=\frac{1}{N}\sum_i|\sigma^w_i|$ over training, to see whether the agent drives its own
-exploration up or down.
+aggregated as mean and median across the 57 games.
 
 # Code framework
 

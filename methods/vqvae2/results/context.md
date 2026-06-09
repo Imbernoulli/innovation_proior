@@ -14,7 +14,7 @@ A satisfactory method would keep the mode-coverage and measurability of likeliho
 
 **The pixel-space difficulty.** NLL in pixel space is not always a good measure of sample quality (Theis et al., 2016); a model can have excellent bits/dim and produce poor samples. There is also no intrinsic incentive for a pixel-space model to allocate capacity to global structure. Partial fixes introduce inductive biases — multi-scale modeling (Theis & Bethge, 2015; van den Oord et al., 2016; Reed et al., 2017; Subscale Pixel Networks, Menick & Kalchbrenner, 2018) or modeling only the dominant bit planes (Kolesnikov & Lampert, 2017; Kingma & Dhariwal, 2018).
 
-**Lossy compression as a lens.** Classical image compression (JPEG; Wallace, 1992) shows that one can discard well over 80% of an image's data without a perceptible change. This suggests a generative model should not waste itself on the discardable part: compress the image first into a compact code that preserves what matters perceptually, and model the *distribution over codes* instead of over pixels.
+**Lossy compression as a lens.** Classical image compression (JPEG; Wallace, 1992) shows that one can discard well over 80% of an image's data without a perceptible change — a large fraction of an image's pixels carries little perceptual weight, yet a pixel-space generative model spends capacity on it all the same.
 
 **Vector-quantized autoencoders.** A way to obtain such a code with discrete symbols: an encoder maps the input to a continuous vector, which is then replaced by the index of its nearest entry in a learned codebook of prototype vectors (vector quantization). This produces a small grid of discrete symbols — a representation tens of times smaller than the image — from which a decoder can reconstruct with little distortion. Discrete codes are also a natural input to an autoregressive categorical model.
 
@@ -94,7 +94,7 @@ class Bottleneck(nn.Module):
         pass
 
 class AutoEncoder(nn.Module):
-    # TODO: how to arrange encoder(s), bottleneck(s), decoder(s) for a large image.
+    # TODO: arrange the encoder, bottleneck, and decoder for a large image.
     def __init__(self):
         super().__init__()
         self.enc = None      # TODO

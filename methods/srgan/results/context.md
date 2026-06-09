@@ -17,10 +17,9 @@ images, while high in PSNR, are perceptually unsatisfying: they are overly smoot
 high-frequency texture. The precise question: **how do we recover *photo-realistic* fine texture when
 super-resolving at large (`4×`) upscaling factors — producing an image that looks like a real
 photograph at the higher resolution, rather than a blurred compromise — given that the standard
-per-pixel objective is exactly what produces the blur?** A solution would need an objective that
-rewards landing on a *single*, sharp, natural-looking solution rather than the average of the plausible
-set, and that measures similarity in a way aligned with human perception rather than raw pixel
-distance.
+per-pixel objective is exactly what produces the blur?** What is wanted is an output that is one
+sharp, natural-looking image rather than the average of the plausible set, judged by a criterion that
+tracks human perception rather than raw pixel distance — but how to formulate such an objective is open.
 
 ## Background
 
@@ -37,10 +36,9 @@ limitations. The load-bearing concepts and the key diagnostic observation:
   the per-pixel objective. Pixel-wise losses, being defined on pixel differences, cannot capture
   perceptually relevant differences such as texture.
 
-- **The natural-image manifold.** Real photographs occupy a thin manifold in pixel space. A good
-  super-resolution output should lie *on* that manifold (a single plausible sharp image), not at the
-  blurry centroid between manifold points. The relevant question becomes how to pull a reconstruction
-  *toward* the manifold rather than toward an average.
+- **The natural-image manifold.** Real photographs occupy a thin manifold in pixel space. The
+  centroid between several manifold points generally sits *off* the manifold, in the smooth region
+  between them — which is where the per-pixel average lands.
 
 - **The adversarial framework (Goodfellow et al., 2014).** A generator and a discriminator play a
   minimax game; the discriminator learns to distinguish real images from generated ones and thereby
@@ -89,8 +87,8 @@ The prior methods a new procedure would be measured against and reacts to:
 
 - **Feature-space perceptual SR (Johnson et al., 2016; Bruna et al., 2016).** Replace pixel MSE with
   the Euclidean distance between VGG19 feature maps — the closest ancestors in spirit, and visibly more
-  convincing than pixel losses. *Gap:* without an adversarial term, the reconstructions still do not
-  reach photo-realistic texture; nothing explicitly pulls the output onto the natural-image manifold.
+  convincing than pixel losses. *Gap:* the reconstructions still do not reach photo-realistic texture
+  at large upscaling factors.
 
 ## Evaluation settings
 
@@ -151,7 +149,7 @@ for p in vgg.parameters():
     p.requires_grad = False
 
 def content_loss(sr, hr):
-    # TODO: how should generator output be compared to ground truth — in pixel space or feature space?
+    # TODO: how should generator output be compared to ground truth?
     pass
 
 def generator_objective(sr, hr, d_pred_on_sr):

@@ -59,12 +59,6 @@ the map to be bijective on top of that makes naive applications both expensive a
 fragile. This is precisely why large-scale density models built on the change-of-variables
 formula had not entered general use, even though the principle is exact and clean.
 
-**Triangular Jacobians are the escape hatch.** The determinant of a triangular matrix is
-just the product of its diagonal entries — an O(D) computation, no matrix factorization
-needed. So if a bijection can be designed whose Jacobian is *triangular by construction*,
-the determinant becomes trivial. The same observation explains why autoregressive models
-are tractable: their dependency structure makes the Jacobian of the implied map triangular.
-
 **A diagnostic about existing image generators.** Two empirical facts about prior systems
 frame the problem. First, latent-variable models trained against a fixed-form
 reconstruction cost (a Gaussian decoder, i.e. an L2 term) systematically produce blurry

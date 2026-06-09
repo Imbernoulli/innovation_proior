@@ -56,8 +56,7 @@ does not hand you a trainable algorithm.
 of a distribution by stochastic approximation. For quantile level $\tau$, the *quantile regression
 loss* $\rho_\tau(u)=u(\tau-\mathbb{1}_{u<0})$ is an asymmetric absolute loss — penalty $\tau$ on
 underestimation ($u>0$) and $1-\tau$ on overestimation ($u<0$). Its minimizer over $\theta$ of
-$\mathbb{E}_{\hat Z\sim Z}[\rho_\tau(\hat Z-\theta)]$ is the quantile $F_Z^{-1}(\tau)$, and its
-sample gradient (which depends only on the *sign* of $u$) is unbiased. The Huber loss
+$\mathbb{E}_{\hat Z\sim Z}[\rho_\tau(\hat Z-\theta)]$ is the quantile $F_Z^{-1}(\tau)$. The Huber loss
 (Huber, 1964) $\mathcal{L}_\kappa(u)=\frac12u^2$ for $|u|\le\kappa$ and $\kappa(|u|-\frac12\kappa)$
 otherwise is the smooth-at-zero, robust-in-the-tails compromise between squared and absolute loss.
 

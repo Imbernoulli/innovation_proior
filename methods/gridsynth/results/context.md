@@ -20,14 +20,13 @@ Several rings of algebraic integers organize the problem:
 - The **least denominator exponent** `k` of `t ∈ D[ω]` is the smallest `k ≥ 0` with `√2^k · t ∈ Z[ω]`. The element `λ = 1 + √2` is the fundamental unit of `Z[√2]` (with `λ⁻¹ = −λ• = √2 − 1`), and `δ = 1 + ω` satisfies `δ†δ = λ√2`.
 - A basic discreteness fact: for distinct `α, β ∈ Z[√2]`, `|α − β| · |α• − β•| ≥ 1` (because `t•t` is a nonzero integer for `t ≠ 0`). This bounds grid points apart.
 
-**Where the T-count comes from.** The exact synthesis algorithm of Kliuchnikov–Maslov–Mosca takes a unitary over `D[ω]` and produces a minimal-T-count Clifford+T circuit by iteratively reducing the denominator exponent of the matrix (multiplying by `H` and powers of `T` from the left until `k` drops). For a `U` of the special form above with `ℓ = 0`, the T-count comes out as `2k` or `2k − 2`, where `k` is the least denominator exponent of `u`; conjugating by `T` (a Clifford+T-preserving, norm-preserving operation, since `T` commutes with `Rz`) can always pull the `2k` case down to `2k − 2`. So the entire game is: **make the denominator exponent of `u` as small as possible.**
+**Where the T-count comes from.** The exact synthesis algorithm of Kliuchnikov–Maslov–Mosca takes a unitary over `D[ω]` and produces a minimal-T-count Clifford+T circuit by iteratively reducing the denominator exponent of the matrix (multiplying by `H` and powers of `T` from the left until `k` drops). The number of `T`-gates it emits is therefore tied to the least denominator exponent `k` of the matrix entries — a `U` whose entries have small denominator exponent synthesizes to a short circuit.
 
-**The two relevant number-theoretic facts.** (i) Unitarity `u†u + t†t = 1` means `u` lies in the closed unit disk; applying `(−)•` shows `u•` also lies in the unit disk. (ii) Given a candidate `u`, finding `t` requires solving the relative-norm Diophantine equation `t†t = 1 − u†u =: ξ ∈ D[√2]`. By classical algebraic number theory (Gauss, Kummer), this is solvable iff `ξ` is doubly positive (`ξ ≥ 0` and `ξ• ≥ 0`) and, writing `ξ•ξ = n/2^ℓ`, every prime `p` dividing `n` to odd multiplicity satisfies `p = 2` or `p ≡ 1,3,5 (mod 8)` — a prime `p ≡ 7 (mod 8)` appearing to an odd power kills solvability. The rings `Z`, `Z[√2]`, `Z[ω]` are Euclidean domains, so unique factorization, gcd, and these prime classifications are all available; the constructive proofs reduce to solving `x² ≡ −1 (mod p)` / `x² ≡ ±2 (mod p)`, doable in probabilistic polynomial time. The single hard step is **factoring `n` itself**.
+**The two relevant number-theoretic facts.** (i) Unitarity `u†u + t†t = 1` means `u` lies in the closed unit disk. (ii) Given a candidate `u`, finding `t` requires solving the relative-norm Diophantine equation `t†t = 1 − u†u =: ξ ∈ D[√2]`. By classical algebraic number theory (Gauss, Kummer), this is solvable iff `ξ` is doubly positive (`ξ ≥ 0` and `ξ• ≥ 0`) and, writing `ξ•ξ = n/2^ℓ`, every prime `p` dividing `n` to odd multiplicity satisfies `p = 2` or `p ≡ 1,3,5 (mod 8)` — a prime `p ≡ 7 (mod 8)` appearing to an odd power kills solvability. The rings `Z`, `Z[√2]`, `Z[ω]` are Euclidean domains, so unique factorization, gcd, and these prime classifications are all available; the constructive proofs reduce to solving `x² ≡ −1 (mod p)` / `x² ≡ ±2 (mod p)`, doable in probabilistic polynomial time. The single hard step is **factoring `n` itself**.
 
 **Diagnostic facts about the design space.**
 - An information-theoretic counting argument lower-bounds the T-count of any deterministic single-qubit Clifford+T ε-approximation of a generic rotation by roughly `K + 3 log₂(1/ε)`.
-- The number of grid points of denominator exponent `k` per unit area scales as `4^k`; the distance between "grid lines" of a fixed rational slope scales as `1/2^k`. A plausible counting model separates an area-governed regime from a width-governed regime according to the slope of the ε-region's boundary, i.e. according to whether `tan(θ/2) ∈ Q(√2)`.
-- The ε-region (the slice of the unit disk satisfying the closeness constraint) is a thin sliver: width `ε²/2` at its widest, inscribing a disk of radius `ε²/4`, area `Θ(ε³)`. Its uprightness relative to its bounding box is `Ω(ε⁴)`.
+- The number of grid points of denominator exponent `k` per unit area scales as `4^k`; the distance between "grid lines" of a fixed rational slope scales as `1/2^k`.
 
 ## Baselines
 
@@ -41,46 +40,19 @@ Several rings of algebraic integers organize the problem:
 
 ## Evaluation settings
 
-The natural yardstick is the approximate synthesis problem itself: pick a set of angles θ (including both generic angles and structured ones such as `tan(θ/2) ∈ Q(√2)`), a range of target precisions ε spanning many orders of magnitude (from coarse precisions down to extremely fine, e.g. `ε = 10⁻¹⁰` through `10⁻¹⁰⁰⁰` and beyond), and for each instance run the synthesizer. The metrics of interest are the **T-count** of the produced circuit (compared against the information-theoretic lower bound `K + 3 log₂(1/ε)` and against the achievable `K + 4 log₂(1/ε)`), the **correctness** check `‖Rz(θ) − U‖ ≤ ε` verified in high-precision arithmetic, and the **runtime** as a function of `log(1/ε)`. A faithful re-implementation needs arbitrary-precision real arithmetic (e.g. `mpmath`) since the constraints involve `cos(θ/2)`, `sin(θ/2)`, and bounds at precision `O(log(1/ε))` decimal digits.
+The natural yardstick is the approximate synthesis problem itself: pick a set of angles θ (including both generic angles and structured ones, e.g. simple rational multiples of π or angles carrying extra algebraic structure), a range of target precisions ε spanning many orders of magnitude (from coarse precisions down to extremely fine, e.g. `ε = 10⁻¹⁰` through `10⁻¹⁰⁰⁰` and beyond), and for each instance run the synthesizer. The metrics of interest are the **T-count** of the produced circuit (compared against the information-theoretic lower bound `K + 3 log₂(1/ε)` and against the achievable `K + 4 log₂(1/ε)`), the **correctness** check `‖Rz(θ) − U‖ ≤ ε` verified in high-precision arithmetic, and the **runtime** as a function of `log(1/ε)`. A faithful re-implementation needs arbitrary-precision real arithmetic (e.g. `mpmath`) since the constraints involve `cos(θ/2)`, `sin(θ/2)`, and bounds at precision `O(log(1/ε))` decimal digits.
 
 ## Code framework
 
-The available pieces are: the exact-synthesis routine (denominator-reduction over `D[ω]` giving minimal-T-count Clifford+T circuits), the arithmetic of the rings `Z[√2]`, `Z[ω]`, `D[√2]`, `D[ω]` with both conjugations, a one-dimensional grid-problem solver (enumerate `α ∈ Z[√2]` with `α ∈ A`, `α• ∈ B` for intervals `A, B`), and a probabilistic Diophantine solver for `t†t = ξ` assuming a factorization of `n` is available. What is missing is the candidate stream: a way to enumerate possible top-left entries `u` in increasing least denominator exponent while respecting both the approximation constraint and the conjugate-unit-disk constraint.
+The available pieces are: the exact-synthesis routine (denominator-reduction over `D[ω]` giving minimal-T-count Clifford+T circuits), the arithmetic of the rings `Z[√2]`, `Z[ω]`, `D[√2]`, `D[ω]` with both conjugations `(−)†` and `(−)•`, and a probabilistic Diophantine solver for `t†t = ξ` assuming a factorization of `n` is available.
 
 ```python
 import mpmath
 from rings import ZRootTwo, ZOmega, DRootTwo, DOmega   # ring arithmetic, (-)†, (-)•, denomexp
 from exact_synthesis import decompose_domega_unitary   # KMM: D[ω]-unitary -> minimal-T Clifford+T gates
 from diophantine import diophantine_dyadic              # solve t†t = ξ given a factoring of n (or fail)
-from grid_1d import solve_1d_grid                        # enumerate α∈Z[√2]: α∈[x0,x1], α•∈[y0,y1]
-
-class ConvexSet:
-    """A bounded convex set, given with: a membership test, a routine to intersect
-    it with a line, and an enclosing ellipse."""
-    def inside(self, u): raise NotImplementedError
-    def intersect(self, p, q): raise NotImplementedError   # {t : p + t q in set}
-    @property
-    def ellipse(self): raise NotImplementedError
-
-def target_region(theta, epsilon):
-    # TODO: translate ‖Rz(θ) − U‖ ≤ ε into a convex constraint on u.
-    pass
-
-class UnitDisk(ConvexSet):
-    pass
-
-def candidate_stream(region, conjugate_guard):
-    # TODO: enumerate u ∈ D[ω] by increasing least denominator exponent,
-    # subject to u ∈ region and u• ∈ conjugate_guard.
-    pass
 
 def synthesize(theta, epsilon):
-    A = target_region(theta, epsilon)
-    B = UnitDisk()
-    for u in candidate_stream(A, B):
-        xi = 1 - DRootTwo.from_domega(u.conj * u)
-        t = diophantine_dyadic(xi)
-        if t is not None:
-            # TODO: choose between the equivalent t and ωt completions, then exact-synthesize.
-            pass
+    # TODO: produce a Clifford+T circuit U with ‖Rz(θ) − U‖ ≤ ε, as few T-gates as possible.
+    pass
 ```

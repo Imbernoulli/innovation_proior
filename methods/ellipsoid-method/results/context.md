@@ -24,17 +24,17 @@ Why it matters: this feasibility test is the computational core of linear progra
 
 **Two localization facts that make `poly(L)` conceivable.** Integer data endows the problem with a scale.
 - *A solution, if any, is not far out.* If `A x ≤ b` is feasible, then it has a solution inside the Euclidean ball `S = { x : ‖x‖ ≤ 2^L }`. This follows from the same determinant bounds that give polynomial-size rational certificates for linear systems. So one need only search a ball of radius `2^L`.
-- *Infeasibility leaves a margin.* Define the residual `σ(x) = max_i { A_i x − b_i }`; then `x` solves the system iff `σ(x) ≤ 0`. If the system is **infeasible**, then for *every* `x ∈ ℝⁿ`, `σ(x) ≥ 2^{−L}`. Choosing `ε < 2^{−L}` separates the two cases: the relaxed body `P_ε = { x : A_i x ≤ b_i + ε for all i }` is empty when the original system is infeasible, while a feasible integer system gives `P_ε` positive volume inside the bounded search region, with a lower bound `2^{−O(nL)}` from the coefficient-size and determinant bounds. This relaxed full-dimensional body is what a volume-shrinking localization argument can use for a finite exact decision.
+- *Infeasibility leaves a margin.* Define the residual `σ(x) = max_i { A_i x − b_i }`; then `x` solves the system iff `σ(x) ≤ 0`. If the system is **infeasible**, then for *every* `x ∈ ℝⁿ`, `σ(x) ≥ 2^{−L}`. Choosing `ε < 2^{−L}` separates the two cases: the relaxed body `P_ε = { x : A_i x ≤ b_i + ε for all i }` is empty when the original system is infeasible, while a feasible integer system gives `P_ε` positive volume inside the bounded search region, with a lower bound `2^{−O(nL)}` from the coefficient-size and determinant bounds. So a relaxed, full-dimensional body separates the feasible and infeasible cases at a resolution fixed by the integer data.
 
-**Volume of an ellipsoid.** An ellipsoid is the affine image of a ball: `E = { x + Q z : ‖z‖ ≤ 1 }` for a center `x` and a nonsingular matrix `Q`, equivalently `E(A,a) = { x : (x−a)ᵀ A⁻¹ (x−a) ≤ 1 }` with `A = Q Qᵀ` positive definite. Its volume is `vol(E) = |det Q| · V_n = √(det A) · V_n`, where `V_n` is the volume of the unit ball. Ratios of volumes are preserved by affine maps — so volume statements can always be checked after pulling the ellipsoid back to the unit ball.
+**Volume of an ellipsoid.** An ellipsoid is the affine image of a ball: `E = { x + Q z : ‖z‖ ≤ 1 }` for a center `x` and a nonsingular matrix `Q`, equivalently `E(A,a) = { x : (x−a)ᵀ A⁻¹ (x−a) ≤ 1 }` with `A = Q Qᵀ` positive definite. Its volume is `vol(E) = |det Q| · V_n = √(det A) · V_n`, where `V_n` is the volume of the unit ball.
 
 ## Baselines
 
 **Cutting-plane localization with polyhedral sets (Newman 1965; Levin 1965).** To minimize a convex (or quasiconvex) function, maintain a "localization set" known to contain the minimizer; query a subgradient at a point inside it; the subgradient inequality cuts the set with a hyperplane, discarding a region that cannot contain the minimizer; recurse on what remains. In these methods the localization set is a **polyhedron**, refined by adding the new half-space each step. Core gap: the number of inequalities describing the localization set **grows without bound** as the algorithm runs, so the work *per iteration* increases, and there is no clean dimension-only bound on how fast the set shrinks. There is no encoding-length analysis and no polynomial bound.
 
-**Subgradient method with space dilation (Shor 1970).** For nonsmooth convex minimization, Shor introduced a subgradient method that *dilates the space* in the direction of the (sub)gradient between steps, i.e. rescales coordinates by a variable metric. This is a fixed-size update — it carries a matrix, not a growing list of constraints — and in nonlinear-optimization language it is a rank-one update of that matrix, closely analogous to a variable-metric quasi-Newton method. Shor (1977) gave the first explicit statement of the resulting ellipsoid construction. Gap as it stood: it was framed and analyzed as a method for *general convex* optimization with real data, aiming at approximate minimizers, with convergence stated geometrically; it carried no analysis tying the iteration count to the *bit-length* of integer linear-inequality data, and so did not by itself yield a polynomial-time *decision* procedure for feasibility.
+**Subgradient method with space dilation (Shor 1970).** For nonsmooth convex minimization, Shor introduced a subgradient method that *dilates the space* in the direction of the (sub)gradient between steps, i.e. rescales coordinates by a variable metric. This update carries a matrix (a variable metric) rather than a growing list of constraints, in the family of variable-metric quasi-Newton methods. Gap as it stood: it was framed and analyzed as a method for *general convex* optimization with real data, aiming at approximate minimizers, with convergence stated geometrically; it carried no analysis tying the iteration count to the *bit-length* of integer linear-inequality data, and so did not by itself yield a polynomial-time *decision* procedure for feasibility.
 
-**Method of central sections / its modification (Yudin & Nemirovski 1976).** Studying the informational complexity of convex optimization, Yudin and Nemirovski observed that Shor's dilation algorithm answers a question of Levin (1965) on the complexity of convex minimization, and gave an outline of an ellipsoidal central-section scheme: localize a convex body, query the center, cut through the center, re-enclose. Gap: again the target is general convex optimization and information-theoretic complexity, not the exact, integer-data, polynomial-in-`L` feasibility decision for linear systems; the rational-arithmetic bookkeeping needed to keep the construction finite and provably correct under rounding is not the object of study.
+**Method of central sections / its modification (Yudin & Nemirovski 1976).** Studying the informational complexity of convex optimization, Yudin and Nemirovski observed that Shor's dilation algorithm answers a question of Levin (1965) on the complexity of convex minimization, and studied central-section localization schemes in that setting. Gap: the target is general convex optimization and information-theoretic complexity over real data, aimed at approximate minimizers, not the exact, integer-data, polynomial-in-`L` feasibility decision for linear systems; the rational-arithmetic bookkeeping needed to keep such a construction finite and provably correct under rounding is not the object of study.
 
 **Simplex (Dantzig 1947), as the yardstick to beat.** Walks the boundary; excellent in practice; exponential worst case (Klee–Minty 1972); its per-iteration and total cost depend on the number of constraints `m`. A new method would be measured against it on worst-case complexity and on insensitivity to `m`.
 
@@ -44,7 +44,7 @@ The natural yardstick is *worst-case complexity as a function of the encoding le
 
 ## Code framework
 
-Available ingredients: dense linear algebra over rationals/fixed-point (matrix-vector products, symmetric matrix updates, Cholesky-type factorizations, exact integer arithmetic for the data, controlled-precision arithmetic with `√`), the encoding-length quantity `L`, and a callable that can expose a centered separating normal at a queried point. The open slots are the fixed-size localization loop and the objective-value wrapper.
+Available ingredients: dense linear algebra over rationals/fixed-point (matrix-vector products, symmetric matrix updates, Cholesky-type factorizations, exact integer arithmetic for the data, controlled-precision arithmetic with `√`), the encoding-length quantity `L`, and a callable that can expose a centered separating normal at a queried point. The open slots are the search loop and the objective-value wrapper.
 
 ```python
 import numpy as np
@@ -74,15 +74,11 @@ def separation_for_system(Arows, brhs, tol=0.0):
         pass
     return separate
 
-# --- localization loop to be designed -----------------------------------
+# --- search loop to be designed -----------------------------------------
 def decide_feasibility(separate, n, R, max_iters, inflate=1.0):
-    """Decide whether the target set is nonempty.
-    TODO: choose a fixed-size localization set containing any solution;
-    TODO: query `separate` at a distinguished point of that set;
-    TODO: after a violated inequality, replace the localization set by a
-          smaller fixed-size set that still contains every solution;
-    TODO: stop after the integrality floor rules out a nonempty set;
-    TODO: carry out bounded-precision arithmetic without losing containment."""
+    """Decide whether the target set is nonempty, using only `separate`
+    (the centered separation callable) and a search region of radius R.
+    TODO: design the loop."""
     pass
 
 def decide_linear_inequalities(Arows, brhs, max_iters=None, tol=None):

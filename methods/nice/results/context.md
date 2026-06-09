@@ -65,14 +65,13 @@ requiring f to also be invertible on top of that makes a naive implementation bo
 and fragile. A clean, exact objective is strangled by one term, which is why large-scale
 density models built directly on the change-of-variables formula had not entered use.
 
-**Triangular Jacobians are the escape hatch.** The determinant of a triangular matrix is just
-the product of its diagonal entries — O(D), no factorization. So a bijection whose Jacobian is
-*triangular by construction* has a trivially tractable determinant. This is not an isolated
-trick: it is exactly why autoregressive density models are tractable — conditioning each
-coordinate on the earlier ones makes the implied map's Jacobian strictly triangular. And
-because a composition f = f_L ∘ … ∘ f_1 has a Jacobian determinant equal to the product of the
-layers' determinants (and inverts by composing the layer inverses in reverse), it suffices to
-design tractable *elementary* bijections and stack them.
+**Some matrix structures have cheap determinants.** The determinant of a triangular matrix is
+just the product of its diagonal entries — O(D), no factorization. Autoregressive density models
+exploit this: conditioning each coordinate on the earlier ones makes the implied map's Jacobian
+strictly triangular, which is what makes their exact likelihood tractable (at the cost of
+sequential sampling). It is also a standard fact that a composition f = f_L ∘ … ∘ f_1 has a
+Jacobian determinant equal to the product of the layers' determinants, and inverts by composing
+the layer inverses in reverse.
 
 **Dequantization.** Image pixels are discrete (256 levels per channel). A continuous density
 fit directly to discrete points can place arbitrarily tall spikes on them and drive likelihood
@@ -109,9 +108,7 @@ q(h|x) is *stochastic* and only a variational *approximation* to the true poster
 is injected into the autoencoder loop; the objective is a *bound*, not the likelihood, and a
 suboptimal bound can leave unstructured noise in the generative process; and an imperfect
 decoder p(x|h) forces a reconstruction term and the modeling of low-level noise at the visible
-layer. (There is a tight structural kinship here worth flagging: with a deterministic, exactly
-invertible encoder the reconstruction term becomes a *constant* and only the prior term and a
-volume/entropy term survive — the same two pieces as the KL in the variational criterion.)
+layer.
 
 **Autoregressive density models — NADE / neural autoregressive nets.** Fully-visible models
 (Bengio & Bengio 1999; NADE, Larochelle & Murray 2011) write p(x) = ∏_i p(x_i | x_{<i}) under a
@@ -162,8 +159,8 @@ spectrum and manifold (traversing a sphere in latent space, mapping it back thro
 # Code framework
 
 Ordinary deep-learning primitives suffice for the harness: a ReLU MLP module, tensor reshaping,
-a factorial prior with a `log_prob`, and Adam. The open slots are the concrete data-to-latent
-bijection, the volume-change mechanism it needs, and the exact objective that scores it.
+a factorial prior with a `log_prob`, and Adam. The open slot is the concrete data-to-latent
+bijection and the exact objective that scores it.
 
 ```python
 import torch
@@ -179,33 +176,22 @@ class MLP(nn.Module):
     def forward(self, x):
         pass
 
-class InvertibleBlock(nn.Module):
-    """An elementary bijection. Must run forward and backward, and expose how it
+class Bijection(nn.Module):
+    """The data-to-latent map. Must run forward and backward, and expose how it
     changes volume (log|det Jacobian|)."""
     def __init__(self, *args, **kwargs):
         super().__init__()
         pass
 
     def forward(self, x, reverse=False):
-        # TODO: a transform that is invertible with a tractable Jacobian determinant.
-        pass
-
-class VolumeChange(nn.Module):
-    """A separate slot for whatever lets the model locally expand/contract probability mass,
-    if the elementary blocks turn out not to."""
-    def __init__(self, dim):
-        super().__init__()
-        pass
-
-    def forward(self, x, reverse=False):
-        # TODO: return transformed x and the log-determinant it contributes.
+        # TODO: an invertible map whose Jacobian determinant is tractable.
         pass
 
 class DensityModel(nn.Module):
     def __init__(self, prior, *args, **kwargs):
         super().__init__()
         self.prior = prior
-        # TODO: a stack of invertible blocks plus the volume-change slot.
+        # TODO: assemble the bijection.
 
     def f(self, x):
         # TODO: data -> latent, accumulating log|det Jacobian|.

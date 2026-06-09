@@ -23,9 +23,10 @@ satisfy only some of them:
   detail) *and* view-dependent appearance — specular highlights, reflections, and other
   non-Lambertian effects that change with the viewing angle.
 
-No prior representation hits all four. The tension between "continuous and compact" (which
-points toward encoding a scene in the weights of a network) and "high-frequency and
-photorealistic" (which discrete volumetric methods achieve but at ruinous cost) is the gap.
+No prior representation hits all four. The methods that are continuous and compact and the
+methods that are high-frequency and photorealistic (which discrete volumetric methods
+achieve, but at ruinous cost) sit on opposite sides of a gap that no single representation
+has so far bridged.
 
 ## Background
 

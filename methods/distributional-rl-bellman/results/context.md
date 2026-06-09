@@ -49,10 +49,9 @@ comparison count $(X_n-\mathbb{E}X_n)/n$ converges to a limit $Y$ whose law is t
 of a map $S$ on distributions, and $S$ is shown to be a contraction in the **Wasserstein (Mallows)
 metric** $d_2$. The fixed-point relation then yields recursive formulas for all the higher moments,
 and convergence holds in every $\ell_p$-metric. Rösler (1992) generalizes this into the contraction
-method for stochastic recursive equations of sum and max type. The relevance is direct: a return obeys
-a distributional recursion $Z =_D R + \gamma\,Z'$, exactly the sum-type form, with $\gamma$ playing the
-role of the contraction modulus. The machinery for proving "unique solution, reached by iteration"
-already exists; it just has not been pointed at the Bellman recursion.
+method for stochastic recursive equations of sum and max type. This body of work lives in the
+probabilistic analysis of algorithms; whether its machinery bears on the Bellman recursion has not
+been examined.
 
 **The Wasserstein metric.** For two cumulative distribution functions $F,G$ on $\mathbb{R}$, the
 $p$-Wasserstein distance (called the Mallows metric by Bickel & Freedman, 1981) is
@@ -64,9 +63,8 @@ attained by the *inverse-cdf (quantile) coupling*, giving the closed form
 $d_p(F,G)=\lVert F^{-1}(\mathcal{U})-G^{-1}(\mathcal{U})\rVert_p$ with $\mathcal{U}\sim\mathrm{Unif}[0,1]$,
 and for $p<\infty$, $d_p(F,G)=\big(\int_0^1|F^{-1}(u)-G^{-1}(u)|^p\,du\big)^{1/p}$. Crucially, $d_p$
 measures *horizontal* transport along the value axis: shifting a distribution by a constant or scaling
-it scales the distance correspondingly. This is the metric in which a multiplicative discount can act
-as a contraction modulus, and it is the natural tool for comparing distributions whose supports may not
-even overlap.
+it scales the distance correspondingly. It remains defined even for distributions whose supports do not
+overlap.
 
 **Earlier distributional and risk-sensitive work.** Studying more than the mean of the return is almost
 as old as Bellman's equation. Jaquette (1973) introduced a *moment optimality* criterion that imposes a
@@ -84,20 +82,6 @@ Normal-Gamma model of parametric uncertainty (Dearden et al., 1998), Kalman-filt
 cdf representations, target risk rather than the full learning problem, or analyze policy evaluation
 only. None puts a general Bellman operator on the full distribution, proves its contraction, and
 confronts the control case.
-
-**Diagnostic facts about the metrics.** Two facts about *existing* tools shape the
-problem before any new method exists. First, the discount acts on the value axis: scaling a random
-return by $\gamma$ scales any reasonable horizontal distance between two returns by $\gamma$, while
-likelihood-based distances (total variation, KL, Kolmogorov–Smirnov) compare distributions vertically
-and are blind to where mass sits — two point masses at $\gamma a$ and $\gamma b$ are as "totally
-different" as at $a$ and $b$. So whatever metric makes the discount a contraction modulus must be a
-transport metric, not a likelihood metric; Chung & Sobel's (1987) total-variation negative result is
-the concrete warning. Second, sampling interacts badly with transport losses for a mixture: if a
-distribution is a mixture $P=P_I$ over a random index $I$, then for any fixed $Q$ one has
-$d_p(P,Q)\le\mathbb{E}_{i\sim I}\,d_p(P_i,Q)$ with the inequality generally strict, and the gradients
-likewise differ — a fact about couplings, true regardless of any RL algorithm. It means that estimating
-a Wasserstein distance (or its gradient) from a single sampled transition is biased. Both facts
-constrain the metric and loss choices before any particular representation is chosen.
 
 ## Baselines
 
@@ -139,7 +123,7 @@ human-normalized score across the suite and counts of games exceeding human leve
 evaluation* check of the theory, a small tabular domain with a known return distribution is the
 appropriate testbed — e.g. CliffWalk (Sutton & Barto, 1998), where a ground-truth return distribution
 can be estimated by many Monte-Carlo rollouts and an approximation compared to it under the
-$1$-Wasserstein distance, as a function of the number of support points and the choice of loss. The
+$1$-Wasserstein distance, swept over whatever knobs the chosen representation and loss expose. The
 setting is specified by the domains, the metrics, and the protocol.
 
 ## Code framework

@@ -35,15 +35,15 @@ with weights proportional to λ^n; λ=0 gives the one-step target r_t + γU(x_{t
 
 - **TD prediction, TD(λ) (Sutton 1984, 1988).** Learn the value of a *fixed* policy from experience by bootstrapping temporally successive predictions; lower variance and shorter delay than averaging Monte-Carlo returns. Gap: it is *prediction*, not control. It evaluates the policy you follow; it does not by itself say which action is optimal, and a state's value is only meaningful relative to a policy. Used inside a learning controller it requires a *separate* policy representation.
 
-- **Learning automata / policy-with-value-function controllers (Witten 1977; Barto, Sutton & Anderson 1983; Wheeler & Narendra 1986; Sutton 1984; Anderson 1987).** Represent the policy explicitly as action strengths or probabilities and adjust it using an estimated value function (e.g. nudge probabilities toward actions whose return exceeded the state's value). The adaptive heuristic critic learns a policy and a value function together. Gap: two concurrent adaptive processes — value estimation and policy improvement — that may interact during learning and prevent convergence; no convergence guarantee to the optimal policy was available for these schemes, and because action-values are not represented, the proof techniques for value estimation cannot be applied. On the (non-Markov, coarsely discretised) pole-balancer, the pure policy-learning variant gave disappointing results.
+- **Learning automata / policy-with-value-function controllers (Witten 1977; Barto, Sutton & Anderson 1983; Wheeler & Narendra 1986; Sutton 1984; Anderson 1987).** Represent the policy explicitly as action strengths or probabilities and adjust it using an estimated value function (e.g. nudge probabilities toward actions whose return exceeded the state's value). The adaptive heuristic critic learns a policy and a value function together. Gap: two concurrent adaptive processes — value estimation and policy improvement — that may interact during learning and prevent convergence; no convergence guarantee to the optimal policy was available for these schemes. On the (non-Markov, coarsely discretised) pole-balancer, the pure policy-learning variant gave disappointing results.
 
 ## Evaluation settings
 
-The natural yardstick is a finite, discrete controlled Markov process (finite state and action sets), with bounded rewards and a discount factor 0 < γ < 1, against which a learned policy's value is compared to the dynamic-programming optimum V* / Q*. Tabular (look-up-table) representation of the learned values. Standard small testbeds of the period for sequential learning under delayed reward: gridworld navigation tasks with goal states; the cart–pole / pole-balancing control task (Barto–Sutton–Anderson formulation); blackjack-style episodic tasks with a terminal reward (Widrow et al. 1972). The relevant quantities to track are whether the learned action-values approach Q*, whether the implied greedy policy approaches an optimal policy, and how the learning rate schedule and the requirement that every state–action pair be tried repeatedly affect convergence.
+The natural yardstick is a finite, discrete controlled Markov process (finite state and action sets), with bounded rewards and a discount factor 0 < γ < 1, against which a learned policy's value is compared to the dynamic-programming optimum V* / Q*. Tabular (look-up-table) representation of the learned values. Standard small testbeds of the period for sequential learning under delayed reward: gridworld navigation tasks with goal states; the cart–pole / pole-balancing control task (Barto–Sutton–Anderson formulation); blackjack-style episodic tasks with a terminal reward (Widrow et al. 1972). The relevant quantities to track are whether the learned estimates approach the dynamic-programming optimum, whether the policy the learner induces approaches an optimal policy, and how the learning rate schedule and the requirement that every state–action pair be tried repeatedly affect convergence.
 
 ## Code framework
 
-A tabular learner can already keep a store of numbers indexed by state–action pairs, query an environment for a sampled next state and reward, use a discount γ, use a learning-rate schedule, and choose exploratory actions. The agent runs a loop over experienced transitions and, on each one, revises its stored numbers. The unresolved design choice is the target to revise toward and the stored quantity that makes the optimal policy readable off directly.
+A tabular learner can already keep a store of numbers indexed by state–action pairs, query an environment for a sampled next state and reward, use a discount γ, use a learning-rate schedule, and choose exploratory actions. The agent runs a loop over experienced transitions and, on each one, revises its stored numbers. The unresolved design choice is what to store and what target to revise it toward.
 
 ```python
 import numpy as np
@@ -59,15 +59,14 @@ class Estimates:
         self.table = defaultdict(lambda: np.zeros(n_actions))
 
     def value_of(self, state):
-        # TODO: how to summarise the stored numbers at a state into the
-        # quantity that drives both the target and the choice of action
+        # TODO: how to summarise the stored numbers at a state
         pass
 
 def behaviour_action(estimates, state, n_actions, epsilon):
-    # an exploratory rule over actions; need NOT be the policy whose value we want
+    # an exploratory rule over actions, so every state-action pair gets tried
     if np.random.rand() < epsilon:
         return np.random.randint(n_actions)
-    # TODO: greedy choice w.r.t. the stored numbers
+    # TODO: how to choose an action from the stored numbers
     pass
 
 def learn(env, n_actions, gamma, alpha_schedule, epsilon, n_steps):

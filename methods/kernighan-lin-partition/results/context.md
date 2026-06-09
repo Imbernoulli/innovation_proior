@@ -44,13 +44,11 @@ mode of weak transformations is getting **trapped in a poor local minimum** — 
 small move improves, yet that is far from optimal because the improving move requires a *sequence*
 of steps, some of which temporarily worsen the cut before a later step pays off.
 
-**Additive gain over out-of-place elements.** A useful way to see "this partition is not optimal"
-is that there is some set of nodes `a_1, …, a_k` on the `A` side and `b_1, …, b_k` on the `B` side
-that are *out of place* and ought to be exchanged. If one could assign to each swap of `a_i` for
-`b_i` a *gain* `g_i` (cost removed minus cost added) and arrange that the total reduction of a
-group of swaps is simply `g_1 + g_2 + ⋯ + g_k` — i.e. the gains are **additive** — then one could
-reason about *partial* progress toward an exchange, not only about completed exchanges. That
-additivity is the lever the prior heuristics had not pulled on.
+**Out-of-place elements.** A useful way to see "this partition is not optimal" is that there is
+some set of nodes `a_1, …, a_k` on the `A` side and `b_1, …, b_k` on the `B` side that are *out of
+place* and ought to be exchanged together. The prior heuristics are committed in advance to a fixed
+number of simultaneous exchanges, and on instances where the beneficial rearrangement involves a
+different number of nodes than that fixed count, they stall short of it.
 
 **Min-cut placement as the downstream use.** In electronic physical design, the natural way to
 place a large netlist on a chip is top-down: recursively cut the cell set (and the chip area) into

@@ -4,7 +4,7 @@
 
 By the mid-1930s a whole class of phase transitions sits without any general theory. These are the transitions that proceed *without latent heat* — the body's state changes continuously through the transition point, yet at that point something abrupt happens to its response functions. The specific heat, for instance, jumps or spikes. The prototypes are the Curie point of a ferromagnet (magnetization appearing as the metal is cooled through a critical temperature), the order–disorder transition in alloys such as β-brass, the transition in ammonium chloride, ferroelectric transitions, the λ-transition in liquid helium discovered in 1932, and the symmetry changes between crystal modifications.
 
-The precise question: is there a *single* theory — independent of the microscopic details of magnets versus alloys versus crystals — that says what all these continuous transitions have in common, predicts how the relevant quantities behave as the transition is approached, and explains *why* a continuous transition must look the way it does (a continuously vanishing something, a jump in the specific heat) rather than being merely catalogued after the fact? A solution would have to identify the right variable to describe the transition, fix what controls its appearance, and yield the near-critical behaviour of measurable quantities from that structure alone.
+The precise question: is there a *single* theory — independent of the microscopic details of magnets versus alloys versus crystals — that says what all these continuous transitions have in common, predicts how the relevant quantities behave as the transition is approached, and explains *why* a continuous transition must look the way it does (a continuously vanishing something, a jump in the specific heat) rather than being merely catalogued after the fact?
 
 ## Background
 
@@ -18,7 +18,7 @@ The precise question: is there a *single* theory — independent of the microsco
 
 **The common thread nobody had drawn.** Weiss (magnets) and van der Waals (fluids) are both, in modern language, *mean-field* theories: each replaces the real fluctuating environment of a degree of freedom by an averaged effective field. Each independently produces a continuously appearing order and a power-law approach to the critical point — and, strikingly, the *same* powers (the density difference and the magnetization both vanish like (T_c − T)^{1/2}; both susceptibilities diverge like (T − T_c)^{−1}). That two unrelated systems share the same near-critical behaviour is a clue that the behaviour is not in the microscopic details. But no model-independent statement of this existed; each result was derived inside its own model.
 
-**The decisive observation about symmetry.** Liquid and gas share a symmetry, so their transition can be a continuous *crossover* with a skirtable critical point. A crystal, by contrast, either has a given element of symmetry or it does not — there is no intermediate amount of a symmetry. So a transition that *changes the symmetry* of a body (crystal-to-crystal, disordered-to-ordered) cannot be skirted: at the transition point the symmetry must change abruptly even though the state changes continuously. Symmetry groups are discrete, and that discreteness is the lever the whole theory will turn on.
+**A fact about symmetry.** Liquid and gas share a symmetry, so their transition can be a continuous *crossover* with a skirtable critical point. A crystal, by contrast, either has a given element of symmetry or it does not — there is no intermediate amount of a symmetry. Symmetry groups are discrete: a body possesses a given reflection, rotation, or translation, or it does not, with nothing in between.
 
 ## Baselines
 
@@ -44,13 +44,12 @@ The yardsticks are thermodynamic: the temperature dependence of the order quanti
 
 ## Code framework
 
-To keep the thermodynamic scaffold concrete, the symbolic slot below starts with ordinary calculus and the relations between a free energy and its derivatives. What remains blank is the *form of the free energy as a function of the ordering variable* — that form is the entire content to be discovered.
+To keep the thermodynamic scaffold concrete, the symbolic slot below starts with ordinary calculus and the standard relations between a free energy and its derivatives. What remains blank is the theory itself.
 
 ```python
 import sympy as sp
 
 T, Tc = sp.symbols('T T_c', positive=True)
-eta, h = sp.symbols('eta h', real=True)     # ordering variable; conjugate field
 
 # --- Thermodynamic primitives that already exist ---
 def entropy(Phi):           # S = -dPhi/dT
@@ -59,26 +58,12 @@ def entropy(Phi):           # S = -dPhi/dT
 def specific_heat(Phi):     # C = -T d^2 Phi / dT^2
     return -T * sp.diff(Phi, T, 2)
 
-def susceptibility(eta_eq): # chi = d(eta_eq)/dh at h->0
-    return sp.diff(eta_eq, h)
-
 # --- The slot the theory must fill ---
-def free_energy(eta, T, h):
-    """The thermodynamic potential as a function of the ordering variable.
-    Its functional form near the transition is exactly what is unknown.
-    # TODO: what variable plays the role of `eta`, and what terms in it are allowed?
-    """
-    raise NotImplementedError
-
-def equilibrium_order_parameter(T, h):
-    """Minimise free_energy over eta -> eta_eq(T, h).
-    # TODO: solve dPhi/deta = 0 and select the stable branch.
-    """
-    raise NotImplementedError
-
-def transition_temperature():
-    """The locus in (p,T) where the ordered phase first appears.
-    # TODO: what condition on the free-energy coefficients marks it?
+def theory():
+    """A model-independent account of a continuous transition near T_c:
+    what governs the transition, and how the measurable quantities behave
+    as the critical temperature is approached.
+    # TODO: fill in.
     """
     raise NotImplementedError
 ```

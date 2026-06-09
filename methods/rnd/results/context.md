@@ -103,18 +103,16 @@ underlying RAM state.
 # Code framework
 
 A PPO agent exists: a convolutional policy/value network, GAE advantage estimation, and the
-clipped-surrogate update over minibatches of rollout experience. The open slots are *the intrinsic
-reward* (what extra signal is added when the environment reward is sparse, and what computes it),
-*how many value heads/returns* the agent fits, and *what normalization* the inputs and rewards
-receive.
+clipped-surrogate update over minibatches of rollout experience. The open slot is *the intrinsic
+reward* — what extra signal is added when the environment reward is sparse, what computes it, and
+how it is folded into the policy optimizer.
 
 ```python
 import torch
 import torch.nn as nn
 
 class PolicyValueNet(nn.Module):
-    """Conv encoder (frozen design) + policy head + value head(s).
-    How many value heads, and over which return streams, is an open slot."""
+    """Conv encoder (frozen design) + policy head + value head."""
     def __init__(self, n_actions):
         super().__init__()
         self.encoder = nn.Sequential(
@@ -124,7 +122,7 @@ class PolicyValueNet(nn.Module):
             nn.Linear(3136, 512), nn.ReLU(),
         )
         self.pi = nn.Linear(512, n_actions)
-        self.value = None  # TODO: value head(s)
+        self.value = None  # TODO: value head
 
     def forward(self, x):
         raise NotImplementedError  # TODO
@@ -143,7 +141,7 @@ class IntrinsicBonus(nn.Module):
         raise NotImplementedError  # TODO: how (if at all) it is trained
 
 def normalize_observation(x, stats):
-    raise NotImplementedError  # TODO: what normalization, for which networks
+    raise NotImplementedError  # TODO: input/reward normalization, if any
 
 def combine_rewards_and_advantages(ext, intr):
     raise NotImplementedError  # TODO: how the streams combine

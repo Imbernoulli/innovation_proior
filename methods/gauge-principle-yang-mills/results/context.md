@@ -24,7 +24,7 @@ so that the unwanted ∂_μα is absorbed and D_μψ transforms exactly like ψ.
 
 which is unchanged under the gauge transformation (the ∂_μ∂_ν α terms cancel by symmetry). A mass term m²A_μA^μ is forbidden — it is not gauge invariant — so the photon is massless. This is the template: a *local* symmetry forces the existence of a compensating field with a fixed form of coupling. The known instance is abelian, U(1): the phases e^{iα} commute, so the order in which one applies two of them does not matter.
 
-**Where the analogy is not obviously safe.** The phase group U(1) is abelian; the isotopic-spin group SU(2) is not — two finite isotopic rotations do not commute, S₁S₂ ≠ S₂S₁, and the generators obey [T^i, T^j] = i ε^{ijk} T^k. Whether Weyl's construction survives this non-commutativity is exactly the open question. The compensating field, if it exists, would now have to be matrix-valued (one component for each generator), and the inhomogeneous term in its transformation law would involve a derivative of S multiplied by S⁻¹, an object that need not commute with the field itself. It is not clear in advance that a field strength can be built that transforms cleanly.
+**Where the analogy is not obviously safe.** The phase group U(1) is abelian; the isotopic-spin group SU(2) is not — two finite isotopic rotations do not commute, S₁S₂ ≠ S₂S₁, and the generators obey [T^i, T^j] = i ε^{ijk} T^k. Whether Weyl's construction survives this non-commutativity is exactly the open question. The compensating field, if it exists, would now have to be matrix-valued (one component for each generator), and its transformation law would have to involve S(x) and its derivatives — objects that need not commute with the field itself. It is not clear in advance that the inhomogeneous term can be cancelled, nor that a field strength can be built that transforms cleanly.
 
 **Localized fields.** A further pressure points the same way: the prevailing picture of field theory is that all fields are *localized* — built point by point, with no action at a distance. A symmetry that is only definable globally, requiring a single rotation applied identically everywhere at once, sits uneasily with that picture. A genuinely local field theory ought to permit the symmetry transformation to be chosen locally too.
 
@@ -65,7 +65,7 @@ def covariant_derivative(d, gauge_field):
 
 def gauge_field_transformation(A, S):
     # TODO: how must the compensating field transform under a LOCAL, non-commuting S(x)
-    #       to cancel the inhomogeneous (d_mu S) term?  (homogeneous + inhomogeneous part)
+    #       to cancel the inhomogeneous (d_mu S) term?
     pass
 
 def field_strength(A):

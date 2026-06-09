@@ -72,11 +72,11 @@ a GNN over the coarsened graph. The diagnostic limitation: the clustering is fix
 learned, so it cannot adapt to the prediction task, and it is computed per-graph by a separate
 subroutine rather than as a reusable strategy that generalizes across graphs.
 
-**Low-rank factorization view.** Approximating an adjacency matrix A by S Sᵀ for a tall thin S is a
-low-rank / soft-clustering factorization, related to well-separated pair decomposition: S Sᵀ tries
-to reconstruct which nodes are connected, so a good S groups connected nodes together. This
-factorization is non-convex with many local minima, which is the central reason a fixed two-step
-"factorize then classify" pipeline can underperform something trained jointly with the task.
+**Low-rank factorization of adjacency.** Adjacency matrices admit low-rank / matrix-factorization
+approximations (related to spectral embedding and well-separated pair decomposition), a classical
+tool for compressing graph connectivity. Such factorizations are non-convex objectives with many
+local minima, and historically they are computed as a standalone preprocessing step decoupled from
+any downstream predictor.
 
 **Weisfeiler–Lehman and structural features.** Beyond raw node features, structural descriptors —
 node degree, local clustering coefficient — are cheap, permutation-respecting summaries of a node's
@@ -159,37 +159,28 @@ class GNN(nn.Module):
         # TODO: return final node embeddings Z (and possibly per-layer reps)
         pass
 
-def coarsen(A, Z, assignment):
-    """Take node embeddings + a node-grouping and emit a smaller (A', X') graph.
-    This is the operator we are missing. TODO."""
-    pass
-
 class GraphLevelModel(nn.Module):
-    """Backbone GNN(s) + the hierarchy/readout module + classifier."""
+    """Backbone GNN(s) + the readout that produces a graph-level vector + classifier."""
     def __init__(self, in_dim, hidden_dim, num_classes, max_nodes):
         super().__init__()
         self.classifier = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, num_classes),
         )
-        # TODO: the modules that build and consume the coarsened hierarchy
+        # TODO: the operator that turns per-node embeddings into a graph-level
+        #       representation while respecting hierarchy (the missing piece)
 
     def forward(self, A, X):
-        # repeatedly: embed nodes -> group them -> coarsen -> recurse,
-        # until a single graph vector remains; then classify.
+        # embed nodes with the GNN backbone, then reduce to a single graph
+        # vector and classify.
         # TODO
         graph_vec = None
         return self.classifier(graph_vec)
-
-def aux_losses(A, assignment):
-    """Extra training signal to shape the grouping. TODO."""
-    pass
 
 def train_step(model, batch, opt):
     A, X, y = batch
     logits = model(A, X)
     loss = F.cross_entropy(logits, y)
-    # loss = loss + (auxiliary terms once defined)
     opt.zero_grad(); loss.backward()
     nn.utils.clip_grad_norm_(model.parameters(), 2.0)
     opt.step()

@@ -19,8 +19,8 @@ need not exist when $f$ is nonconvex–nonconcave, and the global sequential sol
 candidate local notion borrowed from simultaneous games (local Nash) exists in the literature, but it has
 visible defects: it can fail to exist on trivially simple functions, it ignores the *order* of play that
 $\min\max$ explicitly imposes, and — most tellingly — it does not match the points that GDA actually
-converges to. A satisfactory answer would be a definition of local optimality that (i) respects the
-sequential, leader–follower structure of $\min\max$, (ii) is *genuinely local* (determinable from $f$ in an
+converges to. A satisfactory answer would be a definition of local optimality that (i) reflects the
+asymmetry between the two players that $\min\max$ imposes (unlike a symmetric notion), (ii) is *genuinely local* (determinable from $f$ in an
 infinitesimal neighborhood), (iii) comes with first- and second-order characterizations like local minima
 do, (iv) exists more often than local Nash, and (v) explains the asymptotic behavior of GDA.
 
@@ -46,18 +46,18 @@ players choose at once, with no order between them. A *Stackelberg* (sequential)
 leader commits to $\mathbf x$, the follower observes it and best-responds with
 $\mathrm{BR}(\mathbf x)=\arg\max_{\mathbf y} f(\mathbf x,\mathbf y)$, and the leader, anticipating this,
 minimizes the *worst-case* value $\phi(\mathbf x):=\max_{\mathbf y} f(\mathbf x,\mathbf y)$. The
-notation $\min_{\mathbf x}\max_{\mathbf y}$ literally encodes the Stackelberg order — $\mathbf x$ first,
-$\mathbf y$ second. The machine-learning applications are sequential in this sense: a GAN trains a generator
+machine-learning applications have this asymmetric flavor: a GAN trains a generator
 *against* a discriminator that gets to react to it; adversarial training seeks a classifier robust to a
 perturbation chosen *after* the classifier. When $\min\max\neq\max\min$, which player goes first changes the
-solution, and a simultaneous-game equilibrium concept cannot capture it.
+solution.
 
 **Existence is fragile.** Even for the smooth $f(x,y)=\sin(x+y)$ there is no Nash equilibrium, local or
 global: every stationary point has $\nabla^2_{xx}f=\nabla^2_{yy}f=\pm 1$ with the *same* sign, so it can
 never simultaneously be a local min in $x$ and a local max in $y$. By contrast the global sequential
 solution — the minimizer of $\phi(\mathbf x)=\max_{\mathbf y} f$ — always exists on a compact domain by the
-extreme-value theorem. The global sequential solution is therefore the well-posed object; what is missing
-is a *local* surrogate for it that is tractable to seek with gradient methods.
+extreme-value theorem, so at the global level existence is not fragile. But computing it is NP-hard
+(it contains nonconvex minimization), and gradient methods are inherently local; the gap is that no local
+optimality notion is in place to say what such methods are entitled to reach.
 
 **A subtle, load-bearing phenomenon: global $\ne$ local for minimax.** In ordinary nonconvex
 minimization a global minimum is automatically a local minimum, so local minima always exist and local
@@ -142,8 +142,8 @@ and the GDA-stable set, and existence guarantees — not held-out performance.
 ## Code framework
 
 The available computational harness is a payoff $f$ with autodiff for its gradients and Hessian blocks, the
-bare GDA loop, a generic fixed-point/stability check on a Jacobian, and open slots for a sequential local
-optimality test and dynamics that respect the leader-follower order.
+bare GDA loop, a generic fixed-point/stability check on a Jacobian, and an open slot for a candidate
+local-optimality test.
 
 ```python
 import numpy as np
@@ -172,18 +172,8 @@ def linearly_stable(jacobian):
     # stable iff spectral radius <= 1 (discrete) / all Re(eig) < 0 (flow)
     raise NotImplementedError
 
-# --- TODO: sequential local optimality slot ---------------------------------
+# --- TODO: local optimality slot --------------------------------------------
 def is_local_optimum(x, y):
     # TODO: check the local optimality notion for min_x max_y f.
-    pass
-
-# --- TODO: first/second-order certificate slot ------------------------------
-def second_order_test(x, y):
-    # TODO: Hessian-level condition for the local optimality notion.
-    pass
-
-# --- TODO: leader-follower dynamics slot ------------------------------------
-def order_aware_step(x, y, eta, ratio):
-    # TODO: relate the two players' update speeds to the local optimality test.
     pass
 ```

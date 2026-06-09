@@ -32,7 +32,7 @@ A diagnostic fact about free eigenbasis filters anchors the whole discussion: be
 
 **GraphSAGE (Hamilton et al., 2017).** The key inductive baseline. Instead of learning a fixed embedding per node, it learns *aggregator functions*: `h_v^{(k)} = σ( W · CONCAT( h_v^{(k-1)}, AGG_k({ h_u^{(k-1)} : u ∈ S(v) }) ) )`, where `S(v)` is a fixed-size sample of `v`'s neighbors. Because the aggregators are shared functions of features, the model generalizes to unseen nodes and graphs. Aggregators include mean, max-pooling, and an LSTM. *Gaps:* (1) the **fixed-size sampling** keeps the compute footprint constant but means the model never sees the *entire* neighborhood; (2) the mean/GCN-style aggregators treat all sampled neighbors **equally**, with no learned per-neighbor importance; (3) its strongest results used the **LSTM** aggregator, but a neighbor set has no natural order, so neighbors must be fed in random permutations — imposing a sequential structure that is not really there.
 
-**Bahdanau-style additive attention (Bahdanau et al., 2015).** Scores a query against each item with a single-layer feedforward network and normalizes with softmax; handles variable-sized inputs and yields interpretable weights. This is the kind of lightweight, set-friendly scoring a graph layer could borrow.
+**Bahdanau-style additive attention (Bahdanau et al., 2015).** Scores a query against each item with a single-layer feedforward network and normalizes with softmax; handles variable-sized inputs and yields interpretable weights.
 
 **Multi-head self-attention (Vaswani et al., 2017).** Self-attention as a complete building block, with several independent heads run in parallel and combined for stability and representational richness.
 

@@ -40,15 +40,16 @@ past the point where a fixed architecture can fully memorize a finite training s
 curve is, in some settings, followed by a *second descent* — validation loss falls again past the
 capacity needed to interpolate the training data (deep double descent and its precursors). This is
 mostly studied as a function of model size or capacity, and it is accompanied by a non-monotonic
-accuracy peak. A testbed that exposed a *training-time* second descent, far past first interpolation
-and *without* an accuracy peak, would be a distinct and cleaner phenomenon worth isolating.
+accuracy peak. What this prior work does not isolate is what happens to the loss curves along the
+*training-time* axis alone, far past the point where the training set is first interpolated, on a
+small exactly-structured dataset.
 
 **Regularization and flat minima.** Weight decay (an ℓ2 penalty pulling weights toward the origin),
 gradient/weight noise, and dropout are the standard regularizers. A recurring theory of why noise and
 small-norm solutions help is that they bias optimization toward *flat* minima — minima where the loss
 is insensitive to parameter perturbations — and flatness-based measures have been found among the most
 predictive of generalization (Jiang et al. 2019; Hochreiter & Schmidhuber 1997 on flat minima). These
-are the levers and the lens one would bring to a generalization testbed.
+are among the standard tools and measures available when studying generalization.
 
 **The structure of the tasks.** For modular arithmetic with a prime p, every nonzero residue is a
 power of a primitive root, so addition modulo p−1 and multiplication modulo p are the same group up to
@@ -84,7 +85,7 @@ uses of algorithmic data and the prior generalization phenomena:
 ## Evaluation settings
 
 The natural testbed is supervised prediction of the missing entries of a binary operation table,
-trained to completion (very long optimization budgets) on a controlled fraction of the table:
+trained on a controlled fraction of the table:
 
 - **Tasks (binary operations a∘b=c).** Modular arithmetic with prime p = 97: x+y, x−y, x/y, x²+y²,
   x²+xy+y², x²+xy+y²+x, x³+xy, x³+xy²+y (mod 97); a mixed operation (x/y mod p if y is odd else x−y);
@@ -106,8 +107,8 @@ trained to completion (very long optimization budgets) on a controlled fraction 
 The primitives that exist: a standard decoder-only transformer, AdamW with learning-rate warmup,
 cross-entropy loss, and a training loop that logs train/validation accuracy over steps. What is
 missing is the *task construction* — how to turn an algebraic operation into a learnable,
-generalization-probing dataset — and the *training regime* (which regularizers, how long) under which
-the interesting behavior appears. The scaffold leaves those as empty slots.
+generalization-probing dataset — and the *training regime* under which to run it. The scaffold leaves
+those as empty slots.
 
 ```python
 import torch
@@ -137,7 +138,7 @@ def loss_and_acc(logits, targets):
 
 def train(model, train_data, val_data, optimizer, num_steps):
     """Train for num_steps; log train/val accuracy over steps.
-    The optimizer/regularization choice and HOW LONG to train are part of what we must determine."""
+    The optimizer settings and budget are part of what we must determine. TODO."""
     for step in range(num_steps):
         # forward on a minibatch, loss on answer token, backward, step
         # periodically record train_acc, val_acc

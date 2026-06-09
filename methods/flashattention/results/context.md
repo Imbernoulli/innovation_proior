@@ -58,10 +58,9 @@ statistics and combines all block outputs at the end, and it uses generic gradie
 of standard attention or slightly slower.
 
 **IO complexity / external-memory model.** Aggarwal and Vitter (1988) formalized analyzing
-algorithms by the number of transfers between a small fast memory and a large slow memory. This is
-the natural lens for a memory-bound operation: count HBM accesses, not FLOPs. Lower bounds over a
-subrange of the fast-memory size are standard in the streaming-algorithms literature (e.g. Woodruff
-2004).
+algorithms by the number of transfers between a small fast memory and a large slow memory. Lower
+bounds over a subrange of the fast-memory size are standard in the streaming-algorithms literature
+(e.g. Woodruff 2004).
 
 **Gradient checkpointing.** Griewank and Walther (2008) and Chen et al. (2016) reduce training
 memory by not storing some activations and recomputing them during the backward pass — trading
@@ -95,9 +94,9 @@ computed, trading model quality for speed, and have not been widely adopted.
 
 **Linear-extra-memory attention (Rabe & Staats 2021).** Uses online softmax to compute exact
 attention with only linear extra memory and gradient checkpointing for the backward. Gap: it
-optimizes the memory footprint, not the number of memory accesses; it keeps one temporary output
-per block and combines at the end; its backward recomputes generically. As a result it does not
-deliver wall-clock speedup over standard attention.
+targets the peak memory footprint; it keeps one temporary output per block and combines at the end;
+its backward recomputes generically. Empirically it does not deliver wall-clock speedup over
+standard attention — it runs at roughly the same speed or slightly slower.
 
 ## Evaluation settings
 
