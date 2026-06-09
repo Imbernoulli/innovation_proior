@@ -117,11 +117,11 @@ $\mathcal A+\mathcal B$ for the maximal monotone operators
 $\mathcal A=\partial(f^\*\circ(-M^\top))$ and $\mathcal B=\partial g^\*$. The proximal point algorithm
 on $\mathcal A+\mathcal B$ needs $J_{c(\mathcal A+\mathcal B)}$, which is as hard as the original
 problem; Douglas–Rachford splitting uses only $J_{\lambda\mathcal A},J_{\lambda\mathcal B}$ and
-converges by firm nonexpansiveness. *Gap (what is open):* these are
-operator-theoretic existence/convergence statements; what is missing is an explicit, implementable
-two-block primal algorithm whose convergence under the weak (closed/proper/convex + saddle point)
-assumptions is proved directly — with a concrete Lyapunov certificate, residual-based stopping rule,
-and worst-case rate — rather than left implicit in the abstract operator machinery.
+converges by firm nonexpansiveness. *Gap:* these remain operator-theoretic
+existence/convergence statements stated in the abstract resolvent variables; they do not, on their own,
+read out as a directly verifiable iteration in the primal $(x,z,y)$ variables under the weak
+(closed/proper/convex + saddle point) assumptions, and the firm-nonexpansiveness argument lives entirely
+in the operator machinery rather than in quantities one watches while running.
 
 ## Evaluation settings
 
@@ -145,9 +145,9 @@ ambient dimensions $\sqrt p,\sqrt n$ of the $\ell_2$ norms.
 ## Code framework
 
 A generic scaffold for a two-block convex split with a single linear coupling constraint. What exists
-already: closed-form/iterative block minimizers (a quadratic solve via a cached factorization,
-soft-thresholding for $\ell_1$, a projection for an indicator), a Lagrange-multiplier vector, and an
-outer loop that alternates "improve the primal, update the price."
+already: closed-form/iterative minimizers for the individual pieces (a quadratic solve via a cached
+factorization, soft-thresholding for $\ell_1$, a projection for an indicator), a Lagrange-multiplier
+vector, and an outer loop that alternates "improve the primal, update the price."
 
 ```python
 import numpy as np
@@ -155,15 +155,11 @@ import numpy as np
 # --- problem data: minimize f(x) + g(z)  s.t.  A x + B z = c ----------------
 # f, g closed proper convex (possibly +inf-valued); A, B, c given.
 
-def argmin_f_block(A, B, c, z, y, rho):
-    """x-block update: minimize f plus the coupling/penalty terms, z and y fixed.
-    For a quadratic f this is a linear solve (cache a factorization)."""
-    raise NotImplementedError  # TODO: fill the x-subproblem
-
-def argmin_g_block(A, B, c, x, y, rho):
-    """z-block update: minimize g plus the coupling/penalty terms, x and y fixed.
-    For an l1 term this is soft-thresholding; for an indicator, a projection."""
-    raise NotImplementedError  # TODO: fill the z-subproblem
+def primal_update(A, B, c, x, z, y, rho):
+    """primal step: improve (x, z) against the augmented Lagrangian, y fixed.
+    The individual pieces have cheap minimizers (a quadratic solve via a cached
+    factorization, soft-thresholding for an l1 term, a projection for an indicator)."""
+    raise NotImplementedError  # TODO: fill the primal step
 
 def dual_update(y, A, B, c, x, z, rho):
     """price / multiplier update from the constraint residual."""
@@ -181,9 +177,8 @@ def solve(A, B, c, rho, x0, z0, y0, eps_abs=1e-4, eps_rel=1e-3, max_iter=1000):
     x, z, y = x0, z0, y0
     for k in range(max_iter):
         z_prev = z
-        x = argmin_f_block(A, B, c, z, y, rho)      # block 1
-        z = argmin_g_block(A, B, c, x, y, rho)      # block 2
-        y = dual_update(y, A, B, c, x, z, rho)      # price
+        x, z = primal_update(A, B, c, x, z, y, rho)  # primal
+        y = dual_update(y, A, B, c, x, z, rho)       # price
         r, s = residuals(A, B, c, x, z, z_prev, rho)
         if stopping(r, s, A, B, c, x, z, y, eps_abs, eps_rel):
             break

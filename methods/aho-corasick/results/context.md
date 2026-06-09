@@ -81,18 +81,15 @@ method whose cost prompted the search for something better.
 
 **Single-pattern KMP (Knuth–Morris–Pratt).** O(m+n) for one keyword via the
 failure table; the text pointer never backs up. The gap: it matches one pattern.
-Run k times it regains the k·n factor. But its failure-function idea — keep the
-longest still-viable matched prefix on a mismatch — is the seed that a
-multi-pattern method must generalize from a line (the single pattern) to a tree
-(all patterns at once).
+Run k times it regains the k·n factor.
 
 **Trie / prefix-tree search.** Walking the text through a trie of the keywords
 matches all keywords that *start* at a given text position simultaneously, in
 time proportional to the depth reached. The gap: it only finds keywords anchored
 at the current start; when the walk falls off the trie (no edge for the next
-symbol), it has no notion of how far to back off to continue matching keywords
-that started later. It lacks the failure mechanism, so naively one restarts the
-walk at every text position — again a per-position re-scan.
+symbol), it has no rule for how far to back off to continue matching keywords
+that started later, so naively one restarts the walk at every text position —
+again a per-position re-scan.
 
 **NFA-for-regex then determinize.** Build an automaton for `Σ*(y1|…|yk)` and run
 it: one transition per symbol, O(n) search. The gap: the determinized automaton
@@ -134,10 +131,7 @@ class MultiKeywordMatcher:
         # goto graph: list of dicts, transitions[state][symbol] -> state.
         self.goto = [{}]          # state 0 is the root
         self.output = [[]]        # keywords ending exactly at a state
-        # TODO: auxiliary state for recovering from a missing trie edge without
-        #       re-reading text.
-        # TODO: auxiliary state for reporting keyword suffixes that also end at
-        #       the current text position.
+        # TODO: any auxiliary per-state bookkeeping the method needs.
 
     def add_keyword(self, word):
         # Insert word as a root-to-node path in the goto graph (trie insert),
@@ -154,14 +148,12 @@ class MultiKeywordMatcher:
         self.output[state].append(word)
 
     def build(self):
-        # TODO: compute the per-state continuation and reporting information
-        #       from the goto graph. Process states in an order that makes this
-        #       well-defined.
+        # TODO: preprocess the goto graph into whatever the search loop needs.
         pass
 
     def search(self, text):
-        # TODO: drive the machine over the text one symbol at a time, using the
-        #       continuation links on a mismatch, emitting (position, keyword)
-        #       for every match. Exactly one symbol consumed per step.
+        # TODO: drive the machine over the text one symbol at a time, emitting
+        #       (position, keyword) for every match. Exactly one symbol consumed
+        #       per step.
         pass
 ```

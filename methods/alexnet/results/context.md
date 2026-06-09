@@ -25,17 +25,17 @@ The diagnostic observation that motivates a non-saturating neuron: on a four-lay
 
 ## Baselines
 
-**Saturating-nonlinearity CNNs.** The conventional CNN uses `tanh` or sigmoid units. These train slowly because of saturation; on large nets and large data the slowdown is prohibitive. This is the direct foil for the choice of neuron.
+**Saturating-nonlinearity CNNs.** The conventional CNN uses `tanh` or sigmoid units. These train slowly because of saturation; on large nets and large data the slowdown is prohibitive.
 
 **Jarrett et al. 2009 — `|tanh|` with local contrast normalization (ICCV).** A multi-stage architecture using the nonlinearity `f(x)=|tanh(x)|` followed by local contrast normalization and local average pooling, which works particularly well on Caltech-101. *Gap:* their primary concern is preventing overfitting on a small dataset, so the effect they observe is about regularization, not about the accelerated *fitting* of training error that matters when training a large model on a large dataset. It does, however, establish that a local normalization stage in the convolutional pipeline can help.
 
-**Cireşan et al. 2011/2012 — high-performance / multi-column GPU CNNs.** GPU-trained CNNs, including a "columnar" architecture that runs several CNN columns and combines them. *Gap / reusable piece:* shows GPU CNNs are practical and that running multiple columns helps; the columns there are independent, whereas a single net could instead be *split across two GPUs* with the columns deliberately *not* independent, communicating in chosen layers, to fit a bigger net in limited memory.
+**Cireşan et al. 2011/2012 — high-performance / multi-column GPU CNNs.** GPU-trained CNNs, including a "columnar" architecture that runs several CNN columns and combines them. *Gap:* shows GPU CNNs are practical and that running multiple columns helps, but the columns there are independent models; each column must still fit within a single GPU's memory, so this does not by itself relax the per-GPU memory ceiling on how large one net can be.
 
 **Hand-engineered features + shallow classifiers (the ILSVRC state of the art).** The leading large-scale recognition pipelines encode images with engineered descriptors and classify with shallow models: sparse-coding pipelines averaging predictions over features (ILSVRC-2010 winner), and Fisher-Vector encodings of densely sampled features with linear classifiers (Sánchez & Perronnin 2011). *Gap:* these features are fixed and engineered rather than learned end-to-end from the data, so they cannot exploit the full 1.2M-image signal the way a trained deep model can; they are the yardstick a learned CNN would have to beat.
 
-**Dropout (Hinton et al. 2012).** A then-new regularization technique: during training, zero each hidden unit's output with probability 0.5; dropped units contribute to neither the forward pass nor backprop, so each presented example trains a different sub-network that shares weights with all the others. *Role:* a candidate cure for the overfitting of the large fully-connected layers, far cheaper than training and combining many separate models.
+**Dropout (Hinton et al. 2012).** A then-new regularization technique: during training, zero each hidden unit's output with probability 0.5; dropped units contribute to neither the forward pass nor backprop, so each presented example trains a different sub-network that shares weights with all the others. It is far cheaper than training and combining many separate models.
 
-**ReLU (Nair & Hinton 2010).** The rectified linear unit `f(x)=max(0,x)`, introduced to improve restricted Boltzmann machines. *Role:* the non-saturating neuron whose fast-fitting behavior is the key to training a large net in tolerable time.
+**ReLU (Nair & Hinton 2010).** The rectified linear unit `f(x)=max(0,x)`, introduced to improve restricted Boltzmann machines. Unlike `tanh`/sigmoid it does not saturate on the positive side, though it was introduced in a context unconcerned with large-net training time.
 
 ## Evaluation settings
 

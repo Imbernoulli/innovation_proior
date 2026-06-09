@@ -43,9 +43,7 @@ learner many times on independent samples and take a majority vote of the result
 — does not work. Drawn from the *same* distribution D, the weak hypotheses all tend to make
 their mistakes on the *same* hard region of the space; voting over correlated errors does not
 escape them. Kearns gave a convincing argument that naive repeated-and-vote cannot boost
-accuracy. So whatever works must somehow *change* what the weak learner sees on each call —
-force it onto the parts of the space the previous hypotheses got wrong — so the new mistakes are
-decorrelated from the old ones.
+accuracy.
 
 **It is well documented that mediocre learners are easy and accurate ones are hard.** Across
 practical learning — decision rules, simple thresholds, shallow trees — it is routine to find a
@@ -64,10 +62,9 @@ algorithm maintains a weight over a set of "experts," predicts by their weighted
 each outcome multiplies the weight of each erring expert by a fixed factor β ∈ [0,1). One proves
 that the learner's cumulative loss stays within a bounded factor of the best expert's loss, with a
 regret that grows like √(T ln N) over T trials — sub-linear, so the per-trial gap vanishes. The
-machinery is a multiplicative weight update plus an exponential potential argument. This is a
-worst-case, distribution-free guarantee about combining many weak predictors by a weighted vote
-under adaptively chosen losses — structurally the same shape of problem as combining weak
-hypotheses, though it had not been connected to boosting.
+machinery is a multiplicative weight update plus an exponential potential argument. The guarantee
+is worst-case and distribution-free, and holds under adaptively chosen losses; β is fixed ahead of
+time, and the weighted objects are the experts.
 
 ## Baselines
 
@@ -104,8 +101,7 @@ setting).** As above: maintain multiplicative weights over N strategies, predict
 vote, update by a fixed β. The guarantee bounds cumulative loss against the best single strategy.
 **What it leaves open:** it is posed as an *on-line* game against an adversary, with a *fixed* β set
 ahead of time, and is about tracking the best expert — not, on its face, about manufacturing a
-single accurate classifier out of weak ones. The connection to boosting (and the idea of letting
-β float with the observed performance) is not present.
+single accurate classifier out of weak ones. It is not connected to boosting.
 
 ## Evaluation settings
 
@@ -156,8 +152,7 @@ def boost(X, y, T, weak_learner_factory):
         eps = weighted_error(h, X, y, w)
 
         alpha = None                       # TODO: how much to trust h given eps
-        # TODO: reweight the examples for the next round, then renormalize w
-        #       (up-weight the ones h got wrong, down-weight the ones it got right)
+        # TODO: update the example weights for the next round, then renormalize w
 
         hypotheses.append(h); coeffs.append(alpha)
     return hypotheses, coeffs

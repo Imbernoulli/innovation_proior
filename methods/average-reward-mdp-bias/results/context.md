@@ -73,16 +73,15 @@ cyclic/continuing tasks: it "encourages short-term gains over long-term benefits
 time-average reward (a single number `d · r_π` under the stationary distribution `d`) dominates;
 the finite reward accumulated over the transient prefix is divided by `N → ∞` and vanishes. So
 the gain of a unichain policy is a scalar `g`, not a function of `s`. A scalar, by itself, cannot
-say *which states are better to be in* — it carries no ranking information across states. That
-gap is exactly what a second object will have to fill.
+say *which states are better to be in* — it carries no ranking information across states, even
+though a greedy improvement step needs precisely that cross-state comparison.
 
 **The Laurent picture of the discount limit.** The discounted value, viewed as a function of
 `γ` near `1`, is singular: `(I − γ P_π)^{-1}` has a pole at `γ = 1` because `I − P_π` is
 singular (`P_π 1 = 1` makes `1` an eigenvalue, so `I − P_π` annihilates the constant vector).
 The resolvent of a stochastic matrix is known to admit a **Laurent expansion** about `γ = 1`:
-a `1/(1−γ)` pole term, a constant term, and higher vanishing terms. This is the analytic bridge
-between the discounted world (which works) and the average-reward world (the goal): whatever the
-average-reward objects are, they should be the *coefficients* of this expansion.
+a `1/(1−γ)` pole term, a constant term, and higher vanishing terms. This is an analytic object
+linking the discounted world (which works) to the singular `γ = 1` limit (the goal).
 
 ## Baselines
 
@@ -117,11 +116,10 @@ leaves:** gives the scalar `g` only — no per-state value, no improvement direc
 to break ties between policies of equal `g`.
 
 **Schwartz-style average-adjusted ("R-learning") value (Schwartz, 1993).** Core idea: replace
-the discounted return with the average-adjusted return `Σ_t (r_t − g)`, learning a relative value
+the discounted return with the average-adjusted return `Σ_t (r_t − g)`, learning value estimates
 and `g` separately. **Gap it leaves (as a baseline for the characterization being sought):** it is
-a *learning* heuristic; it presumes, rather than derives, that the right object is a relative value
-offset by `g`, and it does not by itself pin down the finer optimality ordering among gain-equal
-policies.
+a *learning* heuristic posed without a worked-out optimality theory; it does not by itself derive
+or justify its construction, nor pin down a finer ordering among gain-equal policies.
 
 ## Evaluation settings
 
@@ -139,9 +137,7 @@ values while ignoring any common additive drift.
 ## Code framework
 
 The scaffold starts from a finite-MDP container, the stationary-distribution solve, and the
-discounted backups and loops. It leaves empty the two slots a continuing-task solution has to
-fill — the *evaluation* of a policy by something richer than a single discounted value, and the
-*backup map* used to iterate toward the optimum.
+discounted backups and loops. It leaves empty the solver a continuing-task criterion has to fill.
 
 ```python
 import numpy as np
@@ -169,26 +165,10 @@ def discounted_backup(mdp, V, gamma):
     Q = np.stack([mdp.R[a] + gamma * mdp.P[a] @ V for a in range(mdp.m)], axis=0)
     return Q.max(axis=0)
 
-# --- the slots the continuing-task criterion will fill ----------------------
-def evaluate_policy(mdp, pi):
-    """Evaluate a fixed policy for the continuing-task criterion.
-    Must return whatever object(s) actually characterize a never-ending task —
-    a single discounted value will not do here.
-    # TODO: this is the object the method has to discover.
-    """
-    pass
-
-def continuing_backup(mdp, V):
-    """One backup of the iteration map appropriate to a task with no horizon.
-    # TODO: the map the method will iterate, plus whatever normalization keeps
-    #       the iterates from drifting off to infinity.
-    """
-    pass
-
+# --- the slot the continuing-task criterion will fill -----------------------
 def solve(mdp):
-    """Driver: iterate evaluation + greedy improvement (policy iteration), or
-    iterate the backup map to a fixed point (value iteration).
-    # TODO: assemble from the two slots above once they are known.
+    """Compute a best stationary policy for the long-run-average objective.
+    # TODO: the criterion and the machinery to solve it go here.
     """
     pass
 ```

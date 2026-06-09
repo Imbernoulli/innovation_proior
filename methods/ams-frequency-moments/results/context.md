@@ -89,8 +89,7 @@ class StreamSummary:
     incremental update, and a final read-out."""
     def __init__(self, eps, delta, seed=0):
         self.rng = random.Random(seed)
-        # median-of-means dimensions: s1 averages cut variance, s2 medians
-        # cut failure probability. The constants depend on the estimator.
+        # combiner dimensions; the constants depend on the estimator.
         self.s1 = None  # TODO
         self.s2 = None  # TODO
         # TODO: allocate the per-copy state and its hashes

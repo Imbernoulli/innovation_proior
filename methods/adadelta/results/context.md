@@ -14,7 +14,7 @@ But AdaGrad has two diagnosable flaws, both stemming from accumulating squared g
 
 On the second-order-approximation side, **Becker & LeCun (1988)** use a diagonal approximation to the Hessian, Δx_t = −1/(|diag(H_t)| + μ)·g_t, where the absolute value keeps the step in the descent direction and μ conditions regions of small curvature; computing diag(H) costs an extra forward/backward pass (roughly doubling SGD's cost). **Schaul et al. (2012)** combine a diagonal Hessian with AdaGrad-like windowed gradient statistics, Δx_t = −(1/|diag(H_t)|)·(E[g_{t-w:t}]² / E[g²_{t-w:t}])·g_t, again requiring the diagonal Hessian (extra cost) plus a window-size heuristic.
 
-A useful unit-analysis observation applies to all these rules. A parameter update Δx ought to carry the *same units* as the parameter x. For SGD/momentum, units(Δx) ∝ units(g) = units(∂f/∂x) ∝ 1/units(x) (taking f unitless) — wrong. For AdaGrad (and any rule whose update is a ratio of gradient quantities), the update is *unitless* — also wrong. Ignoring the descent sign, second-order rules get the scale right: Δx ∝ H^{-1}g ∝ (∂f/∂x)/(∂²f/∂x²) ∝ units(x). Whatever fixes AdaGrad's two flaws should also, if it is to be principled, repair this unit mismatch.
+A useful unit-analysis observation applies to all these rules. A parameter update Δx ought to carry the *same units* as the parameter x. For SGD/momentum, units(Δx) ∝ units(g) = units(∂f/∂x) ∝ 1/units(x) (taking f unitless) — wrong. For AdaGrad (and any rule whose update is a ratio of gradient quantities), the update is *unitless* — also wrong. Ignoring the descent sign, second-order rules get the scale right: Δx ∝ H^{-1}g ∝ (∂f/∂x)/(∂²f/∂x²) ∝ units(x).
 
 ## Baselines
 
