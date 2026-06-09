@@ -68,7 +68,7 @@ Thus a gradient-descent step moves θ in the direction +(y − Q(s,a;θ))∇_θ 
 
 **TD-Gammon (Tesauro 1995).** MLP value function trained on-policy by TD from self-play; the proof that a neural net *can* be the value function. **Gap:** on-policy and online with every-sample updates (correlated data), and widely believed special to backgammon.
 
-**Experience replay (Lin 1993).** Stored past transitions are replayed to a small neural network, reusing experience and breaking some temporal correlation. **Gap:** demonstrated only from low-dimensional, hand-prepared state — not raw pixels — and not at the scale of a deep convolutional net.
+**Lin (1993).** An early study of reusing past transitions when training a small neural-network controller. **Gap:** demonstrated only from low-dimensional, hand-prepared state — not raw pixels — and not at the scale of a deep convolutional net.
 
 **Prior agents on the Atari testbed.** The Arcade Learning Environment (Bellemare et al. 2013) established Atari as a benchmark and ran Sarsa with linear value functions over hand-engineered feature sets. *Contingency* (Bellemare et al. 2012) added a learned representation of the screen regions the agent controls. Both inject substantial visual prior knowledge — background subtraction and treating each of the 128 palette colors as its own channel (close to a per-object-type binary map). *HyperNEAT* (Hausknecht et al. 2013) evolved a separate network per game and could exploit deterministic frame sequences. **Gap:** all rely on engineered visual features or per-game evolution; none learn features end-to-end from raw pixels with one shared method.
 
@@ -78,7 +78,7 @@ The natural yardstick is the Arcade Learning Environment (Bellemare et al. 2013)
 
 ## Code framework
 
-The available building blocks are an Atari emulator behind a gym-style environment, image transforms, a deep-learning library with convolutional layers and autodiff, SGD-style optimizers, and stored transitions in the spirit of Lin (1993). A minimal scaffold for a pixel-based value-control agent looks like this:
+The available building blocks are an Atari emulator behind a gym-style environment, image transforms, a deep-learning library with convolutional layers and autodiff, and SGD-style optimizers. A minimal scaffold for a pixel-based value-control agent looks like this:
 
 ```python
 import random
@@ -92,21 +92,6 @@ class ActionValueModel(nn.Module):
         # TODO: define the action-value architecture
         pass
     def forward(self, x):
-        # TODO
-        pass
-
-class ReplayMemory:
-    def __init__(self, capacity):
-        # TODO: hold transitions (state, action, reward, next_state, done)
-        pass
-    def add(self, s, a, r, s_next, done):
-        # TODO
-        pass
-    def sample(self, batch_size):
-        # TODO
-        pass
-
-    def __len__(self):
         # TODO
         pass
 
@@ -130,23 +115,7 @@ def select_action(net, state, epsilon, num_actions, device):
     # TODO
     pass
 
-def unpack_batch(batch, device):
-    # TODO
-    pass
-
-def compute_targets(net, rewards, next_states, dones, gamma):
-    # TODO
-    pass
-
-def values_for_taken_actions(net, states, actions):
-    # TODO
-    pass
-
-def optimize_step(net, optimizer, batch, gamma, device):
-    # TODO: compute the value-learning objective and update parameters
-    pass
-
 def train(env, num_actions=None, total_frames=None, device=None):
-    # TODO: connect environment interaction, memory, exploration, and optimization
+    # TODO: drive environment interaction and fit the action-value model
     pass
 ```

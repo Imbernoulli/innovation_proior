@@ -25,9 +25,9 @@ log p(x) = KL( q(z) || p(z|x) ) + L,    where  L = E_q[ log p(x,z) - log q(z) ].
 
 Because the KL divergence is non-negative, `L` is a lower bound on `log p(x)` — the evidence lower bound. The bound is tight precisely when `q(z) = p(z|x)`. Every classical method below is a different strategy for handling this decomposition, and each rests on an assumption that the nonlinear-likelihood / large-data regime violates. Maximizing `L` jointly in `q` and the model does two jobs at once: pushing `L` up by improving `q` shrinks the gap `KL(q‖p(z|x))` (so `q` becomes a better posterior approximation — inference), and pushing `L` up by improving the model raises a *guaranteed* underestimate of `log p(x)` (learning). There is no way for the true likelihood to be worse than the number being optimized.
 
-Two pieces of supporting theory matter, and the contrast between them is the conceptual hinge of the whole area — they are the two ways to differentiate an expectation whose measure depends on a parameter.
+One piece of supporting theory matters for what follows: how to differentiate an expectation whose measure itself depends on the parameter being differentiated.
 
-First, the **score-function (log-derivative) identity**: for a density `q_φ(z)` and an integrand with no explicit `φ`-dependence, because `∇_φ q_φ = q_φ ∇_φ log q_φ`,
+The **score-function (log-derivative) identity**: for a density `q_φ(z)` and an integrand with no explicit `φ`-dependence, because `∇_φ q_φ = q_φ ∇_φ log q_φ`,
 
 ```
 ∇_φ E_{q_φ}[f(z)] = E_{q_φ}[ f(z) ∇_φ log q_φ(z) ].
@@ -35,11 +35,9 @@ First, the **score-function (log-derivative) identity**: for a density `q_φ(z)`
 
 This gives an unbiased Monte-Carlo gradient of an expectation whose *measure* depends on `φ`, requiring only the ability to evaluate `f`, not differentiate it. If the integrand is itself `f_φ`, the full derivative has one more term: `∇_φ E_{q_φ}[f_φ] = E_{q_φ}[f_φ ∇_φ log q_φ + ∇_φ f_φ]`. For the ELBO integrand `f_φ(z)=log p_θ(x,z)-log q_φ(z|x)`, the extra term is `-E_q[∇_φ log q_φ]=0`, so the naive ELBO score estimator is still unbiased; its problem is variance, not bias.
 
-Second, the **change-of-variables / pushforward fact**: if `z = g_φ(ε)` is a differentiable transform of a *fixed* auxiliary noise `ε ~ p(ε)`, then `q_φ(z) ∏_i dz_i = p(ε) ∏_i dε_i` (probability conservation), so any expectation `E_{q_φ(z)}[f(z)] = E_{p(ε)}[f(g_φ(ε))]` — the *same* expectation written against a `φ`-independent measure. With the measure no longer carrying `φ`, the gradient can move inside the expectation and flow through `g_φ`.
+A second structural idea is **amortized inference**. Classical variational inference assigns *each* datapoint `x^(i)` its own free variational parameters (e.g. a mean and variance per point) and optimizes those local parameters to convergence before every global update. With `N` in the millions this is ruinous: the parameter count grows with `N`, the inner optimization (or sampling chain) per point dominates cost, and a never-before-seen test `x` requires its own fresh inner optimization. The alternative — visible in the recognition network of the Helmholtz machine and in predictive sparse decomposition — is to *predict* the local variational parameters with a single shared network `q_φ(z|x)` whose weights `φ` are tied across all datapoints. Inference then costs one forward pass and generalizes to new `x` for free, with a parameter count fixed in `N`.
 
-A third structural idea is **amortized inference**. Classical variational inference assigns *each* datapoint `x^(i)` its own free variational parameters (e.g. a mean and variance per point) and optimizes those local parameters to convergence before every global update. With `N` in the millions this is ruinous: the parameter count grows with `N`, the inner optimization (or sampling chain) per point dominates cost, and a never-before-seen test `x` requires its own fresh inner optimization. The alternative — visible in the recognition network of the Helmholtz machine and in predictive sparse decomposition — is to *predict* the local variational parameters with a single shared network `q_φ(z|x)` whose weights `φ` are tied across all datapoints. Inference then costs one forward pass and generalizes to new `x` for free, with a parameter count fixed in `N`.
-
-The prevailing wisdom around 2013 is that deep directed generative models with continuous latents and neural-network likelihoods are attractive but effectively untrainable: exact EM is impossible (no closed-form posterior), mean-field needs a conjugacy a network destroys, generic black-box variational gradients are too noisy, sampling-based EM is too slow per datapoint, and the one online competitor optimizes two objectives that do not jointly bound the likelihood. Meanwhile the practical substrate is mature: stochastic gradient descent with backpropagation through multilayer perceptrons is routine, GPUs make minibatch training cheap, and adaptive step-size methods (Adagrad; Duchi et al. 2010) are available. The missing piece is squarely a *gradient estimator*, not new hardware or a new network class.
+The prevailing wisdom around 2013 is that deep directed generative models with continuous latents and neural-network likelihoods are attractive but effectively untrainable: exact EM is impossible (no closed-form posterior), mean-field needs a conjugacy a network destroys, generic black-box variational gradients are too noisy, sampling-based EM is too slow per datapoint, and the one online competitor optimizes two objectives that do not jointly bound the likelihood. Meanwhile the practical substrate is mature: stochastic gradient descent with backpropagation through multilayer perceptrons is routine, GPUs make minibatch training cheap, and adaptive step-size methods (Adagrad; Duchi et al. 2010) are available — so the obstacle lies in the estimation of the objective and its gradients, not in hardware or in the available network classes.
 
 # Baselines
 
@@ -117,7 +115,7 @@ class InferenceModule(nn.Module):
         pass
 
 def draw_latent(batch_size, z_dim, x=None, inference_out=None):
-    # TODO: choose the latent sampling/proposal step and its gradient estimator
+    # TODO: produce the latent sample(s) used by the objective
     pass
 
 def objective(x, observation_model, inference_module=None):
