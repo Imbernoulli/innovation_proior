@@ -1,0 +1,190 @@
+Let me start from what I actually have and what I actually want. I have a pile of iid records over a set of discrete variables, and I want the DAG that generated them — the structure that says how the joint factors, who is a parent of whom. But the very first thing I have to be honest about is that observational data cannot give me a DAG. If two DAGs encode the same conditional independencies, they fit every dataset identically; the likelihood literally cannot separate them. Verma and Pearl pinned down exactly which DAGs are tangled together this way: two DAGs are equivalent if and only if they have the same skeleton and the same v-structures, those `X -> Y <- Z` colliders with non-adjacent tails. So the most I can ever recover is the equivalence class — the set of all DAGs sharing one skeleton-plus-v-structures fingerprint. Anything I claim beyond that is me inventing an orientation the data never justified. Fine. The target is the equivalence class.
+
+Now, how do I find the right class? There are really two traditions in front of me and I distrust both for different reasons. One runs a battery of conditional-independence tests and assembles whatever graph is consistent with the verdicts. The trouble is that each test is a hard yes/no on a single hypothesis, and the errors don't politely cancel — one wrong independence call early deletes or keeps an edge and that mistake cascades through all the orientation rules downstream. On discrete data this is worst exactly where I care most: large conditioning sets, thin cell counts, a chi-squared statistic I can't trust, in the bigger denser networks. And there's no global objective; the output is merely "didn't contradict the tests," not "best explains the data." The other tradition picks a score `S(G, D)` — say the Bayesian posterior of the structure — and searches for a high-scoring DAG, usually by hill-climbing: from the current DAG, try every single-edge add, delete, reverse that keeps it acyclic, take the best improving move, repeat to a local max. I like that there's an objective. I distrust that there's no guarantee the local max is the *right* structure even with infinite data, and I distrust that it's grinding through DAG space, which is bloated with redundancy — a huge fraction of its moves are covered-edge reversals that change the DAG but not the equivalence class, so it wanders among indistinguishable pictures of the same model and stalls on plateaus.
+
+So here's the tension I want to resolve, and I want to state it sharply because it's the whole game. I want a search that is *local and greedy* — because the structure space is astronomically large (super-exponential; choosing the optimal structure under a Bayesian score is NP-hard, so I'm not enumerating anything) — and yet carries a *global* guarantee that in the large-sample limit it lands on the true equivalence class. Local moves with a global certificate. Those usually fight each other. Let me see what tools could make them coexist.
+
+Let me get precise about the score, because the guarantee, if it exists, has to come from properties of the score. The Bayesian score is the relative log posterior of the hypothesis that `G`'s independencies are exactly the generative distribution's: `S_B(G, D) = log p(G^h) + log p(D | G^h)`, the prior plus the marginal likelihood that integrates the data likelihood over the unknown parameters. For multinomial and Gaussian families these are curved exponential models, and Haughton's result says that for such models the score is, asymptotically via Laplace's method, the BIC: `S_B = log p(D | theta_hat, G^h) - (d/2) log m + O(1)`, with `d` the free-parameter count and `m` the sample size. The leading term grows like `m`; the prior and the `O(1)` error don't. So in the limit the marginal likelihood dominates and the score has two clean properties. Consistency: it strictly prefers a structure that *can* represent the true `p` over one that can't, and among those that can, it strictly prefers fewer parameters. That second clause is the score's built-in Occam razor, and it's going to matter enormously — it means the score actively wants to delete any edge it doesn't need.
+
+But consistency as stated is a global, whole-graph property, and I want something I can use on a *single edge change*, because that's all a local search ever does. So localize it. The score is decomposable — it's a sum of per-node family terms `S(G, D) = sum_i s(X_i, Pa_i)`, each depending only on a node and its parents — which means adding the edge `X_i -> X_j` changes the score by exactly one family term, the one for `X_j`, regardless of what the rest of the graph looks like. Pair that with consistency and I get something sharper. Take any DAG and add `X_i -> X_j`. By decomposability, the score change is the same as it would be in *any* other DAG where `X_j` has the same parents. So I'm free to choose the most convenient such DAG: one where adding this edge completes a fully connected graph on those nodes. A complete DAG imposes no independence constraints at all, so it trivially contains `p`; and now consistency takes over. If `X_j` is actually dependent on `X_i` given its current parents `Pa_j`, then leaving the edge out wrongly asserts an independence that doesn't hold in `p`, so the with-edge structure scores higher — adding it *raises* the score. If `X_j` is independent of `X_i` given `Pa_j`, the edge buys no fit but costs parameters, so by the fewer-parameters clause it *lowers* the score. That's exactly the lever I need: a *locally consistent* score, where in the limit adding an edge raises the score iff it removes a false independence, and removing an edge raises it iff the independence is real. The score itself tells me, edge by edge, which way to move. That's promising — it means a greedy step is, in the limit, always making the locally correct decision.
+
+Locally correct, though, is not globally optimal — that's the classic hill-climbing trap, where every local step looks right and you still end up in the wrong valley. I need to understand the *geometry* of the class space well enough to prove that local correctness chains up into a global certificate. So let me look hard at how equivalence classes connect to each other.
+
+The transformation fact I can already trust is the one inside a class. An edge `X -> Y` is *covered* when `X` and `Y` have identical parents except for `X` itself, `Pa_Y = Pa_X ∪ {X}`. Reversing a covered edge gives an equivalent DAG; reversing a non-covered one does not. And any two equivalent DAGs are connected by a sequence of covered-edge reversals. So *within* a class I can roam freely by covered reversals, and to change *class* I must touch the skeleton or a v-structure. That tells me the redundancy in DAG-space hill-climbing precisely: it's the covered reversals. If I could search class-space directly, those moves would vanish.
+
+Now I need the analogous statement *between* classes, and this is the crux. The within-class characterization is "covered reversals." What's the between-class one? Let me set up the right comparison. Say `H` is an independence map of `G`, written `G <= H`, meaning every independence `H` asserts also holds in `G` — equivalently `H` makes *fewer* independence claims, so `H` has *more* edges, it's the denser/more-connected model. The question I really care about: if `G` is the sparse truth and `H` is some denser model that still contains the true distribution, can I transform `G` into `H` by *local* moves, in a way that keeps `H` an independence map of `G` at every step? Because if I can — if denser-but-still-valid models are always reachable from sparser ones by single local steps — then a greedy add-phase can climb from empty up to a model containing `p`, and a greedy delete-phase can climb back down to the true sparse class, each step locally justified by local consistency, and the chain of local moves *is* the global certificate.
+
+The natural conjecture, mirroring the within-class result, is: `G <= H` if and only if I can get from `G` to `H` by a sequence of covered-edge reversals plus single edge additions. This is Meek's conjecture, and as far as I know nobody has proven it in general — only the one-edge-difference case. Let me try to prove it, because everything hinges on it. I want a constructive procedure: given `G <= H` with `G != H`, find *one* edge to add or covered-edge to reverse in `G` such that afterwards `H` is still an independence map of `G` and `G` is strictly "closer" to `H` (fewer adjacency differences, or the same adjacencies with fewer orientation differences). If I can always find such a step, then repeating it converts `G` into `H` in finitely many moves, and Meek's conjecture follows. Let me count the budget I'd expect: if `m` edges of `H` are absent from `G` and `r` edges appear reversed, each absent edge might cost an addition plus a fix-up reversal and each reversed edge a reversal, so something like `r + 2m` moves — I'll aim for that bound.
+
+How do I find the one good edge? I work from the *sinks*. First strip away the easy agreement: while `G` and `H` share a node `Y` that is a sink in both and has identical parents in both, remove it from consideration — it's already settled. Now take any sink `Y` of `H`. Two cases. If `Y` is also childless in `G`, then since `H` has an edge into `Y` that `G` lacks (or they'd have been stripped), I just *add* one such parent edge `X -> Y` to `G`. Adding an edge into a sink can't create a cycle, and I can check it keeps `H` an independence map. That's the easy case. The hard case is when `Y` has children in `G` but is a sink in `H` — so some edge `Y -> Z` in `G` runs the wrong way relative to `H`, and I want to reverse it. If `Y -> Z` happens to be covered, reverse it and I'm done — a covered reversal stays in-class and gets me closer. But if it's *not* covered, reversing it would change the equivalence class and might break the independence-map property; I can't just reverse it. By the definition of "not covered," `Y` and `Z` have differing parents: either `Y` has a parent `X` that `Z` lacks, in which case I add `X -> Z`, or `Z` has a parent `X` that `Y` lacks, in which case I add `X -> Y`. Either addition makes the edge "more covered" and provably keeps `H` an independence map — *provided I picked the right `Z`*.
+
+And here is where the proof nearly slips through my fingers, because *which* child `Z` I reverse-toward is not free. Naively I'd grab any maximal child of `Y`. Let me test that on a small adversarial configuration. Picture `Y` with two downstream children `C_1` and `C_2`, an upstream `X`, and the structure arranged so that adding `X -> C_1` versus `X -> C_2` are *not* symmetric: only one of them preserves a particular independence that `H` demands, say `X` independent of some node given a set. If I add the wrong one, I create an active path that exists in neither `G` nor `H`, so `H` stops being an independence map and the induction collapses. So I can't pick `Z` arbitrarily. I have to look at the whole descendant set `De_G(Y)`, find its unique maximal element with respect to ancestry in `H`, and call it `D`: no other node in `De_G(Y)` is an ancestor of `D` in `H`. Then I pick `Z` to be a maximal child of `Y` in `G` that has `D` as a descendant. Why this `D`? Let me trace the failure it prevents. Suppose the hard-case addition creates a new active path between endpoints `A` and `B` given a conditioning set `S`. The path must use the newly added edge, and when I follow the segment that starts with that edge and continues with the arrows, it ends either at an endpoint or at a member of `S`; call that endpoint-or-conditioned node `E`. This `E` is a descendant of `Y` in `G`. Because I chose `Z` so that `D` is reachable from it, and because neither `Y` nor the descendants of `Z` can be in `S` in the bad-path case, I can append directed paths and get `S`-active paths in `G` from both endpoints to `D`; since `G <= H`, matching active paths must exist in `H`. If `H` also has a directed path from `D` to an endpoint or to a member of `S`, I can splice those paths into an `S`-active path between `A` and `B` in `H`, contradicting the independence that `H` asserts. The maximal choice is stronger than it first looked: because the maximal element of `De_G(Y)` is unique under `G <= H`, `D` is an ancestor in `H` of every node in `De_G(Y)`, including `E`. That gives exactly the directed path from `D` to the endpoint-or-conditioned node that the contradiction needs. The bad path can't exist. So choosing `Z` through the unique maximal-in-`H` descendant `D` is exactly what makes the difficult addition valid. The conjecture is true.
+
+That changes everything, because now I have the between-class characterization to match the within-class one. Within a class: covered reversals. Between classes, sparse-to-dense: covered reversals plus single additions. Let me cash it out into an algorithm and *prove* the optimality I wanted.
+
+I'll search over equivalence classes — never individual DAGs, because the covered reversals were the redundancy and I want them gone. Represent each class canonically: a directed edge for every *compelled* edge (one that points the same way in every member DAG) and an undirected edge for every *reversible* edge. That object — directed-compelled-plus-undirected-reversible — is unique to the class. Start from the empty graph, the class asserting all independencies. Then two phases.
+
+Phase one, additions. Define the neighbors of the current class to be every class reachable by adding a single edge to *some* member DAG of the current class. Greedily move to the highest-scoring neighbor while the score strictly improves; stop at a local max. I claim this local max contains the true distribution `p`. Suppose not — suppose every member DAG still asserts some independence that `p` violates. The independencies of a DAG are exactly its Markov conditions (each node independent of its non-descendants given its parents), so there's a node `X_i` and a non-descendant *set* `Y` with `X_i` dependent on `Y` given `Pa_i` in `p`. Now `p` is DAG-perfect, so it obeys the composition axiom: dependence on a set forces dependence on at least one *singleton* member. So there's a single non-descendant `Y` with `X_i` dependent on `Y` given `Pa_i`. By local consistency, adding `Y -> X_i` (which can't cycle, `Y` being a non-descendant) *raises* the score, and the resulting DAG sits in a neighboring class. That contradicts being at a local max. So phase one's local max contains `p`. Lovely — and notice this needed only local consistency, not even the new conjecture.
+
+Phase two, deletions. From that local max, define neighbors as classes reachable by deleting a single edge from some member DAG, and greedily climb while the score improves. Two things to prove: I never *leave* the set of classes containing `p`, and I terminate exactly at the perfect map. The first is immediate: deleting an edge that would lose `p` introduces a false independence and, by consistency, lowers the score, so greedy never does it. For the second, suppose I terminate at a class `E` that contains `p` but isn't the true perfect map `E*`. Then `E*` is sparser and `E` is an independence map of it, `G <= H` for `G` in `E*` and `H` in `E`. By the conjecture I just proved, `G` transforms into `H` by covered reversals plus additions, and there's at least one addition since the classes differ. Look at the DAG `G'` just before the *last* addition in that sequence. After that last addition, only covered reversals are needed to reach a member of `E`; deleting the last-added edge from that member's equivalence class returns the class of `G'`, so `E(G')` is a delete-neighbor of `E`. And `G'` has fewer parameters than `H` while still containing `p`, so by consistency it scores *higher*. That contradicts `E` being a local max. Therefore phase two halts exactly at `E*`. So the two-phase greedy search, every step local, provably finds the true class in the limit. The local-moves-with-global-certificate tension is resolved, and the resolution is: forward-add until you contain the truth, then backward-delete down to the sparsest container, with the score's Occam clause doing the deleting and the conjecture guaranteeing the descent reaches bottom. The first phase, incidentally, isn't even logically required for the limit guarantee — I could start at the complete graph and only delete — but the complete graph has a ruinous number of parameters, so phase one is there to find a sparse-as-possible entry point.
+
+Now, a proof of optimality is worthless if I can't run the search, and naively this looks horrifying. "Neighbors reachable by adding an edge to *some* member DAG" — am I supposed to enumerate the DAGs in a class? There can be an astronomical number. I need to generate and score every neighbor *directly on the canonical class representation*, without ever expanding a single member DAG. That's the engineering problem, and it's where I'll spend my care.
+
+I'll lean on a prior result: there's already a way to represent classes by these completed PDAGs and to manipulate them with local operators that test validity and score locally. The catch I noted is that *those* operators don't realize *my* neighbor relation — the "add/delete an edge in some member DAG" connectivity my optimality proof needs. So I have to design the operators that do, and prove their validity tests and score formulas. Let me build them from scratch.
+
+What does "add an edge to some member DAG, then take the resulting class" look like *on the completed PDAG*? I'm inserting `X -> Y` for two currently non-adjacent nodes. But adding that edge can also *create new v-structures*, which changes which neighbors of `Y` get compelled. Some currently-undirected neighbors of `Y` that are not adjacent to `X` can be made parents of `Y` in the witness DAG; each one I choose will become a new collider `X -> Y <- T`, so its edge to `Y` must be directed as `T -> Y`. The set of such tails is a *parameter* of the move — call it `T` — and it ranges over subsets of `Y`'s undirected neighbors that aren't adjacent to `X`. So the operator is `Insert(X, Y, T)`: add `X -> Y`, and for each `T in T` orient `T -> Y`. (The name `T` because each becomes a *tail* of a new v-structure.) Symmetrically the deletion: removing the edge between adjacent `X` and `Y` can create colliders at common neighbors. The set `H` of `Y`'s neighbors-that-are-adjacent-to-`X` which I orient *into* — `Y -> H` and `X -> H` — is the parameter. So `Delete(X, Y, H)`: drop the `X`–`Y` edge and orient each `H in H` as a new head. (The name `H` because each becomes a *head*.)
+
+But not every `(X, Y, T)` is legal. If I apply the operator and the resulting PDAG doesn't admit a consistent extension — a DAG with the same skeleton and v-structures and all the directed edges respected — then it's not a real equivalence class and the move is invalid. I need cheap, local, *exactly correct* validity tests. Let me derive them by thinking about what a consistent extension would have to look like.
+
+For the insert, let `NA_{Y,X}` be the neighbors of `Y` (undirected-adjacent) that are *also* adjacent to `X`. I want a consistent extension `G` of the current class in which (i) the reversible parents of `Y` that aren't adjacent to `X` are exactly the nodes in `T`, and (ii) there's no directed path from `Y` to `X` (so that adding `X -> Y` won't make a cycle). Claim: such a `G` exists, and adding `X -> Y` to it gives a consistent extension of the post-operator class, if and only if two conditions hold. Condition one: `NA_{Y,X} ∪ T` is a clique. Why a clique, and why this set? The nodes in `NA_{Y,X} ∪ T` are all going to be parents of `Y` in the extension I'm constructing; if any two of them, say `A` and `B`, are non-adjacent, then in any consistent extension at least one of `A -- Y`, `B -- Y` must point *away* from `Y` (else I'd manufacture a collider `A -> Y <- B` not present in the class). Say it's `Y -> A`. If `A` is in `NA_{Y,X}`, it is adjacent to `X`, and the `A`-`X` edge must be `A -> X`; otherwise I get the spurious collider `X -> A <- Y`. But after adding `X -> Y`, the arrows `X -> Y -> A -> X` form a directed cycle. If `A` is in `T`, then I can't realize the intended new collider `X -> Y <- A` because the edge runs `Y -> A`. Either way the operator fails. So the clique condition is forced; it's not a convenience, it's exactly the non-cycle-and-correct-v-structure requirement. Condition two: every *semi-directed* path from `Y` to `X` — a path where each edge is undirected or points away from `Y` — must contain a node in `NA_{Y,X} ∪ T`. Why? Because such a path is a route by which adding `X -> Y` could close a directed cycle: if some semi-directed `Y`-to-`X` path *avoids* all the nodes I'm making parents of `Y`, then I can orient that path away from `Y` into a directed `Y`-to-`X` path in the extension, and `X -> Y` plus that path is a cycle; conversely if every such path is intercepted by a node in `NA_{Y,X} ∪ T`, that node is a parent of `Y`, so orienting consistently can't leave a directed `Y`-to-`X` route. And to *build* the witness extension when both conditions hold: `NA_{Y,X} ∪ T ∪ {Y}` is a clique (every node in it neighbors `Y`), so I can order it so that `NA_{Y,X} ∪ T` all become parents of `Y`, giving exactly the reversible-parent set I wanted, and the path condition guarantees no `Y`-to-`X` directed path. Done — the two conditions are necessary and sufficient.
+
+For the delete, the test is simpler: `NA_{Y,X} \ H` must be a clique. The reasoning mirrors the insert. After removing the `X`–`Y` edge, the neighbors of `Y` that were adjacent to `X` and that I'm *not* turning into heads — that's `NA_{Y,X} \ H` — all stay parents of `Y` in the witness extension; if any two of them were non-adjacent they'd form a collider into `Y` that isn't in the class. So the clique condition on `NA_{Y,X} \ H` is exactly necessary and sufficient. To build the witness: `(NA_{Y,X} \ H) ∪ {Y}` is a clique, and if the `X`–`Y` edge was undirected then adding `X` keeps it a clique, so I can order the nodes `NA_{Y,X}\H`, then `X`, then `Y`, then the rest, yielding a consistent extension containing `X -> Y` where the reversible children of `Y` adjacent to `X` are exactly `H`. Deleting `X -> Y` from it gives a consistent extension of the post-operator class.
+
+Now the score, which is what the greedy step actually compares — and here the decomposable, score-equivalent structure pays off spectacularly. Because the score is score-equivalent, the change in the *class* score equals the change in the score of *any* member DAG; and because it's decomposable, I evaluate that change on the one witness DAG I just constructed, where only `Y`'s family changes. For the insert, in the witness `G` the parents of `Y` are `NA_{Y,X} ∪ T ∪ Pa_Y` (the existing compelled parents `Pa_Y`, plus the clique I oriented in), and in `G'` after adding `X -> Y` they're that set plus `X`. So the increase in score is
+
+```
+s(Y, NA_{Y,X} ∪ T ∪ Pa_Y ∪ {X})  -  s(Y, NA_{Y,X} ∪ T ∪ Pa_Y).
+```
+
+For the delete, I need to be explicit about the witness parent set because the current completed PDAG may contain either `X -> Y` or an undirected `X - Y`. In the witness extension before deletion, `X` is a parent of `Y`, so the old parent set is
+
+```
+P_old = (NA_{Y,X} \ H) ∪ Pa_Y ∪ {X},
+```
+
+where the explicit `{X}` is redundant when `X -> Y` is already directed in the completed PDAG and essential when `X - Y` is reversible. After deletion the new parent set is `P_new = P_old \ {X}`. So the score increase is
+
+```
+s(Y, P_old \ {X})  -  s(Y, P_old).
+```
+
+Two family-score evaluations per candidate move — no DAG enumeration, no whole-graph rescore, everything read off the completed PDAG. The optimality proof is now *executable*.
+
+There's an efficiency subtlety I want to bank. After I apply an operator, the resulting PDAG isn't necessarily *completed* — I may have created a class whose canonical form needs recomputing. Recomputing it means extracting a consistent extension (a DAG) and then re-deriving which edges are compelled. Extracting a DAG from a PDAG: repeatedly pick a node with no outgoing edges whose neighbors-plus-parents form a clique, orient its undirected edges inward, remove it — the Dor–Tarsi procedure, which succeeds exactly when a consistent extension exists. Re-finding compelled edges: order the edges by a topological-sort-driven rule, then sweep, propagating "compelled" from a compelled incoming edge `W -> X` to `X -> Y` whenever `W` isn't also a parent of `Y`, and otherwise checking whether any third parent `Z` of `Y` (not a parent of `X`) forces it — the standard compelled/reversible labeling. This conversion is `O(|E| k^2)`. But — and this is the point — I only need it when I actually *move* to a chosen neighbor, never when scoring candidates, because the validity tests and score formulas above work directly on the current completed PDAG. So the expensive conversion runs once per accepted step, not once per candidate, and its cost is negligible next to the swarm of cheap local scorings.
+
+A couple of pruning observations fall out of the clique conditions and save real time. For the insert, if `NA_{Y,X} ∪ T` fails the clique test for some `T`, it fails for every superset of `T`, so I can skip generating those candidates entirely. If the semi-directed-path condition passes for some `T`, it also passes for every superset, so those supersets need not repeat that path search. For the delete, if the clique test passes for some `H`, it passes for every superset. And I should cache family scores keyed by `(node, sorted parent set)` — when I transition from the add phase to the delete phase, a great many of the needed family scores have already been computed. If I impose a parent cap for tractability, I have to treat it as a search restriction; the clean large-sample proof is for the unrestricted neighbor generation.
+
+The last concrete thing I need is the family score itself, `s(X_i, Pa_i)`, for discrete data — and it has to be decomposable *and* score-equivalent, because my whole construction (the class-as-one-score reading, the witness-DAG score trick) leans on score equivalence. The Bayesian marginal likelihood for multinomial families is the natural candidate, but I have to choose the parameter prior carefully, because a careless choice breaks score equivalence — the K2 prior, for instance, constrains parameters in a way that gives two equivalent DAGs *different* scores, which would silently corrupt my whole argument. The fix is to *demand* likelihood equivalence as an axiom: equivalent structures must have equal marginal likelihood. Combined with parameter independence and parameter modularity, that demand forces the priors to be Dirichlet with hyper-parameters tied across structures through a single "complete-network" prior — there's no freedom left. Concretely, for node `X_i` with `r_i` states and parent set with `q_i = prod_{p in Pa_i} r_p` configurations, counting `N_ijk` records with `X_i = k` and parents in configuration `j`, and `N_ij = sum_k N_ijk`, the marginal likelihood contributes, per node,
+
+```
+prod_{j=1}^{q_i} {
+    Gamma(N'_ij) / Gamma(N'_ij + N_ij)
+    * prod_{k=1}^{r_i} [ Gamma(N'_ijk + N_ijk) / Gamma(N'_ijk) ]
+}
+```
+
+with Dirichlet pseudo-counts `N'`. The minimal, assumption-light choice — every joint cell equally likely a priori — sets `N'_ijk = N' / (r_i q_i)` and `N'_ij = N' / q_i`, leaving exactly one knob, the equivalent sample size `N'`, the strength of that uniform prior. That's the uniform-Dirichlet multinomial score; it's decomposable (a sum over nodes of these log-Gamma family terms) and, by construction via likelihood equivalence, score-equivalent. I'll add a small structure-prior term per node so that denser families pay a fixed structural penalty; written per node as `|Pa_i| * log(kappa / v) + (v - |Pa_i|) * log(1 - kappa/v)` with `v` the number of other variables and `kappa` a structure-prior strength, this is just the log-prior of a structure under an independent per-possible-edge inclusion probability, and it stays decomposable. In log form the family score is a sum of `lgamma` differences plus that structure term, and the greedy search compares differences of these family scores.
+
+Let me assemble the whole thing into the search and write it the way I'd actually run it. The state is the completed PDAG. Phase one sweeps over every non-adjacent ordered pair `(i, j)` whose current parent count is within the cap, builds `NA = neighbors(j) ∩ adjacent(i)` and the candidate tail pool `T0 = neighbors(j) \ adjacent(i)`, and for each subset `T` of `T0` checks the two insert conditions (clique of `NA ∪ T`; every semi-directed `j`-to-`i` path meets `NA ∪ T`), scoring the valid ones by the insert difference and tracking the best. If the best strictly improves the score, apply the insert, recompute the completed PDAG, and repeat; otherwise phase one ends. Phase two sweeps over every pair where `i` is a parent of `j` or `j` is an undirected neighbor of `i`, builds `NA` and the head pool `H0 = NA`, checks the delete clique condition on `NA \ H` for each subset `H`, scores by the delete difference, applies the best improving one, recomputes, repeats; when nothing improves, that completed PDAG is the answer. The pruning (clique-failure-propagates upward for inserts, clique-success-propagates upward for deletes), the score cache keyed by `(node, parents)`, and the convert-only-on-move discipline are all folded in.
+
+```python
+import numpy as np
+from causallearn.graph.GeneralGraph import GeneralGraph
+from causallearn.graph.GraphNode import GraphNode
+from causallearn.utils.GESUtils import (
+    precompute_graph_info, Combinatorial, find_subset_include,
+    check_clique_fast, insert_vc2_fast,
+    insert_changed_score_fast, delete_changed_score_fast,
+    insert, delete, score_g,
+)
+from causallearn.utils.PDAG2DAG import pdag2dag      # Dor-Tarsi consistent extension
+from causallearn.utils.DAG2CPDAG import dag2cpdag    # compelled/reversible labeling
+from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
+from causallearn.score.LocalScoreFunction import local_score_BDeu
+
+
+def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
+    """Two-phase greedy search over equivalence classes (completed PDAGs).
+    Phase 1 inserts edges until no insert improves the score; phase 2 deletes
+    edges until no delete improves it. Each candidate is validity-tested and
+    scored locally on the current completed PDAG; the PDAG is reconverted to its
+    completed form only when a move is accepted."""
+    N = X.shape[1]
+    maxP = N
+
+    # Decomposable, score-equivalent uniform-Dirichlet multinomial family score
+    # s(X_i, Pa_i): the log-Gamma marginal likelihood + structure-prior term.
+    score_func = LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)
+    parameters = None
+
+    nodes = [GraphNode("X%d" % (i + 1)) for i in range(N)]
+    G = GeneralGraph(nodes)                      # start at the empty graph (all independencies)
+    score = score_g(X, G, score_func, parameters)
+    G = dag2cpdag(pdag2dag(G))                   # canonical completed-PDAG of the current class
+    record_local_score = {}                      # cache: (node, sorted parents) -> family score
+
+    # ---- Phase 1: forward, Insert(X_i, X_j, T) -----------------------------
+    while True:
+        best_gain, best = -np.inf, None
+        nbrs, adj, pa, semi = precompute_graph_info(G, N)   # neighbors / adjacents / parents / semi-paths
+        for i in range(N):
+            for j in range(N):
+                if (
+                    G.graph[i, j] == 0
+                    and G.graph[j, i] == 0
+                    and i != j
+                    and len(pa[j]) <= maxP
+                ):                                         # X_i, X_j non-adjacent
+                    NA = nbrs[j] & adj[i]                    # NA_{Y,X}: neighbors of j adjacent to i
+                    T0 = sorted(nbrs[j] - adj[i])            # candidate tails: nbrs of j not adjacent to i
+                    subsets = Combinatorial(T0)
+                    blocked = np.zeros(len(subsets))         # prune: superset of a non-clique stays invalid
+                    for k in range(len(subsets)):
+                        if blocked[k] >= 2:
+                            continue
+                        T = set(subsets[k])
+                        if check_clique_fast(G, NA | T):     # condition 1: NA ∪ T is a clique
+                            if blocked[k] == 0:
+                                # condition 2: every semi-directed j->i path meets NA ∪ T
+                                valid_path = insert_vc2_fast(j, i, NA | T, semi)
+                            else:
+                                valid_path = 1                # a subset already passed condition 2
+                            if valid_path:
+                                blocked[np.where(find_subset_include(subsets[k], subsets) == 1)] = 1
+                                gain, desc, record_local_score = insert_changed_score_fast(
+                                    X, i, j, subsets[k], NA, pa[j], record_local_score,
+                                    score_func, parameters)     # s(j, NA∪T∪Pa∪{i}) - s(j, NA∪T∪Pa)
+                                if gain > best_gain:
+                                    best_gain, best = gain, desc
+                        else:
+                            blocked[np.where(find_subset_include(subsets[k], subsets) == 1)] = 2
+        if best is None or best_gain <= 0:
+            break
+        G = insert(G, best[0], best[1], best[2])             # add i->j and orient each T as T->j
+        G = dag2cpdag(pdag2dag(G))                           # reconvert to completed PDAG (only on a move)
+        score += best_gain
+
+    # ---- Phase 2: backward, Delete(X_i, X_j, H) ----------------------------
+    while True:
+        best_gain, best = -np.inf, None
+        nbrs, adj, pa, semi = precompute_graph_info(G, N)
+        for i in range(N):
+            for j in range(N):
+                if (j in nbrs[i]) or (i in pa[j]):           # X_i - X_j (undirected) or X_i -> X_j
+                    NA = nbrs[j] & adj[i]                     # NA_{Y,X}
+                    subsets = Combinatorial(sorted(NA))       # candidate heads H ⊆ NA
+                    ok = np.ones(len(subsets))                # prune: superset of a clique-pass also passes
+                    for k in range(len(subsets)):
+                        H = set(subsets[k])
+                        if ok[k] == 1:
+                            if check_clique_fast(G, NA - H):  # validity: NA \ H is a clique
+                                ok[np.where(find_subset_include(subsets[k], subsets) == 1)] = 2
+                            else:
+                                continue
+                        # The helper forms the witness old-parent set explicitly:
+                        # P_old = (NA\H)∪Pa∪{i}; score change = s(j, P_old\{i}) - s(j, P_old).
+                        gain, desc, record_local_score = delete_changed_score_fast(
+                            X, i, j, subsets[k], NA, pa[j], record_local_score,
+                            score_func, parameters)
+                        if gain > best_gain:
+                            best_gain, best = gain, desc
+        if best is None or best_gain <= 0:
+            break
+        G = delete(G, best[0], best[1], best[2])              # drop i-j and orient each H as a new head
+        G = dag2cpdag(pdag2dag(G))
+        score += best_gain
+
+    return G                                                 # completed PDAG = estimated equivalence class
+```
+
+Let me retrace the causal chain so I'm sure it holds together. Observational data only fixes the equivalence class — skeleton plus v-structures — so I targeted the class, not a DAG. I wanted a local greedy search with a global large-sample guarantee, which usually can't coexist, and the bridge was the score: the Bayesian multinomial score is consistent, hence locally consistent, so each single-edge step is, in the limit, the correct decision — add an edge exactly when it kills a false independence, delete one exactly when the independence is real. To turn local correctness into global optimality I needed to know how classes connect, so I proved Meek's conjecture — sparse-to-dense transformation by covered reversals plus single additions — with the delicate part being the choice of which edge to reverse toward, settled by the unique maximal-in-`H` descendant, which is what blocks the spurious active path. That conjecture made the two-phase argument go through: phase one (additions) climbs to a class containing the truth, justified by local consistency and the composition axiom; phase two (deletions) peels off every unnecessary edge down to the perfect map, justified by consistency's fewer-parameters clause plus the conjecture guaranteeing the descent bottoms out exactly at `E*`. Then I made the proof runnable: search completed PDAGs directly, with `Insert(X, Y, T)` and `Delete(X, Y, H)` operators whose validity reduces to a clique test (plus a semi-directed-path test for inserts) and whose score reduces — by decomposability and score equivalence — to two family-score evaluations on a witness DAG, never enumerating class members. The discrete family score is the uniform-Dirichlet multinomial marginal likelihood, forced to be score-equivalent by demanding likelihood equivalence, with a single equivalent-sample-size knob. Conversion back to canonical form runs only on accepted moves; clique-based pruning and a family-score cache keep the per-step cost down. Start empty, add until you contain the truth, delete until you reach its sparsest representation, and return that completed PDAG.

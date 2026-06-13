@@ -1,0 +1,131 @@
+Let me start from what goes wrong when I throw the obvious tool at this problem. I have a structured input — a bunch of variables laid out along an ordered axis, where neighboring positions are correlated and the features that matter are local but can sit at different places from one example to the next — and a target to predict, and I want to learn the map by gradient descent on a differentiable loss. The default learner is a fully-connected multilayer net: stack matrix multiplies and squashing nonlinearities, train end-to-end by back-propagation. It's a universal approximator, so in principle it can represent whatever map I need. So why not just do that?
+
+Three things matter. Count the parameters. Say my input is a few hundred numbers and I put a hundred hidden units on top: that's already tens of thousands of independent weights in the first layer alone, and if the input were a 2D image it would be far worse. Now bring in the relation I trust between capacity and generalization: the gap between test and training error scales like k(h/P)^α, where h is the effective capacity — which grows with the number of free parameters — and P is how many training examples I have. With P fixed, a big pile of independent weights means a big h means a big generalization gap. So the fully-connected net is structurally over-parameterized for the data I'll actually have, and it overfits; and as a bonus headache, all those weights cost memory. Position is the next problem. The net has no built-in notion that a feature appearing here is the same feature appearing three coordinates over. If a stroke endpoint, or a local bump in a profile, can show up at many positions, the net has to *separately* learn the same detector at each position — similar weight patterns scattered all across the input — and to learn all those copies it needs a flood of training instances that cover every position the feature might take. The last problem is almost embarrassing once I see it: the fully-connected net is blind to the input's topology. I could take my input vector and apply a fixed permutation to its coordinates — scramble which number sits next to which — retrain, and get exactly the same result. The architecture does not know which coordinates are neighbors. But the entire premise of my problem is that adjacent coordinates *are* neighbors, coupled by the underlying signal. The net is throwing away the one piece of prior knowledge I'm most sure of.
+
+So I don't want to fight the universal approximator; I want to *constrain* it, using exactly the structure it's ignoring, so that the constraints kill the parameter explosion and build in the position-tolerance, and the capacity relation rewards me with better generalization. Let me derive the constraints one at a time from the three failures.
+
+Start with locality, because it attacks the first two failures at once. The useful features are local — they involve a small window of neighboring positions, not the whole input. A fully-connected hidden unit connects to *every* input coordinate, which is wasteful precisely because the far-apart coordinates are nearly irrelevant to a local feature. So: don't. Connect each hidden unit only to a small contiguous window of the input — a local receptive field. A unit looking at a window of, say, three adjacent positions can compute a local function of those three — a local gradient, a local curvature, the presence of a little motif — and it does so with only as many weights as the window is wide, plus a bias. That single change collapses the connection count from "every unit to every input" down to "every unit to a handful of inputs," and it bakes in the prior that features are local. The first layer's units become local feature detectors, which is exactly the bottom of the Hubel-Wiesel hierarchy — small, localized receptive fields acting like local edge/feature detectors.
+
+But I've only attacked position-tolerance halfway. I now have a unit at position p detecting some local feature in the window around p. The feature can appear anywhere along the axis, and a detector that's useful at position p is useful at position p+1 and at p+50 — it's the *same* local computation. If I let each position's unit learn its own independent window weights, I'm right back to "learn the same detector separately at every position," needing tons of data and burning parameters. The resolution: force all the units that scan along the axis to *share the same window weights*. One small weight vector, replicated across every position. This is the weight-sharing idea — tie a whole family of connections to a single shared parameter, an equality constraint among connection strengths, the trick Rumelhart and company used on the T-versus-C problem and which costs almost nothing to enforce. And now stare at what the operation actually *is*: I take one small weight vector, slide it across all positions of the input, and at each position compute the dot product of the weights with the local window, add a bias, pass it through a squashing function. That's a convolution. The shared weight vector is a kernel; the resulting row of responses, one per position, is a feature map. One kernel detects one feature everywhere along the axis. If I want several local features — and I do, because there isn't just one kind of useful local motif — I use several kernels in the same layer, each its own shared weights and bias, each producing its own feature map. A complete convolutional layer is just a stack of these feature maps.
+
+Look at what this bought me on all three failures. Parameters: a feature map over hundreds of positions now costs only the size of the window (a few weights) plus one bias, instead of (positions × window) independent weights — the count is decoupled from how long the axis is, so h drops hard and, by (h/P)^α, the generalization gap shrinks. Position: I get translation equivariance *for free*, structurally, not learned. If I shift the input along the axis, every local window shifts with it, so the feature-map response just shifts by the same amount and is otherwise unchanged — the detector fires wherever the feature is, automatically, with no need to relearn it per position. Topology: the convolution only makes sense *because* I know which coordinates are neighbors — it is built on the ordering the fully-connected net was blind to. The one prior I was most sure of is now the load-bearing structure of the architecture.
+
+Now I have to make sure I can still train this thing by plain gradient descent, because the whole point is end-to-end learning and the neocognitron — which had this same replicated-local-feature structure — could *not* be trained that way; it self-organized its detectors with no supervised objective, so its kernels were never tuned to the actual task. A shared parameter looks suspicious for only a second. A weight w in the kernel is used at every position; in the forward pass the response at position i is
+
+  x_i = Σ_m w_m · o_{i+m} + b,
+
+summing the kernel weights against the local window of the previous layer's output o. Let δ_i = ∂E/∂x_i be the ordinary back-prop signal arriving at output position i. The loss depends on w_m through every position where that kernel entry was used, so the chain rule just sums the contributions:
+
+  ∂E/∂w_m = Σ_i δ_i · o_{i+m}.
+
+For the signal going back to an input position j, every output position i whose window included o_j contributes. Since j = i + m, the contribution is w_m δ_i, so
+
+  ∂E/∂o_j = Σ_m w_m · δ_{j-m}.
+
+That is the full convolution form of the input gradient; if I write the backward pass in the same slide-and-dot convention as the forward pass, it is the same operation with the finite kernel reversed before sliding. That's it — train the conv layer with ordinary back-propagation, add up the per-position partials of each tied weight to get the gradient of the shared parameter, and send the input gradient back by a flipped-kernel convolution. No new machinery; just gradient accumulation from the equality constraint. So the constrained, weight-shared, local network is a perfectly ordinary differentiable module that gradient descent optimizes end to end — the supervised piece the neocognitron lacked. The kernels get tuned to the task by the loss itself, instead of being hand-designed (laborious, brittle, and possibly missing the most informative local feature) or self-organized (never driven by prediction error).
+
+I'm not done, though, because equivariance is not the same as invariance, and I want both. Right now, if the feature shifts, my feature map shifts. That's great for *detecting* the feature anywhere, but for the final prediction the *exact* position of a local feature is usually irrelevant — and worse than irrelevant, it's *harmful*, because the precise position wobbles from one example to the next (the writer's hand, the noise in the signal), so a downstream unit that keys on exact position is keying on a nuisance variable. Once I know the feature is *roughly* here, I don't need to know it's at coordinate 37 versus 38. So after detecting, I should deliberately *discard* precise position: take a feature map, pool over small local neighborhoods — average them, say — multiply by a coefficient and add a bias, squash, and reduce the resolution. A neighborhood of two positions pooled into one halves the length of the map. This is the complex-cell half of the Hubel-Wiesel motif and the C-cell half of the neocognitron: tolerance to small shifts and distortions, now turned from equivariance into genuine *invariance* — small movements of the feature no longer move the pooled response. And it's a second parameter/compute cut, because the maps get shorter as I go up. I should be careful that I don't pool away *all* position too early: I want to keep approximate position, because the next level needs to know roughly where features are relative to each other to assemble them into higher-order features. So pool gently and progressively.
+
+Now I can see the shape of the whole network, and it's not arbitrary — it's forced by what I've derived. Alternate two kinds of layers: a convolutional layer that detects local features (and I let the *number* of feature maps grow as I go up, because higher up I want a richer vocabulary of features), and a sub-sampling layer that pools away precise position (and reduces resolution). As depth increases, spatial resolution falls while the number of feature maps rises — I'm trading away precise location for representational richness. After a few such stages, a unit near the top has an effective receptive field covering a large span of the original input, built up out of pooled local features, so it can represent a complex, position-tolerant, high-order feature. This is exactly the simple-cell→complex-cell hierarchy, except now the whole stack is one differentiable system trained by gradient descent against the actual loss. Top it with a couple of ordinary fully-connected layers and an output, and the convolutional front end has *learned its own feature extractor* — the thing the hand-designed front ends froze and the neocognitron couldn't tune.
+
+A couple of details I shouldn't wave past, because they bit people who skipped them. The squashing nonlinearity: a plain logistic sigmoid is asymmetric and saturates, and saturated units have tiny gradients (the flat spot), which slows and ill-conditions learning. A symmetric scaled hyperbolic tangent, f(a) = A·tanh(S·a), is better — it's odd, so its outputs are roughly zero-mean, which conditions the next layer's inputs, and if I set the output targets to sit at the points of maximum curvature rather than out on the saturated tails, the units stay in their responsive range and converge faster. The standard constants are A = 1.7159 and S = 2/3, chosen with the target values at ±1 so that ±1 land at maximum curvature and the function's effective gain is near one. And initialization has to keep the weighted sums inside that operating range from the start: draw the initial weights uniformly in a band that scales as 1/√(fan-in), so a unit with more inputs starts with proportionally smaller weights and its net input doesn't blow past the squashing function's useful interval. (I'll note for myself that there's a cleaner modern way to get the same two effects — keep activations well-scaled and gradients healthy — which is to use a rectifier and insert a normalization layer that re-standardizes each layer's pre-activations to zero mean and unit variance over the batch. Same goals: don't saturate, keep the signal in range, condition the optimization. I'll lean on that when I write the actual code, because it's what makes a *deep* stack trainable.)
+
+Let me now bring this onto the concrete signal in front of me, because the abstraction "ordered axis" has a very literal instantiation here. Each example is one atmospheric column. The state variables — temperature, humidity, the cloud and wind fields — are not scalars; each is a profile of values sampled along sixty ordered vertical levels, from the surface up. The sample retains, in the data's own words, a one-dimensional structure corresponding to the vertical variation across those sixty levels. And the physics is *local along that axis*: radiation, convection, mixing — the sub-grid processes whose tendencies I'm predicting — couple a level to its neighbors. Adjacent levels are correlated because the physics that links them is local in height. This is precisely the structure my whole derivation assumed: an ordered axis (height), local features (a tendency at a level depends most on that level and the ones just above and below), and the *same* kind of local interaction recurring at different heights (a convective adjustment between two adjacent levels looks much the same whether it happens low or high in the column). So the ordered axis is the vertical coordinate, length sixty. The natural thing is to put the sixty levels on the convolution axis and treat the different physical variables as the *channels* of the input — nine multi-level variables become nine input channels over a length-sixty sequence, and a kernel of width three at a given level mixes that level and its two neighbors across all variables, which is exactly a local vertical-gradient/curvature detector over the column. A fully-connected net on the flattened 540-number vector would have discarded all of this; the convolution exploits it and shares one vertical detector across all sixty heights.
+
+There's a wrinkle: not every input variable is a profile. Some are single-level scalars — surface pressure, the incoming solar flux, the surface heat fluxes, and so on — the remaining input_dim - 9·60 numbers that describe the whole column, not any particular level. I can't just drop them, and they don't live on the vertical axis. The clean move is to give them their own little learned map onto the vertical axis: a linear projection from the scalar vector to a length-sixty vector, which I then treat as one extra input channel over the levels. Now everything is a channel over sixty levels, and the convolution sees the column state — profiles plus a learned summary of the surface conditions — uniformly.
+
+Then I stack convolutional layers over those channels. And here's where I have to confront depth honestly, because to get real representational richness over this column I want *many* layers, and a deep plain stack of convolutions has a known failure: once I've handled the start-of-training problems (initialization and normalization so the signal doesn't blow up or vanish), simply stacking more conv layers can make *training* error go *up*, not down. That's not overfitting, because the training error itself rises, and it is not just a dead-gradient story once normalization keeps the forward signals and backward gradients healthy. It is an optimization-conditioning problem. A shallower stack can always be embedded in a deeper one if the added layers act like the identity, but asking a stack of nonlinear convs to manufacture identity from scratch is a strangely hard default. So I should not ask a block to learn the whole desired map H(h). If the useful map is often close to "keep h and add a correction," write the correction directly as F(h) = H(h) - h and return h + F(h). Now identity is no longer a delicate learned transformation; it is the easy case F(h) near zero. The block becomes h <- h + F(h), and the additive path keeps the deep vertical stack trainable while still letting each block add a learned local correction. When the block changes the number of channels, the skip cannot be a bare identity, so a width-one convolution matches the channels before the addition. After the input projection sets a fixed hidden width, the repeated blocks can use the identity skip directly: width-three convolution over levels, normalization, rectifier, dropout, another width-three convolution, then add the block output back to h. Repeat the block several times.
+
+Last, the output. The target is mixed in exactly the way the input was. Six of the predicted tendencies are themselves *multi-level* — a heating tendency and several moistening/wind tendencies, each a profile of sixty values — and eight are single-level scalars (net surface fluxes, precipitation rates, the solar-flux diagnostics). The multi-level outputs are per-level quantities living on the same sixty-level axis as my final feature map, so the natural head is a width-one convolution that maps the hidden channels at each level to six output channels at that level — a per-level linear readout, sixty positions, six channels, giving the 6×60 = 360 multi-level predictions. The eight scalars describe the whole column and have no level index, so the natural head for them is to *pool over the vertical axis* — collapse the sixty-level feature map to a single per-channel summary — and run a small fully-connected head on that pooled vector to produce the eight numbers. Concatenate the 360 and the 8 and I have the 368-dim output. The two-head split isn't a stylistic choice; it mirrors the two kinds of target — per-level readout for the per-level quantities, pooled readout for the whole-column quantities — and each uses exactly the operation that matches its target's structure (a width-one conv is the per-position linear map; pooling-then-dense is the whole-sequence summary).
+
+Let me write the whole thing as the module the harness will call, filling the one empty slot — the architecture — with everything the derivation forced: reshape the flat input into channels-over-levels, project the scalars to one learned level-wise channel, an input convolution, a stack of residual conv blocks, a width-one conv head for the per-level tendencies, and a pooled fully-connected head for the scalars. Conceptually the column is `(batch, level, variable)`, but the PyTorch convolution expects `(batch, channel, level)`, so the code keeps the variables in the channel dimension and the sixty levels in the last dimension. I'll use a rectifier with batch normalization rather than the scaled-tanh-with-fan-in-init combination, since for a deep stack that's the version that keeps activations in range, gradients healthy, and the optimization conditioned — same goals, modern primitives.
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class Custom(nn.Module):
+    """1D convolutional network over the vertical atmospheric profile.
+
+    The 60 ordered vertical levels are the convolution axis; the multi-level
+    variables are channels over that axis. Single-level scalars are projected to
+    one learned 60-level channel. A stack of residual conv blocks detects local
+    vertical features (each kernel a vertical-gradient/curvature detector shared
+    across all heights); a 1x1 conv head reads off the per-level tendencies and a
+    pooled MLP head reads off the whole-column scalars.
+    """
+
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+        # Input layout: 9 multi-level variables x 60 levels = 540, then the
+        # remaining scalar column variables.
+        self.n_ml_in = 9
+        self.n_levels = 60
+        self.n_sl_in = input_dim - self.n_ml_in * self.n_levels
+
+        # Learned map of the whole-column scalars onto the vertical axis -> one
+        # extra 60-level channel, so everything is a channel over the levels.
+        self.scalar_proj = nn.Linear(self.n_sl_in, self.n_levels)
+
+        in_channels = self.n_ml_in + 1          # multi-level vars + projected scalars
+        hidden_channels = 128
+        n_blocks = 8
+
+        # Input convolution: lift to the hidden width, kernel 3 = a level and its
+        # two neighbors (a local vertical detector), 'same' padding keeps length 60.
+        self.input_conv = nn.Conv1d(in_channels, hidden_channels, kernel_size=3, padding=1)
+
+        # Residual blocks: each learns F(h) on top of its input (h <- h + F(h)) so
+        # a deep vertical stack stays optimizable. Two width-3 convs per block;
+        # BatchNorm + ReLU keep activations in range and gradients healthy (the
+        # modern stand-in for scaled-tanh + fan-in init); dropout regularizes.
+        self.blocks = nn.ModuleList()
+        for _ in range(n_blocks):
+            self.blocks.append(nn.Sequential(
+                nn.BatchNorm1d(hidden_channels),
+                nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.Dropout(0.1),
+                nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
+            ))
+
+        # Per-level head: 1x1 conv = a per-level linear readout -> 6 tendency
+        # channels at each of the 60 levels (the 6 x 60 = 360 multi-level targets).
+        self.n_ml_out = 6
+        self.ml_head = nn.Conv1d(hidden_channels, self.n_ml_out, kernel_size=1)
+
+        # Whole-column head: pool away the vertical axis to one vector, then a small
+        # MLP -> the 8 single-level scalar targets (per-position readout makes no
+        # sense for column-wide quantities; the pooled summary does).
+        self.sl_head = nn.Sequential(
+            nn.AdaptiveAvgPool1d(1),
+            nn.Flatten(),
+            nn.Linear(hidden_channels, 64),
+            nn.ReLU(),
+            nn.Linear(64, 8),
+        )
+
+    def forward(self, x):
+        B = x.shape[0]
+        # Split the flat vector into multi-level profiles (channels x 60 levels)
+        # and whole-column scalars.
+        ml_in = x[:, :self.n_ml_in * self.n_levels].view(B, self.n_ml_in, self.n_levels)
+        sl_in = x[:, self.n_ml_in * self.n_levels:]
+        sl_expanded = self.scalar_proj(sl_in).unsqueeze(1)   # (B, 1, 60) scalar-derived channel
+        h = torch.cat([ml_in, sl_expanded], dim=1)           # (B, n_ml_in+1, 60)
+
+        h = F.relu(self.input_conv(h))
+        for block in self.blocks:
+            h = h + block(h)                                 # residual: h <- h + F(h)
+
+        ml_out = self.ml_head(h).reshape(B, -1)              # (B, 6*60) per-level tendencies
+        sl_out = self.sl_head(h)                             # (B, 8)    whole-column scalars
+        return torch.cat([ml_out, sl_out], dim=-1)           # (B, 368)
+```
+
+So the causal chain, start to finish. A fully-connected net on the flat column fails three ways: too many parameters for the data (and by (h/P)^α that means it overfits), no tolerance to where a local feature sits, and total blindness to the input's ordering. Each failure forces a constraint. Locality — connect each unit only to a small window — cuts parameters and matches the fact that the relevant features are local. Sharing that window's weights across all positions turns the layer into a convolution: parameters decouple from the axis length (h drops, generalization improves), translation equivariance comes for free, and the architecture is finally built on the input's ordering instead of ignoring it. Back-propagation handles the shared weights by summing each tied weight's per-position gradients, so the kernels are tuned end-to-end to the actual loss — the supervised tuning the self-organized hierarchy never had, and the freedom the hand-designed front ends never gave. Pooling after detection discards the now-harmful precise position, converting equivariance into shift-invariance and shrinking the maps further. Alternating convolution and pooling, with feature maps multiplying as resolution falls, builds a simple→complex hierarchy of position-tolerant high-order features, all trained as one differentiable system. Brought onto the atmospheric column, the ordered axis is the sixty vertical levels and the physical variables are the channels, so a width-three kernel is a local vertical detector shared across all heights; the whole-column scalars get a learned projection onto that axis; to make the vertical stack deep without the optimization degrading, each pair of convs is wrapped as a residual block h <- h + F(h); and the mixed target is read off by two structure-matched heads — a width-one conv for the per-level tendencies and a pooled MLP for the whole-column scalars.

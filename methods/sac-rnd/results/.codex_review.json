@@ -1,0 +1,9 @@
+{
+  "method": "sac-rnd",
+  "codex_reviewed": true,
+  "outcome": "pass",
+  "reviewed_at": "2026-06-13T12:40:00Z",
+  "reviewer": "codex-cli 0.139.0 (gpt-5-codex)",
+  "evidence": "Codex task thread 019ec0f6-7505-7022-9cd0-f8d077a1ad69 read 04-sac-rnd-answer.md, AST-parsed the python block, and verified: RND bonus = sum((pred-target)^2)/sqrt(running_var) with frozen target and predictor-only optimizer; FiLM conditioning (state -> gamma,beta modulating l1(action)); beta penalty subtracted in BOTH the actor loss (beta*bonus - q_pi) and the critic target (- self.beta*next_bonus; target = r + not_done*discount*target_q); target_entropy = -action_dim; twin LayerNorm critics with min; tanh squashing log-prob correction. Final verdict: PASS. Independently corroborated locally: 16/16 reference-math line-by-line checks pass, both python blocks ast-parse, train step runs 5 steps with finite losses, and a budget_check.py simulation confirms params <= 1.05x ReBRAC for both env dims (867408<=875229 hc/walker; 829256<=847803 maze2d).",
+  "reason": "code-vs-reference correctness review against Nikulin et al. ICML 2023 (arXiv:2301.13616) and the official tinkoff-ai/sac-rnd JAX implementation"
+}

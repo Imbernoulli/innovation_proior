@@ -1,0 +1,51 @@
+{
+  "task": "dl-residual-connection",
+  "title": "DL Residual Block Design: gradient flow, depth-ensemble, channel attention",
+  "domain": "Deep learning",
+  "metrics": [
+    "resnet20-cifar10",
+    "resnet56-cifar100",
+    "resnet110-cifar100"
+  ],
+  "metric_columns": [
+    "test_acc"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "gated_residual",
+      "method": "Gated residual (learnable scalar gate, init 1.0)",
+      "reasoning": "01-gated_residual-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-gated_residual-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "pre_activation",
+      "method": "Pre-activation block (BN-ReLU-Conv + 0.1 residual scale)",
+      "reasoning": "02-pre_activation-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-pre_activation-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "stochastic_depth",
+      "method": "Stochastic depth (linear-decay block dropping, p_L=0.5)",
+      "reasoning": "03-stochastic_depth-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-stochastic_depth-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "se_block",
+      "method": "Squeeze-and-Excitation channel attention",
+      "reasoning": "04-se_block-reasoning.md",
+      "finale": true,
+      "answer": "04-se_block-answer.md"
+    }
+  ],
+  "endpoint": "Squeeze-and-Excitation channel attention",
+  "ranking_basis": "Ranked from is_final,true baseline:* rows on best test_acc (higher is better) across the three depth/dataset settings. stochastic_depth is strongest: it dominates both CIFAR-100 settings (74.56 ResNet-56, 75.70 ResNet-110) by large margins (+2.5/+1.6 over the others), i.e. it is strongest in the deep regime the task targets, despite being weakest on the shallow ResNet-20/CIFAR-10 (91.37). gated_residual is weakest: an alpha=1.0-init scalar gate is bit-for-bit the vanilla block at init, wins only the shallow CIFAR-10 case (92.96) and is worst on the deepest net (73.46). pre_activation sits in the middle: best deep ResNet-110 among the two near-vanilla blocks (74.08, the cleaner-gradient-flow story), CIFAR-10 92.62. Order: gated_residual < pre_activation < stochastic_depth.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (pytorch-vision/custom_residual.py, CustomBlock lines 31-61, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. Finale = Squeeze-and-Excitation (Hu et al. 2017, arXiv:1709.01507), a real published method on an axis orthogonal to all three baselines (per-image global-context channel recalibration vs the baselines' residual-flow/depth tricks); it fits the edit surface (the task ships edits/se_block.edit.py) and carries no feedback. methods/<slug> single-round traces left untouched. SAME-NAMED-VS-PAPER DIFFS: (1) gated_residual inits alpha=1.0 (standard residual), NOT ReZero's alpha=0 dynamical-isometry zero-init -- the edit's own docstring says 'unlike ReZero'; reasoning derives the init-at-1 choice for an already-BN-trainable substrate, not the zero-init extreme-depth story. (2) pre_activation is BN-ReLU-Conv as in Identity Mappings BUT adds a learnable 0.1-init residual scale alpha (paper machinery the textbook block lacks) and routes the dimension-change shortcut through a Conv-BN projection of the RAW input (not a clean pre-activated identity). (3) stochastic_depth is applied to the POST-activation block (reverting step 2's ordering), self-counts via a class-level _block_counter reset at the first stage-1 block (constructor only sees in_planes,planes,stride), and a dropped TRANSITION block returns ReLU(Conv-BN projection), not a literal identity. METHODS-TRACE STATUS: all baseline derivation references exist and are reused untouched -- methods/gated-residual/results/ (the ReZero/learnable-residual-scaling derivation, Codex-reviewed completed) is the gated_residual reference but the TASK baseline inits alpha=1.0 not ReZero's 0, so the trajectory's gated_residual reasoning was re-expressed against the task edit.py; methods/stochastic-depth and methods/resnet traces reused as derivation references. FINALE: methods/senet trace (Hu et al. CVPR 2018, arXiv:1709.01507) reused as the SE derivation reference, already in methods.json. Finale scaffold code (se_block.edit.py) verified line-by-line against the canonical SE reference (GAP squeeze -> FC(C/r)-ReLU-FC(C)-Sigmoid excite -> channel-wise scale on the residual branch before the identity add) and confirmed by runtime execution (correct shapes across all three stages, the mid=max(planes//16,4) floor firing on the thin 16/32-channel CIFAR stages, sigmoid gate in (0,1)); finale answer code is AST-identical to se_block.edit.py. A fresh write-enabled Codex gate was launched on the senet trace but could not complete: the SHARED Codex runtime was saturated by 14+ long-running jobs from other parallel sessions on this repo (some 7h+), so the queued review was cancelled; the senet trace is a REUSE (its own methods-phase .codex_review.json is left untouched per the reuse-first rule). trajectories.json intentionally NOT edited (per task constraint)."
+}

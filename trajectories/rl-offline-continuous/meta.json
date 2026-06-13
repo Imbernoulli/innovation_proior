@@ -1,0 +1,53 @@
+{
+  "task": "rl-offline-continuous",
+  "title": "Offline RL: Q-value overestimation suppression in continuous control",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "halfcheetah-medium-v2",
+    "maze2d-medium-v1",
+    "walker2d-medium-v2"
+  ],
+  "metric_columns": [
+    "d4rl_score_halfcheetah_medium_v2",
+    "d4rl_score_maze2d_medium_v1",
+    "d4rl_score_walker2d_medium_v2"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "SAC-RND (anti-exploration by random network distillation)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "iql",
+      "method": "IQL (implicit Q-learning)",
+      "reasoning": "01-iql-reasoning.md",
+      "answer": "01-iql-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "td3_bc",
+      "method": "TD3+BC (TD3 with behavior-cloning regularization)",
+      "reasoning": "02-td3_bc-reasoning.md",
+      "answer": "02-td3_bc-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "rebrac",
+      "method": "ReBRAC (decoupled, LayerNorm-regularized TD3+BC)",
+      "reasoning": "03-rebrac-reasoning.md",
+      "answer": "03-rebrac-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "sac-rnd",
+      "method": "SAC-RND (anti-exploration by random network distillation)",
+      "reasoning": "04-sac-rnd-reasoning.md",
+      "answer": "04-sac-rnd-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "From baseline:* rows with is_final,true (D4RL normalized score, higher is better; task = geometric mean over the three datasets). iql is weakest: hc 48.10 / maze 33.73 / walker 80.46 -- lowest maze (the stitching task) and lowest walker, with comparable hc. td3_bc is middle: hc 48.33 / maze 50.29 / walker 85.14 -- beats iql on walker and maze-mean, ties on hc, but maze is a 56.8-std coin flip (8.7/27.2/115.0). rebrac dominates all three: hc 63.35 / maze 93.95 / walker 87.54, and crucially cuts maze seed-variance (std 56.8 -> 18.4) while lifting the mean.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (CORL/algorithms/offline/custom.py: the OfflineAlgorithm class + network classes, from edits/*.edit.py). Each step = reasoning (full derivation, prose, reflection on the prior numbers embedded throughout for i>1) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines; finale has none). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are the derivation reference and are untouched. Same-named-vs-paper diffs: (1) iql -- the task's iql.edit.py uses a state-INDEPENDENT log_std Gaussian Actor (nn.Parameter), 2x256 critic/value, iql_tau=0.7, beta=3.0, CosineAnnealingLR, EXP_ADV_MAX=100, and NO D4RL reward preprocessing (the methods/iql trace scales locomotion rewards per D4RL); the trajectory matches the edit.py, not the paper. (2) td3_bc -- methods/td3-bc/results had NO completed single-round trace (only src/notes + a stub .codex_review.json), so it was derived from edits/td3_bc.edit.py + the methods/td3 trace + the td3-bc synthesis note; code matches edit.py exactly (alpha=2.5, lambda=alpha/|Q|.mean().detach(), policy_freq=2, sigma=0.2*max_action, c=0.5*max_action, ascends critic_1). (3) rebrac -- NO methods/rebrac trace exists; derived from edits/rebrac.edit.py: 3x256 LayerNorm critic, 3x256 LayerNorm-FREE actor, per-env hyperparameter table read from --env (hc actor_bc=0.001/critic_bc=0.01/lr=1e-3, walker 0.05/0.1/1e-3, maze2d-medium 0.003/0.001/3e-4), two decoupled BC penalties (actor + critic-target via the buffer's next_actions), lambda=1/(|Q|.mean()+1e-8). Finale = SAC-RND (Nikulin et al., Anti-Exploration by Random Network Distillation, ICML 2023, arXiv:2301.13616): ensemble-free, beats ReBRAC on both visible medium-v2 datasets (reference 66.6 hc / 91.6 walker vs ReBRAC 63.3 / 87.5), and -- crucially -- fits the runtime 1.05x-largest-baseline parameter cap that rules out SAC-N/EDAC ensembles (verified by simulating budget_check.py: SAC-RND 867408 <= 875229 budget for hc/walker, 829256 <= 847803 for maze2d). The finale scaffold uses a 2-hidden-layer FiLM RND at the locked 256 width to stay under budget while keeping the paper's headline FiLM-conditioned-prior contribution; its standalone trace is in methods/sac-rnd. The prior session's meta.json wrongly stated no admissible finale exists -- it overlooked SAC-RND, which is ensemble-free."
+}
