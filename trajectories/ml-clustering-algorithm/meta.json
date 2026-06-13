@@ -1,0 +1,45 @@
+{
+  "task": "ml-clustering-algorithm",
+  "title": "Clustering Algorithm Design: one method across blobs, moons, and high-D digits",
+  "domain": "Classical ML",
+  "metrics": [
+    "blobs",
+    "moons",
+    "digits"
+  ],
+  "metric_columns": [
+    "ari",
+    "nmi",
+    "silhouette"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dbscan",
+      "method": "DBSCAN (density-based, global eps)",
+      "reasoning": "01-dbscan-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-dbscan-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "kmeans",
+      "method": "K-Means (Lloyd + k-means++)",
+      "reasoning": "02-kmeans-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-kmeans-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "hdbscan",
+      "method": "HDBSCAN (hierarchical density, EOM extraction)",
+      "reasoning": "03-hdbscan-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-hdbscan-answer.md"
+    }
+  ],
+  "endpoint": "HDBSCAN (hierarchical density, EOM extraction)",
+  "ranking_basis": "Weak->strong by the task's geometric-mean-over-settings aggregate of the is_final=true baseline:* rows (each setting = mean of ARI/NMI/Silhouette; silhouette floored at -1.0 on degenerate labelings). dbscan weakest: collapses on high-D digits (ARI 0.0003, silhouette -1.0 -> degenerate) despite owning moons (ARI 0.972); the dead setting sinks the gmean (settings mean blobs 0.707, moons 0.714, digits -0.330). kmeans middle: no setting is degenerate (blobs 0.770, digits 0.448) but moons is a poor convex split (ARI 0.481; settings mean ~0.557). hdbscan strongest: non-degenerate on all three at once (moons ~0.789, blobs ~0.759, digits 0.275; settings mean ~0.608), the only baseline that throws away no geometry.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_clustering.py: CustomClustering(BaseEstimator, ClusterMixin) + optional custom_distance, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning, so the stacked view shows it once. Same-named-baseline-vs-paper diff: the methods/<slug> traces derive each algorithm from scratch (kmeans = hand-rolled k-means++ + Lloyd; dbscan = hand-rolled flood-fill over core points; hdbscan = hand-rolled mutual-reachability MST + condensation + EOM DP), but the task's edits/*.edit.py all delegate to the sklearn implementations (sklearn.cluster.{KMeans,DBSCAN,HDBSCAN}) and add harness-specific glue the papers do not carry -- dbscan's two-regime eps (fixed eps=0.22/min_samples=10 for n_features<=3, Kneedle k-distance knee for high-D), hdbscan's min_cluster_size=max(5,n//50) sizing and a KMeans noise-fallback when everything is labeled -1. The trajectory reasonings derive the algorithm but land on the literal sklearn-based edit and the harness glue. No finale: no single real published classical algorithm clearly dominates HDBSCAN across blobs+moons+digits while fitting the sklearn-only, k-optional contract (the leaderboard rows that beat it are LLM submissions using per-geometry adaptation, which the task forbids as dataset-specific tricks). Stopped at the strongest baseline per spec."
+}

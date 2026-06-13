@@ -1,0 +1,53 @@
+{
+  "task": "dl-lr-schedule",
+  "title": "DL Learning Rate Schedule: from a constant rate to an explore-exploit plateau",
+  "domain": "Deep learning",
+  "metrics": [
+    "resnet20-cifar10",
+    "resnet56-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc_resnet20-cifar10",
+    "test_acc_resnet56-cifar100",
+    "test_acc_mobilenetv2-fmnist"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "one_cycle",
+      "method": "One-Cycle (constrained: cosine up-then-down to base_lr/25)",
+      "reasoning": "01-one_cycle-reasoning.md",
+      "answer": "01-one_cycle-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "cosine",
+      "method": "Cosine annealing (base_lr -> 0)",
+      "reasoning": "02-cosine-reasoning.md",
+      "answer": "02-cosine-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "warmup_cosine",
+      "method": "Linear warmup + cosine annealing",
+      "reasoning": "03-warmup_cosine-reasoning.md",
+      "answer": "03-warmup_cosine-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "knee",
+      "method": "Knee (explore-exploit) schedule",
+      "reasoning": "04-knee-reasoning.md",
+      "answer": "04-knee-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "Knee (explore-exploit) schedule",
+  "ranking_basis": "Single seed 42, best test accuracy (higher is better) over three settings [resnet20-cifar10, resnet56-cifar100, mobilenetv2-fmnist]. one_cycle weakest: dominated on 2 of 3 (lowest resnet20-cifar10 92.31 and lowest mobilenetv2-fmnist 93.93; mid 71.57 on resnet56-cifar100), never best (mean 85.94). cosine middle (93.03/71.07/94.70, mean 86.27): beats warmup_cosine on resnet20-cifar10 (93.03 vs 92.71) but loses resnet56-cifar100 by 1.36 (71.07 vs 72.43) and fmnist (94.70 vs 94.83). warmup_cosine strongest (92.71/72.43/94.83, mean 86.66): wins 2 of 3 including the largest margin (resnet56-cifar100), and its only loss (resnet20-cifar10, 0.32) is small.",
+  "notes": "MLS-Bench trajectory: 00-initial-context.md and every step's code are the task's real edit surface (the body of get_lr(epoch, total_epochs, base_lr, config) in pytorch-vision/custom_schedule.py, lines 246-269; one float per epoch, momentum 0.9 and weight_decay 5e-4 fixed). Baseline answer code = the literal edits/<slug>.edit.py fill. Each step = reasoning (full derivation, prose, no code) -> answer (distilled summary + the scaffold code) -> feedback (numbers only, baselines only). The finale (Knee) carries no feedback. methods/<slug> single-round traces (cosine, warmup-cosine, one-cycle) are the derivation reference and are left untouched; methods/knee is the finale's standalone trace (Codex-reviewed). Critical same-named-vs-paper diff: the task's one_cycle is a deliberately TAME port of the 1cycle policy -- only get_lr is editable, so it has NO momentum cycling (the paper's signature inverse 0.95<->0.85), NO weight-decay rebalancing, NO LR range test, peaks AT base_lr (not an order of magnitude above), and floors at base_lr/25 via div_factor=final_div=25 (not 1e4 orders below); the super-convergence story does not apply. cosine and warmup_cosine match their methods traces' single-cycle / 5-epoch-warmup forms exactly."
+}

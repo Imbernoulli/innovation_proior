@@ -1,0 +1,44 @@
+{
+  "task": "optimization-online-bandit",
+  "title": "Online Bandits: exploration-exploitation across three regimes",
+  "domain": "Optimization",
+  "metrics": [
+    "stochastic_mab",
+    "contextual",
+    "nonstationary"
+  ],
+  "metric_columns": [
+    "normalized_regret_stochastic_mab",
+    "normalized_regret_contextual",
+    "normalized_regret_nonstationary"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ucb1",
+      "method": "UCB1 (upper confidence bound)",
+      "reasoning": "01-ucb1-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ucb1-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "kl-ucb",
+      "method": "KL-UCB (Kullback-Leibler upper confidence bound)",
+      "reasoning": "02-kl-ucb-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-kl-ucb-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "thompson-sampling",
+      "method": "Thompson Sampling (Beta / LinTS / discounted)",
+      "reasoning": "03-thompson-sampling-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-thompson-sampling-answer.md"
+    }
+  ],
+  "ranking_basis": "Metric = normalized cumulative regret (lower better) on three settings. Total of the three means: ucb1 0.300 (0.0378+0.1793+0.0829) > kl_ucb 0.275 (0.0612+0.1785+0.0349) > thompson_sampling 0.115 (0.0354+0.0202+0.0597). ucb1 weakest: no genuine per-regime adaptation (its SW-UCB buffer is dead code, never consulted by select_arm), worst on nonstationary and near-worst on contextual. kl_ucb middle: the tighter KL index wins nonstationary (0.0349, best) but the c=1 budget over-explores stochastic (0.0612, worst there); contextual unchanged (context still ignored). thompson_sampling strongest: best on two of three and the only baseline to close the contextual gap (0.0202, an order of magnitude below the index rungs via LinTS), because it adapts its mechanism per regime (Beta posterior / LinTS / discounted Beta).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_bandit.py: the BanditPolicy class, lines 261-321, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces (methods/ucb1, methods/kl-ucb, methods/thompson-sampling) are the derivation references and are left untouched. No finale: Thompson Sampling here is already a near-optimal, regime-adaptive Bayesian rule (best on two of three settings, closes the contextual gap), and no single published method clearly dominates it across all three heterogeneous regimes while fitting this exact select_arm/update edit surface, so the trajectory stops at the strongest baseline."
+}

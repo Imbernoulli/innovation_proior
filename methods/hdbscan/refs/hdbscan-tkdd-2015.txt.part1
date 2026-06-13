@@ -1,0 +1,696 @@
+
+===== page 4 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:3
+idea was formalized and extended later by Hartigan [1975], who defined the concepts
+ofdensity-contourclustersanddensity-contourtree.Theseconceptsplayanimportant
+roleasaformalprobabilisticmodelfordensity-basedclusteringand,indeed,theyhave
+beenexplicitlyorimplicitlyusedassuchbymanyalgorithmsbelongingtothisclass.
+For the sake of simplicity and without any loss of generality, let us consider that
+the observations (data objects) are described by a single continuous-valued variable
+(attribute),x,andthatabounded,continuousdensityfunction f(x)isdefinedforeach
+xasavalueproportionaltothenumberofpointsperunitvolumeatx.Then,according
+toHartigan’smodel[Hartigan1975],adensity-contourclusterof f(x)atagivendensity
+levelλisasubsetC⊂(cid:3)suchthat:(i)everyx ∈Csatisfies f(x)≥λ;(ii)Cisconnected;
+and (iii) C is maximal. The density-contour clusters at a given level λ are therefore
+the collection of maximal connected subsets of the level set defined as {x| f(x) ≥ λ}.
+Thedensity-contourtreeisthetreeofnestedclustersthatisconceptuallyconceivedby
+varying the threshold λ. Notice that these concepts can be readily extended to more
+generaldomainsotherthancontinuous-valueddensitiesintherealcoordinatesspace.
+The power of Hartigan’s model is mainly due to the following reasons: (i) it allows
+the concept of noise to be modeled as those objects lying in nondense regions of the
+data space, that is, objects for which the density is below a certain threshold. This is
+ofparticularimportanceinclusteranalysisasitbreaksdownthecommonyetusually
+unrealistic assumption that observations must belong to clusters and therefore they
+mustallbeclusteredindistinctly;(ii)itallowsclustersofvariedshapestobemodeledas
+theconnectedcomponentsofthedensitylevelsets.Suchcomponentsarenotrestricted
+tothedomainofasinglemode(peak)ofthedensityfunction,theycanpossiblyrepresent
+the union of multiple modes (depending on the density threshold); and (iii) it allows
+one to model the presence of nested clusters of varied densities in data, through the
+hierarchicalrelationshipsdescribedbythedensity-contourtree.
+Forthereasonsmentionedearlier,mostdensity-basedclusteringalgorithmsare,in
+essence, strictly or loosely based on Hartigan’s model.1 The differences basically rely
+onthewaythedensity f andthecomponentsofalevelsetareestimated.ForWishart’s
+onelevelmodeanalysismethod(withparametersrandκ),forexample,itcanbeshown
+that the results correspond to the use of an estimator of connected components given
+by the union of balls of radius r/2, a K nearest neighbor (K-NN) density estimate f
+with K = κ, and a density threshold λ as a function of r (or, equivalently, f can also
+be seen as a kernel-based density equipped with square-wave kernels of width r and
+λ as a function of κ). The same holds true for the popular algorithm DBSCAN [Ester
+etal.1996]ifonedenotesitsparameters,neighborhoodradiusandminimumnumber
+of objects within the neighborhood, as r and κ, respectively. DBSCAN is, however,
+computationally more sophisticated and scalable as it makes use of efficient indexing
+structures. There is also a conceptual difference since, in DBSCAN, those non-dense
+objects that lie in the neighborhood of dense objects, the so-called border objects, are
+assigned to clusters even though their density is below the established threshold.
+NoticethatsuchastrategymakesDBSCANonlylooselyinconformitywithHartigan’s
+model.2Thisisalsothecaseforthewell-knownalgorithmDENCLUE[Hinneburgand
+Keim 1998, 2003; Hinneburg and Gabriel 2007], which uses a general kernel-based
+density estimate as well as a gradient-based approach to decide which objects should
+1Incontrast,workssuchas[FukunagaandHostetler1975;CoomansandMassart1981]maketheoversim-
+plisticassumptionthateachmodeofthedensity f correspondstoaclusterand,then,theysimplyseekto
+assigneverydataobjecttooneofthesemodes(accordingtosomehill-climbing-likeheuristic).
+2Wishart’s one level mode analysis method also does not follow strictly Hartigan’s model if the optional
+postprocessingstageofthatmethodisperformed,inwhichthenon-denseobjectsarearbitrarilyassignedto
+the“nearest”cluster.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 5 [pdfplumber] =====
+5:4 R.J.G.B.Campelloetal.
+beclusteredandwhichonesshouldnot(andthusbeleftasnoise).Thedecisionstrategy
+is based on a density threshold, but it still allows objects whose density is below the
+threshold to be clustered (if they are attracted by high density modes of the density
+estimate).
+Onelevelmodeanalysis,DBSCAN,andDENCLUEareexamplesofalgorithmsthat
+adopt Hartigan’s model limited to a single threshold λ only, thus producing a “flat”
+clustering solution based on a global discriminating density level (rather than a tree
+of density-contour clusters at different levels). This approach has some fundamental
+limitations [Tan et al. 2006; Kriegel et al. 2011]: (i) the choice of the density thresh-
+old is critical; (ii) often, it is not possible to simultaneously detect clusters of varied
+densities by using a single, global density threshold; and (iii) a flat clustering solu-
+tion alone cannot describe possible hierarchical relationships that may exist between
+nested clusters lying on different density levels. Nested clusters at varied levels of
+density can only be described by hierarchical density-based clustering methods, such
+asthoseinWishart[1969],WongandLane[1983],Ankerstetal.[1999],Sanderetal.
+[2003],Brecheisenetal.[2004],Chehreghanietal.[2008],StuetzleandNugent[2010],
+Sun et al. [2010], Gupta et al. [2010], and Campello et al. [2013a], which are able to
+provide more elaborated descriptions of a dataset at different degrees of granularity
+andresolution.
+Hierarchicalmodelsareindeedabletoprovidericherdescriptionsofclusteringstruc-
+turesthanthoseprovidedbyflatmodels.Inspiteofthis,applicationsinwhichtheuser
+alsoneedsaflatsolutionarecommon,eitherforfurthermanualanalysisbyadomain
+expert or in automated KDD processes in which the output of a clustering algorithm
+istheinputofasubsequentdataminingprocedure—forexample,patternrecognition
+based on image segmentation. In this context, the extraction of a flat clustering from
+ahierarchymaybeadvantageouswhencomparedtotheextractiondirectlyfromdata
+byapartitioning-like(i.e.,nonhierarchical)algorithm.Thereasonisthathierarchical
+models describe data from multiple levels of specificity/generality, providing a means
+forexplorationofmultiplepossiblesolutionsfromdifferentperspectiveswhilehaving
+aglobalpictureoftheclusterstructureavailable.
+1.2. GlobalandLocalOutlierDetection
+Similar as for clustering, parametric, statistical approaches for unsupervised outlier
+detection (identification, rejection) fit certain distributions to the data by estimating
+theparametersofthesedistributionsfromthegivendata[Grubbs1950;Barnett1978;
+Beckman and Cook 1983; Hodge and Austin 2004; Agyemang et al. 2006; Hadi et al.
+2009].Forexample,whenassumingaGaussiandistribution,acommonlyusedruleof
+thumb, known as the “3·σ-rule”, is that points deviating more than three times the
+standarddeviationfromthemeanofanormaldistributionmaybeconsideredoutliers
+[Knorr and Ng 1997b]. Classical textbooks [Hawkins 1980; Barnett and Lewis 1994]
+discuss numerous tests for different distributions. The tests are optimized for each
+distribution dependent on the specific parameters of the corresponding distribution,
+thenumberofexpectedoutliers,andthespacewheretoexpectanoutlier.
+Aproblemwithparametricapproachesisthatdistributionparameterssuchasmean,
+standard deviation, and covariances are rather sensitive to the presence of outliers.
+Possible effects of outliers on the parameter estimation have been termed “masking”
+and “swamping”. Outliers can mask their own presence by influencing the values of
+the distribution parameters (resulting in false negatives), or swamp inliers to appear
+as outlying due to the influenced parameters (resulting in false positives) [Pearson
+and Chandra Sekar 1936; Beckman and Cook 1983; Barnett and Lewis 1994; Hadi
+et al. 2009]. Furthermore, these approaches are deemed to assume a specific type of
+distribution.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 6 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:5
+Nonparametric approaches for outlier detection do not assume a specific distribu-
+tionofthedata,butestimate(explicitlyorimplicitly)certainaspectsoftheprobability
+density.Nonparametricmethodsinclude,forinstance,thewell-known“distance-based”
+methods[KnorrandNg1997b;Ramaswamyetal.2000;AngiulliandPizzuti2002]and
+also “density-based” methods such as LOF (local outlier factor) [Breunig et al. 2000]
+anditsmanyvariants.Animportantcategorizationoftheseapproachesdistinguishes
+“local”versus“global”approaches.Althoughthiscategorizationisnotstrictlydichoto-
+mous but there are degrees of locality [Schubert et al. 2014b], these categories reflect
+the nature of outliers that can be found by local or by global methods. Global outliers
+are outliers that are unusual w.r.t. the complete database. Local outliers are outliers
+thatareunusualw.r.t.alocalselectionofthedatabaseonly,suchasanε-rangequeryor
+the K-NNs,butthatwouldnotnecessarilylooksuspiciouswhencomparedgloballyto
+thecompletedatabase.Notonlyaretheredegreesoflocalityinthedesignofmethods,
+but also a local method such as LOF could be used (or rather abused) in a global way
+byconsideringthecompletedatabaseastheNNs(i.e., K=databasesize).Thiswould
+benotinthespiritofthemethodbutevenso,onemethodwithoneparametrizationis
+either local (with a certain degree) or global, but not both at the same time. It would
+be rather the spirit of LOF to choose the size of the neighborhood in a way to at least
+includesomeobjectsofthenearestclusterforanoutlierwhilenotincludingobjectsof
+another cluster for inliers. Choosing the right K for the neighborhood, of course, is a
+taskunsolvablewithoutknowingthedataalready.Thus,whenchoosingamethodand
+aparametrization(suchasneighborhoodsize),theusershavetodecidewhichkindof
+outliers,localorglobal,theyareinterestedin.
+The problem of having to select a particular threshold that inherently limits the
+typesofoutliersthatalocalmethodcandetectinagivendataset(whichmaycontain
+bothglobalandlocaloutliers)hasalsobeenrecognizedbyPapadimitriouetal.[2003],
+who proposed the method LOCI that tries to address this problem. LOCI is probably
+thefirst,andsofaronly,attemptatfindingforeachpointaneighborhoodthatisspecific
+to the point in determining whether the point is an outlier or not. Depending on the
+distancethatdefinestheneighborhood,apointcanbealocaloutlierinsomesenseor
+even a global outlier. However, LOCI considers circular neighborhoods (just like LOF
+and related methods, yet at different distances around a point), which may not take
+the relevant structure of the data properly into account. Circular neighborhoods, at
+large scales, will typically contain “neighbors” from multiple, distant clusters whose
+properties can be considered as unrelated to the point at the center of the sphere, yet
+theyaretakenintoaccountinthecalculationofitsoutlierscore.
+In this article, we argue that by basing an outlier model on hierarchical density
+estimates, one can adapt not only to locally different density-levels (such as LOF
+and its variants) but also to locally different notions of “local”. Traditionally, each
+queryobject’soutliernessisassessedw.r.t.somereferenceset(suchasalocal,circular
+neighborhood or the global database). In our approach, for each query object, the
+scope of a reference set of objects is chosen dynamically and based on the closest
+structure within the density-based hierarchy. By doing so, the locally suitable choice
+could actually be global for some objects while being strictlylocal for other objects. In
+any case, the most meaningful reference structure for a point is the “nearest” cluster
+in the hierarchical cluster hierarchy, as opposed to all points in some sphere around
+the point. This avoids comparing outliers to other outliers or unrelated clusters, as
+it could happen for a local method or LOCI; it also enables the user to find both
+global and local outliers and be able to relate them to the overall clustering structure
+withinoneefficientapproach.Comparedtopreviousmethods,ourapproachrepresents
+somewhat of a paradigm shift in what constitutes meaningful neighborhoods for the
+determination of outlier scores. However, we argue that the outlier model we propose
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 7 [pdfplumber] =====
+5:6 R.J.G.B.Campelloetal.
+isinfactmoreinlinewiththewidelyciteddefinitionofoutliersbyHawkins(anoutlier
+is“anobservationthatdeviatessomuchfromotherobservationsastoarousesuspicions
+that it was generated by a different mechanism” [Hawkins 1980]) and is based on
+solid statistical modeling without suffering from the typical problems of parametric
+approaches.
+Some authors criticize the use of clustering algorithms as an approach to detect
+outliers [Knorr and Ng 1998; Ramaswamy et al. 2000; Knorr et al. 2000; Tang et al.
+2002; Kriegel et al. 2010; Zimek et al. 2012]. It is worth noting, though, that such
+criticisms refer to algorithms that produce “outliers” as ordinary by-products of the
+clusteringprocedure.Typicalexamplesarethosedataobjectsleftunclusteredasnoise
+byalgorithmssuchasDBSCANandDENCLUE(inthelatter,suchobjectsareexplic-
+itlycalled“outliers”indeed).Thelabelingoftheseobjectsasnoise,however,isamere
+consequence of the density threshold arbitrarily set by the analyst (the data are not
+speakingforthemselves).Incontrast,theinterrelatednotionsofoutliersandclusters
+weintroduceinthisarticledependonthehierarchyofdensityestimatesanditsshape
+as a whole, rather than on a single “snapshot” taken at a particular, arbitrary level.
+We advocate that the problems of clustering and outlier detection should be treated
+simultaneously rather than separately (provided that this can be done properly) for
+two reasons: (i) when referring to an outlier as an observation that deviates so much
+from other observations as to arouse suspicions that it was generated by a different
+mechanism,asintheclassicaldefinitionbyHawkins[1980],oneisobviouslyassuming
+the existence of one or more mechanisms responsible for generating the observations
+deemed nonsuspicious. The modeling of such mechanisms seems to be, therefore, an
+important (if not fundamental) step towards the detection of suspicious observations
+as outliers. Intuitively, clusters are natural candidates for this task; and (ii) an out-
+lier is not always viewed as an observation that deviates too much from all the other
+observations.Infact,insomeapplicationdomainsoutliersmayactuallyrefertoobser-
+vationsthataresimilartoeachotherfortheyaregeneratedbythesamemechanism,
+although they are typically less frequent than and deviate from other observations
+(e.g.,certaintypesoffraudsorgeneticmutationsfollowingacommonpattern).These
+outliers can still be modeled and detected as clusters which are typically smaller in
+sizeorvolumeandpossiblyfartherapartfromotherclusters.
+1.3. Contributions
+Inthisarticle,weintroduceacompleteframeworkfordensity-basedclustering,outlier
+detection,andvisualization.Thecoreoftheframeworkisamethodbasedonnonpara-
+metric density estimates that gives rise to a hierarchical clustering algorithm HDB-
+SCAN* (Hierarchical DBSCAN*). HDBSCAN* follows Hartigan’s model of density-
+contourclusters/treesandimprovesexistingdensity-basedclusteringalgorithmsw.r.t.
+differentaspects(tobefurtherelaboratedintherelatedworksection).Itprovidesasa
+resultacompleteclusteringhierarchy composed ofallpossibledensity-basedclusters
+followingthenonparametricmodeladopted,foraninfiniterangeofdensitythresholds,
+and from which a simplified cluster tree can be easily extracted by using Hartigan’s
+conceptofrigidclusters[Hartigan1975].
+The proposed framework is illustrated in Figure 1. The hierarchy and the cluster
+tree produced by the central module (HDBSCAN*) can be postprocessed for multiple
+tasks. For instance, they are particularly suitable for interactive data exploration, as
+they can be easily transformed and visualized in different ways, such as an OPTICS
+reachabilityplot[Ankerstetal.1999;Sanderetal.2003],asilhouette-likeplot[Gupta
+et al. 2010], a detailed dendrogram, or a compacted cluster tree. In addition, for ap-
+plicationsthatexpectanonhierarchicalpartitionofthedata,theclusteringhierarchy
+can alsobe postprocessed sothataflat solution—as thebestpossiblenonhierarchical
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 8 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:7
+Fig.1. Proposedframeworkforhierarchical&nonhierarchicaldensity-basedclustering,global/localoutlier
+detection,anddatavisualization.
+representation of the data insomesense—can be extracted. The traditional approach
+to get a flat solution from a hierarchical clustering is to perform a global horizontal
+cut through one of the levels of the hierarchy, but this approach inherits all the limi-
+tations we discussed earlier regarding the use of a single density threshold. For this
+reason, we instead advocate the use of a method by which a flat solution composed
+of clusters extracted from local cuts through the cluster tree (possibly corresponding
+to different density thresholds) can be obtained, either in an unsupervised or even in
+a semisupervised way. For the unsupervised scenario, we describe an algorithm that
+provides a globally optimal solution to the formal problem of maximizing the overall
+stabilityoftheextractedclusters,forwhichaclusterstabilitymeasureisformulated.
+If partially labeled objects or instance-level constraints of the type should-link and
+should-not-linkareprovidedbytheuser(semisupervisedscenario),thealgorithmcan
+solve the problem by considering both constraint violations/satisfactions and cluster
+stability criteria. Finally, besides the clustering and visualization tasks, the density-
+based hierarchy produced by HDBSCAN* can also be used as the basis for a novel,
+effective,andefficientoutlierdetectionmethod,asillustratedinFigure1.Themethod
+weproposefortheoutlierdetectionmoduleunifiesboththeglobalandlocalflavorsof
+the outlier detection problem into a single definition of an outlier detection measure,
+calledGLOSH(Global-LocalOutlierScoresfromHierarchies),whichalsoattemptsat
+reconcilingthosemorestatisticallyinclinedandthosemoredatabaseorientedmethods
+forunsupervisedoutlierdetection,bymeansofanonparametricapproach.
+Indetail,wemakethefollowingcontributionswithinourproposedframework:
+(1) For the core module of the framework, we present and discuss in details HDB-
+SCAN* as a hierarchical clustering method that generates a complete density-
+based clustering hierarchy from which a simplified cluster tree composed only of
+themostsignificantclusterscanbeeasilyextracted.
+(2) WedescribeanddiscussdifferentwaysofvisualizingtheHDBSCAN*results.
+(3) We present a measure of cluster stability for the purpose of extracting a flat clus-
+tering solution from local cuts (possibly corresponding to different density levels)
+throughtheHDBSCAN*hierarchy;weformulatethetaskofextractingsuchaflat
+solutionasanoptimizationprobleminwhichtheoverallstabilityofthecomposing
+clusters (unsupervised scenario) and/or the fraction of instance-level constraints
+that are satisfied (semisupervised scenario) are maximized; and we describe an
+algorithmthatfindsthegloballyoptimalsolutiontothisproblem.
+(4) We propose GLOSH as a new, effective, and efficient outlier detection measure,
+whichispossiblyuniqueinthatitcansimultaneouslydetectbothglobalandlocal
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 9 [pdfplumber] =====
+5:8 R.J.G.B.Campelloetal.
+types of outliers, based on a sound statistical interpretation; and we describe an
+algorithmtoefficientlycomputeGLOSHscoresfromtheHDBSCAN*hierarchy.
+(5) We demonstrate the advancement that our framework represents in the areas
+of density-based clustering and unsupervised outlier detection through extensive
+experimentsonavarietyofsyntheticandrealworlddatasets.
+Notethatinapreliminarypublication[Campelloetal.2013a],wehaveverybriefly
+introduced the HDBSCAN* algorithm and the postprocessing procedure to optimally
+extract a flat clustering solution from the corresponding hierarchy, in the unsuper-
+vised scenario. The current article significantly extends this work by providing de-
+tailed explanations, examples, and complexity analyses. In another previous publica-
+tion [Campello et al. 2013b], we introduced a general framework to optimally extract
+flatclusteringsolutionsfromclusteringhierarchies,inasemisupervisedwaythaten-
+compassestheunsupervisedscenarioasaspecialcase.Thisframework,however,has
+to be specialized and instantiated for use with each different type of hierarchy. The
+current article introduces and experimentally evaluates a new specialization for the
+HDBSCAN* hierarchy. Finally, the work described here on outlier detection presents
+completelynewideasandoriginalmaterialthathasnotbeenintroducedelsewhere.
+1.4. OutlineoftheArticle
+Theremainderofthisarticleisorganizedasfollows.InSection2,weredefineDBSCAN
+inawaythatmakesitmoreconsistentwithHartigan’smodel.Then,inSection3,we
+present and provide an extensive description and discussion of the algorithm HDB-
+SCAN*.InSection4,wediscusssomedifferentalternativesforthevisualizationofthe
+HDBSCAN*results.InSection5,weposetheproblemofextractinganonoverlapping
+collectionofclustersfromtheHDBSCAN*hierarchyasanoptimizationproblem,and
+describeanalgorithmtosolvethisprobleminanunsupervisedorsemisupervisedway.
+In Section 6, we propose GLOSH, a novel outlier detection method, and describe a
+simple procedure to compute the corresponding outlier scores from the HDBSCAN*
+hierarchy.WediscussrelatedworkinSection7.InSection8,wepresentanextensive
+experimentalevaluationinvolvingrealandsyntheticdataaswellascomparisonswith
+state-of-the-artalgorithmsfordensity-basedclusteringandforglobalandlocaloutlier
+detection.Section9concludesthearticle.
+2. DBSCANREVISITED—THEALGORITHMDBSCAN*
+Let X = {x ,...,x } be a dataset containing ndata objects, each of which is described
+1 n
+byanattributevector,x (·) .Inaddition,let Dbe(conceptuallyonly)ann×nsymmetric
+matrix containing the distances d(x ,x ) between pairs of objects of X in a metric
+p q
+space3. In the following, we define the density-based clustering algorithm DBSCAN*
+asinourpreliminarywork[Campelloetal.2013a],whichdiffersfromDBSCAN[Ester
+etal.1996]inthattheclustersaredefinedbasedoncoreobjectsalone.
+Definition2.1(CoreandNoiseObjects). Anobjectx iscalledacoreobjectw.r.t.εand
+p
+m
+pts
+ifitsε-neighborhoodcontainsatleastm
+pts
+manyobjects,thatis,if|Nε(x
+p
+)|≥m
+pts
+,
+where Nε(x
+p
+) = {x ∈ X|d(x,x
+p
+) ≤ ε} and |·| denotes cardinality. An object is called
+noiseifitisnotacoreobject.
+Definition2.2(ε-Reachable). Twocoreobjectsx andx areε-reachablew.r.t.ε and
+p q
+m
+pts
+ifx
+p
+∈Nε(x
+q
+)andx
+q
+∈Nε(x
+p
+).
+3MatrixDisnotrequiredifdistancesd(·,·)canbecomputedfromXondemand.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 10 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:9
+Definition2.3(Density-Connected). Twocoreobjectsx andx aredensity-connected
+p q
+w.r.t.ε andm iftheyaredirectlyortransitivelyε-reachable.
+pts
+Definition2.4(Cluster). AclusterCw.r.t.εandm isanon-emptymaximalsubset
+pts
+ofXsuchthateverypairofobjectsinCisdensity-connected.
+Based on these definitions, we can devise an algorithm DBSCAN* (similar to DB-
+SCAN) that conceptually finds clusters as the connected components of a graph in
+which the objects of X are vertices and every pair of vertices is adjacent if and only
+if the corresponding objects are ε-reachable w.r.t. user-defined parameters ε and m .
+pts
+Noncoreobjectsarelabeledasnoise.
+Note that the original definitions of DBSCAN also include the concept of border
+objects, that is, noncore objects that are within the ε-neighborhood of one or more
+core objects. Border objects are in DBSCAN assigned to a cluster corresponding to
+one of these core objects. When using DBSCAN*, one could also include the border
+objects in a simple, linear time postprocessing step (tracking and assigning each bor-
+der object to, e.g., its closest core). However, our new definitions are more consistent
+with a statistical interpretation of clusters as connected components of a level set of
+a density [Hartigan 1975], since border objects do not technically belong to the level
+set (their estimated density is below the threshold). The new definitions also imply
+that clusters are formed based on a symmetric notion of reachability that allows a
+precise relationship between DBSCAN* and its hierarchical version, to be discussed
+in the next section. This was only approximately possible between DBSCAN and OP-
+TICS [Ankerst et al. 1999]4; and including border objects also complicated the for-
+mulation of the OPTICS algorithm, preventing at the same time a precise statistical
+interpretation.
+3. HIERARCHICALDBSCAN*—HDBSCAN*
+In this section, we provide an extended description and discussion of our hierarchi-
+cal clustering method, HDBSCAN* [Campello et al. 2013a], which can be seen as a
+conceptualandalgorithmicimprovementoverOPTICS[Ankerstetal.1999].
+3.1. ConceptualHDBSCAN*
+Ourmethodhasasitssingleinputparameteravalueform .Thisisaclassicsmooth-
+pts
+ing factor in density estimates whose behavior is well understood, and methods that
+haveananalogousparameter(e.g.,Ankerstetal.[1999],Guptaetal.[2010],Peietal.
+[2009],andStuetzleandNugent[2010])aretypicallyrobusttoit.
+For a proper formulation of the density-based hierarchy w.r.t. a value of m , we
+pts
+employ notions related to the core and reachability distances introduced for OPTICS.
+While the notion of core distance is the same as for OPTICS, we use, however, a sym-
+metric definition of reachability distance (“mutual reachability distance”), following
+thedefinitionofLelisandSander[2009].
+Definition 3.1 (Core Distance). The core distance of an object x ∈ X w.r.t. m ,
+p pts
+d (x ),isthedistancefromx toitsm -nearestneighbor(includingx ).
+core p p pts p
+Notice that the core distance is the minimum radius ε such that x satisfies the core
+p
+conditionw.r.t.m
+pts
+,thatis,|Nε(x
+p
+)|≥m
+pts
+(Definition2.1).
+4Ankerstetal.[1999]noticethatflatclusteringsextractedfromanOPTICSreachabilityplotare“nearly
+indistinguishablefromaclusteringcreatedbyDBSCAN”.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 11 [pdfplumber] =====
+5:10 R.J.G.B.Campelloetal.
+Definition 3.2 (Mutual Reachability Distance). The mutual reachability distance
+between two objects x and x in X w.r.t. m is defined as d (x ,x ) =
+p q pts mreach p q
+max{d (x ),d (x ),d(x ,x )}.
+core p core q p q
+Notice that d (x ,x ) in Definition 3.2 is the minimum radius ε such that x and
+mreach p q p
+x are ε-reachable according to Definition 2.2. It plays a central role in defining the
+q
+following(conceptualonly)transformedproximitygraph,whichwillhelpusexplaina
+density-basedclusteringhierarchy.
+Definition 3.3 (Mutual Reachability Graph). The mutual reachability graph is a
+completegraph,G ,inwhichtheobjectsofXareverticesandtheweightofeachedge
+mpts
+isthemutualreachabilitydistance(w.r.t.m )betweentherespectivepairofobjects.
+pts
+we L ig e h t t G s m g p r ts e ,ε at ⊆ er G th m a pt n s s b o e m t e he va g l r u a e p o h fε o . b F t r a o in m ed De b fi y n r it e i m on o s vi 2 n .4 g a a n ll d e 3 d .3 g , e i s ti f s ro s m tra G ig m h pt t s fo h r a w v a in rd g
+to infer that clusters according to DBSCAN* w.r.t. m and ε are then the connected
+pts
+componentsofcoreobjectsinG
+mpts
+,ε;andtheremainingobjectsarenoise.Consequently,
+all DBSCAN* clusterings for any ε ∈ [0,∞) can be produced in a nested, hierarchical
+waybyremovingedgesindecreasingorderofweightfromG .
+mpts
+At this point, it is important to notice that removing edges with weights greater
+than a decreasing threshold from a complete proximity graph, and then checking for
+the remaining connected subcomponents of the graph, is essentially the graph-based
+definition of the hierarchical Single-Linkage algorithm [Johnson 1967] (e.g., refer to
+JainandDubes[1988]fordetails).Thefollowingpropositionthenholds,whichformal-
+izestheconceptualrelationshipbetweenthealgorithmsDBSCAN*andSingle-Linkage
+inthetransformedspaceofmutualreachabilitydistances.
+PROPOSITION 3.4. Let X be a set of n objects described in a metric space by n× n
+pairwise distances. The clustering of this data obtained by DBSCAN* w.r.t m and
+pts
+some value ε is identical to the one obtained by first running Single-Linkage over
+the transformed space of mutual reachability distances (w.r.t m ), then, cutting the
+pts
+resulting dendrogram at level ε of its scale, and treating all resulting singletons with
+d (x )>ε asasingleclassrepresenting“Noise”.
+core p
+PROOF. Proofsketchasperdiscussionearlier,afterDefinition3.3.
+COROLLARY 3.5. For m
+pts
+= 1 or m
+pts
+= 2, DBSCAN* w.r.t. ε, m
+pts
+is equivalent to a
+horizontal cut through level ε of the Single-Linkage dendrogram in the original space
+ofdistancesd(·,·),providedthatallresultingsingletonsarelabeledasnoiseifm =2
+pts
+orasunitaryclustersifm =1.
+pts
+PROOF. From Definition 3.1, the core distance of an object x
+p
+is equal to zero when
+m =1andisequaltothedistancetoitsNN(excludingtheobjectitself)whenm =2.
+pts pts
+Accordingly: (i) for m = 1, any “isolated” (i.e., nonconnected) object at any level ε is
+pts
+necessarilyacoreobjectand,therefore,aunitaryclusteratthatlevel.Inotherwords,
+nonoisewillexistinthiscase,nomatterthevalueofε;(ii)form =2,itfollowsfrom
+pts
+Definitions 3.1 and 3.2 that d (x ) is equal to the minimum d (x ,x ) between
+core p mreach p q
+x and any other object x . This means that, for a given cut level ε, any isolated
+p q
+object will necessarily be a noise object at that level; and (iii) for both m = 1 and
+pts
+m = 2, it follows from Definition 3.2 that d (x ,x ) = d(x ,x ), that is, the
+pts mreach p q p q
+originalandtransformeddataspacesarethesamefortheseparticularvaluesofm .
+pts
+As a consequence, the equivalence between DBSCAN* and Single-Linkage described
+in Proposition 3.4 is valid even for the original space when m = 1 or m = 2 (the
+pts pts
+useoflargervaluesofm ,ontheotherhand,isknowntoweakenthechainingeffect
+pts
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 12 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:11
+ofSingle-Linkagebystretchingthedistancesbetweenobjectslyinginsparserregions
+ofthedataspace).
+Proposition3.4suggeststhatwecouldimplementahierarchicalversionofDBSCAN*
+byapplyinganalgorithmthatcomputesaSingle-Linkagehierarchyonthetransformed
+spaceofmutualreachabilitydistances.ThesimpleapplicationofSingle-Linkagetothe
+transformed distance space, however, would not directly encode whether an isolated
+objectisacoreoranoiseobjectatagivenlevelofthehierarchy.Aspreviouslydiscussed,
+a density-based cluster hierarchy has to represent the fact that an object o is noise
+below the level l that corresponds to o’s core distance. Instead of a postprocessing of
+theresultinghierarchytoincludethisinformation,weadoptamoreefficientandmore
+elegantsolution.
+3.2. AlgorithmHDBSCAN*
+The fastest way to compute a Single-Linkage hierarchy is possibly by using a divi-
+sive algorithm based on the Minimum Spanning Tree (MST) [Jain and Dubes 1988],
+which works by removing edges from an MST in decreasing order of weights (here,
+correspondingtomutualreachabilitydistances).Todirectlyrepresentthelevelinthe
+hierarchy below which an isolated object o is a noise object, we need to include an
+additional node at that level, representing the cluster containing the single object o
+at that level and higher. This can be achieved by extending the MST with self-loops
+(edges connecting each vertex to itself), in which the edge weight for each vertex o is
+settothecoredistanceofo;these“self-edges”willthenbeconsideredwhenremoving
+edges.NoticefromDefinition3.2thattheweightofaself-loopcannotbegreaterthan
+thoseoftheotheredgesincidenttothecorrespondingvertex.Incaseofties,edgesare
+removedsimultaneously.
+Algorithm1showsthepseudocodeforHDBSCAN*.Ithasasinputsthevalueform
+pts
+and either X or the corresponding distance matrix D. For a given m , the algorithm
+pts
+produces a clustering tree that contains all clusterings obtainable by DBSCAN* in a
+hierarchical,nestedway,includingnodesthatindicatewhenanisolatedobjectchanges
+fromcore(i.e.,dense)tonoise.Theresultiscalledthe“HDBSCAN*hierarchy”.Theset
+ofalluniqueclusteringsthatcanbeobtainedbyDBSCAN*,foravalueofm andall
+pts
+possiblevaluesoftheradiusε,correspondsone-to-onetothesetofuniquescalevalues
+(MST edge weights) of the hierarchy levels. When combining consecutive levels of
+ext
+the hierarchy with the same scale value (ties of the MST edge weights), as usual
+ext
+inclassicSingle-Linkagedendrograms,thelevelsthemselvescorrespondone-to-oneto
+theuniqueclusteringsobtainablebyDBSCAN*.
+3.3. HierarchySimplification
+A dendrogram is an important exploratory data analysis tool, but in its raw form
+it may be difficult to interpret or process it for large and “noisy” datasets. In this
+context, it is an important task to extract from a dendrogram a summarized tree of
+only “significant” clusters. We propose a simplification of the HDBSCAN* hierarchy
+based on a fundamental observation about estimates of the level sets of continuous-
+valuedPDF,whichrefersbacktoHartigan’sconceptofrigidclustersHartigan[1975],
+and which has also been employed similarly by Gupta et al. [2010]. For a given PDF,
+there are only three possibilities for the evolution of the connected components of a
+continuous density level set when increasing the density level (decreasing ε in our
+context) [Herbin et al. 2001]: (i) the component shrinks but remains connected, up to
+a density threshold at which either (ii) the component is divided into smaller ones, or
+(iii)itdisappears.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 13 [pdfplumber] =====
+5:12 R.J.G.B.Campelloetal.
+Fig.2. Dataobjects(filledcircles)andedgesofanMSTextcomputedoverthetransformedspaceofmutual
+reachabilitydistanceswithmpts =3andEuclideanmetric(solidlines).“Selfedges”andedgeweightsare
+omittedforthesakeofclarity.
+ALGORITHM1:HDBSCAN*mainsteps
+1.Computethecoredistancew.r.t.m foralldataobjectsinX.
+pts
+2.ComputeanMSTofG ,theMutualReachabilityGraph.
+mpts
+3.ExtendtheMSTtoobtainMST ,byaddingforeachvertexa“selfedge”withthecore
+ext
+distanceofthecorrespondingobjectasweight.
+4.ExtracttheHDBSCAN*hierarchyasadendrogramfromMST :
+ext
+4.1Fortherootofthetreeassignallobjectsthesamelabel(single“cluster”).
+4.2IterativelyremovealledgesfromMST indecreasingorderofweights
+ext
+(incaseofties,edgesmustberemovedsimultaneously):
+4.2.1Beforeeachremoval,setthedendrogramscalevalueofthecurrent
+hierarchicallevelastheweightoftheedge(s)toberemoved.
+4.2.2Aftereachremoval,assignlabelstotheconnectedcomponent(s)thatcontain(s)
+theendvertex(-ices)oftheremovededge(s),toobtainthenexthierarchicallevel:
+assignanewclusterlabeltoacomponentifitstillhasatleastoneedge,elseassign
+itanulllabel(“noise”).
+The idea given earlier can be applied to substantially simplify the HDBSCAN* hi-
+erarchy by focusing only on those hierarchical levels in which new clusters arise by a
+“true”splitofanexistingcluster,orinwhichclusterscompletelydisappear,represent-
+ing the levels in which the most significant changes in the clustering structure occur.
+To establish what constitutes a “true” split of a cluster we make use of the fact that
+noiseobjectsarenotconsideredtobeclustersinHDBSCAN*,sotheirremovalfroma
+given cluster should not be considered as a split of that cluster, but just the removal
+ofobjectsthatarenolongerconnectedtoitatthecorrespondingdensitythreshold.In
+other words, when decreasing ε, the ordinary removal of noise objects from a cluster
+meansthattheclusterhasshrunkonly,sotheremainingobjectsshouldkeepthesame
+label.
+Let us consider a simple illustrative example involving the toy dataset in Figure 2.
+The application of HDBSCAN* to those data with m = 3 and Euclidean distance
+pts
+resultsinthehierarchyshowninTableI.Therelevanthierarchicallevelsinthiscase
+are those corresponding to ε = 7.1, below which cluster C is split into C and C ,
+1 2 3
+ε = 3.04, below which cluster C is split into C and C , and ε = 1.28, 1.22, and 0.67,
+2 4 5
+below which clusters C , C , and C disappear, respectively. In the remaining levels,
+3 4 5
+clusters only shrink by losing objects that become noise. In the case of clusters C
+3
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 14 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:13
+TableI.HDBSCAN*HierarchyforthedatasetinFigure2,withmpts =3.Higher(lower)HierarchicalLevelsare
+ontheleft(right).ValuesofεintheBottomrowarethoseAssignedinStep4.2.1ofAlgorithm1.TheRemaining
+ValuesarethelabelsAssignedinSteps4.1and4.2.2:anon-nullValueiinthejthrowMeansthatObjectxj
+BelongstoClusterCiattheCorrespondingLevel,WhereasanullValueDenotesNoise
+x1 1 2 2 4 4 4 4 0 0 0 0
+x2 1 2 2 4 4 4 4 4 4 0 0
+x3 1 2 2 4 4 4 4 0 0 0 0
+x4 1 2 2 0 0 0 0 0 0 0 0
+x5 1 2 2 5 5 5 0 0 0 0 0
+x6 1 2 2 5 5 5 5 5 5 5 0
+x7 1 2 2 5 5 5 5 5 5 5 0
+x8 1 2 2 5 5 5 5 5 5 5 0
+x9 1 2 2 5 5 5 0 0 0 0 0
+x10 1 2 0 0 0 0 0 0 0 0 0
+x11 1 3 3 3 0 0 0 0 0 0 0
+x12 1 3 3 3 3 0 0 0 0 0 0
+x13 1 3 3 3 3 3 3 3 0 0 0
+x14 1 3 3 3 3 0 0 0 0 0 0
+ε 7.1 6.51 3.04 1.7 1.6 1.4 1.3 1.28 1.22 0.67 0
+and C , note that they are reduced to single objects in the intervals ε = [1.28 1.6)
+4
+andε = [1.22 1.3),respectively,beforetheycompletelydisappear.Thisinformationis
+capturedbytheself-loopsintroducedintheextendedMST,whichdescribethefactthat
+x andx becomeisolated,yetdenseobjectsinthecorrespondingintervals.
+13 2
+ALGORITHM2:HDBSCAN*Step4.2.2with(optional)parameterm ≥1
+clSize
+4.2.2Aftereachremoval(toobtainthenexthierarchicallevel),processoneatatimeeach
+clusterthatcontainedtheedge(s)justremoved,byrelabelingitsresultingconnected
+subcomponent(s):
+Labelspurioussubcomponentsasnoisebyassigningthemthenulllabel.Ifall
+subcomponentsofaclusterarespurious,thentheclusterhasdisappeared.
+Else,ifasinglesubcomponentofaclusterisnotspurious,keepitsoriginalclusterlabel
+(clusterhasjustshrunk).
+Else,iftwoormoresubcomponentsofaclusterarenotspurious,assignnewcluster
+labelstoeachofthem(“true”clustersplit).
+The extended dendrogram that represents the density-based hierarchy in Table I
+is illustrated in Figure 3. Noise is indicated by thinner, red lines. The corresponding
+simplifiedclustertreeisdisplayedinFigure4(thevaluesbetweenparenthesesinthe
+nodes of the tree will be explained later). It is worth noticing that there are only five
+significantclustersinthetree,incontrastto27clustersthatwouldexistintraditional
+hierarchicalclusterings.
+Theideaforhierarchysimplificationcanbegeneralizedbysettingaminimumcluster
+size, a commonly used practice in real cluster analysis. In fact, in many practical
+applications of clustering (not just density-based clustering) a minimum cluster size
+isusedasauser-specifiedparameterinordertopreventalgorithmsfromfindingvery
+small clusters of objects that may be highly similar to each other just by chance, that
+is, as a consequence of the natural randomness associated with the use of a finite
+data sample (see, e.g., the notion of a particle in the work of Gupta et al. [2010]).
+Requiringaminimumclustersize,m ≥1,allowsonlyclusterswithatleastm
+clSize clSize
+objects to be reported, and the case in which a component with fewer than m
+clSize
+objects is disconnected from a cluster should not be considered as a “true” split. We
+can adapt HDBSCAN* accordingly by changing Step 4.2.2 of Algorithm 1, as shown
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 15 [pdfplumber] =====
+5:14 R.J.G.B.Campelloetal.
+Fig. 3. Dendrogram corresponding to the HDBSCAN* Fig. 4. Cluster tree corresponding to the
+hierarchy for the dataset in Figure 2, with mpts = 3 hierarchy in Table I. Numerical values
+(hierarchyinTableI).Thinner,redlinesdenotenoise. withinparenthesesstandforthestability
+of the clusters according to their relative
+excessofmass.
+inAlgorithm2:aconnectedcomponentisdeemedspuriousifithasfewerthanm
+clSize
+objectsor,form =1,ifitisanisolated,non-denseobject(avertexwithnoedges).
+clSize
+Any spurious component is labeled as noise. Cardinality check and labeling of the
+components can be trivially performed by a graph traversal procedure starting from
+the end vertices of the removed edge(s). In practice, this simplification procedure can
+reducedramaticallythenumberofclustersinthehierarchy.
+Note that the optional use of the parameter m represents an additional, inde-
+clSize
+pendentcontrolofthesmoothingoftheresultingclustertreeasadensityestimate,in
+addition to the parameter m . Note also that in the original definition of a density-
+pts
+based cluster for DBSCAN Ester et al. [1996], m simultaneously acts as a direct
+pts
+controloftheminimumclustersize,sinceborderobjects(whichwedonotconsiderin
+HDBSCAN*) belong to the same clusters as their corresponding core objects; conse-
+quently,theresultingclustershavenofewerthanm objects.5
+pts
+To make HDBSCAN* more similar to previous density-based approaches like DB-
+SCANinthisrespect,andalsotosimplifyitsuse,wecansetm =m ,whichturns
+clSize pts
+m into a single parameter that acts at the same time as a smoothing factor of the
+pts
+densityestimatesandanexplicitthresholdfortheminimumsizeofclusters.
+3.4. ComputationalComplexity
+The asymptotic complexity of HDBSCAN* in Algorithms 1 and 2 is discussed in this
+section w.r.t. running time and memory space, considering two different scenarios. In
+thefirstscenario,thedatasetXisavailableasaninputtothealgorithm.Inthesecond
+(relational) scenario, the distance matrix D is available instead. It is important to
+remark that one has m (cid:9) n (where n = |X|) in any realistic application, so this
+pts
+assumptionismadehere.
+Let us first consider the first scenario, in which X is available. We assume that the
+distance d(·,·) between any pair of objects can be computed in O(a) time—where a
+5TheDBSCANalgorithm,however,doesnotimplementthepossiblemultiplelabelsforborder-objectsbut
+assignsaborderobjectarbitrarilytojustoneoftheclustersitbelongsto.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.

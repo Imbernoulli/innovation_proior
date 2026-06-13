@@ -1,0 +1,361 @@
+
+===== page 2 [pdfplumber] =====
+clusters found by a partitioning algorithm is convexw hichi s moderatev alues for n, but it is prohibitive for applicationso n
+very restrictive. large databases.
+Ng & Han (1994) explore partitioning algorithms for Jain (1988) explores a density based approach to identify
+KDDin spatial databases. An algorithm called CLARANS clusters in k-dimensionalp oint sets. The data set is parti-
+(Clustering Large Applications based on RANdomized tioned into a numbero f nonoverlappingc ells and histograms
+Search) is introduced which is an improvedk -medoidm eth- are constructed. Cells with relatively high frequency counts
+od. Compared to former k-medoid algorithms, CLARANS of points are the potential cluster centers and the boundaries
+is moree ffective and moree fficient. Ane xperimentale valu- betweenc lusters fall in the "valleys" of the histogram. This
+ation indicates that CLARArNuSns efficiently on databases method has the capability of identifying clusters of any
+of thousands of objects. Ng& Han(1 994) also discuss meth- shape. However,t he space and run-time requirements for
+ods to determine the "natural" numberk nat of clusters in a storing and searching multidimensional histograms can be
+database. They propose to run CLARANonSc e for each k enormous. Even if the space and run-time requirements are
+from2 to n. For each of the discovered clusterings the sil- optimized, the performance of such an approach crucially
+houette coefficient (Kaufman& Rousseeuw1 990) is calcu- dependso n the size of the cells.
+lated, and finally, the clustering with the maximusmil hou-
+ette coefficient is chosen as the "natural" clustering. 3. A Density Based Notion of Clusters
+Unfortunately, the run time of this approachi s prohibitive
+Whenl ooking at the sample sets of points depicted in
+for large n, because it implies O(n) calls of CLARANS.
+figure 1, we can easily and unambiguousldye tect clusters of
+CLARAaNsSsu mest hat all objects to be clustered can re-
+points and noise points not belonging to any of those clus-
+side in main memorya t the same time which does not hold
+ters.
+for large databases. Furthermore, the run time of CLARANS
+is prohibitive on large databases. Therefore, Ester, Kriegel
+&Xu( 1995) present several focusing techniques which ad- ...:-’.".’"-...
+¯ .-,. ..:,, .-:~
+dress both of these problemsb y focusing the clustering pro-
+cess on the relevant parts of the database. First, the focus is ¯ - ,;~.:.: ~ .-
+°’-l" .,... ~’
+small enough to be memoryr esident and second, the run ., ,..-:.,..,~.,.:. ..~,,:’.;t":"’:"::
+time of CLARAoNnS t he objects of the focus is significant- l°o ¯ . o ~ . , , ~ . .° : , :: i-\"."’ . . .,¯ , ,o .:~: .:::;::."
+ly less than its run time on the wholed atabase.
+Hierarchical algorithms create a hierarchical decomposi- database 1 database 2 database 3
+tion of D. The hierarchical decompositionis represented by
+figure 1: Sampled atabases
+a dendrograma, tree that iteratively splits D into smaller
+subsets until each subset consists of only one object. In such The main reason why we recognize the clusters is that
+a hierarchy, each node of the tree represents a cluster of D. within each cluster weh ave a typical density of points which
+The dendrogramc an either be created from the leaves up to is considerably higher than outside of the cluster. Further-
+the root (agglomerativea pproach)o r from the root downt o more, the density within the areas of noise is lower than the
+the leaves (divisive approach)b y mergingo r dividing clus- density in any of the clusters.
+ters at eachs tep. In contrast to partitioning algorithms,h ier- In the following, wet ry to formalizet his intuitive notion
+archical algorithmsd o not need k as an input. Howevera, ter- of "clusters" and "noise" in a database D of points of some
+mination condition has to be defined indicating whent he k-dimensionals pace S. Note that both, our notion of clusters
+merge or division process should be terminated. One exam- and our algorithm DBSCANap, ply as well to 2D or 3D Eu-
+ple of a termination condition in the agglomerativea pproach clidean space as to some high dimensional feature space.
+is the critical distance Dmni betweena ll the clusters of Q. Thek ey idea is that for each point of a cluster the neighbor-
+So far, the main problemw ith hierarchical clustering al- hood of a given radius has to contain at least a minimum
+gorithmsh as been the difficulty of deriving appropriate pa- numbero f points, i.e. the density in the neighborhoodh as to
+rnameters for the termination condition, e.g. a value of Dmi exceed somet hreshold. The shape of a neighborhoodi s de-
+whichi s small enought o separate all "natural" clusters and, termined by the choice of a distance function for two points
+at the samet ime large enoughs uch that no cluster is split into p and q, denoted by dist(p,q). For instance, whenu sing the
+two parts. Recently,i n the area of signal processingt he hier- Manhattand istance in 2Ds pace, the shape of the neighbor-
+archical algorithm Ejcluster has been presented (Garcfa, hood is rectangular. Note, that our approachw orksw ith any
+Fdez-Valdivia, Cortijo & Molina 1994) automatically deriv- distance function so that an appropriate function can be cho-
+ing a terminationc ondition. Its key idea is that two points be- sen for someg iven application. For the purposeo f proper vi-
+long to the samec luster if you can walk fromt he first point sualization, all examplesw ill be in 2Ds pace using the Eu-
+to the second one by a "sufficiently small" step. Ejcluster clidean distance.
+follows the divisive approach. It does not require any input Definition 1: (Eps-neighborhood of a point) The Eps-
+of domain knowledge. Furthermore, experiments show that neighborhoodo f a point p, denoted by NEps(P),i s defined
+it is very effective in discovering non-convexc lusters. How- NEps(P=) {q E DI dist(p,q) _< Eps}.
+ever, the computationacl ost of Ejcluster is O(n2) due to the A naive approachc ould require for each point in a cluster
+distance calculation for each pair of points. This is accept- that there are at least a minimumnu mber( MinPts) of points
+able for applications such as character recognition with in an Eps-neighborhood of that point. However,t his ap-
+Sp~,ml, Text, & Multimedia 227
+
+===== page 3 [pdfplumber] =====
+proachf ails becauset here are two kinds of points in a clus-
+ter, points inside of the cluster (core points) and points on the
+border of the cluster (border points). In general, an Eps- p re a d r e ., . l~ . le m f -~ ~ rnq ¯ ¯ ¯ ¯ p ~’i ’l~m~ectedt p o lind q de.allly-
+neighborhoodo f a border point contains significantly less .i) ..~. t~)
+rtachablefi’~mp ¯ ¯ ¯ * ¯ , ,..~_.~....~j
+points than an Eps-neighborhooodf a core point. Therefore,
+we wouldh ave to set the minimumnu mbero f points to a rel-
+figure 3: density-reachabHity and density-connectivity
+atively low value in order to include all points belongingt o
+the samec luster. This value, however,w ill not be character- Definition 5: (cluster) Let D be a database of points.
+istic for the respectivec luster - particularlyi n the presenceo f cluster C wrt. Eps and MinPts is a non-emptys ubset of D
+noise. Therefore, we require that for every point p in a clus- satisfying the following conditions:
+ter C there is a point q in C so that p is inside of the Eps- 1) V p, q: ifp E C and q is density-reachable fromp wrt.
+neighborhood of q and NEps(q) contains at least MinPts Eps and MinPts, then q E C. (Maximality)
+points. This definition is elaboratedi n the following. 2) V p, q e C: p is density-connectteod q wrt. EPSa nd
+Definition2 : (directly density-reachable)A point p is di- MinPts. (Connectivity)
+rectly density-reachablef roma point q wrt. Eps, MinPtsi f Definition6 : (noise) Let Ct ..... Ck be the clusters of the
+1) p @N Eps(q)
+database D wrt. parameters Epsi and MinPtis, i = 1 ..... k.
+Thenw e define the noise as the set of points in the database
+2) INEps(q)l> MinPts( core point condition).
+Obviously,d irectly density-reachable is symmetricf or pairs D not belongingto anyc luster Ci, i.e. noise = {p E DI ’v’ i: p
+Ci).
+of core points. In general, howeveri,t is not symmetricif one
+core point and one border point are involved. Figure 2 shows Notet hat a cluster C wrt. Eps and MinPtsc ontains at least
+MinPts points because of the following reasons. Since C
+the asymmetricc ase.
+contains at least one point p, p must be density-connectedt o
+itself via somep oint o (which mayb e equal to p). Thus,
+¯ ¯ ¯ reachable/r~m q least o has to satisfy the core point condition and, conse-
+p:b0rdetp0mt * ¯ ¯ q * * ¯ quently, the Eps-Neighborhooodf o contains at least MinPts
+q: cQrepomt ¯ *" * q not c~e.r-tly d~slty- points.
+reachable from p
+The following lemmataa re important for validating the
+figure 2: core points and borderp oints correctness of our clustering algorithm. Intuitively, they
+state the following. Given the parameters Eps and MinPts,
+Definition 3: (density-reachable) A point p is density- we can discover a cluster in a two-step approach. First,
+reachable from a point q wrt. Eps and MinPtsi f there is a choose an arbitrary point from the database satisfying the
+chain of points Pl ..... Pn, Pl = q, Pn = P such that Pi+l is di- core point condition as a seed. Second, retrieve all points
+rectly density-reachablef rom Pi. that are density-reachable fromt he seed obtaining the clus-
+Density-reachability is a canonical extension of direct ter containingt he seed.
+density-reachability.T his relation is transitive, but it is not Lemm1a: Let p be a point in D and INEps(p)l > MinPts.
+symmetric. Figure 3 depicts the relations of somes ample Thent he set O = {o I o E D and o is density-reachable from
+points and, in particular, the asymmetricc ase. Althoughn ot p wrt. Eps and MinPts} is a cluster wrt. Eps and MinPts.
+symmetricin general, it is obvioust hat density-reachability It is not obvious that a cluster C wrt. Eps and MinPtsi s
+is symmetricfo r core points. uniquely determined by any of its core points. However,
+Twob order points of the samec luster C are possibly not each point in C is density-reachable from any of the core
+density reachable from each other because the core point points of C and, therefore, a cluster C contains exactly the
+condition might not hold for both of them. However,t here points which are density-reachable from an arbitrary core
+must be a core point in C from whichb oth border points of C point of C.
+are density-reachable. Therefore, we introduce the notion of Lemm2a: Let C be a cluster wrt. Eps and MinPts and let
+density-connectivity which covers this relation of border p be any point in C with INEps(P)l > MinPts. ThenC equals
+points. to the set O= {o I o is density-reachablef romp wrt. Eps and
+Definition 4: (density-connected) A point p is density- MinPts} .
+connectedt o a point q wrt. Eps and MinPtsi f there is a point
+o such that both, p and q are density-reachable from o wrt. 4. DBSCAND:e nsity Based Spatial Clustering
+Eps and MinPts. of Applications with Noise
+Density-connectivity is a symmetricr elation. For density
+reachablep oints, the relation of density-connectivityi s also In this section, we present the algorithm DBSCA(DNe nsity
+reflexive( c.f. figure 3). Based Spatial Clustering of Applications with Noise) which
+Now,w e are able to define our density-based notion of a is designedt o discover the clusters and the noise in a spatial
+cluster. Intuitively, a cluster is definedt o be a set of density- database accordingt o definitions 5 and 6. Ideally, we would
+connected points which is maximalw rt. density-reachabili- have to knowt he appropriate parameters Eps and MinPts of
+ty. Noisew ill be defined relative to a given set of clusters. each cluster and at least one point from the respective clus-
+Noisei s simplyt he set of points in D not belongingt o any of ter. Then,w ec ould retrieve all points that are density-reach-
+its clusters. able from the given point using the correct parameters. But
+228 KDD-96
+
+===== page 4 [pdfplumber] =====
+there is no easy wayt o get this informationi n advancef or all used by DBSCANis ExpandCluster which is present-
+clusters of the database. Howevert,h ere is a simple and ef- ed below:
+fective heuristic (presented in section section 4.2) to deter-
+ExpandCluster (SetOfPoints, Point, CiId, Eps,
+mine the parameters Eps and MinPts of the "thinnest", i.e.
+MinPts) : Boolean;
+least dense, cluster in the database. Therefore, DBSCAN seeds : =SetOfPoints. regionQuery (Point, Eps )
+uses global values for Eps and MinPts, i.e. the samev alues IF seeds.size<MinPts THEN // no core point
+for all clusters. The density parameters of the "thinnest" SetOfPoint. changeCl Id (Point, NOISE)
+cluster are good candidatesf or these global parameterv alues RETURN False;
+specifying the lowest density whichi s not considered to be ELSE // all points in seeds are density-
+noise. // reachable from Point
+SetOfpoints. changeCiIds ( seeds, C1 Id)
+4.1 The Algorithm seeds .delete (Point)
+WHILE seeds <> Empty DO
+To find a cluster, DBSCAstNar ts with an arbitrary point p currentP := seeds.first()
+and retrieves all points density-reachable from p wrt. Eps result := setofPoints.regionQuery(currentP,
+and MinPts.I f p is a core point, this procedurey ields a clus- Eps)
+ter wrt. Eps and MinPts( see Lemm2a) . Ifp is a border point, IF result.size >= MinPts THEN
+no points are density-reachable from p and DBSCAvNis its FOR i FROM 1 TO result.size DO
+the next point of the database. resultP := result.get(i)
+Since we use global values for Eps and MinPts, DBSCAN IF resultP. CiId
+IN (UNCLASSIFIED, NOISE} THEN
+maym erge two clusters according to definition 5 into one
+IF resultP.CiId = UNCLASSIFIED THEN
+cluster, if twoc lusters of different density are "close" to each
+seeds, append (resultP)
+other. Let the distance betweent wo sets of points S2 l and S
+END IF;
+be defined as dist (S1, Sx) = min{ dist(p,q) I p b q C$2}. SetOfPoints. changeCiId ( resultP, CiId)
+Then, two sets of points having at least the density of the
+END IF; // UNCLASSIFIED or NOISE
+thinnest cluster will be separated frome ach other only if the END FOR ;
+distance between the two sets is larger than Eps. Conse- END IF; // result.size >= MinPts
+quently, a recursive call of DBSCAmNa yb e necessary for seeds, delete (currentP)
+the detected clusters with a higher value for MinPts.T his is, END WHILE; // seeds <> Empty
+however,n o disadvantage because the recursive application RETURN True ;
+of DBSCAyiNel ds an elegant and very efficient basic algo- END IF
+END; // ExpandCluster
+rithm. Furthermore,t he recursive clustering of the points of
+A call of SetO fPoint s.regionQue-
+a cluster is only necessaryu nder conditions that can be easi-
+ry(Point,E ps) returnst he Eps-Neighb0rho0d
+ly detected.
+Pointi n SetOfPointass a listo f points.R egionq ue-
+In the following, we present a basic version of DBSCAN
+riesc an be supported efficiently by spatial access methods
+omitting details of data types and generation of additional
+such as R*-trees (Beckmanne t al. 1990) which are assumed
+informationa bout clusters:
+to be available in a SDBSfo r efficient processing of several
+types of spatial queries (Brinkhoffet al. 1994). Theh eight
+DBSCAN (SetOfPoints, Eps, MinPts)
+an R*-tree is O(logn ) for a database of n points in the worst
+// SetOfPoints is UNCLASSIFIED case and a query with a "small" query region has to traverse
+only a limited numbero f paths m the R -tree. Since the Eps-
+ClusterId := nextId(NOISE);
+Neighborhoods are expected to be small compared to the
+FOR i FROM 1 TO SetOfPoints.size DO
+size of the wholed ata space, the average run time complexi-
+Point := SetOfPoints.get(i);
+ty of a single region query is O(log n). For each of the
+IF Point.CiId = UNCLASSIFIED THEN points of the database, we have at most one region query.
+IF ExpandCluster(SetOfPoints, Point, Thus, the average run time complexity of DBSCAiNs
+ClusterId, Eps, MinPts) THEN O(n * log n).
+ClusterId := nextId(ClusterId) The C1 Td (clusterId) of points which have been marked
+to be NOISEm ayb e changedl ater, if they are density-reach-
+END IF
+able from someo ther point of the database. This happensf or
+END IF
+border points of a cluster. Thosep oints are not added to the
+END FOR
+seeds-list because we already knowt hat a point with a
+END; // DBSCAN ClId of NOISEis not a core point. Addingt hose points to
+SetOfPointiss either the whole database or a dis- seeds wouldo nly result in additional region queries which
+covered cluster ~oma p~vious run. Eps and M$nPgsa re would yield no new answers.
+the global density parameters determinede ither manuallyo r If two clusters C! and C2 are very close to each other, it
+according to the heuristics presented in section 4.2. The might happen that somep oint p belongs to both, C1 a2n.d C
+~ncfion SetOfPointsg.e t ( i ) returns the i-th ele- Thenp must be a border point in both clusters becauseo ther-
+ment of SetOfPoints. The most important function wise C1 would be equal to C2 since we use global parame-
+Spatial, Text, & Multimedia 229
+
+===== page 5 [pdfplumber] =====
+ters. In this case, point p will be assignedt o the cluster dis- ¯ The system computes and displays the 4-dist graph for
+coveredf irst. Exceptf romt hese rare situations, the result of the database.
+DBSCAisN independent of the order in which the points of ¯ If the user can estimate the percentageo f noise, this per-
+the database are visited due to Lemm2a. centage is entered and the system derives a proposal for
+the thresholdp oint fromi t.
+4.2 Determining the Parameters Eps and MinPts
+¯ Theu ser either accepts the proposedt hreshold or selects
+In this section, wed evelopa simpleb ut effective heuristic to another point as the threshold point. The4 -dist value of
+determine the parameters Eps and MinPts of the "thinnest" the threshold point is used as the Eps value for DBSCAN.
+cluster in the database. This heuristic is basedo n the follow-
+ing observation.L et d be the distance of a point p to its k-th 5. PerformanceE valuation
+nearest neighbor, then the d-neighborhoodo f p contains ex-
+In this section, we evaluate the performance of DBSCAN.
+actly k+l points for almost all points p. The d-neighborhood
+Wec ompare it with the performance of CLARANbeSc ause
+of p contains more than k+l points only if several points
+this is the first and only clustering algorithmd esignedf or the
+have exactly the samed istance d from p whichi s quite un-
+purpose of KDDI. n our future research, we will perform a
+likely. Furthermore,c hangingk for a point in a cluster does
+comparisonw ith classical density based clustering algo-
+not result in large changeso fd. This only happensi f the k-th
+rithms. Weh ave implemented DBSCAiNn C++ based on an
+nearest neighborso fp for k= 1,2, 3 .... are located approxi-
+mately on a straight line whichi s in general not true for a implementation of the R*-tree (Beckmanne t al. 1990). All
+point in a cluster. experiments have been run on HP 735 / 100 workstations.
+For a given k wed efine a function k-dist fromt he database Weh ave used both synthetic sampled atabases and the data-
+base of the SEQUOI2A0 00 benchmark.
+D to the real numbers, mappinge ach point to the distance
+fromi ts k-th nearest neighbor. Whenso rting the points of the To compare DBSCAwNi th CLARANinS terms of effec-
+databasei n descendingo rder of their k-dist values, the graph tivity (accuracy), we use the three synthetic sampled atabas-
+of this function gives someh ints concerningt he density dis- es which are depicted in figure 1. Since DBSCAaNn d
+tribution in the database. Wec all this graph the sorted k-dist CLARAaNreS clustering algorithms of different types, they
+graph. If we choose an arbitrary point p, set the parameter have no commoqnu antitative measureo f the classification
+Eps to k-dist(p) and set the parameterM inPtst o k, all points accuracy. Therefore, we evaluate the accuracy of both algo-
+with an equal or smaller k-dist value will be core points. If rithms by visual inspection. In sampled atabase 1, there are
+we could find a threshold point with the maximakl -dist val- four ball-shaped clusters of significantly differing sizes.
+ue in the "thinnest" cluster of D we wouldh ave the desired Sample database 2 contains four clusters of nonconvex
+parameterv alues. Thet hreshold point is the first point in the shape. In sampled atabase3 , there are four clusters of differ-
+first "valley" of the sorted k-dist graph (see figure 4). All ent shape and size with additional noise. To showt he results
+points with a higher k-dist value ( left of the threshold) are of both clustering algorithms, we visualize each cluster by a
+consideredt o be noise, all other points (right of the thresh- different color (see wwwav ailability after section 6). Tog ive
+old) are assigned to somec luster. CLARANsoSm e advantage, we set the parameter k to 4 for
+> these sample databases. The clusterings discovered by
+4-dist CLARANarSe depicted in figure 5.
+threshold
+’-.,. point
+noise ~ points
+figure 4: sorted 4-dist graphf or sampled atabase 3 database 1 database 2 database 3
+In general, it is veryd ifficult to detect the first "valley"a u- figure 5: Clusterings discovered by CLARANS
+tomatically, but it is relatively simple for a user to see this
+valley in a graphical representation. Therefore, we propose For DBSCANw,e set the noise percentage to 0%f or sam-
+to follow an interactive approachf or determiningt he thresh- ple databases 1 and 2, and to 10%f or sampled atabase 3, re-
+old point. spectively. The clusterings discovered by DBSCAaNre de-
+picted in figure 6.
+DBSCAnNe eds two parameters, Eps and MinPts. How-
+ever, our experimentsin dicate that the k-dist graphs for k > 4 DBSCAdNis covers all clusters (according to definition
+do not significantly differ fromt he 4-dist graph and, further- 5) and detects the noise points (according to definition
+more, they need considerably more computation. Therefore, from all sample databases. CLARANhSo,w ever, splits clus-
+wee liminate the parameterM inPtsb y setting it to 4 for all ters if they are relatively large or if they are close to some
+databases (for 2-dimensionald ata). Wep ropose the follow- other cluster. Furthermore, CLARANhaSs no explicit no-
+ing interactive approach for determining the parameter Eps tion of noise. Instead, all points are assignedt o their closest
+of DBSCAN: medoid.
+230 KDD-96
+
+===== page 6 [pdfplumber] =====
+and on real data of the SEQUOIA2 000 benchmark. The re-
+suits of these experiments demonstrate that DBSCAiNs sig-
+nificantly more effective in discovering clusters of arbitrary
+¯ . ~:.: ..’.. ., shape than the well-known algorithm CLARANSF. urther-
+more, the experiments have shown that DBSCANo utper-
+..,.. "::? ...:" ;: ¯ * : :.:: . : ’ .’ ,: - ° " forms CLARANbSy a factor of at least 100 in terms of effi-
+:~ ° °.
+ciency.
+damb~el dabble2 dabble3 Future research will have to consider the following issues.
+figure 6: Clusterings discovered by DBSCAN First, we have only considered point objects. Spatial data-
+bases, however, may also contain extended objects such as
+To test the efficiency of DBSCANa nd CLARANS,w e
+polygons. Weh ave to develop a definition of the density in
+use the SEQUOIA2 000 benchmark data. The SEQUOIA
+an Eps-neighborhood in polygon databases for generalizing
+2000 benchmark database (Stonebraker et al. 1993) uses real
+DBSCAN.S econd, applications of DBSCANto high di-
+data sets ihat are representative of Earth Science tasks. There
+are four types of data in the database: raster data, point data, mensional feature spaces should be investigated. In particu-
+polygon data and directed graph data. The point data set con- lar, the shape of the k-dist graph in such applications has to
+tains 62,584 Californian names of landmarks, extracted be explored.
+from the US Geological Survey’s Geographic Names Infor- WWWA vailability
+mation System, together with their location. The point data
+set occupies about 2.1 Mb ytes. Since the run time of CLAR- A version of this paper in larger font, with large figures and
+ANSo n the whole data set is very high, we have extracted a clusterings in color is available under the following URL:
+series of subsets of the SEQUIOA20 00 point data set con- http : //www. dbs. informatik,u ni-muenchen,d e/
+taining from 2% to 20% representatives of the whole set. dbs/proje c t/publi kat ionen/veroef fent i ichun-
+The run time comparison of DBSCANa nd CLARANSo n gen. html.
+these databases is showni n table 1.
+References
+Table 1: run time in seconds
+BeckmannN ., Kriegel H.-P., Schneider R, and Seeger B. 1990. The
+R*-tree: An Efficient and Robust Access Method for Points and
+number of
+1252 2503 3910 5213 6256 Rectangles, Proc. ACMS IGMODIn t. Conf. on Management of
+points
+Data, Atlantic City, NJ, 1990, pp. 322-331.
+DBSCAN 3.1 6.7 11.3 16.0 17.8 Brinkhoff T., Kriegel H.-R, Schneider R., and Seeger B. 1994
+CLAR- Efficient Multi-Step Processing of Spatial Joins, Proc. ACM
+ANS 758 3026 6845 11745 18029 SIGMODIn t. Conf. on Managemento f Data, Minneapolis, MN,
+1994, pp. 197-208.
+number of
+7820 8937 10426 12512 Ester M., Kriegel H.-P., and Xu X. 1995. A Database Interface for
+points
+Clustering in Large Spatial Databases, Proc. 1st Int. Conf. on
+DBSCAN 24.5 28.2 32.7 41.7 KnowledgeD iscovery and Data Mining, Montreal, Canada, 1995,
+AAAIP ress, 1995.
+CLAR-
+29826 39265 60540 80638 Garcfa J.A., Fdez-ValdiviaJ ., Cortijo E J., and MolinaR . 1994. A
+ANS
+DynamicA pproachf or Clustering Data. Signal Processing, Vol. 44,
+The results of our experiments show that the run time of No. 2, 1994, pp. 18t-196.
+DBSCANis slightly higher than linear in the number of Gueting R.H. 1994. An Introduction to Spatial Database Systems.
+points. The run time of CLARANSho, wever, is close to qua- The VLDBJ ournal 3(4): 357°399.
+dratic in the number of points. The results show that DB- Jain Anil K. 1988. Algorithmsf or Clustering Data. Prentice Hall.
+SCANo utperforms CLARANSby a factor of between 250
+KaufmanL ., and RousseeuwR J. 1990. Finding Groups #~ Data: an
+and 1900 which grows with increasing size of the database.
+Introduction to Cluster Analysis. John Wiley &S ons.
+MatheusC .J.; Chan P.K.; and Piatetsky-Shapiro G. 1993. Systems
+6. Conclusions
+for KnowledgeD iscovery in Databases, 1EEET ransactions on
+Clustering algorithms are attractive for the task of class iden- Knowledgea nd Data Engineering 5(6): 903-913.
+tification in spatial databases. However,t he well-known al- Ng R.T., and Han J. 1994. Efficient and Effective Clustering
+gorithms suffer from severe drawbacks when applied to Methodsf or Spatial Data Mining, Proc. 20th Int. Conf. on Very
+large spatial databases. In this paper, we presented the clus-
+Large Data Bases, 144-155. Santiago, Chile.
+tering algorithm DBSCANw hich relies on a density-based
+notion of clusters. It requires only one input parameter and Stonebraker M., Frew J., Gardels K., and Meredith J.1993. The
+supports the user in determining an appropriate value for it. SEQUOIA2 000 Storage Benchmark, Proc. ACMS IGMODIn t.
+We performed a performance evaluation on synthetic data Conf. on Managemenot f Data, Washington, DC, 1993, pp. 2-11.
+Spatial, Text, 6z Multimedia 231

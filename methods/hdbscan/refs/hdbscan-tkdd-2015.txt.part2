@@ -1,0 +1,663 @@
+
+===== page 16 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:15
+is the number of attributes describing the objects—as usual for many dissimilarity
+functions. Then, in the most general case, Step 1 of the algorithm takes O(an2) time,
+as it demands n K-NN queries (with K = m ), one per each data object. By using a
+pts
+simpleimplementationofPrim’salgorithmbasedonanordinarylistsearch(insteadof
+aheap),itispossibletoconstructtheMSTinStep2ofHDBSCAN*in O(n2+m)time,
+where mis the number of edges of the mutual reachability graph (with n vertices).
+In the present context, m = n(n−1)/2 (complete undirected graph), so Step 2 runs
+in O(n2 +m) → O(n2) time. Notice that it is not necessary to explicitly construct the
+mutual reachability graph, as the mutual reachability distances (edge weights) can
+be computed on demand. In this case, the MST can be computed in O(an2) time. The
+number of edges in the MST is n−1, plus n additional “self-edges” in the extended
+MST (Step 3). These 2n−1 edges need to be sorted so that Step 4 can be performed,
+whichcanbedonein O(nlogn).Afterthesortingprocedure,Step4reducestoaseries
+of relabelings of smaller and smaller subcomponents of the MST. Notice that at most
+two subcomponents must be relabeled after each edge removal, and that spurious
+components are never relabeled after they have become spurious. In the worst case,
+though, the whole relabeling procedure can still take O(n2) time. In total, the overall
+timecomplexityofthealgorithmisthus O(an2).
+Stillconsideringthefirstscenario,butnowintermsofmainmemoryrequirements,
+it follows that one needs O(an) space to store the dataset X and O(n) space to store
+thecoredistancesinStep1ofthealgorithm.InSteps2and3,recallthatthemutual
+reachability graph does not need to be explicitly computed, and only the edges of the
+resulting MST must be stored, which requires O(n) space. During the execution of
+ext
+Step 4, only the hierarchical level being currently processed is needed at any point
+in time, which requires O(n) space. Therefore, the overall space complexity of the
+algorithmis O(an).
+Inthecaseinwhichthedistancematrix DisgiveninsteadofthedatasetX,theonly
+changeintermsofrunningtimeisthat,asonecanpromptlyaccessanydistanced(·,·)
+from Dinconstanttime,thecomputationsnolongerdependonthedimensionaofthe
+dataspace,andthereforethetimecomplexityreducestoO(n2).Ontheotherhand,this
+requiresthatmatrix Dbestoredinmainmemory,whichresultsin O(n2)complexityin
+termsofspace.
+Itisworthnoticingthattherunningtimesdiscussedearliercanbereducedprovided
+thatsomeparticularassumptionsholdtrue,especiallyiftheaveragecaseisconsidered.
+Forinstance,Step1ofthealgorithmcanbecomputedinsub-quadratictimebyusing
+appropriate indexing structures for K-NN search in data spaces of low or moderate
+dimensionality. Even the MST in Step 2 might be computed (at least partially, as a
+forest) in sub-quadratic time, if an appropriate upper bound is imposed on the radius
+ε,sothatthemutualreachabilitygraphbecomessparse(asinOPTICS[Ankerstetal.
+1999]).
+Intermsofspace,ifonewantstokeepthewholehierarchyinmainmemory(instead
+ofiterativelysavingeachhierarchicallevelondiskastheyarecomputed),thehierarchy
+doesnotneedtobekeptinitscompleteformillustratedinTableI.Alltheinformation
+one needs to recover the complete hierarchy is, for each data object, a list (set) of all
+cluster labels associated with that object along the hierarchy and the corresponding
+hierarchical levels (scales) at which the object first belongs to each of those clusters.
+Typically, all these lists together will be much smaller than a matrix as illustrated in
+TableI,speciallyforlargervaluesofm andm .
+pts clSize
+Another alternative to optimize space is to store a compacted hierarchy containing
+onlythemostimportanthierarchicallevels,namely,thoseinwhichtheclustersinthe
+clustertreefirstappearorcompletelydisappear.Thiscanreducesignificantlythesize
+oftheoutputfile.AJavaimplementationofthealgorithmthatoptionallysupportsthis
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 17 [pdfplumber] =====
+5:16 R.J.G.B.Campelloetal.
+Fig.5. Illustrativedatasetwithfourclustersandbackgroundnoise.
+compactionstrategyisavailableonrequest.Asanexampleofthiscode’sperformance,
+for a dataset with 50,000 objects distributed in 50 clusters in a 50 dimensional Eu-
+clidean space, the algorithm, running on a domestic laptop6, finished in 5.42 minutes
+and produced an output file of 14MB (containing the compacted hierarchy and the
+clustertree).
+4. VISUALIZATION
+TheHDBSCAN*hierarchycanbevisualizedindifferentways,forexample,asaden-
+drogramorsimplifiedclustertree,asillustratedinFigures3and4,respectively.How-
+ever, while these plots can usually give a clear view of the cluster structure for small
+datasets,theymaynotbeeasytoreadinmoregeneralapplicationscenarios.Therefore,
+alternativeformsofvisualizationmaybeneeded.
+Ankerst et al. [1999] proposed the well-known OPTICS algorithm whose primary
+outputistheso-calledreachabilityplot,which,roughlyspeaking,isabarplotshowing
+clusters as “dents” characterized by valleys and peaks along the bars. Sander et al.
+[2003]haveshownthatdendrogramsingeneral(notnecessarilydensitybased)canbe
+convertedinto,andvisualizedas,reachability-likeplots.Providedthatthedataobjects
+have already been sorted in the way they would be displayed in the dendrogram (i.e.,
+with the objects in each cluster always placed next to each other), the basic idea is to
+plotabarforeachobjectwhoseheightisthesmallestdendrogramscalevalueatwhich
+theobjectgetsmergedintothesameclusterasanyoftheprecedingobjectsintheplot.
+For the HDBSCAN* hierarchy, an appropriate ordering in which objects in the same
+clusternecessarilyappearnexttoeachotherwhenbuildingtheplotcanbeachievedby
+recursivelysortingthesubsetsofobjectsineachclustertop-downthehierarchy,which
+is equivalent to a top-down level-wise lexicographic sorting according to the cluster
+labels.
+As an illustrative example, let us consider the dataset in Figure 5, in which there
+are four clusters following 2D normal distributions and uniform background noise.
+Thereachability-likeplotscorrespondingtotheHDBSCAN*hierarchiesforthesedata
+with m = 3 and m = 10 are displayed in Figures 6(a) and 6(b), respectively. In
+pts pts
+both figures, the four natural clusters appear clearly as the most prominent “dents”
+6MacBook Pro, 2.5GHz Intel Core i5, 8GB RAM, Mac OS X Lion 10.7.5, running Java 7 with algorithm
+settingssettompts =mclSize =50.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 18 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:17
+Fig.6. ReachabilityandsilhouetteplotsoftheHDBSCAN*hierarchyforthedatasetinFigure5,formpts =3
+andmpts =10(mclsize =mpts).Notethat,sincetheclusteringhierarchiesaredifferentfordifferentmpts,the
+sortingoftheobjectsontheleft-andright-handfiguresaredifferent.
+in the plots, but for m = 10 the plot is smoother and subclusters do not show up as
+pts
+apparentlyasform =3.
+pts
+For density-based hierarchies, an alternative yet related form of visualization con-
+sistsinsortingthedataobjectsinthesamewayasinthereachabilityplots,butsetting
+theheightofeachbarintheplottothehighestdensitysuchthatthecorrespondingdata
+objectisstillpartofacluster(notyetnoise).Thisisinessenceatypeofdimensionless
+representationofasilhouetteplotofdensities[MullerandSawitzki1991].Suchasil-
+houette plot can be made more sophisticated, as proposed by Gupta et al. [2010], by
+plotting in different colors the different segments of the bars that correspond to the
+density intervals along which an object belongs to different clusters in the hierarchy
+(each subcluster is assigned a particular color that is guaranteed to be different from
+its parent’s color). For the dataset in Figure 5, the silhouette plots of the HDBSCAN*
+hierarchies are illustrated in Figures 6(c) and 6(d). For m = 3 the plot is spikier
+pts
+and, from the changes in colors, it is clear that the hierarchy is more complex (many
+subclustersintheclustertree).Form =10theplotissmootherandwecanseethat
+pts
+thenumberofsubclustersisdrasticallyreduced.
+Reachabilityorsilhouetteplotsdisplayhierarchicalclusteringsindifferentways,but
+wecanseefromtheexampleinFigure6thattheybothnotonlyallowavisualizationof
+thestructureofclustersfoundbythealgorithm,butalsotheeffectsofdifferentsettings
+ofthealgorithmontheclusteringresults.Assuch,theseplotscanbeusefulauxiliary
+toolsforexploratorydataanalysis,particularlyinthedomainofunsupervisedlearning
+bymeansoftheHDBSCAN*framework.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 19 [pdfplumber] =====
+5:18 R.J.G.B.Campelloetal.
+5. OPTIMALNONHIERARCHICALCLUSTERING
+While hierarchical clustering is an important and widely used tool for exploratory
+data analysis, there are also many important applications in which a user is in-
+terested in extracting from a hierarchical clustering a flat or partition-like solution
+consisting of the most prominent, nonoverlapping clusters. Choosing one of the avail-
+able hierarchical levels as such a solution is the well-known problem of performing
+a horizontal cut through a dendrogram [Jain and Dubes 1988]. However, for density-
+basedmethods,ahorizontalcutcorrespondstoasingle,globaldensitythresholdwhich
+maynotsimultaneouslydetectclustershavinglargelyvaryinglocaldensities[Ankerst
+et al. 1999; Tan et al. 2006; Kriegel et al. 2011]. In this section, we describe an algo-
+rithm that provides the optimal solution to the formal optimization problem of max-
+imizing the overall quality of the set of clusters extracted from local cuts through
+the HDBSCAN* hierarchy, in both an unsupervised, as well as a semisupervised
+setting.
+5.1. ClusterStability
+Without loss of generality, let us initially consider that the data objects are described
+byasinglecontinuous-valuedattribute x.Recallfromtheintroductionthat,following
+Hartigan’smodel[Hartigan1975],thedensity-contourclustersofagivendensity f(x)
+on(cid:3)atagivendensitylevelλarethemaximalconnectedsubsetsofthelevelsetdefined
+as {x| f(x) ≥ λ}. From Section 2, it follows that DBSCAN* estimates density-contour
+clusters using a density threshold λ = 1/ε and a non-normalized K-NN estimate (for
+K=m )of f(x),givenby1/d (x).7
+pts core
+HDBSCAN* produces all possible DBSCAN* solutions w.r.t. a given value of m
+pts
+and all thresholds λ = 1/ε in [0,∞). Intuitively, when increasing λ (i.e., decreasing
+ε), clusters get smaller and smaller, until they disappear or break into subclusters.
+This observation gives rise to the intuition that, roughly speaking, more prominent
+clusterstendto“survive”longeraftertheyappear,andwhichisessentiallytherationale
+behindthedefinitionofclusterlifetimefromclassichierarchicalclusteranalysis[Jain
+and Dubes 1988; Fred and Jain 2005]. The lifetime of a given cluster in a traditional
+dendrogramisdefinedasthelengthofthedendrogramscalealongthosehierarchical
+levelsinwhichtheclusterexists.Intraditionaldendrograms,however,theremovalofa
+singleobjectsufficestocharacterizethedissolutionofaclusterandappearanceofnew
+ones, which makes the original definition inappropriate in the density-based context.
+Therefore, a different measure of stability is needed that considers the dissolution of
+a cluster under the broader perspective discussed in Section 3.3, which accounts for
+the presence of noise and spurious components along the hierarchy. Such a measure
+shouldalsotakeintoaccounttheindividualdensityprofilesoftheobjectsbelongingto
+a cluster, that is, their possibly different lifetimes as members of that cluster (before
+theybecomenoiseormembersofanothercluster).
+Toformalizetheaforementionedidea,weadaptthenotionofexcessofmass[Muller
+and Sawitzki 1991], first introduced by Hartigan [1987] and more recently used in
+thecontextofestimatesoflevelsetsforcontinuous-valuedPDF[StuetzleandNugent
+2010].Imagineincreasingthedensitylevelλandassumethatadensity-contourcluster
+C appearsatlevelλ (C ),bydefinitionasamaximalconnectedsubsetofthelevelset
+i min i
+{x| f(x)≥λ (C )}.TheexcessofmassofC isdefinedinEquation(1),andillustrated
+min i i
+inFigure7,inwhichthedarkershadedareasrepresenttheexcessesofmassofthree
+7Fromthisperspective,theroleofmpts asaclassicsmoothingfactorforsuchanestimatebecomesclearer.
+Itisworthremarking,however,thatDBSCAN*doesnotattempttoproduceaveryaccurateestimateofthe
+truePDFofthedata.Thedensityestimateisusedessentiallytodiscriminatebetweennoiseandnon-noise
+dataobjects,whichcontributestomakingmptsaparticularlynoncriticalparameter.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 20 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:19
+Fig.7. Illustrationofadensityfunction,clusters,andexcessesofmass.
+clusters, C , C , and C . The excess of mass of C (not highlighted in the figure)
+3 4 5 2
+encompassesthoseofitschildrenC andC .
+4 5
+(cid:2)
+E(C )= (f(x)−λ (C ))dx (1)
+i min i
+x∈Ci
+Sincetheexcessofmassofaclusternecessarilyembodiesthoseofallitsdescendants,
+thismeasureexhibitsamonotonicbehavioralonganybranchoftheclustertree.Asa
+consequence,itcannotbeusedtocomparenestedclusters,suchasC againstC and
+2 4
+C . To be able to do so, we introduce the notion of relative excess of mass of a cluster
+5
+C ,whichappearsatlevelλ (C ),as:
+i min i
+(cid:2)
+E (C )= (λ (x,C )−λ (C ))dx, (2)
+R i max i min i
+x∈Ci
+whereλ (x,C )=min{f(x),λ (C )}andλ (C )isthedensitylevelatwhichC is
+max i max i max i i
+split or disappears. For example, for cluster C in Figure 7 it follows that λ (C ) =
+2 max 2
+λ (C ) = λ (C ). The corresponding relative excess of mass is represented by the
+min 4 min 5
+lightershadedareainFigure7.
+ForaHDBSCAN*hierarchy,inwhichwehaveafinitedatasetX,clusterlabels,and
+density thresholds associated with each hierarchical level, we can adapt Equation (2)
+todefinethestabilityofaclusterC as:
+i
+(cid:3)(cid:4) (cid:5) (cid:3) (cid:6) (cid:7)
+1 1
+S(C )= λ (x ,C )−λ (C ) = − (3)
+i max j i min i ε (x ,C ) ε (C )
+xj ∈Ci xj ∈Ci min j i max i
+where λ (C ) is the minimum density level at which C exists, λ (x ,C ) is the
+min i i max j i
+density level beyond which object x no longer belongs to cluster C , and ε (C ) and
+j i max i
+ε (x ,C )arethecorrespondingvaluesforthethresholdε.
+min j i
+Recalling the illustrative example described in Section 3.3, it follows that object
+x , for instance, belongs to cluster C in the radius interval ε = [1.7 7.1), that is, in
+11 3
+the density interval λ = (1/7.1 1/1.7] = (0.14 0.59]. The first value of this density
+interval is precisely λ (C ), which is common to all objects of that cluster, namely,
+min 3
+x , x , x , and x . The second value is λ (x ,C ) = 0.59, above which x no
+11 12 13 14 max 11 3 11
+longerbelongstoclusterC .Analogously,itfollowsthatλ (x ,C )=λ (x ,C )=
+3 max 12 3 max 14 3
+1/1.6 = 0.625 and λ (x ,C ) = 1/1.28 = 0.781. Thence, the relative excess of mass
+max 13 3
+of cluster C according to Equation (3) is S(C ) = 2.06. The relative excesses of mass
+3 3
+for the other clusters are displayed in the nodes of the cluster tree in Figure 4. The
+value for the root C is not shown to emphasize that C , which represents the whole
+1 1
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 21 [pdfplumber] =====
+5:20 R.J.G.B.Campelloetal.
+dataset,isnotdeemedavalidclusterintheclusterextractionalgorithmtobedescribed
+next.
+Before discussing the extraction algorithm, however, it is important to remark that
+theclusterstabilitiesasdescribedearliercanbesimultaneouslycomputedduringthe
+construction of the HDBSCAN* hierarchy, with very little additional processing and
+without affecting the asymptotic complexity of the algorithm. To do so, all one needs
+is, for each object x , to keep track of the changes in x ’s label so that the values
+j j
+λ (x ,C )−λ (C ) can be computed and accumulated for each cluster C to which
+max j i min i i
+object x will belong. The additional memory required is O(n + κ), where n is the
+j
+number of objects and κ is the number of clusters in the cluster tree. Since κ cannot
+be greater than 2n−1 (actually, one typically has κ (cid:9) n when using the hierarchy
+simplification procedure described in Section 3.3), the additional memory required is
+O(n), which therefore does not change the asymptotic complexity of HDBSCAN* in
+termsofspaceeither.
+5.2. OptimizationAlgorithmforUnsupervisedClusterExtraction
+Let{C
+2
+,...,Cκ }bethecollectionofallclustersinthesimplifiedclusterhierarchy(tree)
+generatedbyHDBSCAN*,excepttherootC ,andlet S(C )denotethestabilityvalue
+1 i
+ofeachcluster.Thegoalistoextractthemost“prominent”clusters(pluspossiblynoise)
+as a flat, nonoverlapping clustering solution. This task can be formulated as an opti-
+mization problem with the objective of maximizing the overall aggregated stabilities
+oftheextractedclusters,inthefollowingway:
+(cid:3)κ
+max J = δ S(C )
+i i
+δ ,...,δ
+2 κ i=2
+(cid:8) (4)
+δ ∈{0,1}, i =2,...,κ
+i
+subjectto
+exactlyoneδ
+(·)
+=1ineachpathfromaleafclustertotheroot
+where δ indicates whether cluster C is included into the flat solution (δ = 1) or not
+i i i
+(δ i = 0). The constraints imposed on the decision variables δ 2 ,...,δ κ prevent clusters
+onthesamebranchofthetreetobesimultaneouslyselected;clearly,forinclusionina
+flat solution, nested clusters must be mutually exclusive, that is, each object can only
+beassignedasinglelabel.
+To solve Problem (4) both globally and efficiently, we notice that the subselection of
+clusters in any subtree of the cluster tree represents a subproblem of the very same
+nature of the original problem (i.e., the one that refers to the complete tree). From
+this observation, a dynamic programming strategy can be applied that incrementally
+solves subproblems (subtrees) of increasing sizes, starting from the leaves and aggre-
+gating the intermediate solutions upwards in the tree. Specifically, we process every
+node except the root, starting from the leaves (bottom-up), deciding at each node C
+i
+whether C or the best-so-far selection of clusters in C ’s subtrees should be selected.
+i i
+To be able to make this decision locally at C , we propagate and update the total sta-
+i
+bility Sˆ(C ) of clusters selected in the subtree rooted at C in the following, recursive
+i i
+way:
+(cid:8)
+S(C ), ifC isaleafnode
+i i
+Sˆ(C )= (5)
+i max{S(C ),Sˆ(C )+Sˆ(C )} ifC isaninternalnode
+i il ir i
+where C and C are the left and right children of C (for the sake of simplicity, we
+il ir i
+discussthecaseofbinarytrees;thegeneralizationton-arytreesistrivial).
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 22 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:21
+Fig.8. Illustrationoftheoptimalselectionofclustersfromagivenclustertree.
+Algorithm 3 gives the pseudocode for finding the optimal solution to Problem (4).
+Figure 8 illustrates the algorithm. Clusters C and C together are better than C ,
+10 11 8
+whichisthendiscarded.However,whentheset{C ,C ,C }iscomparedtoC ,they
+10 11 9 5
+are discarded as C is better. Clusters {C } and {C } are better than C , and C is
+5 4 5 2 3
+betterthan{C ,C },sothatintheend,onlyclustersC ,C ,andC remain,whichis
+6 7 3 4 5
+theoptimalsolutiontoProblem(4)with J =17.
+ALGORITHM3:SolutiontoProblem(4)
+1.Initializeδ 2 =···=δ κ =1,and,forallleafnodes,setSˆ(C h )=S(C h ).
+2.Startingfromthedeepestlevels,dobottom-up(exceptfortheroot):
+2.1IfS(C)<Sˆ(C )+Sˆ(C ),setSˆ(C)=Sˆ(C )+Sˆ(C )andsetδ =0.
+i il ir i il ir i
+2.2Else:setSˆ(C i )=S(C i )andsetδ (·) =0forallclustersinC i ’ssubtrees.
+NoticethatStep2.2ofAlgorithm3canbeimplementedinamoreefficientwaybynot
+settingδ (·) valuesto0fordiscardedclustersdowninthesubtrees(whichcouldhappen
+multipletimesforthesamecluster).Instead,inasimplepostprocessingprocedure,the
+treecanbetraversedtop-downinordertofind,foreachbranch,theshallowestcluster
+thathasnotbeendiscarded(δ
+(·)
+=1).Thus,Algorithm3canbeimplementedwithtwo
+traversals through the tree, one bottom-up and another one top-down. This results in
+an asymptotic complexity of O(κ), both in terms of running time and memory space,
+where κ is the number of clusters in the simplified cluster tree, which is O(n) in the
+worstcase.
+5.3. SemisupervisedClusterExtraction
+Inmanydifferentapplicationscenarios,acertain,usuallysmallamountofinformation
+about the data may be available that allows one to perform clustering in a semisu-
+pervised rather than in a completely unsupervised way. The most common type of
+information appears in the form of instance-level constraints, which encourage pairs
+ofobjectstobegroupedtogetherinthesamecluster(should-linkconstraints)ortobe
+separatedapartindifferentclusters(should-not-linkconstraints)[Wagstaff2002;Basu
+etal.2008].Theseareexternal,explicitconstraintsprovidedbytheuseroranalystin
+additiontotheinternal,implicitconstraintsthatfollowfromtheinductivebiasofthe
+clusteringmodelthathasbeenadopted.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 23 [pdfplumber] =====
+5:22 R.J.G.B.Campelloetal.
+HDBSCAN* is peculiar in the sense that it produces a complete, exhaustive col-
+lection of candidate clusters that satisfy the internal constraints embedded into the
+corresponding clustering model, namely, the requirements for a density-based cluster
+accordingtoDefinition2.4(givenavalueofm ).Thisallowssemisupervisiontotake
+pts
+place as a postprocessing stage of HDBSCAN*, aimed at selecting those clusters that
+altogether better satisfy the external constraints provided by the user, while not vio-
+lating the original grounds of the underlying clustering model. This approach can be
+interpretedastheuseofexternalconstraintsaspreferencesratherthanhardrequire-
+ments, which is in conformity with the fact that such constraints typically represent
+a user’s preliminary expectation about the application domain (without knowing the
+actual structure of clusters inherent in the data). By using this approach, we do not
+needtomodifytheclusteringalgorithmitself,weneedinsteadonlytoadaptthecluster
+selectionmechanism,whichisnaturallylesssusceptibletooverfitting.
+Adapting the cluster selection mechanism described in Section 5.2 to deal with
+instance-level constraints is rather straightforward by noticing that we can replace
+the values of stability for each cluste(cid:9)r, S(C
+i
+), with the fraction of constraints that are
+satisfied by that cluster, (cid:7)(C ) = 1 γ(x ,C ), where n is the total number of
+availableconstraintsandγ(x i ,C ) 2 i n s c the xj n ∈C u i mber j of i constraints c involvingobjectx that
+j i j
+aresatisfied(notviolated)ifC isselectedaspartofthefinalflatsolution.Thescaling
+i
+constant1/ in(cid:7)(C )isduetothefactthatasingleconstraintinvolvesapairofobjects
+2 i
+and,assuch,itistakenintoaccount twiceinthesum.Term(cid:7)(C )iszeroforclusters
+i
+whoseobjectsarenotinvolvedinanyconstraints.
+MerelyreplacingS(C )with(cid:7)(C ),however,wouldnotaccountforthefactthatsome
+i i
+objects may not belong to any of the selected clusters, that is, they may be labeled as
+noiseinthefinalflatsolution.Forexample,letusrecallthetoyproblemillustratedin
+Section3.3.Inparticular,letusconsideracandidateflatsolutiongivenby{C ,C ,C }.
+3 4 5
+From the hierarchy in Table I it can be seen that object x , for instance, belongs to
+4
+noneoftheseclusters.ItbelongstoC andbecomesnoiseatthesamedensitylevelas
+2
+this cluster is split into C and C . Something similar is observed w.r.t. x . Objects
+4 5 10
+x and x would therefore be labeled as noise in a flat solution composed of clusters
+4 10
+C ,C ,andC .Noticethatsinceanoiseobjectis,bydefinition,notclusteredwithany
+3 4 5
+otherobject,ashould-not-linkconstraintinvolvingoneorbothobjectslabeledasnoise
+must be deemed satisfied, while a should-link constraint must be deemed violated.
+Noise objects, therefore, also affect the degree of satisfaction/violation of constraints,
+andthustheycannotbedismissed.
+In order to account for the noise, we keep track of objects that are part of a cluster
+but not part of its subclusters in the hierarchy (if any). This information can be rep-
+resented by means of “virtual” nodes in the simplified cluster tree. We assume that
+every internal node of the cluster tree has one such virtual child node, even though
+only some of them may actually be associated with noise objects. The virtual child
+nodeofaclusterC intheclustertreewillbedenotedhereafterasC∅.Wethendefine
+(cid:9) l l
+(cid:7)(C∅) = 1 γ(x ,C∅) as the fraction of constraint satisfactions involving the
+nois l eobje 2 c n t c sas x s j ∈ o C c l i ∅ ated j wit l hC∅ (whichiszeroifnonoiseobjectisassociatedwithC∅).
+l l
+For example, consider again the hierarchy in Table I and assume that the user
+has provided three should-link constraints, (x ,x ), (x ,x ), and (x ,x ), and a single
+1 5 3 9 2 6
+should-not-linkconstraint,(x ,x ).TheinternalnodesareC andC .Sincethereisno
+7 10 1 2
+noiseobjectinthevirtualnodeoftheroot,C∅,itfollowsthat(cid:7)(C∅)=0.Thenoiseobjects
+1 1
+inC∅ arex andx ,butthereisnoconstraintinvolvingobjectx ,thenγ(x ,C∅)=0.
+2 4 10 4 4 2
+Theonlyconstraintinvolvingobjectx issatisfiedinC∅,thatis,γ(x ,C∅)=1(because
+10 2 10 2
+x , as noise, is not grouped with x ). Therefore, (cid:7)(C∅) = 1 (0+1) = 1. As for the
+10 7 2 2×4 8
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 24 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:23
+Fig.9. ClustertreecorrespondingtothehierarchyinTableI,augmentedwithvirtualnodes.Numerical
+valueswithinparenthesesstandforthefractionsofconstraintsatisfactionsassociatedwitheach(original
+orvirtual)node.
+(cid:9)
+nonvirtualnodes,wehave,forinstance,(cid:7)(C )= 1 9 γ(x ,C )= 1(0+0+1+0+0)=
+5 8 i=5 i 5 8
+1.Thevaluesfortheotherclusterscanbecomputedsimilarlyas(cid:7)(C )= 6,(cid:7)(C )=0,
+8 2 8 3
+and(cid:7)(C )=0.TheclustertreeisshowninFigure9.
+4
+Oncethevaluesof(cid:7)(·)havebeencomputedforall(originalandvirtual)nodesofthe
+tree,thealgorithmdescribedinSection5.2canbeslightlymodifiedsoastomaximize
+a cost function J ∈ [0,1] given by the fraction of constraints that are satisfied or,
+SS
+equivalently,thecomplementofthefractionofconstraintsthatareviolatedinthefinal
+flat solution (such that maximizing J is equivalent to minimizing the number of
+SS
+constraintviolations).Todoso,weneedtoredefinetherecursioninEquation(5)as:
+⎧
+⎪⎪⎨ (cid:7)(C
+i
+), ifC
+i
+isanonvirtualleafnode
+(cid:7)ˆ(C
+i
+)=
+⎪⎪⎩
+max{(cid:7)(C
+i
+),(cid:7)ˆ(C
+il
+)+(cid:7)ˆ(C
+ir
+)+(cid:7)(C
+i
+∅)}, (6)
+ifC isaninternalnode
+i
+and then replace S(·), Sˆ(·), and “Sˆ(C )+ Sˆ(C )” in Algorithm 3 with (cid:7)(·), (cid:7)ˆ(·), and
+“(cid:7)ˆ(C )+(cid:7)ˆ(C )+(cid:7)(C∅)”,respectively.
+il ir
+il ir i
+In the example of Figure 9, cluster C will necessarily be included into the optimal
+3
+flatsolutionasitdoesnotcompetewithanyotherdescendantorascendantcandidate
+cluster. In the other branch of the root, the algorithm willcompare clusterC (with 3
+2 4
+ofthewholesetofconstraintssatisfied)againstitsdescendants(with0+ 1 + 1 = 1 of
+8 8 4
+the set of constraints satisfied), and will select {C ,C } as the optimal solution, with
+2 3
+J∗ = 0+ 3 = 3 (i.e., 1− J∗ = 1 violations). In contrast, the optimal unsupervised
+SS 4 4 SS 4
+solution ({C ,C ,C }, corresponding to the tree in Figure 4), would be suboptimal
+3 4 5
+accordingtothesemisupervisedobjectivefunction,with J = 1 (i.e., 3 violations).
+SS 4 4
+In case of a tie in the local decision involving the subtree rooted at a cluster C ,
+i
+that is, if (cid:7)ˆ(C ) = (cid:7)ˆ(C )+(cid:7)ˆ(C )+(cid:7)(C∅), which typically happens when the objects
+i il ir i
+in such a subtree (C and its subclusters) are not involved in any constraints at all,
+i
+thedecisioncanstillbemadeinanunsupervisedway,basedonclusterstability.This
+can be interpreted as using unsupervised stability as a secondary objective to resolve
+tiesinthesemisupervisedscenario.Thesetwoobjectivescouldalsobecombinedintoa
+singleonebymeansofaconvexcombination[Campelloetal.2013b],butweomitthe
+detailshereforthesakeofcompactness.
+In terms of complexity, the only additional cost w.r.t. the unsupervised version of
+the algorithm (Section 5.2) refers to the need for computing the values of (cid:7) and also
+for storing the virtual nodes. The number of virtual nodes is equal to the number
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 25 [pdfplumber] =====
+5:24 R.J.G.B.Campelloetal.
+of internal nodes, which cannot exceed O(n), so their presence does not change the
+complexity of the method in terms of memory space. Computing the values of (cid:7) for
+boththeoriginalandvirtualnodesofthetreecanbedonewithasinglepassthrough
+thesimplifiedclusteringhierarchy,checkingforeachconstraintthelabelsofthepairof
+objectsinvolvedinthatconstraint.Thesimplifiedhierarchyistypicallymuchsmaller
+thanthecompletehierarchy,butwhentheworstcaseisconsidered,therunningtime
+to compute (cid:7) for all nodes is O(n n). If the number of constraints, n , is at most
+c c
+proportionaltothenumberofdataobjects,n,asusualinmanypracticalapplications,
+then the worst-case runtime complexity of the method is also the same as for the
+unsupervisedcase,thatis, O(n).
+6. OUTLIERDETECTION
+In the literature, an object’s outlierness is typically assessed w.r.t. some prespecified
+reference set, such as a local neighborhood or the global database. On one hand, by
+consideringtheglobaldatabaseasareferenceset,asinglobaloutlierdetectionmethods
+(e.g., K-NN-outlier [Ramaswamy et al. 2000]), outliers may be overlooked when they
+are unusual only w.r.t. other objects lying in the same local region of the data space.
+On the other hand, by considering a predetermined local neighborhood as a reference
+set, outliers can be missed for they may be compared only with other outliers, which
+canhappenforalocaloutlierdetectionmethod(e.g.,LOF[Breunigetal.2000]).Such
+a global versus local dilemma has persisted over years in the unsupervised outlier
+detection literature, with an exception being the method LOCI [Papadimitriou et al.
+2003], which can, to some extent, find global and local outliers if the sampling radius
+r fortheneighborhoodofpointsissetsolargeastoincludethewholedataset.The
+max
+solutiontothedilemmaistousea“dynamic”(ratherthanpredetermined)referenceset
+ofobjects.Startingfromtheusualassumptionthatthereareoneormoremechanisms
+responsibleforgeneratingtheobjectsdeemednonsuspicious,andnoticingthatclusters
+arenaturalcandidatestomodelsuchmechanism(s),thescopeofthereferencesetcan
+beadjustedforeachobjectbasedontheclosestcluster(inadensity-basedperspective)
+within the density-based hierarchy. By doing so, the locally suitable reference set can
+actually be global for some objects while being strictly local for other objects.8 This
+approachprovidesamuchmoremeaningfulreferencesetforeachpointthanaspherical
+neighborhood (even if evaluated at different radii as in LOCI), in the Hawkins sense
+ofanoutlier.
+Consideradataobjectx forwhichthedegreeofoutliernesshastobedetermined.Its
+i
+closestclusterfromadensity-basedperspectiveistheclusterC forwhichx ∈C atthe
+j i j
+density level corresponding to the density of x , that is, at density f(x ) = 1/d (x )
+i i core i
+(or, equivalently, at radius ε = d (x )). Note that C as defined earlier is the first
+core i j
+cluster/node to which x gets attached when this object switches from noise to core
+i
+as the density threshold is decreased (radius is increased) bottom-up through the
+hierarchy. The basic intuition here is that the densest object in cluster C , say x,
+j l
+can be considered the most inlier object and used as a reference for the other objects
+thathaveC astheirclosestdensity-basedcluster.Objectx istheonethat“survives”
+j l
+the longest before all objects of the cluster become noise as we increase the density
+thresholdtop-downthroughthehierarchy.Letusrefertothedensityofsuchadensest
+object x of a cluster C , that is, f(x) = 1/d (x), as the referential density f (x )
+l j l core l max i
+foreveryobjectx thathasC asitsclosestdensity-basedcluster.Then,wecandefine
+i j
+8Itwillbeglobalifanobject’sclosestdensity-basedclusteristherootoftheclustertree.Forexample,ifthe
+treecontainsasingle“cluster”,whichmodelsadatasetwithunimodaldistribution(e.g.,Gaussian),thiswill
+benecessarilythecaseforalldataobjects.
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.
+
+===== page 26 [pdfplumber] =====
+HierarchicalDensityEstimatesforDataClustering,Visualization,andOutlierDetection 5:25
+ameasureofoutliernessforobjectx as
+i
+f (x )− f(x )
+max i i
+(7)
+f (x )
+max i
+where f(x ) = 1/d (x ) and f (x ) = 1/d (x), with x being the densest object
+i core i max i core l l
+of x ’s closest cluster in the density-based hierarchy. Note that for the objects in the
+i
+densestareaofacluster, f (x )− f(x )tendstobeclosetozero,soExpression(7)also
+max i i
+tendstobeclosetozero,whichindicatesinlierobjects.Forobjectsthatareonlyloosely
+density-connected to a cluster, the numerator f (x )− f(x ) tends to be large (but
+max i i
+≤ f )and,inthelimit,Expression(7)tendsto1,indicatingthemaximumdegreeof
+max
+outlierness.
+For the sake of illustration, let us recall the example in Figure 2 and Table I. Con-
+sidering, for instance, object x , it can be readily seen from Table I that its closest
+10
+density-based cluster is C . In fact, the density of object x is f(x ) = 1/6.51, at
+2 10 10
+which x belongs to C and above which x is noise. The density of the densest ob-
+10 2 10
+ject in C is f(x ) = f(x ) = f(x ) = 1/0.67, then, by definition, f (x ) = 1/0.67.
+2 6 7 8 max 10
+Therefore,thedegreeofoutliernessofobjectx accordingtoExpression(7)is
+10
+1/0.67−1/6.51
+=0.8971.
+1/0.67
+Now,ifweconsiderobjectsx ,x ,andx ,itisclearfromTableIthat:(i)theirclosest
+6 7 8
+density-basedclusterisC ;and(ii)theyareactuallythedensestobjectsinthatcluster,
+5
+with f(x )= f(x )= f(x )=1/0.67. Therefore, f (x )= f (x )= f (x )=1/0.67
+6 7 8 max 6 max 7 max 8
+and, according to Expression (7), the degree of outlierness of all these three objects is
+zero.
+Expression(7),however,doesnotaccountforthefactthat,ifaminimumclustersize
+greaterthanoneisadopted(m >1;seeSection3.3),thelowestdensitythreshold
+clSize
+below which an object x first gets attached to a cluster, say λ(x ), and the highest
+i i
+densitythresholdabovewhichallobjectsofsuchaclusterarelabelednoise,sayλ (x ),
+max i
+no longer necessarily correspond to the densities f(x ) and f (x ), respectively. To
+i max i
+take the most general case into account, we generalize Expression (7) and define our
+Global-LocalOutlierScorefromHierarchies(GLOSH)as:
+GLOSH(x )= λ max (x i )−λ(x i ) = ε max 1 (xi) − ε( 1 xi) =1− ε max (x i ) (8)
+i λ (x ) 1 ε(x )
+max i ε max(xi) i
+where ε (x ) and ε(x ) are the values for the radii ε associated with the density
+max i i
+thresholdsλ (x )andλ(x ),respectively.
+max i i
+InordertocomputeGLOSHinEquation(8),oneneedsonlythefirst(last)clusterto
+whichobjectx belongsbottom-up(top-down)throughthehierarchy,thelowestradius
+i
+at which x still belongs to this cluster (and below which x is labeled as noise), ε(x ),
+i i i
+and the lowest radius at which this cluster or any of its subclusters still exist (and
+below which all its objects are labeled as noise), ε (x ). Notice that this information
+max i
+isdirectlyavailableduringtheconstructionofthedensity-basedclusteringhierarchy.
+This means that, if we keep track and store this information while running HDB-
+SCAN*, then Equation (8) can be computed subsequently in constant time for each
+singleobject,whichresultsinanoverallcomplexityof O(n)forcomputingGLOSHfor
+allnobjects.Ahigh-levelpseudocodeispresentedinAlgorithm4.
+Note that for objects inside a cluster following, for example, a uniform distribution,
+theirdensitiestendtobeatleastapproximatelythesameasthedensityofthedensest
+objects in the cluster and, therefore, their degree of outlierness according to GLOSH
+will be all close to zero, thus suggesting that such objects are inliers. If the cluster
+ACMTransactionsonKnowledgeDiscoveryfromData,Vol.10,No.1,Article5,Publicationdate:July2015.

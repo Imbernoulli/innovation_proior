@@ -1,0 +1,504 @@
+
+===== page 1 [pdfplumber] =====
+MachineLearning,47,235–256,2002
+(cid:2)c 2002KluwerAcademicPublishers.ManufacturedinTheNetherlands.
+Finite-time Analysis of the Multiarmed Bandit
+Problem*
+PETERAUER pauer@igi.tu-graz.ac.at
+UniversityofTechnologyGraz,A-8010Graz,Austria
+NICOLO` CESA-BIANCHI cesa-bianchi@dti.unimi.it
+DTI,UniversityofMilan,viaBramante65,I-26013Crema,Italy
+PAULFISCHER fischer@ls2.informatik.uni-dortmund.de
+LehrstuhlInformatikII,Universita¨tDortmund,D-44221Dortmund,Germany
+Editor:JyrkiKivinen
+Abstract. Reinforcementlearningpoliciesfacetheexplorationversusexploitationdilemma,i.e.thesearchfor
+abalancebetweenexploringtheenvironmenttofindprofitableactionswhiletakingtheempiricallybestactionas
+oftenaspossible.Apopularmeasureofapolicy’ssuccessinaddressingthisdilemmaistheregret,thatistheloss
+duetothefactthatthegloballyoptimalpolicyisnotfollowedallthetimes.Oneofthesimplestexamplesofthe
+exploration/exploitationdilemmaisthemulti-armedbanditproblem.LaiandRobbinswerethefirstonestoshow
+thattheregretforthisproblemhastogrowatleastlogarithmicallyinthenumberofplays.Sincethen,policies
+whichasymptoticallyachievethisregrethavebeendevisedbyLaiandRobbinsandmanyothers.Inthisworkwe
+showthattheoptimallogarithmicregretisalsoachievableuniformlyovertime,withsimpleandefficientpolicies,
+andforallrewarddistributionswithboundedsupport.
+Keywords: banditproblems,adaptiveallocationrules,finitehorizonregret
+1. Introduction
+Theexplorationversusexploitationdilemmacanbedescribedasthesearchforabalance
+betweenexploringtheenvironmenttofindprofitableactionswhiletakingtheempirically
+best action as often as possible. The simplest instance of this dilemma is perhaps the
+multi-armedbandit,aproblemextensivelystudiedinstatistics(Berry&Fristedt,1985)that
+has also turned out to be fundamental in different areas of artificial intelligence, such as
+reinforcement learning (Sutton & Barto, 1998) and evolutionary programming (Holland,
+1992).
+Initsmostbasicformulation,aK-armedbanditproblemisdefinedbyrandomvariables
+X i,n for 1≤i≤K and n≥1, where each i is the index of a gambling machine (i.e., the
+“arm” of a bandit). Successive plays of machinei yield rewards X i,1 ,X i,2 ,... which are
+∗ApreliminaryversionappearedinProc.of15thInternationalConferenceonMachineLearning,pages100–108.
+MorganKaufmann,1998
+
+===== page 2 [pdfplumber] =====
+236 P.AUER,N.CESA-BIANCHIANDP.FISCHER
+independent and identically distributed according to an unknown law with unknown ex-
+pectationµ i .Independencealsoholdsforrewardsacrossmachines;i.e., X i,s and X j,t are
+independent (and usually not identically distributed) for each 1 ≤ i < j ≤ K and each
+s,t ≥1.
+Apolicy,orallocationstrategy, Aisanalgorithmthatchoosesthenextmachinetoplay
+basedonthesequenceofpastplaysandobtainedrewards.LetT(n)bethenumberoftimes
+i
+machinei hasbeenplayedby Aduringthefirstnplays.Thentheregretof Aafternplays
+isdefinedby
+(cid:2)K
+µ∗ n−µ IE[T (n)] where µ∗ d=ef max µ
+j j i
+j=1
+1≤i≤K
+and IE[·]denotesexpectation.Thustheregretistheexpectedlossduetothefactthatthe
+policydoesnotalwaysplaythebestmachine.
+In their classical paper, Lai and Robbins (1985) found, for specific families of reward
+distributions(indexedbyasinglerealparameter),policiessatisfying
+(cid:3) (cid:4)
+1
+IE[T (n)]≤ +o(1) lnn (1)
+j D(p (cid:9)p∗)
+j
+whereo(1)→0asn →∞and
+(cid:5)
+p
+D(p (cid:9)p ∗)d=ef p ln j
+j j p∗
+istheKullback-Leiblerdivergencebetweentherewarddensity p ofanysuboptimalma-
+j
+chine j and the reward density p∗ of the machine with highest reward expectation µ∗.
+Hence,underthesepoliciestheoptimalmachineisplayedexponentiallymoreoftenthan
+anyothermachine,atleastasymptotically.LaiandRobbinsalsoprovedthatthisregretis
+the best possible. Namely, for any allocation strategy and for any suboptimal machine j,
+IE[T (n)]≥(lnn)/D(p (cid:9)p∗)asymptotically,providedthattherewarddistributionssatisfy
+j j
+somemildassumptions.
+Thesepoliciesworkbyassociatingaquantitycalledupperconfidenceindextoeachma-
+chine.Thecomputationofthisindexisgenerallyhard.Infact,itreliesontheentiresequence
+ofrewardsobtainedsofarfromagivenmachine.Oncetheindexforeachmachineiscom-
+puted,thepolicyusesitasanestimateforthecorrespondingrewardexpectation,picking
+forthenextplaythemachinewiththecurrenthighestindex.Morerecently,Agrawal(1995)
+introduced a family of policies where the index can be expressed as simple function of
+thetotalrewardobtainedsofarfromthemachine.Thesepoliciesarethusmucheasierto
+compute than Lai and Robbins’, yet their regret retains the optimal logarithmic behavior
+(thoughwithalargerleadingconstantinsomecases).1
+Inthispaperwestrengthenpreviousresultsbyshowingpoliciesthatachievelogarithmic
+regretuniformlyovertime,ratherthanonlyasymptotically.Ourpoliciesarealsosimpleto
+implementandcomputationallyefficient.InTheorem1weshowthatasimplevariantof
+Agrawal’sindex-basedpolicyhasfinite-timeregretlogarithmicallyboundedforarbitrary
+setsofrewarddistributionswithboundedsupport(aregretwithbetterconstantsisproven
+
+===== page 3 [pdfplumber] =====
+FINITE-TIMEANALYSIS 237
+in Theorem 2 for a more complicated version of this policy). A similar result is shown
+in Theorem 3 for a variant of the well-known randomized ε-greedy heuristic. Finally, in
+Theorem4weshowanotherindex-basedpolicywithlogarithmicallyboundedfinite-time
+regret for the natural case when the reward distributions are normally distributed with
+unknownmeansandvariances.
+Throughoutthepaper,andwheneverthedistributionsofrewardsforeachmachineare
+understoodfromthecontext,wedefine
+(cid:10) d=efµ∗−µ
+i i
+where,werecall,µ istherewardexpectationformachineiandµ∗isanymaximalelement
+i
+intheset{µ ,...,µ }.
+1 K
+2. Mainresults
+Ourfirstresultshowsthatthereexistsanallocationstrategy,UCB1,achievinglogarithmic
+regret uniformly over n and without any preliminary knowledge about the reward distri-
+butions (apart from the fact that their support is in [0,1]). The policy UCB1 (sketched in
+figure1)isderivedfromtheindex-basedpolicyofAgrawal(1995).Theindexofthispolicy
+isthesumoftwoterms.Thefirsttermissimplythecurrentaveragereward.Thesecondterm
+isrelatedtothesize(accordingtoChernoff-Hoeffdingbounds,seeFact1)oftheone-sided
+confidenceintervalfortheaveragerewardwithinwhichthetrueexpectedrewardfallswith
+overwhelmingprobability.
+Theorem1. ForallK >1,ifpolicyUCB1isrunonK machineshavingarbitraryreward
+distributions P ,...,P withsupportin[0,1],thenitsexpectedregretafteranynumber
+1 K
+nofplaysisatmost
+(cid:6) (cid:3) (cid:4)(cid:7) (cid:3) (cid:4)(cid:8) (cid:9)
+(cid:2) lnn π2 (cid:2)K
+8 + 1+ (cid:10)
+(cid:10) 3 j
+i:µ
+i
+<µ∗ i j=1
+whereµ ,...,µ aretheexpectedvaluesof P ,...,P .
+1 K 1 K
+Figure1. SketchofthedeterministicpolicyUCB1(seeTheorem1).
+
+===== page 4 [pdfplumber] =====
+238 P.AUER,N.CESA-BIANCHIANDP.FISCHER
+Figure2. SketchofthedeterministicpolicyUCB2(seeTheorem2).
+ToproveTheorem1weshowthat,foranysuboptimalmachine j,
+8
+IE[T (n)]≤ lnn (2)
+j (cid:10)2
+j
+plusasmallconstant.Theleadingconstant8/(cid:10)2isworsethanthecorrespondingconstant
+i
+1/D(p (cid:9)p∗)inLaiandRobbins’result(1).Infact,onecanshowthat D(p (cid:9)p∗)≥2(cid:10)2
+j j j
+wheretheconstant2isthebestpossible.
+Usingaslightlymorecomplicatedpolicy,whichwecallUCB2(seefigure2),wecanbring
+themainconstantof(2)arbitrarilycloseto1/(2(cid:10)2).ThepolicyUCB2worksasfollows.
+j
+The plays are divided in epochs. In each new epoch a machine i is picked and then
+playedτ(r +1)−τ(r )times,whereτ isanexponentialfunctionandr isthenumberof
+i i i
+epochs played by that machine so far. The machine picked in each new epoch is the one
+maximizing x¯ i +a n,ri , where n is the current number of plays, x¯ i is the current average
+rewardformachinei,and
+(cid:10)
+(1+α)ln(en/τ(r))
+a n,r = 2τ(r) (3)
+where
+τ(r)=(cid:16)(1+α)r(cid:17).
+InthenextresultwestateaboundontheregretofUCB2.Theconstantcα,hereleftunspec-
+ified,isdefinedin(18)intheappendix,wherethetheoremisalsoproven.
+Theorem2. Forall K > 1,ifpolicyUCB2isrunwithinput0 < α < 1on K machines
+havingarbitraryrewarddistributions P ,...,P withsupportin[0,1],thenitsexpected
+1 K
+regretafteranynumber
+1
+n ≥ max
+i:µ
+i
+<µ∗ 2(cid:10)
+i
+2
+
+===== page 5 [pdfplumber] =====
+FINITE-TIMEANALYSIS 239
+ofplaysisatmost
+(cid:3) (cid:11) (cid:12) (cid:4)
+(cid:2) (1+α)(1+4α)ln 2e(cid:10)
+i
+2n
++
+cα
+(4)
+2(cid:10) (cid:10)
+i:µ
+i
+<µ∗ i i
+whereµ ,...,µ aretheexpectedvaluesof P ,...,P .
+1 K 1 K
+Remark. Bychoosingα small,theconstantoftheleadingterminthesum(4)getsarbi-
+trarilycloseto1/(2(cid:10)
+i
+2);however,cα → ∞asα → 0.Thetwotermsinthesumcanbe
+traded-offbylettingα =α beslowlydecreasingwiththenumbernofplays.
+n
+A simple and well-known policy for the bandit problem is the so-called ε-greedy rule
+(seeSutton,&Barto,1998).Thispolicyprescribestoplaywithprobability1−εthemachine
+withthehighestaveragereward,andwithprobabilityεarandomlychosenmachine.Clearly,
+the constant exploration probability ε causes a linear (rather than logarithmic) growth in
+theregret.Theobviousfixistoletε gotozerowithacertainrate,sothattheexploration
+probabilitydecreasesasourestimatesfortherewardexpectationsbecomemoreaccurate.
+It turns out that a rate of 1/n, where n is, as usual, the index of the current play, allows
+toprovealogarithmicboundontheregret.Theresultingpolicy,ε
+n
+-GREEDY,isshownin
+figure3.
+Theorem 3. For all K >1 and for all reward distributions P ,...,P with support in
+1 K
+[0,1],ifpolicyε
+n
+-GREEDYisrunwithinputparameter
+0<d ≤ min (cid:10) ,
+i
+i:µ
+i
+<µ∗
+Figure3. Sketchoftherandomizedpolicyε n-GREEDY(seeTheorem3).
+
+===== page 6 [pdfplumber] =====
+240 P.AUER,N.CESA-BIANCHIANDP.FISCHER
+thentheprobabilitythatafteranynumbern≥cK/d ofplaysε
+n
+-GREEDYchoosesasubop-
+timalmachine j isatmost
+(cid:3) (cid:4)(cid:3) (cid:4)
+c c (n−1)d2e1/2 cK c/(5d2)
++2 ln
+d2n d2 cK (n−1)d2e1/2
+(cid:3) (cid:4)
+4e cK
+c/2
++ .
+d2 (n−1)d2e1/2
+Remark. Forclargeenough(e.g.c>5)theaboveboundisoforderc/(d2n)+o(1/n)for
+n →∞,asthesecondandthirdtermsintheboundare O(1/n1+ε)forsomeε >0(recall
+that0<d <1).NotealsothatthisisaresultstrongerthanthoseofTheorems1and2,as
+itestablishesaboundontheinstantaneousregret.However,unlikeTheorems1and2,here
+weneedtoknowalowerbounddonthedifferencebetweentherewardexpectationsofthe
+bestandthesecondbestmachine.
+Our last result concerns a special case, i.e. the bandit problem with normally distributed
+rewards. Surprisingly, we could not find in the literature regret bounds (not even asymp-
+totical) for the case when both the mean and the variance of the reward distributions are
+unknown. Here, we show that an index-based policy called UCB1-NORMAL, see figure 4,
+achieveslogarithmicregretuniformlyovernwithoutknowingmeansandvariancesofthe
+rewarddistributions.However,ourproofisbasedoncertainboundsonthetailsoftheχ2
+andtheStudentdistributionthatwecouldonlyverifynumerically.Theseboundsarestated
+asConjecture1andConjecture2intheAppendix.
+ThechoiceoftheindexinUCB1-NORMALisbased,asforUCB1,onthesizeoftheone-
+sidedconfidenceintervalfortheaveragerewardwithinwhichthetrueexpectedrewardfalls
+withoverwhelmingprobability.InthecaseofUCB1,therewarddistributionwasunknown,
+andweusedChernoff-Hoeffdingboundstocomputetheindex.Inthiscaseweknowthat
+Figure4. SketchofthedeterministicpolicyUCB1-NORMAL(seeTheorem4).
+
+===== page 7 [pdfplumber] =====
+FINITE-TIMEANALYSIS 241
+thedistributionisnormal,andforcomputingtheindexweusethesamplevarianceasan
+estimateoftheunknownvariance.
+Theorem4. ForallK >1,ifpolicyUCB1-NORMALisrunonK machineshavingnormal
+rewarddistributions P ,...,P ,thenitsexpectedregretafteranynumbernofplaysisat
+1 K
+most
+(cid:8) (cid:9) (cid:8) (cid:9)(cid:8) (cid:9)
+(cid:2) σ2 π2 (cid:2)K
+256(logn) i + 1+ +8 logn (cid:10)
+(cid:10) 2 j
+i:µ
+i
+<µ∗ i j=1
+where µ ,...,µ and σ2,...,σ2 are the means and variances of the distributions
+1 K 1 K
+P ,...,P .
+1 K
+Asafinalremarkforthissection,notethatTheorems1–3alsoholdforrewardsthatarenot
+independentacrossmachines,i.e. X i,s and X j,t mightbedependentforanys,t,andi (cid:18)= j.
+Furthermore, we also do not need that the rewards of a single arm are i.i.d., but only the
+weakerassumptionthatIE[X i,t | X i,1 ,...,X i,t−1 ]=µ i forall1≤t ≤n.
+3. Proofs
+Recallthat,foreach1≤i ≤ K,IE[X i,n ]=µ i foralln ≥1andµ∗ =max 1≤i≤K µ i .Also,
+foranyfixedpolicy A,T
+i
+(n)isthenum(cid:13)beroftimesmachinei hasbeenplayedby Ainthe
+firstnplays.Ofcourse,wealwayshave K T(n)=n.Wealsodefinether.v.’sI ,I ,...,
+i=1 i 1 2
+where I denotesthemachineplayedattimet.
+t
+Foreach1≤i ≤ K andn ≥1define
+X ¯ i,n = 1
+(cid:2)n
+X i,t .
+n
+t=1
+Givenµ ,...,µ ,wecalloptimalthemachinewiththeleastindexi suchthatµ = µ∗.
+1 K i
+Inwhatfollows,wewillalwaysputasuperscript“∗”toanyquantitywhichreferstothe
+optimalmachine.ForexamplewewriteT∗(n)and X ¯ n ∗insteadofT i (n)and X ¯ i,n ,wherei is
+theindexoftheoptimalmachine.
+Somefurthernotation:Foranypredicate(cid:17)wedefine{(cid:17)(x)}tobetheindicatorfuction
+of the event (cid:17)(x); i.e., {(cid:17)(x)} = 1 if (cid:17)(x) is true and {(cid:17)(x)} = 0 otherwise. Finally,
+Var[X]denotesthevarianceoftherandomvariable X.
+Notethattheregretafternplayscanbewrittenas
+(cid:2)
+(cid:10) IE[T (n)] (5)
+j j
+j:µ
+j
+<µ∗
+Sowecanboundtheregretbysimplyboundingeach IE[T (n)].
+j
+Wewillmakeuseofthefollowingstandardexponentialinequalitiesforboundedrandom
+variables(see,e.g.,theappendixofPollard,1984).
+
+===== page 8 [pdfplumber] =====
+242 P.AUER,N.CESA-BIANCHIANDP.FISCHER
+Fact1(Chernoff-Hoeffdingbound). Let X ,...,X berandomvariableswithcommon
+1 n
+range[0,1]andsuchthat IE[X t |X 1 ,...,X t−1 ] = µ.Let S n = X 1 +···+ X n .Thenfor
+alla ≥0
+IP{S ≥nµ+a}≤e −2a2/n and IP{S ≤nµ−a}≤e −2a2/n
+n n
+Fact2(Bernsteininequality). Let X ,...,X berandomvariableswithrange[0,1]and
+1 n
+(cid:2)n
+Var[X t | X t−1 ,...,X 1 ]=σ2.
+t=1
+LetS = X +···+X .Thenforalla ≥0
+n 1 n
+(cid:14) (cid:15)
+a2/2
+IP{S ≥ IE[S ]+a}≤exp − .
+n n σ2+a/2
+√
+ProofofTheorem1: Letc t,s = (2lnt)/s.Foranymachinei,weupperbound T i (n)
+onanysequenceofplays.Moreprecisely,foreacht ≥ 1weboundtheindicatorfunction
+of I =i asfollows.Let(cid:18)beanarbitrarypositiveinteger.
+t
+(cid:2)n
+T(n)=1+ {I =i}
+i t
+t=K+1
+(cid:2)n
+≤ (cid:18)+ {I =i, T(t −1)≥(cid:18)}
+t i
+t=K+1
+(cid:2)n (cid:16)
+≤ (cid:18)+ X ¯ T ∗ ∗(t−1) +c t−1,T∗(t−1) ≤ X ¯ i,Ti (t−1)
+t=K+1
+(cid:17)
++c t−1,Ti (t−1) , T i (t −1)≥(cid:18)
+(cid:2)n (cid:18) (cid:19)
+≤ (cid:18)+ t=K+1 0 m <s i < n t X ¯ s ∗+c t−1,s ≤ (cid:18) m ≤s a i < x t X ¯ i,si +c t−1,si
+(cid:2)∞ (cid:2)t−1(cid:2)t−1(cid:16) (cid:17)
+≤ (cid:18)+ X ¯ s ∗+c t,s ≤ X ¯ i,si +c t,si . (6)
+t=1 s=1si =(cid:18)
+Nowobservethat X ¯ s ∗+c t,s ≤ X ¯ i,si +c t,si impliesthatatleastoneofthefollowingmust
+hold
+X ¯ s ∗ ≤ µ∗−c t,s (7)
+X ¯ i,si ≥ µ i +c t,si (8)
+µ∗ <µ i +2c t,si . (9)
+Weboundtheprobabilityofevents(7)and(8)usingFact1(Chernoff-Hoeffdingbound)
+IP{X ¯
+s
+∗ ≤µ∗−c
+t,s
+}≤e −4lnt =t −4
+
+===== page 9 [pdfplumber] =====
+FINITE-TIMEANALYSIS 243
+(cid:16) (cid:17)
+IP X ¯ i,si ≥µ i +c t,si ≤e −4lnt =t −4.
+For(cid:18)=(cid:16)(8lnn)/(cid:10)2(cid:17),(9)isfalse.Infact
+i
+(cid:20)
+µ∗−µ
+i
+−2c
+t,si
+=µ∗−µ
+i
+−2 2(lnt)/s
+i
+≥µ∗−µ
+i
+−(cid:10)
+i
+=0
+fors ≥(8lnn)/(cid:10)2.Soweget
+i i
+(cid:21) (cid:22)
+8lnn
+(cid:2)∞ (cid:2)t−1 (cid:2)t−1
+IE[T(n)]≤ +
+i (cid:10)2
+(cid:11)
+i t=1 s=1si =(cid:16)(8lnn)
+(cid:16)
+/(cid:10)
+i
+2(cid:17)
+(cid:17)(cid:12)
+× (cid:21) IP{X ¯ (cid:22)s ∗ ≤µ∗−c t,s }+IP X ¯ i,si ≥µ i +c t,si
+8lnn
+(cid:2)∞ (cid:2)t (cid:2)t
+≤ + 2t −4
+(cid:10)2
+i t=1 s=1si =1
+8lnn π2
+≤ +1+
+(cid:10)2 3
+i
+whichconcludestheproof. ✷
+Proof ofTheorem3: Recallthat,forn ≥cK/d2,ε =cK/(d2n).Let
+n
+1
+(cid:2)n
+x = ε .
+0 t
+2K
+t=1
+Theprobabilitythatmachine j ischosenattimenis
+(cid:3) (cid:4)
+ε ε (cid:16) (cid:17)
+IP{I n = j}≤ K n + 1− K n IP X ¯ j,Tj (n−1) ≥ X ¯ T ∗ ∗(n−1)
+and
+(cid:16) (cid:17)
+IP X ¯ j(cid:14) ,Tj (n) ≥ X ¯ T ∗ ∗(n) (cid:15) (cid:14) (cid:15)
+(cid:10) (cid:10)
+≤ IP X ¯ j,Tj (n) ≥µ j + 2 j +IP X ¯ T ∗ ∗(n) ≤µ∗− 2 j . (10)
+Nowtheanalysisforbothtermsontheright-handsideisthesame.LetTR(n)bethenumber
+j
+ofplaysinwhichmachine j waschosenatrandominthefirstnplays.Thenwehave
+(cid:14) (cid:15)
+(cid:10)
+IP X ¯ j,Tj (n) ≥µ j +
+2
+j
+(cid:14) (cid:15)
+(cid:2)n (cid:10)
+= IP T j (n)=t ∧X ¯ j,t ≥µ j + j (11)
+2
+t=1
+
+===== page 10 [pdfplumber] =====
+244 P.AUER,N.CESA-BIANCHIANDP.FISCHER
+(cid:14) (cid:15) (cid:14) (cid:15)
+(cid:2)n (cid:10) (cid:10)
+= IP T j (n)=t|X ¯ j,t ≥µ j + j ·IP X ¯ j,t ≥µ j + j
+2 2
+t=1
+(cid:14) (cid:15)
+(cid:2)n (cid:10)
+≤ IP T j (n)=t|X ¯ j,t ≥µ j + j ·e −(cid:10)2 j t/2
+2
+t=1
+byFact1(Chernoff-Hoeffdingbound)
+(cid:14) (cid:15)
+≤ (cid:2)(cid:23)x0 (cid:24) IP T j (n)=t|X ¯ j,t ≥µ j + (cid:10) 2 j + (cid:10) 2 2 e −(cid:10)2 j (cid:23)x0 (cid:24)/2
+t=1 (cid:13) j
+since ∞ e−κt ≤ 1e−κx
+t=x+1 κ
+(cid:14) (cid:15)
+≤ (cid:2)(cid:23)x0 (cid:24) IP T j R(n)≤t|X ¯ j,t ≥µ j + (cid:10) 2 j + (cid:10) 2 2 e −(cid:10)2 j (cid:23)x0 (cid:24)/2
+t=1 j
+(cid:16) (cid:17)
+2
+≤ x 0 ·IP T j R(n)≤ x 0 + (cid:10)2 e −(cid:10)2 j (cid:23)x0 (cid:24)/2 (12)
+j
+whereinthelastlinewedroppedtheconditioningbecauseeachmachineisplayedatrandom
+independentlyofthepreviouschoicesofthepolicy.Since
+(cid:23) (cid:24)
+1
+(cid:2)n
+IE TR(n) = ε
+j K t
+t=1
+and
+(cid:3) (cid:4)
+(cid:23) (cid:24) (cid:2)n ε ε 1 (cid:2)n
+Var TR(n) = t 1− t ≤ ε ,
+j K K K t
+t=1 t=1
+byBernstein’sinequality(2)weget
+(cid:16) (cid:17)
+IP TR(n)≤ x ≤e −x0 /5. (13)
+j 0
+Finallyitremainstolowerboundx .Forn ≥n(cid:25) =cK/d2,ε =cK/(d2n)andwehave
+0 n
+1
+(cid:2)n
+x = ε
+0 t
+2K
+t=1
+1
+(cid:2)n(cid:25)
+1
+(cid:2)n
+= ε + ε
+t t
+2K 2K
+t=1 t=n(cid:25)+1
+n(cid:25) c n
+≥ + ln
+2K d2 n(cid:25)
+c nd2e1/2
+≥ ln .
+d2 cK
