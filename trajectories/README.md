@@ -149,11 +149,15 @@ follow the same voice with one relaxation:
   artifact (prior-art ancestors cited by author/year are fine); derive, don't gesture; no fabricated
   numbers.
 
-## Finale
+## Finale (OPTIONAL)
 
-The last step may put a **stronger/strongest method that the task did not originally include** as the
-endpoint — but ONLY a **real, published** method, never an invented one. Three hard requirements,
-non-negotiable:
+The finale is **optional — it may not exist, and you do not have to add one.** The default trajectory is
+just the task's existing baselines weak→strong, ending at the strongest baseline (with its feedback).
+*Only if* a genuinely stronger, real, published method that the task did not originally include exists
+and fits the edit surface, you may add it as the endpoint. **Never invent one to fill the slot** — if
+nothing clearly stronger is published, stop at the strongest baseline (no finale, no `endpoint` field).
+
+When you do add a finale, three hard requirements, non-negotiable:
 
 1. **Find the reference.** The method must be a genuinely published technique with a real citation
    (paper + arXiv/venue). No speculative or "designed-here" methods. It gets its own full standalone
