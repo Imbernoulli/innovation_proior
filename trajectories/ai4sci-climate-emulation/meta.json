@@ -1,0 +1,63 @@
+{
+  "task": "ai4sci-climate-emulation",
+  "title": "Climate Physics Emulation: from heteroskedastic readout to full-resolution level coupling",
+  "domain": "AI for science",
+  "metrics": [
+    "nmse",
+    "r2",
+    "rmse"
+  ],
+  "metric_columns": [
+    "nmse",
+    "rmse",
+    "r2",
+    "ml_nmse",
+    "sl_nmse"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "hsr",
+      "method": "HSR (heteroskedastic regression, twin-head Gaussian NLL)",
+      "reasoning": "01-hsr-reasoning.md",
+      "answer": "01-hsr-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "ed",
+      "method": "ED (encoder-decoder, 5-node bottleneck)",
+      "reasoning": "02-ed-reasoning.md",
+      "answer": "02-ed-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "cnn",
+      "method": "CNN (1D residual conv over vertical levels)",
+      "reasoning": "03-cnn-reasoning.md",
+      "answer": "03-cnn-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "unet",
+      "method": "1D U-Net (multi-resolution + bottleneck attention)",
+      "reasoning": "04-unet-reasoning.md",
+      "answer": "04-unet-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "conformer-climate",
+      "method": "Conformer (convolution-augmented transformer over the levels)",
+      "reasoning": "05-conformer-climate-reasoning.md",
+      "answer": "05-conformer-climate-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Primary metric NMSE (lower is better), consistent across all three budgets and all three seeds (tiny std). long-200ep NMSE means: hsr 0.6390 > ed 0.5826 > cnn 0.3647 > unet 0.3471. Same ordering at short-30ep (0.7448 > 0.6545 > 0.4430 > 0.3546) and medium-100ep (0.6733 > 0.6073 > 0.3844 > 0.3514). R2 confirms it (hsr 0.361 < ed 0.417 < cnn 0.635 < unet 0.653 at long). hsr weakest: flat backbone + epoch-zero Gaussian NLL whose inverse-variance weighting froze out the hard multi-level columns (ml_nmse 0.655). ed next: deterministic objective helps but the 5-node bottleneck starves the multi-level target (ml_nmse 0.595). cnn: local conv over levels is the big jump (ml_nmse 0.373) but its limited receptive field plateaus. unet strongest baseline: multi-resolution + coarse-bottleneck attention span more long-range coupling (ml_nmse 0.347, reaches its level by short budget) though its scalar half regressed (sl_nmse ~0.35-0.40 vs cnn 0.058).",
+  "endpoint": "Conformer (convolution-augmented transformer over the levels)",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (the Custom model class in ClimSim/custom_emulator.py, lines 86-118, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only); the code block lives in the answer so the stacked view shows it once. methods/<slug> single-round traces (cnn, ed, unet, hsr) are the derivation references and are untouched. Finale = Conformer (Gulati et al. 2020, arXiv:2005.08100), the natural next move past the U-Net's coarse-only attention: it composes full-resolution self-attention (any level couples to any other in one hop) with a local depthwise-conv module in every block, addressing both the U-Net's coarse-only long-range coupling and its regressed single-level head. Finale carries no feedback (endpoint); its bar (clear unet's 0.347 long NMSE) lives at the close of its reasoning."
+}

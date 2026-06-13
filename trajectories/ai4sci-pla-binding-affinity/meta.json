@@ -1,0 +1,55 @@
+{
+  "task": "ai4sci-pla-binding-affinity",
+  "title": "Protein-Ligand Binding Affinity: heterogeneous interaction GNNs on 3D structure",
+  "domain": "AI for science",
+  "metrics": [
+    "PDBbind2013",
+    "PDBbind2016",
+    "PDBbind2019"
+  ],
+  "metric_columns": [
+    "rmse_PDBbind2013",
+    "rp_PDBbind2013",
+    "rmse_PDBbind2016",
+    "rp_PDBbind2016",
+    "rmse_PDBbind2019",
+    "rp_PDBbind2019"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "schnet",
+      "method": "SchNet (RBF continuous-filter, heterogeneous)",
+      "reasoning": "01-schnet-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-schnet-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "egnn",
+      "method": "EGNN (invariant equivariant-style message)",
+      "reasoning": "02-egnn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-egnn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "ehign",
+      "method": "EHIGN (dual heterogeneous heads + consistency)",
+      "reasoning": "03-ehign-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-ehign-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "gign",
+      "method": "GIGN (uniform GIN + two-channel readout)",
+      "reasoning": "04-gign-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-gign-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by the task's normalized score (worst baseline=0, best=50 per metric direction, RMSE lower-better / Rp higher-better, gmean over the three PDBbind benchmarks). schnet weakest (worst RMSE on 2013 and 2019, worst Rp on 2019; normalized gmean ~0.1) < egnn (lifts 2019 Rp to 0.617 but loses 2016 RMSE to schnet; ~2.2) < ehign (best 2016 by far at 1.243/0.822, but flat 2013 and slightly worse 2019 than egnn; ~35.5) < gign (best 2013 at 1.316/0.831, edges ehign overall via the 2013 gain and a graph-readout hedge on the held-out split; ~38.6). Single seed (42) per the task config; baseline mean rows equal the seed-42 rows.",
+  "notes": "MLS-Bench trajectory. Initial context and every step's code are the task's real edit surface (EHIGN_PLA/custom_pla.py: the AffinityModel class over a PLABatch heterogeneous graph, scaffold from edits/*.edit.py, replace lines 101-191). Each step = reasoning (full derivation, prose, reflection on the prior result embedded throughout for i>1) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers only, baselines). methods/<slug> single-round traces are the derivation reference and are untouched. CRITICAL same-named-vs-paper divergences: the task's schnet/egnn/gign baselines are NOT their canonical paper architectures. (1) schnet = SchNet's CFConv geometric core (RBF + Softplus filter + elementwise gate) slotted into the EHIGN heterogeneous dual-head/bias-correction skeleton; no force training, no cosine cutoff; distance read from edge_attr[:,-1:]*10, not from coordinates. (2) egnn = EGNN's invariant message (mlp_u(src)+mlp_v(dst)+mlp_e(dist)) only; the signature equivariant coordinate update is ABSENT (no pos on the edit surface, and the target is an invariant scalar) and it reuses the same heterogeneous dual-head/bias-correction readout; distance as a 1-dim edge feature. (3) gign = NOT the paper's RBF + SchNet-style elementwise-gated message + global_add_pool; instead a uniform GIN-style primitive ((1+eps)x + agg, edge added via edge_proj) on the precomputed edge_attr, with a TWO-channel readout (interface contact-sum + graph mean-pool, averaged), no bias correction, no dual heads, no consistency loss, plain-MSE forward. Only ehign matches its methods/ trace closely (CIGConv/NIGConv dual heads, attention bias correction, 3-term consistency loss via compute_loss). The harness exposes precomputed invariant edge features only (no raw 3D coordinates), so all geometry enters via edge_attr; the compute_loss hook lets a multi-head model (ehign) override the default plain MSE. No finale: the strongest published methods in this exact 3D-interaction-graph lineage (GIGN/EHIGN) are already baselines, and a genuinely-stronger candidate (e.g. SIGN's angle-domain message passing over a line graph of edges) cannot be faithfully implemented on this edit surface because the harness exposes precomputed edge features but not the edge-adjacency/angle structure that method requires. Per the spec, stop at the strongest baseline rather than invent one. All four methods/<slug> baseline traces existed and were reused; none missing."
+}

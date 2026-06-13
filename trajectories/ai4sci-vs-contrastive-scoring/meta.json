@@ -1,0 +1,47 @@
+{
+  "task": "ai4sci-vs-contrastive-scoring",
+  "title": "Virtual Screening: contrastive scoring objective design",
+  "domain": "AI for science",
+  "metrics": [
+    "dude",
+    "dekois",
+    "lit-pcba"
+  ],
+  "metric_columns": [
+    "auc_mean",
+    "bedroc_mean",
+    "ef005_mean",
+    "ef01_mean",
+    "ef05_mean"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "vanilla_clip",
+      "method": "vanilla CLIP (DrugCLIP-style contrastive)",
+      "reasoning": "01-vanilla_clip-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-vanilla_clip-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "hcc",
+      "method": "HCC (Euclidean contrastive + activity ranking)",
+      "reasoning": "02-hcc-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-hcc-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "hcc_hyp_cone",
+      "method": "Full HypSeek (hyperbolic HCC + cone hierarchy)",
+      "reasoning": "03-hcc_hyp_cone-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-hcc_hyp_cone-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the task's own scoring DSL (score_spec.py: gmean over DUD-E/DEKOIS/LIT-PCBA of each benchmark's 8-metric weighted mean; all metrics higher-is-better): vanilla_clip 0.1116 < hcc 0.1789 < hcc_hyp_cone 0.3058. vanilla_clip weakest by construction (pure contrastive separation, protein tower and activity numbers unused) — collapses on LIT-PCBA (AUROC 0.576). hcc adds activity-aware ranking + sequence pathway, lifting LIT-PCBA (AUROC 0.628, BEDROC 0.087) and firming DUD-E AUROC (0.920). hcc_hyp_cone adds Lorentz-hyperbolic geometry + cone hierarchy on top, taking DUD-E to its best (AUROC 0.925, BEDROC 0.737) and LIT-PCBA AUROC to 0.634; clear DSL winner despite DEKOIS holding roughly flat.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (HypSeek/unimol/custom_scoring.py: CustomScoring with project_mol/pocket/protein, compute_loss over assay-grouped batch_list/act_list, and score; scaffold from edits/*.edit.py). vanilla_clip == the default custom_template.py. Each step = reasoning (full derivation, prose; reflection on the prior numbers embedded throughout for i>1) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers only, baselines). The code block lives in the answer only, so the stacked view shows it once. methods/<slug> single-round traces (vanilla-clip, hcc, hcc-hyp-cone) are the derivation reference and left untouched. No finale: the strongest baseline (full HypSeek, AAAI 2026) is itself the published frontier for this exact contrastive-VS setting; no clearly-stronger published method fits this scoring-head edit surface, so the ladder stops at the strongest baseline per spec.",
+  "endpoint": "Full HypSeek (hyperbolic HCC + cone hierarchy)"
+}

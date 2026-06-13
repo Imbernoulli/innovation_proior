@@ -1,0 +1,53 @@
+{
+  "task": "ai4sci-weather-forecast-aggregation",
+  "title": "Weather Forecast Variable Aggregation: pooling a set of per-variable tokens",
+  "domain": "AI for science",
+  "metrics": [
+    "z500-3day",
+    "t850-5day",
+    "wind10m-7day"
+  ],
+  "metric_columns": [
+    "w_rmse_geopotential_500_z500-3day",
+    "w_rmse_temperature_850_t850-5day",
+    "w_rmse_10m_u_component_of_wind_wind10m-7day"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Set Transformer pooling (SAB + PMA)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "mean-pooling",
+      "method": "Mean pooling",
+      "reasoning": "01-mean-pooling-reasoning.md",
+      "answer": "01-mean-pooling-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "learned-weighted-sum",
+      "method": "Learned weighted sum (softmax)",
+      "reasoning": "02-learned-weighted-sum-reasoning.md",
+      "answer": "02-learned-weighted-sum-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "cross-attention",
+      "method": "Cross-attention (ClimaX default)",
+      "reasoning": "03-cross-attention-reasoning.md",
+      "answer": "03-cross-attention-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "set-transformer-aggregation",
+      "method": "Set Transformer pooling (SAB + PMA)",
+      "reasoning": "04-set-transformer-aggregation-reasoning.md",
+      "answer": "04-set-transformer-aggregation-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Latitude-weighted RMSE, lower is better (is_final,true baseline:* rows, seed 42). mean_pooling weakest: highest z500-3day (353.50) and t850-5day (2.6032). learned_weighted_sum next: beats mean on z500 (345.79) and t850 (2.5934) via a global per-variable softmax, but regresses slightly on wind10m-7day (3.4245 vs 3.3991) because a single fixed weighting cannot react per-location. cross_attention strongest: best on all three (255.85 / 2.1214 / 3.1455), content-dependent multi-head pooling. Finale (Set Transformer SAB+PMA) is the published-stronger endpoint added beyond the task's baselines.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the VariableAggregator class in custom_forecast.py, lines 310-351, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only), with an answer (distilled summary + the scaffold code); the code block lives in the answer, not the reasoning, so the stacked view shows it once. Baselines ranked weak->strong: mean-pooling, learned-weighted-sum, cross-attention. Finale: Set Transformer pooling (SAB + PMA, Lee et al. ICML 2019; arXiv:1810.00825) -- the ClimaX cross-attention is essentially PMA with k=1 seed and no encoder; the finale adds multihead pooling and a self-attention block over the variable set before pooling, modelling inter-variable correlations the single-query pooling cannot. Same-named-baseline-vs-paper diffs: (1) mean_pooling -- the methods/mean-pooling trace develops the full masked-mean (sum(token*mask)/clamp(sum(mask)), the sqrt-len variance-stabilizing sibling, and max-pooling as an alternative); the task edit is the bare x.mean(dim=1) because every location has the full V=48 present (no padding), so the harness omits all masking machinery. (2) learned_weighted_sum -- the methods/learned-weighted-sum trace develops the softmax form plus the ReLU fast-normalized sibling and a per-channel variant; the task edit uses only the softmax form with var_weights zero-initialized (uniform 1/V at init), omitting the ReLU/per-channel options. (3) cross_attention -- the task edit is identical to the methods/cross-attention VariableAggregator (single nn.MultiheadAttention, zero-init query); no diff. methods/<slug> traces existed for all three baselines (hyphenated slugs cross-attention, mean-pooling, learned-weighted-sum); none missing. Finale methods trace created at methods/set-transformer-aggregation/ (a generic methods/set-transformer trace also exists but is the un-Codex-reviewed paper version, left untouched; the finale gets its own task-grounded, Codex-reviewed trace)."
+}

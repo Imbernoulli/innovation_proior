@@ -1,0 +1,45 @@
+{
+  "task": "ai4bio-protein-structure-repr",
+  "title": "Protein Structure Representation: a geometric GNN encoder ladder",
+  "domain": "AI for biology",
+  "metrics": [
+    "EC-reaction",
+    "GO-BP",
+    "Fold"
+  ],
+  "metric_columns": [
+    "accuracy_EC",
+    "f1_max_GO-BP",
+    "accuracy_Fold"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "schnet",
+      "method": "SchNet (continuous-filter convolution)",
+      "reasoning": "01-schnet-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-schnet-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "egnn",
+      "method": "EGNN (E(n)-equivariant message passing)",
+      "reasoning": "02-egnn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-egnn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "gearnet",
+      "method": "GearNet (geometry-aware relational convolution)",
+      "reasoning": "03-gearnet-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-gearnet-answer.md"
+    }
+  ],
+  "endpoint": "GearNet (geometry-aware relational convolution)",
+  "ranking_basis": "Ranked from the is_final,true baseline:* rows (seed 42; all three metrics higher-is-better). schnet weakest: lowest on all three (EC 0.589, GO-BP 0.245, Fold 0.184) — a radial, distance-only encoder, blind to direction. egnn next: adds an equivariant coordinate channel and wins EC (0.747) and Fold (0.331) by wide margins, but slightly regresses GO-BP (0.238 < schnet's 0.245). gearnet strongest: wins EC (0.774) and GO-BP (0.306, clearly ahead) by typing edges into 7 relations with a multi-scale concat/sum readout; it trails egnn only on Fold (0.315 vs 0.331), the directional cue it cannot see without the omitted line-graph angle branch. gearnet leads 2 of 3 metrics including the largest single separation (GO-BP), so it is the endpoint.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_protein_encoder.py EDITABLE SECTION, the ProteinEncoder class, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> feedback (numbers only, baselines) with an answer (distilled summary + the literal scaffold edit). Same-named-baseline-vs-paper diffs derived against this task's edits, not the methods/<slug> paper traces: (1) SchNet uses PyG InteractionBlock/GaussianSmearing/ShiftedSoftplus with hidden=512 (paper/methods 128), builds its own kNN graph (k=32) not a radius/provided graph, no energy/forces (encoder only). (2) EGNN is the PyG-Geometric port with emb=512, BatchNorm1d inside every MLP, sum message aggr / mean coord aggr, residual on h and pos; the harness OMITS the attention edge gate, velocity channel, tanh, and tiny coord init, and the readout uses ONLY the invariant feature channel (mean pool) -- updated coordinates are propagated but not read out. (3) GearNet is the PLAIN relational version: the harness OMITS the line graph, edge-to-edge message passing, and angle bins entirely (the methods trace's centerpiece); 7 relations (5 seq offsets + radius + kNN, k=16 vs methods k=10), edge feature GATES the message multiplicatively via sigmoid where canonical GearNet ADDS a projected edge feature, BatchNorm as a separate post-conv module, concat_hidden + sum pool. No finale: GearNet here is already the strongest baseline; a clearly-stronger published method (e.g. GVP-GNN) would need vector/orientation node features the harness's fixed compute_node_features does not provide, so a faithful, edit-surface-compatible, line-by-line-correct finale could not be guaranteed without inventing one -- stopped at the strongest baseline per spec. No methods/<slug> traces were missing; schnet, egnn, gearnet all existed and were reused as derivation references."
+}

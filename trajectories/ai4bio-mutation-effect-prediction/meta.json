@@ -1,0 +1,45 @@
+{
+  "task": "ai4bio-mutation-effect-prediction",
+  "title": "Protein Mutation Effect Prediction: a supervised head over frozen ESM-2 embeddings",
+  "domain": "AI for biology",
+  "metrics": [
+    "BLAT_ECOLX",
+    "ESTA_BACSU",
+    "RASH_HUMAN"
+  ],
+  "metric_columns": [
+    "spearman_BLAT_ECOLX",
+    "spearman_ESTA_BACSU",
+    "spearman_RASH_HUMAN"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ridge",
+      "method": "Ridge regression (linear head + weight decay)",
+      "reasoning": "01-ridge-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ridge-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "reshape_cnn",
+      "method": "Reshape-CNN (residual 1D convolutions over pooled features)",
+      "reasoning": "02-reshape_cnn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-reshape_cnn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mlp",
+      "method": "MLP (single-hidden-layer prediction head)",
+      "reasoning": "03-mlp-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mlp-answer.md"
+    }
+  ],
+  "endpoint": "MLP (single-hidden-layer prediction head)",
+  "ranking_basis": "Spearman (higher is better), seed 42, each value the random 5-fold CV mean per assay, from the is_final,true baseline:* rows. ridge weakest: it INVERTS on the stability assay (ESTA_BACSU Spearman -0.107204, worse than random) and is lowest on both other assays (BLAT 0.736985, RASH 0.681465) -- a linear hyperplane cannot bend around a threshold phenotype. reshape_cnn < mlp: the MLP dominates on all three assays (BLAT 0.882540 vs 0.860462, ESTA 0.642490 vs 0.640770, RASH 0.808986 vs 0.798003), so the plain nonlinear dense head beats the convolutional weight-sharing head everywhere -- the fake-grid convolution was inert.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_mutation_pred.py: the MutationPredictor class + CONFIG_OVERRIDES, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (ridge, mlp, reshape-cnn) are reused as derivation references and untouched. No finale: the edit surface exposes only the mean-pooled embedding + delta (no per-residue/CLS tokens, no zero-shot density score) and a fixed MSE/AdamW loop (only lr/weight_decay tunable), so the published heads that beat a plain MLP probe (Light Attention, ProteinNPT axial attention, augmented/ensemble ridge, ranking-loss objectives) do not fit this contract; nothing clearly stronger is publishable here, so the trajectory stops at the strongest baseline."
+}

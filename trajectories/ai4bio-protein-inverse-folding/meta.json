@@ -1,0 +1,51 @@
+{
+  "task": "ai4bio-protein-inverse-folding",
+  "title": "Protein Inverse Folding: designing the structure encoder",
+  "domain": "AI for biology",
+  "metrics": [
+    "CATH4.2",
+    "CATH4.3",
+    "TS50"
+  ],
+  "metric_columns": [
+    "recovery",
+    "perplexity"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "gvp",
+      "method": "GVP (geometric vector perceptron encoder)",
+      "reasoning": "01-gvp-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-gvp-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "proteinmpnn",
+      "method": "ProteinMPNN (all-atom RBF encoder)",
+      "reasoning": "02-proteinmpnn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-proteinmpnn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "pifold",
+      "method": "PiFold (PiGNN encoder, learnable virtual atoms)",
+      "reasoning": "03-pifold-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-pifold-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "vfn",
+      "method": "VFN (Vector Field Network encoder)",
+      "reasoning": "04-vfn-reasoning.md",
+      "finale": true,
+      "answer": "04-vfn-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by the is_final,true baseline:* leaderboard rows (seed 42). Recovery higher is better, perplexity lower is better, and the order is consistent across all three benchmarks and both metrics. gvp weakest (CATH4.2 0.4310 / 5.8996, CATH4.3 0.4337 / 5.8209, TS50 0.4602 / 5.4831): thin per-edge geometry (one CA-CA direction + one CA distance), equivariant machinery starved of input. proteinmpnn middle (0.4603 / 5.4723, 0.4612 / 5.4639, 0.4829 / 5.0827): 25 all-atom RBF distances + live edge updates. pifold strongest baseline (0.4648 / 5.2943, 0.4772 / 5.1294, 0.5228 / 4.5513): MLP-scored neighbor attention, learnable virtual atoms, global context gate, 10 layers, one-shot decoder. proteinmpnn < pifold on every benchmark (recovery and perplexity).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_invfold.py: StructureEncoder + InverseFoldingModel, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + scaffold code); the code block lives in the answer, not the reasoning. methods/<slug> single-round traces (gvp, proteinmpnn, pifold) are the derivation reference and untouched. SAME-NAMED-BASELINE-VS-PAPER: this task's edit surface is ENCODER-ONLY with a fixed one-shot decoder head and NO sequence input, so all three baselines drop their paper decoders. methods/gvp and methods/proteinmpnn traces show the full paper autoregressive models (CPDModel with causal masking / ProteinMPNN with order-agnostic decoding, augment_eps, chain encoding, NoamOpt); the task baselines keep only the encoders. methods/pifold already matches (PiFold chose a one-shot decoder). Finale = VFN (De novo Protein Design Using Geometric Vector Field Networks, Mao et al., ICLR 2024, arXiv:2310.11802), the natural step past PiFold (read frame-anchored virtual atoms as learnable VECTORS via the vector field operator, not as scalar distances); its methods/vfn trace was created (grounded + Codex-reviewed, .codex_review.json written) and the scaffold fill verified line-by-line vs the paper equations and confirmed strictly SE(3)-invariant. methods.json was NOT edited (per hard constraint)."
+}

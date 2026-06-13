@@ -1,0 +1,62 @@
+{
+  "task": "causal-observational-nonlinear",
+  "title": "Causal Discovery: nonlinear additive-noise DAGs from observational data",
+  "domain": "Causal inference",
+  "metrics": [
+    "SF20-GP",
+    "ER20-Gauss",
+    "ER12-LowSample"
+  ],
+  "metric_columns": [
+    "f1",
+    "shd",
+    "precision",
+    "recall"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "SCORE (score-matching order)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "directlingam",
+      "method": "DirectLiNGAM (linear non-Gaussian)",
+      "reasoning": "01-directlingam-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-directlingam-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "grandag",
+      "method": "GraN-DAG (gradient-based neural DAG)",
+      "reasoning": "02-grandag-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-grandag-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "notears_mlp",
+      "method": "NOTEARS-MLP (linear NOTEARS + GBR refinement)",
+      "reasoning": "03-notears_mlp-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-notears_mlp-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "cam",
+      "method": "CAM (causal additive models, heuristic)",
+      "reasoning": "04-cam-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-cam-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "score",
+      "method": "SCORE (score-matching order)",
+      "reasoning": "05-score-reasoning.md",
+      "finale": true,
+      "answer": "05-score-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the primary metric F1 (higher better), averaged over the three eval scenarios (SF20-GP, ER20-Gauss, ER12-LowSample) from the is_final,true baseline:* rows. directlingam weakest (avg F1 0.250; linear method on nonlinear data, by design the floor, worst on Gaussian-noise ER20-Gauss). grandag next (avg F1 0.276): models nonlinearity (best-so-far on ER20-Gauss) but over-connects with no sparsity penalty -- worst SHD of all (74.4) and large seed variance. notears_mlp third (avg F1 0.282, far better SHD 35.6): precision discipline via GBR feature-importance pruning, but recall-starved by its linear candidate skeleton (SF20-GP F1 0.153). cam strongest (avg F1 0.726, SHD 18.6): first rung to recover the nonlinear order then prune. SHD agrees: cam(18.6) < notears_mlp(35.6) < directlingam(60.4) < grandag(74.4); grandag>directlingam on F1 but worst SHD.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (run_causal_discovery in bench/custom_algorithm.py, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, reflection on the prior result embedded for i>1) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. methods/<slug> single-round traces (cam, grandag, notears-mlp, directlingam) are the derivation references and left untouched. Finale = SCORE (Rolland et al., ICML 2022, arXiv:2203.04413): a real published method genuinely stronger than CAM on nonlinear ANM, fitting the run_causal_discovery edit surface; carries no feedback (no leaderboard row). Same-named-vs-paper diffs documented per step: notears_mlp is NOT an MLP (it is linear NOTEARS + gradient-boosted refinement); cam is a CAM-inspired heuristic (boosted residual-variance ordering, no GAM/PNS/IncEdge); directlingam is faithful causal-learn core but with no lasso pruning; grandag is faithful gcastle GraN-DAG with stability-tuned edge clamping and no PNS/pruning."
+}

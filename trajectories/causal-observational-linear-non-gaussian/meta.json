@@ -1,0 +1,45 @@
+{
+  "task": "causal-observational-linear-non-gaussian",
+  "title": "Causal Discovery from Observational Linear Non-Gaussian Data (LiNGAM)",
+  "domain": "Causal inference",
+  "metrics": [
+    "ER30",
+    "ER50",
+    "SF100"
+  ],
+  "metric_columns": [
+    "f1",
+    "shd",
+    "precision",
+    "recall"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "notears",
+      "method": "NOTEARS-linear (continuous DAG optimization)",
+      "reasoning": "01-notears-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-notears-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "icalingam",
+      "method": "ICA-LiNGAM",
+      "reasoning": "02-icalingam-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-icalingam-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "directlingam",
+      "method": "DirectLiNGAM",
+      "reasoning": "03-directlingam-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-directlingam-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the primary metric F1 (higher better), as the geometric mean of per-scenario mean F1 over the is_final=true baseline:* rows on the currently-scored scenarios ER30/ER50/SF100. notears: mean F1 0.919/0.872/0.716 -> gmean ~0.834 (weakest; ignores non-Gaussianity, misses hub edges on SF100, recall 0.597). icalingam: 0.989/0.994/0.804 -> gmean ~0.925 (fixes the Erdos-Renyi scenarios via non-Gaussian ICA identifiability, but its global non-convex FastICA fit fails SF100: F1 0.804, SHD 120, precision 0.702, seed-123 SHD 159). directlingam: 0.990/0.994/0.988 -> gmean ~0.990 (strongest; replaces the global ICA optimization with a deterministic, scale-invariant pairwise-entropy peeling, collapsing SF100 SHD to 7.3 and F1 to 0.988). Matches the task-stated order DirectLiNGAM >= ICA-LiNGAM > NOTEARS-linear.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (run_causal_discovery(X) in causal-learn/bench/custom_algorithm.py, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are untouched and used only as the derivation reference. No finale: DirectLiNGAM is at the benchmark ceiling here (F1 ~0.99, SHD 2-7, recall 1.0 across all scenarios) and no published method is clearly stronger in this exact regime; the published 'improvements' (sICA-LiNGAM, AcceleratedLiNGAM, ParaLiNGAM) are about scalability/speed or latent confounders, not accuracy gains over DirectLiNGAM on these graphs, so per the spec the trajectory stops at the strongest baseline."
+}

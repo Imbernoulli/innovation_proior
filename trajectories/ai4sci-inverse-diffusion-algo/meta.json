@@ -1,0 +1,60 @@
+{
+  "task": "ai4sci-inverse-diffusion-algo",
+  "title": "Inverse Problem Algorithm Design with Diffusion Priors",
+  "domain": "AI for science",
+  "metrics": [
+    "inv-scatter",
+    "blackhole",
+    "inpainting"
+  ],
+  "metric_columns": [
+    "psnr_inv-scatter",
+    "ssim_inv-scatter",
+    "psnr_blackhole",
+    "blur_psnr (f=15)_blackhole",
+    "cp_chi2_blackhole",
+    "camp_chi2_blackhole",
+    "psnr_inpainting",
+    "ssim_inpainting",
+    "lpips_inpainting"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dps",
+      "method": "DPS (Diffusion Posterior Sampling)",
+      "reasoning": "01-dps-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-dps-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "lgd",
+      "method": "LGD (Loss-Guided Diffusion)",
+      "reasoning": "02-lgd-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-lgd-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "reddiff",
+      "method": "RED-diff (Regularization by Denoising Diffusion)",
+      "reasoning": "03-reddiff-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-reddiff-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "daps",
+      "method": "DAPS (Decoupled Annealing Posterior Sampling)",
+      "reasoning": "04-daps-reasoning.md",
+      "finale": true,
+      "answer": "04-daps-answer.md"
+    }
+  ],
+  "endpoint": "DAPS (Decoupled Annealing Posterior Sampling)",
+  "ranking_basis": "Ranked weak->strong from is_final,true baseline:* rows (single seed 42), direction-aware across the three problems (PSNR/SSIM/blur-PSNR higher better; LPIPS/cp_chi2/camp_chi2 lower better). dps weakest: lowest avg PSNR across the three problems (23.09) and worst on both headline image problems (inv-scatter PSNR 25.20, inpainting PSNR 18.48); it wins only blackhole (PSNR 25.60, cp_chi2 5.89). lgd middle: beats dps on inv-scatter (30.20) and inpainting (20.50) PSNR and on avg PSNR (24.07), but regresses blackhole (cp_chi2 5.89->17.58, PSNR 25.60->21.50) and worsens inpainting LPIPS (0.22->0.25), so a net but fragile improvement. reddiff strongest: 7 of 9 direction-aware metric wins, highest avg PSNR (27.22), dominates inv-scatter (38.25/0.98), best inpainting (PSNR 21.54, LPIPS 0.1677), and best blackhole chi-squared (cp_chi2 3.01, camp_chi2 3.22).",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the Custom class in algo/custom.py, from edits/*.edit.py), not the methods' generic paper implementations. Each step = reasoning (full derivation, prose; reflection on the prior baseline's measured numbers embedded throughout for i>1) -> answer (distilled summary + the scaffold Custom code) -> feedback (numbers only, baselines only). The code block lives in the answer, not the reasoning. The reused methods/{dps,lgd,reddiff} single-round traces are the derivation reference and are left untouched. Same-named-baseline-vs-paper diffs: all three baselines carry a per-ENV PROBLEM_CONFIGS table (a harness adaptation absent from the paper versions) because the three forward operators have wildly different residual scales; DPS adds an opt-in clip_grad (off for these problems, since clipping before the 0.5/sqrt(loss) rescaling corrupts the tuned guidance scale) plus an always-on nan_to_num; LGD's task code realizes the arithmetic-MEAN of per-sample squared-residual gradients (batch_grad=True), NOT the paper's exact softmin-weighted log-mean-exp guidance; REDDiff computes the data gradient directly on mu (no denoiser Jacobian) and omits an inpainting override deliberately. Finale DAPS (CVPR 2025; arXiv:2407.01521) is a real published method not among the task baselines and clearly stronger; it fits the edit surface (unconditional PF-ODE via DiffusionSampler + clean-variable Langevin via forward_op.gradient + re-noise) and carries no feedback file.",
+  "finale_slug": "daps"
+}

@@ -1,0 +1,73 @@
+{
+  "task": "causal-discovery-discrete",
+  "title": "Causal Discovery on Discrete Bayesian Networks: from DAG hill-climbing to less-greedy equivalence search",
+  "domain": "Causal inference",
+  "metrics": [
+    "Cancer",
+    "Child",
+    "Alarm",
+    "Hailfinder",
+    "Win95pts"
+  ],
+  "metric_columns": [
+    "shd",
+    "adj_precision",
+    "adj_recall",
+    "arrow_precision",
+    "arrow_recall"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "hc",
+      "method": "HC (hill-climbing DAG search, BDeu)",
+      "reasoning": "01-hc-reasoning.md",
+      "answer": "01-hc-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "grasp",
+      "method": "GRaSP (greedy relaxations of the sparsest permutation, BDeu)",
+      "reasoning": "02-grasp-reasoning.md",
+      "answer": "02-grasp-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "pc",
+      "method": "PC (constraint-based, chi-squared CI test)",
+      "reasoning": "03-pc-reasoning.md",
+      "answer": "03-pc-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "boss",
+      "method": "BOSS (best order score search, BDeu)",
+      "reasoning": "04-boss-reasoning.md",
+      "answer": "04-boss-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "ges",
+      "method": "GES (greedy equivalence search, BDeu)",
+      "reasoning": "05-ges-reasoning.md",
+      "answer": "05-ges-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "lges",
+      "method": "LGES (less greedy equivalence search, BDeu)",
+      "reasoning": "06-lges-reasoning.md",
+      "answer": "06-lges-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "LGES (less greedy equivalence search, BDeu)",
+  "ranking_basis": "Primary metric SHD (lower better), mean over the five is_final,true baseline rows across the 5 eval networks {Cancer, Child, Alarm, Hailfinder, Win95pts}. hc weakest (mean SHD 42.7; collapses on Alarm 37 / Hailfinder 64 / Win95pts 100, arrow accuracy ~0.44). grasp (24.5) < pc (24.3) < boss (24.2) are near-tied on mean SHD but ordered by full profile: grasp weakest of the three (lowest arrow precision 0.635, unstable on dense nets); pc next (highest adj precision 0.913 but lowest adj recall 0.667 from CI-test over-deletion); boss strongest of the middle (best arrow precision 0.711 and adj recall 0.757, best single Win95pts 38). ges strongest (mean SHD 19.5; best on Child 2.3, Alarm 2.7, Hailfinder 39.7; only trails boss on Win95pts).",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_algorithm.py run_causal_discovery, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> feedback (numbers only, baselines) with an answer (distilled summary + the literal scaffold edit). methods/<slug> single-round traces are the derivation reference and untouched. Same-named-vs-paper: the task's grasp/boss/ges/pc baselines are ONE-LINE causal-learn library calls (e.g. grasp depth=3 / boss no depth knob / ges returns result['G'] / pc stable+uc_sepset+meek), NOT the hand-rolled implementations the methods/<slug> traces show; the trajectory code is the literal library-call edit and the reasoning notes what the harness exposes vs. omits (tier/depth knobs, grow-shrink trees, operator internals). hc is the exception: its edit.py is a full from-scratch DAG hill-climb matching methods/hc. Finale LGES (Ejaz & Bareinboim, NeurIPS 2025, arXiv:2506.22331) is a real published method strictly stronger than the strongest baseline GES: LGES-0 conservative insertion built on the same GESUtils Insert/Delete operators, with the backward phase identical to GES; verified against the CausalAILab/lges reference (score_based pre-screen + prune-the-pair-on-score-decreasing-insert). It carries no feedback (endpoint)."
+}

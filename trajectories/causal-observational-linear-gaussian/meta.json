@@ -1,0 +1,48 @@
+{
+  "task": "causal-observational-linear-gaussian",
+  "title": "Causal Discovery from Linear Gaussian Observations: CPDAG recovery",
+  "domain": "Causal inference",
+  "metrics": [
+    "ER10",
+    "ER20",
+    "SF50",
+    "SF50-Hard",
+    "ER20-Noisy"
+  ],
+  "metric_columns": [
+    "shd",
+    "adj_precision",
+    "adj_recall",
+    "arrow_precision",
+    "arrow_recall"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "pc",
+      "method": "PC (Peter-Clark, constraint-based)",
+      "reasoning": "01-pc-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-pc-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "grasp",
+      "method": "GRaSP (Greedy Relaxations of the Sparsest Permutation)",
+      "reasoning": "02-grasp-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-grasp-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "boss",
+      "method": "BOSS (Best Order Score Search)",
+      "reasoning": "03-boss-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-boss-answer.md"
+    }
+  ],
+  "ranking_basis": "From is_final,true baseline:* rows at seed 42, mind metric direction (SHD lower-is-better; precision/recall higher-is-better). pc weakest: high adjacency precision but recall collapses with density/noise (adj_recall ER20 0.585, SF50 0.510, SF50-Hard 0.298, ER20-Noisy 0.246; SHD 8/31/93/143/69) because every decision is a single thresholded Fisher-z test that deletes real-but-faint edges. grasp middle: perfect on the small sparse graphs (ER10, ER20 SHD 0) and recovers SF50/SF50-Hard adjacency (~0.95-0.98), but soft SF50 arrow precision (0.75) and an ER20-Noisy collapse (SHD 58, adj_precision 0.674 from over-adding via plateau-wandering). boss strongest: dominates everywhere (SHD 0/0/11/6/7; ER20-Noisy adj_precision recovered to 0.985), the parameter-light strictly-improving best-position move fixing both GRaSP soft spots. GES is a config baseline but is_final,false (it lands near pc on this Gaussian harness, SHD ~12/30 on ER10/ER20), so it is prior art, not a ranked rung.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_algorithm.py: run_causal_discovery, scaffold default = empty graph; baseline fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). Code lives in the answer only. Same-named-vs-paper diffs: this task is LINEAR GAUSSIAN/continuous, so every baseline's task fill differs from its methods/<slug> paper trace in the score/test. pc.edit.py uses the fisherz CI test (Gaussian partial correlation), not the methods trace's discrete chisq. grasp.edit.py and boss.edit.py use local_score_BIC_from_cov with lambda_value=2 (Gaussian SEM-BIC), not the methods traces' BDeu; both are the lean fills (grasp: depth-3 tuck-DFS, no tier knob; boss: best-position sweep, no optional BES phase). No finale: the strongest baseline is BOSS, already near state-of-the-art for linear-Gaussian permutation search; the natural GES-family candidate (LGES) is a modification of GES, and GES is the WEAK member here (verified locally: GES SHD ~12/30 on ER10/ER20 vs BOSS 0/0), so LGES does not clear BOSS's bar on this substrate. Stopped at BOSS rather than invent a finale."
+}

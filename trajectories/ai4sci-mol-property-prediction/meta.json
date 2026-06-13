@@ -1,0 +1,45 @@
+{
+  "task": "ai4sci-mol-property-prediction",
+  "title": "Molecular Property Prediction: scaffold-generalizing molecular representations",
+  "domain": "AI for science",
+  "metrics": [
+    "BBBP",
+    "BACE",
+    "Tox21"
+  ],
+  "metric_columns": [
+    "rocauc_BBBP",
+    "rocauc_BACE",
+    "rocauc_Tox21"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "gin",
+      "method": "GIN (mean-pool graph isomorphism network)",
+      "reasoning": "01-gin-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-gin-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "dmpnn",
+      "method": "D-MPNN (directed message passing + RDKit features)",
+      "reasoning": "02-dmpnn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-dmpnn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "unimol",
+      "method": "Uni-Mol (pretrained SE(3)-invariant 3D Transformer)",
+      "reasoning": "03-unimol-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-unimol-answer.md"
+    }
+  ],
+  "endpoint": "Uni-Mol (pretrained SE(3)-invariant 3D Transformer)",
+  "ranking_basis": "ROC-AUC, higher is better, scaffold split, seed 42, mean over BBBP/BACE/Tox21. gin weakest (mean 0.661): BBBP collapses to chance 0.5099 on the hard single-target scaffold shift, with lossy mean-pool readout and no global prior. dmpnn next (mean 0.6666): the RDKit descriptor prior lifts BBBP off chance to 0.5986, but the directed-bond rework slightly regresses BACE (0.6881 vs gin 0.7261) and Tox21 (0.7131 vs gin 0.7470) — 2D message passing has hit its ceiling. unimol strongest (mean 0.7736): wins all three (BBBP 0.7129, BACE 0.8466, Tox21 0.7613) because 3D-geometry attention plus pretraining supply the spatial signal and data the 2D rungs lacked. No finale: no clearly-stronger published method fits this architecture-only edit surface (reusing the provided Uni-Mol checkpoint) without re-pretraining, so the ladder stops at the strongest baseline.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_molprop.py MoleculeModel + helpers, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer; the reasonings are code-free. methods/<slug> single-round traces (gin, dmpnn, unimol) are the derivation reference and untouched. Same-named-vs-paper diffs: (1) the task's gin is GIN-with-edge-features + MEAN readout off the last layer + residual/BatchNorm, NOT the paper's sum-pool, jumping-knowledge, WL-maximal GIN — the reasoning derives the WL thesis then lands the scaffold's deliberately-lossy mean-pool starter. (2) dmpnn matches the methods derivation (directed bonds via XOR-1 reverse, sum pooling, RDKit branch) but uses a 17-descriptor subset with a BatchNorm-style running normalizer (not the paper's ~200 CDF-normalized features) and falls back to zeros when batch._smiles is absent. (3) unimol is finetune/inference-only: it loads the pretrained checkpoint and uses a simple dropout+linear [CLS] head (not the methods trace's dense+tanh pooler), recomputes tokens from atom_features rather than the LMDB atom_tokens/edge_types, and omits the pretraining objective, atom-to-pair QK write-back as a trained feature, and the equivariant coordinate head present in the methods derivation. No finale added. All three baselines' methods/<slug> traces existed (none missing)."
+}
