@@ -18,7 +18,7 @@ Two dimensions stand out empirically. In $\mathbb{R}^8$ the $E_8$ root lattice a
 
 The $E_8$ lattice is
 $$\Lambda_8=\Big\{(x_i)\in\mathbb{Z}^8\cup(\mathbb{Z}+\tfrac12)^8:\ \textstyle\sum_i x_i\equiv0\ (\mathrm{mod}\ 2)\Big\},$$
-the unique even unimodular lattice of rank $8$; its minimal vector length is $\sqrt2$, and its vectors have lengths $\sqrt{2n}$, $n=0,1,2,\dots$. The Leech lattice is the unique even unimodular rank-$24$ lattice with no vectors of length $\sqrt2$; its minimal length is $2$, with vectors of length $\sqrt{2n}$, $n=2,3,\dots$, and each point has $196560$ nearest neighbors. Both are self-dual. These two facts — self-duality and the arithmetic of the vector lengths — are exactly the structure a certificate can exploit.
+the unique even unimodular lattice of rank $8$; its minimal vector length is $\sqrt2$, and its vectors have lengths $\sqrt{2n}$, $n=0,1,2,\dots$. The Leech lattice is the unique even unimodular rank-$24$ lattice with no vectors of length $\sqrt2$; its minimal length is $2$, with vectors of length $\sqrt{2n}$, $n=2,3,\dots$, and each point has $196560$ nearest neighbors. Both are self-dual, and their vector lengths sit on the arithmetic progression $\sqrt{2n}$.
 
 **Poisson summation** is the central analytic identity. For a nice radial $f$ and a lattice $\Lambda$,
 $$\sum_{x\in\Lambda}f(x)=\frac{1}{\mathrm{covol}(\Lambda)}\sum_{t\in\Lambda^*}\widehat f(t),\qquad \widehat f(y)=\int_{\mathbb{R}^d}f(x)e^{-2\pi i x\cdot y}\,dx.$$
@@ -26,14 +26,14 @@ It is the only available bridge that turns "no two centers closer than the minim
 
 **The Gaussian is a fixed point of the Fourier transform, with a modular twist.** In $\mathbb{R}^d$,
 $$\mathcal{F}\big(e^{\pi i\|x\|^2 z}\big)(y)=z^{-d/2}\,e^{\pi i\|y\|^2(-1/z)},\qquad z\in\mathbb{H}.$$
-The Fourier transform acts on the parameter $z$ of a Gaussian as the inversion $z\mapsto-1/z$ and multiplies by $z^{-d/2}$. This is the same inversion $S=\left(\begin{smallmatrix}0&-1\\1&0\end{smallmatrix}\right)$ that generates the modular group, and $d/2$ is the weight.
+The Fourier transform sends the parameter $z$ to $-1/z$ and multiplies by $z^{-d/2}$.
 
 **Modular and quasimodular forms.** $\mathrm{SL}_2(\mathbb{Z})$ acts on the upper half-plane $\mathbb{H}$ by $\gamma z=(az+b)/(cz+d)$; the slash operator is $(F|_k\gamma)(z)=(cz+d)^{-k}F(\gamma z)$. A modular form of weight $k$ for a congruence subgroup $\Gamma$ satisfies $F|_k\gamma=F$ for $\gamma\in\Gamma$ and is holomorphic (including at cusps); weakly holomorphic allows poles at cusps. The basic forms:
 $$E_4=1+240\sum_{n\geq1}\sigma_3(n)q^n,\quad E_6=1-504\sum_{n\geq1}\sigma_5(n)q^n,\quad q=e^{2\pi iz},$$
 $$\Delta=\frac{E_4^3-E_6^2}{1728}=q-24q^2+\cdots\ (\text{nonvanishing on }\mathbb{H}),\qquad j=\frac{1728\,E_4^3}{E_4^3-E_6^2}=q^{-1}+744+\cdots.$$
 The weight-$2$ Eisenstein series $E_2=1-24\sum\sigma_1(n)q^n$ is **quasimodular**: it fails modularity by an anomaly,
 $$z^{-2}E_2(-1/z)=E_2(z)-\frac{6i}{\pi}\,\frac1z.$$
-The Jacobi thetanull functions $\theta_{00}=\sum_n e^{\pi i n^2 z}$, $\theta_{01}=\sum_n(-1)^n e^{\pi i n^2 z}$, $\theta_{10}=\sum_n e^{\pi i(n+1/2)^2 z}$ satisfy the Jacobi identity $\theta_{01}^4+\theta_{10}^4=\theta_{00}^4$ and have explicit $S,T$ transformation laws on their fourth powers; the theta series of a lattice, $\Theta_\Lambda(z)=\sum_{x\in\Lambda}e^{\pi i\|x\|^2 z}$, is modular of weight $d/2$. This is the classical reason lattices "are" modular objects.
+The Jacobi thetanull functions $\theta_{00}=\sum_n e^{\pi i n^2 z}$, $\theta_{01}=\sum_n(-1)^n e^{\pi i n^2 z}$, $\theta_{10}=\sum_n e^{\pi i(n+1/2)^2 z}$ satisfy the Jacobi identity $\theta_{01}^4+\theta_{10}^4=\theta_{00}^4$ and have explicit $S,T$ transformation laws on their fourth powers; the theta series of a lattice, $\Theta_\Lambda(z)=\sum_{x\in\Lambda}e^{\pi i\|x\|^2 z}$, is modular of weight $d/2$.
 
 **The diagnostic empirical finding.** Numerically optimized auxiliary functions (described below) reveal that in $\mathbb{R}^8$ the best attainable upper bound exceeds the $E_8$ density by a factor of only about $1.000001$, and in $\mathbb{R}^{24}$ exceeds the Leech density by about $1.000707$; later refinements push the $d=8$ gap below $1+10^{-28}$. In every other dimension $4\leq d\leq36$ the bound and the best packing stay visibly apart. This near-coincidence in exactly $8$ and $24$ — and nowhere else — is the phenomenon that suggests an *exactly sharp* certificate exists there.
 
@@ -82,18 +82,15 @@ def auxiliary_function_bound(d, degree, radii):
 
 # ---- The certificate to be discovered (one big empty slot) ----
 def certificate(x_norm, d):
-    """A single radial function whose sign conditions on f and fhat, via
-    Poisson summation, force the bound to equal a target lattice's density.
-    Its existence and closed form are exactly what must be found."""
+    """The radial function whose existence and closed form must be found."""
     # TODO: the construction.
     pass
 
 def fourier_transform_of_certificate(x_norm, d):
-    # TODO: must be expressible from the same data as `certificate`.
+    # TODO.
     pass
 
 def verify_sign_conditions(g, ghat, d):
-    # TODO: check g(0)=ghat(0), g<=0 beyond the minimal length, ghat>=0,
-    #       and the forced vanishing on the target lattice's vector lengths.
+    # TODO.
     pass
 ```
