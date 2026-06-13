@@ -31,9 +31,8 @@ estimate, formed from however many gradient samples have been seen so far.
 averaged on the order of a handful of squared gradients. An estimate of a variance-like quantity from
 a handful of samples is itself a high-variance random quantity; taking its reciprocal square root —
 which is what the adaptive rate does — makes a small, noisily-underestimated denominator blow the step
-up. So the *adaptive learning rate itself* is a noisy random variable early on, with a spread that
-shrinks only as more gradients accumulate. This is a pre-method fact about any second-moment-based
-adaptive rule, independent of architecture.
+up. So the per-coordinate denominator is built from very few samples in the opening updates. This is a
+pre-method fact about any second-moment-based adaptive rule, independent of architecture.
 
 **Diagnostic observations on existing systems.** Several measurements about *existing* adaptive
 optimizers set up the problem and are knowable without any new method:
@@ -50,38 +49,31 @@ optimizers set up the problem and are knowable without any new method:
   i.e. simply *collecting more samples* for the denominator before stepping fixes it. (ii) Inflate the
   numerical-stability constant in the denominator from a negligible `1e-8` to a non-negligible `1e-4`:
   this also avoids the catastrophic failure (a large additive constant caps how large the adaptive
-  rate can get — if the rate were uniform its variance would be `1/(12ε²)`), but it noticeably *hurts*
-  final quality because the large constant biases the rate.
+  rate can get), but it noticeably *hurts* final quality because the large constant biases the rate.
 
-Together these say: the failure is caused by the early *variance* of the adaptive rate, reducible
-either by gathering more samples or by crudely capping the rate — but a crude cap pays a bias penalty.
+Together these say: the early failure is reduced either by gathering more samples for the denominator
+or by crudely capping how large the adaptive rate can get — but a crude cap pays a bias penalty.
 
-**The distribution of the second-moment estimate.** If the gradients in a coordinate are modeled as
-i.i.d. zero-mean Gaussian `N(0, σ²)` (a reasonable description at initialization, where weights are
-drawn mean-zero), then `1/g²` for a single sample follows a **scaled inverse chi-square** distribution,
-and an average of `ρ` squared Gaussians, inverted, follows `Scale-inv-χ²(ρ, 1/σ²)`. This distributional
-fact is the lens through which the variance of the adaptive rate can be computed exactly: the
-scaled-inverse-chi-square law has a known PDF and known moments (its mean exists for `ρ>2`, the mean of
-its square root for `ρ>4`), and its degrees of freedom `ρ` plays the role of "effective number of
-samples seen."
+**Modeling the gradients at initialization.** At initialization the weights are drawn mean-zero, so the
+per-coordinate gradients are roughly mean-zero too; a reasonable starting description is to treat the
+early gradients in a coordinate as i.i.d. zero-mean Gaussian `N(0, σ²)`. Standard distribution theory
+relates sums and reciprocals of squared Gaussians to the chi-square family, and these laws have known
+PDFs and moments.
 
-**EMA as a simple moving average.** The second-moment estimate is an exponential moving average (EMA)
-with decay `β₂`. A classical result in forecasting (Nau, 2014) is that an EMA behaves like a simple
-moving average (SMA) of a finite window, where the window length is chosen so the two share the same
-*center of mass* of their weights. This lets the effective sample count `ρ` of an EMA be written in
-closed form as a function of `t` and `β₂`.
+**EMA bookkeeping.** The second-moment estimate is an exponential moving average (EMA) with decay `β₂`,
+weighting sample `i` at step `t` by `β₂^{t−i}`; the geometric-sum identities for such weights are
+standard. A classical result in forecasting (Nau, 2014) relates an EMA to a simple moving average (SMA)
+of a finite window via the *center of mass* of the two weightings.
 
-**Why small steps reduce the harm.** Scaling a random step by `α` scales its variance by `α²`
-(`Var[αx]=α²Var[x]`). So shrinking the learning rate early literally shrinks the variance of the early
-updates. This is the formal sense in which a warmup *could* be a variance-reduction device — a
-hypothesis the background facts above make plausible but do not yet make precise.
+**A basic scaling fact.** Scaling a random quantity by `α` scales its variance by `α²`
+(`Var[αx]=α²Var[x]`).
 
 ## Baselines
 
 **SGD with momentum.** Accumulate a (bias-uncorrected) EMA of the gradient `m_t = β₁m_{t-1}+(1-β₁)g_t`
-and step `θ_t = θ_{t-1} − α m_t`. No per-coordinate rescaling, hence no second-moment estimate and no
-early-variance pathology — but also none of the fast, scale-free early progress that makes adaptive
-methods attractive, and it is sensitive to learning-rate and per-parameter scaling.
+and step `θ_t = θ_{t-1} − α m_t`. No per-coordinate rescaling, hence no second-moment estimate and none
+of the early instability that comes with it — but also none of the fast, scale-free early progress that
+makes adaptive methods attractive, and it is sensitive to learning-rate and per-parameter scaling.
 
 **Adagrad** (Duchi et al., 2011). Per-coordinate rate `∝ 1/√(Σ_{i≤t} g_i²)`, accumulating *all* past
 squared gradients. The denominator grows without bound, so the effective learning rate decays
@@ -98,10 +90,10 @@ m_t = β₁ m_{t-1} + (1-β₁) g_t ,   m̂_t = m_t / (1-β₁^t)
 v_t = β₂ v_{t-1} + (1-β₂) g_t² ,  v̂_t = v_t / (1-β₂^t)
 θ_t = θ_{t-1} − α · m̂_t / (√v̂_t + ε)
 ```
-The de-facto default. Its early second-moment estimate `v̂_t` is formed from few samples, so the
-adaptive rate `1/√v̂_t` is a high-variance quantity in the opening updates — the gap this leaves open.
-Variants Nadam (Dozat, 2016) and Adadelta (Zeiler, 2012) share the same EMA-second-moment core and the
-same early-variance exposure.
+The de-facto default. Its early second-moment estimate `v̂_t` is formed from few samples, and in
+practice it is exactly Adam that exhibits the early instability the question is about — the gap this
+leaves open. Variants Nadam (Dozat, 2016) and Adadelta (Zeiler, 2012) share the same EMA-second-moment
+core and the same early-phase exposure.
 
 **Generic adaptive framework** (Reddi et al., 2019). All of the above are instances of a single
 template: at step `t`, compute a momentum `m_t = φ(g_1,…,g_t)` and an adaptive rate `l_t = ψ(g_1,…,g_t)`,
@@ -133,8 +125,8 @@ matter:
 - **Image classification.** ResNet architectures on CIFAR-10 and ImageNet, standard data augmentation
   (random crop / horizontal flip), step-decay schedules, top-1 accuracy.
 - **Diagnostic protocol.** Track training loss and gradient-magnitude histograms over the first few
-  thousand updates with and without warmup, and compare optimizer variants that reduce the adaptive
-  rate's variance, to localize where and when the early failure occurs.
+  thousand updates with and without warmup, and compare the controlled interventions above, to localize
+  where and when the early failure occurs.
 
 ## Code framework
 
@@ -154,10 +146,6 @@ class AdaptiveOptimizer(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
         super().__init__(params, defaults)
-
-    def _precompute(self, beta2):
-        # TODO: any β₂-derived constants the step rule needs (known only once we design the rule)
-        pass
 
     def step(self, closure=None):
         loss = closure() if closure is not None else None

@@ -20,9 +20,9 @@ The same tension is visible in training diagnostics before committing to any new
 
 **Adam (Kingma & Ba 2014).** Maintains exponential moving averages of the gradient (m) and squared gradient (v) and updates θ ← θ − α·m̂/(√v̂+ε). The √v̂ term is a diagonal approximation to curvature (the empirical Fisher), giving per-coordinate step sizes. Fast early convergence but sensitive to its learning rate and known to sometimes generalize worse than tuned SGD; like all the above it accumulates gradients but does not target iterate variance.
 
-**Polyak-Ruppert / SWA iterate averaging (Ruppert 1988; Polyak & Juditsky 1992; Izmailov et al. 2018).** Average the visited weights to cut variance and find flatter optima. Equal-weight average; needs a start-of-averaging decision; yields a final model rather than influencing the ongoing trajectory. Leaves open: an averaging scheme that runs from initialization, weights recent proposals, and actually drives the optimizer.
+**Polyak-Ruppert / SWA iterate averaging (Ruppert 1988; Polyak & Juditsky 1992; Izmailov et al. 2018).** Average the visited weights to cut variance and find flatter optima. Equal-weight average; needs a start-of-averaging decision; yields a final model rather than influencing the ongoing trajectory.
 
-**Outer/inner-loop relatives.** Reptile (Nichol & Schulman 2018) runs an inner optimizer then moves the initialization toward the inner result — but across *sampled tasks*, for meta-learning, not single-task convergence. Katyusha (Allen-Zhu 2017), an accelerated SVRG (Johnson & Zhang 2013), checkpoints parameters and pulls iterates back toward the checkpoint *every* inner step with an SVRG variance correction; it has convex guarantees but the SVRG correction works poorly for neural networks. Anderson acceleration (Anderson 1965) and nonlinear extrapolation (Scieur et al. 2018) keep *all* inner iterates and solve for the best linear combination extrapolating to the fixed point — powerful but with memory growing ~k× and a nontrivial sub-problem to find the combination. The open gap: a single mechanism with one extra parameter copy that pulls back only at the end of a window and uses a fixed, trivial combination.
+**Outer/inner-loop relatives.** Reptile (Nichol & Schulman 2018) runs an inner optimizer then moves the initialization toward the inner result — but across *sampled tasks*, for meta-learning, not single-task convergence. Katyusha (Allen-Zhu 2017), an accelerated SVRG (Johnson & Zhang 2013), checkpoints parameters and pulls iterates back toward the checkpoint *every* inner step with an SVRG variance correction; it has convex guarantees but the SVRG correction works poorly for neural networks. Anderson acceleration (Anderson 1965) and nonlinear extrapolation (Scieur et al. 2018) keep *all* inner iterates and solve for the best linear combination extrapolating to the fixed point — powerful but with memory growing ~k× and a nontrivial sub-problem to find the combination.
 
 ## Evaluation settings
 
@@ -40,13 +40,10 @@ from collections import defaultdict
 class OuterOptimizer(Optimizer):
     """Wraps an existing inner optimizer and leaves the outer update unspecified."""
 
-    def __init__(self, optimizer, sync_steps=5, blend=0.8, state_policy="keep"):
+    def __init__(self, optimizer, sync_steps=5):
         self.optimizer = optimizer
         self._outer_step = 0
-        self.blend = blend
         self._total_outer_steps = sync_steps
-        assert state_policy in ["reset", "interpolate", "keep"]
-        self.state_policy = state_policy
         self.state = defaultdict(dict)
         for group in optimizer.param_groups:
             for p in group["params"]:
@@ -82,18 +79,9 @@ class OuterOptimizer(Optimizer):
             for group in self.optimizer.param_groups:
                 for p in group["params"]:
                     param_state = self.state[p]
-                    # TODO: combine the live parameters with the outer state,
-                    #       then update any inner-optimizer state policy.
+                    # TODO: define the outer update here.
                     pass
         return loss
-
-    def _backup_and_load_cache(self):
-        # TODO: optionally swap in the outer state for evaluation.
-        pass
-
-    def _clear_and_load_backup(self):
-        # TODO: restore the live parameters after evaluation.
-        pass
 
 # Usage:
 # base = torch.optim.SGD(model.parameters(), lr=0.1, momentum=0.9)

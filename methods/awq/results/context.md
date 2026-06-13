@@ -8,7 +8,7 @@ The problem: quantizing LLM weights to 3–4 bits with round-to-nearest loses su
 
 **Weight-only quantization and where the time goes.** For on-device generation, FLOPs are fixed and small; the bottleneck is reading the weights from DRAM. A roofline analysis on an edge GPU (e.g. RTX 4090: ~165 TFLOPS, ~1 TB/s) shows any workload with arithmetic intensity below ~165 is memory-bound, and batch-1 generation sits at ~1. Quantizing weights to 4-bit raises arithmetic intensity ~4× and the peak ~4×. So weight-only 4-bit quantization (W4A16) is the natural lever — distinct from W8A8 activation quantization, which targets compute-bound, large-batch serving.
 
-**Uniform weight quantization.** A group/block of weights $\mathbf w$ is quantized by $Q(\mathbf w) = \Delta\cdot\mathrm{Round}(\mathbf w/\Delta)$ with $\Delta = \max(|\mathbf w|)/2^{N-1}$ for $N$ bits. The rounding error per element is roughly uniform on $[0,0.5]$, averaging ~0.25.
+**Uniform weight quantization.** A group/block of weights $\mathbf w$ is quantized by $Q(\mathbf w) = \Delta\cdot\mathrm{Round}(\mathbf w/\Delta)$ with $\Delta = \max(|\mathbf w|)/2^{N-1}$ for $N$ bits in the symmetric error analysis. The absolute rounding residual per element is roughly uniform on $[0,0.5]$, averaging ~0.25. A practical implementation can use the same round-to-nearest idea with an affine per-group scale and zero point, e.g. scale $(\max-\min)/(2^N-1)$ over groups of columns.
 
 **Diagnostic findings about weight importance.** The weights of an LLM are *not equally important*:
 - Keeping a small fraction (~0.1–1%) of weight channels in FP16 while quantizing the rest to INT3 nearly recovers FP16 accuracy.
@@ -29,14 +29,14 @@ The problem: quantizing LLM weights to 3–4 bits with round-to-nearest loses su
 
 # Evaluation settings
 
-- **Models.** OPT and LLaMA families (and later Llama-2, Mistral/Mixtral, instruction-tuned and multimodal LLMs); the analysis ablations use OPT-6.7B.
+- **Models.** OPT and LLaMA families, with instruction-tuned and multimodal variants as stress tests; the analysis ablations use OPT-6.7B.
 - **Quantization.** Weight-only, INT3 and INT4, with group-wise quantization (group size 128 is the standard setting); activations stay FP16 (W4A16 / W3A16).
-- **Calibration.** A small calibration set from the pre-training data, used only to measure *per-channel average activation magnitude* — deliberately minimal so the method does not overfit (an ablation varies the calibration set/distribution).
+- **Calibration.** A small calibration set from the pre-training data, used to cache layer inputs, measure *per-channel average activation magnitude*, and produce reference FP16 outputs; it is not used for backpropagation or per-weight reconstruction regression.
 - **Metrics.** Language-modeling perplexity (WikiText-2) and zero-shot accuracy, compared against the FP16 baseline, RTN, the 1%-FP16 mixed-precision oracle, and GPTQ. Plus, for the system side, on-device latency/throughput (tokens/s) and memory on edge GPUs and CPUs (roofline and weight-packing analysis).
 
 # Code framework
 
-The primitives that already exist: a per-channel average-activation-magnitude statistic over calibration, a group-wise uniform weight quantizer, FP16 linear layers, and a per-block forward that can produce a reference FP16 output. The routine that decides how to transform the weights before quantizing them is the empty slot.
+The primitives that already exist: a per-channel average-activation-magnitude statistic over calibration, a group-wise uniform weight quantizer, FP16 linear layers, and a per-block forward that can produce a reference FP16 output. The routine that decides how to quantize a block's weights is the empty slot.
 
 ```python
 import torch
@@ -46,20 +46,19 @@ def get_act_scale(x):
     # per-input-channel average magnitude of the activation
     return x.abs().view(-1, x.shape[-1]).mean(0)
 
-def pseudo_quantize(w, n_bit=4, group_size=128):
-    # group-wise uniform quantize-dequantize (round-to-nearest on a per-group grid)
+def pseudo_quantize(w, n_bit=4, group_size=128, zero_point=True):
+    # group-wise quantize-dequantize: round-to-nearest on a per-group grid
     ...
 
 @torch.no_grad()
-def search_block_transform(block, fcs, inp):
-    """Given a block's linear layers and a calibration input, decide a per-(input-)
-    channel weight transform that minimizes the quantized layer's output error,
-    using only cheap activation statistics — no backprop, no per-weight regression."""
+def quantize_block(block, fcs, inp):
+    """Given a block's linear layers and a calibration input, produce the
+    INT3/INT4 weight-only quantized block: no backprop, no per-weight
+    regression."""
     org_out = block(inp)                          # FP16 reference output
-    # TODO: the contribution — find the transform (and apply it) so that
-    #       round-to-nearest on the transformed weights matches org_out closely
+    # TODO: the contribution goes here.
     pass
 
-# driver: for each block, cache its calibration input, call search_block_transform,
-# then store the transformed weights group-wise-quantized to INT3/INT4 (W4A16).
+# driver: for each block, cache its calibration input, call quantize_block,
+# then store the result group-wise-quantized to INT3/INT4 (W4A16).
 ```

@@ -30,11 +30,9 @@ sign (Sutskever et al. 2013).
 the gradient *after* taking the momentum step, at the look-ahead point θₜ₋₁ − μ mₜ₋₁:
 gₜ = ∇fₜ(θₜ₋₁ − μ mₜ₋₁); mₜ = μ mₜ₋₁ + gₜ; θₜ = θₜ₋₁ − α mₜ. On convex, smooth problems this attains
 an O(1/k²) rate, better than gradient descent's O(1/k); Sutskever et al. 2013 give empirical evidence
-it beats classical momentum, plain SGD, and Hessian-free methods on hard deep-learning objectives.
-Sutskever et al. also supply a reformulation that avoids stepping to the look-ahead point and back:
-applying the *next* timestep's momentum once during the current update,
-gₜ = ∇fₜ(θₜ₋₁); mₜ = μₜ mₜ₋₁ + gₜ; θₜ = θₜ₋₁ − α(μₜ₊₁ mₜ + gₜ) — now both the momentum step and the
-gradient step depend on the current gradient.
+it beats classical momentum, plain SGD, and Hessian-free methods on hard deep-learning objectives. As
+written, the iteration differentiates the objective at the look-ahead point θₜ₋₁ − μ mₜ₋₁ rather than
+at the current parameters θₜ₋₁ where an ordinary training loop runs its forward and backward pass.
 
 **Adaptive moment estimation (Adam, Kingma & Ba 2014).** Track an exponential moving *mean* of the
 gradient mₜ = μ mₜ₋₁ + (1−μ) gₜ and of the squared gradient nₜ = ν nₜ₋₁ + (1−ν) gₜ², correct each for
@@ -45,10 +43,9 @@ division by √n̂ₜ. Using past *gradients* (a mean) rather than past *updates
 keep adapting even after the learning rate has annealed near the end of training. Kingma & Ba report
 Adam outperforming several alternatives, including NAG, on a handful of benchmarks.
 
-The two enhancements have not been combined: Adam carries classical momentum, and the accelerated
-momentum lives in non-adaptive SGD. The diagnostic comparison from the prior work gives the relevant
-gap — accelerated momentum gives a better direction than classical momentum on the same objective —
-which sets up the substitution.
+The two enhancements have stayed separate: Adam carries classical momentum, and the accelerated
+momentum lives in non-adaptive SGD. The diagnostic comparison from the prior work records the relevant
+gap — accelerated momentum gives a better direction than classical momentum on the same objective.
 
 **Decoupled weight decay (AdamW, Loshchilov & Hutter 2019).** A separate but composable choice for the
 regularizer. Folding an L2 penalty into the gradient gₜ ← gₜ + λθₜ is *not* equivalent to weight decay
@@ -64,10 +61,10 @@ direction and accelerates low-curvature progress. Gap: the momentum step ignores
 so the direction it commits to can be improved; no per-coordinate adaptivity, so a single α must serve
 coordinates of very different gradient scale.
 
-**NAG / simplified NAG (Nesterov 1983; Sutskever et al. 2013).** Evaluates the gradient at the
-look-ahead point (or, in the reformulation, applies the next momentum step using the current
-gradient), yielding a better direction and the accelerated convex rate. Gap: still no adaptive
-per-coordinate rescaling; the accelerated momentum has never been carried inside an adaptive method.
+**NAG (Nesterov 1983; Sutskever et al. 2013).** Evaluates the gradient at the look-ahead point,
+yielding a better direction and the accelerated convex rate. Gap: still no adaptive per-coordinate
+rescaling; and the look-ahead evaluation sits off the current parameters, awkward in a loop that
+differentiates only at θₜ₋₁. The accelerated momentum has never been carried inside an adaptive method.
 
 **Adam (Kingma & Ba 2014).** mₜ = μ mₜ₋₁ + (1−μ)gₜ; nₜ = ν nₜ₋₁ + (1−ν)gₜ²; bias-correct;
 θₜ = θₜ₋₁ − α m̂ₜ/(√n̂ₜ + ε). Adaptive and robust default. Gap: its momentum is classical — the step
@@ -90,9 +87,8 @@ to a given loss and the final loss reached; no single value is fixed in advance.
 ## Code framework
 
 The substrate is a standard PyTorch optimizer plugged into an ordinary training loop. The first- and
-second-moment buffers, a scalar product for any scheduled first-moment bias correction, and the
-weight-decay branch already exist as primitives; the open slot is the *form of the parameter update* —
-specifically how the first moment is combined with the current gradient when forming the step.
+second-moment buffers, a step counter, and the weight-decay branch already exist as primitives;
+the open slot is the *form of the parameter update*.
 
 ```python
 import torch
@@ -101,10 +97,8 @@ from torch.optim.optimizer import Optimizer
 
 class AdaptiveMomentOptimizer(Optimizer):
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
-                 weight_decay=0.0, first_moment_schedule_rate=None,
-                 decoupled_weight_decay=False):
+                 weight_decay=0.0, decoupled_weight_decay=False):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay,
-                        first_moment_schedule_rate=first_moment_schedule_rate,
                         decoupled_weight_decay=decoupled_weight_decay)
         super().__init__(params, defaults)
 
@@ -120,7 +114,6 @@ class AdaptiveMomentOptimizer(Optimizer):
                 state = self.state[p]
                 if len(state) == 0:
                     state["step"] = torch.tensor(0.0)
-                    state["first_moment_product"] = torch.tensor(1.0)
                     state["exp_avg"] = torch.zeros_like(p)       # first moment m
                     state["exp_avg_sq"] = torch.zeros_like(p)    # second moment n
                 state["step"].add_(1)
@@ -137,9 +130,8 @@ class AdaptiveMomentOptimizer(Optimizer):
                 m.lerp_(g, 1 - beta1)
                 n.mul_(beta2).addcmul_(g, g, value=1 - beta2)
 
-                # TODO: update any first-moment product required by the chosen scheduled
-                #       momentum rule, then form the bias-corrected step combining m with
-                #       the current gradient g, divided by √n_hat + eps, and apply it.
+                # TODO: form the bias-corrected parameter update from the moment
+                #       buffers and apply it.
                 pass
         return None
 ```

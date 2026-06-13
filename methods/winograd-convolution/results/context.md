@@ -9,7 +9,7 @@ Deep convolutional networks built almost entirely from small 3×3 convolution la
 A convnet layer computes, for image i, filter k, position (x,y):
 Y[i,k,x,y] = Σ_c Σ_v Σ_u D[i,c,x+u,y+v] · G[k,c,u,v], i.e. a sum over C channels of 2D correlations of an H×W image channel with an R×S filter. Direct evaluation spends r multiplications per output in 1D and R·S in 2D (3×3 ⇒ 9 multiplications per output pixel per channel). The arithmetic is regular but multiply-heavy.
 
-The load-bearing classical result is **minimal filtering / the arithmetic complexity of FIR filters**. Computing m outputs of an r-tap FIR filter is written F(m,r). It has been known since at least 1980 that the minimum number of *general* multiplications required is m+r-1 — exactly the number of distinct input samples the m-output window touches, "one multiply per input." Direct computation uses m·r, so there is slack to close. The classical machinery that achieves the bound rests on three ideas. (1) **Convolution is polynomial multiplication.** Writing the r filter taps and the input samples as polynomial coefficients, linear convolution is the coefficient sequence of the product polynomial g(x)d(x), whose degree is m+r-2, so it is uniquely fixed by its values at m+r-1 distinct points. (2) **Cook–Toom / Lagrange interpolation.** Evaluate g and d at m+r-1 chosen points β_i, multiply the values pointwise (this is the only place general multiplications occur — m+r-1 of them), then Lagrange-interpolate the product back to coefficients. If the β_i are small integers (0, ±1, ±2, …, and the point at infinity), the evaluation and interpolation are built from additions and multiplications by small constants, which are cheap; the convolution matrix factors as T = C·H·D with C a post-addition matrix, D a pre-addition matrix, and H a diagonal whose nonzero count equals the multiply count. (3) **The Chinese Remainder Theorem for polynomials and the matrix-exchange (transpose) trick.** Winograd's construction reduces the product modulo m(x) = Π(x−β_i), reconstructs by CRT, and — because *filtering* (compute m outputs of a fixed filter) is the transpose of *linear convolution* — obtains the minimal filtering algorithm by transposing the minimal linear-convolution algorithm. The result is a triple of fixed transform matrices: a filter transform G, a data transform B, and an inverse transform A, with the filtering output expressed as Aᵀ[(G g) ⊙ (Bᵀ d)], where ⊙ is elementwise multiply. Minimal 1D algorithms tensor (nest): nesting F(m,r) with F(n,s) yields a minimal 2D algorithm F(m×n,r×s) using (m+r-1)(n+s-1) multiplications, applied as Aᵀ[(G g Gᵀ) ⊙ (Bᵀ d B)]A.
+A relevant classical result is the **arithmetic complexity of FIR filters**. Computing m outputs of an r-tap FIR filter is written F(m,r). It has been known since at least 1980 that the minimum number of *general* multiplications required is m+r-1 — exactly the number of distinct input samples the m-output window touches, "one multiply per input" — versus the m·r that direct computation spends, so for short filters there is a wide gap between the direct count and the known minimum. The mathematics behind such complexity results lives in the algebra of polynomials over a field: the standard toolkit (polynomial multiplication and division, evaluation/interpolation at chosen points, and the Chinese Remainder Theorem for polynomials) is the machinery in which exact bilinear convolution identities are stated and proved. This 1D theory is established for filtering a single sequence; how (or whether) it bears on a 2D, multi-channel, multi-filter convnet layer run on matrix-multiply hardware is not something the classical literature settles.
 
 A second body of background is the **FFT route to fast convolution**, recently brought to convnets. The convolution theorem turns convolution into pointwise multiplication in the Fourier domain; transforming each image channel and each filter once and reusing the transforms across all filter/image pairings amortizes the transform cost when the number of feature maps is large. This was demonstrated for convnet training and inference (Mathieu, Henaff & LeCun 2013), refined with a GPU-tuned batched FFT (Vasilache et al. 2014), and shipped in a vendor library. Its known structure and limits: only m×n of the (m+r-1)×(n+s-1) cyclic-convolution outputs of a tile are valid, so tiles must overlap (overlap-and-save) and be large to amortize; the pointwise stage multiplies *complex* numbers (4 real multiplies, reducible to 3 with a fast complex-multiply trick, or roughly halved by exploiting Hermitian symmetry of a real signal's transform), so even at best it costs well above 1 real multiply per input; and a large tile (e.g. 64×64) inflates each transformed filter channel enormously (a 3×3 filter becomes 64×64 = 4096 units) and demands a large memory workspace and a large batch to generate enough tiles for an efficient pointwise stage.
 
@@ -33,38 +33,21 @@ The natural yardstick is a deep 3×3 convnet for ImageNet-scale recognition — 
 
 ## Code framework
 
-The pre-existing primitives: dense matrix multiply (GEMM/SGEMM, including a batched form and a β-accumulate form), elementwise operations, and a symbolic-math toolkit (Vandermonde and Lagrange-interpolation matrix construction, polynomial arithmetic, rational arithmetic) sufficient to build and *verify* small linear-algebra transforms. A convnet layer is, abstractly, a per-channel small-window operation summed over channels — the slot a fast algorithm fills.
+The pre-existing primitives: dense matrix multiply (GEMM/SGEMM, including a batched form and a β-accumulate form), elementwise operations, and a symbolic-math toolkit (polynomial arithmetic, rational arithmetic, and matrix construction over an exact field) sufficient to build and *symbolically verify* small exact linear-algebra identities. A convnet layer is, abstractly, a per-channel small-window operation summed over channels.
 
 ```python
 import numpy as np
-
-# --- primitive: small-transform construction from interpolation points ---
-def vandermonde(points, rows, cols):
-    # rows x cols matrix V[i,j] = points[i]**j  (Lagrange/Cook-Toom building block)
-    return np.array([[p**j for j in range(cols)] for p in points], dtype=object)
-
-def build_transforms(points, m, r):
-    # TODO: from interpolation points + output size m + filter size r,
-    #       produce the fixed transform matrices the fast algorithm needs and
-    #       symbolically verify they compute the m-output, r-tap filter exactly.
-    pass
-
-# --- primitive: fast small-filter apply, given transforms ---
-def fast_filter(transforms, g, d):
-    # TODO: transform g and d, combine them in the transformed domain,
-    #       transform back to the m outputs. Few multiplies, many adds.
-    pass
 
 # --- baseline for checking ---
 def direct_conv_valid(D, W):
     # TODO: explicit valid R x S correlation, summed over channels.
     pass
 
-# --- the slot: a full convolution layer ---
+# --- the slot: a full convolution layer with fewer multiplies than direct ---
 def conv_layer(D, W):
     # D: N,C,H,W   W: K,C,R,S   ->  Y: N,K,H',W'
-    # TODO: tile each channel; run the fast small-filter algorithm per tile and
-    #       filter; sum over channels; assemble outputs. The heavy stage must be
-    #       a large dense matrix multiply so it is efficient even at batch size 1.
+    # TODO: compute the exact layer with fewer multiplications per output than
+    #       direct R*S, keeping the heavy stage a dense matrix multiply that is
+    #       efficient even at batch size 1, with a small workspace.
     pass
 ```

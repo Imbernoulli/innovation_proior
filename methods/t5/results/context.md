@@ -18,12 +18,12 @@ single decision, or to understand how the choices interact.
 The precise problem: there is no controlled testbed in which one can vary a *single* axis
 (objective, architecture, data, fine-tuning strategy, scale) while holding everything else
 fixed and measure the effect across many tasks. The obstacle is structural — the **output
-interface differs from task to task**, which entangles the architecture and loss with the
-task and prevents free substitution of the other components. A solution would need (a) a
-uniform interface that lets the *same* model, loss, and decoding procedure handle every
-task, so the remaining axes become orthogonal knobs, and (b) a large, clean, public
-unlabeled corpus and a fixed experimental pipeline against which to run the sweep. Solving
-this would let the field measure which ideas actually matter and combine the winners.
+interface differs from task to task** (a classification softmax, a span pointer, per-token
+logits, a generative decoder), which entangles the architecture and loss with the task and
+prevents free substitution of the other components. Any controlled study would also need a
+large, clean, public unlabeled corpus and a fixed experimental pipeline against which to
+run the sweep. Solving this would let the field measure which ideas actually matter and
+combine the winners.
 
 ## Background
 
@@ -169,9 +169,8 @@ applicable to each variant.
 
 What already exists before the method: a deep-learning framework with autodiff and an
 optimizer, a tokenizer, a generic Transformer self-attention block, a maximum-likelihood
-(cross-entropy) loss, and a teacher-forced training loop. The contribution will be a
-*uniform task interface* and the specific choices (architecture variant, pre-training
-corruption scheme, position scheme, normalization) filled into the empty slots below.
+(cross-entropy) loss, and a teacher-forced training loop. The contribution will be filled
+into the empty slots below.
 
 ```python
 import torch, torch.nn as nn
@@ -181,11 +180,11 @@ tokenizer = load_subword_tokenizer()                    # SentencePiece/WordPiec
 optimizer_cls = load_optimizer_class()                  # chosen by the training setup
 loss_fn = nn.CrossEntropyLoss(ignore_index=PAD)         # teacher-forced max-likelihood
 
-# ---- Slot 1: the uniform task interface --------------------------------------
+# ---- Slot 1: the task interface ----------------------------------------------
 def to_model_io(task, example):
-    # TODO: turn ANY task (classification, regression, QA, summarization,
-    # translation) into a (input_text, target_text) pair so one loss/decoder
-    # suffices for all of them. How do we tell the model which task it is?
+    # TODO: present a downstream task (classification, regression, QA,
+    # summarization, translation) to the model. How should the obstacle above --
+    # the per-task output interface -- be handled so the other axes can vary?
     pass
 
 # ---- Slot 2: the self-supervised pre-training transformation -----------------

@@ -19,7 +19,7 @@ The common cost: tractable determinants are bought with hand-engineered, low-cap
 
 **Continuous normalizing flows (Chen et al. 2018, Neural ODEs).** Replace the discrete stack of layers with continuous-time dynamics: sample `z(t_0) ∼ p_{z0}`, define an ODE `∂z(t)/∂t = f(z(t), t; θ)` with `f` a neural net, and integrate the initial-value problem to `z(t_1) = x`. The change in log-density along the trajectory obeys the **instantaneous change of variables**:
 `∂ log p(z(t))/∂t = − Tr(∂f/∂z(t))`,
-so `log p(z(t_1)) = log p(z(t_0)) − ∫_{t_0}^{t_1} Tr(∂f/∂z(t)) dt`. The crucial change: the *determinant* of a discrete flow becomes a *trace*. Trace is linear and, unlike a determinant, does not require any structure in the Jacobian — so `f` can be much freer (planar CNF uses a one-layer net with *many* hidden units). Existence and uniqueness of the ODE solution require `f` and its first derivatives to be Lipschitz, satisfied by smooth Lipschitz activations. Computing the trace exactly still costs `O(D²)` (each diagonal entry is a separate derivative of `f`), so cost goes from `O(D³)` per layer to `O(D²)` per solver step — better, but still effectively limiting.
+so `log p(z(t_1)) = log p(z(t_0)) − ∫_{t_0}^{t_1} Tr(∂f/∂z(t)) dt`. In continuous time the per-step object to evaluate is a `Tr(∂f/∂z)` rather than a log-determinant. Existence and uniqueness of the ODE solution require `f` and its first derivatives to be Lipschitz, satisfied by smooth Lipschitz activations. Computing the trace exactly still costs `O(D²)` (each diagonal entry is a separate derivative of `f`), so cost goes from `O(D³)` per layer to `O(D²)` per solver step.
 
 **Backprop through the ODE: the adjoint method** (Pontryagin; Chen et al. 2018). For a scalar loss `L(z(t_1))`, the adjoint `a(t) = −∂L/∂z(t)` and the parameter gradient
 `dL/dθ = − ∫_{t_1}^{t_0} (∂L/∂z(t))ᵀ (∂f/∂θ) dt`
@@ -27,7 +27,7 @@ are obtained by solving a second ODE backward in time. This is the continuous-ti
 
 **Stochastic trace estimation (Hutchinson 1989).** For any `D×D` matrix `A` and any distribution `p(ε)` with `E[ε]=0`, `Cov(ε)=I`,
 `Tr(A) = E_{p(ε)}[ εᵀ A ε ]`,
-an unbiased Monte-Carlo estimator of the trace. Typical `ε`: standard Gaussian or Rademacher (`±1` entries). Combined with reverse-mode autodiff — which computes a vector-Jacobian product `vᵀ(∂f/∂z)` for about the cost of one evaluation of `f` — this is the standard cheap way to probe a trace without forming the matrix.
+an unbiased Monte-Carlo estimator of the trace. Typical `ε`: standard Gaussian or Rademacher (`±1` entries). Separately, reverse-mode autodiff computes a vector-Jacobian product `vᵀ(∂f/∂z)` for about the cost of one evaluation of `f`, without materializing the `D×D` Jacobian.
 
 **Other generative families (for contrast, not change-of-variables).** GANs (Goodfellow et al. 2014) use unrestricted nets but have no closed-form likelihood (need a discriminator). Autoregressive models (MADE, PixelRNN) give exact likelihood but need `O(D)` passes to sample. VAEs (Kingma & Welling 2013) use unrestricted nets but only give a lower bound on the marginal likelihood.
 
@@ -82,19 +82,19 @@ class ODEnet(nn.Module):
         pass
 
 def divergence_bf(dx, y, **unused_kwargs):
-    # TODO: exact Tr(df/dy) for small states.
+    # TODO: divergence computation.
     pass
 
 def divergence_approx(f, y, e=None):
-    # TODO: scalable trace computation.
+    # TODO: divergence computation.
     pass
 
 def sample_rademacher_like(y):
-    # TODO: optional probe distribution.
+    # TODO.
     pass
 
 def sample_gaussian_like(y):
-    # TODO: optional probe distribution.
+    # TODO.
     pass
 
 class ODEfunc(nn.Module):

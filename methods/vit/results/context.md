@@ -102,7 +102,7 @@ semi-supervisedly using a large unlabeled corpus, holding the state of the art o
 limitation: a convolution-based design with the image priors fixed.
 
 **The hybrid option — CNN features feeding a Transformer.** A natural intermediate baseline: run a convolutional
-stem first and feed its feature map (rather than raw image patches) into a Transformer. This keeps some
+stem first and feed its feature map (rather than the raw image) into a Transformer. This keeps some
 convolutional locality at the front while letting attention mix globally afterward, and is the obvious comparison
 point for asking how much the convolutional front-end actually contributes.
 

@@ -48,12 +48,11 @@ Three half-size products, `T(n) = 3T(n/2) + O(n) = Θ(n^{log₂ 3})`. The gap th
 exactly the research question above: it is the `k = 2` case of a pattern, with no account of
 what `k > 2` does, and `n^{1.585}` is still far from linear.
 
-**Viewing a number as a polynomial.** A number cut into limbs is the evaluation of a
-polynomial: writing `x = Σ_{i} x_i (Bᵐ)^i` makes `x = p(Bᵐ)` where `p(t) = Σ x_i t^i`. The
-product of two numbers is then the product polynomial evaluated at the same point:
-`x·y = (p·q)(Bᵐ)`. This recasts integer multiplication as polynomial multiplication followed
-by one cheap evaluation (a shift-and-add). The half-split above is exactly this with two limbs;
-the coefficients of `p·q` there are the convolution `x₁y₁, x₁y₀+x₀y₁, x₀y₀`.
+**Limbs and the digit convolution.** Cutting `x` into limbs writes `x = Σ_{i} x_i (Bᵐ)^i`;
+multiplying two such expansions produces, at each output place, the sum `Σ_{i+j=ℓ} x_i y_j` of
+limb-against-limb products before the carries are settled. The half-split above is the two-limb
+instance of this: its three output quantities `x₁y₁, x₁y₀+x₀y₁, x₀y₀` are precisely those
+place-sums.
 
 **Polynomial facts on the table.** A polynomial of degree `d` is uniquely determined by its
 values at any `d+1` distinct points; recovering the coefficients from those values is
@@ -87,10 +86,9 @@ x·y = z₂B²ᵐ + z₁Bᵐ + z₀ .
 ```
 Cost `T(n) = 3T(n/2) + O(n) = Θ(n^{log₂ 3}) ≈ n^{1.585}`. Gap: it is a single fixed split
 factor `k = 2` that saves exactly one of four products; it neither explains why `log₂ 3` arises
-(it is `log_k` of the sub-product count) nor offers a knob to push the exponent lower. The
-three products it uses are, in disguise, the values of the product polynomial at three points
-(`t = 0`, `t = ∞`, and one finite point), but that reading is not made, so the generalization
-to more points/more parts is left untaken.
+(it is `log_k` of the sub-product count) nor offers a knob to push the exponent lower. Why the
+specific three products `{x₁y₁, (x₁+x₀)(y₁+y₀), x₀y₀}` suffice, and whether a comparable saving
+exists for a finer split, is left unexamined.
 
 **Naive `k`-part split (the `k²` convolution).** Core idea: cut each operand into `k` limbs,
 form the limb polynomials `p, q` of degree `k−1`, and compute the `2k−1` coefficients of
@@ -119,7 +117,7 @@ The primitives already available: arbitrary-size integers, the schoolbook produc
 operation, integer floor-division and remainder to cut an operand into limbs, shifting by
 multiplying by powers of the radix, and exact integer linear algebra for a fixed, small system.
 The scaffold is a recursive routine with a base case, a fixed multi-limb split, and one empty
-algebraic slot for the sub-products, coefficient recovery, and recomposition.
+algebraic slot to be filled in.
 
 ```python
 BASE = 10
@@ -146,7 +144,6 @@ def multiply_candidate(x, y, base=BASE):
     x0, x1, x2 = (x % B), (x // B) % B, (x // (B * B))
     y0, y1, y2 = (y % B), (y // B) % B, (y // (B * B))
 
-    # TODO: choose the sub-products, recover the product coefficients,
-    #       and recompose the value at B.
+    # TODO: combine the limbs into the product and return it.
     return ...  # TODO
 ```

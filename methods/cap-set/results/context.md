@@ -49,9 +49,9 @@ the base ring is fixed while n grows, exactly the direction in which finite-fiel
 polynomial-method arguments had not usually been effective. Their proof is
 organized around a low-degree-polynomial rank lemma: if P(a-b) vanishes on
 distinct pairs from a set, then either P(0) vanishes or the set is bounded by the
-number of low-degree monomials. Gap: the Z/4Z argument still has ring and coset
-bookkeeping caused by the coefficient 2 in a-2b+c=0, so it is not yet a cap-set
-argument over F_3^n.
+number of low-degree monomials. Gap: the argument is carried out over Z/4Z, a
+ring rather than a field, with its own coset bookkeeping; it is stated for that
+neighboring problem and not for caps in F_3^n.
 
 On the constructive (lower-bound) side, intuition from the integers can mislead.
 Behrend (1946) built a large 3-AP-free subset of {1,…,N} by placing integers on
@@ -95,10 +95,9 @@ progression-free subsets of (Z/4Z)^n, CLP translate the obstruction into a
 problem over an F_2-vector space and use low-degree polynomials to force a rank
 bound. The core lemma expands P(x-y), groups monomials according to whether the
 x-side or y-side has degree at most d/2, and obtains a matrix of rank at most
-twice the number of low-degree monomials. Gap: the lemma is the right kind of
-engine, but the application is still wrapped around Z/4Z's cosets; a cap-set
-upper bound needs the AP equation to feed the same rank argument directly over a
-field.
+twice the number of low-degree monomials. Gap: the published application is
+wrapped around Z/4Z's cosets and treats the two-term difference a-b; it stops at
+that neighboring problem and says nothing about caps in F_3^n.
 
 **Product / tensor constructions (lower bounds).** The largest caps in small
 dimensions are known: |F_3^1|-cap 2, then 4, 9, 20, 45, 112 for n = 2,…,6. By

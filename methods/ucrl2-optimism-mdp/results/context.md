@@ -22,7 +22,7 @@ The goal a solution must hit: regret that grows like `√T` (so per-step regret 
 x̄_i + sqrt( 2 ln n / T_i )
 ```
 
-where `T_i` is the number of pulls of arm `i` and `n` the round. The radius comes from a Chernoff–Hoeffding tail: `x̄_i` is within `sqrt(2 ln n / T_i)` of `μ_i` with overwhelming probability. Acting on the optimistic estimate forces exploration automatically: an under-pulled arm has a large radius, hence a large index, hence gets tried; once pulled enough its radius shrinks below the gap and it is dropped. The analysis shows each suboptimal arm `j` is pulled at most `8 ln n / Δ_j²` times (`Δ_j = μ* − μ_j`), giving `Σ_j (8/Δ_j) ln n` gap-dependent regret and `O(√(Kn))` gap-independent regret. The decisive conceptual content: *a confidence interval, used optimistically, is by itself a complete exploration rule* — no separate exploration schedule is needed. This is the principle that begs to be lifted out of the single-state world.
+where `T_i` is the number of pulls of arm `i` and `n` the round. The radius comes from a Chernoff–Hoeffding tail: `x̄_i` is within `sqrt(2 ln n / T_i)` of `μ_i` with overwhelming probability. Acting on the optimistic estimate forces exploration automatically: an under-pulled arm has a large radius, hence a large index, hence gets tried; once pulled enough its radius shrinks below the gap and it is dropped. The analysis shows each suboptimal arm `j` is pulled at most `8 ln n / Δ_j²` times (`Δ_j = μ* − μ_j`), giving `Σ_j (8/Δ_j) ln n` gap-dependent regret and `O(√(Kn))` gap-independent regret. In the single-state world, then, a confidence interval used optimistically doubles as the exploration rule: an under-pulled arm has a large radius and so is tried, with no separate exploration schedule written down.
 
 **What is hard about an MDP that a bandit doesn't have.** Two structural facts. First, a bandit's "model" is a vector of scalar means; an MDP's model also has a *transition law* per `(s,a)` — an unknown distribution over `S` next-states. Estimating a distribution from `n` samples concentrates in `L1` only at rate `sqrt(S/n)` (Weissman, Ordentlich, Seroussi, Verdú, Weinberger 2003): for an `m`-outcome distribution, `P(||p̂−p||_1 ≥ ε) ≤ (2^m − 2) exp(−nε²/2)`. So learning a transition vector costs an extra `√S` over learning a scalar mean. Second, in a bandit a mistake costs you one round; in an MDP a mistake can *transport you* into a region from which it takes many steps to return to where reward lives. The natural measure of this is the **diameter**: for a pair of states `s ≠ s'`, the expected hitting time under the best policy aimed at `s'`, maximized over pairs,
 
@@ -30,9 +30,9 @@ where `T_i` is the number of pulls of arm `i` and `n` the round. The radius come
 D(M) = max_{s ≠ s'} min_{π} E[ T(s' | M, π, s) ] .
 ```
 
-`D` depends only on the transition structure (it is finite exactly when the MDP is *communicating*). An MDP with `S` states and `A` actions has `D ≥ log_A S − 3` (you need at least logarithmically many steps to address `S` states with `A` choices per step). The diameter is the price of a single planning error: a wrong action can cost up to `D` steps before recovery, so one expects it to multiply the exploration term in any regret bound.
+`D` depends only on the transition structure (it is finite exactly when the MDP is *communicating*). An MDP with `S` states and `A` actions has `D ≥ log_A S − 3` (you need at least logarithmically many steps to address `S` states with `A` choices per step). A wrong action can carry the learner into a region from which it takes up to `D` steps to return to where reward lives — so a single planning error can cost on the order of `D` steps, a price a bandit never pays.
 
-**Average-reward MDP theory that already exists.** Undiscounted value iteration (Puterman 1994): iterate `u_{i+1}(s) = max_a { r(s,a) + Σ_{s'} p(s'|s,a) u_i(s') }`; for a communicating, aperiodic MDP the increments `u_{i+1} − u_i` converge to the constant optimal gain `ρ*·1`, and `u_i` (recentred) converges to the *bias* vector, related to gain and rewards through the Poisson equation `λ = r − ρ·1 + Pλ`. Crucially, the **span** of the bias of an optimal policy is at most `D`. Aperiodicity matters: a periodic optimal policy can make plain value iteration fail to converge (Puterman §8.5, §9.4), and one then needs an aperiodicity transformation.
+**Average-reward MDP theory that already exists.** Undiscounted value iteration (Puterman 1994): iterate `u_{i+1}(s) = max_a { r(s,a) + Σ_{s'} p(s'|s,a) u_i(s') }`; for a communicating, aperiodic MDP the increments `u_{i+1} − u_i` converge to the constant optimal gain `ρ*·1`, and `u_i` (recentred) converges to the *bias* vector, related to gain and rewards through the Poisson equation `λ = r − ρ·1 + Pλ`. The relevant scalar attached to the bias is its **span** `max_s λ(s) − min_s λ(s)`. Aperiodicity matters: a periodic optimal policy can make plain value iteration fail to converge (Puterman §8.5, §9.4), and one then needs an aperiodicity transformation.
 
 **Diagnostic facts about the prior exploration algorithms.** E3 and R-max are *correct* — they learn near-optimal policies in polynomial time — but their guarantees are PAC: they reach an `ε`-optimal average reward with probability `1−δ` after time polynomial in `1/ε, 1/δ, S, A` and a mixing time. The polynomial dependence on `ε` is of order `1/ε³`; converting a `1/ε³` sample-complexity bound into a regret bound yields, at best, `T^{2/3}` regret — strictly worse than `√T`. Moreover both algorithms require, **as an input parameter**, the `ε`-return mixing time `T_mix^ε` of an optimal policy (the time for the optimal policy's running average reward to come within `ε` of `ρ*`); one can build MDPs of diameter `D` whose mixing time is `≈ D`, and if the learner guesses `T_mix` too small the bounds become exponential in the true mixing time. So two concrete shortcomings stand out before any new method: (i) the wrong exponent in `T`, and (ii) dependence on a hard-to-know mixing parameter rather than on transition structure alone.
 
@@ -46,7 +46,7 @@ D(M) = max_{s ≠ s'} min_{π} E[ T(s' | M, π, s) ] .
 
 **Index policies for ergodic MDPs (Burnetas & Katehakis 1997; Tewari & Bartlett 2008, OLP).** Choose actions optimistically using confidence bounds **on the current state only**, achieving asymptotically logarithmic regret. Gaps: they assume *ergodic* MDPs (every policy visits every state), the bounds are gap-dependent and hide an additive term **exponential in the number of states**, and confidence is applied per-state rather than to the whole planning problem.
 
-**UCRL (Auer & Ortner, 2007).** The direct predecessor: it already implements "optimism over a confidence set of MDPs," but its regret bound carries large exponents, depends on a *mixing time* rather than the diameter, and assumes the MDP is *ergodic*. Gap left open: bring the exponents down, replace the mixing time with the smaller, structure-only diameter, and weaken ergodicity to the natural finite-diameter (communicating) assumption.
+**UCRL (Auer & Ortner, 2007).** The direct predecessor: it already implements "optimism over a confidence set of MDPs," but its regret bound carries large exponents, is parameterized by a *mixing time* rather than by transition structure alone, and assumes the MDP is *ergodic* (every policy visits every state). Gap left open: the exponents are large, the bound still leans on a mixing-time quantity, and the ergodicity assumption is stronger than the bare communicating (finite-diameter) property the regret notion actually requires.
 
 ## Evaluation settings
 
@@ -54,7 +54,7 @@ The natural yardstick is the regret `Δ(M, A, s, T) = T·ρ*(M) − Σ_{t≤T} r
 
 ## Code framework
 
-The available scaffold already has a tabular MDP simulator, empirical count-based estimators, the two concentration tails (Hoeffding for scalar means, the `L1` deviation bound for distributions), and average-reward undiscounted value iteration on a *fixed* MDP. The open slots are the confidence-set construction, the optimistic planner, and the wandering loop with whatever rule decides when to recompute the policy.
+The available scaffold already has a tabular MDP simulator, empirical count-based estimators, the two concentration tails (Hoeffding for scalar means, the `L1` deviation bound for distributions), and average-reward undiscounted value iteration on a *fixed* MDP. What remains open is the online learning procedure that wanders for `T` steps in the unknown MDP.
 
 ```python
 import numpy as np
@@ -83,21 +83,10 @@ def average_reward_value_iteration(r, P, tol):
     stop when span(u_{i+1}-u_i) < tol."""
     ...
 
-# --- open algorithm slots ---------------------------------------------------
-
-def build_confidence_set(rhat, phat, N, t, S, A, delta):
-    """TODO: confidence region of plausible MDPs around the empirical
-    (rhat, phat) given counts N at time t."""
-    pass
-
-def plan_optimistic(conf_set, tol):
-    """TODO: among all MDPs in conf_set, find the one with the largest optimal
-    average reward and a near-optimal policy for it."""
-    pass
+# --- open algorithm slot ----------------------------------------------------
 
 def learn(mdp: TabularMDP, T, delta):
-    """TODO: wander for T steps; periodically rebuild the confidence set,
-    re-plan an optimistic policy, and follow it. The rule that decides WHEN to
-    re-plan is part of the method."""
+    """TODO: wander for T steps in the unknown MDP, choosing actions from the
+    data gathered so far, and keep the total regret small."""
     pass
 ```

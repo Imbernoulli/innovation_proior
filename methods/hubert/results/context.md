@@ -35,26 +35,19 @@ neural latent-variable models do better. The clusters are noisy, but they are no
 random: they carry phonetic signal. This is the raw material from which discrete
 targets can be built.
 
-**Masked prediction and the consistency insight.** Masking a span of the input
-and predicting its content from the surviving context (as in BERT) forces a model
-to learn both a representation of the visible audio and the long-range temporal
-structure that lets it infer the hidden part. A key intuition for using *noisy*
-discovered units as targets: what matters is not that each target label is
-*correct*, but that the labeling is *consistent* — the same sound mapped to the
-same unit — because consistency is what lets the model learn the sequential
-structure even when the unit identities are imperfect.
+**Masked prediction.** BERT-style pre-training masks a span of the input and
+scores a prediction of its content against the surviving context. Where the
+targets are discrete tokens, this is a cross-entropy over the vocabulary; the
+recipe is well-studied in NLP but assumes the target inventory is given.
 
 **DeepCluster (Caron et al. 2018).** In vision, alternate between clustering the
 current representations to produce pseudo-labels and training the network to
 predict those pseudo-labels; the representation and the clustering bootstrap each
-other across iterations. This is the template for *refining* targets over time:
-once a network trained on crude targets gives better features, re-cluster those
-features to get better targets, and repeat.
+other across iterations.
 
 **Product quantization (Gray & Neuhoff 1998).** Partition a feature space into
 subspaces and quantize each separately; the effective target space is the product
-of the per-subspace codebooks. This lets several clusterings of different
-granularity be combined cheaply.
+of the per-subspace codebooks.
 
 **CTC (Graves et al. 2006).** The standard alignment-free recognizer head: sum
 over all blank-augmented frame alignments that collapse to the target transcript.
@@ -93,25 +86,25 @@ supervised-data-limited teacher rather than compressing the full input signal.
 **LibriSpeech** (Panayotov et al. 2015): 960 hours of read English audiobooks,
 standard dev/test clean and other splits, scored by **word error rate (WER)**.
 **Libri-Light** (Kahn et al. 2020): a 60k-hour unlabeled set (LL-60k) plus
-limited-label fine-tuning subsets of 10 minutes, 1 hour, 10 hours, and 100 hours,
-for studying low-resource transfer. Audio is 16 kHz raw waveform. Optional
-external language-model fusion at decoding. These datasets and the WER metric
-predate the method and are the fixed yardsticks.
+low-label fine-tuning subsets of 10 minutes, 1 hour, and 10 hours. **LibriSpeech
+fine-tuning** also uses the 100-hour `train-clean-100` split and the full 960-hour
+training set for studying low-resource transfer and scale. Audio is 16 kHz raw
+waveform. Optional external language-model fusion at decoding. These datasets and
+the WER metric predate the method and are the fixed yardsticks.
 
 ## Code framework
 
-The pre-method toolkit: a convolutional waveform front end, a Transformer
+The available toolkit includes a convolutional waveform front end, a Transformer
 (BERT-style) encoder, an offline clusterer (k-means / GMM) that can label frame
 features, a projection-plus-codebook readout for classifying frames into units,
-and a CTC head for fine-tuning. The empty slots are: what produces the discrete
-targets, how the masked-prediction loss is shaped and where it is applied, and how
-targets are improved over training.
+and a CTC head for fine-tuning. The empty slots are left for the pre-training
+objective to be worked out.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
 
-# Raw-waveform convolutional front end (known): strided temporal convolutions
-# -> latent frames at ~20ms.
+# Raw-waveform convolutional front end: strided temporal convolutions produce
+# latent frames at about 20 ms.
 class ConvFeatureEncoder(nn.Module):
     def __init__(self, dims=(512,)*7,
                  kernels=(10,3,3,3,3,2,2), strides=(5,2,2,2,2,2,2)):
@@ -125,7 +118,7 @@ class ConvFeatureEncoder(nn.Module):
     def forward(self, wav):
         return self.conv(wav.unsqueeze(1)).transpose(1, 2)
 
-# Transformer encoder (known); relative positions via a grouped conv.
+# Transformer encoder; relative positions via a grouped conv.
 class TransformerEncoder(nn.Module):
     def __init__(self, d=768, layers=12, heads=8, ffn=3072):
         super().__init__()
@@ -141,13 +134,13 @@ class TransformerEncoder(nn.Module):
             x = l(x)
         return x
 
-# Offline clusterer over frame features (known primitive: k-means).
+# Offline clusterer over frame features.
 def cluster_assignments(features, n_clusters):
     # TODO: which features get clustered, and how the resulting per-frame labels
     #       are used as prediction targets.
     pass
 
-# Map an encoder output to a distribution over units (known: projection + codebook).
+# Map an encoder output to a distribution over units.
 class UnitPredictor(nn.Module):
     def __init__(self, d=768, proj=256, n_units=100, tau=0.1):
         super().__init__()
@@ -155,19 +148,17 @@ class UnitPredictor(nn.Module):
         self.embed = nn.Embedding(n_units, proj)
         self.tau = tau
     def forward(self, o):
-        # TODO: logits over units from cosine similarity between projected output
-        #       and unit embeddings, scaled by 1/tau.
+        # TODO: map encoder outputs to a distribution over the units.
         pass
 
-# Define the masked-prediction signal.
+# Define the pre-training prediction signal.
 def mask_and_loss(encoder, x, targets):
-    # TODO: how to mask, and where (masked frames / unmasked frames / both) the
-    #       prediction loss is applied.
+    # TODO: shape the pre-training objective over the encoder outputs and targets.
     pass
 
-# Fine-tuning head (known): linear + CTC.
+# Fine-tuning head: linear projection for CTC.
 class CTCHead(nn.Module):
-    def __init__(self, d=768, n_vocab=32):
+    def __init__(self, d=768, n_vocab=29):
         super().__init__()
         self.proj = nn.Linear(d, n_vocab)
     def forward(self, x):

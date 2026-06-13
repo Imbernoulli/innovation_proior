@@ -51,17 +51,17 @@ unsupervised feature learning lags behind. The load-bearing concepts a new metho
   hand-chosen operator that discards spatial information in a way the network cannot adapt. A
   *strided* convolution — a convolution that steps by more than one pixel — downsamples too, but the
   downsampling operator is *learned*. The all-convolutional net showed that removing pooling entirely
-  in favor of strided convolutions matches or beats pooling-based classifiers. The same idea inverts:
-  to *upsample* in a generator, a *fractionally-strided* (transposed) convolution learns its own
-  upsampling, replacing a fixed unpooling or nearest-neighbor resize. (These transposed convolutions
-  are sometimes loosely called "deconvolutions.")
+  in favor of strided convolutions matches or beats pooling-based classifiers. A *fractionally-strided*
+  (transposed) convolution is the corresponding operator that *increases* spatial size, with a learned
+  rather than fixed kernel; the conventional alternative for enlarging a feature map is a fixed
+  unpooling or nearest-neighbor resize. (These transposed convolutions are sometimes loosely called
+  "deconvolutions.")
 
 - **Removing fully-connected layers; global average pooling.** State-of-the-art image classifiers of
   the period moved away from large fully-connected heads on top of convolutional features, the
   strongest example being global average pooling, which collapses each final feature map to a single
   number and feeds those directly to the output. This removes the bulk of a network's parameters and
-  acts as a structural regularizer. The trade-off observed in practice is that global average pooling
-  can improve stability while slowing convergence.
+  acts as a structural regularizer.
 
 - **Batch Normalization (Ioffe & Szegedy, 2015).** Normalizes the input to each unit over the
   minibatch to zero mean and unit variance (with learned scale and shift), reducing internal

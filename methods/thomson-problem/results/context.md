@@ -56,10 +56,8 @@ lambda = n/2 - 1, orthogonal with respect to (1 - t^2)^{(n-3)/2} dt on [-1,1],
 normalized by C_0 = 1, C_1 = 2*lambda*t, with three-term recurrence
 i C_i = 2(i + lambda - 1) t C_{i-1} - (i + 2*lambda - 2) C_{i-2}. Schoenberg's
 theorem (Schoenberg 1942) states that every continuous distance-only
-positive-definite kernel on the sphere is a nonnegative combination of the C_l. So
-"a polynomial h whose Gegenbauer coefficients are all nonnegative" is precisely a
-positive-definite function, and for such h, sum_{x,y} h(<x,y>) >= h's constant term
-times N^2. A companion fact (Delsarte, Goethals, Seidel 1977, Thm 5.5): a set is a
+positive-definite kernel on the sphere is a nonnegative combination of the C_l. A
+companion fact (Delsarte, Goethals, Seidel 1977, Thm 5.5): a set is a
 spherical M-design if and only if sum_{x,y} C_i(<x,y>) = 0 for 1 <= i <= M.
 
 **Completely monotonic potentials.** A C^infinity function f on an interval is
@@ -72,8 +70,7 @@ interval they are uniform limits of nonnegative combinations of (4 - r)^k. The
 companion notion on inner products is *absolute monotonicity*: a(t) = f(2 - 2t) has
 all derivatives nonnegative (a^{(k)} >= 0) exactly when f is completely monotonic.
 This class is the natural setting because it is broad (covers Coulomb, all Riesz
-powers, Gaussians) yet has enough structure — nonnegative high derivatives — to drive
-an interpolation argument.
+powers, Gaussians) yet retains strong structure — nonnegative high derivatives.
 
 **The exceptional configurations.** Empirically and through earlier rigorous work, a
 short list of arrangements minimizes specific energies: the regular simplex (N <= n+1
@@ -104,13 +101,11 @@ the harmonic energy of n+1 or 2n points on S^{n-1}, proving optimality of the si
 and the cross polytope, by expanding the potential in spherical harmonics and using
 their positivity. Kolushov and Yudin (1997) extended this to show the E_8 minimal
 vectors are the unique minimum for (n,N) = (8,240), and Andreev (1996, 1997) handled
-the Leech vectors (24, 196560) and the icosahedron (3, 12). The core mechanism — match
-the potential from below by a polynomial with nonnegative harmonic content and exploit
-the design property — is exactly the lever to generalize. The gap each instance leaves
-open: each treats essentially one harmonic potential and one configuration, with an
-ad hoc auxiliary polynomial; there is no single construction that produces the matching
-polynomial for an arbitrary completely monotonic f and an arbitrary special
-configuration.
+the Leech vectors (24, 196560) and the icosahedron (3, 12). The limitation each
+instance shares: each treats essentially one harmonic potential and one configuration,
+with an ad hoc auxiliary polynomial chosen by hand for that case; the existing
+arguments stop short of any uniform recipe that would cover an arbitrary completely
+monotonic f and an arbitrary special configuration at once.
 
 **Linear programming bounds for codes.** Delsarte, Goethals and Seidel (1977) and,
 independently, Kabatiansky and Levenshtein (1978) bound the size of a spherical code
@@ -147,11 +142,11 @@ at once.
 The existing tools are: spherical-harmonic / Gegenbauer polynomial evaluation
 (three-term recurrence, available as a special-function routine), a general-purpose
 linear-programming solver, and direct energy evaluation for candidate configurations.
-The numerical slot is a finite-dimensional LP over Gegenbauer coefficients: choose
-nonnegative coefficients, enforce the lower-polynomial inequality at sampled inner
-products, and evaluate the resulting bound. The mathematical slot still missing is the
-closed-form choice of the auxiliary polynomial that makes the lower bound exact for the
-special configurations.
+The available numerical slot is a finite-dimensional LP over Gegenbauer coefficients of
+the same flavor as the Delsarte–Kabatiansky–Levenshtein code bounds, with constraints
+sampled at inner products on a grid. How to put that LP to work, and what would let a
+grid-sampled result become a certified proof for the special configurations, is left
+open.
 
 ```python
 import numpy as np
@@ -159,9 +154,7 @@ from scipy.special import gegenbauer
 from scipy.optimize import linprog
 
 def lp_energy_lower_bound(n, N, f_of_squared_dist, degree=12, grid=600):
-    # TODO: expand h(t) in Gegenbauer polynomials and optimize
-    # N^2 * alpha_0 - N * h(1) subject to alpha_i >= 0 and
-    # h(t) <= f(2 - 2*t) on a sampled grid in [-1, 1).
+    # TODO: set up and solve the LP over Gegenbauer coefficients.
     pass
 
 def coulomb(R):

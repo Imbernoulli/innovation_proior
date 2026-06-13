@@ -56,18 +56,16 @@ Edmonds (1965) gave the first polynomial-time algorithm for minimum/maximum-weig
 Karzanov's `O(n^3 log n)` version made it concretely fast. Before 1965 there was no polynomial method
 for general-graph weighted matching, so this is a relatively recent tool.
 
-One elementary matching fact is especially useful: a cycle on an even number of vertices can be split
-by alternating its edges into two disjoint perfect matchings. The two matchings have total cost equal
-to the cycle cost, so the cheaper one costs at most half the cycle.
+Matchings interact with cycles through parity: any cycle alternates structure along its edges, and
+on an even cycle that alternation closes up consistently, whereas on an odd cycle it clashes when it
+wraps around.
 
 **The Chinese postman connection.** A closely related problem was being studied intensively in the
 early 1970s: the Chinese postman problem — find a shortest closed walk traversing *every edge* of a
-given graph. Edmonds and Johnson (1973), Christofides (1973), and Serdyukov (1974) all attack it,
-and they all arrive at the same device: a graph fails to have an Eulerian circuit only because of
-its odd-degree vertices, and the cheapest way to fix that is to add a *minimum-weight perfect
-matching on the odd-degree vertices*, duplicating those few connecting paths so every degree becomes
-even. This "match the odd vertices to restore parity" idea is, at the time, established machinery for
-edge-traversal problems.
+given graph. Edmonds and Johnson (1973), Christofides (1973), and Serdyukov (1974) all attack it.
+The obstruction there is the same parity obstruction: a graph fails to have an Eulerian circuit
+exactly because of its odd-degree vertices, and the work in these papers is about cheaply repairing
+that parity defect so every edge can be traversed in one closed walk.
 
 ## Baselines
 
@@ -86,11 +84,11 @@ d(T) <= 2 d(M)            (shortcutting the doubled-tree walk, triangle inequali
      <= 2 d(OPT)          (MST lower bound)
 ```
 
-So `T` is within a factor of 2 of optimal. The gap it leaves open: the factor of 2 comes *entirely*
-from doubling the whole tree. Doubling is used only to make every vertex's degree even — but the
-even-degree vertices of `M` never needed fixing. Paying for a second full copy of the MST to correct
-parity at a handful of vertices is the slack. Whether that slack can be closed cheaply — fixing only
-the vertices that are actually broken — is exactly the open question.
+So `T` is within a factor of 2 of optimal. The factor of 2 comes *entirely* from doubling the whole
+tree, and doubling serves a single purpose: to make every vertex's degree even. It is a blunt
+instrument — it pays for a second full copy of the MST and changes the parity of every vertex at
+once, whether or not a given vertex's degree was a problem to begin with. Whether the factor 2 of
+this tree-based approach can be pushed below 2 is the open question.
 
 ## Evaluation settings
 

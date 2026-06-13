@@ -55,24 +55,22 @@ denoising and sliced (Song et al., 2019) variants are the scalable replacements.
 dx = f(x,t) dt + g(t) dw (with w a standard Wiener process) is, when run backward in time, *also* a
 diffusion, governed by
 dx = [f(x,t) - g(t)² ∇_x log p_t(x)] dt + g(t) dw̄,
-where w̄ is a reverse-time Wiener process and dt is a negative timestep. The only data-dependent
-object in the reverse drift is the marginal score ∇_x log p_t(x). This is the bridge between a
-forward "add noise" process and a backward "remove noise" process. The result can be obtained from
-the Fokker–Planck equation together with a Bayes/Girsanov argument.
+where w̄ is a reverse-time Wiener process and dt is a negative timestep. The reverse drift differs
+from the forward drift by a term involving the marginal score ∇_x log p_t(x). The result can be
+obtained from the Fokker–Planck equation together with a Bayes/Girsanov argument.
 
-**The Fokker–Planck (Kolmogorov forward) equation and the probability flow.** The marginal density of
+**The Fokker–Planck (Kolmogorov forward) equation.** The marginal density of
 an SDE dx = f dt + G dw evolves by
 ∂_t p_t(x) = -Σ_i ∂_{x_i}[f_i p_t] + ½ Σ_{i,j} ∂²_{x_i x_j}[Σ_k G_{ik} G_{jk} p_t].
-Rewriting the second-order term as a divergence shows the same family of marginals {p_t} can be
-produced by a *deterministic* flow — a continuity (Liouville) equation ∂_t p_t = -∇·(f̃ p_t) — for a
-modified drift f̃, i.e. by an ODE rather than an SDE. This is the standard route from a stochastic to
-a deterministic process sharing marginals (used in the interacting-particle work of Maoutsa et al.,
-2020).
+The second-order (diffusion) term is what distinguishes this evolution from the continuity (Liouville)
+equation ∂_t p_t = -∇·(v p_t) of a deterministic transport. Relating stochastic and deterministic
+processes through their shared marginals is studied e.g. in the interacting-particle work of Maoutsa
+et al. (2020).
 
 **Closed-form transition kernels for affine drift (Särkkä & Solin, 2019).** When the drift f(x,t) is
 affine in x, the transition kernel p_{0t}(x(t)|x(0)) is Gaussian and its mean and covariance satisfy
-linear ODEs with closed-form solutions (their Eqs. 5.50/5.51). This is what makes the denoising
-target computable without simulating the forward process.
+linear ODEs with closed-form solutions (their Eqs. 5.50/5.51), available without simulating the
+process.
 
 **Neural ODEs and exact likelihood (Chen et al., 2018; Grathwohl et al., 2018).** For a deterministic
 flow dx = f̃(x,t) dt, the instantaneous change-of-variables formula gives
@@ -81,11 +79,9 @@ log-density. The divergence is expensive (O(d) backprops), but the Skilling–Hu
 ∇·f̃ = E_v[vᵀ (∇f̃) v] with E[v]=0, Cov[v]=I turns it into a single vector-Jacobian product, unbiased
 and arbitrarily accurate by averaging.
 
-**The diagnostic that one denoising step matters for sample quality.** Samples from these models
-carry residual high-frequency noise imperceptible to the eye but damaging to FID; removing it with a
-single denoising step (Tweedie's formula) recovers a large amount of quality, and the absence of such
-a step is part of why the additive-noise (NCSN) family had been measuring worse on FID than the
-DDPM family despite comparable models.
+**A measured discrepancy in sample quality.** Samples from these models carry residual high-frequency
+noise imperceptible to the eye but damaging to FID, and the additive-noise (NCSN) family had been
+measuring worse on FID than the DDPM family despite comparable models.
 
 ## Baselines
 
@@ -120,9 +116,8 @@ the same object as NCSN's additive ladder; the sampler is tied to this particula
 there is no exact likelihood (only an ELBO).
 
 **Where these meet.** Both objectives are weighted sums of denoising score matching, and their
-weights, σ_i² and 1-α_i, play the same role (proportional to the inverse expected squared conditional
-score). Two recipes, two samplers, but a single underlying quantity — the score of noised data — is
-what both are really learning. This shared structure is the opening a unifying framework would exploit.
+weights, σ_i² and 1-α_i, are each proportional to the inverse expected squared conditional score.
+Beyond this, the two recipes present as unrelated: two forward processes, two losses, two samplers.
 
 **Yardstick generative models (not built on the same recipe).** GANs (BigGAN; StyleGAN2-ADA) held the
 best FID/Inception scores on CIFAR-10 at the time; normalizing flows (RealNVP, Glow, Residual Flow,
@@ -165,44 +160,17 @@ def get_dataloader(): ...
 def get_optimizer(params):
     return torch.optim.Adam(params, lr=2e-4, betas=(0.9, 0.999))
 
-# --- TODO: the corruption process that bridges data -> prior ---
-class CorruptionProcess:
-    """The forward process that turns data into noise, and whatever is needed to invert it.
-    Today this is a fixed discrete ladder of noise scales; the slot below is where a
-    principled shared corruption process and its inverse will live."""
-    def perturb(self, x0):
-        # return a perturbed sample and the information needed to form the training target
-        raise NotImplementedError  # TODO
+# --- TODO: the process abstraction the current code lacks ---
+# Today the corruption is a fixed discrete ladder, the loss is a per-scale sum, and the
+# sampler is a hand-derived chain. What replaces them goes here.
+...
 
-    def prior_sample(self, shape):
-        # draw from the tractable end-point distribution
-        raise NotImplementedError  # TODO
-
-    def inverse_process(self, score_fn):
-        # build the generation dynamics that undo `perturb`, given an estimated score
-        raise NotImplementedError  # TODO
-
-# --- TODO: the training objective ---
-def loss_fn(model, batch, process):
-    """Regress the score network onto a tractable denoising target produced by `process`."""
-    raise NotImplementedError  # TODO
-
-# --- TODO: the sampler ---
-def sample(model, process, shape):
-    """Start from the prior and drive the inverse process to produce data."""
-    raise NotImplementedError  # TODO
-
-# --- TODO: density evaluation, if the designed process makes it tractable ---
-def log_density(model, batch, process):
-    """Return log p(x) when the designed generation path admits exact change-of-variables."""
-    raise NotImplementedError  # TODO
-
-# Training loop skeleton.
-def train(model, process):
+# Training loop skeleton (loss to be supplied above).
+def train(model):
     opt = get_optimizer(model.parameters())
     for batch in get_dataloader():
         opt.zero_grad()
-        loss = loss_fn(model, batch, process)
+        loss = ...  # TODO
         loss.backward()
         opt.step()
 ```

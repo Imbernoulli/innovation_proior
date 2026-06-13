@@ -4,7 +4,7 @@
 
 Self-supervised learning has succeeded separately in NLP, speech, and vision, but each modality grew its own algorithm and its own *learning objective*, designed with that modality's quirks in mind. The objectives all differ in what target the model is asked to predict, and that target is always both modality-specific and *local* to a position: a sub-word in text, a discrete unit of speech, a visual token or pixel for an image. These per-modality designs carry per-modality inductive biases, and it is unclear which biases generalize.
 
-The question is whether a *single* learning objective — literally the same algorithm — can train strong representations in speech, vision, and language at once, removing the modality-specific target machinery (the learned speech-unit vocabularies, the offline visual tokenizers, the pixel-regression normalizations). A solution would have to define a target that (a) is constructible identically in every modality from the model itself, (b) does not require a predefined, closed vocabulary, and (c) gives a learning signal at least as rich as the modality-specific local targets it replaces.
+The question is whether a *single* learning objective — literally the same algorithm — can train strong representations in speech, vision, and language at once, removing the modality-specific target machinery (the learned speech-unit vocabularies, the offline visual tokenizers, the pixel-regression normalizations). A solution would have to define a target that (a) can be constructed identically in every modality, (b) does not require a predefined, closed vocabulary, and (c) gives a learning signal at least as rich as the modality-specific local targets it replaces.
 
 ## Background
 
@@ -16,7 +16,7 @@ The question is whether a *single* learning objective — literally the same alg
 
 **Mean Teacher.** The EMA-teacher idea originates here (Tarvainen & Valpola 2017): a teacher whose weights track an exponential moving average of the student gives stable targets for a consistency loss.
 
-**Contextualization (diagnostic facts).** A representation built by self-attention over the *entire* input is *contextualized*: the vector at a position carries information from the whole sample. This is qualitatively different from a discrete token (a word id, a visual-token id) or a pixel, which is *local* — it carries information isolated to that position, and a given discrete unit gets one fixed embedding regardless of the sentence/image it appears in. Two further observed facts shape the design: in self-supervised speech Transformers, the *middle* layers transfer better than the *top* layer for downstream tasks (the top layer over-specializes), suggesting that a single top-layer target leaves information on the table; and learning collapses to a constant target unless something promotes variance among target representations.
+**Contextualization (diagnostic facts).** A representation built by self-attention over the *entire* input is *contextualized*: the vector at a position carries information from the whole sample. This is qualitatively different from a discrete token (a word id, a visual-token id) or a pixel, which is *local* — it carries information isolated to that position, and a given discrete unit gets one fixed embedding regardless of the sentence/image it appears in. Two further observed facts shape the design: in self-supervised speech Transformers, the *middle* layers transfer better than the *top* layer for downstream tasks (the top layer over-specializes); and learning collapses to a constant target unless something promotes variance among target representations.
 
 **Collapse.** When a model predicts its own (teacher's) representations, the trivial solution is for all targets to become identical. Contrastive methods avoid this with negatives; BYOL with the predictor + stop-gradient + EMA; VICReg with an explicit variance term. Any latent-regression method must contend with this.
 
@@ -43,7 +43,7 @@ The question is whether a *single* learning objective — literally the same alg
 
 ## Code framework
 
-The primitives that already exist: a standard Transformer encoder; modality-specific feature encoders and masking strategies taken from prior work (ViT patch embedding + blockwise masking for images; conv encoder + span masking for speech; token embedding + BERT masking for text); a learned MASK embedding; an EMA mechanism for building a teacher from a student; Adam with cosine/tri-stage schedules. The slots below are what a single cross-modal masked-prediction objective would fill in.
+The primitives that already exist: a standard Transformer encoder; modality-specific feature encoders and masking strategies taken from prior work (ViT patch embedding + blockwise masking for images; conv encoder + span masking for speech; token embedding + BERT masking for text); a learned MASK embedding; an EMA mechanism for building a teacher from a student; Adam with cosine/tri-stage schedules. The slots below are what a single cross-modal objective would fill in.
 
 ```python
 import torch
@@ -76,24 +76,13 @@ class Model(nn.Module):
         self.encoder = TransformerEncoder()
         self.mask_emb = nn.Parameter(torch.zeros(cfg.dim))
         self.ema = None              # built lazily as EMA of self
-        # TODO: a head that maps the student's masked-position output to
-        #       whatever the prediction target turns out to be
-
-    def build_target(self, teacher_layer_results, mask_indices):
-        # TODO: what is the target the student regresses?
-        #       (a discrete id? a pixel? something built from the teacher's
-        #        own layers? how many layers, and normalized how?)
-        pass
+        # TODO: the single cross-modal objective goes here.
 
     def forward(self, x, mask=True):
         feats = self.feature_encoder(x)
         student_in, mask_idx = apply_mask(feats, self.mask_emb)
         student_out = self.encoder(student_in)
-        with torch.no_grad():
-            # teacher (EMA) encodes the UNMASKED input
-            teacher_layers = self.ema.model.encoder(feats, return_layer_results=True)
-            target = self.build_target(teacher_layers, mask_idx)
-        # TODO: the loss comparing student prediction at masked positions to target
+        # TODO: define the prediction target and the training loss.
         loss = None
         return loss
 ```

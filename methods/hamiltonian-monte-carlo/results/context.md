@@ -40,7 +40,7 @@ minimizing/exploring an energy landscape are two views of one object.
 p ∈ R^d is governed by a Hamiltonian H(q, p) (its total energy). Its time evolution
 obeys Hamilton's equations
   dqᵢ/dt = ∂H/∂pᵢ,   dpᵢ/dt = −∂H/∂qᵢ.
-Three properties of this flow are classical and load-bearing here:
+Three properties of this flow are classical:
 - **Conservation of energy:** dH/dt = Σᵢ (∂H/∂qᵢ · dqᵢ/dt + ∂H/∂pᵢ · dpᵢ/dt)
   = Σᵢ (∂H/∂qᵢ · ∂H/∂pᵢ − ∂H/∂pᵢ · ∂H/∂qᵢ) = 0. The trajectory stays on a level
   set of H.
@@ -64,14 +64,11 @@ does not sample any distribution exactly.
 **Numerical integration of Hamiltonian flow.** Hamilton's equations must be
 discretized with some stepsize ε. The naive choice, Euler's method
   pᵢ(t+ε) = pᵢ(t) − ε ∂U/∂qᵢ(q(t)),  qᵢ(t+ε) = qᵢ(t) + ε pᵢ(t)/mᵢ,
-is unstable: applied to a simple harmonic oscillator it spirals outward to infinity,
-because it does not preserve phase-space volume. A "leapfrog" / Störmer–Verlet
-integrator (Verlet 1967, with antecedents going back to Störmer 1907), studied in
-the framework of symplectic integrators (De Vogelaere; Ruth 1983; Leimkuhler & Reich
-2004, *Simulating Hamiltonian Dynamics*), interleaves position and momentum updates
-in a way that preserves volume and is time-reversible even at finite ε, and whose
-energy error stays bounded rather than accumulating. Such integrators exactly solve
-a nearby "shadow" Hamiltonian.
+is unstable: applied to a simple harmonic oscillator it spirals outward to infinity.
+There is an existing body of work on more careful discretizations — the "leapfrog" /
+Störmer–Verlet scheme (Verlet 1967, with antecedents going back to Störmer 1907) and
+the broader framework of symplectic integrators (De Vogelaere; Ruth 1983; Leimkuhler &
+Reich 2004, *Simulating Hamiltonian Dynamics*).
 
 ## Baselines
 
@@ -93,10 +90,9 @@ like d ς², forcing ς ∝ d^{−1/2} and cost ∝ d², with an optimal accepta
 **Metropolis–Hastings (Hastings 1970).** Generalizes the above to an arbitrary,
 possibly asymmetric, proposal density Q(x*|x): accept with
 min[1, Q(x|x*) P(x*) / (Q(x*|x) P(x))]. This is the general template for "propose,
-then correct." It tells me that if I want to use some *other* proposal mechanism — in
-particular a deterministic one built from dynamics — I will need to know its proposal
-density (its Jacobian), and I will need it to be reversible enough that the ratio is
-well-defined.
+then correct": any proposal mechanism can be used so long as its proposal density
+enters the ratio, which for a deterministic map means accounting for its Jacobian and
+ensuring the forward and reverse transitions are both well-defined.
 
 **Gibbs sampling / coordinate updates.** Update one coordinate (or block) at a time
 from its exact conditional. Each scan still moves the state by an amount comparable to

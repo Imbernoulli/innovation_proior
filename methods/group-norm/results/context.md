@@ -69,18 +69,17 @@ regions sampled from a single image form the batch, the samples are correlated, 
 further corrupts the estimate. So beyond the small-batch noise, the very reliance on a
 "batch" creates inconsistency across training, transferring, and testing.
 
-**Channels are correlated but not interchangeable.** Classical hand-designed vision
-features are *group-wise* and are normalized *within groups*. A HOG descriptor (Dalal &
-Triggs 2005) is built from spatial cells, each a histogram of gradient orientations, and
-the histogram is normalized within each block/orientation group; SIFT (Lowe 2004) similarly
-normalizes orientation histograms; GIST, VLAD, and Fisher Vectors are grouped sub-vectors
-(e.g. one sub-vector per cluster). The grouping reflects that the coefficients within a
-group belong together. Convolutional channels are analogous: a filter and its
-horizontally-flipped counterpart should produce similar response distributions on natural
-images; orientation, frequency, shape, illumination, and texture induce natural groupings
-of channels whose responses are interdependent. A well-accepted neuroscience model
-likewise normalizes divisively across populations of cells with related receptive-field and
-frequency tunings. So channels are neither fully independent nor all interchangeable.
+**Classical vision features and the channels of a conv layer.** Classical hand-designed
+vision features are often *group-wise* and normalized *within groups*. A HOG descriptor
+(Dalal & Triggs 2005) is built from spatial cells, each a histogram of gradient
+orientations, and the histogram is normalized within each block/orientation group; SIFT
+(Lowe 2004) similarly normalizes orientation histograms; GIST, VLAD, and Fisher Vectors are
+grouped sub-vectors (e.g. one sub-vector per cluster). A well-accepted neuroscience model
+normalizes responses divisively across populations of cells with related receptive-field
+and frequency tunings. As for the channels of a convolutional layer: a filter and its
+horizontally-flipped counterpart produce similar response distributions on natural images,
+and empirically the channels are different filters (edges, colors, textures, frequencies)
+whose response distributions — means and variances — genuinely differ from one another.
 
 ## Baselines
 

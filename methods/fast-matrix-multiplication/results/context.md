@@ -40,9 +40,10 @@ The product blocks are
     C21 = A21 B11 + A22 B21,   C22 = A21 B12 + A22 B22.
 Computed directly this is 8 block multiplications and 4 block additions, giving the recurrence
 T(n) = 8·T(n/2) + O(n²), i.e. T(n) = Θ(n^{log₂ 8}) = Θ(n³). Recursion alone buys nothing,
-because 8 = 2³ reproduces the cubic exponent exactly. Beating cubic requires multiplying two
-2×2 (block) matrices with **fewer than 8** multiplications, where — and this is the subtle
-constraint — the entries are themselves matrices and therefore do not commute.
+because 8 = 2³ reproduces the cubic exponent exactly: this scheme stalls at the same cubic count,
+merely reorganizing the same n³ scalar products into a tree. One subtlety that any block-level
+manipulation must respect is that the block entries are themselves matrices and therefore do not
+commute.
 
 **The Karatsuba precedent.** A closely analogous trade already exists for integers and
 polynomials. To multiply two degree-1 polynomials (a0 + a1X)(b0 + b1X) = a0b0 + (a0b1 +
@@ -54,40 +55,14 @@ beating the schoolbook n². The lesson carried over: a clever algebraic identity
 extra additions to save one multiplication, recursed, lowers the exponent — and the exponent
 depends only on how many multiplications survive.
 
-**Bilinear maps and their decompositions.** Matrix multiplication is *bilinear*: each output
-entry c_ij is a sum of products (linear form in A)·(linear form in B). A general way to
-compute a set of bilinear forms is a **bilinear algorithm**. Choose linear forms u_s in the
-entries of A, linear forms v_s in the entries of B, and scalar recombination coefficients
-w_{s,ij}. Compute
-
-    p_s = u_s(A) · v_s(B),              s = 1, ..., r,
-    c_ij = Σ_{s=1}^r w_{s,ij} p_s.
-
-The products p_s are the only nonscalar multiplications; the w_{s,ij} only add, subtract,
-or scale already-computed products into the output entries. The number r of products is the
-cost that matters. Because each factor is a *linear form in one matrix's entries only*, such
-an algorithm never multiplies two A-entries or two B-entries together — so it remains valid
+**Bilinearity of the product.** Matrix multiplication is *bilinear*: each output entry c_ij is
+a sum of products (linear form in A)·(linear form in B). One is not obliged to realize such a
+form by computing each monomial a_ik b_kj separately; in principle one may form combinations of
+A-entries and of B-entries, multiply those, and recombine. A relevant subtlety for recursion:
+if every product formed is (a linear form in one matrix's entries only) times (a linear form in
+the other's), it never multiplies two A-entries or two B-entries together — so it remains valid
 when the entries are replaced by non-commuting objects such as matrix blocks, which is exactly
 what makes recursion possible.
-
-**The tensor of a bilinear map.** The bilinear map of matrix multiplication, ⟨n,n,n⟩ : K^{n×n}
-× K^{n×n} → K^{n×n}, is encoded by a three-dimensional array (a tensor) t whose entries record
-which products a_ik b_kj appear in which output c_ij. With axes indexed by A-slots, B-slots,
-and output slots, its nonzero entries are
-
-    t_{(i,k),(k,j),(i,j)} = 1
-
-and all other entries are zero. For ⟨2,2,2⟩ this tensor lives in K^{4×4×4}. A rank-one tensor
-("triad") is u⊗v⊗w: u is the A-side linear form, v is the B-side linear form, and w records how
-that product is added back into the output slots. A sum of r triads is therefore the same object
-as a bilinear algorithm with r nonscalar products, linear preprocessing, and linear
-recombination. The minimum such r — the **rank** R(t) of the tensor over the chosen field — is
-exactly the multiplication count being optimized. Thus "how few multiplications does matrix
-multiplication need" is literally "what is the rank of the matrix-multiplication tensor," a
-basis-free invariant. Tensors multiply: ⟨k,m,n⟩ ⊗ ⟨k',m',n'⟩ = ⟨kk', mm', nn'⟩, and rank is
-submultiplicative, R(t⊗t') ≤ R(t)·R(t'). So a rank bound on one fixed-size matrix tensor, raised
-to a tensor power, bounds the matrix products at power-of-two sizes, with padding handling the
-intermediate sizes — recursion *is* taking tensor powers.
 
 **Numerical and practical context.** The classical algorithm is backward stable. Any scheme
 that trades multiplications for additions introduces extra subtractions and hence extra
@@ -106,18 +81,15 @@ whether the n³ products are all *necessary* or merely *sufficient*.
 
 **Naive block recursion.** Split into 2×2 blocks and recurse on the eight block products.
 T(n) = 8T(n/2)+O(n²) = Θ(n³). Identical asymptotics to schoolbook; it merely reorganizes the
-same n³ scalar multiplications. Its value is diagnostic: it isolates the exact obstacle — the
-multiplication count 8 — and shows that any improvement must come from a 2×2 identity using
-fewer products.
+same n³ scalar multiplications and gains nothing, since the exponent is set by the eight block
+products and 8 = 2³.
 
 **Karatsuba-style multiplication (for integers/polynomials).** Three multiplications for a
-degree-1 polynomial product instead of four, recursed to n^{log₂ 3}. Not a matrix algorithm,
-but the structural template: an algebraic identity reusing partial products to drop the
-multiplication count, recursed for an asymptotic win. The open gap it leaves for matrices is
-whether an analogous identity exists for the 2×2 *matrix* product. A direct transplant does
-not line up with the four output blocks: it creates unwanted cross terms that are not simply
-the corner products already available to subtract. The matrix version must preserve left/right
-factor order and also match the output-sharing pattern.
+degree-1 polynomial product instead of four, recursed to n^{log₂ 3}. This is a scalar/polynomial
+algorithm — its coefficients commute, and it concerns the three coefficients of one product
+rather than four separate output blocks — so it does not directly apply to the matrix product.
+It stands only as a precedent that an algebraic identity reusing partial products can drop a
+multiplication count and, recursed, lower an exponent.
 
 ## Evaluation settings
 
@@ -155,9 +127,10 @@ def block_product(A, B, recurse):
     may only multiply an A-block by a B-block (never two A-blocks or two B-blocks).
     `recurse(X, Y)` multiplies two same-size blocks.
 
-    TODO: replace the naive eight block products
-    A11 B11 + A12 B21, ... with a product/recombination scheme that uses
-    fewer than eight multiplications.
+    The naive scheme forms the eight block products
+    A11 B11 + A12 B21, A11 B12 + A12 B22, A21 B11 + A22 B21, A21 B12 + A22 B22.
+
+    TODO: compute the four output blocks here.
     """
     pass  # TODO
 

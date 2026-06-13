@@ -32,7 +32,7 @@ At $t=0$ this is $0$ (the chain starts up) and as $t\to\infty$ it relaxes to the
 
 **Classical EOQ ($Q_E=\sqrt{2FD/h}$).** The thing to beat, and the thing that any disruption-aware order quantity must reduce to when the disruption rate goes to zero. Its gap: it assumes the supplier never fails, so it can under-order when supply is unreliable and unmet demand is costly, leaving the firm exposed during down periods. Used as the reference point — when the disruption-aware order quantity exceeds $Q_E$, the difference is the safety stock the firm holds to buffer against supply unavailability.
 
-**Numerical minimization of a renewal-reward cost.** Once the cost rate is written as a function of $Q$ via renewal-reward, one can in principle just minimize it numerically (golden-section or bisection, given the function is single-troughed). This is the honest, exact route. Its limitation is not accuracy but form: the cost rate contains a transcendental term $e^{-(\lambda+\psi)Q/D}$, so the minimizer has no closed form. That matters when the order quantity must be embedded inside a larger model (multi-location systems, network design) where a clean algebraic expression is needed, or when one wants comparative-statics insight that a number from a solver does not provide.
+**Numerical minimization of a renewal-reward cost.** Once the cost rate is written as a function of $Q$ via renewal-reward, one can in principle just minimize it numerically (golden-section or bisection, given the function is single-troughed). This is the honest, exact route. Its limitation is not accuracy but form: a cost rate built from the random-availability supply model need not admit a closed-form minimizer, leaving only a number from a solver. That matters when the order quantity must be embedded inside a larger model (multi-location systems, network design) where a clean algebraic expression is needed, or when one wants comparative-statics insight that a number from a solver does not provide.
 
 ## Evaluation settings
 
@@ -40,7 +40,7 @@ The natural test instances are small single-item systems parameterized by demand
 
 ## Code framework
 
-The pieces that already exist: the classical EOQ formula, an exponential function, and a one-dimensional minimizer for a single-troughed (quasiconvex) function. The slots to be filled are the cost-rate function under random supply and any closed-form order quantity that may fall out of it.
+The pieces that already exist: the classical EOQ formula, an exponential function, and a one-dimensional minimizer for a single-troughed (quasiconvex) function. The slot to be filled is the cost-rate function under random supply.
 
 ```python
 import math
@@ -60,10 +60,5 @@ def cost_rate(Q, D, F, a, h, pi, lam, psi):
 
 def optimize_exact(D, F, a, h, pi, lam, psi):
     # golden-section / bisection over the single-troughed cost_rate
-    pass
-
-def approximate_order_quantity(D, F, a, h, pi, lam, psi):
-    # TODO: a closed-form order quantity, if the cost rate can be
-    # simplified to something with an algebraic minimizer.
     pass
 ```

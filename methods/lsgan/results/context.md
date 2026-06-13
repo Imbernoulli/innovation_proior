@@ -18,9 +18,7 @@ almost no signal to pull those far-but-correctly-classified samples closer to th
 sigmoid saturates exactly where you still need to move. The precise question: **is there a
 discriminator loss that keeps supplying a useful gradient to the generator for samples that are
 correctly classified but still far from the real data — pulling them toward the real-data manifold —
-and that thereby also makes adversarial training more stable?** A solution would have to penalize a
-sample by *how far* it sits from where the discriminator wants it, not merely by *which side* of the
-boundary it is on.
+and that thereby also makes adversarial training more stable?**
 
 ## Background
 
@@ -51,7 +49,6 @@ concepts and the key diagnostic observation:
 - **f-divergences and the GAN objective (Nowozin et al., 2016; Nguyen et al., 2010).** The original
   game's link to Jensen–Shannon divergence is a special case of a general principle: an adversarial
   objective can be made to estimate and minimize an arbitrary f-divergence between `p_data` and `p_g`.
-  The Pearson `χ²` divergence, `χ²(P‖Q) = ∫ (P−Q)² / Q`, is one such member.
 
 - **Stability is partly an objective problem.** Multiple analyses (Arjovsky et al., 2017; Metz et al.,
   2016; Qi, 2016; Che et al., 2016) attribute the instability of adversarial training in part to the
@@ -139,8 +136,7 @@ class Discriminator(nn.Module):
     def __init__(self):
         super().__init__()
         self.features = None   # strided-conv / leaky-ReLU / BN stack
-        # TODO: what is the discriminator's OUTPUT and its loss? a saturating classifier,
-        #       or something that keeps supplying gradient far from the boundary?
+        # TODO: the discriminator's output form and its loss
         self.out = None
     def forward(self, x):
         pass

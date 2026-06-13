@@ -60,15 +60,12 @@ pre-method facts about existing systems:
   representation carries less information than its dimension suggests.
 - Performance of decorrelation/information-maximization methods *rises* with the dimensionality of the
   projector output (and saturates only at very large widths), in contrast to contrastive methods,
-  which saturate early — a hint that "spread information across many decorrelated dimensions" is the
-  right lever.
+  which saturate early.
 
 **The redundancy-reduction / information-maximization principle.** An old idea from sensory coding
 (Barlow): a good code recodes redundant input into components that are statistically independent — a
 factorial code. If two units always carry the same information, one is wasted. Operationally,
-"informative" becomes "don't let the components duplicate each other": decorrelate them. This gives a
-concrete, differentiable handle on informativeness that does not require comparing samples to each
-other.
+"informative" becomes "don't let the components duplicate each other": decorrelate them.
 
 ## Baselines
 

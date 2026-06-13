@@ -46,26 +46,20 @@ Matching feature expectations is therefore necessary and sufficient to match
 performance for linear rewards.
 
 **The maximum-entropy principle (Jaynes 1957).** A separate, older idea from statistical
-inference: when only expectation constraints `⟨f_r⟩ = Σ_i p_i f_r(x_i)` (plus
-normalization `Σ p_i = 1`) are known, the distribution is underdetermined. Jaynes's
-resolution is to choose, among all distributions meeting the constraints, the one of
-**maximum entropy** `H(p) = −Σ_i p_i ln p_i` — the unique distribution that is
-"maximally noncommittal with regard to missing information," assigning no preference
-beyond what the constraints force. With the sign convention
-`J = H + Σ_r α_r(Σ_i p_i f_r(x_i) − ⟨f_r⟩) + β(Σ_i p_i − 1)`, stationarity gives the
-exponential-family / Boltzmann form `p_i = Z(α)^{-1} exp(Σ_r α_r f_r(x_i))`, with
-partition function `Z(α) = Σ_i exp(Σ_r α_r f_r(x_i))`. Two identities fall out:
-`⟨f_r⟩ = ∂ ln Z / ∂α_r` and `Cov[f] = ∂² ln Z / ∂α∂αᵀ` (positive semidefinite). This is
-the machinery for turning "match these expectations, commit to nothing else" into a
-concrete distribution.
+inference about underdetermined distributions: when the available knowledge fixes only
+some expectation values `⟨f_r⟩ = Σ_i p_i f_r(x_i)` (plus normalization `Σ p_i = 1`) and
+leaves the rest open, infinitely many distributions are consistent with it. Jaynes's
+principle selects, among all distributions meeting the constraints, the one of
+**maximum entropy** `H(p) = −Σ_i p_i ln p_i` — "maximally noncommittal with regard to
+missing information," assigning no preference beyond what the constraints force. It is an
+established device for committing to a single distribution under expectation constraints.
 
-**Exponential-family / log-linear models elsewhere.** The same global-normalization,
-exp-of-a-linear-score form appears in conditional random fields for sequence labeling,
-where it is known that *locally* normalized sequence models suffer **label bias**:
-probability mass is conserved locally at each step, so states with fewer outgoing
-branches concentrate mass regardless of their scores. A globally normalized model does
-not have this pathology — a fact about the design space worth keeping in view when a
-sequence (path) distribution is needed.
+**Locally vs. globally normalized sequence models.** In sequence-labeling models built
+from exp-of-a-linear-score scores (e.g. conditional random fields), it is known that
+*locally* normalized models suffer **label bias**: probability mass is conserved locally
+at each step, so states with fewer outgoing branches concentrate mass regardless of their
+scores. Globally normalized models do not have this pathology. This is an established
+contrast in the design of probabilistic sequence models.
 
 **The diagnostic that motivates everything: recovering a reward is ill-posed.** The
 inverse problem is degenerate. The set of reward functions under which a given
@@ -149,8 +143,7 @@ fraction of the path observed.
 The primitives that already exist: an MDP container (states, actions, transition
 probabilities, planning horizon), a feature map over states, expert demonstrations as
 state sequences, an empirical feature-count routine, and a numerical optimizer (gradient
-ascent). The missing bridge from demonstrations to a reward is a behavior model and an
-efficient expected-count routine.
+ascent). What is still missing is the bridge from demonstrations to a reward.
 
 ```python
 import numpy as np
@@ -174,30 +167,13 @@ def empirical_feature_counts(feature_matrix, trajectories):
 
 # --- empty slots ---------------------------------------------------------------
 
-def behavior_distribution(mdp, theta):
-    """The distribution over behavior that the recovered weights θ induce,
-    used to predict the agent and to compute expected feature counts.
-    # TODO: what object resolves the reward ambiguity, and what form does it take?
-    """
-    pass
-
-def expected_feature_counts(mdp, theta):
-    """Expected feature counts under the current model — the quantity that must
-    equal f̄ at the solution; the hard part is computing it without enumerating
-    exponentially many paths.
-    # TODO: an efficient computation over the planning horizon, with the
-    #       remaining-horizon index handled explicitly.
-    """
-    pass
-
 def recover_reward(mdp, trajectories, epochs, lr):
     """Fit reward weights θ to the demonstrations.
-    # TODO: an objective whose optimum makes the model match the demonstrations,
-    #       with a usable gradient driving gradient ascent.
+    # TODO: the bridge from demonstrations to a reward goes here.
     """
     theta = np.random.uniform(size=(mdp.feature_matrix.shape[1],))
     f_bar = empirical_feature_counts(mdp.feature_matrix, trajectories)
     for _ in range(epochs):
-        pass  # TODO: gradient step from f_bar and the model's expected counts
+        pass  # TODO: gradient step
     return theta
 ```

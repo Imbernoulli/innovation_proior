@@ -42,11 +42,11 @@ that cools the rate down a cosine curve over T_i epochs and then "restarts" by r
 
 **SGD with momentum + L2 regularization.** The standard recipe behind the strongest image-classification results at the time. The L2 term λ'θ is added to the gradient and smoothed through the momentum buffer. Core idea is sound and generalizes well; the gap it leaves is hyperparameter coupling — the regularization coefficient that works best is tied to the learning rate (changing one without the other degrades results), which contributes to SGD's reputation for hyperparameter sensitivity.
 
-**Adam with L2 regularization.** The dominant "easy" optimizer, regularized the way the libraries offer: λ'θ added to the gradient before the moment accumulation and the √v̂ normalization. Core idea: per-coordinate adaptive rates + momentum + bias correction. The gap: on datasets where L2 clearly helps SGD, Adam barely benefits from non-zero λ' at all, and its best results trail SGD's. The structural reason is that the regularization term, living inside the gradient, is rescaled by the same per-coordinate preconditioner as the loss gradient — so the way it shrinks each weight depends on that weight's parameter and gradient history rather than being uniform.
+**Adam with L2 regularization.** The dominant "easy" optimizer, regularized the way the libraries offer: λ'θ added to the gradient before the moment accumulation and the √v̂ normalization. Core idea: per-coordinate adaptive rates + momentum + bias correction. The gap: on datasets where L2 clearly helps SGD, Adam barely benefits from non-zero λ' at all, and its best results trail SGD's — sweeping λ' moves the needle far less for Adam than the same sweep does for SGD.
 
 **Adam without regularization.** The unregularized adaptive baseline; on image classification its best settings are roughly as good as Adam-with-L2's, which is itself the symptom that L2 is doing little for Adam.
 
-**AdaGrad / RMSProp / AMSGrad.** Earlier or contemporary adaptive methods sharing the preconditioned structure; they inherit the same coupling between regularization and adaptation, so they are the family the analysis is expected to generalize to.
+**AdaGrad / RMSProp / AMSGrad.** Earlier or contemporary adaptive methods sharing the preconditioned structure; they are the family the analysis is expected to generalize to.
 
 ## Evaluation settings
 

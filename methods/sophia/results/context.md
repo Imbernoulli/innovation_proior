@@ -14,9 +14,9 @@ The precise problem is therefore: **find an update rule that reaches a target pr
 
 **Why curvature is dangerous in practice.** Three obstacles block the naive use of the Hessian in deep learning. (1) *Size and cost*: H is d×d for d parameters; forming, storing, or inverting it is impossible at LLM scale, and even cheaper structured approximations are expensive if recomputed every step. (2) *Indefiniteness*: away from a minimum the loss is non-convex, so H has negative eigenvalues; along a direction of negative curvature the Newton step −g/h points uphill, toward a maximum or saddle, and can blow up. (3) *Non-stationarity*: H changes rapidly along the trajectory, so a step extrapolated from a stale or local quadratic model can be badly wrong. Classical numerical optimization addresses (2) and (3) with trust regions (Conn et al. 2000), backtracking line search (Boyd & Vandenberghe 2004), and cubic regularization (Nesterov & Polyak 2006) — all of which add machinery and per-step cost.
 
-**Estimating curvature cheaply.** Two ideas make per-coordinate curvature affordable. First, the *Hutchinson estimator* (Hutchinson 1989; Roosta-Khorasani & Ascher 2015): for u with E[uuᵀ]=I, the vector u ⊙ (H u) is an unbiased estimate of diag(H), and H u is a single Hessian-vector product obtainable by automatic differentiation (a double backward) at the cost of a few gradients — the full matrix is never formed. Second, the *Gauss-Newton / Fisher* family (Schraudolph 2002; Martens 2010, 2020; Pascanu & Bengio 2013): the Hessian of a composed loss ℓ = ce(f(θ,x), y) splits by the chain rule into a Gauss-Newton term J_θf · S · J_θfᵀ (with S the Hessian of the loss in logit space) plus a remainder that is empirically small for neural networks (Sankar et al. 2021). The Gauss-Newton term is positive semidefinite by construction, so a preconditioner built from it always yields a descent direction (Dennis & Schnabel 1996). Two classical statistical identities (Bartlett 1953) connect this term to gradients: the score has zero mean under the model's own distribution (first identity), and the Fisher information equals the expected outer product of the score, which equals the expected Hessian of the negative log-likelihood (second identity).
+**Tools for probing curvature.** Automatic differentiation supports more than the plain gradient. A Hessian-vector product H u for an arbitrary vector u is available by differentiating the scalar ⟨∇L, u⟩ a second time (a double backward), at the cost of a few gradients and without ever forming H (Pearlmutter 1994). Hessian-free and randomized-probing techniques in numerical linear algebra (Hutchinson 1989; Roosta-Khorasani & Ascher 2015) use such matrix-vector products with random vectors to probe matrices that are too large to materialize. Separately, for a composed loss ℓ = ce(f(θ,x), y) the Hessian can be decomposed by the chain rule, and the Gauss-Newton / Fisher literature (Schraudolph 2002; Martens 2010, 2020; Pascanu & Bengio 2013; Sankar et al. 2021) studies such decompositions and their statistical structure; classical identities (Bartlett 1953) relate score, Fisher information, and the Hessian of a negative log-likelihood.
 
-**Sign-based and clipped updates.** A standard simplification of Adam, used for analysis (Balles & Hennig 2018; Bernstein et al. 2018; Kunstner et al. 2023), is SignGD: dropping the moving averages, Adam's update reduces to η·sign(∇L), an idea tracing back to RProp (Riedmiller & Braun 1992) and RMSProp (Hinton 2012). Separately, gradient clipping by global norm is standard practice in LM pre-training (Merity et al. 2017; Radford et al. 2019; Zhang et al. 2022) for stability, and per-coordinate gradient clipping has been observed to behave like adaptivity (Zhang et al. 2020; Crawshaw et al. 2022). These are the conceptual ingredients — sign/magnitude separation and clipping — for bounding the worst-case size of an update.
+**Sign-based and clipped updates.** A standard simplification of Adam, used for analysis (Balles & Hennig 2018; Bernstein et al. 2018; Kunstner et al. 2023), is SignGD: dropping the moving averages, Adam's update reduces to η·sign(∇L), an idea tracing back to RProp (Riedmiller & Braun 1992) and RMSProp (Hinton 2012). Separately, gradient clipping by global norm is standard practice in LM pre-training (Merity et al. 2017; Radford et al. 2019; Zhang et al. 2022) for stability, and per-coordinate gradient clipping has been observed to behave like adaptivity (Zhang et al. 2020; Crawshaw et al. 2022).
 
 ## Baselines
 
@@ -26,7 +26,7 @@ The precise problem is therefore: **find an update rule that reaches a target pr
 
 **Newton's method.** θ ← θ − η H⁻¹∇L. Optimal for convex quadratics; the per-coordinate update g/h equalizes loss decrease across curvatures and the rate is condition-number-free. **Gap:** H is d×d (infeasible at LLM scale); H is indefinite on non-convex losses, so the step can climb toward a maximum or converge to a saddle; and H drifts along the trajectory, making the quadratic model unreliable. The remedies (trust region, line search, cubic regularization) add cost.
 
-**Diagonal-Hessian preconditioners (e.g. AdaHessian, and earlier Becker & Le Cun 1988; Schaul et al. 2013).** Use a running estimate of diag(H) — typically via the Hutchinson estimator — as the preconditioner, often with spatial averaging and an EMA across steps (Yao et al. 2021, AdaHessian; Jahani et al. 2021). This captures per-coordinate curvature with the memory of a single extra vector. **Gap:** they re-estimate the Hessian *every step*, which costs more than one extra gradient per step; with no mechanism to bound a bad/indefinite/stale estimate, frequent re-estimation is needed for stability, and the resulting per-step overhead has prevented these methods from showing a wall-clock speedup on decoder-only language models.
+**Diagonal-Hessian preconditioners (e.g. AdaHessian, and earlier Becker & Le Cun 1988; Schaul et al. 2013).** Use a running estimate of diag(H) — typically via the Hutchinson estimator — as the preconditioner, often with spatial averaging and an EMA across steps (Yao et al. 2021, AdaHessian; Jahani et al. 2021). This captures per-coordinate curvature with the memory of a single extra vector. **Gap:** they re-estimate the Hessian *every step*, which costs more than one extra gradient per step, and the resulting per-step overhead has prevented these methods from showing a wall-clock speedup on decoder-only language models.
 
 **Structured second-order methods (K-FAC, Shampoo).** Approximate the Hessian or Fisher with Kronecker-factored block structure (Martens & Grosse 2015; and follow-ups) or with full-matrix preconditioners over reshaped gradients (Gupta et al. 2018, Shampoo). **Gap:** the factor inversions and frequent curvature updates are expensive in compute and memory, and some variants depend on specific architectures or hardware setups; no wall-clock speedup on decoder-only LLMs had been reported.
 
@@ -69,10 +69,8 @@ class TheOptimizer(Optimizer):
                 if p.grad is None:
                     continue
                 state = self.state[p]
-                # TODO: initialize/maintain running statistics of the gradient
-                #       (and of curvature, if used).
-                # TODO: form the per-parameter update from those statistics and
-                #       apply it to p, keeping the worst-case update bounded.
+                # TODO: maintain whatever per-parameter running state the method
+                #       needs, form the per-parameter update, and apply it to p.
                 pass
 
 def estimate_curvature(model, X):
@@ -87,7 +85,7 @@ for it in range(max_iters):
     logits, loss = model(X, Y)
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)  # global norm clip (stability)
-    # TODO: on a schedule, refresh the curvature estimate before stepping.
+    # TODO: any extra per-step bookkeeping the method needs before stepping.
     opt.step()
     opt.zero_grad(set_to_none=True)
 ```

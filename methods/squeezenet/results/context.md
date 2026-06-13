@@ -6,7 +6,7 @@ So the goal: find a convolutional architecture that matches the accuracy of a we
 
 # Background
 
-**Where parameters live in a convolution.** A convolution layer made of 3×3 filters has a parameter count of `(input channels) × (number of filters) × 3 × 3`. Two multiplicative levers therefore control its size: the spatial footprint of each filter (`3×3 = 9` vs `1×1 = 1`), and the number of input channels feeding those filters. A 1×1 filter has 9× fewer parameters than a 3×3 filter, and is the cheapest possible convolution that still mixes channels.
+**Where parameters live in a convolution.** A convolution layer made of 3×3 filters has a parameter count of `(input channels) × (number of filters) × 3 × 3`. The size is thus a product of the spatial footprint of each filter (`3×3 = 9` vs `1×1 = 1`), the number of filters, and the number of input channels feeding those filters. A 1×1 filter has 9× fewer parameters than a 3×3 filter, and is the cheapest convolution that still mixes channels.
 
 **1×1 convolutions and Network-in-Network (Lin et al., 2013).** A 1×1 convolution performs pure cross-channel mixing at each pixel, with no spatial extent. NiN introduced using 1×1 convolutions as learned per-pixel channel transforms and replaced the parameter-heavy fully-connected classifier with global average pooling over the final feature maps — removing the single largest block of parameters in classic architectures (AlexNet/VGG fully-connected layers hold the bulk of their weights).
 
@@ -14,7 +14,7 @@ So the goal: find a convolutional architecture that matches the accuracy of a we
 
 **Depth and bypass connections.** VGG (Simonyan & Zisserman, 2014) showed accuracy rises with depth using only 3×3 filters; ResNet (He et al., 2015) and Highway Networks showed that *bypass* (skip) connections that add an earlier activation to a later one let much deeper networks train and improve accuracy (ResNet reported ~2 points top-5 from adding bypass to a 34-layer net). Bypass connections add little or no parameters but change the optimization and regularization of the layers they wrap.
 
-**Delayed downsampling (He & Sun, "constrained time cost").** The spatial size of a layer's activation map is set by where in the network you place the stride>1 (downsampling) layers. If downsampling happens early, most layers operate on small maps; if it is pushed late, most layers see large maps. Empirically, delaying downsampling so that convolution layers keep large activation maps tends to raise classification accuracy at equal parameter budget — a "free" accuracy lever that doesn't touch parameter count.
+**Delayed downsampling (He & Sun, "constrained time cost").** The spatial size of a layer's activation map is set by where in the network you place the stride>1 (downsampling) layers. If downsampling happens early, most layers operate on small maps; if it is pushed late, most layers see large maps. Empirically, delaying downsampling so that convolution layers keep large activation maps tends to raise classification accuracy at equal parameter budget.
 
 **Model compression as the competing approach.** A parallel line of work shrinks an *already-trained* large model in a lossy way: SVD factorization of weight matrices (Denton et al., 2014); Network Pruning (Han et al., 2015), which zeroes sub-threshold weights to a sparse matrix and retrains; and Deep Compression (Han et al., 2015), which combines pruning, quantization to 5–8 bits via a codebook, and Huffman coding. These start from a big architecture; the alternative pursued here is to design a small architecture *from scratch* — and the two are complementary, since a small dense model can then also be compressed.
 
@@ -65,11 +65,11 @@ class Net(nn.Module):
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True),
         )
-        # TODO: self.features = nn.Sequential( ... FeatureModules + pools,
-        #       with downsampling placed where it helps accuracy ... )
+        # TODO: self.features = nn.Sequential( ... FeatureModules + pools ... )
+        feature_channels = None  # TODO: output width of the feature stack
         self.classifier = nn.Sequential(
             nn.Dropout(p=0.5),
-            nn.Conv2d(512, num_classes, kernel_size=1),  # NiN-style 1x1 classifier
+            nn.Conv2d(feature_channels, num_classes, kernel_size=1),
             nn.ReLU(inplace=True),
             nn.AdaptiveAvgPool2d((1, 1)),
         )

@@ -20,7 +20,7 @@ i.e. the real velocity relaxes toward the desired velocity with characteristic t
 v_ij^frict = C_frict · (v_j − v_i) / (max{r_min, |d_ij|})²,
 chosen to satisfy three requirements — relax velocity differences, remain local, and stay upper-bounded even as the inter-agent distance goes to zero. Its short-range repulsion is a *linear half-spring* (with the explicit argument that a stiff Lennard-Jones-type potential would, under noisy position measurements, inject huge spurious accelerations, whereas a soft linear repulsion is robust to noise), and confinement is via virtual *shill* wall agents whose velocity the real agents align to. This model flies on real quadcopters at low speed.
 
-**The diagnostic failure mode that motivates the next step.** The 2014 viscous term damps oscillations by a *fixed* law: the amount of velocity-difference it tolerates depends only on inter-agent distance through a 1/r² decay, not on whether that velocity difference is *kinematically survivable*. With limited acceleration a_max, an agent needs a *distance* proportional to (closing speed)² to brake to zero. So a single global friction strength either over-damps at low speed (sluggish, agents fight tiny velocity differences and the flock cannot turn collectively) or under-damps at high speed (two agents approach faster than the gap allows them to brake → collision). Empirically the 2014 model does not scale past a few m/s: trajectories stay oscillatory and intergroup distances become dangerous as flocking speed rises. The open gap is an alignment threshold that changes with distance and is tied to braking kinematics, rather than a fixed 1/r² law.
+**The diagnostic failure mode that motivates the next step.** The 2014 viscous term damps oscillations by a *fixed* law: the amount of velocity-difference it tolerates depends only on inter-agent distance through a 1/r² decay, set by a single global gain. So that one gain either over-damps at low speed (sluggish, agents fight tiny velocity differences and the flock cannot turn collectively) or under-damps at high speed (two agents approach faster than the gap allows them to brake → collision). Empirically the 2014 model does not scale past a few m/s: trajectories stay oscillatory and intergroup distances become dangerous as flocking speed rises. A single friction strength tuned for one speed is wrong at another, and the model stalls here.
 
 ## Baselines
 
@@ -28,7 +28,7 @@ chosen to satisfy three requirements — relax velocity differences, remain loca
 - **Vicsek SPP (1995).** Constant-speed heading alignment + noise; demonstrates the order–disorder transition. Gap: constant speed, no collision avoidance, no inertia/delay, periodic boundaries — not executable on drones.
 - **Couzin zonal model (2002).** Repulsion/orientation/attraction zones; emergent group shapes. Gap: kinematic and idealized; no delay, acceleration limits, or noise.
 - **Olfati-Saber potential-field flocking (2006).** Lattice-potential gradient + velocity consensus + navigation, obstacles/goal as virtual β/γ agents; provably stable for ideal double integrators. Gap: assumes instantaneous noise-free actuation; stiff gradients and unbounded consensus destabilize under delay and acceleration limits.
-- **Virágh/Vásárhelyi realistic model (2014).** Realistic agent (delay, inertia, a_max, noise, locality) + linear repulsion + 1/r² viscous-friction alignment + shill walls; flies on quadcopters. Gap: the *fixed* friction law does not scale with speed — no distance-dependent, braking-aware velocity threshold — so it over-/under-damps and collides above a few m/s.
+- **Virágh/Vásárhelyi realistic model (2014).** Realistic agent (delay, inertia, a_max, noise, locality) + linear repulsion + 1/r² viscous-friction alignment + shill walls; flies on quadcopters. Gap: the *fixed* 1/r² friction law, set by a single global gain, does not scale with speed — it over-/under-damps and collides above a few m/s.
 
 ## Evaluation settings
 
@@ -40,7 +40,7 @@ Order parameters (the measurable requirements of "good flocking"), to be compute
 - **wall collisions** φ_wall — time-average of how far agents stray outside the arena (signed distance), to be minimized;
 - **speed** φ_vel — time-averaged |v_i|, to be driven toward v_flock;
 - **disconnected agents** N_disc and **minimum cluster size** N_min (from the communication graph, with the practical threshold N_min > N/5).
-A characteristic clustering distance r_cluster = max( r_0^rep, r_0^frict + D̃(v_flock, a_frict, p_frict) ), where D̃(v,a,p) is the braking distance r at which D(r,a,p) = v, defines the communication graph used to form clusters.
+Forming clusters requires a characteristic interaction distance over which two agents count as coupled; the control law must supply one.
 
 ## Code framework
 

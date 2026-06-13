@@ -67,7 +67,7 @@ random point exposes any discrepancy with probability ≥ 1 − d/|F|. (The mult
 Schwartz–Zippel; the univariate root-count is the case that matters first.) A working field is a prime
 field `F_p`; Bertrand's postulate guarantees primes of any needed size, and primality has succinct
 certificates (Pratt) and fast randomized tests (Solovay–Strassen), so the verifier can be handed `p` and
-check it. A key elementary fact about `{0,1}`: for `x ∈ {0,1}`, `x^k = x` for all `k ≥ 1`.
+check it.
 
 **PSPACE and its complete problem.** PSPACE is the languages decidable in polynomial space (equal to
 NPSPACE by Savitch). Its canonical complete problem is **TQBF**: deciding truth of a fully quantified
@@ -88,7 +88,6 @@ reduces to `#P` (`PH ⊆ P^{#P}`), so a way to interactively verify a `#P` value
 Blum–Luby–Rubinfeld's self-testing/correcting (and Lipton's work on the permanent) showed that for
 algebraically structured functions one can *check* a claimed answer on a given instance without
 recomputing it — by querying the function at related random points and using its low-degree structure.
-This "verify by random algebraic spot-checks" mindset is the same instinct interactive proofs will use.
 
 ## Baselines
 
@@ -141,9 +140,9 @@ benchmarks.
 ## Code framework
 
 A scaffold for an interactive proof over a prime field starts with the ordinary algebraic and interaction
-machinery: a field `F_p`, evaluation of low-degree univariates, interpolation, and a coin source for the
-verifier. The protocol-specific gap is the reduction from the input statement to a sequence of
-checkable low-degree claims.
+machinery: a field `F_p`, evaluation of univariates, interpolation, and a coin source for the
+verifier. What the prover sends each round, what the verifier checks, and how the input statement drives
+the conversation are left open.
 
 ```python
 from dataclasses import dataclass
@@ -169,10 +168,10 @@ def is_prime_with_certificate(p) -> bool:
 class Prover:
     """All-powerful. Given the input statement and transcript, answers verifier queries."""
     def initial_claim(self, statement):
-        raise NotImplementedError  # TODO: reduce the statement to an algebraic claim
+        raise NotImplementedError  # TODO
 
     def round_message(self, history):
-        raise NotImplementedError  # TODO: what low-degree object to send this round
+        raise NotImplementedError  # TODO
 
 class Verifier:
     def __init__(self, field: Field):
@@ -181,8 +180,7 @@ class Verifier:
         "Fresh uniform element of F_p."
         ...
     def check_and_reduce(self, statement, history) -> bool:
-        # TODO: the per-round consistency check + bind a variable to a random point
-        #       and reduce to a smaller claim. This loop is the protocol.
+        # TODO: the verifier's per-round logic that drives the conversation to a verdict
         raise NotImplementedError
 
 def interactive_proof(statement, prover: Prover, verifier: Verifier) -> bool:

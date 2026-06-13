@@ -8,7 +8,7 @@ The question is whether the same paradigm can train Vision Transformers. The ana
 
 1. **Where do semantic visual targets come from?** Lingual tokens inherit semantics for free from word-frequency statistics. Image patches do not — pixels are continuous and a patch is semantically ambiguous. Empirically, semantic structure in images only emerges by *bootstrapping*: training a network to make two distorted views of the same image agree. So a semantically meaningful visual tokenizer seems to require its own representation-learning run.
 
-2. **Can the tokenizer and the target model be trained together?** If the tokenizer must be trained first and then frozen, MIM becomes a multi-stage pipeline with an extra dataset and a fixed off-the-shelf tokenizer. But acquiring visual semantics is the *same* goal for both the tokenizer and the model being trained — which hints that a single-stage, jointly optimized scheme should be possible.
+2. **Must the tokenizer be a separate, pre-built stage?** In the one prior MIM approach that works, the tokenizer is trained first and then frozen, so MIM becomes a multi-stage pipeline with an extra dataset and a fixed off-the-shelf tokenizer.
 
 A good method would give a BERT-style local-token objective for ViTs, with a tokenizer that is semantically meaningful, jointly learnable in one stage, and adaptable to whatever data is at hand.
 
@@ -20,7 +20,7 @@ A good method would give a BERT-style local-token objective for ViTs, with a tok
 
 **Masked prediction in images.** Predicting masked image content has been attempted by directly regressing raw pixels (inpainting, masked-patch prediction). This is observed to waste capacity on high-frequency detail and to yield weak semantic representations under frozen-feature evaluation. The reframing that helped was to predict *discrete tokens* instead of pixels, turning reconstruction into classification and removing the pressure to model every high-frequency detail.
 
-**Knowledge distillation.** A student matches a teacher's softened output distribution by minimizing the cross-entropy between the two softmax distributions. Both the discrete-token MIM loss and the view-agreement loss above can be read as distillation — the only difference is the source of the teacher distribution.
+**Knowledge distillation.** A student matches a teacher's softened output distribution by minimizing the cross-entropy between the two softmax distributions. It is the generic template into which both the discrete-token MIM loss and the view-agreement loss can be cast.
 
 **Empirical observations about existing tokenizers (diagnostic).** When a frozen discrete VAE is used as the MIM tokenizer and one evaluates the *quality of its patch tokens* directly, the tokens carry mostly low-level texture and little high-level semantics (a few percent k-NN accuracy when its tokens are treated as features). In contrast, a network trained by view-agreement bootstrapping produces patch features that are far more semantic. And a pure masked-patch objective with no view-agreement component yields representations that are nearly useless under frozen-feature evaluation — semantics barely emerge from masking alone. These observations frame the problem: the *target* in MIM must itself be semantically meaningful, and that meaning has to come from somewhere other than the raw patches.
 
@@ -34,7 +34,7 @@ equivalently a one-hot distillation `-Σ_i m_i · P_φ(x_i)^T log P_θ(x̂_i)`, 
 `L_[CLS] = -P_θ'^[CLS](v)^T log P_θ^[CLS](u)`.
 The teacher parameters θ' are an exponential moving average of the student θ (momentum λ on a cosine schedule from 0.996 to 1). Collapse is prevented by two opposing operations applied to the teacher output: *centering* — subtract an EMA of the teacher's batch-mean output, `c ← m·c + (1−m)·mean(teacher out)` — which stops any single dimension from dominating but pushes toward uniform; and *sharpening* — a low teacher temperature τ_t — which pushes the opposite way. Student temperature τ_s = 0.1; teacher temperature warmed 0.04 → 0.07. The head is a 3-layer MLP (hidden 2048, GELU) with an ℓ₂-normalized bottleneck (dim 256) and a weight-normalized final layer to K = 65536, batch-norm-free. Gap as a tokenizer: DINO only models the global `[CLS]` token; it never produces per-patch targets, so it does not give a BERT-style local objective.
 
-**Hinton-style knowledge distillation (2015).** Train a student to reproduce a teacher's class-probability distribution by minimizing cross-entropy between softened softmaxes. Provides the template that both BEiT's and DINO's losses instantiate; what is left open is making the teacher itself a *learnable, online* source of per-patch targets.
+**Hinton-style knowledge distillation (2015).** Train a student to reproduce a teacher's class-probability distribution by minimizing cross-entropy between softened softmaxes. The classic setup assumes a fixed, externally supplied teacher.
 
 **Multi-crop augmentation (SwAV/DINO).** Sample 2 global crops (224²) and several local crops (96²); local crops go only to the student. Consistently improves view-agreement methods. It is a known training ingredient that any new global-plus-local method would want to inherit.
 
@@ -81,8 +81,7 @@ class ProjectionHead(nn.Module):            # DINO-style head (exists)
         # ... MLP -> L2 normalize -> weight_norm Linear to out_dim ...
 
     def forward(self, x):
-        # TODO: the head we will design must produce a target for BOTH the
-        #       global token and the per-patch tokens (currently only one path)
+        # TODO: produce the projection output(s) the local-token objective needs
         pass
 
 # --- masking: how to choose which patches to hide ---

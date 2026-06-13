@@ -35,7 +35,7 @@ energies transform by the Lorentz transformation. To first order in v/c the rele
 of light seen by a receiver moving toward it at speed v has its frequency and its energy raised by the
 factor (1 + v/c) (the first-order Doppler effect, for energy as well as frequency, since a light pulse's
 energy and frequency scale together); and a quantity of energy E carries inertial mass E/c². These are
-the load-bearing pieces — they are what an accelerated-frame argument will feed on.
+among the most securely established consequences of the relativity principle.
 
 **Galileo's universality of free fall.** That all bodies, whatever their material, fall together is not
 folklore but a reasoned result. Galileo's argument in *Two New Sciences* (1638): suppose a heavy body
@@ -65,9 +65,7 @@ an experimentally exact law — the most precisely verified fact then bearing on
 **Frames, clocks and rigid rods.** The available way to give physical meaning to a frame is a lattice of
 rigid measuring rods carrying identical clocks. A uniformly accelerated frame is described by imagining
 such a rigid frame given a constant acceleration γ; at any instant one compares it to the inertial frame
-momentarily moving with it. This is the natural object through which any "what happens in an accelerated
-frame" question gets answered using only special-relativistic facts evaluated in the comoving inertial
-frame.
+momentarily moving with it, where the ordinary special-relativistic facts hold.
 
 **The standing diagnostic about a relativistic scalar gravity.** The most direct attempt to make gravity
 relativistic keeps the Newtonian gravitational potential Φ — a single scalar field with ∇²Φ = 4πGρ

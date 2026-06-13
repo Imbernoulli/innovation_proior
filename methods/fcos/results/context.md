@@ -4,7 +4,7 @@
 
 Object detection asks an algorithm to localize and classify every instance in an image with an axis-aligned box. By 2018 essentially every strong detector — Faster R-CNN, SSD, YOLOv2/v3, RetinaNet — was built on **anchor boxes**: a dense grid of pre-defined reference boxes of several scales and aspect ratios, tiled at every feature location, each classified as foreground/background and refined by a regressed offset. This had become the de facto recipe, and it works, but it drags in a cluster of problems that all trace back to the anchors themselves. The detection accuracy is highly sensitive to the anchor hyper-parameters (the chosen sizes, aspect ratios, and count) — on COCO, tuning these alone moves RetinaNet by up to ~4% AP. Because anchor shapes are fixed, a detector struggles with object shapes outside the designed range, and the anchors must be redesigned for each new task or domain. To hit high recall, anchors must be tiled extremely densely (>180K for an 800-px-shorter-side image with FPN), almost all of them negative, which aggravates the foreground/background imbalance. And matching anchors to ground truth at train time requires computing IoU between every anchor and every box.
 
-Every other dense-prediction task — semantic segmentation, depth, keypoints — is solved cleanly by a fully convolutional network (FCN) that makes a per-pixel prediction and computes all convolutions once over the image. Detection is the lone holdout, kept apart from that neat per-pixel paradigm essentially because of the anchor machinery. The precise question: **can detection be done as per-pixel prediction, FCN-style, with no anchors and no proposals at all — and still match or beat anchor-based detectors?** A solution would have to recover the recall that dense anchors buy, resolve the ambiguity that arises when one location sits inside several overlapping ground-truth boxes, and somehow suppress the flood of poorly-localized boxes that a naive per-pixel regressor produces — all without reintroducing anchor hyper-parameters.
+Every other dense-prediction task — semantic segmentation, depth, keypoints — is solved cleanly by a fully convolutional network (FCN) that makes a per-pixel prediction and computes all convolutions once over the image. Detection is the lone holdout, kept apart from that neat per-pixel paradigm essentially because of the anchor machinery. The precise question: **can detection be done as per-pixel prediction, FCN-style, with no anchors and no proposals at all, while preserving the recall and localization quality that made dense anchors attractive?** A solution would have to recover the recall that dense anchors buy, resolve the ambiguity that arises when one location sits inside several overlapping ground-truth boxes, and somehow suppress the flood of poorly-localized boxes that a naive per-pixel regressor produces — all without reintroducing anchor hyper-parameters.
 
 ## Background
 
@@ -16,11 +16,11 @@ The field rests on two lines: anchor-based detection and the fully-convolutional
 
 **Focal loss / RetinaNet (Lin et al. 2017).** RetinaNet is a one-stage anchor detector on FPN whose central insight is that the extreme foreground/background imbalance from dense anchors swamps the cross-entropy loss with easy negatives. Focal loss down-weights easy examples: FL(p_t) = −(1−p_t)^γ log(p_t), with γ=2 and an α balancing term, applied to per-anchor binary classifiers. RetinaNet's head is two parallel four-conv towers (one for classification, one for box regression) shared across pyramid levels. It is the anchor-based detector to beat, and its training/testing protocol is the natural yardstick.
 
-**IoU loss / UnitBox (Yu et al. 2016).** Instead of regressing box coordinates with smooth-L1 on each side independently, UnitBox regresses the four distances (left, top, right, bottom) from a pixel to the box sides and optimizes the IoU between the predicted and ground-truth box directly as a unit, which respects the fact that the four coordinates jointly define one box. This is the natural regression loss for a per-pixel distance parameterization.
+**IoU loss / UnitBox (Yu et al. 2016).** Instead of regressing box coordinates with smooth-L1 on each side independently, UnitBox regresses the four distances (left, top, right, bottom) from a pixel to the box sides and optimizes the IoU between the predicted and ground-truth box directly as a unit, which respects the fact that the four coordinates jointly define one box.
 
 **Diagnostic facts about per-pixel detection that were already known.** DenseBox (Huang et al. 2015) and its descendants (e.g. UnitBox) already predicted, at each spatial location, a 4D vector (the offsets to the four box sides) plus a class score — exactly the FCN-style per-pixel detection idea. But these methods were considered unsuitable for *generic* detection for two empirically-observed reasons. (1) To handle different box sizes, DenseBox cropped and resized training images to a fixed scale, forcing detection on an image pyramid — which violates the FCN philosophy of computing all convolutions once. (2) When ground-truth boxes overlap, a location inside several of them has no well-defined regression target — an intractable ambiguity that was believed to break per-pixel detection on crowded generic scenes. As a result these methods were confined to specialized domains (scene-text, face detection), where overlap is rare. A separate concern was recall: with a large output stride, it seemed a per-pixel detector might be unable to recall objects that no feature location lands inside (the best-possible-recall worry).
 
-**YOLOv1 (Redmon et al. 2016)** is the best-known anchor-free detector: it predicts boxes only at locations near each object's center, on a coarse grid. Using only near-center points was meant to yield higher-quality boxes, but it caps recall — which is why YOLOv2 added anchors. This is the key clue that *which* foreground locations a detector trains on, and how many, trades off recall against box quality.
+**YOLOv1 (Redmon et al. 2016)** is the best-known anchor-free detector: it predicts boxes only at locations near each object's center, on a coarse grid. Using only near-center points was meant to yield higher-quality boxes, but it caps recall — which is why YOLOv2 added anchors.
 
 ## Baselines
 
@@ -38,7 +38,7 @@ The field rests on two lines: anchor-based detection and the fully-convolutional
 - **Backbones:** ResNet-50 / ResNet-101 (ImageNet-pretrained), with stronger variants (ResNeXt-101) for the high-end comparison.
 - **Training protocol (matching the anchor-based yardstick):** SGD, 90K iterations, base learning rate 0.01 with a mini-batch of 16 images, divided by 10 at 60K and 80K; weight decay 1e-4, momentum 0.9. Input shorter side 800, longer side ≤1333. The detection head uses Group Normalization in its conv towers for stable training.
 - **Post-processing:** per-level score threshold (e.g. 0.05) then non-maximum suppression.
-- **Diagnostics of interest** (pre-method, about the per-pixel idea itself): best-possible-recall (the upper bound on recall a sample-assignment can achieve) and the fraction of locations that are ambiguous (inside more than one ground-truth box).
+- **Diagnostics of interest:** best-possible-recall (the upper bound on recall a sample-assignment can achieve) and the fraction of locations that are ambiguous (inside more than one ground-truth box).
 
 ## Code framework
 
@@ -47,13 +47,6 @@ The primitives already exist: a backbone CNN producing C3/C4/C5, an FPN producin
 ```python
 import torch
 import torch.nn as nn
-
-class Scale(nn.Module):
-    def __init__(self, init_value=1.0):
-        super().__init__()
-        self.scale = nn.Parameter(torch.tensor(init_value, dtype=torch.float))
-    def forward(self, x):
-        return x * self.scale
 
 class DetectionHead(nn.Module):
     """Shared head applied to every FPN level. Two conv towers feed

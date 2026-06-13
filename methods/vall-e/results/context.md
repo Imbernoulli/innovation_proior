@@ -1,6 +1,6 @@
 # Context
 
-The goal is **zero-shot text-to-speech**: given the text to speak and a *short* recording of a target speaker never seen in training, synthesize that text in that speaker's voice — preserving timbre, prosody, even the acoustic environment — without any per-speaker fine-tuning, speaker-embedding extractor, or hand-designed adaptation. This is the landscape as it stands at the end of 2022, before the method below.
+The goal is **zero-shot text-to-speech**: given the text to speak and a *short* recording of a target speaker never seen in training, synthesize that text in that speaker's voice — preserving timbre, prosody, even the acoustic environment — without any per-speaker fine-tuning, speaker-embedding extractor, or hand-designed adaptation. This is the landscape as it stands at the end of 2022.
 
 ## Research question
 
@@ -22,9 +22,9 @@ Two currents converge here: the scaling lesson from text language models, and th
 
 **Why mel-spectrograms block this.** Regression on continuous mel frames (L1/L2) is sensitive to data quality and spends modeling capacity on short-range continuous structure; it does not benefit from — and is destabilized by — large noisy corpora. To borrow the language-model recipe, speech needs to become a sequence of **discrete tokens**, like text.
 
-**Speech quantization, and why neural codec codes win.** Audio is stored as 16-bit samples (65,536 values) at >10 kHz — far too long and high-cardinality to model directly. μ-law (WaveNet) quantizes amplitude to 256 values but does not shorten the sequence, so AR synthesis stays slow. Self-supervised discrete units (vq-wav2vec, HuBERT k-means codes) reconstruct *content* and shorten sequences, but discard speaker identity and reconstruct at low quality. **Neural audio codec codes** (the residual-vector-quantization codes of EnCodec, used as the tokenizer here) are the right representation: they (1) retain abundant speaker and acoustic information, so reconstruction preserves identity even for unseen speakers; (2) come with an off-the-shelf decoder to a high-quality waveform, no separate vocoder training; and (3) shorten the sequence (320× downsampling → 75 Hz).
+**Speech quantization, and why neural codec codes win.** Audio is stored as 16-bit samples (65,536 values) at >10 kHz — far too long and high-cardinality to model directly. μ-law (WaveNet) quantizes amplitude to 256 values but does not shorten the sequence, so AR synthesis stays slow. Self-supervised discrete units (vq-wav2vec, HuBERT k-means codes) reconstruct *content* and shorten sequences, but discard speaker identity and reconstruct at low quality. **Neural audio codec codes** from EnCodec's residual vector quantizer are the right representation: they (1) retain abundant speaker and acoustic information, so reconstruction preserves identity even for unseen speakers; (2) come with an off-the-shelf decoder to a high-quality waveform, no separate vocoder training; and (3) shorten the sequence (320× downsampling → 75 Hz).
 
-**The structure of RVQ codes — load-bearing.** EnCodec encodes each frame as `N_q=8` codes (for the 6 kbps, 24 kHz setting) from a residual vector quantizer: the first codebook captures the dominant acoustic content (including speaker identity), and each subsequent codebook models the residual the previous ones missed — so importance decreases down the hierarchy. A 10-second clip becomes a `750 × 8` matrix of codes (`750 = 24000·10/320`). This hierarchy is the hook a model can exploit: the codebooks are *ordered*, the first matters most, and codebook `j` depends on codebooks `< j`.
+**The structure of RVQ codes — load-bearing.** EnCodec encodes each frame as `N_q=8` codes (for the 6 kbps, 24 kHz setting) from a residual vector quantizer: the first codebook captures the dominant acoustic content (including speaker identity), and each subsequent codebook models the residual the previous ones missed — so importance decreases down the hierarchy. A 10-second clip becomes a `750 × 8` matrix of codes (`750 = 24000·10/320`). The codebooks are *ordered*: the first carries the dominant content, and codebook `j` models the residual left by codebooks `< j`.
 
 **AudioLM — the immediate ancestor.** AudioLM trains language models over both self-supervised semantic tokens and neural-codec acoustic tokens to do high-quality **speech-to-speech** continuation, demonstrating that LM-style modeling of codec tokens yields natural audio and needs no separately trained vocoder. *Limitation:* it is speech-to-speech (continuation/conditioned on audio), with no explicit text control — you cannot tell it *what* to say.
 
@@ -50,12 +50,12 @@ Two currents converge here: the scaling lesson from text language models, and th
 
 ## Code framework
 
-The pre-method scaffold is a discrete-token TTS harness: text→phonemes, audio→codec tokens via a pretrained codec, a generic conditional sequence model over those tokens, and a codec decoder back to waveform. The codec, phonemizer, embeddings, Transformer layers, and cross-entropy loss already exist; the *modeling structure over the multi-codebook token matrix* is the empty slot.
+The scaffold is a discrete-token TTS harness: text→phonemes, audio→codec tokens via a pretrained codec, a generic conditional sequence model over those tokens, and a codec decoder back to waveform. The codec, phonemizer, embeddings, Transformer layers, and cross-entropy loss already exist; the *modeling structure over the multi-codebook token matrix* is the empty slot.
 
 ```python
 import torch, torch.nn as nn
 
-# --- given, pre-method primitives ---
+# --- available primitives ---
 phonemize = ...                       # text -> phoneme id sequence
 codec = PretrainedNeuralCodec(...)    # waveform -> code matrix [T, Q]; codes -> waveform
 N_CODEBOOKS = 8
@@ -67,7 +67,7 @@ class TTSModel(nn.Module):
     def __init__(self, d_model=1024, nhead=16, nlayers=12, d_ff=4096):
         super().__init__()
         self.phoneme_emb = nn.Embedding(N_PHONEMES, d_model)
-        # TODO: how to model the [T, Q] code matrix -- the decomposition we will design
+        # TODO: how to model the [T, Q] code matrix
         pass
 
     def forward(self, phonemes, prompt_codes, target_codes=None):

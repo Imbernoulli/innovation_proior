@@ -20,7 +20,7 @@ where `exp` is elementwise and `1_L` is the all-ones vector. Row `i` of the outp
 
 **Orthogonal random features.** Yu et al. (2016) observed that if the sampling distribution is isotropic, one can entangle the `m` random vectors `ω_i` to be **exactly orthogonal** (e.g. by Gram-Schmidt on a Gaussian block) while leaving each marginal distribution unchanged. This keeps the estimator unbiased but reduces its variance versus independent sampling. Prior guarantees for this variance reduction were asymptotic — they held only for large enough dimension `d`.
 
-**Diagnostic facts about cheap-attention attempts.** Two observations about existing approximations set up the problem. First, methods that swap softmax for an arbitrary feature map `φ(q)ᵀφ(k)` (e.g. `φ = elu(·)+1`) to get linear cost are observed to train unstably — exploding gradients and `NaN` losses — because nothing keeps the implied attention scores well-behaved. Second, a kernel estimator that can take **negative** values is dangerous here specifically because the attention rows are convex combinations: a negative or near-zero estimate of a small score, fed through the normalizer `D⁻¹`, can produce negative or blown-up denominators. The many genuinely small entries of `A` (low-relevance token pairs) are exactly where a high-relative-variance estimator does the most damage.
+**Diagnostic facts about cheap-attention attempts.** One observation about existing approximations sets up the problem: methods that swap softmax for an arbitrary feature map `φ(q)ᵀφ(k)` (e.g. `φ = elu(·)+1`) to get linear cost are observed to train unstably — exploding gradients and `NaN` losses — even when the underlying associativity that buys the linear cost is implemented correctly.
 
 ## Baselines
 

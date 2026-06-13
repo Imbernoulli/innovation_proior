@@ -12,7 +12,7 @@ $$\arg\min_{\widehat{\mathbf{W}}}\ \lVert \mathbf{W}\mathbf{X} - \widehat{\mathb
 
 The grid (the set of representable quantized values) is fixed in advance; individual weights are then free to take any grid value. This objective decomposes over the rows of $\mathbf{W}$: each output channel is an independent least-squares-with-rounding problem sharing the same input statistics.
 
-**Second-order weight selection (the OBS/OBD lineage).** The classical Optimal Brain Damage / Optimal Brain Surgeon framework asks, for a quadratic loss, which single parameter can be removed (or here, rounded) with least increase in loss, and how to update the remaining parameters to compensate. For the layer-wise quadratic above, the Hessian with respect to a row of weights is $\mathbf{H} = 2\mathbf{X}\mathbf{X}^\top$. OBS gives a closed form: rounding weight $q$ to its grid value costs $(\mathrm{quant}(w_q)-w_q)^2 / [\mathbf{H}^{-1}]_{qq}$, and the optimal compensating update to the still-free weights is proportional to the $q$-th column of $\mathbf{H}^{-1}$. After fixing a weight, the row/column for $q$ is deleted from $\mathbf{H}$, and the inverse can be updated in place by one step of Gaussian elimination rather than re-inverted.
+**Second-order weight selection (the OBS/OBD lineage).** The classical Optimal Brain Damage / Optimal Brain Surgeon framework asks, for a quadratic loss, which single parameter can be removed (or here, rounded) with least increase in loss, and how to update the remaining parameters to compensate. For the layer-wise quadratic above, the Hessian with respect to a row of weights is $\mathbf{H} = 2\mathbf{X}\mathbf{X}^\top$. OBS gives a closed form: snapping weight $q$ to its grid value adds $\frac{1}{2}(\mathrm{quant}(w_q)-w_q)^2 / [\mathbf{H}^{-1}]_{qq}$ to the quadratic loss, so the greedy selection score can drop the constant $\frac{1}{2}$ and minimize $(\mathrm{quant}(w_q)-w_q)^2 / [\mathbf{H}^{-1}]_{qq}$. The optimal compensating update to the still-free weights is proportional to the $q$-th column of $\mathbf{H}^{-1}$. After fixing a weight, the row/column for $q$ is deleted from $\mathbf{H}$, and the inverse can be updated in place by one step of Gaussian elimination rather than re-inverted.
 
 **Optimal Brain Quantization (OBQ).** OBQ applies this iteratively to quantization: within each row, repeatedly pick the *next* weight to quantize as the one with smallest such error, round it, push the compensating update onto the remaining free weights, shrink $\mathbf{H}^{-1}$, repeat until the whole row is quantized. It produces strong PTQ accuracy on vision models up to ~100M parameters. The cost is the problem: the per-weight inverse update over a $d_{\text{row}}\times d_{\text{col}}$ matrix gives runtime $O(d_{\text{row}}\cdot d_{\text{col}}^3)$ — cubic in the column count — because each row chooses its own quantization order and therefore maintains its own evolving $\mathbf{H}^{-1}$. At billions of parameters this is hopeless.
 
@@ -33,11 +33,11 @@ The grid (the set of representable quantized values) is fixed in advance; indivi
 # Evaluation settings
 
 - **Models.** The OPT family (125M → 175B) and the BLOOM family (560M → 176B); smaller sanity checks on ResNet-18/50 (standard vision PTQ benchmarks) and BERT-base.
-- **Calibration data.** A small generic set — 128 segments of 2048 tokens sampled from the C4 web-crawl corpus — with no task-specific data, so results stay zero-shot.
+- **Calibration data.** A small generic set — 128 segments of 2048 tokens sampled from the C4 web-crawl corpus — with no task-specific data, so evaluation stays zero-shot.
 - **Metric.** Perplexity, known to be an especially stringent and quantization-sensitive measure, computed on WikiText-2, Penn Treebank, and C4 by concatenating each validation set, splitting into non-overlapping windows of the model's full 2048-token context, and exponentiating the average next-token negative log-likelihood. Plus zero-shot accuracy on LAMBADA, ARC (Easy/Challenge), and PIQA via the standard LM-evaluation-harness preprocessing.
 - **Bit-widths.** 4, 3, and the extreme regime (2-bit and ternary, with grouping).
 - **Protocol.** Quantize on a single A100-80GB; load one Transformer block at a time, accumulate that block's layer Hessians from calibration activations, quantize the block, then re-run the calibration inputs through the now-quantized block to produce inputs for the next block.
-- **Systems.** PyTorch with HuggingFace model integrations; timing under a HuggingFace-accelerate-style layer-sharded setup where inter-GPU communication is <5% of runtime.
+- **Systems.** PyTorch with HuggingFace model integrations; one loaded Transformer block at a time for quantization; generation timing uses quantized-weight/full-precision-vector kernels with full-precision activations.
 
 # Code framework
 
@@ -53,7 +53,8 @@ def quantize_to_grid(w, scale, zero, maxq):
 
 class Quantizer:
     # fits a per-row asymmetric min-max grid from observed weight ranges
-    def find_params(self, w): ...
+    def ready(self): ...
+    def find_params(self, w, weight=True): ...
     def quantize(self, w): ...
 
 class LayerCompressor:
@@ -63,17 +64,17 @@ class LayerCompressor:
         self.layer = layer
         self.W = layer.weight.data.clone().float()
         self.d_row, self.d_col = self.W.shape
-        self.H = torch.zeros((self.d_col, self.d_col))  # input second moment
+        self.H = torch.zeros((self.d_col, self.d_col))  # scaled input second moment
         self.nsamples = 0
 
-    def add_batch(self, inp):
+    def add_batch(self, inp, out=None):
         # TODO: accumulate the (scaled) input second moment that defines the
         #       layer-wise reconstruction Hessian
         pass
 
-    def compress(self, quantizer, blocksize=128, percdamp=0.01):
-        # TODO: the contribution — turn self.H and self.W into quantized weights
-        #       that minimize ||WX - WhatX||^2, scalably, in one shot
+    def compress(self, quantizer, **kwargs):
+        # TODO: turn self.H and self.W into quantized weights that minimize
+        #       ||WX - WhatX||^2 at large scale in one shot
         pass
 
 # driver: load one transformer block, register hooks that feed add_batch,

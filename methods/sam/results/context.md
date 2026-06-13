@@ -16,7 +16,7 @@ The question is whether the training procedure itself can be made to seek out pa
 
 **PAC-Bayes generalization bounds.** PAC-Bayes (McAllester, 1999) bounds the expected population loss of a *stochastic* predictor — one whose weights are drawn from a posterior distribution `Q` — in terms of its expected training loss plus a complexity term `sqrt((KL(Q‖P) + log(n/δ)) / (2(n−1)))`, where `P` is a data-independent prior. Dziugaite & Roy (2017) and Neyshabur et al. (2017) instantiated this for neural networks by taking `P` and `Q` to be Gaussians centered at the origin and at the trained weights `w`. The key consequence: the bound's training term becomes the loss *averaged over Gaussian perturbations of the weights*, `E_{ε∼N(0,σ²I)}[L_S(w+ε)]`, which is large exactly when the loss surface around `w` is sharp. The bound thus formally ties a perturbed-loss quantity to the population loss, but it is a bound, not an algorithm, and the perturbation is averaged (random), not worst-case.
 
-**First-order treatment of a worst-case perturbation.** A separate body of work, on robustness to adversarial *input* perturbations (Goodfellow et al., 2015, the fast gradient sign method), shows that the worst-case perturbation inside a norm ball, `argmax_{‖δ‖≤ρ} L(x+δ)`, has a simple closed-form first-order solution: linearize the loss in `δ` and the constrained maximizer is `ρ` times the (signed) normalized gradient. This is a known tool for solving an inner maximization over a small ball cheaply, in the input space.
+**Adversarial input perturbations.** A separate body of work studies robustness to adversarial *input* perturbations (Goodfellow et al., 2015, the fast gradient sign method): given a fixed network, one searches for a small bounded perturbation `δ` of the *input* `x` that maximizes the loss, `argmax_{‖δ‖≤ρ} L(x+δ)`, to expose or harden against worst-case inputs. This is a line of work about input-space robustness, established independently of any training-geometry objective.
 
 **Stochastic gradient descent.** The base procedure throughout is minibatch SGD (Robbins & Monro, 1951): sample a batch, compute the gradient of the batch loss by backpropagation, step `w ← w − η g`. Momentum, weight decay, and learning-rate schedules (e.g. cosine decay) are standard add-ons. Whatever new objective is proposed must ultimately be reducible to "compute a gradient, hand it to SGD/Adam."
 
@@ -30,7 +30,7 @@ The question is whether the training procedure itself can be made to seek out pa
 
 - **Weight averaging (SWA, Izmailov et al., 2018).** Rather than penalize sharpness, average the weights visited along an SGD trajectory; the average tends to sit in a flatter region and generalizes better. Gap: it does not *optimize* a sharpness objective — flatness is an incidental consequence of averaging — and it offers no per-step signal pushing the iterate toward flat regions.
 
-- **Random/Gaussian weight perturbation.** Inject Gaussian noise into the weights during training (related to the PAC-Bayes posterior). Gap: averaging over *random* perturbations is a weak proxy for the *worst-case* increase that actually measures sharpness; it controls the average rather than the peak of the local loss.
+- **Random/Gaussian weight perturbation.** Inject Gaussian noise into the weights during training (related to the PAC-Bayes posterior). Gap: the perturbations are sampled at random and their effect is averaged, so the procedure controls an average over a randomized neighborhood rather than acting on any directed feature of the local loss surface.
 
 ## Evaluation settings
 
@@ -40,18 +40,17 @@ The natural yardsticks are standard supervised image-classification benchmarks a
 - **Models:** WideResNet (with Shake-Shake), PyramidNet (with ShakeDrop), ResNet-{50,101,152}, EfficientNet-{b7,L2}; smaller ResNets for diagnostics.
 - **Augmentation regimes:** basic (flip / pad / crop), Cutout, and AutoAugment.
 - **Metric:** top-1 (and top-5 on ImageNet) test error / accuracy, reported as mean and 95% confidence interval over several independent replicas.
-- **Protocol notes:** a procedure that costs two gradient evaluations per step should be compared against a baseline allowed twice as many epochs, to equalize gradient-computation budget. Diagnostics include the Hessian eigenvalue spectrum at convergence (approximated by the Lanczos algorithm) as a direct readout of sharpness.
+- **Protocol notes:** if a procedure costs more gradient evaluations per step than the baseline, it should be compared against a baseline allowed proportionally more epochs, to equalize gradient-computation budget. Diagnostics include the Hessian eigenvalue spectrum at convergence (approximated by the Lanczos algorithm) as a direct readout of sharpness.
 
 ## Code framework
 
-The primitives that already exist: a data pipeline yielding minibatches, a model with a per-batch loss, automatic differentiation for gradients, and a base optimizer (SGD with momentum, or Adam) that consumes a gradient and applies an update. The new procedure occupies the slot between "we have a batch gradient" and "we apply an update." A natural way to express it is as a wrapper around the base optimizer that intervenes in the update step; the training loop then needs whatever extra forward/backward passes the new update requires, which we expose through a closure.
+The primitives that already exist: a data pipeline yielding minibatches, a model with a per-batch loss, automatic differentiation for gradients, and a base optimizer (SGD with momentum, or Adam) that consumes a gradient and applies an update. The new procedure occupies the slot between "we have a batch gradient" and "we apply an update." A natural way to express it is as a wrapper around the base optimizer; to allow more general update rules, the training loop exposes the forward/backward as a closure that the optimizer may invoke.
 
 ```python
 import torch
 
 class GeometryAwareOptimizer(torch.optim.Optimizer):
-    """Wraps a base optimizer; intervenes in how the descent step is computed.
-    Pre-method scaffold: the update rule itself is the slot to be filled."""
+    """Wraps a base optimizer; the update rule is the slot to be filled."""
     def __init__(self, params, base_optimizer, **kwargs):
         defaults = dict(**kwargs)
         super().__init__(params, defaults)
@@ -59,21 +58,8 @@ class GeometryAwareOptimizer(torch.optim.Optimizer):
         self.param_groups = self.base_optimizer.param_groups
 
     @torch.no_grad()
-    def pre_step(self, zero_grad=False):
-        # TODO: from the gradient currently stored on the params, decide how
-        # (if at all) to move the parameters before recomputing a gradient.
-        raise NotImplementedError
-        if zero_grad: self.zero_grad()
-
-    @torch.no_grad()
-    def apply_step(self, zero_grad=False):
-        # TODO: produce the final descent step and hand it to the base optimizer.
-        raise NotImplementedError
-        if zero_grad: self.zero_grad()
-
-    @torch.no_grad()
     def step(self, closure=None):
-        # TODO: orchestrate however many forward/backward passes the rule needs.
+        # TODO: define the update rule here.
         raise NotImplementedError
 
 
@@ -87,7 +73,6 @@ def train_step(model, batch, optimizer, loss_fn):
         return loss
 
     # standard baseline would be: closure(); optimizer.step()
-    # the new procedure may need closure() to be re-callable (see step()).
     loss = closure()
     optimizer.step(closure)
     return loss

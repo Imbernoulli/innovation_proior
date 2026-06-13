@@ -25,11 +25,10 @@ low `k` bits of `T`, and exact division by `R` is a right shift. This creates a
 promising direction: choose a radix `R` that is coprime to `N`, make `R > N`, and
 try to arrange the reduction so the only division left is by `R`.
 
-The required algebraic primitive is already available. Since `N` is odd and
+The relevant algebraic primitive is already available. Since `N` is odd and
 `R` is a power of two, `gcd(N, R) = 1`, so extended Euclid gives inverses modulo
-both `N` and `R`. If a reduction step can add a multiple of `N` to a product so
-that the sum becomes divisible by `R`, the quotient can be obtained by shifting
-while the value modulo `N` remains unchanged.
+both `N` and `R`. Whether those inverses can be turned into a reduction that
+avoids dividing by `N` is the open question.
 
 Repeated modular multiplication is the setting that makes a representation
 change worthwhile. RSA exponentiation, Pollard-style factoring methods, and

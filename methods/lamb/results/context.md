@@ -18,7 +18,7 @@ The problem is that this promise does not hold naively. At a fixed number of tra
 
 **Nonconvex first-order guarantees.** The yardstick for an optimizer on a smooth nonconvex objective `f` is how fast the expected gradient norm `E‖∇f(x)‖²` shrinks toward zero (a stationary point). For SGD with a large batch `b = T` and an appropriate constant step, Ghadimi & Lan (2013) give
 `E‖∇f(x_a)‖² ≤ O((f(x_1) − f*)·L_∞ / T + ‖σ‖² / T)`,
-where `x_a` is a uniformly random iterate, `σ` collects the per-coordinate gradient standard deviations, and `L_∞ = max_i L_i` is the **largest** per-layer smoothness constant. The dependence on `L_∞` is pessimistic: a single badly-conditioned layer sets the rate for the whole network. An optimizer whose rate depended on the *average* smoothness `L_avg = (1/h) Σ_i L_i` instead would be provably better whenever curvature is uneven across layers.
+where `x_a` is a uniformly random iterate, `σ` collects the per-coordinate gradient standard deviations, and `L_∞ = max_i L_i` is the **largest** per-layer smoothness constant. The dependence on `L_∞` is pessimistic: a single badly-conditioned layer sets the rate for the whole network, even when most layers are far better conditioned.
 
 ## Baselines
 
@@ -28,11 +28,11 @@ where `x_a` is a uniformly random iterate, `σ` collects the per-coordinate grad
 
 **Linear / square-root learning-rate scaling with warmup.** Not an optimizer but the standard recipe wrapped around SGD: scale `η` with batch size (linearly per Goyal et al. 2017, or as `√b` per the variance argument) and ramp `η` up over the first few epochs. Lets a deep image classifier reach a batch of 8192. Limitation (Shallue et al., 2018): the recipe is problem-specific and breaks beyond its tuned ceiling.
 
-**Layerwise-trust-ratio momentum (You et al., 2017).** The key reaction point. Instead of one global `η`, give every layer `i` its own effective learning rate set by the ratio of its weight norm to its update norm. With momentum `m_t` as the base step,
+**Layerwise-trust-ratio momentum (You et al., 2017).** A published large-batch method. Instead of one global `η`, it gives every layer `i` its own effective learning rate set by the ratio of its weight norm to its update norm. With momentum `m_t` as the base step,
 `x_{t+1}^(i) = x_t^(i) − η_t · (φ(‖x_t^(i)‖) / ‖m_t^(i)‖) · m_t^(i)`,
-where `φ` is a (typically clipped-identity) scaling function. The multiplier `φ(‖x^(i)‖)/‖m^(i)‖` makes the per-layer step proportional to the weight norm, decoupling the global `η` from each layer's geometry; with `φ(z)=z` the multiplier is `‖x^(i)‖/‖m^(i)‖`, readable as a per-layer estimate of `1/L_i`. This trained a deep image classifier at a batch of 32k in minutes. Limitations: (1) **no convergence theory** — the adaptation is a heuristic; (2) the gains **do not transfer to attention/language models**, where this momentum-based layerwise scheme trains poorly and diverges at the largest batches — precisely the regime where per-coordinate (Adam-style) adaptivity is known to matter.
+where `φ` is a (typically clipped-identity) scaling function. The multiplier `φ(‖x^(i)‖)/‖m^(i)‖` makes the per-layer step proportional to the weight norm; with `φ(z)=z` the multiplier is `‖x^(i)‖/‖m^(i)‖`. This trained a deep image classifier at a batch of 32k in minutes. Limitations: (1) **no convergence theory** — the adaptation is a heuristic; (2) the gains **do not transfer to attention/language models**, where this momentum-based layerwise scheme trains poorly and diverges at the largest batches.
 
-**signSGD (Bernstein et al., 2018).** Steps along `sign(g_t)` coordinatewise. Its nonconvex analysis introduces a useful device: comparing a sign/normalized method against SGD through *density* quantities — how concentrated the gradient is versus the curvature and the noise — and a bound on the probability that a stochastic gradient's sign disagrees with the true gradient's sign, `P(sign g_j ≠ sign ∇f_j) ≤ σ_j / (√b · |∇f_j|)`, which follows from the bounded gradient variance. This is the analytic template for bounding a normalized, layerwise update.
+**signSGD (Bernstein et al., 2018).** Steps along `sign(g_t)` coordinatewise. Its nonconvex analysis introduces a useful device: comparing a sign/normalized method against SGD through *density* quantities — how concentrated the gradient is versus the curvature and the noise — and a bound on the probability that a stochastic gradient's sign disagrees with the true gradient's sign, `P(sign g_j ≠ sign ∇f_j) ≤ σ_j / (√b · |∇f_j|)`, which follows from the bounded gradient variance.
 
 ## Evaluation settings
 
@@ -40,19 +40,17 @@ The natural yardsticks already exist before any new optimizer. **Language model 
 
 ## Code framework
 
-The primitives that already exist: a data pipeline yielding mini-batches, autodiff giving per-parameter gradients, and a base optimizer abstraction that maintains per-parameter state and applies an update. The training loop is standard. What does not yet exist is the optimizer that adapts the step per layer for the large-batch regime — that is the single empty slot below.
+The primitives that already exist: a data pipeline yielding mini-batches, autodiff giving per-parameter gradients, and a base optimizer abstraction that maintains per-parameter state and applies an update. The training loop is standard. The optimizer for the large-batch regime is the single empty slot below.
 
 ```python
 import torch
 from torch.optim import Optimizer
 
 class LargeBatchOptimizer(Optimizer):
-    """Per-parameter optimizer for the large-batch regime.
+    """Optimizer for the large-batch regime.
 
-    Maintains base-optimizer moment state per parameter, forms a per-parameter
-    update from it, then rescales each parameter-group ("layer") step using that
-    layer's own geometry so a single global learning rate is decoupled from
-    per-layer scale. The body is the contribution.
+    Maintains per-parameter state and applies an update. The body is the
+    contribution.
     """
     def __init__(self, params, lr, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
@@ -65,10 +63,7 @@ class LargeBatchOptimizer(Optimizer):
                     continue
                 g = p.grad.data
                 state = self.state[p]
-                # TODO: initialize / update base-optimizer moment state from g
-                # TODO: form the per-parameter update direction from the state
-                # TODO: rescale this layer's step from its own geometry
-                # TODO: apply the update to p
+                # TODO: compute and apply the update for this parameter
                 pass
         return closure() if closure is not None else None
 

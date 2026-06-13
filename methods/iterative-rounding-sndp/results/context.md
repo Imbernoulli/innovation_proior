@@ -16,9 +16,9 @@ edges proves feasibility, but gives no useful cost guarantee.
 
 The defining technical obstacle: the natural lower bound on `OPT` is a linear program with one
 constraint per cut of the graph — exponentially many constraints — and the gap between that LP and
-the integer optimum is what any rounding must overcome. We need a structural handle on the *vertices*
-of that LP polytope strong enough to convert a fractional solution into an integral one while losing
-only a constant factor, uniformly in the requirements.
+the integer optimum is what any rounding must overcome. Converting a fractional solution of that LP
+into an integral one while losing only a constant factor, uniformly in the requirements, demands some
+structural control over the relaxation that prior art has not supplied.
 
 ## Background
 
@@ -69,20 +69,17 @@ of the LP polytope.
 **Linear programming relaxations and extreme points.** Relaxing the integral choice `x_e in {0,1}` to
 `x_e in [0,1]` gives a covering LP. Its optimum lower-bounds `OPT`. A *basic feasible solution*
 (extreme point / vertex) of a polytope in `R^E` is the unique solution of some `|E|` linearly
-independent tight constraints, including active variable bounds if any. For the structural rounding
-argument, zero-valued variables are deleted from the support and a variable already at `1` is already
-a rounding edge, so the hard case is pinned by tight cut rows alone. Extreme points are the objects
+independent tight constraints, including active variable bounds if any. Extreme points are the objects
 whose support structure can be controlled — a generic optimal point need not have any nice coordinate,
-but a vertex does, and LP solvers can be made to return a vertex. The governing prior fact is that for
-covering an exponentially-large family of cut constraints, the tight constraints at a vertex can be
-*uncrossed* into a laminar family (no two sets properly overlap), and a laminar family on `n`
-vertices has at most `2n - 1` sets — a strong combinatorial restriction.
+but a vertex does, and LP solvers can be made to return a vertex. With exponentially many cut
+constraints, the only handle on a vertex is the family of cut rows that are tight there, and what
+structure that tight family can be forced to have is exactly what an integrality argument must pin
+down.
 
 **Laminar families and their forests.** A family `L` of subsets of `V` is laminar if any two members
 are disjoint or nested. Such a family is naturally a rooted forest: `C` is a child of `S` if `C` is
-the largest member strictly inside `S`. Leaves, internal nodes, and "endpoints owned by a set" (an
-edge endpoint whose smallest containing member is `S`) are the bookkeeping primitives for any
-counting argument over `L`.
+the largest member strictly inside `S`, and a laminar family on `n` vertices has at most `2n - 1`
+members.
 
 ## Baselines
 
@@ -94,8 +91,8 @@ subgraph that is `(k-1)`-connected where required and runs a primal-dual `0/1` c
 buy a layer raising deficient pairs to `k`. Each phase is a `2`-approximation against the *residual*
 LP, but the phases stack, giving a total ratio of about `2 H(r_max) = 2 (1 + 1/2 + ... + 1/r_max)`.
 The gap it leaves open: the factor grows logarithmically in the maximum requirement `r_max`, because
-the analysis charges each connectivity layer separately rather than reasoning about the whole LP at
-once.
+the analysis charges each connectivity layer separately, accumulating one residual `2`-approximation
+per unit of connectivity.
 
 **Doubling-based bounds for uniform connectivity.** For the special case of `k`-edge-connected
 spanning subgraph (all `r(uv) = k`), one can take a fractional solution and exploit even-ness or
@@ -105,13 +102,14 @@ Steiner vertices (vertices that need not be connected to anything) and heterogen
 doubling a tree or a single fractional structure neither yields feasibility cheaply nor gives a
 constant independent of the requirements.
 
-**Threshold LP rounding.** A direct idea is to solve the covering LP and round up every edge with
-`x_e >= tau` for a fixed threshold `tau`. If such an edge is *guaranteed to exist* in the solution
-and `tau = 1/2`, rounding it loses only a factor `2` on that edge. The open question this leaves —
-and the entire crux of a requirement-independent guarantee — is whether some coordinate of a vertex
-solution is always at least `1/2`, for every nonzero weakly-supermodular residual cut LP. Naive
-instances show that an *arbitrary* optimal point can be `1/3`-ish everywhere; the question is
-specifically about extreme points.
+**Threshold LP rounding.** A direct idea is to solve the covering LP and round up every edge whose
+fractional value clears a fixed threshold `tau`, since an edge with `x_e >= tau` is rounded at a cost
+blow-up of only `1/tau` on that edge. Whether this buys anything depends entirely on how large a
+coordinate the relaxation can be forced to expose, and on whether rounding a few edges and re-solving
+actually drives the requirements down. Where this stalls in prior attempts: an arbitrary optimal point
+of the polytope carries no such guarantee — on highly symmetric instances the optimum face can contain
+a point that is `1/3`-ish on every coordinate, leaving a threshold above one third nothing to commit
+to.
 
 ## Evaluation settings
 
@@ -131,8 +129,7 @@ all pairs handled together via a Gomory-Hu tree (`n - 1` max-flow computations).
 
 The available pieces are a graph data structure with cuts and max-flow / min-cut, a Gomory-Hu tree
 routine for all-pairs min cuts, and a generic LP solver with a simplex/basic-solution interface for
-the currently generated cut relaxation. The residual LP has variables only on unfixed edges and
-constraints `x(delta_free(S)) >= f(S) - |delta_fixed(S)|`. The scaffold:
+the currently generated cut relaxation. The scaffold:
 
 ```python
 from itertools import combinations
@@ -161,8 +158,8 @@ def separation_oracle(x, free_edges, fixed_edges, V, r, tol=1e-7):
     # find a cut S with x(delta_free(S)) + |delta_fixed(S)| < f(S), or None
     pass  # TODO
 
-def solve_covering_lp_to_vertex(edges, V, r, fixed_edges, costs):
-    # add violated residual cut constraints until the LP solution satisfies every cut
+def solve_covering_lp(edges, V, r, fixed_edges, costs):
+    # add violated cut constraints until the LP solution satisfies every cut
     pass  # TODO
 
 def all_satisfied(V, fixed_edges, r):
@@ -170,10 +167,7 @@ def all_satisfied(V, fixed_edges, r):
 
 def cover_cut_requirements(V, edges, costs, r):
     F = set()
-    while not all_satisfied(V, F, r):
-        x = solve_covering_lp_to_vertex(edges, V, r, F, costs)
-        # TODO: choose which fractional coordinates become fixed edges
-        pass
+    # TODO
     return F
 
 def solution_cost(F, costs):

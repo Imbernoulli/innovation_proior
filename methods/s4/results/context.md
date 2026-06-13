@@ -74,12 +74,6 @@ The pre-existing primitives: PyTorch with autograd, an AdamW optimizer with cosi
 import torch
 import torch.nn as nn
 
-def cauchy_naive(v, z, w):
-    """Cauchy matrix-vector product: out_i = sum_n v_n / (z_i - w_n)."""
-    # TODO: a well-studied numerical primitive (FMM-based fast versions exist);
-    # the naive O(MN) form is enough to start.
-    pass
-
 class SequenceLayer(nn.Module):
     """A drop-in 1-D sequence-to-sequence map: (B, H, L) -> (B, H, L).
 

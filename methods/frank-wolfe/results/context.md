@@ -52,13 +52,13 @@ operation
 
   s = argmin_{s ∈ D} ⟨s, c⟩,
 
-a *linear-minimization oracle* (LMO), is exactly linear programming when D is a polytope given by
-linear constraints; it is the support function −Ω*_D(−c) of the set. On many structured domains the
-LMO is dramatically cheaper than projection: over an ℓ_p-ball it is closed-form (a single coordinate
-or a normalized vector, via Hölder duality); over the simplex it is "pick the smallest gradient
+minimizing a *linear* functional over D, is exactly linear programming when D is a polytope given by
+linear constraints; it is the support function −Ω*_D(−c) of the set. On the structured domains above
+it has closed forms or fast combinatorial routines: over an ℓ_p-ball it is closed-form (a single
+coordinate or a normalized vector, via Hölder duality); over the simplex it is "pick the smallest
 coordinate"; over the trace-norm ball it is a single top singular-vector pair; over the Birkhoff
 polytope it is the Hungarian assignment algorithm in O(n³); over a submodular polyhedron it is
-Edmonds' greedy algorithm in O(n log n). When a face of minimizers exists, the oracle can be
+Edmonds' greedy algorithm in O(n log n). When a face of minimizers exists, it can be
 tie-broken to return an extreme point.
 
 **The cost-of-projection observation.** The empirical/structural fact that motivates everything: on
@@ -70,11 +70,11 @@ constrained first-order method is the projection, the method is only as practica
 is cheap.
 
 **Caratheodory and sparse representations.** Any point of the convex hull of a set of vertices is a
-convex combination of at most n + 1 of them. A method that adds at most one vertex per step therefore
-represents its k-th iterate with at most k + 1 vertices; when the useful regime is k ≪ n, such an
-iterate is far sparser (or lower-rank) than a generic point of D. There is also a matching hardness
-floor: for f(x) = ‖x‖² on the simplex Δ_n, any x supported on k coordinates has f(x) − f(x*) ≥
-1/k − 1/n, so no one-atom-per-step scheme can do better than O(1/k) accuracy at sparsity k.
+convex combination of at most n + 1 of them, and a point that is a convex combination of only k ≪ n
+vertices is correspondingly sparse (or low-rank) relative to a generic point of D. There is also a
+hardness floor relating sparsity to accuracy: for f(x) = ‖x‖² on the simplex Δ_n, any x supported on
+k coordinates has f(x) − f(x*) ≥ 1/k − 1/n, so no scheme building its iterate from k vertices can do
+better than O(1/k) accuracy at sparsity k.
 
 ## Baselines
 
@@ -108,11 +108,9 @@ when D is only accessible through a linear oracle rather than an explicit constr
 
 **The original quadratic-programming setting.** Linear programming over polyhedra was, by the
 mid-1950s, solved efficiently by the simplex method, but minimizing a *quadratic* objective subject
-to linear inequality constraints had no comparably practical algorithm. The open problem was to
-solve a constrained convex quadratic program using only repeated linear-programming solves, so that
-the mature LP machinery (the simplex routine) could be reused on the nonlinear problem. **Gap it
-leaves open:** how to convert a quadratic objective into a sequence of LPs while staying feasible and
-provably approaching the optimum.
+to linear inequality constraints had no comparably practical algorithm. **Gap it
+leaves open:** the mature, efficient LP machinery does not apply directly to a nonlinear (quadratic)
+objective, and no practical algorithm for the constrained-quadratic case had emerged from it.
 
 ## Evaluation settings
 
@@ -153,18 +151,13 @@ class SmoothConvexObjective:
         raise NotImplementedError
 
 class FeasibleSet:
-    """The compact convex constraint set D. Exposes the oracle(s) D can support cheaply.
+    """The compact convex constraint set D. Exposes whatever oracle(s) D can support.
 
     Euclidean projection is the classical primitive but may be as hard as the whole problem
-    on many D; a domain may instead only afford a *linear* oracle. Implementations fill in
-    whichever they can.
+    on many D. Implementations fill in whatever operations the domain affords.
     """
     def project(self, y):
         # argmin_{z in D} ||z - y||^2  -- may be expensive (QP / SVD) or unavailable.
-        raise NotImplementedError
-
-    def linear_oracle(self, c):
-        # argmin_{s in D} <s, c>  -- a linear program / support-function evaluation.
         raise NotImplementedError
 
 def step_size(k):
@@ -175,14 +168,11 @@ def minimize(objective: SmoothConvexObjective, domain: FeasibleSet, x0, max_iter
     """Outer loop: from x_k and grad f(x_k), produce the next FEASIBLE iterate x_{k+1}.
 
     The body is the open question. The classical fill-in is gradient-step-then-project.
-    A useful fill-in should turn grad f(x_k) into x_{k+1} while keeping x in D and,
-    if possible, emit a stopping certificate.
     """
     x = np.array(x0, dtype=float)
     for k in range(max_iter):
         g = objective.grad(x)
-        # TODO: use g (and the cheapest available oracle of `domain`) to move to the
-        # TODO: next feasible point; optionally compute a stopping certificate.
+        # TODO: use g to move to the next feasible point.
         pass
     return x
 ```

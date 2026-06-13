@@ -16,7 +16,7 @@ The dense, single-stage family is appealing — simpler, faster, no separate pro
 
 **The cross-entropy loss and its behavior under imbalance.** For binary classification with label y ∈ {±1} and predicted probability p for the y=1 class, cross entropy is CE = −log p when y=1 and −log(1−p) otherwise. Writing p_t for the probability of the *correct* class (p_t = p if y=1, else 1−p), this is just CE(p_t) = −log p_t. The salient property: even a confidently-correct example (p_t ≫ 0.5) still incurs a non-trivial loss — −log(0.9) ≈ 0.1 nats. One such example is harmless; 10^5 of them summed together is not.
 
-**Robust losses go the other way.** A separate line of work designs robust losses (e.g. Huber loss) that *down-weight outliers* — examples with large error, i.e. hard examples — to keep them from dominating regression. That is the opposite of what dense detection needs: here the problem is not a few hard outliers but a flood of *easy inliers*.
+**Robust losses.** A separate line of work designs robust losses (e.g. Huber loss) that *down-weight outliers* — examples with large error, i.e. hard examples — to keep them from dominating regression. The dense-detection imbalance has a different shape: the trouble is not a few hard outliers but the sheer count of easy, well-classified background examples.
 
 ## Baselines
 
@@ -34,7 +34,7 @@ The natural yardstick is the COCO detection benchmark (Lin et al. 2014). Trainin
 
 ## Code framework
 
-The available primitives are a convolutional backbone with a multi-scale feature pyramid (a top-down/lateral construction over ResNet stages), an anchor generator, a smooth-L1 box-regression loss, and an SGD training loop. What remains open is the dense head attached to each pyramid level, the classification loss applied to its outputs, the classification-output bias initialization, and the classification-loss normalizer.
+The available primitives are a convolutional backbone with a multi-scale feature pyramid (a top-down/lateral construction over ResNet stages), an anchor generator, a smooth-L1 box-regression loss, and an SGD training loop. What remains open is the dense head attached to each pyramid level, how it is initialized, the classification loss applied to its outputs, and how that loss is normalized.
 
 ```python
 import math
@@ -56,7 +56,7 @@ class DenseHead(nn.Module):
         # TODO: build the class-score subnet from small convolutional blocks
         # TODO: build the box-offset subnet from small convolutional blocks
         # TODO: build the final class-score and box-offset convolutions
-        # TODO: choose and apply the class-score output-bias initialization
+        # TODO: initialize the head
         pass
 
     def forward(self, features):
@@ -75,7 +75,7 @@ class PositiveAnchorNormalizer:
         self.value = None
 
     def update(self, num_pos):
-        # TODO: choose how the positive-anchor count normalizes the losses
+        # TODO: choose how this count normalizes the losses
         raise NotImplementedError
 
 
@@ -84,7 +84,7 @@ def classification_loss(pred_logits, gt_labels, num_classes, loss_normalizer, lo
     the image and normalized. Also returns the shared normalizer and positive mask."""
     # TODO: turn gt_labels into per-class binary targets (drop the background column)
     # TODO: choose the per-anchor classification loss under dense imbalance
-    # TODO: choose the normalization factor from the positive anchors
+    # TODO: choose the normalization factor
     raise NotImplementedError
 
 

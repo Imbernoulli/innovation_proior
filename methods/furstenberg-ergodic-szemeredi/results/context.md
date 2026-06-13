@@ -41,16 +41,12 @@ of positive density either correlates with a single frequency (and then a counti
 argument finds a 3-AP) or is sufficiently "uniform" that the 3-AP count is close to the
 random value. Szemerédi proved $k=4$ (1969) and the general case (1975), combinatorially.
 
-**Asymptotic density behaves like the shadow of a measure.** The limsup density itself is
+**The defects of asymptotic density.** The limsup density itself is
 not a finitely additive measure; it is monotone, subadditive, and invariant under the
-shift $S\colon x \mapsto x+1$. The usable object appears after choosing intervals on
-which the density of the set tends to a positive limit and refining the averaging scheme
-so the relevant shift algebra has genuine limits. Those limits form a positive
-shift-invariant linear functional, a Banach mean. This is the load-bearing analogy: a
-shift-invariant mean on integers is the discrete shadow of a shift-invariant probability
-measure, and the shift is the discrete shadow of a measure-preserving transformation.
-What raw limsup density lacks — countable additivity, a single honest limit, an $L^2$
-structure — is exactly what a probability space supplies.
+shift $S\colon x \mapsto x+1$, but it cannot be treated as an honest set function. What
+raw limsup density lacks — countable additivity, a single honest limit, an $L^2$
+structure — is exactly what a probability space supplies; the $\mathbb{Z}$ on which it
+lives is moreover not compact.
 
 **Ergodic theory of measure-preserving systems.** A measure-preserving system (m.p.s.)
 $(X,\mathcal{B},\mu,T)$ is a probability space with an invertible measure-preserving map
@@ -75,13 +71,12 @@ $T$. The classical results that exist and will be the tools:
   eigenfunctions (characters). Example: an irrational circle rotation.
   *Weak-mixing systems*: $T \times T$ acting on $X \times X$ is ergodic; equivalently
   there are no non-constant eigenfunctions; equivalently $E$ and $T^n E$ decorrelate on
-  average. Example: a Bernoulli shift. These two classes are the "purely structured" and
-  "purely random" extremes.
+  average. Example: a Bernoulli shift.
 
 **Topological dynamics as the coarse template.** vdW translates into a topological
 statement: a minimal homeomorphism of a compact space has, for every non-empty open
 $U$, an $n$ with $U \cap T^{-n}U \cap \dots \cap T^{-kn}U \neq \emptyset$ (multiple
-recurrence in open covers). This shows the *shape* of the target on the measure side.
+recurrence in open covers).
 
 ## Baselines
 
@@ -117,16 +112,16 @@ This is a pure-mathematics result; the "evaluation" is logical, not empirical. T
 yardsticks that exist:
 
 - **The statement to be matched.** Erdős–Turán / Szemerédi: positive upper density
-  $\Rightarrow$ arbitrarily long arithmetic progressions. The same correspondence
-  framework can be phrased with positive upper Banach density, a more general density
-  hypothesis, but the centered upper-density statement here is the target. A proof must
+  $\Rightarrow$ arbitrarily long arithmetic progressions. A more general density
+  hypothesis (positive upper Banach density) can also be considered, but the centered
+  upper-density statement here is the target. A proof must
   recover this for all $k$, with no density-degree restriction.
 - **Special cases that must drop out.** $k=2$ must reduce to Poincaré recurrence; $k=3$
   must recover Roth's theorem; the colouring shadow must recover van der Waerden.
-- **Worked test systems for the ergodic statement.** Irrational circle/torus rotations
+- **Worked test systems.** Irrational circle/torus rotations
   (compact/Kronecker), Bernoulli shifts (weak mixing), and skew products / group
-  extensions of rotations (distal, the first genuinely "neither" systems) — these are the
-  standard systems on which any claimed multiple-recurrence argument is checked.
+  extensions of rotations — these are the
+  standard dynamical systems on which any candidate argument can be checked.
 - **Logical economy as the metric.** Beyond correctness, the proof is judged by how few
   regimes it needs and how cleanly the general case reduces to them.
 
@@ -158,26 +153,11 @@ def poincare_recurrence(system, B):
     """k=2: mu(B ∩ T^{-n}B) > 0 for some n."""
     ...
 
-# ---- Open proof slots. ----
+# ---- Open proof slot. ----
 
-def correspondence_principle(A):
-    """From a set A of positive upper density, BUILD a measure-preserving system
-    (X, B, mu, T) and a set E with mu(E) > 0, so that arithmetic progressions in A
-    correspond to simultaneous returns x, T^n x, ..., T^{(k-1)n}x ∈ E.
-    # TODO: which compact X? which T? how to manufacture an invariant mu from
-    #       a limsup density that is not itself countably additive?"""
+def szemeredi(A, k):
+    """Given A ⊆ Z with upper_density(A) > 0, exhibit some a and some n != 0 with
+    a, a+n, ..., a+(k-1)n all in A.
+    # TODO: supply the argument."""
     raise NotImplementedError
-
-def multiple_recurrence(system, B, k):
-    """The ergodic statement to prove: ∃ n>0 with
-    mu(B ∩ T^{-n}B ∩ ... ∩ T^{-(k-1)n}B) > 0   (ideally Cesàro-positive).
-    # TODO: what is the right way to handle a GENERAL system, given that only
-    #       the two extreme regimes are directly tractable?"""
-    raise NotImplementedError
-
-def szemeredi_from_recurrence(A, k):
-    """Combine the two slots above to force a k-term AP in A."""
-    system, E = correspondence_principle(A)
-    assert multiple_recurrence(system, E, k)     # ⇒ AP in A
-    ...
 ```

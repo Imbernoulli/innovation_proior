@@ -8,7 +8,7 @@ The precise problem: **how do we train a model whose total state vastly exceeds 
 
 ## Background
 
-**Where the memory actually goes.** Consider mixed-precision training with the Adam optimizer, the standard recipe on tensor-core GPUs. Forward and backward run in fp16, so we hold an fp16 copy of the parameters (2Ψ bytes for Ψ parameters) and an fp16 copy of the gradients (2Ψ bytes). But to apply updates accurately, the optimizer keeps fp32 master copies: an fp32 copy of the parameters (4Ψ), plus Adam's two moments — the fp32 first moment / momentum (4Ψ) and the fp32 second moment / variance (4Ψ). Call the optimizer-state multiplier K; for mixed-precision Adam K = 12. Total model-state memory is 2Ψ + 2Ψ + KΨ = 16Ψ bytes. A 1.5B-parameter model therefore needs ~24 GB just for model states — far more than the ~3 GB the fp16 weights alone occupy. The optimizer states dominate.
+**Where the memory actually goes.** Consider mixed-precision training with the Adam optimizer, the standard recipe on tensor-core GPUs. Forward and backward run in fp16, so we hold an fp16 copy of the parameters (2Ψ bytes for Ψ parameters) and an fp16 copy of the gradients (2Ψ bytes). But to apply updates accurately, the optimizer keeps fp32 master copies: an fp32 copy of the parameters (4Ψ), plus Adam's two moments — the fp32 first moment / momentum (4Ψ) and the fp32 second moment / variance (4Ψ). Call the optimizer-state multiplier K; for mixed-precision Adam K = 4 + 4 + 4 = 12. Total model-state memory is 2Ψ + 2Ψ + KΨ = 16Ψ bytes. A 1.5B-parameter model therefore needs ~24 GB just for model states — far more than the ~3 GB the fp16 weights alone occupy. The optimizer states dominate.
 
 Beyond model states there are **residual states**: activations (proportional to layers × hidden × sequence × batch — tens of GB for billion-scale models), temporary buffers (operations like gradient all-reduce fuse everything into one flat fp32 buffer, which for a few-billion-parameter model is several GB), and fragmented memory (interleaving long-lived and short-lived allocations during checkpointing/backward can strand >30% of memory).
 
@@ -18,7 +18,7 @@ Beyond model states there are **residual states**: activations (proportional to 
 
 **Model parallelism (MP).** The model itself is split across devices. *Horizontal* (tensor-slicing, e.g. Megatron-LM) splits individual layers' matmuls across devices; *vertical* (pipeline, e.g. GPipe) splits the layer stack into stages. Either way the model states *are* partitioned, so per-device memory drops. But tensor-slicing requires communication inside every layer (the activations have to be all-reduced between sliced sublayers), so it is only efficient *within a node* where inter-GPU bandwidth is high; across node boundaries the per-layer communication and the finer-grained compute crush throughput (a 40B model split across two nodes measured single-digit TFLOPs per V100, <5% of peak). Pipeline parallelism partitions vertically but needs careful load balancing and many micro-batches to keep the pipeline full.
 
-**The key structural observation.** Both DP and MP keep *all* model states resident on every device for the *entire* training step, even though not all of those states are needed at all times — a layer's parameters are only needed during that layer's forward and backward. DP replicates (memory-wasteful, communication-cheap); MP partitions (memory-frugal, communication-expensive and compute-fine-grained). Neither separates "where state is stored" from "where state is needed."
+**The standing situation.** DP replicates (memory-wasteful, communication-cheap); MP partitions (memory-frugal, communication-expensive and compute-fine-grained). In both, every device keeps *all* the model states it is responsible for resident on-device for the *entire* training step.
 
 ## Baselines
 
@@ -32,24 +32,22 @@ Beyond model states there are **residual states**: activations (proportional to 
 
 ## Evaluation settings
 
-- **Models / architectures.** GPT-2-style and BERT-style transformers across a wide size range — from ~1.5B up to tens and hundreds of billions of parameters — characterized by (layers, hidden dimension, attention heads). Standard mixed-precision (fp16/fp32) training with the Adam optimizer.
+- **Models / architectures.** GPT-2-style and BERT-style transformers sized to stress memory limits, characterized by layers, hidden dimension, attention heads, sequence length, and batch size. Standard mixed-precision (fp16/fp32) training with the Adam optimizer.
 - **Hardware.** Clusters of NVIDIA V100 32 GB GPUs, organized as DGX-2 nodes (16 GPUs/node with high intra-node NVLink/NVSwitch bandwidth and lower inter-node bandwidth). Data-parallel degree N_d and model-parallel degree N_m as the two scaling axes.
-- **Metrics.** Maximum trainable model size per configuration; per-device memory footprint of model states as a function of N_d; sustained throughput (TFLOPs per GPU and aggregate) and scaling efficiency; communication volume per training step relative to baseline DP.
+- **Metrics.** Per-device memory footprint of model states as a function of N_d; maximum trainable model size implied by memory accounting; sustained throughput and scaling efficiency; communication volume per training step relative to baseline DP.
 - **Protocol.** Sequence length ~1024, batch sizes chosen to fit memory and stay near the critical batch size for convergence; activation checkpointing enabled for the large configurations.
 
 ## Code framework
 
-The pre-existing building blocks: a mixed-precision Adam optimizer keeping fp32 master weights and two fp32 moments; a distributed-communication library exposing the standard collectives (`all_reduce`, `reduce_scatter`, `all_gather`, `broadcast`, point-to-point send/recv) over a process group; an autograd engine that fires a hook as each parameter's gradient becomes ready in the backward pass; and a generic data-parallel training step. The scaffold below is the ordinary replicated-DP step plus empty slots where a redundancy-removing scheme would intervene.
+The pre-existing building blocks: a mixed-precision Adam optimizer keeping fp32 master weights and two fp32 moments; a distributed-communication library exposing standard collectives over a process group; an autograd engine that can run a hook as each parameter's gradient becomes ready in the backward pass; activation checkpointing; fused communication buffers; and ordinary contiguous tensor allocation. The scaffold below is the replicated-DP step and support utilities.
 
 ```python
 import torch
 import torch.distributed as dist
 
-# --- existing primitives ---
 world_size = dist.get_world_size()
-rank = dist.get_rank()
 
-class Adam16:
+class MixedPrecisionAdamState:
     """Mixed-precision Adam: fp16 compute copy + fp32 master params, momentum, variance."""
     def __init__(self, params, lr):
         self.fp16_params = params                      # 2*Psi bytes
@@ -57,8 +55,8 @@ class Adam16:
         self.momentum    = [torch.zeros_like(p) for p in self.fp32_params]  # 4*Psi
         self.variance    = [torch.zeros_like(p) for p in self.fp32_params]  # 4*Psi
     def step(self, grads):
-        # standard Adam update on fp32 master state, then cast back to fp16
-        ...
+        # Standard Adam update on fp32 master state, then cast back to fp16.
+        raise NotImplementedError("optimizer update")
 
 def forward_backward(model, micro_batch):
     """Run fp16 forward + backward; returns fp16 gradients (2*Psi)."""
@@ -66,39 +64,51 @@ def forward_backward(model, micro_batch):
     loss.backward()
     return [p.grad for p in model.parameters()]
 
-# --- the slot the contribution fills: a DP step that does NOT replicate all state ---
-class DistributedTrainer:
+class ReplicatedDataParallelTrainer:
     def __init__(self, model, optimizer):
         self.model = model
         self.optimizer = optimizer
-        # TODO: decide what each device must actually STORE vs. what it must
-        #       transiently HAVE in order to compute. Today every device stores
-        #       the full 16*Psi. That is the redundancy to remove.
+        self.parameter_store = list(model.parameters())
+        self.gradient_store = None
+        self.optimizer_store = optimizer
 
     def reduce_gradients(self, grads):
-        # TODO: today this is a full all-reduce (2*Psi moved). Is the full,
-        #       replicated averaged gradient actually needed on every device?
-        dist.all_reduce_coalesced(grads)  # baseline
+        # Baseline DP: every device receives the full averaged gradient.
+        dist.all_reduce_coalesced(grads)
+        for grad in grads:
+            grad.div_(world_size)
         return grads
 
     def parameter_step(self, grads):
-        # TODO: today every device updates ALL parameters with the full optimizer
-        #       state. Does every device need every optimizer state / every param?
+        # Baseline DP: every device updates every parameter with full local state.
         self.optimizer.step(grads)
+
+    def prepare_next_forward(self):
+        # Baseline DP: parameters are already resident and replicated.
+        return self.parameter_store
 
     def train_step(self, micro_batch):
         grads = forward_backward(self.model, micro_batch)
         grads = self.reduce_gradients(grads)
         self.parameter_step(grads)
-        # TODO: after the update, ensure every device has whatever parameters it
-        #       needs for the next forward pass.
+        return self.prepare_next_forward()
 
-# residual-memory slots
-def checkpoint_activations(layer, x):
-    # TODO: store activations; today they are stored replicated across MP ranks.
-    ...
+# supporting memory utilities
+class ActivationCheckpointStore(dict):
+    def save_checkpoint(self, layer_id, activation):
+        self[layer_id] = activation.detach()
 
-def make_reduction_buffer(num_elements):
-    # TODO: today a single fused buffer sized to the whole model (grows with Psi).
-    return torch.empty(num_elements, dtype=torch.float32)
+def make_fused_buffer(num_elements, dtype=torch.float32):
+    return torch.empty(num_elements, dtype=dtype)
+
+class ContiguousStore:
+    def __init__(self, num_elements, dtype, device):
+        self.storage = torch.empty(num_elements, dtype=dtype, device=device)
+        self.offset = 0
+
+    def append(self, tensor):
+        view = self.storage[self.offset:self.offset + tensor.numel()].view_as(tensor)
+        view.copy_(tensor)
+        self.offset += tensor.numel()
+        return view
 ```

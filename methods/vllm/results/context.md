@@ -37,24 +37,11 @@ The primitives that already exist: an iteration-level scheduler that picks which
 
 ```python
 class KVCacheManager:
-    """Owns the GPU KV-cache region. Must hand out storage for each request's
-    growing KV cache, allow requests to share storage where their tokens coincide,
-    and reclaim storage when requests finish or must be evicted."""
+    """Owns the GPU KV-cache region. Must serve each request's growing KV cache
+    as new tokens arrive, support requests whose tokens coincide, and reclaim
+    storage when requests finish or must be evicted."""
     def __init__(self, total_kv_bytes):
-        # TODO: how to organize the KV-cache region so growth is waste-free and
-        #       storage is shareable across requests
-        pass
-
-    def allocate_for_new_token(self, seq):
-        # TODO: make room for one more token's KV for this sequence
-        pass
-
-    def fork(self, parent_seq):
-        # TODO: a child sequence that (for now) shares the parent's KV cache
-        pass
-
-    def free(self, seq):
-        # TODO: reclaim this sequence's KV storage
+        # TODO: how to organize and hand out the KV-cache region
         pass
 
 def attention(q_i, K_cache, V_cache):
@@ -62,6 +49,6 @@ def attention(q_i, K_cache, V_cache):
     # TODO: read K/V from whatever layout the manager uses
     pass
 
-# scheduler loop: each iteration, select runnable sequences, ask the manager to
-# allocate storage for the new tokens, run the model + attention, append KV, free finished.
+# scheduler loop: each iteration, select runnable sequences, ask the manager for
+# storage for the new tokens, run the model + attention, append KV, free finished.
 ```

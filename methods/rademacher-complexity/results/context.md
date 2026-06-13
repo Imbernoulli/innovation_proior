@@ -28,7 +28,7 @@ The proof has two stages: a **symmetrization** step that replaces the unknown tr
 
 $$E\,\|P_m-P\|_{\mathcal F}\ \le\ 2\,E\,\Bigl\|\tfrac1m\textstyle\sum_i\sigma_i\,\delta_{X_i}\Bigr\|_{\mathcal F}.$$
 
-The right-hand object is the **Rademacher process** indexed by $\mathcal F$. In this tradition it is a *tool inside the proof* — a convenient symmetric surrogate whose supremum is then controlled by chaining / entropy integrals. The quantity $E_\sigma\sup_{f}\frac1m\sum_i\sigma_i f(X_i)$ measures, on the realized points, how well some function in the class can line up with a pure $\pm1$ noise sequence; because $E\sigma_i=0$, any such alignment is *spurious* fit, i.e. the class's capacity to chase noise.
+The right-hand object is the **Rademacher process** indexed by $\mathcal F$. In this tradition it is a *tool inside the proof* — a convenient symmetric surrogate whose supremum is then controlled by chaining / entropy integrals, and is not itself reported as the capacity number one carries out of the analysis.
 
 **Concentration of measure.** Turning expectation bounds into high-probability bounds rests on concentration inequalities for functions of independent variables. McDiarmid's bounded-differences inequality (1989): if changing any single coordinate of $f(x_1,\dots,x_m)$ moves it by at most $c_i$, then $P\{f-Ef\ge t\}\le \exp\!\bigl(-2t^2/\sum_i c_i^2\bigr)$. Sharper, variance-sensitive concentration for the *supremum of an empirical process* was provided by Talagrand (1996), with explicit constants worked out by Massart (1998); these are what make fine, variance-dependent (localized) rates possible rather than only the $1/\sqrt m$ rate.
 

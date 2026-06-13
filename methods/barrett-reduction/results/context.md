@@ -50,14 +50,14 @@ The load-bearing facts about arithmetic on such a machine:
   every quotient position. There is no single cheap primitive a signal processor can lean on; it is
   branchy, serial, and slow.
 
-- **A reciprocal can be precomputed when the divisor is fixed.** Inside one RSA exponentiation the
-  modulus M never changes — every one of the ~thousand reductions divides by the *same* M. Dividing
-  by a constant is the same as multiplying by its reciprocal, and the reciprocal of a fixed M can be
-  computed once, ahead of time, and amortized over all the reductions (it can even be stored
-  alongside M as part of the key). The reciprocal 1/M is a real number less than one, so to use it
-  with integer hardware it has to be put into fixed-point form: scale it up by a power of the radix
-  and round to an integer. Rounding *down* (taking a floor) makes the scaled reciprocal a slight
-  underestimate of 1/M — a fact that will determine which direction the unavoidable correction goes.
+- **The modulus is fixed across an entire exponentiation.** Inside one RSA exponentiation the
+  modulus M never changes — every one of the ~thousand reductions divides by the *same* M. Classical
+  long division, by contrast, is built for a divisor that may differ at every call, so any one-time
+  setup work that depends only on M would be redone uselessly at each position; the cost model on this
+  machine cares about which work is per-reduction and which can be hoisted out and amortized (anything
+  precomputed from M alone could even be stored alongside M as part of the key). The hardware has only
+  integer arithmetic — multiplies, shifts, adds, subtracts — so any constant derived from M has to be
+  representable as an integer.
 
 - **The whole development is done under a correctness discipline.** Because an arithmetic bug in RSA
   is silent and catastrophic, the program is derived by stepwise refinement in Dijkstra's
@@ -76,8 +76,8 @@ The load-bearing facts about arithmetic on such a machine:
   W − M·⌊W/M⌋ using Algorithm D. Correct and general, but it is the expensive path this whole effort
   is trying to avoid: per-position quotient-digit estimation, multiply-back, subtract, and occasional
   add-back correction, all O(n²) of branchy serial work with no cheap multiply-accumulate inner loop.
-  Its gap: it pays full division cost on *every* reduction even though the divisor M is the same every
-  time, so it never amortizes the one thing that is constant.
+  Its gap: it pays the full per-position estimation cost on *every* reduction, treating each one as a
+  fresh general division even though the divisor M is the same every time.
 
 - **Montgomery's division-free modular multiplication (Montgomery, *Math. Comp.* 44(170):519–521,
   1985).** A contemporaneous route to the same goal of "modular reduction with no division by M."
@@ -127,13 +127,12 @@ class ModularReducer:
         if mod <= 0:
             raise ValueError("modulus must be positive")
         self.modulus = mod
-        # TODO: precompute constants tied only to mod.
+        # TODO: set up the reducer for this modulus.
         pass
 
     def reduce(self, x):
         """Return x mod self.modulus.  pre: 0 <= x < self.modulus**2."""
-        # TODO: use multiplies, shifts, and subtractions instead of a
-        #       multiple-precision division by self.modulus.
+        # TODO: implement the reduction.
         pass
 
 def fastexp(A, E, M):

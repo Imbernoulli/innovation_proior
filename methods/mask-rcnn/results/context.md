@@ -42,8 +42,8 @@ classification*. It is an open question what it costs a task that needs per-pixe
 samples a feature map at arbitrary, *non-integer* spatial locations by bilinear interpolation from the
 four nearest grid points (Jaderberg et al. 2015, spatial transformer networks). Because the interpolation
 weights are smooth functions of the sampling coordinates, gradients flow through both the sampled values
-and (optionally) the coordinates. This is a general primitive for reading a feature map at sub-pixel
-positions without rounding.
+and (optionally) the coordinates. This is a general primitive for reading a feature map at non-integer
+spatial positions.
 
 **Fully convolutional prediction of spatial outputs.** For dense per-pixel tasks, the established recipe
 is to drop the fully-connected layers and make the entire network convolutional, so the output is itself a
@@ -133,8 +133,8 @@ The pieces that already exist: a convolutional backbone producing a (possibly mu
 map, a region-proposal stage, a fixed-size region-feature extractor, a per-region recognition head, the
 optimizer and training loop, and the standard losses. The region-feature extractor below is the *existing*
 quantizing operator; the per-region head below has only the box-recognition siblings. The open slots —
-how to extract aligned region features, and what additional per-region output to add and how to supervise
-it — are left as stubs.
+how region features are extracted, and what additional per-region output to add and how to supervise it —
+are left as stubs.
 
 ```python
 import torch
@@ -160,10 +160,9 @@ def roi_pool(features, rois, output_size, spatial_scale):
     # bins (each bin boundary rounded); max-pool features within each bin.
     ...
 
-# --- Open slot: an aligned region-feature extractor (no quantization) ---
-def roi_extract(features, rois, output_size, spatial_scale, sampling_ratio):
-    # TODO: extract a fixed output_size feature for each RoI from `features`,
-    #       faithfully preserving the RoI's exact spatial location.
+# --- Open slot: an alternative region-feature extractor ---
+def roi_extract(features, rois, output_size, spatial_scale):
+    # TODO: extract a fixed output_size feature for each RoI from `features`.
     pass
 
 # --- Existing per-region recognition head: class + box siblings (Fast R-CNN) ---

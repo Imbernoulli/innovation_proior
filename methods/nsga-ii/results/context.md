@@ -38,7 +38,7 @@ Two-objective test problems drawn from the literature would be the natural yards
 
 ## Code framework
 
-The available primitives are a `Problem` exposing objective evaluation and optional aggregate constraint violation, real-coded variation operators (simulated binary crossover, polynomial mutation), binary tournament selection, and a generational GA loop. The empty slots are the vector-valued population ranking, the within-front diversity estimate, the comparison rule used by selection, and the survivor choice for the next generation.
+The available primitives are a `Problem` exposing objective evaluation and optional aggregate constraint violation, real-coded variation operators (simulated binary crossover, polynomial mutation), binary tournament selection, and a generational GA loop. The empty slots are where the multi-objective fitness machinery and the survivor selection go.
 
 ```python
 import numpy as np
@@ -59,21 +59,18 @@ def polynomial_mutation(X, xl, xu, eta, prob):   # polynomial mutation (exists)
 
 def rank_population(F, CV=None):
     # TODO: split a vector-valued population into ordered nondomination fronts.
-    #       Must be cheaper than comparing-and-re-comparing every pair every peel.
     pass
 
 def diversity_metric(F_front):
-    # TODO: per-front density estimate that needs NO user parameter,
-    #       and is cheaper than every-pair sharing.
+    # TODO: per-front density estimate.
     pass
 
 def compare(i, j, ranks, diversity, F=None, CV=None):
-    # TODO: a single ordering that fuses convergence (front) and diversity.
+    # TODO: an ordering on individuals used by selection and survival.
     pass
 
 def survival(candidate_F, n_survive, candidate_CV=None):
-    # TODO: choose n_survive objective vectors using
-    #       rank_population + diversity_metric + compare.
+    # TODO: choose n_survive objective vectors to carry to the next generation.
     pass
 
 def run(problem, pop_size, n_gen):

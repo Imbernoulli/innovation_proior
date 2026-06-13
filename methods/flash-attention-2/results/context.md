@@ -28,7 +28,7 @@ The natural yardstick is the attention kernel's wall-clock throughput, reported 
 
 ## Code framework
 
-A custom attention primitive exposes a forward and a backward, each implemented as a *tiled* kernel: the inputs are partitioned into blocks small enough to live in SRAM, an outer loop and an inner loop walk the block grid, and a parallel launch maps blocks of work onto the GPU's thread blocks and warps. What is *not* yet decided — and is the empty slot — is the loop order, exactly what running statistics are carried and how the partial output is rescaled, how the block grid is mapped onto thread blocks (which axes are parallelized), and how the work inside a block is split among warps. The bodies below are `# TODO`.
+A custom attention primitive exposes a forward and a backward, each implemented as a *tiled* kernel: the inputs are partitioned into blocks small enough to live in SRAM, loops walk the block grid, and a parallel launch maps blocks of work onto the GPU's thread blocks and warps. The bodies below are `# TODO`.
 
 ```python
 import torch
@@ -39,20 +39,17 @@ def attention_forward(Q, K, V, B_r, B_c):
     N, d = Q.shape
     O = torch.zeros(N, d)
     # partition Q into row blocks of size B_r, K/V into column blocks of size B_c
-    # TODO: choose loop order (outer over which axis?), the running softmax statistics,
-    # TODO: the per-step rescale of the output accumulator, and the final normalization.
-    # TODO: which row-statistics to store for the backward pass.
+    # TODO: implement the tiled forward pass.
     raise NotImplementedError
 
 def attention_backward(Q, K, V, O, dO, stats, B_r, B_c):
     """Recompute S, P from input tiles (no stored N×N matrix) and produce dQ, dK, dV."""
-    # TODO: tiled backward; loop order and cross-block accumulation strategy.
+    # TODO: implement the tiled backward pass.
     raise NotImplementedError
 
-# Parallel launch (conceptual): the kernel is launched over a grid of independent
+# Parallel launch (conceptual): the kernel is launched over a grid of
 # thread blocks, and within each block the work is divided among warps.
 def launch_grid(N, B_r, batch, heads):
-    # TODO: which dimensions to parallelize over (the grid shape)
-    # TODO: how to partition each block's work across warps
+    # TODO: define the launch.
     raise NotImplementedError
 ```

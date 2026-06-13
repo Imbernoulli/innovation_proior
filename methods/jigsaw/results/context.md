@@ -20,7 +20,7 @@ Supervised pretraining on ImageNet gives convolutional features that transfer be
 
 ## Baselines
 
-**Doersch et al. 2015 (context prediction).** Single-image pretext: take a center tile on a 3×3 grid and a second tile in one of the 8 neighboring positions; train a network to classify the relative position of the second tile. Gap: only *two* tiles are seen at once, so the relative position can be genuinely ambiguous when tiles look alike (e.g., the central tile and two top tiles of a uniform region); the task cannot intersect ambiguities across all tiles. It is also vulnerable to the chromatic-aberration and edge-continuity shortcuts, and is slow (~4 weeks).
+**Doersch et al. 2015 (context prediction).** Single-image pretext: take a center tile on a 3×3 grid and a second tile in one of the 8 neighboring positions; train a network to classify the relative position of the second tile. Gap: only *two* tiles are seen at once, so the relative position can be genuinely ambiguous when tiles look alike (e.g., the central tile and two top tiles of a uniform region). It is also vulnerable to the chromatic-aberration and edge-continuity shortcuts, and is slow (~4 weeks).
 
 **Wang & Gupta 2015 (tracking).** Mine triplets by tracking patches across video frames; two patches of the same tracked object are pulled together, a third pushed apart, learning a patch-similarity metric. Gap: it uses *multiple* images of the *same instance*, so the features key on low-level similarity (color, texture) across views rather than high-level structure, and intraclass variability is limited.
 
@@ -66,8 +66,8 @@ class PretextNet(nn.Module):
     def __init__(self, num_classes):
         super().__init__()
         self.conv = alexnet_conv_stack()       # transferable part
-        # TODO: how are the (possibly multiple) inputs combined, and where
-        #       does cross-region context enter? what is the classifier head?
+        # TODO: how are the (possibly multiple) inputs processed, and what
+        #       is the classifier head?
 
     def forward(self, x):
         # TODO: produce a distribution over the pretext label space

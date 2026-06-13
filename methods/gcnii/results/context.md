@@ -34,7 +34,7 @@ that $K$-layer GCN features converge to a low-dimensional subspace at a rate gov
 $s$ is the largest singular value of the weight matrices; effective transforms that contract away from
 singular value 1 make that collapse worse.
 
-The load-bearing concepts the resolution will rest on come from two directions. From computer vision,
+Some established results sit nearby. From computer vision,
 He et al. 2016 (ResNet) made very deep networks trainable with *residual connections* — a layer learns
 a correction added to its input rather than a full remap — and Hardt & Ma 2017 prove that for a *linear*
 residual network $\mathbf H^{(\ell+1)}=\mathbf H^{(\ell)}(\mathbf W^{(\ell)}+\mathbf I)$ the optimal
@@ -115,9 +115,9 @@ class GraphConvolution(nn.Module):
         stdv = 1.0 / math.sqrt(self.weight.size(1))
         self.weight.data.uniform_(-stdv, stdv)
 
-    def forward(self, x, adj, base, layer_index, **kwargs):
+    def forward(self, x, adj, layer_index, **kwargs):
         propagated = torch.spmm(adj, x)   # P̃ H
-        # TODO: combine `propagated`, an available base representation, and the layer weights.
+        # TODO: the deep update rule.
         raise NotImplementedError
 
 

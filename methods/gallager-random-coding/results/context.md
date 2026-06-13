@@ -63,15 +63,14 @@ but only a single fixed exponent: it is tight at low rates yet loses badly as $R
 approaches $C$, because the union bound massively overcounts when many competitors
 are simultaneously plausible.
 
-**Chernoff/Hölder/Jensen bounding.** The tools for converting these sums into
-exponents are the elementary inequalities of large-deviation analysis: raising a
-nonnegative quantity to a power to overbound an indicator (a Chernoff-style tilt);
-Hölder's inequality $\sum_j a_j b_j \le (\sum_j a_j^{1/\theta})^{\theta}
-(\sum_j b_j^{1/(1-\theta)})^{1-\theta}$; and Jensen's inequality, which for a
-*concave* function $\varphi$ gives $\overline{\varphi(\xi)} \le \varphi(\bar\xi)$.
-The monotonicity of weighted power means, $\big(\sum_\ell q_\ell a_\ell^{r}\big)^{1/r}$
-nondecreasing in $r$, is the same Hölder fact in another guise and will control how
-the bound behaves as the tilt parameter varies.
+**Chernoff/Hölder/Jensen bounding.** The standard inequalities of large-deviation
+analysis are available for converting sums into exponents: bounding an indicator by
+a nonnegative quantity raised to a power (Chernoff's method); Hölder's inequality
+$\sum_j a_j b_j \le (\sum_j a_j^{1/\theta})^{\theta}
+(\sum_j b_j^{1/(1-\theta)})^{1-\theta}$; Jensen's inequality relating the average of
+a function to the function of the average; and the monotonicity of weighted power
+means $\big(\sum_\ell q_\ell a_\ell^{r}\big)^{1/r}$ in $r$, which is the same Hölder
+fact in another guise.
 
 **The state of the art on the exponent.** Elias (1955), for the binary symmetric
 channel, had already derived upper *and* lower bounds on the smallest achievable
@@ -145,8 +144,8 @@ where those are known.
 
 For this problem, the useful scaffold is the minimal symbolic machinery for
 describing a memoryless channel, computing Shannon's known capacity functional, and
-leaving explicit slots for a rate-dependent ML error decay bound. A tiny numerical
-harness for a DMC can hold those slots.
+leaving an explicit slot for a rate-dependent ML error decay bound. A tiny numerical
+harness for a DMC can hold that slot.
 
 ```python
 import numpy as np
@@ -170,23 +169,13 @@ def pairwise_ml_overlap(P, k, i):
     """Bhattacharyya-style overlap for confusing input letters k and i."""
     return np.sqrt(P[:, k] * P[:, i]).sum()
 
-def tilted_channel_sum(parameter, p, P):
-    """A placeholder for the single-letter tilted channel sum.
-    # TODO: fill in the log-sum produced by the ML error bound."""
-    pass
-
-def achievable_decay_rate(R, P, p_grid, parameter_grid):
+def achievable_decay_rate(R, P, p_grid):
     """A computable per-symbol decay rate for ML error at rate R.
-    # TODO: optimize the tilted channel sum over the parameter and input law."""
+    # TODO: fill in."""
     pass
 
-def converse_decay_rate(R, P, p_grid, parameter_grid):
-    """A matching lower-bound exponent, if the converse uses the same family.
-    # TODO: compare upper-envelope ranges of the same tilted family."""
-    pass
-
-def error_probability_bound(N, R, P, p_grid, parameter_grid):
+def error_probability_bound(N, R, P, p_grid):
     """Upper bound on ML decoding error for block length N at rate R.
-    # TODO: exp(-N times the achievable decay rate)."""
+    # TODO: fill in."""
     pass
 ```

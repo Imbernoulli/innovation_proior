@@ -44,10 +44,9 @@ independent draws, and no amount of spreading can drive the dispersion of portfo
 
 The elementary statistics needed are standard. For a random variable Y with values yₖ and
 probabilities pₖ, the expected value is E(Y) = Σ pₖ yₖ and the variance is V(Y) = Σ pₖ (yₖ − E Y)²,
-with standard deviation σ = √V. For a weighted sum R = Σ aᵢ Rᵢ of random variables, the expected
-value is the weighted sum of expected values, E(R) = Σ aᵢ E(Rᵢ); but the variance is *not* the
-weighted sum of variances — it involves the covariances σᵢⱼ = E[(Rᵢ − E Rᵢ)(Rⱼ − E Rⱼ)] = ρᵢⱼ σᵢ σⱼ,
-where ρᵢⱼ is the correlation coefficient.
+with standard deviation σ = √V. The dependence between two securities i and j can be summarized by
+the covariance σᵢⱼ = E[(Rᵢ − E Rᵢ)(Rⱼ − E Rⱼ)] = ρᵢⱼ σᵢ σⱼ, where ρᵢⱼ is the correlation
+coefficient.
 
 ## Baselines
 
@@ -67,8 +66,7 @@ law of large numbers makes the portfolio's realized yield close to its expected 
 get the high mean *and* the safety of averaging. The gap: the law of large numbers requires
 near-independence, and security returns are too intercorrelated for it to apply; diversification
 cannot eliminate the variance. Moreover this rule presumes the maximum-expected-return portfolio is
-also the minimum-dispersion portfolio, which is not generally true — there is a genuine trade-off
-between expected return and dispersion, not a free lunch.
+also the safest one, which the patch simply asserts rather than establishes.
 
 **Maximize expected utility E[U] over the full return distribution.** The broader rational-choice
 rule from von Neumann–Morgenstern. Core idea: pick the portfolio whose return distribution has the
@@ -85,16 +83,15 @@ per-period returns rᵢₜ for security i in period t) or formed by combining st
 expert judgment. A candidate rule is exercised on small universes first — three securities in the
 plane and four securities in three-space — and then in principle on larger universes of stocks and
 funds, with constraints such as no short sales (Xᵢ ≥ 0) and full investment (Σ Xᵢ = 1). The relevant
-outputs are the chosen split and the (expected-return, dispersion) pair it produces; the relevant
-comparison is whether a rule recommends the diversified portfolios that sensible investors actually
-hold. Historical annual and monthly return series for stocks and for funds are the data that such a
-rule would be fed.
+output is the chosen split; the relevant comparison is whether a rule recommends the diversified
+portfolios that sensible investors actually hold. Historical annual and monthly return series for
+stocks and for funds are the data that such a rule would be fed.
 
 ## Code framework
 
-The available pieces are a way to hold beliefs (a mean vector and a covariance matrix), the algebra
-for a portfolio's expected return and variance from weights, and a generic selection slot that turns
-beliefs into candidate splits.
+The available pieces are a way to hold beliefs about the securities (a mean vector, with second
+moments available if needed), the algebra for a portfolio's expected return from weights, and a
+generic selection slot that turns beliefs into candidate splits.
 
 ```python
 import numpy as np
@@ -103,11 +100,7 @@ def portfolio_mean(weights, mu):
     # expected return of a weighted sum is the weighted sum of expected returns
     return weights @ mu
 
-def portfolio_variance(weights, Sigma):
-    # variance of a weighted sum carries all cross terms via the covariance matrix
-    return weights @ Sigma @ weights
-
 def select_portfolios(mu, Sigma, targets):
-    # TODO: choose portfolio weights from beliefs and requested return levels.
+    # TODO: turn the beliefs into candidate portfolio weights.
     pass
 ```

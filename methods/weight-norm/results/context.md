@@ -95,16 +95,16 @@ method to a particular optimizer rather than improving the model itself.
 
 **Output-reparameterization (Raiko et al. 2012).** Core idea: transform neuron outputs to
 zero average value and zero average slope, approximately diagonalizing the Fisher. Gap: it
-operates on the outputs and centers around average behaviour; it does not directly
-decouple the magnitude of a weight vector from its direction, leaving that source of
-coordinate coupling untouched.
+operates on the outputs and centers around average behaviour, working in the space of
+activations rather than touching the weight coordinates in which the steps are actually
+taken.
 
 **Norm-constrained weights (max-norm; Srebro & Shraibman 2005).** Core idea: keep the norm
 of each weight vector controlled. Gap: the optimization is still carried out in the
 original weight coordinates w, with the norm constraint merely *applied after* each SGD
 step (a projection). It never changes what the optimizer sees — the gradient is still the
-plain gradient in w — so it does not improve conditioning the way a genuine
-reparameterization would.
+plain gradient in w — so the geometry the optimizer experiences is left untouched, and the
+conditioning is no better than before.
 
 ## Evaluation settings
 
@@ -131,63 +131,17 @@ Natural yardsticks of the time, spanning the domains where the block appears:
 
 The ordinary `nn.Module` layer, optimizer, loss, and training loop are already enough: a
 layer stores a raw weight tensor and bias, the optimizer steps whatever parameters the
-layer registers, and a forward hook can replace the tensor used by the layer before each
-call. The slots below are the exact places a parameterization-level change can occupy:
-one tensor-shaping helper, one effective-weight computation, one pre-forward hook, one
-parameter replacement function, one one-batch initialization routine, and one optional
-pre-activation transform.
+layer registers, and a `register_forward_pre_hook` can replace the tensor a layer uses
+before each forward call — so a layer's trainable parameters need not be the same as the
+tensor that finally multiplies the input. That is the only affordance the implementation
+needs; the slot below is where the proposed change goes.
 
 ```python
 import torch
 import torch.nn as nn
 
 
-def _norm_except_dim(tensor, dim):
-    # TODO: compute a norm over all tensor dimensions except one channel axis,
-    #       or over the full tensor when no channel axis is requested.
+def apply_to_layer(module, name="weight", dim=0):
+    # TODO: implement the proposed change to the layer here.
     pass
-
-
-def _compute_effective_weight(module, name, dim):
-    # TODO: rebuild module.<name> from the trainable parameters that replace
-    #       the original raw weight tensor.
-    pass
-
-
-class _WeightReparameterization:
-    def __init__(self, name, dim):
-        self.name = name
-        self.dim = dim
-
-    def __call__(self, module, _inputs):
-        # TODO: refresh the effective weight just before module.forward().
-        pass
-
-
-def reparameterize_weight(module, name="weight", dim=0):
-    # TODO: remove module.<name> from the parameter list, register the new
-    #       trainable pieces, install _WeightReparameterization, and leave the
-    #       layer's public forward API unchanged.
-    pass
-
-
-@torch.no_grad()
-def data_dependent_init(layer, x):
-    # TODO: use one minibatch to set the newly registered scale and the layer
-    #       bias from measured pre-activation mean and population standard
-    #       deviation.
-    pass
-
-
-class ActivationTransform(nn.Module):
-    def __init__(self, num_features, momentum=0.1):
-        super().__init__()
-        # TODO: register any per-channel offset and running statistic needed
-        #       by the transform.
-        pass
-
-    def forward(self, t):
-        # TODO: transform a pre-activation tensor without changing the caller's
-        #       training loop.
-        pass
 ```

@@ -59,27 +59,20 @@ the dominant control over each map's contribution and is what enables style mixi
 normalizes each map *separately*, discarding the magnitudes of features *relative to each
 other*.
 
-**A diagnostic finding about AdaIN.** Because AdaIN normalizes each map by its own mean and
-variance, any single dominant value in a map sets the scale for the whole map. A generator
-can exploit this: by emitting one strong, localized spike that dominates a map's statistics,
-it can make the post-normalization map carry whatever relative magnitudes it wants
-elsewhere — effectively passing scale information *through* a normalization that is supposed
-to remove it. The blob artifact is consistent with exactly such a spike, and removing the
-normalization step is observed to make the blob vanish entirely (at the cost of losing
-controllability). This is a pre-method fact about how instance normalization behaves inside
-this generator.
+**A diagnostic observation about AdaIN.** AdaIN computes its normalization statistics (mean
+and standard deviation) from the *actual contents* of each feature map, per sample. An
+empirical probe: removing the normalization step is observed to make the blob vanish entirely
+— but at the cost of losing controllability (style mixing). So the blob is somehow tied to the
+data-dependent normalization, though the images degrade without it.
 
 **Initializer-style variance analysis.** A long line of work analyzes signal variance
 through a network analytically rather than empirically. Glorot & Bengio (2010) and He et al.
 (2015) set initial weight scales so that activation variance is preserved layer to layer,
-under the assumption of independent, unit-variance inputs. The same kind of closed-form
-"what is the output standard deviation given these weights" calculation is available to
-*normalize* a layer, not just to initialize it.
+under the assumption of independent, unit-variance inputs.
 
 **Weight normalization** (Salimans & Kingma 2016) reparameterizes a weight vector as a
 direction times a scalar magnitude, which incidentally divides by the L2 norm of the
-weights — the very quantity that governs output variance. It has been reported beneficial in
-GAN training (Xiang & Li 2017).
+weights. It has been reported beneficial in GAN training (Xiang & Li 2017).
 
 **Progressive growing.** To stabilize high-resolution training, the field grows both
 networks resolution by resolution: train at 4×4, then fade in 8×8, then 16×16, and so on
@@ -123,10 +116,11 @@ shape/consistency-sensitive signal.
 mapping net f, per-layer affine styles, synthesis net g with AdaIN modulation, per-pixel
 noise, learned constant input, trained with progressive growing. Core algorithm of a style
 block: normalize each feature map (subtract mean, divide by std), then modulate by the
-style's scale and bias. *Gap it leaves:* the per-map normalization discards relative
-feature magnitudes and is exploitable by a dominant spike — the source of the blob — and the
-bias/noise applied *inside* the style block have an impact inversely proportional to the
-current style magnitude, making their effect unpredictable.
+style's scale and bias. *Gap it leaves:* the per-map normalization is
+data-dependent (its statistics come from the actual map contents) and discards relative
+feature magnitudes between maps, and it coincides with the blob (which vanishes when the
+normalization is removed); separately, the bias/noise applied *inside* the style block have an
+impact inversely proportional to the current style magnitude, making their effect unpredictable.
 
 **Progressive growing of GANs** (Karras et al. 2017). Trains at increasing resolutions,
 fading each new resolution in. *Gap:* strong location preference for details and broken
@@ -232,8 +226,7 @@ def G_mapping(latents_in, labels_in, latent_size=512, dlatent_size=512,
 
 def style_conv_layer(x, style, fmaps, kernel, up=False, **kw):
     # TODO: produce one conv layer whose behavior is set by `style`,
-    #       such that style mixing keeps working and no per-map data-dependent
-    #       statistic can be exploited. (To be designed.)
+    #       such that style mixing keeps working. (To be designed.)
     pass
 
 # --- SLOT 2: synthesis network ----------------------------------------------
@@ -241,8 +234,8 @@ def style_conv_layer(x, style, fmaps, kernel, up=False, **kw):
 def G_synthesis(dlatents_in, resolution=1024, num_channels=3, **kw):
     # constant 4x4 input, then per-resolution blocks of style_conv_layer + noise,
     # producing an RGB image.
-    # TODO: how do the per-resolution outputs combine into the final image,
-    #       and can this replace progressive growing? (To be designed.)
+    # TODO: how the per-resolution blocks are organized into the final image.
+    #       (To be designed.)
     pass
 
 # --- SLOT 3: discriminator --------------------------------------------------

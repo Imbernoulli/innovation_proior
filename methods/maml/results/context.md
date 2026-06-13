@@ -64,12 +64,11 @@ be a *worse* starting point than a random one, an effect already observed when
 transferring policies across related games (Parisotto et al. 2016). So "just
 pretrain and fine-tune" is a real option on the table, and a known-weak one.
 
-Automatic differentiation libraries (TensorFlow; Abadi et al. 2016) could
-differentiate *through* a gradient computation, computing Hessian-vector
-products with an extra backward pass. ReLU networks were also known to behave
-nearly linearly in many local neighborhoods (Goodfellow et al. 2015), suggesting
-that some second-order curvature corrections may be modest in practice, though
-not guaranteed to vanish.
+Automatic differentiation libraries (TensorFlow; Abadi et al. 2016) supported
+higher-order differentiation: a quantity that is itself defined via a gradient
+can be differentiated again with an additional backward pass. ReLU networks were
+also known to behave nearly linearly in many local neighborhoods (Goodfellow et
+al. 2015).
 
 ## Baselines
 
@@ -77,12 +76,10 @@ not guaranteed to vanish.
 network on a large source task; its intermediate features transfer broadly, and
 a new task is solved by fine-tuning (or by retraining a top layer). Core
 mechanism: ordinary supervised pretraining, then gradient descent on the new
-task. Gap: the features are optimized for the *source objective*, not for being
-a good *initialization for rapid adaptation*. Nothing in the procedure
-encourages "a few steps from here generalizes on a new task." With only $K$
-examples this typically needs a carefully tuned step size and still adapts
-slowly or overfits; pooling contradictory tasks collapses toward the mean
-output.
+task. Gap: the features are optimized for the *source objective*, which is a
+different objective from succeeding on a held-out task. With only $K$ examples
+this typically needs a carefully tuned step size and still adapts slowly or
+overfits; pooling contradictory tasks collapses toward the mean output.
 
 **Metric-based few-shot learning: Siamese / Matching / Prototypical networks
 (Koch 2015; Vinyals et al. 2016; Snell et al. 2017).** Learn an embedding
@@ -188,21 +185,11 @@ def mse_loss(pred, y):
     pass  # TODO: regression loss
 
 
-def adapt_parameters(model, loss_fn, x_s, y_s, alpha, n_steps, first_order=False):
-    pass  # TODO: turn current weights into task-adapted weights
-
-
-def meta_update_step(model, loss_fn, meta_opt, tasks, alpha,
-                     n_steps=1, first_order=False, grad_clip=None):
-    pass  # TODO: compute the query loss after adaptation and update the prior
-
-
-def meta_train(model, sample_tasks, steps=70000, alpha=0.01, meta_lr=1e-3,
-               n_steps=1, first_order=False):
+def meta_train(model, sample_tasks, steps=70000, meta_lr=1e-3):
     meta_opt = torch.optim.Adam(model.parameters(), lr=meta_lr)
     for _ in range(steps):
         tasks = sample_tasks()
-        meta_update_step(model, mse_loss, meta_opt, tasks, alpha,
-                         n_steps=n_steps, first_order=first_order)
+        pass  # TODO: given a batch of tasks (each with its own support and
+              # query data), what should be optimized, and how?
     return model
 ```

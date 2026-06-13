@@ -17,8 +17,9 @@ question in number theory. An exact law for $\pi(x)$ — not merely an empirical
 century of tabulated observation into mathematics. The pain point is the gap between two facts that
 sit uneasily together: locally the primes look random, but globally $\pi(x)$ follows a smooth curve
 to within small, oscillating corrections. No tool of real analysis connects the discrete, irregular
-primes to the smooth curve they obey. What a solution must achieve is a single analytic object that
-contains *all* the primes at once and from which the count, fluctuations included, can be read off.
+primes to the smooth curve they obey. The methods that fit the trend treat it as an empirical curve
+and stop at the trend; none of them reaches the fluctuation, and none connects the irregular primes
+to the smooth count by anything one could analyze rather than tabulate.
 
 ## Background
 
@@ -49,9 +50,8 @@ information is locked inside a function defined only on a half-line.
 $\Gamma(s) = \int_0^\infty e^{-x}x^{s-1}\,dx$ (here written $\Pi(s-1)$, with $\Pi(s-1)=\Gamma(s)$ and
 $\Pi(n)=n!$), supplies the basic integral identity
 $$\int_0^\infty e^{-nx} x^{s-1}\,dx \;=\; \frac{\Pi(s-1)}{n^s},$$
-which turns a single term $n^{-s}$ into an integral, and (after summing over $n$) turns the whole
-series $\sum n^{-s}$ into one integral with an explicit, pole-bearing integrand. This is the standard
-device for converting a Dirichlet series into a contour-amenable integral.
+which turns a single term $n^{-s}$ into an integral. It is the standard identity relating the
+factorial integral to a power $n^{-s}$.
 
 **Jacobi's theta transformation.** For the series $\psi(x) = \sum_{n=1}^{\infty} e^{-n^2\pi x}$ and
 its symmetrized form $\Theta(x)=2\psi(x)+1=\sum_{n=-\infty}^{\infty} e^{-n^2\pi x}$, Jacobi recorded
@@ -70,8 +70,8 @@ all, determined uniquely on the rest — belongs to this same circle of ideas.
 
 **Fourier's inversion theorem.** Fourier's theorem permits recovering a function from an integral
 transform of it: if $g$ is built from $h$ by an exponential/multiplicative integral, $h$ can be
-expressed back in terms of $g$ by an inverse integral. This is the tool for going *backwards* from a
-transform of a counting function to the counting function itself.
+expressed back in terms of $g$ by an inverse integral. It is the general tool for recovering a
+function from an integral transform of it.
 
 ## Baselines
 
@@ -94,9 +94,9 @@ meaning.
 **Euler's product as an analytic identity.** The product $\prod_p(1-p^{-s})^{-1}=\sum_n n^{-s}$ is
 the one baseline object that contains all primes analytically, and Euler extracted real qualitative
 facts from it (infinitude of primes, divergence of $\sum 1/p$). Its gap is that it lives only on the
-real half-line $s>1$: there is no zero to locate, no contour to push, no residue to collect, because
-the function has not been given meaning anywhere a contour could go. As a real-variable identity it
-cannot reach $\pi(x)$.
+real half-line $s>1$, where both sides converge; the identity is silent everywhere else, and as a
+real-variable identity it has stalled — Euler drew qualitative conclusions from it but it has never
+been pushed to yield the count $\pi(x)$ itself.
 
 ## Evaluation settings
 
@@ -107,10 +107,9 @@ which any analytic law for $\pi(x)$ would be checked:
 - The smooth comparison curves $\mathrm{Li}(x) = \int_0^x dt/\log t$ and Legendre's
   $x/(\log x - A)$, and the observed signed discrepancy $\pi(x) - \mathrm{Li}(x)$ as a function of
   $x$, including its sign and its fluctuation.
-- The functions of analytic number theory used to phrase the count: $\pi(x)$ itself; the
-  prime-power counting function that weights $p^m$ by $1/m$; the logarithmic integral
-  $\mathrm{Li}$; and the Möbius coefficients $\mu(n)\in\{-1,0,1\}$ used to invert one counting
-  function into another.
+- The functions of analytic number theory available to phrase the count: $\pi(x)$ itself; the
+  logarithmic integral $\mathrm{Li}$; and the Möbius coefficients $\mu(n)\in\{-1,0,1\}$ of
+  elementary number theory.
 - The domain of validity to be respected: the Euler product and the Dirichlet series both require
   $\mathrm{Re}(s)>1$, so any analytic claim must be checked first where these converge and only then
   extended.
@@ -118,9 +117,7 @@ which any analytic law for $\pi(x)$ would be checked:
 ## Code framework
 
 A starting scaffold has two parts: the elementary number-theoretic primitives already available,
-and a blank analytic layer for a complex function assembled from the prime data. The missing work is
-to extend that function beyond its first domain of convergence and recover a counting function from
-its analytic data.
+and a blank layer left open for whatever analytic construction the prime data suggests.
 
 ```python
 import numpy as np
@@ -151,25 +148,10 @@ def Gamma(s):
     """Euler's factorial interpolation Γ(s) = ∫_0^∞ e^{-x} x^{s-1} dx."""
     raise NotImplementedError
 
-# --- analytic layer still missing ---
+# --- analytic layer left open ---
 
-class PrimeEncodingFunction:
-    """A placeholder for a complex function assembled from the prime data.
-    It begins only where the defining series or product converges."""
-
-    def value(self, s):
-        # the function of the complex variable s built from the primes
-        raise NotImplementedError  # TODO: the object we will design
-
-    def continue_everywhere(self, s):
-        # give the function meaning on the whole complex plane, not just where the series converges
-        raise NotImplementedError  # TODO: analytic continuation
-
-    def special_points(self):
-        # poles, zeros, or other singular data of the continued function
-        raise NotImplementedError  # TODO: locate analytic data
-
-def count_from_encoding(x, F):
-    """Recover π(x) from the analytic object once an inverse transform is available."""
-    raise NotImplementedError  # TODO: inverse transform back to the count
+def analytic_law_for_pi(x, primes):
+    """Produce an analytic account of pi(x) from the prime data, going beyond
+    direct enumeration and beyond the empirical smooth fit."""
+    raise NotImplementedError  # TODO
 ```

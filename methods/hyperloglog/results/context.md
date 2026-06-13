@@ -52,9 +52,9 @@ Its gap: memory is m·L bits — a *whole bitmap* per bucket — when almost all
 
 i.e. the arithmetic mean of the registers in the exponent, which is the **geometric mean** of the 2^{M[j]}, scaled by a bias-correction constant α_m (≈ 0.39701 in the limit). The standard error is 1.30/√m. A refinement, SuperLogLog, discards the largest ~30% of registers before averaging to cut variance toward ~1.05/√m, but the truncation makes it resist clean analysis.
 
-Its gap: 1.30/√m is noticeably worse than the 1.00/√m the order-statistics family reaches, and the cause is identifiable — the per-bucket quantity 2^{M[j]} has a slowly decaying right tail, and the geometric mean (arithmetic mean in the exponent) still lets an occasional freak-large register pull the estimate up. The averaging rule, not the observable, is leaving accuracy on the table.
+Its gap: 1.30/√m is noticeably worse than the 1.00/√m the order-statistics family reaches, so at equal register count LogLog leaves a measurable accuracy margin on the table relative to the competing family.
 
-**MinCount / order-statistics estimators (Bar-Yossef et al.; Giroire).** Maintain the smallest hashed values; since E[min]=1/(n+1), the minima estimate 1/n, and averaging m of them (again by stochastic splitting) gives standard error about 1.00/√m. This is the competing family. A general lower bound (Chassaing–Gérin) places a 1/√m-scale floor on a wide class of order-statistics estimators, so ~1/√m is the accuracy scale to compare against in that line of work. Chassaing–Gérin also observe that means which down-weight the tail (harmonic-type means) tame slowly-decaying right tails and act as variance reducers.
+**MinCount / order-statistics estimators (Bar-Yossef et al.; Giroire).** Maintain the smallest hashed values; since E[min]=1/(n+1), the minima estimate 1/n, and averaging m of them (again by stochastic splitting) gives standard error about 1.00/√m. This is the competing family. A general lower bound (Chassaing–Gérin) places a 1/√m-scale floor on a wide class of order-statistics estimators, so ~1/√m is the accuracy scale to compare against in that line of work.
 
 ## Evaluation settings
 

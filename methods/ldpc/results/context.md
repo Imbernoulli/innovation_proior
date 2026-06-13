@@ -18,11 +18,9 @@ The real question, then, is not "do good long codes exist?" — Shannon answered
 
 **The distance picture and its ensemble statistics.** The error-correcting power of a code is classically summarized by its minimum distance D — the smallest number of bit positions in which two codewords differ. A decoder that always returns the nearest codeword corrects any error pattern of weight up to ⌊(D−1)/2⌋. For an ensemble of randomly built parity-check matrices one can compute the *average* distance distribution rather than any single code's: the expected number of weight-ℓ codewords is N̄(ℓ) = (n choose ℓ) 2^{−n(1−R)}, because a fixed nonzero weight-ℓ pattern satisfies each of the n(1−R) independent parity checks with probability ½. Bounding the tail of this with Stirling gives an exponent H(δ) − (1−R) ln 2. For every δ below the root δ_0 satisfying H(δ_0) = (1−R) ln 2, the expected number of codewords of weight at most δn goes to zero exponentially, so the typical minimum distance grows linearly with n. Randomly built parity-check codes already have good distance growth — the bottleneck was never distance, it was the decoder.
 
-**Graphs of codes.** A parity-check matrix is equivalently a bipartite graph: one node per bit, one node per parity check, and an edge wherever H has a 1. The graph turns "decode the whole block" into "reconcile local constraints along edges" — a structural handle on the cost of decoding.
+**Graphs of codes.** A parity-check matrix is equivalently a bipartite graph: one node per bit, one node per parity check, and an edge wherever H has a 1. This is a standard alternate view of H; whether it offers any handle on the cost of decoding is a separate question.
 
-**Soft, iterative, probabilistic inference on local constraints.** If the parity-check graph has no cycles, the evidence below each edge is independent of the evidence below every other edge once the edge is cut. That means local probability summaries can be passed along the tree and multiplied without double-counting. On a graph with cycles this independence is only approximate, and shorter cycles make the approximation worse. This is the lever that connects a sparse code graph to cheap probabilistic decoding: if a code's graph looks locally like a tree, local message passing can compute nearly the right answer.
-
-**Short cycles.** When the bit and check involved in a message lie on a short cycle, the "independent evidence" assumption is violated: a node's own past belief can return to it through another path and get counted again. The graph therefore has to be sparse enough, and cycle-free enough at small radii, for a local decoder to be trusted.
+**Conditional independence on graphs.** A general fact about probabilistic models on graphs: if a graph has no cycles, then cutting any edge splits it into two parts whose evidence is conditionally independent. On a graph with cycles this independence is only approximate, and the failure is worse the shorter the cycles. This is a property of the graph alone; it says nothing yet about which codes, if any, have graphs to which it applies.
 
 ## Baselines
 
@@ -40,7 +38,7 @@ The natural yardsticks already exist. The two canonical channels are the binary 
 
 ## Code framework
 
-The scaffold is a linear-code simulation harness: GF(2) matrix products, Gaussian elimination, a parity-check constructor, a generator constructor, a BPSK/AWGN channel, an iterative decoder, and a parity-check stopping test. The open choices are the structure of H and the quantities exchanged during decoding.
+The scaffold is a linear-code simulation harness: GF(2) matrix products, Gaussian elimination, a parity-check constructor, a generator constructor, a BPSK/AWGN channel, a decoder, and a parity-check stopping test. The constructor and the decoder are left open.
 
 ```python
 import numpy as np
@@ -69,8 +67,7 @@ def encode(G, v, snr, seed=None):
 
 def decode(H, y, snr, maxiter=1000):
     """Infer the transmitted codeword from the noisy observation y.
-    What quantities live on the edges of H's graph, and how do the
-    variable side and the check side update them, is the contribution."""
+    The decoding procedure is the design choice to be made."""
     pass  # TODO
 
 def incode(H, x):

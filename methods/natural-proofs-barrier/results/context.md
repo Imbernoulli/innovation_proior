@@ -97,6 +97,6 @@ def rules_out_small_circuits(prop, circuit_class) -> bool:
     """Return whether acceptance by `prop` certifies nonmembership in the class."""
     raise NotImplementedError
 
-# The unresolved comparison is between a certificate that accepts many truth
-# tables and generated families that are meant to look like random truth tables.
+# What remains open is how the certifying predicate above relates to the
+# rest of the objects on this table.
 ```

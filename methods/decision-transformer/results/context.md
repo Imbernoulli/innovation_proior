@@ -24,9 +24,9 @@ The target is built from the current estimate at the next state. Reward informat
 
 $$z_i=\sum_{j=1}^{n}\operatorname{softmax}_j\!\left(\frac{\langle q_i,k_j\rangle}{\sqrt{d_k}}\right)v_j,$$
 
-with causal GPT-style attention restricting the sum to $j\le i$. The relevant property for decision making is that attention can associate positions separated by many timesteps in one layer, rather than relying on step-by-step dynamic-programming propagation. These models also come with a mature training stack: residual blocks, layer normalization, AdamW, warmup schedules, weight decay conventions, and scalable causal masking.
+with causal GPT-style attention restricting the sum to $j\le i$. A single self-attention layer can associate positions separated by many tokens directly, without propagating information step by step. These models also come with a mature training stack: residual blocks, layer normalization, AdamW, warmup schedules, weight decay conventions, and scalable causal masking.
 
-**Conditional generation.** Generative models can be steered by conditioning on a class label, control code, prompt, or other side information. Existing controllable-generation work usually treats the conditioning variable as fixed across a whole sequence. In control, the desired outcome is naturally time-varying: after collecting some reward, the remaining amount to collect should change.
+**Conditional generation.** Generative models can be steered by conditioning on a class label, control code, prompt, or other side information. Existing controllable-generation work usually treats the conditioning variable as fixed across a whole sequence.
 
 ## Baselines
 
@@ -40,7 +40,7 @@ $$\max_\theta \sum_t \log \pi_\theta(a_t\mid s_t).$$
 
 It has no Bellman backup, target network, or learned critic, so it is stable. Its limitation is equally direct: it imitates the behavior distribution in the dataset and averages across high- and low-quality trajectories. A percentile variant clones only the top-$X\%$ of trajectories by return, trading data volume for data quality, but choosing $X$ requires evaluation feedback that the offline setting withholds.
 
-**Return-conditioned supervised policies.** Upside-down RL and reward-conditioned policies (Schmidhuber, 2019; Srivastava et al., 2019; Kumar et al., 2019) train a supervised policy conditioned on a desired return or command. They already suggest that outcome information can be used as a conditioning variable rather than as a Bellman target. The common form is close to a single-step supervised policy, leaving open whether a long-context sequence model over trajectory prefixes can use history more effectively.
+**Return-conditioned supervised policies.** Upside-down RL and reward-conditioned policies (Schmidhuber, 2019; Srivastava et al., 2019; Kumar et al., 2019) train a supervised policy conditioned on a desired return or command. The common form is close to a single-step supervised policy that maps the current state and a command to an action.
 
 **Transformers inside RL.** Prior attention-based RL systems (Zambaldi et al., 2018; Parisotto et al., 2020) use Transformer modules as memory or representation components inside actor-critic optimization. They address architecture and training stability, but the optimization loop remains value-based.
 
@@ -54,7 +54,7 @@ It has no Bellman backup, target network, or learned critic, so it is stable. It
 
 ## Code framework
 
-Available engineering pieces include PyTorch modules, NumPy preprocessing, a causal GPT-style Transformer that accepts input embeddings, an offline trajectory dataset, AdamW, learning-rate warmup, masking for padded timesteps, and a supervised training loop. The open design slot is how to represent a trajectory prefix for a causal sequence model, how to construct the conditioning labels from logged rewards, and how to turn model outputs into control actions.
+Available engineering pieces include PyTorch modules, NumPy preprocessing, a causal GPT-style Transformer that accepts input embeddings, an offline trajectory dataset, AdamW, learning-rate warmup, masking for padded timesteps, and a supervised training loop. The open design slot is how to turn the logged trajectories and the available components into a controller.
 
 ```python
 import numpy as np
@@ -91,27 +91,18 @@ class ConditionedTrajectoryModel(TrajectoryModel):
         super().__init__(state_dim, act_dim, max_length=max_length)
         self.hidden_size = hidden_size
         self.transformer = CausalTransformer(hidden_size, n_layer=..., n_head=..., max_tokens=...)
-        # TODO: choose the trajectory-prefix tokenization and input embeddings
-        # TODO: choose the conditioning signal used for controllable generation
-        # TODO: choose prediction heads and the hidden positions that feed them
+        # TODO: design the model
 
     def forward(self, states, actions, rewards, conditioning, timesteps, attention_mask=None):
-        # TODO: embed a trajectory prefix, run the causal transformer, and predict actions
         raise NotImplementedError
 
     def get_action(self, states, actions, rewards, conditioning, timesteps, **kwargs):
-        # TODO: crop/pad history and return the next action for deployment
         raise NotImplementedError
-
-
-def build_future_conditioning(rewards, gamma):
-    # TODO: construct a per-timestep future-outcome label from logged rewards
-    raise NotImplementedError
 
 
 def train_step(model, get_batch, optimizer, batch_size):
     states, actions, rewards, dones, conditioning, timesteps, attention_mask = get_batch(batch_size)
-    # TODO: compute a masked supervised action loss and update the model
+    # TODO: train the model
     raise NotImplementedError
 
 
@@ -120,6 +111,6 @@ def evaluate_conditioned_episode(
     state_mean, state_std, device, target_conditioning, mode="normal"
 ):
     state = env.reset()
-    # TODO: maintain the trajectory prefix and update the conditioning variable online
+    # TODO: run the controller in the environment
     raise NotImplementedError
 ```

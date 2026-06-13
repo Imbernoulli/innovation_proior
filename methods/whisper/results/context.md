@@ -1,5 +1,3 @@
-# Context: robust speech recognition without per-deployment fine-tuning
-
 ## Research question
 
 A speech recognizer should work reliably "out of the box" across many recording
@@ -53,9 +51,7 @@ pushed this scale.
 et al. 2017) consumes a source sequence with a bidirectional encoder and generates
 a target token sequence autoregressively with a causally-masked decoder that
 cross-attends to the encoder; trained by next-token cross-entropy. It scales
-reliably and, as an audio-conditional language model, can in principle emit *any*
-text format directly — punctuation, casing — removing the separate inverse-text-
-normalization stage. Byte-level BPE tokenization (GPT-2; Radford et al. 2019)
+reliably across modalities. Byte-level BPE tokenization (GPT-2; Radford et al. 2019)
 gives an open vocabulary over arbitrary text.
 
 ## Baselines
@@ -92,26 +88,25 @@ translation); because WER over-penalizes innocuous formatting/style differences 
 acute for a zero-shot model that has never seen a dataset's transcript
 conventions — a careful text normalizer is applied before scoring. Audio is 16 kHz;
 features are 80-channel log-mel spectrograms (25 ms window, 10 ms stride). These
-datasets and metrics predate the method.
+are the standing datasets, metrics, and input features for the evaluation setting.
 
 ## Code framework
 
-The pre-method toolkit: a log-mel front end, a standard encoder-decoder Transformer
+The available toolkit is a log-mel front end, a standard encoder-decoder Transformer
 (pre-activation residual blocks, sinusoidal/learned position embeddings, tied
 input-output token embeddings), a byte-level BPE tokenizer, and an AdamW training
-loop with warmup and gradient clipping. The empty slots are: how raw web data
-becomes training examples, and how a *single* decoder is told which of many tasks
-to perform on the same audio.
+loop with warmup and gradient clipping. The empty slot is the training recipe: what
+data the model is trained on and what the decoder is asked to predict.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
 
-# Log-mel front end (known): 80-channel spectrogram, 25ms window, 10ms stride.
+# Log-mel front end: 80-channel spectrogram, 25ms window, 10ms stride.
 def log_mel_spectrogram(wav, n_mels=80):
     # returns (n_mels, n_frames)
     ...
 
-# Standard encoder-decoder Transformer primitives (known).
+# Standard encoder-decoder Transformer primitives.
 class ResidualAttentionBlock(nn.Module):
     def __init__(self, d, heads, cross=False):
         super().__init__()
@@ -129,17 +124,24 @@ class ResidualAttentionBlock(nn.Module):
             x = x + self.cross(h, xa, xa)[0]
         return x + self.mlp(self.ln2(x))
 
+def sinusoids(length, d, max_timescale=10000):
+    inv = torch.exp(-torch.log(torch.tensor(max_timescale)) *
+                    torch.arange(d // 2) / (d // 2 - 1))
+    t = torch.arange(length)[:, None] * inv[None, :]
+    return torch.cat([t.sin(), t.cos()], dim=1)
+
 class AudioEncoder(nn.Module):
-    def __init__(self, n_mels, d, layers, heads):
+    def __init__(self, n_mels, d, layers, heads, n_ctx=1500):
         super().__init__()
         self.conv1 = nn.Conv1d(n_mels, d, 3, padding=1)
         self.conv2 = nn.Conv1d(d, d, 3, stride=2, padding=1)
+        self.register_buffer('pos', sinusoids(n_ctx, d))
         self.blocks = nn.ModuleList(ResidualAttentionBlock(d, heads) for _ in range(layers))
         self.ln = nn.LayerNorm(d)
-        # sinusoidal position embedding added after the conv stem
     def forward(self, mel):
         x = F.gelu(self.conv1(mel)); x = F.gelu(self.conv2(x))
-        x = x.transpose(1, 2)        # + sinusoids
+        x = x.transpose(1, 2)
+        x = x + self.pos[:x.size(1)]
         for b in self.blocks:
             x = b(x)
         return self.ln(x)
@@ -160,14 +162,9 @@ class TextDecoder(nn.Module):
         x = self.ln(x)
         return x @ self.token.weight.t()               # tied output projection
 
-# Turn raw web (audio, transcript) data into training examples.
-def build_example(audio, transcript, meta):
-    # TODO: how raw internet pairs are filtered and segmented into model inputs/targets.
-    pass
-
-# Tell a single decoder which task to perform on the same audio.
-def build_decoder_sequence(target_text, meta):
-    # TODO: the token sequence the decoder is asked to predict, encoding the task
-    #       and conditioning so one model covers many speech tasks.
+# Assemble training examples and the decoder target.
+def build_training_example(audio, transcript, meta):
+    # TODO: the training recipe — what data feeds the model and what the decoder
+    #       is asked to predict.
     pass
 ```

@@ -4,7 +4,7 @@
 
 How can a model learn, with no supervision, an *interpretable, factorised* latent representation of image data — one where each latent unit responds to a single underlying generative factor of the world (position, scale, rotation, lighting, identity, …) and stays invariant to the others — and how can the degree of such *disentanglement* even be measured so that models can be compared and tuned?
 
-The world's images are generated from a small set of independent factors of variation; a representation that recovers them in separate, axis-aligned coordinates would generalise across tasks, support transfer and zero-shot inference (recombining known factors into unseen configurations), and enable novelty detection. The difficulty is doing this *unsupervised*: a freshly initialised learner faces complex data with no a-priori knowledge of how many generative factors exist or what they are, and little-to-no labelling to discover them. Two sub-problems must be solved together: (1) a learning pressure that encourages each latent to capture one independent factor, controllable by something simpler than per-dataset architectural surgery; and (2) a way to *quantify* disentanglement, since none existed — without it there is no way to compare methods or to tune whatever knob (1) introduces.
+The world's images are generated from a small set of independent factors of variation; a representation that recovers them in separate, axis-aligned coordinates would generalise across tasks, support transfer and zero-shot inference (recombining known factors into unseen configurations), and enable novelty detection. The difficulty is doing this *unsupervised*: a freshly initialised learner faces complex data with no a-priori knowledge of how many generative factors exist or what they are, and little-to-no labelling to discover them. Two sub-problems must be solved together: (1) a learning pressure that encourages each latent to capture one independent factor; and (2) a way to *quantify* disentanglement, since none existed — without it there is no way to compare methods or to tune whatever (1) introduces.
 
 ## Background
 
@@ -31,14 +31,12 @@ trained by the reparameterisation trick `z = μ(x) + σ(x)·ε`, `ε ∼ N(0, I)
 ## Evaluation settings
 
 - **Datasets.** A synthetic dataset of 2D shapes — 737,280 binary 64×64 images, the Cartesian product of shape ∈ {heart, oval, square} (3 values), position-X (32), position-Y (32), scale (6), and rotation (40 values over 2π) — chosen because it has exactly five known independent generative factors and no confounds, giving ground truth for an objective disentanglement comparison. Also CelebA, 3D chairs, and 3D faces for qualitative inspection of learned factor traversals.
-- **Metrics.** A quantitative disentanglement score (defined below) that must measure both *independence* and *interpretability*; qualitative latent-traversal inspection (fix all latents but one, sweep that one over a range, view the decoded images). To compare a learning constraint across datasets of different image size and latent dimension, a normalised form `β_norm = β·M/N` (with `M` latents and `N` pixels) puts the constraint on a per-pixel, per-latent footing.
-- **Protocol.** Train encoder/decoder by gradient descent. On the 2D-shapes encoder/decoder of fully-connected layers (FC 1200, 1200; 10 latents; Adagrad lr 1e-2; Bernoulli decoder). On CelebA/chairs/faces, a convolutional encoder (four 32-channel 4×4 stride-2 convs, then FC 256; 32 latents) with a mirror-image deconvolutional decoder and Adam at 1e-4. Prior `p(z) = N(0, I)` throughout. The disentanglement metric trains a low-capacity linear classifier on inferred-latent statistics.
-
-The disentanglement metric, more precisely: over a batch of `L` pairs, fix one target generative factor `y` to the same value within each pair while sampling all other factors independently, generate the two images, infer their latent means `z_{1,l} = μ(x_{1,l})`, `z_{2,l} = μ(x_{2,l})`, take the absolute difference `z_diff^l = |z_{1,l} − z_{2,l}|`, average it over the batch into `z_diff^b = (1/L) Σ_l z_diff^l`, and train a low-VC-dimension linear classifier to predict `y` from `z_diff^b`; its accuracy is the score.
+- **Metrics.** A quantitative disentanglement score (to be designed — none exists yet); qualitative latent-traversal inspection (fix all latents but one, sweep that one over a range, view the decoded images).
+- **Protocol.** Train encoder/decoder by gradient descent. On the 2D-shapes encoder/decoder of fully-connected layers (FC 1200, 1200; 10 latents; Adagrad lr 1e-2; Bernoulli decoder). On CelebA/chairs/faces, a convolutional encoder (four 32-channel 4×4 stride-2 convs, then FC 256; 32 latents) with a mirror-image deconvolutional decoder and Adam at 1e-4. Prior `p(z) = N(0, I)` throughout.
 
 ## Code framework
 
-Pre-existing primitives: PyTorch `nn.Module`, `Conv2d` / `ConvTranspose2d`, `Linear`, the Adam/Adagrad optimisers, and the closed-form Gaussian-vs-`N(0,I)` KL. The VAE scaffold — encoder to `(μ, log σ²)`, reparameterised sample, decoder, ELBO loss — already exists. What does not yet exist is the modification to the objective that will induce disentanglement.
+Pre-existing primitives: PyTorch `nn.Module`, `Conv2d` / `ConvTranspose2d`, `Linear`, the Adam/Adagrad optimisers, and the closed-form Gaussian-vs-`N(0,I)` KL. The VAE scaffold — encoder to `(μ, log σ²)`, reparameterised sample, decoder, ELBO loss — already exists.
 
 ```python
 import torch
@@ -90,7 +88,6 @@ def kl_divergence(mu, logvar):
     return klds.sum(1).mean(0)
 
 def vae_objective(recon_loss, total_kld):
-    # TODO: how the reconstruction term and the KL term are combined,
-    # and what controls the relative weight that will induce disentanglement.
+    # TODO: combine the reconstruction and KL terms into the training objective.
     pass
 ```

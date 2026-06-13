@@ -40,7 +40,7 @@ The search returns a visit-count distribution over root actions and a root value
 
 **Observation-reconstructing model-based RL** (PlaNet, Hafner et al.; SimPLe, Kaiser et al.; world models, Ha & Schmidhuber; embed-to-control). Learn a latent dynamics model trained to reconstruct or predict the observation, then plan in it. The gap, as measured on Atari: they trail well-tuned model-free agents, even on data efficiency, because pixel-level planning is intractable and reconstruction spends capacity on planning-irrelevant detail.
 
-**Value-equivalent models.** The Predictron (Silver et al., 2017) learns an abstract MDP, trained by TD so its rolled-out cumulative reward matches the real value — but it predicts value only, with no actions. Value iteration networks (Tamar et al., 2016) and TreeQN (Farquhar et al., 2018) learn local/abstract MDPs whose internal planning approximates the optimal value. Value prediction networks (Oh et al., 2017) are the closest: an MDP model grounded in real actions, unrolled, trained so the cumulative reward conditioned on the actions of a simple lookahead matches the environment. The gap each leaves: none of them predicts a *policy*, so none can drive an AlphaZero-style search-based policy-improvement loop; their lookahead uses value alone.
+**Value-equivalent models.** The Predictron (Silver et al., 2017) learns an abstract MDP, trained by TD so its rolled-out cumulative reward matches the real value — but it predicts value only, with no actions. Value iteration networks (Tamar et al., 2016) and TreeQN (Farquhar et al., 2018) learn local/abstract MDPs whose internal planning approximates the optimal value. Value prediction networks (Oh et al., 2017) are the closest: an MDP model grounded in real actions, unrolled, trained so the cumulative reward conditioned on the actions of a simple lookahead matches the environment. The gap each leaves: their lookahead is driven by value alone — none of them predicts a *policy*.
 
 ## Evaluation settings
 
@@ -56,15 +56,15 @@ What does *not* exist yet is the model that the search will step through, and th
 # --- the model the agent will plan with: empty slots ---
 class Network:
     def initial_inference(self, observation):
-        # observation(s) -> (value, reward, policy, internal_state)
+        # observation(s) -> (..., internal_state)
         # TODO: turn raw observations into the object the search starts from,
-        #       and read off the quantities the search needs at a node.
+        #       and read off whatever quantities the search needs at a node.
         raise NotImplementedError
 
     def recurrent_inference(self, internal_state, action):
-        # (internal_state, action) -> (value, reward, policy, next_internal_state)
+        # (internal_state, action) -> (..., next_internal_state)
         # TODO: step the internal state forward under a hypothetical action,
-        #       and read off the quantities the search needs at the new node.
+        #       and read off whatever quantities the search needs at the new node.
         raise NotImplementedError
 
 

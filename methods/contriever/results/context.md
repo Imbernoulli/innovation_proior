@@ -64,19 +64,14 @@ views of different images are far apart, using the InfoNCE loss — a softmax th
 positive out of many negatives. Two frameworks supply the negatives. SimCLR (Chen et al. 2020)
 uses the other examples in the same large batch as negatives, and backpropagates through both
 views; it needs very large batches (thousands) to provide enough negatives. MoCo (He et al. 2020)
-decouples the number of negatives from the batch size: it keeps a *queue* of key vectors from
-recent batches and encodes keys with a *momentum encoder* — a second copy of the network whose
-weights are an exponential moving average θ_k ← m·θ_k + (1−m)·θ_q of the trainable query encoder.
-The queue gives many negatives cheaply; the slow-moving momentum encoder keeps those queued vectors
-mutually consistent even as the query encoder changes. These methods were shown to learn features
-well suited to retrieval (Caron et al. 2021).
+instead keeps a *queue* of key vectors from recent batches and encodes keys with a separate
+*momentum encoder* (a second copy of the network updated without gradient). These methods were
+shown to learn features well suited to retrieval (Caron et al. 2021).
 
-**Motivating observation.** ICT and contrastive instance discrimination are the same shape: both
-build a positive pair from a single piece of data and learn by discriminating it against many
-negatives. ICT's pre-training gains were modest as a zero-shot retriever, and contrastive learning
-in vision had since advanced substantially (large negative pools via MoCo, better augmentations).
-That gap — a retrieval-shaped self-supervised objective that had not yet been pushed with modern
-contrastive machinery — is the opening.
+**Motivating observation.** ICT's self-supervised pre-training gains were modest: as a zero-shot
+retriever it still trailed BM25. Meanwhile, contrastive learning in vision had advanced
+substantially over the same period — larger negative pools, stronger augmentations — though those
+advances had been demonstrated on images rather than on text retrieval.
 
 ## Baselines
 
@@ -87,9 +82,9 @@ contrastive machinery — is the opening.
   in-batch + BM25 hard negatives. Gap: needs large labeled sets; transfers poorly zero-shot.
 - **ANCE** (Xiong et al. 2020). DPR plus self-mined hard negatives refreshed during training. Gap:
   same supervision requirement; even more training machinery.
-- **ICT pre-training** (Lee et al. 2019). Self-supervised span-vs-context pseudo pairs. Gap:
-  zero-shot retrieval still below BM25; positive pairs are mutually exclusive (no lexical overlap
-  signal) and asymmetric (query and key follow different distributions).
+- **ICT pre-training** (Lee et al. 2019). Self-supervised pseudo pairs built by taking a sentence
+  span as the "query" and its surrounding complement as the "document". Gap: zero-shot retrieval
+  still below BM25.
 - **REALM / masked-salient-spans** (Guu et al. 2020). Uses entity annotations, so not fully
   unsupervised; still below BM25 zero-shot.
 - **SimCSE** (Gao et al. 2021), as an unsupervised dense baseline; **SBERT** (Reimers & Gurevych
@@ -131,12 +126,10 @@ class Encoder(transformers.BertModel):
     def __init__(self, config):
         super().__init__(config, add_pooling_layer=False)
 
-    def forward(self, input_ids, attention_mask, normalize=False):
+    def forward(self, input_ids, attention_mask):
         out = super().forward(input_ids=input_ids, attention_mask=attention_mask)
         last = out["last_hidden_state"]
         emb = pool(last, attention_mask)   # TODO: how to collapse a sequence to one vector?
-        if normalize:
-            emb = F.normalize(emb, dim=-1)
         return emb
 
 def pool(last_hidden, attention_mask):

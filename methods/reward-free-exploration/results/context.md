@@ -64,9 +64,7 @@ than the worst-case range. Concretely, over `K` episodes its cumulative regret
 is `Õ(√(𝒢·SAHK) + S²AH⁴)`, where `𝒢` upper-bounds the sum of optimal-value
 variances and, when rewards are bounded by a small quantity `G`, can be taken as
 `G`-scaled rather than `H`-scaled. The leading term thus shrinks when the optimal
-value `V*_1(s_1)` is small. This problem-dependence is the load-bearing property:
-it means that *learning to reach a hard-to-reach state* — where the maximum
-reaching probability is small — is correspondingly cheap.
+value `V*_1(s_1)` is small.
 
 **The simulation / value-difference lemma.** For two MDPs `M'`, `M''` sharing a
 policy `π`, the value gap telescopes (Dann et al. 2017, Lemma E.15):
@@ -193,9 +191,7 @@ def regret_minimizing_explorer(env, reward, N0, rng):
 # ---- open slots -------------------------------------------------------------
 def explore(env, N0, N, rng):
     # TODO: collect a dataset with no reward such that ANY reward can be
-    # planned for afterward. What reward (if any) do we feed the explorer per
-    # target, how do we assemble an exploratory policy set, and what data
-    # distribution does it induce?
+    # planned for afterward.
     pass
 
 def plan(D, S, A, H, reward):

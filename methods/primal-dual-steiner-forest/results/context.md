@@ -33,19 +33,17 @@ them.
 and minimizing `∑ c_e x_e` subject to `∑_{e∈δ(S)} x_e ≥ 1` for all separating `S` gives a lower
 bound on the integer optimum. Its dual assigns a variable `y_S ≥ 0` to each separating set,
 maximizing `∑_S y_S` subject to `∑_{S: e∈δ(S)} y_S ≤ c_e` for every edge `e`. Any feasible dual
-`y` is, by weak duality, a lower bound on the cost of any feasible network. This is the lever: if
-an algorithm produces a network of cost at most `α` times the value of a dual it also produces,
-that network is within `α` of optimal — without ever solving the LP. Geometrically the dual
-variables can be drawn as concentric rings ("moats") of width `y_S` around vertex sets; the
-constraint says the moats piled onto any single edge cannot total more than its cost.
+`y` — optimal or not — is, by weak duality, a lower bound on the cost of any feasible network.
+Geometrically the dual variables can be drawn as concentric rings ("moats") of width `y_S` around
+vertex sets; the constraint says the moats piled onto any single edge cannot total more than its
+cost.
 
-**Self-refining structure of the cut lower bound.** In the unit-cost case a feasible network has
-size at least half the maximum number of cuts you can pack so that each separates some pair and no
-edge lies in more than two cuts (each cut must be hit, and each network edge is counted in at most
-two cuts). For integer costs, subdividing an edge of cost `c_e` into a path of `c_e` unit edges
-carries the same statement to weighted instances; rational costs follow by scaling and real costs
-by the usual limiting argument. This is the same cost-weighted lower-bound intuition that the
-moat-packing dual makes explicit.
+**Cut packings as lower bounds.** In the unit-cost case the size of a feasible network can be
+bounded below by packing cuts that each separate some pair: every such cut must be hit by a network
+edge. For integer costs, subdividing an edge of cost `c_e` into a path of `c_e` unit edges carries
+cut-packing statements to weighted instances; rational costs follow by scaling and real costs by the
+usual limiting argument. This is the same cost-weighted lower-bound intuition that the moat-packing
+dual makes explicit.
 
 **Why the obvious primal-dual choice is not enough (the diagnostic).** A primal-dual covering
 algorithm keeps a feasible dual and a partial primal, and at each step raises the dual of a single
@@ -55,11 +53,8 @@ cost is shared among at most `f` of the raised duals. For connection problems `f
 cut, which can be as large as the number of pairs `k`. The failure is concrete: take one common
 source `s = s_1 = … = s_k` and distinct sinks `t_1, …, t_k`. If the algorithm raises only the dual
 of the singleton `{s}`, the cheapest legal completion buys all `k` star edges, every one of which
-crosses `δ({s})`, so a single moat is charged `k` times — a `k`-approximation. Yet if one looks at
-the same `k` star edges against *all* the natural violated sets `{s}, {t_1}, …, {t_k}`, each
-`δ({t_j})` is crossed once and `δ({s})` `k` times: `k+1` sets, total crossings `2k`, an average of
-`2k/(k+1) < 2`. The crossings are cheap *on average over the violated sets* even though they are
-expensive against the one set the single-violation rule happened to pick.
+crosses `δ({s})`, so a single moat is charged `k` times — a `k`-approximation. The single-violation
+rule stalls here at a factor that grows with the number of pairs.
 
 ## Baselines
 
@@ -85,13 +80,11 @@ expensive against the one set the single-violation rule happened to pick.
   requirement form; it cannot handle arbitrary `0/1` pairs, where each subproblem is no longer an
   ordinary Steiner tree.
 
-- **Reverse-delete cleanup as an analysis tool (introduced for primal-dual covering, then refined
-  to delete in reverse order of addition).** After a feasible edge set is built, remove redundant
-  edges. The refinement — examining edges for deletion in the *reverse* of the order they were
-  added — turns the remaining edges, relative to any intermediate state, into a *minimal*
-  augmentation, which is what makes a degree-counting bound possible. Without it, edges that become
-  unnecessary after later mergers can survive, and an inactive component can remain as a leaf in the
-  contracted counting graph.
+- **Reverse-delete cleanup (introduced for primal-dual covering).** After a feasible edge set is
+  built, redundant edges can be removed without breaking feasibility — an edge whose deletion still
+  leaves every pair connected is unnecessary. One can examine edges for deletion in the order added,
+  or in the *reverse* of that order; the choice of order is a free parameter of the cleanup. Without
+  any cleanup, edges that become unnecessary after later mergers survive in the bought set.
 
 ## Evaluation settings
 
@@ -117,19 +110,9 @@ def connect_pairs(n, edges, pairs):
             parent[x] = parent[parent[x]]; x = parent[x]
         return x
 
-    # TODO: bookkeeping the selection rule will need
-    #       (e.g. per-vertex labels and a component status test)
-
     chosen = []
-    while True:
-        # TODO: identify components whose boundary still matters
-        # TODO: stopping condition (all pairs connected)
-        # TODO: pick the next edge to buy from remaining edge slack
-        # TODO: update the bookkeeping for the relevant components
-        # TODO: merge the two components the bought edge joins
-        break
-
-    # TODO: cleanup pass that removes edges not needed for feasibility
+    # TODO: build the forest by choosing edges to buy until every pair is
+    #       connected, then certify the result is near-optimal
     return chosen
 
 def all_connected(n, forest, pairs):

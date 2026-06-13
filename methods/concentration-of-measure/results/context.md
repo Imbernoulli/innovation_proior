@@ -16,13 +16,13 @@ There are two further demands. First, the bound should decay *fast* in $t$ and i
 $$\Pr\{Y\ge t\}\le \frac{EY}{t}.$$
 This is interesting only when $EY<\infty$, and crude on its own, but it has a powerful flexibility: applied not to $Y$ directly but to $\phi(Y)$ for a nondecreasing nonnegative $\phi$, it yields $\Pr\{Y\ge t\}\le E\phi(Y)/\phi(t)$ for any $t$ with $\phi(t)>0$.
 
-**Chebyshev / Bienaymé.** Taking $\phi(t)=t^2$ and $Y=|Z-EZ|$ gives $\Pr\{|Z-EZ|\ge t\}\le \operatorname{Var}(Z)/t^2$. For a sum of independent variables $\operatorname{Var}(S)=\sum_i \operatorname{Var}(X_i)$, so $\Pr\{|\bar X-\mu|\ge t\}\le \sigma^2/(nt^2)$ with $\sigma^2=n^{-1}\sum\operatorname{Var}(X_i)$. This is the standard known bound. Its weakness is that it decays only like $1/t^2$ — polynomially — whereas the Gaussian limit promises something exponential. Chebyshev requires no boundedness; the price is a much weaker tail. More generally $\Pr\{|Z-EZ|\ge t\}\le E|Z-EZ|^q/t^q$, and one may optimize over $q$; that can help in particular distributions, but high moments of sums are hard to control uniformly. The attraction of the exponential method is that it packages all moments into one object that still factorizes.
+**Chebyshev / Bienaymé.** Taking $\phi(t)=t^2$ and $Y=|Z-EZ|$ gives $\Pr\{|Z-EZ|\ge t\}\le \operatorname{Var}(Z)/t^2$. For a sum of independent variables $\operatorname{Var}(S)=\sum_i \operatorname{Var}(X_i)$, so $\Pr\{|\bar X-\mu|\ge t\}\le \sigma^2/(nt^2)$ with $\sigma^2=n^{-1}\sum\operatorname{Var}(X_i)$. This is the standard known bound. Its weakness is that it decays only like $1/t^2$ — polynomially — whereas the Gaussian limit promises something exponential. Chebyshev requires no boundedness; the price is a much weaker tail. More generally $\Pr\{|Z-EZ|\ge t\}\le E|Z-EZ|^q/t^q$, and one may optimize over $q$; that can help in particular distributions, but high moments of sums are hard to control uniformly.
 
-**The exponential-moment idea (Bernstein, Cramér).** The decisive observation, used apparently first by S. N. Bernstein, is that the indicator $\mathbf 1\{S-ES\ge nt\}$ never exceeds $\exp\{h(S-ES-nt)\}$ for any constant $h>0$. Hence $\Pr\{S-ES\ge nt\}\le e^{-hnt}\,E e^{h(S-ES)}$, and by independence $E e^{h(S-ES)} = \prod_i E e^{h(X_i-EX_i)}$: the exponential turns a *sum* into a *product* of moment generating functions, which factorize. One is left to bound each one-dimensional MGF and then minimize over $h$. The asymptotic face of this device is Cramér's large-deviation theory, in which the exponential rate is governed by the Legendre transform of the log-MGF. The whole programme rests on controlling the MGF.
+**The exponential-moment idea (Bernstein, Cramér).** The decisive observation, used apparently first by S. N. Bernstein, is that the indicator $\mathbf 1\{S-ES\ge nt\}$ never exceeds $\exp\{h(S-ES-nt)\}$ for any constant $h>0$. Hence $\Pr\{S-ES\ge nt\}\le e^{-hnt}\,E e^{h(S-ES)}$, and by independence $E e^{h(S-ES)} = \prod_i E e^{h(X_i-EX_i)}$: the exponential turns a *sum* into a *product* of moment generating functions. The asymptotic face of this device is Cramér's large-deviation theory, in which the exponential rate is governed by the Legendre transform of the log-MGF. The whole programme rests on controlling the MGF.
 
-**Convexity / Jensen.** A continuous function $f$ is convex on an interval if it lies below its chords: $f(px+(1-p)y)\le pf(x)+(1-p)f(y)$ for $0<p<1$; equivalently it has a nonnegative second derivative. Jensen's inequality $f(\sum p_i x_i)\le \sum p_i f(x_i)$ for a probability weighting $p_i$ is the discrete form. The exponential is convex, so on a bounded interval $[a,b]$ its graph lies below the chord joining $(a,e^{ha})$ and $(b,e^{hb})$ — the lever that controls the MGF of a bounded variable.
+**Convexity / Jensen.** A continuous function $f$ is convex on an interval if it lies below its chords: $f(px+(1-p)y)\le pf(x)+(1-p)f(y)$ for $0<p<1$; equivalently it has a nonnegative second derivative. Jensen's inequality $f(\sum p_i x_i)\le \sum p_i f(x_i)$ for a probability weighting $p_i$ is the discrete form. The exponential is convex, so on any bounded interval its graph lies below the chord joining its two endpoints.
 
-**Martingales and Doob's filtration.** A sequence $S'_1,\dots,S'_n$ is a martingale if $E[S'_m\mid S'_1,\dots,S'_j]=S'_j$ for $j\le m$: the best forecast of the future given the past is the present. Doob's maximal inequality controls $\Pr\{\max_{m\le n}(S_m-ES_m)\ge nt\}$ by the same exponential-moment bound as the endpoint, because $\exp\{h(S_m-ES_m)\}$ is a submartingale (Doob, *Stochastic Processes*, 1953). Crucially, the exponential-moment argument for a sum never really used independence — it used only that the conditional mean of each increment, given the past, is zero. That is the martingale-difference property, and it is strictly weaker than independence.
+**Martingales and Doob's filtration.** A sequence $S'_1,\dots,S'_n$ is a martingale if $E[S'_m\mid S'_1,\dots,S'_j]=S'_j$ for $j\le m$: the best forecast of the future given the past is the present. Doob's maximal inequality controls $\Pr\{\max_{m\le n}(S_m-ES_m)\ge nt\}$ by the same exponential-moment bound as the endpoint, because $\exp\{h(S_m-ES_m)\}$ is a submartingale (Doob, *Stochastic Processes*, 1953).
 
 **Variance-aware refinements (Bennett, Bernstein, Prohorov).** When the variance of a bounded summand is much smaller than the square of its range, bounds that use the variance — Bennett's Poisson-type rate, Bernstein's simpler Gaussian-to-exponential simplification, and Prohorov's arcsinh-type refinement — beat anything that depends on the range alone. These are the natural comparison points for a range-only bound and the benchmark for "is this the best constant".
 
@@ -38,7 +38,7 @@ This is interesting only when $EY<\infty$, and crude on its own, but it has a po
 
 - **Prohorov's inequality** (Prohorov). Core idea: another variance-sensitive exponential bound for bounded summands, with an arcsinh-type rate expression. **Gap:** dominated by Bennett's bound, and shares the same "sum, variance-dependent" limitations.
 
-- **Doob's martingale maximal inequality** (Doob 1953). Core idea: for a martingale, the running maximum obeys the same exponential-moment tail as the endpoint. **Gap:** it is a tool, not a concentration inequality for a concrete statistic — it tells you the max is controlled *if* you already have an MGF bound for the increments, but supplies no such bound for a general bounded-difference function.
+- **Doob's martingale maximal inequality** (Doob 1953). Core idea: for a martingale, the running maximum obeys the same exponential-moment tail as the endpoint. **Gap:** it is a tool, not a concentration inequality for a concrete statistic — it tells you the max is controlled *if* you already have an MGF bound for the increments, but supplies no such bound for a general function of the inputs.
 
 ## Evaluation settings
 
@@ -46,13 +46,13 @@ This is a theoretical result; the natural yardsticks are mathematical, not bench
 
 - **Comparison targets.** The Chebyshev bound $\sigma^2/(nt^2)$, the Gaussian CLT tail $\bar\Phi(\sqrt n\, t/\sigma)\le e^{-nt^2/(2\sigma^2)}$, and the variance-aware bounds of Bennett, Bernstein and Prohorov. A candidate bound is judged by whether it decays exponentially in $n$ for fixed $t$, by the constant in the exponent, and by whether the constant is *attained* by an extremal distribution (e.g. a two-point or binomial distribution) — i.e. whether the bound is best-possible within its method.
 
-- **Canonical test functions for a function-of-independent-variables bound.** Sums and weighted sums; the empirical mean of a bounded loss; sampling without replacement from a finite population; $U$-statistics; combinatorial quantities on random structures (e.g. a Lipschitz function on a product space under the weighted Hamming metric). These are the objects whose concentration one would want any general inequality to deliver as special cases.
+- **Canonical test functions for a function-of-independent-variables bound.** Sums and weighted sums; the empirical mean of a bounded loss; sampling without replacement from a finite population; $U$-statistics; combinatorial quantities on random structures (e.g. a low-sensitivity function on a product space, where no single coordinate can move the output far). These are the objects whose concentration one would want any general inequality to deliver as special cases.
 
 - **Diagnostics.** Whether the bound recovers known special cases (the binomial bounded-sum case, the Rademacher/sub-Gaussian case where $\operatorname{Var}(S)=\sum\alpha_i^2$), and whether the limiting behaviour as $t\to0$ or $n\to\infty$ matches the Gaussian/large-deviation rate.
 
 ## Code framework
 
-A pure-mathematical result; the landing artifact is the proved inequalities, not software. For numerical sanity checks, the available scaffold is sampling, empirical tail counting, and an empty analytic bound slot parameterized by per-coordinate ranges or sensitivities.
+A pure-mathematical result; the landing artifact is the proved inequalities, not software. For numerical sanity checks, the available scaffold is sampling, empirical tail counting, and an empty analytic bound slot to be filled by the candidate inequality.
 
 ```python
 import numpy as np
@@ -68,7 +68,7 @@ def empirical_tail(sampler, stat, t, trials=200_000, rng=None):
 def tail_bound(t, params):
     """Analytic upper bound on the deviation probability.
     # TODO: analytic finite-sample tail bound goes here.
-    #       Inputs: deviation t, and the per-coordinate ranges / sensitivities.
+    #       Inputs: deviation t and whatever per-coordinate parameters the bound needs.
     #       Output: a number that must dominate empirical_tail above, for every t."""
     raise NotImplementedError
 

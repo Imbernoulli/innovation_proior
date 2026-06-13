@@ -10,7 +10,7 @@ The precise problem: given a system whose state at any time is a vector of state
 
 The prevailing way to attack such a problem is direct enumeration: regard a *policy* as a complete sequence of decisions, one per stage; for each feasible policy compute the resulting return; then maximize over the set of all feasible policies. This is correct and conceptually simple. Its cost is the difficulty. For a process of $N$ stages with even a moderate number $k$ of choices at each stage, the number of feasible sequences is on the order of $k^{N}$, and the maximization is over a space whose dimension grows with the number of stages. For continuous processes — where a decision must be made at every instant of a time interval — the policy is a *function* of time and the maximization is over a function space. The dimension of the resulting optimization is uncomfortably high; the price of this excessive dimensionality can make even a fast computing machine cringe.
 
-There is a deeper failure for random processes. When a decision determines only a *distribution* over next states rather than a single next state, it is meaningless to fix a sequence of decisions in advance: you cannot decide your stage-3 action before you know what stage-2 actually produced. The enumerative, fixed-sequence view is "virtually impossible" in the stochastic case. This points, before any method exists, at a distinction the classical view blurs: an *open-loop* plan (a fixed sequence chosen at time zero) versus a *closed-loop* plan (a rule that picks each action as a function of the state actually observed). Under uncertainty the closed-loop class is strictly richer and is the only one that even makes sense.
+There is a deeper failure for random processes. When a decision determines only a *distribution* over next states rather than a single next state, it is meaningless to fix a sequence of decisions in advance: you cannot decide your stage-3 action before you know what stage-2 actually produced. The enumerative, fixed-sequence view is "virtually impossible" in the stochastic case.
 
 Several lines of prior work had, in their own corners, hit upon recursing backwards through the stages:
 
@@ -29,7 +29,7 @@ So the field state is: a clean enumerative formulation that does not scale and c
 
 - **Exhaustive policy enumeration.** Enumerate all $k^{N}$ feasible decision sequences, evaluate each, take the max. Core idea: brute force over policy space. Math: $\max_{(T_1,\dots,T_N)} R\big(T_N(\cdots T_1(p)\cdots)\big)$. Gap: cost grows like $k^{N}$ (exponential in the number of stages); for continuous processes the maximization is over a function space; and for stochastic processes a fixed sequence is undefined, so the method does not even apply.
 
-- **Backward induction on a fixed problem (Wald 1947; Arrow–Blackwell–Girshick 1949; von Neumann–Morgenstern 1944; Massé 1944; Arrow–Harris–Marschak 1951).** Core idea: solve the last stage, then the second-to-last given the worth of the last, and so on. Math (stopping example): pick the best continuation at each node, working from the final stage back. Gap: each instance is bound to its own problem — when to stop a sequential test, the moves of one game tree, one reservoir's release schedule, one inventory rule. There is no abstract state, no general state-based summary, and no single functional equation; the technique is rediscovered case by case rather than recognized as one reusable idea.
+- **Backward induction on a fixed problem (Wald 1947; Arrow–Blackwell–Girshick 1949; von Neumann–Morgenstern 1944; Massé 1944; Arrow–Harris–Marschak 1951).** Core idea: solve the last stage, then the second-to-last given the worth of the last, and so on. Math (stopping example): pick the best continuation at each node, working from the final stage back. Gap: each instance is bound to its own problem — when to stop a sequential test, the moves of one game tree, one reservoir's release schedule, one inventory rule. The technique is rediscovered case by case rather than recognized as one reusable idea, and nothing in this prior work abstracts the shared structure across the instances.
 
 - **Calculus of variations / Euler equation / Hamilton–Jacobi theory.** Core idea: for continuous deterministic optimization, characterize the optimal trajectory by variational stationarity. Math: extremals satisfy the Euler equation $\frac{d}{dt}\frac{\partial F}{\partial \dot y} = \frac{\partial F}{\partial y}$; the optimal value solves a first-order Hamilton–Jacobi PDE. Gap: the description is open-loop (a function of time, not of the current state); inequality constraints with non-free variation are not handled; stochastic dynamics are out of scope entirely.
 
@@ -48,7 +48,7 @@ The yardstick for any successful approach is whether it recovers the right optim
 
 ## Code framework
 
-A bare scaffold for a finite multistage decision process, written purely in terms already present in the problem: a state, a per-stage set of allowable decisions, a transition, a per-stage return, and the brute-force objective that maximizes over the *entire* decision sequence. The one empty slot is a placeholder for whatever state-based summary and relation could avoid enumerating whole sequences.
+A bare scaffold for a finite multistage decision process, written purely in terms already present in the problem: a state, a per-stage set of allowable decisions, a transition, a per-stage return, and the brute-force objective that maximizes over the *entire* decision sequence. The one empty slot is a placeholder for whatever, if anything, could avoid enumerating whole sequences.
 
 ```python
 from typing import Hashable, Iterable
@@ -91,8 +91,7 @@ def best_by_enumeration(initial: State, horizon: int) -> float:
 
 # --- the unanswered slot ---
 
-def unresolved_subproblem_summary(state: State, stages_to_go: int) -> float:
-    """# TODO: a state-based summary and relation, if one exists, that
-    lets us avoid enumerating whole sequences."""
+def unresolved(*args, **kwargs):
+    """# TODO: whatever, if anything, lets us avoid enumerating whole sequences."""
     ...
 ```

@@ -1,72 +1,54 @@
-# Context
-
-The setting is deploying large convolutional networks (AlexNet, VGG-16) for inference on resource-constrained devices around 2015. These networks are accurate but enormous: the AlexNet Caffe model is over 200 MB, VGG-16 over 500 MB. The weights are stored as 32-bit floats and there are tens to hundreds of millions of them. This is a problem for mobile deployment (app-store size limits, download bandwidth) and, more fundamentally, for energy.
-
 ## Research question
 
-How can the *storage* required by a trained network be reduced by an order of magnitude or more — small enough to fit in on-chip SRAM rather than off-chip DRAM — **without any loss of accuracy**? The energy argument makes the target concrete: under 45 nm CMOS, a 32-bit float add costs ~0.9 pJ, a 32-bit SRAM access ~5 pJ, but a 32-bit DRAM access ~640 pJ — three orders of magnitude more than the arithmetic. Energy is dominated by memory access, and large models don't fit on chip, forcing the expensive DRAM fetches. A billion-connection net at 20 fps would burn $20\,\text{Hz}\times 10^9 \times 640\,\text{pJ} = 12.8\,\text{W}$ on DRAM access alone — beyond a mobile power budget. So the real goal is: shrink the model enough to live in cache, preserving accuracy exactly. Where this matters most is latency-bound, batch-size-1 inference (real-time, e.g. on-device detection), where there is no batching to amortize weight fetches.
+Large convolutional networks are accurate but hard to deploy on embedded and mobile systems because their parameters dominate storage and memory bandwidth. AlexNet Caffe models are over 200 MB, and VGG-16 Caffe models are over 500 MB when weights are stored as 32-bit floats. Under 45 nm CMOS, a 32-bit floating-point add costs about 0.9 pJ, a 32-bit SRAM access about 5 pJ, and a 32-bit DRAM access about 640 pJ. A one-billion-connection network running at 20 frames per second would spend $(20\text{Hz})(10^9)(640\text{pJ})=12.8\text{W}$ on DRAM weight fetches alone.
+
+The working question is how to reduce the storage of a trained network by an order of magnitude or more, enough that weights can sit in on-chip cache rather than off-chip DRAM, while preserving the original accuracy. The constraint is especially sharp for latency-bound batch-size-1 inference, where dense matrix-vector layers cannot reuse weights across a batch.
 
 ## Background
 
-- **Networks are massively over-parameterized.** There is large redundancy in deep models (Denil et al. 2013 showed most parameters are predictable from a few), so in principle most weights can be removed or coarsened without hurting accuracy. The fully-connected layers dominate model size (>90% in VGG-16) and are the most redundant; convolutional layers are smaller but more sensitive to precision.
-- **Pruning has a long history.** Biased weight decay (Hanson & Pratt 1989); Optimal Brain Damage (LeCun et al. 1990) and Optimal Brain Surgeon (Hassibi & Stork 1993) delete connections using second-order (Hessian) saliency, and argue this is more accurate than magnitude-based deletion. Recently, Han et al. (2015) showed that simple iterative *magnitude* pruning — train, delete the smallest-magnitude weights, retrain the survivors — removes an order of magnitude of parameters from AlexNet/VGG with no accuracy loss. Larger-magnitude weights matter more than smaller ones.
-- **Quantization / weight sharing.** Reducing the bits per weight: fixed-point 8-bit (Vanhoucke et al. 2011), ternary weights with 3-bit activations (Hwang & Sung 2014), L2-error-minimizing quantization (Anwar et al. 2015). HashedNets (Chen et al. 2015) force weights into shared buckets via a hash function — but the sharing is fixed *before* the network sees data, so it cannot adapt to the trained weight distribution. Vector quantization of conv-nets (Gong et al. 2014) gives ~16–24× with ~1% accuracy loss but studies only FC layers.
-- **Low-rank / structural.** SVD / low-rank factorization of weight matrices (Denton et al. 2014) keeps accuracy within ~1% but compresses only modestly (a few ×). Replacing FC layers with global average pooling (NiN, GoogLeNet) shrinks the net but hurts transfer learning.
-- **Sparse storage facts.** A pruned matrix stored in compressed sparse row/column (CSR/CSC) format needs $2a+n+1$ numbers for $a$ nonzeros and $n$ rows/columns — the index overhead is real and must be counted in any honest compression rate. A Huffman code (Huffman 1952) is an optimal prefix code: frequent symbols get shorter codewords, so biased symbol distributions compress further losslessly.
+- **Networks are massively over-parameterized.** Deep models contain substantial parameter redundancy; Denil et al. showed that many parameters can be predicted from a small subset. In VGG-16, fully connected layers account for more than 90% of the model size, while convolutional layers are smaller and more precision-sensitive.
+- **Pruning has a long history.** Biased weight decay, Optimal Brain Damage, and Optimal Brain Surgeon all remove connections to reduce network complexity; the Hessian-based methods use second-order saliency and argue that this can be more accurate than simple magnitude deletion. The more recent large-CNN pruning recipe is simpler: train normally, delete small-magnitude weights, and retrain the surviving sparse connections.
+- **Quantization and weight sharing reduce bits per connection.** Fixed-point activations, ternary weights with low-bit activations, L2-error-minimizing quantization, hashing into shared buckets, and vector quantization all attack the number of stored bits. Hashed sharing fixes buckets before seeing the trained weight distribution; vector quantization had mainly targeted fully connected layers.
+- **Low-rank and structural changes attack particular layers.** SVD-style low-rank factorization can reduce some layers but gives modest compression and can lose accuracy. Replacing fully connected layers with global average pooling shrinks the model, but it weakens transfer workflows that depend on reusing ImageNet features and retraining only the fully connected head.
+- **Sparse storage has unavoidable metadata.** A pruned matrix stored in compressed sparse row or compressed sparse column format needs values, one index per value, and row or column pointers: $2a+n+1$ stored numbers for $a$ nonzeros and $n$ rows or columns before bit packing. Any compression-rate arithmetic has to count those indices and pointers, not just the surviving weight values. If relative indexes are packed into a bounded bit width, rare long jumps need zero-valued filler entries; those filler entries still consume both an index delta and a value symbol, and the chosen index width is a counted storage parameter. A Huffman code is a lossless prefix code that assigns shorter codewords to more frequent symbols.
 
 ## Baselines
 
-- **Magnitude pruning alone** (Han et al. 2015): delete sub-threshold-magnitude weights, retrain. Gives ~9–13× fewer parameters with no accuracy loss, but each surviving weight is still a 32-bit float and the sparse indices add overhead. Accuracy collapses if pushed much below ~8% remaining weights.
-- **Scalar/vector quantization alone:** reduce bits per weight, but on the *full* dense network; accuracy also collapses below ~8% of original size, and HashedNets-style pre-data hashing can't match the trained distribution.
-- **Low-rank (SVD):** cheap but poor compression (~2–5×) and noticeable accuracy loss.
+- **Magnitude pruning alone:** delete weights below a threshold and retrain the survivors. It can remove roughly an order of magnitude of parameters from AlexNet/VGG-style models, but the surviving values are still full-precision floats and the sparse indices add storage overhead.
+- **Scalar or vector quantization alone:** reduce the bits per weight on a dense network. The dense parameter count remains, and preassigned buckets cannot adapt to the trained weight distribution.
+- **Low-rank factorization:** replace a weight matrix or convolutional kernel tensor with a lower-rank approximation. This is inexpensive but gives limited compression and can damage accuracy.
 
-The gap: each technique alone tops out around 8% of original size before accuracy drops, and none combines a learned sparse structure with a learned low-bit codebook while accounting for index/codebook overhead.
+Each baseline removes only one kind of storage cost and is reported in isolation, and each leaves the other costs untouched: pruning leaves full-precision survivors plus sparse-index overhead, quantization leaves the dense parameter count, and low-rank leaves limited and accuracy-fragile compression. The honest accounting of sparse-index, filler, pointer, and any auxiliary-table overhead also remains a counted cost in any rate one reports.
 
 ## Evaluation settings
 
-- **MNIST:** LeNet-300-100 (FC, ~266K params, ~1.6% error) and LeNet-5 (conv, ~431K params, ~0.8% error).
-- **ImageNet ILSVRC-2012:** 1.2M train / 50K val images. AlexNet (61M params; top-1 ~57.2%, top-5 ~80.3%) and VGG-16 (138M params), both from the Caffe model zoo.
-- **Framework:** Caffe. Pruning realized by masking blob updates; quantization by a per-layer codebook plus indices.
-- **Metrics:** top-1 / top-5 error, parameter count, and **compression rate including index and codebook overhead**. Hardware benchmarks (CPU Core i7-5930K, GPU Titan X, mobile Tegra K1) report layerwise latency and energy at **batch size 1**, using dense GEMV vs sparse CSR matrix-vector kernels.
+- **MNIST:** LeNet-300-100 with about 266K weights and LeNet-5 with about 431K weights.
+- **ImageNet ILSVRC-2012:** 1.2M training images and 50K validation images; AlexNet with about 61M parameters and VGG-16 with about 138M parameters, both from the Caffe model zoo.
+- **Framework:** Caffe. Ordinary training and fine-tuning are available; sparse updates can be enforced by masking pruned-weight blob updates.
+- **Metrics:** top-1/top-5 error, parameter storage, and compression rate, where the rate must charge for every stored byte including any sparse-index, pointer, and auxiliary-table overhead, plus batch-size-1 layerwise latency/energy on CPU, desktop GPU, and mobile GPU. Dense fully connected layers are benchmarked as GEMV; pruned sparse layers are benchmarked as CSR sparse matrix-vector products.
 
 ## Code framework
 
-Pre-method scaffold: a trained network and the slots for the compression stages.
+A trained network and ordinary training loop are available; the storage-reduction procedure is the open slot.
 
 ```python
 import numpy as np
 
 class Layer:
     def __init__(self, W):
-        self.W = W                  # dense float32 weight matrix, already trained
+        self.W = W.astype(np.float32)
 
 def train_to_convergence(net, data):
-    ...                             # ordinary training exists already
+    ...
     return net
 
 def finetune(net, data, steps):
-    ...                             # ordinary fine-tuning loop exists already
+    ...
     return net
-
-def prune_stage(net, data):
-    # TODO: learn which connections matter, remove the rest, refit survivors;
-    #       store the result as a sparse structure (with its index overhead).
-    raise NotImplementedError
-
-def quantize_stage(net, data):
-    # TODO: make many connections share a small set of values, store indices
-    #       into a per-layer codebook, and refit the shared values.
-    raise NotImplementedError
-
-def entropy_code(net):
-    # TODO: losslessly pack the shared values and indices given their
-    #       (biased) frequency distribution.
-    raise NotImplementedError
 
 def compress(net, data):
     net = train_to_convergence(net, data)
-    net = prune_stage(net, data)    # TODO
-    net = quantize_stage(net, data) # TODO
-    net = entropy_code(net)         # TODO
-    return net
+    # TODO: reduce the stored size of the trained network while preserving
+    # accuracy, honestly counting any sparse-index, pointer, and table overhead.
+    raise NotImplementedError
 ```

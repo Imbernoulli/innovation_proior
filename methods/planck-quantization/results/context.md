@@ -63,8 +63,7 @@ it has no finite total energy and contradicts Stefan–Boltzmann.
 **Boltzmann's bridge between entropy and counting.** The other load-bearing idea is statistical: for a
 system whose macrostate can be realized in $W$ microscopic ways, the entropy is $S = k\log W$ (within
 an additive constant). Entropy is a count of arrangements. This is the tool that, applied to the
-resonators of the cavity wall, could give a *physical* entropy rather than a guessed one — provided
-there is something discrete to count.
+resonators of the cavity wall, could in principle give a *physical* entropy rather than a guessed one.
 
 **The resonator bridge.** The cavity walls can be modelled, following Hertz, as a collection of charged
 linear oscillators ("resonators") of every frequency, exchanging energy with the field. A

@@ -46,18 +46,8 @@ specialize. Supervising low-level tasks (e.g., POS tagging) at the *lower* layer
 high-level tasks at the upper layers (Sogaard & Goldberg, 2016; Hashimoto et al., 2017). In a two-layer LSTM
 encoder of a machine-translation system, the first-layer representations predict POS tags better than the
 second-layer ones, even though the deeper system has higher BLEU (Belinkov et al., 2017). The top layer of a
-biLSTM around a pivot word has been shown to learn word sense (context2vec; Melamud et al., 2016). The
-through-line: syntactic information concentrates in lower layers, semantic/word-sense information in higher
-layers, so no single layer is best for everything.
-
-**Diagnostic measurements on existing contextual encoders.** One can probe a frozen contextual encoder by
-freezing it and using its per-layer activations as input to a tiny classifier. On a fine-grained word-sense
-disambiguation suite (a 1-nearest-neighbor classifier over averaged per-sense representations) and on PTB
-part-of-speech tagging (a linear classifier), the two layers of a deep biLSTM encoder behave differently: the
-*lower* layer scores higher on POS, the *upper* layer scores higher on WSD. An MT-encoder's two layers show the
-same ordering but at a markedly lower absolute level than a language-model encoder. These are facts about
-encoders already on the table, and they say plainly that a downstream system restricted to a single layer is
-leaving information on the table.
+biLSTM around a pivot word has been shown to learn word sense (context2vec; Melamud et al., 2016). These are
+recurring observations about where different kinds of information sit within a deep recurrent encoder.
 
 ## Baselines
 
@@ -119,10 +109,8 @@ normalization (Ba et al., 2016), CRF decoding (Lafferty et al., 2001).
 
 ## Code framework
 
-Available scaffold: a character-CNN token encoder, projected LSTM language-model layers, and downstream task
-models that consume per-token features. The open slot is a reusable feature extractor: it must decide how to
-train a bidirectional sentence encoder, expose its internal activations, collapse those activations into one
-token feature, and concatenate that feature into a supervised model.
+Available scaffold: building blocks that are already standard — a highway transform and a character-CNN token
+encoder — plus the open slot where the new feature must be derived and wired into a supervised task model.
 
 ```python
 import torch
@@ -137,8 +125,11 @@ class Highway(nn.Module):
         self.activation = activation
 
     def forward(self, x):
-        # TODO: combine transformed and carried paths.
-        pass
+        for layer in self.layers:
+            nonlinear, gate = layer(x).chunk(2, dim=-1)
+            gate = torch.sigmoid(gate)
+            x = gate * x + (1 - gate) * self.activation(nonlinear)
+        return x
 
 
 class CharacterCNNEncoder(nn.Module):
@@ -154,75 +145,17 @@ class CharacterCNNEncoder(nn.Module):
 
     def forward(self, char_ids):
         # char_ids: (batch, seq_len, max_chars)
-        # TODO: embed characters, convolve, max-pool, highway, project, and return a mask.
-        pass
+        B, T, C = char_ids.shape
+        mask = (char_ids.gt(0).long().sum(dim=-1) > 0).long()
+        x = self.char_emb(char_ids.view(B * T, C)).transpose(1, 2)
+        convs = []
+        for conv in self.convs:
+            c, _ = conv(x).max(dim=-1)
+            convs.append(F.relu(c))
+        tok = self.proj(self.highways(torch.cat(convs, dim=-1)))
+        tok = tok.view(B, T, -1) * mask.unsqueeze(-1).float()
+        return tok, mask
 
 
-class StackedProjectedLSTM(nn.Module):
-    """L projected LSTM layers producing one sequence output per layer."""
-    def __init__(self, input_dim, cell_dim, proj_dim, n_layers, residual=True):
-        super().__init__()
-        self.layers = nn.ModuleList()
-        self.projections = nn.ModuleList()
-        self.residual = residual
-        # TODO: create projected recurrent layers.
-
-    def forward(self, x):
-        # TODO: return every layer output, not just the top one.
-        pass
-
-
-class BidirectionalLanguageModel(nn.Module):
-    """A sentence encoder trained by left-to-right and right-to-left language modeling."""
-    def __init__(self, n_layers, proj_dim, cell_dim, vocab_size):
-        super().__init__()
-        # TODO: decide how to parameterize the two directions, the token encoder,
-        # the output softmax, and the exposed internal activations.
-        pass
-
-    def forward(self, char_ids):
-        # TODO: run both language-model directions and return every layer activation plus a mask.
-        pass
-
-    def lm_loss(self, char_ids, targets_forward, targets_backward):
-        # TODO: train by the sum of left-to-right and right-to-left language-model losses.
-        pass
-
-
-class LayerCombination(nn.Module):
-    """Collapse a list of same-shaped layer activations into one tensor."""
-    def __init__(self, mixture_size, do_layer_norm=False,
-                 initial_scalar_parameters=None, trainable=True):
-        super().__init__()
-        # TODO: choose the layer-combination rule and any scale parameters.
-        pass
-
-    def forward(self, tensors, mask=None):
-        # TODO: collapse the layer tensors into one tensor with the same shape.
-        pass
-
-
-class ContextualFeatureExtractor(nn.Module):
-    """Run a frozen sentence encoder once and produce one or more token features."""
-    def __init__(self, bilm, num_output_representations=1,
-                 do_layer_norm=False, dropout=0.5, freeze_bilm=True):
-        super().__init__()
-        # TODO: decide whether the sentence encoder is frozen, how many features
-        # to expose, and how each feature combines encoder layers.
-        pass
-
-    def forward(self, char_ids):
-        # TODO: get encoder activations and produce one feature per requested insertion point.
-        pass
-
-    def weight_regularization(self, coefficient):
-        # TODO: expose a regularization term for the layer-combination parameters.
-        pass
-
-
-def add_feature_to_task_model(task_token_repr, contextual_input,
-                              task_context_repr=None, contextual_output=None):
-    """Attach reusable token features to a supervised model's input and, if supplied, output."""
-    # TODO: decide which insertion points should receive the feature.
-    pass
+# TODO: derive the new word feature and wire it into a supervised task model.
 ```

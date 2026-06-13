@@ -52,7 +52,7 @@ a positive-definite kernel. Schoenberg (1942) proved `f(cos theta)` is positive-
 
 so if `f_0 > 0`, `f_k >= 0` for `k >= 1`, and `f(t) <= 0` on `[-1, cos psi]`, the right side is `>= |C|^2 f_0` and the left side's off-diagonal sum is `<= 0`, giving `|C| <= f(1)/f_0`. This bounds the *cardinality* of a code at a fixed angle. It is tight for the kissing problem only in dimensions `8` and `24`; on `S^2` it brackets `d_13 < 58.5°` and `d_14 < 56.58°` (the latter via the semidefinite strengthening of Bachoc–Vallentin) but produces a numerical gap, not the exact `d_N` nor a uniqueness statement.
 
-**The local structure of an optimum.** The motivating empirical observation, going back to Schütte–van der Waerden and Danzer, is that an optimal arrangement is *jammed*: at the maximum, the subgraph of pairs that are exactly at the minimum distance is rigid — there is no way to nudge any subset of points to strictly increase the closest distance. Two elementary local moves capture every way the configuration could improve: a **shift**, sliding a single point off the others to gain room; and **Danzer's flip**, taking a point `x` with two taut neighbours `y, z` and reflecting it across the great circle `yz` to land further from the rest. An arrangement admitting neither move is *irreducible*. Danzer further observed, by elementary spherical geometry, that in an irreducible arrangement the taut-pair graph is planar, every vertex has degree `0, 3, 4,` or `5`, and (because the angle exceeds roughly `55°`, so `2pi/d < 7`) every face is a convex equilateral spherical polygon with at most six sides, with isolated points only inside hexagons. These are properties of any optimum, known before any particular configuration is named.
+**The local structure of an optimum.** The motivating empirical observation, going back to Schütte–van der Waerden and Danzer, is that an optimal arrangement is *jammed*: at the maximum, the configuration is rigid — there is no way to nudge any subset of points to strictly increase the closest distance, and the pairs sitting exactly at the minimum distance are the ones holding it in place. Slack pairs (distance strictly greater than the minimum) impose no constraint on local motion. This jamming was read off the small-`N` optima long before any general theory of it was available.
 
 ## Baselines
 
@@ -62,7 +62,7 @@ so if `f_0 > 0`, `f_k >= 0` for `k >= 1`, and `f(t) <= 0` on `[-1, cos psi]`, th
 
 **Delsarte LP bound and its SDP strengthening (Delsarte–Goethals–Seidel 1977; Kabatiansky–Levenshtein 1978; Bachoc–Vallentin 2008).** The cardinality bound `|C| <= f(1)/f_0` and its three-point semidefinite refinement. Uniform and powerful — it solved the kissing number in dimensions `8` and `24`, and Musin's modification (relaxing the sign constraint near `t = 1` and counting points in a cap) closed `k(3) = 12` and `k(4) = 24`. But for the Tammes problem it bounds the wrong quantity: it caps how many points fit at a fixed angle, yielding `d_13 < 58.5°`, `d_14 < 56.58°` — a numerical bracket above the true value, with no exact equality and no uniqueness.
 
-**Connelly's rigidity / stress-matrix machinery (Connelly 2005).** Tensegrity theory supplies a certificate language for first-order stationarity: at a constrained maximum, the active edges must support a nonnegative equilibrium stress. Developed for bar-and-cable frameworks, not yet aimed at packings, it gives a way to falsify a candidate taut graph when no such stress can exist.
+**Connelly's rigidity / stress-matrix machinery (Connelly 2005).** Tensegrity theory supplies a certificate language for first-order stationarity of constrained frameworks, in terms of equilibrium stresses on the active edges. Developed for bar-and-cable frameworks, it has not been aimed at sphere packings.
 
 The gap all of these leave: the analytic bounds give brackets, not exact values; the hand enumeration does not scale past `N = 11`. Nothing turns the continuous optimization at `N = 13, 14` into a *finite, checkable* proof of the exact optimum and its uniqueness.
 
@@ -72,7 +72,7 @@ The yardstick is the table of `d_N` for small `N`, comparing the best constructi
 
 ## Code framework
 
-Pre-existing primitives: array arithmetic, polynomial arithmetic and root-building, a linear-program solver (`scipy.optimize.linprog` / GLPK), interval arithmetic, subprocess access to an isomorph-free planar-graph generator, and basic spherical trigonometry. The empty slots are a global-bound calculator, a planar-candidate stream, a linear feasibility test for certified outer cells, and an equilibrium certificate for hard survivors.
+Pre-existing primitives: array arithmetic, polynomial arithmetic and root-building, a linear-program solver (`scipy.optimize.linprog` / GLPK), interval arithmetic, subprocess access to an isomorph-free planar-graph generator, and basic spherical trigonometry. The empty slots are to be filled in.
 
 ```python
 import subprocess
@@ -110,29 +110,15 @@ def opposite_angle(angle, side_length):
     """Return the paired angle determined by the spherical quadrilateral relation."""
     pass
 
-def planar_candidate_stream(num_points, generator="plantri", options=("-a",)):
-    """Yield isomorph-free planar candidates from an external generator."""
-    pass
-
-def passes_combinatorial_screen(degrees, face_sizes):
-    """Apply local degree and face-size necessary conditions."""
-    pass
-
-def angle_sum_equalities(vertex_incidence, num_variables, angle_offset=0):
-    """Build full-turn linear equalities around vertices."""
+def candidate_stream(num_points, generator="plantri", options=("-a",)):
+    """Yield isomorph-free candidates from the external generator."""
     pass
 
 def lp_empty(num_variables, bounds, equalities=(), inequalities=()):
     """Return True when the supplied linear feasibility problem is infeasible."""
     pass
 
-def eliminate_candidate_by_lp(cells):
-    """Return True only when every certified outer cell is LP-infeasible."""
-    pass
-
-def stress_infeasible(edge_list, direction_boxes, num_points):
-    """Return True when no normalized nonnegative equilibrium stress exists."""
-    pass
+# Further empty slots to be filled in as the analysis dictates.
 ```
 
-The two deciders are the whole content: what algebraic conditions make a polynomial a valid code-size certificate, and what linear feasibility question certifies that a candidate planar type cannot host the extremal arrangement.
+The content to be supplied is what these slots must compute.

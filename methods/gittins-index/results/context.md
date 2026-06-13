@@ -35,9 +35,9 @@ What unites them: **effort is allocated sequentially among competing candidates*
 candidate is a self-contained stochastic process whose state only moves when you touch
 it, and the candidates do not interact except through the constraint that you can only
 touch one per step. A good solution would have to handle an effectively enormous joint
-state space without enumerating it — and ideally would say something interpretable
-about *each candidate on its own*, because that is how a practitioner thinks ("how
-promising is treatment 3 right now?").
+state space without enumerating it. Practitioners also tend to reason one candidate at a
+time ("how promising is treatment 3 right now?"), so interpretability at that level would
+be welcome.
 
 ## Background
 
@@ -80,17 +80,16 @@ single evolving process to maximize an expected payoff. Two features matter here
 its central object is a *stopping time* `τ` — a rule, depending only on the observed
 history, for when to quit. Second, its "monotone case": when the one-step-lookahead rule
 keeps recommending the same action, that lookahead rule is actually optimal — a situation
-where the otherwise hard stopping problem collapses to a myopic comparison. The language
-of stopping times, and this collapse-to-myopic phenomenon, are exactly the kind of
-single-process structure a per-activity summary would need.
+where the otherwise hard stopping problem collapses to a myopic comparison. This theory
+is developed for a single evolving process in isolation.
 
 **Priorities and the `cμ` heuristic.** In scheduling and queueing it was folklore (and in
 restricted settings provable, e.g. Sevcik 1972 for computer job scheduling, and the
 classical `cμ`-rule for a single server) that one should give priority by a per-job
 index — roughly, holding cost times completion rate — and serve the highest-index job.
-These were known to be optimal only in special, often myopic, regimes. They are
-suggestive: they say "maybe a *scalar per candidate* is enough", but they did not say
-why, or when, or what the scalar really is in the general stochastic case.
+These per-job priority indices were known to be optimal only in special, often myopic,
+regimes; outside those regimes there was no account of why, when, or whether such a
+ranking could be justified in the general stochastic case.
 
 **The diagnostic fact that frames the whole subject.** A simple but load-bearing
 observation about these allocation problems: an activity you decline to advance *now* is
@@ -98,8 +97,7 @@ not lost. Because its state is frozen while ignored, you can come back to it lat
 get *exactly the same* sequence of rewards from it — only shifted in time, hence only
 re-discounted. There is no "the road not taken closes behind you" effect, unlike, say,
 choosing a fork on a journey where the unchosen exits vanish. This non-irrevocability is
-a structural property of the problem class, and it is the crack through which the
-dimensionality wall can be broken.
+a structural property of the problem class.
 
 ## Baselines
 
@@ -153,16 +151,16 @@ The natural yardsticks are canonical problem families with this allocation struc
   on first success; metric: expected discounted time to first success.
 
 The protocol throughout is **discrete time, stationary** (no explicit time-dependence in
-transitions or rewards) and **infinite-horizon discounted** — the stationarity is essential,
-since with a finite horizon a per-candidate ranking is known *not* to be optimal in
-general.
+transitions or rewards) and **infinite-horizon discounted**; the stationary,
+infinite-horizon setting is the regime in which the structure of these problems is
+cleanest, whereas finite-horizon variants behave differently.
 
 ## Code framework
 
 The available machinery can be represented as a single-process object, a generic
 discounted-DP solver, and a simulator that steps a family of processes under a supplied
-policy. The unresolved pieces are the per-process scalar summary and the rule that uses
-those summaries to choose the next process.
+policy. What remains to be supplied is the policy itself — the rule that, at each step,
+chooses which process to advance.
 
 ```python
 BETA = 0.9  # discount factor in (0,1)
@@ -191,15 +189,10 @@ def discounted_value_iteration(states, transition, reward, beta, tol=1e-9):
     pass
 
 
-def summarize_process(proc, beta):
-    """Collapse one process to a scalar computed from its own states and transitions."""
-    # TODO: compute the per-process summary
-    pass
-
-
-def allocation_policy(processes, states, summaries):
-    """Choose which process to advance from current per-process states."""
-    # TODO: turn per-process summaries into the next action
+def policy(processes, states):
+    """Choose which process to advance from the current per-process states.
+    Returns the index of the process to advance next."""
+    # TODO: decide which process to advance
     pass
 
 

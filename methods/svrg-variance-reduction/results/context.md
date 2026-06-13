@@ -103,11 +103,12 @@ keep a constant-order step and converge linearly; it is the solver inside popula
 packages. Gaps: it is tied to the regularized-ERM / dual structure, and like SAG it stores a
 per-example quantity (the duals) — again impractical for complex nonconvex models.
 
-The common thread among the linear-rate methods: each one carries a *per-example memory* (a
-stored gradient, or a dual) that, near the optimum, cancels the offending offset and drives the
-update's variance to zero — which is what permits a constant step size. The open gap is to get
-that vanishing-variance effect **without** the per-example table, so it applies to models where
-storing n gradients is out of the question.
+What the linear-rate methods share is a cost the stochastic methods were meant to avoid: each
+one carries a *per-example memory* (a stored gradient, or a dual), an n-sized quantity updated
+incrementally. For least-squares or plain logistic models that memory compresses to one scalar
+per example and is tolerable, but for structured-prediction or neural-network models, where
+∇ψ_i is a full dense parameter-sized vector with no such compression, an n×d table is
+impractical — exactly the large or nonconvex regime where these methods stall.
 
 ## Evaluation settings
 
@@ -163,13 +164,9 @@ def sgd_step(problem, w, eta_t):
     return w - eta_t * problem.grad_i(w, i)
 
 
-def finite_sum_optimize(problem, w0, eta, m, n_outer):
-    """Placeholder for a cheap finite-sum optimizer with constant-step inner updates."""
+def finite_sum_optimize(problem, w0, eta, n_steps):
+    """Placeholder for a finite-sum optimizer. Fill in the update rule."""
     w = w0.copy()
-    for s in range(n_outer):
-        # TODO: any outer-loop bookkeeping needed before cheap stochastic updates.
-        # TODO: inner loop of m cheap updates.
-        # TODO: choose the next outer iterate from the inner trajectory.
-        pass
+    # TODO: implement the optimizer.
     return w
 ```

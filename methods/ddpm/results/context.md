@@ -16,7 +16,7 @@ The field, mid-2020, has several mature toolkits whose pieces are individually w
 - **Variational inference for latent-variable models.** For p(x)=∫p(x,z)dz with an approximate posterior q(z|x), Jensen gives the evidence lower bound E_q[log p(x,z) − log q(z|x)] ≤ log p(x). Maximizing it trains a generative decoder and an inference model jointly. The **reparameterization trick** (sampling z=μ+σ⊙ε with ε a fixed-noise variable) turns the sampling step into a differentiable function of the parameters, giving low-variance pathwise gradients usable with SGD.
 - **Rao-Blackwellization / closed-form KL.** When two distributions being compared in an objective are both Gaussian, the KL (or the cross-entropy term) has an analytic form. Replacing a Monte-Carlo estimate of such a term with its closed form removes that term's variance — a standard variance-reduction move.
 - **Score-based modeling.** Instead of the density, one can model the **score** ∇_x log p(x). For a Gaussian-perturbed density, the score is estimable by regression (no normalizing constant needed), and **Langevin dynamics** — x ← x + (δ/2)∇ log p(x) + √δ·z — turns a score function into a sampler.
-- **The denoising ↔ score identity.** For a Gaussian corruption kernel, learning to denoise is, up to a constant, the same as learning the score of the corrupted density. This is the hinge that lets "predict the noise that was added" stand in for "estimate the gradient of log-density".
+- **The denoising ↔ score identity.** For a Gaussian corruption kernel, learning to denoise is, up to a constant, the same as learning the score of the corrupted density.
 - **Strong image-to-image conditional CNNs.** U-Net encoder–decoders with skip connections, residual blocks, group normalization, sinusoidal scalar-conditioning embeddings, and self-attention at coarse resolutions are off-the-shelf and known to be effective backbones for dense image prediction.
 - **Discretized continuous likelihoods.** Treating 8-bit pixel values as bins and integrating a continuous density over each bin yields a proper lossless codelength on discrete data without dequantization noise. After mapping integer values 0 through 255 to [-1,1], adjacent values are spaced 2/255 apart, so each interior bin has half-width 1/255.
 
@@ -50,11 +50,11 @@ Gaps: (1) the noise schedule and the **sampler coefficients** (step sizes, per-s
 
 Core idea: for a Gaussian corruption q_σ(x̃|x)=N(x̃; x, σ²I), minimizing the denoising-score-matching objective E‖s_θ(x̃) − ∇_{x̃} log q_σ(x̃|x)‖² equals explicit score matching against the perturbed density, up to a constant. Crucially, ∇_{x̃} log N(x̃; x, σ²I) = (x − x̃)/σ², which is proportional to the negative of the noise that was added. So **regressing onto the added noise is regressing onto the score**, up to a positive scale.
 
-Gap: this is an identity, not a model — it supplies the bridge that will let a "predict the noise" objective be read as score estimation, but it says nothing about how to chain noise levels into a generator.
+Gap: this is an identity, not a model — it relates a denoising regression to score estimation for a single fixed corruption scale, but it says nothing about how to chain noise levels into a generator.
 
 ### Langevin dynamics (the background sampler)
 
-Given a score function, the update x ← x + (δ/2)∇ log p(x) + √δ·z (z standard normal) is a discretized Langevin diffusion whose stationary distribution is p. NCSN uses it as its sampler. Any reverse-denoising step that takes the shape "move along a learned gradient, then add a little fresh noise" is structurally a Langevin step — a fact that will matter when a denoising reverse chain is compared against this sampler.
+Given a score function, the update x ← x + (δ/2)∇ log p(x) + √δ·z (z standard normal) is a discretized Langevin diffusion whose stationary distribution is p. NCSN uses it as its sampler. Its characteristic shape is "move along a gradient, then add a little fresh noise".
 
 ## Evaluation settings
 
@@ -114,7 +114,7 @@ class ImageLatentGenerator(nn.Module):
         self.backbone = backbone
         self.image_size = image_size
         self.latent_steps = latent_steps
-        # TODO: choose the latent process, prediction target, variance branch, loss, and cached coefficients.
+        # TODO: define the latent process and what the generator is trained to do.
         pass
 
     def training_losses(self, x0, t=None, noise=None):

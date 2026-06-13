@@ -26,7 +26,7 @@ Can a family of error-correcting codes be both *good* (driving the probability o
 
 - **Convolutional codes with sequential decoding (Wozencraft, Fano).** A linear time-varying code whose tree structure permits a sequential search decoder. Strength: soft-decision capable, the dominant practical scheme. Gap: throughput collapses (decoding effort has infinite mean) above the computational cut-off rate R0 < C, so it cannot be pushed to capacity; performance also depends on a feedback/retransmission style of operation in hard cases.
 
-- **Threshold decoding (Massey) and bit-by-bit majority logic.** Decide each bit from a small set of parity checks by majority/threshold. Strength: extremely simple, linear cost. Gap: weak — corrects far fewer errors than optimal, and the simple form ignores how one corrected bit could help resolve another through shared checks.
+- **Threshold decoding (Massey) and bit-by-bit majority logic.** Decide each bit from a small set of parity checks by majority/threshold. Strength: extremely simple, linear cost. Gap: weak — corrects far fewer errors than optimal, falling well short of capacity.
 
 ## Evaluation settings
 
@@ -37,7 +37,7 @@ Can a family of error-correcting codes be both *good* (driving the probability o
 
 ## Code framework
 
-The available primitives are linear algebra over GF(2), a channel simulator, and a generic iterative-decoder loop. The open slots are the construction of H and the local rule run by the decoder.
+The available primitives are linear algebra over GF(2), a channel simulator, and a decoder harness. The open slots are the construction of H and the decoder run on it.
 
 ```python
 import numpy as np
@@ -68,19 +68,14 @@ def channel_llr_awgn(y, sigma2):
 
 # --- SLOT 1: how to construct the parity-check matrix ------------------------
 def build_parity_check(n, *params, rng):
-    # TODO: the structure we will design for H
+    # TODO: the structure to design for H
     pass
 
-# --- SLOT 2: the per-bit decoding rule run on H -----------------------------
+# --- SLOT 2: the decoder run on H -------------------------------------------
 def decode(H, channel_info, maxiter):
-    # TODO: the iterative local rule that turns channel_info into bit estimates
-    # generic skeleton that exists regardless of the rule:
-    for _ in range(maxiter):
-        # ... update per-bit estimates from the parity-check structure ...
-        x = hard_decision(...)                 # noqa: F821
-        if not syndrome(H, x).any():
-            return x, True
-    return x, False
+    # TODO: turn channel_info into bit estimates x using H;
+    # syndrome(H, x) == 0 certifies x is a codeword
+    pass
 
 # --- already available: experiment harness -----------------------------------
 def run(n, *params, channel, level, trials, rng):

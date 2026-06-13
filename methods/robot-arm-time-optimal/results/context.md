@@ -30,7 +30,7 @@ So the joint velocities and accelerations are determined by (s, ṡ, s̈) — th
 
 **Dynamic singularities.** At certain path positions a constraint loses its dependence on s̈ (a "zero-inertia point": the s̈ coefficient of some constraint vanishes). Near such points the maximum/minimum-acceleration vector fields *diverge*, and the acceleration to use there is not naturally defined. These dynamic singularities arise in a large fraction of real instances and are, by repeated report, the principal cause of failure (oscillation, premature termination) in implementations that integrate the velocity profile numerically. Handling velocity bounds (a separate "direct" MVC and its trap points) is a second well-known source of numerical fragility.
 
-**Set-membership control / reachability (from control theory and MPC).** For a discrete-time *linear* system with *linear* state–control inequality constraints, there is a mature toolkit: the **reachable set** (states attainable from a starting set under admissible controls) and the **controllable set** (states from which the goal set can be reached). When the state is scalar and the constraints are polytopic, these sets are intervals whose endpoints solve small linear programs. This machinery, standard in the model-predictive-control literature, is the second pillar the modern formulation leans on.
+**Set-membership control / reachability (from control theory and MPC).** For a discrete-time *linear* system with *linear* state–control inequality constraints, there is a mature toolkit: the **reachable set** (states attainable from a starting set under admissible controls) and the **controllable set** (states from which the goal set can be reached). When the state is scalar and the constraints are polytopic, these sets are intervals whose endpoints solve small linear programs. This machinery is standard in the model-predictive-control literature.
 
 ## Baselines
 
@@ -100,9 +100,7 @@ def parameterize(path, gridpoints, params, sd_start, sd_end):
        or report that the path is not traversable.
 
        Returns sdd (shape N,), sd (shape N+1,)  -- or None if infeasible."""
-    # TODO: the contribution -- turn the per-stage linear constraints and the
-    #       discrete relation  x_{i+1} = x_i + 2 * delta_i * u_i  (x = sdot^2,
-    #       u = sddot)  into the optimal profile.
+    # TODO: turn the per-stage path-projected constraints into the optimal profile.
     pass
 
 # --- Recover q(t) from the velocity profile by integrating dt = ds / sdot. ---

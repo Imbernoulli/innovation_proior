@@ -14,7 +14,7 @@ The core obstacle is that the logged data does not represent the action proporti
 
 **Model-based / regression evaluation, and its un-auditable bias.** The other classical route is to fit a model — a reward function in the bandit case, an MDP in the sequential case — and evaluate the target policy against the fitted model. When an exact (tabular) representation is available and every relevant state-action pair is seen enough, such estimators have provably low variance and negligible bias (Mannor et al. 2007; Paduraru 2013). But real problems have large or infinite state spaces, so function approximation is unavoidable, and approximation error introduces a bias that in general *cannot be estimated from the data itself* — which is precisely what makes a regression-based value estimate untrustworthy as a guarantee.
 
-**Augmented inverse-probability estimation in statistics (the missing-data / causal-inference line).** Independently of RL, statisticians studying estimation from incomplete data developed estimators that combine an inverse-probability-weighting term with an outcome-regression term. Cassel, Särndal & Wretman (1976) introduced a generalized-regression ("generalized difference") estimator of this combined form for survey sampling. Robins, Rotnitzky & Zhao (1994) and Robins & Rotnitzky (1995) developed the augmented inverse-probability-weighted (AIPW) estimators and the semiparametric-efficiency theory behind them; the resulting estimators carry a **double-protection** property: they remain consistent if *either* the propensity (selection-probability) model *or* the outcome-regression model is correctly specified — not necessarily both. The intuition recorded in expositions of this line (e.g. Bang & Robins 2005; standard AIPW treatments): the augmentation term carries the factor (treatment-indicator − propensity), which has mean zero when the propensity model is right, so it vanishes and the estimator collapses to pure IPW; and when the propensity is wrong but the outcome model is right, the augmentation corrects the misweighting. Most of this statistics analysis is asymptotic and conditioned on one model being exactly correct.
+**Augmented inverse-probability estimation in statistics (the missing-data / causal-inference line).** Independently of RL, statisticians studying estimation from incomplete data developed estimators that combine an inverse-probability-weighting term with an outcome-regression term. Cassel, Särndal & Wretman (1976) introduced a generalized-regression ("generalized difference") estimator of this combined form for survey sampling. Robins, Rotnitzky & Zhao (1994) and Robins & Rotnitzky (1995) developed the augmented inverse-probability-weighted (AIPW) estimators and the semiparametric-efficiency theory behind them; the resulting estimators carry a **double-protection** property: they remain consistent if *either* the propensity (selection-probability) model *or* the outcome-regression model is correctly specified — not necessarily both. Most of this statistics analysis is asymptotic and conditioned on one model being exactly correct.
 
 **Control variates.** A staple of Monte Carlo estimation: to estimate θ = E[X], if you have another variable Y with known mean E[Y] that is correlated with X, the estimator X − Y + E[Y] is still unbiased for θ but has variance Var(X) + Var(Y) − 2Cov(X,Y), which is smaller than Var(X) whenever 2Cov(X,Y) > Var(Y). Y is the control variate; the more correlated and the more its mean is known, the more variance it removes.
 
@@ -26,7 +26,7 @@ The core obstacle is that the logged data does not represent the action proporti
 
 **Weighted importance sampling (WIS).** A biased-but-consistent variant that self-normalizes by the average cumulative ratio w_t = (1/|D|) Σ_i ρ_{1:t}^{(i)}: V_WIS = (ρ_{1:H}/w_H) Σ_t γ^{t-1} r_t, and its step-wise form V_step-WIS = Σ_t γ^{t-1} (ρ_{1:t}/w_t) r_t. *Core idea*: trade a small bias for substantially lower variance than raw IS; the step-wise version is the standard practical point estimator in the IS family. *Gap*: still purely importance-sampling-based — it does not exploit a reward/value model at all, and remains the natural variance-reduction yardstick to beat.
 
-**Offset Tree and benign-bandit reward-estimate tricks.** Earlier machine-learning work used a crude reward estimate as an "offset" (Beygelzimer & Langford 2009) or to bound regret by the bandit's variance (Hazan & Kale). These hint that a reward estimate can be folded into an importance-weighted procedure, but use only a coarse/constant estimate rather than a fitted model and a principled combination.
+**Offset Tree and benign-bandit reward-estimate tricks.** Earlier machine-learning work used a crude reward estimate as an "offset" (Beygelzimer & Langford 2009) or to bound regret by the bandit's variance (Hazan & Kale). These use only a coarse/constant reward estimate rather than a fitted model.
 
 ## Evaluation settings
 
@@ -90,7 +90,7 @@ def step_wise_is(trajectory, gamma, pi_target, pi_behavior):
 
 def sequential_estimate(trajectory, gamma, pi_target, pi_behavior, q_hat, v_hat):
     """Placeholder trajectory estimator, given a fitted Q/V model."""
-    # TODO: a per-step / recursive combination of the model and the
-    # importance weights for the trajectory case.
+    # TODO: an estimator for the trajectory case that can use both the
+    # model and the importance weights.
     pass
 ```

@@ -35,26 +35,23 @@ cross-entropy against it. A well-trained model nonetheless places small but
 like "I think this is the beginning of a beautiful [MASK]", a strong model puts high
 probability on *day* and *life* and a meaningful tail on *future*, *story*, *world*.
 Those relative magnitudes encode how the model generalizes — which wrong answers are
-"almost right." This is the pre-method observation distillation exploits: the soft
-output distribution of a strong model is a far richer training signal than a hard
-label, because it reveals the function the teacher actually learned.
+"almost right." The soft output distribution of a strong model is a far richer
+training signal than a hard label because it reveals the function the teacher actually
+learned.
 
-**Knowledge distillation (Buciluǎ et al. 2006; Hinton et al. 2015).** A compact
+**Knowledge distillation (Bucila et al. 2006; Hinton et al. 2015).** A compact
 *student* is trained to reproduce the behavior of a larger *teacher* (or ensemble) by
 matching the teacher's soft predictions rather than (or in addition to) the hard
 labels. To expose the tail of the distribution, both teacher and student logits are
 divided by a temperature `T` before the softmax, `p_i = exp(z_i/T) / Σ_j exp(z_j/T)`;
 larger `T` flattens the distribution and amplifies the relative weight of the small
-non-target probabilities. At inference `T` is set back to 1. This is the central tool
-the small model will be built on.
+non-target probabilities. At inference `T` is set back to 1.
 
 **Where the compute goes in a Transformer.** Linear layers and layer-normalization,
 which dominate the per-layer cost, are highly optimized in modern linear-algebra
 libraries. Profiling on this kind of hardware shows that varying the last (hidden-size)
 dimension of the tensors has a smaller effect on wall-clock efficiency, for a fixed
-parameter budget, than varying the number of layers: depth, not width, is the lever
-that most directly buys inference speed. This is a pre-method fact about the
-architecture and hardware that constrains *how* to make the model smaller.
+parameter budget, than varying the number of layers.
 
 ## Baselines
 
@@ -83,7 +80,7 @@ self-supervised objective, leaves performance on the table.
 2015).** Remove attention heads or reduce numerical precision of an existing model.
 Core idea: shrink a trained model post hoc. Gap: orthogonal to producing a smaller
 *pre-trained* model — they compress a fixed architecture rather than train a compact
-general-purpose one, and can be applied on top of whatever this work produces.
+general-purpose one, and can be applied on top of a compact pre-trained encoder.
 
 ## Evaluation settings
 
@@ -96,14 +93,14 @@ efficient-inference constraints: IMDb sentiment classification (test accuracy) a
 SQuAD v1.1 question answering (EM/F1 on dev). Efficiency: parameter count, and inference
 wall-clock for a full pass over a task's dev set on CPU at batch size 1, plus on-device
 timing on a mobile phone. The natural yardstick is the teacher model on the identical
-tasks and corpus. No outcome numbers are part of these settings.
+tasks and corpus.
 
 ## Code framework
 
 The harness loads a large pre-trained teacher (frozen) and a smaller student of the
 same family, streams masked batches from the pre-training corpus, and runs a standard
-gradient-accumulation training loop. The student architecture, its initialization from
-the teacher, and the training objective are the empty slots.
+gradient-accumulation training loop. How the student is configured, set up, and trained
+is the empty slot.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -115,13 +112,12 @@ class TransformerEncoder(nn.Module):
         # returns (mlm_logits[B,L,V], hidden_states[B,L,H])
         pass
 
-def build_student_from_teacher(teacher: TransformerEncoder):
-    # TODO: choose the smaller student configuration and initialize its weights.
+def build_student(teacher: TransformerEncoder):
+    # TODO: configure the smaller student and set its starting weights.
     pass
 
-def distillation_objective(student_out, teacher_out, lm_labels, attention_mask):
-    # TODO: design the training loss that transfers the teacher's knowledge
-    #       into the student during pre-training.
+def training_objective(student_out, teacher_out, lm_labels, attention_mask):
+    # TODO: design the training loss for the student.
     pass
 
 def mask_tokens(input_ids, mask_prob=0.15):
@@ -136,7 +132,7 @@ def train(teacher, student, corpus, steps, grad_accum):
         with torch.no_grad():
             t_out = teacher(ids, batch.attention_mask)
         s_out = student(ids, batch.attention_mask)
-        loss = distillation_objective(s_out, t_out, labels, batch.attention_mask)
+        loss = training_objective(s_out, t_out, labels, batch.attention_mask)
         (loss / grad_accum).backward()
         if (step + 1) % grad_accum == 0:
             opt.step(); opt.zero_grad()

@@ -19,12 +19,13 @@ batched against the same backbone), and not require touching the pre-trained wei
 **Conditional generation with Transformers.** For input context x and output sequence y, an
 autoregressive LM models p_φ(y | x) over the concatenation z = [x; y]. At each position i the model
 produces an activation h_i = LM_φ(z_i, h_{<i}); the top layer's activation is mapped by a fixed
-matrix to a softmax over the vocabulary. Crucially, h_i is the *stack of all layers' activations* at
-position i — in a self-attention Transformer, each layer's activation at position i is computed by
-attending to the previous layer's activations in its left context. Information thus flows *rightward*
-(to later positions, through attention) and *upward* (to higher layers). An encoder-decoder works
-the same way: a bidirectional encoder computes activations for x, and an autoregressive decoder
-produces y conditioned on encoded x and its own left context.
+matrix to a softmax over the vocabulary. Crucially, h_i can be viewed as the stack of all layers'
+activations at position i. In a self-attention Transformer, each layer's activation at position i is
+computed by attending to left-context keys and values from that layer, so the cached state needed by
+later tokens is a per-layer key/value pair. Information thus flows *rightward* (to later positions,
+through attention) and *upward* (to higher layers). An encoder-decoder works the same way: a
+bidirectional encoder computes activations for x, and an autoregressive decoder produces y
+conditioned on encoded x and its own left context.
 
 **Full fine-tuning.** Initialize from φ and maximize Σ_{i∈y} log p_φ(z_i | h_{<i}) by gradient
 updates on *all* of φ. The accuracy target, but |delta| = |φ| per task.
@@ -82,19 +83,17 @@ terms) reduce the per-task footprint but generally trade away accuracy.
 
 ## Code framework
 
-The primitives that already exist: a pre-trained autoregressive/encoder-decoder Transformer whose
-attention mechanism already accepts *cached past key/value activations* (so additional left-context
-activations can be supplied without recomputation), AdamW, and the standard token-level
-log-likelihood loss. The slot to fill is *what task-specific object to learn* and *how to feed it
-into the frozen model's activations*.
+The primitives that already exist: a pre-trained autoregressive/encoder-decoder Transformer with the
+standard attention/caching interface of the Hugging Face Transformers library, AdamW, and the
+standard token-level log-likelihood loss. The slot to fill is *what task-specific object to learn*
+and *how to feed it into the frozen model*.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# A frozen pre-trained generation model whose layers accept cached per-layer
-# key/value activations as extra left context (e.g. via `past_key_values`).
+# A frozen pre-trained generation model (Hugging Face Transformers).
 frozen_lm = load_pretrained_lm()           # all parameters frozen
 for p in frozen_lm.parameters():
     p.requires_grad = False
@@ -106,14 +105,14 @@ n_head   = frozen_lm.config.n_head
 
 class TaskParameters(nn.Module):
     """The small per-task object to be designed."""
-    def __init__(self, ...):
+    def __init__(self):
         super().__init__()
         # TODO: what trainable object steers the frozen LM toward this task,
         #       and in what form must it enter the model's activations?
         pass
 
     def materialize(self, batch_size):
-        # TODO: produce whatever the frozen LM needs as extra left-context activations
+        # TODO: produce whatever form the frozen LM needs to consume this object
         pass
 
 

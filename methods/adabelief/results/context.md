@@ -15,7 +15,7 @@ The deeper diagnostic is about curvature. An ideal optimizer should not simply t
 - A steep, oscillating valley, with large gradient and large curvature: the ideal step is small. SGD overshoots, while a large adaptive denominator damps Adam.
 - A large-gradient, small-curvature region, where the gradient is large but barely changing step to step: the ideal step is large. Adam's denominator is large because the gradient magnitude is large, so it takes a needlessly small step. SGD's step is proportional to the large gradient, so it behaves more appropriately here.
 
-So the magnitude-only denominator is right in the first two cases and wrong in the third, exactly where SGD's behavior is preferable. A 2D illustration sharpens the point: on f(x,y) = |x| + |y|, where each gradient component is +/-1, starting near the x-axis makes the trajectory keep advancing in x while oscillating in y. One wants a large step in x and a small step in y. Adam computes v_x approximately E[g_x^2] = 1 and v_y approximately E[g_y^2] = 1, equal because squaring discards the sign, so it takes the same-size step in both directions. The quantity that separates the consistent direction from the oscillating one is how much the gradient deviates from its own running mean: near zero in x and large in y. That deviation is the gradient's variance, and it is the curvature-aware signal missing from a raw second-moment denominator.
+So the magnitude-only denominator is right in the first two cases and wrong in the third, exactly where SGD's behavior is preferable. A 2D illustration sharpens the point: on f(x,y) = |x| + |y|, where each gradient component is +/-1, starting near the x-axis makes the trajectory keep advancing in x while oscillating in y. One wants a large step in x and a small step in y. Adam computes v_x approximately E[g_x^2] = 1 and v_y approximately E[g_y^2] = 1, equal because squaring discards the sign, so it takes the same-size step in both directions even though the consistent direction and the oscillating one call for very different steps. The raw second-moment denominator cannot tell these two coordinates apart.
 
 ## Baselines
 
@@ -27,7 +27,7 @@ So the magnitude-only denominator is right in the first two cases and wrong in t
 
 **RAdam (Liu et al. 2019).** RAdam rectifies the early-stage variance of the adaptive denominator. When the estimated degrees of freedom are too low, it falls back toward a momentum-style update; when the statistic is reliable enough, it uses an adaptive denominator. This addresses early-training instability rather than the magnitude-versus-deviation issue.
 
-**MSVAG (Balles & Hennig 2018).** MSVAG analyzes Adam as a sign component with a variance-adaptive magnitude. It is close in spirit because it points toward variance as the meaningful reliability signal, but it does not replace Adam's denominator with a centered second moment.
+**MSVAG (Balles & Hennig 2018).** MSVAG analyzes Adam as a sign component with a variance-adaptive magnitude. It reweights the update using variance estimates but leaves Adam's squared-gradient denominator in place.
 
 **AdamW (Loshchilov & Hutter 2019).** AdamW applies weight decay directly to the parameters instead of folding it into the gradient. This is orthogonal to the denominator choice and can be combined with any Adam-family update.
 

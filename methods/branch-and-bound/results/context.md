@@ -82,8 +82,7 @@ The field rests on a small number of load-bearing facts.
 - **A subset of a discrete problem is itself a discrete problem.** Trivial but pivotal: if a discrete
   feasible set is split into pieces, the optimum over the whole is the best of the optima over the
   pieces — `z = max_k z_k` for `S = S_1 ∪ ... ∪ S_K`. And a *bound* on each piece bounds the whole:
-  the largest upper bound over the pieces is an upper bound on `z`. Decomposition plus bounding is
-  therefore sound.
+  the largest upper bound over the pieces is an upper bound on `z`.
 
 The pain point is the gap between a relaxation that is *cheap and convex but gives the wrong
 (fractional) answer*, and a feasible set that is *exactly right but non-convex and exponentially
@@ -165,14 +164,9 @@ def solve_lp(c, A_ub, b_ub, bounds):
     return res.x, -res.fun           # (vertex x, objective value)
 
 
-def select_fractional_integer_var(x, int_vars):
-    # TODO: choose one marked variable whose continuous value is not integer.
-    raise NotImplementedError
-
-
 def solve_integer_lp(c, A_ub, b_ub, n, int_vars, bounds, tol=1e-6):
-    # TODO: use solve_lp as a bound-giver, split the marked-integer feasible
-    #       set into smaller LP subproblems, carry an incumbent, and return an
-    #       optimal integer-feasible point without enumerating the lattice.
+    # TODO: turn the continuous bound-giver `solve_lp` into an exact solver for
+    #       the marked-integer problem, returning a provably optimal
+    #       integer-feasible point without enumerating the lattice.
     raise NotImplementedError
 ```

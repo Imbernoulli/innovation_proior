@@ -53,19 +53,19 @@ class Reconstructor:
         self.actuator_values = None
 
     def build_interaction_matrix(self, dm, wfs, poke=1.0, imat_noise=False):
-        # TODO: poke each actuator, record the signed slope response -> forward map
+        # TODO
         pass
 
     def build_command_matrix(self, conditioning=1e-3, alpha=None):
-        # TODO: invert the stored forward map with a hard cutoff or soft regularization
+        # TODO
         pass
 
     def reconstruct(self, slopes):
-        # TODO: command increment from the current slope vector
+        # TODO
         pass
 
     def apply_gain(self, command_increment, gain, leak=0.0):
-        # TODO: update the running command in closed loop
+        # TODO
         pass
 
 def close_loop(reconstructor, dm, wfs, atmos, gain, n_iter, leak=0.0):
@@ -73,9 +73,9 @@ def close_loop(reconstructor, dm, wfs, atmos, gain, n_iter, leak=0.0):
     slopes = np.zeros(wfs.n_measurements)
     for k in range(n_iter):
         phase = atmos.step()                      # turbulence evolves
-        # TODO: update `commands`, apply the corrector, then read residual slopes
+        # TODO
         pass
     return commands
 ```
 
-The empty methods are the missing bridge: calibrate the command-to-slope response, invert it into a slope-to-command map, and update the running command from the residual slopes.
+The empty methods are the missing bridge from sensor slopes to corrector commands and the loop that closes around them.

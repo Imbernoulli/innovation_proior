@@ -66,19 +66,18 @@ equation. For a free particle, [(iħ/c ∂/∂t)² − (−iħ∇)² − m²c²]
 E² = p²c² + m²c⁴. Core idea: quantize the relativistic dispersion relation directly. Gap it leaves
 open: (1) the associated conserved density ρ ∝ i(ψ*∂ψ/∂t − ψ∂ψ*/∂t) is not positive definite, so
 there is no consistent single-particle probability interpretation; (2) being second order in time
-it falls outside the standard quantum transformation theory, which needs an equation linear in the
-energy operator so that ψ at one time fixes ψ at all later times; (3) it describes a spin-0 object
-and so cannot, by itself, account for the electron's measured spin and magnetic moment; (4) it
-carries the unexcludable negative-energy solutions. It is the right *relativistically invariant*
-template but the wrong *order in time*.
+it falls outside the standard quantum transformation theory, in which ψ at one instant is supposed
+to fix ψ at all later instants; (3) it describes a spin-0 object and so cannot, by itself, account
+for the electron's measured spin and magnetic moment; (4) it carries the unexcludable negative-energy
+solutions. It is the right *relativistically invariant* template, but its second-order-in-time
+structure is where it stalls.
 
 **Pauli's two-component spin theory (1927).** Adds the electron's spin to non-relativistic quantum
 mechanics by making ψ a two-component spinor acted on by the σ matrices, with a term −(eħ/2mc)σ·B
 coupling spin to the field. Core idea: a two-valued internal degree of freedom carried by 2×2
 matrices. Gap: it is non-relativistic; the spin–orbit (Thomas) factor is put in by hand; it does
-not arise from a relativistic principle. The σ matrices and their algebra σᵣ² = 1,
-σᵣσₛ + σₛσᵣ = 0 are exactly the kind of anticommuting objects a relativistic theory will need —
-but only three of them exist at 2×2, and the relativistic problem appears to need a fourth.
+not arise from a relativistic principle. The σ matrices obey the algebra σᵣ² = 1,
+σᵣσₛ + σₛσᵣ = 0 for r ≠ s; at 2×2 there are exactly three of them with this property.
 
 **Schrödinger's equation (1926).** The non-relativistic baseline whose probabilistic structure is
 the target to preserve: first order in time, positive-definite ρ = |ψ|², conserved probability. A
@@ -101,8 +100,8 @@ conserved, non-negative ρ with ∫ρ d³x = 1.
 ## Code framework
 
 The mathematical setup that exists before the equation is found consists of the relativistic
-energy–momentum relation, the operator substitutions, and the empty slot where the as-yet-unknown
-coefficient structure of a *linear* equation will go.
+energy–momentum relation, the operator substitutions, the empirically known Pauli spin matrices,
+and an empty slot where the as-yet-unknown form of the relativistic wave equation will go.
 
 ```python
 import numpy as np
@@ -124,28 +123,10 @@ sigma3 = np.array([[1, 0],  [0,-1]],  dtype=complex)
 def anticommutator(A, B):
     return A @ B + B @ A
 
-# We want a wave equation that is FIRST order in d/dt (to keep a positive
-# probability density) and, for Lorentz symmetry, first order in grad too,
-# whose square reproduces E**2 = p**2 c**2 + m**2 c**4. That forces a set of
-# coefficient OBJECTS multiplying p_x, p_y, p_z and the mass term. What those
-# objects are -- numbers? matrices? how many? what algebra? -- is exactly the
-# unknown.
-
-def coefficient_objects():
-    # TODO: determine the objects {a1, a2, a3, b} multiplying (p_x, p_y, p_z, m)
-    #       in a linear equation  (p0 + a1 p1 + a2 p2 + a3 p3 + b) psi = 0,
-    #       fixed by the requirement that squaring the operator returns
-    #       p0**2 = p1**2 + p2**2 + p3**2 + (m c)**2  with no cross terms.
-    pass
-
-def linear_relativistic_equation(psi):
-    # TODO: assemble the first-order equation from coefficient_objects()
-    #       and verify (by squaring) that every solution also satisfies
-    #       the relativistic energy-momentum relation.
-    pass
-
-def probability_density(psi):
-    # TODO: read off rho from the first-order equation and check it is
-    #       non-negative and obeys a continuity equation d_t rho + div j = 0.
+def relativistic_wave_equation(psi):
+    # TODO: write down a single-electron wave equation that is consistent with
+    #       special relativity and admits a conserved, non-negative probability
+    #       density rho with continuity d_t rho + div j = 0, reducing to the
+    #       Schrodinger/Pauli description for v << c.
     pass
 ```

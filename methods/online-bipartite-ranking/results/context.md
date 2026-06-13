@@ -16,15 +16,15 @@ A second relevant strand is the adversary taxonomy for randomized online algorit
 
 The load-bearing combinatorial fact underneath everything is the structure of a maximal matching. If a matching M leaves some edge {u, v} with both endpoints unmatched, M was not maximal — you could add {u, v}. So any maximal matching is at least half the size of any other matching, in particular at least OPT/2. This is the reason the trivial algorithm already gets one-half, and it is the floor every more clever idea is trying to climb above.
 
-A diagnostic observation about per-step randomization sets up the design pressure. The naive randomized algorithm flips a fresh coin at each arrival and matches to a uniformly random unmatched neighbor. Despite "being randomized," it performs essentially like the deterministic greedy — about n/2 + O(log n) in expectation on an adversarial instance. The instance that exposes this has ones at B_ij = 1 when i = j, and additionally a dense block (n/2 < j ≤ n, 1 ≤ i ≤ n/2): fresh per-arrival coins spend the algorithm's effort on the dense upper half during the first half of arrivals, leaving it without the specific rows the sparse lower half later requires. The lesson is that randomness applied independently at each step carries no memory of which offline vertices have been "spent," so it can be steered into wasting exactly the vertices that will later be scarce.
+A diagnostic observation about per-step randomization sets up the design pressure. The naive randomized algorithm flips a fresh coin at each arrival and matches to a uniformly random unmatched neighbor. Despite "being randomized," it performs essentially like the deterministic greedy — about n/2 + O(log n) in expectation on an adversarial instance. The instance that exposes this has ones at B_ij = 1 when i = j, and additionally a dense block (n/2 < j ≤ n, 1 ≤ i ≤ n/2): fresh per-arrival coins spend the algorithm's effort on the dense upper half during the first half of arrivals, leaving it without the specific rows the sparse lower half later requires. So even an explicitly randomized rule, applied afresh at each arrival, can be steered into wasting exactly the vertices that a later sparse arrival will require.
 
 ## Baselines
 
 **Deterministic online matching.** When j arrives, the simplest rule matches it to any unmatched neighbor if one exists. Core property: the result is always a maximal matching, hence at least OPT/2. That lower bound is tight for every deterministic algorithm, including one that sometimes refuses available edges. The adversary works in disjoint two-row phases. Pick two unused offline vertices a and b, then present an online vertex adjacent to both. If the algorithm matches it to a, present a second vertex adjacent only to a; if it matches it to b, present a second vertex adjacent only to b; if it refuses the first vertex, present a second vertex adjacent only to a. The online algorithm gets at most one match in the phase, while the offline optimum matches both vertices by sending the first vertex to the other row and the singleton to its unique row. Repeating the phase gives ALG ≤ n/2 and OPT = n. So deterministic algorithms are pinned at 1/2 from both sides; the gap to be closed is entirely about whether randomization can break this.
 
-**Naive randomized greedy (per-step coin).** When j arrives, match it to a uniformly random unmatched neighbor. Intuitively this should diffuse the adversary's ability to predict the algorithm's choices, but it does not help in the worst case: its expected matching is n/2 + O(log n), no better than deterministic up to lower-order terms. The gap it leaves open: independent per-arrival randomness has no global structure, so the adversary can still arrange a graph where the algorithm's choices, though random, are systematically misallocated across time.
+**Naive randomized greedy (per-step coin).** When j arrives, match it to a uniformly random unmatched neighbor. Intuitively this should diffuse the adversary's ability to predict the algorithm's choices, but it does not help in the worst case: its expected matching is n/2 + O(log n), no better than deterministic up to lower-order terms. The gap it leaves open: the adversary can still arrange a graph where the algorithm's choices, though random, are systematically misallocated across time.
 
-**Online fractional matching / water-filling (b-matching).** For the relaxed problem where each offline vertex can be matched up to b times (b large), a deterministic "water-level" strategy (Kalyanasundaram–Pruhs 2000) is natural: maintain a level y_i for each offline vertex and route an arriving vertex toward neighbors of lowest level. For fractional problems randomization buys nothing, and a deterministic water-filling rule attains 1 − 1/e. The gap relative to the integral problem: this is a fractional/divisible allocation, and there are simple instances (an 8-cycle with all edges at value 1/2, the first two arrivals diametrically opposite) showing that one cannot, in an online way, round such a fractional matching to an integral one of equal expected size by treating the fractional algorithm as a black box. So the integral problem genuinely needs its own randomized idea, not a rounding of the fractional one — yet the fact that both problems share the magic constant 1 − 1/e is a standing hint that one analysis ought to cover both.
+**Online fractional matching / water-filling (b-matching).** For the relaxed problem where each offline vertex can be matched up to b times (b large), a deterministic "water-level" strategy (Kalyanasundaram–Pruhs 2000) is natural: maintain a level y_i for each offline vertex and route an arriving vertex toward neighbors of lowest level. For fractional problems randomization buys nothing, and a deterministic water-filling rule attains 1 − 1/e. The gap relative to the integral problem: this is a fractional/divisible allocation, and there are simple instances (an 8-cycle with all edges at value 1/2, the first two arrivals diametrically opposite) showing that one cannot, in an online way, round such a fractional matching to an integral one of equal expected size by treating the fractional algorithm as a black box. So the integral problem genuinely needs its own randomized idea, not a rounding of the fractional one. Both problems do, however, share the same constant 1 − 1/e in their known bounds.
 
 ## Evaluation settings
 
@@ -41,7 +41,7 @@ def stateful_match(L, arrivals, neighbors, state):
     L:          offline vertices, known in advance.
     arrivals:  online arrival order; each j revealed one at a time.
     neighbors:  j -> its neighbors in L, revealed only when j arrives.
-    state:      persistent offline-side state chosen before the first arrival.
+    state:      auxiliary state available to the matching rule.
     """
     matched_to = {}                       # i in L -> j in R
     for j in arrivals:
@@ -53,12 +53,12 @@ def stateful_match(L, arrivals, neighbors, state):
 
 
 def choose_neighbor(avail, state):
-    # TODO: choose one available neighbor using only persistent state and revealed edges.
+    # TODO: choose one available neighbor.
     pass
 
 
 def initialize_state(L, rng):
-    # TODO: choose persistent state for the online rule.
+    # TODO: set up any state for the online rule.
     pass
 
 

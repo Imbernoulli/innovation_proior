@@ -14,7 +14,7 @@ So the precise question is: how do we retrieve, from tens of millions of passage
 
 **The efficiency primitive: maximum inner-product search.** If similarity is the inner product of a question vector and a passage vector, then retrieval is exactly maximum inner-product search (MIPS) over the precomputed passage vectors. MIPS over millions–billions of vectors is a solved systems problem: in-memory data structures and quantization/graph indices (e.g. FAISS; Johnson et al., 2017) serve approximate nearest-neighbor / MIPS queries sub-linearly. So *if* we can learn good encoders, the serving infrastructure already exists.
 
-**The diagnostic that set the bar.** The prevailing wisdom, however, was that learning a good dense retriever needs an enormous number of labeled question–context pairs, and in fact dense retrieval had *never* been shown to beat BM25 for open-domain QA — until a pretraining-heavy approach (ORQA; Lee et al., 2019) crossed that line using an auxiliary self-supervised objective (the Inverse Cloze Task) to pretrain the retriever before fine-tuning. So the field's two beliefs at this moment were: (1) dense *can* beat sparse, but (2) only with expensive extra pretraining. That second belief is the thing to test.
+**The diagnostic that set the bar.** The prevailing wisdom, however, was that learning a good dense retriever needs an enormous number of labeled question–context pairs, and in fact dense retrieval had *never* been shown to beat BM25 for open-domain QA — until a pretraining-heavy approach (ORQA; Lee et al., 2019) crossed that line using an auxiliary self-supervised objective (the Inverse Cloze Task) to pretrain the retriever before fine-tuning. So the field's two beliefs at this moment were: (1) dense *can* beat sparse, but (2) only with expensive extra pretraining.
 
 **The encoder substrate.** BERT (Devlin et al., 2018) is now a standard pretrained Transformer; taking the representation at the `[CLS]` token gives a fixed-size sentence/passage embedding (768-d for BERT-base). The dual-encoder / "Siamese" architecture (Bromley et al., 1994) — two towers producing comparable embeddings — is the natural shape for independently encoding questions and passages.
 
@@ -34,17 +34,17 @@ So the precise question is: how do we retrieve, from tens of millions of passage
 
 - **Corpus.** English Wikipedia dump (Dec. 20, 2018), cleaned with the DrQA preprocessing (drop tables, info-boxes, lists, disambiguation pages), split into **disjoint 100-word passages** as the retrieval unit; each passage prepended with its article title and a `[SEP]` token. This yields **21,015,324 passages**.
 - **QA datasets.** Natural Questions (real Google queries, Wikipedia-span answers), TriviaQA (trivia Q/A scraped from the web), WebQuestions (Google Suggest queries, Freebase-entity answers), CuratedTREC (TREC + web sources, intended for unstructured-corpus open QA), and SQuAD v1.1 (reading-comprehension questions written against a given paragraph — included for comparability though many questions lack standalone context). Same train/dev/test splits as prior work.
-- **Positive-passage construction.** Where datasets give only (question, answer): use the highest-ranked BM25 passage that contains the answer as the positive; discard the question if no top-100 passage contains the answer. Where gold contexts exist (SQuAD, NQ): match the gold paragraph to the corresponding 100-word passage in the candidate pool.
+- **Positive-passage construction.** Where datasets give only (question, answer): run BM25 with the question and answer together, use the highest-ranked passage that contains the answer as the positive, and discard the question if no top-100 passage contains the answer. Where gold contexts exist (SQuAD, NQ): match the gold paragraph to the corresponding 100-word passage in the candidate pool.
 - **Retriever metric.** *Top-k retrieval accuracy* — the fraction of questions for which the top-k retrieved passages contain a span answering the question — reported in isolation (typically k from 1 to 100). End-to-end metric: **exact match** of the predicted answer span.
-- **Efficiency protocol.** Offline passage encoding + index build (the costly step), then per-query latency and throughput against the index. MIPS index: an approximate ANN library (HNSW/flat) over the precomputed passage vectors.
+- **Efficiency protocol.** Offline passage encoding + index build, then per-query latency and throughput against the index. MIPS index: FAISS HNSW over precomputed passage vectors, with graph/search-depth settings controlling the latency/recall tradeoff.
 
 ## Code framework
 
-The pieces that already exist before the method: a pretrained Transformer encoder we can pool to a fixed vector, an Adam optimizer with linear warmup, an ANN/MIPS index library, and a BM25 system for building positives/negatives. The method has to fill in the encoder pooling, the similarity, the contrastive training loss, and the retrieve-then-read glue.
+The available pieces are a pretrained Transformer encoder that can be pooled to a fixed vector, an Adam optimizer with linear warmup, an ANN/MIPS index library, a BM25 system for constructing positives and hard negatives, and a small cross-attention reader scaffold for candidate passages. The empty slots are the parts left unimplemented below.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
-from transformers import BertModel, BertTokenizer
+from transformers import BertModel
 
 # --- Encoder: wrap a pretrained Transformer, pool to a fixed vector ---
 class TextEncoder(nn.Module):
@@ -67,7 +67,7 @@ def retrieval_loss(q_vecs, p_vecs, positive_idx):
     pass
 
 def build_batch(examples, tokenizer):
-    # TODO: assemble question / passage token tensors; where do negatives come from?
+    # TODO: assemble the question / passage token tensors for a batch
     pass
 
 # --- Offline indexing + online retrieval (serving) ---
@@ -83,13 +83,13 @@ class Reader(nn.Module):
         self.bert = BertModel.from_pretrained(pretrained)
         # TODO: heads for span start/end and passage selection
 
-    def forward(self, passage_ids, passage_mask):
-        # TODO: per-token start/end logits + a passage-selection score
+    def forward(self, pair_ids, pair_mask):
+        # TODO: run BERT over [question, passage] pairs; score spans and passage selection
         pass
 
 # --- Training loop scaffold ---
 def train_retriever(encoder_q, encoder_p, data, steps):
-    opt = torch.optim.Adam(...)   # lr ~1e-5, linear warmup
+    opt = torch.optim.Adam(...)   # optimizer and schedule placeholder
     for batch in data:
         # TODO: encode, score, loss, step
         pass

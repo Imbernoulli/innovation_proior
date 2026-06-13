@@ -30,7 +30,7 @@ The mass coupling adds another nonlinearity: acceleration is T_c/m, and m is a s
 
 Second-order cone programming is the natural computational target. Norm bounds, glide-slope cones, velocity caps, and many thrust constraints are second-order cone or affine constraints once the right variables are chosen. Interior-point SOCP solvers provide deterministic convergence behavior to a requested accuracy, which is why a convex transcription is attractive for autonomous descent.
 
-Several empirical and structural facts shape the formulation. Minimum-fuel soft-landing profiles have the bang-bang max-min-max structure. For Mars-style powered descent, the fuel curve as a function of fixed flight time has a single useful minimum in the feasible interval, so an outer one-dimensional search over flight time is practical. For the glide-slope state constraint, the lossless-control argument is cleanest when the trajectory touches the cone only at isolated times rather than sliding along it over an interval; planetary landing geometries normally exhibit this isolated-contact behavior.
+Several empirical and structural facts shape the formulation. Minimum-fuel soft-landing profiles have the bang-bang max-min-max structure. For Mars-style powered descent, the fuel consumed as a function of fixed flight time has a single useful minimum in the feasible interval. For the glide-slope state constraint, planetary landing geometries normally exhibit isolated-contact behavior: the trajectory touches the cone only at isolated times rather than sliding along it over a finite interval.
 
 ## Baselines
 

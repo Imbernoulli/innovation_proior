@@ -59,13 +59,8 @@ stepping along −g gives `f'(x;−g) = sup_{h∈∂f(x)} hᵀ(−g) = −inf_{h
 `h∈∂f(x)` with `hᵀg<0`, making this supremum *positive*. In words: a subgradient need **not** be a
 descent direction, and a step along its negative can *increase* f. The smooth proof strategy —
 monotone decrease of the function value — is therefore unavailable in principle, not just in
-practice.
-
-**A second, monotone quantity.** What the subgradient inequality *does* give, at any minimizer x*, is
-`f(x*) ≥ f(x) + gᵀ(x*−x)`, i.e. `gᵀ(x−x*) ≥ f(x)−f* ≥ 0`. So even when −g is not a descent direction
-for f, it has a strictly positive component along the direction `(x*−x)` toward the optimum (whenever
-x is suboptimal). That points at the **Euclidean distance to the optimal set**, `‖x−x*‖²`, as the
-right thing to monitor: it is a candidate for the monotone-ish quantity that f itself cannot be.
+practice. With monotone decrease of f off the table, it is not clear what quantity a convergence
+proof could even be built on.
 
 **The intrinsic price of nonsmoothness.** The nonsmooth class is fundamentally harder than the
 smooth one. For the black-box first-order oracle
@@ -120,8 +115,7 @@ descent line search.
 ## Evaluation settings
 
 The natural yardstick is the convergence of the *best objective value so far*,
-`f_best^{(k)} − f*` (best, because the method is not a descent method, so the last iterate need not be
-the best one found), plotted against iteration count k, on standard nonsmooth convex test problems
+`f_best^{(k)} − f*`, plotted against iteration count k, on standard nonsmooth convex test problems
 that existed independently of any new method:
 
 - **Piecewise-linear minimization** `min_x max_{i=1..m}(a_iᵀx+b_i)` — the canonical nonsmooth test;
@@ -170,11 +164,10 @@ def minimize(x0, num_iters):
     x_best = x.copy()
     for k in range(1, num_iters + 1):
         fx = f_value(x)
-        if fx < f_best:                 # function value can increase:
-            f_best, x_best = fx, x.copy()  # keep the best point found so far
+        if fx < f_best:
+            f_best, x_best = fx, x.copy()
         g = subgradient(x)
-        # TODO: fill in the move from x using g and step_size(k, fx, f_best, g).
-        #       The quantity to control cannot be monotone decrease of f(x).
+        # TODO: update x from the current point using g and step_size(...).
         pass
     return x_best, f_best
 ```

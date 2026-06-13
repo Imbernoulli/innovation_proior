@@ -54,8 +54,7 @@ convex function: repeatedly step opposite the gradient, `x ← x − η∇f(x)`;
 constraint, step then project, `x ← P(x − η∇f(x))`. For a `G`-Lipschitz convex
 objective over a set of diameter `D`, a suitable diminishing step size yields a
 `1/√T` convergence rate in function value. This is a statement about *one fixed*
-objective; the gradient and projection primitives, and the habit of tracking
-`‖x_t − x*‖²` as a potential, are the pieces lying around.
+objective; the gradient and projection primitives are the pieces lying around.
 
 **No-regret learning and game theory.** In a repeated game with vector-valued
 payoffs, Blackwell (1956) asked what a player can guarantee against an
@@ -193,11 +192,10 @@ def online_decision_loop(feasible_set, cost_stream, T):
         loss = c_t(x)
         history.append((x, loss))
 
-        # TODO: choose the step size for this round.
+        # TODO
         eta_t = choose_step_size(t, feasible_set, T)     # pass
 
-        # TODO: the update rule that turns the revealed cost into the next
-        #       feasible point x^{t+1}. This is the slot the method fills.
+        # TODO
         x = update(x, c_t, eta_t, feasible_set)          # pass
 
     return history
@@ -208,7 +206,7 @@ def choose_step_size(t, feasible_set, T):
     pass
 
 def update(x, c_t, eta_t, feasible_set):
-    # TODO: produce the next feasible point from the current one and c^t.
+    # TODO: produce the next feasible point x^{t+1} from x and c^t.
     pass
 
 

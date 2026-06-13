@@ -45,20 +45,18 @@ expansion keeps it:
 where subscripts denote partial derivatives of `w` with respect to its first argument
 (stock price) and second argument (time). Substituting the variance of `Δx`, the term
 `½·w₁₁·Δx²` contributes `½·w₁₁·x²σ²·Δt` deterministically. This extra second-derivative term
-is exactly what ordinary calculus misses, and it is the term that carries the whole
-analysis. (An exposition of this calculus is McKean, 1969.)
+is what ordinary calculus would drop. (An exposition of this calculus is McKean, 1969.)
 
 **The Capital Asset Pricing Model.** Treynor (1961), and independently Sharpe (1964),
 Lintner (1965) and Mossin, established a general-equilibrium relation: in equilibrium a
 security's expected excess return is proportional to its *beta*, the covariance of its return
 with the market divided by the market's variance. Only the non-diversifiable (market)
 component of risk is rewarded; idiosyncratic risk, which a diversified investor can wash out,
-earns nothing. A consequence used heavily below: a security or portfolio with zero beta —
+earns nothing. A consequence of this relation: a security or portfolio with zero beta —
 no covariance with the market — must, in equilibrium, earn exactly the riskless interest
 rate, because none of its risk is the kind the market pays for. Treynor had also written a
 "value equation," a differential equation for the present value of a company's uncertain
-cash flows; an early version of it dropped some second-derivative terms and was wrong until
-those terms were restored.
+cash flows.
 
 **No-arbitrage / the law of one price.** Modigliani and Miller had shown that two portfolios
 with identical payoffs in every state must have identical prices, on pain of a riskless
@@ -113,9 +111,9 @@ utility, so the answer is not preference-free.
 
 **Thorp and Kassouf (1967).** Fit an empirical curve to observed warrant prices and use its
 slope to form a hedged position — long the stock, short the warrant in the slope ratio — to
-neutralize first-order moves. They build the hedge but do not pursue the consequence that,
-in equilibrium, such a hedged position must earn the riskless return; the theoretical
-valuation is left on the table.
+neutralize first-order moves. Their interest is empirical — identifying warrants that look
+mispriced relative to the fitted curve — and they stop at the hedge itself; they extract no
+closed-form valuation from it.
 
 The common gap: every one of these either carries an unobservable expected-return parameter,
 or an unjustified discount rate for a claim whose risk varies with price and time, or a

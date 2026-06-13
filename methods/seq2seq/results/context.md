@@ -23,7 +23,7 @@ producing one output `y_t` per input step. This is the natural sequence model, a
 
 **Neural language models.** A neural language model represents text autoregressively, `p(w_t | w_1,...,w_{t-1})`, via a softmax over the vocabulary at each step. Feedforward NNLMs (Bengio, Ducharme, Vincent & Jauvin 2003) and recurrent LMs (Mikolov et al. 2010; Sundermeyer, Schluter & Ney 2012) define probabilities for variable-length text by multiplying per-step factors until a termination symbol is produced. A language model is unconditional, though: it produces plausible text, not text tied to a particular source sequence.
 
-**Fixed-vector memory bottlenecks.** Work that squeezes an entire source sentence into one fixed-length vector has observed degradation as the source grows longer (Pouget-Abadie, Bahdanau, van Merrienboer, Cho & Bengio 2014; Cho et al. 2014). Segmenting the source into shorter pieces was one response. The underlying warning is that a single-vector reader must either carry enough information about the whole input or make the optimization problem easy enough that the recurrent state learns to use its capacity.
+**Fixed-vector memory bottlenecks.** Work that squeezes an entire source sentence into one fixed-length vector has observed degradation as the source grows longer (Pouget-Abadie, Bahdanau, van Merrienboer, Cho & Bengio 2014; Cho et al. 2014). Segmenting the source into shorter pieces was one response.
 
 **Minimal time lag.** Hochreiter & Schmidhuber (1997) frame learning difficulty in terms of the minimal time lag: the smallest number of recurrent steps between a cause and the earliest effect that depends on it. The larger this smallest useful gap is, the harder it is for gradient descent to establish any dependency at all, because every useful error signal must survive a long chain before it can improve the relevant early state.
 
@@ -53,7 +53,7 @@ import torch.nn as nn
 
 
 def prepare_source(src_ids, eos_id):
-    # TODO: decide the source order and termination marker before reading.
+    # TODO: turn raw source ids into the token sequence the reader consumes.
     pass
 
 
@@ -91,7 +91,7 @@ class ConditionalSequenceModel(nn.Module):
         self.device = device
 
     def forward(self, src, trg, teacher_forcing_ratio):
-        # TODO: condition generation on the read source state.
+        # TODO: wire the reader and generator into one conditional model.
         pass
 
 

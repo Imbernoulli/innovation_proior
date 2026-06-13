@@ -1,4 +1,4 @@
-# Anti-aliased neural volumetric rendering across scales — the ground before the method
+# Anti-aliased neural volumetric rendering across scales
 
 ## Research question
 
@@ -133,28 +133,24 @@ resolution and alias at the downsampled scales.
 
 ## Code framework
 
-What already exists: a posed-image dataset and ray generator; a sinusoidal positional
+Available pieces: a posed-image dataset and ray generator; a sinusoidal positional
 encoding; an MLP backbone mapping encoded position (+ direction) to (σ, c); the
 volume-rendering alpha-compositor; stratified and inverse-transform PDF sampling along rays;
-an Adam training loop on squared pixel error. The slots the method will fill: how a pixel's
-ray is turned into samples that *carry scale*, and what feature is fed to the MLP for each
-such sample.
+an Adam training loop on squared pixel error. One piece is left unimplemented below.
 
 ```python
 import torch, torch.nn as nn
 
 def generate_rays(camera):
-    # origins o, directions d, AND per-pixel footprint radius at the image plane
-    raise NotImplementedError  # TODO: also return the pixel footprint (scale) per ray
+    # origins o, directions d from camera intrinsics/extrinsics
+    raise NotImplementedError
 
 def sample_along_ray(origin, direction, near, far, n, weights=None):
     # stratified if weights is None, else inverse-transform sample from a PDF
     raise NotImplementedError  # returns sorted distances t
 
 def featurize(origin, direction, t, radius):
-    # TODO: turn the geometry the pixel observes between samples into the MLP input feature.
-    # This is the slot the method fills. A pre-method placeholder is a point positional
-    # encoding of r(t); the contribution will replace what 'geometry' means here.
+    # TODO: produce the MLP input feature for this query along the ray.
     raise NotImplementedError
 
 class SceneMLP(nn.Module):
@@ -175,12 +171,10 @@ def volume_render(sigma, rgb, t):
     return color, w
 
 def render_pixel(model, origin, direction, radius, near, far):
-    # coarse pass -> weights -> fine pass; combine.  How many networks, and how the
-    # coarse weights drive the fine samples, is part of what the method decides.
+    # coarse pass -> weights -> fine pass; combine.
     raise NotImplementedError
 
 def train_step(model, batch, opt):
-    # squared error between rendered and observed pixel colors; how coarse and fine
-    # losses are combined is a slot the method fills.
+    # squared error between rendered and observed pixel colors.
     raise NotImplementedError
 ```

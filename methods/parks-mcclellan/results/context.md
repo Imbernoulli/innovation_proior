@@ -38,10 +38,8 @@ theory studies, for a continuous target `D̂(f)` on a closed set `F`, the polyno
 `r-1` that minimizes `max_{f∈F} Ŵ(f)|D̂(f) - P(f)|`. The cornerstone result is the **alternation
 (equioscillation) theorem**: `P` is the unique best weighted-Chebyshev approximation iff the
 weighted error `E(f) = Ŵ(f)[D̂(f) - P(f)]` attains its maximum magnitude with *alternating sign* at
-at least `r+1` points of `F`. Substituting `x = cos(2πf)` turns a cosine sum
-`Σ_{k} α_k cos(2πkf)` into an ordinary algebraic polynomial in `x` of degree `r-1` (because
-`cos(2πkf) = T_k(cos 2πf)`, the Chebyshev polynomials), so the algebraic theory applies verbatim to
-the trigonometric problem.
+at least `r+1` points of `F`. The theory is developed for ordinary algebraic polynomials in a
+real variable on a closed interval.
 
 **The Remez exchange (1934).** Remez gave an iterative scheme to find the best Chebyshev
 approximation: guess a reference set of `r+1` points; solve for the polynomial and the error level

@@ -65,10 +65,8 @@ def build_subproblem(xval, xmin, xmax, xold1, xold2,
                      f0val, df0dx, fval, dfdx, state):
     """Build the explicit, cheap-to-optimize local surrogate of f0 and f_i
     around xval from gradient information, plus whatever per-variable
-    state controls how conservative the surrogate is.
-    # TODO: choose the surrogate's functional form (this is the method).
-    # TODO: choose/refresh the per-variable conservativeness controls.
-    # TODO: choose the local trust bounds the surrogate is valid within.
+    state the surrogate carries between iterations.
+    # TODO: this is the method.
     """
     pass  # returns subproblem coefficients + updated state
 
@@ -101,4 +99,4 @@ def optimize(x0, xmin, xmax, maxit):
     return xval
 ```
 
-The two `pass` bodies — how the local surrogate is built (its form, its conservativeness controls, its trust bounds) and how the resulting convex separable subproblem is solved through its low-dimensional dual — are exactly the slots the method fills.
+The two `pass` bodies — how the local surrogate is built and how the resulting convex separable subproblem is solved through its low-dimensional dual — are exactly the slots the method fills.

@@ -44,16 +44,9 @@ like `O(n^k)` in a naive implementation, and there is no useful bound on how man
 `k`-exchanges a tour admits. So computational effort rises steeply with `k`, and — this is the
 decisive pain point — `k` must be chosen *in advance*. There is no way to know a priori which `k`
 strikes the best compromise between running time and tour quality for a given instance: too small and
-you stall at a poor local optimum; too large and the per-move cost is ruinous. This fixed-`k`
-drawback is what a better method has to remove.
-
-**Out-of-place elements and additive gain.** A different way to see "`T` is not optimal" is that
-there are some `k` links `x_1, ..., x_k` in `T` that are *out of place* and should be replaced by `k`
-links `y_1, ..., y_k` from outside `T`. If one could assign to each swap of `x_i` for `y_i` a *gain*
-`g_i = |x_i| - |y_i|` (length removed minus length added) and arrange that the total profit of a
-group of swaps is simply `g_1 + g_2 + ... + g_k` — i.e. the gains are *additive* — then one could
-reason about partial progress toward an exchange rather than only about completed exchanges. This
-additivity is the lever that the field had not yet pulled on.
+you stall at a poor local optimum; too large and the per-move cost is ruinous. So in practice the
+fixed-`k` interchange leaves the user guessing at a depth that, by all appearances, ought to differ
+from instance to instance and even from move to move within a single run.
 
 ## Baselines
 

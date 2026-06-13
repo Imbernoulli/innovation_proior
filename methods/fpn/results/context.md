@@ -34,7 +34,7 @@ The natural yardstick is COCO detection (Lin et al. 2014), 80 categories, traine
 
 ## Code framework
 
-The starting code has a backbone ConvNet that exposes its per-stage maps, RoI pooling, an anchor-based RPN head, a Fast R-CNN head, dense mask-prediction heads, and a standard SGD detection training loop. The empty slots are the multi-scale feature builder and the size-based routing rule for region pooling.
+The starting code has a backbone ConvNet that exposes its per-stage maps, RoI pooling, an anchor-based RPN head, a Fast R-CNN head, dense mask-prediction heads, and a standard SGD detection training loop. The empty slots are the multi-scale feature builder and the rule that decides, for each region, which output map it is pooled from.
 
 ```python
 import torch
@@ -75,20 +75,18 @@ class MultiScaleFeatureBuilder(nn.Module):
     """TODO: take the backbone's bottom-up stage maps {c2..c5} (high-res/weak
     to low-res/strong) and produce a set of output maps, one per stage, that are
     all equally usable by a single shared head. Design the construction."""
-    def __init__(self, in_channels_per_stage, out_channels, add_extra_coarse_level=True):
+    def __init__(self, in_channels_per_stage, out_channels):
         super().__init__()
         pass  # TODO
 
     def forward(self, bottom_up_maps):
-        pass  # TODO: return a finest-to-coarsest list of maps
+        pass  # TODO: return one output map per stage
 
 
 def assign_roi_to_level(
     boxes,
     min_level=2,
     max_level=5,
-    canonical_level=4,
-    canonical_box_size=224.0,
 ):
     """TODO: choose which output map each RoI should be pooled from."""
     pass  # TODO

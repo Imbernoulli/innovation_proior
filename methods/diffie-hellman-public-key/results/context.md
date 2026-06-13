@@ -36,25 +36,14 @@ These two existing mechanisms — challenge/response and the login one-way funct
 
 ## Evaluation settings
 
-The natural yardstick is the *work factor*: the ratio of the cryptanalyst's effort to the legitimate users' effort, measured under the best known attack, with both costs in concrete units (operations, gate delays, or dollars at then-current prices — enciphering on the order of a cent, an opponent's budget on the order of millions of dollars). A scheme is judged "computationally infeasible" to break when that effort is finite but impossibly large, with `10^100` instructions serving as a representative wall. The threat model is the standard ladder — ciphertext-only, known-plaintext, chosen-plaintext — with the strongest (chosen-plaintext, the IFF-style "submit text and observe the cryptogram") taken as the certification standard, and the system `{S_K}` itself assumed known to the opponent. Bit lengths are the scaling axis: for a candidate built on a hard number-theoretic problem of size roughly `2^b`, one tabulates legitimate cost (polynomial in `b`) against attack cost (the best known algorithm's growth in `b`) across `b = 100, 200, ..., 1000`, and asks whether the gap is merely large or *exponential* in `b`. Because no scheme whose public data uniquely determines its secret can be unconditionally secure, every candidate here is certified only relative to the *best presently known* algorithm for its underlying problem — so a standing question for each is whether a faster algorithm for that problem exists.
+The natural yardstick is the *work factor*: the ratio of the cryptanalyst's effort to the legitimate users' effort, measured under the best known attack, with both costs in concrete units (operations, gate delays, or dollars at then-current prices — enciphering on the order of a cent, an opponent's budget on the order of millions of dollars). A scheme is judged "computationally infeasible" to break when that effort is finite but impossibly large, with `10^100` instructions serving as a representative wall. The threat model is the standard ladder — ciphertext-only, known-plaintext, chosen-plaintext — with the strongest (chosen-plaintext, the IFF-style "submit text and observe the cryptogram") taken as the certification standard, and the system `{S_K}` itself assumed known to the opponent. Bit lengths are the scaling axis: for a candidate built on some hard underlying problem of size roughly `2^b`, one tabulates legitimate cost (polynomial in `b`) against attack cost (the best known algorithm's growth in `b`) across `b = 100, 200, ..., 1000`, and asks whether the gap is merely large or *exponential* in `b`. Because no scheme whose public data uniquely determines its secret can be unconditionally secure, every candidate here is certified only relative to the *best presently known* algorithm for its underlying problem — so a standing question for each is whether a faster algorithm for that problem exists.
 
 ## Code framework
 
-The starting scaffold is the symmetric-cipher harness plus an empty public-channel key-establishment interface. Modular arithmetic over a finite field is available as a primitive; fast exponentiation by repeated squaring is a known algorithm.
+The starting scaffold is the symmetric-cipher harness plus an empty public-channel key-establishment interface. A library of arithmetic over finite fields and integers is available.
 
 ```python
 # ---- primitives that already exist ----
-
-def modexp(base, exp, mod):
-    # repeated-squaring exponentiation: O(log exp) multiplications mod `mod`
-    result = 1
-    base %= mod
-    while exp > 0:
-        if exp & 1:
-            result = (result * base) % mod
-        base = (base * base) % mod
-        exp >>= 1
-    return result
 
 def random_int(low, high):
     # draw from a true hardware RNG (e.g. a noisy diode)
@@ -69,25 +58,7 @@ def decrypt_symmetric(K, ciphertext): ...
 # Goal: two parties holding NO prior shared secret end up with a common K,
 # (or with the ability to encrypt to each other) using only public messages.
 
-class PublicParameters:
-    # TODO: whatever public, agreed-in-advance, non-secret data the scheme needs
-    pass
-
-def generate_keypair(params):
-    # TODO: each user locally produces a (public, secret) pair from fresh randomness;
-    #       the public part may be broadcast / listed in a directory,
-    #       the secret part never leaves the terminal.
-    raise NotImplementedError
-
-def derive_shared_secret(my_secret, their_public, params):
-    # TODO: combine one's own secret with the other party's PUBLIC value
-    #       so that both parties compute the SAME secret,
-    #       yet an eavesdropper holding only the two public values cannot.
-    raise NotImplementedError
-
-# The hardness this must rest on:
-def one_way(x, params):
-    # TODO: a function easy to evaluate forward, computationally infeasible to invert,
-    #       with enough algebraic structure that two such outputs can be combined.
+def establish(params):
+    # TODO
     raise NotImplementedError
 ```

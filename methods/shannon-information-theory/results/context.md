@@ -82,9 +82,9 @@ encoding scheme.
 - **Hartley's H = log(s^n) = n log s (1928).** The first explicit "amount of information" stripped of meaning,
   via additivity over selections. Gap: equiprobable independent symbols only; no statistical source model;
   no treatment of noise; no notion of an optimal code or a compression limit.
-- **Boltzmann/Gibbs entropy S = −k Σ p log p.** A mathematical form available for a probabilistic
-  generalization of Hartley's measure, with its standard properties (maximized at uniform, additive over
-  independent systems) — but living in physics, not yet identified as a measure of *information*.
+- **Boltzmann/Gibbs entropy S = −k Σ p log p.** A standard mathematical form from statistical mechanics, with
+  its standard properties (maximized at uniform, additive over independent systems) — living in physics, not
+  identified as a measure of *information*.
 - **Wiener–Kolmogorov filtering/prediction.** Probabilistic, optimal in mean-square error, the state of the art
   for getting signal out of noise. Gap: an estimation theory for waveforms; it does not quantify information
   content, source compressibility, or a channel's information-carrying limit, and it lives in the continuum
@@ -98,15 +98,15 @@ letter/word statistics, including printed-English redundancy estimates); a discr
 transition probabilities (the binary symmetric channel with a given crossover probability as the textbook
 case, and noiseless constrained channels such as telegraph codes with symbol-duration constraints); the
 continuous (band-limited, white-Gaussian-noise) channel parameterized by bandwidth W, signal power and
-noise power; and figures of merit such as bits per symbol, bits per second, transmission rate versus
-equivocation/error frequency, and bandwidth-versus-signal-to-noise trade-offs. These are the settings within
+noise power; and figures of merit such as description length per symbol, transmission rate versus
+error frequency, and bandwidth-versus-signal-to-noise trade-offs. These are the settings within
 which a quantitative theory of information and coding limits would be stated and checked.
 
 ## Code framework
 
 A finite-alphabet source-coding harness already has the statistical primitives it needs: samples, empirical
-frequencies, a finite source alphabet, binary labels, and an expected code length. What remains open is the
-numerical measure of uncertainty and the construction of a short uniquely decodable binary description.
+frequencies, a finite source alphabet, binary labels, and an expected code length. What remains open is filled
+in below.
 
 ```python
 from collections import Counter
@@ -118,13 +118,13 @@ def empirical_distribution(symbols):
         raise ValueError("sample must be non-empty")
     return {s: c / n for s, c in Counter(symbols).items()}
 
-def information_measure(distribution):
-    """Amount of choice/uncertainty per source symbol."""
+def per_symbol_measure(distribution):
+    """A per-symbol number summarizing the source distribution."""
     # TODO
     pass
 
-def prefix_code(distribution):
-    """A uniquely decodable binary label for each positive-probability symbol."""
+def binary_code(distribution):
+    """A binary label for each positive-probability symbol."""
     # TODO
     pass
 
@@ -134,7 +134,7 @@ def average_length(code, distribution):
     pass
 
 def source_coding_check(symbols):
-    """Compute the uncertainty measure and the average length of a binary code."""
+    """Relate the per-symbol measure to the average length of a binary code."""
     # TODO
     pass
 ```

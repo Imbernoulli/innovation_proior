@@ -61,24 +61,12 @@ the least-time track; it treats routing as a continuous problem, and is known to
 because it needs second-order derivatives of the speed field, and numerical error in those can
 grow unacceptably along a long integration.
 
-**The isochrone idea.** A different, discrete way to think about least time: from the departure
-point, ask "where can the ship be after one time step Δt?" Fanning the heading and applying the
-local achievable speed gives a set of reachable points; their outer boundary is the **isochrone**
-— the contour of farthest reach in equal sailing time. Repeating from that boundary gives the
-next isochrone (reach after 2Δt), and so on. This is a front-propagation view of least time:
-successive isochrones are reachability fronts, and when a front reaches the destination the
-number of steps gives the passage time. James (1957), in the first study of optimal ship
-routing, used exactly this construction with synoptic and prognostic wave charts to pick a
-least-time track by hand, including curves relating ship speed to head/beam/following waves of
-varying height.
-
-**Dominated points and the front.** When a reachable cloud is collapsed to its outer boundary,
-the interior points are discarded — and rightly so: a point the front already encloses has been
-reached at least as early along the boundary, so it cannot lie on a faster route. Concretely, if
-two candidate points fall in the same narrow direction sector out of the start, the one that has
-advanced farther dominates; the nearer one can be pruned. Keeping only the farthest-advanced
-candidate per direction sector is what makes the front a thin curve rather than a thickening
-blob, and is the discrete engine of the method.
+**James's hand construction (1957).** The first study of optimal ship routing, James (1957),
+worked the problem on synoptic and prognostic wave charts entirely by hand, using tabulated
+curves relating ship speed to head/beam/following waves of varying height to pick a least-time
+track. The construction reasoned about where the ship could get to in equal sailing time and
+selected a track by eye; it is the historical starting point for the discrete, chart-based
+treatment of the problem, as opposed to the continuous calculus-of-variations attack below.
 
 **The time-dependent shortest path / dynamic programming view.** Discretise the ocean into a
 grid of nodes and let c_arc(i, j, t) be the time to sail from node i to a neighbour j when
@@ -90,26 +78,22 @@ program is
 
 with the minimising j giving the successor on the optimal path (Allsopp 1998). Equivalently a
 two-dimensional dynamic program over a great-circle-referenced grid (Bijlsma 1975; De Wit 1990;
-Calvert 1991) solves the same recursion stage by stage. The connection to label-setting search
-is direct: propagating earliest-arrival labels outward and settling the frontier is Dijkstra's
-algorithm on the time-dependent graph; biasing the frontier toward the destination is A*. The
-isochrone is the geometric face of this — an isochrone at k·Δt is the set of nodes whose
-earliest-arrival label is k·Δt, and pruning dominated points is the settling of the frontier.
+Calvert 1991) solves the same recursion stage by stage. The time index on the arc cost is what
+keeps this from collapsing to an ordinary static shortest path.
 
-**The computer-implementation failure mode.** Drawn by hand the isochrone is a smooth curve, but
-when the geometric front-construction is programmed directly it can fold over itself, producing
-spurious self-crossing "isochrone loops" that corrupt the boundary and the recovered route. This
-is a known pathology of the naive computerised isochrone and is the specific defect later
-refinements set out to remove — by representing the front on a structured grid rather than as a
-freely-drawn geometric boundary.
+**The computer-implementation failure mode.** When a chart-based least-time construction of the
+James type is programmed directly rather than drawn by hand, the boundary it builds can fold
+over itself, producing spurious self-crossing "isochrone loops" that corrupt the boundary and
+the recovered route. This is a reported pathology of the naive computerised construction; later
+refinements were aimed at removing it.
 
 ## Baselines
 
-**Hand-drawn isochrones on weather charts (James 1957).** The original method: propagate
-reachability fronts on synoptic/prognostic wave charts using tabulated speed-vs-wave curves, by
-hand, to select an approximate least-time track. Core idea is exactly the isochrone propagation
-above. Gap: manual, low-resolution, not reproducible, and it offers no clean rule for collapsing
-the reachable cloud — the dominated-point pruning is done by eye.
+**Hand construction on weather charts (James 1957).** The original method: reason on
+synoptic/prognostic wave charts, using tabulated speed-vs-wave curves, about how far the ship can
+get in equal sailing time, and select an approximate least-time track by hand. Gap: manual,
+low-resolution, not reproducible, and it offers no clean computable rule for collapsing the cloud
+of reachable points — that selection is done by eye.
 
 **Calculus of variations (Bijlsma 1975).** Treats routing as a continuous least-time problem and
 solves the Euler–Lagrange / characteristic equations for the optimal track in the time-varying
@@ -126,11 +110,10 @@ constant. Gap: with the propeller setting fixed it optimises only heading; accur
 grid fineness, and treating time as merely a by-product of progress (the usual 2D reduction)
 assumes a one-to-one progress↔time map that the speed-loss coupling does not strictly honour.
 
-**Isopone method (Klompstra; Spaans 1995).** Extends the isochrone to a three-dimensional
-"isopone" — a surface of equal fuel consumption bounding the attainable region in (position, time)
-space — so engine power can be varied. Core idea: front propagation in fuel rather than time. Gap:
-reported as mathematically elegant but hard for shipboard operators to understand and operate, so
-in practice it was set aside in favour of the simpler front method.
+**Isopone method (Klompstra; Spaans 1995).** A three-dimensional "isopone" — a surface bounding
+the attainable region in (position, time) space, allowing engine power to be varied rather than
+held fixed. Gap: reported as mathematically elegant but hard for shipboard operators to understand
+and operate, so in practice it was set aside in favour of simpler approaches.
 
 **Generic Dijkstra/A* on a weather graph (Padhy 2008).** Build a graph over ocean grid nodes with
 time-priced edges and run a shortest-path search. Core: label-setting search with the time-varying
@@ -161,8 +144,7 @@ weather field that returns wave height, direction, wind, and current by interpol
 and the fuel rate via the speed-loss curve; and a constraints check that flags a leg crossing land,
 shallow water, or unsafe seas. A routing pass consumes the start point, the finish point, the
 departure time, the ship model, and the weather field, and emits a route as a sequence of waypoints
-with times. The empty bodies below are the generic slots where the front-propagation step, the
-dominated-point reduction, and the route backtrack still have to be designed.
+with times. The body below is the generic slot where the routing strategy still has to be designed.
 
 ```python
 # --- existing primitives -------------------------------------------------
@@ -188,34 +170,12 @@ class Router:
         self.start, self.finish = start, finish
         self.time = start_time
         self.ship, self.weather, self.constraints = ship, weather, constraints
-        # great-circle course start -> finish, used as reference frame
+        # great-circle course start -> finish, available as a reference frame
         self.gcr_course = geod.inverse(*start, *finish)['azi1']
 
-    def expand_front(self, front):
-        # TODO: from each point of the current front, fan headings, advance one
-        #       step using the achievable speed in the local weather -> candidates
-        pass
-
-    def reduce_front(self, candidates):
-        # TODO: collapse the candidate cloud to the surviving front
-        #       (the slot where dominated points are dropped)
-        pass
-
-    def reached_destination(self, front):
-        # TODO: is the finish within one step of the front?
-        pass
-
-    def backtrack(self, front):
-        # TODO: follow parent pointers from the destination back to the start
-        pass
-
     def run(self):
-        front = [self.start]      # step-0 front is the departure point
-        while not self.reached_destination(front):
-            candidates = self.expand_front(front)
-            candidates = [c for c in candidates
-                          if not self.constraints.violated(*c.parent, *c.point)]
-            front = self.reduce_front(candidates)
-            self.time += self.delta_t   # advance the clock with the front
-        return self.backtrack(front)
+        # TODO: design the routing strategy that, from the start point and clock,
+        #       produces the optimal route to the finish through the time-varying
+        #       weather field, honouring the constraints, and return its waypoints.
+        ...
 ```

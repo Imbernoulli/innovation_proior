@@ -27,9 +27,9 @@ The natural materials and readouts that already exist:
 The investigation has a fixed shape in the terms available before the mechanism is known:
 
 - **An observable.** For a given kernel/plant of known genotype, record the variegation: which character, on/off vs. graded, the size distribution of sectors/spots, their developmental timing inferred from size, the presence of reciprocal twins. The kernel pattern is the raw data to be decoded.
-- **A candidate event at a locus.** Some heritable event happens in an ancestor cell that changes a gene's expression in all descendants. The open slot is the physical event: gene mutation, loss, insertion of some material, or something else.
+- **A candidate event at a locus.** Some heritable event happens in an ancestor cell that changes a gene's expression in all descendants. The open slot is the physical event responsible.
 - **A possible controller.** Some factor may govern whether, when, and how often the event occurs. The open slot is whether there is a separable controlling factor, where it maps, and what sets the timing.
 - **A cytological correlate.** Whatever the event is, look for a visible chromosomal signature (a break, a fragment, a loss of a marked knob) that can be put under the microscope at the same time and frequency as the genetic event. The open slot is the physical chromosome event at a definite position.
-- **An origin.** Explain why these unstable loci appeared in a burst, traceable to the history of the plants (the BFB cycle), and test that history by recreating instability on demand. The open slot is whether the trigger can produce the controlling condition anew.
+- **An origin.** Explain why these unstable loci appeared in a burst, traceable to the history of the plants (the BFB cycle), and test that history by acting on the same material on demand. The open slot is what the trigger does and how it relates to the burst.
 
 The sought explanation must fill these open slots consistently across all four observables - the sharp sectoring, the timing, the twins, and the wandering map position - and be confirmed by the cytology.

@@ -76,7 +76,7 @@ the advantage-weighted maximum-likelihood update, but estimate the value functio
 policy `V^{π_β}` by Monte-Carlo returns or TD(λ). Diagnostic finding: such Monte-Carlo / on-policy
 return estimators are about an order of magnitude less sample-efficient than off-policy actor-critic,
 and estimating the behavior policy's value caps how far the policy can improve in one step. Gap:
-no off-policy bootstrapping of the *current* policy's value.
+the value being estimated is that of the behavior policy, not of the policy being trained.
 
 **On-policy fine-tuning from demonstrations (DAPG, Rajeswaran et al. 2018).** BC-initialize, then
 fine-tune with an on-policy policy gradient. Gap: on-policy fine-tuning cannot reuse the offline data
@@ -101,9 +101,8 @@ point and the slope of online improvement. A controlled diagnostic on HalfCheeta
 
 The primitives that already exist: an MLP builder, twin state-action critics with target copies, a
 tanh-squashed Gaussian stochastic policy, Adam, a Polyak target-update, a replay buffer shared between
-offline data and online transitions, and an off-policy training loop. What does not yet exist is a
-policy-improvement step that stays inside the data distribution without an explicit behavior model.
-That is the stub.
+offline data and online transitions, and an off-policy training loop. What does not yet exist is the
+policy-improvement step itself. That is the stub.
 
 ```python
 import copy
@@ -158,12 +157,11 @@ def critic_td_loss(batch, critic, target_critic, policy, discount):
 
 
 def policy_improvement_loss(batch, critic, policy, hp):
-    # TODO: improve the policy toward high-value actions while staying inside
-    #       the data distribution — WITHOUT fitting an explicit behavior model
+    # TODO: the policy-improvement objective
     pass
 
 
 def update(batch, critic, target_critic, policy, opts, hp):
-    # TODO: critic TD step, then constrained actor step, then Polyak target sync
+    # TODO: critic TD step, then actor step, then Polyak target sync
     pass
 ```

@@ -6,15 +6,13 @@ The dominant way to make a language model better has been to make it bigger, but
 
 ## Background
 
-**The decoder Transformer substrate.** A modern decoder-only language model is a stack of pre-normalized residual blocks, each with a multi-head self-attention sub-layer and a position-wise feed-forward sub-layer, using RMSNorm for normalization, a SwiGLU feed-forward, and rotary position embeddings (RoPE) applied to queries and keys at every layer. This is the architecture into which the efficiency changes are introduced; the changes are to the *attention* and its *cache*, not to this skeleton.
+**The decoder Transformer substrate.** A modern decoder-only language model is a stack of pre-normalized residual blocks, each with a multi-head self-attention sub-layer and a position-wise feed-forward sub-layer, using RMSNorm for normalization, a SwiGLU feed-forward, and rotary position embeddings (RoPE) applied to queries and keys at every layer. This is the standard substrate a 7B-scale model is built on.
 
 **Where autoregressive inference spends its cost.** Generating one token requires reading the model weights and the cached keys and values for every past position, then doing a small amount of arithmetic to emit one distribution. The cache reads dominate as the sequence grows: at step $i$ the keys and values have shape $[\text{heads}, i, \text{head\_dim}]$ per sequence, so the per-step memory traffic grows with both the number of heads and the length of the history. This makes decoding memory-bandwidth-bound, and the cache size — not the arithmetic — is what limits how many sequences can be batched and how long they can be.
 
-**Multi-head attention and its cache cost.** Standard multi-head attention learns a separate key, value, and query projection per head; the cache therefore stores one key and one value vector *per head per position*. Reducing the number of *key/value* heads while keeping all query heads — sharing each key/value head across a group of query heads — shrinks the cache and the decode-time bandwidth proportionally, since query heads are computed fresh each step and only keys/values are cached. The extreme of a single shared key/value head minimizes the cache but collapses all query heads into one key/value subspace, hurting quality and destabilizing training; an intermediate number of key/value groups recovers most of the quality while keeping most of the saving (Ainslie et al., 2023).
+**Multi-head attention and its cache cost.** Standard multi-head attention learns a separate key, value, and query projection per head; the cache therefore stores one key and one value vector *per head per position*. Note the asymmetry in what accumulates: the query brought to a decode step is the current token's, tiny and never cached, while keys and values pile up — so the cache cost is set by how many distinct key/value heads are stored. Schemes that store fewer key/value heads than query heads have been studied (Shazeer, 2019; Ainslie et al., 2023); see Baselines.
 
 **Attention cost in sequence length.** Vanilla self-attention forms the full $n\times n$ score matrix: $O(n^2)$ operations and, with a growing cache, $O(n)$ stored key/value vectors per token. For long inputs this is the dominant cost. Sparse and local attention patterns restrict each query to a subset of keys to cut this — for instance attending only to a fixed-width band of recent positions (Child et al., 2019; Beltagy et al., 2020) — at the price of each layer no longer directly seeing the whole past.
-
-**Receptive fields grow with depth.** A locally-connected operation stacked in many layers has an effective receptive field that grows with depth: even if each layer only mixes a small neighborhood, after $k$ layers a position depends on a neighborhood roughly $k$ times as wide, because each layer's local mixing composes with the previous layer's. This is the standard reason a deep stack of local operations can integrate global information — the same principle that gives deep convolutional networks a large receptive field from small kernels.
 
 **Efficient attention kernels.** Kernels such as FlashAttention (Dao et al., 2022) and xFormers (2022) compute attention without materializing the full score matrix and support masked/local patterns, so a restricted attention pattern can be turned into an actual wall-clock speedup.
 
@@ -26,7 +24,7 @@ The dominant way to make a language model better has been to make it bigger, but
 
 **Full (dense causal) attention with a growing KV cache.** The standard serving setup stores every past key/value and attends over all of them. Core idea: exact attention to the entire history. The gap: the cache grows without bound with sequence length, so long-context serving is memory-limited, and each step pays to stream an ever-larger cache.
 
-**Local / sliding-window sparse attention (Child et al., 2019; Beltagy et al., 2020).** Restrict each query to a fixed window of recent keys, making attention linear in length. Core idea: a banded attention mask. The gap these leave, which a deployment-focused design must close: naively, restricting the window throws away long-range information, and the interaction with a bounded *cache* (so that the saving in attention also becomes a saving in memory) and with *efficient prompt ingestion* is not spelled out.
+**Local / sliding-window sparse attention (Child et al., 2019; Beltagy et al., 2020).** Restrict each query to a fixed window of recent keys, making attention linear in length. Core idea: a banded attention mask. The gap: naively, restricting the window means a query never looks more than a window back, which appears to throw away long-range information that language depends on.
 
 ## Evaluation settings
 
@@ -34,7 +32,7 @@ The natural yardsticks are the standard zero-/few-shot LLM suites — commonsens
 
 ## Code framework
 
-The primitives that already exist: PyTorch modules, a memory-efficient attention kernel that accepts an arbitrary attention mask, an RMSNorm, a SwiGLU feed-forward, and rotary position embeddings. The decoder is the usual stack of pre-norm residual blocks; what needs filling in is the self-attention's head structure and masking, and a cache object that bounds memory.
+The primitives that already exist: PyTorch modules, a memory-efficient attention kernel that accepts an arbitrary attention mask, an RMSNorm, a SwiGLU feed-forward, and rotary position embeddings. The decoder is the usual stack of pre-norm residual blocks; what needs filling in is the self-attention and its key/value cache.
 
 ```python
 import torch
@@ -48,31 +46,17 @@ class ModelArgs:
     head_dim: int = 128
     hidden_dim: int = 14336
     n_heads: int = 32
-    n_kv_heads: int = 8           # fewer key/value heads than query heads
-    sliding_window: int = 4096
+    n_kv_heads: int = 8
     vocab_size: int = 32000
     norm_eps: float = 1e-5
 
 
-def match_kv_to_query_heads(keys, values, repeats):
-    # TODO: make the cached key/value heads serve the larger set of query heads.
-    pass
-
-
 class Attention(nn.Module):
-    # TODO: self-attention whose cache and attention span are both bounded.
+    # TODO: the self-attention sub-layer and its key/value cache.
     def __init__(self, args):
         super().__init__()
         pass
     def forward(self, x, freqs_cis, cache):
-        pass
-
-
-class BoundedCache:
-    # TODO: a key/value cache whose size does not grow without bound.
-    def __init__(self, n_layers, max_batch_size, window, n_kv_heads, head_dim):
-        pass
-    def update(self, xk, xv):
         pass
 
 

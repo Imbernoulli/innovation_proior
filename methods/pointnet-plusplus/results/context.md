@@ -26,14 +26,9 @@ question is how to get the same hierarchical local-feature learning for an
 *irregular, unordered, non-uniformly sampled* point set, where there is no grid to
 slide a kernel over.
 
-A solution has to answer two coupled sub-questions: how to **partition** the cloud
-into local regions, and how to **abstract** each region's points into a feature.
-They are coupled because the partitioning must produce *common* local structures
-across regions, so that one shared local-feature learner can be applied to all of
-them (the point-set analogue of convolutional weight sharing). And it has to do all
-this while remaining robust to the density variation that real scans exhibit — a
-local pattern that is recognizable in a densely sampled region may be destroyed by
-sampling deficiency in a sparse one.
+Whatever the solution, it has to remain robust to the density variation that real
+scans exhibit — a local pattern that is recognizable in a densely sampled region
+may be destroyed by sampling deficiency in a sparse one.
 
 ## Background
 
@@ -60,10 +55,9 @@ neighborhood (a kernel of fixed index-extent) and pools/strides to a coarser gri
 so deeper layers see larger receptive fields and abstract larger-scale patterns over
 a multi-resolution hierarchy. The size of the local neighborhood is the kernel size,
 and on grids smaller kernels tend to help (VGG, Simonyan & Zisserman 2014). The
-ingredients that do *not* transfer directly to point sets: a grid to define
-neighborhoods (must be replaced by metric balls), fixed-stride scanning agnostic of
-the data (can be replaced by data-dependent sampling), and a fixed uniform density
-(violated by real scans).
+ingredients of a CNN that do *not* transfer directly to point sets: it assumes a
+grid to define neighborhoods, a fixed-stride scan agnostic of where the data
+actually is, and a fixed uniform density (the last violated by real scans).
 
 **Choosing centroids and neighborhoods.** Two primitives are available for imposing
 structure on a metric point set. Farthest point sampling iteratively picks the point
@@ -119,11 +113,10 @@ set encoder (shared per-point MLP followed by a symmetric max-pool), batch
 normalization, ReLU, fully connected layers with dropout, a farthest-point-sampling
 routine, a ball / $k$-NN range query over a metric point set, a gather/group
 operation that collects neighbor points by index, and an inverse-distance
-interpolation over nearest neighbors. What does *not* yet exist is how to assemble
-these into a hierarchy: how one level should sample centroids, group neighborhoods,
-and abstract each neighborhood into a feature; how to make that abstraction robust to
-varying local density; and how to carry features back to every original point for
-per-point prediction.
+interpolation over nearest neighbors. What does *not* yet exist is how these
+primitives should be organized into a model that learns local features and is robust
+to the density variation real scans exhibit, and — for per-point prediction — how to
+produce a label at every original point.
 
 ```python
 import torch
@@ -144,24 +137,11 @@ def set_encoder(region_points):
     # permutation-invariant encode-then-max over a region's points (exists)
     return SharedMLP(...)(region_points).max(dim=...)[0]
 
-# --- the slots the method will fill ----------------------------------------
-class AbstractionLevel(nn.Module):
-    """Sample centroids, group neighborhoods, abstract each into a feature."""
-    def forward(self, xyz, feats):
-        # TODO: choose centroids; form local regions; encode each region;
-        #       and make this robust to varying local sampling density
-        raise NotImplementedError
-
-class PropagationLevel(nn.Module):
-    """Carry features from a subsampled level back up to the finer level."""
-    def forward(self, xyz_fine, xyz_coarse, feats_fine, feats_coarse):
-        # TODO: interpolate coarse features to the fine points; combine with
-        #       skip-linked fine features; update per point
-        raise NotImplementedError
-
+# --- to be designed --------------------------------------------------------
 class Net(nn.Module):
     def forward(self, xyz):
-        # TODO: stack abstraction levels down to a global feature -> classify;
-        #       for segmentation, stack propagation levels back up to per-point
+        # TODO: from the primitives above, build a model that learns local
+        #       features, stays robust to non-uniform density, and (for
+        #       segmentation) yields a feature at every original point
         raise NotImplementedError
 ```

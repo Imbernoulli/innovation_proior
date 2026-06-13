@@ -70,11 +70,10 @@ parameter `δ`, expand each unknown as `f ~ f0 + δ f1 + …`, and solve order b
 *Perturbation Methods*; Bender & Orszag) — is standard across applied mathematics but underused
 in battery modelling. It has, however, been used to *derive* the porous-electrode model itself by
 asymptotic homogenisation / multiple scales (Richardson, Denuault, Please 2012) and to reduce
-lead-acid (Sulzer et al. 2019) and particle-free lithium-ion models (Moyles et al. 2018). The
-relevant feature for a full cell is that several physical timescales are widely separated —
-discharge, solid diffusion, electrolyte diffusion, reaction — and several Ohmic drops are small
-relative to the thermal voltage `RT/F`; ratios of these are the natural small/large dimensionless
-groups.
+lead-acid (Sulzer et al. 2019) and particle-free lithium-ion models (Moyles et al. 2018). A full
+cell carries several physical processes — discharge, solid diffusion, electrolyte diffusion,
+reaction — each with its own timescale, and several Ohmic drops whose size relative to the thermal
+voltage `RT/F` varies with operating current.
 
 **Established empirical facts about the existing reduced model.** The simplest reduced model
 (below) is well documented to be accurate only at low currents: it is commonly accepted as valid
@@ -128,8 +127,9 @@ consistent error order cannot be guaranteed and over- or under-correction is obs
   oxide positive electrode; parameter set adapted from Newman's DUALFOIL and Moura's fastDFN.
   Thicknesses `L_n=L_p=100 μm`, `L_s=25 μm`; particle radii `10 μm`; porosities `ε_n=ε_p=0.3`;
   transference `t⁺=0.4`; Bruggeman `b=1.5`; typical electrolyte concentration `10³ mol/m³`; solid
-  conductivities `σ_n=100`, `σ_p=10 S/m`; `1C ≡ 24 A/m²`. The natural small group is the ratio of
-  electrolyte-transport to discharge timescale, `C_e = τ_e/τ_d ≈ 4.19×10⁻³ · (C-rate)`.
+  conductivities `σ_n=100`, `σ_p=10 S/m`; `1C ≡ 24 A/m²`. With these numbers the electrolyte-
+  transport timescale `τ_e` and the discharge timescale `τ_d` stand in the ratio
+  `τ_e/τ_d ≈ 4.19×10⁻³ · (C-rate)`.
 - **Protocol:** constant-current discharge over a range of C-rates (e.g. 0.1C, 0.5C, 1C, 2C, 3C),
   from given initial stoichiometries (0.8 negative, 0.6 positive) to a voltage cutoff (3.2 V).
   Spatial discretisation by finite volume (e.g. 30/20/30 in electrode/separator/electrode, 15 in
@@ -199,18 +199,9 @@ class SingleParticleBase(BaseCellModel):
                 surf_model(self.param, dom, options=self.options)
 
 
-# A higher-accuracy electrolyte-aware model reuses the particle + kinetics of the base
-# model and refills the transport and potential terms to be derived:
-class ElectrolyteAwareModel(SingleParticleBase):
-    def set_solid_submodel(self):
-        # TODO: solid-phase potential correction
-        pass
-
-    def set_electrolyte_concentration_submodel(self):
-        # TODO: electrolyte concentration transport across n|s|p
-        pass
-
-    def set_electrolyte_potential_submodel(self):
-        # TODO: electrolyte potential, electrolyte current, and surface potentials
-        pass
+# A higher-accuracy model reuses the base model and overrides whichever submodel slots
+# the derivation determines:
+class HigherAccuracyModel(SingleParticleBase):
+    # TODO
+    pass
 ```

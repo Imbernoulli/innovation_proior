@@ -1,4 +1,4 @@
-# Context: Conditioning a Frozen Text-to-Text Model on a Learned Prompt
+# Context: Conditioning a Frozen Text-to-Text Model with a Tiny Input Signal
 
 ## Research question
 
@@ -27,32 +27,28 @@ table — finding a good prompt means *selecting discrete tokens*, by hand or by
 search (Jiang et al. 2020; AutoPrompt, Shin et al. 2020). Prompt design is extremely parameter-
 efficient (the prompt is just token IDs) and needs no training, but its quality is limited and it
 caps each prompt slot at a real word's embedding. GPT-3 showed large frozen models are strong
-"few-shot learners" via such prompts — hinting that scale matters for promptability.
+"few-shot learners" via such prompts.
 
 **Prefix-tuning** (Li & Liang 2021) makes the prompt continuous and learnable, but goes further:
-it prepends trainable activations at *every* layer of the network (overwriting per-layer key/value
-activations throughout the stack), with an MLP reparametrization for stable optimization. It works
-well, but it tunes parameters across all layers and modifies the model's internal activations, not
-just the input.
+it prepends trainable activation prefixes at *every* transformer layer, with an MLP
+reparametrization for stable optimization. It works well, but it tunes parameters across all layers
+and modifies the model's internal activations.
 
 **Adapters** (Houlsby et al. 2019) insert small trainable bottleneck modules between frozen
 Transformer layers — another parameter-efficient route, but one that adds modules into the backbone.
 
-**T5's pre-training objective (a complication).** T5.1.1 is pre-trained *only* on span corruption:
+**T5's pre-training objective.** T5.1.1 is pre-trained *only* on span corruption:
 masked spans in the input are replaced by unique sentinel tokens, and the target is the masked
 content delimited by those sentinels (every target *begins* with a sentinel). Such a model has never
 seen fully natural input text nor produced fully natural targets — its decoder has a strong prior
-toward emitting sentinels. This "unnatural" prior is easy to override by fine-tuning (which can move
-the decoder weights) but plausibly hard to override by a prompt alone (which cannot adjust decoder
-priors). So a span-corruption model may be a poor *frozen* base for prompting.
+toward emitting sentinels. Full fine-tuning can move the decoder weights; an approach that leaves
+the weights frozen cannot.
 
 **Motivating observations about scale and base model.** Mid-sized T5 models prompted off-the-shelf
 on span corruption are *unreliable*: on many tasks they never emit a legal class label (scoring 0%),
 with the common failure modes being copying sub-spans of the input or predicting the empty string —
 and this is consistent across runs, not variance. GPT-3 (a left-to-right LM that always outputs
-natural text) responds far better to prompts. This suggests two pre-method facts: prompting works
-best on a model whose pre-training taught it to read and write *natural* text, and promptability
-improves with scale.
+natural text) responds far better to prompts.
 
 ## Baselines
 
@@ -63,8 +59,8 @@ improves with scale.
 - **Prompt design / GPT-3 few-shot** (Brown et al. 2020). Frozen model conditioned on a hand-built
   discrete prompt. Gap: limited quality; discrete slots capped to real words; very long prompts.
 - **Prefix-tuning** (Li & Liang 2021). Learnable continuous activations at *every* layer + MLP
-  reparametrization. Gap: more task-specific parameters than tuning the input alone; modifies
-  internal activations across the stack.
+  reparametrization. Gap: per-layer task-specific parameters; modifies internal activations across
+  the stack.
 - **Discrete prompt search / AutoPrompt** (Shin et al. 2020). Gradient-guided discrete token search.
   Gap: non-differentiable search; real-word constraint.
 
@@ -76,10 +72,9 @@ improves with scale.
 - **Base models**: public T5.1.1 checkpoints at all sizes (Small, Base, Large, XL, XXL = 11B), so
   the method can be studied *as a function of scale*. T5.1.1 differs from original T5 (no supervised
   data in pre-training, adjusted d_model/d_ff, GeGLU instead of ReLU).
-- **Pre-training-objective variants** to compare as frozen bases: off-the-shelf span corruption;
-  span corruption with a sentinel prepended to downstream targets; and "LM adaptation" (continue T5's
-  self-supervised training with the LM objective — natural prefix → natural continuation — for up to
-  100K extra steps, *once*, producing a single reusable frozen model).
+- **Frozen base.** The default base is the off-the-shelf span-corruption T5.1.1 checkpoint;
+  the harness also allows swapping in alternative once-prepared frozen bases to compare as the
+  starting point for prompting.
 - **Optimization protocol**: Adafactor, batch size 32, constant learning rate 0.3, 30,000 steps,
   weight decay 1e-5, β₂ decay 0.8, parameter scaling off; cross-entropy loss; early stopping on dev.
   Implemented in JAX/Flax.
@@ -98,14 +93,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # A frozen pre-trained text-to-text (encoder-decoder) model, weights shared across tasks.
-frozen_t5 = load_pretrained_t5()            # possibly after a one-time objective adaptation
+frozen_t5 = load_pretrained_t5()
 for p in frozen_t5.parameters():
     p.requires_grad = False
 E = frozen_t5.config.d_model                 # token embedding dimension
 
 
-class SoftPrompt(nn.Module):
-    """The small per-task object to be designed, living at the input."""
+class TaskInputSignal(nn.Module):
+    """The small per-task object, living at the input."""
     def __init__(self, length, embed_dim):
         super().__init__()
         # TODO: what trainable object, and in what space, conditions the frozen model?
@@ -116,16 +111,16 @@ class SoftPrompt(nn.Module):
         pass
 
 
-def loss_fn(frozen_t5, soft_prompt, input_ids, target_ids):
+def loss_fn(frozen_t5, task_signal, input_ids, target_ids):
     x_e = frozen_t5.embed(input_ids)         # [batch, n, E]
     # TODO: combine the task object with the embedded input, run the frozen model,
     #       score the target with cross-entropy
     pass
 
 
-def train(frozen_t5, soft_prompt, loader, opt):
-    optim = Adafactor(soft_prompt.parameters(), lr=opt.lr)   # only the task object trains
+def train(frozen_t5, task_signal, loader, opt):
+    optim = Adafactor(task_signal.parameters(), lr=opt.lr)   # only the task object trains
     for batch in loader:
-        loss = loss_fn(frozen_t5, soft_prompt, batch["input_ids"], batch["target_ids"])
+        loss = loss_fn(frozen_t5, task_signal, batch["input_ids"], batch["target_ids"])
         loss.backward(); optim.step(); optim.zero_grad()
 ```

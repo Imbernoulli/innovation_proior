@@ -9,8 +9,8 @@ formed by *adding* its content embedding and its position embedding, and attenti
 computed on these summed vectors. The pain points: (i) adding content and position
 entangles two things that play different roles — the attention between two words depends
 on their contents *and* on their relative positions, and on how those two interact, but
-a single summed vector blurs this; (ii) existing relative-position schemes inject only a
-*partial* slice of the content–position interaction; and (iii) absolute position, which
+a single summed vector blurs this; (ii) existing relative-position schemes inject order
+through a single distance-keyed bias term; and (iii) absolute position, which
 is genuinely needed to disambiguate some predictions, has to be supplied somewhere — and
 the usual place (the input layer) may interfere with learning relative structure. Can a
 better parameterization of content and position — and of where absolute position enters
@@ -36,15 +36,13 @@ the *distance* between query and key is added into the attention score. It has b
 shown empirically that relative position representations are more effective for both
 understanding and generation tasks than absolute ones.
 
-**What existing relative schemes actually compute.** Decomposing the attention score
-between a query at position `i` and a key at position `j` into content and position
-parts, the full interaction has four pieces: content-to-content, content-to-position,
-position-to-content, and position-to-position. Existing relative-position methods add a
-bias that corresponds to only the content-to-position piece (a query-content vector
-dotted with a relative-position key vector). This is the diagnostic that motivates the
-method: the symmetric *position-to-content* piece — how a key's content matters relative
-to the query's position — is omitted, even though the attention of a word pair plainly
-depends on this interaction too.
+**What existing relative schemes actually compute.** Existing relative-position methods
+add, into the attention logit between a query at position `i` and a key at position `j`,
+a bias that depends on the query's content and the relative distance from `i` to `j` (a
+query-content vector dotted with a relative-position key vector). The attention between a
+word pair depends on their contents and on their relative positions and on how those
+interact, but it is not obvious that a single distance-keyed bias of this form captures
+all of that interaction.
 
 **Masked language modeling.** Pre-training corrupts a sequence `X` into `X̃` by masking
 ~15% of tokens and trains `θ` to maximize `Σ_{i∈C} log p_θ(x̃_i = x_i | X̃)` over the
@@ -57,16 +55,15 @@ is not always enough to predict a masked word. Consider "a new **store** opened 
 the new **mall**" with *store* and *mall* masked: both follow *new* at the same relative
 offset and have similar local context, yet they play different syntactic roles (the
 subject is *store*). Disambiguating them requires their *absolute* positions in the
-sentence. So absolute position carries real signal — the open design question is *where*
-to add it without harming the learning of relative structure.
+sentence. So absolute position carries real signal that has to be supplied somewhere in a
+model otherwise built on content and relative position.
 
 **Virtual adversarial training (Miyato et al. 2018; Jiang et al. 2019).** A
 regularizer: perturb the input slightly to form an adversarial example and require the
 model to produce the same output distribution on the perturbation as on the clean input.
-For text, the perturbation is applied to word embeddings. A known difficulty: embedding
-vector norms vary widely across words and grow with model size, which destabilizes the
-perturbation scale — a pre-method fact that any embedding-space adversarial scheme must
-contend with.
+For text, the perturbation is applied to word embeddings. Embedding vector norms vary
+widely across words and grow with model size, which destabilizes the perturbation scale
+for any embedding-space adversarial scheme.
 
 ## Baselines
 
@@ -80,8 +77,8 @@ empirically weaker than relative for many tasks.
 **Relative-position Transformers (Shaw et al. 2018; Huang et al. 2018; Transformer-XL,
 Dai et al. 2019).** Add a learned relative-position bias into the attention logits,
 depending on the query–key distance. Core idea: model order by distance, which
-generalizes across positions and sequence lengths. Gap: the bias captures only the
-content-to-position interaction; the position-to-content interaction is missing. Storing
+generalizes across positions and sequence lengths. Gap: order enters only through a
+single distance-keyed bias added to the content dot product. Storing
 a distinct relative-position embedding per query naively costs `O(N²d)` memory.
 
 **ALBERT (Lan et al. 2019).** Reduce parameters via cross-layer weight sharing and
@@ -98,21 +95,20 @@ span masking (spans up to length 3) added to token masking. Architectures span a
 config (12 layers, hidden 768, 12 heads, head size 64, FFN inner 3072) and a large
 config (24 layers, hidden 1024, 16 heads, FFN inner 4096), maximum relative distance
 `k = 512`. Optimizer: Adam with decoupled weight decay; warmup 10k steps, linear decay,
-batch size 2k, up to 1M steps. Downstream benchmarks (the natural yardsticks, all
-pre-existing): GLUE (MNLI, SST-2, MRPC, CoLA, QNLI, QQP, RTE, STS-B); SQuAD v1.1 and
+batch size 2k, up to 1M steps. Downstream benchmarks: GLUE (MNLI, SST-2, MRPC, CoLA,
+QNLI, QQP, RTE, STS-B); SuperGLUE; SQuAD v1.1 and
 v2.0 reading comprehension (passages from ~500 Wikipedia articles, with unanswerable
-questions in v2.0); RACE; and for generation, language-model perplexity on WikiText-103
-and the SuperGLUE benchmark. Fine-tuning uses task-specific hyperparameter search over
-small grids of learning rate, batch size, and warmup. No outcome numbers are part of
-these settings.
+questions in v2.0); RACE; SWAG; CoNLL-2003 NER; and, for generation, language-model
+perplexity on WikiText-103. Fine-tuning uses task-specific hyperparameter search over
+small grids of learning rate, batch size, and warmup.
 
 ## Code framework
 
 The harness is a standard MLM Transformer encoder: embeddings, a stack of blocks each
 with self-attention and a feed-forward network, and an output projection that decodes
-masked tokens against the vocabulary. The self-attention's score computation, the way
-position is represented and where absolute position enters the decoder, and the
-fine-tuning regularizer are the empty slots.
+masked tokens against the vocabulary. The self-attention's score computation, how
+position is represented and supplied to the model, and the fine-tuning regularizer are
+the empty slots.
 
 ```python
 import math, torch, torch.nn as nn, torch.nn.functional as F
@@ -154,8 +150,8 @@ class Encoder(nn.Module):
             H = blk(H, attn_mask)   # TODO: pass position inputs
         return H
 
-def mlm_decode(encoder_out, mask_positions, vocab_proj, **absolute_position):
-    # TODO: decode masked tokens; decide whether/where absolute position enters.
+def mlm_decode(encoder_out, mask_positions, vocab_proj, **position_inputs):
+    # TODO: decode the masked tokens against the vocabulary.
     pass
 
 def adversarial_finetune_step(model, batch, eps):

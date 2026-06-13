@@ -73,10 +73,11 @@ the generalization gap, and the two can differ wildly.
 
 **Empirical risk minimization (ERM) on a fixed class.** Minimize `R_emp(w)` over a single, pre-chosen
 class `f(x,w), w∈W`. Core idea: trust the training error as a surrogate for the risk. Math: return
-`w* = argmin_w R_emp(w)`. Limitation: the guarantee `R(w*) ≤ R_emp(w*) + (capacity term)` has a capacity
-term that is large whenever the class is rich relative to `ℓ` — so if the class is fixed too large, ERM
-overfits, and if fixed too small, ERM underfits. ERM gives no handle for *choosing* the class; it is
-justified only when `ℓ/h` is large.
+`w* = argmin_w R_emp(w)`. Limitation: the empirical risk is a trustworthy stand-in for the true risk
+only when the class is poor relative to `ℓ` (the tail above is tight); on a class that is rich relative
+to `ℓ` the worst-case gap is large, so if the class is fixed too large, ERM overfits, and if fixed too
+small, ERM underfits. ERM gives no handle for *choosing* the class; it is justified only when `ℓ/h` is
+large.
 
 **Penalized model-order selection (AIC, MDL, Bayesian).** Fit a nested family of models of increasing
 parameter count, and select the one minimizing `fit + penalty(number of parameters)`. AIC:
@@ -147,15 +148,9 @@ def candidate_classes():
     # (e.g. ordered by some richness knob) — returned for the selector to range over
     raise NotImplementedError
 
-def confidence_term(capacity, n, delta):
-    # TODO: the penalty that turns a training error into a guaranteed risk.
-    # What is the right complexity measure, and what is the right functional form
-    # of the gap between empirical and true risk?
-    pass
-
 def select_model(X, y, loss, delta):
-    # TODO: range over candidate_classes(), fit ERM in each, and choose the
-    # (class, hypothesis) pair by some fit-plus-complexity objective built from
-    # empirical_risk(...) and confidence_term(...). The selection rule is unknown here.
+    # TODO: the missing principle. Given the primitives above, decide which
+    # function (and from which class) to return so that it generalizes — not
+    # merely fits. The rule for making that choice is unknown here.
     pass
 ```

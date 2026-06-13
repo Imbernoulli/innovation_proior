@@ -16,9 +16,9 @@ A second, sharper requirement: the guarantee should hold *regardless of what the
 
 **The Dalenius desideratum and its collapse.** Dalenius (1977) articulated the goal everyone implicitly wanted: *access to a statistical database should not enable one to learn anything about an individual that could not be learned without access.* This is the database analogue of the cryptographic notion of **semantic security** that Goldwasser and Micali (1982) defined for encryption five years later — nothing learnable about a plaintext from the ciphertext that could not be learned without it. The disanalogy is fatal. Semantic security is achievable because the ciphertext is *useless* to anyone but the key-holder; the auxiliary-information generator "has no idea" what ciphertext the eavesdropper will see. But a statistical database is *designed* to convey information, and there is no decryption key separating the legitimate user from the adversary — they are one and the same. Whoever knows the data knows roughly what the user will learn, and can plant auxiliary information that combines with the release to breach privacy. The Terry-Gross-height example makes it concrete: release the average height of Lithuanian women, hand the adversary "Terry Gross is two inches shorter than that average," and Terry Gross's exact height is disclosed — **whether or not Terry Gross is in the database at all.** The Dalenius goal, formalized as a relaxed semantic security, is therefore *impossible* whenever the release has any utility. An absolute "you learn nothing about me" promise cannot be kept, so the promise must be reformulated.
 
-**Privacy by randomized process (Warner, 1965).** A much older idea points the way toward *how* a private mechanism behaves. Warner's randomized response collects statistics on stigmatized behavior: each respondent flips a coin and, depending on the outcome, either answers truthfully or answers a fixed random way, so that any individual "Yes" carries plausible deniability — it would have occurred with non-trivial probability regardless of the truth — while the population proportion remains an unbiased, recoverable estimate because the noise process is known. Privacy here is a property of the *response process*: the distribution of an individual's reported answer is only mildly shifted by their true bit. This is the seed of "privacy as a property of the mechanism's output distribution," and it foreshadows that randomization is not optional — any non-trivial deterministic mechanism that ever distinguishes two databases distinguishes two that differ in a single row, and an adversary who knows the database is one of those two learns the differing row.
+**Privacy by randomized process (Warner, 1965).** A much older idea points the way toward *how* a private mechanism behaves. Warner's randomized response collects statistics on stigmatized behavior: each respondent flips a coin and, depending on the outcome, either answers truthfully or answers a fixed random way, so that any individual "Yes" carries plausible deniability — it would have occurred with non-trivial probability regardless of the truth — while the population proportion remains an unbiased, recoverable estimate because the noise process is known. In Warner's scheme privacy is a property of the *response process*: the distribution of an individual's reported answer is only mildly shifted by their true bit. It also illustrates that randomization is not optional — any non-trivial deterministic mechanism that ever distinguishes two databases distinguishes two that differ in a single row, and an adversary who knows the database is one of those two learns the differing row.
 
-**The cryptographic lens.** A definition that must hold against arbitrary side information naturally borrows the worst-case, adversary-explicit style of cryptography: state precisely what the adversary may know and may do, and bound a worst-case quantity rather than an average. The cryptographic measures themselves (statistical/total-variation distance; computational indistinguishability) are starting points, but with a twist forced by the utility requirement — a simple hybrid argument shows useful release *requires* non-negligible leakage, so the standard "negligible advantage" bar cannot be imported unchanged.
+**The cryptographic lens.** A definition that must hold against arbitrary side information naturally borrows the worst-case, adversary-explicit style of cryptography: state precisely what the adversary may know and may do, and bound a worst-case quantity rather than an average. The cryptographic measures themselves (statistical/total-variation distance; computational indistinguishability) are starting points, but the utility requirement sits in tension with the standard "negligible advantage" bar, which a useful release cannot obviously meet.
 
 ## Baselines
 
@@ -40,7 +40,7 @@ The natural yardsticks are about *what a curator must answer and how robustly*:
 - **Query classes:** subset-sum / counting queries ("how many records satisfy predicate P?"), their weighted (linear) and fractional forms; **histograms** and **contingency tables** (partition the universe into d bins, count each — high-dimensional output); **means and covariance matrices** of per-record feature vectors; and **graph/holistic functionals** over a database whose rows are edges (minimum cut, minimum spanning-tree weight, distance-to-a-property).
 - **Database model:** n rows from a domain D (typically {0,1}^d or ℝ^d), with the histogram representation x ∈ ℕ^|X| and the ℓ₁ / Hamming notion of "differs in one record" as the unit of change.
 - **Adversary model:** a probabilistic interactive machine with arbitrary auxiliary information and (in the strongest setting) unbounded computation; interactive (query–response transcripts, possibly adaptive) versus non-interactive (publish a sanitized object once) release.
-- **Quantities to track:** a worst-case per-outcome leakage parameter (to be defined), the ℓ₁ amount one record can move a query, the magnitude of added noise as a function of that, and the accuracy of the answer as a function of the leakage parameter and the database size.
+- **Quantities to track:** a leakage parameter (to be defined), the amount one record can move a query, the magnitude of added noise as a function of that, and the accuracy of the answer as a function of the leakage parameter and the database size.
 
 ## Code framework
 
@@ -71,26 +71,10 @@ def centered_noise_sample(scale, size, rng):
 
 # --- the slot the contribution fills ---
 
-def query_property_of_the_mechanism(M, x, y, outcomes):
-    """The to-be-defined worst-case quantity comparing the output distribution
-    of mechanism M on neighboring databases x, y across all outcomes.
-    This is the object the privacy definition will pin down."""
-    pass  # TODO: define privacy as a property of M's output distribution on neighbors
-
-def noise_scale_from_query(f):
-    """How much noise must be added is, somehow, a property of f alone.
-    What property of f, and what scale, is exactly what must be derived."""
-    pass  # TODO: identify the inherent quantity of f that determines the noise
-
 def private_mechanism(database, f, calibration, rng):
-    """Answer f on the database under the to-be-defined privacy guarantee at
-    a calibrated level, by perturbing the true answer with a randomized response."""
+    """Answer f on the database by perturbing the true answer with a randomized
+    response. What guarantee this is meant to satisfy, and how to calibrate the
+    perturbation so it holds, is the open problem."""
     z = true_answer(database, f)
-    pass  # TODO: add noise at the scale derived above so the guarantee holds
-
-def compose(mechanisms, database, calibration_list, rng):
-    """Run a sequence of private mechanisms on the same database and account
-    for the total privacy cost. How the per-query guarantees aggregate is to
-    be derived."""
-    pass  # TODO: derive how the guarantee degrades under repeated release
+    pass  # TODO
 ```

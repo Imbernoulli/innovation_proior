@@ -33,24 +33,12 @@ Diagnostic observations about existing systems make the analogy hard to ignore:
 - Across dense and MoE language models with different attention designs, averaged attention maps show a first-token sink while sorted hidden-state activations show persistent vertical stripes in a few feature dimensions. The token-axis sink and feature-axis stripe have the same shape after sorting by magnitude.
 - The residual stripes are largely input-independent: the same dimensions light up across most tokens and prompts, so they are not ordinary input-specific semantic features.
 - A model with gated attention has weaker attention sinks and no prominent massive activations, yet still has a persistent large residual dimension. The residual phenomenon survives when the attention-side outliers are suppressed.
-- A model with explicit learnable attention sinks has no attention sinks on real tokens and no massive activations, consistent with the view that the sink is an input-independent denominator device that the model otherwise manufactures. The fixed residual outlier still remains.
+- A model with explicit learnable attention sinks has no attention sinks on real tokens and no massive activations. The fixed residual outlier still remains.
 - Attention sink tokens have unusually small value-vector norms. They receive large probability mass but contribute little vector content.
 - Replacing softmax attention with sigmoid or linear attention reduces attention-side massive activations; replacing RMSNorm with a pointwise function reduces residual outliers. The outliers track the normalizers.
 - Outliers predominantly originate in feed-forward blocks and are amplified by the down projection. Swish-gated FFNs create larger activations than sigmoid-gated GLUs.
 
-A small RMSNorm calculation captures the residual-side effect. Ignore `eps` for the main algebra; including it only increases the denominator and makes the upper bound smaller. Let `h ∈ R^D`, let one outlier dimension `d` carry fraction `r = |h_d| / ||h||_2` of the L2 norm, and suppose its post-normalization weight is small: `|λ_d| ≤ ε||λ||_∞` with `ε < 1`. Define `u = h / ||h||_2`, so `|u_d| = r` and `Σ_{i≠d} u_i² = 1-r²`. Since `||h||_rms = ||h||_2/√D`,
-
-`||RMSNorm(h)||_rms = ||λ⊙u||_2`.
-
-Then
-
-`||λ⊙u||_2² = λ_d²r² + Σ_{i≠d} λ_i²u_i² ≤ ||λ_{-d}||_∞²(1-r²) + λ_d²r²`,
-
-so
-
-`||RMSNorm(h)||_rms ≤ sqrt(||λ_{-d}||_∞²(1-r²) + λ_d²r²) ≤ ||λ||_∞ sqrt(1 - (1-ε²)r²)`.
-
-The upper bound decreases as `r` grows. A larger outlier can therefore shrink the post-normalization feature magnitude while its own direct contribution remains suppressed by small `λ_d`.
+A measured detail about the residual stripe is that the post-normalization weight `λ_d` on the outlier dimension is unusually small: across trained models most RMSNorm weights sit near one, while the persistent residual-outlier dimension can carry a weight on the order of a few thousandths.
 
 ## Baselines
 
@@ -70,7 +58,7 @@ The upper bound decreases as `r` grows. A larger outlier can therefore shrink th
 
 - **Quantization mitigations (Dettmers 2022; SmoothQuant; outlier suppression; Hadamard rotations; NVFP4).** These methods migrate difficulty from activations to weights, clip/suppress extreme channels, or rotate outliers across dimensions. They make inference more robust but accept the trained activations as given.
 
-- **StyleGAN2 demodulation and FiLM/adaLN-style scaling.** Vision models provide a precedent for normalization-driven outliers and for replacing a normalization-induced scaling effect with learned input-dependent scaling.
+- **StyleGAN2 demodulation and FiLM/adaLN-style scaling.** Vision models document normalization-driven outliers and use various forms of learned, input-conditioned scaling within or around normalization layers.
 
 ## Evaluation settings
 

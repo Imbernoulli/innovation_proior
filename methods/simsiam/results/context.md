@@ -59,9 +59,7 @@ invariant to. The augmentation distribution is the implicit supervision.
 **Alternating optimization / k-means / EM.** A separate, classical tool: when a loss couples two
 sets of variables, one can minimize by *alternating* — fix one set and solve for the other, then
 swap. k-means is the canonical instance (alternate cluster centers and assignments); EM is the
-probabilistic version (E-step computes expected assignments, M-step updates parameters). Fixing
-one variable as a constant target while optimizing the other is exactly the structure of these
-algorithms.
+probabilistic version (E-step computes expected assignments, M-step updates parameters).
 
 ## Baselines
 
@@ -90,11 +88,9 @@ from the other using a **prediction MLP** head on the online branch, and the tar
 **momentum encoder**; the loss is the (symmetrized) negative cosine similarity of ℓ₂-
 normalized vectors, equivalently the MSE of normalized vectors up to a scale of 2. It does not
 collapse. The reported account attributes this to the momentum encoder: removing it is reported to
-fail badly (0.3% accuracy in that work's ablation). *Gap / open question:* it is *hypothesized*
-that the momentum encoder is what prevents collapse, but the momentum encoder is always
-accompanied by a stop-gradient (its parameters are not updated by gradients), so the two are
-confounded — it is not established which one does the anti-collapse work, and the method still
-carries a full second encoder and large batches.
+fail badly (0.3% accuracy in that work's ablation). *Gap:* the explanation is given at the level of
+the momentum encoder as a whole, and the method still carries a full second encoder and large
+batches.
 
 ## Evaluation settings
 
@@ -132,22 +128,18 @@ class TwoCropsTransform:
         return [self.base_transform(x), self.base_transform(x)]
 
 class SiameseModel(nn.Module):
-    """A weight-sharing network over two views. The architecture inside — what
-    extra heads (if any) go on which branch, and where (if anywhere) gradients
-    are blocked — is exactly what we have to discover."""
+    """A weight-sharing network over two views."""
     def __init__(self, base_encoder, dim=2048):
         super().__init__()
         self.encoder = base_encoder(num_classes=dim)
-        # TODO: heads on top of the encoder (projection? prediction?)
+        # TODO: define the model.
 
     def forward(self, x1, x2):
-        # TODO: process both views with the shared encoder;
-        # decide what each branch outputs and what is treated as a target.
+        # TODO: process both views with the shared encoder.
         pass
 
 def loss_fn(*outputs):
-    # TODO: the similarity objective tying the two branches together,
-    # and whatever mechanism keeps the solution off the constant.
+    # TODO: define the training objective.
     pass
 
 def train_one_epoch(loader, model, optimizer):

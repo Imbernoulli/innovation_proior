@@ -27,9 +27,8 @@ variance**: the likelihood-ratio estimator multiplies the log-probability of eac
 action by the return that follows it, and that return mixes in the effects of every
 later action and all environment noise, so its variance grows with the horizon. The
 question is whether a *learned model of the world* — something that can predict
-forward and that is differentiable — can be used to attack both: to reuse experience
-by predicting many hypothetical futures, and to produce a lower-variance policy
-gradient by differentiating through the predicted future rather than sampling it.
+forward from the current state and action — can be used to relieve either or both of
+these costs, and if so how a behavior should be derived from such a model.
 
 ## Background
 
@@ -136,15 +135,14 @@ never exploits that the learned dynamics are differentiable.
 2014).** Off-policy actor-critics that train a policy by ascending the analytic gradient
 of a learned action-value $Q(s,a)$: $\nabla_\phi Q(s,\pi_\phi(s))$, using
 reparameterized or deterministic actions. They use a pathwise gradient — but only
-through a *one-step* learned $Q$, not through any model of the transition dynamics. They
-need $Q$ as a function of the action precisely because they cannot differentiate the
-environment to expose how the action changes the future.
+through a *one-step* learned $Q$, not through any model of the transition dynamics; the
+action-value $Q(s,a)$ is what carries the dependence of the policy gradient on the
+action.
 
 **SVG (Heess et al. 2015).** Stochastic value gradients: reduces the variance of an
 on-policy gradient by backpropagating value gradients through *one-step* predictions of
-a learned model using reparameterization. It is the right gradient mechanism applied at a
-single step; it does not propagate through a long imagined rollout in a compact latent
-space.
+a learned model using reparameterization. It backpropagates through a single predicted
+step; it does not propagate through a long imagined rollout in a compact latent space.
 
 **MVE / STEVE (Feinberg et al. 2018; Buckman et al. 2018).** Use a learned model to roll
 forward a few steps and form more accurate multi-step *targets* for a model-free
@@ -183,8 +181,7 @@ stochastic part (with a posterior conditioned on observations and a prior that p
 forward without them), dense network heads, reparameterized sampling, the Adam
 optimizer with gradient clipping, and a routine that turns a sequence of $k$-step
 returns into a $\lambda$-weighted return. What does *not* yet exist is how to derive a
-behavior from this model: how to imagine forward, what target to regress a value to, and
-how to push a gradient from that target back into a policy.
+behavior from this model.
 
 ```python
 # --- existing primitives ---------------------------------------------------
@@ -218,20 +215,15 @@ def lambda_return(reward, value, pcont, bootstrap, lambda_, axis):
 
 # --- the slot the method will fill -----------------------------------------
 class Agent:
-    def _imagine_ahead(self, posterior_states):
-        # TODO: roll the model forward in latent space under a policy
-        raise NotImplementedError
-
-    def _behavior_objective(self, imagined):
-        # TODO: value target over imagined rollout; policy + value losses;
-        #       how the policy gradient reaches the actions
+    def _behavior(self, post):
+        # TODO: derive a behavior from the learned latent model
         raise NotImplementedError
 
     def _train(self, data):
         # 1. fit the latent dynamics on a real sequence batch (variational objective)
         #    embed = encoder(data); post, prior = dynamics.observe(embed, actions)
         #    model_loss = -reconstruct(o) - reconstruct(r) + beta * KL(post || prior)
-        # 2. TODO: learn behavior from imagined rollouts starting at `post`
-        # 3. step the three optimizers
+        # 2. TODO: derive behavior from the model, starting at `post`
+        # 3. step the optimizers
         ...
 ```

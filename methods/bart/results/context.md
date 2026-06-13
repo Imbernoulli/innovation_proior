@@ -44,10 +44,8 @@ between the two directions.
 **Seq2seq Transformers.** The original encoder-decoder Transformer (Vaswani et al.
 2017) was built for machine translation: a bidirectional encoder reads the source,
 and an autoregressive decoder writes the target, attending back to the encoder via
-cross-attention at every decoder layer. Crucially, the source and target need not
-be the same string or even the same length — the encoder input and decoder output
-are *decoupled*. This decoupling is exactly what an in-place masked objective gives
-up.
+cross-attention at every decoder layer. The source and target need not be the same
+string or even the same length.
 
 **Diagnostic findings already on the table.** Several observations frame the
 design. Left-only decoders do poorly on span-extraction tasks because future
@@ -129,12 +127,10 @@ class Seq2SeqTransformer(nn.Module):
 # --- corruption: TO DECIDE ---
 def corrupt(document):
     # TODO: what transformation(s) to apply to the document before the encoder?
-    #       (the encoder input and decoder target need NOT be aligned or equal length)
     pass
 
 def pretraining_loss(model, document):
-    # TODO: encoder sees corrupt(document); decoder reconstructs the ORIGINAL document
-    #       under a token-level cross-entropy (negative log-likelihood)
+    # TODO: define the self-supervised objective relating corrupt(document) to document
     pass
 
 # --- finetuning readout: TO DECIDE ---

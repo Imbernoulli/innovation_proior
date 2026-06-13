@@ -8,7 +8,7 @@ The difficulty is concrete. Scripting the path of a large number of individual o
 
 **Scripting versus simulation in animation.** Traditional cel animation used a completely inert medium; the animator specified every motion directly. Computer animation runs on an active medium but, with the tools of the day, animators still work at almost the same low level — they tell the story by directly describing each character's motion, using helpers only to interpolate between keyframes. Little had been done to *automate* motion description. The alternative on the table is behavioral animation: model not just the character's shape and physics but its *behavior*, so the simulated character handles the details of its own motion. The animator becomes a meta-animator, a director of behavior rather than a designer of every frame — at the cost of giving up tight control ("these darn boids seem to have a mind of their own").
 
-**Particle systems (Reeves, 1983).** The closest existing primitive. A particle system is a collection of a large number of individual particles, each carrying its own state — color, opacity, position, velocity — and its own simple behavior; particles are created, age, and die. They had been used for fire, smoke, clouds, and ocean spray. Two things are missing for flocking. First, a particle is a dot: it has no orientation, no body. Second, and more fundamentally, particles as described *do not interact with one another* — each evolves on its own. A flock member's behavior must depend not only on its internal state but strongly on the *external* state of its neighbors.
+**Particle systems (Reeves, 1983).** The closest existing primitive. A particle system is a collection of a large number of individual particles, each carrying its own state — color, opacity, position, velocity — and its own simple behavior; particles are created, age, and die. They had been used for fire, smoke, clouds, and ocean spray. Two limitations stand out for flocking. First, a particle is a dot: it has no orientation, no body. Second, and more fundamentally, particles as described *do not interact with one another* — each evolves on its own, on its internal state alone.
 
 **A prior force-field foreflock (Amkraut, Girard, Karl, "Eurythmy," 1985).** Birds were driven by force fields: a 3×3 matrix operator mapping a point in space to an acceleration vector, with rejection forces around each bird and around static objects; the birds trace paths along the field's phase portrait. It produced a real flock-like film, but the underlying mechanism has known failure modes. A force field surrounding an obstacle does not reliably turn a bird aside: if the bird approaches exactly opposite to the field direction, the field only decelerates it head-on and provides no lateral thrust — and failing to turn is the worst possible response to an impending collision. Force fields are also too strong close up and too weak far away, so avoidance becomes a panicky last-minute correction rather than long-range planning, and they cannot express "peripheral vision" (turn from a wall you are flying *toward*, ignore one you are flying *alongside*).
 
@@ -18,14 +18,14 @@ The difficulty is concrete. Scripting the path of a large number of individual o
 
 **What zoology says about how birds actually flock.** Natural flocks seem to consist of two balanced, opposing urges: a desire to stay close to the flock and a desire to avoid collisions within it (Shaw). The drive to join a flock is read as evolutionary — predator protection, larger effective foraging search, social and mating advantage. Crucially, flocks show *no* upper bound on size: herring schools run 17 miles long and contain millions of fish, and flocks operate the same way across a huge range of populations. That argues that an individual bird cannot be attending to every flockmate; it is doing something like a *constant-time* computation — aware of roughly three categories, *itself*, its *two or three nearest neighbors*, and *the rest of the flock* as an undifferentiated mass. Quantitative studies of schooling fish (Partridge) found that a fish is influenced far more by its near neighbors than its distant ones, with each neighbor's contribution falling off roughly as the inverse square or cube of distance — consistent with the way a visual silhouette's area and a pressure wave's intensity fall off with distance. And maneuver waves propagate across a flock faster than any individual's startle reaction time would allow, suggesting birds anticipate an oncoming turn and time their own to match it (Potts' "chorus line" hypothesis).
 
-**The diagnostic failure of a global model.** An early flocking attempt used a *central-force* model — every bird pulled toward the flock's global centroid. This produces unnatural effects: all members of a widely scattered flock simultaneously converge on the single centroid, and the flock cannot *split* to flow around an obstacle and re-merge, because every bird is bound to one global center rather than to whoever happens to be near it. The observed lesson is that the motion we recognize as flocking *depends on each bird having only a limited, localized view of the world* — give a simulated bird perfect global information and the behavior model visibly fails.
+**The diagnostic failure of a global model.** An early flocking attempt used a *central-force* model — every bird pulled toward the flock's global centroid. This produces unnatural effects: all members of a widely scattered flock simultaneously converge on the single centroid, and the flock cannot *split* to flow around an obstacle and re-merge, because every bird is bound to one global center. Supplying a simulated bird with perfect global information made the behavior model visibly fail in these ways.
 
 ## Baselines
 
 - **Hand-scripted / keyframed flocks.** Draw and interpolate each bird's path individually. Gap: tedious and error-prone at flock scale, cannot maintain pairwise collision-freedom every frame, and is nearly impossible to edit globally.
-- **Reeves particle systems (1983).** Many independent dot-particles with per-particle state and life cycle. Gap: particles have no orientation (no body) and, as used, do not interact — so they cannot express the neighbor-dependent coordination a flock needs.
+- **Reeves particle systems (1983).** Many independent dot-particles with per-particle state and life cycle. Gap: particles have no orientation (no body) and, as used, do not interact — each evolves on its own internal state, with no coupling between particles.
 - **Force-field flocks ("Eurythmy," 1985).** Birds and obstacles carry repulsion fields; birds trace the field's phase portrait. Gap: head-on approach to an obstacle field yields no turning (only deceleration); fields are too strong near and too weak far; cannot express peripheral-vision discrimination.
-- **Central-force / global-centroid flock model.** Every bird is attracted to the flock's global center of mass. Gap: a scattered flock collapses to one point and the flock cannot bifurcate around obstacles; it presumes non-local information birds do not have.
+- **Central-force / global-centroid flock model.** Every bird is attracted to the flock's global center of mass. Gap: a scattered flock collapses to one point and the flock cannot bifurcate around obstacles.
 - **Leader-following model.** All birds track a designated leader. Gap: like the central-force model, it cannot split, and it imposes a centralized structure foreign to real, leaderless flocks.
 
 ## Evaluation settings
@@ -53,15 +53,10 @@ def truncate(vector, max_magnitude):
         return vector / m * max_magnitude
     return vector
 
-def neighbors(boid, flock):
-    """The boid's local perception: which flockmates it is aware of.
-    TODO: select by a distance radius and a view-angle (field of view)."""
-    raise NotImplementedError
-
 def steer(boid, flock):
-    """The behavior to be designed: turn local perception of neighbors into a
-    single steering force, respecting the max-acceleration budget.
-    TODO: this is the contribution."""
+    """The behavior to be designed: decide a steering force for this boid from
+    the state of the flock, respecting the max-acceleration budget.
+    TODO."""
     raise NotImplementedError
 
 def step(flock, max_speed, max_force, dt):

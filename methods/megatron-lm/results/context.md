@@ -32,7 +32,7 @@ The natural yardsticks are of two kinds. For *systems* efficiency: sustained FLO
 
 ## Code framework
 
-The primitives that already exist: PyTorch linear layers and the GEMMs inside attention and MLP, `torch.distributed` collectives (`all_reduce`, `all_gather`), and `torch.autograd.Function` for defining custom forward/backward. The transformer's MLP and attention blocks need to be re-expressed so their GEMM weights are sharded across the model-parallel devices, bracketed by two small communication primitives that handle synchronization in the forward and backward passes. The slots to fill:
+The primitives that already exist: PyTorch linear layers and the GEMMs inside attention and MLP, `torch.distributed` collectives (`all_reduce`, `all_gather`), and `torch.autograd.Function` for defining custom forward/backward. The task is to re-express the transformer's MLP and attention blocks so their GEMM weights are sharded across the model-parallel devices, keeping the cross-device communication small. The slot to fill:
 
 ```python
 import torch
@@ -40,55 +40,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class _BoundaryInput(torch.autograd.Function):
-    # TODO: the primitive placed at the INPUT boundary of a sharded region.
-    @staticmethod
-    def forward(ctx, x):
-        pass
-    @staticmethod
-    def backward(ctx, grad):
-        pass
-
-
-class _BoundaryOutput(torch.autograd.Function):
-    # TODO: the primitive placed at the OUTPUT boundary of a sharded region.
-    @staticmethod
-    def forward(ctx, x):
-        pass
-    @staticmethod
-    def backward(ctx, grad):
-        pass
-
-
-class ColumnShardedLinear(nn.Module):
-    # TODO: a linear layer whose weight is split so each device owns part of the OUTPUT features.
-    def __init__(self, in_features, out_features, world_size):
-        super().__init__()
-        pass
-    def forward(self, x):
-        pass
-
-
-class RowShardedLinear(nn.Module):
-    # TODO: a linear layer whose weight is split so each device owns part of the INPUT features.
-    def __init__(self, in_features, out_features, world_size):
-        super().__init__()
-        pass
-    def forward(self, x):
-        pass
-
-
-class ParallelMLP(nn.Module):
-    # TODO: the two-GEMM MLP block, sharded with minimal communication.
-    def __init__(self, hidden, world_size):
-        super().__init__()
-        pass
-    def forward(self, x):
-        pass
-
-
-class ParallelSelfAttention(nn.Module):
-    # TODO: multi-head self-attention, sharded with minimal communication.
+class ParallelTransformerLayer(nn.Module):
+    # TODO: a transformer layer (self-attention + two-GEMM MLP) whose heavy GEMMs
+    # are sharded across `world_size` model-parallel devices.
     def __init__(self, hidden, n_heads, world_size):
         super().__init__()
         pass

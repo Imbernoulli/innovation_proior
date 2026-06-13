@@ -72,23 +72,20 @@ by implicit gradient regularization — three independent routes agreeing).
 problems make the *form* of the reduced sharpness measure observable. (i) *Sparse
 linear regression with a diagonal linear network*: parameters `θ=(u,v)`, estimate
 `ŵ = u⊙² − v⊙²`, `ℓ₂` loss against a `κ`-sparse ground truth with `d ≫ n`. On `Γ` the
-diagonal of the Hessian equals `4θ⊙²`, so any measure of the form `tr(Diag(H)^{e})`
-becomes (after the optimum forces `u_i=0` or `v_i=0`) the `ℓ_e` quasi-norm of `ŵ`
-up to the monotone power `Σ_i |ŵ_i|^e`.
-Minimizing `tr(H)` corresponds to `ℓ₁`; smaller exponents give sparser penalties,
-which — as with lasso versus ridge — recover a sparse signal from fewer samples.
+diagonal of the Hessian equals `4θ⊙²`, and the optimum forces `u_i=0` or `v_i=0`, so
+the Hessian's diagonal on the manifold is read off directly from the recovered vector
+`ŵ`. For SGD, minimizing `tr(H)` here corresponds to the `ℓ₁` norm of `ŵ` — the
+lasso-type penalty, which recovers a sparse signal from fewer samples than a ridge-type
+`ℓ₂` penalty.
 (ii) *Deep matrix factorization with label noise*: minimizing `tr(H)` is known to be
 roughly equivalent to minimizing the nuclear norm of the product matrix, which favors
-low rank and thus generalizes well when the ground truth is low-rank. A sharpness
-measure that does *not* reduce to the nuclear norm would be expected to find
-higher-`tr(H)`, worse-generalizing solutions here. These two landscapes make the
-choice of sharpness target directly visible.
+low rank and thus generalizes well when the ground truth is low-rank. These two
+landscapes make the choice of sharpness target directly visible.
 
 **Adaptive methods.** Adaptive optimizers maintain an exponential moving average of a
 per-coordinate (or per-block, per-layer, or Kronecker-factored) second moment of the
 gradient and divide the momentum step by (a power of) it: a parameter-dependent
-preconditioner `S`. This rescaling breaks the rotational symmetry that plain SGD
-enjoys. Whether convergence onto a manifold even holds is delicate: with the
+preconditioner `S`. Whether convergence onto a manifold even holds is delicate: with the
 second-moment decay rate too far from 1 these methods can fail to converge, a
 long-standing concern. Prior attempts to characterize their implicit bias were either
 restricted to a 2-D loss with a non-rigorous quasistatic approximation, valid only for
@@ -182,8 +179,7 @@ matrix-factorization protocol.
 ## Code framework
 
 The runnable scaffold is a small stochastic-optimizer harness for the diagonal-network
-diagnostic. The open slots are the coordinate-rescaled update rule and the optimizer
-factory that will choose between the existing SGD baseline and the new rescaled rule.
+diagnostic. The optimizer update rule and the optimizer factory are left as open slots.
 
 ```python
 import torch

@@ -18,9 +18,9 @@ Why it matters: such a theorem would be a universal certificate of equilibrium. 
 
 **The homology of the sphere (the obstruction, in its clean modern form).** The same invariant has a homological face: for `n≥2`, `H_{n−1}(Sⁿ⁻¹) ≅ ℤ` is infinite cyclic, while the solid ball is contractible, `H_{n−1}(Dⁿ) = 0` (in dimension `1`, the same statement is the reduced `H_0` obstruction, or just connectedness of the interval versus its two-point boundary). The sphere "detects an (n−1)-dimensional hole"; the ball, being filled, detects none. This single inequality is the whole obstruction to filling the sphere from inside, and it is the precise sense in which the disk differs from the annulus.
 
-**The combinatorial substitute for the invariant.** Tracking a degree continuously requires real machinery. There is a mod-2 shadow of the same obstruction that needs no analysis at all, only counting on a triangulation: a parity statement about how colors must distribute over a subdivided simplex (Sperner's labeling, established in 1928 in the course of new proofs of invariance of dimension/domain). The promise of this route is that the topological rigidity of the sphere — the thing that forbids filling it — can be expressed as an *odd number* that survives every refinement of a triangulation, an entirely finite and elementary fact. A simplex can be triangulated arbitrarily finely; if a fully-colored sub-cell is forced to exist at every scale, compactness collects those cells to a single point in the limit, and that point is where the analytic statement (a fixed point) reappears.
+**A purely combinatorial parity fact (Sperner 1928).** Tracking a degree continuously requires real machinery. Independently, a finite parity statement about colorings of a subdivided simplex was established in 1928, in the course of new proofs of invariance of dimension/domain: it needs no analysis at all, only counting on a triangulation, and the count it produces is an *odd number* that survives every refinement of the mesh. It is an entirely elementary fact about colorings, with no a priori connection to self-maps or fixed points.
 
-**Triangulation as a finite probe.** The standing technique for turning a continuous statement into something countable is to triangulate the domain and read finitely many vertex data at each mesh. For the parity route the map itself need not be replaced by a simplicial approximation: it is enough to sample `f` at the vertices, encode the displacement `f(x)−x` as a face-respecting color, and then pass to a compactness limit as the mesh shrinks.
+**Triangulation as a finite probe.** The standing technique for turning a continuous statement into something countable is to triangulate the domain and read finitely many vertex data at each mesh. A simplex can be triangulated arbitrarily finely, and a continuous map can be sampled at the resulting vertices.
 
 ## Baselines
 
@@ -32,7 +32,7 @@ The prior approaches a new proof would be measured against, and the specific gap
 
 - **Homological non-retraction.** Core idea: there is no continuous retraction of the ball onto its boundary sphere, because applying `H_{n−1}` to `r∘i = id_{Sⁿ⁻¹}` factors the identity of `ℤ` through `H_{n−1}(Dⁿ)=0` (or, when `n=1`, applying reduced `H_0` factors through `\tilde H_0(D¹)=0`), which is impossible. Gap: it is *equivalent* to the fixed-point theorem (each gives the other), so as a standalone it is not more elementary — and proving the homology of spheres rigorously is itself substantial machinery (singular/simplicial homology, exactness), heavier than the statement it certifies.
 
-- **Sperner labeling / parity on a triangulation (Sperner 1928).** Core idea: color the vertices of a triangulated simplex so corners get distinct colors and a vertex on a face uses only that face's colors; then the number of fully-colored cells is odd. Math: an induction giving `R ≡ D_O (mod 2)` where `R` is the count of rainbow cells and `D_O` the count of correctly-colored boundary facets. Gap (as a *baseline*, before it is connected to fixed points): on its own it is a statement about colorings; the bridge from "an odd number of rainbow cells at every mesh" to "a continuous map has a fixed point" (the decreasing-coordinate displacement labeling and the compactness limit) is exactly what remains to be built.
+- **Sperner labeling / parity on a triangulation (Sperner 1928).** Core idea: color the vertices of a triangulated simplex so corners get distinct colors and a vertex on a face uses only that face's colors; then the number of fully-colored cells is odd. Math: an induction giving `R ≡ D_O (mod 2)` where `R` is the count of rainbow cells and `D_O` the count of correctly-colored boundary facets. Gap (as a *baseline*): on its own it is a statement about colorings of an abstract triangulation, with no continuous map and no fixed point anywhere in its hypotheses or conclusion; it stands entirely apart from the analytic question above.
 
 ## Evaluation settings
 
@@ -44,7 +44,7 @@ This is a theorem, so the yardstick is logical, not empirical. The natural test 
 
 ## Code framework
 
-The artifact is a theorem and its proof. The natural computational scaffold is only a small checker that *witnesses* the combinatorial core on a concrete triangulation: triangulate a simplex, label its vertices, verify the parity claim, and track the shrinking cells whose limiting cluster point is fixed. Ordinary geometric utilities (barycentric coordinates, a triangulation routine, a finite vertex/cell data structure) are assumed; the open slots are the labeling rule that encodes a self-map, the parity count that forces a fully-labeled cell, and the refinement loop that extracts approximating cells.
+The artifact is a theorem and its proof. The natural computational scaffold is only a small checker on a concrete triangulation: triangulate a simplex, attach data at its vertices, and track what happens as the mesh is refined. Ordinary geometric utilities (barycentric coordinates, a triangulation routine, a finite vertex/cell data structure) are assumed; the proof-specific slot is left empty.
 
 ```python
 import numpy as np
@@ -62,28 +62,11 @@ def triangulate(simplex_vertices, mesh):
     Returns (vertices, cells) via a barycentric/edgewise subdivision."""
     raise NotImplementedError  # standard simplicial subdivision
 
-# --- proof slots ---
+# --- proof slot ---
 
-def label_vertex(x, f):
-    """The labeling rule that encodes a continuous self-map f at vertex x.
-    TODO: choose a color in {0..n} determined by how f moves x; must be a
-    legal corner/face-respecting labeling."""
-    pass
-
-def fully_labeled_cells(vertices, cells, labels):
-    """Find cells whose vertices carry all n+1 distinct labels.
-    TODO: the count of these is the combinatorial invariant of interest."""
-    pass
-
-def parity_invariant(vertices, cells, labels):
-    """The lemma: the number of fully-labeled cells is forced (odd).
-    TODO: the counting identity that makes existence unavoidable."""
-    pass
-
-def fixed_point_from_refinement(f, simplex_vertices, meshes):
-    """Reduction: as mesh -> 0, fully-labeled cells shrink toward cluster
-    points; any such limit point is a fixed point of f.
-    TODO: refine, extract a fully-labeled cell per scale, take the
-    compactness limit, conclude f(x*) = x*."""
+def certificate(f, simplex_vertices, meshes):
+    """Witness, on a sequence of refining triangulations, the combinatorial
+    core that establishes the theorem for the continuous self-map f.
+    TODO: fill in."""
     pass
 ```

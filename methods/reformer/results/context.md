@@ -50,14 +50,14 @@ Two pre-existing observations bear directly on the third factor. First, the
 output of attention is $\mathrm{softmax}(QK^\top)V$, and a softmax is dominated
 by its largest arguments: for a given query $q_i$, only the keys $k_j$ with the
 largest dot products $q_i\cdot k_j$ carry meaningful weight, and the rest
-contribute approximately nothing. So for each query, only its *nearest* keys (in
-the dot-product / angular sense) matter — typically a small handful out of $L$.
+contribute approximately nothing — so in practice only a small handful of the
+$L$ keys carry the bulk of the weight for any given query.
 Second, the full $QK^\top$ matrix need never be materialized: attention can be
 computed query-by-query, $\mathrm{softmax}(q_i K^\top/\sqrt{d_k})V$, holding only
 $O(L)$ memory and recomputing on the backward pass; this trades time for memory
 but leaves the $O(L^2)$ *time* untouched.
 
-Two more pieces of background are load-bearing. **Locality-sensitive hashing
+Two further pieces of standard background. **Locality-sensitive hashing
 (LSH)** is the standard tool for finding near neighbors quickly in
 high-dimensional spaces: a hash $h(x)$ is locality-sensitive if nearby vectors
 collide (get the same hash) with high probability and distant ones do not.
@@ -166,29 +166,27 @@ class FeedForward(nn.Module):
         return self.w2(self.dropout(self.act(self.w1(x))))
 
 class SelfAttention(nn.Module):
-    # the attention sublayer whose L x L cost we must remove.
-    # TODO: build Q, K, V from x; compute attention without materializing
-    #       an L x L matrix and without comparing every query to every key.
+    # the attention sublayer; the L x L cost lives here.
+    # TODO: implement.
     def __init__(self, dim, heads=8, causal=False):
         super().__init__()
-        # TODO: projections to queries/keys/values, output projection
+        # TODO
         pass
 
     def forward(self, x, **kwargs):
-        # TODO: the long-sequence attention we will design
+        # TODO
         pass
 
 class ResidualBlock(nn.Module):
     # standard residual wrapping of a sublayer; stores its input for backprop.
-    # TODO: replace the activation-storing residual with one whose memory
-    #       does not grow with depth.
+    # TODO: implement.
     def __init__(self, dim, f, g):
         super().__init__()
         self.f = f   # attention sublayer
         self.g = g   # feed-forward sublayer
 
     def forward(self, x):
-        # TODO: the depth-independent-memory residual we will design
+        # TODO
         pass
 
 class SequenceModel(nn.Module):

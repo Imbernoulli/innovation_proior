@@ -81,19 +81,15 @@ C-outer(path1) + N·C-inner(path2), plus any required sort costs. When the inner
 list, C-inner(sorted list) = TEMPPAGES/N + W·RSICARD, where RSICARD is the expected matching group per outer
 tuple; multiplying by N fetches the inner pages once across the merge rather than once per outer tuple.
 
-**Interesting orders.** A scan or a merge can deliver its output already sorted on some column. That sorted
-output is *worth* something to a later operator: an ORDER BY or GROUP BY can skip a final sort, and a later
-sort-merge join can skip sorting that input. So an output order specified by an ORDER BY/GROUP BY clause, or
-used as a join column by a later merge join, is an **interesting order**. The consequence for cost: the
-cheapest plan for a set of tables, judged on its own join cost, is not always the best choice — a slightly
-costlier plan that happens to emerge in an interesting order can win on the whole query by saving a
-downstream sort.
+**Sorted output.** A scan or a merge can deliver its output already sorted on some column — an index scan
+walks in key order, and a sort-merge join emits in join-column order. Sorted output is reusable by a later
+operator: an ORDER BY or GROUP BY over that column can skip a final sort, and a later sort-merge join on that
+column can skip sorting that input. Producing an output in a given order may itself cost more than producing
+it unordered.
 
-**Diagnostic that licenses cost-based search.** The selectivity model is crude — uniform distributions,
-independence, fixed default fractions. The justification for trusting it cannot be absolute runtime accuracy.
-The optimizer uses the estimates only to compare plans, so the relevant diagnostic is whether the estimated
-ordering of candidate costs tracks the real ordering. A coarse-but-monotone model can be useful even when
-every absolute runtime prediction is off.
+**Crudeness of the model.** The selectivity model rests on strong simplifications — uniform value
+distributions, independence between predicates, fixed default fractions when statistics are missing — so its
+absolute cardinality and cost predictions can be far from the true runtime numbers.
 
 ## Baselines
 
@@ -115,7 +111,7 @@ its price.
 
 **Single-table access-path selection in isolation.** Choosing the cheapest index-or-scan for *one* table
 against a set of local predicates is the easy, already-solved sub-problem (cost each available path from the
-catalog statistics, take the minimum; keep one per interesting order). Gap: it says nothing about how to
+catalog statistics, take the minimum). Gap: it says nothing about how to
 combine tables — the join-order problem is exactly what it leaves open, and naively optimizing each table's
 access in isolation and then joining ignores that the right access path for a table depends on its role
 (outer vs inner) in the join.

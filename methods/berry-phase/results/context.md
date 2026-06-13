@@ -18,7 +18,7 @@ The precise question is whether there is anything *else* in that returning phase
 
 **The molecular Aharonov–Bohm effect (Mead 1979, 1980; Mead & Truhlar 1979).** In the Born–Oppenheimer treatment of a molecule, the electronic eigenstates depend parametrically on the nuclear coordinates. Mead and Truhlar found, by perturbation theory and for an infinitesimal circuit, essentially the same loop/surface phase expression, and showed that enforcing single-valuedness of the electronic state forces a vector-potential-like term into the nuclear Schrödinger equation. Their phase was attached to a particular continuation rule for eigenstates in coordinate space, not to slow evolution under the time-dependent Schrödinger equation, but the formula coincides.
 
-**Gauge structure of the eigenstate phase (Wu & Yang 1975).** The freedom |n(**R**)⟩ → e^{iμ(**R**)}|n(**R**)⟩ shifts ⟨n|∇_R n⟩ → ⟨n|∇_R n⟩ + i∇μ. This is exactly a gauge transformation of an abstract "vector potential" living in parameter space: the connection is gauge-dependent, but a suitably gauge-invariant combination (its curl, and its loop integral) is not.
+**Gauge structure of the eigenstate phase (Wu & Yang 1975).** The freedom |n(**R**)⟩ → e^{iμ(**R**)}|n(**R**)⟩ shifts ⟨n|∇_R n⟩ → ⟨n|∇_R n⟩ + i∇μ. This is exactly a gauge transformation of an abstract "vector potential" living in parameter space: the connection ⟨n|∇_R n⟩ is itself gauge-dependent.
 
 ## Baselines
 
@@ -28,7 +28,7 @@ These are the prior treatments a new account of the loop phase would be measured
 
 - **Aharonov–Bohm analysis (Aharonov & Bohm 1959).** Core: exact solution of the Schrödinger equation in the vector potential of a flux line, yielding the observable qΦ/ℏ phase. **Gap:** it is a single, specific physical mechanism (electromagnetic potentials), derived case-by-case; it is not presented as an instance of a general phase that *any* adiabatically cycled eigenstate carries, and the elementary "two paths around the flux" presentations rely on a multivalued wavefunction.
 
-- **Herzberg–Longuet-Higgins sign rule (1963).** Core: real eigenstates flip sign around a degeneracy; a practical degeneracy detector. **Gap:** it is restricted to real Hamiltonians and yields only the discrete value −1. It says nothing about what happens when the Hamiltonian is complex (e.g. a magnetic field breaks time-reversal symmetry, lifting the codimension-two degeneracy to codimension three), where the natural generalization of "−1" would have to be a continuous phase e^{iγ}, not a sign.
+- **Herzberg–Longuet-Higgins sign rule (1963).** Core: real eigenstates flip sign around a degeneracy; a practical degeneracy detector. **Gap:** it is restricted to real Hamiltonians and yields only the discrete value −1. It is silent about what happens to the continued wavefunction when the Hamiltonian is made complex (e.g. a magnetic field breaks time-reversal symmetry, lifting the codimension-two degeneracy to codimension three) — the very case where the real-symmetric restriction that pinned the eigenvector to ±1 no longer applies.
 
 - **Mead–Truhlar molecular phase (1979).** Core: a perturbative, infinitesimal-circuit derivation of the loop/surface phase and the induced vector potential in nuclear dynamics. **Gap:** tied to a specific continuation rule and to the molecular Born–Oppenheimer setting, for an infinitesimal loop; not formulated as a general property of slow evolution of any quantum system around a finite circuit, and not connected to the adiabatic theorem's dynamical-versus-geometric split or to the spin/Aharonov–Bohm cases.
 
@@ -46,7 +46,7 @@ The natural yardsticks are physical situations where a loop phase could in princ
 
 ## Code framework
 
-The analytic work can be checked numerically by comparing a loop integral of the connection with a closed-form quantity read from the enclosed geometry. The generic primitives are instantaneous diagonalization of a parametrized Hamiltonian, smooth transport of an eigenvector along a discretized loop, accumulation of the inner-product phase, and one empty slot for the geometry-side prediction.
+The analytic work can be checked numerically once a candidate closed-form is in hand. The generic primitives are instantaneous diagonalization of a parametrized Hamiltonian, smooth transport of an eigenvector along a discretized loop, accumulation of the consecutive-overlap phase around the loop, and one empty slot for whatever closed-form prediction the analysis yields.
 
 ```python
 import numpy as np

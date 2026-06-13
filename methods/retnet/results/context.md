@@ -62,13 +62,11 @@ embedding (RoPE, Su et al. 2021) multiplies \(q_n,k_m\) by phase factors \(e^{in
 that the relative encoding also has a length-extrapolation-friendly decay. These give a clean,
 multiplicative, position-aware factorization of the query/key interaction.
 
-**Normalization for multi-headed, multi-scale outputs.** When several parallel heads produce
-outputs with differing variance statistics, normalizing them jointly is mismatched; group
-normalization (Wu & He 2018), applied per head as in the Sub-LayerNorm / Magneto recipe (Wang
-et al. 2022), normalizes each head's output separately. A useful property is scale-invariance:
-multiplying a head's input by a scalar leaves the normalized output and its gradient unchanged,
-which leaves room to rescale intermediate scores for numerical stability without altering the
-function computed.
+**Normalization for multi-headed outputs.** When several parallel heads produce outputs with
+differing variance statistics, normalizing them jointly is mismatched; group normalization
+(Wu & He 2018), applied per head as in the Sub-LayerNorm / Magneto recipe (Wang et al. 2022),
+normalizes each head's output separately. Group normalization is also scale-invariant:
+multiplying a head's input by a scalar leaves the normalized output and its gradient unchanged.
 
 **The diagnostic that frames the problem.** Laying the candidate architectures side by side
 on the three axes makes the gap concrete: a Transformer has training parallelism and strong
@@ -103,8 +101,7 @@ with a linear time-invariant state-space recurrence \(s_n = A s_{n-1} + B x_n\),
 \(o_n = C s_n\), whose unrolled form is a long convolution that can be evaluated in parallel by
 FFT, giving training parallelism and \(O(1)\) or \(O(N\log N)\) cost. They model long range
 well, but the mixing kernel is *content-unaware*: \(A,B,C\) do not depend on the token being
-processed, unlike a query/key score that is computed from the content. This is the special case
-one recovers if the query and key projections are made content-independent.
+processed, unlike a query/key score that is computed from the content.
 
 **Attention-free / gated variants (AFT).** Simplify dot-product attention to element-wise
 operations and move the normalization onto the keys. Cheap, but again element-wise mixing
@@ -161,15 +158,9 @@ class TokenMixer(nn.Module):
         # TODO: fold one token into a fixed-size state, read off output (inference)
         pass
 
-    def chunkwise_forward(self, x):
-        # TODO: parallel within a chunk, recurrent across chunks (long sequences)
-        pass
-
-    def forward(self, x, state=None, chunkwise=False):
+    def forward(self, x, state=None):
         if state is not None:
             return self.recurrent_forward(x, state)
-        if chunkwise:
-            return self.chunkwise_forward(x)
         return self.parallel_forward(x)
 
 
@@ -183,8 +174,8 @@ class Block(nn.Module):
         self.fc1 = nn.Linear(embed_dim, ffn_dim)
         self.fc2 = nn.Linear(ffn_dim, embed_dim)
 
-    def forward(self, x, state=None, chunkwise=False):
-        y = self.mixer(self.norm1(x), state=state, chunkwise=chunkwise) + x
+    def forward(self, x, state=None):
+        y = self.mixer(self.norm1(x), state=state) + x
         z = self.fc2(F.gelu(self.fc1(self.norm2(y)))) + y
         return z
 

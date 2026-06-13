@@ -51,19 +51,14 @@ off-the-shelf numerical ODE solvers.
 black-box solver (the RK45 Runge–Kutta pair of Dormand & Prince 1980) on this ODE and reached quality
 comparable to a 1000-step SDE solver in about 60 network evaluations. That is far faster, but in the
 few-step regime (~10 steps) general-purpose ODE solvers empirically fail to produce satisfactory samples.
-A diagnostic point from the numerical-ODE literature (Hochbruck & Ostermann 2005, 2010) is relevant here:
-the right-hand side above is *semi-linear* — a linear term f(t)x plus a nonlinear term built from the
-network — and the exact solution of the linear part carries an exponential factor. A solver that treats
-the whole right-hand side as one opaque function discretizes the linear part too, and the error of the
-linear part can grow exponentially with step size; explicit Runge–Kutta methods are known to behave
-unstably on semi-linear problems at large step size. This is the structural reason a generic solver wastes
-its accuracy budget.
+The right-hand side above is handed to such a solver as one opaque vector field; the numerical-ODE
+literature (Hochbruck & Ostermann 2005, 2010) studies how black-box solvers behave on right-hand sides
+with particular structure and at large step size.
 
-**The half-log-SNR variable.** Because the SNR α_t²/σ_t² is monotone in t, the quantity
-λ_t := log(α_t/σ_t) (one half of the log-SNR) is a strictly decreasing, invertible function of t. It will
-recur as the natural variable in which the schedule functions f, g simplify. For the variance-preserving
-schedules used in practice, α_t² + σ_t² = 1, and both λ(t) and its inverse t(λ) have closed forms for the
-common linear and cosine schedules.
+**Derived schedule quantities.** Because the SNR α_t²/σ_t² is monotone in t, the quantity
+log(α_t/σ_t) (one half of the log-SNR) is a strictly decreasing, invertible function of t. For the
+variance-preserving schedules used in practice, α_t² + σ_t² = 1, and both this quantity and its inverse
+have closed forms for the common linear and cosine schedules.
 
 ## Baselines
 
@@ -73,8 +68,8 @@ Excellent quality but needs roughly 1000 sequential network evaluations.
 
 **Probability-flow ODE with a black-box solver (Song et al. 2020).** Writes sampling as the integral
 x_t = x_s + ∫_s^t (f(τ)x_τ + (g²(τ)/2σ_τ) ε_θ) dτ and hands the whole integrand to a generic high-order
-Runge–Kutta solver (RK45). Gap: it ignores the semi-linear split, so it incurs discretization error on the
-linear term whose exact solution is exponential; it needs ~60 evaluations and degrades badly below ~10 steps.
+Runge–Kutta solver (RK45). Gap: it treats the integrand as a single opaque function; it needs ~60
+evaluations and degrades badly below ~10 steps.
 
 **DDIM (Song et al. 2020, denoising diffusion implicit models).** A deterministic, non-Markovian sampler.
 For adjacent steps t_{i-1} → t_i, given a value x̃_{t_{i-1}},
@@ -96,12 +91,10 @@ the ability to query the score at arbitrary times. Analytic and trajectory-learn
 diffusion differential equations, comparing a lower- and higher-order estimate to size the next step. It
 is the template for adaptive step-size control used as one schedule option here.
 
-**Exponential integrators / exponential Runge–Kutta (Hochbruck & Ostermann 2005, 2010).** The numerical-ODE
-machinery for semi-linear problems dx/dt = αx + N(x,t): solve the linear part e^{αh} x exactly, and
-approximate only the integral of the nonlinear part ∫ e^{−ατ} N dτ, using intermediate stages. The
-coefficients are the φ-functions φ_k(z) = ∫_0^1 e^{(1−δ)z} δ^{k-1}/(k-1)! dδ, with φ_0(z)=e^z and recurrence
-φ_{k+1}(z) = (φ_k(z) − φ_k(0))/z. These methods stay stable on semi-linear problems where plain explicit
-Runge–Kutta does not. They are the ODE-side ancestor a dedicated diffusion solver would build on.
+**Exponential integrators / exponential Runge–Kutta (Hochbruck & Ostermann 2005, 2010).** A family of
+numerical-ODE methods developed in the general-purpose ODE literature, used as an alternative to plain
+explicit Runge–Kutta on certain problem classes at large step size. They are part of the standard
+numerical-ODE toolbox available off the shelf.
 
 ## Evaluation settings
 

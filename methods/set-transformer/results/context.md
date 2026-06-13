@@ -26,10 +26,10 @@ where `φ` is a per-element feed-forward encoder applied independently to each e
 
 - **Set-pooling / Deep Sets** (`ρ(sum(φ(·)))`, Zaheer et al. 2017; Edwards & Storkey 2017): permutation invariant, size-agnostic, provably universal. Gap: independent per-element encoding discards interactions; fixed, content-independent aggregation under-fits interaction-heavy tasks like clustering.
 - **Pooling variants** — mean-pooling, max-pooling, and feature-augmented per-element nets (`rFFp-mean`, `rFFp-max`, where each element is concatenated with a pooled summary before further processing): still a fixed symmetric reduction; the aggregation weight on each element cannot adapt to the set's contents.
-- **Simple dot-product attention pooling** (a non-parameterized attention readout): a step toward content-dependent aggregation, but without the multi-head/learnable-seed machinery and without modeling interactions during encoding.
+- **Simple dot-product attention pooling** (a non-parameterized attention readout): a content-dependent readout at aggregation time, but the encoding upstream still embeds each element in isolation.
 - **Recurrent set models** (e.g. order-augmented RNN readouts, Vinyals et al. 2016): can in principle attend over a set, but are order-sensitive unless carefully symmetrized, and do not give a clean permutation-invariant guarantee.
 
-The shared gap: none of these both (a) model pairwise/higher-order interactions *during encoding* and (b) aggregate with a *learnable, content-dependent* pooling — while staying permutation invariant, size-agnostic, and tractable on large sets.
+Across these baselines the same wall recurs: each element is embedded before any combination happens, and the combination itself is a fixed symmetric reduction — so on interaction-heavy tasks they under-fit, while staying permutation invariant, size-agnostic, and tractable on large sets remains a hard constraint to satisfy simultaneously.
 
 ## Evaluation settings
 
@@ -42,41 +42,26 @@ The shared gap: none of these both (a) model pairwise/higher-order interactions 
 
 ## Code framework
 
-The pieces that already exist: PyTorch `nn.Linear`, `softmax`, `LayerNorm`, multi-head projection bookkeeping (split a `d`-dim representation into `h` heads), Adam, and the encoder→pool→decoder set-pooling template. What is *not* yet known is how to build a permutation-equivariant block that mixes elements, how to make such mixing cheap on large sets, and how to replace fixed pooling with something learnable. The slots below are empty.
+The pieces that already exist: PyTorch `nn.Linear`, `softmax`, `LayerNorm`, multi-head projection bookkeeping (split a `d`-dim representation into `h` heads), Adam, and the encoder→pool→decoder set-pooling template. How to fill in the encoder and decoder so the model overcomes the limitations above is open. The slots below are empty.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F, math
 
-def attention(Q, K, V, omega):
-    # ω(QKᵀ/√d) V   — single-head scaled dot-product attention
-    ...
-
-class AttentionBlock(nn.Module):
-    """A parameterized block that maps one set (queries) against another
-    (keys/values), with the multi-head projections, residual + LayerNorm,
-    and a row-wise feed-forward sublayer. The exact composition is to be designed."""
-    def __init__(self, dim_Q, dim_K, dim_V, num_heads, ln=False):
-        # fc_q, fc_k, fc_v, fc_o : nn.Linear ; optional LayerNorms
-        pass
-    def forward(self, Q, K):
-        # TODO: multi-head attention of Q over (K as keys/values), then mix
-        pass
-
-class EquivariantSetBlock(nn.Module):
-    """An encoder block that maps a set to a set of equal size while letting the
-    elements interact. How it mixes elements — and how to keep it cheap for large
-    sets — is the thing to be designed."""
+class EncoderBlock(nn.Module):
+    """An encoder block that maps a set of n elements to a set of n features.
+    The internal computation is to be designed."""
     def __init__(self, dim_in, dim_out, num_heads, ln=False):
+        # TODO
         pass
     def forward(self, X):
         # TODO
         pass
 
 class Pooling(nn.Module):
-    """Aggregate a set of n feature vectors into k output vectors. Whether the
-    aggregation is a fixed reduction or a learnable, content-dependent operation
-    is exactly the design choice."""
+    """Aggregate a set of n feature vectors into k output vectors.
+    The aggregation rule is to be designed."""
     def __init__(self, dim, num_heads, num_outputs, ln=False):
+        # TODO
         pass
     def forward(self, Z):
         # TODO
@@ -84,7 +69,7 @@ class Pooling(nn.Module):
 
 class SetModel(nn.Module):
     def __init__(self, ...):
-        self.encoder = nn.Sequential(...)   # stack of EquivariantSetBlock
+        self.encoder = nn.Sequential(...)   # stack of EncoderBlock
         self.decoder = nn.Sequential(...)   # Pooling, then row-wise FF to outputs
     def forward(self, X):
         return self.decoder(self.encoder(X))

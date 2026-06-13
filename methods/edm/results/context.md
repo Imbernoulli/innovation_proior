@@ -14,7 +14,7 @@ The precise problem: separate these degrees of freedom from the theory that intr
 
 **Score matching and the optimal denoiser (Hyvärinen 2005; Vincent 2011).** The object that drives this walk is the score ∇_x log p(x; σ), a vector field pointing toward higher data density at a given noise level; crucially it does not require the intractable normalizing constant of p(x; σ). Vincent's denoising score matching connects the score to a denoising regression. If D(x; σ) is the function minimizing E_{y∼p_data} E_{n∼N(0,σ²I)} ‖D(y+n; σ) − y‖², separately at each σ, then the minimizer is the conditional mean D(x; σ) = E[y | x] (regression toward the clean signal), and the score is recovered as ∇_x log p(x; σ) = (D(x; σ) − x)/σ². For a finite training set {y_i}, the mollified density is a Gaussian mixture p(x; σ) = (1/Y)Σ_i N(x; y_i, σ²I), and the optimal denoiser is the softmax-weighted average of the data points, D(x; σ) = Σ_i N(x; y_i, σ²I) y_i / Σ_i N(x; y_i, σ²I). So a network trained to denoise *is* a score model: the two are one object viewed two ways.
 
-**Continuous-time formulation (Song et al. 2021).** A forward stochastic differential equation dx = f(t) x dt + g(t) dω, with ω the Wiener process, turns data into noise; its perturbation kernel is N(s(t) x_0, s(t)² σ(t)² I) with s(t) = exp ∫₀ᵗ f and σ(t) = √(∫₀ᵗ g²/s²). The marginals p_t(x) of this process can be reproduced either by the time-reversed SDE (Anderson 1982) or by a deterministic **probability-flow ODE** dx = [f(t) x − ½ g(t)² ∇_x log p_t(x)] dt — both have the same p_t at every t. The deterministic ODE is attractive for analysis: its only randomness is the initial noise sample, it is invertible, and one can reason about the geometry of its solution trajectories. A general SDE that keeps the same marginals can be written as the probability-flow ODE plus a Langevin term (a deterministic score-driven decay of noise plus a fresh-noise injection whose net noise contribution cancels), with a free coefficient controlling how fast old noise is swapped for new.
+**Continuous-time formulation (Song et al. 2021).** A forward stochastic differential equation dx = f(t) x dt + g(t) dω, with ω the Wiener process, turns data into noise; its perturbation kernel is N(s(t) x_0, s(t)² σ(t)² I) with s(t) = exp ∫₀ᵗ f and σ(t) = √(∫₀ᵗ g²/s²). The marginals p_t(x) of this process can be reproduced either by the time-reversed SDE (Anderson 1982) or by a deterministic **probability-flow ODE** dx = [f(t) x − ½ g(t)² ∇_x log p_t(x)] dt — both have the same p_t at every t. The deterministic ODE is attractive for analysis: its only randomness is the initial noise sample, it is invertible, and one can reason about the geometry of its solution trajectories. A general SDE that keeps the same marginals can be written as the probability-flow ODE plus a Langevin term (a deterministic score-driven decay of noise plus a fresh-noise injection whose net noise contribution cancels).
 
 **Variance-preserving vs variance-exploding.** Two standard instantiations. Variance-preserving (the DDPM lineage, Ho et al. 2020): the forward Markov chain q(x_t|x_{t−1}) = N(√(1−β_t) x_{t−1}, β_t I) scales the signal down as it injects noise, keeping total variance roughly constant; closed form q(x_t|x_0) = N(√ᾱ_t x_0, (1−ᾱ_t) I) with ᾱ_t = ∏(1−β_s). Variance-exploding (the score-matching lineage, Song & Ermon 2019): the data is left unscaled and noise of growing σ is simply added. In the continuous picture these are particular choices of f, g (hence of s, σ).
 
@@ -22,9 +22,9 @@ The precise problem: separate these degrees of freedom from the theory that intr
 
 **A diagnostic about per-noise-level loss.** Inspecting the denoising loss as a function of σ after training reveals it is largest at intermediate noise levels and small at the extremes: at very low σ the noise component is vanishingly small, so it is both easy and unimportant to resolve; at very high σ the best possible answer collapses toward the dataset average regardless of the input. So training effort spent at the extreme σ is mostly wasted.
 
-**A diagnostic about sampling steps and curvature.** Any numerical ODE solver only approximates the true trajectory; each step incurs a local truncation error that accumulates. Euler's method is first order (local error O(h²)); higher-order Runge–Kutta methods converge faster per step but cost extra network evaluations. Empirically, the local error of an Euler step on these trajectories is large at low σ and small at high σ, and is nearly independent of the particular sample — suggesting the step schedule should shrink steps as σ decreases and need not be chosen per-sample. The magnitude of truncation error tracks the curvature of the trajectory, so the schedule and any rescaling that reduce curvature directly reduce the number of steps needed.
+**A diagnostic about sampling steps and curvature.** Any numerical ODE solver only approximates the true trajectory; each step incurs a local truncation error that accumulates. Euler's method is first order (local error O(h²)); higher-order Runge–Kutta methods converge faster per step but cost extra network evaluations. Empirically, the local error of an Euler step on these trajectories is large at low σ and small at high σ, and is nearly independent of the particular sample — suggesting the step schedule should shrink steps as σ decreases and need not be chosen per-sample. The magnitude of truncation error tracks the curvature of the trajectory.
 
-**A diagnostic about stochasticity.** Purely deterministic sampling is convenient (invertible, few steps) but tends to give slightly worse quality than sampling that re-injects fresh noise each step. Since the deterministic ODE and the noise-injecting SDE share the same marginals in the continuum, the benefit of stochasticity must come from the discretization: the Langevin component actively pulls a sample back toward the correct marginal at each noise level, correcting earlier errors. Excessive noise replacement, however, is observed to gradually wash out image detail and drift colors toward oversaturation, which is consistent with a learned denoiser inducing a slightly non-conservative field and tending to remove a touch too much noise (regression toward the mean for any L2-trained denoiser).
+**A diagnostic about stochasticity.** Purely deterministic sampling is convenient (invertible, few steps) but tends to give slightly worse quality than sampling that re-injects fresh noise each step. Since the deterministic ODE and the noise-injecting SDE share the same marginals in the continuum, this quality gap is a discretization-level effect rather than a difference in the underlying distribution. Excessive noise replacement, however, is observed to gradually wash out image detail and drift colors toward oversaturation.
 
 ## Baselines
 
@@ -66,8 +66,7 @@ class NoiseConditionedDenoiser(torch.nn.Module):
         self.use_fp16 = use_fp16
 
     def forward(self, x, sigma, class_labels=None, force_fp32=False, **model_kwargs):
-        # TODO: choose input scaling, output scaling, skip mixing, and the
-        #       sigma -> conditioning map; combine into D(x; sigma).
+        # TODO: turn the raw network output into the denoiser D(x; sigma).
         pass
 
     def round_sigma(self, sigma):
@@ -106,8 +105,7 @@ def sample(denoiser, latents, class_labels=None, randn_like=torch.randn_like,
     sigmas = noise_schedule(denoiser, num_steps, **kwargs)
     x = latents * sigmas[0]
     for i in range(num_steps):
-        # TODO: the integrator step (which solver; whether/how much fresh
-        #       noise is injected before the deterministic step)
+        # TODO: the integrator step that advances x from sigmas[i] to sigmas[i+1]
         pass
     return x
 ```

@@ -22,7 +22,7 @@ Evaluating a *fixed* system is easy: trace rays through it by geometric optics a
 
 **Steepest descent.** Move along −∇f, line-search to the minimum along that direction, repeat. Core idea: the gradient is the locally best descent direction; it is always perpendicular to the equimagnitude contours. Math: x ← x − α∇f(x) with α from a 1-D search. Gap: convergence is very slow whenever the contours are elongated (an anisotropic, ill-conditioned problem), which is the norm in lens design; it ignores the curvature of f and so zig-zags down long narrow valleys.
 
-**Plain (undamped) least squares / Gauss–Newton.** Treat the operands as locally linear, build J by finite differences, and solve the normal equations JᵀJ Δx = −Jᵀf for the full step in one shot. Core idea: if the operands were linear, the least-squares optimum is reached in a single linear solve; iterate to handle the nonlinearity. Math: Δx = −(JᵀJ)⁻¹Jᵀf. Gap: on the ill-conditioned optical Jacobian, JᵀJ is nearly singular, its inverse amplifies the near-null directions, and the resulting step is far too large — the linear approximation breaks, the merit function increases, and the iteration frequently diverges or hits ray failure. It also presupposes JᵀJ is invertible, which fails when columns are exactly redundant.
+**Plain least squares / Gauss–Newton.** Treat the operands as locally linear, build J by finite differences, and solve the normal equations JᵀJ Δx = −Jᵀf for the full step in one shot. Core idea: if the operands were linear, the least-squares optimum is reached in a single linear solve; iterate to handle the nonlinearity. Math: Δx = −(JᵀJ)⁻¹Jᵀf. Gap: on the ill-conditioned optical Jacobian, JᵀJ is nearly singular, its inverse amplifies the near-null directions, and the resulting step is far too large — the linear approximation breaks, the merit function increases, and the iteration frequently diverges or hits ray failure. It also presupposes JᵀJ is invertible, which fails when columns are exactly redundant.
 
 **Newton's method.** Use the full Hessian of f. Core idea: second-order model of f gives quadratic local convergence. Gap: the full Hessian needs second derivatives of every operand (expensive and noisy under finite differencing), it is not guaranteed positive-definite away from a minimum (so the step can point uphill), and it offers no remedy for the ill-conditioning that is the real problem here.
 
@@ -93,10 +93,6 @@ class Optimizer:
         self.problem.update_optics()
         return self.problem.residual_vector()
     def optimize(self, maxiter):
-        # TODO: iteratively choose a step Delta_x in the variables that
-        #       reduces sum_squared() while keeping the step in the region
-        #       where the linearized model of the residuals is trustworthy,
-        #       given that the residuals' Jacobian w.r.t. the variables is
-        #       strongly ill-conditioned. This step rule is the contribution.
+        # TODO: iteratively step the variables x to reduce sum_squared().
         pass
 ```

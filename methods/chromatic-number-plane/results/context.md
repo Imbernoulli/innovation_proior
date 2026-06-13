@@ -31,8 +31,7 @@ property: in any *3-colouring* of the rhombus graph, each acute vertex must diff
 endpoints of the shared edge, which between them already use two colours — so each acute
 vertex is forced to the third colour, and **the two acute vertices, a distance √3 apart, are
 the same colour**. Distance-√3 monochromatic pairs are thus produced by 3-colourings of
-rhombi, and a monochromatic √3-equilateral-triangle is three such pairs concentrated at one
-spot.
+rhombi.
 
 Second, the **Moser spindle** (Moser & Moser, 1961): take two unit rhombi, glue them at one
 acute vertex, and rotate one so that the two *far* acute vertices come to distance 1 apart.

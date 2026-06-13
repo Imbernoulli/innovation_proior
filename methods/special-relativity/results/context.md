@@ -37,7 +37,7 @@ x' = l(v) γ (x − vt),   y' = l(v) y,   z' = l(v) z,   t' = l(v) γ (t − vx/
 ```
 with `γ` now structurally central and an undetermined overall scale `l(v)`. Moving electromagnetic oscillators are shown to have retarded periods, giving local time a physical foothold. *Gap:* the ether frame and the true-time/local-time distinction survive; contraction is still dynamical; the scale `l(v)` is left open; and the result is not promoted to a universal kinematics governing *all* clocks and rods regardless of their constitution.
 
-**Poincaré's reformulation (1900–1905).** Poincaré presses the *principle of relativity* as a general postulate, criticizes the conceptual standing of an immobile ether, reads Lorentz's local time as the time a moving observer would obtain by synchronizing clocks with light signals, and fixes the scale `l(v) = 1` by requiring the transformations to form a group. *Gap:* the synchronization reading and the relativity principle are present, but the decisive step — making the *relativity of simultaneity itself* the operational definition of time and deriving everything from two postulates without an ether — is not consummated.
+**Poincaré's reformulation (1900–1905).** Poincaré presses the *principle of relativity* as a general postulate, criticizes the conceptual standing of an immobile ether, reads Lorentz's local time as the time a moving observer would obtain by synchronizing clocks with light signals, and fixes the scale `l(v) = 1` by requiring the transformations to form a group. *Gap:* the relativity principle and the light-synchronization reading of local time are present, yet the framework still keeps one foot in the ether and the "true time" `t`; it stops short of a self-standing kinematics resting on the two postulates alone, and the status of time itself across frames is left unresolved.
 
 ## Evaluation settings
 
@@ -67,21 +67,21 @@ class InertialFrame:
 def galilean(x, t, v):
     """The default kinematics: absolute time, linear velocity addition."""
     xp = x - v * t
-    tp = t                      # time is the same in every frame (to be questioned)
+    tp = t                      # the shared time coordinate of the Galilean rule
     return xp, tp
 
 def synchronize_clock(t_emit, t_return):
-    """Operational time-setting by a light signal sent to a remote clock and reflected back.
-    Definition of synchrony: the remote event is dated at the MIDPOINT of emission and return."""
-    # TODO: this midpoint rule is the only handle we have on 'simultaneous at a distance';
-    # whether it yields the same simultaneity in two frames is exactly the open question.
-    return 0.5 * (t_emit + t_return)
+    """Operational time-setting of a distant clock by a light signal sent out and
+    reflected back. A single clock dates only events at its own location; pinning a
+    rule for 'simultaneous at a distance' is left open."""
+    # TODO: choose the rule relating (t_emit, t_return) to the remote event's time.
+    pass
 
 def coordinate_transform(x, t, v):
     """The law connecting (x, t) in K to (x', t') in a frame moving at v.
     UNKNOWN. Must be consistent with: (P1) the laws are identical in K and K',
     and (P2) a light signal has speed c in BOTH frames."""
-    # TODO: derive this from the two postulates + the synchronization definition above.
+    # TODO: derive this from the two postulates.
     pass
 
 def length_of_moving_object(rest_length, v):

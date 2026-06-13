@@ -63,8 +63,8 @@ control tasks but stall on harder ones: a fixed step is simultaneously too large
 somewhere (causing a collapse in performance after a single bad update) and too
 small elsewhere (wasting samples). Euclidean-parameter steps are worse still,
 because the same parameter displacement can mean a negligible or a ruinous change
-in the policy distribution. This is the empirical pain that motivates controlling
-*how far the policy moves in distribution space, per update*.
+in the policy distribution. This is the empirical pain that the step rule has to
+contend with.
 
 ## Baselines
 
@@ -83,9 +83,9 @@ the inverse Fisher matrix: step direction `F^{-1} g`, with a fixed step size /
 penalty `1/λ`. Core idea: steepest ascent in the *distribution* (Fisher) metric, so
 the direction is reparameterization-invariant — a major conceptual improvement over
 vanilla PG. Natural actor-critic estimates this direction with a compatible linear
-critic. Gap: it uses a *fixed* penalty/step rather than enforcing a bound on the
-policy change each update, so on hard problems it over- or under-shoots; and forming
-or inverting `F` is infeasible for large networks if done naively.
+critic. Gap: it uses a *fixed* penalty/step, so on hard problems it over- or
+under-shoots; and forming or inverting `F` is infeasible for large networks if done
+naively.
 
 **Conservative policy iteration (Kakade & Langford 2002).** The mixture update with
 the `α^2` improvement bound above. Core idea: the first method with an explicit

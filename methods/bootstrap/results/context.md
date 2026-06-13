@@ -39,10 +39,7 @@ smoothly differentiable in F — the sample median being the canonical hard case
 behavior depends erratically on the data near the center.
 
 A diagnostic fact that frames the whole problem: the median exposes where automatic variance
-estimators break. The leave-one-out perturbations a deletion-based method uses sit at distance
-O(1/n) from the data, but the genuine sampling fluctuations of the median sit at scale
-O(n^{−1/2}); a method that probes the statistic only at the O(1/n) scale reads off the wrong
-local behavior. Quenouille–Tukey jackknife variance estimates of the median are, in fact, not
+estimators break. Quenouille–Tukey jackknife variance estimates of the median are, in fact, not
 consistent (Miller 1974 reviews exactly such successes and failures), whereas the correct
 asymptotic squared error of the sample median is (1/4 f²(θ))·(1/n) for a density f.
 
@@ -94,7 +91,8 @@ judged:
   scale.
 - **Error rate of a linear (Fisher) discriminant** trained on two samples from F and G on Rᵏ,
   measured against the leave-one-out cross-validation estimate as the yardstick.
-- **Regression coefficients**, linear and nonlinear, with the residuals as the resampling unit.
+- **Regression coefficients**, linear and nonlinear, with x_i = g_i(β) + ε_i and the errors ε_i
+  identically distributed across design points.
 Metrics: estimated standard error / variance versus the known or asymptotic truth; coverage and
 width of confidence intervals.
 
@@ -113,40 +111,13 @@ def empirical_distribution(x):
     # Equal mass 1/n on each observed point.
     return np.asarray(x)
 
-def resample(x, n_resamples, rng):
-    # TODO: produce n_resamples artificial datasets from the empirical distribution.
-    pass
-
 def jackknife_resamples(x):
     # Existing leave-one-out perturbations.
     pass
 
-def percentile_of_score(values, score):
-    # TODO: locate the observed statistic inside an artificial sampling distribution.
-    pass
-
-def adjusted_quantile_levels(x, statistic, resampled_statistics, alpha):
-    # TODO: optionally adjust percentile levels using bias and leave-one-out curvature.
-    pass
-
-def sampling_distribution(x, statistic, n_resamples, rng):
-    # TODO: estimate the distribution of statistic(X) under repeated sampling.
-    pass
-
-def standard_error(resampled_statistics):
-    # TODO: read the SE off the estimated sampling distribution.
-    pass
-
-def quantile_along_last(values, level):
-    # TODO: read a quantile along the artificial-sample axis.
-    pass
-
-def confidence_interval(resampled_statistics, confidence_level, levels=None):
-    # TODO: read an interval off the estimated sampling distribution.
-    pass
-
-def resampling_accuracy(x, statistic, n_resamples, confidence_level, method, rng):
-    # TODO: return the distribution estimate, its SE, and an interval.
+def accuracy(x, statistic, n_resamples, confidence_level, rng):
+    # TODO: from x and the user's statistic, return its accuracy —
+    # an estimated standard error and a confidence interval.
     pass
 
 # The existing automatic competitor, for reference — leave-one-out:

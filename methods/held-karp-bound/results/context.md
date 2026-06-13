@@ -42,9 +42,7 @@ the true optimum the bracketed term added is zero and the minimization over the 
 can only lower the value. The best such bound is `max_π L(π)`. As a minimum of finitely many
 affine functions of `π`, `L(π)` is concave and piecewise linear — hence non-differentiable at
 the breakpoints where the inner minimizer switches. The systematic exploitation of this
-structure for integer programming was being worked out at the time (Geoffrion); the degree
-constraints of the TSP are a textbook instance of "complicating" equalities over an otherwise
-tractable set.
+structure for integer programming was being worked out at the time (Geoffrion).
 
 **The relaxation method for linear inequalities.** Agmon (1954) and Motzkin & Schoenberg (1954),
 following an idea of Motzkin, studied solving a consistent system of linear inequalities
@@ -54,16 +52,15 @@ is on the wrong side of an oriented hyperplane `π` and the solution `y` on the 
 `x_r` is the orthogonal projection of `x` onto `π`, then for `0 < λ < 2`,
 `|x + λ(x_r − x) − y| < |x − y|` — the relaxed projection strictly decreases the Euclidean
 distance to every solution point, and Agmon proves a linear convergence rate. The relaxation
-parameter `λ ∈ (0, 2)` and the "decrease distance to the solution set without necessarily
-decreasing the residual" behavior are the load-bearing facts.
+parameter ranges over `λ ∈ (0, 2)`, and the lemma controls distance to the solution set rather
+than the residual at the chosen inequality.
 
 **Empirical state of TSP solving.** The diagnostic fact motivating the work is that the bounds
 in use produced search trees too large to exhaust for instances past roughly 20–30 cities; the
 assignment relaxation and the bare minimum-spanning-structure bound left visible gaps to `C*`,
-and that gap, multiplied across the branch-and-bound tree, was the bottleneck. The structural
-symptom is visible in the relaxed spanning objects themselves: they are cheap because they ignore
-the tour's degree-2 condition, and the resulting degree surplus and deficit are exactly where the
-bound loses contact with a Hamiltonian cycle.
+and that gap, multiplied across the branch-and-bound tree, was the bottleneck. These relaxed
+spanning objects are cheap precisely because they drop the tour's degree-2 condition, so the
+optimal relaxed object need not resemble a Hamiltonian cycle.
 
 ## Baselines
 
@@ -85,7 +82,7 @@ large linear program with one constraint per candidate structure, generating col
 or by a steepest-ascent procedure that increases the objective at each step. Gap: with the
 number of candidate structures astronomically large, the LP/simplex route and the
 function-increasing ascent route were both found to be slow, and the ascent's iteration count
-grew rapidly with `n`. This leaves the need for a lighter ascent rule.
+grew rapidly with `n`.
 
 ## Evaluation settings
 
@@ -117,7 +114,7 @@ def min_spanning_tree(weight):
 
 def lower_bound(cost, forced_edges, forbidden_edges, upper_bound=None):
     """Lower bound on tours satisfying the edge decisions in a branch-and-bound node."""
-    # TODO: replace the plain spanning-tree bound with a stronger MST-cheap relaxation.
+    # TODO: compute the subproblem lower bound.
     pass
 
 def branch_and_bound(cost, upper_bound):

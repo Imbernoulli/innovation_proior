@@ -54,12 +54,11 @@ narrow datasets is what makes the coupling severe; with high-entropy (near-unifo
 largely disappears. This phenomenon — erroneously optimistic Q-values at OOD actions, uncorrected
 because there is no online feedback — is the problem any offline value-learning method must defeat.
 
-**Useful facts that will matter.** Constrained optimization of an expectation plus an entropy or
+**Standard analytical tools.** Constrained optimization of an expectation plus an entropy or
 KL regularizer over a probability simplex has a closed-form Boltzmann solution. Empirical Bellman
 backups differ from true ones by an amount controlled by concentration of the reward and dynamics
-estimates, scaling as `1/√|D(s,a)|`. The matrix `(I − γP^π)^{-1}` has all non-negative entries,
-so an additive negative correction inside it stays negative after discounted accumulation —
-the standard device for turning a per-step underestimate into a value-level lower bound.
+estimates, scaling as `1/√|D(s,a)|`. The matrix `(I − γP^π)^{-1} = Σ_t (γP^π)^t` has all
+non-negative entries.
 
 ## Baselines
 

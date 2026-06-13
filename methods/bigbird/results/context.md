@@ -17,7 +17,7 @@ Many problems put their signal beyond that window: answering a question against 
 
 **A diagnostic measurement.** Composing a sparse pattern out of only local and random connections and pretraining at length 512 leaves a measurable gap to a fully-attending baseline on masked-LM accuracy and on downstream QA/NLI — short paths and locality together are not enough to match dense attention. This observation about what a sparse pattern lacks is the empirical pressure for an additional ingredient.
 
-**What the theory needs.** The universal-approximation argument for dense transformers (Yun et al., 2019) proceeds by approximating a continuous function with a piecewise-constant one on a fine grid, then using attention to build a *contextual mapping* — a unique numeric code for each (sequence, position) pair — which feed-forward layers decode to the target. Building that code requires a step that can collect information from the entire sequence; the proof's selective-shift construction relies on this. The Turing-completeness argument (Pérez et al., 2019) simulates a machine with an encoder–decoder under arbitrary precision, and at one point uses a single attention to retrieve, in one shot, the symbol last written at the cell the head is about to visit.
+**The expressivity proofs.** The universal-approximation argument for dense transformers (Yun et al., 2019) proceeds by approximating a continuous function with a piecewise-constant one on a fine grid, then using attention to build a *contextual mapping* — a unique numeric code for each (sequence, position) pair — which feed-forward layers decode to the target; the code is produced by a selective-shift construction over the columns. The Turing-completeness argument (Pérez et al., 2019) simulates a machine with an encoder–decoder under arbitrary precision. Both proofs are written for full attention; whether either survives when most inner products are removed is open.
 
 ## Baselines
 
@@ -31,7 +31,7 @@ Many problems put their signal beyond that window: answering a question against 
 
 - **Sparse / hashed attention patterns.** Child et al. (2019) factorize attention into strided patterns for `O(n√n)`. Kitaev et al. (2019, Reformer) use locality-sensitive hashing to attend to near neighbors at `O(n log n)`. Others use binary partitions (Ye et al., 2019) or block sparsity (Qiu et al., 2019). These cut cost but are largely heuristic, are not uniformly as robust as dense attention across benchmarks, and come without guarantees that they preserve the dense model's expressive power.
 
-- **Window + few global tokens (Longformer, Beltagy et al., 2020; ETC, Ainslie et al., 2020).** Combine a local window with a handful of tokens that attend globally; ETC introduced the idea of dedicated global tokens to encode structure. Strong empirically and the closest prior art, but offered without a theoretical account of *why* global tokens recover dense-attention behavior.
+- **Window + few global tokens (Longformer, Beltagy et al., 2020; ETC, Ainslie et al., 2020).** Combine a local window with a handful of tokens that attend globally; ETC introduced the idea of dedicated global tokens to encode structure. Strong empirically and among the closest prior art, but offered as engineering recipes without a theoretical account of their expressive power.
 
 ## Evaluation settings
 

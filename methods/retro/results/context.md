@@ -37,61 +37,57 @@ The question: can these two be *decoupled*? Specifically, can a model be given a
 ## Evaluation settings
 
 - **Data.** MassiveText (multi-lingual; >5T tokens; Web 55%, Books 25%, News 10%, Wikipedia 5%, GitHub 5%), tokenized with SentencePiece, vocabulary 128,000. Training retrieves from a 600B-token database matching the training mix; evaluation retrieves from the full union (~1.75T tokens, books sub-sampled to 4%).
-- **Leakage control.** Deduplicate: remove training documents with ≥0.8 13-gram Jaccard (MinHash) similarity to any validation/test document; remove Wikitext103 val/test articles from training Wikipedia. A *filtered* evaluation reports bits-per-byte restricted to evaluation chunks whose maximal contiguous token overlap with the nearest training chunk is below a threshold α — so performance on genuinely novel text is separable from leakage exploitation.
+- **Leakage control.** Deduplicate: remove training documents with ≥0.8 13-gram Jaccard (MinHash) similarity to any validation/test document; remove Wikitext103 val/test articles from training Wikipedia. Even after deduplication, a retrieval LM can directly access the training database at evaluation time, so any reported metric has to account for residual overlap between an evaluation chunk and its nearest training chunk.
 - **Benchmarks.** Language modeling: Wikitext103, the Pile, C4, Curation Corpus (bits-per-byte). Downstream: open-domain QA on Natural Questions (exact match), using the DPR/FiD-provided retrieved passages.
 - **Model scales.** Baseline retrieval-free Transformers at 132M, 368M, 1.3B, 7.0B parameters (embeddings excluded), with matched retrieval-augmented counterparts.
 
 ## Code framework
 
-The pieces that already exist: a decoder-only Transformer LM stack (attention + feed-forward residual blocks, RMSNorm, relative positions), a frozen pre-trained BERT embedder, an approximate-nearest-neighbour index, and the standard encoder-decoder cross-attention operator. The method must define how a long sequence is segmented for retrieval, how neighbours are fetched and encoded, and — the core new operator — how retrieved content is fused into an autoregressive decoder at linear cost without breaking causality.
+The pieces already available are a decoder-only Transformer LM stack (attention + feed-forward residual blocks, RMSNorm, relative positions), a frozen pre-trained BERT embedder, an approximate-nearest-neighbour index, and the standard encoder-decoder cross-attention operator. What remains is to settle how the external store is queried and how its contents enter the decoder.
 
 ```python
 import torch, torch.nn as nn
 
-# --- Frozen embedder + ANN index (already exist) ---
 class FrozenEmbedder:
-    def embed(self, tokens): pass            # frozen BERT, mean-pooled over time -> key vector
+    def embed(self, tokens): pass            # frozen BERT, mean-pooled over time
 
 class ANNIndex:
-    def build(self, keys, values): pass      # values = raw text chunks (+ their continuations)
+    def build(self, keys, values): pass      # values are raw text spans
     def search(self, query_vec, k): pass     # approximate top-k by L2 distance, O(log T)
 
-# --- Standard residual operators (already exist) ---
-def attn(H): ...                             # causal self-attention residual
-def ffw(H): ...                              # feed-forward residual
+def causal_attn(H): ...
+def ffw(H): ...
+def cross_attn(Q, KVs): ...
 
-# --- How is a long sequence prepared for retrieval? ---
-def split_into_chunks(X, m):
-    # TODO: split the n-token sequence into l = n/m contiguous chunks
+def split_segments(tokens, segment_len):
+    # TODO
     pass
 
-def retrieve_neighbours(chunks, embedder, index, k):
-    # TODO: for each chunk, fetch k nearest neighbours (+ continuations); which chunk
-    #       may a position attend to, to stay autoregressive?
+def fetch_external_text(segments, embedder, index, k):
+    # TODO
     pass
 
-# --- The contribution: encode neighbours and fuse them into the decoder ---
-class NeighbourEncoder(nn.Module):
-    def __init__(self): super().__init__()   # a (bidirectional) encoder over retrieved text
-    def forward(self, neighbours, chunk_acts):
-        # TODO: encode each neighbour; condition on the retrieving chunk's activations
+class ExternalTextEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self, external_tokens, segment_acts):
+        # TODO
         pass
 
-def chunked_fusion(H, E):
-    # TODO: the new operator that lets decoder positions attend to the right chunk's
-    #       encoded neighbours, at cost LINEAR in retrieved data and preserving causality
+def local_memory_update(H, encoded_external, segment_len):
+    # TODO
     pass
 
-class RetrievalLM(nn.Module):
-    def __init__(self, L, fuse_layers):      # interleave fusion blocks among LM blocks
+class MemoryAugmentedDecoder(nn.Module):
+    def __init__(self, L, access_layers):
         super().__init__()
-        # TODO: embedding, L decoder layers (some with chunked_fusion), read-out head
+        # TODO
         pass
     def forward(self, X, neighbours):
-        # TODO: run decoder; encode neighbours once; fuse at the designated layers
+        # TODO
         pass
 
 def loss(X, neighbours, model):
-    # autoregressive NLL where each token may use neighbours of EARLIER chunks only
+    # autoregressive NLL with retrieval-augmented conditioning
     pass
 ```

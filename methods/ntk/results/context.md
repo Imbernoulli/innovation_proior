@@ -54,9 +54,8 @@ pre-activation is what makes the large-width limit well-defined. A side effect,
 visible by the chain rule, is that the gradient of the network output with
 respect to any single weight in a wide layer carries a 1/sqrt(width) factor — so
 each individual parameter moves very little under gradient descent when the
-layer is wide. The collective effect of many parameters can still be large. This
-tension — vanishing per-parameter motion versus a finite aggregate effect — is
-the background fact that everything downstream turns on.
+layer is wide. The collective effect of many parameters can still be large: a
+vanishing per-parameter motion coexists with a finite aggregate effect.
 
 **Random-feature approximation of a kernel.** Rahimi & Recht (2007) approximate
 a kernel K by sampling P random functions f^(p) with second moment
@@ -67,7 +66,7 @@ gradient descent on theta is then *exactly* gradient descent in function space
 against the empirical kernel (1/P) sum_p f^(p) ⊗ f^(p), which tends to K as
 P -> infinity. This is the clean case where training is provably kernel descent.
 The gap: a real network is *nonlinear* in its parameters, so its feature map
-moves during training, and the corresponding kernel is random at initialization.
+partial_{theta_p} f depends on theta and is not fixed as training proceeds.
 
 **Kernel methods machinery.** Once dynamics live in function space, the relevant
 tools are standard. Kernel PCA (Schölkopf et al., 1998) diagonalizes a kernel's
@@ -124,16 +123,15 @@ points often share roughly the same norm, so the dot product carries the signal.
 - A synthetic low-dimensional set: inputs on the unit circle in R^2 (a stand-in
   for high-dimensional data, whose centered points share roughly equal norm),
   with a smooth scalar target such as a product of coordinates.
-- MNIST handwritten digits (28x28, so input dimension 784), used to inspect the
-  kernel's principal components and the per-direction training trajectory.
+- MNIST handwritten digits (28x28, so input dimension 784), used to inspect how
+  the function trained by gradient descent behaves across the dataset.
 - Architecture knobs that would be varied: depth L, common hidden width n, the
   nonlinearity (ReLU), the bias multiplier beta, the learning rate, and the
   number of random initializations used to estimate distributions.
-- Quantities one would measure: agreement between a finite-width network's
-  tangent kernel and the proposed limit; the spread of the kernel over random
-  initializations as width grows; the leading kernel principal components and
-  their eigenvalues; the function's deviation from a straight-line trajectory in
-  function space.
+- Quantities one would measure: how a finite-width network's training dynamics
+  behave as width grows; how much that behavior varies across random
+  initializations; and how the network function moves through function space
+  over the course of training.
 
 ## Code framework
 
@@ -160,9 +158,9 @@ def layer_kernel_recursion(X, Xp, depth, beta):
     pass
 
 
-def tangent_kernel(X, Xp, depth, beta):
-    """The object that governs how the network FUNCTION moves under gradient
-    descent in the large-width limit. This is the contribution."""
+def limit_object(X, Xp, depth, beta):
+    """Whatever large-width-limit object the analysis below turns out to need to
+    describe a wide network's training dynamics."""
     # TODO
     pass
 
@@ -180,10 +178,10 @@ class Net(torch.nn.Module):
         pass
 
 
-def finite_tangent_kernel(net, X, Xp):
-    """The same governing object for an actual finite net, from its parameter
-    Jacobians -- the thing whose large-width limit tangent_kernel should be."""
-    # TODO: <d_theta f(x), d_theta f(x')> via autograd
+def finite_net_probe(net, X, Xp):
+    """A finite-net counterpart of limit_object, computed from the network's
+    parameter Jacobians via autograd, to compare against the large-width limit."""
+    # TODO
     pass
 
 

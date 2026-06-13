@@ -99,9 +99,8 @@ to be a bare counting question.
 ## Evaluation settings
 
 The objects of study are: the set ℕ = {1, 2, 3, …}; the rationals; the real algebraic
-numbers; the reals in a fixed interval [a, b] (and the continuum [0, 1]); and, for the
-general question, an arbitrary set X together with the collection of its subsets / of
-its {0,1}-valued functions. The yardstick is purely logical: a claim of equal size is
+numbers; the reals in a fixed interval [a, b] (and the continuum [0, 1]). The yardstick
+is purely logical: a claim of equal size is
 discharged by exhibiting a bijection, a claim of "not the same size" by exhibiting,
 for *every* candidate correspondence, a witness it misses. There are no datasets,
 metrics, or measurements — the standard of success is a proof valid for an *arbitrary*
@@ -134,16 +133,6 @@ proposition INTERVAL_LISTING_QUESTION:
 def missing_point(x_1, x_2, x_3, ..., interval I):
     # given ANY purported enumeration of the objects of I,
     # return an object of I provably equal to none of the x_n
-    # TODO: construct it
-    pass
-
-# Subset-indexing question:
-proposition SUBSET_INDEXING_QUESTION:
-    "decide whether every subset of X can be assigned to some element of X"
-    # TODO: prove or refute
-
-def missing_subset(X, f):     # f assigns one subset of X to each x in X
-    # return a subset of X provably equal to none of the f(x)
     # TODO: construct it
     pass
 ```

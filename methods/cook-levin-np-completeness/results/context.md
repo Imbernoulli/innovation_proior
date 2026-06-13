@@ -132,10 +132,8 @@ poly-time-reduces.
 ## Code framework
 
 The useful programming objects are minimal: a nondeterministic machine description and a Boolean
-formula builder. A mechanical emitter can take a machine and an input and produce a formula whose
-satisfying assignments stand for accepting histories. Before the encoding is known, the emitter can
-only name the obligations any such formula must enforce: a well-formed history, the correct initial
-configuration, legal step-to-step evolution, and eventual acceptance.
+formula builder. With these in hand one can experiment with whatever map between the two a
+structural argument might call for.
 
 ```python
 class NTM:
@@ -156,13 +154,8 @@ class CNF:
     def is_satisfiable(self):
         ...
 
-def encode_computation(M: NTM, w: str) -> CNF:
-    """Return a formula satisfiable exactly when M has an accepting computation on w
-    within the polynomial time bound."""
-    # TODO: choose variables for a candidate computation history
-    # TODO: force each position in the history to be well formed
-    # TODO: force the first configuration to be the start configuration on w
-    # TODO: force consecutive configurations to obey delta
-    # TODO: force an accepting configuration to occur
+def reduce(M: NTM, w: str) -> CNF:
+    """Map a machine M and input w to a formula instance."""
+    # TODO: build the formula
     pass
 ```

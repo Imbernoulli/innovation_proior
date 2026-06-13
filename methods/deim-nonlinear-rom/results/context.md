@@ -6,7 +6,7 @@ A great many engineering simulations are large nonlinear systems of ordinary dif
 $$\frac{d}{dt}\mathbf{y}(t)=\mathbf{A}\,\mathbf{y}(t)+\mathbf{F}(\mathbf{y}(t)),\qquad \mathbf{y}(t)\in\mathbb{R}^n,$$
 where $\mathbf{A}\in\mathbb{R}^{n\times n}$ is the discrete linear operator and $\mathbf{F}$ is a nonlinear term — for a scalar reaction–diffusion problem $\mathbf{F}$ is evaluated componentwise, $\mathbf{F}(\mathbf{y})=[F(y_1),\dots,F(y_n)]^\top$. The state dimension $n$ is the number of grid points and must be very large (thousands to tens of thousands) for the numerical solution to be accurate, so each simulation is expensive, and parametric studies, control, and optimization — which need many simulations — become infeasible.
 
-The trajectories of such systems are typically attracted to a low-dimensional manifold, so one hopes to replace the $n$-dimensional system by a surrogate of dimension $k\ll n$ that reproduces nearly the same input/output behavior. The precise question is: **can a projection-based reduced model of order $k\ll n$ be made genuinely cheap to evaluate — cheap *per time step*, with a cost independent of the full dimension $n$ — even when $\mathbf{F}$ is a general nonlinearity?** A usable answer must (i) keep the well-understood optimality of the existing reduced-basis machinery, (ii) drive the per-step cost down to depend only on $k$ (and a second small dimension), not on $n$, and (iii) come with a guarantee that the cheapened evaluation is almost as accurate as the expensive one it replaces.
+The trajectories of such systems are typically attracted to a low-dimensional manifold, so one hopes to replace the $n$-dimensional system by a surrogate of dimension $k\ll n$ that reproduces nearly the same input/output behavior. The precise question is: **can a projection-based reduced model of order $k\ll n$ be made genuinely cheap to evaluate — cheap *per time step*, with a cost independent of the full dimension $n$ — even when $\mathbf{F}$ is a general nonlinearity?** A usable answer must (i) keep the well-understood optimality of the existing reduced-basis machinery, (ii) drive the per-step cost down so it no longer depends on $n$, and (iii) come with a guarantee that the cheapened evaluation is almost as accurate as the expensive one it replaces.
 
 ## Background
 
@@ -30,25 +30,23 @@ is not. Evaluating it each step requires lifting $\mathbf{V}_k\tilde{\mathbf{y}}
 
 **POD-Galerkin reduced-order model.** Core idea: $\mathbf{y}\approx\mathbf{V}_k\tilde{\mathbf{y}}$, project to get $\dot{\tilde{\mathbf{y}}}=\tilde{\mathbf{A}}\tilde{\mathbf{y}}+\mathbf{V}_k^\top\mathbf{F}(\mathbf{V}_k\tilde{\mathbf{y}})$, with $\mathbf{V}_k$ the leading POD modes of solution snapshots. It reduces the *number of variables* optimally and handles linear/bilinear terms perfectly (their reduced operators are precomputed $k\times k$/$k\times k\times k$ tensors). **Gap:** for a general nonlinearity the term $\mathbf{V}_k^\top\mathbf{F}(\mathbf{V}_k\tilde{\mathbf{y}})$ costs $\mathcal{O}(\alpha(n)+4nk)$ per step and the Newton Jacobian $\mathcal{O}(\alpha_d(n)+4nk+2nk^2)$ — both still depend on $n$, so per-step cost is not reduced and can exceed the (sparse) full model.
 
-**Empirical interpolation method (EIM, Barrault–Maday–Nguyen–Patera 2004).** Core idea: approximate a non-affine parametrized function by greedily building basis functions $q_1,\dots,q_M$ and interpolation points $t_1,\dots,t_M$, matching the function at the $t_i$ via a (lower-triangular) interpolation system, the next point chosen at the largest current residual. Only $M$ point-evaluations of the function are needed, restoring offline/online separation. **Gap:** it is posed in a continuous function space with its own greedy basis construction; it is not expressed as a clean discrete matrix factorization on $\mathbb{R}^n$, and it is not connected to the optimal POD basis of the discrete nonlinear snapshots nor accompanied by a sharp finite-dimensional error bound in terms of the orthogonal-projection error.
+**Empirical interpolation method (EIM, Barrault–Maday–Nguyen–Patera 2004).** Core idea: approximate a non-affine parametrized function by greedily building basis functions $q_1,\dots,q_M$ and interpolation points $t_1,\dots,t_M$, matching the function at the $t_i$ via a (lower-triangular) interpolation system, the next point chosen at the largest current residual. Only $M$ point-evaluations of the function are needed, restoring offline/online separation. **Gap:** it is posed in a continuous function space with its own greedy basis construction, leaving its relation to the discrete reduced-order setting on $\mathbb{R}^n$ — where snapshots are already compressed by POD and accuracy is measured against the SVD spectrum — unaddressed; its error analysis is likewise continuous-function-space, not a finite-dimensional statement.
 
 **Gappy POD (Everson & Sirovich 1995).** Core idea: fit POD coefficients to the observed entries of a partially known vector by least squares over a mask, $\hat{\mathbf{b}}=(\boldsymbol{\Theta}^\top\boldsymbol{\Theta})^{-1}\boldsymbol{\Theta}^\top\mathbf{y}$ with $\boldsymbol{\Theta}$ the observed rows of the basis. It shows a full field can be recovered from few samples in a tailored basis. **Gap:** the choice of which entries to keep (the mask) is left to random or ad-hoc sub-sampling, there is no principled selection of the sample locations and no guarantee on the conditioning of $\mathbf{M}=\boldsymbol{\Theta}^\top\boldsymbol{\Theta}$; and it targets reconstructing a sampled field, not cheapening a nonlinear term inside reduced dynamics.
-
-**Orthogonal projection of the nonlinear term onto a POD basis.** Core idea: build a second POD basis $\mathbf{U}\in\mathbb{R}^{n\times m}$ for the *nonlinear* snapshots $\{\mathbf{F}(\mathbf{y}_j)\}$ and replace $\mathbf{F}$ by its best $m$-term approximation $\mathbf{U}\mathbf{U}^\top\mathbf{F}$ in that subspace. This is the most accurate $m$-dimensional approximation of $\mathbf{F}$ from $\mathrm{Range}(\mathbf{U})$. **Gap:** computing the coefficients $\mathbf{U}^\top\mathbf{F}(\mathbf{V}_k\tilde{\mathbf{y}})$ still requires *all $n$* entries of $\mathbf{F}$, so the $\mathcal{O}(\alpha(n))$ evaluation cost is not removed at all — it merely moves the bottleneck.
 
 ## Evaluation settings
 
 The natural yardsticks are discretized nonlinear PDEs whose reduced models would be benchmarked on accuracy of the reduced trajectory and on per-step (or per-Newton-iteration) cost versus the full model and versus plain POD-Galerkin, as the reduced dimensions vary.
 
-- **Unsteady 1-D nonlinear reaction–diffusion (neuron modeling, FitzHugh–Nagumo).** Coupled PDEs $\varepsilon v_t=\varepsilon^2 v_{xx}+f(v)-w+c$, $w_t=bv-\gamma w+c$, cubic nonlinearity $f(v)=v(v-0.1)(1-v)$, on $x\in[0,L]$ with $L=1$, $\varepsilon=0.015$, $b=0.5$, $\gamma=2$, $c=0.05$, stimulus $i_0(t)=50000\,t^3e^{-15t}$ entering through the Neumann boundary $v_x(0,t)=-i_0(t),\,v_x(L,t)=0$, zero initial data. Finite-difference discretization gives a system of the form $\dot{\mathbf{y}}=\mathbf{A}\mathbf{y}+\mathbf{F}(\mathbf{y})$ of full dimension $n=1024$; snapshots are taken at 100 equally spaced times over $t\in[0,8]$; the solution exhibits a limit cycle in the $v$–$w$ phase plane. Metrics: relative error of the reduced trajectory and scaled CPU time per semi-implicit/backward-Euler time step, as functions of the POD dimension $k$ and the nonlinear-approximation dimension $m$.
+- **Unsteady 1-D nonlinear reaction–diffusion (neuron modeling, FitzHugh–Nagumo).** Coupled PDEs $\varepsilon v_t=\varepsilon^2 v_{xx}+f(v)-w+c$, $w_t=bv-\gamma w+c$, cubic nonlinearity $f(v)=v(v-0.1)(1-v)$, on $x\in[0,L]$ with $L=1$, $\varepsilon=0.015$, $b=0.5$, $\gamma=2$, $c=0.05$, stimulus $i_0(t)=50000\,t^3e^{-15t}$ entering through the Neumann boundary $v_x(0,t)=-i_0(t),\,v_x(L,t)=0$, zero initial data. Finite-difference discretization gives a system of the form $\dot{\mathbf{y}}=\mathbf{A}\mathbf{y}+\mathbf{F}(\mathbf{y})$ of full dimension $n=1024$; snapshots are taken at 100 equally spaced times over $t\in[0,8]$; the solution exhibits a limit cycle in the $v$–$w$ phase plane. Metrics: relative error of the reduced trajectory and scaled CPU time per semi-implicit/backward-Euler time step, as the reduced dimension is varied.
 - **Steady parametrized 2-D nonlinear problem.** A nonlinear elliptic equation $-\nabla^2 u(x,y)+s(u(x,y);\mu)=100\sin(2\pi x)\sin(2\pi y)$ on $\Omega=(0,1)^2$, with homogeneous Dirichlet boundary condition, parameter $\mu=(\mu_1,\mu_2)\in[0.01,10]^2$, and $s(u;\mu)=\frac{\mu_1}{\mu_2}(e^{\mu_2u}-1)$. A $50\times50$ finite-difference grid gives $n=2500$ unknowns; Newton's method solves the full and reduced steady systems, with the reduced Jacobian assembled each iteration. Metrics: relative error and scaled CPU time per Newton iteration versus the reduced dimensions, using training snapshots over a parameter grid and a separate parameter test set.
-- **Nonlinear-function approximation tests.** Parametrized scalar functions sampled on 1-D and 2-D grids: $s(x;\mu)=(1-x)\cos(3\pi\mu(x+1))e^{-(1+x)\mu}$ on $x\in[-1,1]$, $\mu\in[1,\pi]$, $n=100$ points; and $s(x,y;\mu)=((x-\mu_1)^2+(y-\mu_2)^2+0.1^2)^{-1/2}$ on $\Omega=[0.1,0.9]^2$, $\mu\in[-1,-0.01]^2$, $n=400$ points. Snapshots are built on a training parameter set and accuracy is measured on a different, larger test set. Metrics: average approximation error of the interpolated function versus the orthogonal-projection error and versus the analytic error bound, as the number of points $m$ grows.
+- **Nonlinear-function approximation tests.** Parametrized scalar functions sampled on 1-D and 2-D grids: $s(x;\mu)=(1-x)\cos(3\pi\mu(x+1))e^{-(1+x)\mu}$ on $x\in[-1,1]$, $\mu\in[1,\pi]$, $n=100$ points; and $s(x,y;\mu)=((x-\mu_1)^2+(y-\mu_2)^2+0.1^2)^{-1/2}$ on $\Omega=[0.1,0.9]^2$, $\mu\in[-1,-0.01]^2$, $n=400$ points. Snapshots are built on a training parameter set and accuracy is measured on a different, larger test set. Metrics: average approximation error of the reduced function representation on the test set as the number of retained modes grows, against the best achievable rank-$m$ fit as a reference.
 
-Throughout, the singular-value spectrum of the snapshot matrices sets the achievable reduced dimensions, and the number $m$ of interpolation points is paired with the nonlinear-basis dimension.
+Throughout, the singular-value spectrum of the snapshot matrices sets the achievable reduced dimensions.
 
 ## Code framework
 
-The pieces that already exist are a truncated SVD for POD, a small dense linear solver, Galerkin projection for the linear operator, and a time-stepping loop. The open slots are the row-selection rule for interpolation, the small constant operators assembled from those rows, and the reduced right-hand side that evaluates the nonlinear function only through the selected entries.
+The pieces that already exist are a truncated SVD for POD, a small dense linear solver, Galerkin projection for the linear operator, and a time-stepping loop. What remains open is how to assemble and evaluate the reduced nonlinear term so that the per-step cost no longer depends on $n$.
 
 ```python
 import numpy as np
@@ -63,22 +61,12 @@ def galerkin(A, Vk):
     return Vk.T @ A @ Vk                          # k x k, precomputed once
 
 
-def select_interpolation_dofs(U):
-    """Given a collateral basis U (n x m), return m row indices for interpolation."""
-    # TODO: choose rows so the interpolation matrix is well-conditioned
-    pass
-
-
-def assemble_reduced_operators(A, Vk, U, idx):
-    """Build the constant operators for a reduced nonlinear model."""
+def reduced_nonlinear_model(A, Vk, SF, F):
+    """Offline: build whatever constant operators are needed from the state basis Vk
+       and the nonlinear snapshots SF = {F(y_j)}, and return a reduced right-hand
+       side rhs(y_red, t) whose per-step cost does not depend on n."""
     At = galerkin(A, Vk)
-    # TODO: build the coupling from U and the selected rows, plus sampled rows of Vk
-    pass
-
-
-def reduced_rhs(y_red, t, At, coupling, sample_basis, F_sample):
-    """Evaluate the reduced right-hand side using sampled nonlinear values."""
-    # TODO: sample the reduced state, evaluate the nonlinear function there, and combine
+    # TODO: assemble and evaluate the reduced nonlinear term n-independently
     pass
 
 

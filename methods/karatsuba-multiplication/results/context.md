@@ -34,7 +34,7 @@ where the high parts `a₁, b₁` and low parts `a₂, b₂` each have about `m`
 ```
 a·b = a₁b₁·B²ᵐ + (a₁b₂ + a₂b₁)·Bᵐ + a₂b₂ .
 ```
-This rewrites one `n`-digit multiplication as four `m`-digit multiplications — `a₁b₁`, `a₁b₂`, `a₂b₁`, `a₂b₂` — plus shifts (multiplication by powers of `B`, i.e. digit placement) and additions, all `O(n)`. The corresponding squaring split, `a = a₁·Bᵐ + a₂`, gives `a² = a₁²·B²ᵐ + 2a₁a₂·Bᵐ + a₂²`, three pieces of which the cross term `2a₁a₂` is the troublesome one.
+This rewrites one `n`-digit multiplication as four `m`-digit multiplications — `a₁b₁`, `a₁b₂`, `a₂b₁`, `a₂b₂` — plus shifts (multiplication by powers of `B`, i.e. digit placement) and additions, all `O(n)`. The corresponding squaring split, `a = a₁·Bᵐ + a₂`, gives `a² = a₁²·B²ᵐ + 2a₁a₂·Bᵐ + a₂²`, with the cross term `2a₁a₂` sitting at the middle place value.
 
 ## Baselines
 
@@ -46,7 +46,7 @@ This rewrites one `n`-digit multiplication as four `m`-digit multiplications —
 ```
 T(n) = 4·T(n/2) + O(n) ,
 ```
-the `O(n)` being the combine cost. Solving: `log₂ 4 = 2`, so `T(n) = Θ(n²)`. Gap: this is the decisive baseline — divide-and-conquer *by itself buys nothing*. Four sub-problems of half the size still total `n²` work, exactly the schoolbook cost, with the recursion overhead paid for no asymptotic reward. Any improvement must cut the *number* of sub-multiplications, not merely rearrange them.
+the `O(n)` being the combine cost. Solving: `log₂ 4 = 2`, so `T(n) = Θ(n²)`. Gap: divide-and-conquer *by itself buys nothing*. Four sub-problems of half the size still total `n²` work, exactly the schoolbook cost, with the recursion overhead paid for no asymptotic reward; the exponent is fixed at `log₂ 4 = 2` by the four sub-multiplications, and the linear recombination never affects it.
 
 ## Evaluation settings
 

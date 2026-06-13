@@ -18,9 +18,9 @@ The clinical promise is enormous: because there is essentially no dose past the 
 
 **Why proton plans are fragile — range and setup uncertainty.** The proton range in a patient is not known exactly. The dominant source is the conversion of CT Hounsfield units to proton stopping powers, which carries an uncertainty on the order of a few percent of the range (commonly quoted around 3–3.5%, and stress-tested at ±5%); anatomical change, weight change and daily setup also shift the geometry. A range error proportional to the water-equivalent depth slides the whole distal edge forward or backward by several millimetres. Because that distal edge is where the dose gradient is steepest, a small range error converts directly into a large dose error just beyond it. It is a documented pathology that an optimiser, left to its own devices, will deliberately tuck a Bragg peak's distal edge immediately upstream of a serial OAR (such as the spinal cord) to exploit the steep fall-off for sparing — and that this is exactly the configuration that a small overshoot turns into an OAR overdose, or a small undershoot turns into a target cold spot. Steep longitudinal gradients make plans sensitive to range errors; steep lateral gradients make them sensitive to setup errors. A static geometric target margin, which suffices for photons because their dose is nearly shift-invariant, does not rescue protons: a shift *changes the shape* of the deposited dose (peaks move in depth), so a margin-expanded volume does not guarantee coverage under error.
 
-**Multi-field modulation makes this sharper.** When several scanned fields are combined and each field is allowed to be deliberately non-uniform, their individual hot and cold patches are arranged to cancel only in the nominal scenario. Any misalignment between fields — from a range or setup error that affects fields differently — breaks that cancellation, so a fully modulated multi-field plan can be *more* fragile than one in which each field is independently uniform on the target. The redundancy of solutions (many weight vectors give the same nominal dose) is simultaneously the danger (the optimiser picks a fragile one) and the opportunity (some of those solutions are robust, if the planner optimises for it).
+**Multi-field modulation makes this sharper.** When several scanned fields are combined and each field is allowed to be deliberately non-uniform, their individual hot and cold patches are arranged to cancel only in the nominal scenario. Any misalignment between fields — from a range or setup error that affects fields differently — breaks that cancellation, so a fully modulated multi-field plan can be *more* fragile than one in which each field is independently uniform on the target. The redundancy of solutions (many weight vectors give the same nominal dose) is what lets the optimiser pick a fragile member of that set in the first place — the same nominal dose is reachable by many differently-fragile weight vectors.
 
-**Ways to account for uncertainty in the optimisation.** Two framings exist for folding error into planning. A probabilistic framing assigns a probability to each error scenario (a given range shift / setup shift) and optimises the *expected* value of the objective over the scenario distribution. A worst-case framing assumes the error lies in some bounded uncertainty set and optimises the *worst* scenario in that set (a min–max problem). Both require evaluating the dose under several error scenarios at each optimisation step.
+**Where the nominal scaffold stalls under uncertainty.** The photon inverse-planning machinery optimises a single dose distribution computed from one influence matrix — the nominal geometry. It has no place to put the fact that the range and setup are uncertain: the optimiser sees one dose and drives it to optimality, with no knowledge that the delivered dose may differ. Folding the documented range/setup fragility into the planning objective is the open difficulty, and any attempt to do so has to contend with the cost of repeatedly recomputing dose under shifted geometry.
 
 ## Baselines
 
@@ -30,11 +30,11 @@ The clinical promise is enormous: because there is essentially no dose past the 
 
 **Lower-dimensional proton intensity modulation.** Intermediate schemes modulate intensity within a field in fewer than three dimensions — e.g. 2-D modulation of the proximal weights while leaving the depth-stack fixed, or modulating only across fields. Core idea: a restricted set of the spot weights is free. Gap: with many fields these restricted schemes are nearly as good as full modulation, but as the number of fields is reduced only full 3-D modulation of every individual Bragg spot preserves both target homogeneity and OAR sparing — so the restricted schemes cannot deliver the conformality that few-field, complex-geometry cases demand.
 
-**Static-margin (PTV-based) proton planning.** Expand the clinical target by a geometric margin, then plan to cover the expanded volume in the nominal scenario. Core idea: borrow the photon CTV→PTV margin recipe. Gap: protons' dose is not shift-invariant, so a geometric margin does not translate into dose robustness; coverage under a range or setup error is not guaranteed, motivating optimisation that reasons about scenarios explicitly rather than about a margin.
+**Static-margin (PTV-based) proton planning.** Expand the clinical target by a geometric margin, then plan to cover the expanded volume in the nominal scenario. Core idea: borrow the photon CTV→PTV margin recipe. Gap: protons' dose is not shift-invariant, so a geometric margin does not translate into dose robustness; coverage under a range or setup error is not guaranteed, leaving the margin recipe inadequate for protons.
 
 ## Evaluation settings
 
-The natural yardstick is a planning CT of a real anatomy with the target volume(s) and OARs contoured, a small set of beam directions (gantry angles), and a prescription dose to the target plus dose limits on each OAR. Plans are judged on dose-volume histograms of target and OARs — target homogeneity and coverage, OAR mean/max dose and volume-above-threshold — and on conformity, as a function of the number of fields used. Robustness is assessed by recomputing the planned dose under a battery of error scenarios (range over/undershoot of a few percent; isocentre setup shifts of a few millimetres along each axis) and inspecting the spread of the resulting DVHs — the worst-case and band of curves across scenarios — rather than the nominal curve alone. Representative sites are those where a serial OAR sits immediately behind the target (skull-base and paraspinal tumours near the brainstem or spinal cord, head-and-neck), where the distal-edge fragility bites hardest. Optimisation cost (time to solve, number of scenarios that must be evaluated per iteration) is itself a reported quantity.
+The natural yardstick is a planning CT of a real anatomy with the target volume(s) and OARs contoured, a small set of beam directions (gantry angles), and a prescription dose to the target plus dose limits on each OAR. Plans are judged on dose-volume histograms of target and OARs — target homogeneity and coverage, OAR mean/max dose and volume-above-threshold — and on conformity, as a function of the number of fields used. Robustness is assessed by recomputing the planned dose under a battery of error scenarios (range over/undershoot of a few percent; isocentre setup shifts of a few millimetres along each axis) and inspecting the spread of the resulting DVHs — the worst-case and band of curves across scenarios — rather than the nominal curve alone. Representative sites are those where a serial OAR sits immediately behind the target (skull-base and paraspinal tumours near the brainstem or spinal cord, head-and-neck), where the distal-edge fragility bites hardest. Optimisation cost (time to solve, memory, per-iteration work) is itself a reported quantity.
 
 ## Code framework
 
@@ -44,13 +44,12 @@ The primitives are those already standard in beamlet-based inverse planning: a p
 import numpy as np
 from scipy.optimize import minimize
 
-# P_scenarios : list of sparse dose-influence matrices, one matrix per geometry.
+# P           : sparse dose-influence matrix (dose per unit spot weight, per voxel).
 # structures  : list of dicts with voxel indices, role, and objective objects.
 
 class DoseObjective:
-    def __init__(self, penalty=1.0, robustness="none"):
+    def __init__(self, penalty=1.0):
         self.penalty = penalty
-        self.robustness = robustness
 
     def value(self, dose):
         raise NotImplementedError          # TODO
@@ -59,40 +58,25 @@ class DoseObjective:
         raise NotImplementedError          # TODO
 
 class DoseProjection:
-    def __init__(self, P_scenarios, scenario_prob=None, P_expected=None, omega=None):
-        self.P = P_scenarios
-        self.scenario_prob = scenario_prob
-        self.P_exp = P_expected
-        self.omega = omega
+    def __init__(self, P):
+        self.P = P
 
-    def dose(self, scen, w):
-        return self.P[scen] @ w
+    def dose(self, w):
+        return self.P @ w
 
-    def expected_dose(self, w):
-        return self.P_exp @ w
+    def back_project(self, dose_grad):
+        return self.P.T @ dose_grad
 
-    def back_project(self, scen, dose_grad):
-        return self.P[scen].T @ dose_grad
-
-    def back_project_prob(self, dose_grad, omega_grad):
-        return self.P_exp.T @ dose_grad + 2.0 * omega_grad
-
-def max_value_and_weights(values, max_approx="logsumexp"):
-    # TODO: combine competing scalar objective values and return
-    #       both the combined value and the weights for their gradients.
+def objective_and_gradient(w, projection, structures):
+    # TODO: evaluate structure objectives on the dose and
+    #       return (objective_value, weight_gradient).
     pass
 
-def objective_and_gradient(w, projection, structures, scenarios, max_approx="logsumexp"):
-    # TODO: evaluate structure objectives, combine scenario contributions,
-    #       and return (objective_value, weight_gradient).
-    pass
-
-def plan(P_scenarios, structures, n_spots):
+def plan(P, structures, n_spots):
     w0 = np.ones(n_spots)
     bounds = [(0.0, None)] * n_spots
-    projection = DoseProjection(P_scenarios)
-    scenarios = list(range(len(P_scenarios)))
-    res = minimize(lambda x: objective_and_gradient(x, projection, structures, scenarios),
+    projection = DoseProjection(P)
+    res = minimize(lambda x: objective_and_gradient(x, projection, structures),
                    w0, jac=True, bounds=bounds, method="L-BFGS-B")
     return res.x
 ```

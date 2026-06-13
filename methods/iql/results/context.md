@@ -157,9 +157,8 @@ class GaussianPolicy(nn.Module):
         pass
 
 
-def value_objective(q_target, v_pred):
-    # TODO: a regression target for V that estimates the value of the *best
-    #       in-data action* at each state, WITHOUT a max over actions
+def value_objective(*args):
+    # TODO: a value-training objective
     pass
 
 

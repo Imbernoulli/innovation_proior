@@ -16,7 +16,7 @@ The obvious move is to keep the pre-trained unimodal models **frozen**. Freezing
 
 **The diagnostic that motivates a new bridge.** Methods that condition a frozen (or lightly tuned) language model on images existed, and they all leaned on a single training signal — an **image-to-text generation loss**: feed the image (as soft prompts or via inserted cross-attention) and ask the language model to produce the caption. This is the most natural objective, but it turns out to be *insufficient on its own* to bridge the modality gap when the language model is frozen — generation alone does not force the visual representation into a form that aligns tightly with language, leaving the LLM struggling to ground its output in the image. That gap — generation-only is not enough — is the empirical fact a better bridge has to answer.
 
-**The information-bottleneck idea.** A frozen image encoder emits a large, variable-length grid of features (hundreds of patch tokens, each high-dimensional). Most of that is irrelevant to any given piece of text. If a small module could distill those features down to a *fixed, small* set of vectors carrying exactly the text-relevant visual information, it would (i) be cheap to feed into the LLM, and (ii) remove distracting visual detail before it reaches the frozen LLM, reducing the alignment burden. The device for turning a variable-size feature set into a fixed number of outputs already existed: a small set of **learned latent queries** that cross-attend to the encoder's features (as in Perceiver, Jaegle et al. 2021, and the object queries of DETR, Carion et al. 2020) — the number of outputs is just the number of learned queries, independent of input resolution.
+**The shape of the visual input.** A frozen image encoder emits a large, variable-length grid of features (hundreds of patch tokens, each high-dimensional), and the count changes with image resolution. Most of that grid is irrelevant to any given piece of text. Feeding the full grid into a frozen LLM is both expensive (cross-attention or prefixing over hundreds of visual tokens, per example) and noisy. Available in the toolbox are architectures that map a variable-size set of features to a fixed-size set of outputs via cross-attention with a learned, fixed-count set of latent vectors (e.g. Perceiver, Jaegle et al. 2021; the object queries of DETR, Carion et al. 2020).
 
 ## Baselines
 
@@ -34,7 +34,7 @@ The natural yardsticks are the established vision-language benchmarks. **Visual 
 
 ## Code framework
 
-What already exists: a paired `(image, text)` dataloader; a **pre-trained, frozen** vision encoder that maps an image to a grid of visual features; a **pre-trained, frozen** language model with its own text-token embedding space and an autoregressive (or prefix) language-modeling loss; a standard transformer block (self-attention + cross-attention + feed-forward, as in BERT) to initialize a small trainable module from; and an AdamW optimizer with a cosine schedule. What is open: the design of the lightweight trainable bridge between the two frozen models, how it is supervised so the visual representation aligns with language, and how its output is handed to the frozen language model.
+What already exists: a paired `(image, text)` dataloader; a **pre-trained, frozen** vision encoder that maps an image to a grid of visual features; a **pre-trained, frozen** language model with its own text-token embedding space and an autoregressive (or prefix) language-modeling loss; a standard transformer block (self-attention + cross-attention + feed-forward, as in BERT) to initialize a small trainable module from; and an AdamW optimizer with a cosine schedule. What is open: the design of the lightweight trainable bridge between the two frozen models, and how it is trained so that the frozen language model can consume and reason over its output.
 
 ```python
 import torch.nn as nn
@@ -47,35 +47,19 @@ class VisionLanguageBridge(nn.Module):
     """The small trainable module between the two frozen models."""
     def __init__(self, transformer_block):
         super().__init__()
-        # TODO: what trainable inputs/parameters turn a variable-size visual
-        #       feature grid into a fixed, small set of language-relevant vectors?
-        # TODO: how does this module take in text as well, so it can be supervised
-        #       to make the visual representation align with language?
-        pass
-
-    def extract_visual(self, image_features, text=None):
-        # TODO: produce a small fixed-size visual representation from the frozen
-        #       encoder's features (optionally conditioned on text)
+        # TODO: design the trainable bridge
         pass
 
 
-def representation_objective(bridge, image_features, text):
-    # TODO: how should a frozen image encoder + this bridge be supervised so the
-    #       extracted visual representation carries the information in the text?
-    pass
-
-
-def generative_objective(bridge, image_features, text, frozen_llm):
-    # TODO: how is the bridge's visual representation handed to a frozen LLM so the
-    #       LLM can generate text grounded on the image?
+def bridge_objective(bridge, image_features, text, frozen_llm=None):
+    # TODO: how should the bridge be trained so that, from the frozen encoder's
+    #       features, it produces something the frozen LLM can ground its text on?
     pass
 
 
 def train(bridge, dataloader, frozen_image_encoder, frozen_llm, optimizer):
     for image, text in dataloader:
         image_features = frozen_image_encoder(image)      # no grad
-        loss = representation_objective(bridge, image_features, text)   # stage 1
-        # ... later ...
-        # loss = generative_objective(bridge, image_features, text, frozen_llm)  # stage 2
+        loss = bridge_objective(bridge, image_features, text, frozen_llm)
         optimizer.zero_grad(); loss.backward(); optimizer.step()
 ```

@@ -62,17 +62,15 @@ backpropagation gives the per-layer gradient as a single outer product,
 
     ∇_{W_i} L = g_i ā_{i-1}ᵀ,    g_i = D s_i,
 
-of the backpropagated pre-activation gradient `g_i` and the forward activation `ā_{i-1}`. This
-rank-one structure of each layer's gradient is the central fact the field had not yet exploited for
-curvature.
+of the backpropagated pre-activation gradient `g_i` and the forward activation `ā_{i-1}`.
 
 **Inverse covariances are sparse even when covariances are not.** There is a classical link
 (Pourahmadi, 1999, 2011) between the inverse of a covariance matrix and linear regression: row `i`
 of `Σ⁻¹` is, up to scale, the coefficients of the best linear predictor of variable `i` from the
 others, so `Σ⁻¹ = D⁻¹(I − B)`. Entries of `Σ⁻¹` are small wherever a variable is not *useful* for
-predicting another. This is why an inverse can have a much sparser effective structure (block
-diagonal, or tree/tridiagonal) than the dense matrix it inverts — a fact about precision matrices
-and tree-structured Gaussian graphical models (Bishop, 2006).
+predicting another. This is why an inverse can have a much sparser effective structure than the
+dense matrix it inverts — a fact about precision matrices and Gaussian graphical models
+(Bishop, 2006).
 
 **The Kronecker product.** For `A ∈ ℝ^{m×n}`, `A ⊗ B` is the block matrix `[A]_{ij} B`. The
 identities that make it useful here are `(A⊗B)(C⊗D) = AC⊗BD`, `(A⊗B)⁻¹ = A⁻¹⊗B⁻¹`,

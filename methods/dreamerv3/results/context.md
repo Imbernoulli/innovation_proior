@@ -27,10 +27,9 @@ milestone). Returns can be unimodal or multimodal. Observations can be pixels wh
 fine detail matters or 3D scenes full of irrelevant texture. A loss scale, a KL
 weight, an entropy coefficient, or a value-prediction parameterization that is correct
 for one regime is wrong for another. The question is whether a fixed algorithm can be
-made **scale-invariant and self-balancing** enough that the same numbers work
-everywhere — and whether that can be done on top of a world-model agent, which already
-promises strong sample efficiency but has historically been the *most* fragile family
-to get working.
+made robust enough that the same numbers work everywhere — and whether that can be done
+on top of a world-model agent, which already promises strong sample efficiency but has
+historically been the *most* fragile family to get working.
 
 ## Background
 
@@ -185,11 +184,9 @@ The pieces below already exist as standard primitives: the RSSM world model
 an observation-conditioned posterior), convolutional and MLP encoders/decoders, dense
 prediction heads, reparameterized / straight-through sampling, a routine that turns
 $k$-step returns into a $\lambda$-return, and a replay buffer with an environment loop.
-What does *not* yet exist is how to make every objective in this agent
-**scale-invariant and self-balancing** so that one configuration works across domains:
-how to parameterize the prediction and value heads, how to balance the latent KL, how
-to set the actor's exploration trade-off, and how to clip and apply gradients without a
-per-domain threshold.
+What does *not* yet exist is whatever lets one fixed configuration of this agent learn
+across all the domains above — the parts that today have to be retuned whenever the
+domain changes.
 
 ```python
 # --- existing primitives ---------------------------------------------------
@@ -214,32 +211,21 @@ def lambda_return(reward, value, cont, bootstrap, lambda_):
 
 optimizer = SomeOptimizer(lr)   # a standard adaptive optimizer (exists)
 
-# --- the slots the method will fill ----------------------------------------
-def transform_target(y):
-    # TODO: a fixed, scale-robust transform so one loss works across
-    #       targets spanning orders of magnitude (and its inverse for readout)
-    raise NotImplementedError
-
-class ScalarHead:
-    # TODO: how to parameterize reward/value heads so the gradient size is
-    #       decoupled from the (possibly huge, possibly tiny) target size
-    def pred(self, feat): raise NotImplementedError
-    def loss(self, feat, target): raise NotImplementedError
+# --- the slot the method will fill -----------------------------------------
+# TODO: whatever it takes so that ONE fixed configuration of the agent below
+#       learns across all the domains above. The world model, its losses, the
+#       prediction/value heads, the imagined-rollout actor-critic update, and
+#       the gradient step are all in play; today each carries numbers that have
+#       to be retuned per domain.
 
 def world_model_loss(model, batch):
     # reconstruct inputs/reward/continue; KL between posterior and prior
-    # TODO: how to balance and floor the KL so one weight works whether the
-    #       scene is texture-rich 3D or a static-background game
     raise NotImplementedError
 
 def actor_critic_loss(traj, actor, critic):
     # imagined rollout -> lambda-returns -> actor and critic losses
-    # TODO: how to set the exploration/return trade-off with a fixed entropy
-    #       scale, invariant to arbitrary reward rescaling
     raise NotImplementedError
 
 def apply_gradients(loss, params):
-    # TODO: clip and apply gradients with a threshold that does not depend on
-    #       the loss scale, so loss weights can change without retuning
     raise NotImplementedError
 ```

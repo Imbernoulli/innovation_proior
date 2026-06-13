@@ -45,7 +45,7 @@ line variables, one can minimize over `l_{st}` analytically and remove it. For e
 `min_{l∈{0,1}} [ (u_s−u_t)²(1−l) + α l ] = min( (u_s−u_t)², α )`. The smoothness term becomes a sum
 of *truncated quadratics* `g(t) = min(t², α)` in the gradient `t = u_s−u_t`: quadratic for small gradient, but capped at `α`
 once the gradient exceeds a threshold, at which point the bond contributes a constant and the edge is
-free. This is the *weak string* (1D) / *weak membrane* (2D) energy. It is the right cost — and it is
+free. This is the *weak string* (1D) / *weak membrane* (2D) energy. It is
 non-convex: the cap is where the local minima come from.
 
 **Robust statistics and influence functions (Huber 1981; Hampel et al. 1986).** Independently, the
@@ -62,9 +62,9 @@ estimators push further: their influence `ψ(x) → 0` as `|x|→∞`, so a suff
 Lorentzian `ρ = log(1 + ½(x/σ)²)`, Tukey's biweight, and Geman–McClure `ρ(x)=x²/(1+x²)`. All
 redescending norms are non-convex.
 
-So the two traditions meet on the same object. Preserving discontinuities (line process eliminated)
-and rejecting outliers (redescending M-estimator) both demand a cost that is quadratic near zero and
-flattens far away — and both pay for the strength of that rejection with non-convexity.
+So both traditions arrive at non-convexity from their own direction: preserving discontinuities (line
+process eliminated) and rejecting outliers (redescending M-estimator) each pay for the strength of
+that rejection with a cost whose minima are no longer easy to reach by descent.
 
 **The IRLS view (Beaton & Tukey 1974).** An M-estimate is commonly computed by iteratively
 reweighted least squares: at each step, weight residual `x` by `z = ρ'(x)/(2x)` and solve a weighted
@@ -129,7 +129,7 @@ squares and by convex robust estimators under the same contamination.
 The pieces that already exist: a way to assemble and solve a (weighted) least-squares problem for the
 outlier-free model, a residual evaluation, a robust error norm with a control on its shape, and an
 outer loop that adjusts that control. The open slots are the one-parameter family of costs (from a
-convex member to the true robust cost), the per-point weight/outlier update, and the continuation
+convex member to the true robust cost), the per-point weight update, and the continuation
 loop that ties them together.
 
 ```python
@@ -145,9 +145,9 @@ def weighted_least_squares(A, y, w):
 
 
 def robust_weight_update(r2, mu, barc2):
-    """Per-measurement weight w_i in [0,1] minimizing the dual outlier process
-    for the surrogate cost at control value `mu`, given squared residuals r2."""
-    # TODO: closed-form weight for the chosen robust cost / surrogate
+    """Per-measurement weight w_i in [0,1] for the surrogate cost at control
+    value `mu`, given squared residuals r2."""
+    # TODO
     raise NotImplementedError
 
 

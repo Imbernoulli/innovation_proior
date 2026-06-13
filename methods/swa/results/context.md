@@ -10,7 +10,7 @@ The question is whether there is a training procedure that ends at a *more centr
 
 **Averaging the iterates.** In convex optimization, averaging the points visited by SGD has a long history: Ruppert (1988) and Polyak & Juditsky (1992) showed that averaging SGD iterates (with a decaying step size) provably accelerates convergence. This is rarely used to train neural nets; practitioners instead sometimes keep an *exponentially decaying* running average of the weights alongside a *decaying* learning rate, which merely smooths the SGD trajectory and performs about the same as plain SGD — no real generalization gain.
 
-**Constant-learning-rate SGD as sampling.** Mandt et al. (2017) showed that, under simplifying assumptions, SGD with a *constant* learning rate behaves like sampling from a Gaussian centered at the loss minimum, with covariance controlled by the learning rate. A consequence: the sampled iterates from a high-dimensional Gaussian concentrate near the surface of an ellipsoid, or a sphere after whitening by the covariance, so each individual sample is on the periphery; the center of that set (higher density, more central) is not itself visited but could be reached by averaging.
+**Constant-learning-rate SGD as sampling.** Mandt et al. (2017) showed that, under simplifying assumptions, SGD with a *constant* learning rate behaves like sampling from a Gaussian centered at the loss minimum, with covariance controlled by the learning rate. A consequence: the sampled iterates from a high-dimensional Gaussian concentrate near the surface of an ellipsoid, or a sphere after whitening by the covariance, so each individual sample is on the periphery; the higher-density center of that set is not itself visited on any single step.
 
 **Cyclical learning rates and fast ensembling.** Garipov et al. (2018) found that local optima of deep nets are connected by simple curves of near-constant loss (mode connectivity), and built Fast Geometric Ensembling (FGE): run SGD with a *cyclical* learning rate to generate a sequence of weight-space points that are close together but produce *diverse* predictions, then ensemble those predictions — yielding a strong ensemble in the wall-clock time of training a single model. FGE's proposals sit on the *periphery* of the set of good weights. Smith (2017) introduced cyclical learning rates for exploration. The relevant supporting components — batch normalization (Ioffe & Szegedy 2015), which keeps running activation statistics collected during training — also figure in.
 
@@ -59,8 +59,6 @@ def train_tail(model, loader, loss_fn, optimizer, tail_epochs,
             optimizer.zero_grad()
             loss_fn(model(x), y).backward()
             optimizer.step()
-            # TODO: decide whether this tail iterate affects the returned weights.
-        # TODO: decide whether the epoch end changes the returned weights.
-    # TODO: decide whether the returned model needs refreshed model state.
+    # TODO: decide what this tail phase returns.
     return model
 ```

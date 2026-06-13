@@ -8,13 +8,13 @@ The cut value of a graph measures its weakest point: the fewest edges whose remo
 
 ## Background
 
-**The handshake identity and the single-vertex cut.** Two elementary facts about any undirected graph bound the min cut from above. First, summing degrees double-counts edges: Σ_{u} deg(u) = 2m, so the average degree is 2m/n. Second, isolating a single vertex u on one side gives a valid cut of value exactly deg(u). Therefore the global min-cut value k satisfies k ≤ deg(u) for *every* u, hence k ≤ (average degree) = 2m/n. Rearranged, this says any graph whose min cut is k must be reasonably dense: m ≥ nk/2. These are the only structural facts the randomized approach will lean on, and they are knowable from the degree sequence alone.
+**The handshake identity and the single-vertex cut.** Two elementary facts about any undirected graph bound the min cut from above. First, summing degrees double-counts edges: Σ_{u} deg(u) = 2m, so the average degree is 2m/n. Second, isolating a single vertex u on one side gives a valid cut of value exactly deg(u). Therefore the global min-cut value k satisfies k ≤ deg(u) for *every* u, hence k ≤ (average degree) = 2m/n. Rearranged, this says any graph whose min cut is k must be reasonably dense: m ≥ nk/2. These structural facts are knowable from the degree sequence alone.
 
-**Cuts are sparse relative to the whole graph.** The same inequality, read the other way, says the cut edges are a *small fraction* of all edges: at most k of the m ≥ nk/2 edges cross a given min cut, so a uniformly random edge crosses it with probability at most k/m ≤ 2/n. As n grows, an arbitrary edge is overwhelmingly *internal* to one side of any fixed min cut. This sparsity — "the min cut is a needle, the bulk of the graph is hay" — is the latent structure that a method could try to exploit, but flow-based algorithms make no use of it.
+**Cuts are sparse relative to the whole graph.** The same inequality, read the other way, says the cut edges are a *small fraction* of all edges: at most k of the m ≥ nk/2 edges cross a given min cut, so a uniformly random edge crosses it with probability at most k/m ≤ 2/n. As n grows, an arbitrary edge is overwhelmingly *internal* to one side of any fixed min cut. This sparsity — "the min cut is a needle, the bulk of the graph is hay" — is a structural fact about the instance; flow-based algorithms compute as if every edge mattered equally and make no use of it.
 
-**Merging vertices as a decision primitive.** Searching for a cut is, operationally, deciding for each pair of vertices whether they land on the same side or opposite sides. There is an operation that *commits* to "same side": **edge contraction**. Contracting an edge {u, v} replaces u and v with a single supernode whose incident edges are the union of u's and v's; any edge that ran between u and v becomes a self-loop and is discarded, while edges to a common neighbor w become **parallel edges** and are kept. Contraction shrinks the vertex set by one and turns a graph into a *multigraph* (parallel edges carry the multiplicity that records how many original edges run between two supernodes). Crucially, a cut of the contracted multigraph corresponds exactly to a cut of G that keeps every contracted pair together — so contraction never *invents* small cuts: the min cut of the contracted graph is always ≥ the min cut of G, and equals it precisely when no contracted edge crossed the original min cut.
+**Edge contraction.** A standard graph operation, used for instance inside the deterministic-contraction baseline below. Contracting an edge {u, v} replaces u and v with a single supernode whose incident edges are the union of u's and v's; any edge that ran between u and v becomes a self-loop and is discarded, while edges to a common neighbor w become **parallel edges** and are kept. Contraction shrinks the vertex set by one and turns a graph into a *multigraph* (parallel edges carry the multiplicity that records how many original edges run between two supernodes).
 
-**Spanning-tree machinery already exists.** Minimum spanning tree algorithms (Kruskal's, with union-find) process edges in weight order and merge components, which is structurally the same "commit two vertices to the same side" move as contraction. Decades of optimization have made union-find and MST near-linear. Any cut method phrased in terms of edge-by-edge merging could in principle borrow this machinery.
+**Spanning-tree machinery already exists.** Minimum spanning tree algorithms (Kruskal's, with union-find) process edges in weight order and merge components as they go. Decades of optimization have made union-find and MST near-linear.
 
 ## Baselines
 
@@ -30,7 +30,7 @@ The natural yardstick is correctness probability against the true global min cut
 
 ## Code framework
 
-The primitives that already exist: an adjacency-multigraph representation (a map from supernode to a list of incident supernodes, with parallel edges as repeats and no self-loops), a way to sample from a finite weighted list, the contraction operation that merges two supernodes, a routine to read off the crossing-edge count when two supernodes remain, and an outer loop that repeats a randomized run and keeps the best. The open slots are the edge-selection rule inside contraction, the repeated one-shot driver, the candidate-producing driver, and the amplified driver.
+The primitives that already exist: an adjacency-multigraph representation (a map from supernode to a list of incident supernodes, with parallel edges as repeats and no self-loops), a way to sample from a finite weighted list, the contraction operation that merges two supernodes, and a routine to read off the crossing-edge count when two supernodes remain. The open slot is the driver that turns these primitives into an algorithm for the global minimum cut.
 
 ```python
 import copy
@@ -45,9 +45,9 @@ def contract(graph, t):
     appear as repeated neighbors, self-loops are never stored.
     Returns the contracted multigraph (still has t supernodes).
     """
-    # TODO: copy the graph, choose edges with the distribution the
-    # analysis requires, merge endpoints, drop self-loops, keep
-    # parallel edges, and return the contracted graph.
+    # TODO: copy the graph, choose which edges to contract, merge
+    # endpoints, drop self-loops, keep parallel edges, and return
+    # the contracted graph.
     pass
 
 
@@ -57,21 +57,8 @@ def cut_value(g):
     pass
 
 
-def repeated_contraction_cut(graph, trials):
-    """Repeat a complete randomized contraction and keep the smallest cut."""
-    # TODO: decide how a one-shot run is sampled and amplified.
-    pass
-
-
-def candidate_cut(graph):
-    """Produce one candidate cut value."""
-    # TODO: decide whether the candidate comes from a complete run,
-    # a partial run, or another control structure.
-    pass
-
-
-def amplified_min_cut(graph, trials):
-    """Repeat the candidate driver and keep the smallest cut."""
-    # TODO: choose the number of repetitions from the success bound.
+def min_cut(graph):
+    """Return the value of a global minimum cut of graph."""
+    # TODO: build an algorithm on top of the primitives above.
     pass
 ```

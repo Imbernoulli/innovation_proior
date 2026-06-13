@@ -19,9 +19,9 @@ performance depends on θ in a tangled way — θ changes which actions are take
 which states are visited, which changes the rewards, and the distribution over states the agent
 spends its time in is itself a function of θ and of the unknown environment. If computing the
 gradient required knowing how that state distribution shifts when θ changes, gradient ascent
-would be hopeless to estimate from sampled experience. A solution would have to deliver a
-gradient *estimable from trajectories the agent generates by acting*, with no model of the
-environment and no derivative of the unknown state-visitation distribution.
+would be hopeless to estimate from sampled experience. To be usable at all, whatever gradient
+expression one ends up with must be *estimable from trajectories the agent generates by acting*,
+with no model of the environment.
 
 ## Background
 
@@ -64,9 +64,7 @@ before the policy is changed.
 gradient of an expectation taken over a parameterized distribution: ∇_θ ∫ P_θ(x) f(x) dx
 = ∫ P_θ(x) ∇_θ log P_θ(x) f(x) dx, because ∇_θ P_θ = P_θ ∇_θ log P_θ. The gradient becomes an
 expectation under the *same* distribution, so it can be estimated by sampling. A companion
-fact: E_{x∼P_θ}[∇_θ log P_θ(x)] = 0, since ∫ P_θ = 1 has zero gradient. This is the lever that,
-applied to a policy, might let one differentiate performance without differentiating the
-environment.
+fact: E_{x∼P_θ}[∇_θ log P_θ(x)] = 0, since ∫ P_θ = 1 has zero gradient.
 
 ## Baselines
 
@@ -173,11 +171,9 @@ def policy_performance_gradient(traj, policy, value=None):
        that makes gradient ascent on long-run reward feasible, and the
        role (if any) of the value estimate.
 
-       Open questions this slot must resolve:
+       Open question this slot must resolve:
          - does the estimate need the derivative of the state-visitation
            distribution (which we cannot sample)?            # TODO
-         - what return / value signal multiplies grad_log_prob?  # TODO
-         - can a state-dependent baseline be subtracted for free?  # TODO
     """
     raise NotImplementedError  # TODO
 

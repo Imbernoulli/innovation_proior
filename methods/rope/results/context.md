@@ -30,7 +30,7 @@ p_{i,2t}   = sin( i / 10000^{2t/d} )
 p_{i,2t+1} = cos( i / 10000^{2t/d} )
 ```
 
-Each pair of dimensions `(2t, 2t+1)` is a sinusoid whose wavelength runs geometrically from `2*pi` up to roughly `10000 * 2*pi`. This is a multi-resolution "clock": fast hands resolve nearby positions, slow hands carry coarse global position. A property worth flagging, because it will matter later: shifting the position by a fixed `k` acts on each `(sin, cos)` pair as a *fixed linear map* — a rotation by `k` times that pair's angular frequency. Relative structure is already latent inside sinusoids; it is simply never used as the mechanism — the encoding is added, then the network is left to discover the relationship.
+Each pair of dimensions `(2t, 2t+1)` is a sinusoid whose wavelength runs geometrically from `2*pi` up to roughly `10000 * 2*pi`. This is a multi-resolution "clock": fast hands resolve nearby positions, slow hands carry coarse global position. The encoding is added to the embedding, and the relationship between positions is left for the network to discover from the absolute signals.
 
 **Learned absolute encoding (BERT, GPT, ALBERT, ELECTRA).** Replace the fixed `p_i` with a trainable vector per index, up to a maximum length `L`. Flexible, but caps length at `L` and learns nothing for positions beyond it.
 
@@ -90,7 +90,7 @@ Minimal and effective. Gap: `b_{m,n}` is a learned lookup, not a closed form, an
 
 **DeBERTa (He et al., 2020) and related (Ke et al. 2020; Huang et al. 2020).** Keep the two "content x position" cross terms with relative embeddings `p~_{m-n}`, argue those carry the relative information; drop or restructure the rest. Same shared limitation: position is an additive term in the expanded logit, tied to the `N x N` matrix, parameterized by learned relative tables/biases.
 
-**The pattern across all relative baselines.** Every one of them *starts from "add a position vector, then expand the dot product"* and then edits the resulting terms to look relative. None of them derives a position transform from the requirement of relative dependence; none expresses position as a per-token, parameter-free, norm-preserving map; and none is compatible with linear attention, because the relative signal always ends up inside the pairwise logit matrix.
+**The pattern across all relative baselines.** Every one of them *starts from "add a position vector, then expand the dot product"* and then edits the resulting terms to look relative. Every one parameterizes the relative signal with a learned table or a learned bias rather than a closed form; and none is compatible with linear attention, because the relative signal always ends up inside the pairwise logit matrix.
 
 ## Evaluation settings
 

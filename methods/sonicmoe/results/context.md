@@ -38,7 +38,7 @@ The natural yardstick is per-layer training of decoder MoE language models, swee
 
 ## Code framework
 
-A standard MoE module needs a router, per-expert up/down projections, routing metadata, grouped GEMM, and token-wise aggregation. The empty bodies below are the computation slots that will determine which tensors are cached and how the grouped operations are scheduled.
+A standard MoE module needs a router, per-expert up/down projections, routing metadata, grouped GEMM, and token-wise aggregation. The empty bodies below are the computation slots to fill in.
 
 ```python
 import torch
@@ -71,7 +71,7 @@ def routing_metadata(indices, E):
 class _UpProjection(torch.autograd.Function):
     @staticmethod
     def forward(ctx, x, w1, expert_offsets, x_gather_idx, reverse_scatter_idx, token_offsets):
-        # TODO: grouped up-projection and activation; decide cached tensors.
+        # TODO: grouped up-projection and activation.
         raise NotImplementedError
 
     @staticmethod

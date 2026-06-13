@@ -40,12 +40,10 @@ certifies no improving 3-opt move remains cubic. Moving to 4-opt increases the w
 factor of `n`, and the benefit is not predictable enough to justify a fixed 4-opt sweep as the
 default.
 
-A second ingredient is an arithmetic pruning fact. If a cyclic list of gains has positive total
-sum, then some rotation of that list has every partial sum positive. Rotate to begin just after a
-place where the prefix sum is minimal; every prefix after that rotation lies above the minimum.
-This matters because an edge-exchange move can be viewed as a cyclic sequence of broken-edge gains
-minus added-edge costs. It gives a principled reason to search only chains whose running cumulative
-gain stays positive.
+A second ingredient is an elementary arithmetic fact about cyclic sequences of real numbers. If a
+cyclic list has positive total sum, then some rotation of that list has every partial sum positive:
+rotate to begin just after a place where the prefix sum is minimal, and every prefix after that
+rotation lies above the minimum.
 
 ## Baselines
 

@@ -18,7 +18,7 @@ Because the layers are length-agnostic, sequential order has to be injected expl
 
 **The diagnostic finding that frames everything.** A transformer LM with the standard added position signal, trained at $L$ and then evaluated at $L+k$, improves perplexity only for very small $k$ (a few dozen tokens) and then *degrades sharply* as $k$ grows. The model does not gracefully use the extra length; it breaks. The cause is traceable to the position mechanism: at positions beyond $L$, the position signal the model is asked to interpret is one it never saw during training — it is out of distribution. The model has learned responses tuned to the specific signals occurring in $[0, L)$, and the new signal lies outside that support. Holding the architecture, data, seed, and training budget fixed and changing *only* the position method changes the extrapolation behavior — which pins the failure on the position representation, not on the transformer as such.
 
-A second, more architectural observation matters for the design space. In the original added-signal scheme, position information is mixed into the *values* and thus flows into every layer's output. In some later relative schemes, position influences only the query–key comparison (the attention weights) and never the values, so the attention output — a weighted average of value vectors — carries no explicit absolute-position component. Segregating position out of the values in this way appears to help a model tolerate lengths it did not train on.
+A second, more architectural observation matters for the design space. In the original added-signal scheme, position information is mixed into the *values* and thus flows into every layer's output. In some later relative schemes, position influences only the query–key comparison (the attention weights) and never the values, so the attention output — a weighted average of value vectors — carries no explicit absolute-position component.
 
 ## Baselines
 
@@ -42,7 +42,7 @@ The ladder, then: extrapolation is demonstrably reachable by swapping the positi
 
 ## Code framework
 
-The pre-existing pieces are a decoder-only (causal) transformer LM and its training/eval harness. The open slot is the additive attention mask: it already enforces causality, and the design work is to decide whether that same score-level object can also carry the missing order information.
+The pre-existing pieces are a decoder-only (causal) transformer LM and its training/eval harness. The open slot is how order is represented; the harness below leaves it unfilled.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -82,7 +82,7 @@ class DecoderLayer(nn.Module):
 
 def build_attn_mask(seq_len, n_heads, device=None):
     causal = torch.triu(torch.full((seq_len, seq_len), float("-inf"), device=device), diagonal=1)
-    # TODO: decide whether the additive score mask should contain any order signal.
+    # TODO: decide how order information should be represented.
     return causal
 
 class LMModel(nn.Module):

@@ -12,14 +12,12 @@ inputs that trigger it are contrived and apparently never occur. Average-case an
 expected-polynomial running time, but only on inputs drawn from idealized random distributions
 that look nothing like the linear programs people actually solve.
 
-The question is therefore: **is there a mode of analysis, sitting between worst-case and
-average-case, under which one can prove that the simplex method runs in polynomial time on
-inputs that resemble the ones that arise in practice — and which actually explains, rather than
-explains away, the discrepancy between the exponential worst case and the everyday speed?** A
-satisfactory answer would have to (i) retain an adversary, so it is not merely average-case in
-disguise, (ii) account for the fact that real data carry small amounts of noise from
-measurement and finite precision, and (iii) be quantitative — a running-time bound expressed in
-the problem dimensions and the magnitude of that noise.
+The question is therefore: **is there a mode of analysis under which one can prove that the
+simplex method runs in polynomial time on inputs that resemble the ones that arise in practice —
+and which actually explains, rather than explains away, the discrepancy between the exponential
+worst case and the everyday speed?** One empirical fact about the inputs people actually solve is
+that real data carry small amounts of noise from measurement and finite precision, so the
+contrived inputs that trigger the exponential worst case never occur exactly.
 
 ## Background
 
@@ -61,9 +59,9 @@ under spherically symmetric inputs. A second model, initiated independently by H
 and Adler (1983) and developed by Todd, Adler–Megiddo, and Adler–Karp–Shamir, took the *maximum*
 over constraint matrices A of the expected number of steps when the *directions* of the
 inequalities are flipped at random; they proved an expected linear (and later quadratic) number
-of steps. The Haimovich–Adler model — a max over an average — is in spirit a precursor to what is
-needed here, but the random re-orientation of inequalities cannot be read as a small perturbation:
-different sign choices give radically different programs. The deeper objection applies to all of
+of steps. In the Haimovich–Adler model the random re-orientation of inequalities cannot be read as
+a small modification of a fixed input: different sign choices give radically different programs,
+not nearby ones. The deeper objection applies to all of
 these: their conclusions are dominated by "random-looking" inputs, and as Edelman observed, "it
 is a mistake to psychologically link a random matrix with the intuitive notion of a typical
 matrix." A spherically symmetric or random-sign input has special structure with overwhelming
@@ -85,12 +83,11 @@ is then at most the number of edges of the shadow polygon. The shadow-vertex rul
 running time to a single geometric quantity — the size of a two-dimensional shadow of the
 polyhedron.
 
-**A discrete precedent for perturbing an adversarial input.** The idea of softening a worst-case
-adversary by random modification has a discrete analog in the semi-random source model of
-Santha and Vazirani: an adversary fixes an input and each bit is independently flipped with some
-probability. Blum–Spencer, Feige–Krauthgamer, and Feige–Kilian used such models to give
-algorithms that succeed on semi-random graph inputs. This is the same shape of idea — an
-adversary, then noise — carried over from discrete bits to continuous real data.
+**A discrete model of randomly modifying an input.** The semi-random source model of Santha and
+Vazirani fixes an input adversarially and then independently flips each bit with some probability.
+Blum–Spencer, Feige–Krauthgamer, and Feige–Kilian used such models to give algorithms that succeed
+on semi-random graph inputs. These models live in the discrete world of bits rather than
+continuous real data.
 
 ## Baselines
 
@@ -112,12 +109,12 @@ adversary, then noise — carried over from discrete bits to continuous real dat
   step bounds for Lemke's algorithm under rotationally invariant inputs, with Megiddo
   sharpening Smale's bound dramatically. *Gap:* same reliance on a global random model.
 
-- **Haimovich–Adler random-sign model (max over A of an average).** Fix the constraint matrix
+- **Haimovich–Adler random-sign model.** Fix the constraint matrix
   adversarially, randomize the inequality directions, and bound the expected number of parametric
-  steps (linear, later quadratic). *Gap:* the randomization is not a perturbation — flipping
-  inequality senses yields a different program, not a nearby one — so it does not model "the real
-  input, slightly noised," and the geometric step-count results were not turned into a complete
-  algorithm that knows where to start.
+  steps (linear, later quadratic). *Gap:* flipping inequality senses yields a different program,
+  not a nearby one, so the random programs it averages over bear no controlled relation to the
+  fixed input; and the geometric step-count results were not turned into a complete algorithm that
+  knows where to start.
 
 - **Polynomial-time LP algorithms (ellipsoid, interior-point).** Khachiyan and Karmarkar give
   genuine worst-case polynomial bounds in d, n, L. *Gap:* ellipsoid is slow in practice;
@@ -130,16 +127,12 @@ The object of study is a linear program max zᵀx s.t. Ax ≤ y with A ∈ ℝ^{
 n > d ≥ 3. The natural complexity measure is the number of pivot steps (vertices visited) taken
 by a given simplex pivot rule, since per-step linear-algebra cost is a fixed polynomial. The
 geometric proxy for the shadow-vertex rule is the number of edges of the shadow — the projection
-of the feasible polyhedron onto the plane spanned by the two objective vectors. The natural noise
-model on continuous data is Gaussian perturbation: for an abstract real input x, analyze
-x + σ‖x‖g with g a vector of independent standard Gaussians; for LP data, perturb every entry of
-A and y by independent Gaussians of standard deviation σ·max_i‖(y_i, a_i)‖, so the model is
-scale-free. The relevant regimes are σ → 0 (the perturbation vanishes and one is back to
-worst-case), σ large (the perturbation swamps the input and one is back to Borgwardt's average
-case), and the interesting middle, σ small relative to the data — corresponding to imprecision in
-the low-order digits. The yardsticks the new measure must recover at its two extremes are exactly
-worst-case step count and Borgwardt's average-case bound. The canonical adversarial stress test is
-the Klee–Minty cube and its relatives, on which the unperturbed simplex method visits
+of the feasible polyhedron onto the plane spanned by the two objective vectors. To model the noise
+in continuous real data, the available perturbation tool adds independent Gaussian noise to the LP
+data: every entry of A and y is perturbed by independent Gaussians of standard deviation
+σ·max_i‖(y_i, a_i)‖, so the model is scale-free. The regime of interest is σ small relative to the
+data — corresponding to imprecision in the low-order digits. The canonical adversarial stress test
+is the Klee–Minty cube and its relatives, on which the unperturbed simplex method visits
 exponentially many vertices.
 
 ## Code framework
@@ -171,7 +164,7 @@ def gaussian_perturbation(lp, sigma, rng):
 
 def pivot_rule(lp, basis, state):
     """Choose the next vertex/basis from the current one.
-    TODO: the pivot rule whose pivot sequence we can characterize geometrically."""
+    TODO: supply a pivot rule."""
     pass
 
 def solve(lp):
@@ -181,8 +174,8 @@ def solve(lp):
     pass
 
 def geometric_step_proxy(lp, t, z):
-    """The geometric quantity that upper-bounds the pivot count for the rule above.
-    TODO: define and measure it (the size of a 2-D projection of the polytope)."""
+    """A geometric quantity that can be measured for an analysis of the pivot count.
+    TODO: define and measure it."""
     pass
 
 def perturbed_pivot_measurement(lp0, sigma, rng, trials):

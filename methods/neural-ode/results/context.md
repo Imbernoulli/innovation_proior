@@ -14,17 +14,17 @@ which lets gradients flow through very deep stacks. But this discrete-stack desi
 
 A separate but related question comes from density modeling. Likelihood-based models that transform a simple base distribution through an invertible map must, by the change-of-variables formula, evaluate the **log-determinant of the transformation's Jacobian** — a cubic-cost operation in the dimension. The whole design space of such models is contorted to keep that determinant cheap. A solution would have to avoid the determinant bottleneck while keeping exact likelihoods and easy sampling.
 
-The goal: a model whose hidden state evolves as the solution of a learned differential equation, evaluated by a numerical solver, that trains in memory **independent of depth**, **adapts its computation** per input, and whose density transformation **avoids the Jacobian-determinant cost**. The central difficulty is computing gradients: differentiating through a numerical solver's internal steps would store everything (defeating the memory goal) and would bake the solver's internal numerical error into the gradient.
+The goal: a deep model that trains in memory **independent of depth**, **adapts its computation** to the difficulty of each input rather than spending a fixed hand-set number of steps, and whose density transformation **avoids the Jacobian-determinant cost** — while keeping exact likelihoods and easy sampling. These three desiderata cut against the discrete-stack design above, and it is not obvious whether one model can satisfy all of them at once or how it would be trained.
 
 ## Background
 
-**Residual networks (He et al. 2016) and their differential-equation reading.** The identity-skip update h_{t+1} = h_t + f(h_t, θ_t) is what makes very deep networks trainable. Several lines of work (Lu et al. 2017, "Beyond Finite Layer Neural Networks"; Haber & Ruthotto 2017, "Stable Architectures for Deep Neural Networks"; Ruthotto & Haber 2018) observed that this update is exactly the forward Euler discretization of a continuous dynamical system: writing the update with a step size Δt gives h_{t+Δt} = h_t + Δt·f(h_t,θ_t), which approximates dh/dt = f(h,t,θ). As the network gets deeper and each step smaller, the chain of hidden states traces the solution of that differential equation. This reframing was used mainly to analyze stability and to motivate reversible architectures; it had not been taken to its limit by replacing the discrete stack with an actual numerical integrator.
+**Residual networks (He et al. 2016) and their differential-equation reading.** The identity-skip update h_{t+1} = h_t + f(h_t, θ_t) is what makes very deep networks trainable. Several lines of work (Lu et al. 2017, "Beyond Finite Layer Neural Networks"; Haber & Ruthotto 2017, "Stable Architectures for Deep Neural Networks"; Ruthotto & Haber 2018) observed that this update is exactly the forward Euler discretization of a continuous dynamical system: writing the update with a step size Δt gives h_{t+Δt} = h_t + Δt·f(h_t,θ_t), which approximates dh/dt = f(h,t,θ). As the network gets deeper and each step smaller, the chain of hidden states traces the solution of that differential equation. This reframing was used mainly to analyze stability and to motivate reversible architectures; in those works the network itself remained a discrete stack of hand-set depth.
 
 **Numerical solvers for initial value problems.** Given dh/dt = f(h,t,θ) and an initial h(t₀), a solver produces h(t₁) = h(t₀) + ∫_{t₀}^{t₁} f dt. Euler's method is the simplest and least accurate. Over a century of development (Runge 1895; Kutta 1901; Dormand–Prince; Hairer, Nørsett & Wanner 1987) produced high-order Runge–Kutta methods and implicit multistep methods (the Adams/BDF families in LSODE/VODE). Modern adaptive solvers estimate the local truncation error at each step (e.g. by comparing two embedded methods of different order), shrink or grow the step to keep the error under a user tolerance, and thereby decide on the fly how many times to evaluate f. Implicit methods solve a nonlinear system per step and are more stable, but their internal iterations make direct differentiation through the solver awkward.
 
 **Existence and uniqueness.** Picard's theorem (Coddington & Levinson 1955) guarantees that an initial value problem has a unique solution when f is uniformly Lipschitz in h and continuous in t. Standard networks with finite weights and Lipschitz nonlinearities (tanh, relu) satisfy this.
 
-**Sensitivity analysis: how to differentiate an ODE solution.** Two classical routes exist. **Forward sensitivity** propagates the derivative of the state with respect to parameters, ∂h/∂θ, alongside the state; its cost is quadratic in the number of variables. The **adjoint sensitivity method** (Pontryagin 1962) instead introduces an auxiliary "adjoint" variable and solves a second differential equation **backwards in time**, obtaining all gradients in memory and time linear in the state size, treating the forward solver as a black box. The adjoint approach had been proposed for continuous-time networks decades earlier (LeCun 1988; Pearlmutter 1995) but not demonstrated as a practical training method.
+**Sensitivity analysis: how to differentiate an ODE solution.** The classical literature on differentiating the solution of an initial value problem with respect to its parameters (Pontryagin 1962; and, for continuous-time networks specifically, LeCun 1988; Pearlmutter 1995) offers more than one route. **Forward sensitivity** propagates the derivative of the state with respect to parameters, ∂h/∂θ, alongside the state; its cost is quadratic in the number of variables, which is prohibitive for a large hidden state. Other routes exist but had not been turned into a practical training method for the kind of model at issue here.
 
 **The memory problem and reversibility.** Reversible residual networks (Gomez et al. 2017, RevNet; Chang et al. 2017; Haber & Ruthotto 2017) attack the same O(L) memory cost by making each block analytically invertible — partition the hidden units into two groups and use a coupling structure so activations can be recomputed on the backward pass rather than stored, giving constant memory in depth. The recomputation trick works, but only for the restricted coupled architecture.
 
@@ -58,7 +58,7 @@ Computing that log-determinant is O(D³) in general, the dominant bottleneck. Th
 
 ## Code framework
 
-The primitives below already exist: a base layer/module abstraction, an optimizer, an autodiff engine that provides reverse-mode gradients and **vector-Jacobian products** for any differentiable function, and a standard training loop. The contribution will be filled into the empty stubs — a transformation that maps an input hidden state to an output, the rule for getting gradients through it, and the way a density is carried through it.
+The primitives below already exist: a base layer/module abstraction, an optimizer, an autodiff engine that provides reverse-mode gradients and **vector-Jacobian products** for any differentiable function, a numerical initial-value-problem solver (`integrate`), and a standard training loop. The contribution will be filled into the empty stubs.
 
 ```python
 import torch
@@ -66,7 +66,6 @@ import torch.nn as nn
 
 
 # A differentiable function of a hidden state, parameterized by a network.
-# (Below it is used inside the transformation we will design.)
 class StateFunction(nn.Module):
     def __init__(self, dim, hidden=64):
         super().__init__()
@@ -79,48 +78,41 @@ class StateFunction(nn.Module):
         return self.net(h)
 
 
-# The black-box numerical primitive the transformation will be built on:
-# given a rule for how a state changes, advance it. Its internals are not
-# differentiated through directly.
+# A numerical solver primitive: given a rule for how a state changes over an
+# independent variable, advance an initial state across a requested span.
 def integrate(state_change_rule, h0, *spec):
-    # TODO: advance h0 according to state_change_rule over the requested span,
-    #       choosing how much work to do to meet a requested accuracy.
+    # TODO: advance h0 according to state_change_rule over the requested span.
     pass
 
 
-# The transformation that replaces a stack of residual blocks. It maps an
-# input hidden state to an output by repeatedly applying a learned update via
-# the differentiable solver above. This is the slot the method occupies.
+# A transformation that maps an input hidden state to an output, intended to
+# replace a stack of residual blocks.
 class HiddenStateTransform(nn.Module):
     def __init__(self, state_fn):
         super().__init__()
         self.state_fn = state_fn
 
     def forward(self, h0):
-        # TODO: produce the output hidden state from h0 using `integrate`
-        #       and `self.state_fn`.
+        # TODO: produce the output hidden state from h0.
         pass
 
 
-# How to get gradients through the transformation without storing the whole
-# forward trajectory. The forward records as little as possible; the backward
-# reconstructs what it needs and accumulates gradients w.r.t. inputs and params.
+# How to get gradients through the transformation, w.r.t. its input and its
+# parameters.
 class TransformGradients(torch.autograd.Function):
     @staticmethod
     def forward(ctx, state_fn, h0, *params):
-        # TODO: run the forward transform, saving minimal state.
+        # TODO: run the forward transform.
         pass
 
     @staticmethod
     def backward(ctx, grad_out):
-        # TODO: recover the needed quantities and return gradients w.r.t.
-        #       h0 and params, using vector-Jacobian products of state_fn.
+        # TODO: return gradients w.r.t. h0 and params.
         pass
 
 
-# A likelihood model that carries a density through the transformation.
-# By the change-of-variables formula, the log-density changes as the state is
-# transformed; the cost of tracking that change is what the method must make cheap.
+# A likelihood model that carries a density through the transformation, using
+# the change-of-variables formula to track how the log-density changes.
 class DensityTransform(nn.Module):
     def __init__(self, state_fn):
         super().__init__()

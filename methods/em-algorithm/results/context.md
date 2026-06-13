@@ -10,7 +10,7 @@ $$g(y \mid \phi) = \int_{\mathcal{X}(y)} f(x \mid \phi)\, dx,$$
 
 where $\mathcal{X}(y)$ is the set of complete data consistent with the observed $y$. I want $\hat\phi = \arg\max_\phi \log g(y\mid \phi)$.
 
-The pain is concrete. Setting $\partial_\phi \log g(y\mid\phi)=0$ produces equations in which the integral (or sum) over the hidden coordinates sits *inside* a logarithm. For a mixture, $\log g = \sum_i \log\sum_k \pi_k\, p_k(y_i)$ — a sum of logs of sums — and the score equations couple every component's parameters to every data point through denominators that themselves depend on the unknowns. There is no closed form. Each specialty had built its own iterative patch for its own version of this; what was missing was a single method, and a guarantee that the patch actually climbs the likelihood it claims to.
+The pain is concrete. Setting $\partial_\phi \log g(y\mid\phi)=0$ produces equations in which the integral (or sum) over the hidden coordinates sits *inside* a logarithm. For a mixture, $\log g = \sum_i \log\sum_k \pi_k\, p_k(y_i)$ — a sum of logs of sums — and the score equations couple every component's parameters to every data point through denominators that themselves depend on the unknowns. There is no closed form. Each specialty had built its own iterative patch for its own version of this, derived independently and stated in its own notation, and in most cases without any proof that the patch actually climbs the likelihood it claims to.
 
 ## Background
 
@@ -20,7 +20,7 @@ The pain is concrete. Setting $\partial_\phi \log g(y\mid\phi)=0$ produces equat
 
 $$\partial_\phi \log g(y\mid\phi) = -E(t\mid\phi) + E(t\mid y,\phi):$$
 
-the marginal score is the difference between the *unconditional* and the *conditional-on-$y$* expectation of the sufficient statistic. R. A. Fisher used the first-derivative form long ago in the context of inefficient statistics; the general identity was written down by Sundberg (1974), who ascribed it to unpublished 1966 lecture notes of Martin-Löf. At a stationary point the two expectations coincide. This identity is the analytic seed: it says the gradient of the hard marginal likelihood is computable from conditional expectations of complete-data statistics.
+the marginal score is the difference between the *unconditional* and the *conditional-on-$y$* expectation of the sufficient statistic. R. A. Fisher used the first-derivative form long ago in the context of inefficient statistics; the general identity was written down by Sundberg (1974), who ascribed it to unpublished 1966 lecture notes of Martin-Löf. At a stationary point the two expectations coincide.
 
 **The "missing information principle" (Orchard & Woodbury 1972).** The intuition, stated qualitatively before it was a theorem: estimate the missing parts of the data by their conditional expectation given what you observed and the current parameters, treat the filled-in data as if real, re-estimate, repeat. Orchard and Woodbury named this the missing information principle and discussed it in a non-exponential-family framework. It was a heuristic recipe without a general proof that the observed-data likelihood improves.
 

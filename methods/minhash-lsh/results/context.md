@@ -21,11 +21,9 @@ Why it matters: a web search engine must purge near-duplicate pages from its ind
 
 **Why exact methods don't scale on either axis.** Computing J(A,B) exactly means intersecting two large sets — O(|A|+|B|) with hashing, and you must hold both sets. Worse, finding *all* similar pairs by computing J for every pair is Θ(N²) intersections; at N = 10⁹ that is 10¹⁸ comparisons, hopeless. The two costs — per-pair set size, and number of pairs — must *both* be attacked.
 
-**Why sampling a few elements is treacherous.** Keeping a uniform random subset of each set and comparing the subsets does not give an unbiased Jaccard estimate in general: the overlap of two independent uniform samples underestimates the overlap of the full sets, because two independently drawn samples rarely sample the *same* shared elements. The fix has to make the two sketches *coordinated* — drawn so that shared elements are sampled consistently across sets — not independently per set.
+**Why sampling a few elements is treacherous.** Keeping a uniform random subset of each set and comparing the subsets does not give an unbiased Jaccard estimate in general: the overlap of two independent uniform samples underestimates the overlap of the full sets, because two independently drawn samples rarely sample the *same* shared elements.
 
-**Hashing manufactures the randomness and the set-invariance.** The recurring device: push every element through a hash function and treat its output as a uniform random value. Because identical elements hash identically, any statistic computed from the *collection* of hashed values is automatically a statistic of the *set* — duplicates land on top of each other and change nothing, and order is irrelevant. Hashing simultaneously supplies the uniform randomness the probability analysis needs and the multiplicity-/order-insensitivity the sketch requires.
-
-**Min-wise independence.** A permutation π of the universe is *min-wise independent* (for the analysis we need) if, for every set X and every x ∈ X, the probability that x attains the minimum of π over X is exactly 1/|X| — every element of X is equally likely to be the one π ranks first. True uniform permutations have this property exactly; in practice it is approximated by hashing, and the approximation is what makes the sketches statistically reliable.
+**Hashing as a source of pseudo-random values.** A standard device: push every element through a hash function and treat its output as a uniform random value. Identical elements hash identically, so the same input always lands on the same value; this is a cheap way to attach a reproducible pseudo-random number to each element of the universe.
 
 **The curse of dimensionality for exact near-neighbor search.** In low dimension, k-d trees and similar space partitions answer nearest-neighbor queries in O(log N). But all such exact structures degrade to a linear scan as dimension grows — known exact data structures that beat the O(dN) scan need space exponential in d. High-dimensional exact NN is, for practical purposes, no better than brute force. The escape is to *approximate*: accept a c-factor slack in the returned distance and ask only for a point within c× the true nearest distance, which makes randomized sublinear-query structures plausible.
 
@@ -33,7 +31,7 @@ Why it matters: a web search engine must purge near-duplicate pages from its ind
 
 **Exact set intersection / inverted-index overlap.** Represent each set explicitly (sorted list, hash set, or posting list) and compute |A∩B| directly. Correct and simple; the core idea is just set intersection, and an inverted index can find sets sharing *any* element. The gap: per pair it costs O(|A|+|B|) and stores the full sets; finding all similar pairs is Θ(N²) intersections, or, via an inverted index, blows up on popular elements that put a huge fraction of the corpus in one posting list (every pair sharing a common stopword-shingle becomes a candidate). It does not give a constant-size sketch and does not bound the candidate count.
 
-**Independent random sampling of each set.** Keep a fixed-size uniform random sample of each set and estimate J from the samples' overlap. Constant-size sketch, cheap to compare — but, as above, two independently drawn samples rarely hit the same shared elements, so the overlap statistic is biased and noisy as an estimate of |A∩B|/|A∪B|. The lesson it leaves: the sketches of two sets must be *coupled through a shared source of randomness*, so that the same elements are selected in both whenever they are present.
+**Independent random sampling of each set.** Keep a fixed-size uniform random sample of each set and estimate J from the samples' overlap. Constant-size sketch, cheap to compare — but, as above, two independently drawn samples rarely hit the same shared elements, so the overlap statistic is biased and noisy as an estimate of |A∩B|/|A∪B|.
 
 **Dimensionality-reduction / random projection for similarity.** Project high-dimensional vectors to a low-dimensional sketch (e.g. random projections preserving Euclidean or angular distance) and compare sketches. This attacks the per-comparison cost and inspires the general idea of a similarity-preserving summary, but the standard projections target ℓ₂/cosine geometry, not the set-theoretic Jaccard resemblance of sparse 0/1 feature sets, and on their own they still leave the Θ(N²) all-pairs problem untouched.
 
@@ -73,7 +71,7 @@ def _false_negative_probability(threshold, b, r):
 
 
 def _optimal_param(threshold, num_perm, false_positive_weight, false_negative_weight):
-    # TODO: search over equal-size slices and choose the best amplification parameters
+    # TODO: choose the index parameters (b, r) for the configured threshold
     pass
 
 class SetSketch:
@@ -122,8 +120,7 @@ class SimilarityIndex:
     """Generate a short candidate list of near-neighbors in sublinear work."""
     def __init__(self, threshold, num_perm=128, weights=(0.5, 0.5), params=None, hashfunc=None):
         self.h = num_perm
-        # TODO: choose how to slice / amplify the sketch so that the
-        #       collision probability is a sharp threshold function of J
+        # TODO: derive (b, r) from the threshold
         if params is None:
             self.b, self.r = _optimal_param(threshold, num_perm, weights[0], weights[1])
         else:

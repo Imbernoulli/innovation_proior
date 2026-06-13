@@ -64,36 +64,29 @@ n-step method is structural: no update can be made for the first n−1 steps, an
 S_t is delayed until time t+n, and the implementation must hold the last n feature vectors
 in memory. And there is no principled way to pick n.
 
-**The eligibility idea (Klopf).** A separate thread, biological in origin, supplies the
-mechanism that will resolve the storage/delay problem. Klopf's heterostatic theory
+**The eligibility idea (Klopf).** A separate thread, biological in origin, exists in the
+literature. Klopf's heterostatic theory
 (A. H. Klopf, *Brain Function and Adaptive Systems — A Heterostatic Theory*, AFCRL-72-0164,
 1972; and his 1982 book) introduced the word *eligibility*: when a synapse is active it
 becomes transiently **eligible** for modification, leaving a decaying trace of its recent
 activity; a later reinforcing signal then modifies every synapse that is currently
 eligible, in proportion to its trace. Credit for an outcome is spread back over the
 recently active connections, fading with how long ago each was active. This is a local,
-online memory of "what was recently responsible," exactly the ingredient missing from a
-forward-looking n-step update — and it is the seed of the short-term trace vector the
-prediction problem needs.
+online memory of "what was recently responsible," developed in a biological setting and not
+connected to the prediction-error methods above.
 
-**The forward exponential-recency weighting (Sutton 1988).** Sutton's *Learning to Predict
-by the Methods of Temporal Differences* (1988) already proposed weighting the credit to
-past predictions by an exponential recency factor λ^k and showed two things that matter
-here. First, that the resulting family — call the members TD(λ) — collapses to the
-Widrow-Hoff/Monte-Carlo rule at λ=1 (its Theorem 1: linear TD(1) makes the same
-per-sequence weight change as Widrow-Hoff) and to pure one-step bootstrapping at λ=0.
-Second, that the exponentially weighted sum of past gradients can be **accumulated
-incrementally**: writing e_t = Σ_{k=1}^t λ^{t−k} ∇P_k, one has e_{t+1} = ∇P_{t+1} + λ e_t,
-so the whole history is carried in a single vector updated in place. Sutton 1988 established
-the family and the incremental trace in the undiscounted prediction setting; what remained
-open, and is the substance here, is the discounted formulation with γ, the precise
-forward-view target the trace is implementing, and a proof that the incremental backward
-mechanism reproduces that forward target exactly.
+**Prior work on a TD–Monte-Carlo family (Sutton 1988).** Sutton's *Learning to Predict
+by the Methods of Temporal Differences* (1988) studied a parameterized family of prediction
+rules spanning the range between one-step bootstrapping and the Widrow-Hoff/Monte-Carlo
+rule, controlled by a single recency parameter, and analyzed it in the undiscounted
+prediction setting. What remained open is the discounted formulation with γ, a precise
+characterization of the forward-view target such a family is implementing, and whether an
+online incremental mechanism can reproduce that target.
 
 **Empirical lay of the land.** On the standard random-walk prediction tasks it is well
 observed that intermediate amounts of bootstrapping — neither pure one-step TD nor pure
 Monte Carlo — give the lowest error, whether the interpolation is controlled by n in
-n-step TD or by an exponential factor. Pure Monte Carlo (the λ=1 / large-n end) tends to do
+n-step TD or by an exponential recency factor. Pure Monte Carlo (the large-n end) tends to do
 poorly; an intermediate setting is best. The pattern motivates wanting a clean, cheap
 interpolation knob.
 
@@ -159,16 +152,16 @@ class IncrementalPredictor:
     def __init__(self, d, gamma, alpha, knob):
         self.w = np.zeros(d)
         self.gamma, self.alpha, self.knob = gamma, alpha, knob
-        # TODO: any per-step auxiliary memory the mechanism needs (must be O(d))
+        # TODO: any per-step auxiliary state the mechanism needs (must be O(d))
         self.reset_episode()
 
     def reset_episode(self):
-        # TODO: initialize the short-term memory at episode start
+        # TODO: re-initialize any per-episode auxiliary state
         pass
 
     def step(self, x_t, r, x_next):
-        # TODO: the credit-assignment update — interpolates TD<->MC online,
-        #       with no n-step buffer. Returns nothing; mutates self.w.
+        # TODO: the online credit-assignment update satisfying (a)-(c) above.
+        #       Returns nothing; mutates self.w.
         raise NotImplementedError
 
 # Training loop is the usual on-policy sweep; only step() is unknown.

@@ -4,7 +4,7 @@ The setting is compressing large pretrained Transformer language models (BERT) f
 
 ## Research question
 
-Magnitude pruning — keep the weights with the largest absolute value, prune the rest — is the standard, and it works very well for models trained from scratch on the end task. But in the *transfer learning* regime it is much less effective, especially at high sparsity. Why, and what should replace it? The crux: when a model is trained from scratch, its final weight values are determined by the end task, so "large weight" genuinely means "important for this task." But when fine-tuning a pretrained model, the weights are *mostly inherited from pretraining* and only nudged by fine-tuning — they stay close to their pretrained values. So which weights end up large is decided largely by pretraining, not by the end task. A magnitude criterion therefore prunes based on pretraining values, and you can predict before fine-tuning even begins which weights it will discard. A solution must let the *fine-tuning process itself* decide which weights to keep — including allowing a weight that is large to be pruned (if fine-tuning drives it toward zero) and a weight that is small to be kept (if fine-tuning drives it away from zero).
+Magnitude pruning — keep the weights with the largest absolute value, prune the rest — is the standard, and it works very well for models trained from scratch on the end task. But in the *transfer learning* regime it is much less effective, especially at high sparsity. Why, and what should replace it? The crux: when a model is trained from scratch, its final weight values are determined by the end task, so "large weight" genuinely means "important for this task." But when fine-tuning a pretrained model, the weights are *mostly inherited from pretraining* and only nudged by fine-tuning — they stay close to their pretrained values. So which weights end up large is decided largely by pretraining, not by the end task. A magnitude criterion therefore prunes based on pretraining values, and you can predict before fine-tuning even begins which weights it will discard — the keep/prune decision is largely settled before the end task is ever seen.
 
 ## Background
 
@@ -20,8 +20,8 @@ Magnitude pruning — keep the weights with the largest absolute value, prune th
 
 ## Baselines
 
-- **Magnitude pruning** (with automated gradual pruning + cubic schedule). Strong at low sparsity (≥70% remaining) on transfer tasks, but degrades fast at high sparsity because the keep/prune decision is essentially fixed by the pretrained values, not the end task.
-- **$L_0$ regularization.** A first-order, learned-mask method that does adapt during fine-tuning, but carries the overhead of the hard-concrete reparameterization and is harder to tune. Leaves open whether a simpler first-order criterion suffices.
+- **Magnitude pruning** (with automated gradual pruning + cubic schedule). The transfer-learning concern is that the keep/prune decision is essentially fixed by the pretrained values, not the end task.
+- **$L_0$ regularization.** A learned-mask method that does adapt during fine-tuning, but carries the overhead of the hard-concrete reparameterization and is harder to tune. Leaves open whether a simpler adaptive criterion suffices.
 - **Learned-score masking on frozen weights** (Piggyback, hidden-networks). Adapt a mask but keep $\mathbf{W}$ fixed — not designed for the fine-tunable-$\mathbf{W}$ transfer setting.
 - **Structured pruning / smaller pretrained models** (LayerDrop; mini-BERT). Remove whole heads/layers or pretrain a smaller model; a different size/speed trade-off than unstructured weight pruning.
 
@@ -33,7 +33,7 @@ Magnitude pruning — keep the weights with the largest absolute value, prune th
 
 ## Code framework
 
-A pruning method is a masked linear layer plus a rule for the scores, the mask, and how scores get gradients. The pre-method scaffold leaves those slots open.
+A pruning method is a masked linear layer plus a rule for the scores, the mask, and how scores get gradients.
 
 ```python
 import torch, torch.nn as nn
@@ -43,27 +43,28 @@ class MaskedLinear(nn.Linear):
     def __init__(self, in_f, out_f, keep_ratio):
         super().__init__(in_f, out_f)
         self.keep_ratio = keep_ratio
-        # TODO: an importance score per weight, of whatever order the method needs.
+        # TODO: an importance score per weight.
         self.score = nn.Parameter(torch.zeros_like(self.weight))  # placeholder slot
 
     def mask_from_scores(self):
-        # TODO: turn scores into a {0,1} mask (e.g. top-v% or threshold) such that
-        #       the chosen importance signal can still receive gradients.
+        # TODO: turn scores into a {0,1} mask while preserving any needed score gradient.
         raise NotImplementedError
 
     def forward(self, x):
         M = self.mask_from_scores()
         return nn.functional.linear(x, self.weight * M, self.bias)
 
-def sparsity_schedule(t, v_i, v_f, t_i, N, dt):
-    # cubic automated-gradual-pruning schedule, already standard
+def sparsity_schedule(t, v_i, v_f, t_i, n_steps, dt, total_steps=None, t_f=0):
+    # cubic automated-gradual-pruning schedule, optionally with cool-down
     if t < t_i: return v_i
-    return v_f + (v_i - v_f) * (1 - (t - t_i) / (N * dt)) ** 3
+    if total_steps is not None and t >= total_steps - t_f: return v_f
+    return v_f + (v_i - v_f) * (1 - (t - t_i - t_f) / (n_steps * dt)) ** 3
 
 # Fine-tuning loop on a pretrained encoder (embeddings frozen).
-def fine_prune(model, loader, opt, total_steps, v_i, v_f, t_i, N, dt):
+def fine_prune(model, loader, opt, total_steps, v_i, v_f, t_i, n_steps, dt, t_f=0):
     for t, (x, y) in zip(range(total_steps), loader):
-        set_keep_ratio(model, 1 - sparsity_schedule(t, v_i, v_f, t_i, N, dt))
+        set_keep_ratio(model, 1 - sparsity_schedule(t, v_i, v_f, t_i, n_steps, dt,
+                                                    total_steps, t_f))
         loss = task_loss(model(x), y)   # (optionally + distillation loss)
         opt.zero_grad(); loss.backward(); opt.step()
     return model

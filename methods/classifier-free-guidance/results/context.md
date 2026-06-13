@@ -16,13 +16,9 @@ So the question is: **is there a sampling-time knob for a conditional diffusion 
 
 **The score interpretation (the load-bearing fact).** This objective is denoising score matching (Vincent 2011; Hyvärinen & Dayan 2005) applied at every noise level (Song & Ermon 2019). Its consequence is that the trained noise predictor is, up to a known scale, the gradient of the log-density of the noisy data:
 `ε_θ(z_λ) ≈ −σ_λ ∇_{z_λ} log p(z_λ)`,
-i.e. the **score** `∇_{z_λ} log p(z_λ) ≈ −ε_θ(z_λ) / σ_λ`. Sampling then resembles Langevin dynamics walking up `∇ log p` across a sequence of noise scales (Song et al. 2020). One caveat: `ε_θ` is an unconstrained neural network, so it is not necessarily the gradient of any scalar potential — the learned vector field need not be conservative.
+i.e. the **score** `∇_{z_λ} log p(z_λ) ≈ −ε_θ(z_λ) / σ_λ`. Sampling then resembles Langevin dynamics walking up `∇ log p` across a sequence of noise scales (Song et al. 2020).
 
 **The conditional case.** For class-conditional generation, the data `x` is drawn jointly with conditioning `c`. The only change is that the network also receives `c`: `ε_θ(z_λ, c) ≈ −σ_λ ∇_{z_λ} log p(z_λ | c)`. Everything above carries over with `p(·)` replaced by `p(· | c)`.
-
-**Bayes' rule relates the conditional, unconditional, and the posterior over labels.** For any joint `p(x, c)`, `p(c | x) = p(x | c) p(c) / p(x)`. Taking the log and the gradient in `x`, the `p(c)` term is constant in `x` and drops:
-`∇_x log p(c | x) = ∇_x log p(x | c) − ∇_x log p(x)`.
-This identity — the gradient of a *classifier's* log-posterior equals the difference between the conditional and unconditional *generative* scores — is the standard bridge between discriminative guidance and generative score models.
 
 **The diagnostic that motivates the problem.** Naive truncation analogues in diffusion (scaling scores, shrinking reverse-process noise) have been measured to degrade quality rather than sharpen it. This is the empirical wall: diffusion lacks a working fidelity knob, even though GANs and flows have one.
 

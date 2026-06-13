@@ -8,7 +8,7 @@ Given only *unpaired* empirical samples of two distributions $X_0\sim\pi_0$ and 
 
 A unifying lens is to represent the transport *implicitly as a continuous-time process* and let a neural network carry the dynamics. Two families dominate.
 
-**Continuous normalizing flows (CNFs).** Model the transport as an ODE $\mathrm{d}Z_t=v(Z_t,t)\,\mathrm{d}t$ with a neural drift $v$. Pushing $\pi_0$ through the ODE induces a density on $Z_1$ whose log-likelihood obeys the instantaneous change-of-variables formula $\frac{\mathrm d}{\mathrm dt}\log\rho_t(Z_t)=-\mathrm{tr}(\partial_z v)$, so the model can be trained by maximum likelihood without restricting the architecture to be analytically invertible. Two facts about ODE flows matter downstream. First, **trajectories of a well-posed ODE cannot cross**: if two solution curves met at a point $(z,t)$ they would have to continue identically (uniqueness), so a single-valued velocity field forces a deterministic, non-crossing flow. Second, the marginal law $\rho_t$ of any process driven by a velocity field $v_t$ satisfies the **continuity (transport) equation** $\partial_t\rho_t+\mathrm{div}(v_t\rho_t)=0$ in the weak sense — equivalently, $\frac{\mathrm d}{\mathrm dt}\mathbb E[h(X_t)]=\mathbb E[\nabla h(X_t)\!\cdot\! v_t(X_t)]$ for test functions $h$ — and under mild regularity this equation has a unique solution for a given initial law. These two classical facts (ODE uniqueness; uniqueness of the continuity-equation solution) are the load-bearing analytic tools.
+**Continuous normalizing flows (CNFs).** Model the transport as an ODE $\mathrm{d}Z_t=v(Z_t,t)\,\mathrm{d}t$ with a neural drift $v$. Pushing $\pi_0$ through the ODE induces a density on $Z_1$ whose log-likelihood obeys the instantaneous change-of-variables formula $\frac{\mathrm d}{\mathrm dt}\log\rho_t(Z_t)=-\mathrm{tr}(\partial_z v)$, so the model can be trained by maximum likelihood without restricting the architecture to be analytically invertible. Two facts about ODE flows matter downstream. First, **trajectories of a well-posed ODE cannot cross**: if two solution curves met at a point $(z,t)$ they would have to continue identically (uniqueness), so a single-valued velocity field forces a deterministic, non-crossing flow. Second, the marginal law $\rho_t$ of any process driven by a velocity field $v_t$ satisfies the **continuity (transport) equation** $\partial_t\rho_t+\mathrm{div}(v_t\rho_t)=0$ in the weak sense — equivalently, $\frac{\mathrm d}{\mathrm dt}\mathbb E[h(X_t)]=\mathbb E[\nabla h(X_t)\!\cdot\! v_t(X_t)]$ for test functions $h$ — and under mild regularity this equation has a unique solution for a given initial law. These are classical facts about ODE flows.
 
 **Diffusion / score-based SDEs.** Define a forward noising SDE $\mathrm{d}U_t=b(U_t,t)\,\mathrm{d}t+\sigma_t\,\mathrm{d}W_t$, typically an Ornstein–Uhlenbeck process, that collapses data into an approximate Gaussian; then learn the time-reversal as a generative SDE. Training reduces to a regression (denoising score matching): along a corruption $V_t=\alpha_t X_1+\beta_t\xi$ with $\xi\sim\mathcal N(0,I)$, a network regresses the noise/score, $\min_v\int_0^1 w_t\,\mathbb E\|v(V_t,t)-Y_t\|^2\mathrm{d}t$, with target $Y_t$ a known linear combination of $V_t$ and $\xi$. The schedules $\alpha_t,\beta_t$ follow from the chosen SDE: the OU drift gives an exponential $\alpha_t=\exp(-\tfrac14 a(1-t)^2-\tfrac12 b(1-t))$ and $\beta_t=\sqrt{1-\alpha_t^2}$ (variance-preserving) or $\beta_t=1-\alpha_t^2$ (sub-variance-preserving), or $\alpha_t=1$ with growing $\beta_t$ (variance-exploding).
 
@@ -54,9 +54,7 @@ class VelocityField(torch.nn.Module):
     def forward(self, x, t):
         raise NotImplementedError
 
-# --- TODO: how to turn an (x0, x1) pair into a regression target for v_theta.
-#     What interpolation between x0 and x1 do we evaluate v on, and what do we
-#     regress it onto? This object is the contribution. ---
+# --- TODO: a training objective that produces v_theta from (x0, x1) pairs. ---
 def transport_loss(model, x0, x1):
     pass  # TODO
 
@@ -65,12 +63,6 @@ def transport_loss(model, x0, x1):
 def integrate(model, z0, N):
     """Integrate dZ_t = model(Z_t, t) dt from t=0 to t=1, returning Z_1."""
     pass  # filled by a standard Euler / RK45 solver once `model` is trained
-
-# --- TODO: an optional outer loop that may re-use the trained flow's own
-#     outputs to produce a better training signal for a refit. Shape unknown
-#     at this point. ---
-def outer_refinement(model, ...):
-    pass  # TODO
 
 # --- known: a standard supervised training loop ---
 def train(model, data_iter, opt):

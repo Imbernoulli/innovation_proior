@@ -99,18 +99,19 @@ The prior methods a new global optimizer would be measured against or built upon
 - **Probability-of-improvement search** (Kushner 1964). Model the 1-D objective as a Wiener
   process; at each step sample the point that maximizes the probability that the new value beats
   the current best, `P(Y(x) < f_min)`, with a parameter that nudges the search "more global" or
-  "more local". Gap: probability of improvement counts *whether* you improve, not *by how much*,
-  so it is biased toward exploitation — it favors points clustered just below the incumbent where
-  a small gain is nearly certain, and the global/local trade-off has to be set by hand and per
-  problem. And it is posed in one dimension on a Wiener model.
+  "more local". Gap: the criterion is observed to be biased toward exploitation — it favors points
+  clustered just below the incumbent where a near-certain but tiny gain is almost guaranteed, and
+  the global/local trade-off has to be set by hand and per problem. And it is posed in one
+  dimension on a Wiener model.
 
-- **Expected-improvement / Bayesian extremum-seeking** (Mockus, Tiesis & Zilinskas 1978;
-  Mockus 1994). Pose global optimization in the random-function framework and score a candidate
-  by the *expected value* of the improvement it would bring, not merely the probability of some
-  improvement — so the magnitude of a potential gain is counted. This is the conceptual seed of an
-  acquisition criterion that balances local and global search on its own. What was missing was a
-  practical surrogate to evaluate it on and a way to optimize the (multimodal) criterion to
-  guaranteed optimality, so the idea had not become a turnkey algorithm with a stopping rule.
+- **Bayesian extremum-seeking / random-function global optimization** (Mockus, Tiesis &
+  Zilinskas 1978; Mockus 1994). Poses global optimization in the random-function framework: treat
+  the unknown objective as a draw from a stochastic process and choose each evaluation by a
+  decision-theoretic criterion over the resulting distribution at a candidate point. This is the
+  general program — a criterion scored against the surrogate's predictive distribution — rather
+  than a worked-out algorithm. What it lacks for an expensive deterministic code is a concrete
+  surrogate to evaluate any such criterion on, a way to optimize the (multimodal) criterion over
+  the box to guaranteed optimality, and a stopping rule; it had not become a turnkey method.
 
 ## Evaluation settings
 

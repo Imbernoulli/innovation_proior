@@ -50,12 +50,11 @@ dependency graph for them. The dependency graph is therefore built from genuine 
 pairwise correlation, and it need not be unique (the complete graph is always valid; the art is to make it
 sparse).
 
-**Conditional probability is the only fine-grained tool available.** When events are dependent, the one exact
-identity that always holds is the chain rule:
+**Exact identities available when events are dependent.** When the bad events are not independent, the product
+formula `∏(1 − P(A_i))` is unavailable, but the chain rule still holds with no independence assumption at all:
 `P(Ā_1 … Ā_n) = P(Ā_1) · P(Ā_2 | Ā_1) · ⋯ · P(Ā_n | Ā_1 … Ā_{n−1})`. The whole product is positive iff every
-factor is, and each factor is `1 − P(A_k | the earlier events did not occur)`. So the real quantity to control
-is not the *unconditional* `P(A_k)` that the union bound uses, but the *conditional* probability of a bad event
-given that some of the others were avoided. That is the object the question must be reduced to.
+factor is, and each factor is `1 − P(A_k | the earlier events did not occur)`. The union bound, by contrast,
+works only with the unconditional `P(A_k)` and throws away which other events were avoided.
 
 **The motivating concrete failure: hypergraph 2-colouring (property B).** A hypergraph is a family of sets
 ("edges") on a vertex set; it is `2`-colourable (has *property B*) if the vertices can be coloured with two

@@ -46,8 +46,7 @@ distinguishes candidate curves.
 - **GELU** `x·Φ(x)` (Hendrycks & Gimpel 2016): smooth, non-monotonic, Gaussian-gated; very similar
   shape to Swish. Gap: like Swish, a single fixed curve in the family; the "best curve and why"
   question is unsettled.
-- **Softplus** `log(1+eˣ)`: smooth, strictly positive, monotonic ReLU-approximation; useful as a
-  building block for smooth gates, not just as a baseline activation.
+- **Softplus** `log(1+eˣ)`: smooth, strictly positive, monotonic ReLU-approximation.
 
 ## Evaluation settings
 
@@ -70,10 +69,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def softplus(x):
-    return F.softplus(x)  # log(1 + exp(x))
-
-
 class SelfGatedActivation(nn.Module):
     """A self-gated pointwise unit: x * h(x) for some smooth scalar gate h.
 
@@ -92,7 +87,6 @@ class SelfGatedActivation(nn.Module):
 # candidate gates the ablation ranges over (forms similar to the incumbents):
 CANDIDATE_GATES = {
     # "name": lambda x: <smooth gate h(x)>,
-    # e.g. smooth bounded transforms of softplus(x) or exp(x)
     # TODO
 }
 ```

@@ -13,16 +13,14 @@ the millions of parameters of a large network directly from reward. In practice
 people fall back on small networks that iterate quickly to a passable policy,
 sacrificing the capacity a big model would bring.
 
-So the precise question is: can the agent's complexity be moved off the
-reward-driven optimization and onto something that can be trained cheaply and at
-scale? A predictive model of the environment can be learned *unsupervised*, purely
-from observed transitions, with plain backpropagation — no credit-assignment
-problem, because the training signal (predict the next frame) is dense and local.
-If most of the agent's capacity lived in such a model, the part that actually has
-to be optimized against reward could be made tiny, and a tiny parameter vector is
-something even a derivative-free optimizer can search. The target environments are
-pixel-based control tasks: a top-down car-racing game with continuous steering /
-gas / brake, and a first-person survival task where the agent dodges projectiles.
+So the precise question is whether a large, expressive predictive model can be
+brought to bear on these tasks at all, given that the reward-driven optimization
+that ultimately has to produce a policy does not scale to a network of that size.
+Prior art that learns such models stalls somewhere between the model and the
+acting agent; it is not obvious how the two should be related so that the hard
+optimization stays tractable. The target environments are pixel-based control
+tasks: a top-down car-racing game with continuous steering / gas / brake, and a
+first-person survival task where the agent dodges projectiles.
 
 ## Background
 
@@ -135,9 +133,7 @@ Gaussians, trained by the negative log-likelihood of the next target under that
 mixture, with a temperature knob on sampling; an environment-rollout loop; and a
 derivative-free evolutionary optimizer that searches a parameter vector using only
 the scalar return of a rollout. What does *not* yet exist is how to wire these into
-an agent: what the controller should look at, how the controller is trained, and
-whether the predictive model can stand in for the real environment during that
-training.
+an agent: what the controller should look at and how it is trained.
 
 ```python
 # --- existing primitives ---------------------------------------------------
@@ -166,12 +162,11 @@ class Controller:
         raise NotImplementedError
 
 def rollout(controller, env, vae, rnn):
-    # TODO: at each step, what features does the controller see (present? future?)
-    #       and how does the recurrent model's state enter?
+    # TODO: at each step, what features does the controller see, and how do the
+    #       vision and recurrent components feed it?
     raise NotImplementedError
 
 def train_controller():
-    # TODO: optimize the controller's parameters against return -- in the real
-    #       environment, or inside the learned predictive model itself?
+    # TODO: optimize the controller's parameters against return
     raise NotImplementedError
 ```

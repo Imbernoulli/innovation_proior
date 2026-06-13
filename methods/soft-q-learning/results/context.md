@@ -32,7 +32,7 @@ Achieving this requires two things at once: (1) an *objective* that rewards stoc
 - **Stochastic policies with simple parametric families** (e.g. conditional Gaussian, as in Rawlik 2012; multinomial in PGQ). Even with a neural network producing the *parameters*, the distribution itself stays unimodal — the representational power is capped by the family, so it cannot capture genuinely multimodal behavior.
 - **Tabular / analytically-normalizable maximum-entropy methods** (Z-learning, MaxEnt IRL, message-passing inference, G-learning). Solve the maximum-entropy problem exactly but only in discrete/tabular settings or with normalizable distributions; they do not scale to high-dimensional continuous spaces with expressive energies.
 
-The common gap: prior continuous methods are either deterministic/unimodal, or capped by a simple distribution family; prior expressive maximum-entropy methods are tabular. Nothing trains an arbitrarily multimodal, neural-network-energy policy in continuous spaces and still samples from it fast enough to act online.
+The common gap: prior continuous methods are either deterministic/unimodal, or capped by a simple distribution family; prior expressive maximum-entropy methods stall at discrete/tabular settings. No existing approach delivers a genuinely multimodal policy in high-dimensional continuous spaces while staying fast enough to act online.
 
 ## Evaluation settings
 

@@ -57,12 +57,10 @@ scaling has a built-in ceiling.
 A second, sharper diagnostic concerns the *interaction* between dimensions. If width is scaled while
 depth and resolution are held at their baseline values, accuracy saturates early. But if the same
 width scaling is applied on top of a network that is *already* deeper and run at *higher* resolution,
-width scaling keeps paying off and reaches markedly higher accuracy at the *same* FLOPS. In other
-words the three dimensions are not independent: a higher-resolution image contains more pixels per
-object, which calls for a larger receptive field (more depth) and more channels (more width) to use
-those pixels. Prior theoretical and empirical work had already noted that depth and width are coupled
-and both matter for expressive power; the open piece was a quantitative relationship spanning all
-three of depth, width, and resolution at once.
+width scaling keeps paying off and reaches markedly higher accuracy at the *same* FLOPS. Prior
+theoretical and empirical work had already noted that depth and width are coupled and both matter for
+expressive power, but stopped at those two dimensions and did not bring resolution into the same
+picture.
 
 Two cheap, near-free architectural primitives underpin efficient modern networks and are part of the
 landscape:

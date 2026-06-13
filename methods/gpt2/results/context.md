@@ -35,15 +35,11 @@ as ("answer the question", document, question, answer). McCann et al. showed a
 single model could be trained to infer and perform many tasks given examples in
 this format — but with explicit supervision.
 
-**The objective-subset observation.** The supervised objective for a task is the
-*same* as the unsupervised language-modeling objective, only evaluated on a subset
-of the sequence (the output tokens). So the global optimum of the unsupervised
-objective is also the global optimum of every such supervised objective. In a
-sufficiently expressive model trained to convergence on enough varied text, the
-task-specific behavior is therefore *contained* in the language-modeling solution —
-the question is whether it can be reached in practice. Preliminary toy experiments
-confirmed that large enough language models begin to perform multitask learning in
-this way, just more slowly than explicit supervision.
+**An empirical observation about scale.** In preliminary toy experiments,
+large enough language models trained on text containing task demonstrations begin
+to perform some of those tasks without explicit supervision, just far more slowly
+than models given explicit supervision — a faint signal whose mechanism and limits
+were not understood.
 
 **Pretraining lineage.** Word vectors transferred to task-specific architectures
 (Mikolov et al. 2013; Collobert et al. 2011); then contextual recurrent
@@ -114,8 +110,8 @@ Wikipedia, are handled by removing that source from training.)
 
 The substrate is a decoder-only Transformer language model and an autoregressive
 cross-entropy objective. What is *not* fixed: the data the model trains on, how raw
-text becomes tokens, and the precise normalization/initialization that lets the
-stack be made very deep. The scaffold leaves those slots.
+text becomes tokens, and the internal arrangement and initialization of the stack.
+The scaffold leaves those slots.
 
 ```python
 import tensorflow as tf, numpy as np
@@ -133,8 +129,7 @@ def mlp(x, scope, n_state, *, hparams):          # position-wise FFN, 4x inner (
     ...
 
 def block(x, scope, *, past, hparams):
-    # TODO: in what order do normalization, attention, MLP, and the residual adds go,
-    #       so the stack stays trainable when it is made very deep?
+    # TODO: arrange normalization, attention, MLP, and the residual adds
     pass
 
 # --- tokenizer: TO DECIDE ---
@@ -150,9 +145,8 @@ def build_corpus():
     pass
 
 def model(hparams, X, past=None, scope='model'):
-    # token + position embeddings -> stack of blocks -> (final normalization?) ->
-    # logits via the tied embedding matrix
-    # TODO: initialization that controls signal accumulation along the residual path
+    # token + position embeddings -> stack of blocks -> logits via the tied embedding matrix
+    # TODO: weight initialization for the stack
     pass
 
 def lm_loss(logits, X):

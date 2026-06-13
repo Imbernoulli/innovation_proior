@@ -69,8 +69,7 @@ power series. Stueckelberg and Petermann (1953) had named the group relating dif
 reparametrizations the "renormalization group." The deep point: e_λ at one scale determines it at the
 next, and the equation can predict that e expanded in powers of e₀ diverges. **Gap:** the
 transformation carries a *fixed, single* coupling (the charge). It is a flow in a one-dimensional
-space, tied to perturbative QED, with no mechanism for the proliferation of new interactions that a
-generic coarse-graining produces — and no route to the non-perturbative, strong-coupling regime of a
+space, tied to perturbative QED, with no route to the non-perturbative, strong-coupling regime of a
 critical point.
 
 **Kadanoff block spins (1966).** Near Tc, where ξ is huge, group the lattice into blocks — say
@@ -106,26 +105,14 @@ universality across systems. The diagnostic phenomena — diverging ξ, critical
 
 ## Code framework
 
-A 1D Ising chain has a coupling K = J/kT and an exact transfer-matrix free energy. The missing slots
-are the one-scale transformation, its repeated flow, and the thermodynamic bookkeeping for constants
-generated along the way.
+A 1D Ising chain has a coupling K = J/kT and an exact transfer-matrix free energy, available below as a
+benchmark to check any proposed approach against.
 
 ```python
 import math
 
-def rg_step(K):
-    """
-    TODO: eliminate one short-distance scale of the 1D chain.
-    Return the new coupling and the additive partition-function factor.
-    """
-    pass
-
-def flow(K0, n_steps):
-    """TODO: repeat the one-step map and record the coupling trajectory."""
-    pass
-
-def free_energy_per_spin_via_rg(K0, n_steps):
-    """TODO: accumulate the constants produced during repeated scale elimination."""
+def solve(K0, n_steps):
+    """TODO: implement the proposed approach for the 1D Ising chain."""
     pass
 
 def free_energy_per_spin_exact(K):

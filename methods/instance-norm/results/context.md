@@ -1,6 +1,6 @@
 ## Research question
 
-A feed-forward generator network is trained to apply a fixed artistic style to any content image in a single pass, by minimizing a perceptual loss that matches the output's style statistics to a style image and its content statistics to the input. These networks are fast, but their generated images are visibly worse than the slow optimization-based stylization they are meant to replace, and they show two stubborn pathologies: training on *more* content images makes the qualitative results *worse* (a generator trained on a handful of images beats one trained on thousands, and the best results need early stopping), and the heaviest artifacts appear along the image border, where zero-padding is added before every convolution, resisting fancier padding schemes. The objective behaves as though it were too hard for a standard convolutional architecture to learn. The question is *why* it is hard, and whether the difficulty can be removed by a change to the architecture's building blocks rather than to the training data or schedule — specifically, whether some part of the function the generator is being forced to learn is something that should instead be wired in by construction.
+A feed-forward generator network is trained to apply a fixed artistic style to any content image in a single pass, by minimizing a perceptual loss that matches the output's style statistics to a style image and its content statistics to the input. These networks are fast, but their generated images are visibly worse than the slow optimization-based stylization they are meant to replace, and they show two stubborn pathologies: training on *more* content images makes the qualitative results *worse* (a generator trained on a handful of images beats one trained on thousands, and the best results need early stopping), and the heaviest artifacts appear along the image border, where zero-padding is added before every convolution, resisting fancier padding schemes. The objective behaves as though it were too hard for a standard convolutional architecture to learn. The question is *why* it is hard, and whether the difficulty can be removed by a change to the architecture's building blocks rather than to the training data or schedule.
 
 ## Background
 
@@ -8,7 +8,7 @@ A feed-forward generator network is trained to apply a fixed artistic style to a
 
 **Feed-forward generators.** To make this real-time, Texture Networks (Ulyanov et al., 2016) and Johnson et al. (2016) instead *learn* a generator g(x, z) that maps a content image x (with a noise seed z) to the stylized output in one forward pass, trained on many content images to minimize the same Gatys-style perceptual loss, min_g (1/n) Σ_t L(x_0, x_t, g(x_t, z_t)). These generators are built from convolution, pooling, upsampling, and batch normalization. They are fast but qualitatively inferior to Gatys, and exhibit the more-data-hurts and border-artifact pathologies above.
 
-**A property of stylization: contrast comes from the style.** The style loss is designed so the stylized image's contrast tracks the *style* image's contrast and is essentially *independent* of the content image's contrast — a high-contrast and a low-contrast version of the same content stylize to nearly the same output. This means a correct generator must *discard* the content image's contrast information. The open question is whether such a contrast normalization is something a stack of conv/ReLU/pool can easily represent, or whether it should be a dedicated architectural primitive. A simple per-image, per-channel contrast normalization can be written as y_tijk = x_tijk / Σ_{l,m} x_tilm, but it is unclear how to realize such a division through ReLUs and convolutions.
+**A property of stylization: contrast comes from the style.** The style loss is designed so the stylized image's contrast tracks the *style* image's contrast and is essentially *independent* of the content image's contrast — a high-contrast and a low-contrast version of the same content stylize to nearly the same output. This means a correct generator must *discard* the content image's contrast information. The open question is whether such a normalization of content contrast is something a stack of conv/ReLU/pool can easily represent and learn from data, or whether the difficulty of expressing it cleanly is what the generator stalls on.
 
 **Batch normalization.** Batch normalization (Ioffe & Szegedy, 2015), already present in these generators, normalizes each feature channel using the mean and variance pooled over the *whole minibatch* (all images and all spatial positions of that channel): for x ∈ R^{T×C×W×H} with t the image index, i the channel, j,k spatial,
 
@@ -16,7 +16,7 @@ A feed-forward generator network is trained to apply a fixed artistic style to a
   μ_i = (1/(HWT)) Σ_t Σ_l Σ_m x_tilm,
   σ_i² = (1/(HWT)) Σ_t Σ_l Σ_m (x_tilm − μ_i)².
 
-At training time the statistics are the batch statistics; at test time they are replaced by fixed running (population) estimates accumulated during training, and the layer is often folded away. Crucially, because the statistics pool *across the batch*, a single image's contrast is only partially and indirectly affected, and at test time it is normalized by training-set averages rather than by its own content.
+At training time the statistics are the batch statistics; at test time they are replaced by fixed running (population) estimates accumulated during training, and the layer is often folded away. The statistics thus pool over all images and all spatial positions of each channel, and differ between training and test.
 
 ## Baselines
 
@@ -26,7 +26,7 @@ At training time the statistics are the batch statistics; at test time they are 
 
 **Johnson generator (Johnson et al., 2016).** A feed-forward generator with a residual architecture trained on the same perceptual loss. Core idea: as Texture Nets, with residual blocks; somewhat more efficient. Gap: the same shortcomings — inferior to Gatys, the same artifacts.
 
-**Batch normalization (Ioffe & Szegedy, 2015).** Normalize each channel by minibatch statistics; affine rescale; running statistics at test. Core idea and math as above. Gap *for this setting*: it pools the contrast statistics across the batch and substitutes population statistics at test time, so it does not remove a *single* content image's contrast — exactly the operation a stylization generator needs — leaving the generator to learn that normalization the hard way.
+**Batch normalization (Ioffe & Szegedy, 2015).** Normalize each channel by minibatch statistics; affine rescale; running statistics at test. Core idea and math as above. Gap *for this setting*: its statistics are pooled across the whole batch and frozen to population values at test time; with this layer in place the generator still struggles on the stylization objective, the more-data-hurts and border pathologies persist.
 
 ## Evaluation settings
 
@@ -34,7 +34,7 @@ The yardstick is feed-forward artistic style transfer. The natural setup: a gene
 
 ## Code framework
 
-The available ingredients are a feed-forward generator built from convolution, pooling, upsampling, a per-channel normalization layer, and ReLU, trained with a VGG-based perceptual loss. The open slot is the *normalization layer* dropped between convolutions — what statistics it uses to normalize an activation tensor, and whether it behaves the same at training and test time.
+The available ingredients are a feed-forward generator built from convolution, pooling, upsampling, a per-channel normalization layer, and ReLU, trained with a VGG-based perceptual loss. The open slot is the *normalization layer* dropped between convolutions.
 
 ```python
 import torch
@@ -53,8 +53,7 @@ class Normalization(nn.Module):
             self.bias = nn.Parameter(torch.zeros(num_features))    # beta
 
     def forward(self, x):
-        # TODO: choose which axes the mean/variance are computed over,
-        # and whether train and test behave identically.
+        # TODO: define how this layer normalizes the activation tensor.
         pass
 
 

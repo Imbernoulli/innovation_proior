@@ -16,7 +16,7 @@ The product Q Kᵀ is an n×n matrix of scores: every token scores against every
 
 **Pretrain-finetune as the dominant paradigm.** The state of the art in language understanding is built on masked-language-model (MLM) pretraining of a bidirectional encoder followed by task finetuning (Devlin et al. 2018, BERT; Liu et al. 2019, RoBERTa). These models reserve a special classification token ([CLS]) whose final representation aggregates the sequence for sentence-level prediction, and for QA they concatenate question and context so self-attention can compare them. Crucially they use learned *absolute* position embeddings with a maximum position of 512, and that 512 ceiling is exactly the length limit. Any long-document attention mechanism that hopes to inherit these pretrained weights must remain compatible with this architecture.
 
-**Diagnostic facts that shape the design.** Empirically, full attention's memory grows quadratically and exhausts a modern GPU well before sequences reach the tens of thousands; a sparse pattern that only computes a fixed band of the score matrix grows linearly instead. The banded multiplication needed for such a pattern (a matmul whose output is zero except on a few diagonals) is not a primitive in PyTorch or TensorFlow, so it must be implemented specially. And pretrained encoders have learned a strong *local* position bias (heads keying on previous/next token), a structure worth preserving if their weights are to be reused at longer lengths.
+**Diagnostic facts that shape the design.** Empirically, full attention's memory grows quadratically and exhausts a modern GPU well before sequences reach the tens of thousands. The deep-learning frameworks (PyTorch, TensorFlow) expose dense matrix multiplication as their attention primitive; any score pattern that is not the full dense product is not a built-in operation. And pretrained encoders have learned a strong *local* position bias (heads keying on previous/next token), keyed to their learned absolute position embeddings.
 
 ## Baselines
 
@@ -52,31 +52,6 @@ def full_attention(q, k, v):  # q,k,v: (bsz, heads, n, d_k)
     return torch.matmul(probs, v)
 
 
-def _skew(x, direction, padding_value):
-    # TODO: move local diagonals into columns so they can be softmaxed per token.
-    pass
-
-
-def _skew2(x, padding_value):
-    # TODO: inverse layout transform for probability-value aggregation.
-    pass
-
-
-def _chunk(x, one_sided_window):
-    # TODO: form overlapping local blocks without copying the whole n x n matrix.
-    pass
-
-
-def banded_query_key(q, k, one_sided_window, padding_value):
-    # TODO: compute q @ k^T only for the local band around each token.
-    pass
-
-
-def banded_probability_value(prob, v, one_sided_window):
-    # TODO: multiply local attention probabilities by the matching value band.
-    pass
-
-
 class LongSequenceSelfAttention(nn.Module):
     def __init__(self, config, layer_id):
         super().__init__()
@@ -86,9 +61,7 @@ class LongSequenceSelfAttention(nn.Module):
         self.query = nn.Linear(config.hidden_size, self.embed_dim)
         self.key   = nn.Linear(config.hidden_size, self.embed_dim)
         self.value = nn.Linear(config.hidden_size, self.embed_dim)
-        # TODO: any extra projections or implementation choices needed by the efficient attention slot.
         self.layer_id = layer_id
-        self.one_sided_window = config.attention_window[layer_id]
 
     def forward(
         self,
@@ -99,7 +72,7 @@ class LongSequenceSelfAttention(nn.Module):
         encoder_attention_mask=None,
         output_attentions=False,
     ):
-        # TODO: compute a sparse set of token-token scores, normalize them, and aggregate values.
+        # TODO: the efficient self-attention that scales linearly with sequence length goes here.
         pass
 
 
@@ -108,10 +81,5 @@ class LongSequenceEncoder(RobertaModel):
         super().__init__(config)
         for i, layer in enumerate(self.encoder.layer):
             layer.attention.self = LongSequenceSelfAttention(config, layer_id=i)
-
-
-def extend_position_embeddings(model, max_positions):
-    # TODO: extend the learned absolute position embedding table without breaking local position structure.
-    pass
 
 ```

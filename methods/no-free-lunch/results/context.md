@@ -12,10 +12,8 @@ descending when you want a maximum, that simpler hypotheses (Occam's razor) gene
 The precise question is: **is any of this true with no assumption about the problem?** Given two search
 algorithms a₁ and a₂, how does the set of cost functions on which a₁ beats a₂ compare to the set on which
 a₂ beats a₁? Given two learning algorithms, is there an *a priori* reason — a reason that holds before you
-say anything about which problems are likely — to prefer one over the other? If a solution to this question
-existed, it would have to either (i) exhibit an algorithm that is better than another averaged over *all*
-problems, or (ii) prove that no such algorithm can exist and therefore that every claim of superiority is
-secretly a claim about the problem distribution. The pain point is that the whole field benchmarks
+say anything about which problems are likely — to prefer one over the other? The pain point is that the
+whole field benchmarks
 algorithms on a handful of test functions and then generalizes — and nobody has a formal statement of what,
 if anything, such a benchmark licenses you to conclude about other problems.
 
@@ -40,7 +38,8 @@ negative performance in others," so "no learning bias can outperform any other b
 possible learning tasks." The immediate consequence is that a simplicity bias like Occam's razor cannot help
 on all problems; whatever it gains on a subset it pays for on the complement. This is stated for
 classification accuracy relative to chance; it is a conservation *intuition* rather than a statement about
-the full distribution P(c) of costs, it does not give a geometry or a per-problem (minimax) refinement, and
+the full distribution P(c) of costs, it is a grand-average claim that says nothing about individual problems,
+it is confined to learning with no counterpart stated for optimization, and
 its airtightness depends on cleanly separating the part of the error that is mere memorization of the
 training set from the part that is genuine generalization.
 
@@ -57,8 +56,8 @@ unit per disagreement — is the cleanest case.
 E[(y − ĥ)²] = bias² + variance + noise. A learner trades the two: a rigid, simple learner has high bias and
 low variance; a flexible learner the reverse. Averaging several deterministic learners reduces variance
 without changing bias, by the convexity identity (z − [α+β]/2)² ≤ ½(z−α)² + ½(z−β)². But this is a trade-off
-*within an assumed problem distribution*; it does not say the trade is conserved across all problems, and it
-does not say the average beats any single fixed learner on the off-training-set zero-one problem.
+*within an assumed problem distribution*; what it implies, if anything, once one refuses to assume a
+distribution over problems is not addressed.
 
 **The prevailing wisdom and its diagnostic gap.** Practitioners "match" algorithms to problems all the time,
 but on a heuristic basis; benchmark papers report an algorithm winning on a few sample functions and
@@ -90,16 +89,15 @@ The prior methods a no-assumption result would be measured against (and would re
   superior on benchmark suites, with no theory of what the benchmarks imply for other problems.
 
 - **Tabu search (Glover).** Hill climbing with a memory of recently visited points, forbidden for a while, to
-  avoid cycling and revisiting. Relevant because it makes explicit that *remembering where you have been* is
-  separable from the search policy.
+  avoid cycling and revisiting.
 
 - **Branch and bound.** Uses the cost structure of partial solutions to prune. Deliberately outside the
   black-box class, because it relies on knowing more than the oracle returns.
 
 - **Cross-validation and Occam's razor (as learning baselines).** Choose among candidate learners by held-out
   performance; prefer simpler hypotheses. The default model-selection and inductive-bias heuristics. Gap:
-  neither has an assumption-free justification — it is unproven that choosing the *best*-out-of-sample
-  candidate beats choosing the *worst* one, once you average over all targets.
+  neither has an assumption-free justification; the warrant for trusting held-out performance to predict
+  performance on unseen targets has never been formalized.
 
 ## Evaluation settings
 
@@ -121,8 +119,7 @@ exactly what is unresolved.
 A small scaffold for measuring black-box search needs only a finite domain and codomain, a way to
 evaluate a problem, a way to run an algorithm for m distinct steps and record the cost sequence, a
 performance read-off, and the ability to enumerate the space of all problems for small sizes. The empty slot
-is the *quantity that summarizes algorithm-versus-problem behavior averaged over all problems* — the
-object whose dependence on the algorithm is the open question.
+is whatever object would let one compare two algorithms without assuming anything about the problem.
 
 ```python
 import itertools
@@ -150,10 +147,10 @@ def performance(cost_sequence):
     """A read-off of the sample, e.g. best (minimum) cost so far."""
     return min(cost_sequence)
 
-# --- the open quantity -----------------------------------------------------
-def summed_over_all_problems(algorithm, X, Y, m, observed):
-    """Sum over ALL cost functions f of P(observed cost-sequence | f, m, algorithm).
-    The open question: does this depend on `algorithm` at all?"""
-    # TODO: does this sum depend on `algorithm`? That is the open question.
+# --- the open question -----------------------------------------------------
+def compare_algorithms(X, Y, m):
+    """Compare two algorithms with no assumption about the problem.
+    What can a comparison over the space of all problems license?"""
+    # TODO
     pass
 ```

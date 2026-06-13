@@ -2,7 +2,7 @@
 
 ## Research question
 
-Modern neural networks are heavily overparametrized — convolutional and fully-connected models carry millions of weights, far more than the task seems to need. This is expensive: memory, compute, and energy at both training and inference time, which matters acutely on resource-limited devices. The standard belief is that a much smaller subnetwork could match the full network's accuracy, and that finding it would also tighten generalization. So the goal is to learn a sparse network — keep only a small fraction of the weights non-zero — without losing the accuracy of the dense reference model.
+Modern neural networks are heavily overparametrized — convolutional and fully-connected models carry millions of weights, far more than the task seems to need. This is expensive: memory, compute, and energy at both training and inference time, which matters acutely on resource-limited devices. The standard belief is that a much smaller subnetwork could match the full network's accuracy, and compression-based arguments also suggest a route to tighter generalization. So the goal is to learn a sparse network — keep only a small fraction of the weights non-zero — without losing the accuracy of the dense reference model.
 
 Formally, given a dataset and a desired sparsity level, the problem is the constrained minimization
 
@@ -27,11 +27,11 @@ The pruning literature splits into two families.
   ```
   assume convergence so the first-order term vanishes, and read off s_j = w_j² H_jj / 2 (diagonal) or s_j = w_j² / (2 [H⁻¹]_jj) (full). More principled, but the Hessian H = ∂²L/∂w² is neither diagonal nor positive-definite in general, is approximate at best, and is intractable to compute (OBS even re-inverts H per removed weight).
 
-A diagnostic observation about *both* dominant criteria: they depend on the **scale of the weights**. That ties them to a *trained* network — a magnitude or curvature score computed on random initial weights is uninformative because the weights have not yet organized. This is precisely why pruning has classically been a post-training step, embedded in expensive **prune–retrain cycles**: train, score, remove, retrain to recover, repeat. The retraining is what makes the loop slow and the schedule heuristic.
+A diagnostic observation about *both* dominant criteria: they depend on the **scale of the weights**. That ties them to a *trained* network — a magnitude or curvature score computed on random initial weights is uninformative because the weights have not yet organized. This is precisely why pruning has classically been a post-training step, embedded in expensive **prune–retrain cycles**: train, score, remove, retrain to recover, repeat. The retraining is what makes the loop slow, and the schedule is often heuristic.
 
 Two further building blocks from the field are load-bearing here:
 - **Weight initialization theory** (LeCun; Glorot/Xavier variance scaling). With a fixed-variance Gaussian init, the variance of the forward signal (and of gradients) drifts layer to layer, so gradient magnitudes pick up architecture-specific scaling. Variance-scaling initializations are designed precisely so the signal variance is preserved through the layers.
-- **Influence functions** (Koh & Liang, 2017): perturb an *input* example and measure the resulting change in loss to gauge that example's importance. The same perturb-and-measure idea can be redirected from inputs to *internal parameters*.
+- **Influence functions** (Koh & Liang, 2017): perturb an *input* example and measure the resulting change in loss to gauge that example's importance.
 
 ## Baselines
 
@@ -42,14 +42,14 @@ Two further building blocks from the field are load-bearing here:
 
 ## Evaluation settings
 
-The natural yardsticks at the time, used purely as settings here:
+The natural yardsticks at the time:
 - **Datasets.** MNIST (28×28 grayscale digits), CIFAR-10 (32×32 color, 10 classes), and Tiny-ImageNet (downscaled ImageNet subset). Variants of MNIST/Fashion-MNIST (including inverted versions) are useful for probing whether retained connections are task-relevant.
 - **Architectures.** Fully-connected nets (LeNet-300-100), convolutional nets (LeNet-5, AlexNet-style, VGG-style), wide residual networks, and recurrent nets (RNN/LSTM/GRU) — chosen to test robustness across convolutional, residual, and recurrent structure.
-- **Metric / protocol.** Classification error/accuracy of the sparse network versus the dense reference, swept over sparsity levels κ (e.g. retaining 10%, 5%, 1% of weights). Compute cost (number of prune/retrain passes) is a secondary axis. Connection saliency is computed from a single mini-batch of a reasonable size; one can also accumulate over batches or use an exponential moving average under memory limits.
+- **Metric / protocol.** Classification error/accuracy of the sparse network versus the dense reference, swept over sparsity levels κ (e.g. retaining 10%, 5%, 1% of weights). Compute cost is a secondary axis: pretraining passes, scoring passes, pruning steps, and retraining passes all matter because standard methods interleave pruning with optimization.
 
 ## Code framework
 
-The primitives that already exist: an autodiff framework with `Conv2d`/`Linear` layers, an SGD/momentum optimizer, a cross-entropy loss, a data pipeline yielding mini-batches, and standard variance-scaling weight initializers. What does *not* yet exist is the criterion that decides which connections to keep and when. The scaffold below leaves that as one empty slot.
+The primitives that already exist: an autodiff framework with trainable layers, an SGD/momentum optimizer, a cross-entropy loss, a data pipeline yielding mini-batches, and standard variance-scaling weight initializers. What does *not* yet exist is the criterion that decides which connections to keep and when. The scaffold below leaves that as one empty slot.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -62,8 +62,8 @@ def variance_scaling_init(net):
             if m.bias is not None: nn.init.zeros_(m.bias)
 
 def compute_keep_mask(net, batch, keep_fraction):
-    # TODO: a data-dependent criterion that scores every connection BEFORE training
-    #       and returns a binary mask keeping the top-(keep_fraction) connections.
+    # TODO: decide which connections to keep, returning a binary mask
+    #       that retains the top-(keep_fraction) connections.
     pass
 
 def apply_mask(net, masks):

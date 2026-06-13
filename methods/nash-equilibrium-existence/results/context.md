@@ -33,9 +33,7 @@ space, so mixed strategies can be averaged. A profile of mixed strategies, one p
 is a point of the *product of the simplices*, itself a compact convex polytope. Payoffs
 extend to mixed strategies as expectations, and this extension is *multilinear*: it is a
 linear (affine) function of each single player's own mixed strategy when the others are held
-fixed. Linearity in one's own mixture is the workhorse fact of the whole setting — it forces
-the best response against fixed opponents to be attainable at a pure strategy and to form a
-convex set.
+fixed. Linearity in one's own mixture is a basic structural fact of the whole setting.
 
 The one general existence result available is the *minimax theorem* (von Neumann, 1928, "Zur
 Theorie der Gesellschaftsspiele"). For a two-person zero-sum game with payoff matrix `A`,
@@ -74,9 +72,8 @@ generalizes Brouwer from single-valued maps to *set-valued* ones: if `S` is a no
 compact convex set in Euclidean space and `phi` assigns to each point of `S` a non-empty,
 convex subset of `S`, and `phi` has *closed graph* (if `x_n -> x`, `y_n -> y`, and
 `y_n in phi(x_n)`, then `y in phi(x)`), then there is a point `x` with `x in phi(x)`.
-Kakutani built this precisely to handle correspondences in which the image at a point can be
-a whole set — the situation that arises whenever a best response is tied among several
-options.
+Kakutani built this to handle correspondences in which the image at a point can be a whole
+set, rather than only single-valued maps.
 
 ## Baselines
 
@@ -124,9 +121,8 @@ hand-computation on these cases, not measurement.
 
 The computational scaffold is minimal: represent a finite game as payoff tables, normalize
 a weight vector onto a simplex, and compute each player's expected payoff under a mixed
-profile. A tiny checker can test whether a candidate profile is a rest point; the missing
-pieces are the stability predicate, the object whose fixed points will be the solutions,
-and the existence argument.
+profile. What remains open is the solution concept itself and the proof that a solution
+always exists.
 
 ```python
 import numpy as np
@@ -151,18 +147,13 @@ def project_to_simplex(weights):
     w = np.clip(weights, 0.0, None)
     return w / w.sum()
 
-# --- open slots ---
-
-def is_solution(payoff_tensors, profile):
-    """The solution concept for an independent-play, possibly non-zero-sum, n-player game.
-       # TODO: define what makes `profile` a 'solution' (the stability condition),
-       #       without assuming zero-sum / antagonism, reducing to the saddle
-       #       point when the game is two-person zero-sum."""
-    pass
+# --- open slot ---
 
 def a_solution_exists(payoff_tensors):
-    """Claim: every finite game has at least one solution in mixed strategies.
-       # TODO: build a self-map of the (compact, convex) product-of-simplices whose
-       #       fixed points are exactly the solutions, and invoke a fixed-point theorem."""
+    """The solution concept for an independent-play, possibly non-zero-sum, n-player game,
+       and the proof that one always exists in mixed strategies.
+       # TODO: define what makes a `profile` a 'solution' (without assuming zero-sum /
+       #       antagonism, and reducing to the saddle point in the two-person zero-sum
+       #       case), and argue that every finite game has one."""
     pass
 ```

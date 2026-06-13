@@ -18,13 +18,13 @@ When the reverse conditionals are modeled as Gaussians with trainable means and 
 
 where the per-step weights γ_t are positive and depend on the schedule. The variance-reduced derivation that produces this form conditions the forward posterior on x_0: q(x_{t-1}|x_t,x_0) is Gaussian, each bound term becomes a KL between two Gaussians, and with matched variances that KL is a squared distance between means, which the noise-prediction parameterization turns into the ε-MSE above. Training at γ = 1 (an unweighted MSE) is the setting that gives the best samples; it is also the objective used by the score-matching line.
 
-Two structural facts about this loss are load-bearing. First, L_γ is a sum of per-t terms; if the network does not share parameters across t, every term can be minimized independently, so the optimal ε_θ is the same for *any* positive weighting γ. Second, every term touches the inference process q only through the *marginal* q(x_t|x_0) — never through the joint q(x_{1:T}|x_0). A trained noise predictor is therefore committed only to a set of marginals, not to any particular chain that realizes them.
+The loss L_γ is a sum of per-t terms, each an expectation under a single draw √α_t x_0 + √(1−α_t) ε; the network may or may not share parameters across t, and the schedule enters each term through the weight γ_t.
 
 The length T is large (≈1000) for a variational reason: a large T keeps each true reverse conditional close to Gaussian, so modeling it with a Gaussian is accurate. The price is that all T steps must run sequentially to draw one sample.
 
 The score-matching relatives of this model learn the score of the data at multiple noise scales and sample by annealed Langevin dynamics — many small noisy steps. The two families are close: both train a denoising autoencoder across noise levels, and both sample by a Langevin-like procedure. Since Langevin dynamics is a discretization of a gradient flow, many steps are intrinsic to that view of sampling, which is consistent with the empirical difficulty both families have producing good samples in few iterations.
 
-Background pieces the construction leans on: a Gaussian product/marginalization identity (for a linear-Gaussian chain x_{t-1} → x_t with a Gaussian prior on x_t given x_0, the marginal of x_{t-1} is Gaussian with mean and covariance obtained by propagating the affine map and adding variances); the equivalence, for Gaussian corruption, between predicting the added noise and predicting the score of the noised data (denoising score matching), so a trained noise predictor is, up to a known positive scale, a learned score; the notion of an *implicit* generative model, whose samples are a deterministic pushforward of latent noise through a fixed procedure (no explicit per-step density, as in a GAN); and the probability-flow/neural-ODE viewpoint, in which a continuous-time generative process is an ODE whose Euler discretization is a sampler, fewer steps meaning a coarser discretization.
+Standard background facts available: a Gaussian product/marginalization identity (for a linear-Gaussian chain x_{t-1} → x_t with a Gaussian prior on x_t given x_0, the marginal of x_{t-1} is Gaussian with mean and covariance obtained by propagating the affine map and adding variances); the equivalence, for Gaussian corruption, between predicting the added noise and predicting the score of the noised data (denoising score matching), so a trained noise predictor is, up to a known positive scale, a learned score; the notion of an *implicit* generative model, whose samples are a deterministic pushforward of latent noise through a fixed procedure (no explicit per-step density, as in a GAN); and the probability-flow/neural-ODE viewpoint, in which a continuous-time generative process is an ODE whose Euler discretization is a sampler, fewer steps meaning a coarser discretization.
 
 ## Baselines
 
@@ -40,7 +40,7 @@ Image datasets at several resolutions: CIFAR10 32×32 (unconditional), CelebA 64
 
 ## Code framework
 
-The machinery below already exists: a network that predicts the noise in a corrupted image conditioned on the timestep, the schedule of cumulative coefficients, the closed-form one-shot corruption x_t = √α_t x_0 + √(1−α_t) ε, the unweighted ε-MSE training loop, and the existing full-length sequential sampler. The open slots are a generative procedure that turns an initial noise tensor into samples from the trained noise predictor, and a small helper for choosing which noise levels that procedure visits.
+The machinery below already exists: a network that predicts the noise in a corrupted image conditioned on the timestep, the schedule of cumulative coefficients, the closed-form one-shot corruption x_t = √α_t x_0 + √(1−α_t) ε, the unweighted ε-MSE training loop, and the existing full-length sequential sampler. The open slot is a generative procedure that turns an initial noise tensor into samples from the trained noise predictor.
 
 ```python
 import torch
@@ -65,13 +65,9 @@ def training_loss(model, x0, alphas):
     return ((model(xt, t.float()) - eps) ** 2).mean()
 
 @torch.no_grad()
-def sample(model, alphas, x, seq, eta=0.0):
+def sample(model, alphas, x):
     # TODO: generative procedure that turns the initial noise tensor x into a sample
-    #       from the trained noise predictor along the chosen sequence.
-    pass
-
-def make_seq(num_timesteps, num_sampling_steps, kind="uniform"):
-    # TODO: choose the noise-level indices for the generative procedure.
+    #       from the trained noise predictor.
     pass
 
 # optimizer = torch.optim.Adam(model.parameters(), lr=2e-4)

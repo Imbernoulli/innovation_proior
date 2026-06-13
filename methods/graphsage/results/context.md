@@ -149,42 +149,23 @@ import torch.nn.functional as F
 # adj_lists: dict node -> set(neighbor nodes)
 
 def sample_neighbors(adj_lists, nodes, num_sample):
-    # TODO: how do we keep per-batch cost fixed on graphs with hub nodes?
+    # TODO
     pass
 
-# --- empty neighborhood-to-vector slots ---
+# --- empty model slot: map a node (and what is observable about it) to a vector ---
 
-class NeighborhoodAggregator(nn.Module):
-    """Combine an unordered set of neighbor representations into one vector."""
+class EmbeddingModel(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
-        # TODO: parameters of the aggregation function
-    def forward(self, self_repr, neighbor_reprs):
-        # TODO: must be order-independent over neighbor_reprs
-        pass
-
-class Layer(nn.Module):
-    """One hop: aggregate neighbors, combine with self, transform."""
-    def __init__(self, *args, **kwargs):
-        super().__init__()
-        # TODO: weights shared across nodes (a function, not per-node vectors)
+        # TODO
     def forward(self, nodes):
-        # TODO: aggregate sampled neighbors' previous-layer reprs, combine, transform
-        pass
-
-class EmbeddingGenerator(nn.Module):
-    """Stack K layers to reach K hops; emit an embedding for any node."""
-    def __init__(self, num_layers, *args, **kwargs):
-        super().__init__()
-        # TODO: K layers
-    def forward(self, nodes):
-        # TODO: recursion over depth; output z_v for each node (incl. unseen)
+        # TODO
         pass
 
 # --- losses ---
 
-def unsupervised_graph_loss(z_u, z_v, z_neg):
-    # TODO: nearby nodes similar, sampled negatives dissimilar, acting on generated z
+def embedding_loss(*args, **kwargs):
+    # TODO
     pass
 
 def supervised_loss(scores, labels):
@@ -192,7 +173,7 @@ def supervised_loss(scores, labels):
 
 # --- training loop ---
 # for batch of target nodes:
-#   z = EmbeddingGenerator(batch)        # uses sample_neighbors internally
-#   loss = unsupervised_graph_loss(...) or supervised_loss(...)
+#   z = EmbeddingModel(batch)
+#   loss = embedding_loss(...) or supervised_loss(...)
 #   loss.backward(); optimizer.step()
 ```

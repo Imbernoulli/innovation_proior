@@ -53,8 +53,8 @@ regime overturns this only if the variance term can somehow stay small while p �
 **Effective rank.** A covariance operator Σ with eigenvalues λ_1 ≥ λ_2 ≥ ⋯ has a notion of effective
 dimension that is gentler than the raw rank. Koltchinskii and Lounici (2017) use r(Σ) = tr(Σ)/‖Σ‖ — the
 "effective rank" — to control how well the sample covariance (1/n)X^⊤X concentrates around Σ; the relevant
-fact is that ‖Σ − (1/n)X^⊤X‖ is small once r(Σ) is small compared to n. Closely related quantities, the
-"stable rank" tr(Σ²)/‖Σ²‖ (Rudelson–Vershynin), measure how spread-out a spectrum is. These are the tools
+fact is that ‖Σ − (1/n)X^⊤X‖ is small once r(Σ) is small compared to n. Related spectral summaries such as
+the "stable rank" tr(Σ²)/‖Σ²‖ (Rudelson–Vershynin) also appear in this literature. These are the tools
 that let one reason about high- or infinite-dimensional covariances without a bound on the ambient
 dimension.
 
@@ -62,9 +62,8 @@ dimension.
 independent subgaussian vectors. The load-bearing facts are Bernstein's inequality for subexponential
 sums, the fact that the square of a unit-variance subgaussian is subexponential, and an ε-net argument
 bounding the operator norm of a random symmetric matrix by its values on a net of the sphere (all standard,
-e.g. Vershynin, *High-Dimensional Probability*, 2018). The Sherman–Morrison–Woodbury formula lets one peel
-a single rank-one term off a Gram matrix and is the algebraic engine for isolating the contribution of one
-direction.
+e.g. Vershynin, *High-Dimensional Probability*, 2018). The Sherman–Morrison–Woodbury formula relates the
+inverse of a matrix to the inverse of a rank-one update of it.
 
 **Contemporary analyses of the same estimator.** Hastie, Montanari, Rosset and Tibshirani (2019),
 "Surprises in high-dimensional ridgeless least squares interpolation," study exactly the min-ℓ₂-norm

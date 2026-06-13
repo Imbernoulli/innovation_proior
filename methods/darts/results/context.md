@@ -14,7 +14,7 @@ The field state at the time: NAS works but is dominated by black-box optimizers 
 - **Bilevel / gradient-based hyperparameter optimization (Maclaurin et al., 2015; Pedregosa; Franceschi et al.).** Treat hyperparameters as an upper-level variable optimized against validation loss, with weights as a lower-level variable optimized against training loss; differentiate through the inner optimization. The architecture can be viewed as a (very high-dimensional) hyperparameter.
 - **One-step unrolled / truncated differentiation (Finn et al., MAML; Luketina et al.; Metz et al., unrolled GANs).** Approximate the inner argmin by a single gradient step and differentiate through it — a cheap surrogate for the exact inner solution.
 
-A diagnostic point that motivates the whole approach: the reason NAS is expensive is precisely that the search variable is discrete, so the validation signal can only be obtained by *sampling and fully training* candidates — there is no gradient of validation performance with respect to the architecture. If the architecture choice could be made continuous, that gradient would exist, and search would become ordinary (bilevel) optimization.
+A diagnostic point that motivates the whole approach: the reason NAS is expensive is precisely that the search variable is discrete, so the validation signal can only be obtained by *sampling and fully training* candidates — there is no gradient of validation performance with respect to the architecture.
 
 ## Baselines
 
@@ -31,37 +31,49 @@ A diagnostic point that motivates the whole approach: the reason NAS is expensiv
 
 ## Code framework
 
-The primitives that already exist: an autodiff framework with conv/pool/identity ops and an RNN/LSTM, SGD and Adam optimizers, cross-entropy, a DAG-of-nodes cell abstraction where each intermediate node sums transformed predecessors, and a train/validation data split. What does *not* yet exist is how a *choice of operation* on each edge is represented so it can be optimized by gradient descent, and how architecture and weights are optimized jointly. Those are the empty slots.
+The primitives that already exist: an autodiff framework with conv/pool/identity ops and recurrent activations, SGD and Adam optimizers, cross-entropy, a DAG-of-nodes cell abstraction where each intermediate node sums transformed predecessors, normal and reduction cells shared across a stacked network, and a train/validation data split. What does *not* yet exist is how the choice of operation on each edge enters the search. That is the empty slot.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
 
-OPS = ['sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5',
-       'max_pool_3x3', 'avg_pool_3x3', 'skip_connect', 'none']  # candidate operations
+OPS = ['none', 'max_pool_3x3', 'avg_pool_3x3', 'skip_connect',
+       'sep_conv_3x3', 'sep_conv_5x5', 'dil_conv_3x3', 'dil_conv_5x5']
 
 class Edge(nn.Module):
-    def __init__(self, C):
+    def __init__(self, C, stride):
         super().__init__()
-        self.ops = nn.ModuleList([make_op(name, C) for name in OPS])
-        # TODO: how is the CHOICE among self.ops represented so it is differentiable?
+        self.ops = nn.ModuleList([make_op(name, C, stride) for name in OPS])
     def forward(self, x):
-        # TODO: combine candidate operations into a single edge output
+        # TODO: produce this edge's output from the candidate ops
         pass
 
-class Cell(nn.Module):                  # DAG of N nodes; each node sums its predecessors' edges
-    def __init__(self, N, C):
+class Cell(nn.Module):                  # DAG of nodes; each node sums its predecessors' edges
+    def __init__(self, steps, C, reduction=False):
         super().__init__()
-        self.edges = nn.ModuleDict()    # (i, j) -> Edge
-        ...
+        self.edges = nn.ModuleList()    # one edge for each predecessor of each intermediate node
+        # TODO: instantiate edges with the correct stride pattern
     def forward(self, s0, s1):
-        ...
+        # TODO: sum incoming transformed predecessors at each node
+        pass
+
+class SearchNetwork(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.normal_cells = nn.ModuleList()
+        self.reduction_cells = nn.ModuleList()
+        # TODO: represent the per-edge operation choice for normal/reduction cells
+    def arch_parameters(self):
+        # TODO: return only the architecture-choice variables
+        pass
+    def weight_parameters(self):
+        # TODO: return only ordinary network weights
+        pass
 
 def search(model, train_loader, val_loader):
-    # TODO: jointly optimize the architecture representation (on validation loss)
-    #       and the weights (on training loss)
+    # TODO: optimize the architecture and the weights
     pass
 
 def derive_discrete_cell(model):
-    # TODO: turn the learned continuous representation into a discrete cell
+    # TODO: produce the final discrete cell from the searched model
     pass
 ```

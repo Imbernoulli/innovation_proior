@@ -53,15 +53,13 @@ by summing over all alignments (including a blank symbol) that collapse to the
 target. It is the standard way to attach a recognizer head to a frame-level
 acoustic representation when no alignment is available.
 
-**Empirical findings that motivate the design.** Two diagnostic observations
-about *prior* self-supervised speech systems frame the work. First, systems that
-learn a discretization of the audio in a *separate first step* and then learn a
-contextual model on top of those frozen units underperform: freezing the units
-early throws away information the context model could have used. Second, when one
-quantizes the representation, *what* gets quantized matters — continuous,
-high-information features carry detailed artifacts (speaker, background) that make
-a self-supervised task too easy and yield representations that transfer worse to
-recognition, whereas a discretized target removes some of that nuisance detail.
+**Empirical pressure from earlier speech systems.** Prior systems that learn a
+discretization of the audio in a separate first step and then learn a contextual
+model on top of those frozen units expose a clear limitation: the unit inventory
+is fixed before the context model can shape it, and the context model only
+ingests already-lossy discrete tokens. Continuous contrastive systems avoid that
+early bottleneck, but their targets still carry speaker, channel, and local
+acoustic detail that a recognizer should not have to preserve exactly.
 
 ## Baselines
 
@@ -104,37 +102,42 @@ clean subset, and a 53.2k-hour unlabeled set (LV-60k). **TIMIT** (Garofolo et al
 phone labels collapsed to 39 classes, scored by **phoneme error rate (PER)**.
 Decoding can optionally fuse an external language model (an n-gram or a
 Transformer LM trained on the LibriSpeech LM corpus) via beam search. Inputs are
-16 kHz raw waveform. These datasets and metrics predate the method and are the
-fixed measuring sticks.
+16 kHz raw waveform. These datasets and metrics are the fixed measuring sticks.
 
 ## Code framework
 
-The pre-method toolkit is a convolutional front end over raw waveform, a
-Transformer encoder, an Adam optimizer with warmup/decay, a differentiable
-discretizer (Gumbel-softmax over product-quantization codebooks), and a CTC head
-for fine-tuning. The pretext objective, the masking of the latent sequence, the
-choice of contrastive targets, and the auxiliary regularizer are the empty slots.
+The available toolkit is a convolutional front end over raw waveform, a
+Transformer encoder, an Adam optimizer with warmup/decay, differentiable modules
+for discrete choices, and a CTC head for fine-tuning. The pretext objective — what
+it predicts, from what, and how it is trained — is the empty slot.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
 
-# Raw-waveform convolutional front end (known primitive): a stack of strided
-# temporal convolutions + norm + GELU producing a latent frame sequence.
+class ConvBlock(nn.Module):
+    def __init__(self, c_in, c_out, kernel, stride):
+        super().__init__()
+        self.conv = nn.Conv1d(c_in, c_out, kernel, stride)
+        self.norm = nn.LayerNorm(c_out)
+        self.act = nn.GELU()
+    def forward(self, x):
+        x = self.conv(x).transpose(1, 2)
+        x = self.act(self.norm(x))
+        return x.transpose(1, 2)
+
 class ConvFeatureEncoder(nn.Module):
     def __init__(self, dims=(512,)*7,
                  kernels=(10,3,3,3,3,2,2), strides=(5,2,2,2,2,2,2)):
         super().__init__()
         layers, c_in = [], 1
         for c_out, k, s in zip(dims, kernels, strides):
-            layers += [nn.Conv1d(c_in, c_out, k, s),
-                       nn.GroupNorm(1, c_out), nn.GELU()]   # layer-norm-like + GELU
+            layers.append(ConvBlock(c_in, c_out, k, s))
             c_in = c_out
         self.conv = nn.Sequential(*layers)
-    def forward(self, wav):                 # wav: (B, T_samples)
-        return self.conv(wav.unsqueeze(1)).transpose(1, 2)  # (B, T, C)
+    def forward(self, wav):
+        wav = (wav - wav.mean(dim=-1, keepdim=True)) / wav.std(dim=-1, keepdim=True, unbiased=False).clamp_min(1e-5)
+        return self.conv(wav.unsqueeze(1)).transpose(1, 2)
 
-# Transformer encoder (known): self-attention is all-to-all; positions injected
-# by a grouped conv rather than fixed sinusoids.
 class TransformerContext(nn.Module):
     def __init__(self, d=768, layers=12, heads=8, ffn=3072):
         super().__init__()
@@ -150,36 +153,13 @@ class TransformerContext(nn.Module):
             x = l(x)
         return x
 
-# Differentiable discretizer (known primitive): product quantization chosen by a
-# hard Gumbel-softmax. Returns a quantized vector per frame plus the per-group
-# probabilities (used by whatever regularizer the objective needs).
-class GumbelProductQuantizer(nn.Module):
-    def __init__(self, in_dim, groups=2, vars=320, out_dim=256):
-        super().__init__()
-        self.G, self.V = groups, vars
-        self.weight = nn.Linear(in_dim, groups * vars)
-        self.codebook = nn.Parameter(torch.randn(1, groups * vars, out_dim // groups))
-        self.proj = nn.Linear(out_dim, out_dim)
-        self.tau = 2.0
-    def forward(self, z):                   # z: (B, T, in_dim)
-        # TODO: logits -> hard gumbel-softmax per group -> select & concat codes
-        #       -> linear; also return averaged per-group probs for the regularizer.
-        pass
-
-# Define the self-supervised pretext signal over the latent sequence.
-def mask_latents(z):
-    # TODO: which frames become prediction targets, and what replaces them in the
-    #       context-network input?
+def pretext_objective(z, context):
+    # TODO: define the label-free pretext task that trains the encoder + context
+    #       network from the continuous latents z alone.
     pass
 
-def pretext_loss(context_out, targets, probs):
-    # TODO: the objective that makes the contextual representation predict the
-    #       right target at each masked frame, plus any codebook regularizer.
-    pass
-
-# Fine-tuning head (known primitive): a linear projection trained with CTC.
 class CTCHead(nn.Module):
-    def __init__(self, d=768, n_vocab=32):
+    def __init__(self, d=768, n_vocab=31):
         super().__init__()
         self.proj = nn.Linear(d, n_vocab)
     def forward(self, x):

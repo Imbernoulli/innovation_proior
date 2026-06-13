@@ -48,14 +48,12 @@ models have *lower* intrinsic dimension. So although the ambient parameter space
 solution found by fine-tuning can sit in a very low-dimensional subspace. That strongly suggests
 the *change* in weights need not be a full-dimensional object.
 
-**Why low-rank structure is a natural carrier of "few effective degrees of freedom."** Low-rank
-structure recurs across machine learning, and over-parameterized networks are known to develop
-low-rank structure after training (Oymak et al. 2019); some methods even impose low rank during
-training. Aghajanyan's projection is into a random subspace of the *flattened* parameter vector,
-which needs a large (if implicit) projection matrix and gives no special deployment structure.
-The unexploited opportunity is a subspace that is (i) defined *per weight matrix*, (ii) directly
-learnable, and (iii) shaped so it can be folded back into the original weights — i.e. low *rank*
-of each matrix's update.
+**On structure in trained networks.** Over-parameterized networks are known to develop
+low-dimensional structure after training (Oymak et al. 2019); some methods even impose structural
+constraints during training. Aghajanyan's projection is into a random subspace of the *flattened*
+parameter vector: it needs a large (if implicit) projection matrix, is not tied to any individual
+weight matrix, and gives no special deployment structure — the trained subspace cannot be folded
+back into the model's existing weights to recover a plain forward pass.
 
 **Why "few FLOPs" does not mean "low latency."** A recurring trap for efficiency methods is to
 count parameters or FLOPs and conclude a method is cheap at inference. But large networks are
@@ -145,24 +143,21 @@ class AdaptedLinear(nn.Linear, AdaptationLayer):
 
     def reset_parameters(self):
         super().reset_parameters()
-        # TODO: initialize the adaptation parameters so the model starts out
-        #       behaving exactly like the pre-trained model.
+        # TODO: initialize the task-specific adaptation parameters.
         pass
 
     def train(self, mode=True):
         super().train(mode)
         if mode:
-            # TODO: if a deploy-time merge was applied, undo it before training.
+            # TODO: restore any train-time state needed before training resumes.
             pass
         else:
-            # TODO: fold the task-specific change into the stored weight once,
-            #       so inference uses one ordinary linear operation.
+            # TODO: prepare the layer for inference / evaluation mode.
             pass
         return self
 
     def forward(self, x):
-        # TODO: combine the frozen pre-trained path with the adaptation path
-        #       during training; after merging, fall back to the plain path.
+        # TODO: produce the layer output for the current task.
         return F.linear(x, self.weight, self.bias)
 
 

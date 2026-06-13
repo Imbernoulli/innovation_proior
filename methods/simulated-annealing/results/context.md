@@ -142,10 +142,8 @@ required effort scales with `N`.
 
 The primitives that already exist: a mutable representation of a configuration, a cost function
 evaluated on it, a random-move operator that perturbs it, a way to copy and restore a configuration,
-a uniform random-number source, and optional progress reporting. Metropolis also supplies a
-constant-control Markov transition for physical equilibrium sampling. A generic black-box optimizer
-still needs the search loop that decides whether non-improving moves are allowed, how the control
-parameter is chosen, how it changes, and when the run is considered finished.
+a uniform random-number source, and optional progress reporting. A generic black-box optimizer
+still needs the search loop itself.
 
 ```python
 import copy
@@ -154,10 +152,6 @@ class EnergySearchProblem:
     """A black-box optimization problem over a discrete configuration space.
     The user supplies the representation, the cost, and a random move."""
 
-    control_high = None
-    control_low = None
-    steps = None
-    updates = 100
     copy_strategy = "deepcopy"
     user_exit = False
 
@@ -187,29 +181,14 @@ class EnergySearchProblem:
             return state.copy()
         raise RuntimeError("unknown copy strategy")
 
-    def set_controls(self, controls):
-        """Install externally chosen search controls."""
-        self.control_high = controls["high"]
-        self.control_low = controls["low"]
-        self.steps = int(controls["steps"])
-        self.updates = int(controls.get("updates", self.updates))
-
-    def update(self, step, control, energy, acceptance, improvement):
+    def update(self, *args):
         """Optional progress hook."""
         pass
 
     def search(self):
         """Return the best state and cost found."""
-        # TODO: fill in the transition rule, control schedule,
-        # best-state tracking, and stopping rule.
-        raise NotImplementedError
-
-    def calibrate_controls(self, minutes, probes=2000):
-        """Explore the landscape and propose search controls."""
-        # TODO: estimate useful starting/ending controls and a run length.
+        # TODO: the search loop.
         raise NotImplementedError
 ```
 
-The open slot is the controlled local-search loop: how to use occasional non-improving moves without
-turning the run into an aimless random walk, how to lower that allowance, and how to calibrate the
-endpoints.
+The open slot is the search loop itself.

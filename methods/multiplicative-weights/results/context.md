@@ -32,32 +32,27 @@ allowed to watch `n` "experts," each of whom also predicts each day; the experts
 correlated and may know nothing. The goal is to make nearly as few mistakes as the best expert in
 hindsight. Two naive strategies fail. Going with the *majority* opinion of the experts fails because a
 majority can be wrong every single day. Picking an expert uniformly at random pays the *average*
-expert's cost and never improves. The lesson is that we must *reweight* the experts over time, raising
-the influence of those who have done well — but reweighting alone is not enough; *how* we reweight and
-whether we randomize turn out to control the achievable regret.
+expert's cost and never improves. Both naive extremes — fixed majority and fixed uniform — leave the
+best expert's hindsight performance unmatched, with no mechanism for the algorithm's behavior to track
+which experts have done well.
 
 **Bounded costs and the value of randomization.** Against an adversary, any deterministic rule that
 outputs a single prediction can be made to err every round (the adversary sets the cost opposite to our
 commitment). This is why the achievable guarantees split sharply between deterministic rules (which can
 only stay within a *factor of two* of the best expert) and randomized rules (which can approach a
-factor of one). Randomization, plus the linearity of expected cost in the played distribution
-`p`, is what makes a clean potential-function analysis possible.
+factor of one).
 
-**The exponential / potential-function style of analysis.** A recurring technical motif across these
-fields is to track a single scalar "potential" — a sum or a relative-entropy — and show that its
-round-by-round motion is controlled by the algorithm's expected cost while its final value cannot fall
-below the surviving weight of any fixed decision. Sandwiching the potential between these two bounds
-yields the regret guarantee. The key elementary facts used are `1 + x ≤ e^x`, the convexity
-inequalities `(1-η)^x ≤ 1 - ηx` for `x ∈ [0,1]` and `(1+η)^{-x} ≤ 1 - ηx` for `x ∈ [-1,0]`, and the
-logarithm estimates `ln(1/(1-η)) ≤ η + η²`, `ln(1+η) ≥ η - η²` valid for `η ≤ 1/2`.
+**Elementary inequalities available for analysis.** The standard toolkit for bounding products and
+sums of bounded quantities includes `1 + x ≤ e^x`, the convexity inequalities `(1-η)^x ≤ 1 - ηx` for
+`x ∈ [0,1]` and `(1+η)^{-x} ≤ 1 - ηx` for `x ∈ [-1,0]`, and the logarithm estimates
+`ln(1/(1-η)) ≤ η + η²`, `ln(1+η) ≥ η - η²` valid for `η ≤ 1/2`.
 
-**The meta-structure of the applications.** Each application instantiates the repeated game with a
-problem-specific "decision," a problem-specific cost vector, and a problem-specific subroutine — an
-*oracle* — that, given the current distribution `p^(t)` over decisions, returns a single response (a
-best-response strategy, a feasible point, a chosen set, a weak classifier). The regret-minimizing rule
-on top of the oracle is generic; the cleverness in each application is the encoding of the problem as
-costs and the design of the oracle. The width of the costs — the largest absolute value `ρ` any cost
-can take before normalization into `[-1,1]` — governs how many rounds are needed.
+**A common shape in the candidate applications.** Each of the target problems — a zero-sum game, a
+feasibility LP, set cover, boosting — comes with a natural notion of a problem-specific "decision" and
+some single-step subroutine that, given a current emphasis over those decisions, returns one response
+(a best-response strategy, a feasible point, a chosen set, a weak classifier). In the prior reductions
+that exploit such subroutines, the largest absolute response magnitude `ρ` (a "width," before
+normalization into `[-1,1]`) is the quantity that controls how many iterations are needed.
 
 ## Baselines
 

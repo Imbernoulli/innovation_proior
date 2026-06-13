@@ -143,7 +143,7 @@ VectorXd gradient_FD(/* perturb each design var, re-solve flow */);        // ba
 
 VectorXd getGradient(int gradient_type, /* x, dx, area, flow, opt, design */) {
     // gradient_type < 0 : finite differences (baseline above)
-    // TODO: an N-independent gradient that costs ~one extra solve, whatever N is
+    // TODO: fill in the gradient evaluation
     pass;
 }
 

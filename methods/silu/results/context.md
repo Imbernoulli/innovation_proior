@@ -32,10 +32,9 @@ shown to discover traditionally hand-designed components that beat human designs
 via RL controllers (Zoph & Le 2016; Zoph et al. 2017) and optimizer update rules over a space of
 composed primitive functions (Bello et al. 2017). Second, an RNN controller trained with policy-gradient
 RL, using validation accuracy of a trained "child" network as the reward, is a known recipe for
-searching such combinatorial spaces. A separately motivated precursor existed on the activation side
-itself: the Sigmoid-weighted Linear Unit `x·σ(x)` (Elfwing et al. 2017, "SiL"), proposed for neural
-network function approximation in reinforcement learning and motivated by the expected-energy of a
-restricted Boltzmann machine — a non-monotonic, self-gated unit shaped like an "undershooting" ReLU.
+searching such combinatorial spaces. On the activation side, the Sigmoid-weighted Linear Unit
+`x·σ(x)` (Elfwing et al. 2017, "SiL") had been proposed for neural network function approximation in
+reinforcement learning, motivated by the expected-energy of a restricted Boltzmann machine.
 
 ## Baselines
 
@@ -50,12 +49,10 @@ restricted Boltzmann machine — a non-monotonic, self-gated unit shaped like an
 - **Softplus** `log(1+eˣ)`: smooth, monotonic, strictly positive, ReLU-like. Gap: strictly positive and
   monotonic, and empirically inconsistent across domains (e.g. strong on large image models, weak on
   translation).
-- **GELU** `x·Φ(x)` (Hendrycks & Gimpel 2016): smooth, non-monotonic, shaped much like a self-gated
-  unit. Gap: at the time, one more proposed curve among many; the question of *consistent* superiority
-  across many models was open.
-- **SiL** `x·σ(x)` (Elfwing et al. 2017): the self-gated, non-monotonic unit from RL function
-  approximation. Gap: introduced in a narrow RL setting; its generality across large supervised models was
-  not established.
+- **GELU** `x·Φ(x)` (Hendrycks & Gimpel 2016): smooth, non-monotonic. Gap: at the time, one more
+  proposed curve among many; the question of *consistent* superiority across many models was open.
+- **SiL** `x·σ(x)` (Elfwing et al. 2017): a non-monotonic unit from RL function approximation. Gap:
+  introduced in a narrow RL setting; its generality across large supervised models was not established.
 
 ## Evaluation settings
 

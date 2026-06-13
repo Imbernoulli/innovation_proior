@@ -24,9 +24,9 @@ This is a conservation law: probability mass is neither created nor destroyed, o
 `w_t = f_t - (g_t²/2) ∇ log p_t`,
 i.e. every such process has a deterministic ODE ("probability-flow") counterpart with identical time-marginals. For the standard noising processes — Variance Exploding and Variance Preserving — the per-example marginals are Gaussian with closed-form mean and variance at every `t`, so one can sample an intermediate point and form a training target *without simulating anything*. The cost is rigidity: the path is whatever the simple SDE dictates (curved trajectories), and one must reason about a separate data→noise process and then reverse it in time.
 
-**Conditioning makes an intractable regression target tractable — a known trick for scores.** A recurring difficulty is that a *marginal* quantity defined by integrating over the data distribution has no closed form, while its *per-example conditional* version does. For the gradient of the log-density (the "score"), regressing a network on the marginal score `∇ log p_t(x)` is intractable, yet regressing on the *conditional* score `∇ log p_t(x | x_1)` — available in closed form for a Gaussian corruption — yields the same minimizer. The mechanism is that the conditional target, averaged over the posterior of the conditioning variable, equals the marginal target. This "condition to make it tractable, the gradient is unchanged" pattern is established for score regression; whether it extends to regressing a velocity field directly is the open lever.
+**Conditioning makes an intractable regression target tractable — a known trick for scores.** A recurring difficulty is that a *marginal* quantity defined by integrating over the data distribution has no closed form, while its *per-example conditional* version does. For the gradient of the log-density (the "score"), regressing a network on the marginal score `∇ log p_t(x)` is intractable, yet regressing on the *conditional* score `∇ log p_t(x | x_1)` — available in closed form for a Gaussian corruption — yields the same minimizer. The mechanism is that the conditional target, averaged over the posterior of the conditioning variable, equals the marginal target. This "condition to make it tractable, the gradient is unchanged" pattern is established for score regression.
 
-**Optimal-transport interpolation between Gaussians.** Given two distributions, the Wasserstein-2 geodesic interpolates them by *displacement* rather than by mixing densities: mass moves along straight lines at constant speed. For two Gaussians where one is the standard normal, this displacement interpolant is available in closed form and is an affine map of the sample; the means interpolate linearly and the trajectories are straight. Straight, constant-speed trajectories are exactly what a numerical ODE solver integrates most cheaply.
+**Optimal-transport interpolation between Gaussians.** Given two distributions, the Wasserstein-2 geodesic interpolates them by *displacement* rather than by mixing densities: mass moves along straight lines at constant speed. For two Gaussians where one is the standard normal, this displacement interpolant is available in closed form and is an affine map of the sample; the means interpolate linearly and the trajectories are straight.
 
 # Baselines
 
@@ -45,7 +45,7 @@ i.e. every such process has a deterministic ODE ("probability-flow") counterpart
 
 # Code framework
 
-The pieces that already exist: a data pipeline yielding batches `x1`, a standard Gaussian prior to draw `x0`, a time-conditioned network `v_θ(x, t)` (e.g. a U-Net), the Adam optimizer, an MSE primitive, and off-the-shelf ODE integrators. The open component is a path builder that turns a clean data sample, prior-shaped noise, and a time into an intermediate point and the velocity target for that point.
+The pieces that already exist: a data pipeline yielding batches `x1`, a standard Gaussian prior to draw `x0`, a time-conditioned network `v_θ(x, t)` (e.g. a U-Net), the Adam optimizer, an MSE primitive, and off-the-shelf ODE integrators. The open component is a path builder that turns a clean data sample, prior-shaped noise, and a time into an intermediate point and the regression target for that point.
 
 ```python
 import torch
@@ -74,23 +74,11 @@ class TrainingPairBuilder:
     def __init__(self, sigma_min: float = 1e-4):
         self.sigma_min = sigma_min
 
-    def compute_mu_t(self, x0, x1, t):
-        pass  # TODO: mean of the intermediate conditional distribution
-
-    def compute_sigma_t(self, t):
-        pass  # TODO: standard deviation of the intermediate conditional distribution
-
-    def sample_xt(self, x0, x1, t):
-        pass  # TODO: sample the intermediate point
-
-    def compute_conditional_flow(self, x0, x1, t, xt):
-        pass  # TODO: conditional velocity target
-
     def sample_location_and_conditional_flow(self, x0, x1, t=None):
         if t is None:
             t = torch.rand(x1.shape[0], device=x1.device, dtype=x1.dtype)
-        xt = self.sample_xt(x0, x1, t)
-        ut = self.compute_conditional_flow(x0, x1, t, xt)
+        xt = ...  # TODO: the intermediate point to feed the network
+        ut = ...  # TODO: the regression target for that point
         return t, xt, ut
 
 

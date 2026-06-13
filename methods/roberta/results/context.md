@@ -145,7 +145,7 @@ def build_pretraining_inputs(documents, max_len=512, sep_id=2):
 
 def mask_tokens(tokens, mask_id, vocab_size, *, ignore_index=-100, p=0.15,
                 special_ids=()):
-    # TODO: decide when masks are sampled and how selected tokens are corrupted.
+    # TODO: implement token masking.
     pass
 
 class MLMHead(nn.Module):

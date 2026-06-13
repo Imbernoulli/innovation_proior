@@ -62,9 +62,8 @@ identity transformation; near the identity the most general transformation is
 yᵢ = xᵢ + Δxᵢ + …,   vᵢ(y) = uᵢ + Δuᵢ + …,
 
 with Δx, Δu the lowest-order (linear) terms in ε or in p and its derivatives. Lie already studied which
-differential equations admit a given group; what is new here is to combine his group theory with the
-*variational* structure, where far more precise statements are possible than for arbitrary
-group-admitting equations.
+differential equations admit a given group, treating differential equations in general; equations arising
+from a variational problem carry more structure than arbitrary group-admitting equations.
 
 **Conservation laws as divergence relations.** A "law of conservation" is a divergence equation
 Div B = 0 for some current B. In one independent variable this collapses to dB/dx = 0, i.e. B = const,
@@ -75,11 +74,11 @@ rotation, angular momentum. Each of these is, separately, known.
 
 **The diagnostic phenomenon from general relativity.** It is already observed,
 in the Göttingen circle around Klein, Hilbert and Einstein (1915–1918), that the energy law of
-general relativity is anomalous: the candidate conservation relation can be reduced to identities among
-the Lagrangian expressions, together with terms whose divergence vanishes identically, instead of giving
-an independent conservation law. This is the phenomenon Hilbert named a characteristic feature of the
-theory. It is a fact about the generally-covariant action — knowable before any general theorem — and it
-is the diagnostic anchor that any correct account of "symmetry ⇒ conservation" must reproduce.
+general relativity is anomalous: the candidate conservation relation does not behave like an
+independent conservation law the way it does in ordinary physics. This is the phenomenon Hilbert named a
+characteristic feature of the theory. It is a fact about the generally-covariant action — knowable before
+any general theorem — and it is the diagnostic anchor that any correct account of "symmetry ⇒
+conservation" must reproduce.
 
 ## Baselines
 
@@ -111,9 +110,8 @@ These are the partial results a general theorem would have to subsume and surpas
 
 - **Lie's theory of group-admitting differential equations.** Lie classified continuous groups and the
   equations admitting them. *Gap*: it is a theory of differential equations in general, not of equations
-  *arising from a variational problem*; it does not exploit the extra structure (the boundary term being
-  a divergence) that the action provides, and so cannot reach the precise symmetry ↔ conservation
-  statements.
+  *arising from a variational problem*; it does not draw on the extra structure that the action provides,
+  and so cannot reach the precise symmetry ↔ conservation statements.
 
 ## Evaluation settings
 
@@ -139,8 +137,8 @@ conservation laws are already known and against which any general theorem must b
 
 A variational identity has no numerical algorithm to implement. The natural computational object is a
 small symbolic check: given a Lagrangian and a one-parameter transformation, form a candidate current and
-verify its divergence vanishes on solutions. The scaffold for such a check keeps the current-building
-slot empty until the variational identity supplies it.
+verify its divergence vanishes on solutions. The scaffold for such a check leaves the current-building
+slot empty.
 
 ```python
 import sympy as sp
@@ -163,13 +161,10 @@ def infinitesimal_transformation():
     raise NotImplementedError
 
 def candidate_current(f, u, up, x):
-    # TODO: assemble the current from the boundary term of the first variation and
-    # the convective f·Δx term, then show Div B equals (EL expressions)·(field
-    # variation), hence vanishes on solutions.
+    # TODO: build the current to be checked.
     pass
 
 def check_conservation(f, u, up, x):
-    # TODO: confirm d/dx of the constructed current is a multiple of the EL expression,
-    # i.e. the current is conserved exactly when ψ = 0.
+    # TODO: verify the current is conserved on solutions of the EL equation.
     pass
 ```

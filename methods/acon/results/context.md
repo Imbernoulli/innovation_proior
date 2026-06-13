@@ -18,8 +18,8 @@ relatives Leaky ReLU `max(x, αx)` (Maas et al. 2013) and PReLU `max(x, px)` wit
 pieces, *generalizes* ReLU (`max(x,0)`), Leaky ReLU / PReLU (`max(x, px)`), and the absolute value, and
 can approximate any convex piecewise-linear activation; it is the general "max of linear functions"
 family. **Softplus** `log(1+eˣ)` (Dugas et al. 2000): a smooth approximation to ReLU `max(x,0)` built
-from the LogSumExp smooth max. LogSumExp smooths the hard value `max(x,0)`; its derivative is the
-sigmoid gate. It is related to, but not the same object as, the softmax-weighted value average below.
+from the LogSumExp smooth max. LogSumExp smooths the hard value `max(x,0)`. It is a distinct object
+from the softmax-weighted value average defined below.
 
 On the search side: Swish `x·σ(βx)` (Ramachandran et al. 2017), found by an RL/exhaustive search over
 composed primitives; with `β=1` it equals the SiLU `x·σ(x)` (Elfwing et al. 2017; Hendrycks & Gimpel
@@ -31,8 +31,7 @@ The mathematical tool that connects these is the **smooth maximum** (a.k.a. `α-
 softmax-weighted mean), standard in optimization and neural computation (Lange et al. 2014; Boyd &
 Vandenberghe 2004): for values `x_1,…,x_n`,
 `S_β(x_1,…,x_n) = (Σ_i x_i e^{βx_i}) / (Σ_i e^{βx_i})`, a smooth, differentiable surrogate for the hard
-`max` with a nonnegative switching factor `β` (large positive `β` → `max`; `β=0` → arithmetic mean). The key question is what
-this weighted-value smoothing gives when applied to the two-piece members of the Maxout family.
+`max` with a nonnegative switching factor `β` (large positive `β` → `max`; `β=0` → arithmetic mean).
 
 Related design directions for "let the network adapt its nonlinearity": **SENet** (Hu et al. 2018)
 reweights channels with a small squeeze-and-excitation routing function `σ(W₁W₂·GAP(x))` (a cheap
@@ -54,17 +53,15 @@ checked on both small mobile models and large optimized backbones.
   negative side. Gap: piecewise-linear, kinked, monotonic; the `max(x,px)` member of Maxout.
 - **Maxout** `max(η_a(x), η_b(x))`: general max-of-linears; contains ReLU/LReLU/PReLU/abs and
   approximates convex PWL activations. Gap: non-smooth (it's a hard max), and it *multiplies* the
-  parameters/feature-maps per unit — expensive — and gives no smooth, learnable interpolation toward
-  linearity.
+  parameters/feature-maps per unit — expensive.
 - **Swish / SiLU** `x·σ(βx)`: smooth, non-monotonic, the strongest searched incumbent. Gap: derived by
   black-box search with no explanation; first-derivative upper/lower bounds are *fixed* (≈1.0998,
   ≈−0.0998) regardless of training — `β` only sets the asymptotic speed; gains shrink on large/deep
   models.
-- **Softplus** `log(1+eˣ)`: LogSumExp smoothing of ReLU. Gap: monotonic and not self-gated; it does not
-  expose the softmax-weighted value form `x·σ(βx)` that Swish uses.
+- **Softplus** `log(1+eˣ)`: LogSumExp smoothing of ReLU. Gap: monotonic and not self-gated; a
+  positive smooth curve unlike the self-gated form Swish uses.
 - **GELU / Mish** `x·Φ(x)`, `x·tanh(softplus(x))`: other strong smooth self-gated curves. Gap: each a
-  single fixed curve; no learnable switch between linear and nonlinear behavior, no derivation as a
-  smooth Maxout.
+  single fixed curve, with no explanation tying them to a common principle and no adaptivity.
 - **SENet** `σ(W₁W₂·GAP(x))` channel reweighting; **DY-ReLU** input-conditioned PWL coefficients. Gap:
   SENet modulates features rather than reshaping the activation derivative; DY-ReLU buys conditioned
   slopes with a heavier dynamic-activation module.
@@ -94,47 +91,21 @@ def smooth_maximum(values, beta):
     """S_beta(x_1,...,x_n) = sum_i x_i e^{beta x_i} / sum_i e^{beta x_i}.
 
     Smooth, differentiable surrogate for max with temperature beta.
-    The two-argument case is the workhorse here.
     """
-    # TODO: reduce two linear pieces through the weighted-value smooth maximum.
-    pass
+    num = (values * torch.exp(beta * values)).sum(dim=0)
+    den = torch.exp(beta * values).sum(dim=0)
+    return num / den
 
 
-class SmoothMaxActivation(nn.Module):
-    """A smooth approximation to a Maxout member max(eta_a(x), eta_b(x)).
-
-    Reference points from the hard Maxout family:
-      eta_a = x,    eta_b = 0    -> max(x, 0)   = ReLU
-      eta_a = x,    eta_b = p x  -> max(x, p x) = PReLU
-      eta_a = p1 x, eta_b = p2 x -> max(p1 x, p2 x)
-    A smooth activation can be built by applying smooth_maximum to these two
-    linear pieces, with a switching temperature controlling linear vs. nonlinear.
-    """
+class Activation(nn.Module):
+    """Drop-in activation, swapped in for ReLU/Swish with the net otherwise fixed."""
 
     def __init__(self, num_channels):
         super().__init__()
-        # TODO: per-channel parameters for the two linear pieces and the switch.
+        # TODO
         pass
 
     def forward(self, x):
-        # TODO: smooth_maximum(eta_a(x), eta_b(x); beta).
-        pass
-
-
-class BetaGenerator(nn.Module):
-    """Optional routing function that produces the switching temperature
-    from the input feature (layer-/channel-/pixel-wise).
-
-    A cheap channel-attention-style bottleneck already exists as a primitive:
-      beta_c = sigmoid(W1 W2 GAP(x))   # W1: C x C/r, W2: C/r x C, r=16
-    """
-
-    def __init__(self, num_channels, reduction=16):
-        super().__init__()
-        # TODO: the generator G(x) -> beta, if the switch is learned from input.
-        pass
-
-    def forward(self, x):
-        # TODO: return beta conditioned on x.
+        # TODO
         pass
 ```

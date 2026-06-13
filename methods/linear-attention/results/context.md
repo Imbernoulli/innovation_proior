@@ -77,8 +77,7 @@ has long been a bottleneck in classification (hierarchical and sampled softmax;
 Goodman 2001; Morin & Bengio 2005; Mnih & Teh 2009). A recent line (Blanc &
 Rippel, 2017; Rawat et al., 2019) approximates the exponential by a dot product
 of feature maps, $\exp(u^Tv) \approx \phi(u)^T\phi(v)$, so that the expensive
-normalization can be sampled efficiently. The same factorization idea is what
-will be borrowed here.
+normalization can be sampled efficiently.
 
 **Recurrent networks.** Before attention, sequence models were recurrent: an
 RNN or LSTM (Hochreiter & Schmidhuber, 1997) carries a fixed-size hidden state,
@@ -153,11 +152,9 @@ Standard optimizers and schedules of the time (Adam / RAdam) are assumed.
 The primitives that already exist: an attention layer that owns the
 query/key/value projections and the output projection and delegates the actual
 mixing to a pluggable inner module; a softmax attention as the baseline inner
-module; a feature-map interface that can encode queries and keys; a feed-forward
-block and residual wrapper forming a transformer layer; and a standard training
-loop. The open slots are the feature map, the global inner attention rule, the
-causal prefix product used during training, the causal inner attention rule, and
-the fixed-state recurrent form used during generation.
+module; a feed-forward block and residual wrapper forming a transformer layer;
+and a standard training loop. The inner mixing module is left as an open slot to
+be filled in.
 
 ```python
 import torch
@@ -210,56 +207,13 @@ class FullAttention(Module):
         return torch.einsum("nhls,nshd->nlhd", A, values).contiguous()
 
 
-class CandidateFeatureMap(Module):
-    def new_feature_map(self, device):
-        pass  # TODO
-
-    def forward_queries(self, x):
-        pass  # TODO
-
-    def forward_keys(self, x):
-        pass  # TODO
-
-
-class EfficientAttention(Module):
-    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
+class CandidateAttention(Module):
+    # The inner mixing rule to be designed, plugged in where FullAttention is.
+    def __init__(self, query_dimensions, eps=1e-6):
         super().__init__()
         pass  # TODO
 
     def forward(self, queries, keys, values, attn_mask,
                 query_lengths, key_lengths):
-        pass  # TODO
-
-
-class CausalPrefixProduct(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, queries, keys, values):
-        pass  # TODO
-
-    @staticmethod
-    def backward(ctx, grad_out):
-        pass  # TODO
-
-
-def causal_prefix_product(queries, keys, values):
-    pass  # TODO
-
-
-class CausalEfficientAttention(Module):
-    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
-        super().__init__()
-        pass  # TODO
-
-    def forward(self, queries, keys, values, attn_mask,
-                query_lengths, key_lengths):
-        pass  # TODO
-
-
-class RecurrentEfficientAttention(Module):
-    def __init__(self, query_dimensions, feature_map=None, eps=1e-6):
-        super().__init__()
-        pass  # TODO
-
-    def forward(self, query, key, value, state=None, memory=None):
         pass  # TODO
 ```

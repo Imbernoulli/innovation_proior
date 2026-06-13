@@ -39,7 +39,7 @@ so the centered variance is \(2/3-E(M)^2/2\le 2/3\). A mass-one function bounded
 \[
 \sqrt{4-\sqrt{15}}\approx0.35639395869.
 \]
-The limitation of the moment approach is that it treats \(M\) as an arbitrary bounded density with the right mass and variance, rather than as the convolution-type overlap of \(f\) with \(1-f\).
+The moment approach stalls because it constrains \(M\) only through its mass and variance, and successive refinements in this vein have not pushed the lower bound past Moser's value.
 
 ## Baselines
 
@@ -47,7 +47,7 @@ The limitation of the moment approach is that it treats \(M\) as an arbitrary bo
 
 **Erdos-Scherk, Swierczkowski, Motzkin-Ralston-Selfridge.** These works improve the finite bookkeeping around difference multiplicities and narrow the interval for the constant. They do not provide a variational object whose every feasible point can be attacked by analytic constraints.
 
-**Moser-Murdeshwar and Moser.** The function analogue brings in mass and second-moment information. It proves that too flat an overlap profile cannot fit into the available variance budget, and Moser's refinement reaches \(\sqrt{4-\sqrt{15}}\). It still leaves out the algebraic relation \(g=1-f\).
+**Moser-Murdeshwar and Moser.** The function analogue brings in mass and second-moment information. It proves that too flat an overlap profile cannot fit into the available variance budget, and Moser's refinement reaches \(\sqrt{4-\sqrt{15}}\). These bounds use only low-order integral data of \(M\).
 
 **Swinnerton-Dyer reduction.** The asymptotic combinatorial constant equals the continuous infimum over bounded step densities. This makes two complementary tactics legitimate: search for explicit step densities for upper bounds, and certify universal inequalities for continuous overlaps for lower bounds.
 
@@ -59,9 +59,7 @@ This supplies the best constructive target in this frame, but it does not by its
 
 ## Evaluation settings
 
-The natural output is a rigorous interval for \(\mu\). On the upper side, the evidence is an explicit step density whose nonperiodic shift overlaps can be evaluated with upward-safe arithmetic. On the lower side, the evidence is a relaxation in the right direction: every true overlap profile must map to a feasible point with \(\Omega\le\|M\|_\infty\), and a verified dual feasible point must prove that the relaxation optimum is at least the claimed number.
-
-The basic numerical settings are a grid size \(N\) for interval averages of \(M\), a Fourier cutoff \(T\) for the coefficients of \(f\), a number \(R\) of tested overlap frequencies, and boxes for the low-order quantities \(E(M),c_1,d_1\). Solver output is only exploratory unless the final lower bound is recovered from dual feasibility with explicit roundoff margins.
+The natural output is a rigorous interval for \(\mu\). On the upper side, the evidence is an explicit step density whose nonperiodic shift overlaps can be evaluated with upward-safe arithmetic. On the lower side, the evidence must be a certificate valid for every admissible overlap, so any numerical search output counts only as exploration unless the final bound is recovered with explicit roundoff margins.
 
 ## Code framework
 
@@ -79,26 +77,10 @@ def step_overlap_objective(left_half_values):
     pass
 ```
 
-The lower-bound side needs a finite optimization scaffold: interval averages of \(M\), generic bounded test functions on intervals, coefficient variables, and a proof layer for numerical certificates.
+The lower-bound side needs its own scaffold that yields a machine-checkable bound valid for every admissible overlap.
 
 ```python
-def make_interval_bounds(N, R):
-    """Return safe interval bounds for the trigonometric test functions."""
-    pass
-
-def build_even_lp(N, R):
-    """Build the simplified even-overlap linear relaxation."""
-    pass
-
-def admissible_properties_of_M(R, T):
-    """Return universal truncation and coefficient bounds for admissible overlaps."""
-    pass
-
-def build_relaxation(N, properties, parameter_box):
-    """Build the full interval-average convex relaxation for a parameter box."""
-    pass
-
-def certify_lower_bound(relaxation=None, dual_certificate=None, solver=None):
-    """Solve numerically for exploration or verify a supplied dual certificate."""
+def certify_lower_bound():
+    """Produce a rigorous lower bound on mu, valid for every admissible overlap."""
     pass
 ```

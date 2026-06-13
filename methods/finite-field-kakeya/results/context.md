@@ -89,8 +89,8 @@ through `y`.
 - **Homogeneous polynomial counting.** Counting only homogeneous degree-`d`
   forms gives `C(d+n-1,n-1)` coefficients. With `d = q-2` this reaches
   `≈ q^{n-1}/(n-1)!`, and the product trick converts it to `q^{n-epsilon}` for
-  any fixed `epsilon > 0`. The missing factor of `q` comes from using only one
-  homogeneous degree slice rather than all polynomials of degree at most `q-1`.
+  any fixed `epsilon > 0`. It stalls just short of the `q^n` scale: this route
+  has reached `q^{n-epsilon}` but not the clean `q^n` form.
 
 The common gap is that the earlier approaches either translate directionality
 through lossy incidence/additive estimates or count too few polynomial

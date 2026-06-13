@@ -54,7 +54,7 @@ and for the generator L_G = −E_z[D(G(z))]. It pushes real scores above +1 and 
 
 ## Code framework
 
-The primitives below already exist: a spectrally-normalized convolution/linear layer, a self-attention block, a class-conditional normalization layer that produces affine parameters from a conditioning vector, a projection-style conditional discriminator output, the hinge losses, an EMA helper, and a latent/label sampler. The open slots are the scalable generator/discriminator wiring, the weight-conditioning penalty, the evaluation-time latent sampler, and the training step that ties them together.
+The primitives below already exist: a spectrally-normalized convolution/linear layer, a self-attention block, a class-conditional normalization layer that produces affine parameters from a conditioning vector, a projection-style conditional discriminator output, the hinge losses, an EMA helper, and a latent/label sampler. The remaining slots are left open below.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -115,8 +115,7 @@ class DBlock(nn.Module):
         pass
 
 class Generator(nn.Module):
-    """Class-conditional generator. TODO: how to inject class AND latent at every resolution,
-       how wide/deep, how to keep the learned map smooth enough for controlled sampling."""
+    """Class-conditional generator. TODO."""
     def __init__(self, dim_z, n_classes, ch):
         super().__init__()
         pass
@@ -131,15 +130,15 @@ class Discriminator(nn.Module):
     def forward(self, x, y):
         pass
 
-def ortho(model, strength, blacklist=()):
-    """TODO: a weight-conditioning penalty."""
+def extra_g_penalty(model, strength, blacklist=()):
+    """TODO."""
     pass
 
-def sample_latents_for_eval(batch, dim_z, knob):
-    """TODO: an evaluation-time latent sampler."""
+def sample_latents_for_eval(batch, dim_z):
+    """TODO."""
     pass
 
 def train_step(G, D, GD, real_x, real_y, z, y, ema, cfg):
-    # TODO: n D-steps (hinge L_D) then 1 G-step (hinge L_G); apply ortho; EMA update
+    # TODO: n D-steps (hinge L_D) then 1 G-step (hinge L_G); any extra G penalty; EMA update
     pass
 ```

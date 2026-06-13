@@ -14,7 +14,7 @@ The sharp question: can a network keep the repeat-the-same-block simplicity of V
 
 By late 2016 the field has converged on a few load-bearing ideas, and the relevant ones here concern how a building block processes its input.
 
-- **The simple neuron is already a split-transform-merge.** The elementary operation of a fully-connected or convolutional layer is the inner product `Σ_{i=1}^{D} w_i x_i` over a D-channel input `x = [x_1,…,x_D]`. Read structurally, it *splits* `x` into single-channel subspaces `x_i`, *transforms* each by a scaling `w_i x_i`, and *aggregates* by summation. This decomposition is the conceptual seed for replacing the scalar transform `w_i x_i` with a richer function.
+- **The simple neuron is already a split-transform-merge.** The elementary operation of a fully-connected or convolutional layer is the inner product `Σ_{i=1}^{D} w_i x_i` over a D-channel input `x = [x_1,…,x_D]`. Read structurally, it *splits* `x` into single-channel subspaces `x_i`, *transforms* each by a scaling `w_i x_i`, and *aggregates* by summation.
 - **Residual learning.** A residual block computes `y = x + F(x)`, learning a residual `F` on top of a parameter-free identity shortcut; this conditions the optimization so very deep nets train. The efficient instantiation is the **bottleneck**: `1×1 reduce → 3×3 → 1×1 restore`, running the expensive spatial convolution at a reduced channel width. A ResNet can be read as a two-branch network in which one branch is the identity.
 - **Split-transform-merge at low complexity (Inception).** An Inception module splits the input into several lower-dimensional embeddings (by 1×1 convolutions), transforms them with specialized filters (3×3, 5×5, …), and merges by concatenation. Its solution space is a strict subspace of that of a single large dense layer on a high-dimensional embedding, so it approaches the representational power of large dense layers at far lower compute.
 - **Grouped convolutions.** A convolution can be split into groups: the input and output channels are partitioned into `C` groups and convolutions are performed separately within each group. This dates to the 2012 two-GPU net, where it was introduced to *distribute the model over two GPUs* — an engineering compromise — and is supported by the standard libraries mainly for compatibility. There has been little evidence of using grouped convolutions to *improve* accuracy. The extreme case (number of groups = number of channels) is channel-wise convolution, a component of separable convolutions.
@@ -68,8 +68,7 @@ class Block(nn.Module):
     # residual/bottleneck baseline): it is a residual function added onto an
     # identity (or, at stage transitions, a projection) shortcut, of bottleneck
     # shape (1x1 reduce -> 3x3 -> 1x1 restore). What the transformation inside
-    # the block is, and which extra structural factor parameterizes it beyond
-    # depth and width, is the open slot.
+    # the block is, and how the per-stage template is parameterized, is the open slot.
     expansion = 4
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):

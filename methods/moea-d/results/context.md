@@ -19,9 +19,9 @@ The question this landscape poses: can a single run return a good approximation 
 
 **Uniform weight vectors on the simplex.** Das & Dennis (1998) also gave the structured way to lay down weights: divide each coordinate into H equal segments and take every vector whose nonnegative components are multiples of 1/H summing to 1. This produces a simplex-lattice of N = C(H+M−1, M−1) evenly spread weight vectors. For two objectives this is simply w = (i/H, 1−i/H), i = 0…H, giving N = H+1 points.
 
-**Why one scalarization is not enough — and why a population changes the accounting.** Classical scalarization recovers a front by *re-solving* the scalar subproblem for many weight settings — one full optimization per point on a curve you want densely sampled. That is the standard objection to scalarization: it is expensive, one run per point. But that accounting assumes the subproblems are solved *independently and sequentially*. A population holds many candidate solutions at once; if each member is tied to its own weight vector, the "many runs" collapse into a single co-evolving run.
+**Why one scalarization is not enough.** Classical scalarization recovers a front by *re-solving* the scalar subproblem for many weight settings — one full optimization per point on a curve you want densely sampled. That is the standard objection to scalarization: it is expensive, one run per point, with the subproblems solved independently and sequentially. A population, by contrast, already holds many candidate solutions at once in a single run.
 
-**Neighboring subproblems share structure.** Two weight vectors that are close in weight space define two scalar subproblems with nearly the same aggregation, hence nearly the same optimum. So a solution that is good for one subproblem is, almost certainly, good for its neighbors. This is the pre-method fact that makes co-evolution pay: information (good solutions, recombination material) can be shared between subproblems with nearby weights instead of each subproblem searching in isolation.
+**Neighboring weight vectors define similar subproblems.** Two weight vectors that are close in weight space define two scalar subproblems with nearly the same aggregation, hence nearly the same optimum. So a solution that is good for one subproblem is, almost certainly, good for the subproblems whose weights sit next to it.
 
 ## Baselines
 
@@ -41,7 +41,7 @@ Two-objective and three-objective test problems from the literature would be the
 
 ## Code framework
 
-The available primitives are a problem that maps a batch of decision vectors to objective vectors, the Das & Dennis simplex-lattice weight generator, real-coded variation (simulated binary crossover, polynomial mutation), and a dominance test for maintaining an external nondominated archive. The empty slots are the scalar aggregation that turns one weight vector plus a reference point into a single fitness, the neighborhood structure over weight vectors, and the main loop that reproduces from a neighborhood and lets an offspring update its neighbors.
+The available primitives are a problem that maps a batch of decision vectors to objective vectors, the Das & Dennis simplex-lattice weight generator, real-coded variation (simulated binary crossover, polynomial mutation), and a dominance test for maintaining an external nondominated archive. The main loop that ties these primitives together is left to fill in.
 
 ```python
 import numpy as np
@@ -63,24 +63,8 @@ def polynomial_mutation(x, xl, xu, eta, rng):      # polynomial mutation (exists
 def evaluate(problem, X):                          # X -> objective matrix F (exists)
     ...
 
-def aggregate(F, w, z):
-    # TODO: collapse an objective vector (or batch) into ONE scalar fitness for the
-    #       subproblem with weight w and reference point z. Must give a TOTAL order,
-    #       and must be able to reach concave regions of the front.
-    pass
-
-def neighborhoods(W, T):
-    # TODO: for each weight vector, the indices of its T nearest weight vectors
-    #       (Euclidean in weight space). Cheap O(N^2) once, reused every generation.
-    pass
-
-def update_reference_point(z, f_y):
-    # TODO: keep z as the running best (ideal) per objective.
-    pass
-
 def run(problem, n_partitions, T, n_gen):
-    # TODO: one solution per weight vector; reproduce from a neighborhood;
-    #       let the offspring update the subproblems in that neighborhood;
-    #       maintain an external nondominated archive to report.
+    # TODO: drive the search to return a well-converged, evenly spread approximation
+    #       of the Pareto front in one run.
     pass
 ```

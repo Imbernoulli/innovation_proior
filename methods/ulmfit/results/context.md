@@ -99,9 +99,8 @@ The substrate is a recurrent language model (the AWD-LSTM: embedding → 3-layer
 with the regularizers above → tied softmax over the vocabulary) and a standard
 training loop with backpropagation-through-time. What is *not* fixed: how to carry
 the pretrained LM into a small target dataset without overfitting or forgetting,
-which optimizer schedule to use, how to attach and train a classifier head over a
-recurrent encoder of long documents, and in what order to adapt the layers. The
-scaffold leaves those slots.
+and how to attach and train a classifier head over a recurrent encoder of long
+documents. The scaffold leaves those slots.
 
 ```python
 import torch, torch.nn as nn
@@ -123,20 +122,19 @@ def train_lm(model, corpus):  # standard BPTT next-word training (exists)
 
 # --- adapting the pretrained LM to a small target set: TO DECIDE ---
 def finetune_lm(model, target_corpus):
-    # TODO: how to adapt without overfitting / without destroying pretrained knowledge?
-    #       (same learning rate everywhere? same schedule throughout?)
+    # TODO: adapt the pretrained LM to the target text without overfitting
+    #       or destroying pretrained knowledge.
     pass
 
 # --- classifier head over a recurrent encoder of long documents: TO DECIDE ---
 class Classifier(nn.Module):
     def __init__(self, encoder, n_classes):
-        # TODO: how to summarize a long document's hidden states into a fixed vector?
+        # TODO: build a classifier on top of the recurrent encoder.
         pass
     def forward(self, document):
         pass
 
 def finetune_classifier(clf, labeled_data):
-    # TODO: in what order are the layers adapted, and with what per-layer schedule,
-    #       so the classifier learns without catastrophic forgetting?
+    # TODO: fine-tune the classifier without catastrophic forgetting.
     pass
 ```

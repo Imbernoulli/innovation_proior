@@ -94,8 +94,7 @@ solve it with truncated backpropagation through time (Mikolov et al. 2010): the
 last hidden state of the previous segment is passed into the next segment as a
 fixed (gradient-free) input, so the forward pass carries history across the
 boundary while the backward pass stays inside the current segment. This lets
-recurrent models exploit context well beyond a single training segment, and is
-the existing precedent for reusing computation across segment boundaries — though
+recurrent models exploit context well beyond a single training segment, though
 it passes only a single summary vector forward.
 
 ## Baselines
@@ -177,9 +176,7 @@ class PositionwiseFF(nn.Module):
 
 class CausalSelfAttention(nn.Module):
     """Standard masked self-attention: q,k,v projections, scaled dot-product
-    score q_i . k_j, causal softmax, weighted value sum, output proj, residual+LN.
-    How position is injected, and over what context the keys/values are computed,
-    is exactly the slot the method will redesign."""
+    score q_i . k_j, causal softmax, weighted value sum, output proj, residual+LN."""
     def __init__(self, n_head, d_model, d_head, dropout):
         super().__init__()
         self.n_head, self.d_head = n_head, d_head
@@ -189,9 +186,6 @@ class CausalSelfAttention(nn.Module):
         self.scale = 1 / (d_head ** 0.5)
 
     def forward(self, h, attn_mask=None):
-        # TODO: how the query at position i scores a key at position j, and what
-        # context (just this segment? something carried from before?) the keys
-        # and values are drawn from, is left open here.
         raise NotImplementedError
 
 
@@ -205,14 +199,13 @@ class DecoderLayer(nn.Module):
         return self.ff(self.attn(x, attn_mask=attn_mask))
 
 
-# --- the slots the method will fill ----------------------------------------
+# --- to be filled in -------------------------------------------------------
 
 class PositionEncoding(nn.Module):
     """How sequence order enters the model. The existing recipe adds an absolute
-    sinusoidal vector to the input embeddings; the method will reconsider this."""
+    sinusoidal vector to the input embeddings."""
     def __init__(self, d_model):
         super().__init__()
-        # TODO: what order signal to produce, and where to inject it.
         pass
 
     def forward(self, *args, **kwargs):
@@ -233,18 +226,13 @@ class LanguageModel(nn.Module):
 
     def forward(self, data, target, *carry):
         # TODO: turn a stream of fixed-length segments into per-token logits.
-        #   - is any state from the previous segment reused here, or is each
-        #     segment processed from scratch?
-        #   - how is the causal attention mask built over whatever context is
-        #     visible?
-        #   - what, if anything, is handed forward to the next segment?
         raise NotImplementedError
 
 
 # --- training loop ----------------------------------------------------------
 
 def train(model, segment_iter, optimizer, n_steps):
-    carry = tuple()   # whatever (if anything) is passed between segments
+    carry = tuple()
     for data, target in segment_iter:           # consecutive fixed-length chunks
         ret = model(data, target, *carry)
         loss, carry = ret[0], ret[1:]

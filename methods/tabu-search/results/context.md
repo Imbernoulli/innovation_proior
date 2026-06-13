@@ -14,11 +14,11 @@ where X constrains specified components of x to discrete values and c may be lin
 
 **The two failure modes of plain descent.** First, *entrapment*: steepest descent stops at a local optimum, which in a combinatorial landscape is generically not global — the chief limitation of the whole class. Second, and the reason the obvious fix is not enough: if one tries to escape by allowing the *least-disimproving* (best non-improving) move once descent stalls, the very next step looks back uphill and the best available move is simply the reverse of the one just taken — the search snaps back into the local optimum it was trying to leave. Iterated, this is *cycling*: a short loop, often a 2-cycle between the local optimum and its best neighbor, repeated forever. So escaping local optima and avoiding cycling are not two problems but one: any rule permissive enough to leave a basin must also be disciplined enough not to walk straight back in.
 
-**Steepest-ascent / mildest-descent.** Hansen (1986) studied exactly the "best non-improving move" idea for combinatorial programming: at a local optimum, take the move that increases the objective the least (mildest ascent in a maximization framing) to climb out, rather than restarting. This isolates the right primitive — keep moving by the best available move even when it worsens the objective — but on its own it inherits the cycling problem above; it needs a companion mechanism that remembers enough of the recent past to refuse the immediate undo.
+**Steepest-ascent / mildest-descent.** Hansen (1986) studied exactly the "best non-improving move" idea for combinatorial programming: at a local optimum, take the move that increases the objective the least (mildest ascent in a maximization framing) to climb out, rather than restarting. On its own it inherits the cycling problem above: once it steps out of a basin, the cheapest move available is generally the one that steps right back, so the walk oscillates.
 
 **Simulated annealing.** The prominent contemporary escape mechanism (Kirkpatrick, Gelatt & Vecchi, 1983; on Metropolis et al., 1953). It accepts a worsening move of size Δ with probability exp(−Δ/Temp), Temp lowered on a cooling schedule. All *improving* moves carry the same status (any one met is accepted); worsening moves start with high acceptance when Temp is large and are progressively extinguished. The premise is a *slow*, randomized descent: with the right schedule the local optimum eventually reached is, with high probability, a good one. It escapes basins by random uphill jumps and forgets the past entirely — diversity comes purely from randomization, with no record of where the walk has been, so nothing prevents it from re-exploring ground already covered.
 
-**Adaptive memory.** The contrasting idea is that a search ought to *learn from its own trajectory*: record salient features of recent and past moves and let that record shape which moves are admissible now. Memory replaces randomization as the source of both anti-cycling discipline (short horizon) and exploration of new territory (long horizon). The open design question is what to record, for how long, and how the record should constrain choice.
+**Adaptive memory.** The contrasting idea is that a search ought to *learn from its own trajectory*: record salient features of recent and past moves and let that record shape which moves are admissible now. The open design question is what to record, for how long, and how the record should constrain choice.
 
 **Magical number seven.** Miller (1956) found human short-term memory holds about seven (plus or minus two) "chunks." A pre-existing fact about how much recent history a simple memory mechanism can usefully carry — a suggestive benchmark for how long a forbidding-record might need to be.
 
@@ -28,7 +28,7 @@ where X constrains specified components of x to discrete values and c may be lin
 
 **Multi-start descent.** Run descent from many random starts, keep the best. Gap: each restart throws away everything learned on the previous run — no transfer of information from one basin to the next; coverage is left to luck and is exponentially thin in high dimensions.
 
-**Steepest-ascent/mildest-descent (Hansen, 1986).** Core idea: when stuck, take the best (mildest-worsening) move to leave the local optimum instead of restarting. Gap: with nothing forbidding the immediate reverse move, the walk cycles — it oscillates between the local optimum and the neighbor it stepped to. Needs a memory of recent moves to break the loop.
+**Steepest-ascent/mildest-descent (Hansen, 1986).** Core idea: when stuck, take the best (mildest-worsening) move to leave the local optimum instead of restarting. Gap: the walk cycles — it oscillates between the local optimum and the neighbor it stepped to, since from that neighbor the cheapest move is the one straight back.
 
 **Simulated annealing (Kirkpatrick et al., 1983).** Core idea: accept worsening moves probabilistically under a cooling schedule to tunnel out of basins; under a sufficiently slow cooling schedule and standard finite-state ergodicity conditions it converges to the global optimum in the infinite-time limit. Gap: relies on slow descent and randomization, spending much effort in poor regions early; it keeps no memory, so it cannot avoid revisiting solutions, cannot deliberately steer toward features common to good solutions, and cannot deliberately diversify away from over-used ones — all guidance is left to temperature and chance.
 
@@ -38,7 +38,7 @@ Natural yardsticks are the standard combinatorial benchmarks: travelling-salesma
 
 ## Code framework
 
-The primitives that already exist: a problem with a cost function and a neighborhood generator, plus a base steepest-descent loop. The contribution will fill the marked slots — the rule for choosing among neighbors when none improves, and whatever memory governs that rule.
+The primitives that already exist: a problem with a cost function and a neighborhood generator, plus a base steepest-descent loop. The contribution will fill the marked slot.
 
 ```python
 import math, random
@@ -74,19 +74,8 @@ def steepest_descent(D, n, seed=0):
             return cur, cur_cost   # <-- and here the search simply stops
         cur, cur_cost = best, best_cost
 
-def choose_move(cur, cur_cost, best_cost, memory, k):
-    # TODO: pick the BEST admissible neighbor even if it worsens the cost,
-    #       consulting `memory` to forbid undoing the recent past,
-    #       and overriding that forbidding when a neighbor is good enough.
-    pass
-
-def update_memory(memory, move, k):
-    # TODO: record attributes of the move just made, with some horizon (tenure);
-    #       optionally accumulate longer-horizon statistics.
-    pass
-
 def search(D, n, iters, seed=0):
-    # TODO: like steepest_descent, but never stop at a local optimum;
-    #       drive the loop with choose_move + update_memory and keep the best.
+    # TODO: like steepest_descent, but do not stop at a local optimum;
+    #       keep the best solution seen over a budget of `iters` steps.
     pass
 ```

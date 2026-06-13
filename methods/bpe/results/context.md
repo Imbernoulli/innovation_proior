@@ -5,8 +5,8 @@ typically the 30,000–50,000 most frequent word types — and represent every o
 word with a single `UNK` symbol. But translation is an open-vocabulary problem:
 test text constantly contains names, numbers, compounds, loanwords, and inflected
 forms that never appeared (or appeared too rarely) in training. The pain is sharpest
-for morphologically productive languages (German compounding, Russian/agglutinative
-inflection), where a single lemma spawns dozens of surface forms and new words are
+for morphologically productive languages (German compounding and Russian inflection),
+where a single lemma spawns dozens of surface forms and new words are
 formed compositionally at will. Can a neural translation system translate and even
 *generate* words it has never seen — without bolting on a separate back-off
 dictionary — by working below the word level, while keeping the network vocabulary
@@ -16,8 +16,7 @@ The constraint that makes this hard: the softmax over the target vocabulary is t
 dominant cost in training and decoding, and sequence length drives the cost of the
 recurrent encoder/decoder, so any sub-word scheme must trade vocabulary size against
 text length sensibly. A good solution needs (i) a fixed, compact symbol set that (ii)
-can represent *any* string with no out-of-vocabulary symbols, while (iii) keeping
-sequences from blowing up in length.
+can represent unseen words, while (iii) keeping sequences from blowing up in length.
 
 ## Background
 
@@ -28,10 +27,10 @@ entities can be copied or transliterated character-by-character (Barack Obama �
 (claustrophobia → Klaustrophobie); morphologically complex words can be translated
 morpheme-by-morpheme (solar system → Sonnensystem = Sonne + System). A diagnostic
 count of 100 rare tokens in German training data finds the majority are translatable
-through smaller units — roughly 56 compounds, 21 names, a handful of loanwords and
-transparent affixations. This is the pre-method observation that motivates segmenting
-rare words into sub-word units: the information needed to translate them is present
-at the sub-word level.
+through smaller units: 56 compounds, 21 names, 6 loanwords with common origin,
+5 transparent affixations, 1 number, and 1 computer language identifier. This
+diagnostic motivates segmenting rare words into sub-word units: the information needed
+to translate them is present at the sub-word level.
 
 **The encoder-decoder with attention.** The translation model is an RNN
 encoder-decoder with attention. A bidirectional GRU encoder reads the source
@@ -44,13 +43,10 @@ sub-word representation is appealing precisely because attention can then place 
 weight on different sub-word units at each decoding step, instead of being forced to
 attend to a single fixed-length word vector.
 
-**The byte pair encoding compression algorithm.** Byte pair encoding (Gage, 1994) is
-a simple data-compression scheme: repeatedly find the most frequent pair of adjacent
-bytes in a sequence and replace every occurrence with a new, unused byte, recording
-the replacement. Iterating builds a table of merges that compresses the data; the
-table can be replayed to decompress. Its salient property for this problem is that
-the number of new symbols introduced equals the number of merge operations — a single
-knob that directly sets the final symbol-table size.
+**A compression primitive in the literature.** Gage (1994) describes a simple data
+compression scheme that operates on a byte sequence and records a table of
+replacements, which can be replayed to decompress. It is one of several classical
+compression codes (alongside e.g. Huffman coding) available off the shelf.
 
 ## Baselines
 
@@ -74,11 +70,12 @@ words directly. Gap: the vocabulary is still finite and the long tail (rank
 >500k, frequency ≤ 2) is precisely where the model degrades; words remain sparse and
 their embeddings undertrained.
 
-**Character n-gram segmentation.** Represent words as overlapping/contiguous
-character n-grams (unigrams, bigrams, trigrams), optionally leaving a shortlist of the
-k most frequent words unsegmented. Core idea: trade sequence length against vocabulary
-size by choosing n. Only the unigram (pure character) representation is truly
-open-vocabulary; it has the smallest vocabulary (~3k) but the longest sequences
+**Character n-gram segmentation.** Represent words as contiguous character n-gram
+chunks (unigrams, bigrams, trigrams) that do not cross word boundaries, optionally
+leaving a shortlist of the k most frequent words unsegmented. Core idea: trade
+sequence length against vocabulary size by choosing n. Only the unigram (pure
+character) representation is truly open-vocabulary; it has the smallest vocabulary
+(~3k) but the longest sequences
 (~550m tokens vs ~100m words). Bigrams/trigrams shorten sequences but reintroduce a
 small number of unknown symbols. Gap: characters give very long sequences (slow, long
 dependencies), and fixed-n n-grams are a blunt instrument — they split frequent and
@@ -104,7 +101,7 @@ specific claim about rare/unseen words, unigram F1 (harmonic mean of clipped uni
 precision and recall), reported separately for all words, rare words (not in the top
 50k of training), and OOVs (absent from training). Corpus statistics — number of
 tokens, number of types, number of `UNK` symbols on the dev set — characterize each
-segmentation. No outcome numbers are part of these settings.
+segmentation.
 
 ## Code framework
 
@@ -127,7 +124,7 @@ def get_word_frequencies(corpus_lines):
 
 def learn_segmentation(word_freqs, num_operations):
     # TODO: from a frequency table over words, learn a fixed-size set of
-    # operations that builds a compact symbol vocabulary covering any string.
+    # operations that builds a compact symbol vocabulary from lower-level units.
     pass
 
 def segment_word(word, learned_operations):
@@ -138,7 +135,10 @@ def segment_word(word, learned_operations):
 def apply_segmentation(corpus_lines, learned_operations):
     out = []
     for line in corpus_lines:
-        out.append(' '.join(segment_word(w, learned_operations) for w in line.split()))
+        pieces = []
+        for word in line.split():
+            pieces.extend(segment_word(word, learned_operations))
+        out.append(' '.join(pieces))
     return out
 
 # --- existing translation stack (unchanged) ---

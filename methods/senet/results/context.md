@@ -18,7 +18,7 @@ A third relevant idea is *gating*. Highway networks (Srivastava et al. 2015) pla
 
 A fourth is *attention*, understood as biasing the allocation of computation toward the most informative parts of a signal (Itti & Koch 1998; Mnih et al. 2014; Vaswani et al. 2017). Attention has been used for sequence learning, localisation, and captioning, typically inserted after layers representing higher-level abstractions. Within vision, spatial attention has been folded into the architecture (e.g. spatial transformer modules, Jaderberg et al. 2015), and trunk-and-mask designs (Wang et al. 2017) compute soft attention masks with auxiliary hourglass branches inserted between residual stages — powerful, but adding substantial parameters and computation.
 
-Finally, classical feature-engineering work — spatial pyramid pooling, Fisher vectors — establishes that *globally aggregated statistics* of local descriptors are highly expressive for whole-image recognition, a hint that a pooled summary of a feature map can carry useful global information.
+Finally, classical feature-engineering work — spatial pyramid pooling, Fisher vectors — establishes that *globally aggregated statistics* of local descriptors are highly expressive for whole-image recognition.
 
 A diagnostic point worth holding onto: in a deep network the *theoretical* receptive field eventually becomes global, but the units that do channel mixing in the bulk of the network still act on local windows, so global context is not directly available where the mixing happens.
 
@@ -57,8 +57,7 @@ class ChannelRecalibration(nn.Module):
     using global context. To be designed."""
     def __init__(self, channels):
         super().__init__()
-        # TODO: aggregate global per-channel statistics, then map them to
-        #       per-channel modulation weights, then apply them.
+        # TODO: build the module.
         pass
 
     def forward(self, u):

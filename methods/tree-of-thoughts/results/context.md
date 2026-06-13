@@ -2,50 +2,49 @@
 
 ## Research question
 
-A large language model generates text autoregressively: one token at a time, left to right, each token sampled from the conditional distribution over the next token given everything so far. This single mechanism, scaled up, turns out to solve a startling range of problems — arithmetic, commonsense, symbolic manipulation — purely through prompting. But it is, by construction, a committed left-to-right walk: once a token is emitted it is never revisited, and the model never explicitly considers an alternative continuation, never measures how promising a partial solution is, never backs up from a dead end.
+A large language model generates text autoregressively: one token at a time, left to right, each token sampled from the conditional distribution over the next token given everything so far. That single mechanism, scaled up, handles arithmetic, commonsense, and symbolic tasks through prompting, but it is still a committed left-to-right walk. Once a token is emitted, the model does not explicitly revisit it; the pass runs forward and does not return.
 
-The question is whether this is enough to build a general problem solver, and if not, exactly which problems break it. The suspicious cases are the ones where (i) the first few tokens are pivotal — an early commitment can foreclose all solutions — and (ii) reaching the answer requires trying something, recognizing it leads nowhere, and trying something else. A toy that exposes both: take four numbers and combine them with `+ - * /` to make 24. The arithmetic itself is trivial for a capable model, yet a left-to-right generator that writes "4 + 9 = 13" as its first step may have already doomed the attempt, with no way to notice or undo it. What a solution would have to provide is a way to (1) hold several candidate continuations at once instead of betting on one, and (2) evaluate partial progress and decide where to keep searching, including the option to abandon a branch and return to an earlier choice.
+The question is whether that mechanism is enough for general problem solving, and if not, which kinds of problems expose its limits. The suspicious cases are those where early decisions are pivotal: a poor early commitment can foreclose every later solution, and the left-to-right pass has no recourse once it has been made. Game of 24 makes this concrete: given four numbers and the operations `+ - * /`, a model can know the arithmetic perfectly while still making a first equation that forecloses all later solutions, then plow forward to a wrong answer.
 
 ## Background
 
-**Autoregressive decoding.** A pretrained LM with parameters θ factorizes the probability of a sequence as p_θ(x) = ∏_i p_θ(x[i] | x[1..i-1]). Generation samples each token from this conditional. Decoding strategies — greedy, beam search, top-k, top-p (nucleus) sampling — all operate at the token level: they choose among likely next *tokens*, scored by the model's own probability (or perplexity). Beam search keeps several partial token-sequences alive, but it ranks them by likelihood, a low-level signal that need not align with whether a partial answer is on track toward the goal.
+**Autoregressive decoding.** A pretrained LM with parameters θ factorizes a sequence as p_θ(x) = ∏_i p_θ(x[i] | x[1..i-1]). Greedy decoding, beam search, top-k sampling, and top-p sampling all operate at the token level: they choose among likely next tokens, scored by the model's own probability or a variant of it. Beam search keeps several token prefixes alive, but its ranking signal is likelihood, not whether a partial answer is on track toward the task goal.
 
-**Prompting as problem solving.** The dominant way to apply an LM to a task is in-context: wrap the input x with instructions and/or a few input–output demonstrations, then read off the completion. This input–output (IO) prompting works when the map x → y is shallow.
+**Prompting as problem solving.** The standard in-context setup wraps an input x with instructions and/or a few input-output examples, then samples y from p_θ(y | prompt_IO(x)). This works when the input-output map is shallow enough to materialize in one completion.
 
-**Intermediate reasoning.** When the map is non-trivial (a math word problem to a number), inserting a chain of intermediate steps before the answer raises accuracy substantially — the model produces a sequence of coherent intermediate sequences (call each one a *thought*) that bridge input and answer, then the answer. In practice the whole chain plus answer is sampled as one continuous string, and *how* the chain is segmented into steps is left implicit. Ensembling helps too: sample several independent chains and take the majority answer, which is more robust because there are usually many valid routes to the same answer.
+**Intermediate reasoning.** Chain-of-thought prompting introduces intermediate language sequences z_1, ..., z_n between x and y. Each z_i is a coherent step toward the answer, but in practice the model samples the whole chain plus answer as one continuous string, and the decomposition into steps is implicit. Self-consistency improves robustness by sampling several complete chains and returning the most frequent answer.
 
-**Problem solving as search (classical AI / cognitive science).** Work going back to Newell, Shaw, and Simon in the 1950s framed human problem solving as search through a combinatorial *problem space*: a tree whose nodes are partial solutions and whose branches are operators that extend them. The solver is guided by *heuristics* — cheap assessments that suggest which branch to take, rule out classes of solutions, or distinguish likely from unlikely possibilities. Search procedures over such trees — breadth-first search, depth-first search, A*, Monte Carlo tree search — are standard. The persistent open question is where the heuristic comes from: historically it was either hand-programmed (the evaluation function in a chess engine) or learned from data (a value network). Both are expensive or brittle, and neither is available for an open-ended, hard-to-formalize task stated in natural language.
+**Problem solving as search.** Newell, Shaw, and Simon framed problem solving as search through a combinatorial problem space: nodes are partial solutions, branches are operators that extend them, and heuristics guide which branches to take, prune, or revisit. Search procedures such as breadth-first search, depth-first search, A*, and Monte Carlo tree search are standard, but their heuristic functions have usually been hand-programmed or learned separately.
 
-**Dual-process framing.** A recurring lens from cognitive science contrasts a fast, automatic, associative mode of cognition with a slow, deliberate, sequential one. Plain autoregressive token generation resembles the former; the kind of explicit, branch-and-evaluate planning above resembles the latter. The diagnostic observation that motivates everything below is concrete and measurable: on the make-24 task, a strong model with chain-of-thought prompting fails the large majority of instances, and an error breakdown shows the failure is overwhelmingly committed at the *first* step — the opening move is already wrong, and left-to-right decoding has no recourse.
+**Dual-process framing.** Cognitive science often contrasts fast associative decisions with slower deliberate planning. Token-by-token generation resembles the fast mode, and the question is what the slower, more deliberate mode would have to look like for an LM. The Game of 24 diagnosis makes the gap concrete: a strong model can fail after an early equation step, not because it lacks arithmetic knowledge, but because the decoding process has no recourse after a poor early commitment.
 
 ## Baselines
 
-**Input–output (IO) prompting.** y ~ p_θ(y | prompt_IO(x)), where prompt_IO wraps x with task instructions and/or few-shot examples. One forward pass, one answer. Gap: no intermediate computation; the entire solution must materialize in one shot, so any task whose solution needs working steps is at the mercy of a single sample.
+**Input-output prompting.** y ~ p_θ(y | prompt_IO(x)). One forward pass produces one answer. It has no explicit intermediate computation, so tasks that need working steps depend on the completion happening to include the right implicit path.
 
-**Chain-of-thought (CoT) prompting** (Wei et al., 2022). Introduce thoughts z_1, …, z_n bridging x and y: each z_i ~ p_θ^CoT(z_i | x, z_{1..i-1}) and y ~ p_θ^CoT(y | x, z_{1..n}); in practice [z_{1..n}, y] is sampled as one continuous string. Gap: a single linear chain. There is no branching at a step, no evaluation of whether a partial chain is promising, and no way to back up — an early mistake propagates to the end.
+**Chain-of-thought prompting.** z_i ~ p_θ^CoT(z_i | x, z_{1..i-1}) and y ~ p_θ^CoT(y | x, z_{1..n}); in implementation, [z_{1..n}, y] is sampled as a continuous chain. It provides intermediate steps but remains one linear path with no branching, no partial-state evaluation, and no backtracking.
 
-**Self-consistency with CoT (CoT-SC)** (Wang et al., 2022). Sample k i.i.d. chains [z_{1..n}^(i), y^(i)] and return the most frequent answer, argmax_y #{i : y^(i) = y}. More robust than a single chain because it explores a richer set of complete reasoning paths. Gaps: (i) it explores only *complete* chains — there is no local exploration of alternatives *within* a chain at a given step; (ii) the majority heuristic only applies when the output space is small enough for answers to repeat (e.g. multiple-choice), and says nothing for open-ended outputs.
+**Self-consistency with chain-of-thought.** Sample k independent complete chains [z_{1..n}^{(i)}, y^{(i)}] and return argmax_y #{i : y^{(i)} = y}. This explores a richer set of full solutions, but it does not explore alternatives within a chain at a pivotal step, and the frequency heuristic is natural only when answers repeat in a limited output space.
 
-**Self-refinement / iterative revision.** Generate a full answer, then condition on it (and possibly external feedback) to produce a revised answer, repeating a few times. Gap: it revises whole solutions globally and may miss the specific early decision point that went wrong; it also typically needs an external correctness signal.
+**Self-refinement.** Generate a full answer, then condition on it and feedback to produce a revised answer, repeating for a small number of rounds. This can revise globally, but it does not directly target the local branch where a partial solution first went wrong and may require an external correctness signal.
 
 ## Evaluation settings
 
-Natural yardsticks are tasks where left-to-right generation is expected to struggle — search/planning problems statable in language, where partial progress is meaningful and early commitments matter.
+The natural yardsticks are language-stated problems where partial progress is meaningful and early commitments matter.
 
-- **Game of 24.** Inputs are four numbers; a valid output uses each number exactly once with `+ - * /` to reach 24. Data: 1,362 puzzles ordered by human solving time; a hard slice (indices 901–1000) used for testing. Metric: success rate over 100 puzzles, where success = a valid equation equal to 24 using each input once.
-- **Creative writing.** Input: 4 random sentences; output: a coherent 4-paragraph passage ending in those 4 sentences (one per paragraph). No ground-truth passage. Coherence judged by an LM-assigned 1–10 score (averaged over several samples) and by blind human pairwise preference over 100 inputs.
-- **Mini crosswords (5×5).** Input: 5 horizontal and 5 vertical clues; output: the 25-letter board. Three success levels: fraction of correct letters (25/game), words (10/game), games. Data scraped into a small held-out test set, with a few games reserved for prompting.
+- **Game of 24.** Input: four numbers. Output: an equation using each number exactly once with `+ - * /` to equal 24. Data: 1,362 puzzles ordered by human solving time, with the hard slice at indices 901-1000 used for testing. Metric: success over 100 puzzles, where success means the equation is valid and equals 24.
+- **Creative writing.** Input: four random sentences. Output: a coherent four-paragraph passage ending with those four sentences, one per paragraph. There is no ground-truth passage. Coherence can be assessed by an LM-assigned 1-10 score averaged over samples and by blind human pairwise preference.
+- **Mini crosswords.** Input: five horizontal and five vertical clues for a 5x5 grid. Output: the 25-letter board. Success can be measured at the letter, word, and full-game levels. A small held-out test set is separated from a few games reserved for prompting.
 
-Base model: a strong chat LM queried via its completion API at sampling temperature 0.7. The protocol fixes few-shot example counts per task and a generation budget, and compares against the IO/CoT/CoT-SC/refine baselines above under matched-ish token budgets.
+The base setup uses a strong chat LM through a completion API at sampling temperature 0.7, fixes the few-shot examples per task, and records generation budgets for comparisons among prompting and search-style procedures.
 
 ## Code framework
 
-Pre-method primitives that already exist: a wrapper around the LM completion endpoint that returns `n` samples for a prompt, and a per-task object holding the data, the step structure, and the prompt-wrapping/parsing logic. The contribution will fill the inference loop and the per-task generate/evaluate hooks.
+Available primitives: an LM wrapper that returns `n` completions for a prompt, and a task object that owns the data, stopping rules, success check, and prompt-wrapping/parsing logic. The inference procedure on top of these primitives is left open.
 
 ```python
 import os, openai, backoff
 
-# --- LM access (exists) ---
 @backoff.on_exception(backoff.expo, openai.error.OpenAIError)
 def completions_with_backoff(**kwargs):
     return openai.ChatCompletion.create(**kwargs)
@@ -57,21 +56,14 @@ def gpt(prompt, model="gpt-4", temperature=0.7, max_tokens=1000, n=1, stop=None)
                                    n=n, stop=stop)
     return [c.message.content for c in res.choices]
 
-# --- per-task interface (exists as an abstraction; bodies are task-specific) ---
 class Task:
-    def get_input(self, idx): pass         # the problem instance
-    def test_output(self, idx, output): pass  # success check (e.g. equals 24)
-    # prompt wrappers / parsers the inference will call:
+    def get_input(self, idx): pass
+    def test_output(self, idx, output): pass
     def standard_prompt_wrap(self, x, y): pass
     def cot_prompt_wrap(self, x, y): pass
-    # --- slots the method will define ---
-    # how to propose / value / vote at a step, and the step structure
 
-# --- the inference procedure the method will design ---
 def solve(args, task, idx):
     x = task.get_input(idx)
-    # TODO: maintain a set of partial solutions, and at each step
-    #       (1) extend each into candidates, (2) score the candidates,
-    #       (3) keep the promising ones / decide where to search next.
+    # TODO: produce an output for x using the LM wrapper and task primitives.
     pass
 ```

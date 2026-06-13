@@ -65,16 +65,12 @@ for the loss: the log-likelihood under a Gaussian with unit variance equals the
 mean squared error up to a constant, so reconstruction terms become squared
 errors.
 
-**Deterministic recurrence versus stochastic latents.** Two families sit at the
-extremes. A recurrent neural network carries information forward through a
-deterministic hidden state and can remember the distant past, but a purely
-deterministic model cannot represent that the future is genuinely uncertain or
-multimodal. A purely stochastic latent chain $s_t\sim p(s_t\mid s_{t-1},a_{t-1})$
-can represent uncertainty, but every step squeezes all information through a
-sampled bottleneck, so reliably remembering anything across many steps is hard.
-Models that combine the two — the variational RNN (Chung et al. 2015), deep
+**Recurrent and stochastic latent sequence models.** A recurrent neural network
+carries information forward through a deterministic hidden state and can remember
+the distant past. A latent chain $s_t\sim p(s_t\mid s_{t-1},a_{t-1})$ instead
+carries a sampled state forward. The variational RNN (Chung et al. 2015), deep
 variational Bayes filters (Karl et al. 2016), probabilistic-recurrent SSMs (Doerr
-et al. 2018), and the deep state-space model of Buesing et al. (2018) — were the
+et al. 2018), and the deep state-space model of Buesing et al. (2018) were the
 state of the art for stochastic latent sequence prediction. The variational RNN
 feeds generated observations back into the recurrence, which makes pure forward
 prediction (without observations) expensive; Buesing et al.'s model is close in
@@ -178,10 +174,8 @@ reparameterized diagonal-Gaussian sampling; a closed-form KL divergence between
 diagonal Gaussians; the Adam optimizer with gradient clipping; and a
 population-based search routine that maintains a Gaussian over candidates, samples
 a population, keeps the top fraction, and refits. What does *not* yet exist is the
-form of the latent transition — how it should carry memory and represent uncertain
-futures at once — the training objective that ties the inferred latent sequence to
-the transition it should have produced, and how a planner scores action sequences
-entirely in latent space.
+form of the latent transition, the training objective that fits it to the agent's
+experience, and how a planner uses the learned model to choose actions.
 
 ```python
 # --- existing primitives ---------------------------------------------------
@@ -204,8 +198,7 @@ def reparam_sample(mean, std):
 # --- the slot the method will fill -----------------------------------------
 class LatentTransition:
     """How the latent state advances from (state, action) to the next state,
-    and how the current observation is folded in to infer it. (TODO: the form
-    of the state — what remembers, what is uncertain — is the contribution.)"""
+    and how the current observation is folded in to infer it."""
     def prior(self, prev_state, prev_action):
         # TODO: advance the state without seeing the observation
         raise NotImplementedError
@@ -217,14 +210,12 @@ class LatentTransition:
         raise NotImplementedError
 
 def model_loss(batch):
-    # TODO: variational objective tying the inferred latent sequence to the
-    #       transition that should have produced it (reconstruction vs. a KL
-    #       between the inference distribution and the transition)
+    # TODO: training objective for the latent dynamics model
     raise NotImplementedError
 
 def plan(state_belief, transition, reward_head):
-    # TODO: search over action sequences purely in latent space, scoring each
-    #       by predicted reward over a horizon; return the first action
+    # TODO: choose an action sequence using the learned model; return the
+    #       first action
     raise NotImplementedError
 
 def train_loop(env):

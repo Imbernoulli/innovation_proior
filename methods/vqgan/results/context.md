@@ -6,7 +6,7 @@ How can we synthesize high-resolution images — up to the megapixel range, both
 
 The obstacle is a mismatch between the two model families that are good at the two halves of this problem. The architecture that is unmatched at modeling long-range, global dependencies is the transformer: it lets every element attend to every other element, with no built-in assumption that interactions are local. But that generality is exactly what makes it expensive — attention computes inner products between *all* pairs of inputs, so its cost grows quadratically with the sequence length. For an image the sequence is the set of pixels, and the number of pixels itself grows quadratically with the side length, so the cost of a pixel-level transformer explodes with resolution. In practice this caps pixel-space transformers at tiny images (around 64x64). Convolutional networks are the opposite: their local kernels make cost grow only linearly with the number of pixels, so they scale, but their hard locality-and-translation-invariance bias makes them weak at the holistic, long-range reasoning that global image composition demands, and the proliferation of specialized convolutional layers built to inject global or task-specific structure suggests the bias is often too restrictive.
 
-A satisfactory solution would therefore (a) let an expressive global model operate over a representation short enough that quadratic attention is affordable at high resolution, (b) preserve the perceptual fidelity of the final image despite operating on a compressed representation, and (c) generalize across conditioning signals without bespoke per-task architectures.
+A satisfactory solution would therefore have to reconcile these tensions: the expressivity of a global model against the cost that expressivity incurs at high resolution, the perceptual fidelity of the final image, and applicability across conditioning signals without bespoke per-task architectures.
 
 ## Background
 
@@ -18,7 +18,7 @@ where the `QKᵀ` term scores every pair of positions. For a sequence of length 
 
 **Convolutional autoregressive image models.** Convolutional architectures exploit the 2D locality of images: a `k×k` kernel restricts interactions to a local neighborhood, so applying it costs linearly in the number of pixels and quadratically only in the (small, fixed) kernel size. PixelRNN/PixelCNN (van den Oord et al., 2016) and PixelSNAIL (Chen et al., 2018) use masked convolutions to model `p(x) = Πᵢ p(xᵢ | x_{<i})` autoregressively over the pixel grid. They are tractable and scale with resolution, but the locality bias makes long-range structure hard to capture, and at low resolution transformers have been shown to outperform them.
 
-**The two-stage idea.** Rather than model the data distribution directly in pixel space, first learn a compact encoding of the data and then learn a probabilistic model of *that* encoding. Dai & Wipf (2019) gave theoretical and empirical evidence that learning a representation with one model and its distribution with a second helps; similar gains were reported with normalizing flows over autoencoder latents (Esser et al., 2020; Rombach et al., 2020) and with GANs trained on autoencoder representations (Liu et al., 2019) or on low-resolution wavelet coefficients (Han et al., 2020). The attraction of the two-stage frame here is direct: if the first stage compresses the image into a much shorter representation, the second-stage global model runs on a sequence short enough for full attention.
+**The two-stage idea.** Rather than model the data distribution directly in pixel space, first learn a compact encoding of the data and then learn a probabilistic model of *that* encoding. Dai & Wipf (2019) gave theoretical and empirical evidence that learning a representation with one model and its distribution with a second helps; similar gains were reported with normalizing flows over autoencoder latents (Esser et al., 2020; Rombach et al., 2020) and with GANs trained on autoencoder representations (Liu et al., 2019) or on low-resolution wavelet coefficients (Han et al., 2020). These works establish that decoupling representation learning from distribution modeling is a viable and often beneficial frame for generative modeling.
 
 **Discrete representation learning (VQVAE).** van den Oord et al. (2017) introduced the Vector-Quantized Variational Autoencoder. An encoder `E` maps an image to a spatial grid of vectors `ẑ = E(x) ∈ ℝ^{h×w×n_z}`; each spatial vector is quantized to its nearest entry in a learned codebook `Z = {z_k}_{k=1}^{K} ⊂ ℝ^{n_z}`,
 
@@ -30,7 +30,9 @@ and a decoder `G` reconstructs `x̂ = G(z_q)`. The argmin has zero gradient almo
 
 with `sg[·]` the stop-gradient. The middle term (the codebook loss) pulls each chosen prototype toward the encoder output that selected it — online k-means dictionary learning — and the last term (the commitment loss, weight `β`) pulls the encoder output toward its chosen prototype so the encoder commits to codes rather than letting its outputs drift. An equivalent view of the quantized grid is a sequence of `h·w` integer indices into the codebook. The original work modeled the distribution over those indices with a convolutional autoregressive prior (a PixelCNN), and a hierarchical extension (Razavi et al., 2019, VQVAE-2) used a hierarchy of such codes. The limitation that matters for high-resolution global modeling: these priors are still *convolutional* density estimators, so they inherit the difficulty of capturing long-range interactions, and the reconstruction objective is a pixel-space `L₂` loss.
 
-**Why L₂ reconstruction blurs, and the perceptual alternative.** A per-pixel `L₂` (or `L₁`) reconstruction loss penalizes the average pixel error and is minimized, under any residual uncertainty, by predicting the conditional mean — which smears high-frequency texture into blur. The harder we compress (the larger the spatial reduction from image to code grid), the more residual uncertainty there is per code, and the worse the blur. Two ingredients were known to fix this. (i) *Perceptual losses*: rather than compare pixels, compare deep features of a fixed pretrained network. The Learned Perceptual Image Patch Similarity (LPIPS; Zhang et al., 2018) measures distance in VGG feature space and tracks human judgments of similarity, rewarding texture and structure that pixel losses ignore (Johnson et al., 2016; Dosovitskiy & Brox, 2016). (ii) *Adversarial losses*: a discriminator trained to tell real images from generated ones supplies a learned, perceptual training signal to the generator. Larsen et al. (2015) combined a VAE with a GAN discriminator; for image-to-image translation, the patch-based discriminator of pix2pix (Isola et al., 2017) classifies each `N×N` patch as real or fake rather than scoring the whole image, which concentrates the signal on local texture realism, uses fewer parameters, and applies to arbitrary image sizes. Mentzer et al. (2020) used such ingredients for high-fidelity compression.
+**Per-pixel reconstruction losses and the conditional mean.** A per-pixel `L₂` (or `L₁`) reconstruction loss penalizes the average pixel error and is minimized, under any residual uncertainty, by predicting the conditional mean — which smears high-frequency texture into blur. The harder the spatial reduction from image to code grid, the more residual uncertainty there is per code, and the more pronounced this effect.
+
+**Perceptual and adversarial training signals.** Beyond pixel losses, two families of learned similarity signals were established in the literature. *Perceptual losses* compare deep features of a fixed pretrained network rather than raw pixels: the Learned Perceptual Image Patch Similarity (LPIPS; Zhang et al., 2018) measures distance in VGG feature space and tracks human judgments of similarity, rewarding texture and structure that pixel losses ignore (Johnson et al., 2016; Dosovitskiy & Brox, 2016). *Adversarial losses* use a discriminator trained to tell real images from generated ones as a learned training signal to the generator. Larsen et al. (2015) combined a VAE with a GAN discriminator; for image-to-image translation, the patch-based discriminator of pix2pix (Isola et al., 2017) classifies each `N×N` patch as real or fake rather than scoring the whole image, which concentrates the signal on local texture realism, uses fewer parameters, and applies to arbitrary image sizes. Mentzer et al. (2020) used such ingredients for high-fidelity compression.
 
 **GAN training objectives.** A generative adversarial network (Goodfellow et al., 2014) plays a min–max game `min_G max_D E_x[log D(x)] + E_z[log(1 − D(G(z)))]`. In practice the saturating `log(1−D)` term is often replaced by more stable surrogates; the hinge formulation trains `D` to push real logits above `+1` and fake logits below `−1` (`E[relu(1−D(x))] + E[relu(1+D(x̂))]`) and trains the generator to maximize `D(x̂)`. GAN training is notoriously unstable, especially early when the generator output is meaningless, motivating warm-up schedules and careful balancing of the adversarial term against any reconstruction term.
 
@@ -70,7 +72,7 @@ class Decoder(nn.Module):
     # features (B,n_z,h,w) -> image (B,3,H,W)
     def __init__(self, ...):
         ...
-        self.conv_out = nn.Conv2d(...)  # final layer; its weights are a known handle
+        self.conv_out = nn.Conv2d(...)  # final layer producing the output image
 
 # ---- existing perceptual / adversarial primitives ----
 class LPIPS(nn.Module):                 # fixed VGG feature distance (perceptual loss)
@@ -88,7 +90,7 @@ class Quantizer(nn.Module):
 # ---- the first-stage objective: TODO (the method designs this) ----
 class ReconstructionObjective(nn.Module):
     def forward(self, codebook_loss, x, x_hat, optimizer_idx, global_step, last_layer):
-        # combine reconstruction + (perceptual? adversarial?) terms; balance them
+        # define the first-stage training objective
         # TODO
         pass
 
@@ -102,7 +104,7 @@ class AutoEncoderModel(nn.Module):
     def encode(self, x): ...   # -> z_q, loss, indices
     def decode(self, z_q): ... # -> x_hat
     def training_step(self, batch, optimizer_idx):
-        # TODO: alternate generator/discriminator updates
+        # TODO: define the first-stage update(s)
         pass
 
 # ---- second-stage prior over discrete codes ----

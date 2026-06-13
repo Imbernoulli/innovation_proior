@@ -50,15 +50,13 @@ learning rate, usually with momentum. The pain points:
   accurate but memory-hungry, and curvature methods that store per-minibatch information grow
   in memory with the number of minibatch partitions.
 
-Two conceptual frames sit in the background and will matter throughout. First, the
-**moment** view of gradient statistics: an exponentially decaying running average of the
-gradient is an estimate of its first moment (the mean direction); a running average of the
-*squared* gradient is an estimate of the second raw moment (the uncentered variance) — i.e. a
-per-coordinate estimate of gradient magnitude. The *window length* of such an EMA is set by
-its decay rate: a decay `beta` keeps an effective memory of roughly `1/(1-beta)` recent
-samples, so `beta = 0.9` averages on the order of ten samples and `beta = 0.999` averages on
-the order of a thousand. This window/precision tradeoff will govern the choice of decay
-rates. Second, the **online convex optimization / regret** frame (Zinkevich 2003): treat the
+Some background frames are available. First, the
+**moment** view of gradient statistics: an exponentially decaying running average of a
+gradient is an estimate of its first moment (the mean direction). A general property of any
+such EMA is that its *window length* is set by its decay rate: a decay `beta` keeps an
+effective memory of roughly `1/(1-beta)` recent samples, so `beta = 0.9` averages on the
+order of ten samples and `beta = 0.999` averages on the order of a thousand. Second, the
+**online convex optimization / regret** frame (Zinkevich 2003): treat the
 optimizer as committing to a point `theta_t` before an adversary reveals a convex cost `f_t`,
 and measure it by regret against the best fixed point for the whole sequence,
 
@@ -68,14 +66,12 @@ R(T) = sum_{t=1}^{T} [ f_t(theta_t) - f_t(theta*) ],   theta* = argmin_theta sum
 
 Zinkevich showed that projected online gradient descent with step `eta_t = t^{-1/2}`
 achieves `O(sqrt(T))` regret for any bounded-gradient convex sequence, so average regret
-`R(T)/T -> 0`. The analytic entry point is the first-order convexity bound
+`R(T)/T -> 0`. A standard analytic tool in this frame is the first-order convexity bound
 `f_t(theta_t) - f_t(theta*) <= g_t^T (theta_t - theta*)` (a convex function lies above its
-tangent), which converts regret into a sum over the algorithm's own updates — the lever any
-convergence proof for a new method would pull. A related frame is **natural gradient** (Amari
-1998; Pascanu & Bengio 2013): a second-moment estimate of the gradient is related to the
-diagonal of the Fisher information matrix, so dividing a step by the square root of that
-estimate is a cheap, diagonal, *more conservative* cousin of natural-gradient preconditioning
-(square root of inverse diagonal Fisher, rather than full inverse Fisher).
+tangent), which converts regret into a sum over the algorithm's own updates. A related frame
+is **natural gradient** (Amari 1998; Pascanu & Bengio 2013): the diagonal of the Fisher
+information matrix is the expected per-coordinate squared gradient, and natural-gradient
+preconditioning multiplies the step by the inverse Fisher.
 
 ## Baselines
 
@@ -95,9 +91,7 @@ directions, and damps oscillation across ravines. Nesterov accelerated gradient 
 gradient at a look-ahead point `theta + mu*v`, which is more responsive and more stable at
 high momentum. Sutskever, Martens, Dahl & Hinton (ICML 2013) showed that well-initialized
 nets with a carefully *scheduled* momentum — ramped up early, then *reduced toward the end of
-training* — can rival Hessian-free second-order optimization; this is direct evidence both
-that a smoothed first moment is genuinely part of the answer and that the momentum
-coefficient should *decay* late in training. **Gap:** still one global learning rate; no
+training* — can rival Hessian-free second-order optimization. **Gap:** still one global learning rate; no
 per-parameter scaling. The average is over the *raw* gradient, so coordinates with very
 different gradient magnitudes are all stepped at the same scale.
 
@@ -130,18 +124,16 @@ theta_t = theta_{t-1} - alpha * g_t / ( sqrt(v_t) + eps )
 The EMA forgets old gradients, so the denominator tracks the *recent* gradient scale (a
 windowed second-moment estimate, not a cumulative one) — good on non-stationary and online
 problems. Graves (2013) added a momentum term, applied to the already-rescaled gradient.
-**Gaps:** (1) no bias-correction term — because `v_0 = 0`, the early `v_t` is biased toward
-zero, and when `beta_2` is pushed close to 1 (which a reliable second-moment estimate on
-sparse gradients demands) this bias makes the early denominator far too small, so the first
-steps are huge and training can diverge; (2) the momentum sits on the *rescaled* gradient
-rather than on a clean, separately maintained first-moment estimate — there is no unifying
-"estimate the first and second moments and combine them" story.
+**Gaps:** (1) the `v_t` recursion is initialized at `v_0 = 0`, and in practice when `beta_2`
+is pushed close to 1 — which a reliable second-moment estimate on sparse gradients demands —
+RMSProp's first steps are observed to be huge and training can diverge early on; (2) the
+momentum sits on the *rescaled* gradient rather than on a separately maintained estimate of
+the gradient itself.
 
 **AdaDelta (Zeiler, 2012).** Same EMA-of-squared-gradient denominator as RMSProp, plus an EMA
 of the squared *parameter updates* whose square root goes in the numerator, making the update
-dimensionally consistent so that no global learning rate is needed. **Gap:** still no
-moment-estimation / bias-correction perspective; the unit-matching is a heuristic and shares
-RMSProp's lack of principled de-biasing.
+dimensionally consistent so that no global learning rate is needed. **Gap:** the unit-matching
+is a heuristic, and like RMSProp it inherits the same zero-initialized EMA denominator.
 
 **Quasi-Newton on minibatches (Roux & Fitzgibbon 2010; Sohl-Dickstein et al. 2014).** The
 Sum-of-Functions Optimizer (SFO) estimates per-minibatch curvature for near-second-order

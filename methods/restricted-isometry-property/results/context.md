@@ -95,8 +95,8 @@ gives sharp deviation bounds $\mathbb{P}(\sigma_{\max}>1+\sqrt{s/m}+t)\le e^{-mt
 the (1-Lipschitz) singular-value functionals. Separately, the Johnson–Lindenstrauss lemma
 says a random projection to $O(\varepsilon^{-2}\log P)$ dimensions preserves the pairwise
 norms of $P$ fixed points up to $1\pm\varepsilon$ — norm preservation of a *finite* set
-under random linear maps. These are the raw materials for controlling how a random $\Phi$
-acts on sparse vectors.
+under random linear maps. These are standard facts about the spectrum and geometry of
+random linear maps.
 
 ## Baselines
 
@@ -147,8 +147,8 @@ acts on sparse vectors.
 
 Available primitives: dense linear algebra to form and apply $\Phi$ and $\Phi^\top$, a
 random Gaussian sampler, and a generic linear-programming routine (an
-$\ell_1$-minimization-as-LP is standard). The empty slots are (i) a property of $\Phi$ that
-certifies recovery, (ii) the recovery program, and (iii) the sample-complexity relation for
+$\ell_1$-minimization-as-LP is standard). The empty slots are (i) whatever it takes to settle
+when recovery succeeds, (ii) the recovery program, and (iii) the sample-complexity relation for
 random $\Phi$.
 
 ```python
@@ -166,9 +166,9 @@ def make_sparse(n, s, rng):
     x[T] = rng.standard_normal(s)
     return x
 
-def conditioning_property(Phi, s):
-    """The matrix property that certifies recovery on s-sparse vectors.
-    # TODO: define the quantity that controls whether sparse recovery succeeds.
+def recovery_certificate(Phi, s):
+    """Whatever certifies, for this Phi and sparsity level s, that recovery succeeds.
+    # TODO: fill in.
     """
     pass
 

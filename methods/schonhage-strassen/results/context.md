@@ -30,20 +30,14 @@ recurrence T(N) = 2T(N/2) + Θ(N). The FFT needs a primitive N-th root of unity 
 
 **Roots of unity in finite rings.** A root of unity need not be the complex number e^{2πi/N}. In a
 finite ring Z/mZ, an element g is a primitive N-th root of unity if g^N ≡ 1 (mod m) and no smaller
-power is 1. A transform built on such a g is a *Number-Theoretic Transform* (NTT). Of special
-interest are Fermat-type moduli m = 2^n + 1: in Z/(2^n+1)Z one has 2^n ≡ −1, hence 2^{2n} ≡ 1, and
-2 has order exactly 2n. If a transform length N divides 2n, then ω = 2^{2n/N} has order N. If
-N divides n, then θ = 2^{n/N} satisfies θ^N = −1 and supplies the 2N-th root needed for a
-negacyclic transform. Powers of 2 are the cheapest possible ring elements to multiply by —
-multiplication by 2^s is a left shift, and the wraparound past 2^n folds back as a sign flip because
-2^n ≡ −1.
+power is 1. A transform built on such a g is a *Number-Theoretic Transform* (NTT). The FFT needs only that
+ω^N = 1, that ω^r − 1 is invertible for 0 < r < N, and that N is invertible in the ring; any
+commutative ring with such an element supports the transform.
 
-**Cyclic vs. negacyclic convolution.** A length-N cyclic convolution computes c mod (x^N − 1); at
-x = 2^M that is a product mod 2^{MN} − 1 (a Mersenne modulus). A *negacyclic* (negative-wrapped)
-convolution computes c mod (x^N + 1); at x = 2^M that is a product mod 2^{MN} + 1 (a Fermat
-modulus). The negacyclic version uses the odd powers of a 2N-th root θ: θ, θ^3, ..., θ^{2N−1},
-the roots of x^N + 1. Those are exactly the evaluations needed for the negative-wrapped product;
-the even powers belong to x^N − 1.
+**Cyclic vs. negacyclic convolution.** A length-N cyclic convolution computes c mod (x^N − 1); a
+*negacyclic* (negative-wrapped) convolution computes c mod (x^N + 1), where the wraparound
+coefficient k+N is subtracted from coefficient k rather than added. These are the two natural
+length-N convolutions a transform on N points can produce.
 
 **The divide-and-conquer ancestry, as motivating empirical fact.** Splitting an integer into d+1
 parts and treating it as a degree-d polynomial is a known, measured way to cut core-multiplication
@@ -93,31 +87,11 @@ Cooley–Tukey FFT recurrence over a ring that supplies a root of unity. We can 
 into which a fast method will be filled.
 
 ```python
-# Arbitrary-precision integers, bit-shifts, add, and modular reduction already exist.
-
-def reduce_mod(x, n):
-    # TODO: choose a modulus where exact transform arithmetic is possible.
-    pass
-
-def shift_mod(x, exponent, n):
-    # TODO: decide when multiplying by a transform root can be implemented as a shift.
-    pass
-
-def ntt(values, n, inverse=False):
-    # Cooley-Tukey length-N transform over a ring.
-    # TODO: supply the root of unity, the inverse root, and the inverse scale.
-    pass
-
-def pointwise_mul(x, y, n):
-    # TODO: decide whether these coefficient products are base-case products
-    #       or smaller products of the same modular shape.
-    pass
-
-def multiply_mod(a, b, K, M, n):
-    # TODO: split into pieces, transform, multiply pointwise, invert, and reassemble.
-    pass
+# Arbitrary-precision integers, bit-shifts, add, and modular reduction already exist,
+# along with a Cooley-Tukey length-N transform recurrence over a ring that supplies a
+# root of unity.
 
 def multiply(a, b):
-    # TODO: choose the split parameters and call multiply_mod so the final product is exact.
+    # TODO: fill in an exact fast multiplication.
     pass
 ```

@@ -72,8 +72,7 @@ $\delta_t = r_t+\gamma V(s_{t+1})-V(s_t)$ is the TD residual. TD($\lambda$) form
 a geometrically-weighted average of $n$-step returns — the $\lambda$-return —
 trading off the bias of short bootstrapped backups against the variance of long
 Monte-Carlo backups with a single parameter $\lambda\in[0,1]$. This averaging
-construction, applied to *value* estimation, is the template that the present
-problem will reuse for *advantage* estimation.
+construction is defined and analyzed for *value* estimation.
 
 **Discounting as variance reduction.** Even when the problem is posed without a
 discount (maximize $\sum_t r_t$), introducing a discount $\gamma<1$ inside the
@@ -90,9 +89,8 @@ reward by a potential function $\Phi$,
 $\tilde r(s,a,s') = r(s,a,s') + \gamma\Phi(s') - \Phi(s)$,
 leaves the optimal policy and (for the discounted objective) the policy gradient
 unchanged. The discounted sum of shaped rewards telescopes to the discounted sum
-of original rewards minus $\Phi(s_t)$. This invariance is a load-bearing tool: it
-means a value-function-like potential can be folded into the reward without
-changing what is being optimized.
+of original rewards minus $\Phi(s_t)$. This is a known invariance of the
+discounted objective under potential-based reward transformations.
 
 **The actor-critic precedent and its known limitation.** Actor-critic methods
 (Konda & Tsitsiklis 2003; Hafner & Riedmiller 2011) replace the empirical return

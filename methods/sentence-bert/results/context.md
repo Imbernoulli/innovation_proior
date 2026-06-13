@@ -7,14 +7,14 @@ cross-encoder) and reading a prediction off the joint representation. That works
 beautifully for scoring one pair at a time, but it is catastrophic the moment the task
 is "find the most similar pair (or nearest neighbor) in a large collection." Because
 the score is only defined on a *pair* jointly encoded, finding the best match in a
-collection of n = 10,000 sentences needs n·(n−1)/2 ≈ 50 million forward passes — on the
-order of 65 hours on a single modern GPU; clustering or large-scale semantic search is
+collection of n = 10,000 sentences needs n·(n−1)/2 = 49,995,000 forward passes — on the
+order of 65 hours on a V100 GPU; clustering or large-scale semantic search is
 simply infeasible. The goal: derive a *fixed-size embedding for a single sentence* such
 that semantically similar sentences are close under a cheap vector similarity (e.g.
 cosine), so that the expensive joint encoding is replaced by one encode per sentence
-plus near-instant vector comparisons — while keeping the accuracy of the strong
-pre-trained encoder. The crux is that the encoder was never trained to produce a
-*standalone* sentence vector that behaves well under cosine similarity.
+plus near-instant vector comparisons while retaining as much of the strong encoder's
+semantic knowledge as possible. The crux is that the encoder was never trained to
+produce a *standalone* sentence vector that behaves well under cosine similarity.
 
 ## Background
 
@@ -30,28 +30,28 @@ workload that is quadratic in the number of *pairs* inherits the full forward-pa
 they are bad.** The obvious workaround is to push a single sentence through the encoder
 and read off a fixed vector — either the output of the special classification token, or
 the mean of the token output vectors (offered by popular "encoder-as-a-service" tooling).
-The pre-method finding that motivates everything here: these vectors are poor for
-similarity. Measured by Spearman correlation between cosine similarity and human STS
-labels, averaging the encoder outputs lands well below averaging GloVe word vectors,
-and the classification-token vector is worse still. So out of the box the encoder maps
+The diagnostic finding is that these vectors are poor for similarity. Measured by
+Spearman correlation between cosine similarity and human STS labels, averaging the
+encoder outputs lands well below averaging GloVe word vectors, and the
+classification-token vector is worse still. So out of the box the encoder maps
 sentences to a space that is unsuitable for cosine similarity — the representation
 exists but its geometry is wrong for the metric.
 
-**Why cosine geometry must be trained in.** Cosine similarity treats every dimension
+**Why naive vectors fail under cosine geometry.** Cosine similarity treats every dimension
 equally and only sees the angle between two vectors. A representation can carry the
 information needed for a *downstream classifier* (which can re-weight dimensions) yet be
-useless under cosine, where no re-weighting is allowed. So a sentence embedding intended
-for cosine retrieval has to be *trained* so that semantic closeness corresponds to small
-angle directly. This is the gap a fine-tuning objective must close.
+useless under cosine, where no re-weighting is allowed. This is where the naive readouts
+stall: nothing in the pre-training ever forced semantic closeness to correspond to small
+angle under an equal-weight metric.
 
 **Siamese and triplet networks (Bromley et al. 1993; Schroff et al. 2015).** The
 classical recipe for learning a metric-friendly embedding: pass each input through the
 *same* network (tied weights), producing comparable vectors in one shared space, and
 train with an objective defined on the resulting vectors — a classifier over a pair, a
 regression onto a similarity score, or a triplet margin that pulls an anchor toward a
-positive and away from a negative. The tied-weight (siamese) structure is what
-guarantees the two embeddings are directly comparable. This is the structural tool the
-method will adopt and place on top of the pre-trained encoder.
+positive and away from a negative under a vector distance such as Euclidean distance. The tied-weight (siamese) structure makes the two
+embeddings land in one shared space, so vectors produced for different inputs are
+directly comparable.
 
 ## Baselines
 
@@ -97,6 +97,8 @@ entailment/contradiction/neutral) combined with MultiNLI (430k pairs). Task-spec
 fine-tuning data: the STS benchmark train split (5,749 pairs; dev 1,500; test 1,379),
 the Argument Facet Similarity corpus (~6,000 argument pairs, 0–5 scale), and the
 Wikipedia-section triplet dataset (Dor et al. 2018; ~1.8M train / ~223k test triplets).
+STS labels are stored on a 0–5 scale; pairwise regression training can normalize them to
+0–1 before comparing them with a cosine score.
 Unsupervised STS evaluation: SemEval STS 2012–2016, the STS benchmark, and SICK-R, with
 gold relatedness labels — scored by Spearman rank correlation between cosine similarity
 of sentence embeddings and gold labels (Pearson is avoided as ill-suited for STS).
@@ -104,14 +106,14 @@ Transfer evaluation: the SentEval toolkit (MR, CR, SUBJ, MPQA, SST, TREC, MRPC),
 trains a logistic-regression classifier on the embeddings via 10-fold cross-validation.
 Computational-efficiency setting: sentences-per-second throughput on CPU and GPU,
 including a length-sorted "smart batching" that pads only to the longest element in a
-mini-batch. No outcome numbers are part of these settings.
+mini-batch.
 
 ## Code framework
 
 The harness wraps a pre-trained Transformer encoder, adds a pooling step to turn token
 outputs into one fixed vector, and provides siamese training loops that share encoder
-weights across the inputs of a pair/triplet. The pooling choice, the training objective
-that shapes the embedding space, and the inference similarity are the empty slots.
+weights across the inputs of a pair/triplet. The pooling choice, the training objective,
+and the inference similarity are the empty slots.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -137,7 +139,19 @@ class PairObjective(nn.Module):
     def forward(self, batch_a, batch_b, labels):
         u = embed(self.encoder, batch_a)
         v = embed(self.encoder, batch_b)
-        # TODO: design the loss that makes cosine(u, v) track semantic similarity.
+        # TODO: design a categorical or graded pairwise objective over u and v.
+        pass
+
+class TripletObjective(nn.Module):
+    """Trains from anchor / positive / negative examples."""
+    def __init__(self, encoder):
+        super().__init__()
+        self.encoder = encoder
+    def forward(self, anchor, positive, negative):
+        a = embed(self.encoder, anchor)
+        p = embed(self.encoder, positive)
+        n = embed(self.encoder, negative)
+        # TODO: enforce that positive is closer to anchor than negative.
         pass
 
 def similarity(encoder, sent_a, sent_b):

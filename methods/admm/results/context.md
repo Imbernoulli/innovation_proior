@@ -11,11 +11,10 @@ with $x \in \mathbb{R}^n$, $z \in \mathbb{R}^m$, $A \in \mathbb{R}^{p\times n}$,
 $B \in \mathbb{R}^{p\times m}$, $c \in \mathbb{R}^p$, and $f,g$ convex (allowed to be
 nondifferentiable and to take the value $+\infty$, so that constraints can be folded into the
 objective as indicator functions). This template is more general than it looks. A great many
-problems of interest — regularized loss minimization $\ell(x)+\lambda\|x\|_1$ (split into a smooth
-data term and a separable penalty by writing $x=z$); a sum of $N$ data-block losses
-$\sum_i f_i(x)$ that share one parameter vector (split by giving each block a private copy
-$x_i$ and constraining $x_i=z$); model fitting where a regularizer sits on the shared variable —
-all fall into this two-block form once the variable is duplicated.
+problems of interest — regularized loss minimization $\ell(x)+\lambda\|x\|_1$ (a smooth
+data term plus a separable penalty); a sum of $N$ data-block losses
+$\sum_i f_i(x)$ that share one parameter vector; model fitting where a regularizer sits on a shared
+variable — can be cast into this two-block form by an appropriate change of variables.
 
 A solution method has to clear two bars **at the same time**, and the difficulty is that the two
 bars are in tension. **Robustness:** the method must converge under weak assumptions — no strict
@@ -73,8 +72,8 @@ $0=\nabla f(x^{k+1})+A^\top(y^k+\rho(Ax^{k+1}-b))=\nabla f(x^{k+1})+A^\top y^{k+
 automatically *dual feasible*, and as the primal residual $Ax^{k+1}-b$ drives to zero the pair
 becomes optimal. The method of multipliers converges under far weaker conditions than dual ascent —
 including when $f$ is nonsmooth, takes the value $+\infty$, or is not strictly convex. The penalty
-bought robustness. The diagnostic failure that this whole development runs into, and that the next
-method must repair, is that the **quadratic penalty couples the variables**: with $f$ separable,
+bought robustness. But this development runs into a failure: the **quadratic penalty couples the
+variables**. With $f$ separable,
 $(\rho/2)\|\sum_i A_i x_i - b\|^2$ contains cross terms $\rho\,(A_i x_i)^\top(A_j x_j)$, so $L_\rho$
 is *not* separable, the joint $x$-minimization can no longer be split across processors, and
 decomposition is lost. Robustness and decomposition cannot both be had from these classical pieces.
@@ -91,8 +90,8 @@ $\operatorname{prox}_{h,\rho}(v)=\arg\min_x h(x)+(\rho/2)\|x-v\|_2^2$, which gen
 projection (for the indicator of a convex set it *is* the projection). Rockafellar's proximal point
 algorithm (1976) is the umbrella: it finds a zero of a maximal monotone operator by repeated
 resolvent steps, and both the method of multipliers and Douglas–Rachford splitting turn out to be
-instances. This operator-splitting view is the source of the convergence machinery the eventual
-two-block method will lean on.
+instances. This operator-splitting view is a second body of convergence theory standing alongside
+the augmented-Lagrangian one.
 
 ## Baselines
 
@@ -117,9 +116,8 @@ two-block method will lean on.
 - **Douglas–Rachford / proximal-point splitting.** Find a zero of $S+T$ (maximal monotone) by
   alternating resolvents $(I+\lambda S)^{-1},(I+\lambda T)^{-1}$ (Lions–Mercier 1979; Rockafellar's
   proximal point algorithm 1976). Core idea: never touch $S+T$ jointly — split into per-operator prox
-  steps. Gap (at this point): stated abstractly for operators, not yet connected to the concrete
-  two-block constrained optimization template or to a distributed implementation; it is the
-  convergence theory waiting for the algorithm that instantiates it.
+  steps. Gap (at this point): stated abstractly for operators, not connected to the concrete
+  two-block constrained optimization template or to a distributed implementation.
 
 ## Evaluation settings
 
@@ -133,55 +131,28 @@ $b=Cx^\star+\text{noise}$, choose $\lambda$ as a fraction of $\lambda_{\max}=\|C
 group lasso, and sparse inverse covariance selection. The distributed testbeds are **consensus**
 problems — $\min\sum_i f_i(x)$ split over data partitions, each $f_i$ a block loss, fit on its own
 worker — and **sharing/exchange** problems where agents trade a shared resource. Figures of merit
-are the objective value and the primal/dual residual norms versus iteration count, the number of
+are the objective value and the constraint-residual norms versus iteration count, the number of
 iterations to reach a modest accuracy, and how the wall-clock and communication scale with the
-number of workers; each iteration costs one (often cached/factored) block solve plus a coordinatewise
-or projection step plus a gather/broadcast.
+number of workers.
 
 ## Code framework
 
 What already exists: routines to apply the blocks $A,B$ and their adjoints; the two objective
-pieces $f,g$ and whatever simple sub-solver each admits (a cached factorization for a quadratic $f$,
-a closed-form prox for a separable $g$, a projection for an indicator); vector norms, factorizations,
-and a generic driver that can repeat a candidate update rule. The open slot is the update rule that
-uses those pieces without sacrificing either robustness or decomposition.
+pieces $f,g$ and whatever simple sub-solver each admits; vector norms, factorizations, and a generic
+driver that can repeat a candidate update rule. The open slot is the iteration that uses those pieces
+without sacrificing either robustness or decomposition.
 
 ```python
 import numpy as np
 
 
-def x_update(z, u, rho):
-    # TODO: fill in the robust decomposable rule for the first objective block
-    pass
-
-
-def z_update(x, u, rho):
-    # TODO: fill in the robust decomposable rule for the second objective block
-    pass
-
-
-def shrinkage(a, kappa):
-    # TODO: fill in the simple separable penalty operator
-    pass
-
-
-def factor(C, rho):
-    # TODO: cache the repeated linear solve for a quadratic data term
+def solve_split_problem(A, B, c, n, m, p, rho=1.0,
+                        n_iter=1000, abstol=1e-4, reltol=1e-2):
+    # TODO: fill in the iteration that solves  min f(x) + g(z)  s.t. A x + B z = c
     pass
 
 
 def lasso(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
-    # TODO: solve the split regularized least-squares template
-    pass
-
-
-def solve_split_problem(x_update, z_update, A, B, c, n, m, p, rho=1.0,
-                        n_iter=1000, abstol=1e-4, reltol=1e-2):
-    # TODO: fill in the generic two-block loop
-    pass
-
-
-def consensus(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
-    # TODO: fill in the distributed agreement loop
+    # TODO: instantiate it on  min 1/2||C x - b||^2 + lam||x||_1
     pass
 ```

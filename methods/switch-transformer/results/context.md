@@ -108,17 +108,18 @@ FFN with the top-\(k\) expert layer above (typically \(k=2\)). It is the first
 design to decouple capacity from compute at scale and the direct point of
 comparison. Its mechanics and the specific gaps it leaves:
 - **Top-2 routing** evaluates two experts per token, so per-token expert FLOPs,
-  router selection work, and the per-expert capacity (buffer batch size) are all
-  larger than they would need to be if a single expert sufficed — and the
-  conjecture that \(k\ge 2\) is *necessary* for a trainable router has not been
-  tested against a genuine \(k=1\) design.
+  router selection work, and the per-expert capacity (buffer batch size) all
+  scale with the number of experts evaluated per token. The choice \(k=2\) rests
+  on the conjecture that \(k\ge 2\) is *necessary* for a trainable router (above);
+  the cost of that choice along every one of these axes is borne without that
+  conjecture having been put to the test.
 - **Two auxiliary losses.** The original design carried separate
   load-balancing and importance-weighting terms (later partially simplified to a
   single load term in Shazeer et al., 2018; Lepikhin et al., 2020), adding
   hyper-parameters and conceptual overhead.
 - **Communication.** Routing each token to two experts on (potentially) two
-  different cores doubles the all-to-all traffic of dispatching tokens and
-  gathering their outputs, relative to a hypothetical single-expert design.
+  different cores means the all-to-all traffic of dispatching tokens and
+  gathering their outputs scales with the number of experts each token is sent to.
 - **Precision/stability.** Trained in 32-bit precision throughout for
   stability, which inflates the bytes moved in the routing collectives and forgoes
   the speed of 16-bit training.
@@ -126,10 +127,12 @@ comparison. Its mechanics and the specific gaps it leaves:
   rates and the choice of capacity factor interact with quality in ways that
   larger \(k\) makes more buffer-hungry.
 
-These leave a clear opening: a routing rule that is *simpler* (fewer experts per
-token, one balancing loss), *cheaper* (less selection, capacity, and
-communication), and *more stable* (trainable in 16-bit), without losing the
-capacity-without-compute property or the trainability of the router.
+Taken together, these are the axes along which the existing sparse design carries
+cost: complexity (multiple experts per token, multiple auxiliary terms),
+communication and capacity overhead, and the instability that forces 32-bit
+training — all without an established account of which of them are actually
+forced by the requirement that the router remain trainable, and which are
+incidental.
 
 ## Evaluation settings
 
@@ -184,18 +187,16 @@ class FeedForward(nn.Module):
 # --- empty slots the contribution will fill in ------------------------------
 
 class Router(nn.Module):
-    """Map each token to one or more experts and a scalar gate value.
-    Open questions to resolve: how many experts per token; how the router
-    stays differentiable; how to bound and pad each expert's workload to a
-    static shape; how to keep the softmax numerically stable."""
+    """Map each token to one or more experts and a scalar gate value, under the
+    constraints of the problem statement (static shapes, trainability, bounded
+    communication, stability in reduced precision)."""
     def __init__(self, d_model, num_experts):
         super().__init__()
-        # TODO: a linear projection d_model -> num_experts, and the selection rule
+        # TODO
         pass
 
     def forward(self, x):
-        # TODO: produce a per-token expert assignment, a gate value, and the
-        #       tensors needed to dispatch/combine within a fixed capacity
+        # TODO
         raise NotImplementedError
 
 

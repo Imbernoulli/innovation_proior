@@ -16,7 +16,7 @@ The most pointed version of this failure is *compositional generalization*: a mo
 
 **Easy-to-hard generalization in prior work.** Several lines of work achieve generalization from simple to complex by mechanisms that recur extra computation or apply learned logic rules at larger scale — e.g. networks that perform more recurrent steps at test time to solve bigger instances, or neural-logic systems trained on small instances that scale up. These typically require dedicated training.
 
-**Task decomposition in prior work.** Decomposing a hard problem into subproblems is an old idea: split a multi-hop question into single-hop subquestions answered independently and then aggregate; chain LM calls so each step's output feeds the next; translate a question into a sequence of slot-filling subprompts via rules. Most of these rely on *trained* decomposition/aggregation models or produce *independent* subquestions; few do dependent, sequential decomposition with a frozen LM and no training.
+**Task decomposition in prior work.** Decomposing a hard problem into subproblems is an old idea: split a multi-hop question into single-hop subquestions answered independently and then aggregate; chain LM calls so each step's output feeds the next; translate a question into a sequence of slot-filling subprompts via rules. Most of these rely on *trained* decomposition/aggregation models, and several produce *independent* subquestions answered in isolation.
 
 **Educational psychology origin.** The phrase "least-to-most" comes from a teaching technique: a graded sequence of increasingly informative prompts that guides a learner toward a skill, starting with the least help and adding more as needed.
 
@@ -44,20 +44,17 @@ The natural yardstick is tasks where test difficulty can be made to exceed exemp
 
 ## Code framework
 
-Pre-method primitives that already exist: an LM completion call and a few-shot exemplar bank per task. The contribution will define how a hard instance is turned into an easier sequence of sub-instances and how those are solved in order.
+Pre-method primitives that already exist: an LM completion call and a few-shot exemplar bank per task. The contribution will define the prompting strategy that closes the easy-to-hard gap.
 
 ```python
 def llm(prompt, stop=None):                 # frozen LM completion (exists)
     ...
 
-# few-shot exemplar banks per task (exist)
-DECOMPOSITION_EXEMPLARS = "..."             # TODO: how to break a problem into subproblems
-SOLUTION_EXEMPLARS = "..."                  # TODO: how to solve subproblems, building on prior answers
+# few-shot exemplar bank(s) per task (exist)
+EXEMPLARS = "..."
 
 # --- the procedure the method will design ---
 def solve(question):
-    # TODO: (1) produce an ordered list of easier subproblems for `question`
-    #       (2) solve them in order, feeding earlier answers into later subproblems
-    #       (3) return the answer to the final subproblem
+    # TODO: design the prompting strategy
     pass
 ```

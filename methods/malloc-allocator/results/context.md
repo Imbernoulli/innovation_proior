@@ -161,7 +161,7 @@ exactly the slots the design must fill.
  *       (this is the per-block bookkeeping layout we must choose) */
 
 /* TODO: how are free blocks organized so placement is fast?
- *       (one list? per-size-class lists? the data structure goes here) */
+ *       (the free-block data structure goes here) */
 
 int  mm_init(void);                 /* lay out the initial empty heap */
 void *mm_malloc(size_t size);       /* place a request, growing the heap if needed */

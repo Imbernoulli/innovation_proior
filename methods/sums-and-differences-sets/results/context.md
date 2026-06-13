@@ -16,7 +16,7 @@ Write $[a,b]$ for the integer interval $\{a,a+1,\dots,b\}$. For a set $A$ of $n$
 
 Two structural facts frame everything.
 
-**Differences come in $\pm$ pairs; the difference set is symmetric about $0$.** If $c\in A-A$ then $-c\in A-A$ as well, because $c=a-a'$ forces $-c=a'-a$. Equivalently, if $c\notin A-A$ then $-c\notin A-A$. So $0\in A-A$ for nonempty $A$, and the remaining elements occur in symmetric pairs, making $|A-A|$ always odd. **Sums have no such forced symmetry:** a value $k$ can be the unique missing element of $A+A$ near one end without anything being forced at the other end. So the *missing* sums and the *missing* differences obey different bookkeeping, and that bookkeeping — not the raw pair count — is where the contest is actually decided.
+**Differences come in $\pm$ pairs; the difference set is symmetric about $0$.** If $c\in A-A$ then $-c\in A-A$ as well, because $c=a-a'$ forces $-c=a'-a$. Equivalently, if $c\notin A-A$ then $-c\notin A-A$. So $0\in A-A$ for nonempty $A$, and the remaining elements occur in symmetric pairs, making $|A-A|$ always odd. **Sums have no such forced symmetry:** a value $k$ can be the unique missing element of $A+A$ near one end without anything being forced at the other end. So the *missing* sums and the *missing* differences obey different bookkeeping.
 
 **Symmetric sets are exactly balanced.** Call $A$ symmetric (with respect to $a^*$) if $A=a^*-A$. Then
 $$A+A=A+(a^*-A)=a^*+(A-A),$$
@@ -28,7 +28,7 @@ so $A+A$ is a translate of $A-A$ and $|A+A|=|A-A|$. Any arithmetic progression $
 
 ## Baselines
 
-**Symmetric / arithmetic-progression sets (the balanced baseline).** As above, any AP or generalized AP has $|A+A|=|A-A|$. These are the reference point a sum-dominant construction must *break away from*. Gap: balanced, never sum-dominant; but their stability under sums/differences makes them the obvious scaffold to perturb.
+**Symmetric / arithmetic-progression sets (the balanced baseline).** As above, any AP or generalized AP has $|A+A|=|A-A|$. These are the reference point a sum-dominant construction must *break away from*. Gap: balanced, never sum-dominant on their own.
 
 **Ruzsa's probabilistic existence arguments (Ruzsa, 1976–1992).** Ruzsa used random methods to show sum-dominant sets exist and to study the extreme ratio of $|A+A|$ to $|A-A|$. Core idea: a well-chosen random or random-like set can be shown to have the sumset beat the difference set. Gap: existence and ratio bounds, but not explicit families, and not a statement about the *proportion* of all subsets that are sum-dominant.
 
@@ -56,22 +56,9 @@ The commutativity intuition — that an unordered pair contributes two differenc
 but a single sum, so differences usually outnumber sums — is the heuristic these
 invariants are meant to overturn, and the symmetric (arithmetic-progression-like)
 sets supply the balanced reference point that a construction must break away
-from. Two combinatorial manoeuvres are available as construction tools: base/digit
-separation, in which elements are spread across well-separated digit positions of
-a fixed base so that sums and differences never carry between positions and the
-component cardinalities multiply; and disjoint-copy combination, in which shifted
-copies of a seed set are placed far enough apart that the sumset and difference
-set of the union split cleanly into per-copy and cross-copy pieces with no
-unintended collisions.
+from.
 
-The empty slots are the choices the discovery has to supply. The first is the
-generative skeleton: which balanced backbone, together with a small adjoined
-fringe near the ends of its range, tips $|A+A|$ above $|A-A|$ — that is, which
-fringe pattern makes one extra sum appear while leaving the symmetric difference
-budget unchanged — and how base separation and disjoint copies then propagate a
-single such seed into an explicit infinite family (and into sets realizing any
-prescribed imbalance). The second is the density slot: the counting argument
-that, by pinning the few fringe elements near $0$ and near $n-1$ while filling
-the middle arbitrarily, shows a positive proportion of the $2^n$ subsets of
-$\{0,\dots,n-1\}$ are sum-dominant, so that such sets are not vanishingly rare
-but common.
+The empty slot is the discovery itself: a mechanism that produces sum-dominant
+sets in explicit infinite families, lets the imbalance $|A+A|-|A-A|$ be driven
+to a prescribed value, and settles whether the proportion of sum-dominant
+subsets of $\{0,\dots,n-1\}$ stays bounded below as $n\to\infty$ or vanishes.

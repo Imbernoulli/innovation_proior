@@ -39,14 +39,12 @@ known computationally feasible way to estimate learnability (Lopes et al., 2012)
 it (moving leaves, TV static). A curiosity signal should respond to (1) and (2) and be blind to
 (3) — the agent has no reason to care about variation that is inconsequential to it.
 
-**Inverse dynamics models as a self-supervised feature learner.** Predicting the *action* that
-relates two consecutive observations — an inverse dynamics task — is a self-supervised objective
-(supervision comes for free from the agent's own $(s_t,a_t,s_{t+1})$ tuples) that has been used to
-learn features for recognition (Jayaraman & Grauman, 2015; Agrawal et al., 2015) and for object
-pushing (Agrawal et al., 2016, where a joint inverse-forward model used the forward model only as
-a *regularizer* for the inverse-model features). The relevant property: a representation trained
-solely to recover the action need only keep what is necessary to explain the agent's effect on the
-world.
+**Self-supervised feature learning from agent experience.** The agent's own
+$(s_t,a_t,s_{t+1})$ tuples come labelled for free, which has been used as supervision to learn
+visual features without external annotation — e.g. for recognition (Jayaraman & Grauman, 2015;
+Agrawal et al., 2015) and for object pushing (Agrawal et al., 2016, where a joint inverse–forward
+model used the forward model as a *regularizer* for features). Such self-supervised signals are
+candidate ways to learn a representation of an image observation from interaction alone.
 
 **Policy learning by actor-critic.** The asynchronous advantage actor-critic A3C (Mnih et al.,
 2016) optimizes a policy $\pi(s;\theta_P)$ to maximize the expected return $\mathbb{E}[\sum_t r_t]$

@@ -55,10 +55,7 @@ plateaus that trap ordinary gradient descent.
 
 **The vanilla policy gradient and its score-function structure.** Writing ∇log π(a;s,θ) = ∇π/π
 (the *score*), the gradient of any expectation under π carries a factor of the score, so policy
-gradients are naturally expressed in terms of E[ ∇log π · (·) ]. The Fisher information of a policy
-is exactly the covariance of this score, F_s = E_{a∼π}[ ∇log π ∇log πᵀ ] — the same object that
-appears in the gradient estimator and in Amari's metric. This coincidence is latent in the
-prior art and not yet exploited.
+gradients are naturally expressed in terms of E[ ∇log π · (·) ].
 
 ## Baselines
 
@@ -77,8 +74,7 @@ critic is best read as an approximation to the **advantage** A^π, not to Q^π i
 there proves that if f_w is compatible and has converged (its error orthogonal to the score), then
 substituting f_w for Q^π leaves the gradient exact. **Gap:** the update still moves along the raw
 gradient ∂η/∂θ, so it remains non-covariant; the framework says *what* to approximate but not
-*which direction* to move, and it does not connect the gradient step to the dramatic-but-fragile
-improvement of policy iteration.
+*which direction* to move.
 
 **Natural-gradient learning in supervised problems (Amari 1996/1998).** The natural gradient
 G⁻¹∇ is derived and shown efficient for perceptron training, blind source separation, and linear
@@ -149,8 +145,7 @@ def policy_gradient(policy, mdp, Q):
 def ascent_direction(policy, mdp, grad):
     # TODO: turn the raw gradient into the direction we will actually step.
     #       The vanilla choice is to return `grad` unchanged, which moves under an implicit
-    #       identity metric. What metric should govern the step, and how does it relate to
-    #       the critic we already fit?
+    #       identity metric.
     pass
 
 

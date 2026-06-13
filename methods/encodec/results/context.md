@@ -1,10 +1,10 @@
 # Context
 
-The goal is a real-time, high-fidelity *neural audio codec*: an end-to-end trained encoder–decoder that compresses speech and music to a small, fixed bitstream and reconstructs it with minimal perceptual distortion — running faster than real time on a single CPU core, across a range of target bitrates. This is the state of the art as it stands in 2022, before the method below.
+The goal is a real-time, high-fidelity *neural audio codec*: an end-to-end trained encoder-decoder that compresses speech and music to a small, fixed bitstream and reconstructs it with minimal perceptual distortion, while running faster than real time on a single CPU core across a range of target bitrates. The surrounding field already has most of the ingredients: convolutional audio transforms, learned discrete latents, adversarial perceptual losses, and entropy coding.
 
 ## Research question
 
-Lossy audio compression trades bitrate against distortion, where the distortion that matters is the one humans hear. Classical codecs (Opus, EVS) achieve this with hand-engineered signal transforms and psychoacoustic models. The question: can a single neural network, trained end to end, beat them — encoding waveforms into a compact discrete bitstream and decoding back to perceptually faithful audio?
+Lossy audio compression trades bitrate against distortion, where the distortion that matters is the one humans hear. Classical codecs (Opus, EVS) achieve this with hand-engineered signal transforms and psychoacoustic models. The question: can a single neural network, trained end to end, meet that quality and latency bar while encoding waveforms into a compact discrete bitstream and decoding back to perceptually faithful audio?
 
 What a solution must achieve, precisely:
 - **Discrete, low-bitrate codes.** A neural encoder outputs floating-point latents; to get a competitive bitrate these must be quantized to a small number of bits per frame, and the whole thing must remain trainable through the (non-differentiable) quantization.
@@ -33,7 +33,7 @@ By 2022 the pieces for a neural codec exist; the task is to assemble and improve
 
 **Opus / EVS (classical codecs).** Carefully engineered transform-plus-psychoacoustic pipelines. Opus spans wideband speech and music from a few kbps up; EVS is a speech-oriented standard. They are fast, mature, and the bar to beat. *Gap:* hand-designed, not learned end to end from data; at very low bitrates they degrade audibly, especially on music.
 
-**SoundStream.** The closest prior neural codec: a fully convolutional encoder–decoder with **residual vector quantization** and a combination of adversarial and reconstruction losses, operating at 24 kHz and supporting a range of bitrates with a single model via the RVQ codebook-dropping trick. *Gap / room to improve:* the perceptual loss and the multi-bitrate training can be pushed further; a learned entropy model over the codes is not exploited; balancing the several loss terms is left to fixed weights.
+**SoundStream.** The closest prior neural codec: a fully convolutional encoder–decoder with **residual vector quantization** and a combination of adversarial and reconstruction losses, operating at 24 kHz and supporting a range of bitrates with a single model via the RVQ codebook-dropping trick. *Gap:* it leaves open whether the perceptual discriminator can be simplified, whether the same variable-rate RVQ setup scales cleanly across a wider bitrate ladder, whether the codes have predictable entropy left for a lightweight prior, and how to tune competing loss terms without brittle fixed weights.
 
 **VQ-VAE / DiffQ and other quantization schemes.** General learned-quantization approaches for compressing neural representations. *Gap:* a single-codebook VQ-VAE cannot reach competitive audio bitrates at high fidelity; the discrete-latent quality at low bitrate is the open problem RVQ addresses.
 
@@ -51,7 +51,7 @@ By 2022 the pieces for a neural codec exist; the task is to assemble and improve
 
 ## Code framework
 
-The pre-method scaffold is a convolutional encoder–decoder codec harness with a quantization slot and a perceptual-loss slot. The conv backbone, the straight-through quantizer primitive, the STFT/mel helpers, and the training loop already exist; the quantizer design, the discriminator design, and the loss assembly are the empty slots.
+The starting scaffold is a convolutional encoder-decoder codec harness with a discrete-bottleneck interface, a learned-perceptual-feedback interface, spectral reconstruction helpers, and a trainer that can combine independent loss terms.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -76,19 +76,19 @@ class ConvDecoder(nn.Module):
 
 class Quantizer(nn.Module):
     """Maps continuous latents to discrete codes and back; trainable through the codes."""
-    def __init__(self, dim, codebook_size=1024, n_q=32):
+    def __init__(self, dim):
         super().__init__()
-        # TODO: the quantization scheme we will design (codebooks, residual structure, EMA updates)
+        # TODO: choose the discrete bottleneck and any auxiliary training loss.
         pass
     def forward(self, z, n_q=None):
-        # TODO: return quantized latent, code indices, and the commitment/quantization loss
+        # TODO: return quantized latent, code indices, and auxiliary loss.
         raise NotImplementedError
 
 class Discriminator(nn.Module):
     """Learned perceptual loss: real vs reconstructed audio + intermediate features."""
     def __init__(self):
         super().__init__()
-        # TODO: the discriminator design we will choose
+        # TODO: choose the discriminator input representation and scales.
         pass
     def forward(self, x):
         raise NotImplementedError
@@ -98,6 +98,6 @@ def reconstruction_loss(x, x_hat):
     raise NotImplementedError
 
 def train_step(enc, quant, dec, disc, x, opt_g, opt_d):
-    # encode -> quantize -> decode; combine reconstruction + adversarial + feature + commitment losses
+    # encode -> quantize -> decode; combine the active reconstruction and perceptual losses
     ...
 ```

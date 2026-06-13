@@ -1,6 +1,4 @@
-# Context
-
-## Research question
+# Research question
 
 Semantic segmentation labels every pixel of an image with a class. The natural design is encoder–decoder: a backbone produces features, a decoder turns them into a per-pixel map. The question is how to build a segmentation model that is simultaneously **accurate**, **efficient**, and **robust** — in particular robust to the resolution gap between training and testing, because segmentation is routinely trained on fixed crops (e.g. 512²) but deployed at arbitrary, often much larger, image sizes.
 
@@ -12,7 +10,7 @@ Second, **positional encodings tie a Transformer to its training resolution.** A
 
 A satisfactory answer must (a) emit a multi-scale hierarchical feature map like a convnet, so the decoder gets both detail and context; (b) keep attention affordable at the large token counts segmentation demands; (c) avoid any positional encoding that breaks under resolution change; and (d) pair the encoder with a decoder simple enough not to become the bottleneck.
 
-## Background
+# Background
 
 **Fully-convolutional segmentation.** Since the fully-convolutional network (Long et al., 2015) reframed segmentation as dense per-pixel classification, the dominant designs have been convolutional encoder–decoders. The recurring problem is that a classification backbone downsamples aggressively (to stride 32), which is good for semantics but destroys spatial precision. The field's fixes all aim to recover resolution and enlarge receptive field: U-Net (Ronneberger et al., 2015) adds skip connections from encoder to decoder to bring detail back; the DeepLab family (Chen et al., 2017) uses *dilated/atrous* convolutions to enlarge receptive field without downsampling, and atrous spatial pyramid pooling (ASPP) to gather multi-scale context; PSPNet (Zhao et al., 2017) uses a pyramid pooling module for the same end. These decoders are heavy — ASPP and PPM add substantial compute — and the receptive field of stacked convolutions still grows only slowly with depth.
 
@@ -24,26 +22,26 @@ A satisfactory answer must (a) emit a multi-scale hierarchical feature map like 
 
 **Pyramid vision Transformers.** A concurrent line builds a *hierarchical* Transformer by shrinking the spatial resolution stage by stage so the backbone emits strides 4/8/16/32 like a convnet (Wang et al., 2021), often combined with a *spatial-reduction* attention that shrinks the key/value sequence to control cost. This solves the no-hierarchy problem and softens the quadratic cost. But these designs still carry positional encodings, so the resolution-robustness problem persists, and they are typically evaluated with heavy decoder heads.
 
-**Conditional / convolutional position encoding.** A separate observation (Chu et al., 2021; Islam et al., 2020) is that a convolution applied to a token map *leaks absolute position information* through its zero-padding at the borders — so a convolution inside the network can supply position implicitly, with no fixed-length embedding to interpolate. This is the seed of a resolution-robust alternative to learned positional embeddings.
+**Position information in convnets.** A separate observation (Chu et al., 2021; Islam et al., 2020) is that a convolution applied to a feature map is not as position-agnostic as it appears: its zero-padding at the borders gives border locations a systematically different response, so convnets can encode some absolute spatial information even without an explicit positional signal.
 
-## Baselines
+# Baselines
 
 **FCN / U-Net / DeepLabv3+ / PSPNet (convolutional encoder–decoders).** A convnet backbone (often ResNet) emits a feature hierarchy; the decoder enlarges receptive field and recovers resolution via dilated convolutions (DeepLab), pyramid pooling (PSPNet), or skip connections (U-Net). *Gap:* convolution's receptive field grows slowly and its weights are content-independent; achieving global context requires heavy modules (ASPP/PPM) that dominate the compute, and accuracy at high efficiency is limited.
 
 **ViT / SETR.** Patchify → linear embed → +class token → +learned absolute positional embedding → L global-attention encoder blocks; for segmentation, a decoder upsamples the single-scale features. *Gap:* one feature scale (stride 16), so the decoder must fabricate multi-scale information; global attention is Θ(N²), intractable at dense resolutions; the fixed positional embedding must be interpolated at test time and accuracy drops as test resolution diverges from training; the SETR decoder is comparatively heavy.
 
-**Pyramid vision Transformer (PVT).** A hierarchical Transformer backbone emitting strides 4/8/16/32, with spatial-reduction attention to cut the key/value length. *Gap:* it still uses positional encodings (resolution-fragile), uses non-overlapping patch embedding that can break local continuity at patch boundaries, and is usually paired with conventional heavy decoders.
+**Pyramid vision Transformer (PVT).** A hierarchical Transformer backbone emitting strides 4/8/16/32, with spatial-reduction attention to cut the key/value length. *Gap:* it still uses positional encodings (resolution-fragile), tokenizes the image into non-overlapping patches, and is usually paired with conventional heavy decoders.
 
-## Evaluation settings
+# Evaluation settings
 
 - **ADE20K** (Zhou et al., 2017): 20,210 training / 2,000 validation images, 150 semantic categories — a hard, fine-grained benchmark. Metric: mean Intersection-over-Union (mIoU), single- and multi-scale.
 - **Cityscapes** (Cordts et al., 2016): 5,000 finely annotated urban-scene images (2,975 train / 500 val / 1,525 test), 19 classes, 1024×2048 native resolution — the canonical high-resolution segmentation benchmark. Metric: mIoU.
 - **COCO-Stuff** (Caesar et al., 2018): 164K images, 172 categories, for testing on a large, diverse label set.
 - Protocol: backbone pre-trained on ImageNet-1K classification, then the full encoder–decoder fine-tuned on the segmentation set. Training with AdamW, polynomial learning-rate decay with warm-up, random-scale/crop/flip augmentation, fixed crop size (e.g. 512² on ADE20K, 1024×1024 on Cityscapes). Efficiency reported alongside accuracy: parameter count, FLOPs, and measured FPS/latency. Robustness probed by training at one resolution and testing at others.
 
-## Code framework
+# Code framework
 
-The pre-method scaffold below is a generic hierarchical-Transformer-for-segmentation harness: an encoder built as four stages, each beginning with a patch-embedding step that downsamples and then running a stack of pre-norm Transformer blocks; the per-stage features are collected and handed to a decoder that produces a per-pixel map. The attention sublayer, the feed-forward sublayer, the patch-embedding step, and the decoder are left as empty slots — they are exactly where the contribution will go.
+A generic semantic-segmentation harness can already be written with PyTorch modules: a backbone turns an image into feature maps, a decode head fuses those features into stride-reduced logits, and the training step optimizes per-pixel cross-entropy. The unresolved part is the concrete backbone/head design that makes dense prediction accurate, efficient, and stable across image sizes.
 
 ```python
 import torch
@@ -51,96 +49,39 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class PatchEmbed(nn.Module):
-    # Downsampling patch-embedding at the start of a stage: image/feature -> token sequence
-    # at a coarser stride, with more channels. Pre-method: only the generic interface is known.
-    def __init__(self, patch_size, stride, in_chans, embed_dim):
+class Backbone(nn.Module):
+    # Image -> list of feature maps. The architecture is the open design question.
+    def __init__(self, in_chans=3):
         super().__init__()
-        # TODO: how are patches cut so local continuity across patch borders is preserved?
+        # TODO: build a backbone that returns spatial features useful for dense prediction.
         pass
 
     def forward(self, x):
-        # TODO: return token sequence (B, N, C) and the spatial size (H, W)
+        # TODO: return feature maps ordered from finer to coarser resolution.
         pass
 
 
-class Attention(nn.Module):
-    # The attention sublayer to be designed. Pre-method: only the generic interface is known.
-    def __init__(self, dim, num_heads):
+class DecodeHead(nn.Module):
+    # Feature maps -> per-pixel class logits at a stride suitable for final upsampling.
+    def __init__(self, num_classes):
         super().__init__()
-        # TODO: how is the cost of QKᵀ made affordable at the large token counts of
-        #       dense prediction, while keeping a full-resolution query?
-        pass
-
-    def forward(self, x, H, W):
-        # TODO: return attended features, same shape as x
-        pass
-
-
-class FeedForward(nn.Module):
-    # The position-wise feed-forward sublayer to be designed. Pre-method: generic interface.
-    def __init__(self, dim, hidden_dim):
-        super().__init__()
-        # TODO: a two-layer MLP -- but where does position information come from, if we
-        #       want to avoid a fixed-length positional embedding that breaks under resize?
-        pass
-
-    def forward(self, x, H, W):
-        pass
-
-
-class Block(nn.Module):
-    # Pre-norm Transformer block: residual around (attention) and around (feed-forward).
-    def __init__(self, dim, num_heads, mlp_ratio, drop_path=0.):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
-        self.attn = Attention(dim, num_heads)              # the slot above
-        self.norm2 = nn.LayerNorm(dim)
-        self.ffn = FeedForward(dim, int(dim * mlp_ratio))  # the slot above
-        # TODO: stochastic-depth (drop-path) on each residual branch
-
-    def forward(self, x, H, W):
-        # TODO: x = x + drop_path(attn(norm1(x), H, W)); x = x + drop_path(ffn(norm2(x), H, W))
-        pass
-
-
-class HierarchicalEncoder(nn.Module):
-    # Four stages; each stage = PatchEmbed (downsample) then `depth` Blocks. Collect the
-    # output feature map of every stage to form a pyramid at strides 4/8/16/32.
-    def __init__(self, in_chans=3, embed_dims=(32, 64, 160, 256),
-                 num_heads=(1, 2, 5, 8), mlp_ratios=(4, 4, 4, 4),
-                 depths=(2, 2, 2, 2)):
-        super().__init__()
-        # TODO: build 4 stages; stage 1 uses a coarser patch step (to stride 4), the rest
-        #       halve resolution each. Return the list of 4 stage feature maps.
-        pass
-
-    def forward(self, x):
-        # TODO: return [f1, f2, f3, f4]  (strides 4, 8, 16, 32)
-        pass
-
-
-class Decoder(nn.Module):
-    # Turn the 4 multi-scale feature maps into a per-pixel class map. Pre-method: generic slot.
-    def __init__(self, in_channels, embed_dim, num_classes):
-        super().__init__()
-        # TODO: how to fuse features of different scales/channels cheaply into one map?
+        # TODO: fuse the backbone features without making the head the compute bottleneck.
         pass
 
     def forward(self, features):
-        # TODO: return per-pixel logits at stride 4, to be upsampled to input size
+        # TODO: return logits with shape (B, num_classes, h, w).
         pass
 
 
 class SegmentationModel(nn.Module):
-    def __init__(self, num_classes, embed_dims=(32, 64, 160, 256), decoder_dim=256):
+    def __init__(self, num_classes):
         super().__init__()
-        self.encoder = HierarchicalEncoder(embed_dims=embed_dims)
-        self.decoder = Decoder(embed_dims, decoder_dim, num_classes)
+        self.backbone = Backbone()
+        self.decode_head = DecodeHead(num_classes)
 
     def forward(self, x):
-        features = self.encoder(x)
-        logits = self.decoder(features)
+        features = self.backbone(x)
+        logits = self.decode_head(features)
         return F.interpolate(logits, size=x.shape[2:], mode="bilinear", align_corners=False)
 
 

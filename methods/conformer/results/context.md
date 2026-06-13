@@ -1,5 +1,3 @@
-# Context: encoder architectures for end-to-end speech recognition
-
 ## Research question
 
 End-to-end ASR maps an audio feature sequence to a label sequence with a single
@@ -10,9 +8,9 @@ structure — the fine-grained, position-local feature patterns (formant
 transitions, onsets) that distinguish nearby sounds. The precise question is how
 to build an encoder that captures *both* well and is *parameter-efficient* about
 it, because the two leading building blocks each handle only one of the two and
-pay for the other in depth or parameters. A good answer would combine them so that
-each does what it is best at, without simply stacking enough of either to brute-force
-the missing capability.
+pay for the other in depth or parameters. In practice, scaling up a single one of
+these blocks to cover the capability it lacks has been costly in depth or
+parameters and has left accuracy on the table.
 
 ## Background
 
@@ -97,8 +95,7 @@ LM via shallow fusion. Inputs are 80-channel log-mel filterbank features from a
 25 ms window with a 10 ms stride; **SpecAugment** (Park et al. 2019) time/frequency
 masking is the standard data augmentation. Encoders are typically trained within a
 transducer or attention/CTC end-to-end framework and compared at matched parameter
-budgets (e.g. ~10M, ~30M, ~118M). These datasets, features, and the WER metric
-predate the method.
+budgets. These datasets, features, and the WER metric predate the method.
 
 ## Code framework
 
@@ -113,7 +110,7 @@ slot.
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
 
-# Convolutional subsampling over filterbank features (known): two stride-2 convs
+# Convolutional subsampling over filterbank features: two stride-2 convs
 # reduce the time resolution before the encoder blocks.
 class ConvSubsampling(nn.Module):
     def __init__(self, d):
@@ -126,7 +123,7 @@ class ConvSubsampling(nn.Module):
         b, c, t, f = x.shape
         return x.permute(0, 2, 1, 3).reshape(b, t, c * f)
 
-# Multi-head self-attention with RELATIVE positional encoding (known primitive).
+# Multi-head self-attention with relative positional encoding.
 class RelMultiHeadSelfAttention(nn.Module):
     def __init__(self, d, heads):
         super().__init__()
@@ -136,7 +133,7 @@ class RelMultiHeadSelfAttention(nn.Module):
         a, _ = self.mha(x, x, x)
         return a
 
-# Position-wise feed-forward (known): two linears with a Swish in between.
+# Position-wise feed-forward: two linears with a Swish in between.
 class FeedForward(nn.Module):
     def __init__(self, d, expansion=4):
         super().__init__()
@@ -161,7 +158,7 @@ class Encoder(nn.Module):
     def __init__(self, d, layers, heads, kernel):
         super().__init__()
         self.subsample = ConvSubsampling(d)
-        self.proj = nn.Linear(d, d)               # placeholder for subsampled-dim -> d
+        self.proj = nn.LazyLinear(d)
         self.blocks = nn.ModuleList(EncoderBlock(d, heads, kernel) for _ in range(layers))
     def forward(self, x):
         x = self.proj(self.subsample(x))

@@ -87,9 +87,9 @@ over a general matroid (partition constraints, spanning-set constraints) is the
 natural generalization, and greedy on a matroid is a classical theme
 (matroid greedy is exact for *linear* objectives). For submodular objectives, the
 linear-exchange proof no longer applies directly: an element that looks best now
-can block future feasible exchanges whose value is not additive. That frames the
-cardinality case as the favorable special case where all not-yet-chosen elements
-remain feasible single moves until the budget is exhausted.
+can block future feasible exchanges whose value is not additive. The cardinality
+case sits at the simple end of this spectrum, and how its rank-k uniform structure
+bears on the analysis is left open.
 
 ## Evaluation settings
 

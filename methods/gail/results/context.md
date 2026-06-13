@@ -51,10 +51,9 @@ $H(\pi)=\mathbb E_\pi[-\log\pi(a\mid s)]$ (Bloem & Bambos 2014). It measures how
 of a tie-breaking regularizer.
 
 **Convex duality.** For a function $f$ on $\mathbb R^{\mathcal S\times\mathcal A}$,
-its convex conjugate is $f^*(x)=\sup_y x^\top y - f(y)$. The interplay of a
-convex set ($\mathcal D$), a strictly convex objective, and minimax duality for
-convex-concave saddle functions (Millar 1983; Boyd & Vandenberghe 2004) is the
-machinery that connects cost-learning to distribution-matching.
+its convex conjugate is $f^*(x)=\sup_y x^\top y - f(y)$. For a convex-concave
+saddle function on convex sets, minimax duality lets the inner $\min$ and outer
+$\max$ be exchanged (Millar 1983; Boyd & Vandenberghe 2004).
 
 **The motivating diagnostic about single-step fitting.** It is known (Ross &
 Bagnell 2010; Ross, Gordon & Bagnell 2011) that fitting a policy to expert

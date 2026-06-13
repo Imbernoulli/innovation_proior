@@ -120,15 +120,14 @@ analytic proof rather than a search record.
 - **Length regimes.** Small `n` where `F_n` is known exactly (`n ≤ 60`); large `n` (hundreds
   to millions) where only constructed families can be evaluated.
 - **Sequence ensembles to test.** Difference-set sequences (quadratic-residue / Paley,
-  twin-prime, Singer), products of such (Jacobi), and all of their cyclic rotations and
-  truncations/appendings.
+  twin-prime, Singer) and products of such (Jacobi).
 - **Metric.** The merit factor `F(A)` from `C_A(u)` above; secondarily the periodic
   autocorrelation `R_A(u)` (to certify difference-set structure) and `max_u |C_A(u)|`.
 - **Yardstick families.** Rudin–Shapiro (`F → 3`) and m-sequences (`F → 3`) are the
   pre-existing asymptotic benchmarks to beat; the random baseline `F ≈ 1`.
 - **Protocol.** For a candidate family, compute `F` at a ladder of increasing lengths and
-  read off the limit; for constructions parameterized by a rotation/truncation fraction,
-  sweep the parameter and locate the optimum.
+  read off the limit; for any family carrying a free parameter, sweep it and locate the
+  optimum.
 
 ## Code framework
 
@@ -164,18 +163,9 @@ def build_sequence(n):
         raise ValueError("invalid candidate length")
     return np.array([algebraic_sign(i, n) for i in range(n)], dtype=np.int64)
 
-def rotate(A, r):
-    """Cyclically shift A by floor(r * n) positions."""
-    n = len(A)
-    return np.roll(A, -(int(np.floor(r * n)) % n))
-
-def extend_or_truncate(A, t=1.0):
-    """Use the first floor(t*n) terms of the periodic extension of A."""
-    n = len(A)
-    length = int(np.floor(t * n))
-    if length <= 0:
-        raise ValueError("target length must be positive")
-    return A[np.arange(length) % n]
+def transform(A, *params):
+    """TODO: derive a candidate transform of one period A (if any is needed)."""
+    return A
 
 def aperiodic_autocorr_sumsq(A):
     n = len(A)
@@ -189,7 +179,7 @@ def periodic_autocorr(A, u):
     """Diagnostic: certifies difference-set structure when constant over u != 0."""
     return int(np.dot(A, np.roll(A, -u)))
 
-def asymptotic_merit_factor(r, t=1.0):
-    """TODO: closed-form limiting F as a function of rotation r and length fraction t."""
+def asymptotic_merit_factor(*params):
+    """TODO: closed-form limiting F for the candidate family, if one can be derived."""
     pass
 ```

@@ -55,13 +55,11 @@ the layer's stabilizing effect. Whether they are equally important — in partic
 mean-subtraction (re-centering) is load-bearing or merely along for the ride — is an open
 question, and it bears directly on what computation can be removed without losing the benefit.
 
-**A diagnostic about the mean.** Mean-subtraction recenters activations but does not by itself
-reduce the *variance* of the hidden states or of the gradients — variance control comes from
-the division by the scale. This is the seed of the hypothesis that re-centering contributes
-little. Relatedly, when one measures the running mean and standard deviation of hidden
-activations in an unnormalized recurrent network, both are unstable across timesteps; a layer
-that controls only the standard deviation might already stabilize training, with the mean left
-to settle on its own.
+**An observation about the mean.** When one measures the running mean and standard deviation of
+hidden activations in an unnormalized recurrent network, both are unstable across timesteps. The
+two pieces of the standard layer's computation — the mean-subtraction and the division by the
+scale — are arithmetically distinct, and it is not established that they contribute equally to
+the observed stabilization.
 
 ## Baselines
 
@@ -101,10 +99,8 @@ timestep, this per-step arithmetic is a real fraction of the runtime.
 
 **Plain L2 / Euclidean normalization.** Dividing the summed-input vector by its Euclidean norm
 ‖a‖ = √(Σ aᵢ²) has been explored for specific sub-layers (e.g. improving lexical selection,
-Nguyen & Chiang 2018). It differs from a root-mean-square scaling only by a constant factor of
-√n. As a wholesale replacement for layer normalization it has not been shown to work, which
-raises the question of whether the per-vector-size normalization (the 1/√n inside the root) is
-itself doing something.
+Nguyen & Chiang 2018). As a wholesale replacement for layer normalization it has not been shown
+to work.
 
 ## Evaluation settings
 
@@ -159,13 +155,12 @@ class FeatureNormalization(nn.Module):
 
     def forward(self, x):
         # x: [..., d], the summed inputs a to the layer's neurons.
-        # TODO: choose the within-layer scale statistic, decide whether it
-        # can be estimated from a subset of coordinates, then apply gain and
-        # the optional offset.
+        # TODO: rescale x using a within-layer statistic, then apply the gain
+        # and the optional offset.
         pass
 ```
 
 The open slot is the body of `FeatureNormalization.forward`: which statistic of the summed inputs
-to compute, whether a cheaper subset estimate is valid, and how to rescale `x` before applying the
-learned gain and optional offset. The existing layer-normalization recipe remains the cost target:
-two reductions, mean subtraction, and a learned affine transform.
+to compute, and how to rescale `x` before applying the learned gain and optional offset. The
+existing layer-normalization recipe remains the cost target: two reductions, mean subtraction,
+and a learned affine transform.

@@ -51,9 +51,9 @@ reference lands near every object.
 
 The consequence is that the system is not end-to-end: the loss optimizes per-reference
 surrogate classification and regression, while the quantity actually wanted — a clean set,
-one box per object — is produced by a separate non-learned stage. Removing duplicates
-*inside* learning would require a global view: a mechanism that lets predictions see each
-other and a loss that forbids two of them from claiming the same object.
+one box per object — is produced by a separate non-learned stage. The duplicates are never
+addressed inside learning at all; the trained model is left free to emit many boxes per
+object, and the cleanup is deferred to the non-learned post-process.
 
 **Permutation-invariant set losses.** Outside detection, the canonical way to train a
 fixed-size set predictor against ground truth is to make the loss invariant to the order of

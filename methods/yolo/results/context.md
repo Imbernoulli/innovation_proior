@@ -61,7 +61,7 @@ class CNNBlock(nn.Module):
         return self.act(self.conv(x))
 
 def build_backbone(in_channels=3):
-    # stack of CNNBlocks + maxpools producing an S x S spatial feature map
+    # stack of CNNBlocks + maxpools producing a spatial feature map
     raise NotImplementedError  # TODO: the conv stack
 
 # The open slot: how to turn the image into detections, and what to train it against.

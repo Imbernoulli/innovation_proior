@@ -2,7 +2,7 @@
 
 Given an image, an object detector must output a set of tight bounding boxes, each labelled with an object category. By 2015 the dominant recipe was the *region-based* CNN: first an external algorithm hypothesizes a few thousand candidate regions ("object proposals"), then a CNN classifies each candidate and refines its box. Two successive engineering advances — spatial pyramid pooling and a single shared convolutional pass — had collapsed the cost of the *classification* stage from tens of seconds to a couple hundred milliseconds per image on a GPU. That progress moved the bottleneck somewhere else.
 
-The precise problem: **with the per-region CNN now cheap, the external proposal generator has become the dominant cost of the whole pipeline, and it lives on a different device (CPU) and on a different feature representation (hand-engineered low-level cues) than the detector.** A solution would have to produce high-quality proposals at a cost that is negligible next to the detection network, ideally by *reusing the computation the detector already performs*, while preserving (or improving) detection accuracy. Getting there is what stands between research-grade detection and a system that runs at several frames per second end to end.
+The precise problem: **with the per-region CNN now cheap, the external proposal generator has become the dominant cost of the whole pipeline, and it lives on a different device (CPU) and on a different feature representation (hand-engineered low-level cues) than the detector.** A solution would have to produce high-quality proposals at a cost that is negligible next to the detection network, while preserving (or improving) detection accuracy. Getting there is what stands between research-grade detection and a system that runs at several frames per second end to end.
 
 ## Background
 
@@ -38,7 +38,7 @@ The natural yardsticks already existed. **PASCAL VOC 2007** (~5k trainval, ~5k t
 
 ## Code framework
 
-The pre-existing primitives: a deep-learning library with conv/ReLU/pooling layers and SGD with momentum, an ImageNet-pretrained backbone, an RoI-pooling layer, a smooth-L1 loss, an NMS routine, IoU/overlap computation between box sets, and the R-CNN box parameterization. The detector trainer (Fast R-CNN) already exists and consumes a list of proposals. What does *not* yet exist is anything that produces those proposals from the shared features — that is the empty slot.
+The pre-existing primitives: a deep-learning library with conv/ReLU/pooling layers and SGD with momentum, an ImageNet-pretrained backbone, an RoI-pooling layer, a smooth-L1 loss, an NMS routine, IoU/overlap computation between box sets, and the R-CNN box parameterization. The detector trainer (Fast R-CNN) already exists and consumes a list of proposals. What does *not* yet exist is anything that produces those proposals cheaply — that is the empty slot.
 
 ```python
 import numpy as np
@@ -75,30 +75,9 @@ class RegionDetector:
     def multitask_loss(self, cls_pred, box_pred, labels, box_targets): ...
 
 # ---- empty proposal slot -------------------------------------------------
-def generate_reference_boxes(*args, **kwargs):
-    # TODO: define the fixed reference boxes the proposer regresses from
-    pass
-
 class ProposalModule:
-    """TODO: a head on top of the shared conv features that emits
-    object proposals + scores cheaply, so the detector no longer needs an
-    external proposer. Architecture, targets, loss, and how it shares the
-    backbone's features are all to be designed."""
-    def build_head(self, feature_map):
-        # TODO
-        pass
-    def assign_targets(self, ground_truth):
-        # TODO: turn reference boxes + gt into training labels/targets
-        pass
-    def loss(self, *args):
-        # TODO
-        pass
-    def infer_proposals(self, feature_map):
-        # TODO: emit boxes + scores at test time
-        pass
-
-def train_with_shared_features(proposer, detector, data):
-    # TODO: make ONE set of conv layers serve both the proposer and the
-    # detector, even though each task would pull the convs in its own direction
+    """TODO: a mechanism that emits object proposals + scores cheaply, so the
+    detector no longer needs an external proposer. Everything about it is to
+    be designed."""
     pass
 ```

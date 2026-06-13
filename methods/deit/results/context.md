@@ -18,9 +18,7 @@ differs fundamentally from a convnet's?
 locality and translation equivariance — that match natural images, so a convnet needs comparatively
 little data to generalize. A Transformer's self-attention has almost no such built-in spatial prior;
 it must learn the structure of images from data, which is why, with a mid-sized dataset, it tended to
-underperform. The hypothesis worth testing is that this gap can be closed not by adding convolutions
-back, but by supplying the missing "data" through aggressive augmentation and regularization, and by
-distilling a teacher's inductive bias into the transformer.
+underperform. The open question is whether this gap can be closed without adding convolutions back.
 
 **The Transformer block.** Self-attention computes, for queries Q, keys K, values V (all linear
 projections of the same input sequence X, so K = N queries attend over all N inputs),
@@ -96,9 +94,8 @@ norm, residual connections); a patch-embedding projection; learnable token and p
 parameters; AdamW with a cosine schedule and warmup; the augmentation/regularization toolbox above; and
 a softmax cross-entropy loss. The scaffold assembles a patch-token transformer with a class token and a
 classifier head, and leaves empty the slots the method must fill: how to read out the prediction(s),
-what extra learning signal a teacher provides and through what mechanism it enters the token sequence,
-how the two are combined into one loss, and how the positional embeddings are resized when fine-tuning
-at higher resolution.
+how a teacher is brought to bear during training, and how the positional embeddings are handled when
+fine-tuning at higher resolution.
 
 ```python
 import torch
@@ -127,12 +124,10 @@ class PatchTokenTransformer(nn.Module):
         self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)
         n_patches = (img // patch) ** 2
         self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
-        # TODO: any additional learned token the method introduces?
         self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 1, dim))
         self.blocks = nn.Sequential(*[TransformerBlock(dim, heads) for _ in range(depth)])
         self.norm = nn.LayerNorm(dim)
         self.head = nn.Linear(dim, num_classes)
-        # TODO: any additional classifier head?
 
     def forward(self, x):
         x = self.patch_embed(x).flatten(2).transpose(1, 2)            # (B, N, dim)

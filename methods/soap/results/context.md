@@ -46,15 +46,13 @@ that Shampoo's effective adaptivity is limited to the cadence at which L and R a
 performance degrades as f grows.
 
 **K-FAC and E-KFAC (Martens & Grosse 2015; George et al. 2018).** A separate second-order family that
-preconditions with a Kronecker-factored Fisher. E-KFAC's refinement is the structural idea that matters
-here: it inserts a *diagonal* preconditioner that is updated *between* the (expensive) eigen-refreshes,
-in the eigenbasis of the second-order factor — i.e. it runs a cheap diagonal method in a slowly-changing
-basis provided by a second-order method, getting per-step adaptivity for free between refreshes.
+preconditions with a Kronecker-factored Fisher. E-KFAC maintains a *diagonal* preconditioner expressed
+in the eigenbasis of the K-FAC second-order factor, alongside the (expensive) eigendecomposition of that
+factor.
 
 **GaLore (Zhao et al. 2024).** Projects Adam's momentum into a low-rank subspace from the SVD of the
-*current* gradient to save memory. Two structural choices contrast with a curvature-basis approach: the
-subspace comes from the instantaneous gradient SVD (not an accumulated GGᵀ/GᵀG average), and momentum is
-kept in the projected space and not rotated when the subspace changes; it also projects only one side.
+*current* gradient to save memory: the subspace comes from the instantaneous gradient SVD, momentum is
+kept in the projected space, and it projects only one side.
 
 The standing tension among these: the diagonal methods (Adam, Adafactor, Lion, Sophia) are cheap but
 do not surpass AdamW for LLM pretraining (Kaddour et al. 2023; Zhao et al. 2024), pointing to non-diagonal
@@ -76,10 +74,8 @@ that cadence and degrades as f grows; extra hyperparameters (exponent, grafting)
 **Adafactor (Shazeer & Stern 2018).** W ← W − η Mₜ/√V'ₜ with V'ₜ the rank-1 factorization of the
 second moment. Memory-light diagonal method. Gap: still diagonal — no cross-coordinate structure.
 
-**E-KFAC (George et al. 2018).** Diagonal preconditioner updated between eigen-refreshes in K-FAC's
-eigenbasis. Establishes the run-a-diagonal-method-in-a-second-order-eigenbasis template. Gap: its
-between-refresh diagonal preconditioner is not Adam, and it is built for the Fisher, not for the
-Shampoo (GGᵀ/GᵀG) factors.
+**E-KFAC (George et al. 2018).** Diagonal preconditioner expressed in K-FAC's eigenbasis. Gap: built for
+the Fisher, not for the Shampoo (GGᵀ/GᵀG) factors.
 
 ## Evaluation settings
 
@@ -97,9 +93,7 @@ relative to AdamW.
 The substrate is a per-layer optimizer plugged into a transformer pretraining loop, plus the
 already-existing primitives: per-layer EMA buffers, a routine to extract an orthonormal eigenbasis of a
 small PSD matrix (eigendecomposition, or power-iteration-plus-QR), and rotation of a gradient into and
-out of such a basis. The open slot is the *per-layer preconditioned update*: what second-order
-statistics to accumulate, what coordinate system to express the adaptive step in, and how often to
-refresh that coordinate system.
+out of such a basis. The open slot is the *per-layer preconditioned update*.
 
 ```python
 import torch
@@ -138,14 +132,10 @@ class PreconditionedOptimizer(Optimizer):
                     state["step"] = 0
                     state["exp_avg"] = torch.zeros_like(p)       # first moment
                     state["exp_avg_sq"] = torch.zeros_like(p)    # second moment
-                    # TODO: per-side curvature accumulators and their eigenbases
                 state["step"] += 1
 
-                # TODO: accumulate cross-coordinate curvature on each side of the
-                #       weight matrix; express an adaptive (Adam-style) step in a
-                #       slowly-changing coordinate system derived from that curvature,
-                #       refreshing the coordinate system only every f steps; then map
-                #       the step back and apply it with decoupled weight decay.
+                # TODO: compute the per-layer preconditioned update and apply it
+                #       with decoupled weight decay.
                 pass
         return None
 ```

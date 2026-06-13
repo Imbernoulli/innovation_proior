@@ -18,10 +18,9 @@ such a small condition-specific dataset risks **overfitting** to the small set a
 forgetting** of the billions-of-images prior that made the model good in the first place. The precise
 question: **how can a new spatial conditioning control be added to a large, frozen, pretrained
 text-to-image diffusion model — learned from a small condition-specific dataset — without degrading or
-forgetting the pretrained model's quality and capabilities?** A solution would need to reuse the
-pretrained model as a strong backbone (so it can learn from little data), keep the original model
-intact (so nothing is forgotten), and introduce the new control in a way that does not inject harmful
-noise into the model's deep features at the start of training, when the new branch is still random.
+forgetting the pretrained model's quality and capabilities?** A solution would need to learn from little
+data, keep the original model intact (so nothing is forgotten), and add the new control without
+disturbing the deep features the pretrained model already relies on.
 
 ## Background
 
@@ -43,13 +42,11 @@ them is directly relevant. The load-bearing concepts:
   knew. The literature shows this can be mitigated by *restricting* the trainable parameters: limiting
   their number or rank, or freezing the original weights entirely.
 
-- **Weight initialization, and zero initialization specifically.** How a layer's weights are
-  initialized strongly affects training. Gaussian initialization is the usual safe default, and is
-  generally considered *less risky* than initializing to zero (zero-initialized layers in a normal
-  network suffer symmetry problems and can fail to learn). But scaling the initial weight of a
-  convolution toward — or to — zero has been used deliberately in diffusion training (Nichol et al.,
-  2021, whose "zero_module" zeroes a layer's weights as an extreme case) and in GAN training
-  (ProGAN/StyleGAN, Noise2Noise) to control how a new component enters the network.
+- **Weight initialization.** How a layer's weights are initialized strongly affects training. Gaussian
+  initialization is the usual safe default; initializing a layer to zero is generally considered riskier,
+  since zero-initialized layers in a normal network suffer symmetry problems and can fail to learn (zero
+  weights give zero gradients and never move). Non-Gaussian initialization schemes appear across diffusion
+  training (Nichol et al., 2021) and GAN training (ProGAN/StyleGAN, Noise2Noise).
 
 ## Baselines
 
@@ -71,8 +68,8 @@ The prior finetuning/control strategies a new method would be measured against a
 
 - **Additive learning / Side-Tuning (Zhang et al., 2020).** Freeze the original model and add a small
   side branch, linearly blending the frozen model's output with the side network's output via a
-  *predefined* blending-weight schedule. *Gap:* the blend schedule is hand-set rather than learned to
-  start from a no-op, and the side branch is not a reuse of the pretrained backbone.
+  *predefined* blending-weight schedule. *Gap:* the blend schedule is hand-set rather than learned, and
+  the side branch is a small network trained from scratch rather than reusing the pretrained model.
 
 - **LoRA (Hu et al., 2021).** Learn low-rank offsets to the weights, exploiting that adaptation lives in
   a low intrinsic-dimensional subspace; prevents forgetting by limiting rank. *Gap:* a low-rank weight
@@ -104,16 +101,15 @@ The benchmarks, conditions, metrics, and protocol that form the natural yardstic
 
 - **Metrics.** Fréchet Inception Distance (FID) over generated `512×512` image sets to measure
   distribution distance; CLIP text-image score and CLIP aesthetic score; human user studies; and
-  ablations replacing the proposed connection (e.g. a Gaussian-initialized convolution in its place, or
-  a single-convolution branch instead of a full copied backbone).
+  ablations over the control-branch design.
 
 ## Code framework
 
 The available substrate is a frozen pretrained latent-diffusion U-Net (encoder, middle, skip-connected
 decoder) with its native noise-prediction training loss, plus the standard finetuning toolbox. What is
-missing is the *architecture* of the added control branch: how to take the pretrained encoder as a
-backbone for a new conditioning input, and how to connect that branch back into the frozen model so
-that training starts as a no-op and grows the control without corrupting the pretrained features.
+missing is the *architecture* of the added control branch: how to build a trainable branch for the new
+conditioning input, and how to connect it back into the frozen model without degrading the pretrained
+features.
 
 ```python
 import torch
@@ -138,13 +134,12 @@ class ConditionEncoder(nn.Module):
         pass
 
 class ControlBranch(nn.Module):
-    # TODO: reuse the pretrained ENCODER as a trainable backbone for the conditioning input,
-    #       and connect its outputs back into the frozen base so that at init the whole model
-    #       is unchanged (the added control starts as a no-op) and grows without harmful noise.
+    # TODO: a trainable branch that reads the conditioning input and feeds back into the frozen base
+    #       without degrading its pretrained features.
     def __init__(self, base_encoder, condition_encoder):
         super().__init__()
         self.cond_enc = condition_encoder
-        # TODO: trainable copy of base_encoder; the connection layers back into the base
+        # TODO
     def forward(self, z_t, t, c_t, c_image):
         pass
 
@@ -156,6 +151,6 @@ def train_step(z0, t, c_t, c_image, opt):
     pass
 ```
 
-This harness has a frozen diffusion model and its native loss, but the control branch — how to reuse
-the encoder as a backbone and how to wire it back in so that training begins as a no-op and the new
-control grows safely — is the open problem.
+This harness has a frozen diffusion model and its native loss, but the control branch — how to build it
+and how to wire it back into the frozen base without degrading the pretrained features — is the open
+problem.

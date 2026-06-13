@@ -124,7 +124,7 @@ whether it terminates and how its work scales with the number of vertices `n = |
 The primitives that exist beforehand are just a directed graph with capacities, a notion of
 flow on its arcs, and graph search. The scaffold therefore keeps the capacity table, an
 empty flow table, a generic search for a source-to-sink route, a generic push operation
-along such a route, and an empty slot for the certificate-producing stop condition.
+along such a route, and an empty slot for the stop condition.
 
 ```python
 from collections import deque
@@ -141,7 +141,6 @@ def max_flow(cap, s, t):
     for u in vertices:
         for v in capacity[u]:
             neighbors[u].add(v)
-            neighbors[v].add(u)
 
     flow = {u: {v: 0 for v in capacity[u]} for u in vertices}
 
@@ -157,10 +156,6 @@ def max_flow(cap, s, t):
         # TODO: choose the route bottleneck and update the flow along that route.
         pass
 
-    def certifying_cut():
-        # TODO: when no route remains, return the source side of the proving cut.
-        pass
-
-    # TODO: repeatedly search, push, and stop with the certificate when search fails.
+    # TODO: drive the procedure and decide what to report when no route remains.
     pass
 ```

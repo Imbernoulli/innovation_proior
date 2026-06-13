@@ -20,7 +20,7 @@ and for a graph vector a permutation-invariant READOUT pools the final node stat
 
 **The virtual-node / supernode trick.** A known way to give a GNN a global pathway is to add an extra node connected to every node in the graph. It aggregates whole-graph information (much like READOUT) and broadcasts it back to all nodes. It empirically helps on leaderboards, but a naively added supernode can over-smooth the propagation.
 
-**Relative-position bias as a template.** In sequence Transformers, one effective way to encode position is to add a learned scalar bias to the attention score $A_{ij}$ as a function of the relation between $i$ and $j$ (the relative offset), rather than perturbing the inputs. This "bias on the score" mechanism is content-independent and shared across layers, and it is the natural template for injecting a *pairwise* structural quantity into attention.
+**Relative-position bias in sequence Transformers.** In sequence Transformers, one effective way to encode position is to add a learned scalar bias to the attention score $A_{ij}$ as a function of the relative offset $i-j$, rather than perturbing the inputs. This "bias on the score" mechanism is content-independent and is typically shared across layers.
 
 ## Baselines
 

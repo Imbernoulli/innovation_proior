@@ -45,11 +45,9 @@ representation-learning auxiliary; Lyle et al. (2019) argue the gains of distrib
 fitting value targets shapes a network's features in ways that help control.
 
 **Distillation and behavioral cloning.** A behavioral-cloning / distillation loss `KL(π_old ‖ π_θ)`
-forces `π_θ` to match a reference policy's outputs; minimizing it lets a network's *representation*
-change while its *policy* is held nearly fixed. ITER (Igl et al. 2020) alternates a standard RL phase
-with a distillation phase — periodically distilling the policy and value teachers into freshly
-initialized student networks to reduce the impact of non-stationarity and improve generalization —
-establishing the pattern of interleaving RL with a separate distillation phase.
+forces `π_θ` to match a reference policy's outputs. ITER (Igl et al. 2020) alternates a standard RL
+phase with a distillation phase — periodically distilling the policy and value teachers into freshly
+initialized student networks to reduce the impact of non-stationarity and improve generalization.
 
 **Off-policy replay for sample efficiency.** SAC (Haarnoja et al. 2018), DDPG (Lillicrap et al. 2015),
 and ACER (Wang et al. 2017) use replay buffers to reuse data via off-policy updates; SAC also uses
@@ -82,15 +80,14 @@ shared visual representations matter. The protocol: train for a fixed total of e
 returns have roughly unit variance, and report sample efficiency (return as a function of timesteps),
 typically averaged over a few seeds with standard deviation across runs. Natural ablation axes — for
 isolating the two observations above — are the level of policy sample reuse, the level of value sample
-reuse, the frequency of any auxiliary optimization, and the choice of clipping versus a KL penalty.
+reuse, and the choice of clipping versus a KL penalty.
 
 ## Code framework
 
 The primitives that already exist: a (possibly shared) convolutional encoder feeding a policy head and
 a value head, GAE, a PPO clipped-surrogate policy update with an entropy bonus, a value-regression
-loss, Adam, and an on-policy rollout loop over vectorized environments. What does not yet exist is any
-mechanism to train the policy and value with *different* sample reuse while keeping shared features, or
-any separate phase of optimization beyond the PPO update. Those are the stubs.
+loss, Adam, and an on-policy rollout loop over vectorized environments. The open question above — how
+to reconcile feature sharing with non-interference and independent sample reuse — is left as stubs.
 
 ```python
 import torch
@@ -129,19 +126,13 @@ def ppo_losses(model, batch, clip_param, ent_coef, vf_coef):
     ...
 
 
-def policy_phase(model, rollouts, opt, hp):
+def update(model, rollouts, opt, hp):
     # TODO: PPO update — but with what sample reuse for policy vs value,
     #       and on shared or separate parameters?
     pass
 
 
-def auxiliary_phase(model, buffer, opt, hp):
-    # TODO: a separate optimization phase (currently nonexistent) that could
-    #       train value features without disturbing the policy
-    pass
-
-
 def train(venv, model, hp):
-    # TODO: the outer loop — what alternates, and how often?
+    # TODO: the outer training loop
     pass
 ```

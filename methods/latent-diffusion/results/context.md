@@ -28,8 +28,9 @@ on pixels is set by the spatial resolution: every layer of a convolutional or
 attention backbone does work that grows with the number of spatial positions
 (roughly quadratically for the resolution, and worse for global attention).
 Diffusion models multiply this by the number of denoising steps and by both the
-forward and backward pass during training. Reducing the spatial extent the
-expensive model has to process is therefore the single biggest lever on cost.
+forward and backward pass during training. The cost of a pixel-space diffusion
+model is thus governed jointly by the spatial resolution it processes, the
+length of the denoising chain, and the size of the dataset.
 
 **Where the bits go — a rate/distortion observation.** Likelihood-based models
 are mode-covering: they must place probability mass on essentially all of the
@@ -43,8 +44,8 @@ spends a large share of the bits on **perceptual compression** — removing
 imperceptible high-frequency detail — while changing almost nothing about the
 semantics or layout of the image. A second regime, with the remaining bits, does
 the actual **semantic/conceptual** modeling — what objects are present and how
-they are arranged. The expensive sequential model is paying full pixel-space
-price even while it is in the first, semantics-free regime.
+they are arranged. The same expensive sequential network is run at full
+pixel-space resolution across both regimes.
 
 **The denoising-diffusion machinery.** A diffusion model defines a fixed forward
 process that gradually adds Gaussian noise. With signal/noise schedules
@@ -152,9 +153,8 @@ The pieces that already exist: a `pytorch_lightning` training loop, Adam, a
 time-conditional image backbone with timestep embeddings, denoising-diffusion
 noise schedules with a closed-form forward sampler, and the building blocks of
 an autoencoding reconstruction setup (perceptual feature distance, a patchwise
-discriminator). The empty slots are a compact representation model, a generic
-conditioning adapter, and a generator that decides where the expensive
-denoising model should operate.
+discriminator). The remaining slot is the generative model itself, left empty
+for the method to fill.
 
 ```python
 import torch
@@ -186,44 +186,20 @@ class PatchDiscriminator(nn.Module):
         pass
 
 
-# --- slots the method will fill -----------------------------------------
-
-class CompressionModel(nn.Module):
-    """A train-once map from images to a lower-dimensional, perceptually
-    equivalent representation, and back. How to keep the representation
-    well-behaved (and whether/how to discretize it) is TODO."""
-    def encode(self, x):
-        # TODO: image -> compact representation
-        pass
-    def decode(self, h):
-        # TODO: representation -> image
-        pass
-    def loss(self, x, x_rec):
-        # TODO: a reconstruction objective that stays on the image manifold
-        pass
-
-
-class ConditioningEncoder(nn.Module):
-    """Turn an arbitrary conditioning input y (text, class, layout,
-    another image) into something the generator can consume. TODO."""
-    def forward(self, y):
-        pass
-
+# --- slot the method will fill ------------------------------------------
 
 class Generator(nn.Module):
-    """The expensive generative model. Where should it operate, and how
-    should the conditioning enter the backbone? TODO."""
-    def __init__(self, backbone: ImageBackbone, cond_encoder: ConditioningEncoder):
+    """The generative model. TODO."""
+    def __init__(self, backbone: ImageBackbone):
         super().__init__()
         self.backbone = backbone
-        self.cond_encoder = cond_encoder
 
     def training_objective(self, x, y=None):
-        # TODO: where do we add noise and run the backbone?
+        # TODO
         pass
 
     @torch.no_grad()
     def sample(self, shape, y=None):
-        # TODO: reverse the process, then return an image
+        # TODO: produce an image
         pass
 ```

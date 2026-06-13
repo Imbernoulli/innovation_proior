@@ -81,8 +81,7 @@ the squared singular values of the layers of a trained discriminator shows them 
 one or two directions for these methods. A near-rank-one weight matrix means the discriminator
 is using essentially one feature per layer to separate the distributions, which is exactly the
 kind of impoverished discriminator that produces a sloppy generator. This is a fact about the
-*existing* methods, observable before any new method is proposed, and it is the clue that the
-restriction we want should bound the top of the spectrum without crushing the rest of it.
+*existing* methods, observable before any new method is proposed.
 
 ## Baselines
 

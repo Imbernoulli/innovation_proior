@@ -19,12 +19,12 @@ The continuous trigonometric series goes back to Euler, who gave formulas for th
 The structure to exploit lives entirely in the matrix $[W^{jk}]$. Its entries are not arbitrary: each is a power of one root of unity $W$, and the exponent only matters modulo $N$ because $W^N = 1$. Three facts about roots of unity carry all the weight:
 
 - **Periodicity.** $W^{m+N} = W^m$. The exponents wrap.
-- **Half-length root.** If $N$ is even, $W^2 = e^{-2\pi i/(N/2)}$ is itself a primitive $(N/2)$-th root of unity, so even powers of $W$ are exactly the powers needed for a half-length transform.
-- **Sign flip across the upper half.** $W^{N/2} = e^{-\pi i} = -1$, so $W^{j+N/2} = -W^j$. A length-$N/2$ transform is periodic in its output index with period $N/2$, so the same half-transform values can serve both $j$ and $j+N/2$; only the twiddle factor changes sign.
+- **Even powers.** If $N$ is even, $W^2 = e^{-2\pi i/(N/2)}$ is itself a primitive $(N/2)$-th root of unity.
+- **Half-index value.** $W^{N/2} = e^{-\pi i} = -1$, so $W^{j+N/2} = -W^j$.
 
 These mean the $N^2$ matrix entries take far fewer than $N^2$ distinct values, and the same partial sums recur across different output indices. That redundancy is the latent inefficiency a fast method must convert into reuse.
 
-The nineteenth-century computers (human ones) attacked this practically. Their methods grouped terms in the trigonometric series sharing a common multiplicative coefficient, so a block of $n$ multiplications and $n-1$ additions collapsed to a single multiply and $n-1$ adds. This cut constant factors but did not change the order of growth — it is not a sub-quadratic method, because it never decomposes a long DFT into genuinely shorter DFTs. The decisive structural idea — replacing one transform of length $N$ by several transforms of shorter length — is what separates a constant-factor trick from an algorithm whose order of growth drops.
+The nineteenth-century computers (human ones) attacked this practically. Their methods grouped terms in the trigonometric series sharing a common multiplicative coefficient, so a block of $n$ multiplications and $n-1$ additions collapsed to a single multiply and $n-1$ adds. This cut constant factors but did not change the order of growth — it is not a sub-quadratic method, because it never decomposes a long DFT into genuinely shorter DFTs.
 
 A diagnostic example fixes scale. By hand, a 64-point Fourier analysis was a substantial undertaking; in the 1940s, doubling tricks were valued not only because they cut the labor of going from a 32-point to a 64-point analysis to little more than the 32-point work itself, but because the redundant recomputation they exposed also served as a running accuracy check. The empirical fact on the table before any fast algorithm exists is therefore concrete: the cost of a hand or machine DFT grows like $N^2$, and the root-of-unity structure means most of that arithmetic is recomputation.
 
@@ -50,7 +50,7 @@ The natural yardstick is the operation count — complex multiplications and add
 
 ## Code framework
 
-The primitives already exist: complex arithmetic, a routine to form powers of a root of unity, and the direct transform as both a baseline and a small-$N$ correctness oracle. The open slots are a faster transform, whatever size validation it requires, an optional storage-conscious loop form, and the inverse wrapper.
+The primitives already exist: complex arithmetic, a routine to form powers of a root of unity, and the direct transform as both a baseline and a small-$N$ correctness oracle. The open slots are a faster transform, whatever size validation it requires, and the inverse wrapper.
 
 ```python
 import cmath
@@ -66,19 +66,11 @@ def dft_direct(A, sign=-1):
     return [sum(A[k] * W**(j * k) for k in range(N)) for j in range(N)]
 
 def _validate_length(n):
-    # TODO: enforce the size condition required by the faster transform.
+    # TODO: enforce whatever size condition the faster transform needs.
     pass
 
-def transform_recursive(A, sign=-1):
+def transform(A, sign=-1):
     # TODO: fill the faster transform slot; it must agree with dft_direct.
-    pass
-
-def _reorder_for_iteration(A):
-    # TODO: arrange a working copy if the loop form needs a fixed traversal order.
-    pass
-
-def transform_iterative(A, sign=-1):
-    # TODO: fill a storage-conscious loop form of the faster transform.
     pass
 
 def inverse_transform(X):

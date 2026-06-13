@@ -45,11 +45,9 @@ One earlier idea sits very close to the target and is worth stating precisely, b
 define the gap. Kleppe, Ohtsuka, Kleppe, and Khorana 1971 described repair replication: denature a
 short duplex, anneal primers, and let DNA polymerase fill in each strand, regenerating the duplex —
 and they noted that the cycle could be repeated with a fresh dose of enzyme because heat destroys
-the previous enzyme. What they did not take is the step from this to a chain reaction: they treated
-it as repair of a single duplex, did not put the two primers' products in service as templates for
-each other, and did not see that repetition could make the bounded region feed its own copying.
-There is no sequence-specified exponential amplification from a complex genome in the 1971 picture,
-and the experiments to test repeated cycling were not carried out.
+the previous enzyme. In their account it stayed repair of a single
+isolated duplex: the work did not go beyond regenerating one duplex, was not pursued on a complex
+genome, and the experiments to test repeated cycling were not carried out.
 
 A separate piece of microbiology is already available. In 1969 Thomas Brock and Hudson Freeze
 isolated a rod-shaped bacterium, *Thermus aquaticus*, from Mushroom Spring in the Lower Geyser Basin
@@ -75,9 +73,8 @@ background of near-matches and the sheer dilution of the one true site. The need
 some way to raise the relative concentration of the chosen site before detection.
 
 **Kleppe–Khorana repair replication (1971).** Denature, anneal primers to both strands, polymerase
-fills in, repeat with fresh enzyme. *Gap:* it is repair of a duplex, not a closed chain reaction —
-the reciprocal-products-as-templates step is not made explicit, so there is no bounded amplicon whose
-population overwhelms the one-ended products exponentially and no mechanism for pulling one sequence
+fills in, repeat with fresh enzyme. *Gap:* it was carried out and described as repair of one isolated
+duplex; the picture stops at regenerating that duplex and was never pushed to a single sequence pulled
 out of a complex genome.
 
 **Molecular cloning (in vivo amplification).** The standard way to get many copies of a sequence was

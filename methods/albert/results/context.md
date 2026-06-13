@@ -57,10 +57,7 @@ segments are consecutive in the corpus, with positives drawn as adjacent segment
 and negatives as segments from two *different* documents, sampled 50/50. NSP was
 meant to help sentence-pair tasks like natural language inference. But subsequent
 work found its effect unreliable and removed it with no loss, even gains (Yang et
-al. 2019; Liu et al. 2019). A plausible diagnosis: because a negative pairs two
-unrelated documents, telling positive from negative can be done by *topic*
-mismatch alone, and topic is something masked language modeling already learns —
-so NSP is too easy to add signal. Coherence and discourse-ordering objectives
+al. 2019; Liu et al. 2019). Coherence and discourse-ordering objectives
 have a long line of study (Hobbs 1979; Grosz et al. 1995; skip-thought, Kiros et
 al. 2015; discourse-marker and sentence-ordering objectives, Jernite et al. 2017;
 Nie et al. 2019).
@@ -108,9 +105,8 @@ Development-set medians over five runs are reported for high-variance GLUE tasks
 The substrate is a Transformer-encoder pretraining harness: token, position, and
 segment embeddings; a stack of self-attention + feed-forward blocks; a masked-LM
 head; an optional inter-sentence classification head; and a large-batch optimizer
-(LAMB, You et al. 2019). What is *not* fixed is how the embedding matrix relates
-to the hidden width, whether each layer gets its own parameters, and what
-inter-sentence objective is trained. The scaffold leaves those as slots.
+(LAMB, You et al. 2019). Several of the design choices are left open as slots to
+be filled.
 
 ```python
 import torch
@@ -121,7 +117,7 @@ import torch.nn.functional as F
 class EmbeddingStem(nn.Module):
     def __init__(self, vocab_size, hidden, embedding_width=None,
                  max_positions=512, type_vocab_size=2, dropout=0.1):
-        # TODO: choose how the token-embedding width maps to hidden width H.
+        # TODO: define the embedding parameterization.
         pass
 
     def forward(self, input_ids, token_type_ids=None):
@@ -144,7 +140,7 @@ class EncoderBlock(nn.Module):
 # --- encoder stack ---
 class EncoderStack(nn.Module):
     def __init__(self, n_layers, hidden, n_heads, dropout):
-        # TODO: choose L independent blocks, one reused block, or something between.
+        # TODO: define how the encoder's per-layer parameters are organized.
         pass
 
     def forward(self, x, padding_mask=None):
@@ -170,8 +166,7 @@ class SentencePairHead(nn.Module):
         pass
 
 def inter_sentence_examples(seg_a, seg_b):
-    # TODO: what makes a positive vs a negative pair for the inter-sentence task,
-    #       and is the task hard enough to teach more than topic?
+    # TODO: define what makes a positive vs a negative pair for the inter-sentence task.
     pass
 
 def sample_ngram_length(max_n=3):

@@ -1,161 +1,127 @@
-# Context: neural text-to-speech synthesis
-
-## Research question
+# Research question
 
 Generate natural-sounding speech from text. For decades the field traded off
 along one axis: pipelines that sound least unnatural require the most hand-built
 linguistic machinery, and the systems that simplify the front end sound worse.
-The precise problem is to synthesize speech that is hard to distinguish from a
-human, while learning as much of the pipeline as possible *from data* rather than
-from domain expertise — no hand-engineered text analysis, no separate duration and
-pitch models, no lossy intermediate features that cap audio quality. A solution
-would map characters end-to-end to a waveform of near-human naturalness.
+The problem is to synthesize speech that is hard to distinguish from a human
+while learning as much of the pipeline as possible from paired text and audio:
+no hand-engineered text analysis, no separate duration and pitch models, and no
+fixed lossy acoustic front end that caps audio quality.
 
-## Background
+# Background
 
-**The historical pipeline and its trade-off.** Concatenative synthesis with unit
-selection stitches together small pre-recorded waveform units; it was the
-long-standing state of the art but suffers boundary artifacts and is inflexible.
-Statistical parametric synthesis instead generates smooth trajectories of speech
-features (e.g. spectral envelope, fundamental frequency, durations) that a
-*vocoder* turns into a waveform; it removed concatenation artifacts but the audio
-sounds muffled and buzzy, because the features are a lossy, hand-designed summary
-and the vocoder is a fixed signal-processing model.
+Concatenative synthesis with unit selection stitches together small
+pre-recorded waveform units. It was the long-standing state of the art, but the
+joins create boundary artifacts and the inventory limits flexibility.
+Statistical parametric synthesis instead generates smooth trajectories of
+speech features, such as spectral envelope, fundamental frequency, and
+durations, that a vocoder turns into a waveform. That removes concatenation
+artifacts, but the audio often sounds muffled and buzzy because the features are
+a hand-designed summary and the vocoder is a fixed signal-processing model.
 
-**WaveNet (van den Oord et al. 2016).** An autoregressive generative model of the
-raw waveform: a stack of dilated causal convolutions models p(x_t | x_{<t},
-conditioning) directly in the time domain, producing audio that begins to rival
-real human speech. The catch is its *inputs*: WaveNet is conditioned on
-linguistic features, predicted log-F₀, and phoneme durations — exactly the
-hand-engineered front end (text analysis, a pronunciation lexicon, a duration
-model) that the field wants to be rid of. So WaveNet solves the *vocoding* half
-beautifully while still demanding the expensive linguistic half.
+WaveNet models the raw waveform autoregressively: a stack of dilated causal
+convolutions models p(x_t | x_{<t}, conditioning) directly in the time domain.
+The catch is the conditioning. A complete WaveNet TTS pipeline needs linguistic
+features, predicted log-F0, and phoneme durations, which means a text-analysis
+system, a pronunciation lexicon, and a duration model. The waveform model is
+strong, but the front end still demands domain expertise.
 
-**Tacotron (Wang et al. 2017).** A sequence-to-sequence model with attention that
-maps a character sequence directly to a *magnitude spectrogram*, replacing the
-linguistic/acoustic feature front end with one network trained from data. To get a
-waveform it uses Griffin-Lim phase estimation followed by inverse STFT — explicitly
-a placeholder, since Griffin-Lim leaves characteristic artifacts and lower quality
-than a neural vocoder. So Tacotron solves the *front-end* half (text → acoustic
-features, learned) while leaving the vocoding half to a weak algorithm.
+Tacotron maps a character sequence directly to a magnitude spectrogram with a
+sequence-to-sequence attention model, replacing the linguistic and acoustic
+feature front end with one network trained from data. To get a waveform it uses
+Griffin-Lim phase estimation followed by inverse STFT. Griffin-Lim is a weak
+placeholder for a neural vocoder: it estimates discarded phase and leaves
+characteristic artifacts.
 
-**Sequence-to-sequence with attention.** The encoder-decoder-with-attention
-framework (Sutskever et al. 2014; Bahdanau et al. 2014) lets a decoder generate a
+The encoder-decoder-with-attention framework lets a decoder generate a
 variable-length output while, at each step, computing a context vector as a
-soft-weighted sum of encoder states. **Additive (Bahdanau) attention** scores each
-encoder state h_j against the decoder state s_{i-1} via
-e_{ij} = vᵀ tanh(W s_{i-1} + V h_j), softmaxed to weights α_{ij}. For a monotonic,
-strictly-advancing alignment like text→speech, content-only attention can stall,
-skip, or repeat. **Location-sensitive attention** (Chorowski et al. 2015) extends
-the additive form with features derived from the *cumulative* attention weights of
-prior steps, encouraging the alignment to move forward consistently.
+soft-weighted sum of encoder states. Additive attention scores each encoder
+state h_j against the decoder state s_{i-1} with
+e_ij = v^T tanh(W s_{i-1} + V h_j), then normalizes the scores into weights.
+For text-to-speech, the alignment is mostly monotonic and advancing: speech
+usually consumes text in order. Content-only attention can stall, skip, or
+repeat. Location-sensitive attention extends additive attention with features
+computed from the cumulative attention weights of previous decoder steps, which
+gives the scoring function a memory of how far through the input it has moved.
 
-**Mel-frequency spectrograms.** A mel spectrogram applies a nonlinear (auditory)
-warping to the STFT magnitude's frequency axis, emphasizing lower frequencies
-critical to intelligibility and compressing high frequencies; ~80 channels suffice
-per frame. It is smooth, easily computed from the waveform (so the acoustic model
-and vocoder can be trained separately), phase-invariant within a frame (so a
-squared-error loss is well-behaved), and far lower-dimensional and lower-level than
-hand-built linguistic features.
+A mel-frequency spectrogram applies an auditory frequency scale to the STFT
+magnitude, warping the linear frequency axis onto a perceptual scale. Like the
+linear-frequency STFT magnitude it is a standard signal-processing representation
+computed directly from the waveform.
 
-**Regularizers and output modeling.** Dropout (Srivastava et al. 2014) and
-zoneout (Krueger et al. 2016, which stochastically keeps an RNN's previous hidden
-state) regularize the recurrent network. For continuous waveform-sample outputs, a
-mixture of logistics (PixelCNN++; Salimans et al. 2017; Parallel WaveNet) replaces
-a 256-way softmax over quantized amplitudes, giving a smooth distribution over
-16-bit samples.
+Dropout regularizes feed-forward and convolutional layers. Zoneout regularizes
+recurrent layers by stochastically preserving previous hidden states. For
+continuous waveform-sample outputs, a mixture of logistics can model 16-bit
+audio samples without reducing the output to a 256-way categorical distribution.
 
-## Baselines
+# Baselines
 
-**Concatenative / statistical parametric synthesis.** Core idea: select-and-stitch
-units, or generate hand-designed acoustic features for a vocoder. Gaps:
-concatenation has boundary artifacts and no flexibility; parametric output sounds
-muffled and unnatural because the features and vocoder are lossy and fixed.
+Concatenative and statistical parametric synthesis either select and stitch
+recorded units or generate hand-designed acoustic features for a vocoder.
+Concatenation has boundary artifacts and limited flexibility; parametric output
+is smooth but lossy and often unnatural.
 
-**WaveNet conditioned on linguistic features (van den Oord et al. 2016).** Core
-idea: autoregressive raw-waveform generation, p(x_t | x_{<t}, c), via dilated
-causal convolutions. Gap: requires a full hand-engineered front end (text
-analysis, lexicon, predicted F₀ and durations) to produce its conditioning
-inputs — exactly the expertise the field wants to eliminate.
+WaveNet conditioned on linguistic features is an autoregressive raw-waveform
+generator with dilated causal convolutions. Its gap is the front end: it needs
+text analysis, lexicon lookup, predicted F0, and durations before waveform
+generation can begin.
 
-**Tacotron (Wang et al. 2017).** Core idea: char→magnitude-spectrogram seq2seq with
-attention, learned end-to-end. Gap: vocodes with Griffin-Lim + inverse STFT, a
-phase-estimation placeholder that injects artifacts and caps naturalness; uses
-heavier "CBHG" blocks and GRUs.
+Tacotron is a character-to-spectrogram sequence model with attention. Its gap is
+the back end: Griffin-Lim plus inverse STFT estimates phase and caps audio
+quality.
 
-**Deep Voice 3 / Char2Wav (Ping et al. 2017; Sotelo et al. 2017).** Core idea:
-similar end-to-end neural TTS with a neural vocoder. Gaps: naturalness not shown to
-rival human speech; Char2Wav uses traditional vocoder features and a quite
-different architecture.
+Deep Voice 3 and Char2Wav are related neural TTS systems. Deep Voice 3 keeps a
+different architecture; Char2Wav uses traditional vocoder features rather than a
+low-level spectrogram bridge.
 
-## Evaluation settings
+# Evaluation settings
 
-The standard yardstick is a **mean opinion score (MOS)**: human raters score the
-naturalness of synthesized utterances on a 1–5 scale, typically collected via
-crowd-sourcing on a held-out test set, and compared against ground-truth recorded
-speech (and side-by-side preference tests against baselines). A single-speaker
-US-English studio recording corpus (tens of hours of (text, audio) pairs) is the
-natural training/eval material; audio at 24 kHz. These protocols and the MOS
-metric predate the method.
+The usual naturalness yardstick is mean opinion score: human raters score
+synthesized utterances on a 1-5 scale, often on a fixed held-out set, with
+ground-truth recorded speech and established TTS systems as comparison points.
+A single-speaker US-English corpus with normalized text and 24 kHz audio is a
+natural training and evaluation setup for this problem.
 
-## Code framework
+# Code framework
 
-The pre-method toolkit: an STFT/mel front end, the standard recurrent
-seq2seq-with-attention primitives (character embedding, bidirectional-LSTM
-encoder, an attention mechanism, an autoregressive LSTM decoder), convolutional
-blocks with batch norm, and an autoregressive raw-waveform generative model
-(WaveNet) to act as a neural vocoder. The empty slots: which attention keeps the
-alignment monotonic, the exact decoder/output structure that predicts acoustic
-frames and knows when to stop, and what acoustic representation bridges the two
-stages.
+The available toolkit is an STFT-derived acoustic front end, recurrent
+sequence-to-sequence primitives, convolutional blocks with batch normalization,
+attention over an encoded character sequence, autoregressive LSTM decoding,
+sequence-level acoustic refinement, and an autoregressive raw-waveform generator
+that can be used as a neural vocoder. The design is left open: it is for you to
+work out how these pieces fit together to solve the problem.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch
+import torch.nn as nn
 
-# Mel front end (known): STFT magnitude -> mel filterbank -> log compression.
-def wav_to_mel(wav, n_mels=80):
-    # 50ms window, 12.5ms hop, Hann; mel 125Hz-7.6kHz; clip to 0.01 then log.
-    ...
+def acoustic_features(wav):
+    raise NotImplementedError
 
-# Encoder (known seq2seq primitive): char embedding -> conv stack -> BiLSTM.
-class Encoder(nn.Module):
-    def __init__(self, n_chars, d=512):
+class TextEncoder(nn.Module):
+    def __init__(self, n_chars, d_model):
         super().__init__()
-        self.embed = nn.Embedding(n_chars, d)
-        self.convs = nn.ModuleList(
-            nn.Sequential(nn.Conv1d(d, d, 5, padding=2), nn.BatchNorm1d(d),
-                          nn.ReLU(), nn.Dropout(0.5)) for _ in range(3))
-        self.lstm = nn.LSTM(d, d // 2, batch_first=True, bidirectional=True)
+        self.embed = nn.Embedding(n_chars, d_model)
+        self.local_context = nn.ModuleList()
+        self.sequence_context = nn.Identity()
+
     def forward(self, chars):
-        x = self.embed(chars).transpose(1, 2)
-        for c in self.convs:
-            x = c(x)
-        return self.lstm(x.transpose(1, 2))[0]
+        x = self.embed(chars)
+        raise NotImplementedError
 
-# Attention that summarizes the encoder into a per-step context vector.
-class Attention(nn.Module):
-    def __init__(self, attn_dim=128):
-        super().__init__()
-        # TODO: which attention mechanism keeps a monotonic, advancing alignment?
-        pass
-    def forward(self, query, memory, prev_weights):
-        pass
+class Alignment(nn.Module):
+    def forward(self, query, memory):
+        raise NotImplementedError
 
-# Autoregressive acoustic decoder: predict the acoustic frames and a stop signal.
-class Decoder(nn.Module):
-    def __init__(self, n_mels=80):
-        super().__init__()
-        # TODO: prenet bottleneck, recurrence, frame projection, stop-token, postnet.
-        pass
+class AcousticDecoder(nn.Module):
     def forward(self, memory, targets=None):
-        pass
+        raise NotImplementedError
 
-# Neural vocoder (known: WaveNet) conditioned on the predicted acoustic frames.
-class WaveNetVocoder(nn.Module):
-    def __init__(self):
-        super().__init__()
-        # TODO: condition WaveNet on the chosen acoustic representation; output dist.
-        pass
+class AcousticRefiner(nn.Module):
     def forward(self, frames):
-        pass
+        raise NotImplementedError
+
+class NeuralVocoder(nn.Module):
+    def forward(self, acoustic_frames, audio_prefix):
+        raise NotImplementedError
 ```

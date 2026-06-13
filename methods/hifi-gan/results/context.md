@@ -1,6 +1,6 @@
 # Context
 
-The goal is a *second-stage* neural vocoder: a model that takes a mel-spectrogram (the low-resolution acoustic representation a text-to-speech front-end produces) and synthesizes the corresponding 22.05 kHz raw waveform — fast enough to be useful in production and at a fidelity that matches or beats the slow autoregressive vocoders. This is the landscape as it stands in 2020, before the method below exists.
+The goal is a *second-stage* neural vocoder: a model that takes a mel-spectrogram (the low-resolution acoustic representation a text-to-speech front-end produces) and synthesizes the corresponding 22.05 kHz raw waveform, fast enough to be useful in production and with fidelity in the range occupied by slow autoregressive vocoders. This is the landscape as it stands in 2020.
 
 ## Research question
 
@@ -18,7 +18,7 @@ By 2020 the second-stage vocoder problem has a rich set of partial answers, each
 
 **Parallelizing via flows.** Parallel WaveNet trains an inverse-autoregressive-flow student to match a pretrained WaveNet teacher via probability-density distillation, buying a >1000× speedup. WaveGlow removes the teacher: it is a Glow-style normalizing flow trained by plain maximum likelihood, transforming a Gaussian noise sequence of the same length into the waveform in one parallel pass, conditioned on the mel-spectrogram. It produces high-quality audio but needs a very deep architecture (>90 coupling layers) and a correspondingly large parameter budget.
 
-**The signal-processing facts that constrain any solution.** Two facts about waveforms matter. First, *long-range coherence*: because a phoneme can last >100 ms, samples thousands apart are correlated, so the receptive field of both generator and discriminator must be large. Second, *periodicity*: voiced speech is quasi-periodic — a sum of sinusoids at the fundamental frequency and its harmonics. Average pooling (downsampling by averaging) acts as a low-pass filter: it attenuates high frequencies and smears phase, so a discriminator that only ever sees average-pooled views of the waveform can be fooled by a generator that gets the low-frequency envelope right while corrupting fine periodic structure. This is a known weakness of evaluating audio only at progressively smoothed scales.
+**The signal-processing facts that constrain any solution.** Two facts about waveforms matter. First, *long-range coherence*: because a phoneme can last >100 ms, samples thousands apart are correlated, so the receptive field of both generator and discriminator must be large. Second, *periodicity*: voiced speech is quasi-periodic — a sum of sinusoids at the fundamental frequency and its harmonics. Average pooling (downsampling by averaging) acts as a low-pass filter: it attenuates high frequencies and smears phase, so a discriminator that only ever sees average-pooled views of the waveform can be fooled by a generator that gets the low-frequency envelope right while corrupting fine periodic structure. That leaves a weakness in evaluating audio only at progressively smoothed scales.
 
 ## Baselines
 
@@ -26,7 +26,7 @@ By 2020 the second-stage vocoder problem has a rich set of partial answers, each
 
 **Parallel WaveGAN.** A small GAN vocoder trained with a **multi-resolution STFT loss** — the sum of spectral-convergence and log-magnitude losses computed at several STFT resolutions — jointly with the adversarial loss. This explicitly forces the generator to match the time-frequency distribution and improves stability and parameter efficiency over an IAF baseline. *Gap:* still a quality gap to autoregressive output; the discriminator is a single waveform-domain network with no explicit handle on periodicity.
 
-**GAN-TTS.** Generates waveforms from linguistic features using an ensemble of **random-window discriminators (RWD)**: multiple discriminators each operating on randomly sampled windows of different sizes, some conditional on the linguistic features. It demonstrates that a *mixture of discriminators* viewing the signal differently is powerful and that GAN vocoders can be FLOP-efficient. *Gap:* the windowing/reshape factors overlap in the periods they expose, the discriminators are conditional and average their outputs, and weights are not shared across the reshaped channels — so the ensemble is not specifically organized around disjoint periodic phases.
+**GAN-TTS.** Generates waveforms from linguistic features using an ensemble of **random-window discriminators (RWD)**: multiple discriminators each operating on randomly sampled windows of different sizes, some conditional on the linguistic features. It demonstrates that a *mixture of discriminators* viewing the signal differently is powerful and that GAN vocoders can be FLOP-efficient. *Gap:* the windows overlap heavily in what they cover, the discriminators are conditional and average their outputs, and the ensemble is organized around window *size* rather than any property tied to the signal's periodicity; quality still trails autoregressive output.
 
 **LSGAN (the loss to adopt).** Standard GANs minimize a binary-cross-entropy objective whose gradient vanishes as the discriminator saturates. Least-squares GAN replaces the BCE terms with squared-error terms: the discriminator regresses real samples to 1 and fakes to 0, the generator pushes fakes toward 1. The squared-error form keeps gradients non-vanishing for samples on the correct side of the decision boundary but still far from the target, which stabilizes adversarial training of a high-capacity generator.
 
@@ -47,7 +47,7 @@ The natural yardsticks already in place:
 
 ## Code framework
 
-The pre-method scaffold is a generic GAN-vocoder harness. The mel front-end, the optimizers, the leaky-ReLU/weight-norm primitives, the L1 distance, and the adversarial training loop already exist; the generator architecture and the discriminator architecture are the empty slots.
+A generic GAN-vocoder harness is available. The mel front-end, the optimizers, the leaky-ReLU/weight-norm primitives, the L1 distance, and the adversarial training loop already exist; the generator architecture and the discriminator architecture are unresolved.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -63,7 +63,7 @@ class Generator(nn.Module):
     """Mel-spectrogram -> raw waveform, fully parallel (no autoregression)."""
     def __init__(self, cfg):
         super().__init__()
-        # TODO: the upsampling architecture we will design
+        # TODO: audio upsampling stack
         pass
     def forward(self, mel):
         # TODO: upsample mel to waveform resolution; return waveform in [-1, 1]
@@ -73,13 +73,13 @@ class Discriminator(nn.Module):
     """Distinguishes real from generated waveforms; also exposes intermediate features."""
     def __init__(self):
         super().__init__()
-        # TODO: the discriminator design we will choose
+        # TODO: waveform discriminator stack
         pass
     def forward(self, y, y_hat):
         # TODO: return per-sub-discriminator scores for real & fake, plus feature maps
         raise NotImplementedError
 
-# --- loss slots (to be filled in once the objective is chosen) ---
+# --- generic loss slots ---
 def discriminator_loss(real_scores, fake_scores):
     # TODO: the adversarial loss form
     raise NotImplementedError
@@ -93,6 +93,6 @@ def feature_loss(fmap_real, fmap_fake):
     raise NotImplementedError
 
 def train_step(G, D, mel, wav, optG, optD):
-    # standard alternating GAN updates; mel(wav) reconstruction term added to G loss
+    # standard alternating GAN updates; spectral reconstruction can be added to G loss
     ...
 ```

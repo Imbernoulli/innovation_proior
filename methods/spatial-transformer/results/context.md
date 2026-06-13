@@ -18,7 +18,7 @@ Two lines of work try to do better than augmentation. One builds invariance into
 
 A third, closely related thread is attention. Glimpse and foveation models select a sub-region to process: learning fovea trajectories for target detection (Schmidhuber & Huber, 1991), recurrent visual attention reading crops (Ba et al., 2015), attention for fine-grained categorisation (Sermanet et al., 2014). Because taking a hard crop is not differentiable, these are typically trained with reinforcement learning, which is high-variance and awkward. The DRAW generative model (Gregor et al., 2015) instead uses a *differentiable* attention built from a grid of Gaussian read/write kernels, and image-captioning attention (Xu et al., 2015) attends over feature locations — but the geometric attention there is an axis-aligned Gaussian window, not a general transformation. Region-proposal detection (Girshick et al., 2014) and learning to regress salient boxes (Erhan et al., 2014) are attention by an external or separately-trained mechanism. Across all of these, attention is either non-differentiable (needing RL) or restricted to translation/scale of an axis-aligned window.
 
-There is one more body of knowledge that turns out to be load-bearing, and it predates deep learning entirely: image resampling in computer graphics (Foley et al., 1994). To warp an image, graphics does not push each input pixel forward to where it lands; it iterates over *output* pixels, maps each one back to a source coordinate through the (inverse) transform, and reads the value there by interpolating the surrounding input pixels — texture mapping with source/target coordinates. This inverse, output-driven resampling, and bilinear interpolation as the read operation, are standard, well-understood primitives.
+There is one more body of knowledge that predates deep learning entirely and is worth keeping in view: image resampling in computer graphics (Foley et al., 1994). Graphics has long-established, well-understood machinery for warping an image to a geometric transformation — texture mapping with source/target coordinates and interpolation between pixels — though it was developed for rendering with fixed, externally specified transforms, not as a trainable layer.
 
 ## Baselines
 
@@ -43,7 +43,7 @@ The natural testbeds are supervised image tasks where nuisance spatial variation
 
 ## Code framework
 
-The primitives that already exist: a deep-learning framework with autograd, convolution/linear layers, pooling, ReLU, SGD, and standard image-classification data loaders. Bilinear image resampling from an explicit coordinate grid is a known graphics operation. The scaffold below is a generic classifier with one empty slot for the module to be designed — the piece that will look at a feature map, decide how to spatially reorganise it, and apply that reorganisation differentiably.
+The primitives that already exist: a deep-learning framework with autograd, convolution/linear layers, pooling, ReLU, SGD, and standard image-classification data loaders. The scaffold below is a generic classifier with one empty slot for the module to be designed.
 
 ```python
 import torch
@@ -58,16 +58,12 @@ class SpatialReorganiser(nn.Module):
     To be designed."""
     def __init__(self, in_channels):
         super().__init__()
-        # TODO: a sub-network that reads the feature map and outputs the
-        #       parameters describing the spatial reorganisation to apply.
-        # TODO: machinery that turns those parameters into a concrete,
-        #       differentiable resampling of the input feature map.
+        # TODO: design the module.
         pass
 
     def forward(self, x):
-        # TODO: predict the reorganisation parameters from x.
-        # TODO: build the set of input locations to read for each output cell.
-        # TODO: read the input at those locations differentiably and return the result.
+        # TODO: take the feature map x and return a spatially reorganised
+        #       feature map of the same channel count, differentiably.
         raise NotImplementedError
 
 

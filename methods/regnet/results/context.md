@@ -40,7 +40,7 @@ The natural comparison points are the standard manually designed families and th
 
 ## Code framework
 
-The primitives exist: PyTorch convs (with `groups` for grouped/depthwise), BatchNorm, ReLU, adaptive average pool, linear layers. A network is built from a stem, a list of stages (each a sequence of residual bottleneck blocks at one resolution/width), and a pooled classifier head — all driven by *per-stage* lists of widths, depths, strides, bottleneck ratios, and group widths. The open question is the rule that turns a few scalar knobs into those per-stage lists.
+The primitives exist: PyTorch convs (with `groups` for grouped/depthwise), BatchNorm, ReLU, adaptive average pool, linear layers. A network is built from a stem, a list of stages (each a sequence of residual bottleneck blocks at one resolution/width), and a pooled classifier head — all driven by *per-stage* lists of widths, depths, strides, bottleneck ratios, and group widths. The open question is how those per-stage lists should be set.
 
 ```python
 import numpy as np
@@ -81,9 +81,7 @@ class AnyNet(nn.Module):
         super().__init__()
         # stem; one AnyStage per (d, w, s, b, g); pooled FC head
 
-# The contribution lives here: map a FEW scalar knobs to the per-stage lists
-# that AnyNet consumes. Pre-method, this is just an empty rule.
-def generate_structure(*scalar_knobs):
-    """Turn a small set of scalars into (widths, depths) per stage."""
-    pass  # TODO: the structural parametrization to be designed
+def generate_structure(*args):
+    """Produce the per-stage (widths, depths) lists AnyNet consumes."""
+    pass  # TODO
 ```

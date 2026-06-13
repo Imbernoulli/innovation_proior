@@ -18,13 +18,13 @@ Why it matters: it is a central problem in explicit combinatorial constructions,
 
 **The linear-algebra (dimension) method in extremal set theory.** A family of objects can be bounded in size by assigning to each object a vector or polynomial in a fixed space and proving the assigned objects are linearly independent; the family size is then at most the dimension of the space. The space of *multilinear* polynomials of degree at most d in n variables has dimension Σ_{i=0}^{d} binom(n,i), because a multilinear monomial is indexed by the subset of variables it contains, and only subsets of size ≤ d are allowed. On a constant-weight layer over a characteristic-zero field, this can sharpen to binom(n,d): if every evaluation point has |x| = k, then for |I| = r < d,
   Σ_{J⊇I, |J|=d} x_J = binom(k-r,d-r) x_I,
-so whenever the scalar is nonzero in the coefficient field, lower-degree monomials are redundant as functions on that layer. Over a finite field F_p the nonzero-scalar check becomes part of the theorem, and Lucas' theorem is the usual way to verify it for the chosen weights. Modular arithmetic of intersection sizes then designs the vanishing polynomials. This method is the engine behind restricted-intersection theorems for set systems.
+so whenever the scalar is nonzero in the coefficient field, lower-degree monomials are redundant as functions on that layer. Over a finite field F_p the nonzero-scalar check becomes part of the theorem, and Lucas' theorem is the usual way to verify it for the chosen weights. This method is the engine behind restricted-intersection theorems for set systems.
 
 **Restricted-intersection theorems for set systems.** Consider a family F of k-element subsets of [n].
 - *Ray–Chaudhuri–Wilson (non-modular).* If there is a set L of s integers such that every pairwise intersection |A∩B| (A≠B in F) lies in L, then |F| ≤ binom(n,s). One assigns to each A the polynomial ∏_{ℓ∈L}(⟨x,v_A⟩ − ℓ) of degree s in the indeterminate vector x and works over a characteristic-zero field; evaluated at characteristic vectors these are diagonal-nonzero and off-diagonal-zero. The polynomials are independent, and on the k-uniform layer their restrictions lie in the span of the degree-s monomials, whose dimension is binom(n,s).
 - *Frankl–Wilson modular version.* If p is prime, the common set size k and the allowed intersection residues μ₁,…,μ_s (mod p) satisfy μ_i ≢ k (mod p) for all i, every pairwise intersection is congruent to one of the μ_i, and binom(k-r,s-r) is nonzero in F_p for 0 ≤ r < s, then the same constant-weight dimension proof gives |F| ≤ binom(n,s). The polynomial is evaluated over F_p: the off-diagonal factors vanish because the intersection hits an allowed residue, while the diagonal factor ∏(k − μ_i) is nonzero mod p precisely because k avoids every μ_i.
 
-The crucial feature is that a *single* modulus p can make a complement condition into a bounded-size residue list. If an edge rule pins intersections to one residue class, then an independent set has intersections in the other p−1 residues, a modular restricted-intersection condition whose length no longer grows with k. The clique side can be handled in characteristic zero using the actual integer intersection values: proper intersections in one residue class form a short list below the common set size k. The remaining design problem is to choose k so the modular diagonal is nonzero and the integer list is short enough to give the same dimension scale on both sides.
+Both versions bound the size of a family whose pairwise intersections are confined to a prescribed list — of integers (Ray–Chaudhuri–Wilson) or of residues mod p (Frankl–Wilson). In each the diagonal factor (governed by where the common set size k sits relative to the forbidden list) must be nonzero for the linear-independence argument to fire; over F_p that nonvanishing is itself a hypothesis to be checked, with Lucas' theorem the standard tool for the binomial-coefficient conditions.
 
 ## Baselines
 
@@ -40,39 +40,26 @@ The object is a graph G on N vertices. The metrics are ω(G) and α(G) (equivale
 
 ## Code framework
 
-The construction is fixed in its scaffolding and open only at the two places where the design choice lives. The pieces that are pinned down in advance:
+The construction is fixed in its scaffolding and open at the place where the design choice lives. The pieces that are pinned down in advance:
 
-    Ground set (vertices):
-        choose a prime p and uniform parameters n and k, and let the vertex
-        set be a family of k-element subsets of an n-element ground set
-        (the constant-weight layer). N = |family| is the vertex count; the
-        target is a homogeneous-set bound that is polylog(N).
+    Vertices:
+        a combinatorial family on some ground set, parameterized so that the
+        family size N (the vertex count) and the available algebraic
+        invariants of a pair of vertices are both under the designer's
+        control. The target is a homogeneous-set bound that is polylog(N).
 
-    Adjacency rule (open slot 1):
-        a symmetric predicate on a pair of distinct vertices (A, B) that
-        depends only on the intersection size |A ∩ B|, sorted by its residue
-        modulo the prime p. One residue class of |A ∩ B| is declared "edge,"
-        the rest "non-edge." WHICH residue (and how k itself sits modulo p)
-        is the empty slot — it must be chosen so that the modular diagonal
-        ∏(k − μ_i) stays nonzero in F_p and the integer intersection list on
-        the complementary side stays short.
-
-    Bound to be proved (open slot 2):
-        the clique number ω and the independence number α. A clique is a
-        sub-family whose pairwise intersections all land in the "edge"
-        residue class; an independent set is one whose pairwise intersections
-        avoid it. Each side is to be bounded by a restricted-intersection /
-        constant-weight dimension argument: assign to each set a vanishing
-        polynomial, show the assigned polynomials are linearly independent,
-        and read off |sub-family| ≤ dimension of the space of low-degree
-        multilinear monomials on the layer. The two bounds, expressed back
-        in N, are the quantities the design of slot 1 must make both small.
+    Adjacency rule and resulting bounds (open slot):
+        a symmetric edge predicate on pairs of distinct vertices, together
+        with the proof of ω(G) and α(G) it admits. The empty slot is the
+        predicate itself and the two homogeneous-set bounds that follow from
+        it; the construction stands or falls on whether a single rule makes
+        both ω and α small at once.
 
     Verification (small instances):
-        enumerate the family for small (n, k, p), build the adjacency table
+        enumerate the family for small parameters, build the adjacency table
         from the chosen predicate, exhaustively search for the largest clique
         and largest independent set, and confirm neither exceeds the bound
-        predicted by the dimension count — a sanity check on the algebra, not
-        the asymptotic proof.
+        predicted by the analysis — a sanity check on the algebra, not the
+        asymptotic proof.
 
-The linear-algebra (polynomial dimension) method is the fixed tool; the only freedom is the intersection predicate of slot 1 and the matching pair of homogeneous-set bounds of slot 2. The mod-p rule that simultaneously controls both ω and α is exactly what the method must supply, and is therefore left open here.
+The linear-algebra (polynomial dimension) method and the restricted-intersection theorems above are the fixed tools; the freedom is the edge predicate and the matching pair of homogeneous-set bounds, left open here.

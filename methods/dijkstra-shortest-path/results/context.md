@@ -24,9 +24,8 @@ routes from a source P to a target Q.
 The structural fact that makes this tractable is **optimal substructure**: if R lies on a
 minimum-length route from P to Q, then the portion from P to R is itself a minimum-length
 route from P to R. Equivalently, a shortest path is built out of shortest paths to its
-intermediate points. This points away from enumerating complete routes and toward building
-certified partial routes from P, provided there is a sound rule for deciding which partial
-route is already final.
+intermediate points. This already suggests that brute enumeration of complete routes is
+wasteful, since shorter routes share their prefixes.
 
 At the time, this kind of problem is barely regarded as mathematics. The prevailing attitude
 is that there is a finite number of ways of going from A to B and obviously one of them is
@@ -51,11 +50,10 @@ start, 0 at the source). Repeatedly look for any edge `(u, v)` that violates
 `d[v] ≤ d[u] + length(u, v)` and "relax" it by setting `d[v] := d[u] + length(u, v)`; stop
 when no edge violates. Under the road-distance assumptions it is correct and conceptually
 simple, but it keeps a label for the whole node set and, to find violations, must be able to
-scan all the edge data; a node's label can be corrected many times before it stabilizes, and
-there is no fixed order in which nodes become final. The gap it leaves: it needs repeated
-access to the entire branch list — exactly the store pressure the small machine cannot
-absorb — and it does more work than necessary by revisiting nodes whose distance is already
-as good as it will ever get.
+scan all the edge data; a node's label can be corrected many times before it stabilizes. The
+gap it leaves: it needs repeated access to the entire branch list — exactly the store
+pressure the small machine cannot absorb — and it spends work re-relaxing nodes whose labels
+later turn out not to have changed.
 
 **Kruskal (1956); Loberman and Weinberger (1957)** — for the spanning-tree sibling. Both
 first sort all of the up-to ½n(n−1) edges by length and then add edges cheapest-first

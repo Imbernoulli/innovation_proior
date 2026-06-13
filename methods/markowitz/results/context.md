@@ -38,9 +38,8 @@ Several established facts about probability and about the world constrain any ru
   a weighted sum is not simple: it involves the covariances between every pair of constituents.
 - **Covariance is real and large among securities.** Security returns are heavily intercorrelated
   — firms in the same industry tend to do badly at the same time. Empirically the returns are "too
-  intercorrelated" for the law of large numbers to apply across a portfolio: diversification
-  reduces dispersion but cannot drive it to zero, because the cross-correlations do not vanish.
-  A portfolio rule therefore has to handle co-movement rather than assume it away.
+  intercorrelated" for the law of large numbers to apply across a portfolio: spreading money widely
+  is observed to reduce dispersion but not to make it disappear.
 - **Diversification is observed and is sensible**, and it is understood, informally, that its
   adequacy does not depend only on the *number* of holdings: sixty railway stocks are not as well
   diversified as a spread across railroads, utilities, mining, and manufacturing, because firms in
@@ -85,10 +84,9 @@ diversification for the right reason.
   choose the portfolio that minimizes the probability `P(R < d)`. Under a two-moment description of
   the portfolio return, minimizing that probability amounts to maximizing the ratio `(mu_P - d)/sigma_P`
   — pushing the disaster level as many standard deviations below the mean as possible. Roy writes
-  down the very same portfolio-variance-in-terms-of-covariances relation and arrives at a mean–
-  variance efficient set. **Gap relative to the goal:** it commits to one specific point (the
-  disaster-`d` ratio maximizer) and one specific risk attitude, rather than first laying out the
-  whole menu of undominated risk–return trade-offs and letting the investor choose.
+  down the very same portfolio-variance-in-terms-of-covariances relation. **Gap relative to the
+  goal:** it commits in advance to one specific point (the disaster-`d` ratio maximizer) and one
+  specific risk attitude, baked into the rule, leaving the investor no say in the trade-off.
 
 ## Evaluation settings
 
@@ -103,12 +101,9 @@ The natural inputs and yardsticks that exist before any new rule:
   is permitted, negative weights.
 - **Reportable quantities of a portfolio.** Expected return `E = mu^T X`; variance `V = X^T Sigma X`;
   standard deviation `sigma_P = sqrt(V)`; and, given a reference rate `r`, the reward-to-variability
-  ratio `(mu^T X - r)/sigma_P`. The geometric object of interest is the attainable set of `(E, V)`
-  pairs over all feasible `X`, and within it the *efficient* boundary — minimum `V` for each level
-  of `E`, equivalently maximum `E` for each level of `V`.
+  ratio `(mu^T X - r)/sigma_P`. These summarize a portfolio once its weights are fixed.
 - **Illustrative scale.** Small cases (three and four securities) are the natural place to reason
-  geometrically; the method must then generalize to arbitrary `N`, ideally with a procedure that
-  computes the entire efficient boundary, not one point at a time.
+  geometrically; whatever rule emerges must then generalize to arbitrary `N`.
 
 ## Code framework
 
@@ -146,12 +141,7 @@ class PortfolioChooser:
 
     def choose(self, *args, **kwargs):
         # TODO: the rule that turns (mu, Sigma) into a portfolio.
-        #       What scalar objective (or family of objectives) should w solve,
-        #       and how do we sweep it to produce the whole menu of choices?
-        raise NotImplementedError
-
-    def frontier(self, n_points):
-        # TODO: produce the set of undominated (return, risk) portfolios.
+        #       What should w solve for, given only the first two moments?
         raise NotImplementedError
 
 

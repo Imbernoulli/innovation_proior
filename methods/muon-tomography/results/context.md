@@ -59,8 +59,9 @@ more. Concretely, the projected-angle RMS for a 3 GeV muon crossing 10 cm is ≈
 11.9 mrad in iron, 21.1 mrad in lead, 28.0 mrad in uranium — an order of magnitude of contrast
 between ordinary cargo and a high-`Z` core.
 
-With a nominal unmeasured muon momentum `p0`, the corresponding scattering-density field is
-`lambda = (15 / p0)^2 / X0 = theta_0^2 / L`: mean-square projected scatter per unit length.
+The muon momentum is not measured by tracking alone, so the width must be evaluated at some
+nominal momentum `p0` (≈3 GeV); a slow and a fast muon crossing the same material then give
+different deflections, contributing extra spread.
 
 **Why scattering, not absorption, is the sensitive channel.** Scattering is about as `Z`-sensitive
 as energy loss, but the milliradian deflection angle is *measurable from millimetre-level position
@@ -69,13 +70,10 @@ precise energy measurement is needed. Absorption radiography, by contrast, needs
 enormous flux (or a large natural overburden) to build statistics in the surviving-muon count, is
 only weakly `Z`-discriminating, and yields a line-integral, not a 3D position.
 
-**Scattering and displacement are jointly Gaussian.** In either projected detector view, a muon
-crossing thickness `L` emerges with a correlated projected angle `Delta_theta` and lateral
-displacement `Delta_x`. For a uniform slab the second moments are
-`Var(Delta_theta) = L * lambda`, `Var(Delta_x) = (L^3 / 3) * lambda`, and
-`Cov(Delta_theta, Delta_x) = (L^2 / 2) * lambda`, where `lambda` denotes the mean-square projected
-scatter per unit length. The angle–displacement correlation is therefore
-`(L^2/2) / sqrt(L * L^3/3) = sqrt(3)/2 ≈ 0.866`, independent of material.
+**Scattering also displaces.** In either projected detector view, a muon crossing thickness `L`
+emerges not only with a net projected deflection `Delta_theta` but also shifted sideways by a lateral
+displacement `Delta_x` from where its incoming track would have placed it. Both are observable from
+the same in/out track measurement.
 
 **Tomography.** Reconstructing a spatial distribution of some material property from many rays that
 cross it from different directions is classical tomography. For deterministic line-integral signals
@@ -83,8 +81,9 @@ cross it from different directions is classical tomography. For deterministic li
 signal as a raysum `s_i = sum_j w_ij f_j` (`w_ij` = path length of ray `i` in voxel `j`), and solves
 the linear system `s = W f` — by filtered back-projection, or iteratively by Algebraic
 Reconstruction Techniques (ART), or by statistical maximum-likelihood expectation-maximization as
-developed for emission tomography. The muon problem is different in kind: the per-ray signal is not
-a deterministic line integral but the *variance* of a random scatter.
+developed for emission tomography. This machinery assumes each ray contributes a deterministic
+line-integral signal; whether it transfers to the muon datum — an in/out track pair, not a
+transmitted count — is the open question.
 
 ## Baselines
 
@@ -109,11 +108,11 @@ return a 2D line-integral projection rather than a 3D map. They establish the *o
 **Classical tomographic reconstruction (ART; ML-EM for emission tomography).** ART and ML-EM are
 the established machinery for inverting many rays into a voxel image. They presuppose a
 deterministic raysum model `s_i = sum_j w_ij f_j`: each ray's measured number is a linear functional
-of the voxel values. They are the natural scaffold to *adapt*, but they do not directly apply,
-because in the muon case the measured quantity is a single noisy draw of a *scatter* whose variance
-— not whose mean — encodes the material. The gap a new method must close is: turn each muon's
-in/out track pair into a usable per-voxel statement about scattering density, and accumulate many
-such statements into a 3D image.
+of the voxel values, and the established inversions take that linear raysum as their starting point.
+The muon datum does not arrive in that form: a single muon yields one in/out track pair and the
+small random deflection between the legs, with no transmitted-count line integral to feed the raysum.
+Where prior tomographic machinery stalls on this problem is in bridging that gap between the
+per-muon track pair and a per-voxel material image.
 
 ## Evaluation settings
 
@@ -124,7 +123,7 @@ direction angles are determined for every muon. The object volume is discretized
 of order ~1 cm and up). The probe is the natural,
 unmodified cosmic-ray muon flux (`~1 cm^-2 min^-1`, mean 3–4 GeV, `cos^2` zenith dependence). The
 operationally meaningful figure of merit is the ability to *segregate* low-, medium-, and high-`Z`
-material (the contrast in scattering density across the `Z` range is the discriminant) and to do so
+material (the strong `Z`-dependence of the per-centimetre scattering is the discriminant) and to do so
 within a tolerable exposure (minutes for detection, hours for centimetre-scale imaging). Test
 geometries are blocks of known materials (water/plastic, aluminium, iron, concrete, copper,
 tungsten, lead, uranium) placed in the volume, with reconstructions compared against the known
@@ -133,8 +132,8 @@ layout.
 ## Code framework
 
 The usable primitives are vector geometry, a voxel grid, projected track angles, line traversal
-through voxels, a constrained optimizer, and the scattering physics that converts radiation length
-into expected projected scatter.
+through voxels, a constrained optimizer, and the scattering physics (the Highland width) that
+relates a material's radiation length to the expected projected scatter.
 
 ```python
 import numpy as np
@@ -142,12 +141,12 @@ from scipy.optimize import minimize
 
 P0_MEV = 3000.0  # nominal muon momentum (3 GeV/c); momentum is not measured by tracking alone
 
-def scattering_density(X0_cm, p0_mev=P0_MEV):
-    """Mean-square projected scatter per unit length for a material of radiation
-    length X0 (Highland width squared, per unit length, at nominal momentum)."""
+def highland_msq_per_length(X0_cm, p0_mev=P0_MEV):
+    """Highland width squared per unit length for a material of radiation length X0,
+    at nominal momentum: (15/p0)^2 / X0  (mean-square projected scatter per cm)."""
     return (15.0 / p0_mev) ** 2 / X0_cm
 
-LAMBDA_AIR = scattering_density(X0_cm=3.04e4)  # X0(air) ~ 304 m
+MSQ_AIR = highland_msq_per_length(X0_cm=3.04e4)  # X0(air) ~ 304 m
 
 class VoxelGrid:
     """A discretization of the inspection volume into cells."""
@@ -165,23 +164,11 @@ def line_voxels(p0, p1, grid):
     """Cells crossed by a straight segment through the inspection volume."""
     pass
 
-def closest_approach_point(p_in, v_in, p_out, v_out):
-    """Least-distance point estimate from two measured 3D track lines."""
-    pass
-
 def projected_angles(v):
     """Track angles in the two transverse projected views."""
     pass
 
-def projected_scattering_signal(v_in, v_out):
-    """Single-ray projected variance sample from the in/out track angles."""
-    pass
-
-def reconstruct_single_scatter(muons, grid):
-    """Accumulate localized track-pair signals into a voxel scattering-density image."""
-    pass
-
-def reconstruct_path_variance(signals, path_lengths, lambda_air, lam0=None):
-    """Fit voxel scattering density from projected-angle samples and path lengths."""
+def reconstruct(muons, grid):
+    """Turn a set of measured in/out track pairs into a 3D voxel image."""
     pass
 ```

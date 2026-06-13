@@ -100,21 +100,19 @@ A^{\!\top}(Ax-y)$ alone.
 minimizes a smooth convex $g$ at rate $g(x_k)-g^\star = O(1/k)$ — but it needs
 differentiability, and our objective has the nondifferentiable $\ell_1$ term. The classical
 escape for nonsmooth convex problems, the subgradient method, converges only at $O(1/\sqrt
-k)$ and has no coordinatewise dead-zone that deliberately snaps small entries to zero. A
-sharper tool comes from
+k)$ and has no coordinatewise dead-zone that deliberately snaps small entries to zero. Also
+on the shelf from convex analysis is
 Moreau's *proximal mapping*
 $\operatorname{prox}_h(v) = \arg\min_u\, h(u) + \tfrac12\|u-v\|_2^2$, the resolvent that
-generalizes Euclidean projection: for an indicator it *is* projection, and for separable
-penalties it decouples coordinatewise. Proximal mappings are firmly nonexpansive, so
+generalizes Euclidean projection (for an indicator function it *is* projection onto the
+set). Proximal mappings are firmly nonexpansive, so
 iterations built from them are stable. Finally, for *smooth* convex minimization Nesterov
 (1983, *A method for solving the convex programming problem with convergence rate
 $O(1/k^2)$*, Dokl. Akad. Nauk SSSR 269:543–547) showed that an extrapolation step — one
 gradient evaluation plus a cheaply computed look-ahead point — accelerates gradient descent
 to $O(1/k^2)$, which Nemirovsky & Yudin (1983) had shown is the best possible rate for any
-first-order method on this class. These three ingredients — gradient steps on the smooth
-part, a proximal step for the nonsmooth part, and Nesterov-style extrapolation — are the
-raw material, but at this point they have not been assembled for the sparse-recovery
-objective.
+first-order method on this class. These are the first-order pieces available off the shelf;
+how they bear on the sparse-recovery objective is not settled here.
 
 ## Baselines
 
@@ -171,8 +169,7 @@ of measurements $m$ scales with the sparsity $k$.
 
 The pieces that already exist: dense or operator-form $A$ with cheap $A$, $A^{\!\top}$
 products; the smooth least-squares data term and its gradient; and a generic first-order
-iteration loop. The exact sparsity penalty, the inexpensive operation that handles it, and
-the update rule are the empty slots.
+iteration loop. How to incorporate the sparsity prior into the iteration is the empty slot.
 
 ```python
 import numpy as np
@@ -191,30 +188,14 @@ def lipschitz_constant(A):
     # TODO: estimate the largest eigenvalue of A.conj().T @ A
     pass
 
-def regularizer(x, lam):
-    # TODO: choose the nonsmooth penalty that expresses sparsity
-    pass
-
-def resolve_regularizer(v, step, lam):
-    # TODO: solve argmin_u regularizer(u, lam) + (1/(2*step)) ||u-v||^2
-    pass
-
-def _backtracking(point, step, A, y, lam, beta=0.5, n_back=100):
-    # TODO: shrink the step until the local quadratic model majorizes smooth_value
-    pass
-
-def solve(A, y, lam, x0=None, step=None, n_iter=500, backtracking=False,
-          beta=0.5, n_back=100, acceleration=None):
+def solve(A, y, lam, x0=None, step=None, n_iter=500):
     if x0 is None:
         x0 = np.zeros(A.shape[1])
     x = x0.copy()
-    z = x.copy()
-    if step is None:
-        # TODO: either estimate a fixed safe step or enable backtracking
-        pass
     for k in range(n_iter):
-        # TODO: use grad_smooth at the current evaluation point, then resolve_regularizer
-        # TODO: optionally update the next evaluation point from the last two iterates
+        # TODO: design the per-iteration update that drives x toward a sparse
+        #       minimizer of 1/2||Ax-y||^2 + lam*||x||_1 using only grad_smooth
+        #       (i.e. A, A^T products)
         pass
     return x
 ```

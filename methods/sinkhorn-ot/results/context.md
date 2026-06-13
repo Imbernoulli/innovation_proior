@@ -68,9 +68,7 @@ marginal into a coupling of `(x,z)` whose cost is bounded by the sum.
 
 **The maximum-entropy principle.** Jaynes (1957) and, in the regularized-estimation form,
 Dudík & Schapire (2006): when many configurations are compatible with the constraints, prefer the
-one of maximum entropy — the least committal, most plausible. Applied here: at a given transport
-cost, the smoothest (highest-entropy) plan is a more *robust* description of how mass moves than the
-brittle vertex plan.
+one of maximum entropy — the least committal, most plausible.
 
 **Matrix scaling — Sinkhorn & Knopp (1967).** For a nonnegative matrix `A` whose positive entries
 have enough support (in particular, every positive entry lies on a positive diagonal; strictly
@@ -84,15 +82,13 @@ independently many times — iterative
 proportional fitting (Deming & Stephan 1940), the RAS method (Bacharach 1965), and, in
 transportation economics, the **gravity model** for estimating origin–destination flows
 (Erlander & Stewart, *The Gravity Model in Transportation Analysis*). Knight (2008) gives a modern
-convergence analysis. The convergence is linear: the row-then-column map is a contraction in
-Hilbert's projective metric (a nonlinear Perron–Frobenius / Birkhoff contraction; Franklin & Lorenz
-1989).
+convergence analysis (Franklin & Lorenz 1989).
 
 **A precedent for regularizing transport.** Ferradans et al. (2013), *Regularized Discrete Optimal
 Transport*, observe that in vision applications (color transfer) the raw optimal matching is too
-irregular, and add a graph-based penalty on the transport plan to smooth it. This establishes that
-penalizing the transport LP to obtain a more regular plan is a live idea; the open question is which
-penalty buys both regularity *and* a cheap, well-behaved distance.
+irregular, and add a graph-based penalty on the transport plan to smooth it. Their construction is
+tailored to vision and inherits the cost of the underlying transport solver, so it does not by
+itself yield a cheaper or better-behaved distance.
 
 ## Baselines
 
@@ -137,7 +133,7 @@ penalty buys both regularity *and* a cheap, well-behaved distance.
 
 What already exists: dense linear algebra (`numpy` / GPU array libraries), elementwise vector ops,
 and exact LP transportation solvers to use as a slow baseline. The pieces below are the empty slots
-for a fast smooth histogram-distance routine.
+for a fast histogram-distance routine.
 
 ```python
 import numpy as np
@@ -147,21 +143,19 @@ def emd(a, b, M):
     Returns a vertex plan with <= 2d-1 nonzeros. Cost ~ O(d^3 log d)."""
     pass
 
-def transport_plan(a, b, M, regularization, num_iter=1000, stop_thr=1e-9):
-    """Find a smooth transport plan P with row sums a and column sums b.
+def transport_plan(a, b, M, num_iter=1000, stop_thr=1e-9):
+    """Compute a fast transport-style plan P with row sums a and column sums b.
     b is one target histogram.
     """
-    # TODO: choose the regularized objective and the fast solver.
+    # TODO
     pass
 
-def transport_cost(a, b, M, regularization, num_iter=1000, stop_thr=1e-9):
+def transport_cost(a, b, M, num_iter=1000, stop_thr=1e-9):
     """Return <P, M>; b may be one target or a matrix of target histograms."""
-    # TODO: fill the same solver without materializing every plan when b has many columns.
     pass
 
-def stable_transport_plan(a, b, M, regularization, num_iter=1000, stop_thr=1e-9):
-    """Numerically stable version for sharper, smaller-regularization plans."""
-    # TODO: carry the same fixed point in stabilized arithmetic.
+def stable_transport_plan(a, b, M, num_iter=1000, stop_thr=1e-9):
+    """Numerically stable variant for the harder-to-compute regime."""
     pass
 ```
 

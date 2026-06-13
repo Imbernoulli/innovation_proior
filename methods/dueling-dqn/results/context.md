@@ -14,11 +14,10 @@ input/output interface, so that every existing learning algorithm can drive it u
 Concretely, the value-based network is asked to output one number per action for every
 state. In many states the return is overwhelmingly determined by *where you are*, not
 *what you do next* — most of the action values in a state are nearly equal, and only the
-small differences between them matter for the policy. A solution should let the network
-exploit this: it should be able to learn "how good is this state" once and share it across
-all actions, and spend extra capacity on the per-action differences only where those
-differences actually matter — all without changing the learning algorithm or requiring any
-extra supervisory signal.
+small differences between them matter for the policy. A generic single-stream network does
+not obviously exploit this regularity, and we want any reshaping to leave the learning
+algorithm and the input/output interface untouched and to require no extra supervisory
+signal.
 
 ## Background
 
@@ -43,8 +42,6 @@ simple continuous-time domains; its successor, advantage learning (Harmon & Bair
 maintained a single advantage function. Advantage functions also have a long history in
 policy gradients (Sutton et al. 2000), where they appear as a variance-reduced baseline,
 most recently estimated online to reduce policy-gradient variance (Schulman et al. 2015).
-The common thread: the value of a state and the relative ranking of actions in it are
-*different objects*, and it can pay to treat them separately.
 
 **The diagnostic observation that sets up the problem.** In many states the choice of
 action has essentially no effect on the immediate dynamics — e.g. in a driving game,

@@ -20,7 +20,7 @@ The second term — the "VC confidence" — grows with $h$ and shrinks with $\el
 
 **A capacity result that does not see the dimension.** For separating hyperplanes the classical VC dimension is $n+1$ (input dimension plus one), which is useless in a billion-dimensional feature space. But there is a sharper statement: if the training vectors lie in a sphere of radius $R$ and one restricts attention to hyperplanes that separate the data with margin at least $\Delta$ (distance to the nearest point), the VC dimension of that subset is bounded by
 $$ h \le \min\!\Big(\Big\lceil \tfrac{R^2}{\Delta^2}\Big\rceil,\; n\Big)+1. $$
-The capacity of *large-margin* hyperplanes can be far below the input dimension and is governed by $R^2/\Delta^2$, not by $n$. This is the load-bearing fact: it says a structure can be imposed *by the margin itself* rather than by the dimension.
+The capacity of *large-margin* hyperplanes can be far below the input dimension and is governed by $R^2/\Delta^2$, not by $n$.
 
 **The perceptron and its dual.** Rosenblatt's perceptron (1962) computes $D(x)=w\cdot x + b$ and is trained by error correction. It has long been observed (Aizerman–Braverman–Rozonoer 1964; Duda & Hart 1973) that perceptrons admit a dual representation: the weight vector ends up a linear combination of training patterns, so the decision can be written $D(x)=\sum_k \alpha_k K(x_k,x)+b$ with $K(x_k,x)=x_k\cdot x$. The perceptron picks *some* separating hyperplane, with no preference among them and no capacity control; its solution depends on the order of presentation and initialization.
 
@@ -90,10 +90,7 @@ class Classifier:
     dimensional.
     """
     def fit(self, X, y):
-        # TODO: among all rules consistent with the data, pick the one whose
-        # capacity is controlled; cast it as a tractable optimization that
-        # does not scale with the feature dimension; handle data that cannot
-        # be separated without error.
+        # TODO: design the training method.
         raise NotImplementedError
 
     def decision_function(self, x):

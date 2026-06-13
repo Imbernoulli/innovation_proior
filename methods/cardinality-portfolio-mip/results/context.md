@@ -27,17 +27,16 @@ face of the simplex, but the union of many faces is not convex: averaging two fe
 portfolios supported on disjoint `K`-name sets can create a portfolio with more than `K`
 nonzero names.
 
-Operations research already has the modeling language for such disjunctions. A binary
-indicator `y_i` can switch a continuous variable on and off through
-`alpha_i y_i <= x_i <= u_i y_i`. If `y_i = 0`, the bounds force `x_i = 0`; if `y_i = 1`, they
-restore the held interval. Summing the indicators gives a linear holding-count constraint.
-The resulting model keeps the convex quadratic objective but adds integer variables.
+Operations research has a long history of modeling such on/off disjunctions, where a
+continuous quantity is either zero or confined to an active interval. Approaches in that
+tradition typically pay for the disjunction with discrete decisions layered on top of the
+convex quadratic objective.
 
 Discrete trade size is a separate integer issue. If a lot of asset `i` costs `s_i p_i` and
 the account value is `V`, holding `n_i` lots gives weight `n_i s_i p_i / V`; `n_i` is a
 nonnegative integer. Solving in continuous weights and then naively rounding can overspend,
-leave unused cash, or distort the target weights, so the allocation step is naturally an
-integer linear projection under the budget.
+leave unused cash, or distort the target weights, so the budget-respecting allocation step is
+its own discrete decision.
 
 Rebalancing also matters. If `x0` is the current portfolio, a symmetric quadratic impact model
 adds `sum_i c_i (x_i - x0_i)^2` with `c_i > 0`. Linear transaction costs can be written with
@@ -99,8 +98,7 @@ exactly.
 ## Code framework
 
 The available software pieces are a CVXPY-backed mean-variance optimizer and an integer
-allocation helper. The missing pieces are the optimization rule that chooses the support and
-the allocation rule that turns the target weights into shares.
+allocation helper. The two `solve` and `lp_portfolio` bodies below are left unimplemented.
 
 ```python
 import collections

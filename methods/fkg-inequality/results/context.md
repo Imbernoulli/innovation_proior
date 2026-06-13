@@ -50,12 +50,13 @@ Total order means every pair x, y is comparable, so f and g move the same way ac
 summand (f(x) − f(y))(g(x) − g(y)) ≥ 0. This is the discrete Chebyshev sum / rearrangement inequality.
 The whole difficulty is that real configuration spaces are *partially*, not totally, ordered.
 
-**Log-supermodularity of a measure.** For partial orders the measure matters: not every positive μ
-makes increasing functions correlate. The relevant condition turns out to be a convexity property of
-μ along the lattice. With λ = log μ it reads λ(x∧y) + λ(x∨y) ≥ λ(x) + λ(y) — **supermodularity** —
-the lattice analogue of "increasing differences": the marginal gain of adding a coordinate r,
-λ(R + r) − λ(R), is itself an increasing function of R. A product (independent-coordinate) measure
-μ(x) = ∏_i μ_i(x_i) satisfies this with **equality**, so independence is precisely the borderline case.
+**The measure matters in the partial case.** Unlike the totally ordered case, where positive
+correlation held for *any* positive measure, on a genuine partial order not every positive μ makes
+increasing functions correlate: a measure can in principle conspire with the incomparable pairs and
+anti-correlate two increasing functions. So a general statement must isolate some property of μ —
+beyond mere positivity — that rules this out. The product (independent-coordinate) measure
+μ(x) = ∏_i μ_i(x_i), under which Harris already established positive correlation, is the distinguished
+reference point of "no induced dependence between coordinates."
 
 **The motivating prior inequalities (the phenomena to be unified).** By 1970 there were two distinct
 streams of correlation inequalities, observed in different models and proved by different means:

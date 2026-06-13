@@ -122,7 +122,7 @@ forcing cannot be nonperiodic, irregular flow is attributed to nonperiodic or ra
 rotating-basin convection experiments of Fultz et al. (1959) and Hide (1958) produce irregular
 nonperiodic flow under *constant* thermal forcing, within experimental control. So the irregularity is
 generated internally; the external-forcing explanation fails for the very systems of interest, and the
-nonlinear (advective) terms must be the source.
+internal origin of the irregularity is left unexplained.
 
 **Linear stability theory around a steady state.** Core idea: linearize the equations about a steady
 solution and examine whether small perturbations grow; the onset of convection is exactly the parameter
@@ -151,11 +151,11 @@ whether two trajectories started from nearby initial states stay close or diverg
 phase-space distance between them as a function of time; and how a small phase-space volume evolves,
 read from the divergence of the flow field `Σ ∂(dXᵢ/dt)/∂Xᵢ`. Integration is by a finite-difference
 scheme with a fixed small time step on a digital computer of the era (single-precision arithmetic,
-printed output truncated to a few decimal places to save space). The convection model carries the
-dimensionless parameters: a Prandtl number `σ = ν/κ`, a relative Rayleigh number `r = Ra/Rc`, and a
-geometric constant `b = 4/(1+a²)`. The yardstick for "nonperiodic" is the failure of the trajectory,
-or of a derived sequence such as successive maxima of one coordinate, to repeat; the yardstick for
-"sensitive dependence" is the growth of the separation between neighboring trajectories.
+printed output truncated to a few decimal places to save space). A convection model of this kind
+carries dimensionless parameters such as a Prandtl number `σ = ν/κ`, a Rayleigh number relative to its
+critical value `r = Ra/Rc`, and a geometric constant set by the cell aspect ratio `a`. The yardstick
+for "nonperiodic" is the failure of the trajectory, or of some sequence derived from it, to repeat; the
+yardstick for "sensitive dependence" is the growth of the separation between neighboring trajectories.
 
 ## Code framework
 
@@ -187,10 +187,10 @@ def run(s0, dt=0.01, n=4000):
     return traj
 
 def diagnostics(traj, other=None):
-    # TODO: measure boundedness, contraction, recurrence/nonperiodicity,
-    # and separation from a nearby trajectory.
+    # TODO: measure the long-term behavior of the trajectory (and its
+    # relation to a nearby trajectory, if one is supplied).
     pass
 
-# TODO: choose constants, initial states, and diagnostics for boundedness,
-# periodicity, volume contraction, and separation of nearby trajectories.
+# TODO: choose the constants, initial states, and the diagnostics that
+# characterize how the trajectories behave.
 ```

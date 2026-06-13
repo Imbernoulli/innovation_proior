@@ -42,7 +42,7 @@ where m_t = 1 marks a masked position and H_θ maps the length-T sequence to a s
 - *Input noise / pretrain–finetune discrepancy.* [MASK] appears throughout pretraining but never in downstream data. Replacing some [MASK]s with the original token to soften this does not fix it, because the replacement must stay rare — otherwise the objective becomes trivial (the model can just copy the visible answer).
 - It also sits outside the density-estimation framework, so language-modeling progress does not transfer cleanly.
 
-**Order-agnostic density estimators (MADE, orderless NADE).** Train one model over many factorization orders via masking. They demonstrate that a *single shared model can be trained under many orders at once* — the mechanism we will want. But their goal and their inductive bias differ: they aim at orderless density estimation and are position-unaware (degenerating toward bag-of-words for an MLP), whereas an NLU pretrainer needs to remain *order-aware* (positions matter for language) while exploiting the multi-order training trick to get bidirectional context.
+**Order-agnostic density estimators (MADE, orderless NADE).** Train one model over many factorization orders via masking. Their goal and their inductive bias are specific to that aim: they target orderless density estimation and are position-unaware (degenerating toward bag-of-words for an MLP), whereas an NLU pretrainer would need positions to matter (word order is central to language).
 
 ## Evaluation settings
 
@@ -55,7 +55,7 @@ The natural yardsticks:
 
 ## Code framework
 
-The available primitives are a token-embedding lookup, a Transformer-XL relative-attention block (multi-head relative attention + position-wise FFN + residual/LayerNorm, with segment-recurrence memory), a tied-embedding softmax cross-entropy head, and Adam with warmup + linear decay. The data pipeline yields token-id sequences, next-token targets, segment ids, and a boolean candidate-selection vector. The open slot is the self-supervised objective: how to choose prediction positions, convert the generic streams into attention controls and auxiliary inputs, route representations through relative attention, and compute the loss.
+The available primitives are a token-embedding lookup, a Transformer-XL relative-attention block (multi-head relative attention + position-wise FFN + residual/LayerNorm, with segment-recurrence memory), a tied-embedding softmax cross-entropy head, and Adam with warmup + linear decay. The data pipeline yields token-id sequences, next-token targets, segment ids, and a boolean candidate-selection vector. The open slot is the self-supervised objective: how to choose prediction positions, convert the generic token stream into whatever attention controls and auxiliary inputs the objective needs, route representations through relative attention, and compute the loss.
 
 ```python
 import tensorflow as tf
@@ -100,13 +100,13 @@ def build_pretraining_inputs(inputs, targets, is_selected, perm_size, seq_len,
     TODO: fill in the self-supervised objective."""
     pass
 
-def objective_attention_layer(h, g, r, mems, r_w_bias, r_r_bias,
+def objective_attention_layer(inp, r, mems, r_w_bias, r_r_bias,
                               seg_mat, r_s_bias, seg_embed,
-                              attn_mask_h, attn_mask_g, target_mapping,
                               d_model, n_head, d_head, dropout, dropatt,
                               is_training, kernel_initializer, scope='rel_attn'):
     """Fill the objective-specific attention slot inside one Transformer-XL layer.
-    TODO: decide what representations the objective needs and how they attend."""
+    TODO: decide what representation(s) the objective needs, what controls (masks,
+    mappings) drive them, and how they attend."""
     pass
 
 def pretraining_loss(hidden, target, target_mask, lookup_table, n_token,

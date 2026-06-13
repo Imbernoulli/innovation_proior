@@ -77,11 +77,10 @@ inherits all of large-batch optimization's open difficulties.
 **Diagnostic observations about existing systems.** Two empirical facts about the
 prior art set up the problem. First, methods using contrastive losses consistently
 improve as the number of negatives grows — observed under the memory-bank mechanism
-and consistent with the InfoNCE MI bound. Second, the negatives' *encoder
-consistency* matters: when the comparison set is built from feature vectors that
-were computed at many different, stale encoder states (as in a per-sample feature
-table updated once per epoch), the representation quality is measurably worse than
-when the keys share an encoder.
+and consistent with the InfoNCE MI bound. Second, when the comparison set is built
+from feature vectors that were computed at many different, stale encoder states (as
+in a per-sample feature table updated once per epoch), the resulting representation
+quality is measurably worse.
 
 ## Baselines
 
@@ -100,9 +99,9 @@ feature is computed it is written back with a per-sample update
 damp drift. **Gap:** a bank entry was last written the previous time *that specific
 image* was sampled — up to a whole epoch ago, by a very different encoder state. The
 keys in any one step therefore come from encoders scattered across the entire past
-epoch and are mutually *inconsistent*. The bank's own momentum acts on the stored
-*features of a sample*, not on the *encoder*, so it does not address cross-key
-consistency. The table also stores all N samples, which does not scale to
+epoch and are mutually *inconsistent*. The per-sample write-back smooths each row's
+stored feature over time, but two rows written at two different times still disagree.
+The table also stores all N samples, which does not scale to
 billion-image data.
 
 **End-to-end contrastive learning.** Both the query and key encoders are updated by

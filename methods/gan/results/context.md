@@ -52,24 +52,22 @@ concepts a new method rests on are:
 - **Discriminative criteria for generative fitting.** A counter-tradition fits a generative model
   *without* maximizing likelihood, by setting up a classification-style objective — score matching
   (Hyvärinen, 2005) and especially noise-contrastive estimation (Gutmann & Hyvärinen, 2010), which
-  turns density estimation into logistic regression. The central, reusable idea: *a classifier's
-  success can serve as the learning signal for a generative model.* The hidden weakness is that the
-  contrast is against a *fixed* distribution, so the classification problem becomes easy — and the
-  gradient slack — the moment the model is even approximately right.
+  turns density estimation into logistic regression. The observed weakness is that the contrast is
+  against a *fixed* distribution, so the classification problem becomes easy — and the gradient slack
+  — the moment the model is even approximately right.
 
 - **The density ratio.** Telling apart two distributions is governed by their ratio
-  `p_data(x) / p_g(x)`; the Bayes-optimal classifier of "real vs. generated" with equal class priors
-  outputs `p_data / (p_data + p_g)`, a monotone transform of that ratio. This quantity is well-defined
-  even when neither density can be written in closed form — which is why a *classifier* can stand in
-  for two intractable densities.
+  `p_data(x) / p_g(x)`; the Bayes-optimal classifier of "two classes" with equal class priors outputs
+  `p_data / (p_data + p_g)`, a monotone transform of that ratio. This quantity is well-defined even
+  when neither density can be written in closed form.
 
 - **The reparameterized / differentiable generator.** Express a continuous latent (or a whole sample)
   as a deterministic differentiable function of injected noise, `x = G(z; θ)` with `z ~ p_z`, so
   gradients can pass through the sampling step. Then sampling is a single forward pass and `θ` can be
   trained by backprop through any differentiable downstream signal. This change-of-variable idea is old
   in statistics (its derivative identities trace to Price 1958, Bonnet 1964) and is in active use — it
-  underlies stochastic backprop and the variational-autoencoder line. **The open hole is the downstream
-  signal:** what loss should train `θ`, if not a likelihood or a variational bound?
+  underlies stochastic backprop and the variational-autoencoder line, where it is paired with a
+  likelihood bound and an inference network to supply the training signal.
 
 - **Persistent negative chains.** SML/PCD (Younes, 1999; Tieleman, 2008) trains energy-based models by
   carrying a persistent set of Markov-chain samples across learning steps instead of burning in a fresh
@@ -80,8 +78,7 @@ concepts a new method rests on are:
   Jensen–Shannon divergence `JSD(p‖q) = ½KL(p‖m) + ½KL(q‖m)` with `m = (p+q)/2`; JSD is non-negative and
   zero iff `p = q`, and is finite even when supports do not overlap. KL is asymmetric (it has a
   mode-covering and a mode-seeking direction and can be infinite on disjoint supports), whereas JSD is
-  symmetric and bounded — the difference will matter for which divergence a *symmetric* real-vs-fake
-  comparison produces.
+  symmetric and bounded.
 
 ## Baselines
 
@@ -110,9 +107,7 @@ The prior methods a new generative procedure would be measured against and react
   logistic nonlinearity and learning `Z` as a parameter. *Gaps:* (1) it still needs the model density
   specified analytically up to `Z`; (2) the contrast distribution is fixed, so once the model is even
   approximately right on a small subset of the variables, telling data from the fixed noise becomes
-  trivial, the classifier saturates, and learning slows dramatically. The hanging question it leaves:
-  *what if the contrast were not fixed, but a model that keeps improving so the classification task
-  never goes slack?*
+  trivial, the classifier saturates, and learning slows dramatically.
 
 - **Generative Stochastic Networks (Bengio et al., ICML 2014), extending generalized denoising
   autoencoders (Bengio et al., NIPS 2013).** Give up an explicit density and train a generative
@@ -243,7 +238,7 @@ class LearnedSignalCost(DefaultDataSpecsMixin, Cost):
 
 class SplitParameterSGD:
     def train_batch(self, real_batch):
-        # TODO: decide how often to move the signal parameters and sampler parameters.
+        # TODO: apply the gradients to the parameter groups.
         pass
 ```
 

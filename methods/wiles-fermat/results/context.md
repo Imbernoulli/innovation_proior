@@ -33,7 +33,7 @@ space of modular forms?
 **Elliptic curves and modularity.** An elliptic curve E/Q is *modular* if it admits a finite
 covering by a modular curve X_0(N), equivalently if its Hasse-Weil L-function L(E,s) coincides with
 the L-function of a weight-2 cusp form for Gamma_0(N). A conjecture growing out of work of Taniyama
-and Shimura in the 1950s and 60s, made precise and propagated by Weil in 1967, asserts that *every*
+and Shimura, made precise and propagated by Weil, asserts that *every*
 elliptic curve over Q is modular. Before the work described here only finitely many j-invariants
 were known to be modular; the conjecture was numerically supported but had no general method behind
 it.
@@ -48,7 +48,7 @@ conjectures of the mid-1980s framed this reverse problem: every odd irreducible 
 rho_0: Gal(Qbar/Q) -> GL_2(Fbar_p) should be modular, and there should be a recipe for the minimal
 weight and level.
 
-**The Frey-curve mechanism (the motivating arithmetic fact).** Frey observed in 1985 that the curve
+**The Frey-curve mechanism (the motivating arithmetic fact).** Frey observed that the curve
 above, built from a Fermat counterexample, has a mod-p representation so lightly ramified that, if
 it were modular, level-lowering would push it to an impossibly small level. Serre formalized this as
 the epsilon conjecture (a level-lowering statement for mod-p modular representations), and Ribet
@@ -72,12 +72,9 @@ that, in good cases, R_D should equal a Hecke algebra — a first hint that "all
 relevant space of cusp forms, localized at the maximal ideal m attached to rho_0, parametrizes the
 modular lifts. Mazur showed (prime level) that these localized Hecke rings are Gorenstein; the
 property was extended as needed. The congruences between a chosen eigenform f and other forms of
-varying level — a theory begun by Hida and Ribet — are measured by a congruence ideal eta. Two
-finite invariants attach to the pair (T, p_T) where p_T = ker(T ->> O): the Hecke cotangent space
-p_T/p_T^2 and the congruence ideal eta (which measures a special value). On the deformation side,
-the corresponding cotangent space of R is a Selmer group, and the map R ->> T makes the Hecke
-cotangent a quotient of it. Kunz's commutative algebra and Tate's account of Grothendieck duality
-for complete intersections bear on when the Hecke cotangent length and congruence length coincide.
+varying level — a theory begun by Hida and Ribet — are measured by a congruence ideal eta, which
+records a special value. Kunz's commutative algebra and Tate's account of Grothendieck duality for
+complete intersections are available tools for relating ring-theoretic invariants of such local rings.
 
 **Iwasawa theory and Galois cohomology (the second tradition).** The analytic class number formula
 of Dirichlet, revived through the conjecture of Birch and Swinnerton-Dyer and through Iwasawa
@@ -91,8 +88,7 @@ between a Selmer group and its dual, and between Selmer groups as the allowed ra
 **Euler systems.** Kolyvagin's method of Euler systems produces, from a compatible family of
 cohomology classes (e.g. Heegner points, cyclotomic units), sharp upper bounds on Selmer groups and
 Tate-Shafarevich groups. Flach constructed what looked like the first step of such a system in the
-setting needed here. An Euler system, if completed, would bound the relevant Selmer group directly,
-giving one of the two inequalities needed for the numerical criterion.
+setting needed here. An Euler system, if completed, would bound the relevant Selmer group directly.
 
 ## Baselines
 
@@ -132,44 +128,25 @@ The natural yardsticks are arithmetic, not numerical. A proof must (i) be valid 
 elliptic curves over Q (square-free conductor), since Ribet's reduction needs the whole class, not
 finitely many j-invariants; (ii) be checkable in the known cases — the CM cases via Rubin-Kolyvagin,
 the dihedral / A_4 / S_4 residual cases via Langlands-Tunnell, the modularity already verified for
-small conductor; (iii) connect at p = 3 to the Langlands-Tunnell base case and survive the passage
-to p = 5 for curves whose mod-3 representation is reducible, after isolating the already-modular
-exceptional cases and keeping the mod-5 residual representation irreducible. The criteria of success
-are exactness (the upper and lower bounds on the Selmer group must *match*, not merely be close), uniformity across
-the semistable family, and internal consistency with Poitou-Tate duality and with the known special
-values of L-functions.
+small conductor; (iii) connect to the Langlands-Tunnell residual base case and still reach the
+semistable curves it does not directly cover. The criteria of success are exactness (the relevant
+arithmetic invariants must match exactly, not merely be close), uniformity across the semistable
+family, and internal consistency with Poitou-Tate duality and with the known special values of
+L-functions.
 
 ## Proof framework
 
     Goal: every semistable elliptic curve E/Q is modular  (=> FLT via Frey + Ribet).
 
-    Step A  (Frey + Ribet):
-        a Fermat counterexample => a semistable E whose rho_{E,p} cannot be modular.
-        So it suffices to prove: every semistable E/Q is modular.
+    Available reductions from prior art:
+        - Frey + Ribet: a Fermat counterexample => a semistable E whose rho_{E,p}
+          cannot be modular, so it suffices to prove every semistable E/Q is modular.
+        - Eichler-Shimura / Faltings isogeny: E modular <=> its p-adic representation
+          rho_{E,p} is modular, for one prime p.
+        - Langlands-Tunnell: for an irreducible rho_0 = rhobar_{E,3} the projective
+          image lies in PGL_2(F_3) ~= S_4 (solvable), giving residual modularity at p = 3.
 
-    Step B  (Eichler-Shimura / Faltings isogeny):
-        E modular  <=>  the p-adic representation rho_{E,p} is modular,  for one prime p.
-
-    Step C  (Langlands-Tunnell, take p = 3):
-        if rho_0 = rhobar_{E,3} is irreducible, its projective image is a subgroup of
-        PGL_2(F_3) ~= S_4, so rho_0 is modular; the semistable hypotheses give
-        the local conditions needed for the lifting theorem.
-
-    Step D  (modularity lifting):
-        show that every suitable ordinary/flat lift of a modular residual rho_0 is modular.
-        reformulate via:  universal deformation ring R_D  --phi-->>  Hecke algebra T_D
-        modularity of all lifts  <=>  phi is an isomorphism  (R_D = T_D)
-        prove the numerical criterion, the automatic inequality
-            length(p_T/p_T^2) >= length(O/eta_T),
-        and the Selmer bound
-            length(p_R/p_R^2) <= length(O/eta_T).
-
-    Step E  (3-5 passage):
-        if rhobar_{E,3} is reducible, X_0(15)(Q) shows rhobar_{E,5} is irreducible
-        except for semistable exceptional curves already known to be modular.
-        Use the twisted X(5) family and Hilbert irreducibility to find E' with
-        rhobar_{E',3} irreducible and rhobar_{E',5} = rhobar_{E,5};
-        apply Step D at 3 to E', then at 5 to E.
-
-    Conclusion:
-        all semistable E/Q modular  =>  no non-modular Frey curve  =>  FLT.
+    Open:
+        - bridge from a modular residual representation rho_0 to modularity of the
+          actual semistable curve E;
+        - account for the curves not reached by the p = 3 residual hypothesis.

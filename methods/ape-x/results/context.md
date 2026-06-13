@@ -87,7 +87,7 @@ bundles and **distributing gradient computation**: local learners compute gradie
 a central parameter server. Gap it leaves open: each bundle's replay is *local* and sampled
 *uniformly*, so a valuable transition found by one bundle cannot be exploited by another; and because
 the thing communicated is gradients, the system inherits distributed-SGD's sensitivity to staleness
-and latency. It distributes the wrong quantity (gradients) and shares nothing useful between workers.
+and latency.
 
 **DQN with uniform experience replay (Mnih et al. 2015).** Single learner, sliding-window 10⁶
 buffer, minibatches of 32 sampled uniformly, target network, reward clipping, ε-greedy behavior.
@@ -130,10 +130,9 @@ pixels.
 
 The primitives that already exist: an environment with the standard Atari wrappers, a
 value/policy network module, a sum-tree/min-tree-backed prioritized buffer with proportional sampling
-and IS weights (from prior prioritized replay), a target network, an optimizer, and a Huber loss. What
-does not yet exist is any notion of *separating* who-generates-data from who-learns, of *sharing* one
-replay across many producers, or of computing priorities at the point of generation. Those are the
-empty slots below.
+and IS weights (from prior prioritized replay), a target network, an optimizer, and a Huber loss. How
+these primitives should be organized across machines to scale by generating more experience is the
+empty slot below.
 
 ```python
 import numpy as np
@@ -150,18 +149,18 @@ class ValueNetwork(nn.Module):
     def forward(self, x):
         pass
     def act(self, state, epsilon):
-        # TODO: epsilon-greedy action + the value estimates used downstream
+        # TODO: epsilon-greedy action selection
         pass
 
 
-class SharedPrioritizedBuffer:
+class PrioritizedReplayBuffer:
     """A replay buffer sampled in proportion to a per-transition priority,
     with an O(log N) sum-tree and a min-tree for the max IS weight. Already
-    available from prioritized replay; here it is the *single shared* store."""
+    available from prioritized replay (Schaul et al. 2016)."""
     def __init__(self, size, alpha):
         pass
-    def add(self, transition, priority):
-        # TODO: insert a transition together with a priority
+    def add(self, transition):
+        # TODO: insert a transition
         pass
     def sample(self, batch_size, beta):
         # TODO: draw indices ~ P(k) ∝ p_k^alpha; return data, IS weights, indices
@@ -172,8 +171,7 @@ class SharedPrioritizedBuffer:
 
 
 class MultiStepStorage:
-    """Local per-producer buffer that folds a run of transitions into an
-    n-step transition. The slot where initial priorities will be produced."""
+    """Local buffer that folds a run of transitions into an n-step transition."""
     def __init__(self, n_steps, gamma):
         # TODO: rolling deque of the last n transitions
         pass
@@ -181,7 +179,7 @@ class MultiStepStorage:
         # TODO: emit (S_t, A_t, n-step return, S_{t+n}) when the window is full
         pass
     def make_batch(self):
-        # TODO: return the batch of n-step transitions and ... ?  (a priority)
+        # TODO: return the batch of n-step transitions
         pass
 
 
@@ -191,16 +189,5 @@ def compute_loss(model, tgt_model, batch, n_steps, gamma):
     pass
 
 
-def producer_loop(env, model, shared_buffer, epsilon):
-    # TODO: step the environment with an exploration policy, accumulate
-    #       n-step transitions, ship them to the shared buffer, periodically
-    #       refresh the local network from the learner
-    pass
-
-
-def learner_loop(model, tgt_model, shared_buffer, optimizer):
-    # TODO: repeatedly sample a prioritized batch, take a gradient step,
-    #       write refreshed priorities back, periodically update the target
-    #       and publish parameters to the producers
-    pass
+# TODO: organize the acting/learning computation across machines.
 ```

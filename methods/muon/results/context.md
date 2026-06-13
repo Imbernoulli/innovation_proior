@@ -19,11 +19,10 @@ This matters because of an observed property of the updates themselves: for the 
 transformer, the SGD-momentum and Adam update matrices have very high condition number — they are
 close to low-rank. A few singular directions carry almost all the magnitude of the update; the many
 small-singular-value directions, which can still be important for learning, receive almost no step.
-A satisfactory answer would (a) define a notion of a "unit-sized" step that respects the matrix's
-operator structure rather than its individual entries, (b) spread the update across all singular
-directions instead of letting a few dominate, (c) be cheap enough to run every step at LLM scale on
-GPUs in low precision, and (d) keep AdamW's practical conveniences — a stable update magnitude and
-transferable learning-rate / weight-decay settings.
+A satisfactory answer would (a) account for the matrix's operator structure rather than treating its
+entries in isolation, (b) be cheap enough to run every step at LLM scale on GPUs in low precision,
+and (c) keep AdamW's practical conveniences — a stable update magnitude and transferable
+learning-rate / weight-decay settings.
 
 ## Background
 
@@ -43,14 +42,11 @@ gradient and thus not divided by `√v̂`, which makes the regularization indepe
 scaling. With the moving averages removed, Adam reduces to sign gradient descent, i.e. a strictly
 entrywise rule.
 
-**Steepest descent under a norm.** A unifying way to read a first-order optimizer is as the
-solution to a local model of the loss: minimize over the update `ΔW`
-`⟨G, ΔW⟩ + (λ/2)‖ΔW‖²` for a chosen norm `‖·‖` and sharpness `λ`. The choice of norm fixes the
-optimizer. Different norms induce different updates; for matrix parameters the relevant norms are
-the **induced operator norms** `‖M‖_{α→β} = max_{x≠0} ‖Mx‖_β/‖x‖_α`, which depend on what norms one
-puts on the input and output spaces. This perspective (Bernstein & Newhouse, 2024) makes explicit
-that an entrywise rule corresponds to a particular, arguably accidental, choice of norm on the
-flattened weights, and that other norms — ones that respect the operator structure — are available.
+**Normed views of first-order optimizers.** A line of work analyzes first-order optimizers through
+the geometry they implicitly assume on the parameters — reading an update as the solution of a
+local model of the loss regularized by some norm on the step (Bernstein & Newhouse, 2024). Within
+this literature, vector and matrix parameters can be measured by different norms, including the
+familiar entrywise/flattened norms.
 
 **Preconditioned / second-order-flavored methods.** Shampoo (Gupta et al., 2018) maintains left and
 right preconditioners `L_t = Σ G G^T`, `R_t = Σ G^T G` and steps with
@@ -59,24 +55,17 @@ preconditioner. It captures correlations across rows and columns that an entrywi
 but it must form and invert (fourth-root) the `A×A` and `B×B` preconditioners every so often, which
 is `O(A³ + B³)` compute and `O(A² + B²)` memory per matrix — prohibitive at LLM scale.
 
-**The matrix sign function and the polar decomposition.** Any real matrix `M` factors as
-`M = U Σ Vᵀ` (SVD). Its orthogonal **polar factor** is `U Vᵀ` — the SVD with the singular values
-replaced by ones — equal to `(M Mᵀ)^{-1/2} M`. This is the **matrix sign** of `M` in the sense of
-applying `sign` to each singular value, and it is exactly the **closest semi-orthogonal matrix** to
-`M` in Frobenius norm. Numerical-analysis texts (Higham) compute such functions without an SVD via
-**Newton–Schulz iterations**: iterate an odd matrix polynomial — e.g. the cubic
-`X_{k+1} = 1.5 X_k − 0.5 X_k X_kᵀ X_k`, equivalently applying `f(s) = 1.5 s − 0.5 s³` to each
-singular value — which, once the matrix is normalized so its singular values lie in the basin of the
-fixed point at 1, drives all singular values toward 1 using only matrix multiplications. Such
-iterations are stable in low precision because they are bounded and matmul-only, unlike
-inverse-root Newton iterations which require higher precision and misbehave on near-singular
-matrices.
+**Matrix factorizations and matrix functions.** Any real matrix `M` factors as `M = U Σ Vᵀ` (SVD),
+with `U, V` orthonormal and `Σ` the nonnegative singular values. Numerical-analysis texts (Higham)
+study matrix functions and note that some can be evaluated iteratively with only matrix
+multiplications, avoiding an explicit SVD or any matrix inverse — a property that matters in low
+precision, where forming inverses or inverse roots is fragile, especially on near-singular matrices.
 
 **Diagnostic observation on update spectra.** A direct measurement motivating the whole line: the
 update matrices produced by entrywise optimizers on transformer 2D weights are nearly low-rank
 (high condition number), so the effective rank of each step is much smaller than the matrix's
-dimension. Flattening the singular spectrum of the update — giving every direction a comparable
-step — is the concrete intervention this suggests.
+dimension — a few singular directions carry almost all of the step's magnitude, while a long tail
+of small-singular-value directions receive almost none.
 
 ## Baselines
 
@@ -88,15 +77,14 @@ it is sensitive to per-layer scale; needs careful learning-rate tuning per tenso
 `m_t = β₁ m_{t-1} + (1−β₁) g`, `v_t = β₂ v_{t-1} + (1−β₂) g²`, update `m̂_t/(√v̂_t+ε)`, then
 `W ← (1−ηλ)W − η·update`. *Strengths:* stable update RMS (~0.2–0.4), transferable hyperparameters,
 two cheap state buffers. *Gap:* purely entrywise — it normalizes each scalar in isolation and
-ignores that the weight is a matrix operator, so it cannot equalize the update across the matrix's
-singular directions.
+ignores that the weight is a matrix operator, so its update inherits whatever singular structure the
+gradient has.
 
 **Shampoo.** Kronecker-factored preconditioning `W ← W − η L^{-1/4} G R^{-1/4}` with
 `L = Σ GGᵀ`, `R = Σ GᵀG`. *Strength:* genuinely matrix-aware; captures row/column correlations.
-Notably, **with the accumulators disabled** it reduces to `(GGᵀ)^{-1/4} G (GᵀG)^{-1/4} = U Vᵀ` — an
-orthogonalized update. *Gap:* forming and inverse-fourth-rooting the two preconditioners is
-`O(A³+B³)` time and `O(A²+B²)` memory per matrix and needs higher precision — too expensive to run
-at every step for billion-parameter models.
+*Gap:* forming and inverse-fourth-rooting the two preconditioners is `O(A³+B³)` time and
+`O(A²+B²)` memory per matrix and needs higher precision — too expensive to run at every step for
+billion-parameter models.
 
 ## Evaluation settings
 
@@ -145,10 +133,7 @@ def matrix_update(grad, momentum, momentum_coef):
     Inputs: the current gradient, a running momentum buffer, the momentum coefficient.
     Returns: the update to subtract from the weight matrix.
     """
-    # TODO: form a momentum of the gradient.
-    # TODO: turn that momentum matrix into the update we actually want for a matrix-shaped
-    #       parameter (the contribution of this work).
-    # TODO: any shape-dependent rescaling needed to keep the update magnitude consistent.
+    # TODO: design the matrix-aware update rule (the contribution of this work).
     pass
 
 

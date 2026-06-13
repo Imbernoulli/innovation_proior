@@ -38,7 +38,7 @@ A convex quadratic with curvature $L$ sits above $f$ and touches it at $y$. This
 
 $$\mathrm{prox}_{\varphi}(x) = \arg\min_y \ \varphi(y) + \tfrac12\|y-x\|^2$$
 
-is the proximity operator. It is characterized by the inclusion $x-\mathrm{prox}_{\varphi}(x)\in\partial\varphi(\mathrm{prox}_{\varphi}(x))$, it generalizes Euclidean projection (when $\varphi=\iota_C$ is the indicator of a convex set $C$, $\mathrm{prox}_{\varphi}=P_C$), and it is firmly nonexpansive. These prox operators are the implicit/backward counterpart of an explicit gradient step.
+is the proximity operator. It is characterized by the inclusion $x-\mathrm{prox}_{\varphi}(x)\in\partial\varphi(\mathrm{prox}_{\varphi}(x))$, it generalizes Euclidean projection (when $\varphi=\iota_C$ is the indicator of a convex set $C$, $\mathrm{prox}_{\varphi}=P_C$), and it is firmly nonexpansive.
 
 **Sparsity and wavelet shrinkage.** That thresholding small wavelet coefficients denoises a signal goes back to Donoho–Johnstone (1995) and the variational/Besov-penalty denoising of Chambolle, DeVore, Lee, Lucier (1998). The empirical fact the field already takes as given: natural images have sparse wavelet expansions, an $\ell_1$ penalty promotes sparse minimizers, and soft-thresholding a coefficient is exactly the one-dimensional solution of "data fit plus $\lambda\times$ absolute value." This shrinkage step is cheap, separable, and the obvious nonlinear building block for sparse recovery.
 
@@ -64,7 +64,7 @@ The natural test problems are $\ell_1$/wavelet-based image deblurring. A represe
 
 ## Code framework
 
-A generic first-order solver harness for $\min_x f(x)+g(x)$. It exposes the problem data, a nonsmooth proximal placeholder, an update placeholder, and a driver loop.
+A generic first-order solver harness for $\min_x f(x)+g(x)$. It exposes the problem data, an update placeholder, and a driver loop.
 
 ```python
 import numpy as np
@@ -78,25 +78,19 @@ def make_problem(A, b, lam):
     L = 2.0 * np.linalg.eigvalsh(AtA)[-1]                 # Lipschitz const of grad f
     return f, grad_f, g, L, lam
 
-# ---- nonsmooth proximal placeholder ----
-def prox_g(v, t, lam):
-    # argmin_x  g(x) + (1/(2t)) ||x - v||^2
-    # TODO: closed form for prox_{t g} for the chosen regularizer
-    pass
-
 # ---- one update of the first-order loop ----
-def update(state, grad_f, prox_g, t, lam):
+def update(state, f, grad_f, g, t, lam):
     # state may hold current and previous iterates plus scalar recurrences.
-    # TODO: choose an anchor, take the smooth gradient step, apply prox, update state
+    # TODO: fill in
     pass
 
-# ---- the driver: a plain first-order loop, generic to any (grad_f, prox_g, update) ----
+# ---- the driver: a plain first-order loop, generic to any update ----
 def solve(f, grad_f, g, L, lam, x0, n_iter):
     t = 1.0 / L
     state = {"x": x0.copy(), "x_prev": x0.copy(), "k": 0}
     history = []
     for _ in range(n_iter):
-        state = update(state, grad_f, prox_g, t, lam)
+        state = update(state, f, grad_f, g, t, lam)
         history.append(f(state["x"]) + g(state["x"]))
     return state["x"], history
 ```

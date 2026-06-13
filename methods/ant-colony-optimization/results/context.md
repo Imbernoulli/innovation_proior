@@ -8,15 +8,15 @@ The question this landscape poses: is there a *general-purpose, population-based
 
 ## Background
 
-**The TSP and the greedy constructive baseline.** Given cities with pairwise distances d_ij, a constructive heuristic builds a tour incrementally: stand at a city, pick the next city, repeat until all are visited, then close the loop. The simplest rule is nearest-neighbor — always step to the closest unvisited city. It is cheap and gives a decent start, but it is myopic: greedy early choices use up the short edges, so the agent is later *forced* to take long edges, and closing the tour back to the start is often very expensive. The natural numeric expression of "closeness is desirable" is the visibility η_ij = 1/d_ij — large for near cities, small for far ones. Any constructive method needs such a greedy force to produce acceptable tours before any learned information exists.
+**The TSP and the greedy constructive baseline.** Given cities with pairwise distances d_ij, a constructive heuristic builds a tour incrementally: stand at a city, pick the next city, repeat until all are visited, then close the loop. The simplest rule is nearest-neighbor — always step to the closest unvisited city. It is cheap and gives a decent start, but it is myopic: greedy early choices use up the short edges, so the agent is later *forced* to take long edges, and closing the tour back to the start is often very expensive. The natural numeric expression of "closeness is desirable" is the visibility η_ij = 1/d_ij — large for near cities, small for far ones. Some such greedy force is what makes a constructive heuristic produce acceptable tours at all.
 
 **Real-ant foraging and stigmergy.** Ethologists studied how nearly blind ants find shortest paths between nest and food. The mechanism is pheromone: a walking ant lays a chemical trail and, at a junction, chooses a direction with probability biased by the trail intensity it senses. This is *stigmergy* — indirect communication through persistent modifications of the shared environment rather than direct agent-to-agent messaging. In the controlled double-bridge experiment (Deneubourg et al., 1990, *The self-organizing exploratory pattern of the Argentine ant*), a nest and a food source are joined by two branches. When the branches are unequal, the colony converges to the *shorter* one. The cause is differential path length: an ant taking the short branch reaches the food and returns sooner, so the short branch accumulates pheromone *faster*; later ants then prefer it, deposit more, and the bias compounds.
 
-**Autocatalysis (positive feedback) and why it must be bounded.** The compounding above is autocatalytic — more pheromone on an edge raises the probability of choosing it, which deposits still more pheromone. Positive feedback of this kind discovers good options rapidly, but if nothing opposes it the trail grows without limit and the system locks onto whatever it found first, good or bad. A self-reinforcing search therefore needs a counter-force that lets the accumulated bias decay, so early accidental choices can be forgotten and the search keeps probing alternatives.
+**Autocatalysis (positive feedback) in the foraging system.** The compounding above is autocatalytic — more pheromone on an edge raises the probability of choosing it, which deposits still more pheromone. Positive feedback of this kind discovers good options rapidly. In the double-bridge there are only two branches, and the short one wins; what happens to such compounding in a system with many comparably-good options is not settled by the foraging account alone.
 
-**The explore–exploit tension.** A search that only exploits accumulated evidence converges fast but risks premature lock-in on a suboptimal answer (stagnation: every agent ends up tracing the same tour). A search that only explores never concentrates effort where evidence points and wastes its budget. A usable method needs a tunable balance: enough exploitation to home in, enough exploration to keep finding better tours, with knobs that move the operating point between the two.
+**The explore–exploit tension.** A search that only exploits accumulated evidence converges fast but risks premature lock-in on a suboptimal answer (stagnation: every agent ends up tracing the same tour). A search that only explores never concentrates effort where evidence points and wastes its budget. Any heuristic of this kind lives somewhere on that spectrum, and where it sits governs whether it converges and whether it converges to something good.
 
-**Why a population of constructive agents.** A single trajectory-based search holds one solution. If instead many simple agents each build a complete tour in parallel and write what they learn into a shared, slowly-decaying memory on the edges, then (i) the unit of cooperation is a persistent global structure rather than a single current point, (ii) the memory can encode "edges that appeared in many short tours" as a bias for the next round, and (iii) the same construction-plus-shared-memory template can be reused for any problem for which one can define a graph, a constructive step, and a greedy heuristic. The open engineering questions are the exact form of the probabilistic choice rule, what quantity gets deposited and how the deposit reflects solution quality, and how the decay and the choice rule are tuned so the colony converges without stagnating.
+**Why a population of constructive agents.** A single trajectory-based search holds one solution. The contrasting bet is that many simple agents, each building a complete tour, could cooperate so that the unit of search is something the whole population shares rather than a single current point — and that a template built around a graph, a constructive step, and a greedy heuristic would then carry over to any problem cast in those terms. How such agents cooperate, what they would have to record and act on, and what keeps a self-reinforcing population from collapsing onto its first find are exactly what remains open.
 
 ## Baselines
 
@@ -34,7 +34,7 @@ The natural yardstick is a small symmetric Euclidean TSP with a known good tour 
 
 ## Code framework
 
-The available primitives are a fully-connected distance graph, a per-agent forbidden set (the tabu-list device) to keep tours legal, the static visibility η_ij = 1/d_ij, and a generational loop in which a batch of agents each build a complete tour. The empty slots are: the shared edge trail and its initialization, the probabilistic choice rule each agent uses to pick its next city, what each agent contributes back to the shared trail after building a tour, and how that trail decays and is updated between generations.
+The available primitives are a fully-connected distance graph, a per-agent forbidden set (the tabu-list device) to keep tours legal, the static visibility η_ij = 1/d_ij, and a generational loop in which a batch of agents each build a complete tour. The empty slots are left for whatever cooperative machinery the design calls for: how an agent picks its next city, what survives between generations, and how the population's experience feeds the next round.
 
 ```python
 import random
@@ -44,8 +44,7 @@ class Graph(object):
     def __init__(self, cost_matrix, rank):
         self.matrix = cost_matrix
         self.rank = rank
-        # TODO: a shared per-edge trail the agents read and write,
-        #       plus its initial value.
+        # TODO: whatever per-edge state, if any, the design needs.
         self.pheromone = None
 
 
@@ -53,13 +52,13 @@ class Colony(object):
     def __init__(self, ant_count, generations, alpha, beta, rho, q):
         self.ant_count = ant_count
         self.generations = generations
-        self.alpha = alpha          # weight on the shared trail term
-        self.beta = beta            # weight on the visibility term
-        self.rho = rho              # how much trail persists between generations
-        self.Q = q                  # scale of an agent's contribution
+        self.alpha = alpha          # tunable weighting parameter
+        self.beta = beta            # tunable weighting parameter
+        self.rho = rho              # tunable parameter in [0,1)
+        self.Q = q                  # tunable scale parameter
 
     def _update_pheromone(self, graph, ants):
-        # TODO: decay the shared trail, then fold in every agent's contribution.
+        # TODO: update the per-edge state between generations from this batch of agents.
         pass
 
     def solve(self, graph):
@@ -95,13 +94,12 @@ class _Ant(object):
         self.allowed.remove(start)
 
     def _select_next(self):
-        # TODO: choose the next city probabilistically from the shared trail
-        #       and the visibility; remove it from `allowed`, append to `tabu`,
-        #       accumulate its edge cost, advance `current`.
+        # TODO: choose the next city from `allowed`; remove it from `allowed`,
+        #       append to `tabu`, accumulate its edge cost, advance `current`.
         pass
 
     def _update_pheromone_delta(self):
-        # TODO: build this agent's write-back to the shared trail from the
-        #       closed tour it just constructed (reflecting how good the tour is).
+        # TODO: from the closed tour this agent just built, produce whatever it
+        #       contributes back for the next generation.
         pass
 ```

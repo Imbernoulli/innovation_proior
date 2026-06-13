@@ -11,10 +11,8 @@ slow, and how slow depends entirely on how I *represent* states to the learner. 
 precise question is: for a value learner that is linear in some state features, what is
 the *right* representation — the set of features such that nearby features mean nearby
 values, generalization helps rather than hurts, and learning is fast — when "nearby" has
-to mean something temporal, not spatial? A solution has to (i) make a state's features
-resemble those of the states it tends to lead to, (ii) be learnable from experience when
-the transition structure is unknown, and (iii) ideally let value computed for one task be
-reused when the goal changes but the world's dynamics do not.
+to mean something temporal, not spatial? Whatever that representation is, it has to be
+learnable from experience when the transition structure is unknown.
 
 ## Background
 
@@ -115,11 +113,13 @@ reacts to:
   produced by an iterated recurrence and so are *very sensitive to errors* in the estimated
   transition matrix, and the recurrence complicates any convergence analysis.
 
-The gap all of these leave open: a representation whose generalization is *temporal* and
-*task-derived* (so it bends around a barrier on its own), that is *learnable from
-experience* by the same TD machinery already in hand (no full model, no opaque hidden
-layer), and that *separates* the part of value that depends on dynamics from the part that
-depends on reward.
+The gap all of these leave open: none of them gives a representation whose generalization is
+*temporal* and *task-derived* (so it would bend around a barrier on its own) while remaining
+learnable from raw experience without committing to a full model or an opaque hidden layer.
+The fixed-metric codes generalize by an a-priori spatial metric; the model-based schemes pay
+for full dynamics and still iterate value out of them; the hidden-feature learners discover
+structure blindly. What a temporally-appropriate representation should look like, and how it
+relates to the value it is meant to support, is left unresolved.
 
 ## Evaluation settings
 

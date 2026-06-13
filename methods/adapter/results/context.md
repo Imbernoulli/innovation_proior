@@ -1,142 +1,124 @@
-# Context: Parameter-Efficient Transfer Learning for NLP
-
 ## Research question
 
-A large pre-trained Transformer (BERT) transfers extremely well to downstream NLP tasks, but the
-dominant way to transfer — full fine-tuning — copies the *entire* model's weights and adjusts all
-of them for each task. So serving N tasks costs N× the full model: a fresh ~110M-parameter (or
-larger) checkpoint per task. In a setting where tasks arrive in a stream — a cloud service taking
-new customer tasks one after another — this is untenable on two counts. Storage/serving cost grows
-linearly with the number of tasks, and there is no sharing: every task owns a complete copy of the
-network.
+A large pre-trained Transformer such as BERT transfers well to downstream NLP tasks, but the
+dominant transfer recipe copies the entire checkpoint and tunes all of it for each task. Serving
+N tasks then means storing N full sets of backbone weights. In an online setting where customer
+tasks arrive one after another, that is the wrong scaling law: storage grows linearly with the
+number of tasks, and adding a new task cannot reuse the task-specific work already done for older
+tasks.
 
-The precise problem: **adapt one frozen pre-trained Transformer to many tasks while adding only a
-tiny number of new parameters per task, with no loss of accuracy, and in a way that supports
-sequential (online) arrival of tasks.** A solution must be (i) *compact* — small marginal parameter
-cost per added task, so total size stays ≈1× the base model even for many tasks; (ii) *extensible*
-— a new task can be added without retraining or degrading any previous task; and (iii) *good* —
-within a small margin of full fine-tuning. Compactness and extensibility together imply the bulk of
-the weights must be *shared and frozen*, with each task contributing only a small private delta.
+The problem is to adapt one pre-trained Transformer to many downstream tasks while adding only a
+small private parameter set per task. The desired model must be compact, so the marginal parameter
+cost of a task is much smaller than the backbone; extensible, so tasks can be trained sequentially
+without revisiting old datasets; and competitive with the full fine-tuning recipe that trains the
+whole network. Compactness and extensibility together push toward a frozen shared backbone plus a
+trainable task-specific delta.
 
 ## Background
 
-**Two standard transfer recipes, both per-task-heavy.** Feature-based transfer pre-trains
-embeddings (word/sentence/paragraph level) and feeds them to a fresh task-specific model
-χ_v(φ_w(x)) — only v is trained, but a whole new top model per task. Fine-tuning copies the
-pre-trained weights w and tunes all of them per task; it beats feature-based transfer on accuracy,
-but each task now owns its own full set of weights. Both produce a per-task model the size of the
-base network (or larger). Fine-tuning can be made more efficient by sharing lower layers and tuning
-only the top, but that trades accuracy for compactness.
+**Feature-based transfer and fine-tuning.** A pre-trained network can be written as
+phi_w(x). Feature-based transfer keeps w fixed and trains a downstream model chi_v(phi_w(x)).
+That preserves the upstream representation but still requires task-specific modeling on top, and
+often lags full fine-tuning. Fine-tuning instead copies w and optimizes it on the downstream task.
+That is strong and generic, but the per-task delta is the full backbone: |delta| = |w|.
 
-**The abstract framing.** A pre-trained network is a function φ_w(x) with parameters w. Transfer
-defines some new function and trains a small set of new parameters:
-- feature-based: χ_v(φ_w(x)), train v;
-- fine-tuning: re-tune w itself, |delta| = |w| per task;
-- a third option: define ψ_{w,v}(x) with w *copied and frozen* from pre-training and v a small set
-  of new parameters, with the initial v₀ chosen so ψ_{w,v₀}(x) ≈ φ_w(x). If |v| ≪ |w|, then many
-  tasks together need only ≈|w| parameters, and since w is fixed, adding a task never disturbs the
-  others. This is the structure a compact+extensible method must have; the open question is *what
-  the new function ψ should be* and *where to inject v*.
+**A compact extensible form.** The shape that satisfies the storage constraint is a function
+psi_{w,v}(x) where w is copied from pre-training and then frozen and v is small. If |v| is much
+smaller than |w|, many tasks require one shared backbone plus small private deltas. Since w does not
+move, a newly trained task cannot overwrite previous tasks.
 
-**Adapters in vision.** Rebuffi et al. (2017) introduced "residual adapters" for multi-domain image
-classification: small per-domain modules added into a frozen shared convolutional backbone, so one
-network serves many visual domains with a small per-domain parameter cost. The idea — inject small
-trainable modules into a frozen backbone — had not been carried over to text Transformers, where
-the sub-layer structure (attention + feed-forward, each with a residual and a layer norm) is
-different and the right placement/parameterization is unknown.
+**Small residual modules in vision.** Rebuffi et al. (2017) showed that multi-domain image
+classification can use small per-domain residual modules inside a shared convolutional backbone.
+The convolutional parameterization does not carry over directly, because a text Transformer has a
+different sub-layer layout.
 
-**Conditioning-by-modulation precedents.** Conditional batch normalization (de Vries et al. 2017),
-FiLM (Perez et al. 2018), and self-modulation (Chen et al. 2019) adapt a network cheaply by
-learning per-task affine parameters (scales/shifts) of normalization layers — on the order of a few
-parameters per channel. These show that very small interventions can re-purpose a network, and they
-motivate also tuning the per-task layer-normalization parameters; but tuning normalization alone is
-known to be too weak for strong task adaptation.
+**Normalization as cheap modulation.** Conditional batch normalization, FiLM, and self-modulation
+adapt networks by learning per-condition affine normalization parameters, only 2d parameters for a
+d-dimensional layer norm. Such affine parameters can only rescale and shift existing features
+pointwise.
 
-**Multi-task and continual learning.** Multi-task learning yields compact shared models but needs
-simultaneous access to all tasks. Continual learning targets a stream of tasks but suffers
-catastrophic forgetting — re-training on a new task degrades old ones (McCloskey & Cohen 1989;
-French 1999). An approach that freezes the shared weights and gives each task its own non-
-interacting module sidesteps forgetting by construction: previous tasks are exactly preserved.
+**Multi-task and continual learning.** Multi-task learning shares parameters across tasks but
+requires simultaneous training data. Continual learning handles streams of tasks, but modifying a
+shared network risks catastrophic forgetting. A frozen shared backbone with private task parameters
+keeps the online property while avoiding interference through the shared weights.
 
-**The Transformer sub-layer structure (what we're injecting into).** Each Transformer layer has two
-sub-layers — multi-head attention and a position-wise feed-forward network. Each sub-layer ends
-with a projection back to the model dimension d, then a residual add, then layer normalization
-(post-LN): output = LayerNorm(x + Sublayer(x)). Any injected module must respect this residual +
-LN structure.
+**Transformer block structure.** In the post-layer-normalization BERT block, each layer has two
+primary sub-layers: multi-head attention and a position-wise feed-forward network. Each sub-layer
+projects back to the model dimension d, applies dropout, adds the residual stream, then applies
+layer normalization:
+
+```text
+attention path:      h = Attention(x) projected to d;      y = LayerNorm(x + dropout(h))
+feed-forward path:   h = FeedForward(y) projected to d;    z = LayerNorm(y + dropout(h))
+```
+
+Any small task-specific transformation has to preserve this d-dimensional interface and respect the
+residual plus layer-normalization path.
 
 ## Baselines
 
-- **Full fine-tuning of BERT** (Devlin et al. 2018). Copy all pre-trained weights, add a linear
-  classifier on the [CLS] token, tune everything. Strong accuracy; the target to match. Gap: |delta|
-  = |w| per task (100% of parameters), so N tasks cost N× the model — not compact, not naturally
-  extensible.
-- **Feature-based transfer** (e.g. ELMo/word/sentence embeddings; Howard & Ruder 2018 context).
-  Frozen embeddings into a fresh task model. Gap: typically lower accuracy than fine-tuning, and
-  still a full new model per task.
-- **Top-layer-only fine-tuning** (variable number of top layers). Share lower layers, tune the top
-  k. Gap: a knob that trades accuracy against compactness; tuning fewer layers loses accuracy,
-  tuning more loses compactness.
-- **Tuning layer-norm / modulation parameters only** (CBN/FiLM-style, ~2d params per layer). Very
-  compact. Gap: insufficient for good downstream performance on its own.
+- **Full fine-tuning of BERT.** Copy all pre-trained weights, attach a linear classifier to the
+  pooled [CLS] representation, and tune the whole model. This is the accuracy target, but it trains
+  100% of the backbone per task.
+- **Feature-based transfer.** Freeze the representation model and train a task model on top of its
+  embeddings or internal representations. This keeps the upstream model fixed but gives the task
+  less control over the internal computation.
+- **Top-layer-only fine-tuning.** Freeze lower layers and tune the top k Transformer layers. This
+  is a direct compactness/accuracy trade-off: smaller k trains fewer weights but gives fewer layers
+  task-specific control.
+- **Layer-normalization-only tuning.** Train only normalization affine parameters and the task
+  head. This is extremely compact, but its transformations are pointwise scale and shift.
 
 ## Evaluation settings
 
-- **GLUE** (Wang et al. 2018): nine English text-classification/inference tasks (MNLI, CoLA, SST-2,
-  MRPC, STS-B, QQP, QNLI, RTE, etc.). The standard transfer-learning yardstick; report the official
-  test metrics from the submission server.
-- **17 additional public text-classification datasets** plus **SQuAD v1.1** extractive question
-  answering, to confirm breadth beyond GLUE.
-- **Base model**: public pre-trained BERT (BASE and LARGE). Classification via a linear layer on the
-  first ([CLS]) token, following Devlin et al. (2018).
-- **Optimization protocol**: Adam, learning rate warmed up linearly over the first 10% of steps then
-  decayed linearly to zero, batch size 32, per-dataset hyperparameter sweep selecting on validation
-  accuracy.
-- **Primary axis of comparison**: downstream accuracy vs. *number of trained parameters per task*
-  (the marginal model-size increase per added task) — i.e. the accuracy/compactness trade-off curve.
+- **GLUE** text classification and inference tasks, including MNLI, CoLA, SST-2, MRPC, STS-B, QQP,
+  QNLI, and RTE, using the benchmark's task metrics.
+- **Additional public classification tasks** with diverse dataset sizes, label counts, and text
+  lengths, plus **SQuAD v1.1** extractive question answering.
+- **Base models** are public pre-trained BERT BASE and LARGE checkpoints. Classification uses a
+  linear head on the pooled [CLS] token representation.
+- **Training protocol** follows BERT fine-tuning: Adam-style optimization, linear warmup over the
+  first 10% of steps, linear decay to zero, batch size 32, and hyperparameter selection on validation
+  performance.
+- **Comparison axis** is downstream task quality against the number of trainable task-specific
+  parameters.
 
 ## Code framework
 
-The primitives that already exist: a pre-trained BERT Transformer with the standard post-LN
-sub-layer pattern, Adam with linear warmup/decay, and a linear classification head on the [CLS]
-token. What is missing is the small per-task module and the rule for *where* it goes and *how* it is
-initialized so the adapted network starts out equal to the pre-trained one.
+The available implementation frame is a TensorFlow 1 BERT encoder: dense attention and feed-forward
+projections, dropout, residual addition, layer normalization, a pooled [CLS] classifier head, and an
+optimizer with warmup and linear decay. The frame is left incomplete where the task-specific
+construction would go.
 
 ```python
-import torch
-import torch.nn as nn
-
-# --- The small per-task module to be designed (frozen backbone, trainable module) ---
-class TaskModule(nn.Module):
-    def __init__(self, d_model, ...):
-        super().__init__()
-        # TODO: what parameterization gives a small per-task module that can
-        #       be initialized to (approximately) the identity?
-        pass
-
-    def forward(self, x):
-        # TODO: transform sub-layer output, starting from ~identity at init
-        pass
+import tensorflow as tf
 
 
-# --- One Transformer sub-layer's output path (post-LN), with a slot for the module ---
-def sublayer_output(sublayer_fn, x, layer_norm, task_module=None):
-    h = sublayer_fn(x)                 # attention or feed-forward, then projection back to d
-    h = dropout(h)
-    # TODO: where does the per-task module attach, relative to the residual and the LayerNorm?
-    return layer_norm(h + x)
+def task_module(input_tensor):
+  """TODO: task-specific construction goes here."""
+  return input_tensor
 
 
-# --- Which parameters are trainable for a given task ---
-def trainable_parameters(model):
-    # TODO: freeze the pre-trained weights; train only the new module(s),
-    #       and (which existing parameters, if any, should also be trained?)
-    pass
+def transformer_layer(layer_input, attention_output, intermediate_output,
+                      hidden_size, hidden_dropout_prob, task_module_fn=None):
+  with tf.variable_scope("attention/output"):
+    attention_output = tf.layers.dense(attention_output, hidden_size)
+    attention_output = dropout(attention_output, hidden_dropout_prob)
+    # TODO: decide whether a task-specific transform belongs here.
+    attention_output = layer_norm(attention_output + layer_input)
+
+  with tf.variable_scope("output"):
+    layer_output = tf.layers.dense(intermediate_output, hidden_size)
+    layer_output = dropout(layer_output, hidden_dropout_prob)
+    # TODO: decide whether a task-specific transform belongs here.
+    layer_output = layer_norm(layer_output + attention_output)
+    return layer_output
 
 
-# --- Training (already standard) ---
-def train(model, loader, opt):
-    optim = torch.optim.Adam(trainable_parameters(model), lr=opt.lr)  # linear warmup + decay
-    for batch in loader:
-        loss = classification_loss(model(batch["input_ids"]), batch["labels"])
-        loss.backward(); optim.step(); optim.zero_grad()
+def create_training_op(loss, learning_rate, num_train_steps, num_warmup_steps):
+  """TODO: collect only the per-task variables to train."""
+  train_vars = []
+  grads = tf.gradients(loss, train_vars)
+  optimizer = make_warmup_decay_adam(learning_rate, num_train_steps, num_warmup_steps)
+  return optimizer.apply_gradients(zip(grads, train_vars))
 ```

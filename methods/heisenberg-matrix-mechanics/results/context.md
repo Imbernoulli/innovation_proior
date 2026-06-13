@@ -94,9 +94,9 @@ against n, the difference quotient merges with the derivative, so the quantum fo
 to the classical one for large n; Bohr's correspondence principle then licenses the leap of
 faith that it holds down to small n. The decisive structural feature, sharpened in the
 Kramers–Heisenberg dispersion analysis (1925): **the resulting formula depends only on the
-transitions between orbits — no single orbit appears in it anywhere.** A quantity that used to
-be attached to one orbit has become an array of numbers attached to all the transitions
-between orbits.
+transitions between orbits — no single orbit appears in it anywhere.** The orbital quantities
+of the classical starting point survive in the formula only through the transition-indexed data
+the substitutions leave behind.
 
 **The Thomas–Reiche–Kuhn sum rule (1925).** Kuhn and Thomas independently derived the
 high-frequency limit of the Kramers dispersion formula: a sum over all transitions from a
@@ -169,8 +169,8 @@ The natural yardsticks for a candidate mechanics, all available before any new t
 
 The available computational scaffold is the classical Fourier bookkeeping for a periodic
 one-degree-of-freedom system, together with the equation of motion and the phase integral.
-Spectroscopy supplies line frequencies and line intensities, but the algebra and action rule
-for quantities indexed by lines are still open.
+Spectroscopy supplies line frequencies and line intensities, but how to compute with quantities
+indexed by lines is still open.
 
 ```python
 import numpy as np
@@ -199,22 +199,14 @@ def equation_of_motion(x, xddot, force):
     """xddot + f(x) = 0 ; force(x) supplies f(x)."""
     return xddot + force(x)
 
-def phase_integral(p, q):          # J = closed-integral p dq, to be set = n h classically
-    raise NotImplementedError      # TODO: express this using line-indexed data
+def phase_integral(p, q):          # J = closed-integral p dq, set = n h classically
+    raise NotImplementedError      # TODO
 
 
 class LineQuantity:
     """Placeholder for a quantity described by spectral lines instead of one orbit."""
     def __init__(self, *args, **kwargs):
-        pass                       # TODO: choose the index structure
-
-    def __mul__(self, other):
-        # TODO: define the product of two line-indexed quantities
-        raise NotImplementedError
-
-def line_quantization_rule(*args, **kwargs):
-    # TODO: replace the absolute phase integral by a rule on line data
-    raise NotImplementedError
+        pass                       # TODO
 
 def oscillator_line_solution(omega0, lam, *args, **kwargs):
     # TODO: determine frequencies, intensities, and energy levels for

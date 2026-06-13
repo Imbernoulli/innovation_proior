@@ -11,11 +11,11 @@ The goal is a single architecture that (i) accepts variable-size sets, (ii) is g
 
 # Background
 
-**Symmetry and invariant functions.** A set has no canonical ordering, so a function on it must not exploit one. The relevant symmetry group is the symmetric group $\mathcal S_M$ acting by permutation matrices on the index set. A function is invariant if it is constant on each orbit and equivariant if it intertwines the action. Classical mathematics already describes invariant functions of $M$ scalars: the **symmetric polynomials**. The **Fundamental Theorem of Symmetric Functions** states every symmetric polynomial is a polynomial in the power sums $p_q=\sum_m x_m^q$ (equivalently the elementary symmetric polynomials), and **Newton–Girard formulae** convert between power sums and elementary symmetric polynomials. The power sums and elementary symmetric polynomials are exactly *sums over set members of a per-member function* — a pooling form. The **Kolmogorov–Arnold representation theorem** gives, for *any* continuous multivariate function, $f(x_1,\dots,x_M)=\rho(\sum_m \lambda_m\phi(x_m))$ with inner $\phi$ independent of $f$; the per-coordinate weights $\lambda_m$ are what an *ordered* function needs.
+**Symmetry and invariant functions.** A set has no canonical ordering, so a function on it must not exploit one. The relevant symmetry group is the symmetric group $\mathcal S_M$ acting by permutation matrices on the index set. A function is invariant if it is constant on each orbit and equivariant if it intertwines the action. Classical mathematics already describes invariant functions of $M$ scalars: the **symmetric polynomials**. The **Fundamental Theorem of Symmetric Functions** states every symmetric polynomial is a polynomial in the power sums $p_q=\sum_m x_m^q$ (equivalently the elementary symmetric polynomials), and **Newton–Girard formulae** convert between power sums and elementary symmetric polynomials. The **Kolmogorov–Arnold representation theorem** gives a representation for *any* continuous multivariate function of $M$ variables.
 
-**Exchangeability and de Finetti.** In Bayesian statistics an exchangeable model factors as $p(X\mid\alpha)=\int\big[\prod_m p(x_m\mid\theta)\big]\,p(\theta\mid\alpha)\,d\theta$. For an exponential family $p(x\mid\theta)=\exp(\langle\phi(x),\theta\rangle-g(\theta))$ with a conjugate prior, marginalizing $\theta$ yields a likelihood that depends on the data *only through* $\sum_m\phi(x_m)$ — again a pooled sufficient statistic feeding an outer function.
+**Exchangeability and de Finetti.** In Bayesian statistics an exchangeable model factors as $p(X\mid\alpha)=\int\big[\prod_m p(x_m\mid\theta)\big]\,p(\theta\mid\alpha)\,d\theta$. For an exponential family $p(x\mid\theta)=\exp(\langle\phi(x),\theta\rangle-g(\theta))$ with a conjugate prior, marginalizing $\theta$ yields a likelihood that depends on the data only through the sufficient statistic $\sum_m\phi(x_m)$.
 
-**Pooling as a recurring heuristic.** Several systems already pool a per-element feature across members to obtain order-independence: pooling across a panoramic projection or across multiple rendered views of a 3D object for classification (Shi 2015; Su 2015), pooling over a sample set for a causality decision (Lopez-Paz 2016), and exploiting the row/column permutation symmetry of a normal-form payoff matrix (Hartford 2016). In multi-agent / sensor-network models (Sukhbaatar 2016, CommNet), each agent combines its own state with a pooled summary of the others — a tied linear update. These are effective but *ad hoc*: pooling is adopted because it happens to be invariant, with no statement that it is the *only* or the *complete* form.
+**Pooling as a recurring heuristic.** Several systems already pool a per-element feature across members to obtain order-independence: pooling across a panoramic projection or across multiple rendered views of a 3D object for classification (Shi 2015; Su 2015), pooling over a sample set for a causality decision (Lopez-Paz 2016), and exploiting the row/column permutation symmetry of a normal-form payoff matrix (Hartford 2016). In multi-agent / sensor-network models (Sukhbaatar 2016, CommNet), each agent combines its own state with a pooled summary of the others. These are effective but *ad hoc*: pooling is adopted because it happens to be invariant, with no statement of which functions it can or cannot express.
 
 **Group-equivariant networks.** A parallel line builds networks equivariant to general transformation groups by weight-sharing tied to the group structure (Gens & Domingos 2014; Cohen & Welling 2016, group-equivariant CNNs; Ravanbakhsh 2017). Permutation symmetry is one instance of this program, but the precise minimal parameter-sharing for the permutation group in a plain dense layer was not pinned down.
 
@@ -53,9 +53,7 @@ class InvariantSetModel(nn.Module):
     The body must be designed so the set-to-label output ignores element order."""
     def __init__(self, in_dim, out_dim):
         super().__init__()
-        # TODO: per-element processing applied identically to every element
-        # TODO: order-independent reduction across the set
-        # TODO: readout to the target
+        # TODO: build the invariant set-to-label body
         pass
 
     def forward(self, x):
@@ -68,7 +66,7 @@ class SetLayer(nn.Module):
     """A single layer mapping (batch, M, in_dim) -> (batch, M, out_dim) that
     should commute with reordering the M elements. What linear maps are allowed
     here is itself unknown and must be characterized."""
-    def __init__(self, in_dim, out_dim, pool='max'):
+    def __init__(self, in_dim, out_dim):
         super().__init__()
         # TODO: the constrained linear map(s) permitted under permutation symmetry
         pass
@@ -79,13 +77,10 @@ class SetLayer(nn.Module):
 
 
 class SetClassifier(nn.Module):
-    """A set-to-label classifier built from order-respecting layers followed by
-    an order-independent reduction."""
-    def __init__(self, in_dim, hidden_dim, out_dim, pool='max'):
+    """A set-to-label classifier respecting permutation symmetry."""
+    def __init__(self, in_dim, hidden_dim, out_dim):
         super().__init__()
-        # TODO: stack order-respecting layers
-        # TODO: reduce across set members
-        # TODO: readout to class logits
+        # TODO: build the invariant classifier body
         pass
 
     def forward(self, x):

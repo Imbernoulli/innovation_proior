@@ -4,10 +4,8 @@ What should the pointwise nonlinearity in a deep network be? The activation is a
 architectural choice — without one, a stack of linear layers collapses to a single linear map — yet
 the dominant choice, the ReLU `max(x,0)`, makes a *hard, sign-based* gating decision: it multiplies the
 input by exactly 0 or 1 depending only on whether `x>0`. The question is whether a nonlinearity that
-keeps ReLU's empirical strengths (cheap, good gradient flow, works with deep nets) but replaces the hard
-0/1 gate with a *smooth, input-magnitude-dependent* weighting can train at least as well across vision,
-language, and speech, while also carrying a cleaner probabilistic interpretation that ties the
-nonlinearity to the stochastic regularizers (dropout, zoneout) that networks are trained with anyway.
+keeps ReLU's empirical strengths (cheap, good gradient flow, works with deep nets) but softens the hard
+0/1 gate can train at least as well across vision, language, and speech.
 
 ## Background
 
@@ -30,16 +28,14 @@ multiplicative masks applied per-unit: dropout multiplies a unit's value by a Be
 chosen *independently of the input*; zoneout multiplies by 1 (carries the previous value) stochastically;
 adaptive dropout (Standout, Ba & Frey 2013) makes the keep-probability *depend on the input* through a
 learned logistic gate. The activation and the stochastic regularizer have historically been two
-separate design decisions, even though both end in a per-unit multiplicative transformation of the
-neuron's value — one deterministic and sign-based, the other stochastic and (sometimes)
-input-dependent.
+separate design decisions.
 
 ## Baselines
 
 - **ReLU** (Nair & Hinton 2010): `f(x)=max(x,0)=x·1(x>0)`. Hard sign gate; derivative 1 for `x>0`,
   0 for `x<0`, undefined at 0. Cheap, sparse, good positive-half gradient flow. Gap: zero output and
   zero gradient on the entire negative half-line (dying units), a kink at the origin, no curvature in
-  the positive region, and no probabilistic interpretation linking it to the regularizers used with it.
+  the positive region, and no probabilistic interpretation.
 - **ELU** (Clevert et al. 2015): `x` for `x≥0`, `α(eˣ−1)` for `x<0`. Allows small negative outputs,
   pushing mean activations toward zero and sometimes speeding training. Gap: still monotonic and convex,
   linear (curvature-free) in the positive domain, an extra hyperparameter `α`, and reported exploding
@@ -49,8 +45,7 @@ input-dependent.
   place.
 - **Stochastic regularizers as a separate axis** — dropout (Bernoulli 0/1 mask, input-independent),
   zoneout (stochastic 1-mask), adaptive dropout / Standout (input-dependent logistic keep-probability).
-  Gap: they are bolted on alongside the nonlinearity even though both mechanisms multiply the neuron's
-  value by a gate or mask.
+  Gap: they are designed and bolted on as a separate mechanism alongside the nonlinearity.
 
 ## Evaluation settings
 
@@ -92,20 +87,5 @@ class PointwiseActivation(nn.Module):
     """Tensor in, same-shape tensor out."""
 
     def forward(self, x):
-        # TODO: design the deterministic pointwise map.
-        raise NotImplementedError
-
-
-class StochasticMask(nn.Module):
-    """Per-unit multiplicative mask applied to a neuron's value.
-
-    Dropout: m ~ Bernoulli(p), p input-independent, value -> m * value.
-    """
-
-    def forward(self, x):
-        # TODO: sample and apply a mask whose probability may depend on x.
-        raise NotImplementedError
-
-    def keep_probability(self, x):
-        # TODO: choose whether and how the keep-probability should depend on x.
+        # TODO: design the pointwise map.
         raise NotImplementedError

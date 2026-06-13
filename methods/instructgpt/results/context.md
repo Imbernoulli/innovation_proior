@@ -16,7 +16,7 @@ The problem is: given (a) a pretrained language model, (b) a distribution of rea
 
 **Reinforcement learning machinery.** Optimizing a policy against a scalar reward when you can only sample uses policy-gradient methods. Vanilla REINFORCE — $\nabla_\theta J = \mathbb{E}[R \, \nabla_\theta \log \pi_\theta]$ — is unbiased but high-variance, and an unconstrained gradient step can move the policy so far that it collapses. Two tools address this. Generalized Advantage Estimation (Schulman et al. 2016) replaces the raw return with a variance-reduced advantage $\hat A_t = \sum_l (\gamma\lambda)^l \delta_{t+l}$, $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$, trading a little bias for much less variance via a learned value baseline. Proximal Policy Optimization (Schulman et al. 2017) constrains the update with a clipped surrogate: with importance ratio $\rho_t = \pi_\theta/\pi_{\text{old}}$, it maximizes $\min(\rho_t \hat A_t,\ \text{clip}(\rho_t, 1-\epsilon, 1+\epsilon)\hat A_t)$, which removes the incentive to move the policy far in any single update — a cheap trust region, far simpler to run than second-order constrained methods.
 
-**Porting reward-modeling to language, and the over-optimization problem.** Ziegler et al. (2019), "Fine-tuning language models from human preferences," carried the comparison-reward-model + RL recipe to language models on stylistic continuation and summarization, and introduced a crucial regularizer for the language setting: a per-token KL penalty that keeps the RL policy close to the original pretrained/supervised model. Stiennon et al. (2020), "Learning to summarize from human feedback," refined this into a three-part recipe — supervised fine-tune, then train a reward model with the pairwise loss, then optimize with PPO under a KL penalty — and studied *reward over-optimization* directly: because the reward model is only an approximation of human judgment, accurate near the data it was trained on, a policy given free rein will drift into regions where the model's score is high but real human preference is low (reward hacking). They demonstrated empirically that tightening the KL penalty trades reward-model score for genuine quality, i.e. the KL leash is what keeps the optimization honest. These two papers leave a clear next problem: move from a single narrow task to the broad, open-ended distribution of real user instructions while preserving the capabilities learned during pretraining.
+**Porting reward-modeling to language, and the over-optimization problem.** Ziegler et al. (2019), "Fine-tuning language models from human preferences," carried the comparison-reward-model + RL approach to language models on stylistic continuation and summarization, and flagged that running RL against a learned reward on a language model is unstable unless the policy is held near a trusted starting distribution. Stiennon et al. (2020), "Learning to summarize from human feedback," carried this further on the summarization task and studied *reward over-optimization* directly: because the reward model is only an approximation of human judgment, accurate near the data it was trained on, a policy given free rein will drift into regions where the model's score is high but real human preference is low (reward hacking). They observed empirically that this decoupling worsens the harder the policy is pushed away from the data the reward model was fit on. These two papers leave a clear next problem: move from a single narrow task to the broad, open-ended distribution of real user instructions while preserving the capabilities learned during pretraining.
 
 **Diagnostic finding on fine-tuning and capability loss.** A recurring, knowable-in-advance phenomenon when you fine-tune a pretrained model hard on a narrow objective is regression on tasks outside that objective — the model forgets or degrades general capabilities. When a policy is pushed to maximize a learned preference reward, it measurably loses ground on standard public NLP benchmarks (reading comprehension, QA, translation) relative to the pretrained model. This is the alignment-tax phenomenon, a fact about what hard fine-tuning does, and any serious alignment method has to confront it.
 
@@ -28,7 +28,7 @@ The problem is: given (a) a pretrained language model, (b) a distribution of rea
 
 **Cross-task instruction tuning on public NLP datasets (FLAN, Wei et al. 2021; T0, Sanh et al. 2021).** Assemble many existing NLP datasets, reformat each as a natural-language instruction plus input/output, and supervised-fine-tune on the union; this improves zero-shot performance on *held-out* NLP tasks. Core idea: instruction-following as multi-task supervised learning over academic tasks. Its gap relative to the goal here: these dataset collections are dominated by tasks that are easy to score automatically (classification, QA), which is *not* how people actually use the models — real prompts are heavily open-ended generation and brainstorming. So the alignment signal is mismatched in distribution; the resulting model under-serves the real user prompt distribution even though it does well on academic held-out tasks. This baseline isolates the lesson that *which distribution you align on* matters as much as the act of instruction-tuning.
 
-**Optimize human judgment directly with RL.** Skip the reward model: sample a response, ask a human if it's good, use that as reward, policy-gradient. Its gap is fatal in practice — RL needs millions of episodes and you cannot keep a human in that loop; the human throughput is many orders of magnitude too low. This is precisely the gap that a *learned* reward model is introduced to close.
+**Optimize human judgment directly with RL.** Skip the reward model: sample a response, ask a human if it's good, use that as reward, policy-gradient. Its gap is fatal in practice — RL needs millions of episodes and you cannot keep a human in that loop; the human throughput is many orders of magnitude too low. This baseline isolates the throughput wall: the objective one actually cares about is the one that cannot be queried at the rate RL demands.
 
 ## Evaluation settings
 
@@ -38,7 +38,7 @@ Alongside human evaluation, automatic evaluation on public datasets serves two p
 
 ## Code framework
 
-A pretrained decoder-only transformer, tokenizer, Adam optimizer, autoregressive sampling routine, next-token cross-entropy, Bradley-Terry/logistic pairwise comparison loss, GAE, and PPO clipped-surrogate update are available primitives.
+The available primitives are standard and established: a pretrained decoder-only transformer, a tokenizer, an Adam optimizer, an autoregressive sampling routine, and the textbook building blocks of next-token cross-entropy, the Bradley-Terry/logistic pairwise comparison loss, generalized advantage estimation, and the PPO clipped-surrogate update — each usable on its own. What objects are built from these primitives, how human feedback is turned into a training signal, and how the pieces are wired into a fine-tuning procedure is left open.
 
 ```python
 import torch
@@ -50,60 +50,14 @@ tokenizer = Tokenizer(...)
 optimizer = torch.optim.Adam(base_model.parameters(), betas=(0.9, 0.95))
 
 def masked_mean(values, mask):
-    # TODO
-    pass
+    mask = mask.to(values.dtype)
+    return (values * mask).sum() / mask.sum().clamp_min(1)
 
 def gather_token_logprobs(logits, input_ids):
-    # TODO
-    pass
+    logp = F.log_softmax(logits[:, :-1], dim=-1)
+    labels = input_ids[:, 1:]
+    return logp.gather(-1, labels.unsqueeze(-1)).squeeze(-1)
 
-def response_nll(model, input_ids, loss_mask):
-    # TODO
-    pass
-
-def train_demonstration_model(model, demo_loader, optimizer):
-    # TODO
-    pass
-
-class PreferenceScorer(nn.Module):
-    def __init__(self, backbone, hidden_size):
-        super().__init__()
-        # TODO
-        pass
-
-    def forward(self, input_ids, attention_mask):
-        # TODO
-        pass
-
-def preference_loss(scores_chosen, scores_rejected, margin=None, pair_mask=None):
-    # TODO
-    pass
-
-def train_preference_scorer(scorer, comparison_loader, optimizer):
-    # TODO
-    pass
-
-def token_rewards(scores, logprobs, ref_logprobs, masks, kl_coef):
-    # TODO
-    pass
-
-def masked_whiten(values, mask, shift_mean=True):
-    # TODO
-    pass
-
-def estimate_advantages(values, rewards, mask, gamma=1.0, lam=0.95):
-    # TODO
-    pass
-
-def clipped_policy_loss(old_logprobs, values, logits, vpreds, logprobs,
-                        mask, advantages, returns, cliprange=0.2,
-                        cliprange_value=0.2, vf_coef=0.1):
-    # TODO
-    pass
-
-def train_policy(policy, value_model, scorer, reference_policy,
-                 prompt_loader, retention_loader, optimizer,
-                 kl_coef, retention_coef):
-    # TODO
-    pass
+# The fine-tuning procedure itself is to be built.
+# TODO
 ```

@@ -18,7 +18,7 @@ $$\max_{-1/2\le t\le 1/2}\int_\R f(t-x)f(x)\,dx \;\ge\; c\Big(\int_{-1/4}^{1/4} 
 
 for all nonnegative $f$ supported in $[-1/4,1/4]$. A line of work (Cilleruelo–Ruzsa–Trujillo; Green; Martin–O'Bryant; Yu; Matolcsi–Vinuesa; Cloninger–Steinerberger) pushed this constant, reaching $c_{\max}\ge 1.28$ from below (Cloninger–Steinerberger 2017) and $c_{\max}\le 1.52$ from above (Matolcsi–Vinuesa 2010), but the gap stayed wide and the numerical extremizers came out non-smooth and not symmetric-decreasing.
 
-The relevant structural facts about these problems are classical. The bilinear form $\iint f(x)f(y)w(x-y)$ is a quadratic form $\langle f, K_w f\rangle$ in the convolution operator $K_w$ with kernel $w$; on the Fourier side it equals $\int |\hat f(\xi)|^2\,\hat w(\xi)\,d\xi$. For $w=\chi_{[-1/2,1/2]}$ this is $\int |\hat f(\xi)|^2 \frac{\sin\pi\xi}{\pi\xi}\,d\xi$, so the whole question is a weighted average of $|\hat f|^2$ against a sinc. Two further tools are load-bearing. First, the **Riesz rearrangement inequality**: for nonnegative $f$ and a symmetric-decreasing kernel $w$, replacing $f$ by its symmetric-decreasing rearrangement $f^*$ never decreases $\iint f(x)f(y)w(x-y)$ while preserving $\|f\|_1$ and $\|f\|_2$. Second, the **sharp Hausdorff–Young (Beckner) inequality**, $\|\hat f\|_{q}\le A_p\|f\|_p$ with the optimal Babenko–Beckner constant, which lets one trade an $L^q$ norm of $\hat f$ for $L^p$ norms of $f$.
+The relevant structural facts about these problems are classical. The bilinear form $\iint f(x)f(y)w(x-y)$ is a quadratic form $\langle f, K_w f\rangle$ in the convolution operator $K_w$ with kernel $w$; on the Fourier side it equals $\int |\hat f(\xi)|^2\,\hat w(\xi)\,d\xi$. For $w=\chi_{[-1/2,1/2]}$ this is $\int |\hat f(\xi)|^2 \frac{\sin\pi\xi}{\pi\xi}\,d\xi$, so the whole question is a weighted average of $|\hat f|^2$ against a sinc. Among the classical inequalities in the standard analytic toolbox for such forms are the **Riesz rearrangement inequality** (for nonnegative $f$ and a symmetric-decreasing kernel $w$, replacing $f$ by its symmetric-decreasing rearrangement $f^*$ never decreases $\iint f(x)f(y)w(x-y)$ while preserving $\|f\|_1$ and $\|f\|_2$) and the **sharp Hausdorff–Young (Beckner) inequality**, $\|\hat f\|_{q}\le A_p\|f\|_p$ with the optimal Babenko–Beckner constant, which trades an $L^q$ norm of $\hat f$ for $L^p$ norms of $f$.
 
 A related diagnostic from the minimum version of the autocorrelation problem is that $g(t)=\int f(x)f(x+t)\,dx$ has nonnegative Fourier transform, $\hat g(\xi)=|\hat f(\xi)|^2\ge0$. If $g$ is forced to stay above a window, writing the excess as $p\ge0$ forces $\int p\ge -\inf_x \frac{\sin x}{x}=0.217\ldots$ This is a useful warning: Fourier-positivity constraints make autocorrelation problems more rigid than their pointwise formulation first suggests. A second diagnostic, from the numerical record on the maximum problem, is that its best-known extremizers are visibly non-smooth and not monotone, so any discretization of *that* problem cannot expect better than first-order accuracy.
 
@@ -42,7 +42,7 @@ The natural yardstick is the pair of weights $w=\chi_{[-1/2,1/2]}$ (the original
 
 ## Code framework
 
-Existing primitives: numerical integration (`scipy.integrate.quad`), dense linear algebra (`numpy.linalg` for matrix factorizations, symmetric eigensolves, and matrix inverses), and array/convolution machinery (`numpy`, `scipy.signal`/`scipy.linalg` for Toeplitz structure). The base objects are a symmetric decreasing weight, a discretization scale, a finite grid of cells, and a one-dimensional search grid. The finite search routine returns a feasible vector and an upper certificate.
+Existing primitives: numerical integration (`scipy.integrate.quad`), dense linear algebra (`numpy.linalg` for matrix factorizations, symmetric eigensolves, and matrix inverses), and array/convolution machinery (`numpy`, `scipy.signal`/`scipy.linalg` for Toeplitz structure). The base objects are a symmetric decreasing weight, a discretization scale, and a finite grid of cells.
 
 ```python
 import numpy as np
@@ -54,48 +54,18 @@ def indicator_weight(t):
 def gaussian_weight(t):
     return np.exp(-np.pi * t * t)
 
-def prepare_weight_grid(w, delta, max_offset):
-    """Represent the weight on a finite cell grid."""
-    pass  # TODO
-
-def build_operator(weight_data, n_cells):
-    """Assemble the finite convolution operator on n cells."""
-    pass  # TODO
-
-def prepare_search_form(search_value, n_cells, delta):
-    """Prepare the finite-dimensional quadratic form used in the search."""
-    pass  # TODO
-
-def leading_symmetric_eigenpair(matrix, options):
-    """Return the leading symmetric eigenpair using available linear algebra."""
-    pass  # TODO
-
-def solve_finite_problem(operator, search_value, delta, n_cells, options):
-    """Solve one finite-dimensional search problem."""
-    pass  # TODO
-
-def evaluate_test_function(f_vec, operator, start, delta):
-    """Evaluate the scale-invariant quotient for a nonnegative cell function."""
-    pass  # TODO
-
-def make_upper_certificate(cell_value, search_value, delta):
-    """Convert one finite search value into an upper certificate."""
-    pass  # TODO
-
-def estimate_constant(w, delta, support_radius, search_grid, options):
+def estimate_constant(w, delta, support_radius, options):
     """Return upper and lower bounds on
         C_opt(w) = sup_{f >= 0} <f, K_w f> / (||f||_1 ||f||_2)
-    over nonnegative cell functions.
+    over nonnegative cell functions of cell width delta.
     """
     pass  # TODO
 
 def main():
     delta = 1e-3
     options = {}
-    search_grid = np.linspace(0.25, 4.0, 100)
     for w in [indicator_weight, gaussian_weight]:
         lo, hi = estimate_constant(w, delta, support_radius=4.0,
-                                   search_grid=search_grid,
                                    options=options)
         pass  # TODO
 ```

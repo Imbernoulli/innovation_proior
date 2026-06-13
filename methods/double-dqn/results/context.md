@@ -133,9 +133,8 @@ action that happens to look best under $\theta$ is not the one whose $\theta'$
 value is inflated, so the evaluation is not systematically too high. The two sets
 are updated symmetrically by randomly assigning each experience to one of them.
 The gap: it was developed and analyzed only for small/tabular problems and
-doubles the number of value functions; whether the decoupling idea survives and
-helps under large-scale function approximation, and how to get it without paying
-for a second network, was open.
+doubles the number of value functions; whether anything like this carries over to,
+or helps under, large-scale function approximation was untested.
 
 ## Evaluation settings
 
@@ -168,8 +167,8 @@ reward clipping, and a uniformly-sampled replay buffer. The control loop —
 $\epsilon$-greedy acting, storing transitions, periodically sampling a minibatch,
 forming a bootstrap target, regressing onto it, and periodically refreshing a
 held-fixed copy of the parameters — is also known. What is *not* fixed is exactly
-how the bootstrap target's next-state value is computed; that single slot is
-where the contribution will go.
+how the bootstrap target's next-state value is computed; that single slot is left
+open.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
@@ -193,8 +192,8 @@ class QNetwork(nn.Module):
 def compute_next_state_value(next_obs, reward, done, gamma,
                              online_net, target_net):
     """Form the bootstrap value of the next state for the regression target.
-    This is the one open slot: how to use the online net (theta) and the
-    held-fixed target net (theta^-) to score the next state.
+    This is the one open slot. The online net (theta) and the held-fixed
+    target net (theta^-) are both available here.
     """
     pass  # TODO: bootstrap target's next-state value
 

@@ -90,11 +90,10 @@ polynomial feasibility).
 
 - **Gold's identification in the limit (1967).** *Idea:* converge in the limit to an
   exactly correct grammar from a growing presentation. *Gap:* it has no time bound at all
-  (convergence is asymptotic, and unannounceable), no probabilistic slack, and no
-  approximation — it demands exact identification against a worst-case adversarial
-  ordering of the data. Under those demands even simple infinite classes are unlearnable
-  from positive data. It answers "identifiable eventually?" not "deducible feasibly and
-  approximately?"
+  (convergence is asymptotic, and unannounceable); it demands exact identification, and
+  against a worst-case adversarial ordering of the data. Under those demands even simple
+  infinite classes are unlearnable from positive data. It answers "identifiable
+  eventually?" — not anything with a clock on it.
 
 - **Statistical pattern classification (Duda–Hart 1973).** *Idea:* fit a classifier to
   data, measure error under a distribution. *Gap:* no account of which concept *classes*
@@ -125,16 +124,16 @@ and a membership ORACLE that, given a vector, reports whether it positively exem
 the concept. Vectors may be partial (entries in {0,1,*}), with a concept extended to a
 partial vector by "true on every total completion." The yardstick for a deduction
 procedure has three axes: the *number of EXAMPLES/ORACLE calls*, the *running time*, and
-the *quality of the output hypothesis* measured by two parameters — a failure probability
-and an error rate, both expressed against the same distribution D that generates the
-examples. The target metric is whether all of these can be held polynomial in the size of
-the concept, the number of (relevant) variables, and the inverse accuracy/confidence.
+the *quality of the output hypothesis* — how good a recognizer it is, by whatever standard
+makes a learnability claim both achievable and meaningful. The target metric is whether all
+of these can be held polynomial in the size of the concept, the number of (relevant)
+variables, and the relevant accuracy parameters.
 
 ## Code framework
 
-The basic protocol has two environment-supplied routines, an empty deduction procedure,
-and a distribution-weighted error check. The examples and oracle provide the only access
-to the hidden concept; the deduction procedure is the part to be filled in.
+The basic protocol has two environment-supplied routines and an empty deduction procedure.
+The examples and oracle provide the only access to the hidden concept; the deduction
+procedure is the part to be filled in.
 
 ```python
 import random
@@ -152,32 +151,11 @@ def ORACLE(v):
 
 # ---- deduction procedure ----
 
-def deduce(epsilon, delta, t):
-    """Run the protocol and return a hypothesis g (a Boolean expression over the t variables).
-    Target guarantee for any completed deduction procedure:
-      with probability >= 1 - delta, g has one-sided error <= epsilon under D,
-      using a number of EXAMPLES/ORACLE calls and time POLYNOMIAL in t, 1/epsilon, 1/delta
-      and the size of the target.
+def deduce(t):
+    """Run the protocol (calling EXAMPLES and, if useful, ORACLE) and return a hypothesis g,
+    a Boolean expression over the t variables. What standard g must meet, how many calls and
+    how much time the procedure may spend, and how that standard is even stated, are open.
     """
     # TODO: deduction procedure.
-    pass
-
-# ---- how the output is judged (Monte-Carlo estimate of the distribution-weighted error) ----
-
-def error_under_D(g, target_eval, trials=100000):
-    """err_D(g) = Pr_{v ~ D}[ g(v) != target(v) ]; for one-sided classes only false negatives occur."""
-    bad = 0
-    for _ in range(trials):
-        v = EXAMPLES()          # positive vectors carry all the mass that matters
-        if not g(v):            # g says 0 where the concept says 1
-            bad += 1
-    return bad / trials
-
-# ---- sample-size question ----
-
-def sample_size(epsilon, delta, hypothesis_count):
-    """How many independent examples force, w.p. >= 1 - delta, every surviving hypothesis to
-    have error <= epsilon?  To be derived; the bound is what makes the class learnable."""
-    # TODO: the combinatorial sample-complexity bound.
     pass
 ```

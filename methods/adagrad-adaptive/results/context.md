@@ -17,10 +17,10 @@ already decayed, so the one informative gradient it produces is multiplied by a 
 barely moves the weight. The precise goal: an online (sub)gradient method that (1) gives each
 coordinate its own, data-driven step size; (2) takes a large step on a rare feature when it
 finally fires and a small step on a feature seen constantly; (3) still has a provable,
-sub-linear regret bound — ideally one that *adapts* to the geometry of the observed data and
-is, in some formal sense, as good as the best fixed metric one could have chosen with
-hindsight; and (4) has a step-size knob that is easy to set a priori, not coupled to the
-unknown magnitudes of the gradients. None of the methods on the table does all of this.
+sub-linear regret bound — ideally one that improves on the worst-case rate when the data is
+structured and degrades back to it gracefully when it is not; and (4) has a step-size knob that
+is easy to set a priori, not coupled to the unknown magnitudes of the gradients. None of the
+methods on the table does all of this.
 
 ## Background
 
@@ -53,17 +53,17 @@ scalar `√t`. The bound then depends entirely on the single norm `‖·‖` you
 on the gradient magnitudes in its dual norm. Second, for the Euclidean choice the resulting
 `O(√T)` rate, `≈ √2·D₂·√(Σ_t‖g_t‖₂²)` with `D₂` the `ℓ₂` diameter, is **minimax optimal** and
 cannot be improved in the worst case (Abernethy et al. 2008). So a better bound is impossible
-without further assumptions on the data — the only way forward is to exploit *structure*
-(sparsity, coordinate heterogeneity, a good rotation of the space), i.e. to adapt the geometry
-to what the data actually looks like, instead of fixing it in advance.
+without further assumptions on the data; any improvement would have to come from *structure* the
+worst-case analysis ignores — the sparsity and coordinate heterogeneity that these problems
+actually exhibit, none of which the fixed-`ψ` bound is set up to register.
 
 The motivating empirical regime is exactly where this structure exists. In high-dimensional
 text/ranking problems the data and hence the gradients are sparse and **heavy-tailed**: if
-feature `i` appears with probability `p_i = min{1, c·i^{-α}}`, then over `T` rounds the
-accumulated per-coordinate gradient mass `‖g_{1:T,i}‖₂` concentrates around `√(p_i T)`, and the
-sum `Σ_i √(p_i)` is `O(log d)` for `α ≥ 2` and `O(d^{1−α/2})` for `α ∈ (1,2)` — far smaller
-than the `√d` that an isotropic Euclidean bound charges. The structure is real and quantifiable
-before any new method exists; the question is whether an algorithm can be made to *see* it.
+feature `i` appears with probability `p_i = min{1, c·i^{-α}}`, then over `T` rounds it fires
+only about `p_i T` times, so the per-coordinate sum `Σ_i √(p_i)` is `O(log d)` for `α ≥ 2` and
+`O(d^{1−α/2})` for `α ∈ (1,2)` — far smaller than the `√d` that an isotropic Euclidean bound
+charges. The structure is real and quantifiable before any new method exists; the question is
+whether an algorithm can be made to *see* it.
 
 ## Baselines
 
@@ -84,7 +84,7 @@ before any new method exists; the question is whether an algorithm can be made t
   on the simplex gives the multiplicative-weights `√(log d)` dependence instead of `√d`. The
   same `(1/η)B_ψ(x*,x_1) + (η/2)Σ‖g_t‖²_{ψ*}` bound holds. The gap: `ψ` is picked by hand and a
   priori, and stays fixed for the run. You must know the right geometry before you see the
-  data; there is no mechanism to *learn* the metric online from the observed gradients.
+  data, and once chosen it never responds to what the data turns out to look like.
 
 - **Regularized dual averaging / FTRL (Nesterov 2009; Xiao 2010; Kalai & Vempala 2003; Hazan et
   al. 2006).** Predict from the running average gradient against a strongly convex `ψ` scaled by
@@ -130,19 +130,16 @@ accounting.
 import numpy as np
 
 class Preconditioner:
-    """The geometry of the update. Existing choices pick a fixed metric by hand
-    (Euclidean, or an entropic norm); the open slot is an online rule for changing it."""
+    """The geometry of the update: a strongly convex ψ defining the proximal/
+    mirror-descent move. Existing choices pick a fixed metric by hand (Euclidean,
+    or an entropic norm)."""
     def __init__(self, d, eta):
         self.d = d
         self.eta = eta
-        # TODO: state for the online metric rule goes here
-
-    def observe(self, g):
-        # TODO: update the metric from the newly observed (sub)gradient g
-        pass
+        # TODO: state for the geometry goes here
 
     def step(self, x, g):
-        # TODO: return the preconditioned move, x - eta * H^{-1} g (or its prox form)
+        # TODO: return the (sub)gradient move under this geometry (e.g. its prox form)
         pass
 
 def project(x, X):
@@ -159,12 +156,10 @@ def online_learn(stream, X, d, eta):
     regret_terms = []
     for f_t in stream:
         g = subgradient(f_t, x)          # g_t in ∂f_t(x_t)
-        precond.observe(g)               # TODO: update the geometry from observed data
-        x = precond.step(x, g)           # preconditioned (sub)gradient move
+        x = precond.step(x, g)           # (sub)gradient move under the chosen geometry
         x = project(x, X)                # keep x feasible
         regret_terms.append(f_t(x))
     return x
 ```
 
-The open slot is entirely inside `Preconditioner`: its state and the rule that turns observed
-gradients into the geometry used by the move.
+The open slot is entirely inside `Preconditioner`: the geometry under which the move is taken.

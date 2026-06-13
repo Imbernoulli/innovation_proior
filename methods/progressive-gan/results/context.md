@@ -26,7 +26,7 @@ with the generator minimizing −E_z[D(G(z))]. Other objectives in the same spir
 
 **Variation and mode collapse.** Generators routinely cover only part of the data's variation. Salimans et al. (2016) proposed minibatch discrimination: let the discriminator look at statistics *across* the minibatch rather than at each image in isolation, so that a batch of near-identical generated images is detectable. Concretely, each feature vector f(x_i) is multiplied by a learned tensor T to give matrices M_i; for each sample one computes c(x_i) = Σ_j exp(−‖M_i − M_j‖_{L1}) summed over the batch, and these cross-sample statistics are concatenated to D's features. It helps but adds a learned tensor, extra hyperparameters, and a placement choice. Other routes include unrolling the discriminator (Metz et al. 2016) and a repelling regularizer (Zhao et al. 2016) that pushes the generator to orthogonalize feature vectors within a minibatch.
 
-**Normalization and signal magnitudes.** Mode collapse often begins abruptly — within a dozen minibatches — when the discriminator overshoots, producing exaggerated gradients, after which signal magnitudes escalate in both networks. Most generators borrow BatchNorm (Ioffe & Szegedy 2015) — normalize each activation by minibatch mean/variance — sometimes with LayerNorm (Ba et al. 2016) or WeightNorm (Salimans & Kingma 2016) in the discriminator. These were introduced to combat internal covariate shift, a motivation that does not clearly apply here; the operative need in adversarial training is bounding signal magnitudes and the competition between the two nets. A related primitive is local response normalization (Krizhevsky et al. 2012), which divides each activation by an aggregate over neighboring feature channels at the same spatial location.
+**Normalization and signal magnitudes.** Mode collapse often begins abruptly — within a dozen minibatches — when the discriminator overshoots, producing exaggerated gradients, after which signal magnitudes escalate in both networks. Most generators borrow BatchNorm (Ioffe & Szegedy 2015) — normalize each activation by minibatch mean/variance — sometimes with LayerNorm (Ba et al. 2016) or WeightNorm (Salimans & Kingma 2016) in the discriminator; these were introduced to combat internal covariate shift, and they carry learnable scale/shift parameters and a dependence on batch statistics. A related primitive is local response normalization (Krizhevsky et al. 2012), which divides each activation by an aggregate over neighboring feature channels at the same spatial location.
 
 **Initialization for deep nets.** He et al. (2015) showed that initializing weights from N(0, gain²/fan_in) (gain = √2 for ReLU/leaky-ReLU) keeps activation variance roughly constant through depth, which is needed to train deep convolutional stacks. Adaptive optimizers — RMSProp (Tieleman & Hinton) and Adam (Kingma & Ba 2015) — normalize each parameter's update by a running estimate of its gradient's standard deviation, which makes the update step invariant to the overall scale of that parameter.
 
@@ -54,7 +54,7 @@ The standard high-resolution attempt is to take a DCGAN/WGAN-GP setup, enlarge i
 
 ## Code framework
 
-The primitives below already exist: a convolution and a dense layer, leaky ReLU, an Adam optimizer, the WGAN-GP discriminator/generator losses, nearest-neighbor upsampling and average-pool downsampling, and latent/real-image samplers. What does *not* exist yet is how to build and train the networks so that high-resolution synthesis is stable and varied: how the generator and discriminator should be structured and grown across resolutions, how a newly introduced piece should be brought in without disrupting what is already trained, what (if anything) replaces BatchNorm to keep magnitudes bounded, how weights should be initialized/scaled, and how to make the discriminator sensitive to a lack of variation. Those are the stubs below.
+The primitives below already exist: a convolution and a dense layer, leaky ReLU, an Adam optimizer, the WGAN-GP discriminator/generator losses, nearest-neighbor upsampling and average-pool downsampling, and latent/real-image samplers. What does *not* exist yet is how to build and train the networks so that high-resolution synthesis is stable and varied. That is the stub below.
 
 ```python
 import numpy as np
@@ -73,8 +73,8 @@ def upscale2d(x, factor=2):           # nearest-neighbor (element replication)
 def downscale2d(x, factor=2):         # average pooling
     return F.avg_pool2d(x, factor)
 
-def wgan_gp_d_loss(D, real, fake, lam=10.0, drift=1e-3):
-    # E[D(fake)] - E[D(real)] + lam*(||grad_xhat D||_2 - 1)^2 + drift*E[D(real)^2]
+def wgan_gp_d_loss(D, real, fake, lam=10.0):
+    # E[D(fake)] - E[D(real)] + lam*(||grad_xhat D||_2 - 1)^2
     ...
 
 def wgan_g_loss(D, fake):
@@ -87,51 +87,25 @@ def sample_latents(batch, dim_z, device):
 def sample_reals(batch):
     ...
 
-# --- empty slots the method will fill ------------------------------------
+# --- empty slot the method will fill -------------------------------------
 
-class WeightedConv(nn.Module):
-    """A conv/dense layer. TODO: how to initialize and scale its weights so every
-       layer learns at the same effective rate under an adaptive optimizer."""
+class Generator(nn.Module):
+    """TODO: how to build the generator."""
     def __init__(self, *a, **k):
         super().__init__()
         pass
-
-def feature_norm(x):
-    """TODO: a parameter-free normalization in the generator that bounds signal
-       magnitudes (replacing BatchNorm), if one is needed at all."""
-    pass
-
-def variation_feature(x):
-    """TODO: a parameter-free signal appended to the discriminator that lets it
-       detect when a minibatch lacks variation."""
-    pass
-
-class Generator(nn.Module):
-    """TODO: structure that can produce images at increasing resolutions, and a
-       way to bring a higher-resolution stage online during training without
-       disrupting the already-trained lower-resolution stages."""
-    def __init__(self, dim_z, max_resolution, ch):
-        super().__init__()
-        pass
-    def forward(self, z, lod):
+    def forward(self, *a, **k):
         pass
 
 class Discriminator(nn.Module):
-    """TODO: mirror of the generator, grown in synchrony; reads images at the
-       current resolution and outputs a scalar critic score."""
-    def __init__(self, max_resolution, ch):
+    """TODO: how to build the discriminator; outputs a scalar critic score."""
+    def __init__(self, *a, **k):
         super().__init__()
         pass
-    def forward(self, x, lod):
+    def forward(self, *a, **k):
         pass
 
-def training_schedule(images_seen):
-    """TODO: map training progress to the current resolution and to the blend
-       weight of the stage currently being introduced."""
-    pass
-
-def train_step(G, D, G_opt, D_opt, lod, cfg):
-    # TODO: process reals to the current resolution + blend; one D step (wgan_gp_d_loss),
-    #       one G step (wgan_g_loss); maintain an EMA copy of G for sampling.
+def train_step(G, D, G_opt, D_opt, cfg):
+    # TODO: one D step (wgan_gp_d_loss), one G step (wgan_g_loss).
     pass
 ```

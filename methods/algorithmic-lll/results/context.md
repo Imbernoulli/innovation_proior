@@ -69,8 +69,8 @@ def search_good_assignment(clauses, n_vars, rng=None, max_resamples=None):
     resamples = 0
     bad = violated_clauses(clauses, assignment)
     while bad:
-        # TODO: choose a cheap local move from the current violated clause set,
-        # update assignment, resamples, and bad, and justify fast termination.
+        # TODO: decide what to do from the current violated state, update the
+        # assignment and bad accordingly, and account for the running time.
         pass
     return assignment, resamples
 ```

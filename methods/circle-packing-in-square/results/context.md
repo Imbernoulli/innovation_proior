@@ -63,8 +63,7 @@ simplex (Nelder–Mead polytope) algorithm and the quasi-Newton BFGS method. The
 the non-smoothness: the function being maximized has kinks wherever the active minimum switches,
 and a smooth quasi-Newton method stalls in the kinks. In practice this approach **failed to find
 the optimum for `n = 14, 15, 17`** even within `n ≤ 20`. A stochastic Langevin-equation variant
-(adding noise to a gradient flow) did better than the deterministic optimizers, hinting that what
-the smooth methods lacked was a way to ride over the kinks and out of local optima.
+(adding noise to a gradient flow) did better than the deterministic optimizers.
 
 **Grid search and contact-graph enumeration.** A literal brute-force attack would discretize the
 square and test many `n`-tuples of grid points, or enumerate possible graphs of touching
@@ -84,10 +83,8 @@ decreasing `φ`, with a quasi-Newton method (Fletcher–Powell–Davidon) or gra
 This trades the kinky max-min function for a smooth surrogate that is everywhere differentiable.
 Having converged to an approximate configuration, they would **identify which pairs are at minimum
 distance**, write the contact conditions as a system of equations, and solve it by Newton–Raphson
-to sharpen the result. For square packings, the attractive part is the combination of a smooth
-repulsion energy and a contact-equation polish. What it lacks is any guarantee that minimizing a
-*fixed* smooth energy maximizes the *minimum* distance — a soft energy cares about all the
-distances, not just the smallest.
+to sharpen the result. The energy they minimize is a fixed surrogate: its minimizer balances all
+the pairwise distances, not the single smallest one, so it is not by itself the max-min objective.
 
 **Billiard / molecular-dynamics simulation (Graham–Lubachevsky 1995–96; Lubachevsky–Stillinger
 1990).** A physically-motivated alternative. Put `n` point particles in the box with random
@@ -119,7 +116,7 @@ reported `d_n` is trustworthy.
 
 The available ingredients are a numerical-optimization library with smooth minimizers and
 least-squares/root solvers, stable log-sum primitives, plus array operations for computing all
-pairwise distances among `n` points. The missing pieces are the box map and inverse map, the smooth
+pairwise distances among `n` points. The missing pieces are the box map and inverse map, the
 objective, its gradient, the single-start search, boundary handling, and the contact polish:
 
 ```python
@@ -157,11 +154,11 @@ def radius_from_unit_distance(d_unit):
     return d_unit / (2.0 * (1.0 + d_unit))
 
 def objective(u, n, sharpness, scale):
-    # TODO: smooth surrogate for maximizing the minimum pairwise distance
+    # TODO: the scalar objective the optimizer drives at this stage
     pass
 
 def objective_grad(u, n, sharpness, scale):
-    # TODO: analytic gradient of the surrogate, chained through the box map
+    # TODO: analytic gradient of the objective, chained through the box map
     pass
 
 def maybe_release_wall_points(u, n, wall_tol=1e-6, inward_step=1e-3, keep_tol=1e-10):
