@@ -101,10 +101,9 @@ gamma), which forces an iterative nonlinear optimizer and admits local minima.
 minimizing a weighted sum of squared QM-vs-MM energy deviations over the scan and descend it with a
 general optimizer (e.g. steepest descent / Levenberg–Marquardt), often holding periodicities,
 phases, and 1–4 scaling fixed and optimizing only the amplitudes. Automated tooling (TorsionDrive
-for the scan; bespoke per-molecule fits) wraps this. The gap: when only amplitudes vary and phases
-are fixed to {0, 180}, the objective is actually a *quadratic* in the amplitudes, so an iterative
-descent is solving a problem that has a closed-form optimum — it is slower, depends on
-initialization and step size, and can stop short of the true minimum.
+for the scan; bespoke per-molecule fits) wraps this. The gap: even in the restricted case where only
+the amplitudes are free, the descent is run as a general iterative loop — it is slower than necessary,
+depends on initialization and step size, and can stop short of the true minimum.
 
 ## Evaluation settings
 

@@ -70,8 +70,7 @@ The field state and the load-bearing pieces a solution rests on:
 - **Parzen-window (kernel) density estimation** (Parzen 1962) estimates a density from samples by
   placing a kernel — typically a Gaussian — at each observation and averaging. With per-point
   bandwidths it adapts resolution to the local density of data: narrow kernels where observations
-  are dense, wide where they are sparse. It estimates a *generative* density `p(x)` from points,
-  the inverse direction from a regressor that predicts `y` from `x`.
+  are dense, wide where they are sparse. It estimates a density `p(x)` from a set of points.
 
 ## Baselines
 

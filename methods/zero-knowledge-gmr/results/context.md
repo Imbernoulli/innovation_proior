@@ -16,15 +16,15 @@ just the fact of Hamiltonicity. The proof leaks its *witness*.
 
 The question is whether a proof can convey *only* the truth of the statement and nothing more. To even
 ask it precisely we must answer a prior question: what does "nothing more" mean for a verifier that is
-a computational device? "Information" in Shannon's sense is the wrong yardstick — a verifier could be
-truthfully told a bit and that is harmless; the danger is being handed something it *could not have
-computed by itself*. A solution would have to (i) let the prover convince the verifier that `x ∈ L`,
-with overwhelming confidence; (ii) guarantee a cheating prover cannot convince the verifier of a
-false `x ∉ L`; and (iii) guarantee that whatever the verifier walks away with — even a verifier that
-deviates from the protocol to try to extract secrets — is something it could have produced entirely on
-its own, just from knowing `x ∈ L`. Making (iii) into a mathematical definition, and exhibiting a
-protocol that provably satisfies all three for a language not known to be efficiently decidable, is
-the goal. The applications are cryptographic: in a protocol one party often must convince another of
+a computational device? It is not obvious what the right yardstick for "knowledge" even is here — a
+verifier truthfully told a single bit has clearly suffered no harm, yet some notions of "information"
+would count that bit, while others credit an unbounded verifier with knowing every logical consequence
+already. A solution would have to (i) let the prover convince the verifier that `x ∈ L`, with
+overwhelming confidence; (ii) guarantee a cheating prover cannot convince the verifier of a false
+`x ∉ L`; and (iii) guarantee that the verifier — even one that deviates from the protocol to try to
+extract secrets — comes away knowing nothing beyond `x ∈ L`. Pinning down a precise mathematical
+meaning for (iii), and exhibiting a protocol that provably satisfies all three for a language not known
+to be efficiently decidable, is the goal. The applications are cryptographic: in a protocol one party often must convince another of
 some fact ("this number is a product of two primes," "I followed the protocol honestly") without
 handing over the secret that makes the fact true.
 
@@ -48,19 +48,17 @@ are enough for recognizing languages is a different question from whether a veri
 randomness can keep an interaction from leaking a witness; the hiding question still needs its own
 definition.
 
-**Security template from semantic-secure encryption.** The crucial pre-existing idea is how
-Goldwasser–Micali (*Probabilistic Encryption*, JCSS 1984) defined security of an encryption scheme.
-They reject the notion that security means "the adversary cannot recover the whole message" and
-instead demand *semantic security*: **whatever an eavesdropper can compute about the cleartext given
-the ciphertext, it can also compute without the ciphertext.** Formally this rests on *polynomial
-security* — for any two messages an efficient adversary picks, it cannot distinguish their
-encryptions: for every poly-size circuit (the "line-tapper") the probability of outputting 1 on an
-encryption of `m₁` versus `m₂` differs by less than `1/poly`. Security is thus phrased as the
-*indistinguishability of two probability distributions* to a bounded judge, and "learns nothing" is
-phrased as *the existence of a way to compute the same thing without the secret*. Both ingredients —
-indistinguishability of distributions and the "could-have-computed-it-anyway" move — are the
-load-bearing concepts. Yao's work on trapdoor functions and pseudorandomness uses the same
-distribution-indistinguishability lens.
+**Security definitions for semantic-secure encryption.** Goldwasser–Micali (*Probabilistic
+Encryption*, JCSS 1984) defined security of an encryption scheme. They reject the notion that security
+means "the adversary cannot recover the whole message" and instead demand *semantic security*:
+**whatever an eavesdropper can compute about the cleartext given the ciphertext, it can also compute
+without the ciphertext.** Formally this rests on *polynomial security* — for any two messages an
+efficient adversary picks, it cannot distinguish their encryptions: for every poly-size circuit (the
+"line-tapper") the probability of outputting 1 on an encryption of `m₁` versus `m₂` differs by less
+than `1/poly`. Security is thus phrased as the *indistinguishability of two probability distributions*
+to a bounded judge. This is a definition for *encryption* — a one-way transfer of a hidden message.
+Yao's work on trapdoor functions and pseudorandomness uses the same distribution-indistinguishability
+lens.
 
 **The number theory the protocols will stand on.** For an integer `x`, let `Z*_x = {y : 1 ≤ y < x,
 gcd(x,y) = 1}`; membership is testable in polynomial time. `y ∈ Z*_x` is a *quadratic residue* (QR)
@@ -121,15 +119,16 @@ That open question is the gap.
   beyond membership is released. The protocols cry out for a definition that makes "releases no
   knowledge" precise and provable.
 
-- **Semantic / polynomial security for encryption (Goldwasser–Micali 1984).** Core idea — *the* one to
-  reuse: phrase "the adversary learns nothing" as "whatever it computes from the ciphertext it could
-  compute without it," and make that rigorous via indistinguishability of distributions to a bounded
-  judge (poly-size circuit), with `|Pr[C(E(m₁))=1] − Pr[C(E(m₂))=1]| < 1/poly`. **Gap (for our
-  problem):** this is a definition for *encryption*, a one-way transfer of a hidden message, not for
-  an *interactive proof* of a public statement. It is the right template, but it must be lifted from
-  "the ciphertext reveals nothing about the hidden message" to "the entire transcript-and-coins of a
-  multi-round interaction reveals nothing beyond the public fact `x ∈ L`," including against a verifier
-  that actively misbehaves and may already hold side information about `x`.
+- **Semantic / polynomial security for encryption (Goldwasser–Micali 1984).** Core idea: phrase "the
+  adversary learns nothing" as "whatever it computes from the ciphertext it could compute without it,"
+  and make that rigorous via indistinguishability of distributions to a bounded judge (poly-size
+  circuit), with `|Pr[C(E(m₁))=1] − Pr[C(E(m₂))=1]| < 1/poly`. **Gap (for our problem):** this is a
+  definition for *encryption*, a one-way transfer of a single hidden message, with a fixed adversary
+  (a passive line-tapper). Our setting is an *interactive proof* of a *public* statement: there is no
+  single hidden message, the prover and verifier exchange many rounds, and the adversary (the verifier)
+  is an active participant that chooses its own moves and may already hold side information about `x`.
+  Whether and how a security notion phrased for the static-ciphertext setting carries over to a
+  multi-round interaction with an actively misbehaving party is not addressed here.
 
 ## Evaluation settings
 
@@ -140,14 +139,12 @@ whether it can be *proven* to satisfy three properties.
   sufficiently long `x`.
 - **Soundness:** for `x ∉ L`, *no* prover strategy (of arbitrary computational power) makes the
   verifier accept with more than negligible probability — at most `|x|^{-k}` for every `k`.
-- **Releases no knowledge:** the property whose definition is the open problem.
+- **Releases no knowledge:** the property whose definition is the open problem — there is no agreed
+  way yet to say what, or how much, the verifier learns beyond `x ∈ L`, nor to measure it.
   The natural candidate languages on which to demonstrate it are `QR` and `QNR` — in `NP ∩ co-NP` but
   not known to be in probabilistic polynomial time, so a releases-no-knowledge proof for them would be
   the first such proof for a language not known to be efficiently recognizable. Graph isomorphism is a
-  related candidate (believed not NP-complete, not known in P). The "metric" for the third property
-  will be the gap between two probability distributions — the verifier's real view versus an
-  efficiently generated one — measured as equality, statistical distance `Σ_α |Pr[U=α] − Pr[V=α]|`, or
-  indistinguishability to a poly-size circuit, depending on how strong a guarantee one demands.
+  related candidate (believed not NP-complete, not known in P).
 
 ## Code framework
 
@@ -193,9 +190,7 @@ class Verifier(InteractiveTuringMachine):
         pass
 
 def run_protocol(prover, verifier, x, rounds):
-    """Drive the turn-based interaction and return the verifier's view:
-    its coins plus every message it saw. The VIEW is the object whose
-    distribution the 'learns-nothing' property will be about."""
+    """Drive the turn-based interaction; return whether the verifier accepted."""
     msg = None
     for _ in range(rounds):
         msg = prover.next_message(x, msg)
@@ -203,19 +198,12 @@ def run_protocol(prover, verifier, x, rounds):
         msg = verifier.next_message(x, msg)
         verifier.transcript.append(("B->A", msg))
     accept = verifier.decide(x)
-    view = (list(verifier.coins), list(verifier.transcript))
-    return accept, view
+    return accept
 
-def generate_candidate_view(x, side_info, verifier_strategy):
-    """Produce a candidate view of the interaction WITHOUT access to any prover.
-    If this can be done so the output is indistinguishable from run_protocol's
-    view, the protocol releases no knowledge. This is the central empty slot."""
-    # TODO: generate a transcript-and-coins from x and side_info alone,
-    #       matching the real view's distribution.
-    pass
-
-def indistinguishable(real_view_samples, generated_view_samples):
-    # TODO: the notion of 'two distributions look the same' — exact equality,
-    #       small statistical distance, or no poly-size circuit tells them apart.
+def releases_no_knowledge(prover, verifier, x):
+    """The 'learns-nothing' property — its definition is the open problem.
+    Given a protocol and an input, decide whether the run leaves the verifier
+    knowing nothing beyond x in L. The contents of this check are unspecified."""
+    # TODO: the central empty slot — formalize and test 'releases no knowledge'.
     pass
 ```
