@@ -1,0 +1,13 @@
+{
+  "method": "crossq",
+  "codex_reviewed": true,
+  "outcome": "passed",
+  "reviewed_at": "2026-06-13T12:05:00.000Z",
+  "reviewer": "codex-cli 0.139.0 (gpt-5-codex)",
+  "thread_id": "019ec0e9-5b31-7b22-8049-a57bf32a09ba",
+  "scope": "finale scaffold code in trajectories/rl-offpolicy-continuous/04-crossq-answer.md (Actor, BatchRenorm1d, QNetwork, OffPolicyAlgorithm)",
+  "focus": "code-vs-reference correctness: faithful CrossQ (Bhatt, Palenicek et al., ICLR 2024, arXiv:1902.05605) re-expressed in the task's fixed 256-wide scaffold",
+  "reference": "ICLR 2024 paper Figure 2 / CrossQ description and the official adityab/CrossQ repo",
+  "evidence": "No correctness bugs found. BatchRenorm1d implements detached clipped r/d corrections, running-stat momentum updates, and train/eval branches correctly. _q_forward_cross concatenates (s,a) and (s',a'), runs one critic forward, then splits (CrossQ's core target-network-replacing move). No target Q networks or Polyak updates anywhere; next-state value detached. TD target uses min(q1_next,q2_next) - alpha*next_log_pi. Critics in train() for the joint critic update and eval() for the actor Q-evaluation. SAC tanh-Gaussian actor with rsample, squash log-prob correction, automatic entropy tuning to target_entropy=-action_dim. The expected 256-wide critics (vs paper 2048) and policy_frequency=1 were not flagged, as instructed.",
+  "reason": "Finale code-correctness gate for the rl-offpolicy-continuous trajectory; methods/crossq derivation trace reused as the reference."
+}

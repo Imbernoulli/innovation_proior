@@ -1,0 +1,43 @@
+{
+  "task": "rl-value-atari",
+  "title": "RL Value-Based Atari: from decoupled targets to an implicit return distribution",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "breakout-v4",
+    "seaquest-v4",
+    "pong-v4"
+  ],
+  "metric_columns": [
+    "eval_return"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "double_dqn",
+      "method": "Double DQN (decoupled target)",
+      "reasoning": "01-double_dqn-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-double_dqn-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "qr_dqn",
+      "method": "QR-DQN (quantile-regression distributional critic)",
+      "reasoning": "02-qr_dqn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-qr_dqn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "iqn",
+      "method": "IQN (Implicit Quantile Networks)",
+      "reasoning": "03-iqn-reasoning.md",
+      "finale": true,
+      "answer": "03-iqn-answer.md"
+    }
+  ],
+  "endpoint": "IQN (Implicit Quantile Networks)",
+  "ranking_basis": "Ranked from the is_final,true baseline:* leaderboard rows (eval_return, higher is better). double_dqn < qr_dqn: QR-DQN dominates Double DQN on every game mean (Breakout 252.4 vs 170.7, Seaquest 9027 vs 6789, Pong 20.9 vs 20.7). c51 has only is_final,false rows (Breakout 242.6, Seaquest 2008.7, Pong 20.2) so it is not a ranked rung; its single non-final Seaquest mean is far below QR-DQN anyway. IQN is the finale (real published method, Dabney et al. ICML 2018, arXiv:1806.06923), the natural successor to QR-DQN that removes the fixed-N quantile bottleneck and fits the edit surface within the parameter budget.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_value_atari.py lines 186-249: QNetwork head + ValueAlgorithm, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning. Baseline answer code is the literal edits/<baseline>.edit.py fill. methods/<slug> single-round traces (double-dqn, qr-dqn, iqn) are the derivation references and are left untouched. Finale carries no feedback. Same-named-vs-paper diffs: Double DQN edit uses plain mse_loss (not Huber) and the scaffold's fixed target_network_frequency=1000 / lr=1e-4 (the methods trace discusses tau=10000/30000); QR-DQN edit hard-codes kappa=1 (no kappa=0 hard-loss branch), N=200, lr=args.learning_rate=1e-4 (not the paper's 5e-5), Adam eps=0.01/batch_size; IQN finale re-expresses the cosine-embedding/Hadamard implicit-quantile design over the FIXED NatureDQNEncoder, N=N'=8, K=32, n_cos=64, lr=1e-4."
+}

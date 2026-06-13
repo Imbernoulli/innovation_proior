@@ -1,0 +1,55 @@
+{
+  "task": "graph-signal-propagation",
+  "title": "Graph Signal Propagation: spectral/spatial graph filters for node classification",
+  "domain": "Graph & mesh",
+  "metrics": [
+    "cora",
+    "citeseer",
+    "texas",
+    "cornell"
+  ],
+  "metric_columns": [
+    "accuracy_cora",
+    "accuracy_citeseer",
+    "accuracy_texas",
+    "accuracy_cornell"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "JacobiConv (Jacobi-basis orthogonal-polynomial filter)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "bernnet",
+      "method": "BernNet (Bernstein-basis filter)",
+      "reasoning": "01-bernnet-reasoning.md",
+      "answer": "01-bernnet-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "chebnetii",
+      "method": "ChebNetII (Chebyshev-interpolation filter)",
+      "reasoning": "02-chebnetii-reasoning.md",
+      "answer": "02-chebnetii-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "gprgnn",
+      "method": "GPRGNN (learnable monomial / Generalized-PageRank filter)",
+      "reasoning": "03-gprgnn-reasoning.md",
+      "answer": "03-gprgnn-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "jacobiconv",
+      "method": "JacobiConv (Jacobi-basis orthogonal-polynomial filter)",
+      "reasoning": "04-jacobiconv-reasoning.md",
+      "answer": "04-jacobiconv-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Weak->strong by measured mean test accuracy across the four datasets (higher-is-better). gprgnn is strongest: it beats chebnetii on all 4/4 datasets and bernnet on 3/4, with the best 4-dataset average (0.8670) and best on cora (0.8890), citeseer (0.8020), cornell (0.8705). chebnetii is middle: it beats bernnet 3/4 (cora 0.8725>0.8554, citeseer 0.8004>0.7795, cornell 0.8470>0.8443) but loses texas (0.8770<0.9093). bernnet is weakest: lowest 4-dataset average (0.8471) and lowest on both homophilic citation graphs, despite the best texas (0.9093, which its non-negativity certificate earns on a tiny graph).",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_filter.py: CustomProp + CustomFilter, scaffold region lines 211-308 from edits/*.edit.py). Each step = reasoning (full derivation, prose; reflection on the prior result embedded throughout for steps 2-4) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines; the finale carries NO feedback). The methods/chebnetii single-round trace is the derivation reference for step 2; methods/bernnet and methods/gprgnn had no generated results/ trace (only code/refs scaffolding), so steps 1 and 3 were derived from the task edit.py, the BernNet/GPR reference code under methods/<slug>/code, and the lineage in methods/chebnetii context. FINALE = jacobiconv (JacobiConv, Wang & Zhang, ICML 2022; arXiv 2205.11172; repo github.com/GraphPKU/JacobiConv): a genuinely stronger published method NOT among the task's three baselines, fitting the edit surface exactly (edits/jacobiconv.edit.py). It is the natural next rung -- it keeps GPRGNN's unconstrained sign-free coefficients and uniform start but swaps the provably-non-orthogonal monomial basis for the orthogonal Jacobi basis, which drives the optimization Hessian toward identity and should tighten GPRGNN's seed variance. Created methods/jacobiconv/results/{context,reasoning,answer}.md (grounded in the paper) + Codex review (.codex_review.json). Same-named-vs-paper: gprgnn here uses UNIFORM init 1/(K+1) (not the paper's PPR alpha(1-alpha)^k), dprate=0, and custom training overrides lr=0.05/wd=5e-4/prop_lr=0.05/prop_wd=0 (the paper/template default throttles prop_lr to 0.01); the scaffold exposes only a single shared scalar filter, so the paper's per-init schemes (SGC/NPPR/Random/WS) are omitted. bernnet matches the paper's Bernpro exactly (all-ones init, ReLU, O(K^2) (2I-L)^{K-k}L^k recurrence). chebnetii matches the methods trace math but drops the optional x_j^2 (Init) value-shaped initialization path the harness does not expose. jacobiconv here lands the SHARED-COEFFICIENT, fixed-(a,b)=(1,1) Jacobi core: the paper's per-channel individual filters (multi-class universality) and PCD coefficient decomposition are NOT exposed by CustomProp (single shared temp vector), and the harness keeps the ReLU encoder whereas the paper drops it (linear GNN). The edit's Jacobi recurrence (A_k,B_k,C_k) was verified line-by-line against the paper eq 12-14 and the official repo; the edit propagates with L_tilde=L-I=-A_hat, which evaluates P_k(-x)=(-1)^k P_k^{a,b}(x) (symmetric for a=b), absorbed by the learned coefficients (filter family unchanged)."
+}

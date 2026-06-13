@@ -1,0 +1,58 @@
+{
+  "task": "graph-link-prediction",
+  "title": "Graph Link Prediction: encoder + edge decoder on the structural ladder",
+  "domain": "Graph & mesh",
+  "metrics": [
+    "Cora",
+    "CiteSeer",
+    "ogbl-collab"
+  ],
+  "metric_columns": [
+    "AUC_Cora",
+    "MRR_Cora",
+    "Hits@20_Cora",
+    "AUC_CiteSeer",
+    "MRR_CiteSeer",
+    "Hits@20_CiteSeer",
+    "Hits@50_ogbl-collab",
+    "MRR_ogbl-collab"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "vgae",
+      "method": "VGAE (variational GCN auto-encoder, dot-product decoder)",
+      "reasoning": "01-vgae-reasoning.md",
+      "answer": "01-vgae-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gcn_dot",
+      "method": "GCN encoder + MLP pair decoder",
+      "reasoning": "02-gcn_dot-reasoning.md",
+      "answer": "02-gcn_dot-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "seal",
+      "method": "SEAL-inspired structural pair decoder",
+      "reasoning": "03-seal-reasoning.md",
+      "answer": "03-seal-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "buddy",
+      "method": "BUDDY (exact CN/AA/RA overlap decoder)",
+      "reasoning": "04-buddy-reasoning.md",
+      "answer": "04-buddy-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "BUDDY (exact CN/AA/RA overlap decoder)",
+  "ranking_basis": "All metrics higher-is-better; ranked by the task's own score_spec (geometric mean over Cora, CiteSeer, ogbl-collab, each an equal-weighted mean of its metrics). vgae is weakest on every dataset/metric (Cora AUC 86.81, ogbl-collab Hits@50 31.77; composite ~38.6). gcn_dot and seal are close (composites ~53.0 and ~51.7): seal leads the headline AUC on both Planetoid sets (Cora 92.50 vs 91.30, CiteSeer 92.85 vs 90.80) AND the weight-1.0 ogbl-collab Hits@50 (57.88 vs 53.74), while gcn_dot edges the composite only via the noisier Planetoid ranking metrics (Cora MRR 31.18 vs 27.49, Hits@20 70.27 vs 61.16). The ladder follows the structural-expressiveness progression — dot decoder -> learned MLP decoder -> structural-feature decoder -> exact-overlap decoder — placing seal as the strongest baseline (it wins AUC across all and the headline large-graph Hits@50) and the finale building on its failure mode.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_linkpred.py LinkPredictor, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only); finale (buddy) carries no feedback. Same-named-vs-paper diffs (CRITICAL): every baseline's trajectory code/reasoning matches the task's edits/<slug>.edit.py, NOT the generic paper. (1) seal: the task's 'SEAL' is NOT subgraph extraction + DRNL labeling + subgraph-level GNN; it is a full-graph GCN encoder (BatchNorm on ALL layers) + a 4-block MLP decoder on [z_src || z_dst || z_src*z_dst || |z_src-z_dst|]. The harness's encode/decode contract cannot host per-edge enclosing-subgraph extraction, so the reasoning derives the pairwise-feature approximation and explicitly names the dropped DRNL/subgraph machinery. (2) buddy (finale): the task's 'BUDDY' is NOT MinHash/HyperLogLog subgraph sketching; it computes EXACT common-neighbor / Adamic-Adar / resource-allocation features via scipy sparse adjacency intersection, projects them, and concatenates [z_src || z_dst || proj(CN,AA,RA)] into an MLP atop a GCN+BN encoder. The finale reasoning keeps the load-bearing insight (explicit pair-relative overlap counts as direct decoder inputs) and names the dropped sketches + multi-distance count table (unnecessary at <=236k nodes). (3) vgae: the variational ELBO cannot be a separate loss (the loop only computes BCE on returned scores), so the KL is smuggled into the score computation graph as a uniform per-score shift (w=0.005 * mean-per-node KL), with BatchNorm omitted from the mu/logstd heads to preserve dot-product magnitude. Finale BUDDY is a real published method (Chamberlain et al., ICLR 2023, arXiv:2209.15486) not run as a baseline row; its methods/buddy trace (grounded in the canonical sketch reference + official repo) was present and was Codex-reviewed for code-vs-reference correctness (.codex_review.json written): core aggregators faithful (MinHash min, HLL max, |S∩T|=Jaccard·|S∪T|, A[1,1]=CN, Hadamard pooling), task scaffold CN/RA exact and sparse intersection correct, AA uses np.log(deg).clip(min=1.0) as a deliberate harness log-clip approximating exact 1/log deg. Baseline methods/<slug> traces: gcn-dot exists (it is actually the GAE/VGAE Kipf-Welling derivation, not the task's GCN+MLP gcn_dot baseline); vgae and seal have NO methods/<slug> trace (missing from the methods phase) and were derived directly in the trajectory against the edit surface + cited papers. Per task constraints, methods.json was NOT edited."
+}

@@ -1,0 +1,45 @@
+{
+  "task": "cv-data-augmentation",
+  "title": "CV Data Augmentation: from automated policies to information deletion",
+  "domain": "Computer vision",
+  "metrics": [
+    "resnet20-cifar10",
+    "resnet56-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc_resnet20-cifar10",
+    "test_acc_resnet56-cifar100",
+    "test_acc_mobilenetv2-fmnist"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "randaugment",
+      "method": "RandAugment (uniform N-op policy)",
+      "reasoning": "01-randaugment-reasoning.md",
+      "answer": "01-randaugment-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "trivialaugment",
+      "method": "TrivialAugment (parameter-free single op)",
+      "reasoning": "02-trivialaugment-reasoning.md",
+      "answer": "02-trivialaugment-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "cutout",
+      "method": "Cutout (contiguous input-space deletion)",
+      "reasoning": "03-cutout-reasoning.md",
+      "answer": "03-cutout-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Single seed (42), three (model,dataset) pairs, best test accuracy (higher better). randaugment weakest: it loses to cutout on all three pairs and to trivialaugment on the hardest pair CIFAR-100 (74.35 vs 74.71, the largest pairwise margin), winning only the lower-headroom CIFAR-10 (+0.15) and the near-saturated FashionMNIST (+0.19). trivialaugment < cutout: cutout beats trivialaugment on CIFAR-10 (93.72 vs 93.36) and FashionMNIST (94.72 vs 94.24) and is within 0.17 on CIFAR-100 (74.54 vs 74.71); cutout has the highest sum (262.98 vs 262.31 vs 262.29) and wins two of three pairs outright, so it is the strongest baseline.",
+  "endpoint": "Cutout (contiguous input-space deletion)",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (build_train_transform in pytorch-vision/custom_augment.py lines 246-275, fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, reflection on the prior numbers embedded throughout for i>1) -> answer (distilled summary + the exact scaffold edit) -> feedback (numbers only, baselines). Code lives in the answer only, so the stacked view shows it once. No finale: the edit surface is a single-image, label-preserving transforms.Compose, which excludes the genuinely stronger published methods (Mixup/CutMix need batch+label access; full AugMix needs a JS-consistency loss in the fixed training loop), and the remaining transform-only published options (AutoAugment, policy+erasing combos) are not clearly stronger than cutout at this scale, so the ladder stops at the strongest baseline. methods/randaugment and methods/cutout single-round traces reused as derivation references and left untouched; methods/trivialaugment did not exist, so step 2 was derived from the task description + edits/trivialaugment.edit.py and the parameter-free single-op derivation."
+}

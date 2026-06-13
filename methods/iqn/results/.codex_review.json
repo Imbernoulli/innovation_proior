@@ -1,0 +1,11 @@
+{
+  "method": "iqn",
+  "codex_reviewed": true,
+  "outcome": "completed",
+  "reviewed_at": "2026-06-13T12:21:20.029Z",
+  "reviewer": "gpt-5.3-codex-spark",
+  "focus": "finale scaffold code-vs-canonical-reference correctness (IQN, Dabney et al. ICML 2018, arXiv:1806.06923)",
+  "summary": "No correctness bugs found in the IQN scaffold versus the canonical reference. Verified: (1) cosine embedding cos(pi*i*tau) i=1..64 + Linear(64,512)+ReLU; (2) Hadamard tau-modulation psi*phi (not concat); (3) pairwise TD tensor [B,N,N'] with quantile weights on the correct prediction-level axis; (4) loss = mean over target j, sum over prediction i, batch mean; (5) forward() returns per-action K-sample mean Q for eval-argmax; (6) greedy/target use K=32-sample mean; (7) parameter budget consistent (head Linear(512,n_actions)+Linear(64,512) embedding, removing QR-DQN's 512x200 output block). Non-blocking note: target-net-only next-action selection is canonical risk-neutral IQN (not Double-IQN), matching the stated design and the QR-DQN baseline's target construction.",
+  "job_id": "task-mqcbqnwk-brosjz",
+  "session_id": "019ec0ed-baa3-7333-90b2-d98d8c9acb6f"
+}

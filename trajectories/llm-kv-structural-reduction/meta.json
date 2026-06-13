@@ -1,0 +1,56 @@
+{
+  "task": "llm-kv-structural-reduction",
+  "title": "LLM KV-Structural Reduction: head sharing vs latent KV compression",
+  "domain": "Language models",
+  "metrics": [
+    "gpt-345m",
+    "lm-eval-345m"
+  ],
+  "metric_columns": [
+    "val_loss",
+    "kv_bytes_per_token",
+    "head_sharing_ratio",
+    "latent_rank_ratio",
+    "heldout_loss",
+    "arc_easy",
+    "hellaswag"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "mha",
+      "method": "MHA (dense multi-head attention, control)",
+      "reasoning": "01-mha-reasoning.md",
+      "answer": "01-mha-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "mqa",
+      "method": "MQA (single shared KV head)",
+      "reasoning": "02-mqa-reasoning.md",
+      "answer": "02-mqa-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "gqa",
+      "method": "GQA (grouped-query attention, G=4)",
+      "reasoning": "03-gqa-reasoning.md",
+      "answer": "03-gqa-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "mla",
+      "method": "MLA (multi-head latent attention, latent KV compression)",
+      "reasoning": "04-mla-reasoning.md",
+      "answer": "04-mla-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "MLA (multi-head latent attention, latent KV compression)",
+  "ranking_basis": "Quality-per-byte tradeoff task; primary metric val_loss (lower better), efficiency axis kv_bytes_per_token (lower better), both is_final=true seed-42 rows. Ladder follows the task's stated design lineage MHA->MQA->GQA->MLA, ordered weak->strong on KV-efficiency merit. MHA weakest by construction: it reduces nothing (kv_bytes 4096, the architectural max) and only sets the quality ceiling (val_loss 2.275425). MQA is the maximum head-sharing collapse: cheapest sharing-axis cache (256) but worst sharing quality (val_loss 2.337850 -- the single shared subspace, learned from scratch, hurts). GQA-4 is the head-sharing interpolation: recovers most quality (val_loss 2.312553) but at 1024 bytes (4x MQA), so it lies on the same head-sharing trade line. MLA is strongest: latent KV compression Pareto-dominates the entire sharing line -- val_loss 2.306939 (better than both MQA and GQA) at 192 bytes (below MQA's 256), because it keeps full per-head content subspaces and only compresses the *stored* state, answering the task's central comparison in favor of latent compression over head sharing.",
+  "notes": "MLS-Bench trajectory; initial context and every step's code are the task's real edit surface (custom_pretrain.py KV editable region: build_kv_heads + cross_layer_share + latent_kv_project + CausalSelfAttention, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + literal scaffold edit) -> feedback (numbers only, baselines). Code lives in the answer only. No finale: the only leaderboard entries that Pareto-beat MLA (gemini-3.1-pro 2.293@160) are retuned-MLA agent submissions, not distinct published methods, so per the spec the trajectory stops at the strongest baseline. Derivation references: methods/gqa (GQA/MQA lineage) and methods/mla-attention (MLA); methods/mha and methods/mqa do not exist as standalone traces. Same-named-vs-paper diffs threaded through each step: (MQA) task trains from scratch with one shared KV head -- no decode loop, kv_bytes read analytically as 2*n_kv_head*head_dim*2; (GQA) the paper's mean-pool checkpoint-conversion + continue-pretraining 'uptraining' half is entirely absent, G fixed at H//4=4 not the recommended 8; (MLA) from-scratch training/prefill form only -- the decode-time up-projection absorption is not exercised (kv_bytes read as 2*(kv_lora_rank+qk_rope_head_dim)), qk_nope_head_dim = full head_dim (content kept at dense width, rotary slice added on top), kv_lora_rank = max(16, head_dim//2)=32 capped by nanoGPT width, one shared rotary key broadcast to all heads, new_empty+slice-assign assembly, interleave permutation dropped, no YaRN/no recompute-in-backward."
+}

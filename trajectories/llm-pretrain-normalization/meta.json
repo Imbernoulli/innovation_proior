@@ -1,0 +1,49 @@
+{
+  "task": "llm-pretrain-normalization",
+  "title": "LLM Pretraining Normalization: norm rule & block placement",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "rmsnorm_parallel",
+      "method": "RMSNorm + parallel attention/MLP block (GPT-J / PaLM style)",
+      "reasoning": "01-rmsnorm_parallel-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-rmsnorm_parallel-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "rmsnorm_post",
+      "method": "RMSNorm + sandwich-norm block (Pre-LN + Post-LN, CogView style)",
+      "reasoning": "02-rmsnorm_post-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-rmsnorm_post-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "rmsnorm",
+      "method": "RMSNorm in a plain sequential Pre-LN block",
+      "reasoning": "03-rmsnorm-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-rmsnorm-answer.md"
+    }
+  ],
+  "endpoint": "RMSNorm in a plain sequential Pre-LN block",
+  "ranking_basis": "Ranked weak->strong by the primary metric val_loss (lower is better) from the is_final,true baseline:* rows (seed 42). rmsnorm_parallel weakest (val_loss 2.3112): the parallel block summed two un-normalized branches and lost intra-block cross-talk at 355M, fastest run but worst loss. rmsnorm_post middle (2.3104): the four-norm sandwich beat parallel by only 0.0008 on val_loss but RAISED perplexity (wikitext2 46.8 vs 45.98, lambada 72.08 vs 70.96) and ran slowest -- variance insurance, not improvement. rmsnorm strongest (2.295): the plain sequential Pre-LN RMSNorm block has the best val_loss and the best perplexities (wikitext2 44.75, lambada 68.29) and the best downstream (arc_easy 54.97, hellaswag 33.25) -- the simplest fill of the edit surface wins. Secondary metrics agree with the val_loss ordering for the strongest rung; the parallel-vs-sandwich gap on val_loss (0.0008) is within whisker range but perplexity and wall-clock break the tie as ranked.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the LayerNorm class and the Block class of nanoGPT/custom_pretrain.py, lines 22-31 and 88-100, plus the whitelisted CONFIG_OVERRIDES; scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning, so the stacked view shows it once. No finale: the strongest published norm-placement recipe for this exact surface (Peri-LN / Gemma2-sandwich, x = x + Norm(Module(Norm(x)))) is structurally identical to the rmsnorm_post baseline already on the ladder and measured WORSE than plain Pre-LN RMSNorm at this 355M/7B scale (2.3104 vs 2.295); OLMo2's reordered-norm needs QK-norm, which lives in the out-of-edit CausalSelfAttention; LayerScale/ReZero lack clear LM-scale evidence of beating Pre-LN RMSNorm here. So the trajectory stops at the strongest baseline. The methods/rmsnorm single-round trace is the derivation reference for step 3 and is left untouched; rmsnorm_post and rmsnorm_parallel have no methods/<slug> trace, so their reasonings were authored from the task's edit.py directly."
+}

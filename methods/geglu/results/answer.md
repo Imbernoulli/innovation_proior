@@ -19,11 +19,19 @@ or evaluation).
 ## Key idea
 
 Every standard activation is already a "value × gate": `ReLU(z)=z·1[z>0]`, `GELU(z)=z·Φ(z)`,
-`Swish(z)=z·σ(z)` — but the value and the gate are tied to the same projection `xW1`. Untie
-them. Use two up-projections, a gate projection `W` and a value projection `V`, and form
+`Swish_β(z)=z·σ(βz)` — but the value and the gate are tied to the same projection `xW1`.
+Untie them. Use two up-projections, a gate projection `W` and a value projection `V`, and form
 
 ```
 FFN_GEGLU(x) = ( GELU(xW) ⊗ (xV) ) W2
+```
+
+The scalar activation derivatives used in the reasoning are:
+
+```
+GELU'(z) = Φ(z) + z·φ(z),        φ(z) = exp(−z²/2)/√(2π)
+Swish_β'(z) = σ(βz) + βz·σ(βz)(1−σ(βz))
+             = β·Swish_β(z) + σ(βz)(1−β·Swish_β(z))
 ```
 
 - **Multiplicative interaction.** Each hidden unit multiplies two learned views of `x`.
@@ -34,9 +42,9 @@ FFN_GEGLU(x) = ( GELU(xW) ⊗ (xV) ) W2
   `X⊗σ(X)`,
   `∇[X⊗σ(X)] = ∇X⊗σ(X) + X⊗σ'(X)∇X`; the first term multiplies the upstream gradient by the gate
   value, not by an activation derivative. Contrast the both-paths-nonlinear "gated tanh unit"
-  `∇[tanh(X)⊗σ(X)] = tanh'(X)∇X⊗σ(X) + σ'(X)∇X⊗tanh(X)`, where every term carries a bounded
-  derivative factor (`tanh'≤1`, `σ'≤¼`) and the gradient attenuates with depth. So the
-  nonlinearity goes on the gate; the value stays linear.
+  `∇[tanh(X)⊗σ(X)] = tanh'(X)∇X⊗σ(X) + σ'(X)∇X⊗tanh(X)`, where both paths carry saturating
+  derivative factors (`0≤tanh'≤1`, `0≤σ'≤¼`) and there is no derivative-free content path. So
+  the nonlinearity goes on the gate; the value stays linear.
 - **GELU gate.** Using GELU on the gate keeps consistency with the FFN activation being
   improved. Since `GELU(z)=zΦ(z)`, the gate activation is smooth, grows above 1 for sufficiently
   positive `z`, and becomes slightly negative for some negative `z`; unlike σ's pure `(0,1)`
@@ -54,8 +62,9 @@ matrices, `3·d·d_ff'` params):
 
 FLOPs scale identically (three `d×d_ff'` matmuls = two `d×d_ff` matmuls). With the standard
 4× expansion `d_ff = 4d`, this gives `d_ff' = (8/3)·d ≈ 2.667·d` (e.g. `d_ff=3072 → 2048` at
-`d=768`). Biases are omitted; in a GPT-style implementation the width `int(8/3·d)` is rounded
-up to a multiple of 64 for matmul-friendly shapes (a sub-1% nudge, not a real budget change).
+`d=768`). Biases are omitted; in a GPT-style implementation the exact target `(8/3)·d` is
+rounded up to a multiple of 64 for matmul-friendly shapes, an explicit sub-1% implementation
+nudge at common widths.
 
 ## Final layer
 
@@ -75,9 +84,9 @@ class MLP(nn.Module):
         super().__init__()
         hidden_dim = int(8 / 3 * config.n_embd)            # (2/3) * 4d
         hidden_dim = ((hidden_dim + 63) // 64) * 64        # round up to a multiple of 64
-        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)      # gate proj W
-        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)      # value proj V
-        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)  # down proj W2
+        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=False)      # gate proj W
+        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=False)      # value proj V
+        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=False)  # down proj W2
         self.dropout = nn.Dropout(config.dropout)
 
     def forward(self, x):                                   # (B, T, n_embd) -> (B, T, n_embd)
@@ -85,32 +94,68 @@ class MLP(nn.Module):
         return self.dropout(self.c_proj(F.gelu(self.w1(x)) * self.w3(x)))
 ```
 
-Generic GLU-variant module (choose the gate to get GLU / ReGLU / GEGLU / SwiGLU / Bilinear):
+LabML-style generic gated feed-forward module (choose the gate activation to get GLU / ReGLU /
+GEGLU / SwiGLU / Bilinear):
 
 ```python
 import torch
 import torch.nn as nn
 
 
-class FeedForwardGLU(nn.Module):
-    """Gated FFN. activation = nn.GELU() -> GeGLU; nn.SiLU() -> SwiGLU;
-    nn.ReLU() -> ReGLU; nn.Sigmoid() -> GLU; nn.Identity() -> Bilinear."""
+class FeedForward(nn.Module):
+    """Position-wise FFN with optional gated hidden layer."""
 
-    def __init__(self, d_model, d_ff, dropout=0.0, activation=nn.GELU(), bias=False):
+    def __init__(
+        self,
+        d_model,
+        d_ff,
+        dropout=0.0,
+        activation=nn.GELU(),
+        is_gated=True,
+        bias1=False,
+        bias2=False,
+        bias_gate=False,
+    ):
         super().__init__()
-        self.w_gate = nn.Linear(d_model, d_ff, bias=bias)   # W
-        self.w_value = nn.Linear(d_model, d_ff, bias=bias)  # V
-        self.w_out = nn.Linear(d_ff, d_model, bias=bias)    # W2
+        self.layer1 = nn.Linear(d_model, d_ff, bias=bias1)       # gate path W
+        self.layer2 = nn.Linear(d_ff, d_model, bias=bias2)       # output path W2
         self.act = activation
+        self.is_gated = is_gated
+        if is_gated:
+            self.linear_v = nn.Linear(d_model, d_ff, bias=bias_gate)  # value path V
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        h = self.act(self.w_gate(x)) * self.w_value(x)      # ( f(xW) ⊗ xV )
-        return self.w_out(self.dropout(h))                  # ... W2
+        h = self.act(self.layer1(x))
+        if self.is_gated:
+            h = h * self.linear_v(x)                        # f(xW) ⊗ xV
+        return self.layer2(self.dropout(h))                 # ... W2
 ```
 
 To size `d_ff` for a matched-budget comparison against a baseline FFN of width `d_ff_base`,
 set `d_ff = (2/3) * d_ff_base` (i.e. `8/3 * d_model` when the baseline uses `4 * d_model`).
+
+Mesh TensorFlow expresses the same hidden product with `dense_product`:
+
+```python
+hidden_channels = mtf.Dimension("d_ff", hidden_size)
+h = mtf.layers.dense_product(
+    x,
+    reduced_dims=x.shape.dims[-1:],
+    new_dims=hidden_channels,
+    activation_functions=["gelu", "linear"],
+    use_bias=False,
+    name="wi",
+)
+y = mtf.layers.dense(
+    h,
+    x.shape.dims[-1],
+    reduced_dims=h.shape.dims[-1:],
+    activation=None,
+    use_bias=False,
+    name="wo",
+)
+```
 
 ## The GLU-variant family
 
@@ -123,4 +168,4 @@ set `d_ff = (2/3) * d_ff_base` (i.e. `8/3 * d_model` when the baseline uses `4 *
 | SwiGLU    | Swish₁ = SiLU   | `Swish₁(xW) ⊗ (xV)`      |
 
 All use three matrices `(W, V, W2)` and are sized to the matched 2/3 hidden width when
-compared against a two-matrix FFN.
+compared against a two-matrix FFN, with optional round-up to a hardware-friendly multiple.

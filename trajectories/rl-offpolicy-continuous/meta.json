@@ -1,0 +1,52 @@
+{
+  "task": "rl-offpolicy-continuous",
+  "title": "RL Off-Policy Continuous Control: from a single critic to a target-free normalized critic",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "halfcheetah-v4",
+    "reacher-v4",
+    "ant-v4"
+  ],
+  "metric_columns": [
+    "eval_return_halfcheetah_v4",
+    "eval_return_reacher_v4",
+    "eval_return_ant_v4"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ddpg",
+      "method": "DDPG (deterministic actor-critic)",
+      "reasoning": "01-ddpg-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ddpg-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "sac",
+      "method": "SAC (maximum-entropy stochastic actor-critic)",
+      "reasoning": "02-sac-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-sac-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "td3",
+      "method": "TD3 (twin-delayed deterministic actor-critic)",
+      "reasoning": "03-td3-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-td3-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "crossq",
+      "method": "CrossQ (BatchRenorm critic, no target networks)",
+      "reasoning": "04-crossq-reasoning.md",
+      "finale": true,
+      "answer": "04-crossq-answer.md"
+    }
+  ],
+  "ranking_basis": "Metric = mean episodic return (higher better), averaged across HalfCheetah-v4, Reacher-v4, and the hidden Ant-v4 from the is_final,true baseline:* rows. HalfCheetah and Reacher are near-saturated for all three baselines, so the hidden high-dimensional Ant decides the order. ddpg weakest: single critic overestimates, Ant collapses to mean 1243 with two seeds at ~570. sac middle: twin-min + entropy rescue Ant to 3577 but the entropy taxes the precision/sharp tasks (Reacher -4.76 vs ddpg -3.94, HalfCheetah 10360 vs 11514). td3 strongest baseline: deterministic actor + twin-min + target smoothing wins all three at once (HalfCheetah 11055, Reacher -3.83, Ant 4642).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_offpolicy_continuous.py lines 153-244: Actor + QNetwork + OffPolicyAlgorithm, scaffold from edits/*.edit.py), 256-wide fixed networks with a runtime parameter-count check. Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only); the code block lives in the answer so the stacked view shows it once. methods/<slug> single-round traces (ddpg, td3, sac) are the derivation reference and untouched. Finale = CrossQ (Bhatt, Palenicek et al., ICLR 2024, arXiv:1902.05605): a real published method NOT among the task's active baselines, with a faithful scaffold fill in the task's edits/crossq.edit.py, carrying its own methods/crossq trace; it carries no feedback. Same-named-vs-paper diffs (CrossQ): task fixes network dims at 256-wide (no 2048 widening), actor updates every step (policy_frequency=1), BatchRenorm eps=1e-5 (paper 1e-3), critics toggled to eval() for the actor's Q-evaluation; the paper's accuracy partly relies on critic widening this harness forbids, so the trajectory derives and expects the mechanism-only benefit (un-stale, jointly-normalized critic) rather than the paper's full margin."
+}

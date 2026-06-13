@@ -1,0 +1,52 @@
+{
+  "task": "graph-graph-classification",
+  "title": "Graph Classification Readout: from learned soft pooling to degree-aware multi-aggregation",
+  "domain": "Graph & mesh",
+  "metrics": [
+    "MUTAG",
+    "PROTEINS",
+    "NCI1"
+  ],
+  "metric_columns": [
+    "test_acc",
+    "macro_f1"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "PNA-style degree-aware multi-aggregation readout",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "diffpool",
+      "method": "DiffPool (stripped learned soft-cluster pooling)",
+      "reasoning": "01-diffpool-reasoning.md",
+      "answer": "01-diffpool-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gin-sum",
+      "method": "GIN JK-Sum readout (per-layer sum + concat)",
+      "reasoning": "02-gin-sum-reasoning.md",
+      "answer": "02-gin-sum-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "sagpool",
+      "method": "SAGPool (self-attention hierarchical top-k pooling)",
+      "reasoning": "03-sagpool-reasoning.md",
+      "answer": "03-sagpool-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "pna-readout",
+      "method": "PNA-style degree-aware multi-aggregation readout",
+      "reasoning": "04-pna-readout-reasoning.md",
+      "answer": "04-pna-readout-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "All metrics higher-is-better; ranked by accuracy across MUTAG/PROTEINS/NCI1 (is_final,true baseline:* rows, seed mean). diffpool weakest: loses to both others on MUTAG (81.37) and PROTEINS (70.98) and is mean-like (near-zero PROTEINS seed spread) -- the stripped harness DiffPool has no link/entropy auxiliary or pooling-GNN, so it drifts to a noisy global mean. gin-sum middle (MUTAG 84.02, PROTEINS 74.54, NCI1 79.52): the injective JK-sum is robust on all three. sagpool strongest baseline (MUTAG 90.95, PROTEINS 77.99, highest dataset average 79.90 and highest single-dataset peak) -- learned attention top-k wins the motif-driven sets, but its hard node-drop collapses NCI1 to 70.75 (worst seed 66.76), the open failure the finale targets. Finale = PNA-style multi-aggregation readout (real, published, not a task baseline) that keeps every node (non-destructive) to recover NCI1 robustness while adding expressivity past a single sum.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_graph_cls.py GraphReadout, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code block) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. SAME-NAMED-BASELINE DIFFS vs the methods/<slug> paper traces: (1) diffpool -- the task's edits/diffpool.edit.py is a STRIPPED single-level DiffPool (one plain assignment MLP over node features, NO separate pooling GNN, NO link-prediction or entropy auxiliary loss, fixed max_nodes=150/num_clusters=25, masked softmax over nodes then mean over clusters), because the editable GraphReadout is post-backbone and the fixed loss is plain cross-entropy with no hook for auxiliaries; methods/diffpool is the full paper version. (2) gin-sum -- edits/gin_sum.edit.py is the paper JK-sum readout but ADDS a per-layer BatchNorm1d on the graph-level embeddings before concatenation (task-specific stabilizer, not in the paper). (3) sagpool -- HAS NO methods/<slug> trace in the repo (it was missing from the methods phase); its trajectory reasoning was authored directly from the SAGPool paper (Lee et al. 2019) and the task's edits/sagpool.edit.py (two SAGPooling ratio=0.5 levels, [sum,mean] readout at 3 scales, project 6H->H). Finale pna-readout: full standalone methods/pna-readout trace created (grounded in Corso et al. 2020 + Codex-reviewed); the trajectory finale adapts canonical PNA to the harness -- drops the min aggregator (post-ReLU GIN features are non-negative so min is near-constant) keeping {mean,max,std}x{I,+1,-1}=9 channels, and folds layers by element-wise sum (JK) so no node is dropped. trajectories.json NOT edited per task constraints."
+}

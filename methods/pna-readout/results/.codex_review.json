@@ -1,0 +1,21 @@
+{
+  "method": "pna-readout",
+  "codex_reviewed": true,
+  "outcome": "completed",
+  "reviewed_at": "2026-06-13T12:25:00Z",
+  "reviewer": "codex",
+  "effort": "high",
+  "evidence": "this-run",
+  "findings_addressed": [
+    "Overclaim 'logarithmic amplified-mean reproduces a sum' corrected in methods reasoning.md/answer.md and trajectory 04-pna-readout reasoning/answer: only the LINEAR scaler S(d)=d turns mean into sum; the log scaler is its bounded-magnitude replacement and does not reproduce a sum.",
+    "Theorem 2 wording narrowed: a degree-linear injective scaler composed with a constructed element map makes the mean injective on bounded countable multisets (not 'raw mean times any injective scaler is injective').",
+    "Trajectory graph-level readout relabeled as an ADAPTATION of canonical PNA, not an 'exact lift': it scales node embeddings pre-pooling with a per-graph delta, vs canonical post-aggregation scaling with a training-set degree statistic.",
+    "Runtime bug fixed: global_max_pool is not in the scaffold's module imports, so the finale answer code now imports it locally from torch_geometric.nn (matching the sortpool/sagpool baselines' local-import pattern)."
+  ],
+  "verified_correct": [
+    "Theorem 1 'at least n aggregators to discriminate size-n multisets over R' (Borsuk-Ulam) faithful.",
+    "Aggregators {mean, max, min, std} and std=sqrt(ReLU(E[x^2]-E[x]^2)+eps) match the paper.",
+    "Tensor product [I, S(+1), S(-1)] x [mu, sigma, max, min] = 12 channels matches the paper; code order differences harmless.",
+    "Finale and methods code AST-parse and run on PyG 2.8.0 (output [B, hidden_dim], no NaN, within parameter budget)."
+  ]
+}

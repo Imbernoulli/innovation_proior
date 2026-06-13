@@ -1,0 +1,53 @@
+{
+  "task": "rl-onpolicy-continuous",
+  "title": "On-Policy Continuous Control: the policy-update rule, weak to strong",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "halfcheetah-v4",
+    "swimmer-v4",
+    "inverteddoublependulum-v4"
+  ],
+  "metric_columns": [
+    "eval_return_halfcheetah_v4",
+    "eval_return_swimmer_v4",
+    "eval_return_inverteddoublependulum_v4"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "RPO (Robust Policy Optimization)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ppo_penalty",
+      "method": "PPO-Penalty (adaptive KL)",
+      "reasoning": "01-ppo_penalty-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ppo_penalty-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "awr",
+      "method": "AWR (advantage-weighted regression)",
+      "reasoning": "02-awr-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-awr-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "ppo",
+      "method": "PPO (clipped surrogate)",
+      "reasoning": "03-ppo-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-ppo-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "rpo",
+      "method": "RPO (Robust Policy Optimization)",
+      "reasoning": "04-rpo-reasoning.md",
+      "finale": true,
+      "answer": "04-rpo-answer.md"
+    }
+  ],
+  "ranking_basis": "Task score = geometric mean across HalfCheetah/Swimmer/InvertedDoublePendulum (each sigmoid-normalized, higher better), per score_spec.py; the gmean rewards balance and penalizes any single collapsed environment hard. From is_final,true baseline:* mean rows: ppo_penalty weakest (worst on 2 of 3 envs -- HalfCheetah 1676.6, InvertedDoublePendulum 6877.1 -- and large seed swings, e.g. HalfCheetah 1150-2695). awr middle: wins HalfCheetah (1996.7) and InvertedDoublePendulum (7299.2) but is worst-of-all on Swimmer (90.2, seed-123 = 46) so its gmean is capped. ppo strongest: most balanced -- tightest, highest Swimmer (113.2, range 109.7-118.1), steady InvertedDoublePendulum (7048.4), gives up the lucky-seed HalfCheetah tail (1757.6) for never being worst anywhere, which maximizes the geometric mean.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_onpolicy_continuous.py lines 175-221: get_action_and_value + compute_losses, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). All three baselines share the identical Gaussian get_action_and_value and differ only in compute_losses; the finale (RPO) is the one rung that edits get_action_and_value instead, keeping compute_losses verbatim from PPO. Finale RPO (Rahman & Xue 2022, arXiv:2212.07536) is a real published method NOT among the task's registered baselines (config.json baselines = ppo, awr, ppo_penalty), fits the edit surface exactly, ships as edits/rpo.edit.py, and is verified line-by-line against CleanRL rpo_continuous_action.py; it carries no feedback. Same-named-vs-paper diffs: AWR here is ON-POLICY (GAE from the loop, single shared Adam, K-epoch reuse) with beta=0.05 and self-normalized clipped weights, NOT the canonical off-policy AWR (replay buffer, buffer TD(lambda), separate momentum optimizers, beta~1.0); the task_description's stated 'default temperature beta=1.0' does not match the actual awr.edit.py (0.05) -- derived against the edit.py. PPO-Penalty adapts beta inline per-minibatch via agent._kl_beta (the free-function contract has no persistent store) with the cheap log-ratio KL estimator (gradient-on for the penalty, detached for adaptation), not a closed-form Gaussian KL or a once-per-iteration outer servo. methods/<slug> reuse status: methods/ppo has a complete results/ trace (reused as derivation reference); methods/awr exists but results/ is EMPTY (no reasoning/context/answer) -- AWR step derived from awr.edit.py + the canonical awr_agent.py reference in methods/awr/code/; methods/ppo_penalty does NOT exist -- derived from ppo_penalty.edit.py + the policy-optimization lineage. Per instructions, missing baseline methods traces were not regenerated."
+}

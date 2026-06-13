@@ -1,0 +1,45 @@
+{
+  "task": "dl-normalization",
+  "title": "DL Normalization Layer Design: from a per-channel batch/instance gate to a learned mix of the family",
+  "domain": "Deep learning",
+  "metrics": [
+    "resnet56-cifar100",
+    "resnet110-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc_resnet56-cifar100",
+    "test_acc_resnet110-cifar100",
+    "test_acc_mobilenetv2-fmnist"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "batch_instance_norm",
+      "method": "Batch-Instance Norm (per-channel BN/IN gate)",
+      "reasoning": "01-batch_instance_norm-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-batch_instance_norm-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "group_norm",
+      "method": "Group Norm (channel-group statistics)",
+      "reasoning": "02-group_norm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-group_norm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "switchable_norm",
+      "method": "Switchable Norm (learned BN/LN/IN mix)",
+      "reasoning": "03-switchable_norm-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-switchable_norm-answer.md"
+    }
+  ],
+  "endpoint": "Switchable Norm (learned BN/LN/IN mix)",
+  "ranking_basis": "Weak->strong by best-test-accuracy across the three configs on the is_final,true baseline:* rows (seed 42, the only configured seed). batch_instance_norm weakest: it loses on 2 of 3 configs and on both of the harder, primary CIFAR-100 ResNets (66.06 resnet56, 68.65 resnet110), winning only the near-ceiling mobilenetv2-fmnist (93.64). group_norm middle: it takes both CIFAR-100 ResNets (67.90, 70.43) but slips on mobilenetv2-fmnist (93.16). switchable_norm strongest: it dominates on all three at once (68.95 / 70.58 / 94.10), the only baseline that is best on every config.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the CustomNorm nn.Module in pytorch-vision/custom_norm.py, lines 31-45; scaffold default nn.BatchNorm2d; baseline fills from edits/{batch_instance_norm,group_norm,switchable_norm}.edit.py). Each step = reasoning (full derivation, prose, no code) -> answer (distilled summary + the scaffold code) -> feedback (numbers only, baselines). Same-named-baseline-vs-paper diffs (the trajectory matches the task edit.py, not the paper): (1) batch_instance_norm -- the official Nam&Kim impl subclasses _BatchNorm and reuses F.batch_norm with a frozen running mean/var (momentum 0.1) for the BN branch at eval and folds gate*weight / (1-gate)*weight per branch; the task edit computes BN and IN moments manually in forward with NO running statistics in train OR eval, gates via sigmoid(rho) (rho init 1.0 -> ~0.73 BN-leaning), and applies ONE per-channel affine to the combined feature. (2) switchable_norm -- the paper learns per-statistic importance weights and keeps running BN stats for inference; the task edit uses a single global 3-vector each for mean and var (nn.Parameter(torch.ones(3)) shared across all channels, NOT per-channel as the task_description loosely says), softmaxed over {IN,LN,BN}, with batch stats computed on the fly (no running buffer). (3) group_norm -- delegates to nn.GroupNorm with an adaptive group count min(32,C) decremented to divisibility, so narrow layers (16/32 ch) collapse to 1 channel/group = instance-equivalent; the methods/group-norm trace hand-rolls the reshape+moment reduction and asserts exact divisibility. No finale: switchable_norm already learns the convex mix of the whole BN/LN/IN family, so it subsumes the family's corners; the published method that would clearly beat it on this exact drop-in CustomNorm(num_features) contract is EvoNorm-S0 (Liu et al., NeurIPS 2020, arXiv:2004.02967), but EvoNorm-S0 fuses the normalization with the activation (it replaces both norm AND ReLU), and the scaffold keeps ReLU as a separate fixed layer after CustomNorm, so a faithful EvoNorm-S0 would double-apply the nonlinearity -- it does not fit the edit surface, so per spec the trajectory stops at the strongest baseline rather than inventing a finale. Reference-trace status: methods/group-norm has a full results/ trace (reused as the derivation reference); methods/batch-instance-norm exists but has NO results/ reasoning trace (only paper src, official code, refs) so step 1 was derived from the paper + official impl; switchable-norm has no methods/ entry at all so step 3 was derived from the paper (Luo et al., arXiv:1806.10779) grounded in the task edit.py."
+}

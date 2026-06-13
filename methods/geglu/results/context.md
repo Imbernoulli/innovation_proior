@@ -39,15 +39,16 @@ replaced it as the default because gradients flow undiminished on the positive h
   mask: take a 0/1 mask `m ~ Bernoulli(Φ(x))` (keep-probability rising with `x`, motivated by
   preactivations being approximately normal, an effect strengthened by normalization layers);
   its expected transform is `Φ(x)·x + (1−Φ(x))·0 = xΦ(x)`. So GELU multiplies `x` by a smooth,
-  input-dependent value in roughly `(0,1)` instead of ReLU's hard `1[x>0]`. It is computed
-  exactly as `x·½[1 + erf(x/√2)]`, or cheaply approximated by
+  input-dependent value in roughly `(0,1)` instead of ReLU's hard `1[x>0]`. Its derivative is
+  `GELU'(x) = Φ(x) + x·φ(x)`, where `φ(x) = exp(−x²/2)/√(2π)` is the standard-normal density.
+  It is computed exactly as `x·½[1 + erf(x/√2)]`, or cheaply approximated by
   `0.5x(1 + tanh[√(2/π)(x + 0.044715 x³)])` or by `x·σ(1.702 x)`.
 - **Swish / SiLU** (Ramachandran, Zoph & Le 2017; the `β=1` case is the SiLU of Elfwing et al.
   2017). `Swish_β(x) = x · σ(βx)`. Found by an automated search over compositions of unary and
   binary primitives; the best-performing functions shared the structure `b(x, g(x))` — reusing
   the raw preactivation `x` multiplied by a gate `g(x)`. Swish is smooth, **non-monotonic**
   (a small "bump" below zero), unbounded above and bounded below; `β→∞` recovers ReLU and
-  `β=0` is linear, so it smoothly interpolates between the two. Its derivative is
+  `β=0` gives the scaled linear map `x/2`, so it smoothly interpolates between the two. Its derivative is
   `f'(x) = σ(βx) + βx·σ(βx)(1−σ(βx)) = βf(x) + σ(βx)(1 − βf(x))`. With `β=1`, Swish and GELU
   trace nearly the same curve — both are "`x` times a smooth CDF-like gate of `x`", and indeed
   the sigmoid approximation of GELU is exactly `x·σ(1.702 x)`, a Swish with `β≈1.702`.
@@ -73,9 +74,9 @@ A second, separate line of work is about combining two linear views of an input
   ∇[tanh(X) ⊗ σ(X)] = tanh'(X)∇X ⊗ σ(X) + σ'(X)∇X ⊗ tanh(X),
   ```
 
-  in which **every** term carries a bounded activation-derivative factor (`tanh' ≤ 1`,
-  `σ' ≤ ¼`), so the signal is downscaled on every path and is observed to attenuate as layers
-  are stacked.
+  in which both paths carry saturating activation-derivative factors (`0 ≤ tanh' ≤ 1`,
+  `0 ≤ σ' ≤ ¼`), with no derivative-free path through the content. The corresponding signal is
+  observed to attenuate as layers are stacked.
 
 By 2019, the Transformer is the dominant sequence-modeling architecture and the transfer-
 learning recipe of pretraining on a large denoising/span-corruption objective and fine-tuning
@@ -110,7 +111,7 @@ projection whose output it scales, and the layer has exactly two weight matrices
 ## Evaluation settings
 
 The natural yardstick is the standard Transformer transfer-learning protocol that already
-exists (Raffel et al. 2019), used unchanged so that only the FFN form varies:
+exists (Raffel et al. 2019), shared across variants so that only the FFN form varies:
 
 - **Architecture.** Encoder-decoder Transformer, 12 encoder + 12 decoder layers,
   `d_model = 768`, attention `h = 12` heads with `d_k = d_v = 64`, baseline FFN hidden
@@ -119,8 +120,8 @@ exists (Raffel et al. 2019), used unchanged so that only the FFN form varies:
 - **Pretraining.** Span-corruption / denoising objective (predict deleted spans) on the C4
   corpus; 524,288 steps; batch of 128 examples, each ~512 input and ~114 output tokens;
   Adafactor optimizer with an inverse-square-root learning-rate schedule and a linear decay
-  over the final 10% of steps. (A shorter 65,536-step run, repeated several times, is used to
-  gauge inter-run variability.)
+  over the final 10% of steps; no dropout during pretraining. (A shorter 65,536-step run,
+  repeated several times, is used to gauge inter-run variability.)
 - **Fine-tuning / downstream.** A fully pretrained model is fine-tuned and evaluated on the
   GLUE and SuperGLUE language-understanding benchmarks and on SQuAD question answering.
 - **Metric.** Held-out-shard log-perplexity on the pretraining objective (lower is better) as

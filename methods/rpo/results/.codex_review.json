@@ -1,0 +1,10 @@
+{
+  "method": "rpo",
+  "codex_reviewed": true,
+  "outcome": "completed",
+  "reviewed_at": "2026-06-13T12:23:14Z",
+  "reviewer": "gpt-5-codex",
+  "effort": "code/math/style review against CleanRL rpo_continuous_action.py, Rahman & Xue arXiv:2212.07536, CleanRL RPO docs, and PyTorch torch.max semantics",
+  "evidence": "this-run",
+  "note": "Write-enabled Codex pass (thread 019ec0eb-dc9a-7911-acf8-ce1fa4bd0e40) reviewed context.md/reasoning.md/answer.md against the canonical CleanRL RPO impl and the RPO paper. Verified: update-time-only uniform mean perturbation z~U(-rpo_alpha,rpo_alpha) with clean rollout sampling; default rpo_alpha=0.5; PPO-identical clipped surrogate + clipped value loss; all three python blocks parse and compile; the clipped value loss 0.5*torch.max(a,b).mean() is correct (torch.max of two tensors is elementwise, .mean() applied after). Log-sigma gradient-collapse argument confirmed sound. Codex sandbox was read-only so it could not apply patches or write this file; the author agent applied Codex's three findings in place and re-verified: (1) replaced the loose 'higher variance => higher entropy' wording in reasoning.md and answer.md with the correct convolution/entropy-power argument (the perturbed law is N(mu,sigma) convolved with independent non-degenerate uniform noise, which strictly raises differential entropy); (2) tempered the alpha portability phrasing (kept 0.5 default and the small-alpha near-PPO note supported by the CleanRL docs, dropped the over-strong 'normalized action units => portable' gloss into a hedged expectation); (3) added a comment above the clipped value loss confirming elementwise-max-then-mean. In-frame style checks pass: first-person present, no reference to the RPO method/paper as a published artifact (PPO/TRPO/A3C cited as prior art by author/year), no future-knowledge leakage, no fabricated numbers. python blocks re-confirmed to ast-parse after edits."
+}

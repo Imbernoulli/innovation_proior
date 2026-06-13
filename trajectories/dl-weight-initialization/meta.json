@@ -1,0 +1,46 @@
+{
+  "task": "dl-weight-initialization",
+  "title": "DL Weight Initialization: data-independent init for deep conv nets",
+  "domain": "Deep learning",
+  "metrics": [
+    "resnet56-cifar100",
+    "vgg16bn-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc_resnet56-cifar100",
+    "test_acc_vgg16bn-cifar100",
+    "test_acc_mobilenetv2-fmnist"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "orthogonal",
+      "method": "Orthogonal init (norm-preserving)",
+      "reasoning": "01-orthogonal-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-orthogonal-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "kaiming_normal",
+      "method": "Kaiming/He normal init",
+      "reasoning": "02-kaiming_normal-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-kaiming_normal-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "fixup",
+      "method": "Fixup-style residual scaling + zero-gamma BN",
+      "reasoning": "03-fixup-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-fixup-answer.md"
+    }
+  ],
+  "endpoint": "Fixup-style residual scaling + zero-gamma BN",
+  "ranking_basis": "Single seed (42); metric = best test acc (%, higher is better) over three (arch,dataset) pairs, from is_final,true baseline:* rows. orthogonal weakest: 72.08 / 72.83 / 93.88 — loses VGG and MobileNetV2 decisively (depthwise convs flatten to tall (C,9) matrices the orthogonal construction can't make row-orthogonal). kaiming_normal middle: 72.07 / 73.38 / 94.49 — beats orthogonal on VGG and MobileNetV2, ties it on ResNet-56. fixup strongest: 72.37 / 74.37 / 94.48 — best on ResNet-56 (the only rung that pays the residual-accumulation tax) and on VGG, essentially tied on MobileNetV2.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (pytorch-vision/custom_init.py: initialize_weights(model, config), scaffold default = N(0,0.01^2); each step = the literal edits/<baseline>.edit.py fill, lines 228-261). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code block) -> feedback (numbers, baselines only). SAME-NAMED-VS-PAPER: this task's 'fixup' is NOT the canonical normalization-free Fixup. The paper removes BatchNorm, inserts learnable scalar biases + one multiplier per branch, scales the NON-zero branch convs by L^(-1/(2m-2)) while ZERO-initializing the last conv, and zero-inits the classifier. The task's edit keeps BatchNorm (frozen graph), adds NO scalar biases/multipliers, does NOT zero the classifier, scales the LAST conv (conv2) by n_blocks^(-1/2), and starts the branch near identity via the zero-gamma BN trick (bn2.weight=0, Goyal et al. 2017) instead of zeroing a conv. So it is a BN-equipped Kaiming + residual-branch-downscale + zero-gamma hybrid; the reasoning derives THAT, not the paper's recipe, and explicitly notes the omitted machinery. No finale: the natural stronger move (LSUV) needs a data calibration pass, which the task forbids (data-independent, no calibration), and no other published data-independent init that fits this exact edit surface (BN kept, no graph change) is clearly stronger than the residual-aware baseline; per the spec, stop at the strongest baseline.",
+  "finale": false
+}

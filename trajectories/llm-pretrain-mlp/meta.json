@@ -1,0 +1,52 @@
+{
+  "task": "llm-pretrain-mlp",
+  "title": "LLM Pretraining: feed-forward (MLP) sublayer design",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag",
+    "piqa",
+    "winogrande"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m",
+    "piqa_lm-eval-345m",
+    "winogrande_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "geglu",
+      "method": "GeGLU (GLU with GELU gate, 8/3 width)",
+      "reasoning": "01-geglu-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-geglu-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "swiglu",
+      "method": "SwiGLU (GLU with SiLU gate, 8/3 width)",
+      "reasoning": "02-swiglu-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-swiglu-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "relu_squared",
+      "method": "ReLU² (squared-ReLU / Primer-EZ, 4x width)",
+      "reasoning": "03-relu_squared-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-relu_squared-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by primary metric val_loss_gpt-345m (lower is better) on the is_final,true baseline:* rows, seed 42: geglu 2.2952 (weakest) > swiglu 2.2923 > relu_squared 2.2830 (strongest). relu_squared also leads on wikitext2_ppl (43.33, best of the three), arc_easy (55.26), hellaswag (33.86), winogrande (51.22), and is fastest (elapsed 19667s). swiglu < geglu is small but consistent (val_loss 2.2923 vs 2.2952, LAMBADA 66.81 vs 68.73, hellaswag 33.40 vs 32.90).",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the MLP class in nanoGPT/custom_pretrain.py, lines 72-86, plus the default-empty CONFIG_OVERRIDES at 245-247), authored from edits/*.edit.py. Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. No finale: the three baselines exhaust the well-grounded FFN-only space (GLU gating + activation shape), relu_squared is the strongest, and no published FFN-only method is clearly stronger than squared-ReLU on this matched-budget val-loss objective without fabricating a comparison, so the ladder stops at the strongest baseline."
+}

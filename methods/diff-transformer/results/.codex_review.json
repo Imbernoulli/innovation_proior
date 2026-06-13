@@ -1,0 +1,10 @@
+{
+  "method": "diff-transformer",
+  "codex_reviewed": true,
+  "outcome": "completed",
+  "reviewed_at": "2026-06-13T12:29:42.642Z",
+  "reviewer": "gpt-5.3-codex-spark",
+  "focus": "code-vs-reference correctness against microsoft/unilm Diff-Transformer/multihead_diffattn.py and arXiv:2410.05258",
+  "verdict": "Faithful to the canonical Diff-Transformer math and implementation; no concrete correctness bugs found; no in-place fixes required. Verified: head_dim=n_embd//n_head//2 with 2*n_head q/k sub-heads and n_head v heads of 2*head_dim (q/k/v widths stay n_embd, parameter/FLOP matched); lambda=exp(q1.k1)-exp(q2.k2)+lambda_init with four head_dim vectors init N(0,0.1); reshape (B,2*n_head,T,T)->(B,n_head,2,T,T) then att[:,:,0]-lambda_full*att[:,:,1]; per-head RMSNorm(2*head_dim) then *(1-lambda_init); documented harness compromises (fixed lambda_init=0.8 for missing layer index; manual masked-softmax path because fused SDPA hides the two maps) accurate and justified.",
+  "evidence": "job:task-mqcc0pg1-2tnalo; thread:019ec0f4-e4ae-78a2-99da-d9c1a014002f"
+}

@@ -1,0 +1,45 @@
+{
+  "task": "cv-diffusion-prediction",
+  "title": "Diffusion Prediction Parameterization: choosing the training target under a fixed pipeline",
+  "domain": "Computer vision",
+  "metrics": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "metric_columns": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "x0pred",
+      "method": "x0-prediction (predict the clean image)",
+      "reasoning": "01-x0pred-reasoning.md",
+      "answer": "01-x0pred-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "vpred",
+      "method": "v-prediction (predict the velocity)",
+      "reasoning": "02-vpred-reasoning.md",
+      "answer": "02-vpred-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "epsilon",
+      "method": "epsilon-prediction (DDPM default)",
+      "reasoning": "03-epsilon-reasoning.md",
+      "answer": "03-epsilon-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "epsilon-prediction (DDPM default)",
+  "ranking_basis": "FID (lower is better), single seed 42, from is_final=true baseline:* rows across all three channel scales (best_fid_small/medium/large). Monotone at every scale: x0pred weakest (25.25/13.56/11.99) < vpred (21.70/11.59/8.80) < epsilon strongest (18.58/8.46/7.17). Ordering is identical at all three capacities, so the ranking is unambiguous.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (diffusers-main/custom_train.py lines 83-118: the coupled compute_training_target + predict_x0 functions, fills from edits/{x0pred,vpred,epsilon}.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. No finale: epsilon-prediction is already the strongest of the three standard targets in exactly this regime (low-res 32x32 CIFAR, full 50-step DDIM, flat unweighted MSE = the DDPM simplified objective the loop is built around), and no genuinely stronger published target-only parameterization fits the edit surface (the edit changes ONLY the target + x0 recovery; EDM-style preconditioning needs input scaling c_in applied outside the editable region, and Min-SNR / P2 are loss reweightings the frozen flat-MSE loop does not expose). Endpoint = strongest baseline epsilon."
+}

@@ -1,0 +1,56 @@
+{
+  "task": "llm-pretrain-attention",
+  "title": "LLM Pretraining: attention-mechanism optimization",
+  "domain": "Language models",
+  "metrics": [
+    "gpt-345m",
+    "lm-eval-345m"
+  ],
+  "metric_columns": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag",
+    "piqa",
+    "winogrande"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "qk_norm",
+      "method": "QK-Norm (RMSNorm on q,k)",
+      "reasoning": "01-qk_norm-reasoning.md",
+      "answer": "01-qk_norm-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "rope_qk_norm",
+      "method": "RoPE + QK-Norm",
+      "reasoning": "02-rope_qk_norm-reasoning.md",
+      "answer": "02-rope_qk_norm-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "rope",
+      "method": "RoPE (plain)",
+      "reasoning": "03-rope-reasoning.md",
+      "answer": "03-rope-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "diff-transformer",
+      "method": "Differential Transformer",
+      "reasoning": "04-diff-transformer-reasoning.md",
+      "answer": "04-diff-transformer-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "Differential Transformer",
+  "ranking_basis": "Single-seed task (42); rank by the primary objective, held-out val_loss (lower better), corroborated across perplexity and downstream. qk_norm weakest: val_loss 2.2885 and dominated on every metric (it changes only logit scale, leaving absolute-additive wpe in place). rope_qk_norm 2.2589 < qk_norm: RoPE adds relative position. rope strongest baseline at 2.2570 < rope_qk_norm 2.2589, and ahead on WikiText-2 (43.17 vs 43.44) and LAMBADA (65.81 vs 67.20); the two split on downstream (rope_qk_norm leads arc_easy/piqa, rope leads hellaswag/winogrande), so rope is the strongest language model on the primary objective with rope_qk_norm not strictly dominated. Note the combined edit.py labels itself 'strongest', but measured val_loss/perplexity put plain rope ahead.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (nanoGPT/custom_pretrain.py CausalSelfAttention, lines 33-70, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. Same-named-vs-paper: this task's 'qk_norm' is parameter-free RMSNorm on q,k with SDPA's 1/sqrt(d_k) kept (modded-nanogpt style), NOT the paper's L2-norm + learnable temperature g; 'rope' uses the split-half (LLaMA/NeoX) layout at base 10000 with frozen frequencies, a single layout where methods/rope shows both interleaved and split-half. methods/rope reused as the RoPE derivation reference (untouched); no methods/qk_norm or methods/rope_qk_norm trace exists (rmsnorm trace used as a partial QK-Norm derivation reference). Finale: Differential Transformer (Ye et al. 2024, arXiv:2410.05258), a real published method not among the task baselines, fits the edit surface; new methods/diff-transformer trace created (grounded + Codex). Finale harness omissions: config carries no layer index so the depth-scaled lambda_init schedule is replaced by a fixed lambda_init=0.8 (its deep asymptote); the fused SDPA hides the two softmax maps the differential subtraction needs, so the manual masked-softmax path is used."
+}
