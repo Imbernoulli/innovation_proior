@@ -1,0 +1,17 @@
+{
+  "slug": "cfg-zero-star",
+  "method": "CFG-Zero* (optimized scale + zero-init)",
+  "arxiv": "2503.18886",
+  "reference_repo": "https://github.com/WeichenFan/CFG-Zero-star",
+  "codex_reviewed": true,
+  "outcome": "completed",
+  "reviewed_at": "2026-06-14T11:20:00Z",
+  "reviewer": "codex-cli 0.139.0",
+  "focus": "code-vs-reference correctness of optimized_scale projection, the guided mix, and zero-init, in both the velocity-frame and the DDIM/CFG++ eps-frame transplant",
+  "result": "Verified faithful to the reference: optimized_scale = dot/squared-norm with +1e-8 floor, per-sample over flattened non-batch dims; guided = v_uncond*s* + w*(v_cond - v_uncond*s*); zero-init zeros/skips the first K steps; the closed-form Gaussian optimal velocity matches the paper. Cross-checked against arXiv:2503.18886, the official README easy-implementation, and the official SD3 pipeline.",
+  "findings": [
+    {"severity": "low", "issue": "DDIM/CFG++ transplant snippet returned decode(zt) instead of the clean Tweedie estimate", "status": "fixed -> decode(z0t)"},
+    {"severity": "low", "issue": "prose 's*=1 when collinear' imprecise", "status": "fixed -> residual-vanishes phrasing"}
+  ],
+  "evidence": "this-run"
+}

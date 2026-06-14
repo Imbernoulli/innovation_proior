@@ -1,0 +1,22 @@
+{
+  "scope": "finale",
+  "finale_slug": "cfg-zero-star",
+  "reference_method_trace": "methods/cfg-zero-star",
+  "arxiv": "2503.18886",
+  "reviewed_files": [
+    "trajectories/cv-diffusion-cfg/04-cfg-zero-star-answer.md",
+    "methods/cfg-zero-star/results/answer.md"
+  ],
+  "codex_reviewed": true,
+  "outcome": "completed",
+  "reviewed_at": "2026-06-14T11:20:00Z",
+  "reviewer": "codex-cli 0.139.0",
+  "focus": "code-vs-reference correctness of the CFG-Zero* eps-space transplant (optimized scale + zero-init + CFG++ renoise), SD and SDXL blocks, against arXiv:2503.18886 and the official CFG-Zero-star repo",
+  "result": "Guidance math verified correct. optimized_scale matches the official per-sample dot/squared-norm projection with +1e-8 floor, flattened over non-batch dims, reshaped to broadcast, cast to dtype. Mix is noise_uc*alpha + cfg_guidance*(noise_c - noise_uc*alpha). Tweedie denoise uses the mixed noise_pred; CFG++ renoise uses noise_uc. Zero-init skips the first K=2 steps via 'if step < K: continue'. SDXL mirrors SD with alphas_cumprod[t] and t-self.skip. Cross-checked against arXiv:2503.18886, the official README easy-implementation, and the official SD3 pipeline.",
+  "findings": [
+    {"severity": "low", "file": "methods/cfg-zero-star/results/answer.md", "issue": "DDIM/CFG++ transplant snippet returned pipeline.decode(zt) (renoised latent) instead of the clean Tweedie estimate per the task contract", "status": "fixed -> decode(z0t)"},
+    {"severity": "low", "file": "trajectories/cv-diffusion-cfg/04-cfg-zero-star-{answer,reasoning}.md", "issue": "prose said s*=1 exactly when predictions are collinear; projection gives s*=c for v_cond=c*v_uncond (residual vanishes either way; s*=1 only for equal predictions)", "status": "fixed -> prose tightened to 'residual vanishes; s*=1 in equal-predictions case'"}
+  ],
+  "note": "The scaffold answer code that is actually scored (04-cfg-zero-star-answer.md SD+SDXL blocks) was correct as written; both low findings were prose/illustrative-snippet only and have been addressed. methods/zeroinit is the task's PARTIAL baseline (zero-init only); the full CFG-Zero* (optimized scale + zero-init) is the finale with its own standalone methods/cfg-zero-star trace (methods.json NOT edited per task constraint).",
+  "evidence": "this-run"
+}

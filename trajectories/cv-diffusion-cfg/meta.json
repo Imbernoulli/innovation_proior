@@ -1,0 +1,53 @@
+{
+  "task": "cv-diffusion-cfg",
+  "title": "Diffusion CFG: classifier-free guidance on the data manifold",
+  "domain": "Computer vision",
+  "metrics": [
+    "sd15",
+    "sd20",
+    "sdxl"
+  ],
+  "metric_columns": [
+    "fid_sd15",
+    "fid_sd20",
+    "fid_sdxl"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "cfgpp",
+      "method": "CFG++ (manifold-constrained guidance)",
+      "reasoning": "01-cfgpp-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-cfgpp-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "cfg",
+      "method": "Standard CFG (guided renoise, w = 7.5)",
+      "reasoning": "02-cfg-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-cfg-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "zeroinit",
+      "method": "CFG++ + zero-init (skip first K = 2 steps)",
+      "reasoning": "03-zeroinit-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-zeroinit-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "cfg-zero-star",
+      "method": "CFG-Zero* (optimized scale + zero-init)",
+      "reasoning": "04-cfg-zero-star-reasoning.md",
+      "answer": "04-cfg-zero-star-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "CFG-Zero* (optimized scale + zero-init)",
+  "ranking_basis": "Ranked by per-variant FID (lower is better) from the is_final=true baseline:* rows (seed 42). cfgpp weakest: highest FID on all three variants (23.99/24.89/25.88). cfg next: guided renoise at w=7.5 lowers FID on every variant (23.65/24.29/25.74). zeroinit strongest baseline: CFG++ renoise + skip first K=2 steps beats both on all variants (22.76/23.31/25.49). Finale cfg-zero-star adds the optimized-scale projection the zeroinit baseline omitted (full CFG-Zero*).",
+  "notes": "MLS-Bench trajectory. Initial context and every step's code are the task's real edit surface (CFGpp-main/latent_diffusion.py BaseDDIMCFGpp.sample lines 621-679, and latent_sdxl.py BaseDDIMCFGpp.reverse_process lines 713-755), filled from edits/{cfgpp,cfg,zeroinit}.edit.py. Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Same-named-vs-paper divergences: (1) methods/zeroinit is the FULL CFG-Zero* paper (optimized scale + zero-init), but the task's zeroinit baseline implements ONLY the zero-init half on top of CFG++ (eps_uc renoise), no optimized scale -- so the finale cfg-zero-star adds the omitted optimized-scale projection and is the natural stronger endpoint. (2) The task's cfg baseline HARDCODES cfg_guidance=7.5 (overriding the harness value), unlike cfgpp/zeroinit which use the small harness-supplied scale; the methods/cfgpp answer uses a 0.6 default but the task fill keeps the 7.5 signature and the harness passes the small CFG++ scale. methods/{cfg,cfgpp,zeroinit} single-round traces are reused as derivation references and left untouched. The finale CFG-Zero* (arxiv 2503.18886) gets its own standalone trace at methods/cfg-zero-star/results/{context,reasoning,answer}.md, Codex-reviewed for code-vs-reference correctness (.codex_review.json: guidance math verified, two low prose/snippet findings fixed). methods.json was NOT edited (per task constraint), so the new methods/cfg-zero-star trace is not registered there."
+}

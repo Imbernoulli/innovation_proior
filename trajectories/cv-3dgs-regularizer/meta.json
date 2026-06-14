@@ -1,0 +1,47 @@
+{
+  "task": "cv-3dgs-regularizer",
+  "title": "3D Gaussian Splatting Regularizer: a parameter-only prior for novel-view quality",
+  "domain": "Computer vision",
+  "metrics": [
+    "garden",
+    "bicycle",
+    "bonsai",
+    "stump"
+  ],
+  "metric_columns": [
+    "best_psnr_garden",
+    "best_psnr_bicycle",
+    "best_psnr_bonsai",
+    "best_psnr_stump"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "none",
+      "method": "No regularizer (photometric loss only)",
+      "reasoning": "01-none-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-none-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "scale_opa",
+      "method": "Scale + opacity L1 (3DGS-MCMC compactness)",
+      "reasoning": "02-scale_opa-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-scale_opa-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "erank_opa",
+      "method": "Compactness L1 + effective-rank shape barrier (warmup 7000)",
+      "reasoning": "03-erank_opa-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-erank_opa-answer.md"
+    }
+  ],
+  "endpoint": "Compactness L1 + effective-rank shape barrier (warmup 7000)",
+  "ranking_basis": "Ranked by best PSNR (primary metric, higher is better) over seed 42 on the is_final,true baseline:* rows. none weakest by construction (no regularizer; lowest PSNR on all four scenes, mean 28.925). scale_opa > none: compactness L1 gains on every scene (mean 29.142), largest on the floater-rich unbounded scenes (garden +0.251, stump +0.260, bicycle +0.203), thinnest on fully-observed bonsai (+0.154). erank_opa > scale_opa: highest mean (29.240); the effective-rank shape barrier gains strongly on high-detail geometry where needles dominate (garden 29.318->29.623, bonsai 32.685->32.943) at a small cost on the thin-structure scenes (bicycle 26.844->26.725, stump 27.720->27.668). Net mean and the two largest-headroom scenes both favor erank_opa.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (gsplat/custom_regularizer.py: compute_regularizer(splats, step, scene_scale), scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only); code lives in the answer only. No finale: the strongest baseline (erank_opa) already combines two recent strong published parameter-only mechanisms (3DGS-MCMC compactness + Hyung et al. NeurIPS-2024 effective rank) at full strength, and no clearly stronger published parameter-only regularizer that fits this edit surface (no depth/normal/feature supervision, O(N), no renderer access) was found, so the ladder stops at erank_opa. methods/<slug> single-round traces (none=gaussian-splatting derivation, scale-opa, erank-opa) are untouched and used only as the derivation reference."
+}

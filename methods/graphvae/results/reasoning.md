@@ -1,0 +1,231 @@
+Let me start from what I actually want and where exactly it breaks. I want the thing that worked so well for images and text -- draw a vector `z` from a simple prior, push it through a decoder, get out a realistic object, and have the latent space smooth enough that I can interpolate and condition -- but with the object being a graph. Atoms and bonds, nodes and edges. Everything in deep learning on graphs so far runs the *other* direction: it encodes a graph into a vector, for classification or regression. The encoder side is in good shape -- message passing, graph convolutions, I can turn a graph into a vector and it works. The decoder side, vector back to graph, is essentially blank. So my job is the inverse map, and I should figure out why nobody has just done the obvious thing, because the obvious thing -- copy the VAE recipe -- must be failing somewhere specific.
+
+The VAE recipe is clean and I trust it. Latent `z ~ p(z) = N(0,I)`, a recognition model `q_phi(z|x)` that emits `(mu, log sigma^2)`, the reparameterization `z = mu + sigma (.) eps` with `eps ~ N(0,I)` so the gradient flows through the sampling, and the bound `L = E_{q}[ -log p_theta(x|z) ] + KL[q(z|x) || p(z)]`, with the Gaussian KL in closed form `-1/2 sum_j (1 + log sigma_j^2 - mu_j^2 - sigma_j^2)`. The only piece I have to design per data type is the reconstruction term `log p_theta(x|z)` -- for binary pixels it's per-pixel Bernoulli cross-entropy, for continuous data a Gaussian. So if I want a graph autoencoder, all the framework asks of me is: a decoder that emits the parameters of `p_theta(G|z)`, and a way to evaluate `log p_theta(G|z)` on a ground-truth graph. Sounds like a half-day of work. Let me try to actually write down `log p_theta(G|z)` and watch it fall apart, because that's where the real problem is hiding.
+
+Two things bite, and I want to name them precisely before I reach for any fix. The first: a graph is *discrete*. The adjacency matrix is 0/1, node and edge labels are categorical. If my decoder *samples* a discrete graph during training, the sampling step is non-differentiable and backprop dies right there. For images this never came up because pixels are continuous; here it's the first wall. The second is worse, and it's the one that's special to graphs. A graph has no canonical order on its nodes. The same graph on `n` nodes can be written as up to `n!` different adjacency matrices, all equally valid, just relabelings. Text generation dodges this entirely because language is *already* a sequence -- there is one left-to-right order and you predict token by token. A graph has no such order. People have canonical-labeling algorithms (nauty), but it's been observed that when you learn on sets, *which* order you impose actually changes what the model learns -- order matters. So I can't just declare an order and pretend.
+
+Why does the no-order problem actually hurt, concretely? It poisons the loss. Suppose my decoder spits out an adjacency matrix `A~` and I compare it entrywise to the ground-truth `A`. If the decoder produced *exactly the right graph* but with nodes 2 and 5 swapped, the entrywise comparison sees a totally different matrix and punishes it hard. So the reconstruction loss `log p_theta(G|z)`, the one term the VAE framework needs me to supply, isn't even well-defined: the matrix representation of a graph is not invariant to node permutation, and my loss is a function of the matrix. That's the real reason the obvious VAE-on-graphs doesn't just work. Two walls: non-differentiable discreteness, and a permutation-broken reconstruction term.
+
+Let me look at how people have been getting around graphs entirely, because their workarounds will tell me what to avoid. In cheminformatics, where you'd most want this, everyone went through SMILES -- write the molecule as a string and run an RNN text generator over it. That borrows all of text generation's machinery, and it sidesteps both my walls because a string *is* sequential and you can teacher-force it. But the price is brutal: SMILES syntax is brittle, so a character-level sampler emits a flood of *invalid* strings, and the string is a lossy linearization -- the model never actually sees the atoms-and-bonds object it's trying to make. Grammar VAE patches the validity hole by decoding grammar production rules so the output is syntactically valid by construction, and indeed its valid fraction jumps. But syntactic validity isn't chemical validity (valences still get violated), and it pays for high validity with collapsed variety, and it's *still* a linearization -- a grammar over a string, not a graph. So the whole string lineage is a detour around the fact that graphs are hard, and it keeps the structure hidden. I don't want that. I want to generate the graph as a graph.
+
+The other escape is to build the graph incrementally -- add a node, add its edges, add the next node -- with a recurrent model predicting each step. This keeps the object a graph the whole way, which I like. But stare at what it commits to: an *order* of construction. And a graph has no canonical construction order, so either the likelihood depends on an arbitrary ordering, or I have to *learn* the order, which is a sequence of discrete decisions -- back to non-differentiability. So incremental construction doesn't kill the ordering problem; it just relocates it into the generator. Both escapes leave the core difficulty untouched.
+
+So let me think about what would happen if I refused to linearize at all and just produced the *whole* graph in one shot. The reason this normally sounds insane is the size: a dense adjacency matrix is `k x k`, and outputting all of it directly is `O(k^2)` outputs, which for big graphs is hopeless. But -- wait. What if I restrict the domain to graphs on *at most `k` nodes*, with `k` small, on the order of tens? Molecules are small. Many useful graphs are small. If `k` is small, a dense `k x k` representation is completely tractable; I can output the entire thing at once. And the moment I commit to "output the whole graph in one shot," look what happens to both walls. There's no sequence of construction steps, so there's no linearization order to choose -- the first half of the ordering problem just evaporates. And if instead of outputting a *discrete* graph I output a *probabilistic* one -- every node and edge's existence as a Bernoulli probability, every label as a categorical distribution -- then I never sample anything discrete during training; my loss is computed on the continuous probabilistic graph, fully differentiable. That kills the non-differentiability wall. One decision -- "predict the whole probabilistic graph at fixed size `k` at once" -- disarms both of the obvious walls simultaneously. The only cost is `O(k^2)` and small graphs only, which I've already accepted.
+
+Let me make "probabilistic graph" concrete. The decoder, given `z`, emits a fully-connected graph on `k` nodes where everything is a random variable, all assumed independent. A predicted adjacency matrix `A~ in [0,1]^{k x k}` carries two kinds of probability: the off-diagonal `A~_{a,b}` is the probability that edge `(a,b)` exists, and I'll overload the *diagonal* `A~_{a,a}` to be the probability that node `a` exists -- that's how the model says "this slot is used or empty," which is what lets a graph on fewer than `k` nodes come out of a fixed-`k` decoder. An edge-attribute tensor `E~ in R^{k x k x d_e}` holds, per edge, a categorical distribution over `d_e` edge classes (bond types), and a node-attribute matrix `F~ in R^{k x d_n}` holds, per node, a categorical over `d_n` node classes (atom types). The decoder itself is deterministic -- a plain MLP -- with three output heads off its last layer: a sigmoid for `A~` (squashes to (0,1) probabilities), an edgewise softmax for `E~`, a nodewise softmax for `F~`. At test time, when I want an actual discrete graph, I take an argmax edgewise and nodewise; that can yield a graph on fewer than `k` nodes, which is exactly what I want. Good. Now the second wall -- the permutation-broken loss -- is still standing, and it's the hard one, because the whole point of one-shot output is that I have an unordered set of `k` predicted slots and an unordered set of `n` ground-truth nodes and no correspondence between them.
+
+To evaluate `log p_theta(G|z) = P(G | G~)`, I have to score how well the probabilistic graph `G~` (on `k` slots, in *its* arbitrary internal order) reproduces the ground-truth `G` (on `n <= k` nodes, in *its* arbitrary order). Entrywise comparison is meaningless because the two orders are unrelated. What I really need is a correspondence: which predicted slot `a` should be held responsible for which ground-truth node `i`? If I had that correspondence -- a binary assignment matrix `X in {0,1}^{k x n}`, `X_{a,i} = 1` iff slot `a` is matched to node `i` -- then I could line the two graphs up and compute cross-entropies in a shared frame. So the missing object isn't a fancier loss; it's an *alignment*. And aligning two graphs that share no coordinate frame, by the similarity of their node and edge structure, is a problem that already has a name in vision: graph matching.
+
+Let me recall what graph matching is, because I want to reuse the machinery rather than reinvent it. Second-order graph matching seeks a correspondence `X` between two graphs' nodes that maximizes a *pairwise* similarity: for pairs `(i,j)` in `G` and `(a,b)` in `G~`, a score `S((i,j),(a,b))` says how compatible it is to map `i->a` and `j->b` simultaneously. The objective is `max_X sum S((i,j),(a,b)) X_{a,i} X_{b,j}`, an integer quadratic program, NP-hard, and the standard trick is to relax `X` into the continuous box `X* in [0,1]^{k x n}` and solve the relaxation. So my plan crystallizes: define a similarity `S` between predicted-graph node pairs and ground-truth node pairs, solve the (relaxed) matching to get a correspondence, then use that correspondence to map the two graphs into a common frame and finally compute the reconstruction cross-entropy. "Find the best alignment, then score the reconstruction under it."
+
+Now, isn't it circular and expensive to solve a matching inside every forward pass? Let me argue myself out of needing it exact. Training is stochastic anyway -- I'm taking noisy gradient steps. The role of the matching is just to find a *good* correspondence so the gradient pushes the decoder toward the right graph; then gradient descent on the loss does the fine improvement. I don't need the global optimum of an NP-hard problem at every step; an approximate matching that's right *most* of the time is plenty, and the gradient cleans up the rest. This is the same spirit as learning to output unordered sets by seeking the closest ordering of the training data, and the same spirit as set-based object detection, where you match predicted boxes to ground-truth boxes and *then* compute a fixed loss. So: approximate matching, held fixed, then a differentiable loss. That also quietly resolves a worry about differentiability -- the matching itself can be non-differentiable, because I treat `X` as a fixed constant when I compute the loss, and the gradient flows to the decoder through the loss terms, not through the matching solver.
+
+So I need a similarity `S` and a solver. Let me design `S` first, because it has to encode what "these two node-pairs should correspond" means in *my* setting where one side is a probabilistic graph. For two genuine nodes `i != j` and two predicted slots `a != b`, the compatibility of mapping `i->a, j->b` should be high when: the edge labels agree (`E_{i,j,.}^T E~_{a,b,.}`, a dot product of one-hot truth with predicted categorical = predicted probability of the true edge class), the true edge exists (`A_{i,j}`), and the predicted graph *believes* the relevant things exist -- the predicted edge `A~_{a,b}` and both predicted endpoints `A~_{a,a}` and `A~_{b,b}`. Multiply them:
+
+  `S((i,j),(a,b)) = (E_{i,j,.}^T E~_{a,b,.}) A_{i,j} A~_{a,b} A~_{a,a} A~_{b,b}` for `i != j, a != b`.
+
+For the node-to-itself case `i = j, a = b`, the compatibility is the node-label agreement times the predicted node-existence:
+
+  `S((i,i),(a,a)) = (F_{i,.}^T F~_{a,.}) A~_{a,a}`.
+
+Why fold the *existence* probabilities `A~_{a,a}, A~_{b,b}, A~_{a,b}` into the *matching* similarity, rather than only using label agreement? Because the assignment should prefer to match ground-truth nodes onto predicted slots the model actually thinks are occupied, and avoid wasting a real node on a slot the model is trying to leave empty; coupling the assignment to existence beliefs makes the matches far more stable during training. If I matched on labels alone, early in training when labels are random the matching would thrash. So `S` mixes feature compatibility and existential compatibility.
+
+Now the solver. I want one that is robust to noisy similarities (early in training `S` is garbage), batchable on a GPU, and simple. Max-pooling matching fits: it solves the relaxed QP `x* = argmax_x x^T S x` (with `x` the vectorized `X`, subject to the doubly-substochastic box constraints) by a *power iteration*. The plain power method is `x^{(t+1)} = S x^{(t)} / ||S x^{(t)}||_2`, started from a uniform `x^{(0)}` and run to convergence -- or, for batching, a fixed number of iterations. Read the matrix-vector product `S x` in matching terms: the new score of assignment `(i->a)` is its self-similarity plus a pooling over how well its neighbors can be matched,
+
+  `x_{ia} <- x_{ia} S_{ia;ia} + sum_{j in N_i} sum_{b in N_a} x_{jb} S_{ia;jb}`,
+
+which is *sum*-pooling over match candidates. The catch is that sum-pooling lets a node with many mediocre neighbor-matches drown out a node with one excellent match -- it's swayed by clutter and outliers. The fix that gives the method its name: replace the inner sum over candidate partners `b` with a *max*,
+
+  `x_{ia} <- x_{ia} S_{ia;ia} + sum_{j in N_i} max_{b in N_a} x_{jb} S_{ia;jb}`,
+
+so each true neighbor `j` of `i` contributes only its single *best* match `b` among the neighbors of `a`. That's exactly the robustness I want when `S` is noisy: one strong corroborating match per neighbor, not a wash of weak ones. To batch this I zero-pad `S` so that `S((i,j),(a,b)) = 0` whenever an index exceeds the true node count, and run a fixed iteration budget instead of a convergence test.
+
+Max-pooling matching hands me a *continuous* `X*` in the box. Can I just use `X*` directly in the loss? Let me think about whether I even need to round it. A soft `X*` would keep everything differentiable through the matching, which sounds attractive. But a continuous assignment smears each ground-truth node across several predicted slots, and when I then compute cross-entropies under a smeared correspondence, the signal is mush: one real node is partly responsible for many predicted slots, and one predicted slot is partly responsible for many real nodes. I need one slot to carry one node's reconstruction error. So I discretize `X*` to a hard `X` with the Hungarian algorithm (linear assignment), which finds the optimal one-to-one matching given the scores. Some predicted slots stay unassigned when `n < k` -- fine, those are the "empty" slots. Hungarian is non-differentiable, but I already decided `X` is a fixed constant for the loss, so gradient still flows to the decoder through the loss. This is the same pattern as set-based detection: match first, hold the match fixed, compute the differentiable loss after alignment.
+
+Now, with `X` in hand, write the reconstruction loss. `X` lets me carry information between the two frames. Map the true adjacency into the predicted frame, `A' = X A X^T` -- this relabels `A`'s rows/columns by the assignment, so `A'_{a,b}` is the true edge status between whichever true nodes got assigned to slots `a, b`. And map the predicted labels into the true frame, `F~' = X^T F~` and `E~'_{.,.,l} = X^T E~_{.,.,l} X` -- pull the predicted node/edge categoricals back onto the ground-truth indices so I can score them against the one-hot truths `F, E`. Then the maximum-likelihood (cross-entropy) terms are, for the adjacency a Bernoulli over both existence of nodes (diagonal) and edges (off-diagonal):
+
+  `log p(A'|z) = (1/k) sum_a [ A'_{a,a} log A~_{a,a} + (1 - A'_{a,a}) log(1 - A~_{a,a}) ]`
+              `+ (1/(k(k-1))) sum_{a != b} [ A'_{a,b} log A~_{a,b} + (1 - A'_{a,b}) log(1 - A~_{a,b}) ]`,
+
+for the node labels a categorical over matched nodes,
+
+  `log p(F|z) = (1/n) sum_i log F_{i,.}^T F~'_{i,.}`,
+
+and for the edge labels a categorical over matched edges,
+
+  `log p(E|z) = (1/(||A||_1 - n)) sum_{i != j} log E_{i,j,.}^T E~'_{i,j,.}`.
+
+Two details earn their keep. First, the adjacency term scores *both* matched and unmatched nodes/edges (existence is defined for every slot), but the label terms `F, E` only score the *matched* ones -- an unmatched slot has no ground-truth label to compare to. Second, the normalizations: `1/k` and `1/(k(k-1))` for the two adjacency pieces, `1/n` for nodes, `1/(||A||_1 - n)` for edges. Why average nodes and edges *separately* like this? Because there are `O(k^2)` edge terms and only `O(k)` node terms; if I summed them with equal weight, the edges would simply dominate the likelihood and the model would stop caring about getting nodes right. Averaging each group by its own count rebalances them. The total reconstruction negative log-likelihood is a weighted sum,
+
+  `-log p(G|z) = - lambda_A log p(A'|z) - lambda_F log p(F|z) - lambda_E log p(E|z)`,
+
+with `lambda` weights I can set to 1.
+
+Now drop this reconstruction term into the VAE bound and the model is complete: minimize `L(phi, theta; G) = E_{q_phi(z|G)}[ -log p_theta(G|z) ] + KL[q_phi(z|G) || p(z)]`, prior `p(z) = N(0,I)`, the closed-form Gaussian KL `-1/2 sum_j (1 + log sigma_j^2 - mu_j^2 - sigma_j^2)`, reparameterized sampling `z = mu + sigma (.) eps`. The decoder I've already fixed (MLP, three heads). The encoder is "graph in -> (mu, sigma) out," which is the solved direction -- I'll use edge-conditioned graph convolutions, because my edges carry categorical bond types and an edge-conditioned conv lets a node aggregate neighbors through edge-type-specific filters; since the edge labels are categorical, the filter-generating network can be a single linear layer. Stack a couple of conv layers, then collapse the per-node states into one graph vector with a permutation-invariant gated readout -- sum the node states through a soft-attention gate `h_G = tanh( sum_v sigma(i(h_v,x_v)) (.) tanh(j(h_v,x_v)) )`, so the model decides which nodes matter -- then a fully connected layer to `(mu, log sigma^2)`. Any graph-embedding net would do for the encoder; the contribution is entirely on the decoding-plus-matching side.
+
+I want a controlled-generation version too, because in practice I rarely want random graphs -- I want graphs with a target property (a given atom histogram, say). The conditional-VAE move handles this: condition both encoder and decoder on a label vector `y`. Feed the decoder the concatenation `[z; y]`; in the encoder, concatenate `y` to every node's features just before the graph-pooling layer. If the latent `c` is kept small, the decoder is forced to *use* the label rather than smuggling the information into `z`. That gives a disentangled embedding: `z` carries style, `y` carries the controlled attribute.
+
+Let me account for the cost honestly, because it bounds what this method is for. The decoder outputs a dense `k x k` adjacency and a `k x k x d_e` edge tensor, so parameters and memory grow as `O(k^2)`. Worse, the matching similarity `S` is indexed by *pairs* of pairs `(i,j) x (a,b)`, so it's an `O(k^4)` object, and the power iteration touches all of it. That's the binding constraint: this is a small-graph method, useful up to a few tens of nodes, degrading as `k` grows. Molecules still fit the intended regime because many useful molecular graphs have only a modest number of heavy atoms.
+
+A few molecule-specific remedies fall out naturally once I'm thinking about chemical graphs. Molecules are undirected, so I should make `A~` (and `E~`) symmetric -- predict only the upper triangle and mirror it; that halves the adjacency outputs and bakes in symmetry instead of hoping the model learns it. Molecules are also *connected*, but my decoder treats node and edge existence as independent Bernoullis, so it can happily produce isolated nodes or disconnected fragments. At test time only, I can lean on connectivity: over the set of probable nodes `{a : A~_{a,a} >= 0.5}`, build a maximum spanning tree using the edge probabilities and force its edges into the discrete graph even where `A~_{a,b} < 0.5`, so the molecule comes out connected. And I won't generate hydrogens explicitly -- heavy-atom structure determines the hydrogens by valence, so I let H be added as padding at the validity check, sparing the model from predicting them. There's also a tighter way to encode connectivity directly into the model: make a node's existence probability a function of its edges, `A~_{a,a} = max_b A~_{a,b}` -- a node exists iff it has at least one probable edge. That hard-wires a chemical constraint into the probabilistic graph, but it also ties one set of variables to another, so I expect less freedom in the samples.
+
+Let me write the whole thing as code I'd actually run, filling the empty slot in the dense-graph harness. The concrete structure-only version has a graph-convolution encoder, an `MLP_VAE_plain` module that emits `(h_decode, z_mu, z_lsgms)`, a sigmoid upper-triangular adjacency decoder, the `edge_similarity_matrix`, the max-pooling matching power iteration, SciPy's Hungarian discretization, the permutation `perm[col] = row` followed by `A[perm][:, perm]`, the matched Bernoulli reconstruction, and the Gaussian KL with the same sign as the VAE loss. The categorical node and edge label terms are the same alignment step with softmax heads instead of the single adjacency head.
+
+```python
+import numpy as np
+import scipy.optimize
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class GraphConv(nn.Module):
+    def __init__(self, input_dim, output_dim):
+        super().__init__()
+        self.weight = nn.Parameter(torch.empty(input_dim, output_dim))
+        nn.init.xavier_uniform_(self.weight, gain=nn.init.calculate_gain("relu"))
+
+    def forward(self, x, adj):
+        return torch.matmul(torch.matmul(adj, x), self.weight)
+
+
+class MLP_VAE_plain(nn.Module):
+    def __init__(self, h_size, embedding_size, y_size):
+        super().__init__()
+        self.encode_11 = nn.Linear(h_size, embedding_size)  # mu
+        self.encode_12 = nn.Linear(h_size, embedding_size)  # log sigma^2
+        self.decode_1 = nn.Linear(embedding_size, embedding_size)
+        self.decode_2 = nn.Linear(embedding_size, y_size)
+
+    def forward(self, h):
+        z_mu = self.encode_11(h)
+        z_lsgms = self.encode_12(h)
+        z_sgm = torch.exp(0.5 * z_lsgms)
+        z = z_mu + torch.randn_like(z_sgm) * z_sgm
+        h_decode = self.decode_2(F.relu(self.decode_1(z)))
+        return h_decode, z_mu, z_lsgms
+
+
+class GraphVAE(nn.Module):
+    def __init__(self, input_dim, hidden_dim, latent_dim, max_num_nodes,
+                 pool="sum", mpm_iters=50):
+        super().__init__()
+        self.max_num_nodes = max_num_nodes
+        self.latent_dim = latent_dim
+        self.mpm_iters = mpm_iters
+        self.pool = pool
+
+        self.conv1 = GraphConv(input_dim, hidden_dim)
+        self.conv2 = GraphConv(hidden_dim, hidden_dim)
+        output_dim = max_num_nodes * (max_num_nodes + 1) // 2
+        self.vae = MLP_VAE_plain(hidden_dim, latent_dim, output_dim)
+
+    def recover_adj_lower(self, l):
+        adj = torch.zeros(self.max_num_nodes, self.max_num_nodes,
+                          dtype=l.dtype, device=l.device)
+        mask = torch.triu(torch.ones_like(adj, dtype=torch.bool))
+        adj[mask] = l
+        return adj
+
+    def recover_full_adj_from_lower(self, lower):
+        diag = torch.diag(torch.diag(lower))
+        return lower + lower.t() - diag
+
+    def edge_similarity_matrix(self, adj, adj_recon, matching_features,
+                               matching_features_recon, sim_func):
+        k = self.max_num_nodes
+        S = torch.zeros(k, k, k, k, dtype=adj_recon.dtype, device=adj_recon.device)
+        for i in range(k):
+            for j in range(k):
+                if i == j:
+                    for a in range(k):
+                        S[i, i, a, a] = adj[i, i] * adj_recon[a, a] * \
+                            sim_func(matching_features[i], matching_features_recon[a])
+                else:
+                    for a in range(k):
+                        for b in range(k):
+                            if a == b:
+                                continue
+                            S[i, j, a, b] = adj[i, j] * adj[i, i] * adj[j, j] * \
+                                             adj_recon[a, b] * adj_recon[a, a] * adj_recon[b, b]
+        return S
+
+    def mpm(self, x_init, S, max_iters=None):
+        x = x_init
+        max_iters = self.mpm_iters if max_iters is None else max_iters
+        for _ in range(max_iters):
+            x_new = torch.zeros_like(x)
+            for i in range(self.max_num_nodes):
+                for a in range(self.max_num_nodes):
+                    x_new[i, a] = x[i, a] * S[i, i, a, a]
+                    x_new[i, a] += sum(torch.max(x[j, :] * S[i, j, a, :])
+                                       for j in range(self.max_num_nodes) if j != i)
+            x = x_new / torch.norm(x_new).clamp_min(1e-12)
+        return x
+
+    def deg_feature_similarity(self, f1, f2):
+        return 1.0 / (torch.abs(f1 - f2) + 1.0)
+
+    def permute_adj(self, adj, curr_ind, target_ind):
+        perm = np.zeros(self.max_num_nodes, dtype=np.int64)
+        perm[target_ind] = curr_ind
+        perm = torch.as_tensor(perm, dtype=torch.long, device=adj.device)
+        return adj.index_select(0, perm).index_select(1, perm)
+
+    def pool_graph(self, x):
+        if self.pool == "max":
+            return torch.max(x, dim=1).values
+        return torch.sum(x, dim=1)
+
+    def _with_node_diagonal(self, adj, node_count):
+        # put node-existence (1 for real nodes, 0 for padding) on the diagonal of the
+        # truth adjacency, so adj[i,i]*adj[j,j] in the similarity acts as the real-node mask
+        A = adj.clone()
+        idx = torch.arange(self.max_num_nodes, device=A.device)
+        A[idx, idx] = (idx < node_count).to(A.dtype)
+        return A
+
+    def adj_recon_loss(self, adj_truth, adj_pred):
+        return F.binary_cross_entropy(adj_pred.clamp(1e-6, 1 - 1e-6), adj_truth)
+
+    def forward(self, input_features, adj, node_counts):
+        x = F.relu(self.conv1(input_features, adj))
+        x = F.relu(self.conv2(x, adj))
+        graph_h = self.pool_graph(x)
+
+        h_decode, z_mu, z_lsgms = self.vae(graph_h)
+        out = torch.sigmoid(h_decode)
+
+        recon_loss = out.new_tensor(0.0)
+        tri_mask = torch.triu(torch.ones(self.max_num_nodes, self.max_num_nodes,
+                                         dtype=torch.bool, device=out.device))
+        for s in range(adj.size(0)):
+            recon_adj_lower = self.recover_adj_lower(out[s])
+            recon_adj = self.recover_full_adj_from_lower(recon_adj_lower)
+
+            adj_data = self._with_node_diagonal(adj[s], node_counts[s]).detach()
+            adj_features = torch.sum(adj_data, dim=1)
+            recon_features = torch.sum(recon_adj.detach(), dim=1)
+            S = self.edge_similarity_matrix(adj_data.detach(), recon_adj.detach(),
+                                            adj_features, recon_features,
+                                            self.deg_feature_similarity)
+
+            init_assignment = torch.ones(self.max_num_nodes, self.max_num_nodes,
+                                         device=out.device) / self.max_num_nodes
+            assignment = self.mpm(init_assignment, S)
+            row_ind, col_ind = scipy.optimize.linear_sum_assignment(
+                -assignment.detach().cpu().numpy())
+
+            adj_permuted = self.permute_adj(adj_data, row_ind, col_ind)
+            adj_vectorized = adj_permuted[tri_mask]
+            recon_loss = recon_loss + self.adj_recon_loss(adj_vectorized, out[s])
+
+        recon_loss = recon_loss / adj.size(0)
+        loss_kl = -0.5 * torch.sum(1 + z_lsgms - z_mu.pow(2) - z_lsgms.exp())
+        loss_kl = loss_kl / (self.max_num_nodes * self.max_num_nodes)
+        return recon_loss + loss_kl
+```
+
+The important indexing detail is the one I cannot get wrong: the Hungarian result gives `row_ind, col_ind`, and the adjacency is moved into the predicted frame by `perm[col_ind] = row_ind` and then `A[perm][:, perm]`. That is the code version of `A' = X A X^T`. The KL term keeps the minimizing sign `-0.5 * sum(1 + logvar - mu^2 - exp(logvar))`, normalized by `k^2` in this dense baseline so it does not overwhelm the matched reconstruction term.
+
+So the causal chain, start to finish. I wanted code-space-to-graph the way images and text already had it, and the plain VAE recipe stalled on two graph-specific walls: graphs are discrete (sampling kills backprop) and have no canonical node order (so the reconstruction term, a function of the adjacency matrix, isn't permutation-invariant and punishes correct graphs in the wrong order). Linearizing through SMILES strings or building incrementally both dodge the problem by hiding the graph or by smuggling the ordering back in as discrete construction choices. Restricting to small `k` and outputting the *entire probabilistic graph at once* disarms both walls together -- no construction order, and a continuous probabilistic output that's differentiable. The remaining wall, the permutation-broken loss, is really a missing *alignment*, which is exactly second-order graph matching: define a similarity `S` mixing label compatibility, the true edge, and the predicted graph's existence beliefs, solve the relaxed matching with max-pooling power iteration (max over neighbor candidates for robustness to noisy early `S`), discretize to a strict one-to-one `X` with Hungarian, and treat `X` as fixed so the loss stays differentiable. With `X` I map both graphs into a shared frame and compute Bernoulli cross-entropy on node/edge existence plus categorical cross-entropy on labels, averaging nodes and edges separately so edges don't dominate. Wrap it in the standard VAE -- Gaussian prior, reparameterized Gaussian posterior, closed-form KL, an edge-conditioned graph-convolution encoder with a gated permutation-invariant readout in the full attributed version or a compact graph-convolution-plus-MLP VAE in the structure-only code -- add a conditional version for controlled generation, and accept the `O(k^2)` size / `O(k^4)` matching cost as the price that confines this to small graphs.
