@@ -1,0 +1,45 @@
+{
+  "task": "meta-fewshot-classification",
+  "title": "Meta Few-Shot Classification: episodic metric learning",
+  "domain": "Meta-learning",
+  "metrics": [
+    "mini_imagenet",
+    "cifar_fs",
+    "CUB"
+  ],
+  "metric_columns": [
+    "accuracy_mini_imagenet",
+    "accuracy_cifar_fs",
+    "accuracy_CUB"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "matchingnet",
+      "method": "Matching Networks (cosine-attention vote)",
+      "reasoning": "01-matchingnet-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-matchingnet-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "protonet",
+      "method": "Prototypical Networks (mean prototypes)",
+      "reasoning": "02-protonet-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-protonet-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "relationnet",
+      "method": "Relation Networks (learned comparator)",
+      "reasoning": "03-relationnet-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-relationnet-answer.md"
+    }
+  ],
+  "endpoint": "Relation Networks (learned comparator)",
+  "ranking_basis": "Ranked by mean test accuracy (geometric mean of the three benchmarks; higher is better) over is_final,true baseline:* rows. matchingnet weakest: per-benchmark mini 0.6736 / cifar 0.7691 / CUB 0.6251 (avg 68.9%), dragged down by the fine-grained CUB where its per-point cosine vote has no margin. protonet next: mini 0.6487 / cifar 0.6822 / CUB 0.7563 (avg 69.6%) -- the mean-prototype summary wins CUB big (+13pt vs matchingnet) but the rigid linear metric loses the generic benchmarks. relationnet strongest: mini 0.6992 / cifar 0.8044 / CUB 0.7578 (avg 75.4%), winning all three benchmarks by learning the comparison function. Ordering matchingnet < protonet < relationnet matches both the average accuracy and the 2016->2017->2018 derivational lineage each rung reacts to.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_fewshot.py: the CustomFewShotMethod class, lines 225-286, filled from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces are the derivation reference and are left untouched. No finale: the strongest published metric-based successor (FEAT, Ye et al. 2020) depends on a pre-trained backbone, a per-module lr_mul, and per-shot temperature tuning -- machinery this fixed loop removes (from-scratch SGD@1e-2, a single LR for all params) -- so it is not reliably stronger than RelationNet on this harness; per the spec, stop at the strongest baseline rather than invent one."
+}

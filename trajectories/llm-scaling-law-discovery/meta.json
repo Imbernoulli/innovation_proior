@@ -1,0 +1,54 @@
+{
+  "task": "llm-scaling-law-discovery",
+  "title": "LLM Scaling-Law Discovery: a compact extrapolating law per benchmark family",
+  "domain": "Language models",
+  "metrics": [
+    "sld-vocab",
+    "sld-lrbsz",
+    "sld-dataconstrained"
+  ],
+  "metric_columns": [
+    "r2",
+    "mae",
+    "rmse",
+    "nmae"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "kernel-ridge",
+      "method": "Kernel Ridge (RBF, black-box)",
+      "reasoning": "01-kernel-ridge-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-kernel-ridge-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "sldagent-style",
+      "method": "SLDAgent-style symbolic forms (cross-axis interactions)",
+      "reasoning": "02-sldagent-style-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-sldagent-style-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "xgboost",
+      "method": "XGBoost (gradient-boosted trees, black-box)",
+      "reasoning": "03-xgboost-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-xgboost-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "human-exact",
+      "method": "Human literature laws (Tao / Expert-B / Muennighoff)",
+      "reasoning": "04-human-exact-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-human-exact-answer.md"
+    }
+  ],
+  "endpoint": "Human literature laws (Tao / Expert-B / Muennighoff)",
+  "ranking_basis": "Ranked weak->strong by held-out test R^2 (primary, weighted 2x) across the three families, with MAE/RMSE/NMAE the practical discriminators on sld-lrbsz where R^2 is routinely negative; the task score is the geometric mean across families, so the worst family dominates. kernel_ridge weakest by a wide margin (negative R^2 on all three: vocab -0.567, lrbsz -413.70, dc -13.42; NMAE 16.2 on lrbsz). sldagent_style next: rescues vocab (0.929) and dataconstrained (0.929) but its fixed-center basin leaves lrbsz at -3.05 (MAE 0.063). xgboost stronger: best vocab (0.981), best-so-far lrbsz (R^2 -1.405, MAE 0.0537), but gives back dataconstrained (0.857) to the staircase's discretization. human_exact strongest: its Expert-B scale-dependent optimum lifts lrbsz to the literature reference (R^2 -0.050, MAE 0.0334, all metrics best on the hardest family), holds vocab (0.929), at the cost of dataconstrained (0.550) -- and since the geometric mean is dragged by lrbsz, handling lrbsz competently while staying the intended compact symbolic law makes it the strongest overall.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the ScalingLawModel class body in custom_scaling_law.py, scaffold from edits/*.edit.py; the loop provides group_labels, EPS, np, and scipy.optimize.least_squares). Each step = reasoning (full derivation, prose, code-free) -> feedback (numbers only, baselines only) with an answer (distilled summary + the literal scaffold edit). The code block lives in the answer, not the reasoning. No finale: the strongest baseline already implements the canonical published human laws (Tao 2024 vocab, SLDBench Expert-B / Step Law lrbsz, Muennighoff 2023 data-constrained), and the only clearly-stronger published method (SLDAgent's evolutionary program search, arXiv:2507.21184) is the method this task is built on and already appears as the sldagent_style baseline, so it cannot be the not-in-task finale; nothing else clearly stronger is published, so the trajectory stops at human_exact. SAME-NAMED-BASELINE-vs-PAPER DIFFS: (1) human_exact -- the methods/human-exact trace derives only the Muennighoff data-constrained law (full two-constant geometric R*_D/R*_N effective-data/-params decay), but the task edit covers ALL THREE families and its dataconstrained form is the SIMPLER single-exponential D_eff = U*(1 - exp(-D/U)) with no excess-parameter decay; the trace says nothing about the task's vocab (Tao additive E+A*N^-a+B*V^-b+C*D^-g) or lrbsz (Expert-B hierarchical law with hardcoded paper coefficients and scale-dependent optima l0=F*N^g*D^z, b0=G*D^h). (2) sldagent_style -- the methods/sldagent-style trace describes the full SLDAgent / OpenEvolve FunSearch evolutionary program search (LLM-driven, MAP-Elites + islands, co-evolved Expression+Optimization gene); the task edit is NOT that at all -- it is three fixed hand-written discovered-style symbolic forms (vocab multiplicative + V*D cross term, lrbsz correlated log-quadratic bowl with a FIXED fitted center, dataconstrained multiplicative repeat-efficiency 1/(1+(D/U)/R)) fit by the same NLS multi-start as human_exact, no evolution and no LLM. (3) kernel_ridge / xgboost -- match their traces (RBF kernel ridge alpha=0.05 gamma=1/n_features; GB trees) but both wrap a task-specific _FeatureMap (standardized raw + log1p numerics + one-hot group) and the trace's generic version omits it; xgboost additionally fits log-target ONLY when y>0 (vocab loss can be negative) with a GradientBoostingRegressor fallback. All four methods/<slug> traces existed and were reused as derivation references; none was missing."
+}

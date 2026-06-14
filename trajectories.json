@@ -336,16 +336,64 @@
     "endpoint": "ReLU² (squared-ReLU / Primer-EZ, 4x width)"
   },
   {
+    "task": "llm-pretrain-lr-schedule",
+    "title": "LLM Pretraining: learning-rate schedule shape",
+    "domain": "Language models",
+    "endpoint": "WSD with inverse-sqrt cooldown + extended warmup"
+  },
+  {
+    "task": "llm-pretrain-loss",
+    "title": "LLM Pretraining: loss function design",
+    "domain": "Language models",
+    "endpoint": "Sigmoid logit soft-cap cross-entropy (modded-nanoGPT, A,B,C=23,5,7.5)"
+  },
+  {
     "task": "llm-pretrain-bitlinear",
     "title": "LLM Pretraining: Native Low-Bit Linear (BitLinear)",
     "domain": "Language models",
     "endpoint": "LSQ (Learned Step Size Quantization)"
   },
   {
+    "task": "llm-qat-algorithm",
+    "title": "LLM QAT Algorithm: low-bit weight quantization-aware training",
+    "domain": "Language models",
+    "endpoint": "OmniQuant LWC (learnable weight clipping)"
+  },
+  {
+    "task": "llm-scaling-law-discovery",
+    "title": "LLM Scaling-Law Discovery: a compact extrapolating law per benchmark family",
+    "domain": "Language models",
+    "endpoint": "Human literature laws (Tao / Expert-B / Muennighoff)"
+  },
+  {
     "task": "llm-dllm-demask-strategy",
     "title": "Masked Diffusion LM Demasking: which positions to unmask, how many",
     "domain": "Language models",
     "endpoint": ""
+  },
+  {
+    "task": "mas-topology",
+    "title": "Multi-Agent Collaboration Topology: depth, diversity, and synthesis",
+    "domain": "Language models",
+    "endpoint": ""
+  },
+  {
+    "task": "meta-fewshot-classification",
+    "title": "Meta Few-Shot Classification: episodic metric learning",
+    "domain": "Meta-learning",
+    "endpoint": "Relation Networks (learned comparator)"
+  },
+  {
+    "task": "meta-rl-algorithm",
+    "title": "Meta-RL Algorithm Design: context-based fast adaptation",
+    "domain": "Meta-learning",
+    "endpoint": "PEARL (probabilistic product-of-Gaussians encoder + posterior sampling)"
+  },
+  {
+    "task": "meta-rl",
+    "title": "Meta-RL: context encoder for PEARL task inference",
+    "domain": "Meta-learning",
+    "endpoint": "Attention encoder (single-block self-attention aggregator)"
   },
   {
     "task": "llm-pretrain-optimizer",
@@ -358,6 +406,12 @@
     "title": "Online Bandits: exploration-exploitation across three regimes",
     "domain": "Optimization",
     "endpoint": "Thompson Sampling (Beta / LinTS / discounted)"
+  },
+  {
+    "task": "marl-centralized-critic",
+    "title": "Cooperative MARL: Centralized Critic Architecture for MAPPO",
+    "domain": "Reinforcement learning",
+    "endpoint": "Agent-Specific (AS) central-V critic"
   },
   {
     "task": "rl-offline-continuous",

@@ -1,0 +1,45 @@
+{
+  "task": "meta-rl-algorithm",
+  "title": "Meta-RL Algorithm Design: context-based fast adaptation",
+  "domain": "Meta-learning",
+  "metrics": [
+    "point-robot",
+    "cheetah-vel",
+    "sparse-point-robot"
+  ],
+  "metric_columns": [
+    "meta_test_return_point_robot",
+    "meta_test_return_cheetah_vel",
+    "meta_test_return_sparse_point_robot"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "focal",
+      "method": "FOCAL (deterministic metric-learning encoder)",
+      "reasoning": "01-focal-reasoning.md",
+      "answer": "01-focal-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "varibad",
+      "method": "VariBAD (recurrent encoder + reward-decoder ELBO)",
+      "reasoning": "02-varibad-reasoning.md",
+      "answer": "02-varibad-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "pearl",
+      "method": "PEARL (probabilistic product-of-Gaussians encoder + posterior sampling)",
+      "reasoning": "03-pearl-reasoning.md",
+      "answer": "03-pearl-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "PEARL (probabilistic product-of-Gaussians encoder + posterior sampling)",
+  "ranking_basis": "From the is_final,true baseline:* leaderboard rows; meta_test_return per env, higher is better. focal weakest: dominated on 2 of 3 envs (cheetah-vel mean -84.73 worst, with a -108.4 seed; sparse-point-robot mean 0.30 with two seeds at exactly 0.0 = goal never reached) and only middling on point-robot (-13.89). varibad > focal: clearly better on sparse-point-robot (1.99 vs 0.30, dead seeds rescued) and point-robot (-10.08 vs -13.89), comparable on cheetah-vel (-83.90 vs -84.73). pearl strongest: best on the two diagnostic envs by wide margins (cheetah-vel -64.63 vs -83.90, sparse-point-robot 5.49 vs 1.99 with a 9.24 seed), trading a regression on the easy dense point-robot (-15.47 vs varibad -10.08). pearl wins the two families that actually exercise meta-RL (high-dim encoding and sparse-reward exploration), which is the load-bearing ordering.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_meta_rl.py: CustomMetaRLAgent + CustomMetaRLAlgorithm, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are the derivation reference and are left untouched. Same-named baselines differ from their papers as implemented here: this task's FOCAL is ONLINE and drops the offline BRAC behavior-regularization entirely (no discriminator/value-penalty/adaptive-alpha) and lets the critic gradient reach the encoder (not gradient-isolated as in the paper); this task's VariBAD is reduced to a single-posterior z (last GRU step, not a per-prefix summed ELBO), reward decoder only (no transition head), KL to N(0,I) (not chained-to-previous), predicting the SAC batch rewards on a SAC/PEARL backbone with a sampled z (not the paper's on-policy Bayes-filter conditioning on the distribution); this task's PEARL is a faithful port. No finale: nothing clearly stronger than PEARL is published-and-verifiable here, and the write-enabled Codex gate could not be run (usage limit), so per the spec the trajectory stops at the strongest baseline."
+}

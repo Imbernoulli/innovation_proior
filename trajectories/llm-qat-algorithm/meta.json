@@ -1,0 +1,60 @@
+{
+  "task": "llm-qat-algorithm",
+  "title": "LLM QAT Algorithm: low-bit weight quantization-aware training",
+  "domain": "Language models",
+  "metrics": [
+    "qat-1b-int4",
+    "qat-1b-int3",
+    "qat-1b-int2"
+  ],
+  "metric_columns": [
+    "wikitext2_ppl",
+    "degradation"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "no_qat",
+      "method": "no_qat (RTN PTQ, no finetune)",
+      "reasoning": "01-no_qat-reasoning.md",
+      "answer": "01-no_qat-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "finetune_then_ptq",
+      "method": "finetune_then_ptq (FP finetune + RTN, control)",
+      "reasoning": "02-finetune_then_ptq-reasoning.md",
+      "answer": "02-finetune_then_ptq-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "ste",
+      "method": "STE QAT (straight-through, fixed scale)",
+      "reasoning": "03-ste-reasoning.md",
+      "answer": "03-ste-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "lsq",
+      "method": "LSQ (learned step size)",
+      "reasoning": "04-lsq-reasoning.md",
+      "answer": "04-lsq-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "omniquant-lwc",
+      "method": "OmniQuant LWC (learnable weight clipping)",
+      "reasoning": "05-omniquant-lwc-reasoning.md",
+      "answer": "05-omniquant-lwc-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "OmniQuant LWC (learnable weight clipping)",
+  "ranking_basis": "Primary metric wikitext2_ppl (lower better), required uniformly across INT4/INT3/INT2; INT2 is the discriminator. no_qat weakest (blind RTN: int4=15.01, int3=42.54, int2=104422 collapse). finetune_then_ptq is the FP-finetune control: better int4/int3 (12.61/31.41) but still collapses int2 (94034), isolating in-domain finetune from QAT signal. ste adds the grid to the forward (int4=11.70, int3=13.75, int2=72.55 -- rescued but high). lsq learns the per-group scale, the only baseline usable at int2 (int4=12.17, int3=13.49, int2=19.50). lsq > ste because the learnable grid cuts int2 from 72.55 to 19.50 while matching int3/int4.",
+  "notes": "MLS-Bench trajectory grounded in the task's real edit surface (custom_qat.py lines 33-176: CONFIG_OVERRIDES, fake_quantize_weight, quantize_dequantize_weight, QATWrapper, prepare_qat_model). Each baseline step = reasoning (full derivation, prose, embedded reflection on prior numbers for i>1) -> answer (distilled summary + the literal scaffold edit from edits/<baseline>.edit.py) -> feedback (numbers only, baselines only). Finale OmniQuant LWC (Shao et al., ICLR 2024, arXiv:2308.13137), a real published method not in the task, motivated by LSQ's free-scale drift at INT2; carries no feedback (its bar lives at the close of its reasoning). methods/<slug> single-round traces (no-qat, finetune-then-ptq, ste, lsq) are the derivation references and are untouched; methods/omniquant-lwc is the finale's standalone trace."
+}

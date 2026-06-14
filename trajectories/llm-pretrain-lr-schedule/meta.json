@@ -1,0 +1,49 @@
+{
+  "task": "llm-pretrain-lr-schedule",
+  "title": "LLM Pretraining: learning-rate schedule shape",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "trapezoidal",
+      "method": "Trapezoidal (warmup + plateau + linear cooldown, 40% tail)",
+      "reasoning": "01-trapezoidal-reasoning.md",
+      "answer": "01-trapezoidal-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "wsd",
+      "method": "WSD (warmup-stable-decay, linear cooldown, 20% tail)",
+      "reasoning": "02-wsd-reasoning.md",
+      "answer": "02-wsd-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "wsd_sqrt",
+      "method": "WSD with inverse-sqrt cooldown + extended warmup",
+      "reasoning": "03-wsd_sqrt-reasoning.md",
+      "answer": "03-wsd_sqrt-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "WSD with inverse-sqrt cooldown + extended warmup",
+  "ranking_basis": "Ranked by the primary metric, FineWeb val_loss (lower is better), from the is_final,true baseline:* rows (seed 42). trapezoidal 2.2512 (weakest) < wsd 2.2474 < wsd_sqrt 2.2451 (strongest). Direction is consistent across the secondary perplexities at the top: wsd and wsd_sqrt both beat trapezoidal on WikiText-2 (41.58/41.89 vs 42.31) and LAMBADA (64.62/64.99 vs 65.96). wsd_sqrt wins on the primary val_loss and is the endpoint; wsd holds a slight edge on the two perplexities and ARC-Easy, but the task's primary metric is val_loss, which orders wsd_sqrt first.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the body of get_lr in nanoGPT/custom_pretrain.py, lines 191-201, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. No finale: among schedule-only methods that fit the fixed get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr) signature, no genuinely-published technique is clearly stronger than wsd_sqrt at this fixed single-config budget (Power Scheduler / PowerLR needs batch size + token count not passed to get_lr; theory-derived schedules match rather than beat WSD; sqrt-family cooldowns are already the empirical best). Stopped at the strongest baseline. methods/<slug> single-round traces left untouched."
+}

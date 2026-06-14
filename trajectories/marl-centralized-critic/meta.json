@@ -1,0 +1,52 @@
+{
+  "task": "marl-centralized-critic",
+  "title": "Cooperative MARL: Centralized Critic Architecture for MAPPO",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "mmm",
+    "2s3z",
+    "3s5z"
+  ],
+  "metric_columns": [
+    "test_battle_won_mean",
+    "test_return_mean"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Agent-Specific (AS) central-V critic",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "mat-critic",
+      "method": "MAT-style attention critic (critic-only)",
+      "reasoning": "01-mat-critic-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-mat-critic-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ippo-critic",
+      "method": "IPPO critic (local obs)",
+      "reasoning": "02-ippo-critic-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ippo-critic-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mappo-critic",
+      "method": "MAPPO central-V critic (state, EP)",
+      "reasoning": "03-mappo-critic-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mappo-critic-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "mappo-as-critic",
+      "method": "Agent-Specific (AS) central-V critic",
+      "reasoning": "04-mappo-as-critic-reasoning.md",
+      "finale": true,
+      "answer": "04-mappo-as-critic-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by primary metric test_battle_won_mean (higher better), per-map mean averaged across the three is_final,true baseline rows. mat_critic weakest (avg won 0.264): the critic-only attention form collapses on MMM and 3s5z with two seeds at exactly 0.0 win rate and a 4.92-return 0.0-win seed on 2s3z (value-learning fragility, no decoder to give it the full method's guarantee). ippo_critic middle (avg won 0.573): plain local MLP is robust (no seed collapse) but capped on 2s3z (0.448) where global structure matters. mappo_critic strongest baseline (avg won 0.833): centralized state-V in the robust MLP, best on 2s3z (0.833) and MMM (0.927), weakest on the 8-agent 3s5z (0.740).",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_critic.py: CustomCritic over (scheme, args), forward returning (B,T,n_agents,1); scaffold default + edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer; reasonings are code-free. Same-named != paper: (1) mat_critic is the critic-only/encoder-only form of the multi-agent Transformer (Wen et al. 2022, arXiv:2205.14953) -- the harness fixes the MAPPO RNN actor, so the masked auto-regressive decoder (the source of MAT's advantage-decomposition guarantee) is absent; only the unmasked attention critic survives, and it lacks the decoder's power, which is why it is the weakest rung. (2) mappo_critic is the lean environment-provided (EP) central-V (state + one-hot only), NOT the richer obs/last-action-augmented CentralVCritic -- the config fixes obs_individual_obs=False, obs_last_action=False, so the methods/mappo-critic trace's PopArt value normalization, death masking, and obs-augmented AS/FP discussion are paper machinery the harness omits. (3) ippo_critic matches EPyMARL's ACCritic exactly (obs + one-hot). Finale mappo-as-critic = the Agent-Specific (AS) global-state critic input from the same MAPPO paper (Yu et al. 2022, arXiv:2103.01955), a published, stronger design point NOT among the three baselines: it conditions the central-V on [state, obs_i, one-hot], the recommended AS/FP input that closes the EP critic's agent-agnostic gap. FP (overlap-pruned) is not runnable here (smaclite exposes no s/obs overlap map), so the faithful form is un-pruned AS. Finale methods trace at methods/mappo-as-critic/ (grounded + Codex-reviewed, .codex_review.json outcome=completed, code verified line-by-line vs the AS definition and the task contract). methods.json NOT edited per task constraints. All three baseline methods/<slug> traces existed and were reused as derivation references (ippo-critic, mappo-critic, mat-critic)."
+}

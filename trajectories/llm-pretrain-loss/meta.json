@@ -1,0 +1,53 @@
+{
+  "task": "llm-pretrain-loss",
+  "title": "LLM Pretraining: loss function design",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag",
+    "piqa",
+    "winogrande"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m",
+    "piqa_lm-eval-345m",
+    "winogrande_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Sigmoid logit soft-cap cross-entropy (modded-nanoGPT, A,B,C=23,5,7.5)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "label_smoothing",
+      "method": "Label smoothing (eps=0.05, training only)",
+      "reasoning": "01-label_smoothing-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-label_smoothing-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "z_loss",
+      "method": "Softmax z-loss (lambda*(log Z)^2, lambda=1e-4)",
+      "reasoning": "02-z_loss-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-z_loss-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "softcap_ce",
+      "method": "Sigmoid logit soft-cap cross-entropy (modded-nanoGPT, A,B,C=23,5,7.5)",
+      "reasoning": "03-softcap_ce-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-softcap_ce-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by primary metric val_loss_gpt-345m (lower is better) on the is_final,true baseline:* rows, seed 42: label_smoothing 2.3377 (weakest) > z_loss 2.2926 > softcap_ce 2.2701 (strongest). softcap_ce also leads on wikitext2_ppl (43.46, best of the three), lambada_ppl (67.10), arc_easy (56.48), and is fastest (elapsed 20259s); its one trade is hellaswag (31.82, below the other two). z_loss < label_smoothing decisively: z_loss recovers ~0.045 nats of val_loss and pulls WikiText-2/LAMBADA perplexity back from 47.13/71.80 to 44.09/68.25, because label_smoothing trains against a softened target while being graded on true likelihood, whereas z_loss leaves the target undistorted and fixes only the otherwise-free logit level.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the compute_loss(logits, targets) function in nanoGPT/custom_pretrain.py, lines 188-191, plus the default-empty CONFIG_OVERRIDES at 247-249), authored from edits/*.edit.py. Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. The three baselines occupy the three distinct intervention points at the loss boundary (target distribution / absolute logit level / logit values), weak->strong by exactly that order of which handle the short bfloat16 run rewards. Same-named-vs-paper diffs: (1) label_smoothing uses task-local eps=0.05 (not the paper's 0.1) and applies smoothing only under torch.is_grad_enabled() so val_loss stays true cross-entropy; (2) softcap_ce is NOT the Gemma-2 tanh cap the task_description cites -- the actual edit is the modded-nanogpt sigmoid form 23*sigmoid((z+5)/7.5), a retuned asymmetric member of the same bounded-monotone family, not pointwise identical to 15*tanh(z/15) nor that curve plus a softmax-invisible constant. No finale: softcap_ce is the strongest, the three baselines exhaust the well-grounded single-loss-layer space (smoothing the target, penalizing the level, capping the values), and no published single loss-function method is clearly stronger than logit soft-capping on this matched-budget GPT-2 val-loss objective without fabricating a comparison or merely stacking two existing baselines, so the ladder stops at the strongest baseline."
+}

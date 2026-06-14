@@ -1,0 +1,43 @@
+{
+  "task": "meta-rl",
+  "title": "Meta-RL: context encoder for PEARL task inference",
+  "domain": "Meta-learning",
+  "metrics": [
+    "cheetah-vel",
+    "sparse-point-robot",
+    "point-robot"
+  ],
+  "metric_columns": [
+    "meta_test_return"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "recurrent_encoder",
+      "method": "Recurrent encoder (LSTM over ordered context)",
+      "reasoning": "01-recurrent_encoder-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-recurrent_encoder-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "mlp_encoder",
+      "method": "MLP encoder (per-transition, product of Gaussians)",
+      "reasoning": "02-mlp_encoder-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-mlp_encoder-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "attention_encoder",
+      "method": "Attention encoder (single-block self-attention aggregator)",
+      "reasoning": "03-attention_encoder-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-attention_encoder-answer.md"
+    }
+  ],
+  "endpoint": "Attention encoder (single-block self-attention aggregator)",
+  "ranking_basis": "Metric meta_test_return, higher better, across cheetah-vel / sparse-point-robot / point-robot. recurrent_encoder weakest: worst on the headline high-dim cheetah-vel (-185.22) and nearly dead on sparse-point-robot (0.62, two zero seeds), only narrowly best on the trivial dense point-robot (-10.60), and ~3400-4000s wall-clock vs ~600-2000s (LSTM over budget, context capped at 100). mlp_encoder middle: best on sparse-point-robot (3.80, all seeds non-zero), middle on cheetah-vel (-141.86), narrowly worst on the trivial point-robot (-11.88). attention_encoder strongest: best on the headline cheetah-vel by a clear margin (-96.75, all three seeds in the -90s/-100s), second on sparse and point; best average rank and decisive win on the high-dimensional headline env.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (oyster/custom_encoder.py: CustomContextEncoder, scaffold from edits/*.edit.py; the PEARLAgent fuses per-transition encoder outputs via a fixed product of Gaussians under use_information_bottleneck). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces (recurrent-encoder, mlp-encoder, attention-encoder) are untouched. No finale: nothing clearly stronger is published that fits the encoder-only slot without changing the fixed agent aggregation (FOCAL replaces the probabilistic product-of-Gaussians with a deterministic distance-metric encoder + loss and lives in the companion meta-rl-algorithm task's full edit surface; Set-Transformer PMA pooling collapses the per-transition outputs the product of Gaussians requires). Stopped at the strongest baseline."
+}
