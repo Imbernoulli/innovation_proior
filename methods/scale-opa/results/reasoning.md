@@ -1,0 +1,85 @@
+Let me start from what actually goes wrong when I fit one of these Gaussian scenes. I have `N` anisotropic 3D Gaussians and a fistful of posed photos, and I minimize a photometric loss — `0.8` times the L1 pixel error plus `0.2` times one-minus-SSIM — by gradient descent. That loss is a pure data term. It rewards *any* arrangement of Gaussians that makes the rendered training views look like the photos, and it is completely indifferent to *how* that arrangement is built. So the fit is wildly under-determined: enormously many configurations render the training views to within a hair of each other, and gradient descent will happily settle into whichever one it stumbles onto first. In practice the ones it stumbles onto are ugly. I see faint, almost-transparent Gaussians left hovering in empty space just outside where any camera looks closely — floaters. I see hugely anisotropic Gaussians, one axis stretched far past the other two — needles — that happen to shave a little error on one training view but read as streaks the moment I move the camera. I see one oversized splat smeared across fine geometry because that was cheaper for the data term than resolving the detail. None of these hurt the *training* views much; that is exactly why the optimizer keeps them. They hurt the held-out views, the ones I actually care about. And every one of these junk Gaussians is also a Gaussian I am paying for in memory and in render time, because the cost of this representation is, more or less, the count of Gaussians.
+
+So I want to add something to the loss that expresses a preference the data term doesn't have: *use Gaussians efficiently*. When a Gaussian isn't earning its keep, I want it gone — not shrunk a little, not made a bit fainter, but driven out of the representation entirely so the spare capacity can go somewhere useful. The training framework around me already has the machinery to make "gone" productive: every hundred iterations it looks for "dead" Gaussians, the ones whose opacity has dropped below a small threshold around `0.005`, and it recycles them — teleports each dead one to sit on top of a live, useful Gaussian, sampling the target with probability proportional to opacity, and lets the live count creep up toward a budget. So if I can apply steady downward pressure that pushes a useless Gaussian toward that dead threshold, the framework turns it into reusable capacity. That reframes the whole thing: I'm not designing a destructive penalty, I'm designing a *parsimony prior* that feeds a recycle loop. Good — that means I can afford to be a bit aggressive, because "killed" doesn't mean "lost," it means "freed."
+
+Now, what is the right quantity to push down? My instinct is opacity. A Gaussian I want to remove should fade out, so penalize opacity, and once it's faint enough it falls below `0.005` and gets recycled. Let me write that: add `λ · Σ_i o_i` to the loss, where `o_i` is the opacity, and the gradient steadily nudges every opacity down except where the data term fights back. Clean, cheap, `O(N)`. But let me stare at whether "faint" actually means "harmless," because that's the assumption I'm leaning on. Go back to how a Gaussian shows up in an image. In the blending equation a Gaussian's contribution at a pixel `x` is
+
+  `a_i(x) = o_i · exp( −1/2 · (x − proj(μ_i))^T proj_θ(Σ_i)^{-1} (x − proj(μ_i)) )`.
+
+That is a product: the opacity `o_i` out front, times a spatial bump whose *width* is induced by the covariance `Σ_i`. The total stuff a Gaussian dumps into the image is opacity times the size of that bump, and the size of the underlying 3D bump grows with the Gaussian's volume — proportional to `sqrt(det Σ_i)`, which is the product of its per-axis extents. So a Gaussian's real footprint is `o_i` *and* its spatial extent, together. Opacity alone is only half the story.
+
+And now I can see exactly how opacity-only pressure fails, by pushing against my own scheme. Picture a big, space-filling Gaussian — large covariance — that the optimizer is holding at an opacity of, say, `0.01`, just above the dead threshold. My opacity penalty barely touches it: the loss value is already tiny, and through the sigmoid the logit gradient is scaled by `o(1-o)`, so near this threshold the stored parameter only feels a weak push. The data term is happy to keep that one Gaussian faintly tinting a whole region because removing it would change a lot of pixels by a little. So it sits there, a loud, region-spanning artifact, paying almost nothing to my term and never crossing the threshold. Opacity-only pressure leaves the over-reconstruction case and the big-floater case completely untouched. Wall. And there's a mirror-image failure: a tiny but fully opaque speck — `o = 0.99`, scale microscopic — contributes essentially nothing to any image, yet my opacity term actively *penalizes* it for being opaque and would try to fade a Gaussian that was doing no harm. The opacity axis is simply the wrong single axis. Existence isn't opacity; existence is opacity-times-extent.
+
+The fix falls right out of that product. If a Gaussian's footprint is set jointly by opacity and extent, then to reliably make one disappear I have to be able to drive *either* factor toward zero, and so I should put pressure on *both*. Penalize opacity so faint-and-useless Gaussians fade out and cross the recycler's dead threshold; penalize spatial extent so big-and-useless Gaussians shrink down even when opacity alone would leave them alive. A Gaussian that is genuinely not needed will have both pushed: opacity gives the explicit death channel, and scale collapse removes the footprint that made the Gaussian harmful. The big-floater case is now covered — the extent term collapses it — and the needle case too, because a needle has at least one huge axis scale, which the extent term hammers. So the term I want is a penalty on opacity *plus* a penalty on extent.
+
+Let me make "extent" concrete. The covariance is stored factored, `Σ = R S S^T R^T`, with `S = diag(s_1, s_2, s_3)` the per-axis scales and `R` a rotation. Because `R` is orthogonal, `Σ = R · diag(s_1^2, s_2^2, s_3^2) · R^T` is the eigendecomposition of `Σ` already — its eigenvalues are exactly `s_j^2`, the variances along the principal axes — so `sqrt(eig_j(Σ)) = s_j`, the standard deviation, the physical half-width of the Gaussian along axis `j`. The thing I want to shrink, the actual extent, is just the scale vector `s`. So penalizing extent is penalizing `Σ_j s_j` per Gaussian. I don't need eigen-solvers or determinants at runtime; the scales are sitting right there as a parameter. The volume is `∏_j s_j` and I could penalize that, but a sum-of-scales `Σ_j s_j` is the cleaner, more robust choice: it pushes *every* axis down rather than letting the optimizer satisfy a volume penalty by collapsing one axis to zero while keeping the others huge — which is precisely the needle shape I'm trying to kill. Penalize each axis additively and a needle pays full freight on its long axis. So: `Σ_{ij} s_{ij}`, summed over Gaussians and over their three axes.
+
+Now what *kind* of penalty — what function of opacity and of scale? I want these useless Gaussians to go to *zero*, not to hover at small-but-nonzero values forever. That's the textbook split between L1 and L2. With an L2 penalty `Σ w^2`, the gradient in the penalized value is `2w`, which fades as `w → 0`: it shrinks things softly but the pressure dies right where I need it most, near zero, so I'd be left with a haze of small-but-present Gaussians, none of them ever actually crossing the dead threshold. With L1, `Σ |w|`, the subgradient in that same value is the constant `sign(w)`: the push toward zero does not weaken just because the value is already small. That is the sparsity-inducing behavior I want — steady pressure in the physical opacity/scale variables, with the stored logits and log-scales receiving the smooth chain-rule gradient from the activation. So L1 on both opacity and scale.
+
+There's a subtlety about *which* number I take the L1 of. The opacity is stored as a logit and passed through a sigmoid; the scale is stored as a log-scale and passed through an exp. I must not penalize the raw stored parameters — penalizing a logit is meaningless, because driving a logit toward `−∞` to "minimize" it just sends opacity to zero with ever-vanishing activated opacity and no physical zero inside the raw coordinate, and penalizing a log-scale toward `−∞` is the same trap. The quantity that actually determines existence is the *activated* value: the real opacity `σ(opacity_logit) ∈ (0, 1)` and the real scale `exp(log_scale) > 0`. Those are what enter the blending equation, those are what I want small. So the penalty is L1 on `σ(opacity_logit)` and L1 on `exp(log_scale)`.
+
+And here a small numerical gift drops out for free. Both activated quantities are *already nonnegative* — sigmoid lands in `(0, 1)`, exp lands in `(0, ∞)` — so the absolute value in the L1 is a no-op: `|σ(o)| = σ(o)` and `|exp(s)| = exp(s)`. The L1 penalty collapses to a plain sum (or mean) of the activated values. That's not just tidy, it sidesteps a real hazard: I never have to differentiate an absolute value at zero, and the activations are smooth and bounded-below — no `log(0)`, no place for a NaN gradient to crawl in. The exp could in principle overflow if a scale exploded, but the whole point of this term is to *prevent* scales from blowing up, so it's self-stabilizing in the direction that matters.
+
+Let me also settle the per-axis-versus-per-Gaussian-volume question once more now that I have the activation, because it interacts with the exp. I'm penalizing `exp(log_scale_{ij})` summed over the three axes `j` and over Gaussians `i`. Summing the three activated scales additively, rather than multiplying them into a volume, keeps the gradient on each axis independent of the other two: `∂/∂(log s_j) of exp(log s_j) = exp(log s_j) = s_j`, so the pressure on each axis is proportional to that axis's own current size and is undisturbed by whatever the other axes are doing. A needle with one giant axis therefore gets a giant gradient on that axis and gets squashed, which is the behavior I want; a volume penalty would let it off the hook the moment one axis was small. Additive-per-axis it is.
+
+So my term, before I worry about the coefficient, is
+
+  `λ_o · mean_i σ(z_i) + λ_s · mean_{ij} exp(ℓ_{ij})`,
+
+where `z_i` is the stored opacity logit and `ℓ_{ij}` is the stored log-scale. It is opacity pressure plus extent pressure, both L1, both on the activated quantity, both normalized as means so the coefficient does not scale with the number of Gaussians — just an elementwise activation and a reduction, no neighbour search, no all-pairs `N × N` over the means, perfectly affordable to evaluate at every one of thirty thousand steps.
+
+Now the weight. This is a *prior*, not a competing objective, and it must never overwhelm the data term — if it did, the optimizer would happily fade and shrink everything into a uniform gray nothing that minimizes the regularizer while ignoring the photos. I want the term to tip the balance only where the data term is *flat* — exactly the floater regions and the redundant Gaussians, the places the photos don't constrain. Because each piece is a mean of activated values, a hundredth-scale coefficient keeps the pressure gentle and independent of the Gaussian count. I'll set `λ_o = λ_s = 0.01`: equal, small weights on the two footprint factors.
+
+Let me sanity-check the dynamics end to end on the cases that drove this. A faint useless floater: low opacity, the opacity L1 keeps pressing on the activated opacity, the data term doesn't object because the region is unconstrained, it crosses `0.005`, it's dead, it gets teleported to somewhere useful. A big over-reconstructing splat held at low-but-alive opacity: the opacity term barely moves it, but the scale L1 keeps shrinking each activated scale through the `exp` chain rule, so it collapses toward a point; either it gets small enough to stop being an artifact or the shrinking finally lets the data term find a better local configuration. A needle: its long axis carries a large `exp(ℓ)`, so it takes the largest scale gradient of all and gets squashed back toward isotropy. A tiny opaque speck doing real work: it's small, so the scale term barely touches it, and if it's genuinely contributing the data term holds its opacity up against the gentle opacity pressure — it survives, correctly. Each pathology gets pressure on the axis that defines it, and useful Gaussians are protected by the data term they're actively helping. The product structure of the footprint is exactly mirrored by the sum structure of the penalty: opacity-or-extent makes it loud, so penalizing opacity-and-extent makes it quiet.
+
+One more reason this two-pronged term is the right shape for *this* setting specifically, and not just in the abstract: it's tuned to the recycle loop. A penalty that only faded opacity would feed the loop slowly and miss the big-splat case; a penalty that only shrank scale would leave fully-opaque small redundant Gaussians stuck. Pushing both means the *most common* way a useless Gaussian dies — opacity under threshold — stays the primary channel, while the scale term cleans up the cases opacity can't reach and prevents the needle/over-reconstruction shapes from forming in the first place. The two terms cover complementary failure modes of a *product*, which is why I want both and not either alone.
+
+So let me write it as the actual function that gets called every step, filling the single empty slot — the scalar penalty added to the photometric loss. The scales arrive as log-scales, so `exp` recovers the real per-axis extents; the opacities arrive as logits, so `sigmoid` recovers the real opacities; the L1 on each nonnegative activation is just a mean of that activation, each pre-multiplied by its own `0.01` weight, summed into one scalar:
+
+```python
+import torch
+
+SCALE_REG = 1e-2      # weight on the extent (scale) penalty
+OPACITY_REG = 1e-2    # weight on the opacity penalty
+
+
+def compute_regularizer(splats, step, scene_scale):
+    """L1 parsimony prior on per-Gaussian extent and opacity.
+
+    A Gaussian's footprint a(x) = o * exp(-1/2 ||x-mu||^2_Sigma) is a PRODUCT of
+    opacity and spatial extent, so to make a useless Gaussian vanish we press on
+    BOTH factors. L1 gives steady pressure in the activated variables -> a 'dead'
+    Gaussian the framework can prune/recycle, unlike L2 whose pressure dies near 0.
+    Penalize the ACTIVATED quantities (the real opacity and real scale), not the
+    raw logits/log-scales; both activations are nonnegative so |.| is just the mean,
+    which also keeps the term smooth and NaN-free. O(N), no N x N over means.
+    """
+    # exp(log_scales) = actual per-axis extents s_j = sqrt(eig_j(Sigma)); shrink every axis
+    # (additive per-axis, so a needle's long axis pays full freight).
+    scale_loss = torch.exp(splats["scales"]).mean()
+    # sigmoid(opacity_logits) = actual opacity in (0,1); fade faint useless Gaussians to 'dead'.
+    opa_loss = torch.sigmoid(splats["opacities"]).mean()
+    # gentle prior: small weights on the two footprint factors.
+    return SCALE_REG * scale_loss + OPACITY_REG * opa_loss
+```
+
+The causal chain, start to finish: the photometric loss is a pure data term, so the
+Gaussian fit is under-determined and gradient descent settles into wasteful configurations —
+floaters, needles, over-reconstructing splats — that pass on training views, fail on novel
+views, and waste memory and render time. I want a parsimony prior that drives a useless
+Gaussian to vanish so the surrounding recycle loop can reclaim it. My first try, penalizing
+opacity alone, fails because a Gaussian's visible footprint is the *product* of opacity and
+spatial extent: a big splat held just above the dead threshold pays almost nothing yet stays
+loud, and a tiny opaque speck gets penalized for nothing. Reading the footprint as a product
+forces a two-factor penalty — pressure on opacity *and* on extent — so opacity supplies the
+explicit death channel while scale collapse removes a harmful footprint that opacity alone can
+miss. Extent is exactly the scale vector, since `sqrt(eig_j(Σ)) = s_j`,
+and penalizing the three axes additively (not as a volume) squashes needles instead of letting
+them survive on a collapsed axis. I choose L1 over L2 because L1 gives non-vanishing pressure in
+the activated value while L2's pressure dies at zero. I apply the L1 to the *activated* opacity
+and scale, the quantities that actually enter the blending equation, and because sigmoid and exp
+are nonnegative the absolute value collapses to a mean, which is cheap and numerically safe. The
+weight `0.01` on each term keeps the prior gentle so it only bites in the slack the photos leave.
+The result is one `O(N)` scalar — `0.01·mean(exp(scales)) + 0.01·mean(sigmoid(opacities))` — added to the
+loss every step, pushing exactly the Gaussians the data term is indifferent to toward
+disappearing.
