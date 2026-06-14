@@ -1,0 +1,142 @@
+Let me start from what I am actually paying for. Labels cost money; unlabeled inputs are free and plentiful. So out of a huge pool of inputs I want to pick the one whose label, once I pay for it, teaches my model the most. I have a Bayesian classifier `p(y|x,theta)`, I've seen some data `D`, and I hold a posterior `p(theta|D)` over the parameters. The honest meaning of "teaches the most" in this frame is "shrinks my uncertainty about `theta` the most," and uncertainty is Shannon entropy. So before I see the label, the best myopic query is the one whose label I expect to drop the parameter entropy by the most:
+
+  argmax_x  H[theta | D] − E_{y ~ p(y|x,D)} [ H[theta | y, x, D] ].
+
+The expectation over `y` is unavoidable — I don't know the label yet, so I have to average over what the label might be, weighted by my current predictive belief `p(y|x,D)`. This is the right object. The full problem of choosing a whole optimal *set* of queries is NP-hard, but greedily picking one point at a time is known to be near-optimal for this kind of sequential design, so I'll commit to this myopic criterion and stop worrying about set optimality.
+
+Now the trouble. Look hard at where this objective lives: it's entirely in *parameter* space. `H[theta|D]` is the entropy of the posterior over `theta`. For the models I care about that's a disaster on two fronts. First, computing `H[theta|D]` at all. If `theta` is a few thousand neural-net weights, the posterior is some high-dimensional intractable blob and its entropy is intractable. And if I want a Gaussian process classifier — which is exactly the flexible, nonparametric model I'd reach for — then "the parameter" is a whole latent function `f`, the parameter space is infinite-dimensional, and `H[theta]` isn't merely hard, it's not even well defined. I can't grid an infinite-dimensional space (exponential in dimension even when finite), and if I try to estimate entropies by sampling from the posterior I run straight into the well-known fact that entropy estimates from samples are badly biased. So the people who use this objective directly are forced to first squash the posterior down to a Gaussian or some low-dimensional approximation and then compute *that* approximation's entropy — which means the active-learning criterion gets welded to whatever inference approximation they happened to choose.
+
+Second front: the expectation costs me a full re-inference per imagined label. To evaluate `E_y[H[theta|y,x,D]]` for a single candidate `x`, I have to take each possible label value `y`, pretend I added `(x,y)` to my data, and recompute the posterior `p(theta | y, x, D)` to get its entropy. With `N_x` candidates in my pool and `N_y` possible label values, that's `O(N_x N_y)` posterior updates, each one potentially expensive. For a GP that's a lot of re-inferences just to score the pool once.
+
+So I have a clean criterion that I literally cannot afford to compute. Let me see what's on the table to get around it. Maximum Entropy Sampling says: forget parameter space, just query the `x` where my prediction is most uncertain, `argmax_x H[y|x,D]`. That's appealing — it's an output-space quantity, and for binary classification `H[y|x,D]` is just a one-dimensional Bernoulli entropy, trivial to compute. For regression with input-independent observation noise it's even provably optimal. But it has a failure mode I've seen demonstrated: in classification it will happily keep querying points right on the decision boundary, or in regions where the labels are inherently noisy. Why? Because `H[y|x,D]` is high both when *I* am uncertain about the right model (which I could fix by getting a label) and when the *label itself* is intrinsically random (which no amount of labeling will ever fix). MES can't tell the two apart, so it burns my budget on irreducibly noisy points. The wall here is that raw predictive entropy conflates model uncertainty with observation noise.
+
+Query by Committee tries something that smells closer to right: sample several hypotheses from the version space — a committee — let them vote on each candidate's label, and query the point where the vote is most evenly split, the "principle of maximal disagreement." Disagreement among plausible models is exactly the flavor of model-uncertainty I want. But look at what the vote throws away: it's a hard tally of which class each member picks; it discards how *confident* each member is. So a point where the members split because each one is individually unsure — inherent noise again — looks identical to a point where each member is confident but they confidently disagree. QBC reintroduces the same noise-chasing pathology as MES because the deterministic vote discards confidence. And the Informative Vector Machine, the GP-specific competitor, uses the parameter-space objective directly: it approximates the parameter entropy in the subspace of the observed points and computes the entropy decrease from the covariance matrix — but it's built for subsampling an already-labeled set, so it peeks at `y` before deciding, it needs `O(N_x N_y)` updates done cheaply with Assumed Density Filtering (so its updated posterior is itself only a one-pass approximation), and it still can't get at the entropy of the full infinite-dimensional posterior. Everyone is paying somewhere: either in approximation accuracy, or in `O(N_x N_y)` cost, or in the noise/model-uncertainty confusion.
+
+Let me go back and stare at my exact objective, because I have a nagging feeling its *form* is telling me something.
+
+  H[theta | D] − E_{y ~ p(y|x,D)} [ H[theta | y, x, D] ].
+
+The first term is the entropy of `theta`. The second is the expected entropy of `theta` after conditioning on `y`. Entropy minus expected entropy-after-conditioning... that is, by definition, a mutual information. This whole expression is the conditional mutual information between the parameters and the unseen label, `I[theta, y | x, D]`. I'm not approximating anything yet — this is an identity. The objective *is* an MI.
+
+And mutual information has a property I have been completely failing to use: it's symmetric. `I(A;B) = H(A) − H(A|B) = H(B) − H(B|A)`. I can condition on either variable and get the same number. I've been writing it as "entropy of `theta` minus expected entropy of `theta` given `y`." But it is *equally* "entropy of `y` minus expected entropy of `y` given `theta`":
+
+  I[theta, y | x, D]  =  H[y | x, D]  −  E_{theta ~ p(theta|D)} [ H[y | x, theta] ].
+
+Stop. Look at what just happened. The left side is the same intractable parameter-space object as before. The right side has the entropies in *output* space. `H[y|x,D]` is the entropy of my predictive distribution over the label — for binary classification, a single Bernoulli entropy, finite and trivial *even when `theta` is an infinite-dimensional function*, because I never have to take the entropy of `theta` itself. And `E_{theta}[H[y|x,theta]]` is an expectation over my *current* posterior `p(theta|D)` — `theta` is conditioned only on `D`, not on any hypothetical `y`. There is no "pretend I saw label `y` and re-infer" anywhere. So the `O(N_x N_y)` re-inference collapses: I do my posterior inference once, on `D`, and then for every candidate `x` I just compute two output-space entropies. `O(1)` posterior updates instead of `O(N_x N_y)`, and no entropy of `theta` ever. The symmetry of mutual information turned the intractable parameter-space criterion into a tractable output-space one without changing the number I'm computing one bit.
+
+And now read the right-hand side as a recipe and notice what it actually says I should look for. I want `x` that maximizes `H[y|x,D] − E_theta[H[y|x,theta]]`. First term big: my *marginal* prediction — averaged over all settings of `theta` in the posterior — is very uncertain about the label. Second term small: but for each *individual* setting of `theta`, the prediction is confident. Put those together: I want the `x` where the parameter settings under my posterior are each individually sure of the answer, yet they're *sure of different answers*. That's disagreement — but disagreement that *keeps* the confidence, because the second term is built out of each setting's full entropy, not a hard vote. This is exactly the distinction MES and QBC kept missing. A point that's noisy-but-known — where every `theta` agrees "this one is genuinely a coin flip" — has high `H[y|x,D]` but *also* high `E_theta[H[y|x,theta]]` (each `theta` is itself uncertain), so the difference is small and I correctly skip it. A point where the model is genuinely torn — each `theta` confident, but they split — has high `H[y|x,D]` and *low* `E_theta[H[y|x,theta]]`, so the difference is large and I query it. The subtraction is precisely the operation that separates epistemic uncertainty (which a label can fix) from aleatoric uncertainty (which it can't). MES is just the first term alone, which is why it chases noise; this criterion is the first term minus the second, and the second term is the correction MES was missing. I'll call this querying-by-disagreement.
+
+Let me sanity-check the MES relationship directly, because if it doesn't reduce correctly I've fooled myself. Suppose the observation noise is zero — every `theta` predicts the label deterministically. Then `H[y|x,theta] = 0` for each `theta`, the expectation `E_theta[H[y|x,theta]] = 0`, and my criterion becomes just `H[y|x,D]` — exactly MES. More generally, in regression with input-independent noise the second term is a constant in `x`, so dropping it leaves the same argmax. The extra `−E_theta[H[y|x,theta]]` term is exactly what matters when that conditional uncertainty varies with the input, as it does in classification or heteroscedastic regression. Good — that's the right containment. And if instead of true entropies I used a sampled posterior and a *hard* count of how the samples vote, I'd be back to QBC; the difference is that I keep the probabilistic disagreement (the entropies) rather than collapsing to a vote, so I retain the confidence information QBC discards. Both baselines fall out of mine as degenerate cases, which tells me I've found the right general object rather than a fourth competitor.
+
+Now I have to make `H[y|x,D] − E_theta[H[y|x,theta]]` concrete for a real model, and the hardest, most revealing case is the GP classifier, because that's where `theta` is infinite-dimensional. The model is `f ~ GP(mu, k)` and `y | x, f ~ Bernoulli(Phi(f(x)))`, probit link, `Phi` the standard-normal CDF. The posterior over `f` is non-Gaussian and intractable, but every standard inference method — Laplace, EP, ADF, sparse — hands me back a Gaussian approximation, and the beauty of my criterion is that it doesn't care which one. Under any of them, the latent value at a point is Gaussian: `f_x ~ N(mu_{x,D}, sigma^2_{x,D})`. I'll mark every place I lean on this Gaussian-posterior approximation, because that's the only approximation my method *needs* — everything else I can in principle do exactly. Let me write the two entropy terms in terms of `mu_{x,D}` and `sigma^2_{x,D}`. The per-`f` entropy is a Bernoulli entropy of the probit probability,
+
+  H[y | x, f] = h(Phi(f(x))),   h(p) = −p log p − (1−p) log(1−p),
+
+and I'll measure entropy in bits, so `h(1/2) = 1`.
+
+First term, `H[y|x,D]`. This is the entropy of the *marginal* predictive — the Bernoulli whose success probability is the posterior mean of `Phi(f_x)`:
+
+  H[y|x,D] ≈ h( E_{f}[ Phi(f_x) ] ) = h( ∫ Phi(f_x) N(f_x | mu_{x,D}, sigma^2_{x,D}) df_x ).
+
+The integral of a probit against a Gaussian is one of the few things in this whole model that's analytically exact. The standard identity is `∫ Phi(a f) N(f|m,s^2) df = Phi( a m / sqrt(1 + a^2 s^2) )`; with `a = 1` here,
+
+  ∫ Phi(f_x) N(f_x | mu, sigma^2) df_x = Phi( mu_{x,D} / sqrt(1 + sigma^2_{x,D}) ),
+
+so the first term is, cleanly,
+
+  H[y|x,D] ≈ h( Phi( mu_{x,D} / sqrt(sigma^2_{x,D} + 1) ) ).
+
+That's the marginal predictive uncertainty, in closed form. Now the second term, the one that does the real work,
+
+  E_{f}[ H[y|x,f] ] ≈ ∫ h(Phi(f_x)) N(f_x | mu_{x,D}, sigma^2_{x,D}) df_x.
+
+Here's the wall: this integral has no closed form. The integrand `h(Phi(f_x))` — a binary entropy of a probit — is a smooth bump centered at `f_x = 0` (where `Phi = 1/2` and the entropy peaks at 1 bit) and decaying to zero as `|f_x|` grows (where the probit saturates and the label becomes certain), but it isn't a Gaussian, so I can't convolve it against `N(f_x|mu,sigma^2)` in closed form. I could Monte-Carlo it, but I want this to be cheap enough to evaluate over a whole pool, and I want to avoid sampling. So let me look for an analytic approximation to `h(Phi(f_x))` that I *can* convolve with a Gaussian — and the only function I can convolve against a Gaussian and stay in closed form is another (un-normalized) Gaussian, a squared exponential. So the question becomes: is `h(Phi(x))` well approximated by `exp(−x^2 / something)`?
+
+The bump has the right shape — it's even, peaks at 1 at `x=0`, and decays — so a squared exponential is at least plausible. To pin the width, expand. I don't want to Taylor-expand `h(Phi(x))` directly, because matching it to a Gaussian means matching `exp` of a quadratic, so I should expand the *logarithm* `ln h(Phi(x))` and look for a quadratic. Let `f(x) = ln h(Phi(x))`. At `x = 0`: `Phi(0) = 1/2`, `h(1/2) = 1` bit, and `ln 1 = 0`, so `f(0) = 0`. The function is even in `x` (since `Phi(−x) = 1 − Phi(x)` and `h(p) = h(1−p)`), so every odd derivative at 0 vanishes — in particular the `x^3` term is zero, which is good news for the accuracy of a pure-quadratic fit. So I need `f''(0)`. Differentiate `f(x) = ln h(Phi(x))`:
+
+  f'(x) = h'(Phi(x)) Phi'(x) / h(Phi(x)),
+
+and using `h'(p) = −(log p − log(1−p)) / ln 2` (the `1/ln 2` comes from entropy in bits), and `Phi'(x)` the standard normal density. Differentiating once more and evaluating the whole thing at `x = 0` — where `Phi = 1/2`, `h = 1`, `log p − log(1−p) = 0`, `Phi'(0) = 1/sqrt(2 pi)`, `Phi''(0) = 0` — the terms carrying `(log Phi − log(1−Phi))` drop because that factor is zero at `x=0`, and what survives is the term with `Phi'(0)^2`. Grinding it through gives `f''(0) = −2 / (pi ln 2)`. (I can double-check the magnitude numerically: a finite-difference second derivative of `ln h(Phi(x))` at 0 comes out to ≈ −0.918, and `−2/(pi ln 2) ≈ −0.918`. It matches.) So the second-order Taylor expansion is
+
+  ln h(Phi(x)) = 0 + 0·x − (1/(pi ln 2)) x^2 + O(x^4),
+
+since the `x^2` coefficient is `f''(0)/2 = −1/(pi ln 2)`. Exponentiating,
+
+  h(Phi(x)) ≈ exp( −x^2 / (pi ln 2) ).
+
+I want to know how good this is before I trust it, not just hope. The approximation matches the constant and quadratic terms at the origin, with the first omitted term of order `x^4`, so the risk is out in the tails. Comparing the squared exponential to the true `h(Phi(x))` across `x`, the absolute error stays under about `3·10^{-3}` everywhere; the worst case for the *integral* I actually care about is when the Gaussian `N(f_x|mu,sigma^2)` is a near-spike (`sigma^2 → 0`) sitting at the point of maximum pointwise error, around `mu = ±2.05`, and even then the error in the integral is only about 0.27%. For an approximation that buys me a closed form over the whole pool, that is a fantastic trade. So I adopt it.
+
+With `h(Phi(f_x)) ≈ exp(−f_x^2 / (pi ln 2))`, the second term becomes the convolution of a squared exponential against a Gaussian, which *is* closed form. Write the squared exponential as proportional to a Gaussian: `exp(−f^2/(pi ln 2)) = exp(−f^2/(2 C^2))` with `2 C^2 = pi ln 2`, i.e. `C = sqrt(pi ln 2 / 2)`. Then
+
+  ∫ exp(−f^2/(2 C^2)) N(f | mu, sigma^2) df = C / sqrt(sigma^2 + C^2) · exp( −mu^2 / (2 (sigma^2 + C^2)) ).
+
+(This is just the Gaussian-times-Gaussian integral: the product of two Gaussians integrates to a Gaussian in the difference of means with summed variances; the prefactor `C/sqrt(sigma^2+C^2)` is the normalization that survives because my squared exponential wasn't normalized — its "width" is `C`.) I'll verify it numerically with `mu = 0.7, sigma^2 = 1.3, C = sqrt(pi ln 2 / 2)`: the direct numerical integral and the closed form agree to machine precision. Good. So the second term is
+
+  E_f[H[y|x,f]] ≈ C / sqrt(sigma^2_{x,D} + C^2) · exp( −mu^2_{x,D} / (2 (sigma^2_{x,D} + C^2)) ),   C = sqrt(pi ln 2 / 2).
+
+Putting both terms together, the disagreement score for a GP classifier is, in closed form,
+
+  h( Phi( mu_{x,D} / sqrt(sigma^2_{x,D} + 1) ) )  −  C / sqrt(sigma^2_{x,D} + C^2) · exp( −mu^2_{x,D} / (2 (sigma^2_{x,D} + C^2)) ).
+
+Two numbers per candidate — the posterior mean and variance of the latent at `x` — fed through this. No re-inference, no entropy of an infinite-dimensional object, just the one Gaussian-posterior approximation marked `≈` and the squared-exponential approximation, whose costs I've now bounded. And because `mu_{x,D}` and `sigma_{x,D}` are smooth functions of `x` for any reasonable kernel, this whole score is smooth and differentiable in `x`, so if I ever want to query a *continuous* `x` rather than pick from a pool, I can just do gradient ascent on it. The recipe is: run any approximate GP inference once to get `mu_{x,D}, sigma_{x,D}` for the points of interest, then maximize this objective. I can even pick the inference method by accuracy budget — and since I only need `O(1)` inference, I can afford the accurate one. There's a known finding that EP is much more accurate than the Laplace approximation for GPC; because my criterion is `O(1)` in posterior updates rather than `O(N_x N_y)`, I can pay for EP where IVM, stuck with `O(N_x N_y)`, is pushed toward the cheaper ADF. The thing that made my criterion tractable also lets it be *more* accurate, not less.
+
+Now a couple of things the structure lets me extend almost for free, which I want to nail down because they show the criterion isn't a one-off trick for plain GPC. First, nuisance parameters. Often `theta` splits into parameters I care about, `theta+`, and ones I don't, `theta−` — for a GP the kernel hyperparameters (length-scales, smoothness) are a natural `theta−`: I'd like to query points informative about the *function*, not waste queries pinning down a length-scale, or sometimes exactly the reverse. The clean way is to go back to the *parameter*-space objective and integrate out the nuisance part before applying the same mutual-information logic. Reducing uncertainty only about `theta+` means the relevant MI is `I[theta+, y | x, D]`, and rerunning the same symmetry swap but with `y`'s distribution obtained by marginalizing `theta−` gives
+
+  H[ E_{p(theta+,theta−|D)}[ y | x, theta+, theta− ] ]  −  E_{p(theta+|D)} [ H[ E_{p(theta−|theta+,D)}[ y | x, theta+, theta− ] ] ].
+
+The outer entropy is over the fully-marginal prediction; the subtracted term fixes `theta+`, averages out `theta−` *inside* the entropy, then averages the result over `p(theta+|D)`. So a setting of the nuisance parameters that I'm unsure about doesn't, by itself, make a point look informative — only disagreement that survives marginalizing the nuisance does. If I maintain a posterior over the hyperparameters (say by Hamiltonian Monte Carlo) I can plug it straight in; or I can flip the roles and treat the hyperparameters as `theta+` and the function `f` as the nuisance, which is exactly what I'd want for something like automatic relevance determination, where the length-scales themselves are the objects of interest.
+
+Second, preference learning, which I get essentially for free by a change of variable. Suppose instead of labels I observe comparisons: items come in pairs `(u, v)` and `y = 1` means `u` is preferred to `v`. A standard latent model says `u ≻ v` whenever `f(u) + eps_u > f(v) + eps_v` with Gaussian noise on each, so `P[y=1 | u, v, f] = Phi( (f(u) − f(v)) / (sqrt(2) sigma_noise) )`, and rescaling `f` I can take `sqrt(2) sigma_noise = 1`. The likelihood depends on `f` only through the *difference* `f(u) − f(v)`, so define `g(u,v) = f(u) − f(v)` and do everything in terms of `g`: the likelihood is `y | u, v ~ Bernoulli(Phi(g(u,v)))`, which is *exactly* the probit classification likelihood I already handled. And `g` is a linear functional of `f`, so if `f` has a GP prior, `g` does too — I just need its kernel. Compute the covariance of `g` from that of `f`:
+
+  k_pref((u_i,v_i),(u_j,v_j)) = Cov[ f(u_i) − f(v_i), f(u_j) − f(v_j) ]
+                              = k(u_i,u_j) − k(u_i,v_j) − k(v_i,u_j) + k(v_i,v_j),
+
+by bilinearity of covariance over the four cross-terms, and the mean is `mu(u) − mu(v)`. This `k_pref` even has the right anti-symmetry baked in: swap `u` and `v` and `g` flips sign, so `P[u ≻ v] = 1 − P[v ≻ u]` automatically holds. So preference learning with a GP is just GP classification with a particular "preference-judgement" kernel — and therefore my disagreement criterion, derived for GPC, applies verbatim to preference queries with no new machinery at all.
+
+So the GP case is fully closed-form and even stretches to nuisance parameters and preferences. But the GP closed form leaned on the probit likelihood and the squared-exponential entropy trick. What do I do when the model isn't a GP at all but a deep neural-network classifier, where `theta` is the network weights, the posterior `p(theta|D)` is hopelessly intractable, and there's no probit-convolution identity to exploit? I go back to the form that's *model-agnostic*:
+
+  I[theta, y | x, D]  =  H[y | x, D]  −  E_{theta ~ p(theta|D)} [ H[y | x, theta] ].
+
+Everything I need here is: (a) samples of `theta` from the posterior, and (b) the predictive softmax `p(y|x,theta)` for each sampled `theta` — which a forward pass gives me directly. I don't need the posterior in closed form, I don't need its entropy, I just need to *sample* it and run forward passes. The only missing piece is a way to draw approximate posterior samples of the weights cheaply. And that's exactly what stochastic forward passes with dropout give me: leave dropout switched on at prediction time and run the network `T` times; each pass zeros out a different random subset of units, so each pass is effectively a different network drawn from an approximate posterior over the weights, and produces a different softmax vector `p^t = p(y | x, theta^t)`. So `T` dropout forward passes stand in for `T` posterior samples `theta^1, ..., theta^T`.
+
+Now plug those samples into the two terms with simple Monte-Carlo estimates. The expectation over the posterior `E_theta[·]` becomes an average over the `T` passes. The marginal predictive `p(y|x,D) = E_theta[p(y|x,theta)]` becomes the average softmax across passes, `p_bar = (1/T) Σ_t p^t`. So:
+
+  H[y|x,D] ≈ H[ p_bar ] = − Σ_c p_bar_c log p_bar_c,        the entropy of the mean prediction,
+  E_theta[H[y|x,theta]] ≈ (1/T) Σ_t H[ p^t ] = −(1/T) Σ_{t,c} p^t_c log p^t_c,   the mean of the per-pass entropies,
+
+and the disagreement score is their difference,
+
+  I(x) ≈ H[ p_bar ]  −  (1/T) Σ_t H[ p^t ]
+       = − Σ_c ( (1/T) Σ_t p^t_c ) log( (1/T) Σ_t p^t_c )  +  (1/T) Σ_{t,c} p^t_c log p^t_c.
+
+The intuition survives the move intact: entropy of the *mean* prediction is high when the passes, taken together, are unsure; the mean of the *per-pass* entropies is high when each individual pass is unsure. Their difference is high exactly when each pass is individually confident but the passes confidently disagree — the dropout networks vote different ways while each is sure of itself. That's the epistemic uncertainty a label can resolve, with the aleatoric part subtracted off, just like in the GP case, only now estimated by sampling instead of by the probit closed form. And since the two terms are entropy-of-an-average versus average-of-entropies, the difference is non-negative by Jensen's inequality (entropy is concave) — `I(x) ≥ 0` always, which is the right sign for a mutual information.
+
+One implementation subtlety to get right. In code I want to rank the unlabeled pool by `I(x)` and take the most-informative `n`. It's slightly cleaner to compute the negative, `U = (mean per-pass entropy) − (entropy of mean) = −I(x)`, and then sort `U` ascending and take the first `n`: the `n` smallest `U` are the `n` largest `I`. Same selection, just be careful that the sign and the sort direction are consistent — the largest mutual information must be the points I keep. A handful of dropout passes is enough to get a usable estimate; `T` around ten is a reasonable default — enough samples to estimate the two entropies, cheap enough to run over the whole pool.
+
+Let me write it as the query rule that fills the one empty slot in the harness, using the stochastic-forward-pass primitive that already exists:
+
+```python
+import numpy as np
+import torch
+from .strategy import Strategy
+
+
+class BALDDropout(Strategy):
+    def __init__(self, X, Y, idxs_lb, net, handler, args, n_drop=10):
+        super(BALDDropout, self).__init__(X, Y, idxs_lb, net, handler, args)
+        self.n_drop = n_drop                       # T = number of posterior samples
+
+    def query(self, n):
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        # T dropout forward passes -> probs[t, i, c] ~ p(y=c | x_i, theta^t)
+        probs = self.predict_prob_dropout_split(
+            self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], self.n_drop)
+        pb = probs.mean(0)                                       # p_bar = mean over T passes
+        entropy1 = (-pb * torch.log(pb)).sum(1)                  # H[p_bar]  (total uncertainty)
+        entropy2 = (-probs * torch.log(probs)).sum(2).mean(0)    # mean per-pass H (aleatoric)
+        U = entropy2 - entropy1                                  # U = -(BALD mutual information)
+        # smallest U == largest mutual information: keep the n most-informative points
+        return idxs_unlabeled[U.sort()[1][:n]]
+```
+
+Let me trace the causal chain back to the start, because I want to be sure each step was forced rather than chosen. I wanted to query the input whose label most reduces my uncertainty about the parameters, which is the expected drop in parameter-posterior entropy — but that object lives in parameter space, where the entropy is intractable for big models and ill-defined for nonparametric ones, and where evaluating it costs a re-inference per hypothetical label, `O(N_x N_y)`. Maximum-entropy sampling and query-by-committee dodge the cost by working with predictions, but both conflate model uncertainty with irreducible observation noise — MES because it keeps only the marginal predictive entropy, QBC because its hard vote discards confidence. Recognizing that my objective is literally a mutual information let me use the symmetry of MI to rewrite it as predictive entropy minus expected per-parameter entropy: same number, but now in low-dimensional output space, conditioned only on the data I already have, so `O(1)` inference and finite even for infinite-dimensional `theta`. That subtraction is exactly the term that separates resolvable model disagreement from unresolvable noise, and it contains MES when the second term is zero or constant in `x`, with hard-vote QBC as another degenerate case. For a GP classifier I made both terms closed form: the first via the exact probit-Gaussian convolution, the second by approximating the binary entropy of the probit with a squared exponential — justified by Taylor-expanding its log so the constant is zero, the quadratic coefficient is `−1/(pi ln 2)`, and the omitted error starts at order `x^4` — and then convolving that squared exponential against the Gaussian posterior in closed form. The same parameter-space-then-swap logic extends to caring only about a subset of parameters (integrate out the nuisance ones) and to preference learning (the difference of latent values is a GP with a derived anti-symmetric kernel, reducing preference queries to probit classification). And when the model is a deep network with an intractable weight posterior, the model-agnostic predictive form needs only posterior samples and forward passes, which dropout-at-test-time supplies: average the softmaxes for the entropy of the mean, average the per-pass entropies for the expected entropy, subtract, and query the points where that difference is largest — where the dropout networks are each sure and yet disagree.

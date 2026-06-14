@@ -1,0 +1,10 @@
+{
+  "method": "kernel-ridge",
+  "codex_reviewed": false,
+  "outcome": "failed",
+  "reviewed_at": "2026-06-14T15:01:54Z",
+  "reviewer": "gpt-5.5",
+  "effort": "xhigh",
+  "reason": "codex-companion applied substantive review-and-fix edits to all three deliverables (push-through identity rewritten with derivation; RKHS route made rigorous for the singular-Gram case via eigendecomposition; GP/Kriging equivalence expanded to the explicit covariance computation; reasoning/answer code aligned to the sklearn KernelRidge structure; context scaffold genericized to a neutral pairwise_similarity stub), but the runtime then errored during teardown (exit 144 / self-reported -1) while killing recursively-spawned companion processes, before emitting a final changelog or clean completion marker. Per the skill this counts as runtime-errored, not a clean completed gate. Fallback applied: all of codex's edits were independently re-verified this run -- push-through identity, singular-Gram fitted-value equivalence, GP covariance identity and posterior-mean equality numerically confirmed; both code blocks reproduce sklearn KernelRidge to ~1e-15; context has the five sections, reasoning has zero headers, all files English-only.",
+  "evidence": "this-run"
+}

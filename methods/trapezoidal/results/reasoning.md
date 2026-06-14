@@ -1,0 +1,114 @@
+Let me start from what actually hurts. I want to train a large language model, and beyond picking a peak learning rate, the thing that most shapes the final model is how I vary that rate over the run. The default I reach for is a single cosine cycle: warm up to a peak over a few hundred steps, then let the rate slide down a cosine curve over the rest of training, ending around a tenth of the peak. The shape itself I understand — a high rate early lets the iterate roam and explore the landscape, and the long slow tail at lower and lower rates is what lets the model settle into a good basin instead of bouncing around it at the noise floor. Loshchilov and Hutter wrote the cosine down originally for cyclic warm restarts in vision, where you reset the rate high every so often to jump out of bad minima across many epochs; for a language model with effectively endless data and a single pass, people kept one cycle of it, η_t = η_min + ½(η_max − η_min)(1 + cos(π·T_cur/T_i)), warming up then decaying once to the floor.
+
+But here's the thing that's been quietly costing me a fortune. That cosine curve is parameterized by its cycle length T_i, and to get the good final model the cycle length has to equal the total number of steps I train for. Hoffmann and the Chinchilla work nailed this down: for a fixed family of models, the best loss at a given token count comes from the cosine whose decay is stretched to exactly that token count. Fine — except look at the consequence they spell out. If I plan a cosine to decay over 130B tokens and I look at the loss partway through, at some D′ ≪ 130B, that intermediate loss is an *overestimate* of what a run actually planned to stop at D′ would have reached. Why? Because most of the loss drop lives in the decay, and at the intermediate point the decay hasn't happened yet — my rate is still high, the model is still rattling. So I cannot read off "quality at length D′" from a checkpoint of a longer run. If I want to know how good a model is at several lengths — which is exactly what I need for scaling-law fits, data-mixture comparisons, architecture ablations — I have to train a separate model from scratch for each length, with a length-matched cosine each time. A family of sizes times several lengths, each from zero. That's the bill.
+
+And it's worse than just expensive, it's rigid. A cosine run is built to bottom out at its planned end, so its final rate is too low to make big further progress; if I want to keep going I either stall or I re-warm the rate, and re-warming spikes the loss and training crawls back only slowly — the continual-learning people see the same thing, re-warming hurts and induces forgetting. So a finished cosine run can be neither cleanly extended nor mined for intermediate quality. The root disease is one thing: the schedule's shape is welded to the total length. I have to commit to "how long" before I can even define "how."
+
+So let me ask the question directly: why does cosine work, stripped of the cosine-ness? It buys me a good trade between a high exploratory rate and a sufficient cool-down to commit, with the cool-down stretched proportionally to the run. If that's all it is, the cosine shape is incidental — what I actually need is "stay high for a while, then cool down enough." And nothing about "stay high for a while" requires me to know in advance when I'll stop. That's the crack to pry at. Suppose I keep the rate flat at a constant value for the main body of training and only anneal it down in a short final phase — a cooldown. The flat part is length-agnostic by construction: at every step during it I'm in the same exploratory regime, and the moment I decide to stop, I launch the cooldown from wherever I am. The total length never enters the flat phase. The schedule becomes warmup, then a plateau, then a short ramp down — a trapezoid.
+
+I should be honest that this isn't a wild invention; the held-high-then-cool idea showed up in the vision-transformer scaling work, where Zhai and colleagues wanted exactly this — to train for several durations and evaluate from one run — and kept the rate roughly constant (or on a reciprocal-square-root path) through the main phase with a short final annealing to zero, finding it let them train indefinitely and read off multiple durations from a single run. What's open is whether that works for *language-model* pretraining, whether it really matches a length-matched cosine, and what the cooldown should actually look like and how long it should be. Those are the questions I have to answer to trust this.
+
+Let me write the trapezoid down so I have something concrete. Three phases, governed by the total step count N, a warmup length N_warmup, and a cooldown length N_decay:
+
+  η(n) = (n / N_warmup) · η_max,                              n < N_warmup
+  η(n) = η_max,                                               N_warmup < n ≤ N − N_decay
+  η(n) = f(n, N, N_decay) · η_max,                            n > N − N_decay,
+
+with f a monotonically decreasing function that runs from 1 down to (near) 0 over the cooldown. The key practical point is that the plateau value η_max and the plateau *length* are decoupled — I can hold the plateau as long as I like, and N_decay is a short tail. N only enters through "when does the cooldown start," and I get to choose that on the fly, even retroactively from a saved checkpoint.
+
+Now the questions that decide whether this is real. First: do I even need the cooldown, or could I just hold the constant rate and stop? Intuitively no — the whole reason the cosine tail exists is that a high rate keeps the iterate skating around at the noise floor of a basin, never settling; the directional derivative stays large, the loss plateaus. To actually descend into the bottom of the basin I have to take the energy out, i.e. anneal the rate down. So the cooldown is doing the real "commit to a minimum" work; the plateau is doing the exploration. But I'd like more than intuition, because "it works" is not a reason. Let me see if optimization theory tells me how much the cooldown is worth and what shape it should take.
+
+The cleanest handle I know is the last-iterate analysis for convex Lipschitz objectives. Forget non-convexity for a moment; the question "given a step-size schedule, how good is the *final* iterate of SGD" has a sharp answer, and crucially it's the final iterate I care about, not some average — I ship the last weights. The relevant bound, due to Defazio and collaborators, looks at f(x_T) − f(x*) for SGD x_{t+1} = x_t − η_t g_t and bounds it in terms of the whole schedule η_1,…,η_T and the gradient norms. Let me reconstruct its shape because the structure is the whole point. Writing it out, the suboptimality of the last iterate is bounded by roughly
+
+  E[f(x_T) − f*] ≤ 1/(2·γ·Σ_t η_t) · [ D² + γ²·Σ_t η_t²·E‖g_t‖² ]
+                  + (γ/2)·Σ_{k=1}^{T−1} η_k/(Σ_{t=k+1}^T η_t) · (1/Σ_{t=k}^T η_t)·Σ_{t=k}^T η_t²·E‖g_t‖²,
+
+where D is the distance from start to optimum, γ scales the schedule, and the η_t are the normalized schedule. The first bracket is the familiar "distance over total step budget plus accumulated gradient energy" term. The second term — the double sum over k — is the one that carries the schedule's signature, and I should stare at it.
+
+Take the simplest case: a *constant* schedule, η_t = η, and suppose the gradient norms are roughly constant, ‖g_t‖ ≈ G. Plug in. In the second term, Σ_{t=k+1}^T η_t = (T − k)η, Σ_{t=k}^T η_t = (T − k + 1)η, and Σ_{t=k}^T η_t²G² = (T − k + 1)η²G². So the k-th summand is η/((T−k)η) · 1/((T−k+1)η) · (T−k+1)η²G² = η·G²/(T−k). Summing over k from 1 to T−1 gives η·G²·Σ_{k=1}^{T−1} 1/(T−k) = η·G²·(1 + ½ + … + 1/(T−1)) = η·G²·H_{T−1}, the harmonic number, which grows like ln T. There it is. A constant schedule's last-iterate bound carries an extra ln T factor — the iterate at the very end is worse than the *best* iterate by a logarithmic gap, precisely because at a constant rate it never stops bouncing; the contributions of recent steps pile up as a harmonic sum that never decays.
+
+So the constant plateau alone leaves a log-factor on the table. Now what kills that harmonic term? The harmonic blow-up came from η_k staying full-size for the late k. If instead I let the late η_k shrink toward zero — a cooldown — then in the second term the numerator η_k for large k goes to zero, and the late summands, the ones that were contributing 1/(T−k) and blowing up the harmonic sum, get suppressed. For a schedule with a linear tail, the leading comparison to the constant schedule no longer carries that logarithmic term. I need to be careful here: this is a last-iterate bound, not a literal measured loss curve. But it gives the right design pressure. While the rate is constant, the final iterate still carries the constant-rate noise term; once the tail lowers the late step sizes, the bound improves by removing the harmonic contribution that the constant schedule keeps. I'd been tempted to read a flat plateau as "training has stalled, this schedule is worse," but the bound says the opposite possibility is coherent — the plateau can do exploration while leaving the final-iterate cleanup to a short tail I can trigger whenever I want.
+
+Now, what *shape* should f take? The same theory answers it. If I ask which schedule minimizes the worst case of that last-iterate bound, the answer Defazio derives is a linear decay of the step size to zero. Concretely, in the clean Lipschitz setting, setting η_t = (D/(G√T))·(1 − t/T) gives E[f(x_T) − f*] ≤ D·G/√T — the optimal O(1/√T) rate, and now *without* any ln T, exactly because the linear ramp-to-zero is what zeroes the late η_k in the harmonic term I just computed. The intuition he gives is lovely: a linear decay "emulates iterate averaging" — each gradient's net contribution to the final point is weighted roughly as it would be in a uniform average of the iterates, which is the thing that denoises the last iterate. So a *linear* cooldown to zero is not an arbitrary choice; it is the worst-case-optimal shape for the final phase. My f should be f(n) = 1 − (n − (N − N_decay))/N_decay over the cooldown, running linearly from 1 at the start of the cooldown to 0 at the end.
+
+Good. So the canonical trapezoid is: linear warmup, constant plateau at η_max, linear cooldown to zero over a short tail. Let me pressure-test the open knobs, because each is a place I could be wrong.
+
+How long should the cooldown be? Two forces. Too short and I don't give the late steps enough room to shrink smoothly; too long and I'm just doing a slow cosine-like decay over most of training, which throws away the whole advantage because the plateau is what makes the schedule length-agnostic and reusable. So I want a modest fraction, exposed as a knob rather than baked into the definition. The bound tells me the relevant object is the late tail of the sum, not a sacred percentage of the run, so for longer training the fraction can plausibly shrink if the absolute number of decay steps is still enough. In practice I should try short tails such as 10% or 20%, but the schedule itself should only require `fract_decay`, not a fixed constant.
+
+What about the plateau height relative to a cosine's peak? A cosine spends much of its budget at reduced rates, so its peak can be set high without the average rate being that high. My trapezoid holds the *full* η_max through the stable phase — if I set the plateau at the cosine's peak, I'd be running hot far longer than cosine ever does. So the plateau height has to be tuned as its own peak, and I should expect it to sit below a peak that is only briefly visited by a decaying schedule.
+
+And the warmup — why ramp up at all rather than start at η_max? The very first updates are on a fresh, badly-conditioned model with large, unreliable gradients; hitting it with the full rate immediately risks an early blow-up before the optimizer's moment estimates and the gradient statistics have stabilized. So I ramp linearly from near zero up to η_max over a short warmup, the mirror image of the cooldown — ramp in, hold, ramp out. In implementation I won't start from *exactly* zero (a zero first step is wasted); I'll start from a small fraction of η_max, η_max/D_init for some init divisor like 100, and ramp to η_max. That's a cosmetic floor on the warmup, not a real degree of freedom.
+
+Now let me reconsider the cooldown shape, because "linear is worst-case optimal" has a loophole I should chase. Worst-case optimal means optimal against the *adversarial* gradient-norm sequence. But my actual training run does not produce the worst-case sequence — the gradient norms have real structure. Defazio's own refinement point is exactly this: if you know the realized gradient norms, you can do better than the worst-case linear shape. So a non-linear cooldown that keeps the rate higher for longer and then drops it harder at the very end might beat linear on the *realized* sequence. Which functional form? Consider f(n) = 1 − √((n − (N − N_decay))/N_decay) — call it the (1−√) cooldown. Compare it to linear over the cooldown progress x ∈ [0,1]: linear is 1 − x, this is 1 − √x. Since √x ≥ x on [0,1], the (1−√) curve sits *below* the linear one — wait, let me get this right: 1 − √x ≤ 1 − x, so (1−√x) gives a *lower* rate than linear at the same progress. Hmm, that's the opposite of "stays higher longer." Let me re-examine: at small x, √x ≫ x (e.g. x=0.01 → √x=0.1), so 1−√x = 0.9 while 1−x = 0.99 — so right after the cooldown starts, (1−√) has *already* dropped more than linear. It front-loads the decay: drop fast first, then crawl to zero slowly along the flattening square-root tail. So (1−√) spends the *end* of the cooldown at very low rates for many steps. That's the "more iterate-averaging at the bottom" regime — a long, low-rate polish. For longer runs, where there are more absolute cooldown steps to fill, that extra low-rate averaging at the end seems likely to help, which is why I'd expect (1−√) to pull ahead of linear as the cooldown lengthens, while for short cooldowns the two are close. Let me not over-commit to the exact exponent though — write it as 1 − x^a and note that a around ½ is the regime to try, with very small a (0.1, 0.2) dropping the rate too far too early and spending too long near zero, which should hurt. The honest summary: linear is the safe, theory-blessed default; (1−√) is a problem-adaptive refinement worth having for long cooldowns. I'll support both.
+
+One more shape question: how low should the final rate go? The bound's pressure comes from suppressing the late η_k, and the cleanest theoretical endpoint is zero. But a training recipe should not hard-wire that endpoint into the schedule's identity. If the last phase needs some residual ability to adapt, a nonzero floor may be preferable, and the peak and final rate should be independent dials. So the mathematical shape can default to cooling to zero, while the implementation keeps a `final_lr_factor` or `min_lr` knob.
+
+Let me also settle whether I even need the cooldown as a *separate phase*, since there's a tempting alternative: weight averaging. If I keep a running average of the parameters along the constant-rate plateau, the average denoises the iterate, and there's an equivalence — Sandler and colleagues show weight averaging behaves like a decayed-rate schedule, and the stochastic-weight-averaging line (Izmailov) and old Polyak averaging both say averaging the late, noisy iterates improves generalization. So in principle I could emit averaged weights along the plateau and get a useful readout without launching a decay. That's attractive for the one-run goal. But averaging changes the returned point; it does not actually lower the step sizes driving the underlying dynamics. The explicit tail is still the direct way to suppress the late learning-rate terms in the last-iterate bound. I should keep averaging as a complementary readout along the trajectory, not as the schedule itself.
+
+Now I should connect this back to what the cooldown is doing in weight space, because it tells me what has to be true for the branch-from-checkpoint idea to be safe. During the plateau the model can take large steps with little improvement, which is consistent with overshooting around a basin at high rate. During the cooldown the step sizes shrink, so the same region can become descendent instead of noisy. The diagnostic I would want is a mode-connectivity check: take the checkpoint right before the cooldown and the checkpoint right after, and walk the straight line between them in weight space. If the cooldown is escaping to a far-off, qualitatively different solution, the interpolated loss should have a barrier in the middle. If it is just descending into the connected basin the plateau iterate was already near, the interpolation should drop smoothly. That is the behavior I need for checkpoint reuse: the pre-cooldown checkpoint is "the basin, minus the commitment," so I can branch a cooldown off it at any step, or keep training the high-rate trajectory past it, without re-warming.
+
+Let me make sure I haven't lost the original goal in the theory. The point of all this is the scaling-law cost. With cosine I needed, for each model size, several full runs at different lengths from scratch. With the trapezoid I train each model size *once* at a constant rate for the longest length I care about, saving plateau checkpoints along the way; then to get a stopped model at each shorter length I launch a short cooldown from the corresponding checkpoint, or use an averaged readout if I only need a cheaper proxy. The model-scaling axis still needs one run per size, but the length axis changes from "K runs from scratch" to "one long run plus K short cooldown branches." The whole motivation — decouple the schedule's shape from the commitment to a length — pays off precisely here.
+
+So let me write the schedule as the function the training loop actually calls every step. It is cleanest to return a multiplicative factor on the peak rate: compute `n_anneal_steps = int(fract_decay * n_iterations)`, set `n_hold = n_iterations - n_anneal_steps`, warm up from `1 / init_div_factor` to `1`, hold exactly `1`, apply the cooldown branch while `step < n_iterations`, and return the final factor after the horizon. Linear and `sqrt` are the two branches I care about for the derivation, but the same function can expose the other simple cooldown shapes as named variants, so the API stays one schedule function with a `decay_type` switch:
+
+```python
+import math
+
+
+def wsd_schedule(n_iterations, final_lr_factor=0.0, n_warmup=1000,
+                 init_div_factor=100, fract_decay=0.1,
+                 decay_type="linear"):
+    n_anneal_steps = int(fract_decay * n_iterations)
+    n_hold = n_iterations - n_anneal_steps
+
+    def schedule(step):
+        if step < n_warmup:
+            return step / n_warmup + (1 - step / n_warmup) / init_div_factor
+        elif step < n_hold:
+            return 1.0
+        elif step < n_iterations:
+            x = (step - n_hold) / n_anneal_steps
+            if decay_type == "linear":
+                return final_lr_factor + (1 - final_lr_factor) * (1 - x)
+            elif decay_type == "exp":
+                return final_lr_factor ** x
+            elif decay_type == "cosine":
+                return final_lr_factor + (1 - final_lr_factor) * (
+                    1 + math.cos(math.pi * x)
+                ) * 0.5
+            elif decay_type == "miror_cosine":
+                cosine_value = final_lr_factor + (1 - final_lr_factor) * (
+                    1 + math.cos(math.pi * x)
+                ) * 0.5
+                linear_value = final_lr_factor + (1 - final_lr_factor) * (1 - x)
+                return linear_value * 2 - cosine_value
+            elif decay_type == "square":
+                return final_lr_factor + (1 - final_lr_factor) * (1 - x ** 2)
+            elif decay_type == "sqrt":
+                return final_lr_factor + (1 - final_lr_factor) * (1 - math.sqrt(x))
+            else:
+                raise ValueError(
+                    "decay type must be one of "
+                    "['cosine', 'miror_cosine', 'linear', 'exp', 'square', 'sqrt']"
+                )
+        else:
+            return final_lr_factor
+
+    return schedule
+
+
+def get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr,
+           frac_decay=0.1, decay_type="linear", warmup_div=100):
+    final_lr_factor = min_lr / learning_rate
+    schedule = wsd_schedule(
+        n_iterations=lr_decay_iters,
+        final_lr_factor=final_lr_factor,
+        n_warmup=warmup_iters,
+        init_div_factor=warmup_div,
+        fract_decay=frac_decay,
+        decay_type=decay_type,
+    )
+    return learning_rate * schedule(it)
+```
+
+Let me trace the causal chain to be sure it closes. I started stuck because the cosine schedule's shape is welded to the total training length — to get the optimal model at a length I must run a length-matched cosine from scratch, so studying several lengths means several full runs, and a finished cosine can't be cleanly extended or read for intermediate quality. Asking what cosine actually buys — exploration at high rate, then enough cool-down to commit — showed the cosine *shape* is incidental, so I replaced it with a constant plateau (length-agnostic exploration) plus a short cooldown (the commit), launchable at any step: a trapezoid. The convex last-iterate bound then made the design choices non-arbitrary: a constant schedule's final iterate carries the harmonic `η·G²·H_{T−1}` term, and a cooldown suppresses the late learning rates that create that term. The same bound's worst-case minimizer is a linear ramp to zero with `η_t = (D/(G√T))(1 − t/T)` and `E[f(x_T) − f*] ≤ D·G/√T`, giving the canonical linear cooldown; and since the realized gradient sequence need not be worst-case, a problem-adaptive `(1−√)` tail — below linear because `√x ≥ x` on `[0,1]`, so it drops faster and then spends longer near the floor — is worth exposing. The cooldown fraction should be a short, tunable fraction, the plateau peak must be tuned below a briefly visited cosine peak, the warmup is a short ramp-in from `1/init_div_factor` to avoid early instability, and the final rate is an independent knob. A line-interpolation diagnostic can check that the cooldown stays in the same basin, and weight averaging along the plateau remains a complementary readout rather than a replacement for the schedule. The payoff is the original goal: the length axis changes from multiple from-scratch runs to one long plateau trajectory plus short cooldown branches. The whole schedule drops into the loop as a stateless factor function with a warmup branch, a plateau branch, a cooldown branch, and a final-floor branch.

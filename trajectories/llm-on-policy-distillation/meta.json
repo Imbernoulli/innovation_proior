@@ -1,0 +1,69 @@
+{
+  "task": "llm-on-policy-distillation",
+  "title": "LLM On-Policy Distillation: which loss transfers reasoning",
+  "domain": "Language models",
+  "metrics": [
+    "gsm8k",
+    "math500",
+    "amc"
+  ],
+  "metric_columns": [
+    "gsm8k_accuracy",
+    "math500_accuracy",
+    "amc_accuracy"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Skewed Reverse KL (SRKL, DistiLLM)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dagger",
+      "method": "DAgger (cross-entropy on teacher's top-1)",
+      "reasoning": "01-dagger-reasoning.md",
+      "answer": "01-dagger-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "rs_kd",
+      "method": "RS-KD (sparse top-K KL + tail bucket)",
+      "reasoning": "02-rs_kd-reasoning.md",
+      "answer": "02-rs_kd-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "taid",
+      "method": "TAID (logit-space moving target)",
+      "reasoning": "03-taid-reasoning.md",
+      "answer": "03-taid-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "gkd",
+      "method": "GKD (generalized JSD, β=0.5)",
+      "reasoning": "04-gkd-reasoning.md",
+      "answer": "04-gkd-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "opd",
+      "method": "OPD (per-token reverse KL)",
+      "reasoning": "05-opd-reasoning.md",
+      "answer": "05-opd-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "skew-reverse-kl",
+      "method": "Skewed Reverse KL (SRKL, DistiLLM)",
+      "reasoning": "06-skew-reverse-kl-reasoning.md",
+      "answer": "06-skew-reverse-kl-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Single seed {42}; ranked weak->strong by GSM8K (1319 problems, the most statistically reliable benchmark), corroborated by MATH-500 (500). dagger weakest (GSM8K 0.4511, lowest GSM8K+MATH-500; its top AMC of 0.0813 is 3/40 noise). rs_kd next (GSM8K 0.4541, lowest AMC). taid (GSM8K 0.4685) jumps GSM8K but its MATH-500 0.280 is the lowest of all (forward-KL ceiling). gkd (GSM8K 0.4716, MATH-500 0.312 best so far). opd strongest (GSM8K 0.4852 best overall, MATH-500 0.310). AMC (40 problems, avg@8) is treated as noise throughout.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (the compute_distill_loss body in trl/experimental/gkd/custom_distill_loss.py, lines 42-65, scaffold from baselines/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The trainer owns on-policy mixing (static lmbda), teacher forward, optimizer; the loss body sees only the two logit tensors + labels and is NOT told the batch source. Same-named-baseline-vs-paper diffs: rs_kd here is the deterministic top-K + tail-bucket realization, NOT the paper's unbiased multinomial sampling; taid here drops the adaptive momentum schedule (stateless loss body) and uses the plain linear schedule with t_start=0.4; gkd hard-pins beta_use=0.5 (genuine interior generalized JSD), ignoring the beta argument, not the configurable family; opd is the analytic vocabulary-sum reverse KL and does NOT change lmbda (relies on the trainer default). Finale skew-reverse-kl (DistiLLM, Ko et al., ICML'24, arXiv 2402.03898) is a genuinely stronger published loss-only method, landed as the bounded-gradient cure for OPD's mode-collapse risk; only the SRKL loss is in scope (the recipe's adaptive SGO scheduler + off-policy replay buffer are framework-level, out of scope). Finale methods/skew-reverse-kl trace created (grounded in the arXiv source + official repo losses.py) and Codex-reviewed. methods/<slug> single-round baseline traces (dagger, opd, taid, rs-kd, gkd) untouched."
+}
