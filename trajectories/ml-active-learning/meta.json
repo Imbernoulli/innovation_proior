@@ -1,0 +1,60 @@
+{
+  "task": "ml-active-learning",
+  "title": "Active Learning: pool-based batch query strategy",
+  "domain": "Classical ML",
+  "metrics": [
+    "letter",
+    "spambase",
+    "splice"
+  ],
+  "metric_columns": [
+    "accuracy",
+    "auc"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "BADGE (diverse gradient embeddings)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "random",
+      "method": "Random Sampling (passive baseline)",
+      "reasoning": "01-random-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-random-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "least_confidence",
+      "method": "Least Confidence (uncertainty sampling)",
+      "reasoning": "02-least_confidence-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-least_confidence-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "bald",
+      "method": "BALD (Bayesian Active Learning by Disagreement, MC dropout)",
+      "reasoning": "03-bald-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-bald-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "bait",
+      "method": "BAIT (Fisher-information A-optimal selection, CPU-adapted)",
+      "reasoning": "04-bait-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-bait-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "badge",
+      "method": "BADGE (diverse gradient embeddings)",
+      "reasoning": "05-badge-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-badge-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked from baseline:* is_final,true leaderboard rows; both metrics (accuracy, auc) higher-is-better, averaged across the 3 datasets (letter, spambase, splice). random is weakest by design (model-free passive floor; lowest mean accuracy 0.816/0.899/0.789 and the widest lucky-seed gap on letter). least_confidence (mean acc 0.846 / auc 0.773) adds raw uncertainty but is brittle: its letter mean (0.7955/0.668) inverts BELOW random because it chases irreducible 26-class boundary noise. bald (mean acc 0.845 / auc 0.782) repairs letter (0.836/0.716) by subtracting aleatoric uncertainty (epistemic/aleatoric split via MC-dropout MI). bald < bait: bait wins 4 of 6 metric columns head-to-head (spambase + splice on both metrics, where its pool-aware A-optimal diversity binds), losing only letter where the harness's CPU adaptation (128-dim random projection, entropy-filtered candidate pool, no seed-42 letter run) cripples it; combined means are a near tie (bald 0.8136 vs bait 0.8118) broken by the column-majority and by bait being the strict information-criterion generalization of bald. badge is strongest unambiguously (Borda 20/20; best aggregate, mean acc 0.868 / auc 0.801; best on letter 0.856/0.752 because factored k-means++ fuses uncertainty and diversity cheaply with no projection/inverse to collapse on 26 classes).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (CustomSampling.query in badge/query_strategies/custom_sampling.py, lines 28-54, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are the derivation reference and are untouched. SAME-NAMED-vs-PAPER diffs threaded into each step: badge here uses the FACTORED outer-product form via get_embedding(return_probs=True)+prob-residuals+scipy.stats.rv_discrete (NOT get_grad_embedding); bait here is a CPU-adapted version (streaming Fisher, random projection to bait_proj_dim=128, entropy-filtered candidate pool of max(4n,512), torch.linalg.pinv, NOT the full-pool get_exp_grad_embedding path) so its letter run is degraded/incomplete; bald here is only the MC-dropout MI estimator (the GP probit/squared-exponential closed form, nuisance-parameter and preference-learning extensions of the full method are not exposed by the harness). No finale: BADGE is the strongest baseline and no clearly-stronger published pool-based method that faithfully fits this query(n) contract was found on this 3-dataset tabular protocol; per the spec, stop at the strongest baseline."
+}
