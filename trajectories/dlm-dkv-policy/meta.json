@@ -1,0 +1,52 @@
+{
+  "task": "dlm-dkv-policy",
+  "title": "Diffusion LM KV Cache Policy: quality-preserving cache reuse for LLaDA denoising",
+  "domain": "Language models",
+  "metrics": [
+    "math",
+    "humaneval",
+    "lm-eval"
+  ],
+  "metric_columns": [
+    "final_score",
+    "reuse_ratio",
+    "tokens_per_s"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "vanilla_uncached",
+      "method": "Vanilla uncached (no-cache LLaDA control)",
+      "reasoning": "01-vanilla_uncached-reasoning.md",
+      "answer": "01-vanilla_uncached-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "d2cache",
+      "method": "d2Cache (active query rows + attention-rollout top-up)",
+      "reasoning": "02-d2cache-reasoning.md",
+      "answer": "02-d2cache-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "dllm_cache",
+      "method": "dLLM-Cache (interval feature reuse + V-verify row refresh)",
+      "reasoning": "03-dllm_cache-reasoning.md",
+      "answer": "03-dllm_cache-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "elastic_cache",
+      "method": "Elastic-Cache (attention-drift trigger + depth-aware layer reset)",
+      "reasoning": "04-elastic_cache-reasoning.md",
+      "answer": "04-elastic_cache-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Weak->strong by the task's own score_spec (gmean over three workloads; each workload = quality gate {math>=35, humaneval>=40, lm-eval>=84} as a near-lossless soft constraint, then weighted_mean of reuse_ratio (0.75) and tokens_per_s (0.25, sigmoid vs bl_best)). Re-running the real scorer on the baseline rows gives task scores: vanilla_uncached 0.010 < d2cache 0.163 < dllm_cache 0.214 < elastic_cache 0.481. vanilla_uncached is the floor by construction (reuse_ratio=0 on all workloads, slowest throughput, so the dominant reuse term is 0 everywhere). d2cache < dllm_cache despite d2cache's much higher reuse (0.81-0.90 vs 0.49-0.66) because d2cache's MATH final_score is 25.0, far under the 35 gate (gate penalty 0.030), which the geometric mean across workloads drags down; dllm_cache passes all three gates so no workload is multiplied down. elastic_cache is strongest: it passes all gates and is the only policy to break the throughput term (62/70/535 tokens/s vs ~16-26 for the others), hitting the speed-term cap on every workload, with high reuse on math/humaneval.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (DLMRefreshPolicy in dLLM-cache/custom_dlm_eval.py; the editable span lines 53-113, default fill = vanilla_uncached). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold policy code) -> feedback (numbers only, baselines). The code block lives in the answer, not the reasoning. Same-named baseline != paper: the methods/<slug> traces describe each paper's full internal implementation (per-layer block forwards, rollout matrices, in-block drift triggers), but this task exposes only a DECLARATIVE cache-plan policy returning dicts of flags/params; the mechanisms live in the fixed harness. Each step's code is the literal edits/<baseline>.edit.py policy, and the reasoning derives the policy-level decisions, noting what the harness exposes vs omits. Single seed (42). No finale: the task already includes the three leading recompute/reuse cache policies; Elastic-Cache (arXiv:2510.14973) is the most recent and strongest on the scored axis and explicitly surpasses Fast-dLLM/dKV-Cache; published alternatives are either predecessors it beats or a different axis (KV eviction/compression: MaskKV 2510.09309, Sparse-dLLM 2508.02558) that does not map to the reuse/throughput hooks and does not claim to beat it. Nothing clearly stronger and on-axis is published as of the cutoff, so the trajectory stops at the strongest baseline."
+}

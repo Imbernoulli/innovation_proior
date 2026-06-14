@@ -1,0 +1,49 @@
+{
+  "task": "llm-pretrain-kernel",
+  "title": "LLM Pretraining Kernel: the FFN activation in a two-matrix slot",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "elapsed",
+    "wikitext2_ppl",
+    "lambada_ppl"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "elapsed_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "triton_gelu",
+      "method": "Triton fused GELU",
+      "reasoning": "01-triton_gelu-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-triton_gelu-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "triton_relu_sq_fused",
+      "method": "Triton fused linear + ReLU²",
+      "reasoning": "02-triton_relu_sq_fused-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-triton_relu_sq_fused-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "relu_sq_torch",
+      "method": "ReLU² (pure torch, custom autograd)",
+      "reasoning": "03-relu_sq_torch-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-relu_sq_torch-answer.md"
+    }
+  ],
+  "endpoint": "ReLU² (pure torch, custom autograd)",
+  "ranking_basis": "Primary metric is val_loss (lower better); throughput (elapsed, lower better) is the second axis. triton_gelu weakest: worst val_loss (2.2868), worst wikitext2_ppl (43.94), worst lambada_ppl (68.2) — the scaffold-default GELU just kernelized, no activation shaping (the quality floor by construction, but fastest at elapsed 20035 since it leaves the matmuls to cuBLAS). triton_relu_sq_fused middle: squared-ReLU lowers val_loss to 2.2749 (best lambada_ppl 66.88) but the hand-rolled tiled up-matmul tanks throughput to elapsed 30344 (~50% slower than GELU). relu_sq_torch strongest: it Pareto-dominates the fused variant — best val_loss (2.2736), best wikitext2_ppl (42.81), best arc_easy (55.43), best hellaswag (33.84), best piqa (63.98), AND faster (elapsed 21776 < 30344) by keeping the same squared-ReLU activation in pure torch so both matmuls return to cuBLAS.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (fused_mlp_forward(x, w_fc, w_proj) in custom_pretrain.py, lines 33-48; scaffold from edits/*.edit.py). Only TWO weights (w_fc, w_proj) are passed in, so the GLU-variant FFNs (SwiGLU/GEGLU/ReGLU) that would be the obvious next rung are structurally out of reach (they need a third gate matrix V) — squared ReLU is exactly ReGLU with tied weights, the gated benefit in a two-matrix slot. No finale: the strongest baseline (squared ReLU) is already the established best-in-class parameter-free activation for this two-matrix slot, and no clearly-stronger real published method fits the surface without violating the two-matrix signature. Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are untouched."
+}

@@ -1,0 +1,53 @@
+{
+  "task": "jepa-regularizer",
+  "title": "JEPA Anti-Collapse Regularizer: from collapse to a derived distributional target",
+  "domain": "Self-supervised",
+  "metrics": [
+    "resnet18",
+    "resnet34",
+    "resnet50"
+  ],
+  "metric_columns": [
+    "val_acc_resnet18",
+    "val_acc_resnet34",
+    "val_acc_resnet50"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "naive",
+      "method": "Naive (MSE-only invariance, no anti-collapse)",
+      "reasoning": "01-naive-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-naive-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "barlow_twins",
+      "method": "Barlow Twins (cross-correlation redundancy reduction)",
+      "reasoning": "02-barlow_twins-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-barlow_twins-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "vicreg",
+      "method": "VICReg (variance-invariance-covariance, per-branch)",
+      "reasoning": "03-vicreg-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-vicreg-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "sigreg",
+      "method": "SIGReg / BCS (sliced isotropic-Gaussian Epps-Pulley test)",
+      "reasoning": "04-sigreg-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-sigreg-answer.md"
+    }
+  ],
+  "endpoint": "SIGReg / BCS (sliced isotropic-Gaussian Epps-Pulley test)",
+  "ranking_basis": "Ranked weak->strong by val_acc (higher is better), mean over the three backbones (resnet18/34/50) from the is_final=true baseline:* rows. naive=15.20 (collapse: two-digit, near the 10-class chance floor) << barlow_twins=90.01 < vicreg=90.24 < sigreg=90.92. barlow_twins vs vicreg is close (90.01 vs 90.24) and decided on aggregate mean; vicreg wins on resnet18 (89.85>89.12) and resnet50 (91.38>90.62) but loses resnet34 (89.5<90.28). sigreg is strongest on every backbone and is the only baseline above ~90.5 on all three.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_regularizer.py: the CustomRegularizer class + CONFIG_OVERRIDES, lines 33-58 of the scaffold, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (naive, barlow-twins, vicreg, sigreg) are the derivation references and are left untouched. No finale: the strongest baseline (sigreg) already corresponds to the most recent published anti-collapse regularizer (LeJEPA/SIGReg, arXiv 2511.08544) on this exact edit surface; no clearly stronger published method fits the contract without regressing, so the trajectory stops at the strongest baseline."
+}

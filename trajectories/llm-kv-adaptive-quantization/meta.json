@@ -1,0 +1,55 @@
+{
+  "task": "llm-kv-adaptive-quantization",
+  "title": "LLM KV Cache: adaptive low-bit quantization policy",
+  "domain": "Language models",
+  "metrics": [
+    "longbench-hotpotqa",
+    "longbench-passage-retrieval",
+    "longbench-repobench",
+    "needlebench-niah",
+    "gsm8k"
+  ],
+  "metric_columns": [
+    "final_score",
+    "effective_kv_bits",
+    "kv_compression_ratio"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "kivi_overlap_4bit",
+      "method": "KIVI K4/V4 (uniform 4-bit, key per-channel, value per-token)",
+      "reasoning": "01-kivi-overlap-4bit-reasoning.md",
+      "answer": "01-kivi-overlap-4bit-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "squat_subspace_4bit",
+      "method": "SQuat (query-subspace-orthogonal 4-bit keys)",
+      "reasoning": "02-squat-subspace-4bit-reasoning.md",
+      "answer": "02-squat-subspace-4bit-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "kvtuner4_pertoken_qwen25_3b",
+      "method": "KVTuner (layer-wise mixed precision, per-token mode)",
+      "reasoning": "03-kvtuner4-pertoken-qwen25-3b-reasoning.md",
+      "answer": "03-kvtuner4-pertoken-qwen25-3b-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "kvtuner4_kivi_qwen25_3b",
+      "method": "KVTuner (layer-wise mixed precision, KIVI per-channel-key mode)",
+      "reasoning": "04-kvtuner4-kivi-qwen25-3b-reasoning.md",
+      "answer": "04-kvtuner4-kivi-qwen25-3b-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "KVTuner (layer-wise mixed precision, KIVI per-channel-key mode)",
+  "ranking_basis": "Ranked by the task's own score_spec (geometric mean over 5 workloads of weight-6 bounded-power quality vs best baseline + weight-4 bounded-power kv_compression_ratio, 4x ref / 8x bound), computed via the mlsbench scoring engine on the is_final,true baseline:* rows (seed 42). kivi_overlap_4bit=0.1952 (weakest: uniform 4-bit, ~3.82x, soft GSM8K 31.84). squat_subspace_4bit=0.3903 (same 4-bit budget spent query-aware: tracks KIVI quality, edges efficiency to 4.0x). kvtuner4_pertoken_qwen25_3b=0.4768 (layer-wise mixed precision wins GSM8K 43.52 and 4.40x compression but per-token keys collapse NIAH to 53.74). kvtuner4_kivi_qwen25_3b=0.5650 (strongest: same searched table on per-channel keys recovers retrieval, NIAH 64.63, at 5.05x compression). Higher is better on all quality and compression metrics; runtime is diagnostic and unscored.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_quant_eval.py: the AdaptiveKVQuantizer class, lines 41-172, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, all four steps are baselines). The code block lives in the answer, not the reasoning, so the stacked view shows it once. No finale: the strongest baseline (layer-wise mixed precision on per-channel keys) is already near-SOTA for tensor-level KV quantization on this interface, and the one pre-staged candidate (methods/lagkv) is a token-EVICTION method on a different (ScorerPress) harness, not a quantizer that returns same-shaped tensors, so it does not fit this edit surface. Same-named-vs-paper diffs are recorded against the methods/<slug> derivation references; the trajectory code is the literal edits/<baseline>.edit.py."
+}

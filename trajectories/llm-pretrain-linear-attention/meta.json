@@ -1,0 +1,61 @@
+{
+  "task": "llm-pretrain-linear-attention",
+  "title": "LLM Pretraining: a subquadratic-attention ladder (decay -> data-dependent gate -> delta-rule write)",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag",
+    "piqa",
+    "winogrande"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m",
+    "piqa_lm-eval-345m",
+    "winogrande_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Gated DeltaNet (gated delta rule)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "retnet",
+      "method": "RetNet (multi-scale retention, fixed scalar decay)",
+      "reasoning": "01-retnet-reasoning.md",
+      "answer": "01-retnet-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gla",
+      "method": "GLA (gated linear attention, data-dependent diagonal decay)",
+      "reasoning": "02-gla-reasoning.md",
+      "answer": "02-gla-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "deltanet",
+      "method": "DeltaNet (delta-rule, error-correcting write)",
+      "reasoning": "03-deltanet-reasoning.md",
+      "answer": "03-deltanet-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "gated-deltanet",
+      "method": "Gated DeltaNet (gated delta rule)",
+      "reasoning": "04-gated-deltanet-reasoning.md",
+      "answer": "04-gated-deltanet-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the baseline:* is_final,true rows on the primary metric val_loss_gpt-345m (lower better): retnet 2.4795 > gla 2.4482 > deltanet 2.3481. The order is corroborated by wikitext2_ppl (66.67 > 64.32 > 49.88) and the downstream suite (e.g. arc_easy 51.47 < 53.11 < 53.58, hellaswag 31.12 ~ 31.10 < 32.77). The only cross-over is lambada_ppl, where gla (84.73) is worse than retnet (82.36) -- read in the gla->deltanet reasoning as the recall-regression that motivates the delta-rule write -- but val_loss, wikitext2, and arc_easy all place gla above retnet, so gla is rung 2.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (nanoGPT/custom_pretrain.py, the CausalSelfAttention class at lines 33-70 and the Block class at lines 88-100), filled from edits/*.edit.py. Each baseline step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only). The code block lives in the answer, not the reasoning. The finale (Gated DeltaNet) carries no feedback. methods/<slug> single-round traces (retnet, gla, deltanet) are the derivation reference and are left untouched; the trajectory re-expresses each as the FLA-wrapper edit the harness actually uses, which differs from the from-scratch paper code in the methods traces (see methods notes in the return)."
+}

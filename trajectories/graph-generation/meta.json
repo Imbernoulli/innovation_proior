@@ -1,0 +1,46 @@
+{
+  "task": "graph-generation",
+  "title": "Graph Generation: a generative model for small graphs under MMD",
+  "domain": "Graph & mesh",
+  "metrics": [
+    "community_small",
+    "ego_small",
+    "enzymes"
+  ],
+  "metric_columns": [
+    "mmd_degree",
+    "mmd_clustering",
+    "mmd_orbit",
+    "mmd_avg"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "gran",
+      "method": "GRAN (one-shot attentive refinement)",
+      "reasoning": "01-gran-reasoning.md",
+      "answer": "01-gran-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "digress",
+      "method": "DiGress (discrete edge-flip diffusion)",
+      "reasoning": "02-digress-reasoning.md",
+      "answer": "02-digress-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "graphvae",
+      "method": "GraphVAE (GCN-encoder VAE, no matching)",
+      "reasoning": "03-graphvae-reasoning.md",
+      "answer": "03-graphvae-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "GraphVAE (GCN-encoder VAE, no matching)",
+  "ranking_basis": "Ranked by overall mean mmd_avg across the three datasets (lower is better), from the is_final,true baseline:* rows. gran weakest (overall 0.3009): one catastrophic seed-42 (ego 0.819, enzymes 0.814, blown-up degree+orbit) from its unanchored random-init five-step refinement, averaged with two good seeds. digress middle (0.2646): the scheduled 50-step discrete reverse kills the seed-42 collapse (ego seed-42 0.082) but leaves a clustering/degree residual on sparse data from its dense Bernoulli(0.5) corruption limit (ego clustering mean 0.446, seed-456 1.022; enzymes clustering 0.527). graphvae strongest (0.2145): one-shot GCN-VAE has no multi-step trajectory to stall, so it is the most stable across seeds and wins ego_small decisively; enzymes (~0.43) remains the shared ceiling for all three.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_graphgen.py GraphGenerator, lines 446-590, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces (gran, digress, graphvae) are untouched and used only as derivation references. Critical same-named-baseline != paper divergences: (1) the task's gran is one-shot iterative refinement (attention + edge MLP, random-init Bernoulli(0.3), 5 resampling sweeps, plain reconstruction BCE) NOT the paper's block-wise autoregressive mixture-of-Bernoulli generator with canonical orderings; (2) the task's digress is uniform edge-flip diffusion (Bernoulli(0.5) limit, no analytic posterior, no node-type diffusion, no structural/spectral features) NOT the paper's marginal-transition node+edge diffusion with cycle/Laplacian features and analytic Bayes posterior; (3) the task's graphvae has NO graph matching at all (plain entrywise reconstruction BCE on the harness's padded ordering + node predictor) -- the matching-aligned permutation-invariant loss that IS the paper's signature contribution is entirely omitted. No finale: the only stronger published candidate (GraphRNN, arXiv:1802.08773) has no leaderboard row in this harness, the harness's graphrnn.edit.py is a degraded reduction-sum-BCE form, and the other is_final baselines moflow/gdss are far weaker -- nothing is verifiably stronger than graphvae here, so the ladder stops at the strongest baseline."
+}

@@ -1,0 +1,47 @@
+{
+  "task": "llm-dllm-demask-strategy",
+  "title": "Masked Diffusion LM Demasking: which positions to unmask, how many",
+  "domain": "Language models",
+  "metrics": [
+    "llada-math",
+    "llada-humaneval",
+    "dream-text"
+  ],
+  "metric_columns": [
+    "accuracy",
+    "gen_ppl",
+    "mauve",
+    "entropy",
+    "rep2",
+    "avg_steps"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "confidence-greedy",
+      "method": "Confidence-greedy (LLaDA low_confidence remasking)",
+      "reasoning": "01-confidence-greedy-reasoning.md",
+      "answer": "01-confidence-greedy-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "topk-margin",
+      "method": "topk_margin (Dream margin selection)",
+      "reasoning": "02-topk-margin-reasoning.md",
+      "answer": "02-topk-margin-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "klass",
+      "method": "KLASS (KL-adaptive stability sampling)",
+      "reasoning": "03-klass-reasoning.md",
+      "answer": "03-klass-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "All three are is_final,true baseline:* rows at seed 42; metric directions: accuracy/mauve/entropy up, gen_ppl/rep2/avg_steps down. confidence_greedy weakest: lowest math acc (0.316), lowest HumanEval (0.3659), worst dream gen_ppl by a wide margin (170.61) and lowest MAUVE (0.0321). topk_margin in the middle: beats it on math (0.322), HumanEval (0.3902), and MAUVE (0.1124), though its gen_ppl rises (237.05) and entropy falls. klass strongest: highest math acc (0.334), best dream gen_ppl by far (64.22), and roughly half the forward passes everywhere (avg_steps 127.86/93.81/88.54 vs the pinned full budget 256/256/224) -- it dominates the efficiency metric the other two cannot touch, while holding or improving accuracy. config.json ships klass as the DemaskDecoder default and its edit header labels it SOTA. (Other baseline:* rows -- random, klass_kl, prophet -- carry no metric values and are not ladder rungs.)",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (LLaDA/custom_demask_eval.py DemaskDecoder, scaffold from edits/*.edit.py, editable lines 59-151). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. No finale: KLASS (NeurIPS 2025 Spotlight) is the freshest dedicated SOTA for KL-adaptive multi-token unmasking, and no published method clearly beats it across all three regimes within just the DemaskDecoder edit surface (ReMDM-style remasking trades the efficiency metric for quality; Fast-dLLM's gains lean on KV-caching outside the edit surface) -- so the ladder stops at the strongest baseline per the spec. methods/<slug> single-round traces (confidence-greedy, topk-margin, klass) are the derivation references and are left untouched."
+}

@@ -1,0 +1,57 @@
+{
+  "task": "llm-pretrain-bitlinear",
+  "title": "LLM Pretraining: Native Low-Bit Linear (BitLinear)",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag"
+  ],
+  "metric_columns": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "binary_sign",
+      "method": "Binary sign {-1, +1} (BitNet)",
+      "reasoning": "01-binary_sign-reasoning.md",
+      "answer": "01-binary_sign-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "ternary_158bit",
+      "method": "Ternary {-1, 0, +1} (BitNet b1.58)",
+      "reasoning": "02-ternary_158bit-reasoning.md",
+      "answer": "02-ternary_158bit-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "int2_uniform",
+      "method": "2-bit uniform grid",
+      "reasoning": "03-int2_uniform-reasoning.md",
+      "answer": "03-int2_uniform-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "lsq",
+      "method": "LSQ (Learned Step Size Quantization)",
+      "reasoning": "04-lsq-reasoning.md",
+      "answer": "04-lsq-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "LSQ (Learned Step Size Quantization)",
+  "ranking_basis": "Ranked weak->strong by primary metric val_loss_gpt-345m (lower is better) on the is_final,true baseline:* rows, seed 42: binary_sign 2.7352 < ternary_158bit 2.7213 < int2_uniform 2.4392. binary_sign weakest (1-bit, no off-state); ternary barely better (1.58-bit, adds zero but no magnitude resolution); int2_uniform decisively strongest because its edit, despite a docstring claiming a 4-level {-1,-1/3,+1/3,+1} grid, actually realizes a 5-level grid {-1,-2/3,0,+2/3,+1} (~2.32 bits) via x1.5 scaling + half-to-even rounding, keeping the zero AND adding graded magnitudes. Finale LSQ (learned step) targets int2's residual weakness (the fixed reconstruction-optimal absmean scale) at 3-bit; bar to clear is int2's 2.4392.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (nanoGPT/custom_pretrain.py: weight_quant / activation_quant / BitLinear + CONFIG_OVERRIDES, scaffold default = pass-through, baselines from edits/*.edit.py lines 38-115). Each step = reasoning (full derivation, prose, reflection on the prior numbers embedded throughout for i>1) -> answer (distilled summary + scaffold code) -> feedback (numbers only, baselines only; finale carries no feedback). The code block lives in the answer, not the reasoning. methods/{binary-sign,ternary-158bit,int2-uniform,lsq} single-round traces are the derivation references and are left untouched. Same-named-vs-paper diffs (load-bearing): all three baseline edits use a per-tensor 8-bit absmax activation quant (Qb=127) with NO normalization fused inside BitLinear (the GPT-2 block's pre-projection LayerNorm plays the variance role), whereas the methods/paper traces use per-token absmax and a fused SubLN/RMSNorm; binary_sign uses uncentered sign(W) (no sign(W-mean(W)) centering) and Qb=127 not 128; ternary clamps-then-rounds (same ternary map as round-then-clip); int2_uniform's realized grid is 5-level {-1,-2/3,0,+2/3,+1} (~2.32 bits, with a zero), NOT the 4-level {-1,-1/3,+1/3,+1} grid its docstring and the methods/int2-uniform trace describe -- the extra zero level and the +-2/3 levels are an artifact of half-to-even rounding interacting with the x1.5 scaling, and they are the reason int2 leaps the plateau. Finale LSQ re-expressed in the scaffold: learnable per-layer weight_scale Parameter (init 2*mean(|W|)/sqrt(Qp)), gradscale 1/sqrt(N_W*Qp) step-gradient multiplier, roundpass STE, 3-bit signed grid; activations kept identical to baselines; verified to forward/backward and torch.compile cleanly in eager + inductor; methods/lsq trace (grounded + Codex-reviewed) reused as the derivation reference."
+}

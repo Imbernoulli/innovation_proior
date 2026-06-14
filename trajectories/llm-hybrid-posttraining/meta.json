@@ -1,0 +1,52 @@
+{
+  "task": "llm-hybrid-posttraining",
+  "title": "LLM Hybrid Post-Training: per-question on/off-policy router",
+  "domain": "Language models",
+  "metrics": [
+    "AIME24",
+    "AMC23",
+    "MATH-500"
+  ],
+  "metric_columns": [
+    "test_score_aime24",
+    "test_score_amc23",
+    "test_score_math_500"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "sft",
+      "method": "SFT (pure imitation; drop on-policy for every question)",
+      "reasoning": "01-sft-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-sft-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "hpt",
+      "method": "HPT (per-question on/off-policy switch)",
+      "reasoning": "02-hpt-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-hpt-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "grpo",
+      "method": "GRPO (pure on-policy RL; never switch)",
+      "reasoning": "03-grpo-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-grpo-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "luffy",
+      "method": "LUFFY (off-policy guidance; route stuck prompts to off-policy RL)",
+      "reasoning": "04-luffy-reasoning.md",
+      "finale": true,
+      "answer": "04-luffy-answer.md"
+    }
+  ],
+  "ranking_basis": "From the is_final,true baseline:* rows (seed 42; metric = final val/test_score per split, higher better). sft weakest: dominated, lowest on amc23 (0.217) and math_500 (0.244) and tied-lowest on aime24 (0.062). hpt middle: wins amc23 (0.325, best on board) but ties sft for worst aime24 (0.062) and is near-flat on the largest split math_500 (0.250). grpo strongest: highest aime24 (0.087) and decisively highest math_500 (0.419, the largest split), second on amc23 (0.283); wins 2 of 3 splits including the headline AIME24 and the broad MATH-500.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (mix_trainer.py select_on_off_ada_balance controller returning (on_remove_num, on_add_num, off_add_num); the actor/advantage/rollout modules are fixed). Each baseline step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold controller) -> feedback (numbers only, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. Same-named-baseline-vs-paper diffs: the task's sft/grpo/hpt baselines are ROUTING CONTROLLERS, not the generic paper methods -- sft is the unconditional (n_verify,0,1) drop-on-policy-add-SFT triple (not a generic sft_loss), grpo is the (0,0,0) never-switch triple (not the full GRPO advantage code, which is fixed downstream), hpt is the literal switch logic. methods/<slug> single-round traces (sft, grpo, hpt) are reused as derivation references and left untouched. Finale = LUFFY (Yan et al. 2025, arXiv:2504.14945), a published method stronger than pure GRPO in its regime that fits the off-policy-RL arm of the controller; its full actor-side machinery (pi_phi=1 unclipped off-policy ratio, policy shaping f(x)=x/(x+gamma)) is omitted by the fixed offline_loss_type=sft actor, so the finale lands only the trainer-side routing realization. Finale carries no feedback."
+}

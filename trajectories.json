@@ -234,6 +234,12 @@
     "endpoint": "PNA-style degree-aware multi-aggregation readout"
   },
   {
+    "task": "graph-generation",
+    "title": "Graph Generation: a generative model for small graphs under MMD",
+    "domain": "Graph & mesh",
+    "endpoint": "GraphVAE (GCN-encoder VAE, no matching)"
+  },
+  {
     "task": "graph-link-prediction",
     "title": "Graph Link Prediction: encoder + edge decoder on the structural ladder",
     "domain": "Graph & mesh",
@@ -252,6 +258,30 @@
     "endpoint": "JacobiConv (Jacobi-basis orthogonal-polynomial filter)"
   },
   {
+    "task": "dlm-dkv-policy",
+    "title": "Diffusion LM KV Cache Policy: quality-preserving cache reuse for LLaDA denoising",
+    "domain": "Language models",
+    "endpoint": ""
+  },
+  {
+    "task": "llm-hybrid-posttraining",
+    "title": "LLM Hybrid Post-Training: per-question on/off-policy router",
+    "domain": "Language models",
+    "endpoint": ""
+  },
+  {
+    "task": "llm-kv-adaptive-quantization",
+    "title": "LLM KV Cache: adaptive low-bit quantization policy",
+    "domain": "Language models",
+    "endpoint": "KVTuner (layer-wise mixed precision, KIVI per-channel-key mode)"
+  },
+  {
+    "task": "llm-kv-selection-budgeting",
+    "title": "LLM KV Cache: Selection Budgeting (which prefill tokens to keep under a fixed budget)",
+    "domain": "Language models",
+    "endpoint": "Expected Attention (expected future-query attention scoring)"
+  },
+  {
     "task": "llm-kv-structural-reduction",
     "title": "LLM KV-Structural Reduction: head sharing vs latent KV compression",
     "domain": "Language models",
@@ -264,10 +294,22 @@
     "endpoint": "AWQ (activation-aware weight quantization)"
   },
   {
+    "task": "llm-pretrain-kernel",
+    "title": "LLM Pretraining Kernel: the FFN activation in a two-matrix slot",
+    "domain": "Language models",
+    "endpoint": "ReLU² (pure torch, custom autograd)"
+  },
+  {
     "task": "llm-pretrain-normalization",
     "title": "LLM Pretraining Normalization: norm rule & block placement",
     "domain": "Language models",
     "endpoint": "RMSNorm in a plain sequential Pre-LN block"
+  },
+  {
+    "task": "llm-pretrain-linear-attention",
+    "title": "LLM Pretraining: a subquadratic-attention ladder (decay -> data-dependent gate -> delta-rule write)",
+    "domain": "Language models",
+    "finale": "Gated DeltaNet (gated delta rule)"
   },
   {
     "task": "llm-pretrain-attention",
@@ -276,10 +318,28 @@
     "endpoint": "Differential Transformer"
   },
   {
+    "task": "llm-pretrain-embedding",
+    "title": "LLM Pretraining: embedding-strategy optimization",
+    "domain": "Language models",
+    "endpoint": ""
+  },
+  {
     "task": "llm-pretrain-mlp",
     "title": "LLM Pretraining: feed-forward (MLP) sublayer design",
     "domain": "Language models",
     "endpoint": "ReLU² (squared-ReLU / Primer-EZ, 4x width)"
+  },
+  {
+    "task": "llm-pretrain-bitlinear",
+    "title": "LLM Pretraining: Native Low-Bit Linear (BitLinear)",
+    "domain": "Language models",
+    "endpoint": "LSQ (Learned Step Size Quantization)"
+  },
+  {
+    "task": "llm-dllm-demask-strategy",
+    "title": "Masked Diffusion LM Demasking: which positions to unmask, how many",
+    "domain": "Language models",
+    "endpoint": ""
   },
   {
     "task": "llm-pretrain-optimizer",
@@ -322,5 +382,17 @@
     "title": "RL Value-Based Atari: from decoupled targets to an implicit return distribution",
     "domain": "Reinforcement learning",
     "endpoint": "IQN (Implicit Quantile Networks)"
+  },
+  {
+    "task": "jepa-regularizer",
+    "title": "JEPA Anti-Collapse Regularizer: from collapse to a derived distributional target",
+    "domain": "Self-supervised",
+    "endpoint": "SIGReg / BCS (sliced isotropic-Gaussian Epps-Pulley test)"
+  },
+  {
+    "task": "jepa-prediction-loss",
+    "title": "JEPA Prediction Loss: latent feature-map matching, weak to strong",
+    "domain": "Self-supervised",
+    "endpoint": "Smooth L1 (Huber, beta=1)"
   }
 ]

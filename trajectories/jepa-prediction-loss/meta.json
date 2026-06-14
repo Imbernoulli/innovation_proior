@@ -1,0 +1,43 @@
+{
+  "task": "jepa-prediction-loss",
+  "title": "JEPA Prediction Loss: latent feature-map matching, weak to strong",
+  "domain": "Self-supervised",
+  "metrics": [
+    "small",
+    "base",
+    "large"
+  ],
+  "metric_columns": [
+    "mean_detection_ap"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "cosine",
+      "method": "Cosine similarity loss (direction-only)",
+      "reasoning": "01-cosine-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-cosine-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "mse",
+      "method": "MSE (squared Euclidean, direction + magnitude)",
+      "reasoning": "02-mse-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-mse-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "smooth_l1",
+      "method": "Smooth L1 (Huber, beta=1)",
+      "reasoning": "03-smooth_l1-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-smooth_l1-answer.md"
+    }
+  ],
+  "endpoint": "Smooth L1 (Huber, beta=1)",
+  "ranking_basis": "Ranked by mean_detection_ap (higher better) on baseline:* is_final,true rows, averaged across the three model widths {small, base, large}. cosine weakest: 0.5613/0.5475/0.4664 (mean 0.5251), with a monotone decline with width -- the signature of a magnitude-blind loss. mse next: 0.6019/0.6506/0.6409 (mean 0.6311) -- recovers the large width once magnitude is trained, but the small width sags to 0.6019 (unbounded influence of the small model's large roll-out residuals). smooth_l1 strongest: 0.6158/0.6399/0.6476 (mean 0.6344) -- lifts small above mse while holding base/large, and wins on the across-width mean and on 2 of 3 sizes including the held-out large.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_prediction_loss.py: CustomPredictionLoss.forward, scaffold from edits/*.edit.py, lines 36-54). Each step = reasoning (full derivation, prose, reflection on the prior result embedded for i>1) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. No finale: the three loss baselines are the only well-posed drop-in fills of the forward(state, predicted) contract that are clearly stronger than each other; published SSL advances beyond Huber feature-matching (BYOL predictor, DINO centering/sharpening, iBOT, VICRegL) all require architecture/stop-gradient/EMA hooks the fixed substrate does not expose, and the one direction the harness does expose -- cosine-style normalization -- is empirically the WEAKEST rung here, so nothing clearly stronger is published that fits the edit surface; trajectory stops at the strongest baseline. Same-named-baseline-vs-paper: methods/cosine is SGDR cosine LR annealing (arXiv 1608.03983) and methods/mse is Gauss's least squares (Theoria Motus) -- neither matches the task's cosine-SIMILARITY loss or JEPA-grounded MSE; only methods/smooth-l1 (Huber) is genuinely JEPA-grounded. The trajectory's reasoning and code are derived against the task's edits/*.edit.py, not those paper traces. methods/<slug> single-round traces are untouched."
+}

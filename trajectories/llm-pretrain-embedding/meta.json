@@ -1,0 +1,45 @@
+{
+  "task": "llm-pretrain-embedding",
+  "title": "LLM Pretraining: embedding-strategy optimization",
+  "domain": "Language models",
+  "metrics": [
+    "gpt-345m",
+    "lm-eval-345m"
+  ],
+  "metric_columns": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "untied",
+      "method": "Untied input/output embeddings",
+      "reasoning": "01-untied-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-untied-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "bigram_hash",
+      "method": "Bigram hash embedding",
+      "reasoning": "02-bigram_hash-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-bigram_hash-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "value_embed",
+      "method": "Value embeddings (per-layer residual)",
+      "reasoning": "03-value_embed-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-value_embed-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the primary metric val_loss_gpt-345m (lower is better) on the is_final,true baseline:* rows (seed 42): untied 2.3058 (weakest) > bigram_hash 2.2877 > value_embed 2.2769 (strongest). Secondary metrics agree on the strongest rung: value_embed also has the best wikitext2_ppl (43.87) and lambada_ppl (68.33). bigram_hash wins arc_easy (56.40) but loses on the primary val_loss and on lambada (71.43, slightly worse than untied's 71.11), so it sits in the middle.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (TokenEmbedding in nanoGPT/custom_pretrain.py, lines 115-140, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces (untied, value-embed, bigram-hash) are the derivation reference and untouched. No finale: no genuinely-stronger published embedding-level method fits this exact edit surface (the canonical value-residual needs value-path injection, but get_value_embed here adds to the residual stream), so the trajectory stops at the strongest baseline. Same-name-vs-paper diff: this task's get_value_embed result is added to the RESIDUAL STREAM before each block (x = x + ve), NOT into the value path inside attention as the canonical ResFormer/value-residual paper does; both value_embed and bigram_hash use that residual-stream hook."
+}

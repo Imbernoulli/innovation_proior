@@ -1,0 +1,55 @@
+{
+  "task": "llm-kv-selection-budgeting",
+  "title": "LLM KV Cache: Selection Budgeting (which prefill tokens to keep under a fixed budget)",
+  "domain": "Language models",
+  "metrics": [
+    "longbench-hotpotqa",
+    "longbench-passage-retrieval",
+    "longbench-repobench",
+    "longbench-v2",
+    "gsm8k"
+  ],
+  "metric_columns": [
+    "final_score",
+    "mean_retained_fraction",
+    "runtime_seconds"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Expected Attention (expected future-query attention scoring)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "full_attention",
+      "method": "Full attention (no compression anchor)",
+      "reasoning": "01-full_attention-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-full_attention-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "streamingllm",
+      "method": "StreamingLLM (attention sinks + recent window)",
+      "reasoning": "02-streamingllm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-streamingllm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "lagkv",
+      "method": "LagKV (lag-relative KV scoring)",
+      "reasoning": "03-lagkv-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-lagkv-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "expected_attention",
+      "method": "Expected Attention (expected future-query attention scoring)",
+      "reasoning": "04-expected_attention-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-expected_attention-answer.md"
+    }
+  ],
+  "ranking_basis": "full_attention weakest as a budgeted submission by design: it refuses compression (retained 1.0, 4x over the 0.25 tolerance), so the soft budget penalty crushes its score (multiplier ~0.0025) despite the best raw quality (it is the visible reference anchor, not a valid compressed submission). Among the three valid ~0.20-retained compressors (retained and runtime nearly identical), quality (6/10 weight) decides: per-workload final_score geomean streamingllm (19.78) < lagkv (21.37) < expected_attention (25.03). Driven mainly by gsm8k (streamingllm 1.74, lagkv 1.97, expected_attention 4.17) plus expected_attention winning hotpotqa and repobench; lagkv beats streamingllm via passage-retrieval recovery (60.4 vs 53.1) outweighing a repobench slip (40.9 vs 43.2).",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_selection_eval.py SelectionPolicy: retention_plan + score_tokens + select_cache, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code); the code block lives in the answer, not the reasoning. The hook passes NO attention matrix to score_tokens (model runs under SDPA), which disqualifies H2O/SnapKV and is the load-bearing constraint of the ladder. No finale: Expected Attention is already the strongest baseline and is reported state-of-the-art among methods that fit the attention-free, query-free hook; the obvious stronger candidates (SnapKV, H2O, PyramidKV, TOVA) all require the attention weights this harness never materializes. methods/<slug> single-round traces (full-attention, streamingllm, expected-attention, lagkv) are reused as derivation references and left untouched."
+}
