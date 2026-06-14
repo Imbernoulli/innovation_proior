@@ -1,0 +1,53 @@
+{
+  "task": "cv-diffusion-efficiency",
+  "title": "CV Diffusion Efficiency: sampler update rule at NFE = 20",
+  "domain": "Computer vision",
+  "metrics": [
+    "fid_sd15",
+    "fid_sd20",
+    "fid_sdxl"
+  ],
+  "metric_columns": [
+    "fid_sd15",
+    "fid_sd20",
+    "fid_sdxl"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "UniPC (unified predictor-corrector)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ddim",
+      "method": "DDIM (first-order, CFG++)",
+      "reasoning": "01-ddim-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ddim-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "dpm2s",
+      "method": "DPM-Solver++(2S) (second-order singlestep Heun, CFG++)",
+      "reasoning": "02-dpm2s-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-dpm2s-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "dpm3m_sde",
+      "method": "DPM-Solver++(3M) SDE (third-order multistep stochastic, Karras)",
+      "reasoning": "03-dpm3m_sde-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-dpm3m_sde-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "unipc",
+      "method": "UniPC (unified predictor-corrector)",
+      "reasoning": "04-unipc-reasoning.md",
+      "finale": true,
+      "answer": "04-unipc-answer.md"
+    }
+  ],
+  "ranking_basis": "Weak->strong by per-variant FID (lower is better) from the is_final,true baseline rows, seed 42: ddim (34.23/28.41/51.52) < dpm2s (29.01/23.89/42.83) < dpm3m_sde (27.98/23.45/39.66). The ordering is consistent across all three variants (SD v1.5 / v2.0 / SDXL). dpm3m_sde_kdfix has no is_final,true row, so it is not a ranked baseline.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (CFGpp-main/latent_diffusion.py BaseDDIMCFGpp.sample, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the literal scaffold edit). Code lives in the answer, not the reasoning. methods/<slug> single-round traces (ddim, dpm2s, dpm3m-sde) are the derivation reference and are untouched. Finale = UniPC (Zhao et al., NeurIPS 2023, arXiv:2302.04867), a real published predictor-corrector that is genuinely stronger than the strongest baseline at low NFE and fits the same edit surface; its standalone trace is methods/unipc, Codex-reviewed."
+}
