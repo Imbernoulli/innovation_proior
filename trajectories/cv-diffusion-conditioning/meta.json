@@ -1,0 +1,44 @@
+{
+  "task": "cv-diffusion-conditioning",
+  "title": "Class-Conditional Diffusion: conditioning-injection ladder",
+  "domain": "Computer vision",
+  "metrics": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "metric_columns": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "adanorm",
+      "method": "AdaLN-Zero (adaptive normalization, post-block)",
+      "reasoning": "01-adanorm-reasoning.md",
+      "answer": "01-adanorm-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "concat-film",
+      "method": "Concat-FiLM (additive-bias on the time path)",
+      "reasoning": "02-concat-film-reasoning.md",
+      "answer": "02-concat-film-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "cross-attn",
+      "method": "Cross-Attention conditioning",
+      "reasoning": "03-cross-attn-reasoning.md",
+      "answer": "03-cross-attn-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "FID, lower is better; one seed (42). Ranked weak->strong by the is_final,true baseline:* rows on (best_fid_small, best_fid_medium, best_fid_large): adanorm (20.01/12.31/11.77) > concat-film (19.39/11.50/10.52) > cross-attn (19.17/11.21/10.41). All three baselines beat the floor monotonically at every scale, and cross-attn is best at every scale, so the ordering is unambiguous.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_train.py lines 195-227: prepare_conditioning + ClassConditioner, scaffold from edits/*.edit.py, substrate utilities zero_module/CrossAttentionLayer/AdaLNBlock fixed). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). methods/<slug> single-round traces (concat-film, cross-attn, adanorm) are the derivation reference and untouched. No finale: the three baselines already span the canonical conditioning families (post-block adaptive norm, additive-bias on the time path, cross-attention); no genuinely-stronger published method fits this exact edit surface (an nn.Module(channels,cond_dim) on [B,C,H,W] after each block + the prepare_conditioning slot) and is verifiable as clearly stronger than cross-attn at this scale, so the ladder stops at the strongest baseline. SAME-NAMED-BASELINE DIFFS: (1) adanorm here is the conv post-block AdaLNBlock on [B,C,H,W] feature maps with the class on the post-block path only (timestep untouched), NOT the methods/adanorm DiT -- no transformer backbone, no token stream, no cond=t+y sum, no 6-vector-per-block Linear(d,6d), no gateless decode head, no identity-at-init whole-stack; only the core adaLN-Zero operation (GroupNorm -> (1+scale)*xhat+shift -> zero-init gate -> residual) is ported. (2) cross-attn here is a single bare CrossAttentionLayer per block (the M=1, single-class-token degenerate case), NOT the full transformer conditioning block from methods/cross-attn -- no self-attention sublayer, no GEGLU FFN, no proj_in/proj_out wrapper, no depth. (3) concat-film here is purely a routing edit (prepare_conditioning returns time_emb+class_emb, ClassConditioner is a no-op) reusing the diffusers ResnetBlock2D's own AdaGN as the regressor; the methods/concat-film FiLM layer code is not instantiated. All three methods/<slug> traces existed and were reused; none missing."
+}

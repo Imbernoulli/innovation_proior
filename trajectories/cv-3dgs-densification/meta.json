@@ -1,0 +1,47 @@
+{
+  "task": "cv-3dgs-densification",
+  "title": "3DGS Densification: climbing the density-control ladder",
+  "domain": "Computer vision",
+  "metrics": [
+    "garden",
+    "bicycle",
+    "bonsai",
+    "stump"
+  ],
+  "metric_columns": [
+    "best_psnr_garden",
+    "best_psnr_bicycle",
+    "best_psnr_bonsai",
+    "best_psnr_stump"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "absgrad",
+      "method": "AbsGS (homodirectional absolute gradient)",
+      "reasoning": "01-absgrad-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-absgrad-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "taming",
+      "method": "Taming-3DGS (max-grad blend) + revised-opacity split",
+      "reasoning": "02-taming-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-taming-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "edc",
+      "method": "EDC (long-axis split + recovery-aware pruning)",
+      "reasoning": "03-edc-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-edc-answer.md"
+    }
+  ],
+  "endpoint": "EDC (long-axis split + recovery-aware pruning)",
+  "ranking_basis": "Per-scene PSNR (higher is better), four scenes, seed 42, from the is_final,true baseline:* rows. Ranked by the 4-scene mean (the scoring set, including the hidden stump scene): absgrad 29.418 (weakest, signed-cancellation fix only) < taming 29.583 (adds max-grad view-spike selection + revised-opacity split) < edc 29.688 (adds deterministic long-axis split + recovery-aware pruning). edc is strongest on garden (30.206), bicycle (27.219), and stump (28.260); taming leads only bonsai (33.353 vs edc 33.068). The public-3-scene mean ties taming (30.179) and edc (30.164) nearly even, but stump (the scored hidden scene) breaks it decisively for edc (28.260 vs 27.794).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (gsplat/custom_strategy.py CustomStrategy: initialize_state + step_pre/post_backward, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (per-scene PSNR, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces (absgrad, taming, edc) are the derivation references and are left untouched. No finale: the one clearly stronger published candidate (3DGS-MCMC, arXiv:2404.09591) does not fit this edit surface -- its core L1 opacity+scale parsimony regularizer must be added to the loss, but the loss (0.8*L1 + 0.2*SSIM) is fixed, and the reference MCMCStrategy.step_post_backward also needs an lr argument the harness does not pass -- so only a non-faithful, not-verifiably-stronger truncation would fit. Per the spec, stop at the strongest baseline rather than invent one."
+}

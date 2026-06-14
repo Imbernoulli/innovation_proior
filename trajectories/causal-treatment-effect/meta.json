@@ -1,0 +1,67 @@
+{
+  "task": "causal-treatment-effect",
+  "title": "Causal Treatment Effect: meta-learners for CATE under confounding",
+  "domain": "Causal inference",
+  "metrics": [
+    "ihdp_synth",
+    "jobs_synth",
+    "acic_synth"
+  ],
+  "metric_columns": [
+    "PEHE",
+    "ATE_error"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ipw",
+      "method": "IPW (inverse-propensity weighting)",
+      "reasoning": "01-ipw-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ipw-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "t_learner",
+      "method": "T-Learner (two outcome models)",
+      "reasoning": "02-t_learner-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-t_learner-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "dr_learner",
+      "method": "DR-Learner (doubly-robust / AIPW)",
+      "reasoning": "03-dr_learner-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-dr_learner-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "s_learner",
+      "method": "S-Learner (single pooled model)",
+      "reasoning": "04-s_learner-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-s_learner-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "r_learner",
+      "method": "R-Learner (Robinson residualization)",
+      "reasoning": "05-r_learner-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-r_learner-answer.md"
+    },
+    {
+      "n": 6,
+      "slug": "causal_forest",
+      "method": "Causal Forest (DML residualization + forest)",
+      "reasoning": "06-causal_forest-reasoning.md",
+      "feedback": "06-feedback.md",
+      "answer": "06-causal_forest-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by PEHE (the primary, heterogeneity-sensitive metric; both metrics lower is better), seed 42, mean over 5-fold cross-fitting x 10 data seeds, averaged across the three datasets. ipw weakest by far (worst PEHE on all three; jobs_synth PEHE 5183.8 from the 1/e weighting blow-up on earnings-scale outcomes). t_learner next (worst acic_synth PEHE 0.775, isolated-surface response rate). dr_learner mid (wins acic_synth 0.501 via the product-of-errors bias but pays a small-sample variance tax on ihdp_synth, 1.383 > t_learner's 1.14). s_learner < r_learner: s_learner (ihdp 0.800, jobs 396, acic 0.524) wins the small/low-dim sets by pooling but attenuates the real effect on acic_synth; r_learner (ihdp 0.813, jobs 441, acic 0.421) fixes the attenuation and has the best ATE errors overall, beaten only by s_learner on jobs PEHE. causal_forest strongest: best PEHE on 2 of 3 (ihdp 0.771, jobs 359.5) by putting r_learner's exact Robinson residualization under a 500-tree random-forest final stage, ceding acic_synth to r_learner by a hair (0.502 vs 0.421) but with the lowest variance-adjusted ceiling.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_cate.py lines 344-416, the CATEEstimator fit/predict, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold code) -> feedback (numbers, baselines only). methods/<slug> single-round traces are the derivation reference and are untouched. Same-named-vs-paper diffs: t_learner uses two seed-split GBRs (methods trace uses one cloned learner); r_learner adds a safe_T divisor floor and a 95th-percentile pseudo-outcome clip absent from the paper R-loss; causal_forest's econml branch is dead here (econml uninstalled) so the R-loss + RandomForestRegressor fallback with KFold(3) is what actually runs, and inference=False/honest splits/GRF intervals are not exposed. No finale: the six baselines already span the meta-learner frontier ending at a DML-orthogonalized forest, and no clearly-stronger published method that fits the sklearn-only edit surface could be asserted to beat it on these confounded DGPs without inventing the claim."
+}

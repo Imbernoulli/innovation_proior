@@ -1,0 +1,42 @@
+{
+  "task": "cv-flowmaps-training",
+  "title": "Flow Maps: self-distillation loss design for one-step generation",
+  "domain": "Computer vision",
+  "metrics": [
+    "fid_train_small"
+  ],
+  "metric_columns": [
+    "fid_train_small",
+    "best_fid_train_small"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "psd_uniform",
+      "method": "PSD uniform (Progressive Self-Distillation, swept split)",
+      "reasoning": "01-psd_uniform-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-psd_uniform-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "psd_midpoint",
+      "method": "PSD midpoint (Progressive Self-Distillation, fixed midpoint split)",
+      "reasoning": "02-psd_midpoint-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-psd_midpoint-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "lsd",
+      "method": "LSD (Lagrangian Self-Distillation)",
+      "reasoning": "03-lsd-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-lsd-answer.md"
+    }
+  ],
+  "endpoint": "LSD (Lagrangian Self-Distillation)",
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline:* rows on train_small FID (lower is better, seed 42): psd_uniform 14.99 (weakest) < psd_midpoint 10.79 < lsd 10.35 (strongest). This matches the codebase's own note (common.sh): LSD is the recommended best method, PSD-uniform the weakest. The three is_final,true rows carry only train_small (medium/large columns are populated only in is_final,false probe rows), so the trajectory feedback reports the train_small FID that defines the ranking.",
+  "notes": "MLS-Bench trajectory grounded in the task's real edit surface (flow-maps/py/common/losses.py lines 36-178: diagonal_term, psd_term, lsd_term, esd_term). All three baselines apply the IDENTICAL reference fill (edits/baseline_reference_ops.py -> edits/paper_losses.py); they differ ONLY by scripts/bench_env.sh setting FLOWMAPS_BENCH_SLURM_ID (0=LSD, 1=PSD uniform, 2=PSD midpoint), which selects which off-diagonal loss term the driver routes the batch through. So each step's answer code is the same module; the slug-distinguishing change is the slurm_id, stated per step. The DEFAULT scaffold fill (00-initial-context, edits/mid_edit.py -> edits/losses_template.py) is intentionally bare and differs from the baseline fill in two ways the baselines restore: (1) no EDM2 uncertainty weight (template returns raw jnp.sum; baseline wraps every term in exp(-w)*L + w via calc_weight), (2) PSD stopgrad is hard-wired (template does 'del stopgrad_type' and unconditionally stop-grads phi_su/phi_ut from teacher_params; baseline branches convex/none with proper student/teacher routing). esd_term is in the edit region but inactive for every baseline. No finale: the three baselines (Boffi et al., NeurIPS 2025 self-distillation family) end at LSD, the paper's recommended best; no clearly-stronger published method fits this narrow loss-term edit surface and the exposed flow_map API (calc_b / partial_t / partial_s / calc_weight / return_X_and_phi). ESD (the unused 4th slot) is from the same family and is reported weaker (spatial-Jacobian instability). MeanFlow (Geng et al., arXiv:2505.13447) was a removed variant in the public flow-maps codebase but its identity needs a mixed spatial+time JVP the harness's partial_t does not expose (it does the time-only JVP), so it cannot be faithfully filled into lsd_term without reintroducing the spatial Jacobian, and no published result places it above LSD on this exact harness/budget; adding it would be inventing a finale, so the trajectory stops at LSD."
+}

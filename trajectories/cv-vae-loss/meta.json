@@ -1,0 +1,53 @@
+{
+  "task": "cv-vae-loss",
+  "title": "VAE Loss Design: reconstruction quality on CIFAR-10",
+  "domain": "Computer vision",
+  "metrics": [
+    "best_rfid_small",
+    "best_rfid_medium",
+    "best_rfid_large"
+  ],
+  "metric_columns": [
+    "best_rfid_small",
+    "best_rfid_medium",
+    "best_rfid_large"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "l2-kl",
+      "method": "L1 reconstruction + KL (negative ELBO)",
+      "reasoning": "01-l2-kl-reasoning.md",
+      "answer": "01-l2-kl-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "perceptual",
+      "method": "L1 + LPIPS perceptual + KL",
+      "reasoning": "02-perceptual-reasoning.md",
+      "answer": "02-perceptual-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "vqgan",
+      "method": "L1 + LPIPS + KL + PatchGAN feature matching (adversarial loop)",
+      "reasoning": "03-vqgan-reasoning.md",
+      "answer": "03-vqgan-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "focal-frequency-loss",
+      "method": "Focal Frequency Loss (FFL) on the VQGAN recipe",
+      "reasoning": "04-focal-frequency-loss-reasoning.md",
+      "answer": "04-focal-frequency-loss-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "Focal Frequency Loss (FFL) on the VQGAN recipe",
+  "ranking_basis": "Ranked by the task score = gmean of best rFID across small/medium/large (lower is better), from the is_final,true baseline:* rows. l2-kl gmean 16.47 (small 53.00, med 15.75, large 5.35) < perceptual gmean 9.31 (19.64, 10.69, 3.84) < vqgan gmean 7.08 (14.75, 7.13, 3.38). Each rung dominates the previous on all three scales. Finale FFL is added on top of the strongest baseline (vqgan), not in the task's leaderboard.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_train.py VAELoss, lines 32-76, from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only); the finale carries no feedback. Same-named-vs-paper diffs: (1) the 'l2-kl' baseline uses F.l1_loss (Laplace/L1), NOT MSE/L2 despite the slug; the methods/l2-kl trace derives MSE and flags L1 as the sharper sibling. (2) 'perceptual' CONSUMES a frozen pre-calibrated lpips.LPIPS(net='vgg') as a black box; the methods/perceptual trace DERIVES/TRAINS LPIPS (channel-norm, 1x1-conv calibration, 2AFC BCE) -- none of that machinery is exposed here. (3) 'vqgan' is NOT the paper's two-stage VQ model: this AutoencoderKL is continuous (no codebook, no quantizer, no straight-through, no transformer prior). The VAELoss only adds L1+LPIPS+KL+feature-matching; the adversarial generator logit loss, the discriminator hinge update, the R1 gradient penalty (gp_weight=10), and the adaptive disc weight all live in the FIXED training loop (template lines 386-438), triggered by hasattr(criterion,'disc'). The loop's adaptive weight is balanced against criterion._perceptual_loss (the perceptual term), not the full reconstruction loss, and R1 replaces the lineage's pure-hinge recipe. Discriminator is NLayerDiscriminatorWithFeatures (spectral-norm + BatchNorm + LeakyReLU feature hooks), disc_start=5000. Finale focal-frequency-loss methods/ trace was newly created (grounded in Jiang et al., ICCV 2021, arXiv:2012.12821, and the official EndlessSora/focal-frequency-loss repo); scaffold FFL verified numerically identical to the canonical reference across alpha/log/batch options on 32x32 inputs. All three baseline methods/<slug> traces already existed and were reused untouched."
+}

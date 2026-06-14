@@ -1,0 +1,45 @@
+{
+  "task": "dl-regularization",
+  "title": "DL Regularization: an additional loss-side penalty for image classifiers",
+  "domain": "Deep learning",
+  "metrics": [
+    "resnet56-cifar100",
+    "vgg16bn-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc_resnet56-cifar100",
+    "test_acc_vgg16bn-cifar100",
+    "test_acc_mobilenetv2-fmnist"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dropblock",
+      "method": "DropBlock-inspired spatial co-activation penalty (on conv weights)",
+      "reasoning": "01-dropblock-reasoning.md",
+      "answer": "01-dropblock-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "confidence_penalty",
+      "method": "Confidence penalty (negative output entropy)",
+      "reasoning": "02-confidence_penalty-reasoning.md",
+      "answer": "02-confidence_penalty-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "orthogonal_reg",
+      "method": "Orthogonal regularization (||W W^T - I||_F^2 on conv weights)",
+      "reasoning": "03-orthogonal_reg-reasoning.md",
+      "answer": "03-orthogonal_reg-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "Orthogonal regularization (||W W^T - I||_F^2 on conv weights)",
+  "ranking_basis": "Best test accuracy (%, higher is better), seed 42, mean over the three architecture/dataset pairs. dropblock weakest: lowest on both hard CIFAR-100 pairs (resnet56 72.45, vgg16bn 73.37) and lowest on the saturated mobilenetv2-fmnist (94.69); pair mean 80.17. confidence_penalty 80.62 < orthogonal_reg 80.68: orthogonal_reg wins the hardest, deepest model decisively (resnet56 73.16 vs 72.66, the highest resnet56 of all three) while trading the others narrowly (vgg16bn 74.03 vs 74.31; mobilenetv2 94.85 vs 94.90), giving it the highest pair mean.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (the body of compute_regularization in pytorch-vision/custom_reg.py, lines 246-273; torch/nn/F are module-scope imports so the body uses them with no local imports). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (methods/dropblock, methods/confidence-penalty, methods/orthogonal-reg) are the derivation reference and are left untouched. SAME-NAMED-BASELINE DIVERGENCE: the task's 'dropblock' baseline is NOT the paper's activation-masking DropBlock2D layer (methods/dropblock); it is a loss-side spatial co-activation penalty on conv WEIGHTS (mean local-block energy via avg_pool2d on per-filter squared magnitude), with block_size=3, lambda_max=1e-4, a delayed start (off for the first 20% of training) and linear warm-up - the harness exposes only an additive scalar, so the forward-graph mask/rescale/inference-noop machinery of the paper is omitted and the step reasoning derives the weight-penalty re-expression instead. 'confidence_penalty' matches the paper method but the task edit hardcodes beta=0.1 (no config.get, no thresholded-hinge variant) and computes softmax + torch.log(probs+1e-8) rather than the methods trace's numerically-stable log_softmax. 'orthogonal_reg' uses the squared-Frobenius form ((W W^T - I)^2).sum() on 4D conv weights (output-channel Gram W @ W.t(), variable named WtW in the edit) at coefficient 1e-4, with no schedule - matching the methods/orthogonal-reg derivation's smooth variant; the methods trace also discusses an L1/abs-residual variant and the W^T W vs W W^T feasibility choice, which the single fixed edit does not expose. No finale: every additive-and-canonically-faithful published candidate is either the same family already covered (label smoothing is the KL-mirror of confidence_penalty AND its canonical impl rewrites the loss/target the edit surface freezes) or does not fit the per-step additive-scalar contract (SAM needs a two-step optimizer; Jacobian regularization fits but is not clearly stronger than orthogonal_reg on clean CIFAR-100 test accuracy where all three baselines sit within ~0.5%). Per the spec, stop at the strongest baseline rather than invent a finale."
+}

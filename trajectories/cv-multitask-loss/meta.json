@@ -1,0 +1,45 @@
+{
+  "task": "cv-multitask-loss",
+  "title": "CV Multi-Task Loss: weighting a coarse auxiliary for fine accuracy",
+  "domain": "Computer vision",
+  "metrics": [
+    "resnet20-cifar100mt",
+    "resnet56-cifar100mt",
+    "vgg16bn-cifar100mt"
+  ],
+  "metric_columns": [
+    "test_acc_resnet20-cifar100mt",
+    "test_acc_resnet56-cifar100mt",
+    "test_acc_vgg16bn-cifar100mt"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "pcgrad",
+      "method": "PCGrad (gradient surgery)",
+      "reasoning": "01-pcgrad-reasoning.md",
+      "answer": "01-pcgrad-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "uncertainty",
+      "method": "Uncertainty weighting",
+      "reasoning": "02-uncertainty-reasoning.md",
+      "answer": "02-uncertainty-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "dwa",
+      "method": "Dynamic Weight Average (DWA)",
+      "reasoning": "03-dwa-reasoning.md",
+      "answer": "03-dwa-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "Dynamic Weight Average (DWA)",
+  "ranking_basis": "Ranked by the task score (geometric mean of best fine-class test accuracy across resnet20/resnet56/vgg16bn, higher better), from the is_final,true baseline:* rows. pcgrad weakest (gmean 69.44; collapses to 64.31 on the capacity-scarce ResNet-20 where its direction-only fix is blind to the fine/coarse magnitude imbalance, and reduces to the plain sum when the correlated fine/coarse gradients do not conflict). uncertainty middle (gmean 70.10; learns the magnitude lever, recovers ResNet-20 to 66.81, but regresses VGG to 72.67 with a slow static scale). dwa strongest (gmean 71.33; rate-driven weighting lifts ResNet-20 to 67.96 and ResNet-56 to 72.39 and recovers VGG to 73.78).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (pytorch-vision/custom_mtl.py: the MultiTaskLoss class, lines 195-216, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. No finale: no clearly-stronger published loss-combination method beats DWA on this exact CIFAR-100 fine+coarse benchmark (frontier-model leaderboard runs land only ~1 pt above dwa on resnet20), so the trajectory stops at the strongest baseline. CRITICAL same-named-vs-paper: the methods/dwa trace is the robot-navigation Dynamic Window Approach (Fox/Burgard/Thrun 1997), a completely different method that merely shares the abbreviation 'DWA' with this task's Dynamic Weight Average (Liu et al., CVPR 2019); the methods/dwa derivation is NOT usable here and the step-3 reasoning was derived from scratch against dwa.edit.py + task_description.md. The task's DWA also departs from its paper form: the ratio is over the PREVIOUS BATCH's loss (per-batch, with prev_losses overwritten every forward call), not epoch-averaged losses; epoch==0 pins uniform weights; weights are detached so no gradient flows through the weighting. PCGrad: methods/pcgrad is the full N-task wrapper (random task shuffle, momentum/convergence proofs); the task's pcgrad.edit.py is a 2-task in-forward version that walks the autograd graph to recover shared params, computes per-task grads via torch.autograd.grad, does a single symmetric projection (no shuffle), and returns a SURROGATE loss whose backward installs the projected gradient (no external optimizer wrapper). uncertainty: methods/uncertainty matches the task edit faithfully (homoscedastic exp(-s_i)*L_i + s_i, log_vars init 0). All three baselines had existing methods/<slug> traces; none missing."
+}

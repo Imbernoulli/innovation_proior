@@ -1,0 +1,53 @@
+{
+  "task": "cv-meanflow-perceptual-loss",
+  "title": "Flow Matching with Perceptual Loss: an auxiliary loss for MeanFlow CIFAR-10",
+  "domain": "Computer vision",
+  "metrics": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "metric_columns": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Focal Frequency Loss (FFL)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "mse_base",
+      "method": "Pure MSE on velocity (floor)",
+      "reasoning": "01-mse_base-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-mse_base-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "lpips_grad",
+      "method": "LPIPS + Sobel gradient + multiscale (spatial perceptual stack)",
+      "reasoning": "02-lpips_grad-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-lpips_grad-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "lpips_spectral",
+      "method": "Spatial stack + FFT-magnitude L1 (spatial + frequency)",
+      "reasoning": "03-lpips_spectral-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-lpips_spectral-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "focal-frequency-loss",
+      "method": "Focal Frequency Loss (FFL)",
+      "reasoning": "04-focal-frequency-loss-reasoning.md",
+      "finale": true,
+      "answer": "04-focal-frequency-loss-answer.md"
+    }
+  ],
+  "ranking_basis": "FID, lower is better, per scale (best_fid_small / best_fid_medium / best_fid_large), seed 42, from the is_final=true baseline:* rows. mse_base (22.33 / 21.91 / 18.363) is weakest at every scale by design (pure velocity MSE, no image-space signal). lpips_grad (17.79 / 17.19 / 14.49) dominates mse_base at every scale (spatial perceptual stack on x_denoised). lpips_spectral (17.38 / 15.82 / 13.63) dominates lpips_grad at every scale (adds an FFT-magnitude term). Monotone, non-crossing ordering: mse_base < lpips_grad < lpips_spectral.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_train_perceptual.py loss region, lines 384-401, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold loss code) -> feedback (numbers, baselines only). The code lives in the answer, not the reasoning. Baseline answer code is the verbatim edit.py content; the methods/<slug> single-round traces are the derivation reference only and are untouched. Same-named-baseline-vs-paper diffs: methods/mse-base derives the MeanFlow JVP training objective itself, but the task's mse_base baseline is pure MSE on the (already-fixed) MeanFlow velocity target plus removal of an inverse-loss reverse-focal reweighting pathology that diverges at ~35-40k -- the trajectory's reasoning reflects the loss-floor decision, NOT the JVP identity. methods/lpips-grad covers the LPIPS metric (not the gradient/multiscale stack or the Charbonnier velocity term the task's lpips_grad adds); methods/lpips-spectral covers the full LPIPS+grad+multiscale+spectral stack and matches the task closely (schedule, weights, x_denoised analysis), but the task's lpips_spectral DROPS the Charbonnier velocity term that its lpips_grad carried. The harness's compute_gradient_loss/compute_multiscale_loss return SCALARS that broadcast across the masked per-sample slice (a harness quirk preserved verbatim). Finale: Focal Frequency Loss (Jiang et al., ICCV 2021, arXiv:2012.12821) replaces ONLY the naive magnitude-L1 spectral term with the full-complex-spectrum, error-adaptive, stop-gradient-weighted focal frequency loss at the same 0.2 weight; verified line-by-line against the official repo implementation (inline per-sample form matches canonical FocalFrequencyLoss to 1e-7) and Codex-reviewed."
+}

@@ -1,0 +1,53 @@
+{
+  "task": "cv-dbm-sampler",
+  "title": "Diffusion Bridge Sampling: few-step image-to-image translation under a hard NFE budget",
+  "domain": "Computer vision",
+  "metrics": [
+    "edges2handbags",
+    "Imagenet",
+    "DIODE"
+  ],
+  "metric_columns": [
+    "best_fid_edges2handbags",
+    "best_fid_Imagenet",
+    "best_fid_DIODE"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ddbm",
+      "method": "DDBM (reverse-SDE Heun + churn, 50-NFE reference)",
+      "reasoning": "01-ddbm-reasoning.md",
+      "answer": "01-ddbm-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "dbim",
+      "method": "DBIM (diffusion bridge implicit models, first-order)",
+      "reasoning": "02-dbim-reasoning.md",
+      "answer": "02-dbim-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "dbim_high_order",
+      "method": "DBIM high-order (exponential-integrator multistep solver)",
+      "reasoning": "03-dbim_high_order-reasoning.md",
+      "answer": "03-dbim_high_order-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "ecsi",
+      "method": "ECSI (endpoint-conditioned stochastic interpolants)",
+      "reasoning": "04-ecsi-reasoning.md",
+      "answer": "04-ecsi-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "ECSI (endpoint-conditioned stochastic interpolants)",
+  "ranking_basis": "FID (lower is better) across three workloads at NFE=5, seed 42. ddbm is the floor by construction: it is the 50-NFE reference with the worst FID on every workload (e2h 11.139, ImageNet 10.556, DIODE 15.811) at ~10x the compute (DIODE 2149s vs ~270s) — the thing the budgeted samplers must beat. dbim (5.180/6.070/15.002) more than halves e2h and ImageNet FID at 1/10 the calls but stalls on DIODE near the reference. dbim_high_order strictly dominates dbim on all three (4.988/5.528/14.306), moving DIODE for the first time. ecsi is strongest on the two translation workloads (e2h 4.234 best, DIODE 5.999 best by a ~2.4x margin) — winning 2 of 3 — at the cost of ImageNet inpainting (52.60), where strong mid-trajectory stochasticity hurts the masked-completion task. The ladder is ordered by training-free generality: each rung relaxes a constraint the previous one could not (genericity -> analytic large jumps -> high-order accuracy -> free stochasticity on a decoupled path).",
+  "notes": "MLS-Bench trajectory. Initial context and every step's code are the task's real edit surface (sample_dbim body in ddbm/karras_diffusion.py, from edits/*.edit.py). Each step = reasoning (full derivation, prose; reflection on the prior measured numbers embedded throughout for i>1) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers only, baselines). methods/<slug> single-round traces (dbim, dbim-high-order, ddbm, ecsi) are the derivation reference and are left untouched. Same-named-vs-paper diffs are real and noted in each step: (1) ddbm's edit is a 50-NFE *reference* that hardcodes churn_step_ratio=0.33, builds its own EDM rho=7 17-step grid, routes through ddbm_simulate, ignores the caller's ts/eta, and returns None as the 6th tuple value (no booting-noise latent); (2) dbim's edit matches the paper's first-order eta-controlled sampler verbatim; (3) dbim_high_order's edit coerces order not in {2,3} to 2 (not raise) and prints 'Step order N' diagnostics; (4) ecsi's edit hardcodes churn=0.3, rho_k=0.6, sigma_min=0.15, sigma_max_offset=5e-4, builds its own Karras rho=0.6 schedule overriding ts, ignores eta, clamps eps>=0, re-applies mask after every update (inpainting guard), and OMITS the paper's base-distribution diversity knob (pi_T = pi_cond * N(0,b^2 I)) entirely. No finale: ECSI already unifies DDBM/DBIM/I2SB/EDM as special cases of its (alpha,beta,gamma,eps) design space, and no clearly-stronger *training-free* bridge sampler fitting the sampler-only edit surface is published as of the knowledge cutoff (consistency/distillation bridges require retraining, which the frozen-training contract forbids). Stop at the strongest baseline."
+}

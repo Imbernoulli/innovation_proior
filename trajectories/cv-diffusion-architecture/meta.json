@@ -1,0 +1,53 @@
+{
+  "task": "cv-diffusion-architecture",
+  "title": "CV Diffusion Architecture: where self-attention earns its place in the denoiser",
+  "domain": "Computer vision",
+  "metrics": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "metric_columns": [
+    "best_fid_small",
+    "best_fid_medium",
+    "best_fid_large"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "no-attn",
+      "method": "No-attention (pure convolutional UNet)",
+      "reasoning": "01-no-attn-reasoning.md",
+      "answer": "01-no-attn-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "full-attn",
+      "method": "Full-attention (self-attention at every resolution)",
+      "reasoning": "02-full-attn-reasoning.md",
+      "answer": "02-full-attn-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "standard",
+      "method": "Standard DDPM (attention at 16x16 only)",
+      "reasoning": "03-standard-reasoning.md",
+      "answer": "03-standard-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "adm",
+      "method": "ADM (improved diffusion UNet: multi-resolution multi-head attention + AdaGN)",
+      "reasoning": "04-adm-reasoning.md",
+      "answer": "04-adm-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "ADM (improved diffusion UNet: multi-resolution multi-head attention + AdaGN)",
+  "ranking_basis": "FID is lower-is-better; ranking from the is_final,true baseline:* rows (seed 42), reading best_fid across all three channel scales. no-attn is weakest by a clear margin at every scale (21.39/11.25/9.55). full-attn (17.44/8.82/7.31) vs standard (18.60/8.47/7.18): full-attn wins small, but standard wins medium (8.47<8.82) AND large (7.18<7.31) - the two larger, more representative tiers - so standard is strongest. Order: no-attn < full-attn < standard.",
+  "notes": "MLS-Bench trajectory: the initial context and every step's code are the task's real edit surface (custom_train.py build_model, scaffold from edits/*.edit.py). The three baselines differ ONLY in attention placement across the four UNet resolution levels (the down_block_types/up_block_types tuple); all other config is shared. Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Finale ADM is a real published method (Dhariwal & Nichol 2021, arXiv:2105.05233) whose architecture half fits the edit surface: multi-resolution multi-head attention (attention_head_dim=64) + adaptive group norm (resnet_time_scale_shift='scale_shift') + dropout, all expressible via UNet2DModel; it carries no feedback. methods/<slug> single-round traces (no-attn, full-attn, standard, adm) are the derivation reference and are untouched."
+}
