@@ -1,0 +1,61 @@
+{
+  "task": "ml-anomaly-detection",
+  "title": "Unsupervised Anomaly Detection: the tabular scoring rule",
+  "domain": "Classical ML",
+  "metrics": [
+    "cardio",
+    "thyroid",
+    "satellite",
+    "shuttle"
+  ],
+  "metric_columns": [
+    "auroc",
+    "f1"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "lof",
+      "method": "LOF (Local Outlier Factor)",
+      "reasoning": "01-lof-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-lof-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ocsvm",
+      "method": "One-Class SVM",
+      "reasoning": "02-ocsvm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ocsvm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "copod",
+      "method": "COPOD (Copula-Based Outlier Detection)",
+      "reasoning": "03-copod-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-copod-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "ecod",
+      "method": "ECOD (Empirical-CDF Outlier Detection)",
+      "reasoning": "04-ecod-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-ecod-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "isolation_forest",
+      "method": "Isolation Forest",
+      "reasoning": "05-isolation_forest-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-isolation_forest-answer.md"
+    }
+  ],
+  "endpoint": "Isolation Forest",
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline:* mean leaderboard rows, both metrics higher-is-better, averaged over four datasets x two metrics. lof weakest by a wide margin (mean AUROC 0.583, F1 0.192 -- ranks at chance on 3 of 4 datasets because its local-density view is blind to the global-tail anomalies these datasets carry). ocsvm next (AUROC 0.842, F1 0.478): a global support boundary fixes the easy datasets but its fixed-bandwidth RBF collapses and wobbles on high-d high-contamination Satellite (0.591, swinging 0.55-0.67 across seeds). copod (AUROC 0.872, F1 0.536) and ecod (AUROC 0.861, F1 0.572) are the parameter-free per-feature ECDF tail family: copod < ecod by combined mean (ecod 0.716 vs copod 0.704) and ecod leads AUROC on 3 of 4 datasets and fixes copod's contamination-knob F1 collapse on Thyroid (0.180 -> 0.531); both plateau on Satellite (0.634, 0.566) because the independence assumption misses its joint-correlation anomalies. isolation_forest strongest (AUROC 0.908, F1 0.671): the only method whose mechanism (joint random-partition isolation + sub-sampling that relieves Satellite's masking) lifts Satellite to 0.707 and tops every F1 column.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (CustomAnomalyDetector in scikit-learn/custom_anomaly.py lines 160-212, fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, reflection embedded for i>1) -> answer (distilled summary + the scaffold code) -> feedback (numbers only). Code lives in the answer, not the reasoning. No finale: no genuinely-stronger real published method clearly beats Isolation Forest on these exact pre-standardized ADBench tabular datasets and also fits the edit surface (DIF/Deep Isolation Forest ships an edit file but has no measured row here and its gains are dataset-dependent, not clearly stronger on simple tabular benchmarks), so the trajectory stops at the strongest baseline per spec. Same-named-vs-paper diffs noted in the reasonings: the LOF and OCSVM rungs add an internal MinMaxScaler the paper/methods traces do not (the harness pre-applies StandardScaler but the ADBench reference geometry is [0,1]); the isolation_forest, copod, ecod fills use the PyOD library realizations (not the methods/ from-scratch numpy), with iforest's contamination affecting only the threshold and ecod transductive (train+test pooled). methods/<slug> single-round traces (methods/lof, ocsvm, copod, ecod, isolation-forest) are the derivation reference and untouched."
+}

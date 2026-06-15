@@ -1,0 +1,44 @@
+{
+  "task": "ml-continual-regularization",
+  "title": "Continual Learning: regularization against catastrophic forgetting",
+  "domain": "Classical ML",
+  "metrics": [
+    "split-mnist",
+    "perm-mnist",
+    "split-cifar100"
+  ],
+  "metric_columns": [
+    "average_accuracy_split_mnist",
+    "average_accuracy_perm_mnist",
+    "average_accuracy_split_cifar100"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "si",
+      "method": "SI (Synaptic Intelligence)",
+      "reasoning": "01-si-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-si-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ewc",
+      "method": "EWC (Elastic Weight Consolidation)",
+      "reasoning": "02-ewc-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ewc-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "online_ewc",
+      "method": "Online EWC",
+      "reasoning": "03-online_ewc-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-online_ewc-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by average accuracy averaged over the three benchmarks (higher is better), baseline:* is_final,true rows, seed 42. si weakest (mean-of-3 0.6563): best on Split-MNIST (0.9852) but catastrophically collapses on the 10-context domain-incremental Permuted-MNIST (0.4474, a monotone per-context slide to 0.14) because its unbounded path-integral importance over-accumulates. ewc (0.7807) fixes that collapse (Permuted 0.8381) with bounded endpoint-Fisher importance but bleeds gently across the long sequence. online_ewc strongest (0.7871): edges ewc on Split-MNIST (0.9743 vs 0.9577) and Permuted-MNIST (0.8427 vs 0.8381), ~ties on Split-CIFAR100, via a decayed running Fisher (gamma=0.9) that bounds the accumulated stiffness.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_regularization.py: estimate_importance + compute_regularization_loss, scaffold from edits/*.edit.py and the mid_edit training-loop hooks). Each step = reasoning (full derivation, prose, reflection on the prior numbers embedded for i>1) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only). The code block lives in the answer, not the reasoning. methods/{si,ewc,online-ewc} single-round traces are the derivation references and are untouched. No finale: the only other published method on the edit surface (MAS, mas.edit.py, Aljundi et al. ECCV 2018) is a peer of EWC/SI, not clearly stronger than Online EWC, and has no measured result, so the ladder stops at the strongest baseline per the spec."
+}

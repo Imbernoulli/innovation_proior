@@ -1,0 +1,60 @@
+{
+  "task": "ml-missing-data-imputation",
+  "title": "Missing Data Imputation: climbing from the column mean to non-linear chained equations",
+  "domain": "Classical ML",
+  "metrics": [
+    "breast_cancer",
+    "wine",
+    "california"
+  ],
+  "metric_columns": [
+    "rmse",
+    "downstream_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "mean_impute",
+      "method": "Mean imputation (unconditional column mean)",
+      "reasoning": "01-mean_impute-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-mean_impute-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "knn",
+      "method": "KNN imputation (weighted nan-Euclidean neighbours)",
+      "reasoning": "02-knn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-knn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mice",
+      "method": "MICE (chained equations, BayesianRidge)",
+      "reasoning": "03-mice-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mice-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "missforest",
+      "method": "MissForest (chained equations, RandomForest)",
+      "reasoning": "04-missforest-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-missforest-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "gain",
+      "method": "Iterative ExtraTrees imputation (gain slot)",
+      "reasoning": "05-gain-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-gain-answer.md"
+    }
+  ],
+  "endpoint": "Iterative ExtraTrees imputation (gain slot)",
+  "ranking_basis": "Weak->strong by the gmean-of-weighted-means task score (per dataset: 0.5*rmse-lower + 0.5*downstream-higher, gmean across breast_cancer/wine/california), which is dominated by the weakest dataset. mean_impute weakest by construction (univariate; worst RMSE everywhere, 0.99/1.03/0.93). knn next: it beats mean on the wide correlated matrices (BC RMSE 0.99->0.59) but REGRESSES on narrow continuous California (RMSE 0.933>0.928 mean, R2 0.612<0.646), dragging its gmean down. mice (linear chained equations) fixes California (RMSE 0.872, R2 0.659) and excels on BC (0.414) but its linear per-column engine fails on Wine (RMSE 0.943, worse than knn's 0.796). missforest (RF chained equations) fixes Wine (0.740) and tightens California's seed variance (0.669) at a small BC give-back (0.478), a net gmean win. gain here is NOT the GAN -- it is IterativeImputer+ExtraTreesRegressor, the strongest: best/near-best on all three (BC 0.476, Wine 0.727, California 0.659) with the highest downstream means, since extra-randomized trees lower variance, smooth the response surface (recovering the BC give-back), and skip the exhaustive split search.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_imputation.py: CustomImputer.fit/transform/fit_transform, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces are reused untouched as the derivation reference. CRITICAL same-named-vs-paper divergence: the 'gain' baseline is NOT the GAIN GAN of the methods/gain trace -- the task's edits/gain.edit.py replaces the GAN with IterativeImputer+ExtraTreesRegressor (the numpy GAN could not converge), so the trajectory's gain reasoning and code derive the ExtraTrees chained-equations refinement and explicitly disclaim the adversarial machinery. No finale: the task already includes the strongest tree-based imputers, and no real published method clearly beats iterative-ExtraTrees on small standardized tables scored by squared-error RMSE -- so the climb stops at the strongest baseline."
+}

@@ -1,0 +1,45 @@
+{
+  "task": "ml-ensemble-boosting",
+  "title": "ML Ensemble Boosting: sample-weighting and update strategy design",
+  "domain": "Classical ML",
+  "metrics": [
+    "breast_cancer",
+    "diabetes",
+    "california_housing"
+  ],
+  "metric_columns": [
+    "test_accuracy_breast_cancer",
+    "test_rmse_diabetes",
+    "test_rmse_california_housing"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "adaboost",
+      "method": "AdaBoost (exponential-loss reweighting / AdaBoost.R2)",
+      "reasoning": "01-adaboost-reasoning.md",
+      "answer": "01-adaboost-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "gradient_boosting",
+      "method": "Gradient Boosting (negative-gradient pseudo-residual fitting)",
+      "reasoning": "02-gradient_boosting-reasoning.md",
+      "answer": "02-gradient_boosting-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "xgboost_style",
+      "method": "XGBoost-style (second-order regularized Newton step)",
+      "reasoning": "03-xgboost_style-reasoning.md",
+      "answer": "03-xgboost_style-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "XGBoost-style (second-order regularized Newton step)",
+  "ranking_basis": "From the is_final=true baseline:* mean rows over three datasets (breast_cancer test_accuracy higher-better; diabetes and california_housing test_rmse lower-better). adaboost weakest: it loses both regression tasks by large margins (diabetes 60.50 vs ~58.8; california 0.6466 vs ~0.50, a ~23% relative gap) because its R2-style reweighting injects tail variance into a no-median additive accumulator, winning only breast_cancer (0.9708). gradient_boosting next: dropping the reweighting and fitting residuals on the uniform distribution recovers regression (diabetes 58.82, california 0.5002) at a small classification cost (0.9620). xgboost_style strongest: its regularized global Newton step (reg_lambda=1.0, applied to regression too) edges diabetes to the best value (58.73 < 58.82), ties california (0.5002), with breast_cancer 0.9590; the GB->XGB gap is marginal and split (XGB wins diabetes, ties california, slips breast_cancer), but the first-order->second-order lineage and the better-or-tied regression means place it at the apex, matching the task's own reference-baseline ordering.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (scikit-learn/custom_boosting.py, BoostingStrategy lines 147-256; scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/{adaboost,gradient-boosting,xgboost-style} single-round traces are the derivation reference and are left untouched. Same-named-vs-paper: this harness exposes only a four-method strategy over a FIXED depth-3 sklearn tree (no access to split criterion or leaf values), so each baseline is a reduced form of its paper. AdaBoost regression here keeps only R2's reweighting on a residual-fitting additive accumulator (no weighted-median combiner) and folds shrinkage into the classification alpha. Gradient boosting here uses a GLOBAL Newton line-search for the classification alpha, not TreeBoost's per-leaf Newton (leaf values are the tree's own LS means). XGBoost-style here is NOT the canonical (G,H) tree (no gain-based splits, no -G/(H+lambda) leaves, no -g/h Hessian-weighted target); it is gradient boosting plus a regularized global Newton step (reg_lambda=1.0) now applied to regression as well. No finale added: within this fixed-tree contract the genuine published advances over xgboost_style (XGBoost exact tree, LightGBM histogram/GOSS, CatBoost ordered boosting) require controlling split-finding and leaf values, which the edit surface does not expose; the task's own edits/hist_gradient_boosting.edit.py (LightGBM) confirms this -- it computes binned features but never feeds them to a learner, so it is a no-op clone of gradient_boosting and was (correctly) never added as a leaderboard baseline. No methods/<slug> was missing."
+}

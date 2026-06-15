@@ -1,0 +1,54 @@
+{
+  "task": "ml-subgroup-calibration-shift",
+  "title": "Subgroup Calibration Under Shift: a worst-group reliability ladder",
+  "domain": "Classical ML",
+  "metrics": [
+    "adult",
+    "compas",
+    "law_school"
+  ],
+  "metric_columns": [
+    "worst_group_ece",
+    "brier",
+    "max_subgroup_gap",
+    "subgroup_auroc"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "group_temperature_scaling",
+      "method": "Group temperature scaling (James-Stein shrinkage)",
+      "reasoning": "01-group_temperature_scaling-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-group_temperature_scaling-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "temperature_scaling",
+      "method": "Temperature scaling (global scalar)",
+      "reasoning": "02-temperature_scaling-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-temperature_scaling-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "isotonic_regression",
+      "method": "Isotonic regression (PAVA)",
+      "reasoning": "03-isotonic_regression-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-isotonic_regression-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "beta_calibration",
+      "method": "Beta calibration (3-parameter)",
+      "reasoning": "04-beta_calibration-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-beta_calibration-answer.md"
+    }
+  ],
+  "endpoint": "Beta calibration (3-parameter)",
+  "ranking_basis": "Ranked weak->strong by the primary metric worst_group_ece (lower is better), seed 42, head-to-head across the three datasets (adult/compas/law_school) from the is_final,true baseline:* rows. group_temperature_scaling is weakest: it loses 0-3 to temperature_scaling on worst_group_ece (mean 0.4349 vs 0.4264, worst dataset 0.4972) because EB shrinkage routes the small worst subgroup through the global temperature, so the per-group degrees of freedom buy Brier but not worst-group ECE under shift. temperature_scaling (mean 0.4264) is the lowest-variance global control. isotonic_regression (mean 0.4273) beats temperature_scaling 2-1 (big win on adult 0.348, loss on law_school 0.451 from overfitting the thin shifted split, and a small subgroup_auroc drop from PAVA flat blocks). beta_calibration is strongest: it beats every other baseline 2-1 head-to-head and posts the best mean worst_group_ece (0.3968), best worst-dataset value (0.4663), and best Brier (0.3526) -- the 3-parameter family bends like isotonic but transfers like the scalar.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_subgroup_calibration.py: the CalibrationMethod class, lines 200-219, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose; reflection on the prior result embedded throughout for i>1) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). The harness is binary end to end (probs is always a 1-D positive-class vector), so no multiclass one-against-all path is exercised. No finale: post-hoc calibration is known to degrade under severe shift and no published method is clearly stronger than beta_calibration on this shifted worst-group-ECE benchmark, so the trajectory stops at the strongest baseline. Same-named-vs-paper diffs noted per step; the most substantive is beta_calibration. methods/<slug> single-round traces are untouched."
+}

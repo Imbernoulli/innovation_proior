@@ -1,0 +1,46 @@
+{
+  "task": "mlsys-moe-load-balance",
+  "title": "MoE Expert-Parallelism Load Balancing: from greedy to vectorized placement",
+  "domain": "Systems & efficiency",
+  "metrics": [
+    "deepseek-v3",
+    "qwen3-moe",
+    "deepseek-v2",
+    "stress-skew"
+  ],
+  "metric_columns": [
+    "balance",
+    "balance_node",
+    "locality",
+    "runtime_ms"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "greedy",
+      "method": "Greedy hierarchical bin-packing (EPLB reference)",
+      "reasoning": "01-greedy-reasoning.md",
+      "answer": "01-greedy-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "zigzag",
+      "method": "Vectorized zigzag (snake) hierarchical packing",
+      "reasoning": "02-zigzag-reasoning.md",
+      "answer": "02-zigzag-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "flat_zigzag",
+      "method": "Flat (global) zigzag packing",
+      "reasoning": "03-flat_zigzag-reasoning.md",
+      "answer": "03-flat_zigzag-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Real scorer (geometric mean over the four configs, each weighting balance/balance_node/locality/runtime_ms equally; runtime via leaderboard-calibrated sigmoid, lower better; balance/locality via bounded_power, higher better, cap 1.0). is_final,true baseline rows: greedy 0.25531 (weakest: perfect locality and decent real-model balance, but 100-256 ms runtime is scored near-worthless on every config), zigzag 0.37500 (same hierarchy and perfect locality, vectorized packing cuts runtime to ~1 ms, balance held), flat_zigzag 0.38204 (strongest: drops the hierarchy for a global pack, gaining balance off the Stage-1 cap, e.g. deepseek-v3 0.659->0.980 and stress-skew 0.222->0.931, at the cost of locality 1.0->0.73-0.96). Endpoint = flat_zigzag.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_eplb.py lines 62-209: balanced_packing + replicate_experts + rebalance_experts, scaffold fills from edits/{greedy,zigzag,full_tensor}.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). The code block lives in the answer; the reasonings are code-free. methods/{greedy,zigzag,flat-zigzag} single-round traces are the derivation references and are left untouched. No finale: the published work on this exact problem (Barbarians at the Gate, Cheng et al. 2025) lands precisely on the zigzag-across-stages method that the task's baselines already are, and the classical stronger partitioner (Karmarkar-Karp / BLDM) is sequential (slow), does not measurably improve balance on these small group counts, and violates the equal-cardinality constraint as written - so nothing clearly stronger is published; the ladder stops at the strongest baseline per the spec."
+}

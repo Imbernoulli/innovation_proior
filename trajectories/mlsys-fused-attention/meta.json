@@ -1,0 +1,45 @@
+{
+  "task": "mlsys-fused-attention",
+  "title": "Fused Attention Kernel: climbing the FlashAttention ladder in Triton on H100",
+  "domain": "Systems & efficiency",
+  "metrics": [
+    "hdim64_seq4k",
+    "hdim128_seq8k",
+    "hdim256_seq16k"
+  ],
+  "metric_columns": [
+    "tflops",
+    "latency_ms",
+    "speedup_vs_sdpa"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "flash_v1",
+      "method": "FlashAttention v1 (basic tiled fused kernel)",
+      "reasoning": "01-flash_v1-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-flash_v1-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "flash_v2",
+      "method": "FlashAttention v2 (two-pass causal + fused scale + per-headdim blocks)",
+      "reasoning": "02-flash_v2-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-flash_v2-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "flash_v3",
+      "method": "FlashAttention v3-inspired (autotuned blocks + software pipelining)",
+      "reasoning": "03-flash_v3-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-flash_v3-answer.md"
+    }
+  ],
+  "endpoint": "FlashAttention v3-inspired (autotuned blocks + software pipelining)",
+  "ranking_basis": "Primary metric tflops (higher better), seed 42 only. flash_v1 is the floor by construction (basic fused kernel, no scheduling optimization; correct on all three configs but slower than SDPA everywhere: speedup 0.94/0.94/0.81). flash_v3 is unambiguously strongest: best tflops on all three configs (332/406/240) and the only baseline above 1.0x SDPA on two configs. flash_v2 sits between by the task's intended ladder and by per-config majority (it beats v1 on 2 of 3 configs: hdim64 308>270 crossing 1.09x SDPA, hdim256 240>234), but its fixed 128x64 block at headdim 128 spills/starves occupancy and REGRESSES hdim128_seq8k to 200 (vs v1's 297), so by raw mean tflops v2 (249.6) actually dips below v1 (267.1). That regression is the documented anomaly and the diagnostic hook for v3's autotuning. Ranked v1 < v2 < v3 following the intended optimization ladder and per-config wins, with the v2-hdim128 spill called out explicitly.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (flash-attention/custom_triton_bench.py lines 29-119: the _custom_attn_fwd Triton kernel + custom_attention_forward wrapper, from edits/*.edit.py). Each step = reasoning (full derivation, prose, reflection on the prior measured numbers embedded throughout for i>1) -> feedback (numbers only, baselines only) with an answer (distilled summary + the literal scaffold edit code). The code block lives in the answer, not the reasoning. methods/{flash-v1,flash-v2,flash-v3} single-round traces are the derivation reference and are untouched. Same-named-vs-paper diffs: the task baselines are FORWARD-ONLY (no LSE stored, no backward kernel) and the harness benchmarks only the forward pass; flash_v2's kernel drops the sm_scale parameter entirely (scale fused into Q in the wrapper) and the full-FA2 split-Q warp partitioning / LSE are NOT exposed; flash_v3 approximates FA3 purely through @triton.autotune over (BLOCK_M,BLOCK_N,num_stages,num_warps) and the compiler's num_stages software pipelining -- it has NO warp specialization, FP8, TMA, GMMA, or incoherent processing (those FA3 mechanisms are not accessible from Triton, per the task description, and Triton 3.3.1's tl.range has no warp_specialize parameter). No finale: the strongest baseline is already the FA3-inspired autotuned kernel, and within this Triton-3.3.1 edit surface there is no genuinely-stronger published method (FA3's true Hopper accelerators are below the DSL), so the ladder honestly ends at flash_v3."
+}

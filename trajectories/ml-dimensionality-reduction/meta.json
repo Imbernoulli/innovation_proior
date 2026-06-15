@@ -1,0 +1,60 @@
+{
+  "task": "ml-dimensionality-reduction",
+  "title": "Dimensionality Reduction: nonlinear 2D embedding design",
+  "domain": "Classical ML",
+  "metrics": [
+    "mnist",
+    "fashion_mnist",
+    "newsgroups"
+  ],
+  "metric_columns": [
+    "knn_acc",
+    "trustworthiness",
+    "continuity"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "pca",
+      "method": "PCA (linear baseline)",
+      "reasoning": "01-pca-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-pca-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "trimap",
+      "method": "TriMap (triplet refinement of PCA)",
+      "reasoning": "02-trimap-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-trimap-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "pacmap",
+      "method": "PaCMAP (three pair types)",
+      "reasoning": "03-pacmap-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-pacmap-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "umap",
+      "method": "UMAP (fuzzy-graph cross-entropy)",
+      "reasoning": "04-umap-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-umap-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "tsne",
+      "method": "t-SNE (per-point KL match)",
+      "reasoning": "05-tsne-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-tsne-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline:* mean rows over all nine metric columns (all higher-is-better). Overall means: pca 0.654 (loses every metric to all others), trimap 0.860, pacmap 0.867, umap 0.873, tsne 0.899 (strongest). Pairwise over the 9 metrics: trimap loses 6-3 to pacmap, 7-2 to umap, 9-0 to tsne; pacmap loses 5-4 to umap; umap loses 8-1 to tsne. So pca < trimap < pacmap < umap < tsne. t-SNE dominates on the local metrics that carry the most signal here (MNIST trustworthiness 0.961 vs umap/pacmap ~0.901; Fashion-MNIST kNN 0.791 vs umap 0.740).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (CustomDimReduction.fit_transform in scikit-learn/bench/custom_dimred.py, lines 15-59, from edits/*.edit.py). CRITICAL same-named-vs-paper diff: every baseline's edit.py is a THIN LIBRARY-WRAPPER calling sklearn/umap/trimap/pacmap with fixed hyperparameters, NOT the from-scratch numpy/scipy implementations in the methods/<slug> traces. The trajectory reuses each methods/<slug> reasoning as the derivation reference but lands the literal scaffold edit (a library call) as the answer code, and the reasoning explicitly names which hyperparameters the harness exposes vs what the library fixes internally. No finale: t-SNE is the strongest baseline and on this task's k=7 trustworthiness/kNN/continuity metrics no genuinely-stronger published neighbor-embedding method fits the CPU/5-minute/sklearn edit surface (the published alternatives are the graph methods already on the ladder, which score lower on these local metrics). Each step = reasoning (full derivation, reflection on the prior numbers embedded throughout for i>1) -> answer (distilled summary + the scaffold library-call code) -> feedback (numbers only, baselines). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are untouched."
+}

@@ -1,0 +1,54 @@
+{
+  "task": "ml-selective-deferral",
+  "title": "Selective Deferral Under Subgroup Shift: the acceptance rule",
+  "domain": "Classical ML",
+  "metrics": [
+    "adult",
+    "compas",
+    "law_school"
+  ],
+  "metric_columns": [
+    "selective_risk_at80",
+    "worst_group_selective_risk",
+    "deferral_rate_gap",
+    "auroc"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "confidence-thresholding",
+      "method": "Confidence thresholding (global max-softmax cut)",
+      "reasoning": "01-confidence-thresholding-reasoning.md",
+      "answer": "01-confidence-thresholding-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "conformal-abstention",
+      "method": "Conformal abstention (split-conformal threshold)",
+      "reasoning": "02-conformal-abstention-reasoning.md",
+      "answer": "02-conformal-abstention-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "learned-deferral",
+      "method": "Learned deferral (logistic correctness gate)",
+      "reasoning": "03-learned-deferral-reasoning.md",
+      "answer": "03-learned-deferral-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "groupwise-thresholding",
+      "method": "Group-wise thresholding (per-subgroup quantile cuts)",
+      "reasoning": "04-groupwise-thresholding-reasoning.md",
+      "answer": "04-groupwise-thresholding-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "Group-wise thresholding (per-subgroup quantile cuts)",
+  "ranking_basis": "All four baselines share the same frozen base classifier and the same max-softmax score on Adult/Law-School, so selective_risk_at80, worst_group_selective_risk, and auroc are near-tied (auroc mean ~0.699 for all). The decisive axis is deferral_rate_gap (lower better) — the task's stated fairness goal. confidence_thresholding (gap mean 0.207) is the floor by design (one group-blind cut, no guarantee). conformal_abstention (0.209) is its principled-cut sibling: same score, a finite-sample (n+1) exchangeability guarantee on the marginal accept event, identical to the floor on Adult/Law and only the COMPAS cut moves — it repairs the cut's calibration, not the gap. learned_deferral (0.239) swaps in a learned correctness score (a better ranker on COMPAS, selective risk 0.280) but, having no per-group objective, concentrates deferrals harder and posts the WORST gaps (Adult 0.273, Law 0.324). groupwise_thresholding is strongest: per-subgroup quantile cuts collapse the gap to mean 0.095 (Law 0.051, COMPAS 0.074) while preserving the floor's auroc exactly, directly solving the fairness goal at a small selective-risk cost. Ordering confidence < conformal < learned_deferral < groupwise also matches the task_description's own listing and derivation order.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (SelectivePolicy in scikit-learn/custom_selective.py, lines 253-287, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. CRITICAL same-named-vs-paper divergence: the task's edits/learned_deferral.edit.py is a compact post-hoc LogisticRegression meta-classifier that predicts correctness = 1[argmax(probs)==y] from _confidence_features and thresholds predicted P(correct) at the coverage quantile -- NOT the methods/learned-deferral paper (Mozannar-Sontag K+1-softmax neural net jointly trained with a reject head against a combined predictor+expert loss). The trajectory step 3 derives the post-hoc gate the frozen pipeline admits and explicitly notes the joint-training method is structurally unavailable (base model frozen). The other three baselines' edits match their methods/<slug> traces closely (confidence-thresholding shows only the coverage-mode of its richer two-mode methods trace; conformal-abstention and groupwise-thresholding are near-verbatim). methods/<slug> single-round traces are untouched. No finale: groupwise_thresholding already drives deferral_rate_gap to the equal-coverage optimum and preserves AUROC; any published post-hoc refinement (e.g. Mondrian/group-conditional conformal, RCPS per-group risk control) would either land essentially on top of groupwise (same max-softmax score, threshold shifts only by a finite-sample correction -- the confidence-vs-conformal non-difference) or break groupwise's equal-coverage win to chase a worst-group-risk axis the frozen base model bakes in, so nothing is CLEARLY stronger on this leaderboard. Stopped at the strongest baseline per the spec."
+}

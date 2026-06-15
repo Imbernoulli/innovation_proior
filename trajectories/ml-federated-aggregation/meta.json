@@ -1,0 +1,53 @@
+{
+  "task": "ml-federated-aggregation",
+  "title": "Federated Aggregation: taming client drift under non-IID data",
+  "domain": "Classical ML",
+  "metrics": [
+    "cifar10",
+    "femnist",
+    "shakespeare"
+  ],
+  "metric_columns": [
+    "test_accuracy_cifar10",
+    "test_accuracy_femnist",
+    "test_accuracy_shakespeare"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "FedDyn (Federated Dynamic Regularization)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "fedprox",
+      "method": "FedProx (proximal-term client correction)",
+      "reasoning": "01-fedprox-reasoning.md",
+      "answer": "01-fedprox-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "fedavg",
+      "method": "FedAvg (local SGD + weighted average)",
+      "reasoning": "02-fedavg-reasoning.md",
+      "answer": "02-fedavg-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "scaffold",
+      "method": "SCAFFOLD (control-variate drift correction)",
+      "reasoning": "03-scaffold-reasoning.md",
+      "answer": "03-scaffold-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "feddyn",
+      "method": "FedDyn (Federated Dynamic Regularization)",
+      "reasoning": "04-feddyn-reasoning.md",
+      "answer": "04-feddyn-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Metric = test accuracy after 200 rounds (higher is better), is_final=true baseline:* rows, seed 42. fedprox weakest: CIFAR-10 0.5948 (below fedavg's 0.5954), Shakespeare 0.4326 (below fedavg's 0.4360), 3-benchmark mean 0.6133 < fedavg's 0.6142 — the gentle mu=0.01 spring throttles drift magnitude only, costing a sliver of local progress without removing the directional bias. fedavg middle: 0.5954 / 0.8112 / 0.4360, mean 0.6142. scaffold strongest: highest on all three (CIFAR 0.6309, FEMNIST 0.8187, Shakespeare 0.4355), mean 0.6284 — the (c - c_i) correction rotates each local step toward the global gradient, breaking CIFAR out of the high-0.59 band the other two share.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (flower/custom_fl_aggregation.py: the Strategy class — full client+server FL recipe, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning, so the stacked view shows it once. methods/<slug> single-round traces are the derivation reference and are untouched. Finale = FedDyn (Acar et al., ICLR 2021), a real published method stronger than SCAFFOLD that fits the Strategy edit surface (client-side dynamic regularizer + server state reconstruction, half the per-round bits of SCAFFOLD); it carries no feedback (no leaderboard row)."
+}

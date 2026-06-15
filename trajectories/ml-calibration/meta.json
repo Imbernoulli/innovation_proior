@@ -1,0 +1,53 @@
+{
+  "task": "ml-calibration",
+  "title": "Probability Calibration: post-hoc mappings from rigid to bend-both-ways",
+  "domain": "Classical ML",
+  "metrics": [
+    "rf-mnist",
+    "mlp-fashion_mnist",
+    "gbm-madelon",
+    "svm-breast_cancer"
+  ],
+  "metric_columns": [
+    "ECE",
+    "Brier",
+    "NLL"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "isotonic-regression",
+      "method": "Isotonic regression (non-parametric monotone map)",
+      "reasoning": "01-isotonic-regression-reasoning.md",
+      "answer": "01-isotonic-regression-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "platt-scaling",
+      "method": "Platt scaling (sigmoid on the log-odds)",
+      "reasoning": "02-platt-scaling-reasoning.md",
+      "answer": "02-platt-scaling-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "temperature-scaling",
+      "method": "Temperature scaling (single shared logit scale)",
+      "reasoning": "03-temperature-scaling-reasoning.md",
+      "answer": "03-temperature-scaling-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "beta-calibration",
+      "method": "Beta calibration (three-parameter power-law-on-odds map)",
+      "reasoning": "04-beta-calibration-reasoning.md",
+      "answer": "04-beta-calibration-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "All metrics lower-is-better. isotonic_regression weakest: best mean ECE (0.0157) but worst mean NLL (0.3251, e.g. gbm-madelon 0.582) and largest seed spread (rf-mnist NLL 0.215-0.272) - the non-parametric piecewise-constant map matches binned accuracy but its coarse few-example blocks bleed the proper scores, classic small-calibration-set overfit. platt_scaling middle: best mean Brier (0.1068), fixes isotonic's NLL bleed (rf-mnist NLL 0.163, gbm-madelon 0.451), but worst mean ECE (0.0288, svm-breast_cancer 0.049) - one rigid sigmoid shape fit per column regresses ECE where isotonic's data-chosen binning excelled. temperature_scaling strongest: most per-cell wins (6 of 12), best ECE among the parametric pair (rf-mnist 0.0101, recovers from Platt's 0.0254), holds the proper scores (rf-mnist NLL 0.155, svm NLL 0.086), accuracy preserved by construction - the minimal shared-scale correction the data support. Finale beta-calibration strictly generalizes both (contains the sigmoid as a=b>1, the inverse sigmoid a=b<1, and the identity a=b=1,c=0), targeting the location/shape gap temperature scaling leaves on gbm-madelon (ECE 0.0305, untouched).",
+  "notes": "MLS-Bench Classical-ML trajectory: initial context and every step's code are the task's real edit surface (CalibrationMethod.fit/predict_proba in custom_calibration.py lines 45-102, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only); the finale carries no feedback. methods/<slug> single-round traces (isotonic-regression, platt-scaling, temperature-scaling, beta-calibration) are the derivation reference and stay untouched. Same-named-vs-paper diffs: (1) the task's platt edit fits the sigmoid on the log-odds of the harness-supplied probability (f=log(p/(1-p))), not on raw classifier margins as the methods/platt-scaling trace does, and omits the trace's stable-sigmoid branches and score-scale conditioning; it keeps Platt's Laplace-smoothed targets. (2) the task's temperature edit reconstructs logits from probabilities (log(p) multiclass, [log(1-p),log(p)] binary) since the harness gives no logits, and fits per-task by scipy L-BFGS-B - the maxent single-scalar move is identical to the methods/temperature-scaling trace, only the input space differs. (3) the task's beta-calibration finale edit fits all three coefficients UNCONSTRAINED via scipy optimize.minimize on features [log(p/(1-p)), log(1-p)] from x0=[1,0,0], OMITTING the canonical betacal drop-and-refit monotonicity guard that the methods/beta-calibration trace and the reference package include; it is the same three-parameter beta map up to a relabeling of the two coefficients, fitted slightly looser than the reference. The finale's methods/beta-calibration trace (grounded in Kull et al. AISTATS 2017) and its Codex review already existed and were reused; group-temperature-scaling also has a trace but no task edit file, so beta-calibration is the finale that fits the edit surface."
+}

@@ -1,0 +1,44 @@
+{
+  "task": "ml-symbolic-regression",
+  "title": "Symbolic Regression: GP search strategy",
+  "domain": "Classical ML",
+  "metrics": [
+    "nguyen7",
+    "nguyen10",
+    "koza3"
+  ],
+  "metric_columns": [
+    "test_r2_nguyen7",
+    "test_r2_nguyen10",
+    "test_r2_koza3"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "standard_gp",
+      "method": "Standard GP (Koza-style)",
+      "reasoning": "01-standard_gp-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-standard_gp-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "lexicase_gp",
+      "method": "epsilon-Lexicase GP",
+      "reasoning": "02-lexicase_gp-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-lexicase_gp-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "parsimony_gp",
+      "method": "Parsimony-pressured GP",
+      "reasoning": "03-parsimony_gp-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-parsimony_gp-answer.md"
+    }
+  ],
+  "ranking_basis": "Mean test R2 over the three benchmarks (higher is better) from the baseline:* is_final,true rows. standard_gp weakest (overall 0.637): no defense against premature convergence, so a Nguyen-7 seed blows up to -1.0 (floored) and Nguyen-10 declines across seeds. lexicase_gp middle (overall 0.868): epsilon-lexicase cures the Nguyen-7 catastrophe (mean 0.330 -> 0.968) but leaves bloat unmanaged, slipping Koza-3 (0.922) and only partially lifting Nguyen-10 (0.714). parsimony_gp strongest (overall 0.930): the auto Cov/Var parsimony coefficient controls bloat, recovering Koza-3 (0.996) and lifting Nguyen-10 (0.809) at a fraction of lexicase's wall-clock.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the five search-strategy functions of gplearn/custom_sr.py, lines 228-306, filled from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers, all three baselines). The code block lives in the answer, not the reasoning, so the stacked view shows it once. No finale: the strongest published GP search strategy that would clearly beat auto-parsimony here (AFPO, Schmidt & Lipson 2011) requires per-individual genotypic-age state across generations, but the scaffold's Node uses __slots__=('value','children') and evolve_one_generation carries no persistent per-individual state, so faithful AFPO does not fit the edit surface; nothing else is clearly stronger on these three small benchmarks. methods/{standard-gp,parsimony-gp,lexicase-gp} single-round traces are the derivation reference and are left untouched."
+}
