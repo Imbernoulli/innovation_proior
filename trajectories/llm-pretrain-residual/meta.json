@@ -1,0 +1,65 @@
+{
+  "task": "llm-pretrain-residual",
+  "title": "LLM Pretraining: residual-connection strategy",
+  "domain": "Language models",
+  "metrics": [
+    "val_loss_gpt-345m",
+    "wikitext2_ppl_gpt-345m",
+    "lambada_ppl_gpt-345m",
+    "arc_easy_lm-eval-345m",
+    "hellaswag_lm-eval-345m"
+  ],
+  "metric_columns": [
+    "val_loss",
+    "wikitext2_ppl",
+    "lambada_ppl",
+    "arc_easy",
+    "hellaswag"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Hyper-Connections (DHC, n parallel residual streams)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "vanilla",
+      "method": "Vanilla Pre-LN residual",
+      "reasoning": "01-vanilla-reasoning.md",
+      "answer": "01-vanilla-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "prores",
+      "method": "ProRes (progressive residual warmup)",
+      "reasoning": "02-prores-reasoning.md",
+      "answer": "02-prores-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "learned_scaling",
+      "method": "Learnable residual scaling + x0 injection",
+      "reasoning": "03-learned_scaling-reasoning.md",
+      "answer": "03-learned_scaling-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "full_attnres",
+      "method": "Block Attention Residuals",
+      "reasoning": "04-full_attnres-reasoning.md",
+      "answer": "04-full_attnres-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "hyper-connections",
+      "method": "Hyper-Connections (DHC, n parallel residual streams)",
+      "reasoning": "05-hyper-connections-reasoning.md",
+      "answer": "05-hyper-connections-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the primary metric val_loss_gpt-345m (lower is better) from the is_final,true baseline:* rows, seed 42: vanilla 2.2763 > prores 2.2707 > learned_scaling 2.2680 > full_attnres 2.2544. Secondary metrics corroborate: full_attnres also has the best WikiText-2 (41.82) and LAMBADA (64.32) perplexity; learned_scaling has the best ARC-Easy (55.85). Finale (hyper-connections) is not a task baseline; it carries no feedback.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (nanoGPT/custom_pretrain.py: Block, GPT.__init__, the GPT.forward block loop, configure_optimizers; scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer. Same-named-vs-paper diffs: (1) learned_scaling's edit is NOT ReZero (the methods/learned-scaling trace) but the modded-nanogpt 'Learnable Residual Scaling + x0 Injection' design (two learnable scalars per layer, resid_lambda init 1.0 = vanilla at init, x0_lambda init 0.0); the reasoning derives that, not the zero-init single-scalar ReZero. (2) full_attnres's edit is NOT full attention over all 2*n_layer sublayer outputs (the methods/full-attnres trace) but 'Block AttnRes' — 24 layers partitioned into 6 blocks of 4 with ordinary residuals within blocks and softmax attention only at the 5 block boundaries + 1 output query over ~6 block sources; the reasoning derives the coarsened block-boundary version (the scaling/grouping variant the methods trace's last paragraph flags). vanilla and prores match their methods traces. Finale = Hyper-Connections (Zhu et al., ByteDance, ICLR 2025, arXiv:2409.19606), a real published method named in the task background but NOT among the four baselines; it fits the edit surface (operates on hidden states via Block/forward-loop/init/optimizer, leaving CausalSelfAttention/MLP/LayerNorm fixed). Value Residual Learning (arXiv:2410.17897) was considered and rejected as finale: it requires editing the value path inside CausalSelfAttention (v = lam1*V_1 + lam2*V_n before attention), which the interface contract forbids (CausalSelfAttention fixed; Block.forward sees only x). New standalone trace created at methods/hyper-connections/ (grounded in the primary source PDF text)."
+}

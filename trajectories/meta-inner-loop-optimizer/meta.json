@@ -1,0 +1,53 @@
+{
+  "task": "meta-inner-loop-optimizer",
+  "title": "Meta-Learning: designing the inner-loop adaptation rule",
+  "domain": "Meta-learning",
+  "metrics": [
+    "mini_imagenet_1shot",
+    "mini_imagenet_5shot",
+    "cifar_fs_5shot"
+  ],
+  "metric_columns": [
+    "accuracy_mini_imagenet_1shot",
+    "accuracy_mini_imagenet_5shot",
+    "accuracy_cifar_fs_5shot"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Meta-Curvature (learned Kronecker-factored gradient preconditioner)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "maml",
+      "method": "MAML (vanilla, fixed-LR SGD over all parameters)",
+      "reasoning": "01-maml-reasoning.md",
+      "answer": "01-maml-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "meta_sgd",
+      "method": "Meta-SGD (learned per-parameter learning-rate vector)",
+      "reasoning": "02-meta_sgd-reasoning.md",
+      "answer": "02-meta_sgd-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "anil",
+      "method": "ANIL (head-only inner loop, frozen body)",
+      "reasoning": "03-anil-reasoning.md",
+      "answer": "03-anil-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "meta-curvature",
+      "method": "Meta-Curvature (learned Kronecker-factored gradient preconditioner)",
+      "reasoning": "04-meta-curvature-reasoning.md",
+      "answer": "04-meta-curvature-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Higher accuracy is better on all three benchmarks. maml weakest: vanilla fixed-scalar SGD over all params, weakest at 1-shot (mean 0.4365, the lowest and highest-variance of the three baselines, std 0.0147) where full-network adaptation is most fragile; lowest 3-benchmark average (0.5937). meta_sgd middle: learned per-parameter rate lifts 1-shot to 0.4760 and collapses its seed spread (std 0.0047) but meta-overfits at 5-shot (mini 0.6237 < maml 0.6379, cifar 0.6885 < maml 0.7067); average 0.5961. anil strongest baseline: head-only inner loop (feature reuse) recovers 5-shot (cifar 0.7138, best on the ladder) and edges 1-shot to 0.4815 (tightest spread, std 0.0029) at the lowest cost; strongest on 2 of 3 benchmarks and tied-best on the third; highest average (0.6106). Finale Meta-Curvature is the un-attacked axis (the step DIRECTION via a learned structured preconditioner), strictly generalizing maml (identity) and meta_sgd (diagonal).",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (the InnerLoopOptimizer class in learn2learn/custom_maml.py lines 177-254; baseline fills are the literal edits/<slug>.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (maml, meta-sgd, anil) are reused as derivation references and left untouched. Finale Meta-Curvature (Park & Oliva, NeurIPS 2019, arXiv:1902.03356) carries no feedback; it gets its own standalone methods/meta-curvature trace (grounded + Codex-reviewed). Same-named-vs-paper diffs handled: maml's edit adds a harness-specific shot-aware LR override (alpha=0.01 if N_SHOT==1 else 0.5) absent from the paper; meta_sgd's edit uses l2l.update_module with an nn.ParameterList of ones_like(p)*inner_lr (uniform init, l2l mechanics) rather than the methods trace's custom reroute; anil's edit re-identifies head params by name each inner step because update_module replaces parameter objects. Finale code respects the harness parameter budget (1.2*(model+model) ~ 291K vs model ~121K) by degrading oversized modes (the head's C_in=1600 input factor) to a diagonal per-element rate while keeping dense Kronecker factors on every affordable mode; verified opt~80K, total~201K, fits, identity-init reproduces MAML, and the meta-gradient reaches both theta and all factors."
+}

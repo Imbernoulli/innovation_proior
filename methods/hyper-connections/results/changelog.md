@@ -1,0 +1,32 @@
+# File:Line Changelog
+
+- `methods/hyper-connections/results/context.md:1` rewrote the context into exactly five `##` sections.
+- `methods/hyper-connections/results/context.md:35` replaced leaked method-specific prior discussion with pre-method pressure points.
+- `methods/hyper-connections/results/context.md:49` stated replacement constraints without naming the target method or disclosing the `n`-stream construction.
+- `methods/hyper-connections/results/reasoning.md:7` rebuilt the derivation from the need for multiple residual depth patterns.
+- `methods/hyper-connections/results/reasoning.md:9` corrected the matrix block form and update equation: `HC = [[0, B], [A_m, A_r]]`, `H_hat = B^T T(h_0)^T + H'`.
+- `methods/hyper-connections/results/reasoning.md:21` corrected DHC implementation shapes: packed alpha predictor `(d, n+1)` and beta predictor `(d,)`.
+- `methods/hyper-connections/results/reasoning.md:23` fixed the initialization equivalence claim: row-sum is `n` times the Pre-Norm vector before final normalization, with epsilon-level implementation differences.
+- `methods/hyper-connections/results/reasoning.md:25` aligned the implementation narrative with Appendix J: static broadcasts, `alpha.transpose(-1, -2) @ h`, and `torch.einsum("blh,bln->blnh", h_o, beta)`.
+- `methods/hyper-connections/results/reasoning.md:27` corrected overhead formulas to `n(n+2)`, `|theta_norm| + d_model(n+2) + n(n+2) + 2`, and `O(d_model*n*(n+1))`.
+- `methods/hyper-connections/results/answer.md:9` rewrote the core method equations and dimensions.
+- `methods/hyper-connections/results/answer.md:29` corrected dynamic equations and predictor shapes.
+- `methods/hyper-connections/results/answer.md:41` corrected static initialization and the Pre-Norm scale caveat.
+- `methods/hyper-connections/results/answer.md:60` corrected SHC/DHC parameter counts and width-connection compute.
+- `methods/hyper-connections/results/answer.md:74` replaced the working code with an Appendix-J-faithful implementation.
+- `methods/hyper-connections/results/answer.md:135` replaced Transformer wiring with the paper's attention/FFN hyper-connection sequence.
+- `methods/hyper-connections/code/paper_algorithm_2_reference.py:1` added a local canonical transcription of Appendix J Algorithm 2 for verification.
+- `methods/hyper-connections/code/paper_algorithm_2_reference.py:17` encoded `static_beta = ones(rate)` and `static_alpha = [e_{layer_id mod rate}, I]`.
+- `methods/hyper-connections/code/paper_algorithm_2_reference.py:25` encoded zero-initialized dynamic alpha/beta functions, `0.01` scales, and `LayerNorm`.
+- `methods/hyper-connections/code/paper_algorithm_2_reference.py:32` encoded the canonical width connection.
+- `methods/hyper-connections/code/paper_algorithm_2_reference.py:55` encoded the canonical depth connection.
+- `methods/hyper-connections/notes/source_matrix.md:5` added primary source and TeX evidence pointers.
+- `methods/hyper-connections/notes/source_matrix.md:7` added load-bearing ancestor coverage for the Pre-Norm/Post-Norm trade-off.
+- `methods/hyper-connections/notes/source_matrix.md:12` added third-party implementation/explainer coverage while marking it non-canonical.
+- `methods/hyper-connections/notes/discovery_synthesis.md:22` documented the row-sum scale correction and epsilon caveat.
+- `methods/hyper-connections/notes/discovery_synthesis.md:24` documented code-faithfulness corrections against Appendix J.
+- `methods/hyper-connections/refs/self_accounts/search_log.md:3` documented that no author technical self-account or official code repository was found.
+- `methods/hyper-connections/results/.codex_review.json:7` changed the review record from stale/read-only to `codex_reviewed: true` and `outcome: fixed`.
+- `methods/hyper-connections/results/.codex_review.json:15` recorded line-by-line math/code checks against the canonical reference.
+- `methods/hyper-connections/notes/strict_check_output.txt:5` documented that `scripts/check_strict_method.py` is absent in this checkout.
+- `methods/hyper-connections/notes/strict_check_output.txt:9` recorded substitute verification commands and results.

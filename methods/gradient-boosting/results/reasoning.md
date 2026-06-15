@@ -1,0 +1,165 @@
+Let me start from the thing that actually blocks me. I want to build a predictor as an additive expansion, F(x) = sum_m beta_m h(x; a_m), where each h is a small regression tree, because I know additive expansions of simple terms are how almost everything good gets built — neural nets, radial basis functions, wavelets, MARS — and trees are the base learner I trust on messy data: mixed types, missing values, immune to monotone reparameterizations of any single input, resistant to long-tailed inputs and irrelevant variables. A single tree is high-variance garbage as a predictor, but a sum of many of them could be both accurate and robust. The fitting is the problem. I cannot optimize all the {beta_m, a_m} jointly; that is hopeless. So I fit greedily, one term at a time, never going back to readjust the earlier terms — forward stagewise. At stage m I hold F_{m-1} fixed and solve
+
+  (beta_m, a_m) = argmin_{beta, a} sum_i L(y_i, F_{m-1}(x_i) + beta h(x_i; a)).
+
+And here is the wall. For half squared error this is lovely: L = (y - F)^2/2, so adding beta h means I'm fitting beta h to the current residual y_i - F_{m-1}(x_i) by least squares, which is exactly the one thing my tree learner does. That's matching pursuit, that's stagewise linear regression, that's the classic "fit the residuals" loop. But the losses I actually need are not squared error. I need absolute error |y - F| and Huber for regression that has to survive outliers and heavy tails, and I need the binomial deviance log(1 + e^{-2yF}) for classification because squared error is a terrible classification criterion and exponential loss is brittle on noisy labels. For any of those, that argmin over (beta, a) has no convenient form. There are bespoke procedures — exponential loss gives you AdaBoost, binomial deviance gives you a LogitBoost-style Newton scheme — but each is its own piece of machinery, derived from scratch for that one loss. I do not want a zoo of one-off algorithms. I want a single recipe that takes *any* differentiable L and turns its stage subproblem into the one operation my tree library already does well, which is a least-squares fit. So the real question is: how do I make "fit the residuals" mean something for a loss that isn't squared error?
+
+Let me look at the loss zoo for a second to be sure I understand what each one is buying me, because the whole point is generality across them. Half squared error (y - F)^2/2 is convenient but an outlier's influence on the fit grows like its residual squared, so a handful of bad points dominate. Absolute error |y - F| bounds each point's influence — its derivative with respect to F is just a sign, plus or minus one, regardless of how huge the residual is — so it's robust, but it's exactly the loss my least-squares tree can't directly minimize. Huber splits the difference: quadratic inside a transition |y - F| <= delta for efficiency under normal noise, linear outside it for robustness, with delta set to a quantile of the residual magnitudes so a controlled fraction of points are treated as outliers. And the binomial deviance log(1 + e^{-2yF}) for y in {-1,1}: its population minimizer makes F the symmetric logit, F = 0.5 log[P(y=1|x)/P(y=-1|x)], and it grows only linearly in the margin yF for badly misclassified points, far gentler than a loss that grows exponentially in the margin and so explodes on a mislabeled example. Different losses, but they all share one structural fact: they give me a pointwise first-order direction in F. That's the lever. Every one of them has a usable derivative, or subgradient at the absolute-error kink, at every data point, even when the stage subproblem has no closed form.
+
+So let me change what I'm taking derivatives of. The classic move in numerical optimization, when I have a parameterized model F(x; P), is to turn function optimization into parameter optimization, minimize Phi(P) = E[L(y, F(x; P))], and solve it as a running sum of increments P* = sum_m p_m. The simplest such solver is steepest descent: at each step compute the gradient g_m = [dPhi/dP] at the current P_{m-1}, step along the negative gradient p_m = -rho_m g_m, and set the step length rho_m by a one-dimensional line search, rho_m = argmin_rho Phi(P_{m-1} - rho g_m). The final P* is literally a sum of negative-gradient steps. This is completely general — it only needs Phi differentiable — and it has exactly the additive shape I'm building. The trouble is it's in *parameter* space, and my expansion isn't parameterized by a fixed vector P; the components h(x; a_m) are chosen adaptively, fresh each round, from the enormous class of all small trees. There's no fixed P to differentiate.
+
+But wait. What if I refuse to parameterize at all and take the gradient of the function itself? Forget P. Treat F(x), evaluated at each point x, as its own free parameter — at the N training points that's just N numbers, F(x_1), ..., F(x_N), the "function values at the data." Then minimizing the empirical loss is steepest descent in this N-dimensional space of function-values-at-the-data, and the gradient is trivial to write down because L is differentiable in its second argument. The component of the negative gradient at point x_i is
+
+  -g_m(x_i) = -[ dL(y_i, F(x_i)) / dF(x_i) ]_{F(x) = F_{m-1}(x)}.
+
+That always exists. For squared error L = (y - F)^2/2 it's -(F - y) = y - F_{m-1}(x_i), the residual. For absolute error it's sign(y_i - F_{m-1}(x_i)). For Huber it's the clipped residual, (y - F) when |y - F| <= delta and delta*sign(y - F) otherwise. For binomial deviance it's 2y_i/(1 + e^{2 y_i F_{m-1}(x_i)}). So the negative gradient is a vector of "pseudo-responses" — one per training point — that I can compute for any differentiable loss. And the unconstrained steepest-descent step in function space would just be to move each F(x_i) a bit in the direction of its pseudo-response. That's the best possible local step.
+
+And immediately the second wall. The unconstrained negative gradient is defined *only at the N data points*. It's a list of N numbers with no values anywhere else. I cannot use it as my next model component, because a model has to predict at new x, and -g_m(x) for x not in the training set is undefined. The greedy-step idea needs a function, not a list of numbers at the training points. So I have a direction I love — the negative gradient, available for any loss — that I literally cannot take a step in, because it doesn't generalize off the data.
+
+How do I get a function that points the same way? I have a whole class of functions that *do* generalize: the base learners h(x; a). I should pick the member of that class whose values at the training points are as close as possible to the unconstrained negative gradient — the h that is most parallel to -g_m over the data. "Most parallel" in the N-dimensional data space, with the freedom to rescale, is least squares: fit h to the pseudo-responses by minimizing
+
+  a_m = argmin_{a, beta} sum_i [ -g_m(x_i) - beta h(x_i; a) ]^2.
+
+I wanted to follow the negative gradient of an arbitrary differentiable loss, the negative gradient lives only at the data, and the move that rescues it is to *fit my base learner to it by least squares*. That's the one operation the tree learner already does. The hard stage subproblem — minimize L over (beta, a), which I couldn't solve for most losses — has been replaced by: (1) compute the pseudo-responses -g_m(x_i), which is a one-line derivative; (2) least-squares-fit a tree to them, which is standard tree induction; and the only thing left that touches the real loss L is a single scalar. It generalizes "fit the residuals" precisely: for squared error the pseudo-response *is* the residual, so this reduces to the classic loop, but now the same loop runs for absolute error, Huber, deviance, anything.
+
+The least-squares fit only gets the *direction* right, though. It found the tree most aligned with -g_m, but the magnitude of the step — how far to actually move along that constrained direction — should be governed by the real loss L, not by the squared-error proxy I used to pick the direction. So I keep the line search from steepest descent, but now along the fitted direction h(x; a_m):
+
+  rho_m = argmin_rho sum_i L(y_i, F_{m-1}(x_i) + rho h(x_i; a_m)),
+
+and update F_m = F_{m-1} + rho_m h(x; a_m). One-dimensional, on the genuine loss, so the step length is honest even though the direction was chosen by a least-squares surrogate. That separation — cheap least-squares to find a generalizable descent direction, then a 1-D optimization on the true loss to size the step — is the engine. Let me also fix the starting point F_0 the same way: the best constant model under the loss, F_0 = argmin_rho sum_i L(y_i, rho). For squared error that's the mean of y; for absolute error the median; for deviance the constant logit. So the generic algorithm is:
+
+  F_0(x) = argmin_rho sum_i L(y_i, rho)
+  for m = 1..M:
+      y~_i = -[ dL(y_i, F(x_i)) / dF(x_i) ]_{F = F_{m-1}},   i = 1..N      # pseudo-responses
+      a_m  = argmin_{a, beta} sum_i ( y~_i - beta h(x_i; a) )^2            # LS-fit a tree to them
+      rho_m = argmin_rho sum_i L(y_i, F_{m-1}(x_i) + rho h(x_i; a_m))      # line search on real L
+      F_m(x) = F_{m-1}(x) + rho_m h(x; a_m)
+
+Let me sanity-check it on squared error as a reality check, because if it doesn't reduce to plain residual fitting I've made an error. L = (y - F)^2/2, pseudo-response y~_i = y_i - F_{m-1}(x_i), the residual; line 2 fits the tree to the residuals; the line search rho_m = argmin_rho sum (residual - rho h)^2 returns exactly the beta from the least-squares fit, so rho_m h is just the fitted residual model. Yes — gradient boosting on squared-error loss is the usual stagewise "iteratively fit the current residuals." Good, the general machine has the right special case sitting inside it.
+
+Now let me grind through the other losses to make sure the recipe really produces working algorithms and not just a slogan. Absolute error, L = |y - F|: pseudo-response is sign(y_i - F_{m-1}(x_i)), only ever +1 or -1 away from ties. So I fit a tree, by least squares, to the *signs* of the current residuals — which is a beautiful robustification, because the tree never sees the magnitude of an outlier, only which side of the current fit it's on. The line search rho_m = argmin_rho sum |y_i - F_{m-1}(x_i) - rho h(x_i; a_m)| is a weighted-median problem; writing it out, rho_m = median_w{ (y_i - F_{m-1}(x_i)) / h(x_i; a_m) } with weights w_i = |h(x_i; a_m)|. Medians and signs everywhere — this thing is robust by construction. Huber, L quadratic inside |y - F| <= delta and linear outside: pseudo-response is the residual where it's small and the *clipped* residual delta*sign(y - F) where it's large, so an outlier's pull on the direction is capped at delta; set delta_m to a quantile of the current residual magnitudes each round so the breakdown point is controlled, using the current residuals as a stand-in for the unknown true error distribution. With tree leaves I can also write the Huber leaf constant without pretending it has a closed-form exact line search: inside leaf j, let r_i = y_i - F_{m-1}(x_i), start at the median r_j = median_{i in R_j} r_i, and take one robust-location step, gamma_j = r_j + (1 / N_j) * sum_{i in R_j} sign(r_i - r_j) * min(delta_m, |r_i - r_j|). That keeps the leaf value centered like a median but lets the small residuals still contribute quadratically.
+
+Classification is where I have to be most careful. Binomial deviance, L = log(1 + e^{-2yF}), y in {-1,1}. The pseudo-response is
+
+  y~_i = -dL/dF = 2 y_i / (1 + e^{2 y_i F_{m-1}(x_i)}).
+
+So I fit a regression tree by least squares to these soft, bounded targets — they live in (-2, 2) and shrink toward zero for points the current model already gets confidently right, which is exactly the influence structure I want: confident correct points stop driving the fit. Then the line search rho_m = argmin_rho sum log(1 + e^{-2 y_i (F_{m-1}(x_i) + rho h(x_i; a_m))}) has no closed form. Fine — it's one-dimensional and convex, I can solve it numerically, or take a single Newton step. The final F_M is a logit, so probabilities come straight back out, p_+(x) = 1/(1 + e^{-2 F_M(x)}), and classification is a threshold on that. The multiclass case extends the same way: use the symmetric multiple logistic transform F_k = log p_k - (1/K) sum_l log p_l, induce K trees per round (one per class), each fit to the per-class pseudo-response y~_{ik} = y_{ik} - p_{k,m-1}(x_i), the difference between the indicator and the current predicted probability on the probability scale. So the single machine spits out a robust regressor, a robust classifier, and a multiclass classifier, all from the one "negative gradient -> least-squares tree -> line search" loop.
+
+Now, my base learner is specifically a regression tree, and there's structure there I'm leaving on the table. A J-terminal-node tree is h(x; {b_j, R_j}) = sum_j b_j 1(x in R_j) over disjoint regions R_j. In the generic algorithm I fit the tree to the pseudo-responses by least squares (which sets the b_j and, more importantly, finds the regions R_j), and then I multiply the *whole* tree by a single scalar rho_m. But once the regions R_jm are fixed, the tree is a sum of J separate indicator basis functions, one per region, and there's no reason to force them all to share one multiplier. I can give each region its own optimal constant. So instead of F_m = F_{m-1} + rho_m sum_j b_jm 1(x in R_jm), write
+
+  F_m(x) = F_{m-1}(x) + sum_{j=1}^{J} gamma_jm 1(x in R_jm),
+
+and choose each gamma_jm to directly minimize the real loss within its region:
+
+  gamma_jm = argmin_gamma sum_{x_i in R_jm} L(y_i, F_{m-1}(x_i) + gamma).
+
+And here's why this is free: because the regions are disjoint, that J-dimensional optimization over all the gammas decouples into J independent one-dimensional line searches, one per leaf, with no interaction between them. It's the same line-search machinery I already have, just run separately inside each terminal node instead of once globally — strictly a better fit at no extra conceptual cost. The least-squares fit to the pseudo-responses is now doing one job, *finding the regions* (the splits), and the per-leaf line search is doing the other, *setting the values* on the real loss. For absolute error gamma_jm is the median of the residuals in leaf j — the tree finds the partition by least-squares on the signs, then each leaf gets the median of its residuals, pure robust statistics. For squared error gamma_jm is just the mean residual in the leaf, which is what the least-squares fit already produced, so the per-leaf update changes nothing there.
+
+The logistic per-leaf update needs care, because argmin_gamma sum_{R_jm} log(1 + e^{-2 y_i (F_{m-1}(x_i) + gamma)}) has no closed form. I can approximate that one-dimensional problem by a single Newton-Raphson step from gamma = 0. Let me actually take that step rather than wave at it. Write the per-leaf objective phi(gamma) = sum_{i in R_jm} log(1 + e^{-2 y_i (F_{m-1}(x_i) + gamma)}). Its first derivative at gamma = 0 is phi'(0) = sum_i (-2 y_i) / (1 + e^{2 y_i F_{m-1}(x_i)}) = -sum_i y~_i, the negative sum of the pseudo-responses in the leaf, since y~_i = 2 y_i/(1 + e^{2 y_i F}). For the second derivative I differentiate again: d/dF of y~ = -2y/(1 + e^{2yF}) gives, after using y^2 = 1, that the second derivative of L per point is |y~_i|(2 - |y~_i|). (Check the bound: |y~| ranges in (0, 2), so |y~|(2 - |y~|) is positive and peaks at 1 when |y~| = 1, i.e. when the point is maximally uncertain — sensible curvature.) So phi''(0) = sum_i |y~_i|(2 - |y~_i|), and one Newton step gamma_jm = -phi'(0)/phi''(0) gives
+
+  gamma_jm ~= ( sum_{i in R_jm} y~_i ) / ( sum_{i in R_jm} |y~_i| (2 - |y~_i|) ).
+
+That's the Newton approximation to the optimal constant in each leaf — numerator is the summed negative gradient, denominator is the summed second derivative (the curvature). This is the logistic line search, done per leaf, approximated by one Newton step from zero. When I actually code this against the usual {0,1} log-loss convention, I drop the factor-2 symmetric logit and use p = sigmoid(F); the pseudo-response is the bounded r_i = y_i - p_i in (-1, 1), the per-point curvature is p_i(1 - p_i), and the same Newton calculation gives gamma_jm = sum_i r_i / sum_i p_i(1 - p_i). Since r_i = y_i - p_i, the probability needed in the denominator can be recovered as p_i = y_i - r_i, exactly the identity used by the tree update code. If the denominator is essentially zero, the leaf has no curvature to exploit, so the safe update is zero. Multiclass is the same with a diagonal-Hessian approximation, giving gamma_jkm = ((K-1)/K) * sum y~_{ik} / sum |y~_{ik}|(1 - |y~_{ik}|) per leaf per class — the cross-class Hessian terms are dropped so the problem stays separable per node, and the (K-1)/K factor comes from the symmetric-logit constraint.
+
+I want to pause on why I'd ever take a Newton step instead of fitting the tree to a second-order target directly, because there's a known failure mode lurking. The bespoke likelihood-boosting route fits the tree to a working response z = (y* - p)/(p(1-p)) with weights p(1-p), which is a full Newton/IRLS step — but that divides by p(1-p) *to form the regression target*, and p(1-p) goes to zero whenever a point becomes confidently classified, which happens constantly, so the targets blow up and the procedure is numerically delicate right where most points end up. My structure dodges that: I fit the tree by least squares to the *first*-order pseudo-response, the bounded probability-scale residual y - p, and I only invoke the second derivative *afterward*, summed over a whole leaf, to set that leaf's constant. The division by curvature happens once per leaf on a *sum* of curvatures; if that sum is essentially zero, the safe-divide rule simply leaves the leaf update at zero instead of creating an enormous regression target. So the first-order-direction / second-order-step-size split gives me Newton behavior without making the tree induction chase unbounded working responses.
+
+There's a cheap computational win hiding in the gradient structure too. For the deviance, the influence of point i on this round's update is governed by exp(-2 y_i F_{m-1}(x_i)), or equivalently by the curvature |y~_i|(2 - |y~_i|): a point the model already nails confidently (large y_i F_{m-1}) has pseudo-response and curvature both near zero, so it has almost no effect on the fit this round. So I can sort by that influence weight and use weight trimming as an optional induction shortcut: keep the observations carrying almost all of the current influence, and ignore the tiny-weight tail while growing this round's tree. The retained-influence threshold is a computational knob; the math that makes it plausible is only that near-zero-gradient points barely move the split criterion or the leaf update.
+
+Now overfitting, because a forward-stagewise greedy fit on training data will happily drive training loss down past the point where test loss turns around. The obvious regularizer is M, the number of trees — just stop early, chosen on a held-out set. That is coarse because it only decides how many full greedy steps to keep. A second knob regularizes every step: instead of taking the full step rho_m (or full gamma_jm) each round, shrink it by a learning rate v in (0, 1),
+
+  F_m(x) = F_{m-1}(x) + v * sum_j gamma_jm 1(x in R_jm),   0 < v < 1.
+
+Why would deliberately taking smaller steps help generalization? Each tree is a *noisy, greedy* estimate of the descent direction — it's the best least-squares-aligned tree to a sample-based negative gradient, so it has variance, and it can latch onto idiosyncrasies of this particular training sample. If I take the full step, I commit hard to each noisy direction in turn and the later trees are forced to clean up the overshoot of the earlier ones. If I take small steps, each tree contributes only a fraction, and the ensemble averages over many slightly different noisy directions before it has moved far — variance reduction by averaging, the same reason a small learning rate stabilizes any noisy gradient descent. It also keeps the current model less overfit when each subsequent pseudo-response is computed, so every tree is fitting a cleaner signal. The cost is that small v needs large M to reach the same training fit: v and M trade off, smaller v wanting more rounds. Incremental shrinkage is not the same as globally shrinking the finished model toward a constant, because each later pseudo-response is computed after the earlier shrunken steps; it changes the whole path, not just the final scale. So the regularization story is two coupled knobs: choose M and v together on held-out data, with smaller v buying caution at the price of more stages.
+
+The last design knob is the tree size J, and there's a clean principle for it rather than a grid search in the dark. Decompose any target into main effects plus two-way interactions plus three-way interactions and so on — the ANOVA decomposition. A J-terminal-node tree, because it makes at most J-1 splits along the path to any leaf, can express interactions of order at most min(J-1, n). So J = 2 (stumps) gives a purely additive model, main effects only; J = 3 adds pairwise interactions; J = 4 adds three-way; and so on. Boosting sums these trees, and an additive sum can't manufacture interactions higher than the highest-order tree in it, so the whole ensemble's interaction order is capped by the single-tree cap min(J-1, n). The right J therefore tracks the dominant interaction order of the target. Since many real targets are well captured by low-order interactions, small trees — J somewhere in the handful range, not stumps but not deep — are usually enough, and very large trees are rarely needed or desirable (they overshoot the interaction order and add variance). So J is a metaparameter set by the effective interaction order of the problem, estimated on held-out data, with the prior that small is usually right.
+
+Let me also note one thing about how the trees are grown: I fit them by least squares to the pseudo-responses regardless of the final loss L, even when L is absolute error or deviance, because least-squares split-finding is dramatically faster than searching splits under, say, mean-absolute-deviation — squared-error split criteria update incrementally as you scan candidate split points, which the robust criteria don't. The loss L re-enters only through the pseudo-responses (what the tree is fit to) and the per-leaf line search (how each leaf is valued). So I always pay least-squares induction cost, never the cost of growing a tree directly under an awkward loss. That's the same trick at the leaf level and the tree level: do the cheap least-squares thing to get structure, defer the real loss to a low-dimensional optimization.
+
+So let me write the thing I'd actually ship, filling the three empty slots in the harness — what each tree is fit to, how each leaf is valued, how it's folded into F. I'll write the two concrete losses the downstream pipeline needs, squared error for regression and binomial deviance for classification, because those are where the special-case algebra (residual = negative gradient; per-leaf Newton step) becomes real code. For squared error the per-leaf value is just the mean residual in the leaf, which equals the least-squares tree's own leaf value, so the leaf-update is the identity and I only need to scale by the learning rate. For deviance in the {0,1} convention the per-leaf value is the Newton step sum(y - p) / sum(p(1 - p)), with a safe zero update when the denominator is essentially zero.
+
+```python
+import numpy as np
+from sklearn.tree import DecisionTreeRegressor
+
+
+def _sigmoid(x):
+    return 1.0 / (1.0 + np.exp(-np.clip(x, -500, 500)))
+
+
+def _safe_divide(numerator, denominator):
+    if abs(denominator) <= 1e-150:
+        return 0.0
+    return numerator / denominator
+
+
+class GradientBoostingMachine:
+    """Forward-stagewise additive model: each tree is fit by least squares to the
+    negative gradient (pseudo-residuals) of the loss, then each leaf is set by the
+    loss-specific update (exact for squared error, Newton for deviance), shrunk by the learning rate.
+    F(x) = init + lr * sum_m (leaf values of tree m).
+    """
+
+    def __init__(self, task="regression", n_rounds=200, max_depth=3, learning_rate=0.1):
+        self.task = task                      # "regression" (squared error) or "classification" (deviance)
+        self.n_rounds = n_rounds
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.trees = []
+        self.init_ = 0.0
+
+    def _init_prediction(self, y):
+        # F_0 = argmin_rho sum_i L(y_i, rho): mean for squared error, constant logit for deviance.
+        if self.task == "regression":
+            return float(np.mean(y))
+        p = np.clip(np.mean(y), 1e-6, 1 - 1e-6)     # y in {0,1}
+        return float(np.log(p / (1.0 - p)))         # logit init (p = sigmoid(F_0))
+
+    def _pseudo_residuals(self, y, F):
+        # y~_i = -dL/dF at F_{m-1}.
+        if self.task == "regression":
+            return y - F                            # squared error: negative gradient = residual
+        return y - _sigmoid(F)                       # deviance: y - p on the probability scale
+
+    def _leaf_value(self, resid_leaf, y_leaf):
+        # gamma_jm = argmin_gamma sum_{leaf} L(y, F + gamma).
+        if self.task == "regression":
+            return float(np.mean(resid_leaf))       # squared error: mean residual (= LS leaf value)
+        # deviance: single Newton step gamma = sum(neg_grad) / sum(p(1-p)), p = y - neg_grad.
+        p = y_leaf - resid_leaf                                  # p = sigmoid(F) recovered from residual
+        numerator = float(np.sum(resid_leaf))                   # summed negative gradient
+        denominator = float(np.sum(p * (1.0 - p)))             # summed curvature p(1-p)
+        return _safe_divide(numerator, denominator)             # safe Newton update
+
+    def fit(self, X, y):
+        y = np.asarray(y, dtype=float)
+        self.init_ = self._init_prediction(y)
+        F = np.full(len(y), self.init_)
+        for _ in range(self.n_rounds):
+            resid = self._pseudo_residuals(y, F)            # negative gradient at current F
+            tree = DecisionTreeRegressor(max_depth=self.max_depth, criterion="friedman_mse")
+            tree.fit(X, resid)                              # least-squares fit -> finds the regions
+            leaves = tree.apply(X)
+            update = np.zeros(len(y))
+            for leaf in np.unique(leaves):
+                idx = np.where(leaves == leaf)[0]
+                gamma = self._leaf_value(resid[idx], y[idx])           # per-leaf exact / Newton update
+                tree.tree_.value[leaf, 0, 0] = gamma                   # overwrite LS value with loss-specific update
+                update[idx] = gamma
+            F += self.learning_rate * update               # shrunk stagewise update
+            self.trees.append(tree)
+        return self
+
+    def decision_function(self, X):
+        F = np.full(X.shape[0], self.init_)
+        for tree in self.trees:
+            F += self.learning_rate * tree.predict(X)      # leaf values already set to gamma
+        return F
+
+    def predict(self, X):
+        F = self.decision_function(X)
+        if self.task == "regression":
+            return F
+        return (_sigmoid(F) >= 0.5).astype(int)
+```
+
+Let me trace the causal chain back to be sure nothing is hand-waved. I wanted a forward-stagewise additive model of trees for an arbitrary differentiable loss, but the per-stage subproblem argmin over (beta, a) has a clean form only for squared error. Steepest descent in numerical optimization is general but lives in parameter space, and my expansion has no fixed parameter vector. So I took the gradient of the loss with respect to the function values at the data points themselves — the negative gradient, the pseudo-response, which exists for any differentiable loss; for half squared error it's the residual, recovering "fit the residuals." That negative gradient lives only at the data and can't generalize, so I fit my base learner to it by least squares — the one operation the tree library does — choosing the tree most aligned with the descent direction, and then I sized the step with a one-dimensional line search on the real loss, so the direction is chosen cheaply and the magnitude honestly. Because a tree is a sum of disjoint-region indicators, I gave each terminal node its own constant by an independent per-leaf calculation: exact for squared error and LAD, iterative or approximate for losses such as Huber and deviance, with the deviance using the Newton step sum(y - p) / sum(p(1 - p)) in the {0,1} convention. Putting the first-order pseudo-response in the least-squares fit and the second-order curvature only in the per-leaf step avoids fitting unbounded Newton working responses. I regularized with two coupled knobs: the number of trees M, and a learning rate v that shrinks each update, which helps because each tree is a noisy greedy direction estimate and small steps average many of them while changing the path the later residuals see. And tree size J is set by the target's interaction order through the ANOVA reading, with small trees usually enough. The whole thing drops into the stagewise tree harness as: compute pseudo-residuals, least-squares-fit a depth-bounded tree, overwrite each leaf with the loss-specific constant update, add the shrunken update — one loop, any differentiable loss.
