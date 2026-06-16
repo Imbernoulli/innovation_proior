@@ -1,0 +1,69 @@
+{
+  "task": "optimization-hyperparameter-search",
+  "title": "Hyperparameter Optimization: custom black-box search strategy",
+  "domain": "Optimization",
+  "metrics": [
+    "xgboost",
+    "svm",
+    "nn"
+  ],
+  "metric_columns": [
+    "best_val_score",
+    "convergence_auc",
+    "total_evals"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "random_search",
+      "method": "Random Search",
+      "reasoning": "01-random_search-reasoning.md",
+      "answer": "01-random_search-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "optuna_cma",
+      "method": "CMA-ES (Optuna sampler)",
+      "reasoning": "02-optuna_cma-reasoning.md",
+      "answer": "02-optuna_cma-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "dehb",
+      "method": "DEHB (Differential Evolution Hyperband)",
+      "reasoning": "03-dehb-reasoning.md",
+      "answer": "03-dehb-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "tpe",
+      "method": "TPE (Tree-structured Parzen Estimator)",
+      "reasoning": "04-tpe-reasoning.md",
+      "answer": "04-tpe-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "hyperband",
+      "method": "Hyperband",
+      "reasoning": "05-hyperband-reasoning.md",
+      "answer": "05-hyperband-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "bohb",
+      "method": "BOHB (Bayesian Optimization + Hyperband)",
+      "reasoning": "06-bohb-reasoning.md",
+      "answer": "06-bohb-answer.md",
+      "feedback": "06-feedback.md"
+    }
+  ],
+  "endpoint": "BOHB (Bayesian Optimization + Hyperband)",
+  "ranking_basis": "Weak->strong by average rank-points over the is_final=true baseline:* mean rows, scoring both metrics (best_val_score and convergence_auc, both higher-is-better) across the three benchmarks. best_val_score saturates on these small sklearn benchmarks (most baselines reach near-identical XGBoost/SVM optima), so convergence_auc is the real discriminator -- which matches the task's stated goal of faster convergence. Resulting order: random_search (1.50) < optuna_cma (1.83) < dehb (2.17) < tpe (2.50) < hyperband (3.17) < bohb (3.83). This is also conceptually coherent: stateless random < single-fidelity CMA-ES (catastrophic AUC under a tiny budget) < model-free multi-fidelity DEHB < model-only TPE < random-sampling multi-fidelity Hyperband < the model+multi-fidelity composition BOHB (the SOTA combination the task targets).",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (scikit-learn/custom_hpo.py, CustomHPOStrategy class, lines 255-326), filled from edits/<baseline>.edit.py. Each step = reasoning (full derivation, prose, no code) -> answer (distilled summary + the scaffold code block) -> feedback (numbers only, baselines). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (random-search, optuna-cma, dehb, tpe, hyperband, bohb) are the derivation reference and left untouched. No finale: BOHB is already the strongest published combination the task targets; DEHB and CMA-ES are baselines, and no clearly-stronger published method fits the edit surface unambiguously better on these benchmarks, so the ladder stops at the strongest baseline (no endpoint beyond BOHB invented)."
+}

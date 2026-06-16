@@ -1,0 +1,45 @@
+{
+  "task": "optimization-parity",
+  "title": "Optimization Parity: init, data, and AdamW for sparse-parity feature learning",
+  "domain": "Optimization",
+  "metrics": [
+    "n32-k8",
+    "n50-k8",
+    "n64-k8"
+  ],
+  "metric_columns": [
+    "test_accuracy",
+    "test_accuracy_std",
+    "mean_steps"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "multi_epoch",
+      "method": "Multi-epoch reuse (small fixed dataset)",
+      "reasoning": "01-multi_epoch-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-multi_epoch-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "default",
+      "method": "Single-pass online (maximal dataset, default AdamW)",
+      "reasoning": "02-default-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-default-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "nowd",
+      "method": "Single-pass online, no weight decay",
+      "reasoning": "03-nowd-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-nowd-answer.md"
+    }
+  ],
+  "endpoint": "Single-pass online, no weight decay",
+  "ranking_basis": "Ranked by mean held-out test_accuracy on the is_final,true baseline:* rows (higher is better), with N=32-K8 the discriminating configuration (N=50,64 sit at chance for every baseline). N=32 means: multi_epoch 0.5099 < default 0.7715 < nowd 0.7955; the same order holds on the three-config average (0.504 < 0.590 < 0.599). multi_epoch is weakest because the small fixed dataset is memorized and trips the loop's training-accuracy early-stop (mean_steps far below budget) before the sparse signal can generalize; default removes the table so single-pass online amplifies the population Fourier gap at N=32; nowd removes the weight-decay headwind on that amplification and edges default out at N=32.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py: init_model + make_dataset + get_optimizer_config, lines 220-255, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (default, multi-epoch, nowd) are reused as derivation references and left untouched. No finale: no genuinely stronger published method operating only on init/dataset/AdamW-hyperparameters is established to beat nowd on this exact task, so the trajectory stops at the strongest baseline per the spec."
+}

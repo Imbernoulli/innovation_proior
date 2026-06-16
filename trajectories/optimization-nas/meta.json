@@ -1,0 +1,45 @@
+{
+  "task": "optimization-nas",
+  "title": "Sample-Efficient NAS: climbing the K=30 query-budget ladder on NAS-Bench-201",
+  "domain": "Optimization",
+  "metrics": [
+    "CIFAR-10",
+    "CIFAR-100",
+    "ImageNet16-120"
+  ],
+  "metric_columns": [
+    "test_accuracy_CIFAR-10",
+    "test_accuracy_CIFAR-100",
+    "test_accuracy_ImageNet16-120"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "random_search",
+      "method": "Random Search (uniform sampling)",
+      "reasoning": "01-random_search-reasoning.md",
+      "answer": "01-random_search-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "rea",
+      "method": "REA (Regularized Evolution, low-budget variant)",
+      "reasoning": "02-rea-reasoning.md",
+      "answer": "02-rea-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "bananas",
+      "method": "BANANAS (path-encoded MLP-ensemble predictor)",
+      "reasoning": "03-bananas-reasoning.md",
+      "answer": "03-bananas-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "BANANAS (path-encoded MLP-ensemble predictor)",
+  "ranking_basis": "Metric = test accuracy (higher better), mean over seeds {0,1,2,3,4}, is_final=true baseline rows. random_search weakest: memoryless uniform sampling, means 93.38/70.652/44.567. rea next: same/slightly-higher CIFAR-10 (93.398) and a lift on ImageNet16-120 (45.253) over random_search, but a slip on CIFAR-100 (70.428) and a blown-up ImageNet16-120 variance (±1.44, seed 2 = 42.70) from local-search premature convergence. bananas strongest: wins CIFAR-10 (93.474) and CIFAR-100 (71.032) outright and ties rea on ImageNet16-120 (45.233) while tightening that variance back to ±0.57 — predictor-guided global selection buys robustness across all three settings.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (naslib/custom_nas_search.py, NASOptimizer class, lines 163-234, from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines only). Same-named-vs-paper diffs: (1) bananas here uses GREEDY ensemble-MEAN argmax (not independent Thompson sampling), a UNIFORMLY-RANDOM 500-candidate pool (not mutate-the-best), plain MSE (not MAPE against a floor), a 2-layer numpy MLP hidden=64 (not a 10-layer Keras net), the FULL 155-dim path encoding (not truncated to 30), and predicts val_acc directly (argmax, not argmin error). (2) rea here is the low-budget variant: population_size=10, tournament_size=3, single-edge mutation on the 6-int op-index list, kill-oldest via pop(0), best tracked separately (no NAS-cell deque/history of the paper trace). (3) random_search here is the literal scaffold uniform sampler tracking best-by-val; the methods/random-search trace is the Bergstra hyperparameter version (non-adaptive i.i.d. draws) reused only as derivation reference. methods/<slug> single-round traces are untouched. No finale: the harness exposes only tabular query_val_accuracy plus the fixed helpers (no network training), so zero-cost-proxy hybrids do not fit the edit surface, and no other published method cleanly beats predictor-guided BANANAS at K=30 within this contract; stopped at the strongest baseline."
+}

@@ -1,0 +1,53 @@
+{
+  "task": "optimization-bilevel",
+  "title": "Optimization Bilevel: one first-order update for penalty-based bilevel descent",
+  "domain": "Optimization",
+  "metrics": [
+    "toy-convergence",
+    "hyperclean-linear",
+    "hyperclean-mlp"
+  ],
+  "metric_columns": [
+    "convergence_steps",
+    "test_accuracy",
+    "f1_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "t_rhg",
+      "method": "T-RHG (truncated reverse-mode hyper-gradient)",
+      "reasoning": "01-t_rhg-reasoning.md",
+      "answer": "01-t_rhg-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "rhg",
+      "method": "RHG (reverse-mode hyper-gradient, full unroll)",
+      "reasoning": "02-rhg-reasoning.md",
+      "answer": "02-rhg-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "g_pbgd",
+      "method": "G-PBGD (gradient-norm penalty bilevel gradient descent)",
+      "reasoning": "03-g_pbgd-reasoning.md",
+      "answer": "03-g_pbgd-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "v_pbgd",
+      "method": "V-PBGD (value-function penalty bilevel gradient descent)",
+      "reasoning": "04-v_pbgd-reasoning.md",
+      "answer": "04-v_pbgd-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "V-PBGD (value-function penalty bilevel gradient descent)",
+  "ranking_basis": "Ranked from is_final,true baseline:* mean rows. Headline metrics: toy convergence_steps (lower better), hyper-cleaning test_accuracy (higher better), f1_score. t_rhg weakest: tied with rhg on the hidden MLP (84.79) but marginally below rhg on linear (acc 84.61 vs 84.63, f1 89.06 vs 89.55) as the truncated K=100 approximation of the full unroll. rhg next: full K=500 unroll, same ~85% ceiling, capped by the crude 500-step inner solve. g_pbgd third: breaks the unrolling ceiling (best MLP acc 92.38, linear 89.84) but worst toy (303.7 steps, 0.081 residual) and a fragile high-variance cleaner (linear f1 80.63, recall 0.776). v_pbgd strongest: wins the toy primary (260.7 steps, 0.030 residual), the linear primary (acc 90.10), and both f1 scores (linear 91.72, mlp 92.05) decisively, losing only the single hidden MLP accuracy to g_pbgd by ~0.9 — the broadly dominant and most robust method.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py lines 227-262: algorithm + TOY_HPARAMS + HYPERCLEAN_HPARAMS, fills from edits/*.edit.py). Each step = full-length reasoning (prose, reflection embedded for i>1) -> answer (distilled + scaffold code) -> feedback (numbers, baselines only). Same-named-vs-paper diffs: (1) all four baselines call the scaffold's prebuilt run_* helpers and IGNORE the exposed first-order callables outer_grad/inner_grad/inner_val (those are affordances the baselines never use). (2) In TOY mode rhg AND t_rhg dispatch to the SAME value-gap projected step as v_pbgd (S(x)={-x} so v=0, nothing to unroll), so their toy numbers are identical (260.7); g_pbgd toy uses toy_gpbgd_penalty_grad (gradient-norm penalty), giving a stiffer landscape and worse toy (303.7/0.081). (3) RHG vs T-RHG differ ONLY by K (500 vs 100); same code path. (4) g_pbgd hyper-cleaning has NO inner loop (exact HVP penalty gradient via create_graph); v_pbgd runs a single warm-started inner SGD step on a persistent net_inner with detached outputs to realize grad_x g(x,y_hat) — not the paper's logarithmically-long warm-started inner loop, and not RHG's 500-step-from-scratch unroll. (5) v_pbgd uses gentle gamma_max 0.1-0.2 vs g_pbgd's 37. No finale added: V-PBGD already dominates the toy + linear + both f1 axes and is near-saturated (~90-92%) on this deterministic small-MNIST harness; no published method is *clearly* stronger on this specific edit surface, so per spec the trajectory stops at the strongest baseline. All four methods/<slug> traces (v-pbgd, g-pbgd, rhg, t-rhg) already existed and were reused as derivation references; none missing."
+}

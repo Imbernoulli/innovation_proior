@@ -1,0 +1,52 @@
+{
+  "task": "optimization-dp-sgd",
+  "title": "DP-SGD: privacy-utility optimization under a fixed budget",
+  "domain": "Optimization",
+  "metrics": [
+    "mnist",
+    "fmnist",
+    "cifar10"
+  ],
+  "metric_columns": [
+    "accuracy",
+    "epsilon",
+    "best_accuracy"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "noise_decay",
+      "method": "Step-decay noise schedule",
+      "reasoning": "01-noise_decay-reasoning.md",
+      "answer": "01-noise_decay-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "standard_dpsgd",
+      "method": "Standard DP-SGD (fixed clip + constant noise)",
+      "reasoning": "02-standard_dpsgd-reasoning.md",
+      "answer": "02-standard_dpsgd-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "automatic_clipping",
+      "method": "Automatic clipping (AUTO-S normalization)",
+      "reasoning": "03-automatic_clipping-reasoning.md",
+      "answer": "03-automatic_clipping-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "adaptive_clipping",
+      "method": "Adaptive quantile clipping",
+      "reasoning": "04-adaptive_clipping-reasoning.md",
+      "answer": "04-adaptive_clipping-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Metric = test accuracy at fixed (epsilon=3.0, delta=1e-5), averaged across MNIST/FMNIST/CIFAR-10. noise_decay weakest: lowest mean accuracy (95.62/78.93/54.02) AND budget violation — its get_effective_sigma round-trip through the fixed single-sigma accountant fails, so consumed epsilon drifts to 6.398 on 2/3 grayscale seeds (mean spend ~5.27/~4.13 vs 3.0), so its accuracy is not like-for-like. standard_dpsgd (96.03/79.64/56.42) and automatic_clipping (96.04/79.72/56.56) are a near-tie at certified 3.0, with AUTO-S edging standard on all three datasets, so standard < automatic. adaptive_clipping strongest (94.07/80.69/61.22): much higher CIFAR-10 (+4.7 over the ~56.5 ceiling) and FMNIST, trading ~2 pts of near-ceiling MNIST, winning the average (78.66) decisively, at honest 3.0016/2.9986.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (DPMechanism in opacus/custom_dpsgd.py, lines 152-233; scaffold default = standard flat clip + constant noise). Each step = reasoning (full derivation, prose; reflection on the prior measured numbers embedded throughout for i>1) -> answer (distilled summary + the literal edits/<slug>.edit.py scaffold fill) -> feedback (per-seed + mean leaderboard numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (standard-dpsgd, automatic-clipping, adaptive-clipping, noise-decay) are the derivation reference and are untouched. Same-named-vs-paper diffs: (1) automatic_clipping pins gamma=1.0 (not the canonical ~0.01) to keep the frozen SGD lr schedule stable, and calibrates noise to sensitivity 1, so it is a soft magnitude-aware down-scaling, not aggressive normalization; (2) adaptive_clipping OMITS the paper's privatize-the-count machinery entirely — it reads frac_above off the raw private norms directly (no Gaussian-noised count, no -1/2 centering, no combined z, no secure aggregation / federated bit-sending), targets the median (target_quantile=0.5), updates geometrically (clip_lr=0.2, clamped [0.01,100]), and re-calibrates noise to the current clip_norm; it implements only the quantile-tracking update rule on top of per-step DP-SGD; (3) noise_decay's get_effective_sigma reports a tCDP/RDP equivalent-uniform multiplier that does not round-trip through the harness's fixed single-sigma accountant, which is why its consumed epsilon drifts. No finale: the strongest published mechanism-only improvements over adaptive clipping (augmentation multiplicity / large-batch+EMA, De et al. 2022; pretraining) require editing the FROZEN training loop, data pipeline, or architecture, which the edit surface forbids; nothing clearly stronger fits the DPMechanism contract under the fixed single-sigma accountant, so the trajectory stops at the strongest baseline."
+}

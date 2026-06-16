@@ -1,0 +1,54 @@
+{
+  "task": "optimization-diagonal-net",
+  "title": "Optimizer Design for Diagonal-Net Sparse Recovery: implicit bias and sample complexity",
+  "domain": "Optimization",
+  "metrics": [
+    "d200_k5_s01",
+    "d500_k10_s01",
+    "d500_k10_s02",
+    "d10000_k50"
+  ],
+  "metric_columns": [
+    "n_star",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "adagrad",
+      "method": "AdaGrad (lr=0.01, eps=1e-6)",
+      "reasoning": "01-adagrad-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-adagrad-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "sgd",
+      "method": "SGD (lr=0.1)",
+      "reasoning": "02-sgd-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-sgd-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "adam",
+      "method": "Adam, no bias correction (lr=0.05, beta2=0.999)",
+      "reasoning": "03-adam-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-adam-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "adam2",
+      "method": "Adam, no bias correction (lr=0.1, beta2=0.95)",
+      "reasoning": "04-adam2-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-adam2-answer.md"
+    }
+  ],
+  "endpoint": "Adam, no bias correction (lr=0.1, beta2=0.95)",
+  "ranking_basis": "Ranked by score = -log2(n*) (higher is better) on the is_final,true baseline:* rows, seed 42, across the four settings. adagrad weakest: needs the most samples everywhere (175/487/487/2000), bottoming out at the grid ceiling 2000 on d10000_k50. sgd next (50/62/62/487): plain GD rides the diagonal-net multiplicative escape AdaGrad's denominator damps, biggest gain at high d. adam (no bias correction) above sgd (50/56/56/350): forgetting EMA denominator + momentum beats bare GD at the mid and large settings. adam2 strongest (50/53/53/350): shorter second-moment window (beta2=0.95) with lr doubled to 0.1 edges adam on the d500_k10 settings (53 vs 56) and ties it on the small and large ends.",
+  "notes": "MLS-Bench trajectory: the initial context and every step's code are the task's real edit surface (custom_optimizer.py: get_hyperparameters / init_state / step, from edits/*.edit.py). Code lives in each step's answer; the reasonings are code-free. CRITICAL same-named-vs-paper diff: the task's adam and adam2 baselines are Adam WITHOUT bias correction (the harness intentionally omits the 1/(1-beta^t) terms to study raw adaptive geometry), so the trajectory reasoning derives and reasons about the uncorrected update and its amplified/attenuated early step, NOT the canonical bias-corrected Adam that methods/adam and methods/adam2 derive. The methods/sgd and methods/adagrad traces already target this exact diagonal-net harness, so their code matches. No finale: the strongest baseline (adam2) is a refinement within the baseline grid, and no clearly-stronger published optimizer reliably beats it on this benchmark (best-AI submissions on the leaderboard matched but did not surpass it), so the trajectory stops at adam2 per the spec.",
+  "finale_slug": ""
+}

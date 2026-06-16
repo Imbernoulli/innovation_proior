@@ -1,0 +1,48 @@
+{
+  "task": "quant-graph-stock",
+  "title": "Graph-Based Multi-Stock Prediction: climbing from a tabular floor to concept-aware relations",
+  "domain": "Time series",
+  "metrics": [
+    "csi300",
+    "csi100",
+    "csi300_recent"
+  ],
+  "metric_columns": [
+    "ic",
+    "icir",
+    "rank_ic",
+    "rank_icir",
+    "annualized_return",
+    "max_drawdown",
+    "information_ratio"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "lgbm",
+      "method": "LightGBM (instrument-independent GBDT floor)",
+      "reasoning": "01-lgbm-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-lgbm-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "gats",
+      "method": "GATs (all-to-all attention over the day's cross-section)",
+      "reasoning": "02-gats-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-gats-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "hist",
+      "method": "HIST (concept-aware shared-information mining)",
+      "reasoning": "03-hist-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-hist-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked from the is_final,true baseline:* rows (all metrics higher-better as scored; task score = gmean over csi300/csi100/csi300_recent of each universe's equal-weight metric mean). lgbm weakest: lowest IC on every universe (csi300 0.0399, csi100 0.0363, recent 0.0253), lowest information ratio (csi300 0.280) and negative csi100 IR (-0.334) -- the instrument-independent floor. gats > lgbm: cross-stock attention lifts csi300 IR to 1.362 and return to 0.106, IC to 0.0495, and pulls csi100 IR up to -0.252. hist > gats: higher IC and Rank IC on all three universes (csi300 0.053>0.0495, csi100 0.0519>0.0465, recent 0.0359>... in rank_ic) and a near-flat csi100 IR (-0.010 vs -0.252) with csi100 return essentially zero (-0.0006 vs -0.0141); hist trades a little csi300 IR (1.250 vs 1.362) for uniformly stronger signal and a rescued low-breadth universe, which the gmean rewards.",
+  "notes": "MLS-Bench trajectory on the qlib Alpha360/CSI benchmark: the initial context and every step's code are the task's real edit surface (custom_model.py CustomModel + the workflow_config handler block, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). No finale: HIST is the strongest published relation-aware method on this exact setup (the HIST reference itself reports beating RSR/GATs here), so nothing clearly stronger is added. methods/<slug> single-round traces (lgbm, gats, hist) are untouched and used only as derivation references. Same-named-vs-paper diffs noted in the reasonings: the task GATs is all-to-all softmax attention over the whole day's cross-section with NO adjacency mask and NO concept-graph use (the methods/gats trace is the paper's masked, multi-head citation-network GAT); the task GATs/HIST use an LSTM backbone with a pretrained-LSTM warm-start and hidden_size=64 (methods/hist derives a GRU, hidden_size=128 paper variant), and task HIST early-stops on validation IC."
+}

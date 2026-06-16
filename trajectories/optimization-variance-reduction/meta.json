@@ -1,0 +1,45 @@
+{
+  "task": "optimization-variance-reduction",
+  "title": "Variance Reduction for Stochastic Optimization: SGD to recursive momentum",
+  "domain": "Optimization",
+  "metrics": [
+    "logistic",
+    "mlp",
+    "conditioned"
+  ],
+  "metric_columns": [
+    "best_test_accuracy",
+    "final_test_accuracy",
+    "best_test_mse",
+    "final_test_mse"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "svrg",
+      "method": "SVRG (snapshot control variate)",
+      "reasoning": "01-svrg-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-svrg-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "storm",
+      "method": "STORM (recursive momentum)",
+      "reasoning": "02-storm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-storm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "storm_plus",
+      "method": "STORM+ (adaptive-enhanced recursive momentum)",
+      "reasoning": "03-storm_plus-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-storm_plus-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the gmean across the three problems' settings (conditioned is MSE, lower is better; logistic/mlp are accuracy). svrg is weakest by a wide margin: it diverges on the strongly convex conditioned problem (best_test_mse mean 1617, final_test_mse 8.5e10 with nan on two seeds) because its once-per-epoch full-gradient snapshot goes stale on the kappa=100 quadratic. storm is the middle rung: continual re-anchoring makes the conditioned MSE finite (best mean 1.76, final mean 2.96) but high and high-variance, with final consistently above best (overshoot). storm_plus is strongest: per-step adaptive step + decaying momentum + clip drop the conditioned MSE by ~two orders of magnitude (best mean 0.0151, final mean 0.0181) with a tight seed spread, and it edges the others on mlp (best 54.20). All three are within noise on the saturated logistic accuracy.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_vr.py: VarianceReductionOptimizer, lines 286-370, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Same-named-baseline-vs-paper diffs vs methods/<slug>: (1) svrg here snapshots once PER EPOCH (m = n/b, forced by the once-per-epoch full-grad budget), recomputes grad_i(snapshot) every inner step (no cached-scalar path), and uses the handed-in lr directly with an mse-only cap min(lr, 1/||grad F||); the paper trace uses m=O(n) and a cached scalar for linear models. (2) storm here uses a FIXED momentum a = 1 - 1/sqrt(steps_per_epoch) and the FIXED handed-in lr (no AdaGrad cube-root step a_t = c*eta^2), with a full-gradient warm-start on the first epoch only; the paper STORM is single-sample-seeded and fully adaptive. (3) storm_plus here is NOT the published parameter-free STORM+ (Levy/Kavis/Cevher, eta = (sum||d||^2/a)^{-1/3}): it is STORM with per-step decaying momentum a_t = min(1-1/sqrt(t+1), 0.999), a trust-region adaptive step min(lr, 0.01*||w||/||d||), and a ||d||>3||g|| clip. No finale: storm_plus is already a heavily-engineered, near-optimal result on these convex/strongly-convex problems, and no genuinely-stronger PUBLISHED method (PAGE/SARAH/SPIDER exist as unregistered edit files but have no measured baseline row and are not clearly stronger on these specific problems), so the ladder stops at the strongest baseline per the spec's conservatism. methods/<slug> single-round traces (svrg, storm, storm-plus) all exist and were reused as derivation references, untouched."
+}

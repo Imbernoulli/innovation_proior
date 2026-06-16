@@ -1,0 +1,47 @@
+{
+  "task": "optimization-pac-bayes-bound",
+  "title": "PAC-Bayes Bound Optimization: tightening the risk certificate",
+  "domain": "Optimization",
+  "metrics": [
+    "mnist-fcn",
+    "mnist-cnn",
+    "fmnist-cnn"
+  ],
+  "metric_columns": [
+    "risk_certificate",
+    "test_error",
+    "kl_divergence",
+    "ce_bound",
+    "empirical_01_risk"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "catoni",
+      "method": "Catoni / lambda bound (flamb)",
+      "reasoning": "01-catoni-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-catoni-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "mcallester",
+      "method": "McAllester / Maurer additive bound (fclassic)",
+      "reasoning": "02-mcallester-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-mcallester-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "quadratic",
+      "method": "Quadratic / inverted-kl bound (fquad)",
+      "reasoning": "03-quadratic-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-quadratic-answer.md"
+    }
+  ],
+  "endpoint": "Quadratic / inverted-kl bound (fquad)",
+  "ranking_basis": "Primary metric risk_certificate (0-1 PAC-Bayes bound), lower is better, averaged over the three settings: catoni 0.0674 (weakest) < mcallester 0.0513 < quadratic 0.0478 (strongest). Catoni is worst on every setting and every seed because its free clamped lambda co-adapts with the posterior into a small-lambda/large-KL corner (MNIST-FCN KL mean 539, spiking to 754 on 2 of 3 seeds); removing the lambda knob (mcallester) collapses and stabilizes KL (FCN 81, tight across seeds); the refined-Pinsker quadratic relaxation (quadratic) keeps the parameter-free stability and fixes the square-root floor, dropping KL another order of magnitude (FCN 4) and giving the tightest certificate.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (PBB/custom_pac_bayes.py BoundOptimizer, lines 460-604, from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> feedback (numbers, baselines only) with an answer (distilled summary + the literal scaffold edit code). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are untouched and used only as derivation references. No finale: fquad is already the kl-inversion of the tightest standard PAC-Bayes parent, and no published method clearly beats it within this three-method (compute_bound/train_step/compute_risk_certificate) edit surface; the best non-baseline leaderboard runs only tie it. Same-named-vs-paper diffs: (1) the task's catoni.edit.py uses a RAW learnable lambda hard-clamped to (0.01,1.99) with a detached SGD update and plain unrescaled NLL, NOT the methods/catoni PAC-Bayes-lambda flamb (sigmoid-scaled lambda in [1/sqrt(n),1], rescaled bounded NLL, nested inv_kl); (2) the task's mcallester.edit.py uses plain unrescaled F.nll_loss and a single uncorrected inv_kl, NOT the methods/mcallester bounded NLL (/log(1/pmin)) with nested inner+outer inv_kl; (3) the task's quadratic.edit.py keeps the 1/log(1/pmin) rescaling but uses a single uncorrected inv_kl, NOT the methods/quadratic nested inner+outer inv_kl. All three trajectory answers carry the literal task edit.py code."
+}

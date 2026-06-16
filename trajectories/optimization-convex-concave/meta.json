@@ -1,0 +1,52 @@
+{
+  "task": "optimization-convex-concave",
+  "title": "Convex-Concave Saddle Points: noise-robust extragradient ladder",
+  "domain": "Optimization",
+  "metrics": [
+    "bilinear",
+    "delta_nu"
+  ],
+  "metric_columns": [
+    "final_gradient_norm",
+    "bilinear_fgn",
+    "delta_nu_fgn",
+    "auc_log_iter_log_grad"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "r_seg",
+      "method": "R-SEG (Tikhonov-anchored stochastic extragradient)",
+      "reasoning": "01-r_seg-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-r_seg-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "seg",
+      "method": "SEG (stochastic extragradient)",
+      "reasoning": "02-seg-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-seg-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "seag",
+      "method": "SEAG (stochastic extra-anchored gradient)",
+      "reasoning": "03-seag-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-seag-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "rain",
+      "method": "RAIN (recursively/running-anchored stochastic extragradient)",
+      "reasoning": "04-rain-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-rain-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by final_gradient_norm_default-noise from is_final,true baseline:* rows (lower is better). r_seg 0.751257 (weakest: fixed-z0 Tikhonov anchor's irreducible bias lambda*||z0-z*|| pins bilinear at 1.41 since z0=[10,10] is far from the saddle) < seg 0.182141 (bare extragradient kills the bilinear bias but loses contraction on the merely-monotone delta_nu) < seag 0.135449 (decaying 1/(k+3) Halpern anchor: contraction without permanent bias, AUC plunges to -1.107) < rain 0.021594 (strongest: growing moving anchor over the trajectory crushes the noise floor seag stalled at). Order holds across low-noise and high-noise columns.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (RAIN/optimization_convex_concave/custom_strategy.py: init_state/step/get_hyperparameters, lines 24-75, scaffold from edits/*.edit.py). The scaffold DEFAULT fill is plain SEG (step 2), but the weakest baseline is r_seg (step 1). Each step = reasoning (full derivation, prose, reflection embedded for i>1) -> answer (distilled summary + scaffold code) -> feedback (numbers only). Code lives in the answer, not the reasoning. methods/<slug> single-round traces (seg, r-seg, seag, rain) are the derivation reference and untouched. No finale: RAIN is the RAIN repo's own near-optimal proposed method and no clearly-stronger published method fits this fixed-step single-loop edit surface."
+}
