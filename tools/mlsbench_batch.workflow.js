@@ -72,6 +72,7 @@ READ FIRST (obey exactly):
 
 STEPS:
 1. Rank the task's baselines weak->strong from the \`is_final,true\` \`baseline:*\` leaderboard rows (state basis in meta.json; mind metric direction).
+   **If \`leaderboard.csv\` has no/insufficient final baseline rows:** first look harder for real numbers — check the MLS-Bench public repo and this repo's git history/log for the task's results; if you find real measured numbers use them. If genuinely none exist, rank weak->strong by **published consensus** (which method is well-established as stronger — verify with a quick web search of the methods' papers/benchmarks; "which method is good/bad is generally agreed and a lookup settles it"). In that case each \`<i>-feedback.md\` must say plainly "No leaderboard result for this task yet; ordering by published consensus (see reasoning)" and give the consensus basis — NEVER fabricate numeric results. Still build the full ladder + optional finale.
 2. Every baseline already has a single-round trace at \`methods/<slug>\` (created in the methods phase) — REUSE as the derivation reference; do not regenerate.
 3. Author \`trajectories/${t.task}/\`:
    - \`00-initial-context.md\`: scaffold-based, lean (matched to the weakest baseline). Sections: Research question; Prior art before the first rung (the lineage the first baseline reacts to, concise, each with its gap); The fixed substrate; The editable interface (the contract + the DEFAULT scaffold code block); Evaluation settings (settings only, NO outcomes). **NO top-level H1 title.** Include the real scaffold code framework.
@@ -93,19 +94,38 @@ RETURN the schema: task, ok, title, steps (baseline slugs weak->strong), endpoin
 const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
 const METHODS = A.methods || []
 const TASKS = A.tasks || []
-log(`Batch: ${METHODS.length} methods to create, ${TASKS.length} trajectories to build`)
+const CHUNK = A.chunk || 5          // low concurrency to stay under the server throttle
+const ATTEMPTS = A.attempts || 4    // in-run retry: transient throttles self-heal across passes
+log(`Batch: ${METHODS.length} methods, ${TASKS.length} trajectories (chunk=${CHUNK}, attempts=${ATTEMPTS})`)
 if (!METHODS.length && !TASKS.length) throw new Error('empty args — got: ' + JSON.stringify(args).slice(0, 200))
 
+// Run items in small sequential chunks (caps concurrency), retrying nulls across passes.
+// The wall-clock of intervening chunks gives a transient rate-limit time to clear.
+async function runChunked(items, phaseName, mk) {
+  const results = new Array(items.length).fill(null)
+  let pending = items.map((_, i) => i)
+  for (let a = 0; a < ATTEMPTS && pending.length; a++) {
+    const todo = pending; pending = []
+    for (let i = 0; i < todo.length; i += CHUNK) {
+      const grp = todo.slice(i, i + CHUNK)
+      const r = await parallel(grp.map((j) => () => mk(items[j])))
+      grp.forEach((j, k) => { results[j] = r[k]; if (!r[k]) pending.push(j) })
+    }
+    log(`${phaseName} pass ${a + 1}: ${results.filter(Boolean).length}/${items.length} done, ${pending.length} retrying`)
+  }
+  return results
+}
+
 phase('Methods')
-const methodResults = (await parallel(METHODS.map((m) => () =>
+const methodResults = (await runChunked(METHODS, 'Methods', (m) =>
   agent(methodPrompt(m), { label: `method:${m.slug}`, phase: 'Methods', schema: METHOD_SCHEMA, agentType: 'general-purpose' })
-))).filter(Boolean)
+)).filter(Boolean)
 log(`Methods phase done: ${methodResults.filter((r) => r.ok).length}/${METHODS.length} ok`)
 
 phase('Trajectories')
-const trajResults = (await parallel(TASKS.map((t) => () =>
+const trajResults = (await runChunked(TASKS, 'Trajectories', (t) =>
   agent(trajPrompt(t), { label: `traj:${t.task}`, phase: 'Trajectories', schema: TRAJ_SCHEMA, agentType: 'general-purpose' })
-))).filter(Boolean)
+)).filter(Boolean)
 log(`Trajectories phase done: ${trajResults.filter((r) => r.ok).length}/${TASKS.length} ok`)
 
 return { methods: methodResults, trajectories: trajResults }
