@@ -1,0 +1,159 @@
+Let me start from what actually hurts. I have a smooth minimax problem, min over x and max over y of f(x,y), and I can only ever touch it through a noisy first-order oracle: I ask for the gradient operator F(z) = [grad_x f ; -grad_y f] at a point z = (x,y) and I get back F(z) plus zero-mean noise with variance bounded by sigma^2. I want a near-stationary point, a z where ||F(z)|| is small, and I want to pay as few oracle calls as I can. Why the gradient norm and not the duality gap? Because the gap is a trap: take the simplest interesting instance, f(x,y) = x^T y, and the gap max_{y'} f(x,y') - min_{x'} f(x',y) is plus infinity at every point that isn't the saddle (0,0) — the inner max over an unbounded y' blows up the moment x is nonzero. So the gap can't even rank two bad points. The gradient operator norm, on the other hand, is always finite, always defined, and I can literally measure it. So my objective is ||F(z)|| <= epsilon, and my currency is SFO calls.
+
+What do I have to work with? The thing that makes minimax tractable at all is not convexity of any scalar — there isn't a scalar both players agree to descend — it's monotonicity of the operator. Smooth convex-concave means F is monotone, (F(z) - F(z'))^T(z - z') >= 0, and strongly-convex-strongly-concave with parameter lambda means F is lambda-strongly monotone, (F(z) - F(z'))^T(z - z') >= lambda||z - z'||^2. Smoothness means F is L-Lipschitz. I'm going to live entirely inside these operator inequalities; that's the only structure I can rely on.
+
+And I already know the naive method dies. Simultaneous stochastic gradient descent-ascent on x^T y rotates around the saddle and spirals out — the iterates cycle, the radius grows. The fix everyone uses is the extragradient idea: don't step on the gradient at where you are, step on the gradient at a look-ahead point. So z_{t+1/2} = z_t - eta F(z_t; xi), then z_{t+1} = z_t - eta F(z_{t+1/2}; xi). The look-ahead cancels the rotational part and monotone problems converge. Good. So stochastic extragradient, SEG, is my workhorse. Let me see exactly how far it gets me and where it stops, because that boundary is where my method has to begin.
+
+Take f strongly monotone, parameter lambda, run one SEG step with stepsize eta < 1/(4L). I want a one-step inequality I can telescope. Let me derive it honestly because I'll need its exact shape. Start from 2 F(z_{t+1/2})^T (z_{t+1/2} - z*) and rewrite it by inserting the actual updates. The update z_{t+1} = z_t - eta F(z_{t+1/2}; xi_j) means eta F(z_{t+1/2}; xi_j) = z_t - z_{t+1}, and the half step z_{t+1/2} = z_t - eta F(z_t; xi_i) means eta F(z_t; xi_i) = z_t - z_{t+1/2}. So I can trade every gradient term for a difference of iterates, which is exactly the move that lets distances telescope. Writing 2 F(z_{t+1/2})^T(z_{t+1/2}-z*) as the sum of the stochastic-vs-true mismatch term, plus 2 F(z_{t+1/2};xi_j)^T(z_{t+1}-z*), plus 2(F(z_{t+1/2};xi_j) - F(z_t;xi_i))^T(z_{t+1/2}-z_{t+1}), plus 2 F(z_t;xi_i)^T(z_{t+1/2}-z_{t+1}). Each of the last three becomes a clean three-term identity by the polarization identity 2 a^T b = ||a||^2 + ||b||^2 - ||a-b||^2 applied to the iterate differences: for instance 2 F(z_{t+1/2};xi_j)^T(z_{t+1}-z*) = (2/eta)(z_t - z_{t+1})^T(z_{t+1}-z*) = (1/eta)[||z_t-z*||^2 - ||z_t-z_{t+1}||^2 - ||z_{t+1}-z*||^2]. The other update identity contributes +(1/eta)||z_t-z_{t+1}||^2 and negative half-step distances, so the main distance term that survives is the decrease ||z_t-z*||^2 - ||z_{t+1}-z*||^2. The cross term 2(F(z_{t+1/2};xi_j)-F(z_t;xi_i))^T(z_{t+1/2}-z_{t+1}) I tame with Young's inequality and the L-Lipschitz bound, eta <= 1/(4L) absorbing the L^2||z_t - z_{t+1/2}||^2 piece into the negative squared-distance terms. The stochastic mismatch term, in expectation, uses independence and the zero bias of the oracle; the variance terms add the 16 eta sigma^2 tax. Applying strong monotonicity F(z_{t+1/2})^T(z_{t+1/2}-z*) >= lambda||z_{t+1/2}-z*||^2, I get
+
+  lambda E||z_{t+1/2} - z*||^2 <= (1/eta) E[ ||z_t-z*||^2 - ||z_{t+1}-z*||^2 ] + 16 eta sigma^2.
+
+Equivalently, lambda E||z_{t+1/2}-z*||^2 + (1/eta)E||z_{t+1}-z*||^2 <= (1/eta)E||z_t-z*||^2 + 16 eta sigma^2; the distance to z* contracts each step, paying a fixed 16 eta sigma^2 noise tax. Average over t = 0..T-1 and use strong monotonicity once more, and I get E||z_bar - z*||^2 <= ||z_0 - z*||^2/(lambda eta T) + 16 eta sigma^2 / lambda.
+
+There it is — and there's the wall. With a fixed eta, the first term decays like 1/T but the second is a constant noise floor 16 eta sigma^2/lambda. SEG marches to a sigma^2-sized ball and stops. To shrink the ball I have to shrink eta, but shrinking eta cripples the 1/(lambda eta T) optimization term, so I'd need T to balloon. For the gradient norm in the general convex-concave case this trade-off costs me O(sigma^2 L^2 epsilon^{-4} + L^2 D^2 epsilon^{-2}) — the statistical term has an L^2 stapled on and, worse, an epsilon^{-4}. The pure statistical floor for any method ought to be sigma^2 epsilon^{-2} — even just deciding whether ||F(z)|| <= epsilon or > 2epsilon needs that many noisy samples — so SEG is epsilon^{-2} away from where it should be on the noise. That gap is the whole problem.
+
+Now, who makes the gradient norm small *well*, at least without noise? Anchoring. The Halpern idea: at each step, pull the iterate a little back toward a fixed reference point z_0, with a weight that decays as 1/(k+2). Combine that pull with extragradient steps and you get, deterministically, the optimal squared-gradient-norm rate O(L^2 D^2 / k^2) — that's the extra-anchored gradient method. So the anchored update looks like z_{k+1/2} = z_k + (1/(k+2))(z_0 - z_k) - eta F(z_k), z_{k+1} = z_k + (1/(k+2))(z_0 - z_k) - eta F(z_{k+1/2}). The anchor term (1/(k+2))(z_0 - z_k) is the gradient of a quadratic penalty (1/2)||z - z_0||^2 pulling toward z_0, with a shrinking coefficient. Beautiful in the deterministic world. But put noise back in and the stochastic anchored extragradient pays O(sigma^2 L^2 epsilon^{-4} + L D epsilon^{-1}) — the optimization part L D epsilon^{-1} is now optimal, but the statistical part is still the bad epsilon^{-4}, the same L^2 sigma^2 epsilon^{-4} as SEG. So anchoring fixes the deterministic side and does nothing for the noise. Why?
+
+Stare at what the anchor is doing. The penalty (lambda/2)||z - z_0||^2 added to the operator gives a new operator G(z) = F(z) + lambda(z - z_0). G is lambda-strongly monotone even when F is only monotone — strong monotonicity bought for free. That's what should help against noise, because strong monotonicity is exactly the property SEG needs to contract. So why doesn't it? Because the anchor is pinned to z_0, and z_0 is wherever I happened to start — generically far from z*. The penalty pulls every iterate toward z_0, not toward z*. Let me make the cost of that precise. Suppose I solve the anchored problem exactly: let z_g* be the root of G, G(z_g*) = 0. How far is z_g* from the real z*? And how far is ||F(z_g*)|| from zero?
+
+  ||F(z_g*)|| = ||G(z_g*) - lambda(z_g* - z_0)|| = lambda||z_g* - z_0||.
+
+So even the *exact* solution of the anchored problem has residual gradient lambda||z_g* - z_0||. To make that <= epsilon I need lambda <= epsilon/||z_g* - z_0||, roughly lambda = O(epsilon/D). And a tiny lambda means G is barely strongly monotone — the strong monotonicity I bought is worth almost nothing, so SEG on G is almost as noise-limited as SEG on F. That's the trap: the anchor's strength lambda is what fights the noise, but lambda has to be small to keep the anchor's bias small, because the anchor sits at the wrong point. Strength and bias are coupled through the distance from the anchor to z*.
+
+Let me write the bias-to-residual relation as a clean lemma, because I'll lean on it. For any candidate z-tilde,
+
+  ||F(z-tilde)|| <= ||G(z-tilde)|| + lambda||z-tilde - z_0||.
+
+Now I want to bound ||z-tilde - z_0||. Triangle through z_g*: ||z-tilde - z_0|| <= ||z-tilde - z_g*|| + ||z_g* - z_0||. The first piece is controlled because G is lambda-strongly monotone, so lambda||z-tilde - z_g*|| <= ||G(z-tilde)|| (since G(z_g*)=0, strong monotonicity gives lambda||z-tilde-z_g*||^2 <= G(z-tilde)^T(z-tilde-z_g*) <= ||G(z-tilde)|| ||z-tilde-z_g*||). So lambda||z-tilde - z_g*|| <= ||G(z-tilde)||, and
+
+  ||F(z-tilde)|| <= 2||G(z-tilde)|| + lambda||z_g* - z_0||.
+
+I'm left needing ||z_g* - z_0||. Here's where I'd like a fact I haven't proven: that anchoring is non-expansive, that the anchored solution doesn't run off. Let me try to prove ||z_g* - z_0|| <= ||z* - z_0||, i.e. the anchored root is no farther from the anchor than the true root is. G(z_g*) = 0 means F(z_g*) + lambda(z_g* - z_0) = 0. Use strong monotonicity of G between z_g* and z*:
+
+  lambda||z_g* - z*||^2 <= G(z*)^T(z* - z_g*)?
+
+Hmm, let me be careful, G(z_g*) = 0 so I want to start there. lambda||z_g* - z*||^2 <= (G(z_g*) - G(z*))^T(z_g* - z*) = -G(z*)^T(z_g* - z*) = G(z*)^T(z* - z_g*). And G(z*) = F(z*) + lambda(z* - z_0) = lambda(z* - z_0) since F(z*) = 0. So
+
+  lambda||z_g* - z*||^2 <= lambda(z* - z_0)^T(z* - z_g*).
+
+Divide by lambda and expand the inner product with the polarization identity (z*-z_0)^T(z*-z_g*) = (1/2)(||z_g*-z*||^2 + ||z*-z_0||^2 - ||z_g*-z_0||^2):
+
+  ||z_g* - z*||^2 <= (1/2)||z_g*-z*||^2 + (1/2)||z*-z_0||^2 - (1/2)||z_g*-z_0||^2.
+
+Move the (1/2)||z_g*-z*||^2 over: (1/2)||z_g*-z*||^2 <= (1/2)||z*-z_0||^2 - (1/2)||z_g*-z_0||^2, which gives me two things at once. First, ||z_g*-z_0||^2 <= ||z*-z_0||^2 - ||z_g*-z*||^2 <= ||z*-z_0||^2, so ||z_g* - z_0|| <= ||z* - z_0|| — the anchored root is closer to the anchor than the true root. Second, ||z_g* - z*||^2 <= ||z*-z_0||^2 - ||z_g*-z_0||^2 <= ||z*-z_0||^2, so ||z_g* - z*|| <= ||z* - z_0|| — the anchored root stays within the original distance D of the true root. That second fact is the one that's going to matter most, and I didn't expect to get it for free.
+
+So the anchoring lemma is ||F(z-tilde)|| <= 2||G(z-tilde)|| + lambda||z_0 - z*||, and the price of anchoring at z_0 is exactly lambda||z_0 - z*||. Setting lambda = Theta(epsilon/D) reduces "find an epsilon-stationary point of the CC problem f" to "find an O(epsilon)-stationary point of the SCSC problem g." That's a genuine win — it turns convex-concave into strongly-convex-strongly-concave — but it's stuck at lambda = Theta(epsilon/D), and that small lambda is why the noise term never improves.
+
+Now here's the thing nagging me. The whole reason lambda must be small is that the anchor z_0 is far from z*. But look at what I just proved: the anchored solution z_g* is *closer* to z* than z_0 was, by the amount ||z*-z_0||^2 - ||z_g*-z*||^2 >= ||z_g* - z_0||^2. What if I don't anchor once? What if I solve the anchored problem approximately, get a point that's closer to z*, and then *re-anchor there* — make that new point the center of the next penalty — and crank lambda up, because now the anchor is closer so the bias lambda·(distance) can tolerate a bigger lambda? A bigger lambda makes the next subproblem more strongly monotone, hence better conditioned, hence cheaper to solve under noise. A chain of warm restarts, each with a closer anchor and a larger penalty.
+
+I've seen this exact escape before, but in the convex single-player world: to make the gradient of a convex f small, you regularize by (sigma/2)||x - x_0||^2, but the minimizer is displaced by O(sigma) so sigma must be O(epsilon) — unless x_0 is already near the optimum, in which case a larger sigma keeps the displacement small while making the subproblem better conditioned; so you build a chain f^(s)(x) = f^(s-1)(x) + (sigma_s/2)||x - x_hat_s||^2 with sigma_s doubling and x_hat_s the approximate minimizer of f^(s-1). That breaks the barrier and lands near-optimally. But — and this is the wall — that convex argument is built on min_x f(x) <= f(x), the fact that the optimal value lower-bounds every value. For a saddle problem there's no such inequality: neither min-max f <= f nor min-max f >= f holds. I cannot import the proof. I have to redo the entire recursion using only operator monotonicity, never touching function values.
+
+Let me set it up at the operator level. Define a recursively regularized sequence of operators. Start with f^(0) = f. At round s, I solve the current subproblem, use the returned point as the next anchor, and then add the next two-sided quadratic:
+
+  f^(s+1)(x,y) = f^(s)(x,y) + (lambda_{s+1}/2)||x - x_{s+1}||^2 - (lambda_{s+1}/2)||y - y_{s+1}||^2,
+
+where lambda_0 = lambda gamma and lambda_{s+1} = (1+gamma)lambda_s. In operator language, after s anchors have been added, the gradient operator is
+
+  F^(s)(z) = F(z) + sum_{i=1}^s lambda_i (z - z_i).
+
+The penalties accumulate; each is a fresh anchor z_i with its own strength. I want lambda_i to grow geometrically. For the proof I take gamma = 1, so lambda_0 = lambda and the i-th added anchor has strength lambda_i = lambda 2^i; for a general positive gamma the same shape is lambda_i = lambda gamma(1+gamma)^i up to the chosen index origin. Run S rounds with S = floor(log_2(L/lambda)) so the accumulated strength climbs from lambda up to about L. Let me sanity-check the conditioning at both ends. The strong monotonicity of F^(s) is at least the original lambda from F plus the added penalties, lambda + lambda sum_{i=1}^s 2^i. Lower bound: lambda + lambda sum_{i=1}^s 2^i > lambda 2^s, so F^(s) is at least 2^s lambda-strongly monotone — strength doubling per round, good. The smoothness at the top: F^(S-1) is L-Lipschitz from F plus the penalties, and lambda sum_{i=1}^{S-1} 2^i is at most lambda 2^S <= L (by S = floor(log_2(L/lambda)) we have lambda 2^S <= L <= lambda 2^{S+1}), so F^(S-1) is at most 2L-Lipschitz. Every subproblem stays O(L)-smooth while becoming more and more strongly monotone — its condition number 2L/(2^s lambda) shrinks toward O(1). That's the payoff: the later subproblems are well-conditioned, so even under noise they're cheap to solve accurately. The condition number of the subproblems decreases with s, so an accurate solve gets cheaper as I go, not more expensive.
+
+Now the central question: if each subroutine returns a z_{s+1} that's close to the exact subproblem solution, is the final ||F(z_S)|| small? Let me denote z*_s the exact root of F^(s). I want to bound ||F(z_S)||. Peel off the last penalty: F(z_S) = F^(S-1)(z_S) - lambda sum_{i=1}^{S-1} 2^i (z_S - z_i), so
+
+  ||F(z_S)|| <= ||F^(S-1)(z_S)|| + lambda sum_{i=1}^{S-1} 2^i ||z_S - z_i||.
+
+The second term is the messy one, the sum over all anchors of 2^i times ||z_S - z_i||. Break each ||z_S - z_i|| with the triangle inequality through z*_{S-1}: ||z_S - z_i|| <= ||z_S - z*_{S-1}|| + ||z*_{S-1} - z_i||. The first new piece is not just a loose smoothness term; since F^(S-1) is at least (lambda sum_{i=1}^{S-1} 2^i)-strongly monotone and F^(S-1)(z*_{S-1}) = 0, I get lambda sum_{i=1}^{S-1}2^i ||z_S - z*_{S-1}|| <= ||F^(S-1)(z_S)||. So the first two pieces together become 2||F^(S-1)(z_S)||, and the 2L-Lipschitzness of F^(S-1) turns that into 4L||z_S - z*_{S-1}||. Now I am down to controlling lambda sum_{i=1}^{S-1} 2^i ||z*_{S-1} - z_i||. Triangle again through z*_{i-1}: ||z*_{S-1} - z_i|| <= ||z*_{i-1} - z_i|| + ||z*_{S-1} - z*_{i-1}||. The first piece, summed, is lambda sum 2^i ||z*_{i-1} - z_i||; these are the per-round subroutine errors, exactly what I will control. The second piece, ||z*_{S-1} - z*_{i-1}||, is a distance between exact solutions; chain it as ||z*_{S-1} - z*_{i-1}|| <= sum_{j=i}^{S-1} ||z*_j - z*_{j-1}||. My earlier non-expansiveness fact pays off here: going from subproblem j-1 to subproblem j is exactly adding an anchor at z_j, so ||z*_j - z*_{j-1}|| <= ||z*_{j-1} - z_j||. Substituting and swapping the order of the double sum gives sum_i 2^i sum_{j>=i} e_j = sum_j e_j sum_{i<=j}2^i <= sum_j 2^{j+1}e_j, with e_j = ||z*_{j-1} - z_j||. Since L <= lambda 2^{S+1}, the final-distance term is bounded by 16 lambda 2^{S-1}||z_S - z*_{S-1}||, and the two anchor sums have coefficients 2^i and 2^{i+1}. All of those coefficients fit under one envelope:
+
+  ||F(z_S)|| <= 16 lambda sum_{s=1}^S 2^{s-1} ||z*_{s-1} - z_s||.
+
+This is the recursive anchoring lemma, and it's exactly what I wanted: the final gradient norm is a *weighted sum of per-round subroutine errors*, with geometric weights 2^{s-1}. The weight grows, but so does the strong monotonicity 2^s lambda of subproblem s, so I can afford to drive ||z*_{s-1} - z_s|| down enough at each round to keep the product small. Concretely, to make ||F(z_S)|| <= epsilon it's enough — squaring and being generous with the S-fold sum — to ask that each round satisfy 256 lambda_s^2 S^2 E||z_{s+1} - z*_s||^2 <= epsilon^2. The required per-round accuracy tightens by the factor lambda_s^2 = (lambda 2^s)^2, which quadruples per round, but the subproblems get cheaper to solve at the same rate, so this is a fair fight.
+
+Now I need the subroutine: given the SCSC subproblem f^(s) (strongly monotone parameter lambda_s, smoothness about 2L), produce z_{s+1} with E||z_{s+1} - z*_s||^2 below a target, cheaply, under noise. Plain SEG only reaches a sigma^2 ball, remember. I'll build a two-phase epoch scheme on top of SEG. The reason for two phases is the decomposition I keep seeing: there's optimization error (the 1/(lambda eta T) term, governed by conditioning and the initial distance) and statistical error (the 16 eta sigma^2/lambda noise floor). They want opposite stepsizes — optimization error wants a big eta and few iterations, statistical error wants a small eta and many iterations — so I'll attack them in separate phases.
+
+Phase one: run SEG with a fixed stepsize eta = 1/(4L) and fixed epoch length T = 8L/lambda, repeated for N epochs, restarting each epoch from the previous output. From the SEG averaging bound, one epoch contracts the distance: E||z_{k+1} - z*||^2 <= (1/(lambda eta T)) E||z_k - z*||^2 + 16 eta sigma^2/lambda. With eta = 1/(4L) and T = 8L/lambda, the contraction factor 1/(lambda eta T) = 1/(lambda · (1/4L) · (8L/lambda)) = 1/2. So each phase-one epoch halves the squared distance and adds a fixed noise term 16 (1/4L) sigma^2/lambda = 4 sigma^2/(lambda L). Telescoping N epochs, the optimization error shrinks like 1/2^N while the noise accumulates to a geometric sum bounded by 8 sigma^2/(lambda L):
+
+  E||z_N - z*||^2 <= (1/2^N) E||z_0 - z*||^2 + 8 sigma^2/(lambda L).
+
+Phase one drives the optimization error down fast but parks at a noise floor 8 sigma^2/(lambda L). Phase two has to eat that floor. I shrink eta and grow T together: in the r-th phase-two epoch, meaning absolute epoch N+r, use eta_{N+r} = 1/(2^{r+3} L) and T_{N+r} = 2^{r+5} L/lambda. Check that the per-epoch recursion contracts by 1/4: 1/(lambda eta_{N+r} T_{N+r}) = 1/(lambda · 2^{-(r+3)}/L · 2^{r+5} L/lambda) = 1/4. The noise term is 16 eta_{N+r} sigma^2/lambda = 2 sigma^2/(2^r lambda L), so the noise floor halves each epoch. Induct: suppose after r phase-two epochs the bound is E||z_{N+r}-z*||^2 <= (1/2^{N+2r}) E||z_0-z*||^2 + 8 sigma^2/(2^r lambda L). Then the next epoch gives E||z_{N+r+1}-z*||^2 <= (1/4)[that] + 2 sigma^2/(2^r lambda L) <= (1/2^{N+2(r+1)})E||z_0-z*||^2 + (2/2^r + 2/2^r) sigma^2/(lambda L) <= (1/2^{N+2(r+1)})E||z_0-z*||^2 + 8 sigma^2/(2^{r+1} lambda L). After K phase-two epochs,
+
+  E||z_{N+K} - z*||^2 <= (1/2^{N+2K}) E||z_0 - z*||^2 + 8 sigma^2/(2^K lambda L).
+
+That's the epoch-SEG guarantee: optimization error killed by 2^{-(N+2K)}, statistical error killed by 2^{-K}. And the cost: phase one is N epochs of length T = 8L/lambda, each iteration two oracle calls, so 16 (L/lambda) N; phase two is sum_k 2 T_k = sum_k 2^{k-N+6} L/lambda, a geometric sum about 2^{K+6} L/lambda. Total SFO <= 16 kappa N + 2^{K+6} kappa with kappa = L/lambda. The two knobs N and K let me trade optimization vs. statistical error independently, which is exactly what the recursive anchoring needs.
+
+Stitch it together. At round s of the outer recursion, I run epoch-SEG on f^(s) (strong monotonicity lambda_s, smoothness 2L, condition number kappa_s = 2L/lambda_s) warm-started at z_s, and I need 256 lambda_s^2 S^2 E||z_{s+1} - z*_s||^2 <= epsilon^2. Because the subproblem smoothness passed to epoch-SEG is 2L, the statistical floor in this call is 8 sigma^2/(2^{K_s} lambda_s (2L)) = 4 sigma^2/(2^{K_s} lambda_s L), while the optimization part is 2^{-(N_s+2K_s)}E||z_s-z*_s||^2. For the warm start, ||z_s - z*_s|| <= ||z_s - z*_{s-1}|| by the non-expansiveness lemma (z_s came from round s-1, and re-anchoring doesn't move the solution farther), and by induction the previous round already made ||z_s - z*_{s-1}|| small, so for s >= 1 a constant N_s = 3 epochs of phase one suffice — the warm start means I barely need to optimize. Only the very first round s = 0 needs a real phase one, N_0 = ceil(log_2(512 lambda^2 S^2 D^2/epsilon^2)), to walk in from the cold start z_0 at distance D. The phase-two length is set by the statistical requirement: 2^{K_s} >= 2048 lambda_s S^2 sigma^2/(L epsilon^2), i.e. K_s = ceil(log_2(2048 lambda_s S^2 sigma^2/(L epsilon^2))). Add up the SFO over all S rounds in the form sum_s (2L/lambda_s)(16N_s + 64·2^{K_s}); the geometric sum over the constant-N_s warm rounds is O(L/lambda), and in the statistical part the lambda_s cancels against the 2^{K_s} requirement, leaving O(S^3 sigma^2/epsilon^2). Total SFO = O(L/lambda + (L/lambda) log(lambda D/epsilon · log(L/lambda)) + (sigma^2/epsilon^2) log^3(L/lambda)) = Otilde(sigma^2 epsilon^{-2} + kappa) for the SCSC case. The statistical term is sigma^2 epsilon^{-2}, the floor, with no spurious L^2 and no epsilon^{-4} — the recursion bought back the two factors of epsilon that anchoring-at-z_0 couldn't. And for the general convex-concave case, I first apply the anchoring lemma with the cold anchor z_0 and lambda = min{epsilon/D, L} to turn f into an SCSC g, then run the whole recursion on g; the output is a 3epsilon-stationary point of f, total SFO = Otilde(sigma^2 epsilon^{-2} + L D epsilon^{-1}). Both match their lower bounds.
+
+That's the method, and the theory is the point of it. But the algorithm as written is a triple-nested loop — outer recursion over s, epochs over k, SEG iterations over t — and for actually running it I want something I can drop into a single loop. Let me collapse it. The simplest specialization is to set N_s = 1 and K_s = 0, so each round is a single epoch of a single SEG iteration. Then "round s" and "SEG step t" become the same index, and the recursion's accumulated penalty becomes, at iteration t, an anchor pulling toward the stored past iterates with geometric weights gamma(1+gamma)^j. One SEG step with that anchor is
+
+  z_{t+1/2} = z_t - eta( F(z_t; xi) + lambda gamma sum_{j=0}^{t-1} (1+gamma)^j (z_t - z_j) )
+  z_{t+1}   = z_t - eta( F(z_{t+1/2}; xi) + lambda gamma sum_{j=0}^{t-1} (1+gamma)^j (z_{t+1/2} - z_j) )
+
+For a runnable single-loop version, I can store that same geometric pull as a running buffer over iterates that have already been written into state. The first step has an empty anchor buffer; after that, z_{t+1} is inserted with weight gamma(1+gamma)^(step_index+1), so the stored-iterate convention is one-based even though the displayed recurrence is zero-based. This is the single-loop variant: an extragradient step where the regularizer is a geometrically-weighted running average of the trajectory already written into the anchor buffer. Each new iterate is anchored against where the trajectory has been, weighted to favor the recent past, and gamma controls how fast that weighting grows. It keeps the essential mechanism — a moving anchor with growing strength — without the nested epochs.
+
+Two implementation thoughts before I write it. First, the anchor sum looks like it costs O(t·d) per step because it's a sum over all stored iterates. But I never need the iterates individually — I only need lambda sum_j w_j (z_current - z_j) = lambda[(sum_j w_j)z_current - sum_j w_j z_j]. So if I keep two running buffers — a scalar weight_sum = sum_j w_j and a vector weighted_flow_sum = sum_j w_j z_j, with the implementation adding the newest stored iterate with weight gamma(1+gamma)^(step_index+1) — the update contribution is lambda(weighted_flow_sum - weight_sum · z_current), evaluable in O(d), and updated each step by adding the new weight and weight·z_next. O(d) memory, O(d) per step, no storing the trajectory. Second, the sign and structure: -eta·lambda[(sum_j w_j)z - sum_j w_j z_j] = -eta·lambda·weight_sum·z + eta·lambda·weighted_flow_sum, a pull from the current point toward the weighted average of past points. Folding eta into a single step factor tau, the per-step update reads anchor = tau·lambda·(weighted_flow_sum - weight_sum·z), and both the look-ahead w and the update z_next add this anchor plus the oracle noise.
+
+So let me write the single-loop method as the per-iteration update it actually is — one extragradient step, the running-anchor regularizer with the two running buffers, two oracle calls and a fresh noise draw on each half step, weights stored as gamma(1+gamma)^j:
+
+```python
+import numpy as np
+from typing import Any
+
+
+def init_state(problem, initial_z, seed, hyperparameters):
+    # Preserve the starting point; carry the two running buffers that
+    # represent the geometrically-weighted anchor over stored iterates:
+    #   weight_sum         = sum_j w_j           (scalar)
+    #   weighted_flow_sum  = sum_j w_j * z_j     (vector)
+    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)
+    return {
+        "z": z0,
+        "step_index": 0,
+        "weight_sum": 0.0,
+        "weighted_flow_sum": np.zeros_like(z0),
+    }
+
+
+def step(state, oracle, problem, hyperparameters, max_sfo_calls):
+    tau = float(hyperparameters["tau"])        # eta, the extragradient stepsize
+    lam = float(hyperparameters["lambda"])     # base regularization strength lambda
+    gamma = float(hyperparameters["gamma"])    # geometric growth rate of the anchor weights
+    z = as_vector(state["z"], expected_dim=2 * problem.dim)
+    step_index = int(state.get("step_index", 0))
+    weight_sum = float(state.get("weight_sum", 0.0))
+    weighted_flow_sum = as_vector(
+        state.get("weighted_flow_sum", np.zeros_like(z)), expected_dim=2 * problem.dim
+    )
+
+    # extragradient look-ahead, with the moving anchor pulling z toward the
+    # weighted average of past iterates:  lam * (sum_j w_j z_j  -  (sum_j w_j) z)
+    g = oracle.grad(z)
+    anchor_z = tau * lam * (weighted_flow_sum - weight_sum * z)
+    w = z - tau * g + anchor_z + oracle.noise()
+
+    # extragradient update, anchor re-evaluated at the look-ahead point w
+    gw = oracle.grad(w)
+    anchor_w = tau * lam * (weighted_flow_sum - weight_sum * w)
+    z_next = z - tau * gw + anchor_w + oracle.noise()
+
+    # the new iterate becomes the newest, most heavily weighted anchor
+    current_weight = gamma * (1.0 + gamma) ** (step_index + 1)
+    next_state = {
+        "z": z_next,
+        "step_index": step_index + 1,
+        "weight_sum": weight_sum + current_weight,
+        "weighted_flow_sum": weighted_flow_sum + current_weight * z_next,
+    }
+    metric_iterate = z_next if problem.name == "bilinear" else z
+    return make_step_output(next_state, metric_iterate, 2)
+
+
+def get_hyperparameters(problem_name, sigma):
+    # eta, base lambda, and geometric growth gamma per problem; gamma is kept
+    # small so (1+gamma)^t cannot overflow while the order of the method is unchanged.
+    if problem_name == "bilinear":
+        return {"tau": 0.1, "lambda": 0.1, "gamma": 0.001}
+    if problem_name == "delta_nu":
+        return {"tau": 1.0, "lambda": 0.01, "gamma": 0.0001}
+    raise KeyError(f"Unknown problem: {problem_name}")
+```
+
+Let me trace the causal chain one more time to be sure nothing is bolted on. I wanted ||F(z)|| small under noise, not the duality gap, which is ill-defined here. SEG, the extragradient workhorse, converges only to a sigma^2 ball and costs sigma^2 L^2 epsilon^{-4} — two factors of epsilon too many. Anchoring (Halpern-style, toward z_0) fixes the deterministic gradient-norm rate but does nothing for the noise, because its strength lambda must be kept tiny to limit the bias lambda||z_0 - z*|| of anchoring at a fixed, far point — and that tiny lambda is precisely the weak strong-monotonicity that leaves the noise floor untouched. The escape: the non-expansiveness lemma shows the anchored solution lands closer to z* than the anchor was, so re-anchor there and raise lambda — a recursive sequence of anchors converging to z*, with strength climbing geometrically from lambda to L, each subproblem better conditioned than the last. The recursive anchoring lemma proves the final gradient norm is a geometrically-weighted sum of per-round subroutine errors; a two-phase epoch-SEG (fixed stepsize to kill optimization error, shrinking stepsize to eat the statistical floor) solves each subproblem at the accuracy the lemma demands, and because the conditioning improves at the same rate the accuracy tightens, the total cost lands at the additive floor Otilde(sigma^2 epsilon^{-2} + kappa), with the convex-concave case reduced to this via one cold anchor. Collapsing the triple loop to N_s = 1, K_s = 0 turns the accumulated penalty into a single extragradient step whose regularizer is a geometrically-weighted running anchor over the whole trajectory — maintainable in O(d) via a running weight sum and a running weighted-iterate sum — which is the method I'd actually run.

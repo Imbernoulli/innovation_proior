@@ -1,0 +1,155 @@
+Let me start from what actually goes wrong when I try to evolve a whole Pareto front in one run. I have several conflicting objectives, all to be minimized, and there is no single best point — improving one objective costs me another, so the thing I want back is a *set*: the points nobody can beat on every objective at once. A population-based search is the obvious tool, because I am already carrying a hundred candidate solutions around, and if I could just get them to spread out along the front I would harvest the whole trade-off surface in a single sweep. So the algorithm has two jobs that fight each other. It has to push the population *down* onto the true front — convergence — and it has to keep the survivors *spread out* across the front and reaching its two ends — diversity. If I only do the first, everybody piles onto one easy corner of the front and I get a dense blob that tells the decision-maker nothing about the trade-offs. If I only do the second, the population fans out beautifully but never lands on the front. Both, at once, cheaply, is the whole game.
+
+The standard recipe in front of me ranks the population by Pareto layers and then keeps it spread with fitness sharing. The ranking part is Goldberg's idea: find every non-dominated individual, call that rank-1, set them aside, find the non-dominated members of what's left, call that rank-2, and keep peeling. Selection then prefers lower ranks, which aims the whole population at the front. The spreading part is Goldberg & Richardson's sharing: I degrade an individual's fitness by how crowded its neighborhood is, using a sharing function sh(d) = 1 - (d/sigma_share)^alpha for d below sigma_share and 0 beyond it, a niche count m_i = sum_j sh(d_ij), and a shared fitness F_i/m_i. Crowded clusters get discounted, so selection pushes everybody apart. This works -- Srinivas and Deb's NSGA gets diverse fronts on a lot of problems -- but three things grind on me, and I want to name each precisely because the fix has to hit all three.
+
+First, the cost. To find rank-1 the naive way I compare every solution against every other to see who dominates it: that's N solutions each compared against N−1 others, and each comparison checks M objectives, so O(M N^2) just for the first front. Now I discard front 1 and repeat to get front 2, which in the worst case is again O(M N^2), and the genuinely bad case is N fronts each holding one solution, so I pay O(M N^2) up to N times: O(M N^3). For a population I'd actually like to grow, that cubic is a wall — it caps how big N can be before a generation takes forever.
+
+Second, no elitism. The original scheme is generational: I build a child population and the parents are gone. But it keeps coming up in the studies that elitism — letting the best material already found compete in the next survival decision — measurably speeds MOEA convergence and stops regressions caused purely by replacing all parents at once. A purely generational MOEA can throw away a useful front representative just because its children happened to be worse. I want parents and children to face the same survival test, so a high-quality parent is not discarded merely because a generation boundary passed.
+
+Third, the sigma_share knob. The spread that fitness sharing achieves depends heavily on what I pick for sigma_share, and there's no clean recipe — I have to guess a distance scale and, implicitly, how many niches the front supports. Worse, computing every niche count means comparing every pair, which is itself O(N^2). I want diversity with *no* free parameter governing it.
+
+Each fix has to improve the algorithm without adding another fragile knob.
+
+Start with elitism, because it's the one with the most leverage and it reframes everything else. The SPEA and PAES route to elitism is an *external archive*: a separate store of the best non-dominated solutions found so far, maintained alongside the population, feeding back into selection. SPEA keeps an archive and scores fitness by "strength" — how many solutions an archive member dominates — and clusters the archive when it overflows to keep it diverse. PAES is a (1+1)-ES that keeps an archive and breaks dominance ties with an adaptive grid over objective space. Both work, but the archive is a second data structure with its own management — how big, when to prune, how to cluster, how to fold it back into selection. That's a lot of machinery. Let me ask whether I even need a *separate* archive. The reason I want an archive is to stop good parents from disappearing before they can be compared with their children. But there's a cheaper way to get that competition: don't throw the parents away. If, instead of building the children and discarding the parents, I *merge* parent and child populations into one combined pool and then select the survivors from that pool, then every parent is sitting right there competing for a survivor slot on equal footing with every child. Whole better-ranked fronts are carried forward when they fit; when a front is too large, I still need a principled diversity rule to choose representatives from it. Elitism becomes a property of the survival pool, with no separate archive.
+
+At generation t I have parents P_t of size N. I run selection, crossover, mutation to make offspring Q_t, also of size N. I merge: R_t = P_t ∪ Q_t, of size 2N. Now I sort *R_t* by non-domination, take the best front F_1, then F_2, and so on, filling the next parent population P_{t+1} front by front until I've collected N survivors. Because both the previous parents and their children are in R_t, the survivor set is chosen from the best material in both generations rather than from children alone. If an elite front fits, every member is kept; if the next front would overflow the remaining slots, I must choose the least crowded representatives instead of pretending every non-dominated point can fit into N slots. That single move -- combine, then truncate -- gives elitist survival pressure and kills the need for the whole archive subsystem. It also doubles the size of the thing I sort, from N to 2N, which makes the cost of sorting matter even more.
+
+The non-domination sort is O(M N^3) and I now have to run it on 2N every generation. I need it faster. Let me look hard at *why* the naive version is cubic and whether the work is genuinely necessary or just badly bookkept. The waste is this: to find front 2, the naive method re-examines dominations it already computed while finding front 1, and it does this peeling N times. The dominance relationships between every pair are fixed — they don't change as I peel fronts — so I'm recomputing constant facts. Let me compute each pair's relationship *once* and store enough bookkeeping to peel fronts cheaply.
+
+For each solution p, in a single O(M N^2) pass over all pairs, I'll record two things. One: a domination count n_p, the number of solutions that dominate p. Two: S_p, the set of solutions that p dominates. One sweep fills both for every unordered pair (p, q): if p dominates q, I add q to S_p and increment n_q; if q dominates p, I add p to S_q and increment n_p. That's the O(M N^2) part, paid once. Now the peeling becomes almost free. Every solution with n_p = 0 is dominated by nobody, so it's in front 1 -- collect them. To get front 2, I walk each p in front 1 and visit each q in its stored S_p, decrementing q's count n_q by one (I'm "removing" the front-1 dominators). Any q whose n_q hits zero has just lost its last dominator, so it belongs to the next front -- collect it. Repeat with that front to get the next, and so on until everyone is placed.
+
+Let me convince myself this is O(M N^2) and not secretly cubic. The first sweep is O(M N^2) because it performs the actual pairwise dominance comparisons. In the peeling phase, how many times does the inner decrement run total? Each solution p sits in exactly one front, so the outer "for each p in this front" loop body executes exactly N times across all fronts combined, not once per front per solution. And the inner loop only walks stored members of S_p; over the whole algorithm the total number of such stored visits is at most N(N-1). There is no new M-objective dominance comparison here, just decrementing counters. So the peeling phase is O(N^2), and the total is O(M N^2 + N^2), which is O(M N^2) for M objectives. I traded the cubic for a quadratic, and the price is storage — I'm now keeping S_p for every p, which can hold up to N−1 entries each, so storage rose from O(N) to O(N^2). I'll take that trade gladly; memory is cheap and the cubic was the real enemy.
+
+Now the third gap, the one I care about most aesthetically: get rid of sigma_share. I want a diversity mechanism with *no* tuning parameter. Fitness sharing is asking, for each individual, "how crowded is your neighborhood?" -- and answering it with a kernel of radius sigma_share. The radius is the parameter. Can I estimate local crowding without choosing a radius? Within a single front, "crowded" should just mean "your nearest neighbors along the front are close to you." I don't need a global radius for that -- I can read crowding straight off the neighbors. Picture a front in two-objective space, the solutions strung out along a curve. For a given solution i, look at its immediate neighbors on either side, i−1 and i+1. If those neighbors are far away, i sits in a sparse, under-represented stretch of the front and I should *protect* it to keep the spread; if they're hugging it, i is in a dense cluster and is more expendable. So let crowding be measured by the size of the gap its neighbors leave around it.
+
+Let me build that into an actual number. Sort the front by the first objective. For solution i in the interior, the distance between its two neighbors along objective 1 is f_1(i+1) − f_1(i−1) — the width of the slab i occupies in that objective. Do the same for objective 2, sorting by it, and add the slab heights. With M objectives, sort the front by each objective in turn and sum, over objectives, the neighbor-to-neighbor gap. Geometrically this is the perimeter (well, the sum of side lengths) of the cuboid whose opposite faces pass through i's nearest neighbors in each objective direction — a parameter-free estimate of the empty space around i, the "crowding distance." A large crowding distance means lots of empty space around me, I'm in a sparse region, keep me. There is no radius anywhere; the front's own spacing sets the scale automatically.
+
+Two details I have to nail or this breaks. First, the objectives are on totally different scales -- objective 1 might range over thousands, objective 2 over fractions -- and if I just add raw gaps, the large-range objective drowns out the small one. So I normalize each objective's gap by that objective's spread across the front, dividing by (f_m^max - f_m^min) before summing. If all members of the front have the same value on objective m, that objective contributes no finite gap because there is no scale to divide by. Otherwise each term is a fraction of the front's extent in that objective, and the terms are comparable. The mathematical interior update accumulates the normalized side lengths,
+
+  i.distance += (f_m(i+1) - f_m(i-1)) / (f_m^max - f_m^min).
+
+DEAP stores the average normalized side length, so its finite update includes the common factor M in the denominator,
+
+  i.distance += (f_m(i+1) - f_m(i-1)) / (M (f_m^max - f_m^min)).
+
+Second detail: the boundary solutions of the front — the ones with the smallest and largest value of an objective — have no neighbor on one side, so the gap is undefined. But these are exactly the extreme points of the front, the ends I most want to keep, because losing them shrinks the spread. So I assign them an *infinite* crowding distance: they are maximally "uncrowded" under this local density estimate and rank ahead of finite-distance interior points whenever this front is truncated. That's not a hack to dodge the undefined gap — it's the correct preference. Pinning the extremes is how the population reaches the ends of the front instead of curling inward.
+
+What does this cost? For each of M objectives I sort the front, which is O(N log N), so crowding-distance assignment is O(M N log N) -- cheaper than the non-domination sort, so it doesn't dominate the budget. And it has *no parameter*. Combine-and-truncate gives elitism without an archive, the n_p/S_p bookkeeping gives O(M N^2) sorting, and the cuboid gap gives parameter-free diversity.
+
+Now I have two pieces of information per individual: its non-domination rank (which front it's in), and its crowding distance (how sparse its neighborhood is within that front). I need a single comparison rule that uses both, because I'll use the *same* rule in two places — choosing parents, and truncating the last front during survival. Let me write down what I want a comparison `i ≺ j` (i is preferred) to mean. Convergence first: if i is in a better (lower) front than j, prefer i, full stop — being closer to the front beats everything, because that's the primary objective. Only when i and j are tied in rank does diversity get to speak: among equals on the front, prefer the one in the *less* crowded region, i.e. the larger crowding distance, to keep the spread. So the crowded-comparison partial order is
+
+  i ≺ j   if   rank_i < rank_j,   or   (rank_i = rank_j  and  distance_i > distance_j).
+
+One operator, lexicographic: rank then crowding. It encodes the two goals in priority order — get to the front, then spread along it — and it's the only place the two pressures meet, which is exactly right because they should never be averaged or weighted against each other with a coefficient I'd have to tune. It's a strict priority.
+
+Now I can finally assemble the survival step properly. I have the combined pool R_t of size 2N. I non-domination-sort it into fronts F_1, F_2, .... I add whole fronts to P_{t+1} in order — all of F_1, then all of F_2 — as long as they fit within N. At some point a front F_l doesn't fully fit: I've already taken |F_1| + ... + |F_{l−1}| < N solutions and F_l would overflow. For that last front, I don't want to take an arbitrary subset — I want the subset that best preserves spread, since all of F_l shares the same rank. So I compute crowding distances within F_l, sort F_l by the crowded-comparison rule (which, within one front, just means by crowding distance descending), and take the top however-many I need to reach exactly N. The least-crowded members of the boundary front survive; the most-crowded are dropped. Both pressures, applied in priority order, with one rule.
+
+Let me also pin down parent selection. The mathematical tournament draws two random individuals and keeps the better one under crowded-comparison: lower rank wins; same-rank ties go to the larger crowding distance. So mating pressure already favors solutions that are both near the front and in sparse regions, which seeds the next generation toward the under-represented parts of the front. In the code path I will use, the tournament is the DEAP dominance/crowding variant: if one candidate directly dominates the other it wins; otherwise the larger crowding distance wins, and an exact tie is a coin flip. That means the environmental selection is the place where full rank-then-crowding truncation is enforced, while mating uses the canonical dominance-then-crowding tournament after crowding distances have been assigned.
+
+Now the variation operators — how I turn selected parents into offspring. I'm on real-coded (continuous) variables, so I need real crossover and mutation, and the standard pair is SBX and polynomial mutation. Let me make sure I understand *why* they have the shape they do rather than just dropping them in. SBX is built to imitate single-point crossover on binary strings, but in continuous space. The key quantity is the spread factor beta = |(c2 − c1)/(p2 − p1)|, the ratio of how far apart the children are to how far apart the parents are. SBX samples beta from a polynomial density P(beta) = 0.5(eta_c+1)beta^{eta_c} for beta ≤ 1 and 0.5(eta_c+1)/beta^{eta_c+2} for beta > 1, then places the children symmetrically around the parents' midpoint:
+
+  c1 = 0.5[(1+beta_q)p1 + (1−beta_q)p2],   c2 = 0.5[(1−beta_q)p1 + (1+beta_q)p2].
+
+To sample, draw u ~ U[0,1] and invert: beta_q = (2u)^{1/(eta_c+1)} if u ≤ 0.5, else (1/(2(1−u)))^{1/(eta_c+1)}. Two properties make this the right operator for my problem. One, children land *near* the parents with high probability (the density peaks at beta = 1, c = parent) and only occasionally far — so it's a local search by default, refining around good solutions. Two, and this is the subtle one I want for the front-spreading problem: the spread of the children is proportional to the spread of the parents, because beta is a *ratio*. When the population is still scattered early on, parents are far apart, so children are far apart — exploration. As the population converges onto the front and parents bunch up, children bunch up too — the operator self-adapts from exploration to fine refinement without me scheduling anything. The distribution index eta_c tunes how sharply children concentrate near the parents: large eta_c → tight, local; small → loose, exploratory.
+
+Polynomial mutation is the same philosophy applied to a single variable, but I have to write the bounded form rather than the easy unbounded shorthand. Let the parent be x in [x_L, x_U], and let the normalized room to the lower and upper bounds be delta_L = (x - x_L)/(x_U - x_L) and delta_R = (x_U - x)/(x_U - x_L). Draw u ~ U[0,1] and set mut_pow = 1/(eta_m+1). If u < 0.5, the step points left and must shrink as x approaches x_L:
+
+  xy = 1 - delta_L,
+  val = 2u + (1 - 2u) xy^{eta_m+1},
+  delta_q = val^{mut_pow} - 1.
+
+If u >= 0.5, the step points right and must shrink as x approaches x_U:
+
+  xy = 1 - delta_R,
+  val = 2(1-u) + 2(u-0.5) xy^{eta_m+1},
+  delta_q = 1 - val^{mut_pow}.
+
+Then x' = x + delta_q (x_U - x_L), with a final clamp only as a numerical guard. The perturbation scale is roughly (x_U - x_L)/eta_m and, like SBX, large eta_m means small, local mutations. There's a real risk I have to handle for both operators: a child can be pushed outside the box [x_L, x_U]. Rejection sampling would bias the distribution and waste evaluations. The clean fix is the bound-aware version from the original real-coded implementation. For SBX, order the parents on this variable as x1 <= x2. Toward the lower side, beta = 1 + 2(x1 - x_L)/(x2 - x1), alpha = 2 - beta^{-(eta_c+1)}, and the inverse-CDF branch uses rand <= 1/alpha to form c1 = 0.5(x1 + x2 - beta_q(x2 - x1)). Toward the upper side, beta = 1 + 2(x_U - x2)/(x2 - x1), alpha = 2 - beta^{-(eta_c+1)}, and the same rand forms c2 = 0.5(x1 + x2 + beta_q(x2 - x1)). A final clamp is only a numerical guard. Polynomial mutation uses the same bound information through delta_L and delta_R.
+
+I still need concrete operator settings that are local enough for refinement but not so tight that the population freezes. eta_c = 20 and eta_m = 20 sit in the moderately local regime: offspring stay concentrated near their parents, while mutation remains at the exploratory end of the usual eta_m in [20,100] band. Crossover probability p_c = 0.9 recombines most pairs, which keeps crossover as the main engine of progress, while leaving a fraction untouched. Mutation probability p_m = 1/n with n the number of variables mutates, on average, exactly one variable per individual -- enough to keep injecting fresh genetic material and escape local stagnation, but not so much that mutation overwhelms the structure crossover has built. One variable per individual is the natural scale because it makes the *expected* number of mutations per offspring independent of dimensionality.
+
+Let me account for the cost of one full generation now, to confirm the sort is what governs it. Non-domination sorting the 2N pool is O(M N^2). Crowding-distance assignment is O(M N log N). Sorting the last front by crowding is O(N log N). The total is dominated by O(M N^2), the non-domination sort -- which is the part I worked hard to bring down from cubic. So the whole algorithm runs at O(M N^2) per generation, governed by exactly the piece I optimized.
+
+There's a fourth thing I should fold in, because real problems have constraints and I'd like to handle them without adding a penalty parameter — which would be a new knob, undoing the parameter-free spirit. The temptation is to add a penalty term to the objectives for infeasibility, but then I have to weight it, and the weight is fragile. Instead, let me extend *dominance* itself so the whole sorting machinery handles constraints for free. Define a constrained-domination: solution i constrained-dominates j if (1) i is feasible and j is not; or (2) both are infeasible but i has the smaller total constraint violation; or (3) both are feasible and i dominates j in the ordinary Pareto sense. The effect is exactly what I want: any feasible solution outranks any infeasible one; among infeasibles, less-violating ones rank higher (so the population is pulled toward the feasible region through the constraint boundaries); among feasibles, ordinary Pareto sorting takes over. No penalty parameter, and it slots straight into the same non-domination sort — I only changed the comparison primitive, nothing downstream. (When the problems are unconstrained, this reduces to ordinary dominance and costs nothing.)
+
+Let me trace the full main loop end to end to make sure the pieces lock together. Initialize a random parent population P_0 inside the bounds and evaluate it. Sort P_0 by non-domination, assign ranks and crowding distances, so the first tournament has the information it needs. Then each generation: binary-tournament-select N parents from P_t, using the dominance/crowding tournament in the code path; apply SBX (p_c = 0.9) and polynomial mutation (p_m = 1/n) to make offspring Q_t; evaluate Q_t; combine R_t = P_t ∪ Q_t (size 2N); fast-non-dominated-sort R_t; assign crowding distances per front; fill P_{t+1} front by front until adding the next front would overflow N; for that last partial front, sort by crowding distance descending and take the top slots to reach exactly N; repeat. The merge happens after offspring creation every generation, and that parent-offspring competition is what carries elitism.
+
+So now let me write it as the actual code I'd ship, filling the single generation-strategy slot. The library already gives me the fast non-dominated sort, the crowding-distance assignment, the dominance/crowding tournament, and the bound-respecting SBX and polynomial mutation operators. I should call those directly rather than quietly reimplementing near-copies, because the exact details matter: crowding distances get infinite boundaries and DEAP's normalized neighbor gap divided by the number of objectives; the mating tournament is dominance first, crowding second; the bounded variation operators use the inverse-CDF and bound-distance cases I just worked through.
+
+```python
+from copy import deepcopy
+import random
+from operator import attrgetter
+
+from deap import tools
+from deap.tools.emo import assignCrowdingDist
+
+
+class NSGA2Strategy:
+    """Elitist multiobjective generation strategy using DEAP's canonical pieces."""
+
+    def __init__(self, pop_size, n_var, bounds,
+                 cx_prob=0.9, cx_eta=20.0, mut_eta=20.0, mut_prob=None):
+        if pop_size % 4 != 0:
+            raise ValueError("selTournamentDCD requires pop_size divisible by 4")
+        self.pop_size = pop_size
+        self.n_var = n_var
+        self.bounds = bounds                       # (low, up)
+        self.cx_prob = cx_prob
+        self.cx_eta = cx_eta
+        self.mut_eta = mut_eta
+        self.mut_prob = mut_prob if mut_prob is not None else 1.0 / n_var
+
+    def _assign_selection_crowding(self, population):
+        fronts = tools.sortNondominated(population, len(population),
+                                        first_front_only=False)
+        for front in fronts:
+            assignCrowdingDist(front)
+
+    def clone_and_vary(self, parents):
+        offspring = [deepcopy(ind) for ind in parents]
+        low, up = self.bounds
+        for i in range(0, len(offspring) - 1, 2):
+            if random.random() < self.cx_prob:
+                tools.cxSimulatedBinaryBounded(
+                    offspring[i], offspring[i + 1],
+                    eta=self.cx_eta, low=low, up=up)
+                del offspring[i].fitness.values
+                del offspring[i + 1].fitness.values
+        for ind in offspring:
+            tools.mutPolynomialBounded(
+                ind, eta=self.mut_eta, low=low, up=up, indpb=self.mut_prob)
+            del ind.fitness.values
+        return offspring
+
+    @staticmethod
+    def evaluate_invalid(population, evaluate):
+        for ind in population:
+            if not ind.fitness.valid:
+                ind.fitness.values = evaluate(ind)
+
+    def generation(self, population, evaluate):
+        self._assign_selection_crowding(population)
+        parents = tools.selTournamentDCD(population, self.pop_size)
+        offspring = self.clone_and_vary(parents)
+        self.evaluate_invalid(offspring, evaluate)
+
+        combined = population + offspring
+        fronts = tools.sortNondominated(combined, self.pop_size,
+                                        first_front_only=False)
+        for front in fronts:
+            assignCrowdingDist(front)
+
+        next_population = []
+        for front in fronts:
+            if len(next_population) + len(front) <= self.pop_size:
+                next_population.extend(front)
+                continue
+            remaining = self.pop_size - len(next_population)
+            front = sorted(front, key=attrgetter("fitness.crowding_dist"), reverse=True)
+            next_population.extend(front[:remaining])
+            break
+        return next_population
+```
+
+Let me retrace the causal chain. I started stuck: the layered-ranking-plus-fitness-sharing recipe was expensive (O(M N^3) sorting), non-elitist (parents could vanish between generations), and dependent on a fragile sigma_share for diversity. I attacked elitism first and realized the external archive of SPEA/PAES was avoidable -- merging parents and offspring into one 2N pool and truncating it makes both generations compete in the same survival decision. That doubled the sort size, which forced me to fix the cubic cost: computing each pair's domination once into a count n_p and a dominated set S_p lets me peel fronts by decrementing stored counts, so the dominance work is O(M N^2), the peeling work is O(N^2), and the storage is O(N^2). For diversity I refused a radius parameter and read crowding straight off each solution's neighbors along the front -- the normalized neighbor gaps in each objective, with the front's extremes pinned at infinity so they rank ahead of finite-distance interior points -- giving parameter-free spread at O(M N log N). One lexicographic comparison, rank-then-crowding, encodes the ideal survival preference; the code uses full front rank and crowding for environmental selection and the standard dominance-then-crowding tournament for mating. SBX and polynomial mutation, bound-respecting, supply self-adaptive real-coded variation whose offspring spread tracks the population's own contraction; eta_c = eta_m = 20, p_c = 0.9, and p_m = 1/n follow from wanting moderately local, mostly-recombining variation with about one mutated variable per individual. Constrained-domination extends the same sort to constraints with no penalty parameter. The cost stays O(M N^2) per generation, governed by exactly the sort I optimized, and the whole thing drops into the standard generational MOEA loop as one generation strategy.
