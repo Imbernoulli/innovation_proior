@@ -1,0 +1,41 @@
+
+\begin{savenotes}
+\begin{minipage}{1.0\textwidth}
+%\begin{table}[h!]
+\centering
+\captionsetup{font={footnotesize}}
+\captionof{table}{\textbf{Main results on Cityscapes-C.} ``DLv3+'', ``MBv2'', ``R'' and ``X'' refer to DeepLabv3+, MobileNetv2, ResNet and Xception. The mIoUs of compared methods are reported from~\cite{robust}.}
+\label{tab:benchmark_cityscapes}
+\vspace{-4pt}
+\setlength{\tabcolsep}{0.3mm}
+\resizebox{\textwidth}{!}{
+\addtolength{\tabcolsep}{2pt}
+\begin{tabular}{c|c|cccc|cccc|cccc|cccc}
+\toprule
+\multirow{2}{*}{Method} & \multirow{2}{*}{Clean} & \multicolumn{4}{c|}{Blur} & \multicolumn{4}{c|}{Noise} & \multicolumn{4}{c|}{Digital} & \multicolumn{4}{c}{Weather} \\
+\cline{3-18}
+&  & Motion & Defoc & Glass & \multicolumn{1}{c|}{Gauss} & Gauss & Impul & Shot & \multicolumn{1}{c|}{Speck} & Bright & Contr & Satur & \multicolumn{1}{l|}{JPEG} & \multicolumn{1}{l}{Snow} & \multicolumn{1}{l}{Spatt} & \multicolumn{1}{l}{Fog} & \multicolumn{1}{l}{Frost} \\
+\midrule
+\multicolumn{1}{c|}{DLv3+ (MBv2)} & \multicolumn{1}{c|}{72.0} & 53.5 & 49.0 & 45.3 & \multicolumn{1}{c|}{49.1} & 6.4 & 7.0 & 6.6 & \multicolumn{1}{c|}{16.6} & 51.7 & 46.7 & 32.4 & \multicolumn{1}{c|}{27.2} & 13.7 & 38.9 & 47.4 & 17.3 \\
+\multicolumn{1}{c|}{DLv3+ (R50)} & \multicolumn{1}{c|}{76.6} & 58.5 & 56.6 & 47.2 & \multicolumn{1}{c|}{57.7} & 6.5 & 7.2 & 10.0 & \multicolumn{1}{c|}{31.1} & 58.2 & 54.7 & 41.3 & \multicolumn{1}{c|}{27.4} & 12.0 & 42.0 & 55.9 & 22.8 \\
+\multicolumn{1}{c|}{DLv3+ (R101)} & \multicolumn{1}{c|}{77.1} & 59.1 & 56.3 & 47.7 & \multicolumn{1}{c|}{57.3} & 13.2 & 13.9 & 16.3 & \multicolumn{1}{c|}{36.9} & 59.2 & 54.5 & 41.5 & \multicolumn{1}{c|}{37.4} & 11.9 & 47.8 & 55.1 & 22.7 \\
+\multicolumn{1}{c|}{DLv3+ (X41)} & \multicolumn{1}{c|}{77.8} & 61.6 & 54.9 & 51.0 & \multicolumn{1}{c|}{54.7} & 17.0 & 17.3 & 21.6 & \multicolumn{1}{c|}{43.7} & 63.6 & 56.9 & 51.7 & \multicolumn{1}{c|}{38.5} & 18.2 & 46.6 & 57.6 & 20.6 \\
+\multicolumn{1}{c|}{DLv3+ (X65)} & \multicolumn{1}{c|}{78.4} & 63.9 & 59.1 & 52.8 & \multicolumn{1}{c|}{59.2} & 15.0 & 10.6 & 19.8 & \multicolumn{1}{c|}{42.4} & 65.9 & 59.1 & 46.1 & \multicolumn{1}{c|}{31.4} & 19.3 & 50.7 & 63.6 & 23.8 \\
+\multicolumn{1}{c|}{DLv3+ (X71)} & \multicolumn{1}{c|}{78.6} & 64.1 & 60.9 & 52.0 & \multicolumn{1}{c|}{60.4} & 14.9 & 10.8 & 19.4 & \multicolumn{1}{c|}{41.2} & 68.0 & 58.7 & 47.1 & \multicolumn{1}{c|}{40.2} & 18.8 & 50.4 & 64.1 & 20.2 \\
+\midrule
+\multicolumn{1}{c|}{ICNet} & \multicolumn{1}{c|}{65.9} & 45.8 & 44.6 & 47.4 & \multicolumn{1}{c|}{44.7} & 8.4 & 8.4 & 10.6 & \multicolumn{1}{c|}{27.9} & 41.0 & 33.1 & 27.5 & \multicolumn{1}{c|}{34.0} & 6.3 & 30.5 & 27.3 & 11.0 \\
+\multicolumn{1}{c|}{FCN8s} & \multicolumn{1}{c|}{66.7} & 42.7 & 31.1 & 37.0 & \multicolumn{1}{c|}{34.1} & 6.7 & 5.7 & 7.8 & \multicolumn{1}{c|}{24.9} & 53.3 & 39.0 & 36.0 & \multicolumn{1}{c|}{21.2} & 11.3 & 31.6 & 37.6 & 19.7 \\
+\multicolumn{1}{c|}{DilatedNet} & \multicolumn{1}{c|}{68.6} & 44.4 & 36.3 & 32.5 & \multicolumn{1}{c|}{38.4} & 15.6 & 14.0 & 18.4 & \multicolumn{1}{c|}{32.7} & 52.7 & 32.6 & 38.1 & \multicolumn{1}{c|}{29.1} & 12.5 & 32.3 & 34.7 & 19.2 \\
+\multicolumn{1}{c|}{ResNet-38} & \multicolumn{1}{c|}{77.5} & 54.6 & 45.1 & 43.3 & \multicolumn{1}{c|}{47.2} & 13.7 & 16.0 & 18.2 & \multicolumn{1}{c|}{38.3} & 60.0 & 50.6 & 46.9 & \multicolumn{1}{c|}{14.7} & 13.5 & 45.9 & 52.9 & 22.2 \\
+\multicolumn{1}{c|}{PSPNet} & \multicolumn{1}{c|}{78.8} & 59.8 & 53.2 & 44.4 & \multicolumn{1}{c|}{53.9} & 11.0 & 15.4 & 15.4 & \multicolumn{1}{c|}{34.2} & 60.4 & 51.8 & 30.6 & \multicolumn{1}{c|}{21.4} & 8.4 & 42.7 & 34.4 & 16.2 \\
+\multicolumn{1}{c|}{GSCNN} & \multicolumn{1}{c|}{80.9} & 58.9 & 58.4 & 41.9 & \multicolumn{1}{c|}{60.1} & 5.5 & 2.6 & 6.8 & \multicolumn{1}{c|}{24.7} & 75.9 & 61.9 & 70.7 & \multicolumn{1}{c|}{12.0} & 12.4 & 47.3 & 67.9 & 32.6 \\
+\midrule
+% \multicolumn{1}{c|}{DLv3+$^*$\footnote{Re-implemented DeepLabv3+ to verify the correctness of our Cityscapes-C evaluation. The performance of the re-implemented DeepLabv3+ is at a similar level with the originally reported results.}} & \multicolumn{1}{c|}{79.8} & 58.1 & 51.9 & 42.0  & \multicolumn{1}{c|}{54.5 } & 8.4  & 14.1  & 12.6  & \multicolumn{1}{c|}{39.2} & 76.4  & 56.0  & 68.3  & \multicolumn{1}{c|}{21.5} & 10.3  & 41.3  & 73.5  & 27.6  \\
+\multicolumn{1}{c|}{SegFormer-B5}& \multicolumn{1}{c|}{\textbf{82.4}} & \textbf{69.1}  & \textbf{68.6}  & \textbf{64.1}  & \multicolumn{1}{c|}{\textbf{69.8}} & \textbf{57.8}  & \textbf{63.4}  & \textbf{52.3}  & \multicolumn{1}{c|}{\textbf{72.8}} & \textbf{81.0}  & \textbf{77.7}  & \textbf{80.1}  & \multicolumn{1}{c|}{\textbf{58.8}} & \textbf{40.7}  & \textbf{68.4}  & \textbf{78.5}  & \textbf{49.9}  \\
+\bottomrule
+\end{tabular}
+}
+%\end{table}
+\end{minipage}
+\end{savenotes}
+

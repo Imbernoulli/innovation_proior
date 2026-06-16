@@ -35,8 +35,6 @@ Equating the two expressions cancels the `λ·x·w₁·βx` risk-premium term an
 ```
 w₂ = r·w − r·x·w₁ − ½·v²·x²·w₁₁.
 ```
-I have notes with this equation dated June of 1969.
-
 And here is the thing that stops me cold when I stare at the equation. The stock's expected return `α` is gone. It has dropped out. The warrant value does not depend on how fast the stock is expected to rise. More than that — it does not depend on how the stock's risk splits into the part you can diversify away and the part you can't. It depends only on the *total* risk of the stock, the variance rate `v²`. That fascinates me, and it also unsettles me, because I came in believing the expected return had to matter — surely a warrant on a stock that's expected to soar is worth more than one on a stock expected to stagnate? But the equation says no. Whatever is going on, the drift is irrelevant and only the volatility counts.
 
 The equation has, I'm fairly sure, a unique solution once I impose the terminal condition `w(x, t*) = max(x − c, 0)` and one more boundary condition that, honestly, I don't fully understand yet. So I sit down to solve it. And I cannot. I have a doctorate in applied mathematics and a physics degree, and I spend days on this differential equation and get nowhere. I do not recognize what class of equation I am staring at, so I am stuck. I set the warrant problem aside.

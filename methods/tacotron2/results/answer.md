@@ -1,136 +1,199 @@
-# Tacotron 2
+Tacotron 2 synthesizes speech from text by joining a learned
+character-to-mel-spectrogram sequence model to a WaveNet vocoder conditioned on
+the predicted mel frames. WaveNet supplies the strong neural waveform generator
+that earlier text-to-speech pipelines lacked, while the sequence model removes
+the need for a hand-built linguistic front end with lexicon, duration, and F0
+features.
 
-## Problem
+The bridge is a mel spectrogram. It is computed directly from audio, so the
+feature predictor can be trained on text and spectrogram pairs and the vocoder
+can be trained separately on ground-truth-aligned predicted acoustic frames and
+waveform samples. It is also smooth, low-dimensional, phase-invariant within a
+frame, and weighted toward the frequencies most important for intelligible
+speech.
 
-Synthesize speech from text that is hard to distinguish from a human, learning as
-much of the pipeline as possible from data. WaveNet vocodes beautifully but
-requires a hand-engineered linguistic front end (text analysis, lexicon, F₀,
-durations); Tacotron learns the front end (char→spectrogram) but vocodes with
-Griffin-Lim, which caps naturalness. The two failures are complementary.
+The feature predictor uses a learned 512-dimensional character embedding, a
+three-layer convolutional encoder stack with 512 width-5 filters per layer,
+batch normalization, ReLU, and dropout 0.5, then a bidirectional LSTM with 512
+total units. The decoder is autoregressive: the previous mel frame passes
+through a two-layer 256-unit ReLU pre-net, the result is combined with an
+attention context, and a stack of two 1024-unit unidirectional LSTMs predicts the
+next 80-channel mel frame. A parallel scalar sigmoid predicts the stop token,
+and inference ends when that probability exceeds 0.5. There is no reduction
+factor; one decoder step predicts one mel frame.
 
-## Key idea
+Attention is additive attention extended with location features. The cumulative
+attention weights from previous decoder steps are convolved with 32 one-
+dimensional filters of length 31, projected into the 128-dimensional attention
+space, and added inside the Bahdanau score:
+e_ij = v^T tanh(W s_{i-1} + V h_j + U f_ij). This gives the alignment scoring
+function a memory of what has already been consumed, suppressing stalls, skips,
+and repeated text.
 
-Join a learned **char→mel-spectrogram** seq2seq front end to a **WaveNet vocoder
-conditioned on the predicted mel**, with the mel spectrogram as the bridge:
+After the decoder emits the mel sequence, a five-layer convolutional post-net
+with width-5 filters, 512 channels in the hidden layers, batch normalization, and
+tanh on all but the last layer predicts a residual that is added to the decoder
+mel. The mel objective is the sum of mean squared error before the post-net and
+mean squared error after the post-net, with the stop token trained as a binary
+completion prediction.
 
-- **Mel spectrogram as interface.** Computable from audio (so the two halves
-  train separately), smooth, low-dimensional (~80 channels), phase-invariant
-  within a frame (well-behaved MSE), and lossy in the perceptually-right way
-  (emphasizes low frequencies, compresses highs).
-- **Location-sensitive attention.** Additive attention augmented with features
-  from the *cumulative* attention weights, biasing the alignment to advance
-  monotonically and suppressing the skip/repeat/stall failure modes of TTS.
-- **Pre-net bottleneck.** The autoregressive previous-frame input is squeezed
-  through 2×256 ReLU layers (dropout left on at inference) so the decoder cannot
-  coast on frame-to-frame continuity and is forced to use attention.
-- **Stop token + residual post-net.** A sigmoid stop-token (threshold 0.5) ends
-  generation; a 5-layer conv post-net predicts a residual refining the mel.
-- **WaveNet vocoder** with a 10-component mixture-of-logistics output over 16-bit
-  samples at 24 kHz, conditioned on the predicted mel (2 upsampling layers).
-
-## Final structure / loss
-
-Encoder: 512-dim char embedding → 3 conv layers (512 filters, width 5, BN, ReLU,
-dropout 0.5) → BiLSTM (512, 256/direction). Attention energy:
-e_{ij} = vᵀ tanh(W s_{i-1} + V h_j + U f_{ij}), f from a 32-filter length-31 conv
-over the cumulative weights, all projected to 128-dim. Decoder: pre-net (2×256) →
-LSTMCell(1024) attention RNN → location-sensitive context → LSTMCell(1024) decoder
-RNN → linear to 80-dim mel and to a stop-token scalar. Loss = MSE(mel before
-post-net) + MSE(mel after post-net) + BCE(stop token). Vocoder: 30 dilated conv
-layers in 3 cycles (dilation 2^(k mod 10)), MoL negative-log-likelihood.
-Mel: 50 ms window, 12.5 ms hop, Hann, 80 mel bins 125 Hz–7.6 kHz, clip 0.01, log.
-No reduction factor; zoneout 0.1 on LSTMs.
-
-## Code
+Mel features use a 50 ms STFT window, 12.5 ms hop, Hann window, 80 mel channels
+from 125 Hz to 7.6 kHz, and a magnitude floor of 0.01 before log compression.
+The WaveNet vocoder is trained on ground-truth-aligned predictions from the
+feature network: the feature network runs in teacher-forcing mode so each
+predicted frame aligns exactly with the target waveform samples. The vocoder
+keeps the WaveNet structure of 30 dilated convolution layers in three dilation
+cycles, with dilation 2^(k mod 10), uses two conditioning upsampling layers for
+the 12.5 ms mel hop, and predicts a 10-component mixture of logistics over
+16-bit 24 kHz waveform samples with negative log-likelihood loss.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 class Encoder(nn.Module):
     def __init__(self, n_chars, d=512):
         super().__init__()
         self.embed = nn.Embedding(n_chars, d)
-        self.convs = nn.ModuleList(
-            nn.Sequential(nn.Conv1d(d, d, 5, padding=2), nn.BatchNorm1d(d),
-                          nn.ReLU(), nn.Dropout(0.5)) for _ in range(3))
+        self.convs = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv1d(d, d, kernel_size=5, padding=2),
+                nn.BatchNorm1d(d),
+                nn.ReLU(),
+                nn.Dropout(0.5),
+            )
+            for _ in range(3)
+        ])
         self.lstm = nn.LSTM(d, d // 2, batch_first=True, bidirectional=True)
+
     def forward(self, chars):
         x = self.embed(chars).transpose(1, 2)
-        for c in self.convs:
-            x = c(x)
-        return self.lstm(x.transpose(1, 2))[0]                  # (B, L, 512)
+        for conv in self.convs:
+            x = conv(x)
+        memory, _ = self.lstm(x.transpose(1, 2))
+        return memory
 
 class LocationSensitiveAttention(nn.Module):
-    def __init__(self, attn_dim=128, n_filters=32, kernel=31):
+    def __init__(self, attn_dim=128, n_filters=32, kernel_size=31):
         super().__init__()
-        self.query  = nn.Linear(1024, attn_dim, bias=False)
+        self.query = nn.Linear(1024, attn_dim, bias=False)
         self.memory = nn.Linear(512, attn_dim, bias=False)
-        self.loc_conv = nn.Conv1d(2, n_filters, kernel, padding=kernel // 2, bias=False)
-        self.loc_proj = nn.Linear(n_filters, attn_dim, bias=False)
-        self.v = nn.Linear(attn_dim, 1, bias=False)
-    def forward(self, query, memory, proj_memory, attn_cat):    # attn_cat (B,2,L)
-        loc = self.loc_proj(self.loc_conv(attn_cat).transpose(1, 2))
-        e = self.v(torch.tanh(self.query(query).unsqueeze(1) + proj_memory + loc))
-        weights = F.softmax(e.squeeze(-1), dim=1)
+        self.location_conv = nn.Conv1d(
+            1, n_filters, kernel_size, padding=kernel_size // 2, bias=False
+        )
+        self.location = nn.Linear(n_filters, attn_dim, bias=False)
+        self.energy = nn.Linear(attn_dim, 1, bias=False)
+
+    def forward(self, query, memory, projected_memory, cumulative_weights):
+        loc = self.location_conv(cumulative_weights.unsqueeze(1)).transpose(1, 2)
+        loc = self.location(loc)
+        score = self.energy(
+            torch.tanh(self.query(query).unsqueeze(1) + projected_memory + loc)
+        ).squeeze(-1)
+        weights = F.softmax(score, dim=1)
         context = torch.bmm(weights.unsqueeze(1), memory).squeeze(1)
         return context, weights
 
 class Prenet(nn.Module):
     def __init__(self, n_mels=80, hidden=256):
         super().__init__()
-        self.fc1, self.fc2 = nn.Linear(n_mels, hidden), nn.Linear(hidden, hidden)
+        self.layers = nn.ModuleList([
+            nn.Linear(n_mels, hidden),
+            nn.Linear(hidden, hidden),
+        ])
+
     def forward(self, x):
-        x = F.dropout(F.relu(self.fc1(x)), 0.5, training=True)  # dropout always on
-        return F.dropout(F.relu(self.fc2(x)), 0.5, training=True)
+        for layer in self.layers:
+            x = F.dropout(F.relu(layer(x)), p=0.5, training=True)
+        return x
 
 class Decoder(nn.Module):
     def __init__(self, n_mels=80):
         super().__init__()
-        self.prenet   = Prenet(n_mels)
-        self.attn_rnn = nn.LSTMCell(256 + 512, 1024)
-        self.attn     = LocationSensitiveAttention()
-        self.dec_rnn  = nn.LSTMCell(1024 + 512, 1024)
-        self.frame_proj = nn.Linear(1024 + 512, n_mels)
-        self.stop_proj  = nn.Linear(1024 + 512, 1)
-    def step(self, prev_mel, memory, proj_memory, state):
-        h_a, c_a, h_d, c_d, context, cum_w, cur_w = state
-        p = self.prenet(prev_mel)
-        h_a, c_a = self.attn_rnn(torch.cat([p, context], -1), (h_a, c_a))
-        context, cur_w = self.attn(h_a, memory, proj_memory,
-                                   torch.stack([cur_w, cum_w], 1))
-        cum_w = cum_w + cur_w
-        h_d, c_d = self.dec_rnn(torch.cat([h_a, context], -1), (h_d, c_d))
-        dc = torch.cat([h_d, context], -1)
-        return (self.frame_proj(dc), self.stop_proj(dc),
-                (h_a, c_a, h_d, c_d, context, cum_w, cur_w))
+        self.prenet = Prenet(n_mels)
+        self.attention_rnn = nn.LSTMCell(256 + 512, 1024)
+        self.attention = LocationSensitiveAttention()
+        self.decoder_rnn = nn.LSTMCell(1024 + 512, 1024)
+        self.frame = nn.Linear(1024 + 512, n_mels)
+        self.stop = nn.Linear(1024 + 512, 1)
+
+    def step(self, previous_mel, memory, projected_memory, state):
+        h_att, c_att, h_dec, c_dec, context, cumulative_weights = state
+        prenet_out = self.prenet(previous_mel)
+        h_att, c_att = self.attention_rnn(
+            torch.cat([prenet_out, context], dim=-1), (h_att, c_att)
+        )
+        context, weights = self.attention(
+            h_att, memory, projected_memory, cumulative_weights
+        )
+        cumulative_weights = cumulative_weights + weights
+        h_dec, c_dec = self.decoder_rnn(
+            torch.cat([h_att, context], dim=-1), (h_dec, c_dec)
+        )
+        decoder_context = torch.cat([h_dec, context], dim=-1)
+        return (
+            self.frame(decoder_context),
+            self.stop(decoder_context),
+            (h_att, c_att, h_dec, c_dec, context, cumulative_weights),
+        )
 
 class Postnet(nn.Module):
-    def __init__(self, n_mels=80, d=512):
+    def __init__(self, n_mels=80, channels=512):
         super().__init__()
-        layers = [nn.Sequential(nn.Conv1d(n_mels, d, 5, padding=2),
-                                nn.BatchNorm1d(d), nn.Tanh(), nn.Dropout(0.5))]
+        layers = [
+            nn.Sequential(
+                nn.Conv1d(n_mels, channels, kernel_size=5, padding=2),
+                nn.BatchNorm1d(channels),
+                nn.Tanh(),
+                nn.Dropout(0.5),
+            )
+        ]
         for _ in range(3):
-            layers.append(nn.Sequential(nn.Conv1d(d, d, 5, padding=2),
-                                        nn.BatchNorm1d(d), nn.Tanh(), nn.Dropout(0.5)))
-        layers.append(nn.Sequential(nn.Conv1d(d, n_mels, 5, padding=2),
-                                    nn.BatchNorm1d(n_mels), nn.Dropout(0.5)))
+            layers.append(nn.Sequential(
+                nn.Conv1d(channels, channels, kernel_size=5, padding=2),
+                nn.BatchNorm1d(channels),
+                nn.Tanh(),
+                nn.Dropout(0.5),
+            ))
+        layers.append(nn.Sequential(
+            nn.Conv1d(channels, n_mels, kernel_size=5, padding=2),
+            nn.BatchNorm1d(n_mels),
+            nn.Dropout(0.5),
+        ))
         self.net = nn.Sequential(*layers)
-    def forward(self, mel):
-        return self.net(mel)                                    # residual
 
-def feature_loss(mel_before, mel_after, stop_logits, mel_tgt, stop_tgt):
-    mse = F.mse_loss(mel_before, mel_tgt) + F.mse_loss(mel_after, mel_tgt)
-    return mse + F.binary_cross_entropy_with_logits(stop_logits, stop_tgt)
+    def forward(self, mel_before):
+        return self.net(mel_before)
 
-class WaveNetVocoder(nn.Module):                     # conditioned on predicted mel
-    def __init__(self, n_mels=80, n_mix=10, channels=512):
+def apply_postnet(mel_before, postnet):
+    residual = postnet(mel_before)
+    return mel_before + residual
+
+def feature_loss(mel_before, mel_after, stop_logits, mel_target, stop_target):
+    mel_mse = F.mse_loss(mel_before, mel_target) + F.mse_loss(mel_after, mel_target)
+    stop_loss = F.binary_cross_entropy_with_logits(stop_logits, stop_target)
+    return mel_mse + stop_loss
+
+class WaveNetVocoder(nn.Module):
+    def __init__(self, upsample_kernels, upsample_strides,
+                 n_mels=80, n_mix=10, channels=512):
         super().__init__()
-        self.upsample = nn.ModuleList(                          # 2 layers (12.5ms hop)
-            nn.ConvTranspose1d(n_mels, n_mels, 2 * f, stride=f) for f in (16, 16))
-        self.dilated = nn.ModuleList(
-            nn.Conv1d(channels, 2 * channels, 2, dilation=2 ** (k % 10),
-                      padding=2 ** (k % 10)) for k in range(30))   # 3 cycles
-        self.out = nn.Linear(channels, 3 * n_mix)               # mean, log-scale, weight
-    def forward(self, mel, audio):
-        ...                                                     # MoL negative log-likelihood
+        self.conditioning_upsample = nn.ModuleList([
+            nn.ConvTranspose1d(
+                n_mels, n_mels, kernel_size=k, stride=s
+            )
+            for k, s in zip(upsample_kernels, upsample_strides)
+        ])
+        self.dilated = nn.ModuleList([
+            nn.Conv1d(
+                channels, 2 * channels, kernel_size=2,
+                dilation=2 ** (k % 10), padding=2 ** (k % 10)
+            )
+            for k in range(30)
+        ])
+        self.output = nn.Linear(channels, 3 * n_mix)
+
+    def forward(self, predicted_mel, audio_prefix):
+        raise NotImplementedError
 ```

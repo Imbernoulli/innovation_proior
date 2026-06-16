@@ -10,7 +10,7 @@ Now I have to look closely at what an EnCodec frame actually is, because the str
 
 The naive thing is to flatten the matrix into one long sequence — `c_{1,1}, c_{1,2}, ..., c_{1,8}, c_{2,1}, ...` — and run a single autoregressive model. But that multiplies my already-750-long sequence by 8 to 6000, and the per-step autoregression at audio time scales is the latency killer I was trying to escape. So flattening is out. The other extreme — predict all 8 × 750 codes fully in parallel, non-autoregressively — would be fast, but the time axis genuinely needs autoregression: I don't know in advance how *long* the output should be (speaking rate varies wildly across speakers, and I can't reliably train a duration predictor across thousands of diverse speakers), and an AR model decides its own length by emitting an end-of-sequence token. So neither pure-AR-over-flattened nor pure-NAR works cleanly.
 
-Here's where the RVQ hierarchy pays off. The two axes of the matrix have completely different characters. Along the *time* axis I have genuine sequential dependency and unknown length — that wants autoregression. Along the *codebook* axis, the dependency is the residual hierarchy: codebook `j` depends on codebooks `< j`, but given all the earlier codebooks, predicting codebook `j` across *all 750 timesteps at once* is fine — there's no left-to-right dependency *within* a single codebook level that I can't already condition on. So split the problem by axis. Use an autoregressive model for the first codebook — the one that carries speaker identity and content, the one whose length I need the AR model to decide — and a non-autoregressive model for the remaining seven, each generated in one parallel shot conditioned on the codebooks below it. That gives me the best of both: AR handles length and the most important content; NAR collapses the time complexity of the other seven codebooks from O(T) to O(1) each. The full factorization is
+The RVQ hierarchy gives me a cleaner split. The two axes of the matrix have completely different characters. Along the *time* axis I have genuine sequential dependency and unknown length — that wants autoregression. Along the *codebook* axis, the dependency is the residual hierarchy: codebook `j` depends on codebooks `< j`, but given all the earlier codebooks, predicting codebook `j` across *all 750 timesteps at once* is fine — there's no left-to-right dependency *within* a single codebook level that I can't already condition on. So split the problem by axis. Use an autoregressive model for the first codebook — the one that carries speaker identity and content, the one whose length I need the AR model to decide — and a non-autoregressive model for the remaining seven, each generated in one parallel shot conditioned on the codebooks below it. That gives me the best of both: AR handles length and the most important content; NAR collapses the time complexity of the other seven codebooks from O(T) to O(1) each. The full factorization is
 
   p(C | x, C̃) = p(c_{:,1} | x, C̃_{:,1}; θ_AR) · Π_{j=2}^{8} p(c_{:,j} | c_{:,<j}, x, C̃; θ_NAR),
 
@@ -28,19 +28,31 @@ How does the NAR model know *which* codebook level it's currently predicting? I 
 
 where `a_i` and `b_i` come from a linear projection of a stage embedding for level `i`. So one shared NAR network handles all seven levels, told which level it's on through the AdaLN conditioning. In training I sample a random stage `i ∈ [2, 8]` each step and train the model to predict codebook `i` from the codebooks below it; at inference I run it seven times, levels 2 through 8 in order. And I share weights between the acoustic embedding layers and the prediction layers — the `j`-th prediction layer shares weights with the `(j+1)`-th acoustic embedding — because the code space is the same object whether I'm reading a code in or writing one out, so tying them saves parameters and ties the two views of each codebook together.
 
-Step back and check the division of labor makes sense. The AR model decides the utterance length and lays down the speaker-and-content-bearing first codebook, with the speaker carried in by the acoustic prefix — that's where the flexibility lives. The NAR model fills in the seven refinement codebooks in parallel, anchored to the speaker by the explicit `C̃` prompt across all codebooks — that's where the speed lives, O(1) per level instead of O(T). Together: `p(C) = p(c_{:,1} | C̃_{:,1}, x; θ_AR) · Π_{j=2}^{8} p(c_{:,j} | c_{:,<j}, x, C̃; θ_NAR)`. Then hand the full 750×8 code matrix to EnCodec's decoder and out comes the waveform — the room and timbre of the prompt preserved, because the codes carry them and I never went through a speaker-stripping bottleneck.
+The division of labor now has a clean shape. The AR model decides the utterance length and lays down the speaker-and-content-bearing first codebook, with the speaker carried in by the acoustic prefix — that's where the flexibility lives. The NAR model fills in the seven refinement codebooks in parallel, anchored to the speaker by the explicit `C̃` prompt across all codebooks — that's where the speed lives, O(1) per level instead of O(T). Together: `p(C) = p(c_{:,1} | C̃_{:,1}, x; θ_AR) · Π_{j=2}^{8} p(c_{:,j} | c_{:,<j}, x, C̃; θ_NAR)`. Then hand the full 750×8 code matrix to EnCodec's decoder and out comes the waveform — the room and timbre of the prompt preserved, because the codes carry them and I never went through a speaker-stripping bottleneck.
 
 The training is just language modeling, which is the entire point — it's simple and it scales. Tokenize 60K hours of audiobook speech with EnCodec, get phoneme alignments from an ASR model, and train the AR and NAR Transformers (both 12 layers, 16 heads, `d_model` 1024, FFN 4096) with cross-entropy. No adaptation, no speaker encoder, no vocoder training, no duration model. The only thing I'm betting on is that scale plus discrete codec tokens plus the AR-then-NAR factorization gives the in-context speaker generalization I couldn't get any other way.
 
-Here's the structure in code — the two Transformers, the AR prefix-as-prompt, the NAR summed-codebook conditioning with adaptive layer-norm staging, and the shared embed/predict weights.
+I can now write the model skeleton so the tensors follow that factorization: the AR path returns logits only for first-codebook acoustic positions, and the NAR path returns logits only for the target utterance slots after conditioning on phonemes, the full enrolled-code prompt, and the lower generated codebooks.
 
 ```python
+import math
 import torch
 import torch.nn as nn
 
 NUM_AUDIO_TOKENS = 1024          # EnCodec codebook size
 NUM_QUANTIZERS   = 8
 EOS = NUM_AUDIO_TOKENS           # extra id for end-of-sequence (AR only)
+
+class SinePositionalEmbedding(nn.Module):
+    def forward(self, x):
+        length, width = x.size(1), x.size(2)
+        pos = torch.arange(length, device=x.device, dtype=x.dtype).unsqueeze(1)
+        div = torch.exp(torch.arange(0, width, 2, device=x.device, dtype=x.dtype)
+                        * (-math.log(10000.0) / width))
+        pe = x.new_zeros(length, width)
+        pe[:, 0::2] = torch.sin(pos * div)
+        pe[:, 1::2] = torch.cos(pos * div)
+        return x + pe.unsqueeze(0)
 
 class AdaptiveLayerNorm(nn.Module):
     # AdaLN(h, i) = a_i * LayerNorm(h) + b_i ; a_i, b_i from the stage embedding
@@ -49,65 +61,110 @@ class AdaptiveLayerNorm(nn.Module):
         self.ln = nn.LayerNorm(d_model, elementwise_affine=False)
         self.proj = nn.Linear(d_model, 2 * d_model)
     def forward(self, h, stage_emb):
+        if stage_emb.dim() == 2:
+            stage_emb = stage_emb.unsqueeze(1)
         a, b = self.proj(stage_emb).chunk(2, dim=-1)
         return a * self.ln(h) + b
 
+class NARBlock(nn.Module):
+    def __init__(self, d_model, nhead, d_ff, dropout=0.1):
+        super().__init__()
+        self.norm1 = AdaptiveLayerNorm(d_model)
+        self.attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout, batch_first=True)
+        self.norm2 = AdaptiveLayerNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, d_model),
+        )
+        self.drop = nn.Dropout(dropout)
+
+    def forward(self, h, stage_emb):
+        q = self.norm1(h, stage_emb)
+        h = h + self.drop(self.attn(q, q, q, need_weights=False)[0])
+        h = h + self.drop(self.ffn(self.norm2(h, stage_emb)))
+        return h
+
 class VALLE(nn.Module):
-    def __init__(self, d_model=1024, nhead=16, nlayers=12, d_ff=4096, n_phonemes=512):
+    def __init__(self, d_model=1024, nhead=16, nlayers=12, d_ff=4096,
+                 n_phonemes=512, dropout=0.1):
         super().__init__()
         self.phoneme_emb = nn.Embedding(n_phonemes, d_model)
+        self.phoneme_pos = SinePositionalEmbedding()
 
         # --- AR: first codebook only ---
         self.ar_audio_emb = nn.Embedding(NUM_AUDIO_TOKENS + 1, d_model)   # +1 for EOS
-        self.ar_pos = SinePositionalEmbedding(d_model)
+        self.ar_audio_pos = SinePositionalEmbedding()
         self.ar = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model, nhead, d_ff, batch_first=True), nlayers)
+            nn.TransformerEncoderLayer(d_model, nhead, d_ff, dropout=dropout,
+                                       batch_first=True), nlayers)
         self.ar_predict = nn.Linear(d_model, NUM_AUDIO_TOKENS + 1)
         self.ar_predict.weight = self.ar_audio_emb.weight                 # tie embed <-> predict
 
         # --- NAR: codebooks 2..8, shared net, stage-conditioned via AdaLN ---
         self.nar_audio_embs = nn.ModuleList(
             [nn.Embedding(NUM_AUDIO_TOKENS, d_model) for _ in range(NUM_QUANTIZERS)])
-        self.nar_stage_embs = nn.ModuleList(
-            [nn.Embedding(1, d_model) for _ in range(NUM_QUANTIZERS - 1)])  # stages i=2..8
-        self.nar = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(d_model, nhead, d_ff, batch_first=True), nlayers)
-        self.nar_ln = AdaptiveLayerNorm(d_model)
+        self.nar_prompt_pos = SinePositionalEmbedding()
+        self.nar_audio_pos = SinePositionalEmbedding()
+        self.nar_stage_emb = nn.Embedding(NUM_QUANTIZERS - 1, d_model)     # stages i=2..8
+        self.nar = nn.ModuleList([NARBlock(d_model, nhead, d_ff, dropout)
+                                  for _ in range(nlayers)])
         self.nar_predicts = nn.ModuleList(
             [nn.Linear(d_model, NUM_AUDIO_TOKENS) for _ in range(NUM_QUANTIZERS - 1)])
         for j in range(NUM_QUANTIZERS - 1):                                # predict layer j shares
             self.nar_predicts[j].weight = self.nar_audio_embs[j + 1].weight  # with (j+1)-th embedding
 
-    def forward_ar(self, phonemes, codes1):
-        # causal LM over [phonemes | first-codebook codes]; the prefix IS the prompt
-        x = self.phoneme_emb(phonemes)
-        a = self.ar_pos(self.ar_audio_emb(codes1))
+    def forward_ar(self, phoneme_prompt, codes1):
+        # causal LM over [phonemes | first-codebook codes]; only acoustic slots are predicted
+        x = self.phoneme_pos(self.phoneme_emb(phoneme_prompt))
+        a = self.ar_audio_pos(self.ar_audio_emb(codes1))
         h = torch.cat([x, a], dim=1)
         L = h.size(1)
         mask = torch.triu(torch.ones(L, L, device=h.device), diagonal=1).bool()  # no peeking ahead
         h = self.ar(h, mask=mask)
-        return self.ar_predict(h)                                          # next-token logits over c_{:,1}
+        return self.ar_predict(h[:, x.size(1):])                            # logits over c_{:,1} (+ EOS)
 
     def forward_nar(self, phonemes, prompt_codes, codes_lt_i, stage_i):
-        # predict codebook stage_i (2..8) from codebooks < i, non-causal, anchored by full prompt
-        x = self.phoneme_emb(phonemes)
+        # predict target codebook stage_i (2..8), non-causally, from lower codebooks and full prompt
+        x = self.phoneme_pos(self.phoneme_emb(phonemes))
         prompt = sum(self.nar_audio_embs[j](prompt_codes[..., j]) for j in range(NUM_QUANTIZERS))
+        prompt = self.nar_prompt_pos(prompt)
         y = sum(self.nar_audio_embs[j](codes_lt_i[..., j]) for j in range(stage_i - 1))  # sum lower
+        y = self.nar_audio_pos(y)
         h = torch.cat([x, prompt, y], dim=1)
-        stage_emb = self.nar_stage_embs[stage_i - 2].weight                # AdaLN tells it the stage
-        h = self.nar(h)
-        h = self.nar_ln(h, stage_emb)
-        return self.nar_predicts[stage_i - 2](h)
+        stage_ids = torch.full((h.size(0),), stage_i - 2, device=h.device, dtype=torch.long)
+        stage_emb = self.nar_stage_emb(stage_ids)                           # AdaLN tells it the stage
+        for block in self.nar:
+            h = block(h, stage_emb)
+        target_h = h[:, -y.size(1):]                                        # discard phoneme/prompt slots
+        return self.nar_predicts[stage_i - 2](target_h)
 
     @torch.no_grad()
-    def synthesize(self, phonemes, prompt_codes, codec):
-        # AR: sample first codebook continuing the acoustic prefix prompt_codes[:,0]
-        codes1 = sample_ar(self.forward_ar, phonemes, prompt_codes[..., 0])   # until EOS
+    def generate_first_codebook(self, phoneme_prompt, acoustic_prefix, max_new_tokens, temperature=1.0):
+        # sampling avoids the beam-search looping failure; acoustic_prefix is the enrolled speaker
+        codes = acoustic_prefix
+        generated = []
+        for _ in range(max_new_tokens):
+            logits = self.forward_ar(phoneme_prompt, codes)[:, -1] / temperature
+            next_id = torch.multinomial(logits.softmax(-1), num_samples=1)
+            if (next_id == EOS).all():
+                break
+            generated.append(next_id.clamp_max(NUM_AUDIO_TOKENS - 1))
+            codes = torch.cat([codes, next_id], dim=1)
+        if not generated:
+            return acoustic_prefix.new_empty(acoustic_prefix.size(0), 0)
+        return torch.cat(generated, dim=1)
+
+    @torch.no_grad()
+    def synthesize(self, phoneme_prompt, prompt_codes, codec, max_new_tokens):
+        # phoneme_prompt = enrolled transcription phonemes followed by requested-text phonemes
+        codes1 = self.generate_first_codebook(phoneme_prompt, prompt_codes[..., 0], max_new_tokens)
         codes = [codes1]
         # NAR: greedily fill codebooks 2..8, each conditioned on all previous
         cur = codes1.unsqueeze(-1)
         for i in range(2, NUM_QUANTIZERS + 1):
-            logits = self.forward_nar(phonemes, prompt_codes, cur, i)
+            logits = self.forward_nar(phoneme_prompt, prompt_codes, cur, i)
             ci = logits.argmax(-1)
             cur = torch.cat([cur, ci.unsqueeze(-1)], dim=-1)
             codes.append(ci)

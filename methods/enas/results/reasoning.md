@@ -1,179 +1,145 @@
-Let me start from what actually hurts about searching for neural architectures. I have a controller — an LSTM with parameters θ — that defines a distribution π(m; θ) over candidate architectures m. It samples one, I build that child network, I train it, I measure how good it is, and I push θ toward the architectures that scored well. The reinforcement-learning version of this works: the architectures it finds are competitive with the best ones experts design by hand, on image classification and on language modeling. So the formulation is right. The problem is the price tag. To score *one* candidate, I initialize a fresh network with random weights, train it to convergence, read off a single number — its validation accuracy — and then I throw all those trained weights in the trash. Then the controller samples the next candidate and I do it all again from scratch. Thousands of candidates, each a full from-scratch training run. That's how a single search ends up eating 450 GPUs for three or four days — tens of thousands of GPU-hours — and if I try to economize by training each child for fewer epochs or sampling fewer candidates, the architectures I find get noticeably worse. So I can't just turn the budget knob down.
+Let me start from the expensive part, because the rest of the machinery is not where the pain lives. I have an LSTM controller with parameters theta. It defines a distribution pi(m; theta) over child architectures m by emitting a sequence of discrete decisions: which operation, which previous node, which skip edge. I sample a child, train that child, measure validation performance, and use that scalar as a reward. REINFORCE can update theta even though the architecture decisions are discrete. This is a good formulation. The bad part is that the reward for one sample is bought by training one whole child network from random initialization to convergence, reading off one validation number, and then throwing all of those weights away.
 
-Where exactly is the money going? Not the controller — the controller is a small LSTM, sampling a sequence of tokens is cheap, the REINFORCE update is cheap. It's the inner loop: "train this child network to convergence." And the part of that which feels most wasteful is the *from scratch*. Every single child rediscovers, from random initialization, how to do convolution, how to represent edges and textures, the whole low-level substrate — only to be measured once and discarded. I am paying full price for weights I keep for exactly one evaluation. If I could stop re-learning weights from scratch for every candidate, the whole thing would collapse in cost. That's the lever.
+That is where the GPU-hours disappear. The controller is small. Sampling tokens is cheap. The policy-gradient update is cheap. The waste is that every candidate relearns basic filters, recurrent transitions, embeddings, and skip-path behavior from scratch, even though many candidates reuse the same kinds of local computations. If I keep scoring children this way, architecture search is always a nested loop where the inner loop is "train a complete neural network." Reducing the number of samples or training each child less is just starving the search. I need to remove the repeated from-scratch training itself.
 
-So let me poke at the assumption that each child needs its own weights. Why do I believe that? Reflex says different architectures are different functions, so of course they need different parameters. But two things I know push back. Transfer learning: weights trained for one model on one task transfer to other models on other tasks with little or no modification — parameters are not as architecture-specific as the reflex assumes. And weight inheritance in neuro-evolution: when you mutate an architecture, you don't reinitialize the child, you copy the parent's weights and fine-tune briefly, and it works. So weights *can* be reused across architectures. The evolutionary version reuses them only locally — child must be a small mutation of its parent. What if I went all the way and let *every* architecture in the search space share *one* set of weights?
+The assumption to attack is that each architecture owns an independent set of weights. That assumption is natural if I think of each candidate as a separate model. But it is not inevitable. Transfer learning already tells me that weights learned in one setting can be useful in another. Weight inheritance in evolutionary search tells me that a mutated child does not have to begin from random noise; it can inherit the parent's parameters. The inheritance version is local, though. It only helps when the new child is near a previous parent. I want the stronger version: one weight store that can serve the whole search space.
 
-Let me see if that even makes sense, or if it's nonsense. I have an enormous space of candidate networks. The standard cell-search trick is illuminating here: instead of designing a whole network, design a small cell — pick, for each of a handful of nodes, which earlier nodes feed it and which operation to apply — then stack copies of the cell. So a candidate is really a set of *choices over a fixed menu of components*: node 3 takes input from node 1 and applies a 5×5 separable conv; node 4 takes input from node 2 and applies max-pool; and so on. Now here's the thing I keep circling back to. Across all the candidates in the space, the menu of components is the *same*. "5×5 separable conv applied to the output of node 1" is a component that appears, identically, in a huge number of different candidate architectures. They differ in *which* components they wire together, not in *what the components are*.
+This starts to make sense once I stop picturing the search space as a bag of unrelated networks. A cell search space is a fixed menu of possible decisions. At a node I choose a previous node and an operation. At a convolutional layer I choose an operation and a set of previous layers for skip connections. Across candidates, the menu is the same; only the active choices differ. If I draw every possible local computation and every possible edge, I get one large directed acyclic graph. A child architecture is not a separate object anymore. It is a subgraph selected from this larger graph.
 
-Stare at that. If I draw every possible component as an edge in one big graph — a node for each computation slot, an edge for "the output of node i, transformed by operation o, feeds node j" — then the entire search space is a single big directed acyclic graph, and every candidate architecture is just a *subgraph* of it: a particular choice of which edges are active. The controller's job, recast, is to pick a subgraph. And now the weight-sharing idea isn't a leap, it's almost forced: give each edge of the big graph its own parameters — the weight matrix for "op o from node i to node j" lives on that edge — and a candidate architecture, by selecting which edges it activates, automatically selects *which* of these shared parameters it uses. Two different architectures that both happen to use the 5×5-separable-conv-from-node-1 edge use the *same* weight matrix for it. The superposition of all child models over one DAG, with parameters living on the edges and shared by every child that activates that edge. Call the shared child-model weights ω, kept once, for the whole search.
+Now parameter sharing becomes the natural representation. Put parameters on the edges and local computations of the big DAG. When the controller samples an architecture, the sampled tokens choose which edges and operations are active, and therefore which subset of parameters omega is used. If two children select the same edge or operation slot, they use the same weights for that slot. All child architectures are subgraphs of a single supergraph, and all of them share the one parameter collection omega. I no longer train a fresh child to convergence just to score it. I train omega as the weights of the supergraph, and a sampled child receives the relevant slice of omega automatically.
 
-The cost picture changes completely. I no longer train one network per candidate. I keep one big pool of weights ω. When the controller samples an architecture m, I don't reinitialize anything — m just tells me which subset of ω to use, and that subset is *already partially trained* from every previous candidate that used those same edges. No from-scratch training per candidate. That's the 1000× I'm after, if it works.
+This creates two coupled optimization problems. The controller parameters theta decide which subgraph is sampled. The shared weights omega determine how well the sampled subgraph performs. I cannot update them as if they were one ordinary differentiable model, because theta controls discrete choices. But I can alternate.
 
-Now I have to actually pin down two things: how the controller samples a subgraph, and how I train two coupled sets of parameters — the controller's θ and the shared weights ω.
+For omega, I hold theta fixed. The controller policy pi(m; theta) is just a sampler over architectures. The objective for the shared weights is the expected training loss of a sampled child,
 
-Take the recurrent-cell case first because it's the cleanest. I have a DAG with N nodes. I want the controller to decide both the *topology* (who connects to whom) and the *operations* (which nonlinearity at each node) — both, not just the operations on a fixed tree, because fixing the topology throws away half the design freedom. So at node 1, the input is the cell's input x_t together with the previous hidden state h_{t-1}; the controller samples an activation function, say tanh, and node 1 computes h_1 = tanh(x_t·W^(x) + h_{t-1}·W_1^(h)). At node ℓ > 1, the controller samples a previous index j < ℓ and an activation function f; node ℓ computes h_ℓ = f(h_j · W_{ℓ,j}^(h)). The crucial detail for sharing: for every ordered pair j < ℓ there is an *independent* matrix W_{ℓ,j}^(h), and by picking the previous index j, the controller is also picking *which matrix gets used*. So the parameters live on the edges (ℓ, j), and a cell's choice of edges is a choice of which W's it touches. For the cell's output, I average all the loose ends — the nodes nobody used as an input — so nothing computed is wasted. With four activation choices and N nodes there are 4^N · N! configurations; at N = 12 that's about 10^15 cells, all sharing the one pool of W's.
+  minimize_omega E_{m ~ pi(m; theta)}[L(m; omega)].
 
-The controller itself: an LSTM, small, say 100 hidden units. It emits the decisions autoregressively — softmax over choices at each step, and the decision it just made is fed back in as the embedding for the next step, so later decisions are conditioned on earlier ones (which input you picked should inform which activation, etc.). At the first step there's no previous decision, so it gets an empty/zero input embedding.
+For a sampled m, the loss is an ordinary cross-entropy or language-model loss through the active subgraph, so it is differentiable in omega. The Monte Carlo gradient is
 
-Now the training. Two parameter sets, θ (controller) and ω (shared child weights), and I'll alternate two phases.
+  grad_omega E[L(m; omega)] ~= (1/M) sum_i grad_omega L(m_i; omega),  m_i ~ pi(m; theta).
 
-Phase for ω: fix the controller's policy π(m; θ) and do SGD on ω to reduce the expected loss over architectures the controller currently likes,
+This is unbiased because theta is fixed and the only derivative is with respect to omega. The obvious worry is variance: one architecture touches only part of the shared DAG. But increasing M would start making each shared-weight step expensive again. The aggressive choice is M = 1: sample one architecture per minibatch, backprop through only its active subgraph, and move omega. Over an epoch, different minibatches activate different subgraphs, so the architecture sampling noise averages together with the usual minibatch noise. That keeps the shared-weight phase cheap: one child subgraph per minibatch, not many trained children per controller sample.
 
-  minimize over ω of  E_{m ~ π(m;θ)} [ L(m; ω) ],
+For theta, I hold omega fixed. Now the objective is expected validation reward,
 
-where L(m; ω) is the ordinary cross-entropy (or LM loss) of child m, computed on a training minibatch, using the shared weights ω restricted to m's active edges. I can't differentiate an expectation over a discrete distribution directly, but I don't need to — I'm differentiating with respect to ω, not θ, and for a *fixed* sampled m the loss L(m; ω) is perfectly differentiable in ω. So I get a Monte-Carlo estimate:
+  maximize_theta E_{m ~ pi(m; theta)}[R(m, omega)].
 
-  ∇_ω E_{m~π}[ L(m; ω) ] ≈ (1/M) Σ_{i=1}^M ∇_ω L(m_i; ω),  m_i ~ π(m; θ).
+The reward is measured after executing the sampled subgraph with the current shared weights. It is not differentiable through the sampled tokens, so I use the score-function identity:
 
-This is unbiased. How many samples M do I need per ω-update? My instinct says many, because each sampled architecture only exercises a sliver of ω and the per-sample gradient is high-variance compared to ordinary fixed-architecture SGD. Let me just try M = 1 — update ω using the gradient from a *single* architecture sampled fresh each minibatch. That should be too noisy... and yet it's fine. It works. Which, once I see it, makes sense: over a whole epoch I draw a different architecture every minibatch, so across the epoch ω gets gradient signal from a broad spread of subgraphs, and the per-minibatch architecture-noise averages out the same way minibatch-sampling noise already does. So I don't need the expensive M; one sample per step, and I train ω over a full pass through the training data.
+  grad_theta E[R] = E[R(m, omega) * grad_theta log pi(m; theta)].
 
-Phase for θ: now fix ω and update the controller to prefer architectures that score well. The score is a reward R(m, ω), and I want to maximize the expected reward
+The estimator has high variance, so I subtract a moving baseline b:
 
-  maximize over θ of  E_{m ~ π(m;θ)} [ R(m, ω) ].
+  E[(R - b) * grad_theta log pi] = E[R * grad_theta log pi] - b * grad_theta sum_m pi(m; theta)
+                                = E[R * grad_theta log pi].
 
-Here the dependence on θ *is* through the discrete sampling, so I can't backprop through it — this is exactly the REINFORCE situation. The score-function estimator gives
+The baseline update can be a simple exponential moving average, b <- b - (1 - decay) * (b - R). If I store the controller's decision terms as cross-entropies, sample_log_probs = -sum log pi(m; theta), then the sign in code looks slightly different from the math: minimizing sample_log_probs * (R - b) raises the probability of an architecture when its reward is above the baseline and lowers it when the reward is below the baseline. That is the same REINFORCE ascent step, written with cross-entropy terms.
 
-  ∇_θ E_{m~π}[ R ] = E_{m~π}[ R(m, ω) · ∇_θ log π(m; θ) ],
+The data split matters. Omega should be trained on the training split; otherwise the weights do not learn the task. Theta should be rewarded on validation data; otherwise the controller can select architectures that exploit training-set fit rather than generalization. For language modeling, lower perplexity is better, so I convert validation perplexity into a reward like c / valid_ppl. For image classification, validation accuracy already has the right direction. In both cases the reward is computed on a validation minibatch with omega fixed.
 
-which needs only that I can sample m and evaluate the scalar R — R need not be differentiable, which is good because it won't be. This estimator is high-variance, so I subtract a baseline b: use (R − b)·∇_θ log π, with b an exponential moving average of recent rewards. The baseline doesn't bias anything, because E[ b · ∇_θ log π ] = b · ∇_θ E[1] = b·∇_θ Σ_m π(m;θ) = b·∇_θ 1 = 0 — subtracting any constant-in-m quantity leaves the gradient's expectation unchanged while shrinking its variance. Concretely I keep a scalar baseline and slide it toward each new reward, b ← b − (1 − decay)·(b − R), and the controller's surrogate loss is −log π(m;θ)·(R − b), whose gradient is the negative of the REINFORCE gradient I want to ascend. I'll use Adam for θ.
+Now I need the controller's sampling spaces to line up with this shared-weight view.
 
-What should the reward R be, and crucially — measured on which data? If I reward training-set performance, the controller will happily discover architectures that overfit the training split. I want architectures that *generalize*. So R is measured on the *validation* set, held out from the data ω trains on. For language modeling, perplexity is what I care about but it's a "lower is better" quantity, so I turn it into a reward with c / valid_ppl; for image classification, accuracy on a validation minibatch is already "higher is better," so R is just that. This split — ω learns on the training data, θ is rewarded on validation data — is what keeps the search honest.
+For a recurrent cell, I use a DAG with N computation nodes. The first node consumes the current input x_t and the previous cell state h_{t-1}, then applies a sampled activation. For a later node ell, the controller samples a previous index j < ell and an activation f_ell. The node computes a transformed state from h_j. To make deep recurrent transitions trainable, I use a highway gate rather than a bare transformation:
 
-So the loop is: train ω for a whole pass over the training data (one sampled architecture per minibatch, M = 1), then freeze ω and train θ for a couple thousand steps (each step: sample an architecture, evaluate its validation reward, REINFORCE-update θ), then alternate.
+  c_ell = sigmoid(h_j W^{(c)}_{ell,j})
+  h_ell = c_ell * f_ell(h_j W^{(h)}_{ell,j}) + (1 - c_ell) * h_j.
 
-One thing I should worry about: the controller collapsing too early onto a narrow set of architectures, before ω has had a chance to make a broad range of edges competent — a rich-get-richer trap where the first few architectures that look good get all the training and everything else stays untrained and therefore looks bad forever. I want to keep the policy exploratory for a while. Two standard knobs. Add the controller's sample entropy to the reward, weighted by a small coefficient, so the policy is rewarded for staying uncertain — fights premature collapse. And tame the logits before sampling: divide them by a temperature (> 1, flatter distribution, more exploration) and squash them with a scaled tanh, logit ← c·tanh(logit), so no single choice's probability can run away to near-1 early. These keep the sampling spread out long enough for ω to become a fair judge of many subgraphs.
+The gate gives every sampled recurrent path an easy carry route and a controlled transform route. The shared-weight interpretation is exact: every ordered pair (j, ell) and activation choice indexes a specific slice or matrix in omega, and the sampled previous index decides which slice is active. Nodes that are not selected as inputs by later nodes are combined as the cell output, so a sampled topology has a well-defined output even when the graph branches.
 
-Now the convolutional spaces. Two flavors.
+The controller for this cell is an LSTM. It emits decisions in order. For predecessor choices it uses attention-like logits over previous controller hidden states; for operation choices it uses a softmax over the activation menu. After sampling a choice, it feeds an embedding of that choice into the next controller step. The first step receives an empty learned embedding. Temperature and a scaled tanh on logits keep early distributions from becoming too sharp.
 
-Macro: search the *entire* network, layer by layer. At layer k the controller makes two decisions. First, which previous layers to connect to — it can pick any subset of the k−1 earlier layers, and their outputs get concatenated along the channel dimension and fed to layer k. That's the skip-connection mechanism, and it gives 2^{k-1} possible connection patterns at layer k. Second, which operation this layer computes, from a menu of six: 3×3 and 5×5 convolutions, 3×3 and 5×5 depthwise-separable convolutions, and 3×3 max-pool and 3×3 average-pool. Each operation at each layer carries its own parameters, again shared across all child networks that activate it. With L layers, that's 6^L · 2^{L(L−1)/2} networks; at L = 12, about 1.6×10^29. Because picking subsets of skip connections freely can leave the network sparsely or densely connected somewhat at random, I add a gentle pressure toward a target connection density: a KL term between the controller's per-pair skip probability and a chosen prior ρ (around 0.4), added to the reward — so the search prefers a sane amount of skip structure rather than degenerate all-or-nothing wiring.
+For a macro convolutional search space, each layer has two kinds of sampled decisions. First, choose the operation: 3x3 conv, 5x5 conv, 3x3 separable conv, 5x5 separable conv, 3x3 average pool, or 3x3 max pool. Second, choose skip connections from previous layers. The selected previous outputs are incorporated into the current layer, with projection and normalization where shapes need to be stabilized. Each layer-operation branch has its own parameters in omega, and every child that selects that branch uses the same parameters.
 
-Micro: don't search the whole network — search a small *cell* and stack it, the way the cell-search line does, which shrinks the space enormously. The DAG has B nodes. Nodes 1 and 2 are the cell's inputs (the outputs of the two preceding cells in the stacked network). For each remaining node, the controller samples *two* previous nodes and *two* operations (from a menu of five: identity, 3×3 and 5×5 separable conv, 3×3 max-pool, 3×3 avg-pool), applies each operation to its chosen input, and *adds* the two results — that's the node's output. Loose ends are concatenated to form the cell's output. A reduction cell — which halves spatial resolution — is realized from the same space by applying every operation with stride 2; following the cell-search convention I sample the reduction cell conditioned on the conv cell, so the controller runs for 2(B−2) blocks total. Counting: at node i the controller picks 2 of i−1 inputs and 2 of 5 ops, and doing this for the conv cell and (independently) the reduction cell gives (5 × (B−2)!)^4 cells; at B = 7, about 1.3×10^11 — far smaller than the macro space, which is the point of cells.
+The skip-connection sampling needs a guardrail. If the controller can freely turn every skip on or off, it can drift into too sparse or too dense wiring while the shared weights are still noisy. I keep a prior skip probability rho, around 0.4, and penalize the KL divergence between the controller's skip probabilities and that target. In implementation terms this belongs in the controller objective as an added penalty term, not as a positive reward for large divergence. The reward can still be validation accuracy plus entropy encouragement; the KL term pulls the skip distribution toward the target density.
 
-Deriving the final architecture once search is done: sample several architectures from the trained π(m; θ), score each on a single validation minibatch, and take the single best one to re-train from scratch with full settings. I could instead train *all* the sampled candidates from scratch and pick the best on a separate validation set — that squeezes out a bit more — but it reintroduces exactly the from-scratch cost I was trying to kill, and taking just the top-1-by-shared-weights candidate gets nearly the same result far more cheaply. So: sample a few, pick the best by shared-weight reward, retrain that one.
+For a micro convolutional search space, I search cells rather than the whole network. A cell has two input nodes from the preceding cells. Each new internal node samples two previous nodes and two operations from identity, 3x3 separable conv, 5x5 separable conv, 3x3 average pool, and 3x3 max pool; the two operation outputs are added. Loose ends are concatenated to form the cell output. A reduction cell comes from the same decision space, but operations that touch the cell inputs use stride 2 so spatial resolution is halved. The controller samples the normal cell and the reduction cell in sequence, so the final architecture can be built by stacking the sampled cells.
 
-One refinement on the recurrent cell that I want, because the bare h_ℓ = f(h_j·W) transitions are shallow. Borrow the highway-gate idea from the recurrent-highway-network line: instead of h_2 = ReLU(h_1·W), use a gated mix h_2 = c_2 ⊙ ReLU(h_1·W) + (1 − c_2) ⊙ h_1 with gate c_2 = sigmoid(h_1·W^(c)). The gate lets the cell carry a value through unchanged or transform it, which stabilizes the deeper recurrent transitions the search wants to build and gives gradients a clean path — the same reason highway/residual connections help everywhere.
+The whole training loop is now simple. I train omega for a pass through the training data, sampling one architecture per minibatch and backpropagating only through its active subgraph. Then I freeze omega and train theta for a fixed number of controller steps, each time sampling an architecture, scoring it on validation data, updating the moving baseline, and applying the REINFORCE loss. I repeat the two phases. At the end I sample several architectures from the trained controller, evaluate each with the shared weights on a validation minibatch, keep the best one, and train that single architecture from scratch as the final model. I have moved the expensive from-scratch training from "every controller sample" to "one final selected architecture."
 
-Let me write the controller as the autoregressive sampler it is. The shape that matters: at each decision it runs the LSTM, forms a softmax over the current choice set, samples, records the log-probability and the entropy of that choice, and feeds the sampled choice's embedding in as the next input. Topology decisions (which previous index, in the conv macro space realized as a per-previous-layer binary "skip or not") and operation decisions are emitted in exactly this interleaved way.
+When I wire this up, the child owns shared variables indexed by the sampled arc, the controller owns `sample_arc`, `sample_entropy`, and cross-entropy decision terms, and the two train ops are separate.
 
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import tensorflow.compat.v1 as tf
+
+REWARD_CONSTANT = 80.0
 
 
-class Controller(nn.Module):
-    """Autoregressive LSTM policy pi(architecture; theta). Samples discrete
-    decisions one at a time, feeding each decision back in as the next input.
-    Returns the architecture, the summed log-prob of its decisions, and the
-    summed entropy (used to keep exploration alive)."""
-
-    def __init__(self, num_ops, num_nodes, hidden=100,
-                 temperature=5.0, tanh_constant=2.5):
-        super().__init__()
-        self.hidden, self.num_ops, self.num_nodes = hidden, num_ops, num_nodes
-        self.temperature, self.tanh_constant = temperature, tanh_constant
-        self.lstm = nn.LSTMCell(hidden, hidden)
-        self.g_emb = nn.Parameter(torch.zeros(1, hidden))   # empty first input
-        self.op_emb = nn.Embedding(num_ops, hidden)         # feed chosen op back
-        self.op_soft = nn.Linear(hidden, num_ops)           # op softmax head
-        # attention-style head over previous nodes' hidden states picks the input edge
-        self.w_prev = nn.Linear(hidden, hidden, bias=False)
-        self.w_curr = nn.Linear(hidden, hidden, bias=False)
-        self.v = nn.Linear(hidden, 1, bias=False)
-
-    def _sample_logit(self, logit):
-        logit = logit / self.temperature
-        logit = self.tanh_constant * torch.tanh(logit)      # keep early probs tame
-        probs = F.softmax(logit, dim=-1)
-        dist = torch.distributions.Categorical(probs)
-        choice = dist.sample()
-        return choice, dist.log_prob(choice), dist.entropy()
-
-    def sample(self):
-        h = torch.zeros(1, self.hidden); c = torch.zeros(1, self.hidden)
-        x = self.g_emb
-        arc, log_probs, entropies, anchors = [], [], [], []
-        for node in range(self.num_nodes):
-            # 1) which previous node feeds this one (an edge => which shared W)
-            h, c = self.lstm(x, (h, c))
-            if anchors:                                     # node 0 has no predecessors
-                query = torch.tanh(torch.cat(anchors, 0) + self.w_curr(h))
-                logit = self.v(query).transpose(0, 1)       # score each prev node
-                prev, lp, ent = self._sample_logit(logit)
-                arc.append(int(prev)); log_probs.append(lp); entropies.append(ent)
-                x = anchors[int(prev)]
-            anchors.append(self.w_prev(h))
-            # 2) which operation at this node
-            h, c = self.lstm(x, (h, c))
-            op, lp, ent = self._sample_logit(self.op_soft(h))
-            arc.append(int(op)); log_probs.append(lp); entropies.append(ent)
-            x = self.op_emb(op)
-        return arc, torch.stack(log_probs).sum(), torch.stack(entropies).sum()
+def activation(fn_id, h):
+  return tf.stack([tf.tanh(h), tf.nn.relu(h), tf.identity(h), tf.sigmoid(h)])[fn_id]
 
 
-class SharedChild(nn.Module):
-    """The single DAG holding ALL child models in superposition. Every edge
-    (op o, predecessor j -> node) owns its own parameters; an architecture
-    selects WHICH of these shared parameters it activates. No per-candidate
-    weights, no from-scratch training."""
+class SharedRecurrentCell(object):
+  def __init__(self, hidden_size, num_nodes, num_functions, scope="child"):
+    self.hidden_size = hidden_size
+    self.num_nodes = num_nodes
+    self.num_functions = num_functions
+    with tf.variable_scope(scope):
+      self.w_input = tf.get_variable(
+          "w_input", [2 * hidden_size, 2 * hidden_size])
+      self.w_skip = []
+      for node in range(1, num_nodes):
+        with tf.variable_scope("node_%d" % node):
+          self.w_skip.append(tf.get_variable(
+              "w", [num_functions, node, hidden_size, 2 * hidden_size]))
 
-    def __init__(self, num_ops, num_nodes, channels):
-        super().__init__()
-        # one parameter set per (node, predecessor, op) edge -- shared across
-        # every architecture that activates that edge
-        self.edges = nn.ModuleDict()
-        for node in range(num_nodes):
-            for prev in range(node):
-                for op in range(num_ops):
-                    self.edges[f"{node}_{prev}_{op}"] = make_op(op, channels)
+  def __call__(self, x_t, prev_state, sample_arc, is_training):
+    h_and_gate = tf.matmul(tf.concat([x_t, prev_state], axis=1), self.w_input)
+    h, gate = tf.split(h_and_gate, 2, axis=1)
+    first_fn = sample_arc[0]
+    state = prev_state + tf.sigmoid(gate) * (activation(first_fn, h) - prev_state)
+    nodes = [state]
+    used = []
+    offset = 1
 
-    def forward(self, x, arc):
-        # arc lists, per node, (predecessor, op); activate only those edges
-        h = [x]
-        for node, (prev, op) in enumerate(parse(arc), start=1):
-            h.append(self.edges[f"{node}_{prev}_{op}"](h[prev]))
-        loose = loose_ends(arc, len(h))                     # nodes used by nobody
-        return sum(h[i] for i in loose) / len(loose)        # average the loose ends
+    for node in range(1, self.num_nodes):
+      prev_id = sample_arc[offset]
+      fn_id = sample_arc[offset + 1]
+      used.append(tf.one_hot(prev_id, depth=self.num_nodes, dtype=tf.int32))
+      prev = tf.stack(nodes, axis=0)[prev_id]
+      w = self.w_skip[node - 1][fn_id, prev_id]
+      h_and_gate = tf.matmul(prev, w)
+      h, gate = tf.split(h_and_gate, 2, axis=1)
+      state = prev + tf.sigmoid(gate) * (activation(fn_id, h) - prev)
+      nodes.append(state)
+      offset += 2
 
-
-def train_shared_weights(controller, child, train_loader, opt_omega):
-    """Phase 1: fix theta, SGD on the shared weights omega. One architecture
-    sampled per minibatch (M = 1 is enough -- the epoch averages over many)."""
-    for inputs, targets in train_loader:
-        with torch.no_grad():
-            arc, _, _ = controller.sample()
-        opt_omega.zero_grad()
-        loss = F.cross_entropy(child(inputs, arc), targets)  # L(m; omega)
-        loss.backward()
-        opt_omega.step()
-
-
-def train_controller(controller, child, valid_loader, opt_theta,
-                     baseline, entropy_weight=1e-4, bl_dec=0.99):
-    """Phase 2: fix omega, REINFORCE on theta with a moving-average baseline.
-    Reward is measured on the VALIDATION split to select for generalization."""
-    for _ in range(2000):
-        arc, log_prob, entropy = controller.sample()
-        inputs, targets = next(iter(valid_loader))
-        with torch.no_grad():
-            reward = accuracy(child(inputs, arc), targets)   # R(m, omega), val data
-        baseline = baseline - (1 - bl_dec) * (baseline - reward)
-        loss = -log_prob * (reward - baseline) - entropy_weight * entropy
-        opt_theta.zero_grad(); loss.backward(); opt_theta.step()
-    return baseline
+    used = tf.reduce_sum(tf.stack(used), axis=0)
+    loose = tf.boolean_mask(tf.stack(nodes), tf.equal(used, 0))
+    return tf.reduce_mean(loose, axis=0)
 
 
-def search(controller, child, train_loader, valid_loader, opt_omega, opt_theta):
-    baseline = 0.0
-    for epoch in range(num_epochs):
-        train_shared_weights(controller, child, train_loader, opt_omega)
-        baseline = train_controller(controller, child, valid_loader,
-                                    opt_theta, baseline)
-    # derive: sample a few architectures, keep the best by validation reward,
-    # retrain that single one from scratch with full settings
-    cands = [controller.sample()[0] for _ in range(num_samples)]
-    return max(cands, key=lambda a: reward_on_minibatch(child, a, valid_loader))
+def build_shared_weight_train_op(child_loss, child_variables, global_step, lr):
+  optimizer = tf.train.GradientDescentOptimizer(lr)
+  grads = tf.gradients(child_loss, child_variables)
+  grads, _ = tf.clip_by_global_norm(grads, 0.25)
+  return optimizer.apply_gradients(zip(grads, child_variables),
+                                   global_step=global_step)
+
+
+def build_controller_train_op(sample_log_probs, sample_entropy, valid_loss,
+                              baseline, controller_variables,
+                              entropy_weight=1e-4, baseline_decay=0.99):
+  valid_ppl = tf.exp(tf.stop_gradient(valid_loss))
+  reward = REWARD_CONSTANT / valid_ppl
+  reward += entropy_weight * tf.stop_gradient(sample_entropy)
+  baseline_update = tf.assign_sub(
+      baseline, (1.0 - baseline_decay) * (baseline - reward))
+  with tf.control_dependencies([baseline_update]):
+    reward = tf.identity(reward)
+
+  advantage = reward - baseline
+  loss = tf.reduce_sum(sample_log_probs) * advantage
+  optimizer = tf.train.AdamOptimizer(3.5e-4)
+  return optimizer.minimize(loss, var_list=controller_variables), reward
+
+
+def alternating_search(session, child_train_op, controller_train_fn,
+                       num_epochs):
+  for _ in range(num_epochs):
+    for _ in training_minibatches():
+      session.run(child_train_op)      # one sampled child subgraph updates omega
+    controller_train_fn(session)       # validation rewards update theta
+  return best_arc_by_shared_validation_reward(session)
 ```
 
-The causal chain: the cost of architecture search lived entirely in training every candidate from scratch and discarding its weights; transfer learning and weight inheritance said weights aren't as architecture-bound as assumed; recasting the search space as one big DAG made every candidate a *subgraph* of a single graph, so putting parameters on the edges lets all children share one pool of weights ω and a candidate's choice of edges automatically selects its weights; training then splits into alternating phases — SGD on ω over the training data using one sampled architecture per minibatch, and REINFORCE on the controller θ with a moving-average baseline, rewarded on the *validation* split so it selects for generalization, with entropy and tempered logits to keep exploration alive — and at the end the best subgraph is retrained from scratch, all on a single GPU in under a day instead of hundreds of GPUs for days.
+The cost came from training every sampled child independently; the search space can be represented as one DAG whose children are subgraphs; putting parameters on the DAG lets all children share omega; omega can be trained by ordinary backprop through one sampled subgraph per minibatch; theta can be trained separately by REINFORCE from validation rewards; and only the final selected architecture needs its own full from-scratch training run. That is how the search cost collapses from hundreds of GPUs for days to a single-GPU run while preserving the RL controller's ability to choose discrete architectures.

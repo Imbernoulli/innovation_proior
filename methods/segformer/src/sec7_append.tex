@@ -1,0 +1,74 @@
+\clearpage
+\appendix
+
+\section{Details of MiT Series}
+In this section, we list some important hyper-parameters of our Mix Transformer (MiT) encoder. By changing these parameters, we can easily scale up our encoder from B0 to B5.
+
+In summary, the hyper-parameters of our MiT are listed as follows:
+\begin{itemize}
+	\item $K_i$: the patch size of the overlapping patch embedding in Stage $i$;
+	\item $S_i$: the stride of the overlapping patch embedding in Stage $i$;
+	\item $P_i$: the padding size of the overlapping patch embedding in Stage $i$;
+	\item $C_i$: the channel number of the output of Stage $i$;
+	\item $L_i$: the number of encoder layers in Stage $i$;
+	\item $R_i$: the reduction ratio of the Efficient Self-Attention in Stage $i$;
+	\item $N_i$: the head number of the Efficient Self-Attention in Stage $i$;
+	\item $E_i$: the expansion ratio of the feed-forward layer~\cite{vaswani2017attention} in Stage $i$;
+\end{itemize}
+
+Table~\ref{tab:arch} shows the detailed information of our MiT series. 
+To facilitate efficient discussion, we assign the code name B0 to B5 for MiT encoder, where B0 is the smallest model designed for real-time, while B5 is the largest model designed for high performance.
+
+\section{More Qualitative Results on Mask Predictions}
+In Figure~\ref{fig:mask2}, we present more qualitative results on Cityscapes, ADE20K and COCO-Stuff, compared with SETR and DeepLabV3+. 
+
+Compared to SETR, our SegFormer predicts masks with significantly finer details near object boundaries because our Transformer encoder can capture much higher resolution features than SETR, which preserves more detailed texture information.
+Compared to DeepLabV3+, SegFormer reduces long-range errors benefit from the larger effective receptive field of Transformer encoder than ConvNet.
+
+\section{More Visualization on  Effective Receptive Field}
+In Figure~\ref{fig:erf2}, we select some representative images and effective receptive field~(ERF) of DeepLabV3+ and SegFormer. Beyond larger ERF, the ERF of SegFormer is more sensitive to the context of the image. We see SegFormer's ERF learned the pattern of roads, cars, and buildings, while DeepLabV3+'s ERF shows a relatively fixed pattern. The results also indicate that our Transformer encoder has a stronger feature extraction ability than ConvNets.
+
+\section{More Comparison of DeeplabV3+ and SegFormer on Cityscapes-C}
+In this section, we detailed show the zero-shot robustness compared with SegFormer and DeepLabV3+. Following \cite{robust}, we test 3 severities for 4 kinds of ``Noise'' and 5 severities for the rest 12 kinds of  corruptions and perturbations. 
+
+As shown in Figure~\ref{fig:robust2}, with severity increase, DeepLabV3+ shows a considerable performance degradation. In contrast, the performance of SegFormer is relatively stable.
+Moreover, SegFormer has significant advantages over DeepLabV3+ on all corruptions/perturbations and all severities, demonstrating excellent zero-shot robustness.
+
+\input{tables/arch.tex}
+
+\begin{figure}[!t]
+	\centering
+	\scalebox{0.55}{\includegraphics{figures/mask2.pdf}}
+	\vspace{-2pt}
+	\captionsetup{font={footnotesize}}
+	\caption{
+		\textbf{Qualitative results on Cityscapes, ADE20K and COCO-Stuff.} First row: Cityscapes. Second row: ADE20K. Third row: COCO-Stuff. Zoom in for best view.
+	} 
+	\label{fig:mask2}
+	\vspace{-10pt}
+\end{figure}
+
+\begin{figure}[]
+	\centering
+	\scalebox{0.69}{\includegraphics{figures/erf2.pdf}}
+	% \vspace{-5pt}
+	\captionsetup{font={scriptsize}}
+	\caption{
+		\textbf{Effective Receptive Field on Cityscapes.} ERFs of the four stages and the decoder heads of both architectures are visualized.
+	} 
+	\label{fig:erf2}
+	\vspace{-10pt}
+\end{figure}
+
+\begin{figure}[]
+	\centering
+	\scalebox{0.35}{\includegraphics{figures/robust2.pdf}}
+	\vspace{-5pt}
+	\captionsetup{font={scriptsize}}
+	\caption{
+		\textbf{Comparison of zero shot robustness on Cityscapes-C between SegFormer and DeepLabV3+.} The blue line is SegFormer and the orange line is DeepLabV3+.
+		X-Axis means corrupt severity and Y-Axis is mIoU. Following\cite{robust}, we test 3 severities for ``Noise'' and 5 severities for the rest.
+	} 
+	\label{fig:robust2}
+	\vspace{-10pt}
+\end{figure}

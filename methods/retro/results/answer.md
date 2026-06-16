@@ -12,9 +12,9 @@ Scaling a Transformer LM conflates two benefits — more *computation* and more 
 
 ## Objective (autoregressive, retrieval from earlier chunks only)
 
-  L(X | θ, D) = Σ_{u=1}^{l} Σ_{i=1}^{m} ℓ_θ( x_{(u-1)m+i} | (x_j)_{j<(u-1)m+i}, (Ret(C_{u'}))_{u'<u} ),  Ret(C₁)=∅.
+  L(X | θ, D) = Σ_{u=1}^{l} Σ_{i=1}^{m} ℓ_θ( x_{(u-1)m+i} | (x_j)_{j<(u-1)m+i}, (Ret(C_{u'}))_{u'<u} ).
 
-A token in chunk u uses neighbours of strictly-earlier chunks only — preserving autoregressivity (and samplability), since Ret(C_u) was computed from C_u itself.
+A token in chunk u uses neighbours of strictly-earlier chunks only; for the first chunk, that previous-neighbour set is empty. Ret(C_u) is computed from C_u itself, so it first becomes available at the activation that predicts the next chunk.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ Decoder-only Transformer (RMSNorm, relative positions) with retrieval blocks int
   Retro(H, E) = FFW( CCA( Attn(H), E ) ),   LM(H) = FFW( Attn(H) ).
 
 - **Neighbour encoder**: a small (~2-layer, d′=896) *bidirectional* Transformer over each neighbour, *conditioned via cross-attention on the retrieving chunk's activations H_u* — so the retrieval representation is differentiably modulated by the query chunk. Encodes all l·k neighbours in parallel → E ∈ ℝ^{l×k×r×d′}.
-- **Chunked cross-attention (CCA)**: the core operator. Build *attending chunks* shifted by one token, H_u⁺ = (h_{um+i−1})_{i∈[1,m]} — so the last token of C_u is the first position to see Ret(C_u) (it predicts the next token, in chunk u+1, which is allowed). Each H_u⁺ cross-attends over E_u with neighbour and time dimensions merged (k·r attended positions) and relative positional logits (chunks ≈ aligned with neighbours). First m−1 tokens: identity. CrossAttention(h, Y) = softmax(Y K Qᵀ h) Y V (multi-head).
+- **Chunked cross-attention (CCA)**: the core operator. Build *attending chunks* shifted by one token, H_u⁺ = (h_{um+i−1})_{i∈[1,m]} — so the last token of C_u is the first position to see Ret(C_u) (it predicts the next token, in chunk u+1, which is allowed). Each H_u⁺ cross-attends over E_u with neighbour and time dimensions merged (k·r attended positions). Relative-position logits use d(i,i') = i - i' + l - 1 for data-token position i and retrieval-token position i'. First m−1 positions get no cross-attention update, so the residual CCA leaves them unchanged. CrossAttention(h, Y) = softmax(Y K Qᵀ h) Y V (multi-head).
   - **Linear cost**: each token attends to one chunk's k·r retrieved tokens → O(n·k·r), independent of sequence length.
   - **Full prior-retrieval dependence**: though each CCA touches only E_{u-1}, self-attention propagates information so chunk u's tokens depend on *all* Ret(C_{u'})_{u'<u} — without quadratic cross-attention cost.
 
@@ -38,50 +38,55 @@ The retrieval pathway accepts any source: feed top-20 DPR Wikipedia passages as 
 ## Code
 
 ```python
-import jax, jax.numpy as jnp
-Q = jnp.zeros((d, d)); K = jnp.zeros((d, d)); V = jnp.zeros((d, d))
+import jax
+import jax.numpy as jnp
 
-def cross_attention(chunk, neighbour):                  # (m,d),(r,d)
-    return (chunk @ Q) @ (neighbour @ K).T, neighbour @ V    # logits (m,r), values (r,d)
+Q = jnp.zeros((d, d))
+K = jnp.zeros((d, d))
+V = jnp.zeros((d, d))
 
-def multi_neighbour_cross_attention(chunk, neighbours):     # neighbours (k,r,d)
+def cross_attention(chunk, neighbour):
+    return (chunk @ Q) @ (neighbour @ K).T, neighbour @ V
+
+def multi_neighbour_cross_attention(chunk, neighbours):
     logits, values = jnp.vectorize(cross_attention,
-        signature='(m,d),(r,d)->(m,r),(r,d)')(chunk, neighbours)
-    logits += relative_positional_encodings(m, r)[None]
-    logits = jnp.moveaxis(logits, 0, -1).reshape((m, r * k))    # attend over k*r at once
+        signature="(m,d),(r,d)->(m,r),(r,d)")(chunk, neighbours)
+    logits += relative_positional_encodings(m, r)[None, :, :]
+    logits = jnp.moveaxis(logits, 0, -1).reshape((m, r * k))
     values = jnp.moveaxis(values, 0, 1).reshape((r * k, d))
-    return jax.nn.softmax(logits) @ values                      # (m,d), linear in k*r
+    return jax.nn.softmax(logits) @ values
 
-def chunked_cross_attention(H, neighbours):                 # H (n,d), neighbours (l,k,r,d)
-    attending = jnp.pad(H[m-1:], ((0, m-1), (0, 0))).reshape(l, m, d)   # shift by m-1
+def chunked_cross_attention_update(observation, neighbours):
+    attending = jnp.pad(observation[m - 1:],
+                        ((0, m - 1), (0, 0)),
+                        mode="constant").reshape(l, m, d)
     out = jnp.vectorize(multi_neighbour_cross_attention,
-                        signature='(m,d),(k,r,d)->(m,d)')(attending, neighbours)
-    return jnp.pad(out.reshape(n, d), ((m-1, 0), (0, 0)))[:n]    # first m-1 tokens identity
+                        signature="(m,d),(k,r,d)->(m,d)")(attending, neighbours)
+    return jnp.pad(out.reshape(n, d),
+                   ((m - 1, 0), (0, 0)),
+                   mode="constant")[:n]
+
+def encode_neighbours(retrieved_tokens, H):
+    H_chunks = H.reshape(l, m, H.shape[-1])
+    E = embed_enc(retrieved_tokens)
+    for p_enc in range(1, L_enc + 1):
+        E = bidirectional_attn(E)
+        if p_enc in P_enc:
+            E = encoder_cross_attn(E, H_chunks)
+        E = encoder_ffw(E)
+    return E
+
+def forward(X, retrieved_tokens):
+    H = embed(X)
+    E = None
+    for p in range(1, L + 1):
+        H = causal_attn(H)
+        if p == min(P):
+            E = encode_neighbours(retrieved_tokens, H)
+        if p in P:
+            H = H + chunked_cross_attention_update(H, E)
+        H = ffw(H)
+    return readout(H)
 ```
 
-```python
-import torch.nn as nn
-class RetroBlock(nn.Module):                                # FFW(CCA(Attn(H), E))
-    def forward(self, H, E):
-        H = self.attn(H)                                    # causal; propagates across chunks
-        H = H + chunked_cross_attention(H, E)               # fuse retrieved content
-        return self.ffw(H)
-
-class RetrievalLM(nn.Module):
-    def __init__(self, L=12, fuse_layers=(6, 9, 12)):
-        super().__init__()
-        self.embed, self.enc, self.readout = nn.Embedding(VOCAB, D), NeighbourEncoder(), nn.Linear(D, VOCAB)
-        self.layers = nn.ModuleList([RetroBlock(D) if p in fuse_layers else LMBlock(D)
-                                     for p in range(1, L+1)])
-        self.fuse_layers = fuse_layers
-    def forward(self, X, ret_tokens):
-        H, E = self.embed(X), None
-        for p, layer in enumerate(self.layers, 1):
-            H = layer.attn(H)
-            if p == min(self.fuse_layers):
-                E = self.enc(ret_tokens, split_chunks(H, m))    # conditioned on retrieving chunk
-            H = layer(H, E) if p in self.fuse_layers else layer(H)
-        return self.readout(H)
-```
-
-RETRO is a semi-parametric LM: a frozen chunk-level BERT retriever over a trillion-token database, fused into a Transformer decoder by chunked cross-attention at cost linear in retrieved data, giving a large fraction of a 10×-bigger model's benefit while leaving knowledge inspectable and updatable.
+RETRO is a semi-parametric LM: a frozen chunk-level BERT retriever over a trillion-token database, fused into a Transformer decoder by chunked cross-attention at cost linear in retrieved data, while leaving knowledge inspectable and updatable.

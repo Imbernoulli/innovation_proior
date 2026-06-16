@@ -22,30 +22,31 @@ So measure that. The exact effect of removing connection j is
 
 the loss with everything on, minus the loss with only connection j knocked out (e_j the j-th unit vector). This is exactly what I want — it's intrinsically about the *connection*, and I can evaluate it at any w, including random init. But it's hopeless to compute: m+1 forward passes over the data, m in the millions. And because c is binary, L isn't even differentiable in c, so I can't just call a gradient.
 
-The escape: relax c off the integers. If I let c_j vary continuously, then for an infinitesimal nudge, ΔL_j is well approximated by the derivative of L with respect to c_j, evaluated at the all-ones point:
+The escape: relax c off the integers. If I let c_j vary continuously, then for an infinitesimal nudge from the all-on network, ΔL_j is approximated by the derivative of L with respect to c_j, evaluated at the all-ones point:
 
 ```
 ΔL_j ≈ g_j(w; D) = ∂L(c ⊙ w; D)/∂c_j  |_{c=1}
      = lim_{δ→0} [ L(c ⊙ w; D) − L((c − δ e_j) ⊙ w; D) ] / δ  |_{c=1}.
 ```
 
-This is just the rate of change of L as c_j slides from 1 toward 1−δ. And the beautiful part: I do *not* need m+1 forward passes. ∂L/∂c_j for *all* j at once is one forward–backward pass through autodiff — c enters as a multiplicative gate, so the backward pass hands me every g_j simultaneously. m+1 forward passes collapse to one.
+This is the rate of change of L as c_j slides from 1 toward 1−δ. I do not need m+1 forward passes. ∂L/∂c_j for *all* j at once is one forward–backward pass through autodiff — c enters as a multiplicative gate, so the backward pass hands me every g_j simultaneously. m+1 forward passes collapse to one.
 
-Now stare at what g_j actually is, because this is the crux of why it works at init where magnitude fails. By the chain rule, with the gated pre-activation u_j = c_j w_j,
+Now stare at what g_j actually is. By the chain rule, with the effective gated weight u_j = c_j w_j,
 
 ```
 ∂L/∂c_j = (∂L/∂u_j)(∂u_j/∂c_j) = (∂L/∂u_j) · w_j.
 ```
 
-So the connection-sensitivity gradient is the ordinary weight-gradient direction *multiplied by the current weight*. Compare it to the bare gradient w.r.t. the weight, ∂L/∂w_j, which is what older sensitivity criteria (Mozer–Smolensky, Karnin) effectively used. The bare ∂L/∂w_j measures the change from an *additive* perturbation δ applied uniformly, in isolation from how big w_j already is — and at init the weights are not uniform in scale, so that's a biased ruler. But ∂L/∂c_j perturbs c_j multiplicatively, which means the effective perturbation to the weight is δ·w_j — it's *scaled in proportion to the current weight*. That's the trick. The sensitivity automatically normalizes by the local weight scale, so it doesn't require the weights to be optimal or pretrained. It can be read off a randomly initialized net. That's the whole point: it severs the dependence on weight scale that chained magnitude and Hessian criteria to a trained model.
+So the connection-sensitivity gradient is the ordinary effective-weight gradient *multiplied by the current weight*. Compare it to the bare gradient w.r.t. the weight, ∂L/∂w_j, which is what older sensitivity criteria (Mozer–Smolensky, Karnin) effectively used. The bare ∂L/∂w_j measures the change from an *additive* perturbation δ applied uniformly, in isolation from how big w_j already is. But ∂L/∂c_j is the derivative with respect to a multiplicative gate; a small change in c_j changes the effective weight by δ·w_j. That is closer to the pruning operation I care about, because removing a connection is shrinking that connection's own contribution toward zero, not adding the same small number to every weight. This does not make the initialized weights irrelevant. It still uses w through the forward pass and through the factor above, which is why initialization has to be chosen carefully. What it removes is the need for w to be pretrained: the score is the loss response to a present connection, not a trained magnitude used as a proxy.
 
-One more thing to be careful about: sign. If g_j is large *negative*, connection j still has a large effect on the loss — pushing it would change things a lot, so it's important; I must not discard it just because the sign is negative. What I care about is the *magnitude* of the effect, regardless of direction. So take |g_j|. And to make the criterion comparable across the network — and not blow up with the absolute scale of the loss or the batch — normalize by the total:
+One more thing to be careful about: sign. If g_j is large *negative*, connection j still has a large effect on the loss — moving its gate changes the objective a lot, so it is important; I must not discard it just because the sign is negative. What I care about is the *magnitude* of the effect, regardless of direction. Since the computational object is the gate vector, the local saliency is |g ⊙ c|. At the scoring moment c = 1, so this is exactly |∂L/∂c|. To make the criterion comparable across the network — and not tied to the absolute scale of the loss or the batch — normalize by the total:
 
 ```
-s_j = |g_j(w; D)| / Σ_k |g_k(w; D)|.
+a_j = |g_j(w; D)c_j|,   c = 1,
+s_j = a_j / Σ_k a_k = |g_j(w; D)| / Σ_k |g_k(w; D)|.
 ```
 
-That's connection sensitivity. Then, given the budget κ, keep the top-κ:
+That is the connection-sensitivity score. The normalization does not change the ordering, so given the budget κ I keep the top-κ entries by |∂L/∂c|:
 
 ```
 c_j = 1[ s_j − s̃_κ ≥ 0 ],
@@ -53,19 +54,19 @@ c_j = 1[ s_j − s̃_κ ≥ 0 ],
 
 where s̃_κ is the κ-th largest entry of s (ties broken arbitrarily to land exactly κ). Sort descending, threshold, done.
 
-Now — wait. I claimed this works "at any init," but let me not wave that away, because the score *does* still touch w through that ∂L/∂c_j = (∂L/∂u_j)·w_j factor and through the forward pass. So the choice of initial w isn't irrelevant; it just needs to be *sensible*. Two failure modes. First, if the initial weights are too large, the post-nonlinearity activations (sigmoid, say) saturate, the local gradients go flat, and ∂L/∂u_j is uninformative — garbage in. So the weights must sit in a reasonable range; this is exactly what standard initialization schemes are *for*, so I can prune at any of them. Second, and this is the subtle one for robustness across architectures: if I init with a *fixed* variance everywhere, the variance of the signal — and hence of the gradients — drifts from layer to layer (LeCun's old observation). Then my saliency picks up a spurious dependence on depth and width: deep layers get systematically smaller or larger g_j just because of variance drift, not because they matter less. The fix is to use a *variance-scaling* init (Glorot-style) so the signal variance is held roughly constant through the layers. Then g_j reflects task importance, not architectural accident, and the same criterion transfers unmodified across convolutional, residual, and recurrent nets. So variance-scaling init isn't decoration — it's what makes connection sensitivity architecture-robust.
+Now wait. I claimed this works at initialization, but the score still touches w through that ∂L/∂c_j = (∂L/∂u_j)·w_j factor and through the forward pass. So the choice of initial w is not irrelevant; it needs to be sensible. Two failure modes show up. If the initial weights are too large, the post-nonlinearity activations can saturate, the local gradients go flat, and ∂L/∂u_j is uninformative. The weights have to sit in a reasonable range; this is exactly what standard initialization schemes are for, so the pruning criterion can be evaluated at such an initialization. And for robustness across architectures, fixed-variance random weights are not enough. With a fixed variance everywhere, the variance of the signal — and hence of the gradients — can drift from layer to layer, as the initialization literature warns. Then my saliency picks up a spurious dependence on depth and width: layers get systematically smaller or larger g_j because of variance drift, not because their connections matter less or more. The fix is to use a variance-scaling init, Glorot- or He-style, so the signal variance is held roughly constant through the layers. Then g_j is much less likely to be a proxy for architectural scale. Variance scaling is not decoration; it is what keeps connection sensitivity from tracking architecture-scale drift.
 
-And the data: s_j depends on D and on L, i.e. on the *task*. That's a feature — it means the retained connections are the ones important *for this task*. In practice I don't even need the whole training set; one mini-batch of a reasonable size gives an effective ranking. If memory is tight or I want a steadier estimate I can accumulate |g| over several batches or keep an exponential moving average — but a single batch is enough for single-shot pruning. (As a sanity check on whether the score is really task-driven: prune using batches from different classes/datasets and look at which input pixels' connections survive — they should track where the task's signal lives.)
+And the data: s_j depends on D and on L, i.e. on the *task*. That is a feature — it means the retained connections are the ones important *for this task*. I can compute the gradient on the whole training set, but that is unnecessary and expensive; one mini-batch of a reasonable size gives the single-shot ranking. If memory is tight or I want a steadier estimate I can accumulate |g| over several batches or keep an exponential moving average.
 
-So the whole method assembles itself. Variance-scaling init. One mini-batch. One forward–backward pass with a multiplicative gate c=1 to get all g_j. Normalize the magnitudes into s_j. Threshold at the top-κ to set the binary mask c. Then throw the gates away as variables, fix the mask, and train the sparse network the standard way — w* = argmin L(c ⊙ w). No pretraining, no prune–retrain cycle, no extra hyperparameters beyond κ.
+So the whole method assembles itself. Variance-scaling init. One mini-batch. One forward–backward pass with a multiplicative gate c=1 to get every ∂L/∂c_j. Form |g ⊙ c|, which here is |g|, and keep the top-κ entries. Then throw the gates away as variables, fix the binary mask c, and train the sparse network the standard way — w* = argmin L(c ⊙ w). No pretraining, no prune–retrain cycle, no extra hyperparameters beyond κ.
 
-Let me write it. The clean way to compute g_j in a framework is exactly the gate trick: attach a multiplicative mask parameter initialized to ones in front of each weight, freeze the weights (`requires_grad=False`), run one batch, backprop, and read off the *gradient of the mask* — that's ∂L/∂c_j by construction.
+Let me write it. The clean way to compute g_j in an autodiff framework is exactly the gate trick: attach a multiplicative mask parameter initialized to ones in front of each weight, freeze the weights while scoring, run one batch, backprop, and read off the *gradient of the mask* — that's ∂L/∂c_j by construction. Ranking |mask.grad * mask| is the same as ranking |∂L/∂c| at c=1, and after pruning the fixed mask keeps removed connections at zero during normal training.
 
 ```python
 import torch, torch.nn as nn, torch.nn.functional as F
 
 # A Conv2d / Linear that multiplies its weight by a learnable connectivity gate c.
-class MaskedConv2d(nn.Conv2d):
+class GatedConv2d(nn.Conv2d):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.weight_mask = nn.Parameter(torch.ones_like(self.weight))  # c = 1
@@ -74,7 +75,7 @@ class MaskedConv2d(nn.Conv2d):
         return F.conv2d(x, self.weight * self.weight_mask, self.bias,
                         self.stride, self.padding, self.dilation, self.groups)
 
-class MaskedLinear(nn.Linear):
+class GatedLinear(nn.Linear):
     def __init__(self, *a, **k):
         super().__init__(*a, **k)
         self.weight_mask = nn.Parameter(torch.ones_like(self.weight))
@@ -89,28 +90,36 @@ def variance_scaling_init(net):
             nn.init.xavier_normal_(m.weight)
             if m.bias is not None: nn.init.zeros_(m.bias)
 
-def snip(net, batch, keep_fraction):
+def compute_keep_mask(net, batch, keep_fraction):
     x, y = batch
-    net.zero_grad()
+    net.zero_grad(set_to_none=True)
     F.cross_entropy(net(x), y).backward()        # one forward-backward; gates are at c = 1
 
-    # g_j = dL/dc_j is exactly the gradient on each mask; saliency is its magnitude.
-    masked = [m for m in net.modules() if isinstance(m, (MaskedConv2d, MaskedLinear))]
-    g_abs = [torch.abs(m.weight_mask.grad) for m in masked]
-    all_scores = torch.cat([g.flatten() for g in g_abs])
-    all_scores = all_scores / all_scores.sum()    # s_j = |g_j| / Σ_k |g_k|
+    # g_j = dL/dc_j is the gradient on each gate; score |g_j * c_j|, with c_j = 1 here.
+    gated = [m for m in net.modules() if isinstance(m, (GatedConv2d, GatedLinear))]
+    scores = [torch.abs(m.weight_mask.grad * m.weight_mask).detach() for m in gated]
+    flat_scores = torch.cat([s.flatten() for s in scores])
+    flat_scores = flat_scores / flat_scores.sum().clamp_min(torch.finfo(flat_scores.dtype).tiny)
 
-    k = int(keep_fraction * all_scores.numel())
-    threshold = torch.topk(all_scores, k, sorted=True).values[-1]   # s̃_κ
-    masks = [((torch.abs(m.weight_mask.grad) / all_scores.sum().detach()) >= threshold).float()
-             for m in masked]
-    return masked, masks
+    k = int(keep_fraction * flat_scores.numel())
+    k = max(1, min(k, flat_scores.numel()))
+    keep = torch.zeros_like(flat_scores)
+    keep[torch.topk(flat_scores, k, sorted=False).indices] = 1.0
 
-def apply_and_train(masked, masks, net, loader, epochs, lr):
-    for m, msk in zip(masked, masks):
-        m.weight_mask.data = msk            # fix the binary mask c
+    masks, offset = [], 0
+    for score in scores:
+        n = score.numel()
+        masks.append(keep[offset:offset + n].view_as(score))
+        offset += n
+    return gated, masks
+
+def apply_and_train(gated, masks, net, loader, epochs, lr):
+    for m, msk in zip(gated, masks):
+        with torch.no_grad():
+            m.weight_mask.copy_(msk)        # fix the binary mask c
         m.weight_mask.requires_grad = False
         m.weight.requires_grad = True       # now train the surviving weights
+    net.zero_grad(set_to_none=True)
     opt = torch.optim.SGD([p for p in net.parameters() if p.requires_grad], lr=lr, momentum=0.9)
     for _ in range(epochs):
         for x, y in loader:
@@ -119,4 +128,4 @@ def apply_and_train(masked, masks, net, loader, epochs, lr):
             opt.step()                      # pruned connections stay at zero: w * mask, mask fixed 0
 ```
 
-So the causal chain, start to finish: I want a hard sparsity budget, which forces me to pick connections by a *criterion*; the standard criteria are weight-scale-dependent, which chains them to a trained net and the expensive prune–retrain loop; to break that chain I decouple "is the connection present" (c) from "how strong is it" (w), and measure importance as the loss's sensitivity to the gate, ∂L/∂c_j = (∂L/∂u_j)·w_j — a multiplicatively-scaled perturbation that self-normalizes by weight scale and so reads correctly at random init; I take its magnitude (sign-agnostic), normalize across the net, keep the top-κ, and — using a variance-scaling init so the score doesn't track architecture — prune once, before training, in a single forward–backward pass, then train the sparse survivors normally.
+So the causal chain, start to finish: I want a hard sparsity budget, which forces me to pick connections by a *criterion*; the standard criteria are weight-scale-dependent, which chains them to a trained net and the expensive prune–retrain loop; to break that chain I decouple "is the connection present" (c) from "how strong is it" (w), and measure importance as the loss's sensitivity to the gate, ∂L/∂c_j = (∂L/∂u_j)·w_j — the derivative of a multiplicative removal dial, evaluated at c=1; I take |g ⊙ c|, which is |∂L/∂c| at scoring time, keep the top-κ entries, and — using a variance-scaling init so the score does not track architecture-scale drift — prune once, before training, in a single forward–backward pass, then train the sparse survivors normally.

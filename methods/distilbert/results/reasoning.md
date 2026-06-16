@@ -4,9 +4,9 @@ The obvious move is to just train a smaller Transformer from scratch with MLM. F
 
 So don't imitate the data — imitate the *teacher's distribution*. Train the student to reproduce the teacher's soft predictions. Concretely, take the teacher's probability `t_i` over the vocabulary at each position and push the student's probability `s_i` toward it. The cross-entropy of the student against the teacher's soft targets, `-Σ_i t_i log s_i`, gives a dense signal at every class, not just the gold one — the student learns the whole shape, the tail included.
 
-But there's a wrinkle. Even the teacher's soft distribution is usually *peaked* — after a confident softmax, the non-target probabilities are tiny, and tiny numbers contribute almost nothing to the loss, so the very signal I want (the structure in the tail) barely registers. I need to flatten the distribution to expose the tail. Divide the logits by a temperature `T > 1` before the softmax: `p_i = exp(z_i/T) / Σ_j exp(z_j/T)`. Larger `T` softens both teacher and student into smoother distributions where the relative weights of the small probabilities are amplified, so matching them actually moves the loss. Apply the *same* `T` to teacher and student during training; set `T = 1` at inference to recover the normal softmax. So the distillation term is the cross-entropy (equivalently, KL divergence) between the temperature-softened teacher and student distributions over the masked positions.
+But there's a wrinkle. Even the teacher's soft distribution is usually *peaked* — after a confident softmax, the non-target probabilities are tiny, and tiny numbers contribute almost nothing to the loss, so the very signal I want (the structure in the tail) barely registers. I need to flatten the distribution to expose the tail. Divide the logits by a temperature `T > 1` before the softmax: `p_i = exp(z_i/T) / Σ_j exp(z_j/T)`. Larger `T` softens both teacher and student into smoother distributions where the relative weights of the small probabilities are amplified, so matching them actually moves the loss. Apply the *same* `T` to teacher and student during training; set `T = 1` at inference to recover the normal softmax. The teacher produces a vocabulary distribution at every real token position, so the soft loss can use every non-padding position; the hard MLM loss is the one that is restricted to the masked labels. So the distillation term is the cross-entropy (equivalently, KL divergence) between the temperature-softened teacher and student distributions on the valid sequence positions.
 
-One thing I have to get right: temperatures change gradient magnitudes. Softening by `T` shrinks the logits, and the gradient of the softmax-cross-entropy through a `1/T` logit scaling picks up roughly a `1/T²` factor. If I don't compensate, this soft term is downweighted relative to any hard-label term I mix in, and worse, its effective contribution drifts as I change `T`. So I scale the distillation loss by `T²` to keep its gradient magnitude comparable. That makes mixing it with other losses well-behaved.
+One thing I have to get right: temperatures change gradient magnitudes. For `q = softmax(z_s/T)` and `p = softmax(z_t/T)`, the gradient of `-Σ_i p_i log q_i` with respect to a student logit is `(q_i - p_i)/T`; at high temperature the difference `q_i - p_i` is itself proportional to `1/T`, because both softened distributions move only a little when a logit changes. The soft-target gradient therefore shrinks like `1/T²`. If I don't compensate, this soft term is downweighted relative to any hard-label term I mix in, and worse, its effective contribution drifts as I change `T`. So I scale the distillation loss by `T²` to keep its gradient magnitude comparable. That makes mixing it with other losses well-behaved.
 
 Should I drop the hard labels entirely? No — keep the supervised MLM loss too, the ordinary cross-entropy of the student's predictions against the true masked tokens. The two are complementary: the soft teacher signal transfers the teacher's generalization structure, the hard MLM signal keeps the student anchored to the actual data. Call them `L_ce` (distillation) and `L_mlm` (masked LM). A linear combination.
 
@@ -18,21 +18,23 @@ Now the architecture of the student. I want it smaller, but *which* dimension do
 
 A couple of structural simplifications fall out. The token-type ("segment") embeddings exist to mark sentence A vs B for the next-sentence-prediction task; I'm going to train without NSP (more on that in a second), so I can drop them. And the pooler — the extra dense layer on the [CLS] token used for sentence-level pre-training heads — isn't needed for the general representation; drop it too. Everything else stays the same shape as the teacher, which matters for the next decision.
 
-Initialization. A small model trained from a random start has to discover good features from scratch, and I'm only going to give it a fraction of the teacher's compute. But I have a teacher with the *same hidden size and the same per-layer structure* — its layers and the student's layers live in the same vector space. So initialize the student from the teacher by *copying every other layer*: take one teacher layer out of two to seed the six student layers. The student starts in a region of weight space the teacher already found useful, and distillation only has to compress and refine, not rediscover. This is exactly why I kept the dimensions matched — it's what makes the copy meaningful.
+That same width makes the next move possible. A small model trained from a random start has to discover good features from scratch, and I'm only going to give it a fraction of the teacher's compute. But I have a teacher with the *same hidden size and the same per-layer structure* — its layers and the student's layers live in the same vector space. So initialize the student from a depth-halved slice of the teacher: take one layer out of two to seed the six student layers, using the extraction slice `[0, 2, 4, 7, 9, 11]` so the student receives lower, middle, and final teacher blocks. The student starts in a region of weight space the teacher already found useful, and distillation only has to compress and refine, not rediscover. This is exactly why I kept the dimensions matched — it's what makes the copy meaningful.
 
-Training regimen — follow the strong pre-training recipe rather than the original one. Use very large batches via gradient accumulation (thousands of examples per effective batch), use *dynamic* masking (a fresh 15% mask each time a sequence is seen) instead of a fixed mask, and drop next-sentence prediction, since dropping NSP and using dynamic masking on large batches is what was shown to make MLM pre-training stronger. Train on the same corpus as the teacher — Wikipedia plus BookCorpus — so the student is matched to the teacher's data. The teacher runs in eval mode, produces soft targets and hidden states with no gradient; the student trains against the triple loss.
+The training recipe should follow the strong pre-training recipe rather than the original one. Use very large batches via gradient accumulation (up to thousands of examples per effective batch), use *dynamic* masking (a fresh 15% mask each time a sequence is seen) instead of a fixed mask, and drop next-sentence prediction, since dropping NSP and using dynamic masking on large batches is what was shown to make MLM pre-training stronger. Train on the same corpus as the teacher — Wikipedia plus BookCorpus — so the student is matched to the teacher's data. The teacher runs in eval mode, produces soft targets and hidden states with no gradient; the student trains against the triple loss.
 
 Let me put the loss into code, because the temperature handling and the masking are easy to get subtly wrong.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F
+import re, torch, torch.nn as nn, torch.nn.functional as F
 
 class Distiller:
     def __init__(self, teacher, student, temperature=2.0,
-                 alpha_ce=5.0, alpha_mlm=2.0, alpha_cos=1.0):
+                 alpha_ce=5.0, alpha_mlm=2.0, alpha_cos=1.0,
+                 restrict_ce_to_mask=False):
         self.teacher, self.student = teacher, student
         self.T = temperature
         self.alpha_ce, self.alpha_mlm, self.alpha_cos = alpha_ce, alpha_mlm, alpha_cos
+        self.restrict_ce_to_mask = restrict_ce_to_mask
         # KL divergence between softened distributions; batchmean matches the
         # cross-entropy-of-soft-targets gradient up to the constant teacher entropy
         self.ce_loss_fct  = nn.KLDivLoss(reduction="batchmean")
@@ -44,8 +46,9 @@ class Distiller:
         with torch.no_grad():
             t_logits, t_hidden = self.teacher(input_ids, attention_mask)
 
-        # --- distillation loss: only over predicted (masked) positions ---
-        mask = (lm_labels > -1).unsqueeze(-1).expand_as(s_logits)   # restrict to masked tokens
+        # --- distillation loss: valid tokens by default; optionally masked tokens only ---
+        kd_pos = (lm_labels > -1) if self.restrict_ce_to_mask else attention_mask.bool()
+        mask = kd_pos.unsqueeze(-1).expand_as(s_logits)
         s_sel = s_logits.masked_select(mask).view(-1, s_logits.size(-1))
         t_sel = t_logits.masked_select(mask).view(-1, t_logits.size(-1))
         loss_ce = self.ce_loss_fct(
@@ -68,24 +71,28 @@ class Distiller:
         return self.alpha_ce * loss_ce + self.alpha_mlm * loss_mlm + self.alpha_cos * loss_cos
 ```
 
-And the student construction — same width, half the depth, drop token-type embeddings and pooler, copy every other teacher layer:
+And the student construction — same width, half the depth, drop token-type embeddings and pooler, seed the six student blocks from a layer slice of the teacher:
 
 ```python
-def build_student_from_teacher(teacher_cfg, teacher_state):
+def build_student_from_teacher(teacher_cfg, teacher_state, Encoder,
+                               layer_map=(0, 2, 4, 7, 9, 11)):
     student_cfg = dict(teacher_cfg)
-    student_cfg["n_layers"] = teacher_cfg["n_layers"] // 2     # 12 -> 6: cut depth, keep width
-    student = TransformerEncoder(student_cfg)                  # no token-type emb, no pooler
+    student_cfg["n_layers"] = len(layer_map)                  # 12 -> 6: cut depth, keep width
+    student_cfg["use_token_type_embeddings"] = False
+    student_cfg["use_pooler"] = False
+    student = Encoder(student_cfg)                            # DistilBERT-style encoder
 
     s_state = student.state_dict()
+    layer_to_student = {teacher_i: student_i for student_i, teacher_i in enumerate(layer_map)}
     for name, p in teacher_state.items():
         if "pooler" in name or "token_type" in name:
             continue
-        m = re.match(r"layer\.(\d+)\.", name)                  # map teacher layer -> student layer
+        m = re.search(r"layer\.(\d+)\.", name)                 # map teacher layer -> student layer
         if m:
             t_idx = int(m.group(1))
-            if t_idx % 2 != 0:
-                continue                                       # take one layer out of two (even layers)
-            s_name = name.replace(f"layer.{t_idx}.", f"layer.{t_idx // 2}.")
+            if t_idx not in layer_to_student:
+                continue
+            s_name = name.replace(f"layer.{t_idx}.", f"layer.{layer_to_student[t_idx]}.")
         else:
             s_name = name                                      # embeddings, MLM head: copy directly
         if s_name in s_state and s_state[s_name].shape == p.shape:
@@ -96,4 +103,4 @@ def build_student_from_teacher(teacher_cfg, teacher_state):
 
 Then the loop is plain large-batch MLM with gradient accumulation, dynamic masking, no NSP, AdamW with linear warmup, teacher frozen.
 
-So the causal chain: the big MLM Transformer is too costly to deploy and pre-train, and a small one trained on hard labels alone underperforms because one-hot targets discard the teacher's generalization structure; so train the small student to match the teacher's *soft* distribution, temperature-softened (and `T²`-rescaled) to expose the informative tail, mixed with the hard MLM loss and a cosine loss that aligns hidden-state directions; cut *depth* not width because depth is what costs inference time, drop the NSP-only token-type embeddings and the pooler, and initialize the six student layers by copying every other teacher layer so distillation refines rather than rediscovers; train with the strong large-batch / dynamic-masking / no-NSP recipe on the teacher's own corpus.
+So the causal chain: the big MLM Transformer is too costly to deploy and pre-train, and a small one trained on hard labels alone underperforms because one-hot targets discard the teacher's generalization structure; so train the small student to match the teacher's *soft* distribution, temperature-softened (and `T²`-rescaled) to expose the informative tail, mixed with the hard MLM loss and a cosine loss that aligns hidden-state directions; cut *depth* not width because depth is what costs inference time, drop the NSP-only token-type embeddings and the pooler, and initialize the six student layers from a depth-halved teacher slice so distillation refines rather than rediscovers; train with the strong large-batch / dynamic-masking / no-NSP recipe on the teacher's own corpus.

@@ -1,0 +1,43 @@
+\section{Introduction}
+
+\begin{wrapfigure}{r}{0.49\textwidth}
+    \vspace{-13.5pt}
+    \centering
+    \includegraphics[width=0.475\textwidth]{figures/fig1.pdf}
+    \captionsetup{font={scriptsize}}
+    \vspace{-6pt}
+    \caption{
+    \textbf{Performance \vs model efficiency on ADE20K.} All results are reported with single model and single-scale inference. SegFormer achieves a new state-of-the-art 51.0\% mIoU while being significantly more efficient than previous methods.
+    }
+    \label{fig:fig1}
+    \vspace{-18pt}
+\end{wrapfigure}
+
+
+Semantic segmentation is a fundamental task in computer vision and enables many downstream applications. It is  related to image classification since it produces per-pixel category prediction instead of image-level prediction. This relationship is pointed out and systematically studied in a seminal work~\cite{fcn}, where the authors used fully convolutional networks (FCNs) for semantic segmentation tasks. Since then, FCN has inspired many follow-up works and has become a predominant design choice for dense prediction.
+
+
+Since there is a strong relation between classification and semantic segmentation, many state-of-the-art semantic segmentation frameworks are variants of popular architectures for image classification on ImageNet. Therefore, designing backbone architectures has remained an active area in semantic segmentation. Indeed, starting from early methods using VGGs~\cite{fcn,deeplab}, to the latest methods with significantly deeper and more powerful backbones~\cite{zhang2020resnest}, the evolution of backbones has dramatically pushed the performance boundary of semantic segmentation. Besides backbone architectures, another line of work formulates semantic segmentation as a structured prediction problem, and focuses on designing modules and operators, which can effectively capture contextual information. A representative example in this area is dilated convolution~\cite{deeplabv2,dilate}, which increases the receptive field by ``inflating'' the kernel with holes.
+
+
+
+Witnessing the great success in natural language processing (NLP), there has been a recent surge of interest to introduce Transformers to vision tasks. Dosovitskiy et al.~\cite{vit} proposed vision Transformer (ViT) for image classification. Following the Transformer design in NLP, the authors split an image into multiple linearly embedded patches and feed them into a standard Transformer with positional embeddings (PE), leading to an impressive performance on ImageNet. In semantic segmentation, Zheng et al.~\cite{setr} proposed SETR to demonstrate the feasibility of using Transformers in this task. 
+
+SETR adopts ViT as a backbone and incorporates several CNN decoders to enlarge feature resolution. Despite the good performance, ViT has some limitations: 1) ViT outputs single-scale low-resolution features instead of multi-scale ones. 2) It has high computation cost on large images. To address these limitations, Wang et al.~\cite{pvt} proposed a pyramid vision Transformer (PVT), a natural extension of ViT with pyramid structures for dense prediction. PVT shows considerable improvements over the ResNet counterpart on object detection and semantic segmentation. However, together with other emerging methods such as Swin Transformer~\cite{liu2021swin} and Twins~\cite{chu2021twins}, these methods mainly consider the design of the Transformer encoder, neglecting the contribution of the decoder for further improvements.
+
+
+
+This paper introduces SegFormer, a cutting-edge Transformer framework for semantic segmentation that jointly considers efficiency, accuracy, and robustness. In contrast to previous methods, our framework redesigns both the encoder and the decoder. The key novelties of our approach are:
+\begin{itemize}[leftmargin=*]
+\item A novel positional-encoding-free and hierarchical Transformer encoder.
+\item A lightweight All-MLP decoder design that yields a powerful representation without complex and computationally demanding modules.
+\item As shown in Figure~\ref{fig:fig1}, SegFormer sets new a state-of-the-art in terms of efficiency, accuracy and robustness in three publicly available semantic segmentation datasets.
+\end{itemize}
+
+First, the proposed encoder avoids interpolating positional codes when performing inference on images with resolutions different from the training one. As a result, our encoder can easily adapt to arbitrary test resolutions without impacting the performance. In addition, the hierarchical part enables the encoder to generate both high-resolution fine features and low-resolution coarse features, this is in contrast to ViT that can only produce single low-resolution feature maps with fixed resolutions.
+Second, we propose a lightweight MLP decoder where the key idea is to take advantage of the Transformer-induced features where the attentions of lower layers tend to stay local, whereas the ones of the highest layers are highly non-local. By aggregating the information from different layers, the MLP decoder combines both local and global attention. As a result, we obtain a simple and straightforward decoder that renders powerful representations.  
+
+
+
+We demonstrate the advantages of SegFormer in terms of model size, run-time, and accuracy on three publicly available datasets: ADE20K, Cityscapes, and COCO-Stuff. On Citysapces, our lightweight model, SegFormer-B0, without accelerated implementations such as TensorRT, yields 71.9\% mIoU at 48 FPS, which, compared to ICNet~\cite{icnet}, represents a relative improvement of 60\% and 4.2\% in latency and performance, respectively. Our largest model, SegFormer-B5, yields 84.0\% mIoU, which represents a relative 1.8\% mIoU improvement while being 5 $\times$ faster than SETR~\cite{setr}. On ADE20K, this model sets a new state-of-the-art of 51.8\% mIoU while being 4 $\times$ smaller than SETR. Moreover, our approach is significantly more robust to common corruptions and perturbations than existing methods, therefore being suitable for safety-critical applications. Code will be publicly available.
+

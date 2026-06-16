@@ -1,72 +1,113 @@
-Let me start from the lopsidedness that's bugging me. A big pretrained language model is a great few-shot learner — drop three examples of a task into the prompt and it picks it up. But ask it to do the same task zero-shot, with only a description and no examples, and it falls apart, especially on things like reading comprehension, question answering, natural language inference. That's strange, because the *knowledge* clearly hasn't gone anywhere — the same model that nails the task with three examples surely "knows" how to do it with zero. So the gap isn't knowledge. It's that the zero-shot prompt doesn't connect to anything.
+The thing that bothers me is the asymmetry. A large pretrained language model can look smart when I give it a few examples in the prompt, but the same model becomes much less reliable when I only write the task down in words. Reading comprehension, question answering, natural language inference: these are not exotic skills for the model, because the few-shot version often works. The missing piece is not just knowledge. The missing piece is that a bare instruction does not give the model the familiar continuation pattern that examples give it.
 
-Why would examples be the thing that connects? Because the model was pretrained on one objective only: predict the next token of natural prose. A few-shot prompt — example, example, example, then the query — *is* a plausible continuation; the model has seen patterns like "here's a thing, here's its label, here's a thing, here's its label" and it just continues the pattern. But a bare zero-shot instruction like "Does this premise entail this hypothesis?" is not a natural continuation of web text. An NLI example phrased as a sentence to continue is genuinely awkward — that kind of thing essentially never appears in unsupervised text. So the model has the ability but no foothold: it doesn't recognize the instruction as a request it should answer. The deficit is largest exactly on the task formats that are least like natural prose, which is the tell.
+The pretraining objective explains why. The model has practiced predicting the next token in natural text. A few-shot prompt gives it a local mini-distribution to continue: input, label, input, label, input, and now the next label. A zero-shot prompt such as "Does this premise entail this hypothesis?" has a different shape. It is a request, not a continuation. Natural language inference is the sharp case: premise-hypothesis judgments are not the kind of text that usually appears by itself on the web. So the model can contain the latent competence and still fail to recognize the form of the request.
 
-So the fix shouldn't be a new architecture or a clever decoding trick. It should attack the mismatch directly: teach the model that a natural-language instruction is a request to be answered. If the reason zero-shot fails is "the model never learned to respond to instructions," then the cure is to *show it how*, with supervision. Take a pile of existing NLP datasets — which I already have, with inputs and gold outputs — and rephrase each example as an instruction. A sentiment example becomes "Is the sentiment of this review positive or negative? <review>" → "positive." A translation example becomes "Translate to French: The dog runs." → "Le chien court." Then finetune the pretrained model on this mixture. The hope: by being supervised to follow instructions across many tasks, the model learns the general *skill* of instruction-following, and that skill transfers to instructions for tasks it never saw in finetuning.
+I do not need a new decoder or a different pretraining objective to test that diagnosis. I can keep the pretrained LM and change the supervised data it sees afterward. Existing NLP datasets already have inputs and targets; I can turn each example into a natural-language request and train the model to answer it. A sentiment example becomes a question about whether a review is positive or negative. A translation example becomes "Translate to German" or "Translate to French." A reading-comprehension example becomes a passage, a question, and a requested answer. If this works, the model is not just memorizing one downstream task; it is learning that when text describes a task, the next text should carry out the task.
 
-But here's the trap I have to avoid, and it's the whole experimental design. If I finetune on, say, NLI data and then test zero-shot NLI, of course it'll do better — I just trained on NLI. That tells me nothing about whether it learned a transferable skill versus just learned that task. The claim I actually want to make is *generalization to unseen task types*. So I have to be strict about what "unseen" means. Grouping the datasets into clusters by task type — one cluster for NLI, one for reading comprehension, one for translation, and so on — I'll declare a dataset unseen only if *no* dataset from *any* cluster it belongs to appeared in finetuning. To evaluate the NLI cluster, I finetune on everything *except* NLI, then test zero-shot NLI. That means I can't train one model and evaluate everything; I have to train one model per held-out cluster, each blind to a different task type. It's more expensive, but it's the only way the "unseen" claim is honest.
+That last clause is easy to fool myself about. If I train on NLI and evaluate on NLI, I have only built an NLI finetuned model. The generalization claim has to be stricter than "the exact dataset was absent." I need task clusters. Put the 62 TFDS datasets into twelve clusters by task type: NLI, reading comprehension, commonsense, sentiment, closed-book QA, paraphrase, coreference, reading comprehension with commonsense, struct-to-text, translation, summarization, and miscellaneous. Then a dataset is unseen only if its whole task type is absent from training. To evaluate a cluster, I train a separate checkpoint with that cluster held out. If there are c evaluation clusters, there are c finetuning runs.
 
-Now the practical question: how do I phrase the instructions? My first instinct is one instruction template per dataset. But that's brittle — the model could just memorize "when the input starts with these exact words, do this," which is the opposite of learning to follow *arbitrary* instructions, and it would make zero-shot performance hostage to whether the test phrasing happens to match. So for each dataset I write *several* templates — about ten — that all describe the same task in different natural ways. For an NLI dataset: "Based on the paragraph, can we conclude that <hypothesis>?", "Does <premise> mean that <hypothesis>?", "Read the text and determine if the sentence is true: …", and so on. At finetuning time, each example is formatted with a randomly chosen one of its templates. That forces the model to learn the task *behind* the wording rather than the wording itself.
+Some clusters are close enough that the literal cluster name is not enough. Paraphrase detection is close to NLI, because semantic equivalence can be viewed as entailment in both directions, so when I test NLI I should also remove paraphrase, and when I test paraphrase I should remove NLI. Reading comprehension with commonsense overlaps both of its parents, so that combined cluster has to be removed when I evaluate either parent, and both parents have to be removed when I evaluate the combined cluster. This is the price of making "unseen task type" mean what it says.
 
-And while I'm at it, I want the model to learn that an instruction is a flexible thing, not always "input → label." So for each dataset I also include a few templates — up to three — that turn the task around: for sentiment, instead of "classify this review," a template that says "write a movie review that is positive." Same data, inverted direction. It widens the range of instruction shapes the model has practiced.
+Now the dataset has to speak in instructions without collapsing into one brittle phrase per task. One template per dataset would let the model key on a surface string. I want the same task to arrive in several natural wordings, so for each dataset I write ten templates. Most describe the original input-to-output direction; up to three deliberately turn the task around. For sentiment, a normal template asks for the polarity of a review, while an inverted one can ask the model to write a positive review. The inversion matters because it teaches that instructions are not only classifiers with labels; they can ask for generation in either direction allowed by the dataset.
 
-There's a wrinkle on the classification tasks. When the answer is one of a few classes — "yes" / "no", or an entailment label — how do I read the model's prediction out? The standard move is rank classification: restrict to the valid answer strings and take whichever has higher probability. Logically clean, but it has a leak. There are many surface ways to say "yes" — "yes", "yeah", "correct", "true" — and the model's probability mass spreads across all of them, so the bare token "yes" can get an unfairly low score just because its synonyms stole mass. The model doesn't *know*, when it's responding, that I only care about a specific set of options. So I tell it: append the list of acceptable answers to the prompt, an OPTIONS block enumerating the classes. Now the model is aware of which strings are in play and concentrates its mass on them, and the rank comparison is fair. Generation tasks need none of this — the model already responds in free text, so for those I leave the output untouched.
+At training time I should not freeze one wording onto one example. Each example gets a randomly selected template for its dataset. That makes the supervision noisy in the right way: the same underlying mapping appears under different surface forms, so the model has to attend to the requested operation rather than only to a fixed prefix.
 
-Mixing the datasets is its own small problem. They differ enormously in size; if I sample examples uniformly, a couple of giant datasets swamp everything and the model barely sees the small ones. So I cap each dataset's contribution — limit it to a maximum number of training examples — and sample with examples-proportional mixing under a mixing-rate cap, so that beyond some threshold a dataset stops accruing extra weight from its sheer size. That keeps the mixture balanced across tasks. For throughput I pack multiple examples into each sequence, separating an input from its target, and inputs from the next example, with a delimiter token. Concretely the recipe lands at: finetune for 30k gradient steps, batch of 8,192 tokens, the Adafactor optimizer at learning rate 3e-5, inputs capped at 1024 tokens and targets at 256, cap of 30k examples per dataset, mixing-rate maximum of 3k. Modest — the instruction-tuning compute is a tiny fraction of pretraining; I'm not building a new model, I'm reshaping how an existing one responds.
+Classification needs one more adjustment. If I score only candidate strings, "yes" can lose probability mass to "true", "correct", or other paraphrases even when the model's semantic answer is yes. Ranking fixed answer strings is still the practical classifier, but I should tell the model what strings are valid. So the prompt ends with an OPTIONS block listing the classes, and the target is one listed class. For three-way NLI datasets such as ANLI and CB, the choices are variants of yes, no, and impossible-to-say; for binary RTE it is yes/no; for multiple-choice commonsense tasks it is the provided answer choices. Generation tasks do not need this suffix because their output space is free text.
 
-Two things I genuinely don't know in advance and want to probe, because they decide whether this idea is real or a mirage.
+The mixture also has to be balanced. If I let dataset size dominate, the largest datasets decide the training distribution and the small task types barely count. I cap each dataset at 30,000 training examples, and for sampling I use examples-proportional mixing with a mixing-rate maximum of 3,000, so examples beyond that threshold no longer add sampling weight. Multiple short examples can be packed into one sequence, with a special EOS token separating input from target. The concrete finetuning recipe is modest relative to pretraining: 30,000 gradient steps, 8,192 tokens per batch, Adafactor with learning rate 3e-5, input length 1024, target length 256, about 60 hours on 128 TPUv3 cores.
 
-First: does breadth matter? My whole thesis is that practicing *many* task types teaches a general skill. If that's right, then adding more clusters to the finetuning mixture should keep improving zero-shot performance on the held-out clusters. If instead one or two tasks were enough, the thesis is weaker. So I'd sweep the number of clusters, adding them in, and watch held-out performance — what I'd want to see is that it keeps climbing as I add clusters, ideally not even saturating, which would say "the more task diversity, the better the instruction-following skill."
+The base model should be large enough for the hypothesis to have a chance. The model I use is a 137B-parameter dense left-to-right decoder-only transformer pretrained on web documents, code-containing web text, dialog, and Wikipedia, 2.49T SentencePiece BPE tokens with a 32k vocabulary. The supervised pass is not trying to inject all task knowledge from scratch. It is trying to make an already broad LM use its knowledge when the prompt is a plain request.
 
-Second, and this is the one that could sink it: does scale matter? Emergent abilities tend to show up only past some model size. It's entirely possible that instruction tuning helps a huge model but *hurts* a small one. The intuition for the bad case: a small model has limited capacity; if I make it learn forty tasks, it might spend all its capacity memorizing those tasks and have nothing left over for new ones, so it generalizes *worse* than before tuning. A large model has the capacity to both absorb the tasks *and* extract the general instruction-following skill, leaving room to apply it to unseen tasks. So I'd run the same recipe across a ladder of model sizes and look at held-out zero-shot. The hypothesis I'd be testing: at small scale, instruction tuning hurts held-out generalization (capacity all consumed by the training tasks); at large scale, it helps substantially. If that's the shape, it both validates the method and explains *why* it works — instruction tuning buys generalization only once there's spare capacity to hold the skill rather than just the tasks.
+There are two stress tests I have to run. Task breadth is the first one. If the learned object is really a general instruction-following behavior, then adding more task clusters to the finetuning mixture should improve held-out clusters. If performance saturates immediately, the story is weaker: maybe one neighboring task supplies all the benefit. I would hold out NLI, closed-book QA, and commonsense reasoning, keep paraphrase out because it is too close to NLI, keep reading comprehension with commonsense out because it is too close to commonsense reasoning, and add the seven eligible remaining clusters in decreasing order of number of tasks per cluster. Then I can ask whether the held-out average keeps moving upward as task breadth grows.
 
-And I should be honest about where this *won't* help, because it sharpens what the method is really doing. The mechanism is "teach the model to respond to an instruction." For tasks that are already just plain continuation — finish this sentence, resolve this coreference framed as a completion — the instruction is largely redundant; the pretraining objective already covers the format, so there's little for instruction tuning to add. So I'd expect gains concentrated on tasks that are naturally verbalized as an instruction (NLI, QA, translation, struct-to-text) and little-to-no gain on tasks that are essentially language modeling already. That asymmetry isn't a failure — it's a confirmation that what instruction tuning fixes is specifically the instruction-format mismatch, not some generic "more training is better."
+Scale is the second stress test, and it may go the opposite way for small models. A small model asked to learn dozens of supervised tasks might spend its capacity fitting those tasks and become worse on new task types. A larger model can absorb the mixture and still have room to represent the reusable behavior: read the instruction, identify the task, produce the requested answer. So I need the same split across a size ladder: 422M, 2B, 8B, 68B, and 137B. The expected signature is not "more finetuning always helps"; it is that the benefit emerges only once the model is large enough.
 
-The code is the data pipeline plus an ordinary finetune. The heart is templating: a bank of natural-language phrasings per dataset, a random one chosen per example, with an options suffix bolted on for classification.
+This also tells me where the recipe should be weak. If a downstream task is already just language modeling, such as choosing a sentence completion for a commonsense or coreference example, then an explicit instruction adds less. The pretraining objective already covers the shape. I should expect the largest gains where the task is naturally a request - NLI, QA, translation, struct-to-text - and smaller or mixed gains where the task already resembles continuation.
+
+Evaluation needs to avoid making one wording look like the whole recipe. For each dataset I should report the mean across its available templates, because that approximates a typical natural-language request. If a dev set exists, I can also choose the best dev template and report the corresponding test score, but that is a separate, more prompt-engineered view. For NLU I will use accuracy or exact match except for DROP, MultiRC, and SQuAD variants, where F1 is the right metric; translation uses BLEU, and struct-to-text uses ROUGE.
+
+I also need to separate the effect of the instructions from the effect of multi-task finetuning. If I remove the templates entirely and train only on raw inputs and outputs, the model gets supervision but not the habit of mapping a natural request to an action. If I prepend only a task or dataset name, I give it a symbolic task identifier but still not an ordinary user-facing instruction. For the no-template version, inference still has to use natural requests because otherwise the model would not know what task a bare input is asking for. For the task-name version, I can test both the natural request and the name prefix. If those controls fall short, the missing ingredient is the instruction format, not just exposure to many labels.
+
+The final pipeline is just templating, conservative cluster splitting, option rendering for classification, capped mixture sampling, packing, and ordinary finetuning.
 
 ```python
 import random
 
-# multiple natural-language phrasings per dataset; {options_} is the OPTIONS suffix for classification.
-# a few per dataset "turn the task around" (e.g. generate a premise/hypothesis) for instruction-shape diversity.
-PATTERNS = {
-    "rte": [
-        ('{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options_}', "{answer}"),
-        ('{premise}\n\nCan we infer the following?\n{hypothesis}\n\n{options_}', "{answer}"),
-        ('Read the following paragraph and determine if the hypothesis is true:\n\n{premise}\n\n'
-         'Hypothesis: {hypothesis}\n\n{options_}', "{answer}"),
-        # ... ~10 phrasings total, incl. a "turned-around" one:
-        ("Generate a context and a hypothesis.", "Context: {premise}\n\nHypothesis: {hypothesis}"),
+OVERLAP_BLOCKS = {
+    "nli": {"paraphrase"},
+    "paraphrase": {"nli"},
+    "reading_comprehension": {"reading_comprehension_with_commonsense"},
+    "commonsense": {"reading_comprehension_with_commonsense"},
+    "reading_comprehension_with_commonsense": {"reading_comprehension", "commonsense"},
+}
+
+TASK_FORMATS = {
+    # Representative entries from the ten-template-per-dataset format set.
+    "anli": [
+        (
+            '{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options}',
+            "{answer}",
+        ),
     ],
-    # ... one entry per dataset
+    "rte": [
+        (
+            '{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options}',
+            "{answer}",
+        ),
+    ],
+    "imdb": [
+        ("Is the sentiment of this movie review positive or negative?\n\n{review}\n\n{options}", "{answer}"),
+        ("Write a {answer} movie review.", "{review}"),
+    ],
+    "wmt16_en_de": [
+        ("{source}\n\nTranslate to German", "{target}"),
+    ],
 }
 
 def options_suffix(classes):
-    # tell the model which answers are valid, so rank-classification mass isn't split across paraphrases
-    return "OPTIONS:\n" + "\n".join(f"- {c}" for c in classes)
+    if not classes:
+        return ""
+    return "OPTIONS:\n" + "\n".join(f"- {label}" for label in classes)
 
 def format_example(dataset_name, example, classes=None):
-    template_in, template_out = random.choice(PATTERNS[dataset_name])   # random phrasing per example
+    template_in, template_out = random.choice(TASK_FORMATS[dataset_name])
     fields = dict(example)
-    fields["options_"] = options_suffix(classes) if classes else ""     # only for classification
+    fields["options"] = options_suffix(classes)
     return template_in.format(**fields), template_out.format(**fields)
 
-def make_train_eval_split(eval_cluster, clusters):
-    # "unseen" = no dataset from any cluster the eval dataset belongs to is in training
-    train = [d for c, ds in clusters.items() if c != eval_cluster for d in ds]
-    eval_ = clusters[eval_cluster]
-    return train, eval_
+def blocked_clusters(eval_cluster):
+    return {eval_cluster} | OVERLAP_BLOCKS.get(eval_cluster, set())
 
-# build the instruction-tuning mixture: cap per dataset, examples-proportional mixing, then finetune
-def instruction_tune(model, clusters, eval_cluster):
-    train_datasets, _ = make_train_eval_split(eval_cluster, clusters)
-    mixture = examples_proportional_mixture(
-        [ [format_example(name, ex, classes_of(name)) for ex in cap(D, 30_000)]
-          for name, D in train_datasets ],
-        cap=3_000)                                  # mixing-rate maximum
-    finetune(model, mixture, optimizer=Adafactor(lr=3e-5),
-             steps=30_000, batch_tokens=8_192, max_in_len=1024, max_tgt_len=256)  # with packing
-    return model   # FLAN: one checkpoint per held-out cluster
+def make_train_eval_split(eval_cluster, clusters):
+    blocked = blocked_clusters(eval_cluster)
+    train_names = [
+        name
+        for cluster, names in clusters.items()
+        if cluster not in blocked
+        for name in names
+    ]
+    return train_names, clusters[eval_cluster]
+
+def formatted_stream(dataset_name, dataset, classes):
+    examples = take_at_most(dataset.train, 30_000)
+    for example in examples:
+        yield format_example(dataset_name, example, classes)
+
+def train_checkpoint(model, clusters, datasets, eval_cluster):
+    train_names, _ = make_train_eval_split(eval_cluster, clusters)
+    streams = [
+        formatted_stream(name, datasets[name], classes_of(name))
+        for name in train_names
+    ]
+    mixture = examples_proportional_mixture(streams, mixing_rate_maximum=3_000)
+    packed = pack_with_eos(mixture, input_length=1024, target_length=256)
+    return finetune(
+        model,
+        packed,
+        steps=30_000,
+        batch_tokens=8_192,
+        optimizer=Adafactor(learning_rate=3e-5),
+    )
 ```
 
-So the causal chain: a pretrained LM has the knowledge but, with no in-context examples, no foothold for a bare instruction, because instructions don't look like the prose it was trained to continue; so finetune it to respond to instructions, by rephrasing many existing datasets as natural-language instructions and training on the mixture; phrase each task many ways (and sometimes inverted) so it learns the task behind the wording, not the wording; hold out entire task *clusters* to honestly test generalization to unseen task types; expose answer options so rank-classification is fair; and expect the gains to grow with task-diversity and to appear only at sufficient model scale, concentrated on tasks where an instruction adds something beyond plain continuation.
+The causal chain is now clean: zero-shot prompts fail when a task description is too unlike a pretraining continuation; supervised examples can be rewritten as natural-language requests; many tasks and many templates teach the model to map descriptions to actions; cluster-level held-out splits keep the transfer claim honest; options make ranked classification match the intended label set; and the benefit should depend on both task diversity and model scale because the reusable instruction-following behavior has to be learned in addition to the individual tasks.

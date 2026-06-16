@@ -70,8 +70,8 @@ def stage1_losses(qformer, image_feats, text_tokens):
     text_out = qformer.module.bert(text_tokens.input_ids,
                                    attention_mask=text_tokens.attention_mask)
     text_feat = F.normalize(qformer.text_proj(text_out[:, 0, :]), dim=-1)   # [B, d] (CLS)
-    # similarity of EACH query to text, then MAX over the 32 queries
-    sim = torch.matmul(image_feat.unsqueeze(1), text_feat.unsqueeze(-1)).squeeze()  # [B,B,32]
+    # all-pairs similarity of EACH image query to EACH text, then MAX over queries
+    sim = torch.einsum("iqd,jd->ijq", image_feat, text_feat)     # [image B, text B, 32]
     sim_i2t = sim.max(-1)[0] / qformer.temp               # [B, B]
     sim_t2i = sim.permute(1, 0, 2).max(-1)[0] / qformer.temp
     labels = torch.arange(B, device=q.device)
@@ -83,15 +83,19 @@ def stage1_losses(qformer, image_feats, text_tokens):
     labels_lm = dec_ids.masked_fill(dec_ids == qformer.module.pad_id, -100)
     attn = torch.cat([query_atts, text_tokens.attention_mask], dim=1)
     loss_itg = qformer.module.lm(query_embeds=q, input_ids=dec_ids, attention_mask=attn,
-                                 encoder_hidden_states=image_feats, labels=labels_lm).loss
+                                 encoder_hidden_states=image_feats, labels=labels_lm,
+                                 causal_text=True).loss
 
     # --- ITM: bidirectional mask, hard negatives, per-query 2-class head, averaged ---
-    pos_pairs, neg_pairs = mine_hard_negatives(sim_i2t, sim_t2i, image_feats, text_tokens)
-    fused = qformer.module.bert(pos_pairs.text_ids, query_embeds=q,
-                                attention_mask=cat_mask(query_atts, pos_pairs.text_atts),
-                                encoder_hidden_states=pos_pairs.image_feats)
+    pairs = mine_hard_negatives(sim_i2t.detach(), sim_t2i.detach(), image_feats, text_tokens)
+    pair_queries = qformer.query_tokens.expand(pairs.image_feats.size(0), -1, -1)
+    pair_query_atts = torch.ones(pair_queries.shape[:-1], dtype=torch.long,
+                                 device=pair_queries.device)
+    fused = qformer.module.bert(pairs.text_ids, query_embeds=pair_queries,
+                                attention_mask=cat_mask(pair_query_atts, pairs.text_atts),
+                                encoder_hidden_states=pairs.image_feats)
     logits = qformer.itm_head(fused[:, :q.size(1), :]).mean(dim=1)   # avg logits over queries
-    loss_itm = F.cross_entropy(logits, pos_pairs.match_labels)
+    loss_itm = F.cross_entropy(logits, pairs.match_labels)
 
     return loss_itc + loss_itg + loss_itm
 ```
@@ -99,22 +103,42 @@ def stage1_losses(qformer, image_feats, text_tokens):
 And stage two — hand the queries to the frozen LLM as a soft visual prompt:
 
 ```python
-@torch.no_grad()
 def encode_visual_prompt(qformer, frozen_image_encoder, image):
-    image_feats = frozen_image_encoder(image)             # frozen, no grad
+    with torch.no_grad():
+        image_feats = frozen_image_encoder(image)         # freeze only the image encoder
     q = qformer.query_tokens.expand(image_feats.size(0), -1, -1)
     query_out = qformer.module.bert(query_embeds=q, encoder_hidden_states=image_feats,
                                     use_query=True)        # [B, 32, 768]
     return query_out
 
 
-def stage2_loss(qformer, frozen_image_encoder, frozen_llm, image, text):
+def stage2_loss(qformer, frozen_image_encoder, frozen_llm, image, text,
+                encoder_decoder=False):
     query_out = encode_visual_prompt(qformer, frozen_image_encoder, image)
     visual_prompt = qformer.llm_proj(query_out)            # [B, 32, llm_dim]
-    text_embeds = frozen_llm.embed(text.input_ids)         # frozen embedding table
-    inputs = torch.cat([visual_prompt, text_embeds], dim=1)   # prepend visual tokens
-    # decoder LLM -> language-modeling loss; enc-dec LLM -> prefix-LM loss
-    return frozen_llm(inputs_embeds=inputs, labels=text.labels).loss
+
+    if not encoder_decoder:
+        # decoder LLM -> language-modeling loss, with prompt targets masked out
+        text_embeds = frozen_llm.embed(text.input_ids)     # frozen embedding table
+        inputs = torch.cat([visual_prompt, text_embeds], dim=1)
+        prompt_atts = torch.ones(visual_prompt.shape[:-1], dtype=torch.long,
+                                 device=visual_prompt.device)
+        attn = torch.cat([prompt_atts, text.attention_mask], dim=1)
+        prompt_labels = torch.full(visual_prompt.shape[:-1], -100,
+                                   dtype=torch.long, device=visual_prompt.device)
+        labels = torch.cat([prompt_labels, text.labels], dim=1)
+        # no torch.no_grad() around the frozen LLM call: gradients must flow to inputs
+        return frozen_llm(inputs_embeds=inputs, attention_mask=attn, labels=labels).loss
+
+    # encoder-decoder LLM -> prefix-LM: visual prompt + prefix into encoder, suffix target
+    prefix_embeds = frozen_llm.embed(text.prefix_ids)
+    enc_inputs = torch.cat([visual_prompt, prefix_embeds], dim=1)
+    prompt_atts = torch.ones(visual_prompt.shape[:-1], dtype=torch.long,
+                             device=visual_prompt.device)
+    enc_attn = torch.cat([prompt_atts, text.prefix_attention_mask], dim=1)
+    suffix_labels = text.suffix_ids.masked_fill(text.suffix_ids == qformer.module.pad_id, -100)
+    return frozen_llm(inputs_embeds=enc_inputs, attention_mask=enc_attn,
+                      labels=suffix_labels).loss
 ```
 
 So the causal chain, end to end: I wanted to stop relearning what's already trained, so I freeze a strong vision encoder and a strong LLM; freezing the LLM means it never adapts to vision, so all alignment must happen in a small bridge; the generation-only objective that prior frozen-LLM methods use is too weak, because a fluent frozen LM's language prior absorbs the loss without forcing the visual representation to align — so I add a representation-learning stage *first*; to turn the frozen encoder's variable, mostly-irrelevant feature grid into a small fixed signal I use a set of learned queries that cross-attend the features (the Perceiver/DETR device), giving a 32-vector bottleneck that's forced to keep only text-relevant content; I supervise it with three mask-differentiated objectives in one shared module — contrastive (unimodal mask, max-over-queries similarity, in-batch negatives), grounded generation (causal-on-text mask, which routes all the generation-needed info through the queries), and matching (bidirectional mask, per-query classifier averaged, hard negatives) — and only then, in stage two, project the now-aligned queries into the frozen LLM's input space as soft visual prompts and train with the LLM's own (prefix-)language-modeling loss, the bottleneck feeding the LLM exactly the visual information it needs and nothing more.

@@ -1,4 +1,4 @@
-Let me start from the thing that actually constrains me. I have a dense decoder-only Transformer — the Mistral 7B recipe, grouped-query attention and a SwiGLU feed-forward block per layer — and it's good. The obvious way to make it better is to make it bigger, and the field has shown quality keeps climbing with parameters: LLaMA-2 goes 7B, 13B, 70B and gets steadily stronger. But in a dense model *every* parameter touches *every* token. So when I double the parameters to get more quality, I double the FLOPs per token and the memory bandwidth per token right along with it. Quality and per-token cost are welded together. A 70B dense model is the quality I want and the serving cost I don't. So the real question isn't "how do I add capacity" — it's "how do I add capacity *without* adding per-token compute."
+Let me start from the thing that actually constrains me. I have a dense decoder-only Transformer — the Mistral 7B recipe, grouped-query attention and a SwiGLU feed-forward block per layer — and it's good. The obvious way to make it better is to make it bigger, and the field has shown quality keeps climbing with parameters: LLaMA-2 goes 7B, 13B, 70B and gets steadily stronger. But in a dense model *every* parameter touches *every* token. So when I add parameters to get more quality, I raise the FLOPs per token and push per-token cost and latency up with it. Quality and per-token cost are welded together. A 70B dense model is the quality I want and the serving cost I don't. So the real question isn't "how do I add capacity" — it's "how do I add capacity *without* adding per-token compute."
 
 What would it even mean to add parameters that a token doesn't pay for? It means each token must only *touch* a fraction of the total parameters. Some parameters are used for this token, others for that token, and the union is large but the per-token slice is small. That immediately splits the parameter count into two numbers that I've been conflating: the **total** parameter count — everything in the model, which sets the memory footprint — and the **active** parameter count — what a single token actually runs through, which sets the compute. In a dense model these are equal. I want to pry them apart: grow total, hold active.
 
@@ -14,11 +14,11 @@ Now I have to make $G(x)$ actually sparse and learnable. The simplest thing that
 
   G(x) := Softmax(TopK(x · W_g)).
 
-The $-\infty$ entries exponentiate to 0 in the softmax, so the non-top-$K$ gates are exactly zero (I skip those experts) and the surviving $K$ gates are a normalized convex combination summing to 1. That's exactly the structure I wanted: sparse where it needs to be, and a clean weighting over the chosen experts. The router weights $W_g$ are tiny (just $\text{dim}\times n$) and learned end-to-end with everything else — no separate routing objective needed for the gate to form.
+The $-\infty$ entries exponentiate to 0 in the softmax, so the non-top-$K$ gates are exactly zero (I skip those experts) and the surviving $K$ gates are a normalized convex combination summing to 1. That's exactly the structure I wanted: sparse where it needs to be, and a clean weighting over the chosen experts. The router weights $W_g$ are tiny (just $\text{dim}\times n$), so the gate itself is only a bias-free linear projection followed by top-$K$ selection and normalization.
 
-How many experts should each token get — what's $K$? $K$ is the dial that sets active compute: $K=1$ means each token's hidden state is rebuilt by a *single* expert. That's the cheapest, but it gives the token no mixing — its representation is whatever one expert says, with no blending, and the router has to make an all-or-nothing bet. $K=2$ lets each token combine two experts' outputs, so the representation is a learned blend and the router's decision is softer — if one expert is slightly wrong, the second cushions it — for only twice the FFN compute of $K=1$, still a small fraction of $n$. Going higher buys diminishing mixing for linearly more compute. So $K=2$ is the sweet spot: real combination, minimal cost. With $n=8$ experts and $K=2$, each token sees 2 of 8 FFNs.
+How many experts should each token get — what's $K$? $K$ is the dial that sets active compute: $K=1$ means each token's hidden state is rebuilt by a *single* expert. That's the cheapest, but it gives the token no mixing — its representation is whatever one expert says, with no blending, and the router has to make an all-or-nothing bet. $K=2$ lets each token combine two experts' outputs, so the representation is a learned convex blend rather than a hard single-expert choice, while still using only a small fraction of $n$. Going higher buys more mixing for linearly more FFN compute. So $K=2$ is the smallest setting that still blends: the two selected logits are softmax-normalized and their two expert outputs are added as a weighted sum. With $n=8$ experts and $K=2$, each token sees 2 of 8 FFNs.
 
-Let me make the expert concrete. The experts don't need to be anything exotic — an expert is just a standard feed-forward block, the same SwiGLU FFN the dense model already uses. So $E_i = \mathrm{SwiGLU}_i$, eight independent copies of the FFN with their own weights, and the rest of the block (attention, norms, residuals) is unchanged. Putting it together, the per-token output is
+Let me make the expert concrete. The experts don't need to be anything exotic — an expert is just a standard feed-forward block, the same SwiGLU FFN the dense model already uses. So $E_i = \mathrm{SwiGLU}_i$, eight independent copies of the FFN with their own weights, and the rest of the block (attention, norms, residuals) is unchanged. This routing decision happens independently for each token at each layer. Putting it together, the per-token output is
 
   y = Σ_{i=0}^{n-1} Softmax(Top2(x · W_g))_i · SwiGLU_i(x).
 
@@ -26,12 +26,17 @@ Let me do the parameter arithmetic to confirm the decoupling actually pays off. 
 
 There's a subtlety in *where* to put the MoE layers and how to route. GShard, which this resembles, replaces the FFN in only *every other* layer with an MoE layer and uses a more elaborate gating strategy for the second expert. I'll go the other way: replace *every* FFN sub-block with an MoE layer (so every layer gets the capacity boost) and keep the gate dead simple — plain top-2 softmax for both chosen experts, no special second-expert logic. Simpler and applied throughout.
 
-Now the wall this hits in practice: efficiency and balance. The math says "skip the zero-gated experts," but a naive implementation that loops over experts, gathering the tokens routed to each, is awkward on a GPU because different experts receive *different numbers of tokens* — ragged batches kill throughput. The fix is to cast the whole per-expert FFN computation as large block-sparse matrix multiplications (the Megablocks approach), which handles variable token counts per expert without padding waste and runs fast on one GPU. And when experts are spread across GPUs — Expert Parallelism, where each token is shipped to the GPU holding its chosen expert and the result shipped back — the danger is load imbalance: if the router sends most tokens to a few experts, those GPUs bottleneck while others idle. So balanced routing matters for serving. This is a property worth watching: do the experts specialize by *topic*, so that, say, all the math tokens pile onto one expert (which would imbalance and also tell me the router learned semantics)? I'd want to check the distribution of expert assignments across different data domains and see whether it's skewed by topic or roughly uniform — and whether consecutive tokens tend to reuse the same expert (temporal locality), which would matter for caching and for over-subscription under expert parallelism. That's a diagnostic I'd run on the trained router, not something the architecture forces.
+Now the wall this hits in practice: efficiency and balance. The math says "skip the zero-gated experts," but a naive implementation that loops over experts, gathering the tokens routed to each, is awkward on a GPU because different experts receive *different numbers of tokens* — ragged batches kill throughput. The fix is to cast the whole per-expert FFN computation as large block-sparse matrix multiplications (the Megablocks approach), which handles variable token counts per expert without padding waste and runs fast on one GPU. And when experts are spread across GPUs — Expert Parallelism, where each token is shipped to the GPU holding its chosen expert and the result shipped back — the danger is load imbalance: if the router sends too many tokens to a few experts, those GPUs bottleneck while others idle. So I need to track how often each expert is selected and whether consecutive tokens keep reusing the same experts, because skew creates over-subscription while locality can be useful for caching.
 
 Now the code. The MoE layer holds a router (a bias-free linear to $n$ logits) and $n$ SwiGLU experts; the forward computes top-$K$ gates, softmaxes over the kept logits, and accumulates the weighted expert outputs only for the tokens routed to each expert.
 
 ```python
-import dataclasses, torch, torch.nn as nn, torch.nn.functional as F
+import dataclasses
+from typing import List
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 @dataclasses.dataclass
 class MoeArgs:
@@ -39,23 +44,26 @@ class MoeArgs:
     num_experts_per_tok: int  # K  (e.g. 2)
 
 class MoeLayer(nn.Module):
-    def __init__(self, experts: list[nn.Module], gate: nn.Module, args: MoeArgs):
+    def __init__(self, experts: List[nn.Module], gate: nn.Module, moe_args: MoeArgs):
         super().__init__()
+        assert len(experts) > 0
         self.experts = nn.ModuleList(experts)   # n independent SwiGLU FFNs
         self.gate = gate                        # nn.Linear(dim, n, bias=False) = W_g
-        self.args = args
+        self.args = moe_args
 
-    def forward(self, x):                       # x: (num_tokens, dim)
-        gate_logits = self.gate(x)              # (num_tokens, n)  =  x @ W_g
+    def forward(self, inputs: torch.Tensor):    # inputs: (num_tokens, dim)
+        gate_logits = self.gate(inputs)         # (num_tokens, n)  =  inputs @ W_g
         # top-K experts per token, then softmax over ONLY the kept logits:
         # equivalent to Softmax(TopK(.)) since the dropped logits would be -inf -> 0.
-        weights, sel = torch.topk(gate_logits, self.args.num_experts_per_tok)
-        weights = F.softmax(weights, dim=1, dtype=torch.float).to(x.dtype)
-        out = torch.zeros_like(x)
+        weights, selected_experts = torch.topk(gate_logits, self.args.num_experts_per_tok)
+        weights = F.softmax(weights, dim=1, dtype=torch.float).to(inputs.dtype)
+        results = torch.zeros_like(inputs)
         for i, expert in enumerate(self.experts):
-            batch_idx, nth = torch.where(sel == i)   # tokens that picked expert i
-            out[batch_idx] += weights[batch_idx, nth, None] * expert(x[batch_idx])
-        return out                              # only K experts run per token
+            batch_idx, nth_expert = torch.where(selected_experts == i)
+            results[batch_idx] += (
+                weights[batch_idx, nth_expert, None] * expert(inputs[batch_idx])
+            )
+        return results                          # only K experts run per token
 ```
 
 The expert is the existing SwiGLU FFN, and the MoE layer drops into the transformer block in place of the dense feed-forward:

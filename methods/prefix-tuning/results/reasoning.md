@@ -4,36 +4,36 @@ There's a clue from prompting that I keep coming back to. A frozen LM can be ste
 
 So let me try the obvious version: write a natural-language instruction, like "summarize the following table in one sentence," prepend it, freeze everything. It fails. GPT-2 and BART mostly don't follow instructions — that capability only really shows up in the very largest models. So a hand-written instruction isn't the steering context I need. Fine, then *search* for a better instruction. But the instruction is a sequence of discrete tokens, and searching over discrete token sequences is combinatorial and brutal to optimize — gradient-guided discrete search (like AutoPrompt) exists, but it's expensive and, more fundamentally, every slot in the prompt is forced to be the embedding of an actual vocabulary word. That's a hard constraint that caps how expressive the steering context can be. The best discrete prompt is bounded by "what can be said with real words in these positions."
 
-Here's the move that dissolves the discrete problem. The only reason the prompt is hard to optimize is that I'm insisting each position be a real token. But the LM doesn't consume tokens — it consumes their *embeddings*, continuous vectors. So why restrict to real-word embeddings? Let the prompt positions be *free continuous vectors*, optimized directly by gradient descent against the task loss. Now there's no discrete search — it's smooth optimization — and it's strictly more expressive than a discrete prompt, because a discrete prompt is just the special case where each vector happens to equal some real word's embedding. So: prepend a few "virtual tokens" whose embeddings are trainable free parameters, freeze the LM, and optimize those embeddings on the task. Call this the embedding-only approach.
+The only reason the prompt is hard to optimize is that I'm insisting each position be a real token. But the LM doesn't consume tokens — it consumes their *embeddings*, continuous vectors. So why restrict to real-word embeddings? Let the prompt positions be *free continuous vectors*, optimized directly by gradient descent against the task loss. Now there's no discrete search — it's smooth optimization — and it's strictly more expressive than a discrete prompt, because a discrete prompt is just the special case where each vector happens to equal some real word's embedding. So: prepend a few "virtual tokens" whose embeddings are trainable free parameters, freeze the LM, and optimize those embeddings on the task. Call this the embedding-only approach.
 
-Let me think about whether embedding-only is *enough* before I commit. The virtual-token embeddings sit at the very bottom of the network. Their influence has to propagate up through every layer and rightward to the real tokens, entirely through the frozen Transformer's computation. That's a long, indirect path: the only handle I have on what happens at layer 12 is whatever the frozen layers 1–11 decide to do with my bottom-layer vectors. I'm asking a small set of input vectors to bend the behavior of the whole deep stack through a fixed function. That's a lot of long-range dependency riding on very few, very distant parameters. I suspect this will be underpowered — and indeed, when I try it, embedding-only steering works but underperforms; tuning only the embedding layer just isn't expressive enough to match fine-tuning. So the chain of increasing expressiveness is: discrete prompting < embedding-only tuning < (something that intervenes deeper). I need to intervene deeper.
+Let me think about whether embedding-only is *enough* before I commit. The virtual-token embeddings sit at the very bottom of the network. Their influence has to propagate up through every layer and rightward to the real tokens, entirely through the frozen Transformer's computation. That's a long, indirect path: the only handle I have on what happens at layer 12 is whatever the frozen layers 1-11 decide to do with my bottom-layer vectors. I'm asking a small set of input vectors to bend the behavior of the whole deep stack through a fixed function. That's a lot of long-range dependency riding on very few, very distant parameters. A discrete prompt is a constrained version of this bottom-layer scheme, so the expressiveness order is clear before any benchmark: discrete prompting < embedding-only tuning < something that intervenes deeper. I need to intervene deeper.
 
-What does "deeper" mean concretely? Recall how the Transformer computes a position's activation: at each layer, position i attends to the previous layer's activations in its left context. So the activation of a virtual-token position isn't just its input embedding — it's a *whole stack* of per-layer activations, h_i = [h_i^(1); …; h_i^(n)], one vector per layer. In embedding-only, I only set h_i^(1) (the bottom) and let the frozen LM compute the rest. But I could instead make the virtual-token activations free at *every* layer. That is: don't just feed trainable embeddings at the input — directly supply the entire per-layer activation stack of the prefix positions as trainable parameters. Then the prefix's influence enters the real tokens' attention at every layer directly, not filtered through eleven frozen layers first. Much shorter dependency paths, far more tunable parameters, easier to optimize.
+What does "deeper" mean concretely? Recall how the Transformer computes a position's activation: at each layer, position i attends to keys and values from the previous positions in that same layer's left context. So the virtual positions should not merely have bottom embeddings that the frozen network turns into whatever it turns them into; they should supply the attention objects the later real tokens will actually read. For every layer, give the virtual positions their own trainable key vectors and value vectors. Then the prefix's influence enters the real tokens' attention at every layer directly, not filtered through eleven frozen layers first. Much shorter dependency paths, far more tunable parameters, easier to optimize.
 
-So here's the method. Prepend |P| prefix positions, getting z = [P; x; y] for an autoregressive LM (or a prefix on each side, [P; x; P′; y], for encoder-decoder). Allocate a trainable matrix P_θ of shape |P| × dim(h_i), where dim(h_i) is the full per-layer activation size (the concatenation over all layers). The recurrence is unchanged for real tokens, but the prefix positions read their activations straight from P_θ:
+The construction is now concrete. Prepend |P| prefix positions, getting z = [P; x; y] for an autoregressive LM (or a prefix on each side, [P; x; P'; y], for encoder-decoder). If I flatten the trainable cache for one prefix position, it has one key and one value at every layer, so its width is 2 * n_layers * d_model, equivalently [layer, key/value, head, prefix_position, head_dim] before flattening. Allocate P_θ as exactly that trainable per-layer key/value prefix. In the activation notation, the recurrence is unchanged for real tokens, but the prefix positions read their stored activations from P_θ:
 
   h_i = P_θ[i, :]            if i is a prefix position,
   h_i = LM_φ(z_i, h_{<i})    otherwise.
 
-Freeze φ entirely; the *only* trainable parameters are P_θ. The objective is identical to fine-tuning — maximize Σ_{i∈y} log p_φ(z_i | h_{<i}) — just over a tiny parameter set. Every real activation h_i (i not in the prefix) still depends on P_θ, because the prefix sits in the left context of every real token and is attended to at every layer. So the prefix steers both the *encoding of x* (guiding what the model extracts from the input) and the *generation of y* (steering the next-token distribution), through ordinary attention.
+Freeze φ entirely; the only trainable parameters are the prefix-side parameters θ. The objective is identical to fine-tuning — maximize Σ_{i∈y} log p_φ(z_i | h_{<i}) — just over a tiny parameter set. Every real activation h_i (i not in the prefix) still depends on P_θ, because the prefix keys and values sit in the left context of every real token at every layer. So the prefix steers both the *encoding of x* (guiding what the model extracts from the input) and the *generation of y* (steering the next-token distribution), through ordinary attention.
 
-Where exactly to put the trainable positions matters, and I should reason it through rather than default to "the front." If I place them at the front — prefixing, [P; x; y] — the prefix is in the left context of both x and y, so it can influence how x is encoded *and* how y is generated. If instead I place them between x and y — infixing, [x; P; y] — then x is encoded *before* the trainable positions appear, so the trainable activations can only affect y, not the encoding of x. Prefixing strictly dominates infixing in reach, so I expect prefixing to do at least as well; empirically infixing is slightly worse, which matches this reasoning. Front it is.
+Where exactly to put the trainable positions matters, and I should reason it through rather than default to "the front." If I place them at the front — prefixing, [P; x; y] — the prefix is in the left context of both x and y, so it can influence how x is encoded *and* how y is generated. If instead I place them between x and y — infixing, [x; P; y] — then x is encoded *before* the trainable positions appear, so the trainable activations can only affect y, not the encoding of x. Prefixing strictly dominates infixing in reach. Front it is.
 
-Now a subtlety about implementation that's actually a gift. "Supply the prefix's per-layer key/value activations as extra left context" is exactly what a Transformer's cached-attention mechanism already does — the `past_key_values` interface lets me inject precomputed per-layer key/value tensors that every real position attends to, without recomputing anything. So the prefix is naturally represented as, per layer, a set of |P| key vectors and |P| value vectors. dim(h_i) is therefore 2 · n_layers · d_model worth of activation per prefix position (a key and a value of size d_model at each of the n_layers layers). I learn that whole stack.
+Now a subtlety about implementation is actually a gift. "Supply the prefix's per-layer key/value activations as extra left context" is exactly what a Transformer's cached-attention mechanism already does. The `past_key_values` interface lets me inject precomputed per-layer key/value tensors that every real position attends to, without recomputing anything. So the implementation object is a tuple with one `(key, value)` pair per layer, each shaped `[batch, n_head, prefix_len, head_dim]`. The learned prefix is not a new hidden layer inside the LM; it is a learned cache prepended at every layer.
 
-Let me check the optimization behaves. If I make P_θ a raw free matrix and optimize it directly, training turns out to be unstable and very sensitive to learning rate and initialization, with a slight performance hit. The values in P_θ live in the LM's activation space, which has its own scale and correlations across the dim(h_i) coordinates; a raw matrix has no structure tying those coordinates together, so gradient descent thrashes. The fix is to reparametrize: instead of optimizing the big matrix directly, optimize a *smaller* matrix P′_θ of shape |P| × k (same number of rows = prefix length, but a much smaller column dimension k), and pass each row through an MLP to expand it to dim(h_i):
+The parameterization itself can become the bottleneck. P_θ is a raw cache spanning layers, heads, keys, and values, and those coordinates live in the LM's activation space with its own scales and correlations. If I push directly on every coordinate, optimization can become learning-rate and initialization sensitive. I want the served object to remain just the cache, but I can use a smoother training parameterization to get there: optimize a smaller matrix P'_θ of shape |P| x k (same number of rows = prefix length, but a much smaller column dimension k), and pass each row through an MLP to expand it to the flattened key/value cache:
 
-  P_θ[i, :] = MLP_θ(P′_θ[i, :]).
+  P_θ[i, :] = MLP_θ(P'_θ[i, :]).
 
-The MLP shares parameters across all prefix positions and across the expansion, which couples the coordinates and gives a smoother, better-conditioned optimization landscape — training is now stable. k is small (around 512 for table-to-text, 800 for summarization); the MLP maps k → dim(h_i). And here's the nice part: the MLP and P′_θ are only needed *during training*. Once trained, I just evaluate P_θ = MLP_θ(P′_θ) once and store the resulting |P| × dim(h_i) prefix matrix; the reparametrization machinery is thrown away. So the stored per-task object is exactly the prefix activations — nothing else.
+The MLP shares parameters across prefix positions and maps the low-dimensional rows into a cache-shaped space, which is the stability reason for the reparameterization. k is 512 for table-to-text and 800 for summarization; the MLP maps k to the flattened key/value prefix. The MLP and P'_θ are only needed during training. Once trained, I evaluate P_θ = MLP_θ(P'_θ) once and store the resulting per-layer key/value tensors; the reparameterization machinery is thrown away. So the stored per-task object is exactly the prefix cache — nothing else.
 
-How long should the prefix be? Longer prefix = more trainable parameters = more expressive, but also more to overfit. I expect performance to climb with |P| up to a point and then sag slightly as the longer prefix starts memorizing the training set rather than generalizing — and that's what happens: a threshold around 10 for table-to-text and around 200 for summarization (summarization is harder and needs more steering capacity), beyond which test performance dips slightly even as training loss keeps dropping. Importantly, a longer prefix barely costs anything at inference, because attention over the whole prefix is parallelized on the GPU — it's not like adding sequential depth.
+How long should the prefix be? Longer prefix = more trainable parameters = more expressive, but also more room to overfit. The right length has to be a task hyperparameter: table-to-text can use a short prefix, while summarization plausibly needs much more steering capacity because the input is longer and the operation is less templatic. Importantly, a longer prefix barely costs anything at inference compared with adding new sequential layers, because attention over the whole prefix is parallelized on the GPU.
 
-One more thing, initialization, which matters a lot in low-data settings. If I initialize P′_θ (and hence the prefix) randomly, I get low performance with high variance — random vectors in activation space are a bad starting point. Far better: initialize the prefix from the *activations of real words* computed by the frozen LM itself. Run some real tokens through the LM, grab their per-layer activations, and use those to seed the prefix. This starts the prefix in a region of activation space the LM already "speaks," and it's concordant with the whole philosophy of disturbing the pre-trained model as little as possible. Task-relevant words ("summarization", "table-to-text") seed slightly better than irrelevant ones ("elephant", "divide"), but any real-word seeding beats random.
+One more thing, initialization, which matters most when data are scarce. Random cache vectors are unlikely to sit in a region of activation space the LM already uses. Better: initialize the prefix from the activations of real words computed by the frozen LM itself. Run real tokens through the LM, grab their per-layer key/value activations, and use those to seed the prefix. This starts the prefix in a region of activation space the LM already "speaks," and it is concordant with the whole philosophy of disturbing the pre-trained model as little as possible.
 
 Step back and notice what I've gained beyond parameter count. Because the entire task-specific object is a prefix that lives in the *input/activation* side and the backbone is untouched, different examples in one batch can carry *different* prefixes against the same frozen model — so I can batch requests for different tasks or different users together, which a per-task fine-tuned checkpoint can't do. That falls out for free from "the task is encoded as context, not as weights."
 
-Here is the code these decisions land on.
+The implementation becomes the same frozen loss with only the prefix module exposed to the optimizer.
 
 ```python
 import torch
@@ -43,37 +43,37 @@ import torch.nn.functional as F
 
 class PrefixTuning(nn.Module):
     """Trainable per-layer key/value prefix that steers a frozen LM.
-    Reparametrized through an MLP for stable optimization; collapse to raw
-    prefix activations after training."""
-    def __init__(self, lm_config, prefix_len=10, mid_dim=512):
+    Reparametrized through an MLP for stable optimization; collapse to the
+    raw prefix cache after training."""
+    def __init__(self, lm_config, prefix_len=10, reparam_dim=512, mlp_hidden_dim=512):
         super().__init__()
         self.prefix_len = prefix_len
         self.n_layer = lm_config.n_layer
         self.n_head = lm_config.n_head
         self.d_model = lm_config.n_embd
         self.head_dim = self.d_model // self.n_head
-        # small matrix P'_theta: one low-dim vector per prefix position
-        self.input_tokens = torch.arange(prefix_len)
-        self.embed = nn.Embedding(prefix_len, self.d_model)
-        # MLP expands d_model -> all layers' key+value activations (dim(h_i))
+        # small matrix P'_theta: one k-dimensional vector per prefix position
+        self.register_buffer("prefix_positions", torch.arange(prefix_len), persistent=False)
+        self.prefix_basis = nn.Embedding(prefix_len, reparam_dim)
+        # MLP expands k -> the flattened per-layer key/value cache
         self.mlp = nn.Sequential(
-            nn.Linear(self.d_model, mid_dim),
+            nn.Linear(reparam_dim, mlp_hidden_dim),
             nn.Tanh(),
-            nn.Linear(mid_dim, self.n_layer * 2 * self.d_model),  # 2 = key + value
+            nn.Linear(mlp_hidden_dim, self.n_layer * 2 * self.d_model),  # 2 = key + value
         )
 
     def materialize(self, batch_size, device):
         """Produce past_key_values: per layer, (key, value) of shape
-        [batch, n_head, prefix_len, head_dim]. This is dim(h_i) for the prefix."""
-        idx = self.input_tokens.to(device)
-        h = self.mlp(self.embed(idx))                              # [prefix_len, n_layer*2*d_model]
-        h = h.unsqueeze(0).expand(batch_size, -1, -1)              # batch can carry distinct prefixes
-        h = h.view(batch_size, self.prefix_len, self.n_layer * 2, self.n_head, self.head_dim)
+        [batch, n_head, prefix_len, head_dim]."""
+        idx = self.prefix_positions.to(device)
+        h = self.mlp(self.prefix_basis(idx))                       # [prefix_len, n_layer*2*d_model]
+        h = h.unsqueeze(0).expand(batch_size, -1, -1)              # same task prefix for this batch
+        h = h.reshape(batch_size, self.prefix_len, self.n_layer * 2, self.n_head, self.head_dim)
         h = h.permute(2, 0, 3, 1, 4)                               # [n_layer*2, batch, n_head, len, hd]
         past = []
         for l in range(self.n_layer):
             past.append((h[2 * l], h[2 * l + 1]))                  # (key, value) for layer l
-        return past   # prefix occupies the left context at EVERY layer
+        return tuple(past)   # prefix occupies the left context at EVERY layer
 
 
 def loss_fn(frozen_lm, prefix, x_ids, y_ids):
@@ -87,13 +87,13 @@ def loss_fn(frozen_lm, prefix, x_ids, y_ids):
 def train(frozen_lm, prefix, loader, opt):
     for p in frozen_lm.parameters():
         p.requires_grad = False                                   # backbone frozen
-    optim = torch.optim.AdamW(prefix.parameters(), lr=opt.lr)     # only the prefix module trains
+    optim = torch.optim.AdamW(prefix.parameters(), lr=opt.lr)     # only prefix-side params train
     for batch in loader:                                          # default: 10 epochs, bs 5, lr 5e-5
         loss = loss_fn(frozen_lm, prefix, batch["x_ids"], batch["y_ids"])
         loss.backward(); optim.step(); optim.zero_grad()
 
 
-# After training: store only prefix.materialize(1, dev); drop the MLP/embedding.
+# After training: store the materialized per-layer key/value tensors; drop the MLP/P'_theta.
 ```
 
-The causal chain: serving many tasks cheaply forces a tiny per-task object on a frozen backbone; "steer-by-context" suggests a learned context, but discrete prompts are hard to optimize and capped to real-word embeddings, so relax to continuous virtual-token vectors; those at the input layer alone are too weak (too long a dependency path through the frozen stack), so make the prefix's activations trainable at *every* layer — i.e. supply per-layer key/value activations via the existing cached-attention path; prefixing dominates infixing because it can shape both the encoding of x and the generation of y; raw optimization of the activation matrix is unstable, so reparametrize through a shared MLP from a small matrix and discard it after training; prefix length trades expressiveness against overfitting (≈10 vs ≈200 by task); and seeding from real-word activations stabilizes low-data training — yielding a method that stores only a small prefix per task, leaves the LM untouched, and even lets one batch mix prefixes across tasks.
+The causal chain: serving many tasks cheaply forces a tiny per-task object on a frozen backbone; "steer-by-context" suggests a learned context, but discrete prompts are hard to optimize and capped to real-word embeddings, so relax to continuous virtual-token vectors; those at the input layer alone are too weak because the dependency path through the frozen stack is long, so make the prefix cache trainable at every layer by supplying per-layer key/value tensors through the existing cached-attention path; prefixing dominates infixing because it can shape both the encoding of x and the generation of y; raw optimization of that cache is unstable, so reparameterize through a shared MLP from a smaller matrix and discard it after training; prefix length trades expressiveness against overfitting; and real-word activation initialization keeps the learned cache near the LM's own activation space — yielding a method that stores only a small prefix per task, leaves the LM untouched, and lets one batch mix prefixes across tasks.

@@ -1,4 +1,4 @@
-# Prompt Tuning (The Power of Scale for Parameter-Efficient Prompt Tuning)
+# Prompt Tuning
 
 ## Problem
 
@@ -22,7 +22,7 @@ for billion-parameter models. The central finding is the **power of scale**: the
 model, the more competitive this minimal intervention becomes, until at XXL (11B) it matches even
 the strong multi-task model-tuning baseline despite >20,000× fewer task-specific parameters.
 
-Design choices (each matters at small/mid scale, then washes out at XXL):
+Design choices (each matters most below XXL, then becomes much less decisive as scale grows):
 - **LM-adapt the base model first.** T5.1.1 is pre-trained only on span corruption (targets begin
   with sentinel tokens), so its decoder has a strong sentinel prior that a frozen prompt cannot
   override — mid-sized models often fail to emit a legal class label (0% accuracy; copying input

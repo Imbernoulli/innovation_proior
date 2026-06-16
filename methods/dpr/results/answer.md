@@ -2,7 +2,7 @@
 
 ## Problem
 
-Open-domain QA decomposes into retrieve-then-read. The reader is strong when given the right passage, so end-to-end accuracy is bottlenecked by the retriever: can we find, from ~21M Wikipedia passages, the small top-k set that contains the answer — accurately, and fast enough to serve in real time? Sparse BM25 is fast but semantically blind ("bad guy" ≠ "villain"). Dense retrieval should fix that, but the belief was that it requires expensive self-supervised pretraining (e.g. the Inverse Cloze Task). DPR shows it does not.
+Open-domain QA decomposes into retrieve-then-read. The reader is strong when given the right passage, so end-to-end accuracy is bottlenecked by the retriever: can we find, from ~21M Wikipedia passages, the small top-k set that contains the answer — accurately, and fast enough to serve in real time? Sparse BM25 is fast but semantically blind ("bad guy" != "villain"). Dense retrieval should fix that, but the practical question is whether it can be trained from ordinary question-passage supervision instead of relying on expensive self-supervised retriever pretraining.
 
 ## Key idea
 
@@ -18,13 +18,13 @@ For a question with positive passage p⁺ and negatives p⁻₁…p⁻ₙ, minim
 
   L = −log [ exp(sim(q, p⁺)) / ( exp(sim(q, p⁺)) + Σⱼ exp(sim(q, p⁻ⱼ)) ) ].
 
-**In-batch negatives.** With B questions per batch, stack vectors into **Q**, **P** ∈ ℝ^{B×d}; then **S** = **Q P**ᵀ ∈ ℝ^{B×B} scores every question against every passage. Row i's positive is the diagonal S_{ii}; the other B−1 entries are free "gold" negatives. The loss is a row-wise softmax cross-entropy with target = diagonal. This trains on B² pairs for the cost of encoding B questions and B passages, and accuracy rises with batch size. Add **one BM25 hard negative** per question (high-BM25 passages that match question tokens but lack the answer), shared across the batch — this supplies the topically-confusable decoy that random/in-batch negatives miss; a second hard negative does not help further.
+**In-batch negatives.** With B questions per batch, stack vectors into **Q**, **P** ∈ ℝ^{B×d}; then **S** = **Q P**ᵀ ∈ ℝ^{B×B} scores every question against every passage. Row i's positive is the diagonal S_{ii}; the other B−1 entries are free "gold" negatives: other questions' positive passages reused as negatives. Add **one BM25 hard negative** per question: a high-BM25 passage that matches many question tokens but lacks the answer. Append those hard-negative vectors after the B positives, so the score matrix is B×2B, the target for row i remains column i, and every appended BM25 passage is a negative for every question in the batch.
 
-Best recipe: BERT-base (uncased) dual encoder, batch size 128, one BM25 negative per question, Adam at lr 1e-5 with linear warmup, dropout 0.1, ~40 epochs (large datasets) / 100 (small).
+Best recipe: BERT-base (uncased) dual encoder, batch size 128, one BM25 negative per question, Adam at lr 1e-5 with linear warmup, dropout 0.1, up to 40 epochs for large datasets and 100 for small datasets.
 
 ## Serving
 
-Encode all ~21M passages (disjoint 100-word blocks, title prepended via `[SEP]`) offline with E_P; build a FAISS index (HNSW for low latency). At query time: v_q = E_Q(q), then top-k MIPS. Throughput on the order of hundreds of questions/sec.
+Encode all ~21M passages (disjoint 100-word blocks, title prepended via `[SEP]`) offline with E_P; build a FAISS HNSW index configured for inner-product search. At query time: v_q = E_Q(q), then top-k MIPS.
 
 ## Reader (turning retrieval into answers)
 
@@ -33,7 +33,7 @@ Over the top-k (≤100) retrieved passages, a BERT reader cross-encodes (questio
   P_start,i(s) = softmax(**P**ᵢ **w**_start)_s,  P_end,i(t) = softmax(**P**ᵢ **w**_end)_t,
   P_selected(i) = softmax(**P̂**ᵀ **w**_selected)_i,  **P̂** = [P₁^[CLS],…,P_k^[CLS]] ∈ ℝ^{h×k}.
 
-Span score = P_start,i(s)·P_end,i(t); answer = best span in the highest-selection passage. Train by sampling 1 positive + (m̃−1) negatives (m̃ = 24) from the retriever's top 100, maximizing the marginal log-likelihood of correct spans plus the positive-passage selection likelihood. All 100 passages fit one batch, so reading them costs ~one passage's latency (~20ms).
+Span score = P_start,i(s)·P_end,i(t); answer = best span in the highest-selection passage. Train by sampling 1 positive + (m̃−1) negatives (m̃ = 24) from the retriever's top 100, maximizing the marginal log-likelihood of correct spans plus the positive-passage selection likelihood. The expensive cross-attention reader is applied only after retrieval, over the bounded top-k candidate set.
 
 ## Code
 
@@ -53,14 +53,30 @@ class BertEncoder(nn.Module):
 def dot_product_scores(q_vecs, p_vecs):
     return torch.matmul(q_vecs, p_vecs.transpose(0, 1))  # Q P^T
 
-def biencoder_nll(q_vecs, p_vecs, positive_idx):
-    scores = dot_product_scores(q_vecs, p_vecs)          # (B, B[+hard])
+def biencoder_nll(q_vecs, pos_vecs, hard_vecs=None):
+    # positives occupy columns 0..B-1; one BM25 hard negative per question appends after them
+    p_vecs = pos_vecs if hard_vecs is None else torch.cat([pos_vecs, hard_vecs], dim=0)
+    target = torch.arange(q_vecs.size(0), device=q_vecs.device)
+    scores = dot_product_scores(q_vecs, p_vecs)          # (B, B + #hard)
     log_p  = F.log_softmax(scores, dim=1)
-    return F.nll_loss(log_p, positive_idx)               # in-batch negatives
+    return F.nll_loss(log_p, target)                     # diagonal positive columns
+
+def train_step(encoder_q, encoder_p, q_ids, q_mask, pos_ids, pos_mask, hard_ids, hard_mask, opt):
+    q = encoder_q(q_ids, q_mask)
+    pos = encoder_p(pos_ids, pos_mask)
+    hard = encoder_p(hard_ids, hard_mask)                # BM25 negative passage for each question
+    loss = biencoder_nll(q, pos, hard)
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
+    return loss.item()
 
 # --- offline index + online MIPS ---
 class PassageIndex:
-    def __init__(self, dim): self.index = faiss.IndexHNSWFlat(dim, 512)
+    def __init__(self, dim):
+        self.index = faiss.IndexHNSWFlat(dim, 512, faiss.METRIC_INNER_PRODUCT)
+        self.index.hnsw.efConstruction = 200
+        self.index.hnsw.efSearch = 128
     def add(self, vecs):     self.index.add(vecs)        # all 21M, encoded offline
     def search(self, q, k):  return self.index.search(q, k)
 
@@ -72,11 +88,11 @@ class Reader(nn.Module):
         h = self.bert.config.hidden_size
         self.qa_outputs    = nn.Linear(h, 2)             # start/end
         self.qa_classifier = nn.Linear(h, 1)             # passage selection
-    def forward(self, passage_ids, passage_mask):        # (k, L)
-        seq = self.bert(input_ids=passage_ids, attention_mask=passage_mask).last_hidden_state
+    def forward(self, pair_ids, pair_mask):              # rows are [CLS] question [SEP] passage [SEP]
+        seq = self.bert(input_ids=pair_ids, attention_mask=pair_mask).last_hidden_state
         start, end = self.qa_outputs(seq).split(1, dim=-1)
         select     = self.qa_classifier(seq[:, 0, :])
         return start.squeeze(-1), end.squeeze(-1), select.squeeze(-1)
 ```
 
-DPR is a dual-encoder dense retriever whose entire effectiveness comes from the training recipe — softmax NLL with in-batch gold negatives plus one BM25 hard negative — proving that strong dense open-domain retrieval needs only question–passage pairs, not specialized pretraining.
+DPR is a dual-encoder dense retriever trained with softmax NLL over other questions' positives plus one BM25 hard negative per question, then served by a FAISS inner-product index over offline passage vectors.

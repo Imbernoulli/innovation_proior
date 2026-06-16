@@ -10,36 +10,42 @@ hazard (it fits one dataset's quirks and fails to generalize).
 
 ## Key idea
 
-**Scale weakly-supervised, supervised, multitask training** with an off-the-shelf
-sequence-to-sequence Transformer, and use a **single decoder told its task via
-special tokens**:
+**Scale weakly supervised multilingual/multitask training** to 680,000 hours with
+an off-the-shelf sequence-to-sequence Transformer, and use a **single decoder told
+its task via special tokens**:
 
-- **Weak supervision at scale.** Harvest hundreds of thousands of hours of
-  (audio, transcript) pairs from the web; rely on diversity, not curation, for
-  robustness. Filter out machine-generated transcripts (all-caps/all-lower, no
-  commas) and language-mismatched pairs; repurpose non-English-audio/English-text
-  pairs as X→English translation data. Predict **raw, un-normalized text**, so no
-  separate inverse-text-normalization stage is needed.
+- **Weak supervision at scale.** Harvest 680,000 hours of
+  (audio, transcript) pairs from the web; rely on diversity plus filtering rather
+  than gold-standard curation for robustness. Filter out machine-generated
+  transcripts (all-caps/all-lower, no commas) and language-mismatched pairs;
+  repurpose non-English-audio/English-text pairs as X→English translation data.
+  The final mix includes 117,000 hours across 96 non-English languages and
+  125,000 hours of X→English translation examples. Predict **raw, un-normalized
+  text**, so no separate inverse-text-normalization stage is needed.
 - **Off-the-shelf architecture** (no novel model), to isolate the effect of data
   scale: log-mel front end, conv stem (stride 2 → 20 ms frames), encoder-decoder
   Transformer, the decoder an audio-conditional LM with learned positions and tied
   input-output embeddings.
-- **One model, many tasks via a token interface.** The decoder reads a prefix of
-  special tokens that specify the task: optional prior-text conditioning →
-  `<|startoftranscript|>` → language token (or `<|nospeech|>` for VAD) →
-  `<|transcribe|>`/`<|translate|>` → `<|notimestamps|>` or interleaved 20 ms-quantized
-  start/end time tokens around the text → `<|endoftranscript|>`. Transcription,
-  translation, language-ID, VAD, and timestamping all become token prediction.
+- **One model, many tasks via a token interface.** The decoder sequence is optional
+  prior-text conditioning → `<|startoftranscript|>` → one of 99 language tokens
+  → `<|transcribe|>`/`<|translate|>` → `<|notimestamps|>` or interleaved 20
+  ms-quantized start/end time tokens around the text → `<|endoftranscript|>`.
+  In no-speech segments, `<|nospeech|>` replaces the language token and the
+  segment closes. Training masks only the optional prior text, so transcription,
+  translation, language-ID, VAD, and timestamping all become token prediction;
+  task and timestamp-mode tokens also serve as task specifiers.
 
 ## Training
 
-30-second segments; 80-channel log-mel (25 ms window, 10 ms stride). Next-token
-cross-entropy over the full sequence except the prepended conditioning text.
-AdamW (β₁=0.9, β₂=0.98, ε=1e-6, weight decay 0.1), grad-norm clip 1.0, FP16,
-linear LR decay after 2048-update warmup, batch 256, ~2²⁰ updates (2–3 epochs),
-no augmentation/regularization. Sizes: Tiny 4/384/6 (39M), Base 6/512/8 (74M),
-Small 12/768/12 (244M), Medium 24/1024/16 (769M), Large 32/1280/20 (1550M). A
-brief fine-tune on speaker-annotation-free transcripts removes name-guessing.
+30-second segments; 80-channel log-mel (25 ms window, 10 ms stride), globally
+scaled to roughly [-1, 1]; speechless audio kept with a 10x subsample factor.
+Next-token cross-entropy over the full sequence except the prepended conditioning
+text. Gaussian fan-in initialization; AdamW (β₁=0.9, β₂=0.98, ε=1e-6, weight
+decay 0.1), grad-norm clip 1.0, FP16, linear LR decay after 2048-update warmup,
+batch 256, 2²⁰ updates (2–3 epochs), no augmentation/regularization. Sizes: Tiny
+4/384/6 (39M), Base 6/512/8 (74M), Small 12/768/12 (244M), Medium 24/1024/16
+(769M), Large 32/1280/20 (1550M). A brief fine-tune on
+speaker-annotation-free transcripts addresses speaker-name guessing.
 
 ## Code
 
@@ -78,7 +84,8 @@ class AudioEncoder(nn.Module):
         self.ln = nn.LayerNorm(d)
     def forward(self, mel):
         x = F.gelu(self.conv1(mel)); x = F.gelu(self.conv2(x))
-        x = x.transpose(1, 2) + self.pos[:x.size(-1)]
+        x = x.transpose(1, 2)
+        x = x + self.pos[:x.size(1)]
         for b in self.blocks:
             x = b(x)
         return self.ln(x)
@@ -100,15 +107,18 @@ class TextDecoder(nn.Module):
 
 SOT, EOT, NOSPEECH = '<|startoftranscript|>', '<|endoftranscript|>', '<|nospeech|>'
 TRANSCRIBE, TRANSLATE, NOTIME = '<|transcribe|>', '<|translate|>', '<|notimestamps|>'
+TIME_STEP, MAX_TIME = 0.02, 30.0
 
-def time_token(s): return f'<|{round(s / 0.02) * 0.02:.2f}|>'   # 20ms native resolution
+def time_token(seconds):
+    idx = round(max(0.0, min(float(seconds), MAX_TIME)) / TIME_STEP)
+    return f'<|{idx * TIME_STEP:.2f}|>'                 # 20ms bins over a 30s window
 
 def build_decoder_sequence(tok, seg, prev_text=None, p_cond=0.5):
     seq, lm = [], []                                  # lm[i]=1 where loss applies
     if prev_text is not None and torch.rand(1).item() < p_cond:
         c = tok.encode(prev_text); seq += c; lm += [0] * len(c)   # condition, don't predict
-    seq.append(tok.special(SOT)); lm.append(0)
-    if seg.no_speech:
+    seq.append(tok.special(SOT)); lm.append(1)         # predict it when prior text exists
+    if seg.no_speech:                                # VAD replaces the language slot
         seq += [tok.special(NOSPEECH), tok.special(EOT)]; lm += [1, 1]; return seq, lm
     seq.append(tok.lang(seg.language)); lm.append(1)
     seq.append(tok.special(TRANSLATE if seg.task == 'translate' else TRANSCRIBE)); lm.append(1)

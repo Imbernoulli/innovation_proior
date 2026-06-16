@@ -1,73 +1,94 @@
-# FLAN (Instruction Tuning)
+FLAN is instruction tuning: start from a pretrained 137B decoder-only language model, convert 62 existing TFDS NLP datasets into natural-language instruction examples, finetune on the mixture, and evaluate zero-shot on held-out task clusters.
 
-## Problem
+The core move is to make supervised NLP data look like the way a user would ask for a task. Each dataset gets ten manually written instruction templates. Most templates express the original task direction; up to three per dataset turn the task around, such as asking for a positive movie review instead of asking whether a given review is positive. During finetuning, each example is formatted with a randomly selected template for that dataset.
 
-A large pretrained LM is a strong few-shot learner but a weak zero-shot one: given only a task description (no in-context examples), it underperforms, especially on tasks (NLI, QA, reading comprehension) whose prompts look unlike the prose it was pretrained to continue. The model has the knowledge but no foothold for a bare instruction. Goal: make a pretrained LM reliably follow natural-language instructions for task types it never saw in training, via a simple training-time change.
+The zero-shot protocol is cluster-leave-out, not dataset-leave-out. The datasets are grouped into twelve task clusters. A dataset is considered unseen only when no dataset from its task cluster was used in finetuning, with extra exclusions for overlapping clusters: NLI and paraphrase are held out from each other; reading comprehension with commonsense is held out when evaluating either reading comprehension or commonsense reasoning; and both parent clusters are held out when evaluating reading comprehension with commonsense. Evaluating c clusters requires c checkpoints, each finetuned with a different cluster omitted. Summarization is included in the task collection but left out of evaluation because most summarization inputs exceed the 1024-token input length.
 
-## Key idea
+Classification prompts append an OPTIONS suffix listing the valid answer strings, then rank the listed strings by probability. This reduces the problem where the model spreads probability mass across paraphrases such as "yes", "true", and "correct". Generation tasks use free-text decoding directly.
 
-**Instruction tuning** — finetune the pretrained LM on a large mixture of *existing NLP datasets, each rephrased as natural-language instructions*, so it learns the general skill of following instructions and transfers it to unseen task types. The resulting model is FLAN.
+Training uses a cap of 30,000 examples per dataset, examples-proportional mixing with mixing-rate maximum 3,000, sequence packing with EOS separators between inputs and targets, 30,000 gradient steps, batch size 8,192 tokens, Adafactor at learning rate 3e-5, input length 1024, and target length 256.
 
-- **Templates.** For each dataset, write ~10 natural-language instruction phrasings (plus up to 3 that "turn the task around," e.g. generate a review for sentiment). Each training example is formatted with a *randomly chosen* template, so the model learns the task behind the wording, not the wording.
-- **Held-out generalization.** Group datasets into clusters by task type. A dataset is "unseen" only if no dataset from any cluster it belongs to was in training. To evaluate c clusters, train c models, each holding out a different cluster.
-- **Classification with options.** Append an OPTIONS list of valid answer strings to classification prompts, so rank classification isn't distorted by probability mass leaking across paraphrases of an answer.
-- **Mixing/training.** Cap each dataset at 30k examples; combine with examples-proportional mixing (mixing-rate maximum 3k); pack multiple examples per sequence. Finetune for 30k steps, batch 8,192 tokens, Adafactor at lr 3e-5, input/target lengths 1024/256. Base model: a ~137B decoder-only LM. Instruction-tuning compute is <2% of pretraining.
-
-Two findings the design predicts: zero-shot held-out performance improves with the **number of instruction-tuning clusters** (task diversity), and the benefit is **scale-dependent** — instruction tuning helps large models generalize but can hurt small ones (their capacity is consumed by the training tasks, leaving none for the instruction-following skill). Gains concentrate on tasks naturally verbalized as instructions (NLI, QA, translation, struct-to-text) and are minimal on tasks already formatted as plain continuation (commonsense/coreference completions), confirming the mechanism fixes the instruction-format mismatch specifically.
-
-## Code
-
-The pipeline is templating (the core contribution) plus standard mixing/finetuning. One checkpoint is produced per held-out cluster.
+The important empirical shape is scale and breadth dependent. Adding more instruction-finetuning clusters improves held-out zero-shot performance in the cluster-count ablation, where NLI, closed-book QA, and commonsense reasoning are held out, the too-similar paraphrase and reading-comprehension-with-commonsense clusters are also kept off the training side, and the seven eligible clusters are added in decreasing order of number of tasks per cluster. Across model sizes 422M, 2B, 8B, 68B, and 137B, the benefit emerges only at large scale: the 68B and 137B models improve on held-out tasks, while the 8B and smaller models are hurt, plausibly because their capacity is consumed by the supervised mixture instead of leaving room for transferable instruction-following behavior. Controls that remove natural instructions during finetuning, using either raw input-output pairs or only task/dataset names, perform worse on held-out clusters, which isolates the natural-language instruction format from ordinary multi-task finetuning.
 
 ```python
 import random
 
-PATTERNS = {
-    "rte": [
-        ('{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options_}', "{answer}"),
-        ('{premise}\n\nCan we infer the following?\n{hypothesis}\n\n{options_}', "{answer}"),
-        ('Read the following paragraph and determine if the hypothesis is true:\n\n{premise}\n\n'
-         'Hypothesis: {hypothesis}\n\n{options_}', "{answer}"),
-        # ~10 phrasings per dataset; include "turned-around" templates for instruction-shape diversity:
-        ("Generate a context and a hypothesis.", "Context: {premise}\n\nHypothesis: {hypothesis}"),
+CLUSTER_EXCLUSIONS = {
+    "nli": {"nli", "paraphrase"},
+    "paraphrase": {"paraphrase", "nli"},
+    "reading_comprehension": {"reading_comprehension", "reading_comprehension_with_commonsense"},
+    "commonsense": {"commonsense", "reading_comprehension_with_commonsense"},
+    "reading_comprehension_with_commonsense": {
+        "reading_comprehension_with_commonsense",
+        "reading_comprehension",
+        "commonsense",
+    },
+}
+
+TEMPLATE_BANK = {
+    # Representative entries from the ten-template-per-dataset bank.
+    "anli": [
+        (
+            '{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options}',
+            "{answer}",
+        ),
     ],
-    # ... one entry per dataset (over 60 datasets, twelve task clusters)
+    "rte": [
+        (
+            '{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options}',
+            "{answer}",
+        ),
+    ],
+    "wmt16_en_de": [
+        ("{source}\n\nTranslate to German", "{target}"),
+    ],
+    "imdb": [
+        ("Is the sentiment of this movie review positive or negative?\n\n{review}\n\n{options}", "{answer}"),
+        ("Write a {answer} movie review.", "{review}"),
+    ],
 }
 
 def options_suffix(classes):
-    return "OPTIONS:\n" + "\n".join(f"- {c}" for c in classes)
+    if not classes:
+        return ""
+    return "OPTIONS:\n" + "\n".join(f"- {label}" for label in classes)
 
 def format_example(dataset_name, example, classes=None):
-    template_in, template_out = random.choice(PATTERNS[dataset_name])   # random phrasing per example
+    template_in, template_out = random.choice(TEMPLATE_BANK[dataset_name])
     fields = dict(example)
-    fields["options_"] = options_suffix(classes) if classes else ""     # classification only
+    fields["options"] = options_suffix(classes)
     return template_in.format(**fields), template_out.format(**fields)
 
+def blocked_clusters(eval_cluster):
+    return CLUSTER_EXCLUSIONS.get(eval_cluster, {eval_cluster})
+
 def make_train_eval_split(eval_cluster, clusters):
-    # unseen = no dataset from any cluster the eval dataset belongs to is in training
-    train = [d for c, ds in clusters.items() if c != eval_cluster for d in ds]
-    return train, clusters[eval_cluster]
+    blocked = blocked_clusters(eval_cluster)
+    train_names = [
+        name
+        for cluster, names in clusters.items()
+        if cluster not in blocked
+        for name in names
+    ]
+    return train_names, clusters[eval_cluster]
 
-def instruction_tune(model, clusters, eval_cluster):
-    train_datasets, _ = make_train_eval_split(eval_cluster, clusters)
-    mixture = examples_proportional_mixture(
-        [ [format_example(name, ex, classes_of(name)) for ex in cap(D, 30_000)]
-          for name, D in train_datasets ],
-        cap=3_000)                                   # mixing-rate maximum
-    finetune(model, mixture, optimizer=Adafactor(lr=3e-5),
-             steps=30_000, batch_tokens=8_192, max_in_len=1024, max_tgt_len=256)   # packed sequences
-    return model
+def formatted_stream(dataset_name, dataset, classes):
+    for example in take_at_most(dataset.train, 30_000):
+        yield format_example(dataset_name, example, classes)
+
+def train_checkpoint(model, clusters, datasets, eval_cluster):
+    train_names, _ = make_train_eval_split(eval_cluster, clusters)
+    streams = [
+        formatted_stream(name, datasets[name], classes_of(name))
+        for name in train_names
+    ]
+    mixture = examples_proportional_mixture(streams, mixing_rate_maximum=3_000)
+    packed = pack_with_eos(mixture, input_length=1024, target_length=256)
+    return finetune(
+        model,
+        packed,
+        steps=30_000,
+        batch_tokens=8_192,
+        optimizer=Adafactor(learning_rate=3e-5),
+    )
 ```
-
-Example formatted instruction (NLI), with options:
-
-```
-<premise>
-
-Based on the paragraph above can we conclude that "<hypothesis>"?
-
-OPTIONS:
-- yes
-- no
-```
-→ target: `yes`

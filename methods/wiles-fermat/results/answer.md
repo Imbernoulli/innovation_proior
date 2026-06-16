@@ -80,7 +80,7 @@ therefore R = T.
 The required upper bound l(Selmer) ≤ l(O/η_T) is a generalized class-number formula. The cyclotomic
 Iwasawa method fails because it needs unknown base-change relations between Hecke rings up the tower;
 a Kolyvagin–Flach Euler system fails because it does not establish the bound in the needed generality
-(the 1993 gap). The fix: for each n choose auxiliary primes Q_n with q ≡ 1 mod p^n, allowing controlled
+(the gap in the first attempt). The fix: for each n choose auxiliary primes Q_n with q ≡ 1 mod p^n, allowing controlled
 extra ramification that kills the dual Selmer obstruction. The deformation rings R_{Q_n}, Hecke rings
 T_{Q_n}, and Hecke modules at these auxiliary levels are patched through compatible finite quotients
 into an object over a power series ring S_infty = O[[z_1,…,z_r]]. Hida/de Shalit freeness and

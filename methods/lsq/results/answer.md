@@ -1,8 +1,8 @@
-# LSQ: Learned Step Size Quantization
+# Learned Step Size Quantization
 
 ## Problem
 
-Train networks that run inference in low precision (2-, 3-, 4-bit weights and activations) while keeping full-precision accuracy. At such few levels, accuracy hinges on the per-layer **step size** s that places the quantization levels. LSQ makes each weight-layer and activation-layer step size a learnable parameter, trained jointly with the weights against the task loss.
+Train networks that run inference in low precision (2-, 3-, 4-bit weights and activations) while keeping full-precision accuracy. At so few levels, accuracy hinges on the per-layer **step size** s that places the quantization levels. LSQ makes each weight-layer and activation-layer step size a learnable parameter, trained jointly with the weights against the task loss.
 
 ## Quantizer
 
@@ -21,7 +21,7 @@ Using the straight-through estimator for the round (treat it as identity on the 
             ⎩  Q_P,                if v/s ≥ Q_P.
 ```
 
-The interior branch equals −frac(v/s) (signed distance to the nearest level), so the gradient to s is largest when v is near a quantization transition — exactly where a small change in s flips the integer code — and zero when v sits on a level. The data gradient is
+The interior branch equals round(v/s) − v/s, the negative signed residual between v/s and the integer level it rounds to. Its magnitude is largest near quantization transitions and zero when v/s sits exactly on a level. The data gradient is
 
 ```
 ∂v̂/∂v = 1 if −Q_N < v/s < Q_P, else 0.
@@ -29,7 +29,7 @@ The interior branch equals −frac(v/s) (signed distance to the nearest level), 
 
 ## Step-size gradient scale
 
-Good convergence wants (update magnitude)/(parameter magnitude) balanced across layers. Estimating the imbalance ratio R = (∇_s L / s) / (‖∇_w L‖ / ‖w‖): with ‖w‖/s ≈ √(N_W Q_P), and ∇_s L of the same order as ‖∇_w L‖ (both ≈ √(N_W·E[(∂L/∂ŵ)²]) since ∂ŵ/∂s ≈ 1 and the per-weight loss gradients are treated as uncorrelated zero-mean), one gets R ≈ √(N_W Q_P). To cancel it, multiply the step-size gradient by
+Good convergence wants (update magnitude)/(parameter magnitude) balanced across layers. Estimating the imbalance ratio R = (∇_s L / s) / (‖∇_w L‖ / ‖w‖): with ‖w‖/s ≈ √(N_W Q_P), and ∇_s L scaling like ‖∇_w L‖ under the heuristic that the per-weight loss gradients are uncorrelated zero-mean and ∂ŵ/∂s contributes a per-element constant factor, one gets R ≈ √(N_W Q_P). To cancel it, multiply the step-size gradient by
 
 ```
 g = 1/√(N_W Q_P)   (weights),     g = 1/√(N_F Q_P)   (activations),
@@ -39,12 +39,13 @@ where N_W is the number of weights and N_F the number of features in the layer.
 
 ## Initialization and training
 
-Per-layer step size initialized to s = 2⟨|v|⟩ / √Q_P (from initial weights or first activation batch). Keep fp32 master weights; quantize in forward/backward with STE. First and last layers stay 8-bit; quantized nets are initialized from a trained full-precision model and fine-tuned; momentum SGD, cross-entropy, cosine LR decay.
+Per-layer step size initialized to s = 2⟨|v|⟩ / √Q_P (from initial weights or first activation batch). Keep fp32 stored weights; quantized weights and activations are used in forward/backward passes with STE. First and last matrix-multiplication layers stay 8-bit; quantized nets are initialized from a trained full-precision model and fine-tuned with momentum SGD, cross-entropy, and cosine LR decay.
 
 ## Code
 
 ```python
-import torch, torch.nn as nn
+import torch
+import torch.nn as nn
 
 def detach(x):
     return x.detach()                     # identity forward; blocks gradient backward
@@ -55,29 +56,41 @@ def gradscale(x, g):
 def roundpass(x):
     return detach(torch.round(x) - x) + x # forward: round; backward: straight-through (grad=1)
 
-def quantize(v, s, Qn, Qp, n_elems):
-    g = 1.0 / (n_elems * Qp) ** 0.5       # 1/sqrt(N*Qp) to balance step size vs weights
+def nfeatures(v):
+    return v[0].numel()
+
+def nweights(v):
+    return v.numel()
+
+def qparams(bits, is_activation):
+    if is_activation:
+        return 0, 2 ** bits - 1, nfeatures
+    return -2 ** (bits - 1), 2 ** (bits - 1) - 1, nweights
+
+def quantize(v, s, bits, is_activation):
+    qmin, qmax, count_fn = qparams(bits, is_activation)
+    g = 1.0 / (count_fn(v) * qmax) ** 0.5 # 1/sqrt(N_features*Qp) or 1/sqrt(N_weights*Qp)
     s = gradscale(s, g)
-    v = torch.clamp(v / s, Qn, Qp)
-    v_bar = roundpass(v)
+    v_scaled = torch.clamp(v / s, qmin, qmax)
+    v_bar = roundpass(v_scaled)
     return v_bar * s
 
 class QuantLayer(nn.Module):
     def __init__(self, bits, is_activation):
         super().__init__()
-        self.bits, self.is_act = bits, is_activation
+        self.bits, self.is_activation = bits, is_activation
         self.s = nn.Parameter(torch.tensor(1.0))
         self.inited = False
+
     def init_step(self, v):
-        Qp = (2 ** self.bits - 1) if self.is_act else (2 ** (self.bits - 1) - 1)
-        self.s.data = 2 * v.abs().mean() / (Qp ** 0.5)
+        _, qmax, _ = qparams(self.bits, self.is_activation)
+        init = 2 * v.detach().abs().mean() / (qmax ** 0.5)
+        with torch.no_grad():
+            self.s.copy_(init)
         self.inited = True
+
     def forward(self, v):
         if not self.inited:
             self.init_step(v)
-        if self.is_act:
-            Qn, Qp, n = 0, 2 ** self.bits - 1, v[0].numel()
-        else:
-            Qn, Qp, n = -2 ** (self.bits - 1), 2 ** (self.bits - 1) - 1, v.numel()
-        return quantize(v, self.s, Qn, Qp, n)
+        return quantize(v, self.s, self.bits, self.is_activation)
 ```

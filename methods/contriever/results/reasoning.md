@@ -30,17 +30,17 @@ Now the harder question: how do I make the positive pair from one document with 
 
 So what's the alternative that fixes both? Borrow the vision recipe literally: make two *independent* views by random cropping. In text, a "crop" is just a randomly sampled contiguous span of tokens. Sample two spans independently from the same document; that's the positive pair. Two things change for the better. The two views are now *symmetric* — both are just spans of text drawn from the same distribution, so query-side and key-side look alike, which matches a setting where the same encoder embeds both. And because the spans are sampled independently, they will *sometimes overlap* — share some tokens — which means the model is rewarded for noticing exact lexical matches, the very thing BM25 is good at, while the cases with no overlap force it to learn semantic matching too. Independent cropping gives me both signals; ICT's complement construction throws the lexical one away. That's my bet for why cropping should beat ICT as the augmentation.
 
-Let me nail the cropping down concretely. Take documents of a fixed working length — say 256 tokens. For each, sample two spans; let the span length be a fraction of the document, sampled in some range (something like 5% to 50% of the length) so I get a mix of short and long views and a mix of high- and low-overlap pairs. On top of cropping I can add the standard cheap perturbations from contrastive learning — random word deletion, replacement, masking at a low rate like 10% — to reduce the trivial correlation between two views and stop the encoder from solving the task by surface memorization. I'll keep those as optional knobs; they may help a little or not at all, and I shouldn't assume they're free.
+Let me nail the cropping down concretely. Take documents of a fixed working length — say 256 tokens. For each, sample two spans; let the span length be a fraction of the document, sampled in some range (something like 5% to 50% of the length) so I get a mix of short and long views and a mix of high- and low-overlap pairs. After cropping, delete each token with probability 10%. That gives the two views a little extra noise without changing the basic same-document signal.
 
 Now the encoder itself. I want one vector per text so I can pre-compute the document index and search it with approximate nearest neighbors (FAISS) — that's non-negotiable for scaling to millions of documents, and it's why a cross-encoder is off the table: a cross-encoder would have to re-encode the query with every document, which can't search a large collection. So: bi-encoder, single vector each, dot-product scoring. Initialize from BERT base — I'm not learning language from scratch, I'm reshaping a pre-trained model's space for retrieval. Should I use one shared encoder for both query and document, or two separate ones as DPR does? Two encoders double the parameters and, more importantly, can specialize the query tower and document tower to whatever quirks the training distribution has — which is fine in-domain but brittle zero-shot. A single shared encoder is forced to put queries and documents in the *same* space symmetrically, which should transfer more robustly across domains and languages. And with random cropping my two views already come from the same distribution, so a shared encoder is the natural match. One encoder it is.
 
 How do I collapse BERT's sequence of token vectors into one embedding? The obvious candidate is the [CLS] token, since that's what BERT's pre-training shapes for sentence-level tasks. But [CLS] is tuned for next-sentence-prediction-style objectives, not for capturing the content of a span uniformly. The alternative is to *average* the last-layer hidden states over the (non-padding) tokens — mean pooling. Mean pooling treats every token's contribution evenly, which for retrieval (where any part of a long passage might match the query) is a better inductive bias than betting everything on one special token. I'll mean-pool: sum the last hidden states, masking out padding, and divide by the number of real tokens. Concretely, zero out padded positions, sum over the sequence, divide by the attention-mask sum.
 
-One more representation choice: do I L2-normalize the embeddings before the dot product? Normalizing turns the dot product into cosine similarity and keeps the logit scale bounded, which interacts cleanly with the temperature τ — without it, embedding norms could drift and silently rescale the effective temperature. I'll keep normalization as a switch on both query and key sides.
+One more representation choice: do I L2-normalize the embeddings before the dot product? Normalizing turns the dot product into cosine similarity and keeps the logit scale bounded, which interacts cleanly with the temperature τ — without it, embedding norms could drift and silently rescale the effective temperature. I'll keep normalization as an optional switch on both query and key sides, and to stay consistent I initialize the random queue as unit vectors too.
 
 Let me also be honest about MoCo vs. just using a big batch (SimCLR-style in-batch negatives). If I could afford huge batches, in-batch negatives with symmetric gradients might be just as good — the real reason I'm reaching for MoCo isn't that the momentum encoder is magic, it's that the queue lets me scale negatives *without* scaling the batch, and scaling negatives is the lever that matters. So MoCo is the pragmatic choice for getting many negatives at fixed memory, and the momentum encoder is the thing that makes the queue's stale negatives usable. If the queue equals the batch size, MoCo and in-batch should behave similarly; the win shows up as I grow the queue past what a batch could hold.
 
-Now let me assemble the training step precisely, because the queue bookkeeping is fiddly and easy to get wrong. Encode the query view with the trainable encoder: q = f_q(query). Under no-grad, first do the momentum update of the key encoder, then encode the key view: k = f_k(key) — detached, no gradient. Build the logits: the positive logit is the per-example dot product ⟨q, k⟩ (one number per example), and the negative logits are q against every column of the queue, ⟨q, queue⟩ (K numbers per example). Concatenate them as [positive | negatives] so the positive sits at column 0, divide the whole thing by τ, and apply cross-entropy with the target label fixed to 0 for every example. Cross-entropy of logits with the true class at index 0 *is* exactly −log of the softmax probability of the positive — so this implements the InfoNCE loss above, with the positive at index 0. Then enqueue the current batch's keys into the queue and dequeue the oldest, advancing a ring pointer; the queue size must be a multiple of the batch size so the pointer wraps cleanly. Initialize the queue with random normalized vectors so it's well-defined before it fills.
+Now let me assemble the training step precisely, because the queue bookkeeping is fiddly and easy to get wrong. Encode the query view with the trainable encoder: q = f_q(query). Under no-grad, first do the momentum update of the key encoder, then encode the key view: k = f_k(key) — detached, no gradient. Build the logits: the positive logit is the per-example dot product ⟨q, k⟩ (one number per example), and the negative logits are q against every column of the queue, ⟨q, queue⟩ (K numbers per example). Concatenate them as [positive | negatives] so the positive sits at column 0, divide the whole thing by τ, and apply cross-entropy with the target label fixed to 0 for every example. Cross-entropy of logits with the true class at index 0 *is* exactly −log of the softmax probability of the positive — so this implements the InfoNCE loss above, with the positive at index 0. Then enqueue the current batch's keys into the queue and dequeue the oldest, advancing a ring pointer; the queue size must be a multiple of the batch size so the pointer wraps cleanly. Initialize the queue with random unit vectors so it is well-defined before stored key embeddings replace them.
 
 Why fix the label to index 0 rather than scatter positives around? Because I built the logits with the positive deliberately first; the label is just "the positive is column 0." Cross-entropy then pushes mass onto column 0 and away from all the queue columns — pull positive up, push negatives down — which is the contrastive objective I wrote at the start. I can also fold in a touch of label smoothing on that cross-entropy as a mild regularizer.
 
@@ -50,6 +50,7 @@ Putting the pieces together, the causal chain is: I can't get labels, so I lean 
 
 ```python
 import copy
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -67,20 +68,29 @@ class Encoder(transformers.BertModel):
         # mean pooling: zero the padding, sum over tokens, divide by #real tokens
         last = last.masked_fill(~attention_mask[..., None].bool(), 0.0)
         emb = last.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
-        if normalize:                      # cosine-similarity scoring, bounded logits for tau
+        if normalize:                      # optional cosine scoring, bounded logits for tau
             emb = F.normalize(emb, dim=-1)
         return emb
 
 
-def build_positive_pair(tokens, low=0.05, high=0.5):
+def token_delete(tokens, p=0.10):
+    if p <= 0.0 or len(tokens) <= 1:
+        return tokens
+    kept = [tok for tok in tokens if random.random() > p]
+    return kept if kept else [tokens[random.randrange(len(tokens))]]
+
+
+def build_positive_pair(tokens, low=0.05, high=0.5, delete_prob=0.10):
     """Two independent crops of one document = a label-free positive pair.
     Overlap between crops teaches lexical matching; non-overlap teaches semantics."""
     n = len(tokens)
+    if n == 0:
+        return [], []
+
     def crop():
-        length = int(n * torch.empty(1).uniform_(low, high).item())
-        start = torch.randint(0, max(1, n - length), (1,)).item()
-        span = tokens[start:start + length]
-        return random_perturb(span)        # optional: low-rate delete/replace/mask
+        length = max(1, min(n, int(round(n * random.uniform(low, high)))))
+        start = random.randint(0, n - length)
+        return token_delete(tokens[start:start + length], delete_prob)
     return crop(), crop()
 
 
@@ -91,6 +101,8 @@ class MoCoTrainer(nn.Module):
         self.temperature = opt.temperature          # ~0.05
         self.momentum = opt.momentum                # ~0.9995
         self.queue_size = opt.queue_size            # up to ~131072
+        self.label_smoothing = opt.label_smoothing  # optional, mild regularizer
+        self.norm = opt.normalize                   # L2-normalize embeddings (optional)
         self.encoder_q = Encoder.from_pretrained(opt.model_id)
         self.encoder_k = copy.deepcopy(self.encoder_q)   # momentum (key) encoder
         for p in self.encoder_k.parameters():
@@ -112,21 +124,21 @@ class MoCoTrainer(nn.Module):
         self.queue_ptr[0] = (ptr + bsz) % self.queue_size
 
     def forward(self, q_tokens, q_mask, k_tokens, k_mask):
-        q = self.encoder_q(q_tokens, q_mask, normalize=True)
+        q = self.encoder_q(q_tokens, q_mask, normalize=self.norm)
         with torch.no_grad():
             self._momentum_update()                  # slow EMA before encoding keys
-            k = self.encoder_k(k_tokens, k_mask, normalize=True)
+            k = self.encoder_k(k_tokens, k_mask, normalize=self.norm)
         l_pos = torch.einsum("nc,nc->n", q, k).unsqueeze(-1)     # positive at column 0
         l_neg = torch.einsum("nc,ck->nk", q, self.queue.clone().detach())
         logits = torch.cat([l_pos, l_neg], dim=1) / self.temperature
         labels = torch.zeros(q.size(0), dtype=torch.long, device=q.device)
-        loss = F.cross_entropy(logits, labels)       # == -log softmax of the positive (InfoNCE)
+        loss = F.cross_entropy(logits, labels, label_smoothing=self.label_smoothing)  # InfoNCE
         self._dequeue_and_enqueue(k)
         return loss
 
 
 def train(trainer, loader, opt):
-    optim = torch.optim.AdamW(trainer.parameters(), lr=opt.lr)   # lr ~5e-5
+    optim = torch.optim.AdamW((p for p in trainer.parameters() if p.requires_grad), lr=opt.lr)
     for batch in loader:                             # batches mix Wikipedia + CCNet
         loss = trainer(batch["q_tokens"], batch["q_mask"], batch["k_tokens"], batch["k_mask"])
         loss.backward(); optim.step(); optim.zero_grad()

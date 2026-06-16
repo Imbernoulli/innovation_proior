@@ -1,10 +1,6 @@
-# Toolformer
-
-## Problem
+Toolformer turns a plain autoregressive LM into a tool-using LM by making tool calls ordinary text spans, then learning where those spans help next-token prediction.
 
 LMs excel at soft language tasks but fail at crisp ones that small dedicated programs handle perfectly: precise arithmetic, current facts, the date, factual lookup, low-resource translation. The fix is to let the model call external tools and weave their results into its text — but it must learn *when* to call, *which* tool, and *what arguments* on its own, with almost no human annotation, and without losing its general language-modeling ability.
-
-## Key idea
 
 Self-supervised tool learning by self-annotation + perplexity-based filtering + plain-LM finetuning. A tool call is a tuple c = (a_c, i_c) (name, input) linearized into text with special markers:
 
@@ -15,22 +11,20 @@ Three stages turn a plain corpus into a corpus with helpful calls inlined:
 
 1. **Sample.** For each tool, prompt M with a few in-context demonstrations P(x). Find positions where M wants to open a call: p_i = p_M(`<API>` | P(x), x_{1:i-1}); keep positions with p_i > τ_s (top k). At each, sample up to m candidate calls by continuing from `<API>` to `</API>`. Execute them to get results r_i.
 
-2. **Filter** (the core contribution). With weights w_t = w̃_t / Σ_s w̃_s, w̃_t = max(0, 1 − 0.2·t) (full credit at the call, decaying to 0 by t = 5), define the weighted continuation loss
+2. **Filter** (the core contribution). With weights w_t = w̃_t / Σ_{s>=0} w̃_s, w̃_t = max(0, 1 − 0.2·t) (nonzero for the next five future-token offsets, normalized by total mass 3.0), define the weighted continuation loss
    L_i(z) = − Σ_{j=i}^{n} w_{j−i} · log p_M(x_j | z, x_{1:j-1}),
    and compare
    L_i^+ = L_i(e(c_i, r_i))   (call **and** result given)
    L_i^− = min( L_i(ε), L_i(e(c_i, ε)) )   (best of: no call / call without result).
    Keep the call iff **L_i^− − L_i^+ ≥ τ_f** — i.e. having the *result* cuts the next-token loss, beyond both not calling and calling without a result, by margin τ_f. (Loss is computed with the call as a *prefix*, not spliced mid-text, because M is not yet finetuned on inline calls.)
 
-3. **Finetune.** Splice each surviving call into its position, x* = x_{1:i-1}, e(c_i, r_i), x_{i:n}, giving an augmented corpus C* that is the original text with calls inserted. Finetune M on C* with the standard LM objective: same content as C (so generality is preserved) plus the learned "call here helps."
+3. **Finetune.** Merge surviving executed calls from all tools, drop texts with no surviving calls, and splice each call-with-result into its sampled position, x* = x_{1:i-1}, e(c_i, r_i), x_{i:n}. The augmented corpus C* is the original text with helpful call results interleaved, and M is finetuned on C* with the standard LM objective. The filter is tool-agnostic: after a tool call is text and has a returned string, selection depends only on token probabilities and the weighted loss margin.
 
-**Inference.** Decode normally until M emits →; interrupt, run the tool, insert the result and `</API>`, resume. Start a call when `<API>` is among the top-k most likely tokens (k > 1 makes M more willing to use tools), at most one call per input.
+**Inference.** Decode normally until M emits →; interrupt, run the tool, insert the result and `</API>`, resume. Start a call when `<API>` is among the top-`k_decode` most likely tokens; `k_decode = 10` is used for downstream generation, and at most one call is allowed per input.
 
-Defaults: τ_s = 0.05, τ_f = 1.0, k = 5, m = 5; for sparse-use tools (calculator, MT) τ_s = 0, k = 20, m = 10, τ_f = 0.5. Tools: QA (retrieval-augmented LM), calculator (four ops, 2 decimals), Wikipedia BM25 search, MT (multilingual, target English, auto source detection), calendar (current date). Base model: a ~6.7B GPT-J; finetuned with batch size 128, learning rate 1e-5, linear warmup over the first 10% of training.
+Sampling defaults: τ_s = 0.05, τ_f = 1.0, `k_pos = 5` positions, m = 5 calls per position; for sparse-use tools (calculator, MT), τ_s = 0, `k_pos = 20`, m = 10, τ_f = 0.5. Tools: QA (Atlas, a retrieval-augmented LM), calculator (four ops, 2 decimals), Wikipedia BM25 search, MT (600M NLLB, target English, fastText source detection), calendar (current date). Base model: 6.7B GPT-J. Training uses up to 25k examples per API, max sequence length 1,024, effective batch size 128, learning rate 1e-5, linear warmup over the first 10%, ZeRO-3 with BF16 on eight A100 40GB GPUs, up to 2k steps, and the checkpoint with the best held-out CCNet perplexity.
 
-## Code
-
-The filter is the whole method: run M on the plain tokens, the tokens-with-call-no-response, and the tokens-with-call-and-response; weight next-token log-probs with the decaying weights; keep the passage iff min(no-call, call-without-result) loss minus call-with-result loss clears the threshold.
+The filter is the whole method in code: run M on the plain tokens, the tokens-with-call-no-response, and the tokens-with-call-and-response; weight next-token log-probs with the normalized decaying weights; keep the passage iff min(no-call, call-without-result) loss minus call-with-result loss clears the threshold.
 
 ```python
 import torch
@@ -40,8 +34,8 @@ def log(t, eps=1e-20):
     return torch.log(t + eps)
 
 def default_weight_fn(t):
-    # w~_t = max(0, 1 - 0.2 t): full weight at the call, linearly to 0 by t = 5
-    return (1. - t * 0.2).clamp(min=0.)
+    # w_t = max(0, 1 - 0.2 t) / sum_s max(0, 1 - 0.2 s); denominator is 3.0
+    return (1. - t * 0.2).clamp(min=0.) / 3.
 
 def get_pred_prob(token_ids, logits):
     logits = logits[:, :-1]

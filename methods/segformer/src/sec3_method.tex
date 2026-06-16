@@ -1,0 +1,128 @@
+\section{Method}
+\begin{figure}[]
+    \centering
+    \scalebox{0.45}{\includegraphics{figures/pipeline.pdf}}
+    \captionsetup{font={footnotesize}}
+    \caption{\textbf{The proposed SegFormer framework} consists of two main modules: A hierarchical Transformer encoder to extract coarse and fine features; and a lightweight All-MLP decoder to directly fuse these multi-level features and predict the semantic segmentation mask. ``FFN'' indicates feed-forward network.} 
+    \label{fig:pipeline}
+    \vspace{-10pt}
+\end{figure}
+
+
+
+This section introduces SegFormer, our efficient, robust, and powerful segmentation framework without hand-crafted and computationally demanding modules. 
+As depicted in Figure~\ref{fig:pipeline}, SegFormer consists of two main modules: (1) a hierarchical Transformer encoder to generate high-resolution coarse features and low-resolution fine features; and (2) a lightweight All-MLP decoder to fuse these multi-level features to produce the final semantic segmentation mask.
+
+Given an image of size $H \times W \times 3$, we first divide it into patches of size $4\times 4$. Contrary to ViT that uses patches of size $16\times 16$, using smaller patches favors the dense prediction task. We then use these patches as input to the hierarchical Transformer encoder to obtain multi-level features at \{1/4, 1/8, 1/16, 1/32\} of the original image resolution. We then pass these multi-level features to the All-MLP decoder to predict the segmentation mask at a $\frac{H}{4} \times \frac{W}{4} \times N_{cls}$ resolution, where $N_{cls}$ is the number of categories. In the rest of this section, we detail the proposed encoder and decoder designs and summarize the main differences between our approach and SETR.
+
+
+
+\subsection{Hierarchical Transformer Encoder}
+We design a series of Mix Transformer encoders (MiT), MiT-B0 to MiT-B5,  with the same architecture but different sizes. MiT-B0 is our lightweight model for fast inference, while MiT-B5 is the largest model for the best performance. Our design for MiT is partly inspired by ViT but tailored and optimized for semantic segmentation.
+
+
+\textbf{Hierarchical Feature Representation.}
+Unlike ViT that can only generate a single-resolution feature map, the goal of this module is, given an input image, to generate CNN-like multi-level features. These features provide high-resolution coarse features and low-resolution fine-grained features that usually boost the performance of semantic segmentation. More precisely, given an input image with a resolution of $H \times W \times 3$, we perform patch merging to obtain a hierarchical feature map $F_i$ with a resolution of $\frac{H}{2^{i+1}} \times \frac{W}{2^{i+1}}$ $\times$ $C_i$, where $i \in \{1,2,3,4\}$, and $C_{i+1}$ is larger than $C_i$.
+
+
+\textbf{Overlapped Patch Merging.} 
+Given an image patch, the patch merging process used in ViT, unifies a $N \times N \times 3$ patch into a $1 \times 1 \times C$ vector. This can easily be extended to unify a $2 \times 2 \times C_i$ feature path into a $1 \times 1 \times C_{i+1}$ vector to obtain hierarchical feature maps. Using this, we can shrink our hierarchical features from $F_1$~($\frac{H}{4} \times \frac{W}{4}$ $\times$ $C_1$) to $F_2$~($\frac{H}{8} \times \frac{W}{8}$ $\times$ $C_2$), and then iterate for any other feature map in the hierarchy. This process was initially designed to combine non-overlapping image or feature patches. Therefore, it fails to preserve the local continuity around those patches. Instead, we use an overlapping patch merging process. To this end, we define $K$, $S$, and $P$, where $K$ is the patch size, $S$ is the stride between two adjacent patches, and $P$ is the padding size. In our experiments, we set $K=7$, $S=4$, $P=3$ ,and $K=3$, $S=2$, $P=1$ to perform overlapping patch merging to produces features with the same size as the non-overlapping process.
+
+
+
+
+\textbf{Efficient Self-Attention.} 
+The main computation bottleneck of the encoders is the self-attention layer. In the original multi-head self-attention process, each of the heads $Q, K, V$ have the same dimensions $N \times C$, where $N=H \times W$ is the length of the sequence, the self-attention is estimated as:
+\begin{equation}
+    {\rm Attention}({Q}, {K}, {V}) = {\rm Softmax}(\frac{{Q}{K}^\mathsf{T}}{\sqrt{d_{head}}}){V}.
+    \label{eqn:mhsa}
+\end{equation}
+The computational complexity of this process is $O(N^2)$, which is prohibitive for large image resolutions. 
+Instead, we use the sequence reduction process introduced in~\cite{pvt}. This process uses a reduction ratio $R$ to reduce the length of the sequence of as follows:
+\begin{equation}
+    \begin{aligned}
+    % &{\hat{K}} = {K\text{.reshape}(\frac{N}{R},C \cdot R)}\\
+    &{\hat{K}} = {\text{Reshape}(\frac{N}{R},C \cdot R)(K)}\\
+    % ;\ \ \
+    &{K} = {\text{Linear}(C \cdot R, C)({\hat{K}}),}
+    \end{aligned}
+    \label{eqn:reduce}
+\end{equation}
+where $K$ is the sequence to be reduced, $\text{Reshape}(\frac{N}{R},C \cdot R)(K)$ refers to reshape $K$ to the one with shape of $\frac{N}{R}\times (C \cdot R)$,
+%
+and $\text{Linear}(C_{in}, C_{out})( \cdot)$ refers to a linear layer taking a $C_{in}$-dimensional tensor as input and generating a $C_{out}$-dimensional tensor as output. Therefore, the new $K$ has dimensions $\frac{N}{R} \times C$. As a result, the complexity of the self-attention mechanism is reduced from $O(N^2)$ to $O(\frac{N^2}{R})$. In our experiments, we set $R$ to [64,~16,~4,~1] from stage-1 to stage-4. 
+
+
+\textbf{Mix-FFN.} 
+ViT uses positional encoding~(PE) to introduce the location information. However, the resolution of PE is fixed. Therefore, when the test resolution is different from the training one, the positional code needs to be interpolated and this often leads to dropped accuracy. To alleviate this problem, CPVT~\cite{chu2021conditional} uses 3 $\times$ 3 Conv together with the PE to implement a data-driven PE. We argue that positional encoding is actually not necessary for semantic segmentation. Instead, we introduce Mix-FFN which considers the effect of zero padding to leak location information~\cite{islam2020much}, by directly using a 3 $\times$ 3 Conv in the feed-forward network (FFN). Mix-FFN can be formulated as:
+\begin{equation}
+    {\mathbf{x}_{out} = {\text{MLP(GELU}(\text{Conv}_{\text{3} \times \text{3}}(\text{MLP}(\mathbf{x}_{in}))))+ \mathbf{x}_{in}},}
+    \label{eqn:mixffn}
+\end{equation}
+where $\mathbf{x}_{in}$ is the feature from the self-attention module. Mix-FFN mixes a 3 $\times$ 3 convolution and an MLP into each FFN. In our experiments, we will show that a 3 $\times$ 3 convolution is sufficient to provide positional information for Transformers. In particular, we use depth-wise convolutions for reducing the number of parameters and improving efficiency. 
+
+
+
+\subsection{Lightweight All-MLP Decoder} \label{sec:MLP}
+
+SegFormer incorporates a lightweight decoder consisting only of MLP layers and this avoiding the hand-crafted and computationally demanding components typically used in other methods. The key to enabling such a simple decoder is that our hierarchical Transformer encoder has a larger effective receptive field (ERF) than traditional CNN encoders. 
+
+
+The proposed All-MLP decoder consists of four main steps. 
+First, multi-level features ${F_i}$ from the MiT encoder go through an MLP layer to unify the channel dimension. 
+Then, in a second step, features are up-sampled to 1/4th and concatenated together.
+Third, a MLP layer is adopted to fuse the concatenated features ${F}$.
+Finally, another MLP layer takes the fused feature to predict the segmentation mask $M$ with a $\frac{H}{4} \times \frac{W}{4} \times N_{cls}$ resolution, where $N_{cls}$ is the number of categories. This lets us formulate the decoder as:
+\begin{equation}
+    \begin{aligned}
+    &{\hat{F}_i = \text{Linear}(C_i, C)(F_i)}, \forall i\\
+    &{{\hat{F}}_i = \text{Upsample}(\frac{W}{4} \times \frac{W}{4})({\hat{F}}_i)}, \forall i\\
+    &{{F} = \text{Linear}(4C, C)(\text{Concat}({\hat{F}}_i})), \forall i\\
+    &{{M} = \text{Linear}(C, N_{cls})({F})},
+    \end{aligned}
+    \label{eqn:mlp}
+\end{equation}
+where ${\rm M}$ refers to the predicted mask, and $\text{Linear}(C_{in}, C_{out})(\cdot)$ refers to a linear layer with $C_{in}$ and $C_{out}$ as input and output vector dimensions respectively.
+
+
+\begin{wrapfigure}{r}{0.6\textwidth}
+\vspace{-10.5pt}
+\centering
+\captionsetup{font={footnotesize}}
+\includegraphics[width=0.6\textwidth]{figures/erf.pdf}\\
+\vspace{-2pt}
+\caption{\textbf{Effective Receptive Field~(ERF) on Cityscapes} (average over 100 images). Top row: Deeplabv3+. Bottom row: SegFormer. ERFs of the four stages and the decoder heads of both architectures are visualized. 
+Best viewed with zoom in. 
+} 
+\label{fig:erf}
+\vspace{-8pt}
+\end{wrapfigure}
+
+
+\textbf{Effective Receptive Field Analysis.}
+For semantic segmentation, maintaining large receptive field to include context information has been a central issue~\cite{dilate,largekernel,deeplabv3+}. Here, we use effective receptive field~(ERF)~\cite{erf} as a toolkit to visualize and interpret why our MLP decoder design is so effective on Transformers. In Figure~\ref{fig:erf}, we visualize ERFs of the four encoder stages and the decoder heads for both DeepLabv3+ and SegFormer. We can make the following observations: 
+
+
+
+\vspace{-0.1cm}
+\begin{itemize}[leftmargin=*]
+    \item The ERF of DeepLabv3+ is relatively small even at Stage-4, the deepest stage.
+    \item SegFormer's encoder naturally produces local attentions which resemble convolutions at lower stages, while able to output highly non-local attentions that effectively capture contexts at Stage-4.
+    \item As shown with the zoom-in patches in Figure~\ref{fig:erf}, the ERF of the MLP head (blue box) differs from Stage-4 (red box) with a significant stronger local attention besides the non-local attention.
+\end{itemize}
+
+The limited receptive field in CNN requires one to resort to context modules such as ASPP~\cite{denseaspp} that enlarge the receptive field but inevitably become heavy. Our decoder design benefits from the non-local attention in Transformers and leads to a larger receptive field without being complex. The same decoder design, however, does not work well on CNN backbones since the overall receptive field is upper bounded by the limited one at Stage-4, and we will verify this later in Table~\ref{tab:cnnencoder},
+
+More importantly, our decoder design essentially takes advantage of a Transformer induced feature that produces both highly local and non-local attention at the same time. By unifying them, our MLP decoder renders complementary and powerful representations by adding few parameters. This is another key reason that motivated our design. Taking the non-local attention from Stage-4 alone is not enough to produce good results, as will be verified in Table~\ref{tab:cnnencoder}.
+
+
+\subsection{Relationship to SETR.} 
+SegFormer contains multiple more efficient and powerful designs compared with SETR~\cite{setr}:
+
+\vspace{-0.1cm}
+\begin{itemize}[leftmargin=*]
+\item We only use ImageNet-1K for pre-training. ViT in SETR is pre-trained on larger ImageNet-22K. 
+\item SegFormer's encoder has a hierarchical architecture, which is smaller than ViT and can capture both high-resolution coarse and low-resolution fine features. In contrast, SETR's ViT encoder can only generate single low-resolution feature map.
+\item We remove Positional Embedding in encoder, while SETR uses fixed shape Positional Embedding which decreases the accuracy when the resolution at inference differs from the training ones. 
+\item Our MLP decoder is more compact and less computationally demanding than the one in SETR. This leads to a \textit{negligible} computational overhead. In contrast, SETR requires heavy decoders with multiple 3$\times$3 convolutions.  
+\end{itemize}

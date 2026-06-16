@@ -21,10 +21,10 @@ above pairs drawn from other documents, via the InfoNCE loss
 with τ a temperature (≈0.05). Three choices make it a strong retriever:
 
 - **Positive pairs by independent random cropping.** Sample two independent contiguous token spans
-  (length 5%–50% of a ~256-token document) as the pair, optionally with low-rate (~10%) word
-  deletion/replacement. Unlike the inverse Cloze task (which uses a span and its *complement*),
+  (length 5%–50% of a ~256-token document) as the pair, then apply 10% token deletion.
+  Unlike the inverse Cloze task (which uses a span and its *complement*),
   independent crops are symmetric and *can overlap*, so the model learns both exact lexical matching
-  (BM25's strength) and semantic matching. This beats ICT empirically.
+  (BM25's strength) and semantic matching when spans do not overlap.
 - **Many negatives via MoCo.** Keep a queue of key vectors from recent batches (up to ~131,072) as
   negatives, so the number of negatives is decoupled from batch size. Encode keys with a momentum
   encoder whose weights are an EMA of the query encoder, θ_k ← m·θ_k + (1−m)·θ_q (m≈0.9995), so the
@@ -32,9 +32,9 @@ with τ a temperature (≈0.05). Three choices make it a strong retriever:
   side; keys are detached.
 - **Shared single-vector bi-encoder.** One BERT-base encoder for both query and document (more
   robust zero-shot than DPR's two towers), **mean pooling** over last-layer token states (not
-  [CLS]), optional L2-normalization → cosine scoring. Single vectors let the document index be
-  precomputed and searched with FAISS, which is what makes retrieval over millions of documents
-  tractable (a cross-encoder cannot).
+  [CLS]), scored by dot product (with optional L2-normalization). Single vectors let the document
+  index be precomputed and searched with FAISS, which is what makes retrieval over millions of
+  documents tractable (a cross-encoder cannot).
 
 Training: AdamW, lr ≈5e-5, batch ≈2048, ~500k steps, on a mix of Wikipedia and CCNet; no labels
 anywhere. A multilingual variant initializes from mBERT and samples languages uniformly. The model
@@ -45,6 +45,7 @@ unsupervised.
 
 ```python
 import copy
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -61,18 +62,28 @@ class Contriever(transformers.BertModel):
         last = out["last_hidden_state"]
         last = last.masked_fill(~attention_mask[..., None].bool(), 0.0)
         emb = last.sum(dim=1) / attention_mask.sum(dim=1)[..., None]   # mean pooling
-        if normalize:
+        if normalize:                                 # optional L2 normalize before scoring
             emb = F.normalize(emb, dim=-1)
         return emb
 
 
-def build_positive_pair(tokens, low=0.05, high=0.5):
+def token_delete(tokens, p=0.10):
+    if p <= 0.0 or len(tokens) <= 1:
+        return tokens
+    kept = [tok for tok in tokens if random.random() > p]
+    return kept if kept else [tokens[random.randrange(len(tokens))]]
+
+
+def build_positive_pair(tokens, low=0.05, high=0.5, delete_prob=0.10):
     """Two independent crops of one document = a label-free positive pair."""
     n = len(tokens)
+    if n == 0:
+        return [], []
+
     def crop():
-        length = int(n * torch.empty(1).uniform_(low, high).item())
-        start = torch.randint(0, max(1, n - length), (1,)).item()
-        return tokens[start:start + length]          # optional low-rate delete/replace/mask
+        length = max(1, min(n, int(round(n * random.uniform(low, high)))))
+        start = random.randint(0, n - length)
+        return token_delete(tokens[start:start + length], delete_prob)
     return crop(), crop()
 
 
@@ -83,6 +94,8 @@ class MoCo(nn.Module):
         self.temperature = opt.temperature           # ~0.05
         self.momentum = opt.momentum                 # ~0.9995
         self.queue_size = opt.queue_size             # up to ~131072
+        self.label_smoothing = opt.label_smoothing   # optional, mild regularizer
+        self.norm = opt.normalize                    # L2-normalize embeddings (optional)
         self.encoder_q = Contriever.from_pretrained(opt.model_id)
         self.encoder_k = copy.deepcopy(self.encoder_q)
         for p in self.encoder_k.parameters():
@@ -104,21 +117,21 @@ class MoCo(nn.Module):
         self.queue_ptr[0] = (ptr + bsz) % self.queue_size
 
     def forward(self, q_tokens, q_mask, k_tokens, k_mask):
-        q = self.encoder_q(q_tokens, q_mask, normalize=True)
+        q = self.encoder_q(q_tokens, q_mask, normalize=self.norm)
         with torch.no_grad():
             self._momentum_update()
-            k = self.encoder_k(k_tokens, k_mask, normalize=True)
+            k = self.encoder_k(k_tokens, k_mask, normalize=self.norm)
         l_pos = torch.einsum("nc,nc->n", q, k).unsqueeze(-1)          # positive at column 0
         l_neg = torch.einsum("nc,ck->nk", q, self.queue.clone().detach())
         logits = torch.cat([l_pos, l_neg], dim=1) / self.temperature
         labels = torch.zeros(q.size(0), dtype=torch.long, device=q.device)
-        loss = F.cross_entropy(logits, labels)        # == InfoNCE (positive at index 0)
+        loss = F.cross_entropy(logits, labels, label_smoothing=self.label_smoothing)  # InfoNCE
         self._dequeue_and_enqueue(k)
         return loss
 
 
 def train(trainer, loader, opt):
-    optim = torch.optim.AdamW(trainer.parameters(), lr=opt.lr)        # lr ~5e-5
+    optim = torch.optim.AdamW((p for p in trainer.parameters() if p.requires_grad), lr=opt.lr)
     for batch in loader:                              # batches mix Wikipedia + CCNet
         loss = trainer(batch["q_tokens"], batch["q_mask"], batch["k_tokens"], batch["k_mask"])
         loss.backward(); optim.step(); optim.zero_grad()

@@ -2,7 +2,7 @@ Let me start from the uncomfortable observation. A masked language model like BE
 
 What would explicit knowledge look like? The obvious candidate is text — a corpus, say all of Wikipedia, sitting outside the network. If the model, before predicting a masked token, could go *retrieve* the relevant passage from that corpus and read it, then the knowledge lives in the corpus, not the weights: I can read what was retrieved (interpretable), I can add documents (capacity isn't bounded by network size), and I can swap the corpus to update facts (modular). So the architecture I want is: input x → retrieve documents z from a corpus Z → predict y by attending over x and z. Retrieve, then predict.
 
-Now the hard question, and it's the whole paper. How do I *learn* the retriever? I have no labels saying "for this masked sentence, document #4,381,002 is the right one." All I have is the language-modeling signal: did the model predict the masked token correctly? So the retriever has to be trained purely from whether its retrievals *help prediction*. A retrieval that lowers the model's perplexity on the masked token was helpful and should be reinforced; a useless retrieval should be discouraged. I need to turn that intuition into a differentiable objective.
+Now the hard question. How do I *learn* the retriever? I have no labels saying "for this masked sentence, document #4,381,002 is the right one." All I have is the language-modeling signal: did the model predict the masked token correctly? So the retriever has to be trained purely from whether its retrievals *help prediction*. A retrieval that lowers the model's perplexity on the masked token was helpful and should be reinforced; a useless retrieval should be discouraged. I need to turn that intuition into a differentiable objective.
 
 The clean way is to make the retrieved document a *latent variable*. I don't observe z; I observe that x produced y. So write the likelihood of the observed thing, marginalizing over the unobserved document:
 
@@ -50,7 +50,7 @@ So define r(z) = [ p(y|z,x) / p(y|x) − 1 ] p(z|x), and ∇ log p(y|x) = Σ_z r
 
 One more thing this gradient tells me, a useful sanity check on the limit. Suppose there's one document z* that gives perfect prediction, p(y|z*,x) = 1, and every other document gives zero, p(y|z',x) = 0. Then p(z*|y,x) = 1 and the gradient collapses to ∇ f(x,z*) − Σ_z p(z|x) ∇ f(x,z) = ∇ log p(z*|x). That's just supervised maximum likelihood of retrieving the gold document z*. So the latent-variable objective smoothly interpolates to ordinary supervised retrieval training in the limit where one document carries all the value. Good — it's not some exotic objective, it's the natural generalization.
 
-Now the components. The retriever is a dense inner-product model:
+The retriever has to be fast enough to score against a corpus and smooth enough to train, so I want the probability of a document to come from a softmax over a cheap relevance score. A dense inner product gives me both:
 
   p(z|x) = exp f(x,z) / Σ_{z'} exp f(x,z'),  f(x,z) = Embed_input(x)ᵀ Embed_doc(z).
 
@@ -58,27 +58,28 @@ For the embeddings I'll use BERT-style Transformers: tokenize, prepend [CLS], jo
 
 The predictor — the knowledge-augmented encoder — models p(y|z,x). Here I want *rich* interaction between the question and the retrieved document, so I join x and z into one sequence and run a *separate* Transformer over it, letting x and z cross-attend before predicting y. This is the place I can afford cross-attention, because by the time the predictor runs I've already narrowed to a handful of documents. For pre-training the task is MLM: for each masked position j, predict the original token with p(y_j|z,x) ∝ exp(w_jᵀ BERT_MASK(j)(join(x, z_body))), product over the masked positions. For Open-QA fine-tuning the task is span extraction: assume the answer y appears as a contiguous span somewhere in z, let S(z,y) be the set of matching spans, and score p(y|z,x) ∝ Σ_{s∈S(z,y)} exp(MLP([h_START(s); h_END(s)])), where h_START, h_END are the Transformer's start/end token vectors over join(x, z_body). Call the predictor parameters φ.
 
-Now the wall I've been circling. The marginal p(y|x) = Σ_{z∈Z} sums over the *entire* corpus — 13 million documents. I cannot compute that sum, nor its gradient, over 13 million documents per training step. First approximation: most documents have essentially zero p(z|x), so truncate the sum to the top-k documents under p(z|x). That's reasonable if the retrieval distribution is peaked, which it should be once trained. So I marginalize over only the top-k (small k, like 8). But that just moves the problem: how do I *find* the top-k out of 13 million without scoring all of them? This is where the inner-product form pays off — the ranking by p(z|x) is the ranking by f(x,z) = Embed_input(x)ᵀ Embed_doc(z), a pure inner product. So finding the top-k is Maximum Inner Product Search, and MIPS over millions of vectors runs in sub-linear time with the right index. So: precompute Embed_doc(z) for all 13M documents, build a MIPS index, and at each step embed the query and retrieve the top-k.
+Now the wall I've been circling. The marginal p(y|x) = Σ_{z∈Z} sums over the *entire* corpus — 13 million documents. I cannot compute that sum, nor its gradient, over 13 million documents per training step. First approximation: most documents have essentially zero p(z|x), so truncate the sum to a small candidate set with the highest retrieval probability. That's reasonable if the retrieval distribution is peaked, which it should be once trained. So I marginalize over the retrieved candidates rather than the full corpus; during pre-training that set has 8 total candidates including the null document. But that just moves the problem: how do I *find* the high-probability candidates out of 13 million without scoring all of them? This is where the inner-product form pays off — the ranking by p(z|x) is the ranking by f(x,z) = Embed_input(x)ᵀ Embed_doc(z), a pure inner product. So finding the candidate set is Maximum Inner Product Search, and MIPS over millions of vectors runs in sub-linear time with the right index. So: precompute Embed_doc(z) for all 13M documents, build a MIPS index, and at each step embed the query and retrieve the candidate documents.
 
 But here's the catch that almost kills the whole approach. The MIPS index is built from Embed_doc(z), which depends on θ. The instant I take a gradient step on θ, every document embedding changes, and the index is *stale* — it no longer reflects the current retriever. If I rebuild the index every step, I'm re-embedding 13 million documents per step, which is hopeless. If I never rebuild it, the retriever and its index drift apart and training is incoherent.
 
-The resolution: separate the two roles of the index. The index is *only* used to *select* which top-k documents to look at. Once I have those k documents, I recompute f(x,z) and p(z|x) and their gradients using the *fresh* θ, exactly, for just those k. So a slightly stale index only means I might select a slightly suboptimal candidate set — but the scores and gradients I actually train on are always current. That tolerance is what makes it work: I can let the index lag. So I refresh it *asynchronously*. Run two jobs in parallel — a trainer that does gradient updates, and an index-builder that, every several hundred steps, takes a snapshot θ' of the current parameters, re-embeds the whole corpus, and ships back a new index while the trainer keeps going. In practice that's about one refresh per ~500 steps. The trainer never blocks on re-indexing; the index is never more than a few hundred steps stale; and the gradients are exact on the retrieved top-k. Backpropagating into the index — refreshing the doc encoder — is the thing prior latent-retrieval Open-QA didn't do; they froze the index after a heuristic warm-start, so their retriever never got refined by the language-modeling signal. (For *fine-tuning* I'll actually simplify: build the index once from the pre-trained θ and stop updating Embed_doc — pre-training already gives a good doc encoder, and I keep fine-tuning Embed_input so the query side still adapts. The expensive asynchronous refresh is reserved for pre-training, where it matters most.)
+The resolution: separate the two roles of the index. The index is *only* used to *select* which documents to look at. Once I have that small set, I recompute the candidate scores, the candidate-set softmax, and the gradients using the *fresh* θ on those documents. So a slightly stale index only means I might select a slightly suboptimal candidate set — but the loss I train on is evaluated with current query and document embeddings for the selected documents. That tolerance is what makes it work: I can let the index lag. So I refresh it *asynchronously*. Run two jobs in parallel — a trainer that does gradient updates, and an index-builder that, every several hundred steps, takes a snapshot θ' of the current parameters, re-embeds the whole corpus, and ships back a new index while the trainer keeps going. In practice that's about one refresh per ~500 steps. The trainer never blocks on re-indexing, the index is never more than a few hundred steps stale, and the masked-LM gradient still updates the retriever scores and the document encoder on the retrieved candidates. Updating the document encoder during pre-training is the thing prior latent-retrieval Open-QA didn't do; it froze the index after a heuristic warm-start, so the document side of retrieval was never refined by the language-modeling signal. (For *fine-tuning* I'll actually simplify: build the index once from the pre-trained θ and stop updating Embed_doc — pre-training already gives a good doc encoder, and I keep fine-tuning Embed_input so the query side still adapts. The expensive asynchronous refresh is reserved for pre-training, where it matters most.)
 
 Now I have a working objective and a tractable system, but if I just turn it on I expect it to fail or learn nothing useful, because of how the gradient interacts with the *kind* of masked token. Let me think about what could go wrong, because each failure mode suggests a fix.
 
 First failure: most masked tokens don't need world knowledge at all. If I mask "of" in "the currency ___ the UK," local context predicts it — no document helps, the retriever gets no useful signal, and worse, the predictor learns it can ignore retrievals. The whole point is knowledge, so I should *mask the tokens that require knowledge*. Those are the salient spans — named entities like "United Kingdom" and dates like "July 1969." So instead of BERT's random token masking, I do salient span masking: run a named-entity tagger and a date regex over the sentence, and mask one salient span. That concentrates the training signal on exactly the cases where retrieval can help. I'd expect this to matter a lot — it's the difference between the retriever being needed and being decoration.
 
-Second failure: even among salient spans, some are predictable without retrieval, or the world knowledge is so common it's already baked into the predictor. For those, *forcing* a retrieval distorts the credit assignment — the retriever gets rewarded or punished for documents on a prediction it could make alone. So I add a *null document* z_∅ — an empty document — to the top-k set. When no real retrieval is needed, probability mass and credit flow to this consistent sink instead of being misattributed to some arbitrary real document. (As a bonus, comparing log p(y|z,x) against log p(y|z_∅,x) gives me a clean "retrieval utility" of document z — how much z actually helped over retrieving nothing.)
+Second failure: even among salient spans, some are predictable without retrieval, or the world knowledge is so common it's already baked into the predictor. For those, *forcing* a retrieval distorts the credit assignment — the retriever gets rewarded or punished for documents on a prediction it could make alone. So I add a *null document* z_null — an empty document — to the candidate set. When no real retrieval is needed, probability mass and credit flow to this consistent sink instead of being misattributed to some arbitrary real document. Comparing log p(y|z,x) against log p(y|z_null,x) also gives a clean retrieval utility for document z: how much z helped over retrieving nothing.
 
 Third failure, and it's a sneaky one, present only when the pre-training corpus X and the knowledge corpus Z are the same (both Wikipedia). Then for a masked sentence x drawn from document z, that very document z sits in the corpus *unmasked* — it literally contains the answer in plain text. Retrieving it makes prediction trivial: the encoder just copies the unmasked token. That produces a huge positive gradient for p(z|x) on that exact document, and if it happens often the retriever degenerates into learning *exact string match* — "find the document I came from" — which captures none of the semantic relevance I actually want. So during pre-training I must *prohibit this trivial candidate*: exclude the document the masked sentence came from from the retrieval set.
 
 Fourth failure: cold start. At initialization the embeddings are meaningless, so the top-k retrievals are random junk unrelated to x. The predictor quickly learns those documents are useless and learns to *ignore* them. But once the predictor ignores retrievals, p(y|z,x) ≈ p(y|x) for all z, so r(z) ≈ 0 — the retriever gets no gradient and can never improve. A vicious cycle: bad retrieval → ignored retrieval → no retriever gradient → bad retrieval forever. I need a warm start so the retriever is already *somewhat* sensible before joint training begins. The Inverse Cloze Task does exactly this: given a sentence, train the retriever to recover the document it came from. That's a cheap self-supervised proxy for relevance that gives Embed_input and Embed_doc a meaningful starting geometry, breaking the cold-start cycle. And the predictor I warm-start with ordinary BERT-base pre-training (12 layers, 768 hidden, 12 heads). After that warm start, the full retrieve-then-predict marginal objective takes over and refines everything jointly.
 
-Put it together. Pre-training: take a sentence from X, mask a salient span, retrieve top-k (≈8) documents via the asynchronously-refreshed MIPS index plus the null document, exclude the trivial self-document, recompute exact scores and the marginal MLM likelihood over those k, and gradient-step both θ and φ. Fine-tuning for Open-QA: same retrieve-then-marginalize structure, but the predictor scores answer spans, the index is built once and Embed_doc frozen (Embed_input still trained), and k is small (≈5) so the whole thing runs on a single 12 GB GPU. Because the knowledge is now in the corpus, swapping in a newer Wikipedia changes the model's answers without any retraining — the modularity I wanted at the very start.
+Put it together. Pre-training: take a sentence from X, mask a salient span, retrieve a small candidate set through the asynchronously refreshed MIPS index, exclude the trivial self-document, include the null document so the total set is 8 candidates, recompute fresh candidate scores and the marginal MLM likelihood over that set, and gradient-step both θ and φ. Fine-tuning for Open-QA: same retrieve-then-marginalize structure, but the predictor scores answer spans, the index is built once and Embed_doc frozen (Embed_input still trained), and k is small (≈5) so the whole thing runs on a single 12 GB GPU. Since the model reads from the corpus at inference time, changing the corpus gives me a direct path to changing accessible facts, even though the encoder can still remember common facts in its parameters.
 
-Now the code, grounding the marginal, the gradient-justified scoring, and the asynchronous-refresh structure.
+The implementation lands on the marginal, the gradient-justified scoring, and the asynchronous-refresh structure.
 
 ```python
+import copy
 import torch, torch.nn as nn, torch.nn.functional as F
 
 # --- Retriever: dense inner-product model, p(z|x) = softmax_z f(x,z) ---
@@ -91,7 +92,7 @@ class Retriever(nn.Module):
     def embed_input(self, x):                      # W_input . CLS(BERT([CLS] x [SEP]))
         return self.W_input(self.bert_q(**x).last_hidden_state[:, 0])
     def embed_doc(self, z):                         # W_doc . CLS(BERT([CLS] title [SEP] body [SEP]))
-        return self.W_doc(self.bert_d(**z).last_hidden_state[:, 0])
+        return self.W_doc(self.bert_d(**join_title_body(z)).last_hidden_state[:, 0])
     def score(self, qvec, dvecs):                   # f(x,z) = inner product
         return qvec @ dvecs.t()
 
@@ -101,41 +102,52 @@ class KnowledgeAugmentedEncoder(nn.Module):
         super().__init__(); self.bert = bert
         self.mlm_head  = nn.Linear(bert.config.hidden_size, bert.config.vocab_size)
         self.span_mlp  = nn.Sequential(nn.Linear(2*bert.config.hidden_size, 1))
-    def mlm_logprob(self, x, z, masked_pos, y):     # pre-training: predict masked tokens
-        h = self.bert(**join(x, z)).last_hidden_state
-        logits = self.mlm_head(h[masked_pos])
-        return F.log_softmax(logits, -1).gather(-1, y).sum()       # prod over masks
-    def span_logprob(self, x, z, y_spans):          # fine-tuning: answer span score
-        h = self.bert(**join(x, z)).last_hidden_state
-        s = torch.stack([self.span_mlp(torch.cat([h[a], h[b]])) for a, b in y_spans])
+    def mlm_logprob(self, x, z, target):            # pre-training: predict masked tokens
+        h = self.bert(**join_input_and_body(x, z)).last_hidden_state
+        logits = self.mlm_head(h[target.masked_pos])
+        return F.log_softmax(logits, -1).gather(-1, target.tokens).sum()  # product over masks
+    def span_logprob(self, x, z, target):           # fine-tuning: answer span score
+        h = self.bert(**join_input_and_body(x, z)).last_hidden_state
+        s = torch.stack([self.span_mlp(torch.cat([h[a], h[b]])) for a, b in target.matching_spans(z)])
         return torch.logsumexp(s, 0)                                # sum over matching spans
+    def logprob(self, x, z, target, task="mlm"):
+        return self.mlm_logprob(x, z, target) if task == "mlm" else self.span_logprob(x, z, target)
 
 # --- MIPS index over ALL doc embeddings; only used to SELECT the top-k ---
 class MIPSIndex:
     def build(self, doc_embeddings): self.E = doc_embeddings        # re-embed whole corpus
     def search(self, qvec, k):       return topk_inner_product(self.E, qvec, k)
+    def replace(self, other):        self.E = other.E
 
-# --- Marginal log-likelihood over top-k (+ null doc), exact scores on fresh theta ---
-def marginal_logprob(x, y, retriever, predictor, index, docs, k, null_doc):
+# --- Marginal log-likelihood over the retrieved candidate set, with fresh theta ---
+def marginal_logprob(x, y, retriever, predictor, index, docs, K, null_doc, task="mlm"):
     qvec = retriever.embed_input(x)
-    cand_ids = index.search(qvec, k)                 # stale index just PICKS candidates
-    cand = [docs[i] for i in cand_ids if not is_trivial(i, x)] + [null_doc]
+    cand_ids = index.search(qvec.detach(), K + 8)     # stale index just PICKS candidates
+    cand = [docs[i] for i in cand_ids if not is_trivial(i, x)][:K - 1] + [null_doc]
     dvecs = retriever.embed_doc(batch(cand))         # recompute embeddings with current theta
-    log_pz = F.log_softmax(retriever.score(qvec, dvecs), -1)        # log p(z|x), exact
-    log_pyz = torch.stack([predictor.logprob(x, z, y) for z in cand])  # log p(y|z,x)
+    log_pz = F.log_softmax(retriever.score(qvec, dvecs), -1).squeeze(0)  # top-K p(z|x)
+    log_pyz = torch.stack([predictor.logprob(x, z, y, task) for z in cand])
     return torch.logsumexp(log_pz + log_pyz, 0)      # log sum_z p(z|x) p(y|z,x)
 
 # --- Asynchronous index refresh: trainer never blocks; index lags a few hundred steps ---
-def maybe_refresh_index(retriever, index, corpus, step, every=500):
-    if step % every == 0:                            # secondary builder uses a theta snapshot
-        index.build(embed_all_docs(retriever, corpus))   # ~13M docs, in the background
+class AsyncIndexRefresh:
+    def __init__(self, every=500):
+        self.every, self.pending = every, None
+    def maybe_refresh(self, retriever, index, corpus, step):
+        if self.pending is not None and self.pending.done():
+            index.replace(self.pending.result())      # install finished background index
+            self.pending = None
+        if self.pending is None and step % self.every == 0:
+            theta = copy.deepcopy(retriever).eval()   # theta' snapshot for the builder
+            self.pending = launch_background(lambda: build_mips_index(theta, corpus))
 
 def train(retriever, predictor, index, corpus, docs, data, steps, k, null_doc):
+    refresher = AsyncIndexRefresh(every=500)
     opt = torch.optim.Adam(list(retriever.parameters()) + list(predictor.parameters()), lr=3e-5)
     for step, (x, y) in enumerate(data):             # x = salient-span-masked sentence
         loss = -marginal_logprob(x, y, retriever, predictor, index, docs, k, null_doc)
         opt.zero_grad(); loss.backward(); opt.step()
-        maybe_refresh_index(retriever, index, corpus, step)
+        refresher.maybe_refresh(retriever, index, corpus, step)
 ```
 
-The causal chain: knowledge welded into parameters is opaque, capacity-bounded, and unrevisable, so move it into an external text corpus the model learns to retrieve from; with no retrieval labels, make the document a latent variable and maximize the marginal likelihood of the prediction, whose retriever gradient provably equals Σ_z [p(z|y,x) − p(z|x)] ∇f(x,z) — rewarding exactly the documents that beat the retriever's average; the inner-product score turns top-k selection into MIPS over millions of documents, and the index-only-selects insight lets an asynchronously-refreshed stale index coexist with exact, current gradients on the retrieved few; and salient-span masking, a null document, prohibiting the trivial self-retrieval, and an ICT warm start are the four inductive biases that keep the latent retriever from collapsing into uselessness or exact-match.
+Knowledge welded into parameters is opaque, capacity-bounded, and unrevisable, so I move it into an external text corpus the model learns to retrieve from; with no retrieval labels, I make the document a latent variable and maximize the marginal likelihood of the prediction, whose retriever gradient equals Σ_z [p(z|y,x) − p(z|x)] ∇f(x,z), rewarding exactly the documents that beat the retriever's average; the inner-product score turns candidate selection into MIPS over millions of documents, and the index-only-selects insight lets an asynchronously refreshed stale selector coexist with fresh gradients on the retrieved few; salient-span masking, a null document, prohibiting the trivial self-retrieval, and an ICT warm start keep the latent retriever from collapsing into uselessness or exact match.

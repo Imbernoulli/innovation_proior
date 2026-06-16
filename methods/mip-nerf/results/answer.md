@@ -103,7 +103,7 @@ def volume_render(sigma, rgb, t_vals):
     w = alpha * T
     return (w[..., None] * rgb).sum(-2), w
 
-def resample(t_vals, w):                    # widen + floor the coarse PDF, inverse-transform sample
+def resample(t_vals, w):                    # widen + floor the coarse PDF, then inverse-transform sample
     w_pad = torch.cat([w[..., :1], w, w[..., -1:]], -1)
     w_max = torch.maximum(w_pad[..., :-1], w_pad[..., 1:])
     w_blur = 0.5 * (w_max[..., :-1] + w_max[..., 1:])

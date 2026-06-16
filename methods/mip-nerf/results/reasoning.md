@@ -12,7 +12,7 @@ Graphics already solved aliasing, twice, and the two solutions tell me which roa
 
 But I can't literally precompute a mipmap. A mipmap presupposes I *have* the scene — I'd build the pyramid once and read it many times. In my setting the scene is the unknown; I'm recovering it from images by optimization, and the geometry only emerges during training. So I can't prefilter ahead of time. What I can do is take the *spirit* — trace a cone per pixel, and make the representation answer queries at the scale the cone sets — and have the network *learn* the prefiltered, multiscale representation during optimization. And one more thing the mipmap gets wrong for me: a mipmap is discrete, a fixed ladder of scales. My cameras can sit at any distance, so I need a *continuous* notion of scale, not a handful of pyramid levels.
 
-So here's the plan in one line: cast a cone from each pixel instead of a ray; chop the cone into a sequence of conical frustums (a cone sliced perpendicular to its axis between t_0 and t_1); and instead of encoding a single point, build a feature that represents the *volume of each frustum* — its position, size, and shape — and hand that to the same MLP, render the same way. I need to (1) pin down the cone's geometry, (2) figure out how to featurize a frustum's volume in a way the MLP can use, and crucially (3) make it cheap and closed-form, because if featurizing a frustum costs anything like supersampling I've gained nothing.
+The replacement has to follow that geometry all the way through: cast a cone from each pixel instead of a ray; chop the cone into a sequence of conical frustums (a cone sliced perpendicular to its axis between t_0 and t_1); and instead of encoding a single point, build a feature that represents the *volume of each frustum* — its position, size, and shape — and hand that to the same MLP, render the same way. I need to pin down the cone's geometry, figure out how to featurize a frustum's volume in a way the MLP can use, and make it cheap and closed-form, because if featurizing a frustum costs anything like supersampling I've gained nothing.
 
 The cone first. Apex at the camera center o, axis along the ray direction d through the pixel center. At the image plane (a unit step along d) the cone has some radius — call it ṙ, the cross-sectional radius per unit distance. What should ṙ be? It should make the cone's cross-section at the image plane match the pixel's footprint there. The pixel is a little square; if I'm going to approximate its footprint with a circular cone cross-section, I want their *spreads* to agree — same variance in the image plane. A pixel of width Δ (in world units at the image plane) — modeled as a uniform square — has variance Δ²/12 per axis. A disk of radius ṙ, taken as a uniform distribution on the disk, has variance ṙ²/4 per axis. Match them: ṙ²/4 = Δ²/12, so ṙ = Δ·2/√12. Good — that's the cone radius: the pixel width scaled by 2/√12 so the disk's variance equals the pixel's footprint variance. The set of points inside the frustum between t_0 and t_1 is the points whose projection onto the axis lies in (t_0, t_1) and whose angle off the axis is within the cone — a clean indicator function, but I won't need its exact form, just its first two moments.
 
@@ -24,7 +24,7 @@ That's exactly the right object: it's γ averaged over what the pixel sees, so i
 
 Back up. The expectation only needs to be *approximately* right, and what makes it intractable is the frustum's shape. So approximate the frustum's uniform distribution by a *multivariate Gaussian* with the same mean and covariance. A Gaussian is the maximum-entropy match to those two moments, it's the natural "blob" of the right position and spread, and — this is the payoff — expectations of sines and cosines under a Gaussian have clean closed forms. If I can get the mean μ and covariance Σ of a point uniformly distributed in the frustum, I can replace "average γ over the frustum" with "average γ under N(μ, Σ)," which I *can* do in closed form.
 
-So I need the moments of the uniform distribution over a conical frustum. By symmetry the frustum is rotationally symmetric about the axis, so the Gaussian is characterized by just three numbers: the mean distance along the ray μ_t, the variance along the ray σ_t², and the variance perpendicular to the ray σ_r². Let me actually derive them rather than guess. Put the cone axis along z and parameterize a point by (r, t, θ) with (x,y,z) = (r t cosθ, r t sinθ, t), so at distance t the disk has radius ṙ via |r| ≤ ṙ; θ ∈ [0,2π); t from t_0 to t_1.
+So I need the moments of the uniform distribution over a conical frustum. By symmetry the frustum is rotationally symmetric about the axis, so the Gaussian is characterized by just three numbers: the mean distance along the ray μ_t, the variance along the ray σ_t², and the variance perpendicular to the ray σ_r². Let me actually derive them rather than guess. Put the cone axis along z and parameterize a point by (r, t, θ) with (x,y,z) = (r t cosθ, r t sinθ, t), so at distance t the disk has radius ṙt via 0 ≤ r ≤ ṙ; θ ∈ [0,2π); t from t_0 to t_1.
 
 First the volume element. The Jacobian of (x,y,z) with respect to (r, t, θ): differentiate. ∂(x,y,z)/∂r = (t cosθ, t sinθ, 0); ∂/∂t = (r cosθ, r sinθ, 1); ∂/∂θ = (−r t sinθ, r t cosθ, 0). The determinant of those three rows works out to r t² (the z-component of the t-row, the "1", multiplies the 2×2 of the r- and θ-rows in x,y, giving t·(r t)(cos²+sin²) = r t²). So dx dy dz = r t² dr dt dθ.
 
@@ -44,7 +44,7 @@ Now a numerical landmine: these are ratios of differences of fifth and cubed pow
 
 Sanity check σ_t² for a thin slab: as t_δ → 0 the correction vanishes and σ_t² → t_δ²/3, which is exactly the variance of a uniform distribution on an interval of half-width t_δ. Good. And σ_r² → ṙ² t_μ²/4 at small t_δ, the variance of a uniform disk of radius ṙ t_μ — the cone's cross-section at distance t_μ. Both limits are what they should be.
 
-Lift this from the (along-ray, perpendicular) frame into world coordinates. Mean: μ = o + μ_t d. Covariance: along the ray it's σ_t² in the d̂ d̂ᵀ direction, perpendicular it's σ_r² in the complementary subspace, so Σ = σ_t² (d dᵀ) + σ_r² (I − d dᵀ/‖d‖²). (Writing it with d unnormalized keeps the projector right when d isn't unit length.) That's my Gaussian N(μ, Σ) approximating the frustum.
+Lift this from the (along-ray, perpendicular) frame into world coordinates. Mean: μ = o + μ_t d. The t-coordinate variance becomes σ_t² d dᵀ because moving t by one moves the world point by d; the perpendicular spread lives in the plane orthogonal to d, so it uses the projector I − d dᵀ/‖d‖². Thus Σ = σ_t² (d dᵀ) + σ_r² (I − d dᵀ/‖d‖²). That's my Gaussian N(μ, Σ) approximating the frustum.
 
 Now the feature: the expected positional encoding under this Gaussian. Rewrite γ in Fourier-feature form. Stack the per-axis frequencies into a matrix P whose rows are the standard basis times powers of two — so P x lays out, for each axis, x scaled by 1, 2, 4, …, 2^{L−1}. Then γ(x) = [sin(P x); cos(P x)]. This linearization is what makes the Gaussian expectation tractable: P x is a linear function of x, so under x ∼ N(μ, Σ), the vector P x is Gaussian with mean μ_γ = P μ and covariance Σ_γ = P Σ Pᵀ (the covariance of a linear map A x is A Σ Aᵀ).
 
@@ -107,7 +107,7 @@ def integrated_pos_enc(mean, diag, L):
     damp = torch.exp(-0.5 * var_g)                                # soft per-frequency low-pass
     return torch.cat([torch.sin(mu_g) * damp, torch.cos(mu_g) * damp], dim=-1)   # IPE feature
 
-def cast_rays(origins, directions, base_radius, t_vals):
+def cast_cone(origins, directions, base_radius, t_vals):
     # t_vals: n+1 sorted distances -> n frustums; one IPE feature per frustum
     t0, t1 = t_vals[..., :-1], t_vals[..., 1:]
     t_mean, t_var, r_var = conical_frustum_to_gaussian(directions, t0, t1, base_radius)
@@ -133,12 +133,12 @@ def resample(t_vals, w):                  # widen + floor the coarse PDF, then i
 def render_pixel(mlp, origins, directions, base_radius, n=128, near=2.0, far=6.0):
     # single shared MLP, queried coarse then fine
     t_c = stratified(near, far, n + 1, origins.shape[:-1])
-    mean, diag = cast_rays(origins, directions, base_radius, t_c)
+    mean, diag = cast_cone(origins, directions, base_radius, t_c)
     sigma, rgb = mlp(integrated_pos_enc(mean, diag, L=16), directions)
     C_coarse, w = volume_render(sigma, rgb, t_c)
 
     t_f = resample(t_c, w)
-    mean, diag = cast_rays(origins, directions, base_radius, t_f)
+    mean, diag = cast_cone(origins, directions, base_radius, t_f)
     sigma, rgb = mlp(integrated_pos_enc(mean, diag, L=16), directions)
     C_fine, _ = volume_render(sigma, rgb, t_f)
     return C_coarse, C_fine

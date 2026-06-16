@@ -1,28 +1,28 @@
-OK, let me think this through from scratch. I have a trained classifier — say a deep ResNet with batch normalization on CIFAR-100 — and it is *accurate*. But I keep seeing the same thing when I look at the probabilities it reports: on the test set its predicted-class confidence averages well above its actual accuracy. If I bin the predictions by reported confidence and ask, in each bin, what fraction were actually right, the answer sits stubbornly below the bin's confidence. The reliability diagram bows away from the diagonal. The net says 0.9 and is right maybe 0.7 of the time. It is overconfident, and I want to fix that.
+OK, let me think this through from scratch. I have a trained classifier — say a deep ResNet with batch normalization on CIFAR-100 — and it is *accurate*. But I keep seeing the same thing when I look at the probabilities it reports: on the test set its predicted-class confidence averages well above its actual accuracy. If I bin the predictions by reported confidence and ask, in each bin, what fraction were actually right, the answer sits stubbornly below the bin's confidence. The reliability diagram bows away from the diagonal. The model is overconfident, and I want to fix that.
 
-Before I reach for a fix, let me understand *why* this happens, because the cure should attack the cause. The striking thing is that this is new. A shallow LeNet from a decade ago, on the same kind of task, was well calibrated — its average confidence tracked its accuracy. So something about how I train modern nets broke calibration while improving accuracy. Let me stare at what changed.
+Before I reach for a fix, let me understand what is associated with this failure. The striking thing is that this is new. A shallow LeNet from a decade ago, on the same kind of task, was well calibrated — its average confidence tracked its accuracy. So something about the modern training recipe is correlated with worse calibration even as accuracy improves. Let me stare at what changed.
 
-Depth and width went up enormously. When I sweep depth on a fixed-width ResNet, or width on a fixed depth, classification error goes down — but the expected calibration error goes *up*, monotonically, with capacity. Batch normalization came in; nets with it are more miscalibrated than nets without, even when it nudges accuracy up. Weight decay fell out of fashion; and when I dial weight decay back up, calibration keeps improving long after accuracy has stopped improving — accuracy and calibration just aren't optimized by the same regularization setting. Three different knobs, all pointing the same way: more capacity and less regularization buy accuracy and cost calibration.
+Depth and width went up enormously. When I sweep depth on a fixed-width ResNet, or width on a fixed depth, classification error goes down — but the expected calibration error grows substantially with capacity. Batch normalization came in; nets with it are more miscalibrated than nets without, even when it nudges accuracy up. Weight decay fell out of fashion; and when I dial weight decay back up, calibration keeps improving long after accuracy has stopped improving — accuracy and calibration just aren't optimized by the same regularization setting. These are not a proof of causality, but they all point in the same direction: the modern recipe can buy accuracy while losing probabilistic calibration.
 
-There's a cleaner way to see the mechanism, and it's in the training curves. Take that 110-layer ResNet and watch the negative log-likelihood and the test error as training proceeds. After the learning-rate drop, both fall. But then something telling happens: the test error keeps inching down — 29% to 27% — while the NLL turns around and *climbs*. The network is overfitting the NLL while still improving the 0/1 loss. Think about what that means mechanically. Once almost every training example is classified correctly, the cross-entropy can still be reduced — but only by pushing the correct-class probability closer and closer to 1, i.e. by inflating the logits, by becoming more confident. The optimizer has run out of mistakes to fix, so it spends its remaining gradient making the right answers sharper. On test data that sharpening doesn't correspond to any real increase in correctness; it's pure overconfidence. So the disease isn't that the *ranking* of classes is wrong — accuracy is fine, even improving. The disease is that the *magnitude* of the logits has been inflated relative to what the probabilities should be.
+There's a cleaner way to see the mechanism, and it's in the training curves. Take that 110-layer ResNet and watch the negative log-likelihood and the test error as training proceeds. After the learning-rate drop, both fall. But then something telling happens: the test error keeps inching down — 29% to 27% — while the NLL turns around and *climbs*. The network is overfitting the NLL while still improving the 0/1 loss. Think about what that means mechanically. Once almost every training example is classified correctly, the cross-entropy can still be reduced by pushing the correct-class probability closer and closer to 1, i.e. by inflating the logits, by becoming more confident. Some of the extra sharpness is no longer calibrated to the small accuracy gain. So I should not assume the class ranking is the main thing to repair — accuracy is fine, even improving. The visible failure is that the *magnitude* of the logits has run ahead of what the probabilities should be.
 
-That last sentence is the whole game, and it reframes the cure. If accuracy is fine and only the scale of the logits is off, then I do not want to retrain the network, I do not want to change which class wins, and I do not want to relearn the decision boundary. I want a cheap post-processing step that takes the already-trained logits and rescales them so the resulting probabilities are honest — fit on a small held-out set, leaving the expensive network untouched.
+If the dominant calibration error is scale, then I do not want to retrain the network, I do not want to change which class wins, and I do not want to relearn the decision boundary. I want a cheap post-processing step that takes the already-trained logits and rescales them so the resulting probabilities are honest — fit on a small held-out set, leaving the expensive network untouched.
 
 So let me survey what's on the table for post-hoc calibration and ask, for each, whether it fits a problem that is essentially "the logits are inflated."
 
-The non-parametric binning methods. Histogram binning chops the predicted probabilities into bins and replaces each bin with its empirical accuracy. Isotonic regression does the smarter version — a piecewise-constant non-decreasing function fit by least squares, choosing both the bin edges and the values. BBQ goes Bayesian and averages over all binning schemes. These are flexible, and on a binary problem they're fine. But two things bother me for the multiclass net. First, they're built for one probability at a time; the standard multiclass trick is to run $K$ one-versus-all binning problems and renormalize, which throws away the joint structure of the softmax and multiplies the fitting burden by $K$. Second, they're flexible enough to overfit a held-out set that isn't huge, and they produce a non-smooth map — which is awkward if I later want to fuse these probabilities into another probabilistic model. They don't use the fact that I *know* the problem is just a scale issue.
+The non-parametric binning methods. Histogram binning chops the predicted probabilities into bins and replaces each bin with its empirical accuracy. Isotonic regression does the smarter version — a piecewise-constant non-decreasing function fit by least squares, choosing both the bin edges and the values. BBQ goes Bayesian and averages over all binning schemes. These are flexible, and on a binary problem they're fine. But two things bother me for the multiclass net. First, they're built for one probability at a time; the standard multiclass trick is to run $K$ one-versus-all binning problems and renormalize, which throws away the joint structure of the softmax and multiplies the fitting burden by $K$. Second, they're flexible enough to overfit a held-out set that isn't huge, and they produce a non-smooth map — which is awkward if I later want to fuse these probabilities into another probabilistic model. They don't use the evidence that the dominant error may be a shared logit-scale problem.
 
-Then there's the parametric line. Platt scaling: take the logit $z$ and output $\sigma(az+b)$, fitting $a,b$ by likelihood on the validation set. That's binary. The multiclass generalizations operate on the whole logit vector $\mathbf z$ before the softmax. Matrix scaling applies an affine map $\mathbf W\mathbf z+\mathbf b$ and refits the softmax on top; vector scaling restricts $\mathbf W$ to a diagonal. These are appealing because they're parametric and they act exactly where I diagnosed the problem — on the logits. But matrix scaling has $K(K+1)$ parameters. On CIFAR-100 that's already ~10,000 parameters fit on a validation set of a few thousand; on ImageNet with $K=1000$ it's a million. That will overfit, and worse, a full $\mathbf W$ can rotate the logits and *change the argmax*, i.e. degrade the accuracy I was promised I'd keep. Vector scaling is better — diagonal, $2K$ parameters — but it can still rescale classes differently and reorder them, and it's still more capacity than my diagnosis calls for.
+Then there's the parametric line. Platt scaling: take the logit $z$ and output $\sigma(az+b)$, fitting $a,b$ by likelihood on the validation set. That's binary. The multiclass generalizations operate on the whole logit vector $\mathbf z$ before the softmax. Matrix scaling applies an affine map $\mathbf W\mathbf z+\mathbf b$ and refits the softmax on top; vector scaling restricts $\mathbf W$ to a diagonal. These are appealing because they're parametric and they act exactly where the scale problem lives — on the logits. But matrix scaling has $K(K+1)$ parameters. On CIFAR-100 that's already ~10,000 parameters fit on a validation set of a few thousand; on ImageNet with $K=1000$ it's a million. That can overfit, and worse, a full $\mathbf W$ can rotate the logits and *change the argmax*, i.e. degrade the accuracy I was promised I'd keep. Vector scaling is better — diagonal, $2K$ parameters — but it can still rescale classes differently and reorder them, and it's still more capacity than the shared-scale hypothesis calls for.
 
-Here's where I want to be disciplined. My diagnosis was very specific: the *ranking* is right, only the overall *scale* of the logits is inflated, uniformly enough that confidence runs ahead of accuracy across the board. The minimal transform that fixes a uniform scale problem, and *only* that, is dividing every logit by one shared positive number. Let me write the calibrated confidence as
+The transform I want should match the shared-scale hypothesis and preserve the existing ranking. The minimal transform that fixes a uniform scale problem, and *only* that, is dividing every logit by one shared positive number. Let me write the calibrated confidence as
 
   $\hat q_i = \max_k\,\sigma_\text{SM}(\mathbf z_i / T)^{(k)}$,
 
 with a single scalar $T>0$ shared across all classes and all examples. Borrow the name from where this operation already lives — statistical mechanics, and the soft targets in distillation — and call $T$ the temperature.
 
-Let me check it has exactly the properties my diagnosis demands, before I get attached to it. Because $T$ is the *same* for every class, dividing by it is a monotone transform of the logits that doesn't reorder them: $\arg\max_k z_k/T = \arg\max_k z_k$. So the predicted class never changes, which means **the accuracy is exactly preserved** — not approximately, exactly. That's the property matrix scaling couldn't promise. And the effect on the probabilities is precisely a softening: as $T\to\infty$ the scaled logits flatten and $\hat q_i\to 1/K$, the maximally uncertain uniform distribution; at $T=1$ I recover the original probabilities; as $T\to 0^+$ the largest logit dominates and the distribution collapses to a one-hot point mass. So sweeping $T$ from 1 upward does exactly one thing — bleeds confidence out of an overconfident model toward uniform — which is the one knob my overconfidence diagnosis says I need. With a single parameter there is essentially nothing to overfit on the held-out set.
+Let me check it has exactly the properties I need, before I get attached to it. Because $T$ is the *same* for every class, dividing by a positive $T$ is a monotone transform of the logits that doesn't reorder them: $\arg\max_k z_k/T = \arg\max_k z_k$. So the predicted class never changes, which means **the accuracy is exactly preserved** — not approximately, exactly. That's the property matrix scaling couldn't promise. And the effect on the probabilities is precisely a softening: as $T\to\infty$ the scaled logits flatten and $\hat q_i\to 1/K$, the maximally uncertain uniform distribution; at $T=1$ I recover the original probabilities; as $T\to 0^+$ the largest logit dominates and the distribution collapses onto the argmax class, up to ties. So sweeping $T$ from 1 upward does exactly one thing — bleeds confidence out of an overconfident model toward uniform — which is the one knob the shared-scale hypothesis says I need. With a single parameter there is very little capacity to overfit the held-out set.
 
-How do I pick $T$? I want the probabilities to be honest, and the clean differentiable objective that rewards honest probabilities is the negative log-likelihood — it's a proper scoring rule, minimized exactly when the predicted distribution matches the truth. The expected-calibration-error metric I care about is binned and non-differentiable, a bad thing to optimize directly; NLL is its smooth, well-behaved cousin and it's what pushed the logits to inflate in the first place, so it's the right lever to pull them back. So: freeze the network, run it once over the validation set to cache the logits and labels, and minimize the validation NLL over the single scalar $T$. One parameter, a couple hundred optimizer iterations, done.
+How do I pick $T$? I want the probabilities to be honest, and the clean differentiable objective that rewards honest probabilities is the negative log-likelihood — in expectation, it is minimized when the predicted distribution matches the truth. The expected-calibration-error metric I care about is binned and non-differentiable, a bad thing to optimize directly; NLL is its smooth, well-behaved cousin and it is the same objective whose over-optimization exposed the scale problem, so it is the right lever to pull the logits back. So: freeze the network, run it once over the validation set to cache the logits and labels, and minimize the validation NLL over the single scalar $T$. One parameter, a couple hundred optimizer iterations, done.
 
 Now I want to know whether "divide the logits by a constant and minimize NLL" is a principled thing or just a lucky hack that happened to match my overconfidence story. Let me see if temperature scaling falls out of a clean optimization principle, because if it does I'll trust it far more.
 
@@ -50,9 +50,9 @@ This is positive automatically, so the nonnegativity constraint I set aside is s
 
   $q_i^{(k)}=\dfrac{e^{\lambda z_i^{(k)}}}{\sum_{j=1}^K e^{\lambda z_i^{(j)}}}=\sigma_\text{SM}(\lambda\mathbf z_i)^{(k)}.$
 
-That is a softmax of the logits scaled by $\lambda$. Identify $\lambda = 1/T$, and it is *exactly* temperature scaling, $q_i^{(k)}=\sigma_\text{SM}(\mathbf z_i/T)^{(k)}$. So temperature scaling is not a hack — it is the unique maximum-entropy distribution consistent with matching the average true-class logit. The single scalar is the lone Lagrange multiplier of the single coupling constraint, which is why one parameter is the *right* number, not just a convenient small one. And it makes the overconfidence story precise: an overconfident model has low-entropy outputs, raising $T$ (lowering $\lambda$) raises the entropy back toward what the data support.
+That is a softmax of the logits scaled by $\lambda$. I want the positive-temperature member of this family, so I identify $\lambda = 1/T$ and get $q_i^{(k)}=\sigma_\text{SM}(\mathbf z_i/T)^{(k)}$. So temperature scaling is not a hack — it is the maximum-entropy distribution consistent with matching the average true-class logit. The single scalar is the lone Lagrange multiplier of the single coupling constraint, which is why one parameter is not just a convenient small choice. And it makes the overconfidence story precise: an overconfident model has low-entropy outputs, raising $T$ (lowering $\lambda$) raises the entropy back toward what the data support.
 
-A couple of things to nail down for the implementation. When I cache the validation logits, I must run the network in eval mode so batch-norm uses its frozen running statistics rather than recomputing batch statistics — otherwise the very thing I'm calibrating shifts under me. And I'll optimize the single $T$ with a quasi-Newton method (L-BFGS) on the cached logits, since it's a smooth one-dimensional (well, one-parameter) problem and L-BFGS converges in a handful of steps. I'll initialize $T$ above 1 (say 1.5), since I diagnosed overconfidence and expect the optimum to soften, not sharpen.
+A couple of things to nail down for the implementation. When I cache the validation logits, I must run the network in eval mode so batch-norm uses its frozen running statistics rather than recomputing batch statistics — otherwise the very thing I'm calibrating shifts under me. And since the argmax-preservation argument requires $T>0$, I'll optimize an unconstrained $\log T$ and exponentiate it inside the scaling step. L-BFGS is fine on the cached logits, since it is a smooth one-parameter problem and a generous iteration cap is still cheap. I'll initialize $T$ above 1 (say 1.5), since I expect an overconfident model to need softening rather than sharpening. The binned ECE diagnostic should be computed from the logits before and after fitting, but the optimizer itself should step on NLL.
 
 Let me trace the whole procedure end to end. Train the network normally and freeze it. Hold out a validation split. Push that split through the frozen network once, in eval mode, and stash the logits and labels. Minimize the validation NLL over the scalar $T$ by dividing every cached logit vector by $T$, taking the softmax cross-entropy against the labels, and stepping L-BFGS. At test time, the calibrated confidence for an input is $\max_k\sigma_\text{SM}(\mathbf z/T)^{(k)}$ with the fitted $T$; the predicted label is unchanged. That's the entire method, and the code mirrors it: a thin decorator around the trained model holding one learnable scalar.
 
@@ -63,45 +63,96 @@ from torch.nn import functional as F
 
 
 class ModelWithTemperature(nn.Module):
-    """Decorator: divide a frozen classifier's logits by a learned scalar temperature T > 0.
-    Output of `model` must be raw logits, not softmax."""
+    """A thin decorator that wraps a classifier with temperature scaling.
+    The wrapped model must output raw logits, not softmax or log-softmax."""
     def __init__(self, model):
-        super().__init__()
-        self.model = model                                 # already trained, kept fixed
-        self.temperature = nn.Parameter(torch.ones(1) * 1.5)  # expect overconfidence -> T > 1
+        super(ModelWithTemperature, self).__init__()
+        self.model = model
+        self.log_temperature = nn.Parameter(torch.log(torch.ones(1) * 1.5))
 
-    def temperature_scale(self, logits):
-        # one shared scalar across classes and examples => argmax (accuracy) is preserved
-        T = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        return logits / T
+    @property
+    def temperature(self):
+        return self.log_temperature.exp()
 
     def forward(self, input):
-        logits = self.model(input)                         # network untouched
+        logits = self.model(input)
         return self.temperature_scale(logits)
 
+    def temperature_scale(self, logits):
+        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
+        return logits / temperature
+
     def set_temperature(self, valid_loader):
-        nll = nn.CrossEntropyLoss()
-        # eval mode so BatchNorm uses frozen running stats while we cache logits
-        self.model.eval()
+        nll_criterion = nn.CrossEntropyLoss()
+        ece_criterion = _ECELoss()
+
+        wrapper_training = self.training
+        model_training = self.model.training
+        try:
+            device = next(self.model.parameters()).device
+        except StopIteration:
+            device = self.log_temperature.device
+        self.to(device)
+        self.eval()  # prevent BatchNorm statistics from changing while logits are cached
+
         logits_list, labels_list = [], []
         with torch.no_grad():
             for input, label in valid_loader:
+                input = input.to(device)
+                label = label.to(device)
                 logits_list.append(self.model(input))
                 labels_list.append(label)
         logits = torch.cat(logits_list)
         labels = torch.cat(labels_list)
 
-        # minimize validation NLL over the single parameter T (smooth proper scoring rule)
-        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=200)
+        before_temperature_nll = nll_criterion(logits, labels).item()
+        before_temperature_ece = ece_criterion(logits, labels).item()
+        print('Before temperature - NLL: %.3f, ECE: %.3f' %
+              (before_temperature_nll, before_temperature_ece))
+
+        optimizer = optim.LBFGS([self.log_temperature], lr=0.01, max_iter=200)
 
         def closure():
             optimizer.zero_grad()
-            loss = nll(self.temperature_scale(logits), labels)   # softmax(z / T) cross-entropy
+            loss = nll_criterion(self.temperature_scale(logits), labels)
             loss.backward()
             return loss
 
         optimizer.step(closure)
+
+        after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
+        after_temperature_ece = ece_criterion(self.temperature_scale(logits), labels).item()
+        print('Optimal temperature: %.3f' % self.temperature.item())
+        print('After temperature - NLL: %.3f, ECE: %.3f' %
+              (after_temperature_nll, after_temperature_ece))
+
+        self.train(wrapper_training)
+        self.model.train(model_training)
         return self
+
+
+class _ECELoss(nn.Module):
+    """Expected Calibration Error over equally spaced confidence bins."""
+    def __init__(self, n_bins=15):
+        super(_ECELoss, self).__init__()
+        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
+        self.bin_lowers = bin_boundaries[:-1]
+        self.bin_uppers = bin_boundaries[1:]
+
+    def forward(self, logits, labels):
+        softmaxes = F.softmax(logits, dim=1)
+        confidences, predictions = torch.max(softmaxes, 1)
+        accuracies = predictions.eq(labels)
+
+        ece = torch.zeros(1, device=logits.device)
+        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
+            in_bin = confidences.gt(bin_lower.item()) & confidences.le(bin_upper.item())
+            prop_in_bin = in_bin.float().mean()
+            if prop_in_bin.item() > 0:
+                accuracy_in_bin = accuracies[in_bin].float().mean()
+                avg_confidence_in_bin = confidences[in_bin].mean()
+                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
+        return ece
 ```
 
-The causal chain, start to finish: a modern high-capacity, lightly-regularized network is accurate but overconfident, because once it classifies the training set it can only lower NLL by inflating the correct-class logits — the *ranking* stays right while the *scale* of the logits runs ahead of true correctness. The minimal transform that corrects a uniform scale error without touching the ranking is dividing every logit by a single shared positive temperature $T$, which provably leaves the argmax — and hence the accuracy — unchanged and simply softens the distribution toward uniform as $T$ grows. Fitting $T$ by minimizing the held-out negative log-likelihood (a smooth proper scoring rule) needs one parameter and nothing to overfit, and the same operation falls out exactly as the unique maximum-entropy distribution that matches the average true-class logit — so the lone parameter is the lone Lagrange multiplier, and raising it restores exactly the entropy the data warrant.
+The chain, start to finish: modern high-capacity, lightly-regularized networks can be accurate but overconfident, and the training curves show how NLL can overfit through sharper probabilities while 0/1 error still improves. That points to a dominant scale error in the logits, while the post-hoc goal is to leave the class ranking alone. The minimal transform that corrects a uniform scale error without touching the ranking is dividing every logit by a single shared positive temperature $T$, which leaves the argmax — and hence the accuracy — unchanged and simply softens the distribution toward uniform as $T$ grows. Fitting $T$ by minimizing the held-out negative log-likelihood uses one parameter with very little capacity to overfit, and the same operation falls out as the unique maximum-entropy distribution that matches the average true-class logit — so the lone parameter is the lone Lagrange multiplier, and raising it restores the entropy supported by the validation data.

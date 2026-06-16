@@ -1,0 +1,121 @@
+\section{Experiments} \label{sec:exp}
+\subsection{Experimental Settings}
+\textbf{Datasets:} We used three publicly available datasets: Cityscapes~\cite{cityscape}, ADE20K~\cite{ade20k} and COCO-Stuff~\cite{cocostuff}. ADE20K is a scene parsing dataset covering 150 fine-grained semantic concepts consisting of 20210 images. Cityscapes is a driving dataset for semantic segmentation consisting of 5000 fine-annotated high resolution images with 19 categories. COCO-Stuff covers 172 labels and consists of 164k images: 118k for training, 5k for validation, 20k for test-dev and 20k for the test-challenge.
+
+\textbf{Implementation details:} We used the \textit{mmsegmentation}\footnote{https://github.com/open-mmlab/mmsegmentation} codebase and train on a server with 8 Tesla V100. We pre-train the encoder on the Imagenet-1K dataset and randomly initialize the decoder. During training, we applied data augmentation through random resize with ratio 0.5-2.0, random horizontal flipping, and random cropping to $512 \times 512$, 1024$ \times 1024$, $512 \times 512$ for ADE20K, Cityscapes and COCO-Stuff, respectively.
+Following \cite{liu2021swin} we set crop size to $640 \times 640$ on ADE20K for our largest model B5. We trained the models using AdamW optimizer for 160K iterations on ADE20K, Cityscapes, and 80K iterations on COCO-Stuff. Exceptionally, for the ablation studies, we trained the models for 40K iterations. We used a batch size of 16 for ADE20K and COCO-Stuff, and a batch size of 8 for Cityscapes. The learning rate was set to an initial value of 0.00006 and then used a ``poly'' LR schedule with factor 1.0 by default. For simplicity, we \textit{did not} adopt widely-used tricks such as OHEM, auxiliary losses or class balance loss.
+During evaluation, we rescale the short side of the image to training cropping size and keep the aspect ratio for ADE20K and COCO-Stuff. For Cityscapes, we do inference using sliding window test by cropping $1024 \times 1024$ windows. We report semantic segmentation performance using mean Intersection over Union~(mIoU).
+
+
+\subsection{Ablation Studies}
+\textbf{Influence of the size of model.}
+We first analyze the effect of increasing the size of the encoder on the performance and model efficiency.
+Figure~\ref{fig:fig1} shows the performance vs. model efficiency for ADE20K as a function of the encoder size and, Table~\ref{tab:modelsize} summarizes the results for the three datasets. The first thing to observe here is the size of the decoder compared to the encoder. As shown, for the lightweight model, the decoder has only 0.4M parameters. For MiT-B5 encoder, the decoder only takes up to 4\% of the total number of parameters in the model. In terms of performance, we can observe that, overall, increasing the size of the encoder yields consistent improvements on all the datasets. Our lightweight model, SegFormer-B0, is compact and efficient while maintaining a competitive performance, showing that our method is very convenient for real-time applications.  On the other hand, our SegFormer-B5, the largest model, achieves state-of-the-art results on all three datasets, showing the potential of our Transformer encoder.
+\begin{table}[!t]
+	\vspace{10pt}
+	\renewcommand\arraystretch{1.2}
+	\setlength{\fboxrule}{0pt}
+		\captionsetup{font={footnotesize}}
+	\caption{Ablation studies related to model size, encoder and decoder design.}
+	\vspace{-10pt}
+	\begin{center}
+		\input{tables/gfl_test.tex}
+	\end{center}
+	\vspace{-30pt}
+	\label{tab_1}
+\end{table}
+
+\input{tables/city_ade.tex}
+
+
+
+\textbf{Influence of $C$, the MLP decoder channel dimension.}
+We now analyze the influence of the channel dimension $C$ in the MLP decoder, see Section~\ref{sec:MLP}. In Table~\ref{tab:mlpdim} we show performance, flops, and parameters as a function of this dimension. We can observe that setting $C=256$ provides a very competitive performance and computational cost. The performance increases as $C$ increases; however, it leads to larger and less efficient models. Interestingly, this performance plateaus for channel dimensions wider than 768. Given these results, we choose $C=256$ for our real-time models SegFormer-B0, B1 and $C=768$ for the rest.
+
+
+
+\textbf{Mix-FFN vs. Positional Encoder (PE).} 
+In this experiment, we analyze the effect of removing the positional encoding in the Transformer encoder in favor of using the proposed Mix-FFN. To this end, we train Transformer encoders with a positional encoding (PE) and the proposed Mix-FFN and perform inference on Cityscapes with two different image resolutions: 768$\times$768 using a sliding window, and 1024$\times$2048 using the whole image.
+
+Table~\ref{tab:resolution} shows the results for this experiment. As shown, for a given resolution, our approach using Mix-FFN clearly outperforms using a positional encoding. Moreover, our approach is less sensitive to differences in the test resolution: the accuracy drops 3.3\% when using a positional encoding with a lower resolution. In contrast, when we use the proposed Mix-FFN the performance drop is reduced to only 0.7\%. From these results, we can conclude using the proposed Mix-FFN produces better and more robust encoders than those using positional encoding. 
+
+
+\textbf{Effective receptive field evaluation.} 
+In Section~\ref{sec:MLP}, we argued that our MLP decoder benefits from Transformers having a larger effective receptive field compared to other CNN models. To quantify this effect, in this experiment, we compare the performance of our MLP-decoder when used with CNN-based encoders such as ResNet or ResNeXt. As shown in Table~\ref{tab:cnnencoder}, coupling our MLP-decoder with a CNN-based encoder yields a significantly lower accuracy compared to coupling it with the proposed Transformer encoder. Intuitively, as a CNN has a smaller receptive field than the Transformer (see the analysis in Section~\ref{sec:MLP}), the MLP-decoder is not enough for global reasoning. In contrast, coupling our Transformer encoder with the MLP decoder leads to the best performance. 
+%
+Moreover, for Transformer encoder, it is necessary to combine low-level local features and high-level non-local features instead of only high-level feature. 
+
+
+\subsection{Comparison to state of the art methods}
+We now compare our results with existing approaches on the ADE20K~\cite{ade20k}, Cityscapes~\cite{cityscape} and COCO-Stuff~\cite{cocostuff} datasets. 
+\\ \textbf{ADE20K and Cityscapes:} 
+Table~\ref{tab:sota1} summarizes our results including parameters, FLOPS, latency, and accuracy for ADE20K and Cityscapes. 
+In the top part of the table, we report real-time approaches where we include state-of-the-art methods and our results using the MiT-B0 lightweight encoder. In the bottom part, we focus on performance and report the results of our approach and related works using stronger encoders.  
+
+As shown, on ADE20K, SegFormer-B0 yields 37.4\% mIoU using only 3.8M parameters and 8.4G FLOPs, outperforming all other real-time counterparts in terms of parameters, flops, and latency. For instance, compared to DeeplabV3+ (MobileNetV2), SegFormer-B0 is 7.4 FPS, which is faster and keeps 3.4\% better mIoU. Moreover, SegFormer-B5 outperforms all other approaches, including the previous best SETR, and establishes a new state-of-the-art of 51.8\%, which is 1.6\% mIoU better than SETR while being significantly more efficient.
+
+\begin{wraptable}{rt}{0.5\linewidth}
+    \centering
+    \captionsetup{font={scriptsize}}
+    \vspace{-11.5pt}
+    \captionof{table}{
+	\textbf{Comparison to state of the art methods on Cityscapes test set.} IM-1K, IM-22K, Coarse and MV refer to the ImageNet-1K, ImageNet-22K, Cityscapes coarse set and Mapillary Vistas. SegFormer outperforms the compared methods with equal or less extra data.}
+	\label{tab:citytest}
+    \resizebox{0.99\linewidth}{!}{
+	\input{tables/city_test.tex}
+	\vspace{-11pt}
+    }
+\end{wraptable}
+
+
+As also shown in Table~\ref{tab:sota1}, our results also hold on Cityscapes. SegFormer-B0 yields 15.2 FPS and 76.2\% mIoU~(the shorter side of input image being 1024), which represents a 1.3\% mIoU improvement and a 2$\times$ speedup compared to DeeplabV3+. Moreover, with the shorter side of input image being 512, SegFormer-B0 runs at 47.6 FPS and yields 71.9\% mIoU, which is 17.3 FPS faster and 4.2\% better than ICNet. 
+SegFormer-B5 archives the best IoU of 84.0\%, outperforming all existing methods by at least 1.8\% mIoU, and it runs 5 $\times$ faster and 4 $\times$ smaller than SETR~\cite{setr}.
+
+
+On Cityscapes test set, we follow the common setting~\cite{deeplabv3+} and merge the validation images to the train set and report results using Imagenet-1K pre-training and also using Mapillary Vistas~\cite{mv}.
+As reported in Table~\ref{tab:citytest},
+using only Cityscapes fine data and Imagenet-1K pre-training, our method achieves 82.2\% mIoU outperforming all other methods including SETR, which uses ImageNet-22K pre-training and the additional Cityscapes coarse data. Using Mapillary pre-training, our sets a new state-of-the-art result of 83.1\% mIoU.
+Figure~\ref{fig:mask} shows qualitative results on Cityscapes, where SegFormer provides better details than SETR and smoother predictions than DeeplabV3+.
+
+
+
+\begin{wrapfigure}{rt}{0.42\textwidth}
+    \centering
+    \vspace{-11.5pt}
+	\captionsetup{font={scriptsize}}
+	\captionof{table}{
+	\textbf{Results on COCO-Stuff full dataset} containing all 164K images from COCO 2017 and covers 172 classes.}
+	\label{tab:coco}
+	\resizebox{0.99\linewidth}{!}{
+	\input{tables/cocostuff.tex}}
+\vspace{-8pt}
+\end{wrapfigure}
+\textbf{COCO-Stuff.}
+Finally, we evaluate SegFormer on the full COCO-Stuff dataset. For comparison, as existing methods do not provide results on this dataset, we reproduce the most representative methods such as DeeplabV3+, OCRNet, and SETR. In this case, the flops on this dataset are the same as those reported for ADE20K. 
+As shown in Table~\ref{tab:coco}, SegFormer-B5 reaches 46.7\% mIoU with only 84.7M parameters, which is 0.9\% better and 4$\times$ smaller than SETR.
+In summary, these results demonstrate the superiority of SegFormer in semantic segmentation in terms of accuracy, computation cost, and model size.
+
+
+
+\begin{figure}[!t]
+    \centering
+    \scalebox{0.36}{\includegraphics{figures/mask.pdf}}
+    \vspace{-2pt}
+    \captionsetup{font={footnotesize}}
+    \caption{
+    \textbf{Qualitative results on Cityscapes.} Compared to SETR, our SegFormer predicts masks with substantially finer details near object boundaries. Compared to DeeplabV3+, SegFormer reduces long-range errors as highlighted in red. Best viewed in screen.
+    } 
+    \label{fig:mask}
+    \vspace{-10pt}
+\end{figure}
+
+
+\subsection{Robustness to natural corruptions}
+Model robustness is important for many safety-critical tasks such as autonomous driving~\cite{robust}. In this experiment, we evaluate the robustness of SegFormer to common corruptions and perturbations. To this end, we follow~\cite{robust} and generate Cityscapes-C, which expands the Cityscapes validation set with 16 types of algorithmically generated corruptions from noise, blur, weather and digital categories. We compare our method to variants of DeeplabV3+ and other methods as reported in~\cite{robust}. The results for this experiment are summarized in Table~\ref{tab:benchmark_cityscapes}.
+
+Our method significantly outperforms previous methods, yielding a relative improvement of up to 588\% on Gaussian Noise and up to 295\% on snow weather. The results indicate the strong robustness of SegFormer, which we envision to benefit safety-critical applications where robustness is important.
+
+
+\input{tables/cityC.tex}
+
+

@@ -12,11 +12,11 @@ Now, how do I train these heads, and at what cost? The whole pitch is "cheap to 
 
 If I have more compute, I can do better by training the heads *together with* the backbone — Medusa-2 — since a frozen backbone's hidden states weren't optimized for multi-position prediction. But now I risk wrecking the backbone's own next-token ability. So I add the backbone's LM cross-entropy L_LM = −log p_t^{(0)}(y_{t+1}) back into the objective, with a weight: L = L_LM + λ₀·L_Medusa-1. And I protect the backbone two more ways: a smaller learning rate for the backbone than for the heads (the backbone is already good; the heads need to move fast), and a warmup — train heads-only first (as in Medusa-1), then bring the backbone in, optionally ramping λ₀ up gradually — so the heads' initially-large gradients don't distort the backbone before they've stabilized.
 
-Now I have heads producing predictions for K+1 positions per pass. The naive use, following speculative decoding, is to take the single top continuation — head 1's top token, then head 2's top, etc. — and verify that one chain. But I'm leaving the spare compute on the table. Each head doesn't just have a top guess; it has a *distribution*, and its second- and third-best guesses are often right. Since I'm bandwidth-bound, verifying more candidate tokens in the same pass is nearly free. So take the top-s_k tokens from head k and consider *combinations*: head 1's top s₁ tokens, each followed by head 2's top s₂ tokens, and so on — the Cartesian product. With s₁=2 and s₂=3 that's 2×3=6 length-2 continuations. More candidates means a higher chance some long prefix is accepted, so longer expected acceptance per step.
+Now one pass gives me predictions for K+1 future positions: the original LM head proposes the first token, and the K extra heads propose the tokens after it. The naive use, following speculative decoding, is to take the single top continuation — the LM head's top token, then head 1's top token, then head 2's top token, etc. — and verify that one chain. But I'm leaving the spare compute on the table. Each head doesn't just have a top guess; it has a *distribution*, and its second- and third-best guesses are often right. Since I'm bandwidth-bound, verifying more candidate tokens in the same pass is nearly free. So take the top-s_k tokens from head k and consider *combinations*: head 1's top s₁ tokens, each followed by head 2's top s₂ tokens, and so on — the Cartesian product under the LM-head first token. With s₁=2 and s₂=3 that's 2×3=6 length-2 suffixes after the first token. More candidates means a higher chance some long prefix is accepted, so longer expected acceptance per step.
 
 But I can't just throw 6 separate sequences at the model — that's a 6× bigger batch, which multiplies the memory traffic and kills the whole point. The candidates share prefixes (all six in my example share the same single root token from the original LM head; the three children of head-1's first token share that token). So pack them into a *tree* and process it in one sequence, using attention to enforce the right history. Lay all the distinct candidate tokens out as nodes; each node attends only to its ancestors along its branch back to the root — not to tokens in sibling branches, which belong to different continuations. That's a custom attention mask: a token sees its predecessors in its own continuation and nothing else. Set the positional indices to match the tree depth, not the flat layout, so each token gets the position it would have in its own continuation. Now one forward pass over the tree verifies all candidates simultaneously, no batch blow-up. The number of tokens in the tree is Σ_{k=1}^K ∏_{i=1}^k s_i — for the 2,3 example that's 2 + 6 = 8 nodes.
 
-(The flat Cartesian tree is the simple version. Different heads and different top-i ranks have different accuracies — head 1's top-1 is far more reliable than head 4's top-3 — so under a fixed node budget I shouldn't spend nodes uniformly. If I estimate a_k^{(i)}, the calibration accuracy that head k's i-th-ranked token is correct, then assuming independence the expected acceptance contributed by a candidate path is the product of its nodes' accuracies, and adding a node contributes exactly its own accuracy to the total expected acceptance length Σ ∏ a. So greedily grow the tree by repeatedly adding the connectable node with the highest accuracy until the budget is hit — an unbalanced tree that maximizes expected acceptance. But the Cartesian tree already captures the idea.)
+(The flat Cartesian tree is the simple version. Different heads and different top-i ranks have different accuracies — head 1's top-1 is far more reliable than head 4's top-3 — so under a fixed node budget I shouldn't spend nodes uniformly. If I estimate a_k^{(i)}, the calibration accuracy that head k's i-th-ranked token is correct, then assuming independence the expected acceptance contributed by a candidate path is the product of its nodes' accuracies. A node's contribution is the product along the path to that node, so greedily grow the tree by repeatedly adding the connectable node with the highest path accuracy until the budget is hit — an unbalanced tree that maximizes expected acceptance. But the Cartesian tree already captures the idea.)
 
 Last piece: which candidate prefix do I actually accept? I could reuse speculative decoding's rejection sampling, which would preserve the target's exact distribution. But it has a known flaw: its acceptance rate falls as sampling temperature rises, so in the very regime where people sample for diversity, it stops helping speed — and can hurt. The reason is structural: even if the head's distribution perfectly matched the target's, rejection sampling draws the two independently, so a proposed token can still be rejected; only under greedy decoding (draft = target, deterministically) is everything accepted. So exact distribution matching is costing me speed for a guarantee I may not need.
 
@@ -41,7 +41,7 @@ class ResBlock(nn.Module):
     head starts as identity on h_t."""
     def __init__(self, hidden_size):
         super().__init__()
-        self.linear = nn.Linear(hidden_size, hidden_size)
+        self.linear = nn.Linear(hidden_size, hidden_size, bias=False)
         nn.init.zeros_(self.linear.weight)        # W1 = 0  -> head starts = backbone
         self.act = nn.SiLU()
     def forward(self, x):
@@ -53,7 +53,7 @@ class MedusaHeads(nn.Module):
     def __init__(self, hidden_size, vocab_size, num_heads, num_layers=1, lm_head=None):
         super().__init__()
         self.heads = nn.ModuleList(
-            nn.Sequential(*([ResBlock(hidden_size)] * num_layers),
+            nn.Sequential(*(ResBlock(hidden_size) for _ in range(num_layers)),
                           nn.Linear(hidden_size, vocab_size, bias=False))
             for _ in range(num_heads))
         if lm_head is not None:                   # W2 = lm_head  -> match original
@@ -67,8 +67,8 @@ def medusa_loss(base_logits, medusa_logits, targets, lambdas, lambda0=0.0):
     loss = 0.0
     for k, logits in enumerate(medusa_logits, start=1):
         loss = loss + lambdas[k - 1] * nn.functional.cross_entropy(
-            logits[:, :-k].reshape(-1, logits.size(-1)),
-            targets[:, k:].reshape(-1))
+            logits[:, :-(k + 1)].reshape(-1, logits.size(-1)),
+            targets[:, k + 1:].reshape(-1))
     if lambda0 > 0:                               # Medusa-2: + backbone CE
         lm = nn.functional.cross_entropy(
             base_logits[:, :-1].reshape(-1, base_logits.size(-1)),
@@ -76,19 +76,20 @@ def medusa_loss(base_logits, medusa_logits, targets, lambdas, lambda0=0.0):
         loss = lm + lambda0 * loss
     return loss
 
-def typical_accept(cand_tokens, base_probs, epsilon, delta):
-    # accept longest prefix with p_original(token) > min(eps, delta*exp(-H))
-    H = -(base_probs * base_probs.clamp_min(1e-9).log()).sum(-1)   # entropy per pos
-    thresh = torch.minimum(torch.tensor(epsilon), delta * torch.exp(-H))
-    p = base_probs.gather(-1, cand_tokens.unsqueeze(-1)).squeeze(-1)
+def typical_accept(greedy_token, medusa_suffix, base_probs_suffix, epsilon, delta):
+    # accept the LM-head greedy token first, then the longest typical Medusa suffix
+    H = -(base_probs_suffix * base_probs_suffix.clamp_min(1e-9).log()).sum(-1)
+    thresh = torch.minimum(
+        torch.full_like(H, epsilon), delta * torch.exp(-H))
+    p = base_probs_suffix.gather(-1, medusa_suffix.unsqueeze(-1)).squeeze(-1)
     ok = p > thresh
-    accepted = 0
-    for k in range(cand_tokens.size(0)):
-        if k == 0 or ok[k]:                        # first token greedily accepted
-            accepted += 1
+    accepted_suffix = 0
+    for k in range(medusa_suffix.size(0)):
+        if ok[k]:
+            accepted_suffix += 1
         else:
             break
-    return cand_tokens[:accepted]
+    return torch.cat([greedy_token.view(1), medusa_suffix[:accepted_suffix]])
 ```
 
 The causal chain: LLM decoding is memory-bandwidth-bound, so one weight-load should yield many tokens; speculative decoding does that with a draft model but the draft is expensive to train, drift-prone, and a serving burden; so drop the draft and read several future-position predictions straight off the backbone's last hidden state via K extra single-layer residual heads (W₁=0, W₂=lm_head so each head starts as the original head and only learns to look further), trained cheaply on a frozen backbone (Medusa-1, λ_k=0.8^k) or jointly with backbone protection (Medusa-2: + L_LM, smaller backbone LR, head warmup, self-distillation via a toggleable LoRA when data is missing); take each head's top-s_k tokens, assemble candidates as a tree, and verify them all in one pass with a tree attention mask + tree-aware positions (Σ∏s_i tokens, no batch blow-up); and accept the longest prefix that is *typical* under the original model — p > min(ε, δ·exp(−H)) — which degenerates to greedy at temperature 0 and, unlike rejection sampling, accepts *more* as temperature rises.

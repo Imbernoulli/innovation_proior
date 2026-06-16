@@ -26,11 +26,11 @@ Where do I put the convolution? The cleanest place is inside the feed-forward su
 
   x_out = MLP( GELU( Conv₃ₓ₃( MLP(x_in) ) ) ) + x_in,
 
-a "mixed" FFN — part MLP, part conv. The conv gives me locality *and* the implicit position signal, the linears give me the channel mixing, and there is no positional embedding anywhere in the model. Now when I test at a resolution I never trained on, nothing has to be interpolated; the conv just runs over a bigger grid the same way. I'd expect the accuracy drop under a train/test resolution mismatch to be tiny compared to the embedding-based model, where it's a few points. That's the whole reason I went down this road.
+a "mixed" FFN — part MLP, part conv. The conv gives me locality *and* the implicit position signal, the linears give me the channel mixing, and there is no positional embedding anywhere in the model. Now when I test at a resolution I never trained on, nothing has to be interpolated; the conv just runs over a bigger grid the same way. That's the whole reason I went down this road.
 
 Let me revisit the patch-embedding/downsampling step, because there's a subtle failure I want to avoid. The classifier cuts the image into *non-overlapping* 16×16 patches: a clean grid, each pixel belongs to exactly one patch. For classification that's fine. But for segmentation I care intensely about what happens *at patch boundaries* — two pixels straddling a patch border are physically adjacent in the image, yet a non-overlapping embedding puts them in different tokens with no shared support, so the boundary information between them is severed at every downsampling step. That hurts exactly where segmentation is most fragile: object edges. So I'll make the patch embedding *overlap*. Implement it as a strided convolution where the kernel is larger than the stride: stem uses kernel 7, stride 4, padding 3 (so output stride 4, but each output token's receptive field overlaps its neighbors'); the later downsampling stages use kernel 3, stride 2, padding 1. Overlapping patches preserve local continuity across token borders — the boundary detail survives the downsampling. A single strided conv does the whole "merge neighboring patches and downsample" in one operation.
 
-Let me pin the small architectural knobs. Heads scale with width across stages: `1, 2, 5, 8` for the four stages, so head dimension stays in a sensible range as channels grow `32, 64, 160, 256` (for the smallest variant). The FFN expansion is `4×` (I'll use a wider `8×` only on the two early, narrow stages of the smallest model to give them more capacity where channels are tightest, and `4×` later). Pre-norm LayerNorm before each sublayer, residual after each, GELU — all kept from the standard block; I had no reason to disturb what already trains. Stochastic depth (drop-path) on the residual branches for regularization on the bigger variants. The attention scaling is the usual `1/√d` so logits don't saturate the softmax. Reduction ratios `R = 64, 16, 4, 1` per the cost argument above. Depths grow with model size; the smallest is `2, 2, 2, 2`.
+Let me pin the small architectural knobs. Heads scale with width across stages: `1, 2, 5, 8` for the four stages, so head dimension stays in a sensible range as channels grow `32, 64, 160, 256` in the smallest variant and `64, 128, 320, 512` in the larger ones. The spatial reduction ratios are `8, 4, 2, 1`, which means the key/value sequence reductions are `R = 64, 16, 4, 1`. The FFN expansion is wider in the early narrow stages for the table configurations — `8×, 8×, 4×, 4×` through B0-B4 — while the largest variant uses `4×` everywhere. Pre-norm LayerNorm before each sublayer, residual after each, GELU — all kept from the standard block; I have no reason to disturb what already trains. Stochastic depth (drop-path) on the residual branches regularizes the bigger variants. The attention scaling is the usual `1/√d` so logits don't saturate the softmax. Depths grow with model size, and the smallest stays `2, 2, 2, 2`.
 
 Now the decoder, and here I want to resist the field's instinct to make it heavy. DeepLab bolts on ASPP, PSPNet a pyramid pooling module, SETR a progressive-upsampling stack — all because their *convolutional or single-scale* encoders have a small effective receptive field, so the decoder has to do the long-range-context work. But stare at my encoder for a second: the attention is global-ish from the very first stage (every query attends to a summary of the whole map), and the late stages have an enormous effective receptive field. The context-gathering job the heavy decoders exist to do — my encoder has *already done it*. So the decoder doesn't need to enlarge receptive field at all. It only needs to take the four feature maps, which are at different strides and different channel counts, and fuse them into one per-pixel map. That can be almost trivially simple, pure MLP.
 
@@ -64,7 +64,8 @@ class OverlapPatchEmbed(nn.Module):
 
 
 class EfficientAttention(nn.Module):
-    # Full-resolution queries; keys/values spatially reduced by sr_ratio R so cost is N^2 C / R.
+    # Full-resolution queries; keys/values are spatially reduced by sr_ratio, so the
+    # sequence reduction is R = sr_ratio^2 and attention cost is N^2 C / R.
     def __init__(self, dim, num_heads, sr_ratio=1):
         super().__init__()
         self.num_heads = num_heads
@@ -111,7 +112,8 @@ class DWConv(nn.Module):
 
 
 class MixFFN(nn.Module):
-    # x_out = MLP(GELU(Conv3x3(MLP(x_in)))) + x_in  -- position comes from the conv, not an embedding.
+    # The branch computes MLP(GELU(Conv3x3(MLP(x)))); the Block adds the residual.
+    # Position comes from the conv, not from an embedding.
     def __init__(self, dim, hidden_dim):
         super().__init__()
         self.fc1 = nn.Linear(dim, hidden_dim)
@@ -183,6 +185,7 @@ class AllMLPDecoder(nn.Module):
         self.fuse = nn.Sequential(
             nn.Conv2d(4 * embed_dim, embed_dim, 1, bias=False),   # the Linear(4C, C)
             nn.BatchNorm2d(embed_dim), nn.ReLU())
+        self.dropout = nn.Dropout2d(0.1)
         self.pred = nn.Conv2d(embed_dim, num_classes, 1)          # the Linear(C, N_cls)
 
     def forward(self, features):
@@ -193,8 +196,8 @@ class AllMLPDecoder(nn.Module):
             f = lin(f.flatten(2).transpose(1, 2)).transpose(1, 2).reshape(B, -1, H, W)
             f = F.interpolate(f, size=size, mode="bilinear", align_corners=False)
             outs.append(f)
-        f = self.fuse(torch.cat(outs, dim=1))
-        return self.pred(f)
+        f = self.fuse(torch.cat(outs[::-1], dim=1))               # coarse to fine: c4,c3,c2,c1
+        return self.pred(self.dropout(f))
 
 
 class SegFormer(nn.Module):

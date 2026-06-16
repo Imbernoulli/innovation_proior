@@ -12,7 +12,7 @@ Set up the parameterization. Backbone feature map F_i with total stride s. A loc
 
 This is the DenseBox/UnitBox parameterization and it's the natural one for a point-inside-a-box: every interior location can describe the same box by its own four distances, and the four are always positive for an interior point. That positivity matters for the output layer — since l,t,r,b must be ≥0, I'll put exp(·) on top of the regression branch so the network outputs a real number and exp maps it to (0,∞). At inference I just invert the four equations to recover the box corners from a location and its predicted (l,t,r,b).
 
-Now here's a first observation that's already different from anchor detectors, and I think it's a feature, not a bug. An anchor detector only calls an anchor positive if its IoU with a box is high enough — so each object trains the regressor from a handful of anchors. My scheme makes *every* location inside the box a positive sample. That's a lot more foreground samples per object feeding the regressor. My intuition is that more positive samples should give a better-trained, more accurate box regressor. Hold that thought; it's testable later as box quality at strict IoU.
+Now here's a first observation that's already different from anchor detectors, and I think it's a feature, not a bug. An anchor detector only calls an anchor positive if its IoU with a box is high enough — so each object trains the regressor from a handful of anchors. My scheme makes *every* location inside the box a positive sample. That's a lot more foreground geometry per object feeding the regressor, and it avoids the fragile question of which pre-defined box should represent the object.
 
 The loss, then. Classification over all locations, regression only over positives. For classification I have the same imbalance problem RetinaNet diagnosed — almost all locations are background — so I'll use focal loss, C binary classifiers with the (1−p_t)^γ down-weighting of easy examples, exactly as in RetinaNet; no reason to reinvent that. For regression I want to optimize the box as a whole, not four independent coordinates, so IoU loss as in UnitBox: it takes the predicted (l,t,r,b) and the target, forms the two boxes, and maximizes their overlap directly. So:
 
@@ -20,15 +20,15 @@ The loss, then. Classification over all locations, regression only over positive
 
 with N_pos the number of positives, λ=1, the indicator restricting regression to foreground. Head structure I'll borrow from RetinaNet: two parallel towers of four convs each (one for classification, one for regression), shared across all pyramid levels, with the final class layer emitting 80 logits and the box layer emitting 4. Note this already has 9× fewer output variables per location than a 9-anchor detector — the simplicity is showing up immediately.
 
-Now the two walls. Take recall first. The fear: a large stride means few locations, so maybe I can't recall enough objects. Let me actually reason about best-possible-recall — the fraction of ground-truth boxes that get assigned at least one positive sample. I can measure it. With just one mid-level feature map (stride 16, no pyramid), almost every box still contains *some* feature location, so BPR comes out around 95.6% — already higher than the ~90.9% an anchor RetinaNet achieves in the standard Detectron setting that only keeps IoU≥0.4 matches. So the recall worry was overstated: because every interior location is a positive, boxes rarely go unassigned. The concern is "actually not a problem."
+Now the two walls. Take recall first. The fear is simple: a large stride means few locations, so maybe I can't recall objects that no feature location lands inside. The right diagnostic is best-possible recall — the fraction of ground-truth boxes that get assigned at least one training sample. But because *any* interior location is positive, the requirement is weaker than anchor matching: the box only needs to contain one feature center, not one anchor whose IoU crosses a threshold. Even a single stride-16 feature level assigns almost every box to some location, around 95.6% BPR, while the standard anchor RetinaNet setting that keeps only IoU≥0.4 low-quality matches is around 90.9%. So the recall worry is much smaller than it first looked; dense interior points buy recall without anchors.
 
 But the overlap ambiguity is real, and I need a mechanism, not a hope. Here's where FPN earns its keep in a way that's different from how anchor detectors use it. Anchor detectors assign different anchor *sizes* to different pyramid levels. I have no anchors, so instead I'll directly limit the *range of regression distances* each level is allowed to handle. Compute (l*,t*,r*,b*) for a location on every level. If max(l*,t*,r*,b*) at that location exceeds the level's upper bound m_i, or falls below the previous level's bound m_{i−1}, that location is set negative on that level — it doesn't regress there. I'll use levels P3…P7 with strides 8,16,32,64,128, and bounds m_2..m_7 = 0, 64, 128, 256, 512, ∞. So P3 handles boxes whose max side-distance is in [0,64], P4 in [64,128], and so on up to P7 handling everything above 512.
 
-Why does this resolve the ambiguity? Because overlap that causes trouble is almost always between objects of *very different sizes* — a small object sitting inside a large one. If I route them to different pyramid levels by size, then on any single level a location is, with high probability, inside only one box of that level's size class. Let me sanity-check by measuring the fraction of ambiguous locations (inside more than one box of the relevant size). Without the pyramid it's ~23% of positives; with the multi-level size routing it drops to ~7%, and if I further ignore same-category overlaps (which don't actually matter — if two same-class objects overlap, predicting either is "correct," and the other can still be recalled by locations that only fall in it), it's down to ~3.75%. That's small enough not to hurt. And for the residual cases where a location still lands in two boxes on the same level, I take the simplest tie-break: regress to the box with the **minimal area**. The cost of that choice is only that the location risks missing some larger overlapping object — but that larger object is recalled by its own non-overlapping locations. So both walls — recall and ambiguity — fall to FPN plus this size-range routing, with no anchor hyper-parameters introduced.
+Why does this resolve the ambiguity? Because overlap that causes trouble is often between objects of *very different sizes* — a small object sitting inside a large one. If I route them to different pyramid levels by size, then on any single level a location is usually inside only one box of that level's size class. The assignment-count diagnostic matches that reasoning: without the pyramid, ambiguous samples are about 23% of positives; with the multi-level size routing they fall to about 7%, and if same-category overlaps are ignored because either object gives the same class label, the different-category ambiguity is about 3.75%. And for the residual cases where a location still lands in two boxes on the same level, I take the simplest tie-break: regress to the box with the **minimal area**. The cost of that choice is only that the location risks missing some larger overlapping object — but that larger object is recalled by its own non-overlapping locations. So both walls — recall and ambiguity — fall to FPN plus this size-range routing, with no anchor hyper-parameters introduced.
 
-One refinement on the head while I'm at it. I'm sharing the head across pyramid levels — that's parameter-efficient and known to help. But the levels regress different size ranges ([0,64] for P3, [64,128] for P4, …), so forcing the *same* exp(x) on all of them is a bit unreasonable; the natural scale of the output differs by level. So instead of exp(x), use exp(s_i · x) with a trainable scalar s_i per level — let each level learn the base of its own exponential. Cheap, slightly better.
+One refinement on the head while I'm at it. I'm sharing the head across pyramid levels — that's parameter-efficient and known to help. But the levels regress different size ranges ([0,64] for P3, [64,128] for P4, …), so forcing the *same* exp(x) on all of them is a bit unreasonable; the natural scale of the output differs by level. So instead of exp(x), use exp(s_i · x) with a trainable scalar s_i per level — let each level learn the base of its own exponential while the rest of the head stays shared.
 
-So I run this. And it lands close to anchor RetinaNet but not quite there — there's a residual gap. Let me look at *what's* failing rather than just accepting the number. The detector is producing a lot of boxes, and I notice a population of low-quality ones: boxes predicted from locations far from the object's center. That makes intuitive sense — a location near the edge or corner of a box has a long, lopsided (l,t,r,b), and regressing an accurate box from there is hard; it tends to produce a box that's mislocated but still carries a high classification score. A high-confidence, low-IoU box is exactly a false positive that NMS can't kill, because NMS ranks by score and these have high scores. That's the leak.
+There is still a geometric leak in this design. Every interior location gets the same class label, but not every interior location is equally good for localization. A point near the edge or corner has a long, lopsided (l,t,r,b), and regressing an accurate box from there is harder than regressing from near the center. The classifier, however, only sees "inside the object" and has no reason to give that edge location a lower category score. That creates exactly the bad kind of detection: a high-confidence, low-IoU box that NMS cannot reliably remove, because NMS ranks by score.
 
 Now, an anchor detector partly avoids this for free: its two IoU thresholds mean only anchors well-aligned with a box become positive, so off-center junk never gets a high foreground label. I threw away those thresholds on purpose. I need to recover that effect without a hyper-parameter. What I want is a signal that says "this location is near the center of its object" vs "this location is off near the edge," and to use it to down-weight the off-center boxes' scores so NMS removes them.
 
@@ -38,18 +38,19 @@ I have exactly that signal sitting in the regression targets already. For a loca
 
 Each bracket is in [0,1], their product is in [0,1], so centerness* ∈ [0,1] — perfect for a value I can train with binary cross-entropy. Why the square root? Because without it the product of two ratios decays very fast as you move off-center — a location that's only moderately off-center would already get a tiny target. The sqrt slows that decay so the signal is graded more gently across the box interior, which I want, because mildly off-center locations still produce decent boxes. Add a single extra conv layer — one branch, parallel to the classification tower — that predicts this scalar, trained with BCE, and add that to the loss.
 
-How do I use it? At test time, multiply the predicted center-ness by the classification score to get the final ranking score. A box from an off-center location now has its score knocked down by a small center-ness factor, so it sinks in the ranking and NMS filters it out; a box from a near-center location keeps its score. This is the piece that closes the gap — it cleanly suppresses the low-quality boxes that the discarded IoU thresholds used to suppress, and it does it with zero new hyper-parameters, just one extra layer.
+How do I use it? At test time, multiply the predicted center-ness by the classification score to get the final ranking score. A box from an off-center location now has its score knocked down by a small center-ness factor, so it sinks in the ranking and NMS filters it out; a box from a near-center location keeps its score. This recovers the quality-ranking role that anchor IoU thresholds used to play, but without reintroducing threshold hyper-parameters.
 
-Let me make sure this center-ness is doing real work and isn't redundant with what I already have. Could I instead just *compute* center-ness from the predicted (l,t,r,b) vector at test time, no extra branch? I could try — but the predicted vector is itself noisy exactly for the bad boxes, so deriving the suppression signal from the same unreliable prediction doesn't help; a separately-trained center-ness branch, supervised by the geometric target, is what actually moves the number. So the separate branch is necessary. (One sibling thought: this branch could equally hang off the regression tower instead of the classification tower; either is defensible since center-ness is a geometric quantity. I'll keep it parallel to the classification branch as the default.) There's also an alternative I'm explicitly choosing against: I could mimic the anchor thresholds by only treating the central region of each box as positive — but that's an extra hyper-parameter (how central), and the whole point was to get rid of those. Center-ness gets the same suppression effect parameter-free.
+Let me make sure this center-ness is not redundant with what I already have. Could I instead just *compute* center-ness from the predicted (l,t,r,b) vector at test time, no extra branch? That couples the quality signal to the same noisy box prediction I am trying to distrust. The cleaner design is a separately supervised scalar target: one extra branch, trained from the ground-truth geometry, then multiplied into the class score. There's also an alternative I'm explicitly choosing against: I could mimic the anchor thresholds by only treating the central region of each box as positive — but that's an extra hyper-parameter (how central), and the whole point was to get rid of those. Center-ness gets the same suppression effect parameter-free.
 
-Step back and trace the causal chain. The pain was that detection couldn't be FCN-style per-pixel prediction because anchors brought hyper-parameters, imbalance, and IoU-matching cost. Drop anchors, treat every location as a sample, regress (l,t,r,b) to the box sides with IoU loss and classify with focal loss — that's a clean FCN detector but it has two believed-fatal flaws. Recall turns out fine, because every interior location is positive. Overlap ambiguity is killed by routing objects to FPN levels by size range, which separates the overlapping big/small pairs, with minimal-area tie-breaking for the rare residue. And the remaining accuracy gap — low-quality off-center boxes that NMS can't suppress because their scores are high — is closed by a center-ness branch that learns sqrt of the product of the min/max distance ratios and multiplies into the score at test time. No anchors, no proposals, 9× fewer outputs per location, and it matches and then beats the anchor-based counterpart under the same training and testing settings. I'll call it FCOS — fully convolutional one-stage detection.
+That gives me FCOS: fully convolutional one-stage detection, no anchors or proposals, with each location emitting a class vector, four box-side distances, and one center-ness scalar.
 
-Now the code, level-shared head with the two towers, the three prediction layers, the per-level Scale for exp(s_i·x), and the target/loss/decode logic.
+The concrete form is a level-shared head with the two towers, the three prediction layers, the per-level Scale for exp(s_i·x), and target/loss/decode logic that keeps the assignment rule explicit.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.ops import batched_nms
 
 class Scale(nn.Module):
     # the trainable s_i so each FPN level learns the base of its exp(s_i * x)
@@ -108,36 +109,104 @@ def centerness_target(reg_targets):
                       (tb.min(-1).values / tb.max(-1).values.clamp(min=1e-6)))
 
 # size-range routing: object_sizes_of_interest per level (m_{i-1}, m_i)
-SIZE_RANGES = [(0, 64), (64, 128), (128, 256), (256, 512), (512, 1e8)]  # P3..P7
+SIZE_RANGES = [(0, 64), (64, 128), (128, 256), (256, 512), (512, float("inf"))]
 
 def assign_targets(locations_per_level, gt_boxes, gt_labels):
     """For each location on each level: positive if it falls inside a box AND
     that box's max side-distance is within the level's size range; on ties take
     the minimal-area box; everything else is background."""
-    # ... compute l*,t*,r*,b* for every (location, box); inside = all > 0;
-    #     keep boxes with SIZE_RANGES[level][0] <= max(l,t,r,b) <= [1];
-    #     among remaining, pick the minimal-area box; else background.
-    pass  # TODO (mechanics only; the assignment rule above is the content)
+    cls_targets, reg_targets = [], []
+    if gt_boxes.numel() == 0:
+        for locs in locations_per_level:
+            cls_targets.append(torch.zeros(locs.size(0), dtype=torch.long, device=locs.device))
+            reg_targets.append(locs.new_zeros((locs.size(0), 4)))
+        return torch.cat(cls_targets), torch.cat(reg_targets)
 
-def fcos_loss(logits, bbox_reg, ctrness, cls_targets, reg_targets, ctr_targets):
+    areas = (gt_boxes[:, 2] - gt_boxes[:, 0]) * (gt_boxes[:, 3] - gt_boxes[:, 1])
+    for locs, (lower, upper) in zip(locations_per_level, SIZE_RANGES):
+        xs, ys = locs[:, 0], locs[:, 1]
+        reg = torch.stack((
+            xs[:, None] - gt_boxes[:, 0],
+            ys[:, None] - gt_boxes[:, 1],
+            gt_boxes[:, 2] - xs[:, None],
+            gt_boxes[:, 3] - ys[:, None],
+        ), dim=-1)
+        inside_box = reg.min(dim=-1).values > 0
+        max_reg = reg.max(dim=-1).values
+        in_level = (max_reg >= lower) & (max_reg <= upper)
+
+        candidate_areas = areas.expand(locs.size(0), -1).clone()
+        candidate_areas[~(inside_box & in_level)] = float("inf")
+        min_area, matched = candidate_areas.min(dim=1)
+        background = torch.isinf(min_area)
+
+        labels = gt_labels[matched].clone()
+        labels[background] = 0
+        targets = reg[torch.arange(locs.size(0), device=locs.device), matched]
+        targets[background] = 0
+
+        cls_targets.append(labels)
+        reg_targets.append(targets)
+    return torch.cat(cls_targets), torch.cat(reg_targets)
+
+def sigmoid_focal_loss(logits, labels, gamma=2.0, alpha=0.25):
+    target = torch.zeros_like(logits)
+    pos = labels > 0
+    target[pos, labels[pos] - 1] = 1.0
+    prob = logits.sigmoid()
+    ce = F.binary_cross_entropy_with_logits(logits, target, reduction="none")
+    p_t = prob * target + (1.0 - prob) * (1.0 - target)
+    alpha_t = alpha * target + (1.0 - alpha) * (1.0 - target)
+    return alpha_t * (1.0 - p_t).pow(gamma) * ce
+
+def iou_loss(pred, target, eps=1e-6):
+    pl, pt, pr, pb = pred.unbind(-1)
+    tl, tt, tr, tb = target.unbind(-1)
+    inter_w = torch.minimum(pl, tl) + torch.minimum(pr, tr)
+    inter_h = torch.minimum(pt, tt) + torch.minimum(pb, tb)
+    inter = inter_w * inter_h
+    pred_area = (pl + pr) * (pt + pb)
+    target_area = (tl + tr) * (tt + tb)
+    union = pred_area + target_area - inter
+    return -torch.log((inter / union.clamp(min=eps)).clamp(min=eps))
+
+def fcos_loss(logits, bbox_reg, ctrness, cls_targets, reg_targets):
     pos = cls_targets > 0
-    N_pos = pos.sum().clamp(min=1.0)
+    N_pos = pos.sum().clamp(min=1).float()
     # focal loss over ALL locations (handles the fg/bg imbalance, no anchors)
     cls_loss = sigmoid_focal_loss(logits, cls_targets, gamma=2.0, alpha=0.25).sum() / N_pos
-    # IoU loss over positives only (optimizes the box as a whole)
-    reg_loss = iou_loss(bbox_reg[pos], reg_targets[pos]).sum() / N_pos
-    # center-ness via BCE over positives
-    ctr_loss = F.binary_cross_entropy_with_logits(
-        ctrness[pos], ctr_targets[pos], reduction="sum") / N_pos
+    if pos.any():
+        # IoU loss over positives only (optimizes the box as a whole)
+        reg_loss = iou_loss(bbox_reg[pos], reg_targets[pos]).sum() / N_pos
+        # center-ness via BCE over positives
+        ctr_targets = centerness_target(reg_targets[pos])
+        ctr_loss = F.binary_cross_entropy_with_logits(
+            ctrness[pos].squeeze(-1), ctr_targets, reduction="sum") / N_pos
+    else:
+        reg_loss = bbox_reg.sum() * 0.0
+        ctr_loss = ctrness.sum() * 0.0
     return cls_loss + reg_loss + ctr_loss
 
-def decode(logits, bbox_reg, ctrness, locations, score_thresh=0.05):
-    """Score = sqrt or product? -> multiply class prob by center-ness so
-    off-center (low center-ness) boxes are down-weighted before NMS."""
-    scores = logits.sigmoid() * ctrness.sigmoid()      # the key test-time use
-    # keep scores > thresh; box from a location + (l,t,r,b) by inverting:
-    # x0 = x - l, y0 = y - t, x1 = x + r, y1 = y + b; then NMS.
-    pass  # TODO (decode mechanics)
+def decode(logits, bbox_reg, ctrness, locations, score_thresh=0.05, nms_thresh=0.6):
+    """Invert l,t,r,b around each location; rank by class probability times centerness."""
+    ctr = ctrness.sigmoid()
+    if ctr.dim() == 1:
+        ctr = ctr[:, None]
+    scores = logits.sigmoid() * ctr                    # the key test-time use
+    keep_loc, keep_cls = (scores > score_thresh).nonzero(as_tuple=True)
+    if keep_loc.numel() == 0:
+        return (locations.new_zeros((0, 4)),
+                logits.new_zeros((0,)),
+                torch.empty((0,), dtype=torch.long, device=logits.device))
+
+    xy = locations[keep_loc]
+    l, t, r, b = bbox_reg[keep_loc].unbind(-1)
+    boxes = torch.stack((xy[:, 0] - l, xy[:, 1] - t,
+                         xy[:, 0] + r, xy[:, 1] + b), dim=1)
+    scores = scores[keep_loc, keep_cls]
+    labels = keep_cls + 1
+    keep = batched_nms(boxes, scores, labels, nms_thresh)
+    return boxes[keep], scores[keep], labels[keep]
 ```
 
-The chain end to end: anchors brought hyper-parameters and imbalance and IoU-matching, so drop them and make every feature location a per-pixel sample regressing (l,t,r,b) with IoU loss and classifying with focal loss; recall survives because interior locations are dense, overlap ambiguity dies under FPN size-range routing with minimal-area tie-breaking, and the leftover low-quality off-center boxes are suppressed by a parameter-free center-ness branch multiplied into the score at test time — a fully convolutional, anchor-free detector that's simpler and stronger than its anchor-based counterpart.
+The chain end to end: anchors brought hyper-parameters and imbalance and IoU-matching, so drop them and make every feature location a per-pixel sample regressing (l,t,r,b) with IoU loss and classifying with focal loss; recall survives because interior locations are dense, overlap ambiguity dies under FPN size-range routing with minimal-area tie-breaking, and the leftover low-quality off-center boxes are suppressed by a parameter-free center-ness branch multiplied into the score at test time — a fully convolutional, anchor-free detector.

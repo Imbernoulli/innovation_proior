@@ -1,0 +1,20 @@
+\begin{tabular}{lccc}
+% \whline
+\toprule
+\multicolumn{1}{l}{Method} & Encoder & Extra Data & mIoU \\
+% \hline
+\midrule
+PSPNet~\cite{pspnet} & ResNet-101 & IM-1K & 78.4 \\ %\hline
+PSANet~\cite{psanet} & ResNet-101 & IM-1K & 80.1 \\% \hline
+CCNet~\cite{ccnet} & ResNet-101 & IM-1K & 81.9 \\ %\hline
+OCNet~\cite{ocnet} & ResNet-101 & IM-1K & 80.1 \\% \hline
+Axial-DeepLab~\cite{axial} & AxiaiResNet-XL & IM-1K & 79.9 \\ %\hline
+SETR~\cite{setr} & ViT & IM-22K & 81.0 \\% \hline
+SETR~\cite{setr} & ViT & IM-22K, Coarse & 81.6 \\
+% \hline
+\midrule
+SegFormer & MiT-B5 & IM-1K & 82.2 \\ %\hline
+SegFormer & MiT-B5 & IM-1K, MV & \textbf{83.1} \\
+% \whline
+\bottomrule
+\end{tabular}

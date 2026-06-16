@@ -6,31 +6,48 @@ Deploy a pretrained LLM on effectively infinite-length input streams at constant
 
 ## Key idea
 
-Trained LLMs allocate a large, content-independent share of attention to the first few tokens — **attention sinks**. Cause: softmax forces attention weights to sum to one, so the model must dump surplus attention somewhere; under causal masking the initial tokens are visible to every later token, so they get trained to absorb it. Evicting them removes a big part of the softmax denominator and pushes the attention distribution out of distribution — that is why window attention breaks. Fix: **keep the first few tokens' KV permanently (the sinks) alongside the rolling recent window**, and assign positions *within the cache* so they never exceed the trained range.
+Trained LLMs allocate a large, content-independent share of attention to the first few tokens — **attention sinks**. Cause: softmax forces attention weights to sum to one, so the model must dump surplus attention somewhere; under causal masking the initial tokens are visible to every later token, so they get trained to absorb it. Evicting them removes a big part of the softmax denominator and pushes the attention distribution out of distribution — that is why window attention breaks. Fix: **keep the first few tokens' KV permanently (the sinks) alongside the rolling recent window**, and make the attention module assign positions *within the cache* rather than using original text positions.
 
 ## Final method (inference, no fine-tuning)
 
 - **Cache layout:** retain `start_size` initial sink tokens (≈4 suffices; 1–2 do not, because these models had no single consistent start token in pretraining) + the most recent `recent_size` tokens; evict the middle. Constant memory and latency.
-- **Positions within the cache:** if the cache holds text positions [0,1,2,3,6,7,8] and decodes the next token, assign positions [0,1,2,3,4,5,6] then 7 — contiguous, bounded by cache size, always in-distribution. Requires relative positional encoding (RoPE/ALiBi). For RoPE, cache keys *before* rotation and rotate by cache-position at each step; for ALiBi, apply a contiguous (not jumping) linear bias.
+- **Positions within the cache:** if the cache holds text positions [0,1,2,3,6,7,8] and decodes the next token, assign positions [0,1,2,3,4,5,6] then 7 — contiguous, bounded by cache size, always in-distribution. Requires relative positional encoding (RoPE/ALiBi). For RoPE models, a position-shift attention adapter stores unrotated keys in `past_key_values`, then rotates the concatenated cached keys by cache-position at each step; for ALiBi, the attention bias is contiguous rather than jumping over evicted positions.
 
 ## Pretraining-time variants (for future models)
 
 - **Sink Token:** prepend one dedicated learnable token to every training sample; a single sink then suffices for streaming.
-- **Zero Sink / SoftMax₁:** SoftMax₁(x)_i = e^{x_i} / (1 + Σ_j e^{x_j}) lets weights sum to <1, absorbing surplus mass — equivalent to prepending a token with all-zero Key and Value.
+- **Zero Sink / SoftMax₁:** SoftMax₁(x)_i = e^{x_i} / (1 + Σ_j e^{x_j}) lets weights sum to <1, absorbing surplus mass — equivalent to prepending a token with all-zero Key and Value features.
 
 ## Code
 
 ```python
 import torch
 
+def slice2d(x, start, end):
+    return x[:, :, start:end, ...]
+
+def slice3d(x, start, end):
+    return x[:, :, :, start:end, ...]
+
+def slice1d(x, start, end):
+    return x[:, start:end, ...]
+
+DIM_TO_SLICE = {
+    1: slice1d,
+    2: slice2d,
+    3: slice3d,
+}
+
 class StartRecentKVCache:
-    """Keep `start_size` sink tokens at the front + the last `recent_size` tokens."""
-    def __init__(self, start_size=4, recent_size=2000, k_seq_dim=2, v_seq_dim=2):
-        self.start_size, self.recent_size = start_size, recent_size
+    def __init__(self, start_size=4, recent_size=512, k_seq_dim=2, v_seq_dim=2):
+        print(f"StartRecentKVCache: {start_size}, {recent_size}")
+        self.start_size = start_size
+        self.recent_size = recent_size
         self.cache_size = start_size + recent_size
-        self.k_seq_dim, self.v_seq_dim = k_seq_dim, v_seq_dim
-        self.k_slice = lambda x, a, b: x[:, :, a:b, ...]
-        self.v_slice = lambda x, a, b: x[:, :, a:b, ...]
+        self.k_seq_dim = k_seq_dim
+        self.v_seq_dim = v_seq_dim
+        self.k_slice = DIM_TO_SLICE[k_seq_dim]
+        self.v_slice = DIM_TO_SLICE[v_seq_dim]
 
     def __call__(self, past_key_values):
         if past_key_values is None:
@@ -39,10 +56,22 @@ class StartRecentKVCache:
         if seq_len <= self.cache_size:
             return past_key_values
         return [
-            [torch.cat([self.k_slice(k, 0, self.start_size),
-                        self.k_slice(k, seq_len - self.recent_size, seq_len)], self.k_seq_dim),
-             torch.cat([self.v_slice(v, 0, self.start_size),
-                        self.v_slice(v, seq_len - self.recent_size, seq_len)], self.v_seq_dim)]
+            [
+                torch.cat(
+                    [
+                        self.k_slice(k, 0, self.start_size),
+                        self.k_slice(k, seq_len - self.recent_size, seq_len),
+                    ],
+                    dim=self.k_seq_dim,
+                ),
+                torch.cat(
+                    [
+                        self.v_slice(v, 0, self.start_size),
+                        self.v_slice(v, seq_len - self.recent_size, seq_len),
+                    ],
+                    dim=self.v_seq_dim,
+                ),
+            ]
             for k, v in past_key_values
         ]
 
@@ -52,23 +81,91 @@ class StartRecentKVCache:
         seq_len = past_key_values[0][0].size(self.k_seq_dim)
         if seq_len + num_coming <= self.cache_size:
             return past_key_values
-        end_recent = seq_len - self.recent_size + num_coming
         return [
-            [torch.cat([self.k_slice(k, 0, self.start_size),
-                        self.k_slice(k, end_recent, seq_len)], self.k_seq_dim),
-             torch.cat([self.v_slice(v, 0, self.start_size),
-                        self.v_slice(v, end_recent, seq_len)], self.v_seq_dim)]
+            [
+                torch.cat(
+                    [
+                        self.k_slice(k, 0, self.start_size),
+                        self.k_slice(
+                            k, seq_len - self.recent_size + num_coming, seq_len
+                        ),
+                    ],
+                    dim=self.k_seq_dim,
+                ),
+                torch.cat(
+                    [
+                        self.v_slice(v, 0, self.start_size),
+                        self.v_slice(
+                            v, seq_len - self.recent_size + num_coming, seq_len
+                        ),
+                    ],
+                    dim=self.v_seq_dim,
+                ),
+            ]
             for k, v in past_key_values
         ]
 
-@torch.no_grad()
-def streaming_generate(model, token_stream, kv_cache):
-    past = None
-    for token in token_stream:
-        past = kv_cache.evict_for_space(past, num_coming=1)
-        # positions assigned within the (bounded) cache; RoPE keys cached pre-rotation
-        logits, past = model(token, past_key_values=past, use_cache=True)
-        yield sample(logits)
+    def evict_range(self, past_key_values, start, end):
+        if past_key_values is None:
+            return None
+        seq_len = past_key_values[0][0].size(self.k_seq_dim)
+        assert start <= end and end <= seq_len
+        return [
+            [
+                torch.cat(
+                    [
+                        self.k_slice(k, 0, start),
+                        self.k_slice(k, end, seq_len),
+                    ],
+                    dim=self.k_seq_dim,
+                ),
+                torch.cat(
+                    [
+                        self.v_slice(v, 0, start),
+                        self.v_slice(v, end, seq_len),
+                    ],
+                    dim=self.v_seq_dim,
+                ),
+            ]
+            for k, v in past_key_values
+        ]
+
+def enable_streaming_llm(model, start_size, recent_size):
+    if "llama" in model.config.model_type:
+        k_seq_dim = v_seq_dim = 2
+        from streaming_llm.pos_shift.modify_llama import (
+            enable_llama_pos_shift_attention,
+        )
+
+        enable_llama_pos_shift_attention(model)
+    elif "mpt" in model.config.model_type:
+        v_seq_dim = 2
+        k_seq_dim = 3
+    elif "gpt_neox" in model.config.model_type:
+        k_seq_dim = v_seq_dim = 2
+        from streaming_llm.pos_shift.modify_gpt_neox import (
+            enable_gpt_neox_pos_shift_attention,
+        )
+
+        enable_gpt_neox_pos_shift_attention(model)
+    elif "falcon" in model.config.model_type:
+        v_seq_dim = 1
+        k_seq_dim = 1
+        from streaming_llm.pos_shift.modify_falcon import (
+            enable_falcon_pos_shift_attention,
+        )
+
+        enable_falcon_pos_shift_attention(model)
+    else:
+        raise ValueError(f"got {model.config.model_type}")
+
+    kv_cache = StartRecentKVCache(
+        start_size=start_size,
+        recent_size=recent_size,
+        k_seq_dim=k_seq_dim,
+        v_seq_dim=v_seq_dim,
+    )
+    return kv_cache
 ```
 
-This is the StreamingLLM `StartRecentKVCache`: keep 4 sink tokens + a recent window, with cache-relative positions, letting models like Llama-2, MPT, Falcon, and Pythia model millions of tokens at constant cost with no fine-tuning.
+This is the StreamingLLM shape: `StartRecentKVCache` keeps 4 sink tokens plus a recent window, and model-specific position-shift attention keeps RoPE/ALiBi positions cache-relative. It gives constant-cost streaming without fine-tuning, but it does not extend long-term memory beyond the retained sinks and recent cache.

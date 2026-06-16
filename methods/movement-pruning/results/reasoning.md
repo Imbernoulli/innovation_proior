@@ -14,9 +14,11 @@ The straight-through estimator gets me around this: when a forward op has no usa
 
 So the score gets a gradient even for weights that are currently *masked out* in the forward pass — the score keeps accumulating a signal whether or not the weight is active. That's exactly what I want: a masked weight isn't frozen out of the competition; its score keeps moving and it can re-enter.
 
-Now let me check that this $\mathbf{S}$ actually means "movement away from zero," because that was the whole point. Look at the ordinary weight gradient in this masked layer: $\partial\mathcal{L}/\partial W_{i,j} = (\partial\mathcal{L}/\partial a_i)\,M_{i,j}\,x_j$. Compare to the score gradient I just derived. Dropping the binary $M_{i,j}$ factor for the comparison (it just gates), the score gradient is $(\partial\mathcal{L}/\partial a_i)\,W_{i,j}\,x_j$, which is exactly the weight gradient with $W_{i,j}$ in place of $M_{i,j}$. So
+Now let me check that this $\mathbf{S}$ actually means "movement away from zero," because that was the whole point. Look at the ordinary weight gradient in this masked layer: $\partial\mathcal{L}/\partial W_{i,j} = (\partial\mathcal{L}/\partial a_i)\,M_{i,j}\,x_j$. Compare to the score gradient I just derived. The mask factor only says whether the weight itself is active; for the movement signal I need the same loss-direction factor even when the weight is currently masked. So, omitting the binary gate for this comparison, the score gradient is the usual weight-gradient core multiplied by the current weight:
 
-  ∂𝓛/∂S_{i,j} = (∂𝓛/∂W_{i,j}) · W_{i,j}.
+  ∂𝓛/∂S_{i,j} = (∂𝓛/∂W_{i,j}) · W_{i,j},
+
+where the displayed $\partial\mathcal{L}/\partial W_{i,j}$ is the ungated first-order factor $(\partial\mathcal{L}/\partial a_i)x_j$; for active weights it is the actual weight gradient, and for masked weights the score still receives the straight-through version of it.
 
 Gradient descent does $S_{i,j} \leftarrow S_{i,j} - \alpha_S\,\partial\mathcal{L}/\partial S_{i,j}$, so $S_{i,j}$ *increases* exactly when $\partial\mathcal{L}/\partial S_{i,j}<0$, i.e. when $(\partial\mathcal{L}/\partial W_{i,j})\,W_{i,j}<0$. Two cases:
 
@@ -35,9 +37,9 @@ Let me predict what the pruned models should look like, to make sure the story i
 
 Now the mask. I've been using hard $\mathrm{Top}_v$: keep the top $v\%$ of scores. That gives "hard movement pruning." But $\mathrm{Top}_v$ enforces a *fixed* sparsity and selects locally per matrix (or globally over all matrices if I rank scores across the whole net). I can also relax it: instead of a top-$k$ cut, threshold the scores, $\mathbf{M}=(\mathbf{S}>\tau)$ for a single global $\tau$. The straight-through trick works the same way for thresholding. But a bare threshold has no mechanism to *reach* a target sparsity — nothing pushes the scores down, so the mask density is whatever it is. So I add a regularizer that gently pushes scores down over time:
 
-  R(𝐒) = λ_mvp Σ_{i,j} σ(S_{i,j}),
+  R(𝐒) = Σ_{i,j} σ(S_{i,j}),
 
-a sum of sigmoids of the scores, with coefficient $\lambda_{\text{mvp}}$ controlling the penalty strength and therefore the eventual sparsity. The full objective for "soft movement pruning" is $\mathcal{L} + \lambda_{\text{mvp}} R(\mathbf{S})$. The sigmoid keeps the penalty bounded and smooth; I tried a plain $\sum|S_{i,j}|$ instead, but it was harder to tune for similar results. Soft movement with a global threshold has the nice property that sparsity emerges non-uniformly across the network on its own — the regularizer lets different layers settle at different densities — rather than being forced equal per matrix.
+a sum of sigmoids of the scores. The full objective for "soft movement pruning" is $\mathcal{L} + \lambda_{\text{mvp}} R(\mathbf{S})$, with $\lambda_{\text{mvp}}$ controlling the penalty strength and therefore the eventual sparsity. The sigmoid keeps the penalty bounded and smooth; a plain $\sum|S_{i,j}|$ penalty is the obvious alternative, but it is harder to tune for the same role. Soft movement with a global threshold has the nice property that sparsity emerges non-uniformly across the network on its own — the regularizer lets different layers settle at different densities — rather than being forced equal per matrix.
 
 There's a connection worth noticing to $L_0$ regularization, because it's also a first-order learned-mask method and I want to know whether I'm just reinventing it. $L_0$ makes the mask stochastic via a hard-concrete distribution: sample $u\sim\mathcal{U}(0,1)$, set $\overline{S}_{i,j}=\sigma((\log u-\log(1-u)+S_{i,j})/b)$, stretch $Z_{i,j}=(r-l)\overline{S}_{i,j}+l$, clamp $M_{i,j}=\min(1,\mathrm{ReLU}(Z_{i,j}))$, so an expected-$L_0$ penalty $\sum_{i,j}\sigma(\log S_{i,j}-b\log(-l/r))$ is differentiable. Its score gradient works out to
 
@@ -74,7 +76,14 @@ When a connection becomes more important than the active one and the swap happen
 
 And this is where I see *why the sign / direction matters* and I can't just take $|S|$ as importance. Suppose I'd used the *absolute* value of the score as the importance proxy (as some gradient-based methods do). Consider the degenerate version of that: a "negative threshold" mask $\mathbf{M}=(\mathbf{S}<\tau)$ with $\tau<0$ — keep the *most negative* scores. Redo the swap inequalities with this flipped selection: at $t$, $S^{(t)}_{i,j}\le\tau\le S^{(t)}_{u,v}$; at $t+1$, $S^{(t+1)}_{k,l}\le\tau\le S^{(t+1)}_{u,v}$. The same two-inequality manipulation now gives $S^{(t+1)}_{k,l}-S^{(t)}_{k,l}\le S^{(t+1)}_{i,j}-S^{(t)}_{i,j}$, the *reverse* inequality, so (★) flips and the bracket becomes $\ge 0$, and the Taylor difference comes out $\ge 0$: the loss *increases* on a swap. So selecting on $|S|$ destroys the guarantee. The direction of movement is load-bearing — keeping weights whose score is *most positive* (moving away from 0) is what makes the loss go down; keeping by magnitude of score is provably the wrong thing. This is the precise reason I preserve the sign rather than take absolute value.
 
-A couple of practical wrappers, all pre-existing pieces. I won't do a hard one-shot cut; I'll use automated gradual pruning — raise the sparsity $v$ over training on a cubic schedule while masked weights keep updating, so the model recovers from early masking. The schedule is $v^{(t)} = v_f + (v_i - v_f)(1 - \frac{t-t_i}{N\Delta t})^3$, and adding a few cool-down steps at the very end (holding $v_f$) helps at high sparsity. For BERT I freeze the embeddings and prune the transformer layers and the task head. And since distillation is orthogonal, I can add a knowledge-distillation loss from a fine-tuned BERT-base teacher — a convex combination of task loss and distillation loss — to push performance further; it doesn't change the relative ordering of the pruning methods, it lifts them all.
+A couple of practical wrappers, all pre-existing pieces. I won't do a hard one-shot cut; I'll use automated gradual pruning — raise the sparsity $v$ over training on a cubic schedule while masked weights keep updating, so the model recovers from early masking. With warm-up and cool-down, the schedule is
+
+  v^{(t)} =
+    v_i,                                                    0 ≤ t < t_i
+    v_f + (v_i - v_f)(1 - (t-t_i-t_f)/(NΔt))^3,             t_i ≤ t < T-t_f
+    v_f,                                                    otherwise.
+
+For BERT I freeze the embeddings and prune the transformer layers and the task head. And since distillation is orthogonal to the pruning rule, I can add a knowledge-distillation loss from a fine-tuned BERT-base teacher — a convex combination of task loss and distillation loss — without changing how the mask scores are defined.
 
 Now the code. The heart is a masked linear layer where the mask comes from the *scores* through a straight-through top-$v$ (or threshold) function, so scores get gradients even when masked.
 
@@ -115,16 +124,19 @@ class MaskedLinear(nn.Linear):
             M = TopVSTE.apply(self.score, self.keep_ratio)        # hard movement
         return nn.functional.linear(x, self.weight * M, self.bias)
         # backprop gives dL/dW = (dL/da) M x  and, via STE,
-        #               dL/dS = (dL/da) W x  -> S accumulates -(dL/dW) W = movement
+        # dL/dS = (dL/da) W x, so S accumulates -(ungated dL/dW core) W.
 ```
 
 Training loop: cubic sparsity schedule, scores and weights learned jointly, optional soft-movement regularizer and distillation.
 
 ```python
-def sparsity(t, v_i, v_f, t_i, T, t_f, dt):           # cubic w/ cool-down
-    if t < t_i:            return v_i
-    if t >= T - t_f:       return v_f
-    return v_f + (v_i - v_f) * (1 - (t - t_i - t_f) / ((T - t_i - t_f) * dt)) ** 3
+def sparsity(t, v_i, v_f, t_i, n_steps, delta_t, total_steps, t_f=0):
+    if t < t_i:
+        return v_i
+    if t >= total_steps - t_f:
+        return v_f
+    progress = (t - t_i - t_f) / (n_steps * delta_t)
+    return v_f + (v_i - v_f) * (1 - progress) ** 3
 
 def fine_prune(model, loader, opt, T, sched, lam_mvp=0.0, teacher=None, soft=False):
     for t, (x, y) in zip(range(T), loader):
@@ -141,4 +153,4 @@ def fine_prune(model, loader, opt, T, sched, lam_mvp=0.0, teacher=None, soft=Fal
     return model
 ```
 
-So the chain: in transfer learning the weights are inherited from pretraining and barely move, so magnitude (a 0th-order, value-based criterion) prunes by the pretrained values and can't learn from the end task. Switching to a 1st-order criterion — keep the weights that *move away from zero* during fine-tuning — fixes this, realized by learning a score $\mathbf{S}$ jointly with $\mathbf{W}$ through a hard $\mathrm{Top}_v$ (or threshold) mask whose gradient is supplied by the straight-through estimator. That gradient works out to $\partial\mathcal{L}/\partial S_{i,j}=(\partial\mathcal{L}/\partial W_{i,j})W_{i,j}$, so $\mathbf{S}$ accumulates $-\sum_t(\partial\mathcal{L}/\partial W)^{(t)}W^{(t)}$, exactly the movement signal; a Taylor argument shows swaps decrease the loss, and that guarantee provably fails if one selects by $|S|$, which is why the sign is preserved. A sigmoid regularizer turns the hard top-$v$ into a soft global-threshold variant, and a cubic sparsity schedule plus optional distillation wrap it for fine-tuning BERT at high sparsity.
+So the chain: in transfer learning the weights are inherited from pretraining and barely move, so magnitude (a 0th-order, value-based criterion) prunes by the pretrained values and can't learn from the end task. Switching to a 1st-order criterion — keep the weights that *move away from zero* during fine-tuning — fixes this, realized by learning a score $\mathbf{S}$ jointly with $\mathbf{W}$ through a hard $\mathrm{Top}_v$ (or threshold) mask whose gradient is supplied by the straight-through estimator. That gradient works out to $\partial\mathcal{L}/\partial S_{i,j}=(\partial\mathcal{L}/\partial a_i)W_{i,j}x_j$, which is the ungated weight-gradient core times $W_{i,j}$, so $\mathbf{S}$ accumulates $-\sum_t(\partial\mathcal{L}/\partial W)^{(t)}W^{(t)}$ in the mask-omitted movement sense. That is exactly the away-from-zero signal; a Taylor argument shows swaps decrease the loss, and that guarantee fails if one selects by $|S|$, which is why the sign is preserved. A sigmoid regularizer turns the hard top-$v$ into a soft global-threshold variant, and a cubic sparsity schedule plus optional distillation wrap it for fine-tuning BERT at high sparsity.

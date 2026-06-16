@@ -1,22 +1,14 @@
-# ReAct
+ReAct interleaves reasoning and acting in one model. Large LMs can reason by producing multi-step chains of thought, and they can act as policies in interactive environments, but the two capabilities are usually separated. Reasoning-only chains are sealed internal computations: they hallucinate facts and propagate early errors with no way to verify or repair. Acting-only policies emit actions from an implicit context→action map with no place to plan, track progress, handle exceptions, or synthesize a final answer from what they gathered.
 
-## Problem
-
-Large LMs can reason (produce multi-step chains of thought) and can act (serve as a policy in an interactive environment), but the two are studied separately. Reasoning-only chains are a sealed internal computation: they hallucinate facts and propagate early errors with no way to verify or repair. Acting-only policies emit actions from an implicit context→action map with no place to plan, track progress, handle exceptions, or synthesize a final answer from what they gathered.
-
-## Key idea
-
-Interleave reasoning and acting in one model by **augmenting the action space with language**: Â = A ∪ L, where L is free-form text. A normal action a_t ∈ A is executed in the environment and returns an observation. A language action — a *thought* or reasoning trace — does not affect the environment and yields no observation; it only reasons over the current context c_t and updates it, c_{t+1} = (c_t, â_t). Thoughts decompose goals, inject commonsense, extract information from observations, track progress, handle exceptions, and reformulate queries; actions fetch external information. Reasoning guides acting; acting grounds reasoning.
+The key move is to augment the action space with language: Â = A ∪ L, where L is free-form text. A normal action a_t ∈ A is executed in the environment and returns an observation. A language action — a *thought* or reasoning trace — does not affect the environment and yields no observation; it only reasons over the current context c_t and updates it, c_{t+1} = (c_t, â_t). Thoughts decompose goals, inject commonsense, extract information from observations, track progress, handle exceptions, and reformulate queries; actions fetch external information. Reasoning guides acting; acting grounds reasoning.
 
 Because L is unlimited, the policy is not trained — a frozen large LM is steered with a handful (1–6) of hand-written exemplar trajectories (thought/action/observation sequences); the annotator just writes their thoughts on top of their actions, with no special format. The cadence of thoughts is task-dependent:
 - **Reasoning-heavy tasks** (multi-hop QA, fact verification): dense interleave — a thought before nearly every action (thought → action → observation, repeated).
 - **Action-heavy tasks** (text games, web navigation): sparse thoughts — let the model decide where a thought is worth inserting (plan-setting, progress, exceptions), and otherwise act.
 
-For knowledge tasks the environment is a deliberately simple Wikipedia API with three actions: **search[entity]** (first sentences of the page, or similar entity names if absent), **lookup[string]** (next sentence containing the string, like Ctrl-F), **finish[answer]**. Keeping it weaker than a real retriever forces retrieval to be driven by explicit reasoning.
+For knowledge tasks the environment is a deliberately simple Wikipedia API with three actions: **search[entity]** (first five sentences of the page, or similar entity names if absent), **lookup[string]** (next sentence containing the string, like Ctrl-F), **finish[answer]**. Keeping it weaker than a real retriever forces retrieval to be driven by explicit reasoning.
 
-**Complementary combination.** Grounded acting cures hallucination but is less flexible (a bad search can derail it); free reasoning is flexible but ungrounded. Combine them with a back-off heuristic: run the interleaved trajectory and fall back to self-consistency CoT when it fails to answer within the step budget (or vice versa), letting the model use internal and external knowledge as needed.
-
-## Code
+The two paths can also back each other up. Grounded acting reduces hallucination by tying claims to observations, but a bad search can derail it; free reasoning is flexible but ungrounded. A back-off heuristic runs the interleaved trajectory and falls back to self-consistency CoT when it fails to answer within the step budget (seven turns for HotpotQA, five for FEVER), or runs self-consistency first and backs off to the grounded trajectory when the majority answer appears in fewer than half of the sampled traces.
 
 The interaction loop generates a thought and the action it implies together each turn, stops before the observation line (the observation belongs to the environment), executes the action, appends the real observation, and repeats:
 
@@ -43,7 +35,7 @@ def step(env, action):
             attempts += 1
 
 instruction = """Solve a question answering task with interleaving Thought, Action, Observation steps. Thought can reason about the current situation, and Action can be three types: 
-(1) Search[entity], which searches the exact entity on Wikipedia and returns the first paragraph if it exists. If not, it will return some similar entities to search.
+(1) Search[entity], which searches the exact entity on Wikipedia and returns the first five sentences if it exists. If not, it will return some similar entities to search.
 (2) Lookup[keyword], which returns the next sentence containing keyword in the current passage.
 (3) Finish[answer], which returns the answer and finishes the task.
 Here are some examples.
@@ -86,6 +78,10 @@ Action 2: Lookup[eastern sector]
 Observation 2: (Result 1 / 1) The eastern sector extends into the High Plains and is called the Central Plains orogeny.
 Thought 3: The eastern sector extends into the High Plains. So I need to search High Plains and find its elevation range.
 Action 3: Search[High Plains]
-...
+Observation 3: High Plains refers to one of two distinct land regions.
+Thought 4: I need to instead search High Plains (United States).
+Action 4: Search[High Plains (United States)]
+Observation 4: The High Plains are a subregion of the Great Plains. From east to west, the High Plains rise in elevation from around 1,800 to 7,000 ft (550 to 2,130 m).
+Thought 5: High Plains rise in elevation from around 1,800 to 7,000 ft, so the answer is 1,800 to 7,000 ft.
 Action 5: Finish[1,800 to 7,000 ft]
 ```

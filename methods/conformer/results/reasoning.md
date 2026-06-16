@@ -10,7 +10,7 @@ So neither block alone is right, and faking the missing half is weak. The honest
 
 The simplest arrangement is parallel: split the input into an attention branch and a convolution branch, run both, concatenate. That's a reasonable instinct — it lets both computations happen — but concatenation just sets the two representations side by side and leaves it to later layers to fuse them; the convolution never gets to act on attention's globally-mixed output, nor vice versa. I'd rather they *compose*: have one refine the other within the block, so local detail is extracted from a representation that already carries global context (or the reverse). Composition gives a deeper interaction than concatenation for the same budget.
 
-If they compose, in which order? Two options: convolution then attention, or attention then convolution. Let me reason about it. If attention runs first, it produces a representation where every position is already a content-weighted mixture of the whole sequence — globally informed. Then the convolution operates on that, sharpening local patterns *within the already-globalized features*. That feels right for speech: establish the long-range content interactions, then let the local operator carve fine detail on top. The reverse — local first, then global — also works, but I'll commit to attention-then-convolution as the composition, and let an ablation settle it; the speech-recognition setting favors the convolution module stacked after the self-attention module.
+If they compose, in which order? Two options: convolution then attention, or attention then convolution. Let me reason about it. If attention runs first, it produces a representation where every position is already a content-weighted mixture of the whole sequence — globally informed. Then the convolution operates on that, sharpening local patterns *within the already-globalized features*. That feels right for speech: establish the long-range content interactions, then let the local operator carve fine detail on top. The reverse — local first, then global — is a real alternative, but the speech-recognition setting favors the convolution module stacked after the self-attention module.
 
 Now I have a block whose spine is: self-attention sublayer, then convolution sublayer, each in a residual unit. I want to nail down each sublayer's internals, with a reason for every choice.
 
@@ -27,57 +27,116 @@ Let me assemble the block and write its forward exactly, because the half-step w
   x''_i = x'_i + Conv(x'_i)               # convolution: local, on globalized features
   y_i = LayerNorm( x''_i + (1/2) FFN(x''_i) )   # second half-step FFN, then final norm
 
-So the block is two Macaron half-step FFNs sandwiching the MHSA-then-Conv core, with a closing LayerNorm. Note the residual weights: the two FFNs are half-step (the 1/2), while attention and convolution carry full unit-weight residuals — they are the main mixing operations, the FFNs are the symmetric ODE half-steps around them. An ablation of half-step-vs-full FFN, and of one-FFN-vs-two, should confirm the macaron arrangement helps; I expect it does, because the symmetry is what the ODE view predicts.
+So the block is two Macaron half-step FFNs sandwiching the MHSA-then-Conv core, with a closing LayerNorm. Note the residual weights: the two FFNs are half-step (the 1/2), while attention and convolution carry full unit-weight residuals — they are the main mixing operations, the FFNs are the symmetric ODE half-steps around them.
 
-In front of the stack of blocks I put a convolutional subsampling front end — a couple of stride-2 convolutions over the 80-channel filterbank features — to cut the time resolution before the expensive attention, then a linear projection to the model dimension and dropout. After that, N conformer blocks. Sizes: I'll define small/medium/large by sweeping depth, model dimension, and head count under parameter budgets — e.g. 16 layers / dim 144 / 4 heads at ~10M, 16 / 256 / 4 at ~30M, 17 / 512 / 8 at ~118M — with the convolution kernel fixed at 32 throughout. The encoder feeds a single-LSTM-layer transducer decoder.
+In front of the stack of blocks I put a convolutional subsampling front end — a couple of stride-2 convolutions over the 80-channel filterbank features — to cut the time resolution before the expensive attention, then a linear projection to the model dimension and dropout. After that, N conformer blocks. Sizes: I'll instantiate small/medium/large budgeted encoders as 16 layers / dim 144 / 4 heads at 10.3M parameters, 16 / 256 / 4 at 30.7M, and 17 / 512 / 8 at 118.8M, with the convolution kernel fixed at 32 throughout. The encoder feeds a single-LSTM-layer transducer decoder.
 
 For training: dropout 0.1 in each residual unit (on each module's output before the add), a small L2 weight penalty, variational noise, and the Transformer learning-rate schedule — Adam with β₁=0.9, β₂=0.98, ε=1e-9, 10k warmup steps, and a peak learning rate of 0.05/√d where d is the encoder model dimension (so wider models get a proportionally smaller peak rate). SpecAugment on the filterbank inputs.
 
 Let me write it, mirroring how I'd build it. First the two sublayer primitives — relative-position MHSA and the gated depthwise convolution module — then the macaron block.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
 
 class Swish(nn.Module):
-    def forward(self, x): return x * torch.sigmoid(x)
+    def forward(self, x):
+        return x * torch.sigmoid(x)
 
-class FeedForward(nn.Module):                       # position-wise FFN, 4x inner, Swish
+
+class FeedForward(nn.Module):
     def __init__(self, d, expansion=4, p=0.1):
         super().__init__()
-        self.ln = nn.LayerNorm(d)                   # pre-norm, inside the residual branch
-        self.net = nn.Sequential(nn.Linear(d, expansion * d), Swish(), nn.Dropout(p),
-                                 nn.Linear(expansion * d, d), nn.Dropout(p))
+        self.ln = nn.LayerNorm(d)
+        self.net = nn.Sequential(
+            nn.Linear(d, expansion * d), Swish(), nn.Dropout(p),
+            nn.Linear(expansion * d, d), nn.Dropout(p))
+
     def forward(self, x):
         return self.net(self.ln(x))
 
-class RelMultiHeadSelfAttention(nn.Module):         # global, content-based; relative pos
+
+class RelativeSinusoidalEncoding(nn.Module):
+    def __init__(self, d_head):
+        super().__init__()
+        self.d_head = d_head
+
+    def forward(self, length, device):
+        positions = torch.arange(-(length - 1), length, device=device, dtype=torch.float32)
+        freq = torch.arange(0, self.d_head, 2, device=device, dtype=torch.float32)
+        inv_freq = 1.0 / (10000 ** (freq / self.d_head))
+        angles = positions[:, None] * inv_freq[None, :]
+        emb = torch.stack((angles.sin(), angles.cos()), dim=-1).flatten(-2)
+        return emb[:, :self.d_head]
+
+
+class RelMultiHeadSelfAttention(nn.Module):
     def __init__(self, d, heads, p=0.1):
         super().__init__()
-        self.ln = nn.LayerNorm(d)                   # pre-norm
-        self.mha = nn.MultiheadAttention(d, heads, dropout=p, batch_first=True)
+        if d % heads:
+            raise ValueError("d must be divisible by heads")
+        self.heads = heads
+        self.d_head = d // heads
+        self.ln = nn.LayerNorm(d)
+        self.qkv = nn.Linear(d, 3 * d)
+        self.rel = RelativeSinusoidalEncoding(self.d_head)
+        self.content_bias = nn.Parameter(torch.zeros(heads, self.d_head))
+        self.pos_bias = nn.Parameter(torch.zeros(heads, self.d_head))
         self.drop = nn.Dropout(p)
-        # relative sinusoidal positional encoding feeds the attention scores here
-    def forward(self, x):
-        h = self.ln(x)
-        a, _ = self.mha(h, h, h)                     # softmax(QK^T/sqrt(d_k)) V, multi-head
-        return self.drop(a)
+        self.out = nn.Linear(d, d)
 
-class ConvolutionModule(nn.Module):                 # local, position-based; gated depthwise
+    def forward(self, x):
+        b, t, d = x.shape
+        h = self.ln(x)
+        q, k, v = self.qkv(h).chunk(3, dim=-1)
+        q = q.view(b, t, self.heads, self.d_head).transpose(1, 2)
+        k = k.view(b, t, self.heads, self.d_head).transpose(1, 2)
+        v = v.view(b, t, self.heads, self.d_head).transpose(1, 2)
+
+        content_scores = torch.einsum(
+            "bhtd,bhsd->bhts", q + self.content_bias[None, :, None, :], k)
+        rel = self.rel(t, x.device)
+        rel_scores = torch.einsum(
+            "bhtd,md->bhtm", q + self.pos_bias[None, :, None, :], rel)
+        offsets = (
+            torch.arange(t, device=x.device)[None, :]
+            - torch.arange(t, device=x.device)[:, None]
+            + t - 1
+        )
+        offsets = offsets.view(1, 1, t, t).expand(b, self.heads, t, t)
+        rel_scores = torch.gather(rel_scores, dim=-1, index=offsets)
+
+        scores = (content_scores + rel_scores) / math.sqrt(self.d_head)
+        weights = self.drop(torch.softmax(scores, dim=-1))
+        y = torch.einsum("bhts,bhsd->bhtd", weights, v)
+        y = y.transpose(1, 2).contiguous().view(b, t, d)
+        return self.drop(self.out(y))
+
+
+class ConvolutionModule(nn.Module):
     def __init__(self, d, kernel=32, p=0.1):
         super().__init__()
-        self.ln = nn.LayerNorm(d)                   # pre-norm
-        self.pw1 = nn.Conv1d(d, 2 * d, 1)           # pointwise, expansion factor 2
-        self.dw  = nn.Conv1d(d, d, kernel, padding=kernel // 2, groups=d)  # depthwise
-        self.bn  = nn.BatchNorm1d(d)
+        self.kernel = kernel
+        self.ln = nn.LayerNorm(d)
+        self.pw1 = nn.Conv1d(d, 2 * d, 1)
+        self.dw = nn.Conv1d(d, d, kernel, groups=d)
+        self.bn = nn.BatchNorm1d(d)
         self.act = Swish()
-        self.pw2 = nn.Conv1d(d, d, 1)               # pointwise back to d
+        self.pw2 = nn.Conv1d(d, d, 1)
         self.drop = nn.Dropout(p)
-    def forward(self, x):                           # (B, T, d)
-        h = self.ln(x).transpose(1, 2)              # -> (B, d, T) for conv
-        h = F.glu(self.pw1(h), dim=1)               # GLU gate: halves channels back to d
-        h = self.act(self.bn(self.dw(h)))           # depthwise -> BN -> Swish
+
+    def forward(self, x):
+        h = self.ln(x).transpose(1, 2)
+        h = F.glu(self.pw1(h), dim=1)
+        left = (self.kernel - 1) // 2
+        right = self.kernel // 2
+        h = self.dw(F.pad(h, (left, right)))
+        h = self.act(self.bn(h))
         h = self.drop(self.pw2(h))
-        return h.transpose(1, 2)                     # -> (B, T, d)
+        return h.transpose(1, 2)
 ```
 
 Now the conformer block — two half-step FFNs sandwiching MHSA-then-Conv, closing with LayerNorm — exactly as derived:
@@ -86,26 +145,29 @@ Now the conformer block — two half-step FFNs sandwiching MHSA-then-Conv, closi
 class ConformerBlock(nn.Module):
     def __init__(self, d, heads, kernel=32, p=0.1):
         super().__init__()
-        self.ff1  = FeedForward(d, p=p)             # first half-step
+        self.ff1 = FeedForward(d, p=p)
         self.mhsa = RelMultiHeadSelfAttention(d, heads, p)
         self.conv = ConvolutionModule(d, kernel, p)
-        self.ff2  = FeedForward(d, p=p)             # second half-step
-        self.ln   = nn.LayerNorm(d)
+        self.ff2 = FeedForward(d, p=p)
+        self.ln = nn.LayerNorm(d)
+
     def forward(self, x):
-        x = x + 0.5 * self.ff1(x)                   # half-weighted residual (macaron)
-        x = x + self.mhsa(x)                        # global first
-        x = x + self.conv(x)                        # then local, on globalized features
-        x = x + 0.5 * self.ff2(x)                   # half-weighted residual (macaron)
-        return self.ln(x)                           # final layernorm
+        x = x + 0.5 * self.ff1(x)
+        x = x + self.mhsa(x)
+        x = x + self.conv(x)
+        x = x + 0.5 * self.ff2(x)
+        return self.ln(x)
 ```
 
 And the encoder: convolutional subsampling, projection, a stack of conformer blocks, feeding a transducer decoder:
 
 ```python
 class ConvSubsampling(nn.Module):                   # two stride-2 convs over filterbanks
-    def __init__(self, d):
+    def __init__(self, channels):
         super().__init__()
-        self.c1, self.c2 = nn.Conv2d(1, d, 3, 2), nn.Conv2d(d, d, 3, 2)
+        self.c1 = nn.Conv2d(1, channels, 3, 2)
+        self.c2 = nn.Conv2d(channels, channels, 3, 2)
+
     def forward(self, x):                           # (B, T, n_mels)
         x = F.relu(self.c1(x.unsqueeze(1)))
         x = F.relu(self.c2(x))
@@ -113,12 +175,13 @@ class ConvSubsampling(nn.Module):                   # two stride-2 convs over fi
         return x.permute(0, 2, 1, 3).reshape(b, t, c * f)
 
 class ConformerEncoder(nn.Module):
-    def __init__(self, d=512, layers=17, heads=8, kernel=32, n_mels=80):
+    def __init__(self, d=512, layers=17, heads=8, kernel=32):
         super().__init__()
         self.subsample = ConvSubsampling(d)
-        self.proj = nn.Linear(d * (((n_mels - 1) // 2 - 1) // 2), d)
+        self.proj = nn.LazyLinear(d)
         self.drop = nn.Dropout(0.1)
         self.blocks = nn.ModuleList(ConformerBlock(d, heads, kernel) for _ in range(layers))
+
     def forward(self, x):
         x = self.drop(self.proj(self.subsample(x)))
         for blk in self.blocks:

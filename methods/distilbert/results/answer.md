@@ -18,14 +18,15 @@ addition to the masked-LM signal.
 
 - **Architecture:** same hidden size / head count as the teacher, half the layers
   (12 → 6). Remove token-type (segment) embeddings and the pooler.
-- **Initialization:** copy every other teacher layer into the student (one layer out of
-  two), exploiting the shared dimensionality so the student starts where the teacher
-  already converged.
+- **Initialization:** copy a depth-halved slice of teacher layers into the student
+  (the BERT-to-DistilBERT extraction maps teacher layers `[0, 2, 4, 7, 9, 11]` to the
+  six student layers), exploiting the shared dimensionality so the student starts where
+  the teacher already converged.
 - **Triple loss:** `L = α_ce·L_ce + α_mlm·L_mlm + α_cos·L_cos`.
   - `L_ce`: distillation loss — KL/cross-entropy between teacher and student
     distributions, each softened by temperature `T` (`p_i = softmax(z_i/T)`), computed
-    over masked positions and scaled by `T²` to compensate the `1/T²` gradient shrink.
-    `T=1` at inference.
+    over valid sequence positions in the training script and scaled by `T²` to
+    compensate the `1/T²` high-temperature gradient shrink. `T=1` at inference.
   - `L_mlm`: standard masked-LM cross-entropy against the true tokens.
   - `L_cos`: cosine-embedding loss pushing the cosine similarity of student and teacher
     final hidden states toward 1 (aligns direction, not magnitude).
@@ -33,7 +34,7 @@ addition to the masked-LM signal.
   next-sentence prediction; same corpus as the teacher (Wikipedia + BookCorpus); AdamW
   with linear warmup; teacher frozen in eval mode.
 
-The published training recipe uses `T=2`, `α_ce=5.0`, `α_mlm=2.0`, `α_cos=1.0`.
+The DistilBERT training command uses `T=2`, `α_ce=5.0`, `α_mlm=2.0`, `α_cos=1.0`.
 
 ## Code
 
@@ -55,8 +56,8 @@ class Distiller:
         with torch.no_grad():
             t_logits, t_hidden = self.teacher(input_ids, attention_mask)
 
-        # distillation loss over masked positions, temperature-softened, T^2-rescaled
-        mask  = (lm_labels > -1).unsqueeze(-1).expand_as(s_logits)
+        # distillation loss over valid tokens, temperature-softened, T^2-rescaled
+        mask  = attention_mask.bool().unsqueeze(-1).expand_as(s_logits)
         s_sel = s_logits.masked_select(mask).view(-1, s_logits.size(-1))
         t_sel = t_logits.masked_select(mask).view(-1, t_logits.size(-1))
         loss_ce = self.ce_loss_fct(F.log_softmax(s_sel / self.T, dim=-1),
@@ -76,19 +77,23 @@ class Distiller:
         return self.alpha_ce * loss_ce + self.alpha_mlm * loss_mlm + self.alpha_cos * loss_cos
 
 
-def build_student_from_teacher(teacher_cfg, teacher_state, Encoder):
-    cfg = dict(teacher_cfg); cfg["n_layers"] = teacher_cfg["n_layers"] // 2
+def build_student_from_teacher(teacher_cfg, teacher_state, Encoder,
+                               layer_map=(0, 2, 4, 7, 9, 11)):
+    cfg = dict(teacher_cfg); cfg["n_layers"] = len(layer_map)
+    cfg["use_token_type_embeddings"] = False
+    cfg["use_pooler"] = False
     student = Encoder(cfg)                       # no token-type embeddings, no pooler
     s_state = student.state_dict()
+    layer_to_student = {t: i for i, t in enumerate(layer_map)}
     for name, p in teacher_state.items():
         if "pooler" in name or "token_type" in name:
             continue
-        m = re.match(r"layer\.(\d+)\.", name)
+        m = re.search(r"layer\.(\d+)\.", name)
         if m:
             t = int(m.group(1))
-            if t % 2 != 0:                       # take one layer out of two
+            if t not in layer_to_student:         # take one layer out of two
                 continue
-            s_name = name.replace(f"layer.{t}.", f"layer.{t // 2}.")
+            s_name = name.replace(f"layer.{t}.", f"layer.{layer_to_student[t]}.")
         else:
             s_name = name
         if s_name in s_state and s_state[s_name].shape == p.shape:
@@ -110,6 +115,4 @@ def train(distiller, corpus, steps, grad_accum=...):
             opt.step(); opt.zero_grad()
 ```
 
-The student is then fine-tuned like any pre-trained encoder; with half the layers it is
-about 40% smaller and roughly 60% faster at inference while retaining the bulk of the
-teacher's downstream quality.
+The student is then fine-tuned like any pre-trained encoder.

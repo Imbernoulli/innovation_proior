@@ -14,11 +14,11 @@ Score matrix $\mathbf{S}$, mask $\mathbf{M}$, inference $\mathbf{a}=(\mathbf{W}\
 
 - **Hard movement pruning:** $\mathbf{M}=\mathrm{Top}_v(\mathbf{S})$. $\mathrm{Top}_v$ has zero gradient, so backward uses straight-through: the gradient passes to $\mathbf{S}$ as if the mask were identity, giving
 $$\frac{\partial\mathcal{L}}{\partial S_{i,j}} = \frac{\partial\mathcal{L}}{\partial a_i}\,W_{i,j}\,x_j = \frac{\partial\mathcal{L}}{\partial W_{i,j}}\,W_{i,j}.$$
-Scores update even for masked weights, so pruned weights can re-enter. With $S^{(0)}=0$,
+The last equality omits the binary gate in $\partial\mathcal{L}/\partial W_{i,j}$ for the movement comparison; the straight-through score gradient keeps the ungated first-order factor, so scores update even for masked weights and pruned weights can re-enter. With $S^{(0)}=0$,
 $$S_{i,j}^{(T)} = -\alpha_S\sum_{t<T}\Big(\frac{\partial\mathcal{L}}{\partial W_{i,j}}\Big)^{(t)} W_{i,j}^{(t)},$$
-an **accumulator of movement away from zero**: $S$ rises when $W>0$ grows or $W<0$ shrinks (away from 0), and falls when $W$ moves toward 0.
+an **accumulator of movement away from zero**: $S$ rises when $W>0$ grows or $W<0$ decreases further below zero, and falls when $W$ moves toward 0.
 
-- **Soft movement pruning:** replace the top-$v$ cut with a global threshold $\mathbf{M}=(\mathbf{S}>\tau)$ and add a sparsity-inducing regularizer $R(\mathbf{S})=\lambda_{\text{mvp}}\sum_{i,j}\sigma(S_{i,j})$, optimizing $\mathcal{L}+\lambda_{\text{mvp}}R(\mathbf{S})$; $\lambda_{\text{mvp}}$ controls sparsity, which emerges non-uniformly across layers.
+- **Soft movement pruning:** replace the top-$v$ cut with a global threshold $\mathbf{M}=(\mathbf{S}>\tau)$ and add a sparsity-inducing regularizer $R(\mathbf{S})=\sum_{i,j}\sigma(S_{i,j})$, optimizing $\mathcal{L}+\lambda_{\text{mvp}}R(\mathbf{S})$; $\lambda_{\text{mvp}}$ controls sparsity, which emerges non-uniformly across layers.
 
 **Why the sign matters.** A first-order Taylor argument shows that when a swap occurs (a more important connection replaces an active one), the training loss decreases — for both $\mathrm{Top}_v$ and threshold masks. This guarantee provably *reverses* (loss increases on a swap) if one selects by $|S|$ instead of $S$; preserving the direction of movement is essential.
 
@@ -59,10 +59,13 @@ class MaskedLinear(nn.Linear):
              else TopVSTE.apply(self.score, self.keep_ratio))
         return nn.functional.linear(x, self.weight * M, self.bias)
 
-def sparsity(t, v_i, v_f, t_i, T, t_f, dt):                        # cubic + cool-down
-    if t < t_i:       return v_i
-    if t >= T - t_f:  return v_f
-    return v_f + (v_i - v_f) * (1 - (t - t_i - t_f) / ((T - t_i - t_f) * dt)) ** 3
+def sparsity(t, v_i, v_f, t_i, n_steps, delta_t, total_steps, t_f=0):
+    if t < t_i:
+        return v_i
+    if t >= total_steps - t_f:
+        return v_f
+    progress = (t - t_i - t_f) / (n_steps * delta_t)
+    return v_f + (v_i - v_f) * (1 - progress) ** 3
 
 def fine_prune(model, loader, opt, T, sched, lam_mvp=0.0, teacher=None, soft=False):
     for t, (x, y) in zip(range(T), loader):

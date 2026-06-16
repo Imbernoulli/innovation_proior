@@ -27,7 +27,7 @@ Second, even with that balance, a small fixed weight will sometimes drive the KL
 $$\mathcal L(\phi)=\mathbb E_{q_\phi}\Big[\textstyle\sum_t \beta_{\mathrm{pred}}\mathcal L_{\mathrm{pred}}+\beta_{\mathrm{dyn}}\mathcal L_{\mathrm{dyn}}+\beta_{\mathrm{rep}}\mathcal L_{\mathrm{rep}}\Big],$$
 with $\mathcal L_{\mathrm{pred}}=-\ln p(x_t\mid z_t,h_t)-\ln p(r_t\mid z_t,h_t)-\ln p(c_t\mid z_t,h_t)$, $\beta_{\mathrm{pred}}=\beta_{\mathrm{dyn}}=1$, $\beta_{\mathrm{rep}}=0.1$, and the two KLs free-bit-clipped at $1$.
 
-While I'm in the latent, there's a stability bug to head off. The encoder and dynamics predictor output *categorical* distributions over the stochastic state (a vector of softmaxes, with straight-through gradients through the sample). A softmax can drift arbitrarily close to deterministic, and when a categorical posterior goes near-deterministic the KL can spike — the same pathology reported for deep variational autoencoders — and a one-hot-ish distribution also produces zero probabilities and infinite log-probs. So mix in a floor of uniform mass: every categorical I use becomes $0.99$ times the network's softmax plus $0.01$ times uniform. The $1\%$ unimix makes it *impossible* for the distribution to become deterministic, which keeps the KL well-behaved and the log-probs finite. I'll apply the same $1\%$ unimix to the actor's categorical for the same reason.
+While I'm in the latent, there's a stability bug to head off. The encoder and dynamics predictor output *categorical* distributions over the stochastic state (a vector of softmaxes, with straight-through gradients through the sample). A softmax can drift arbitrarily close to deterministic, and when a categorical posterior goes near-deterministic the KL can spike — the same pathology reported for deep variational autoencoders — and a one-hot-ish distribution also produces zero probabilities and infinite log-probs. So mix in a floor of uniform mass: each encoder, dynamics-predictor, and actor categorical becomes $0.99$ times the network's softmax plus $0.01$ times uniform. The $1\%$ unimix makes it *impossible* for these distributions to become deterministic, which keeps the KL well-behaved and the log-probs finite.
 
 Now the behavior side, which has its own scale problem and it's the subtlest one. The actor maximizes return and explores via an entropy regularizer, and the regularizer needs a coefficient $\eta$ trading exploration against exploitation. The right $\eta$ depends on the reward scale *and* frequency — and worse, the *interaction* I actually want is: explore more when rewards are sparse, exploit more when they're dense or nearby, while being completely invariant to someone multiplying all rewards by a constant. A fixed $\eta$ against raw returns can't do that, because raw return magnitude is arbitrary. So I have to normalize the return scale before it meets a fixed $\eta$ — but normalize it in a way that *preserves information about reward frequency*, otherwise I lose the explore-when-sparse behavior.
 
@@ -38,7 +38,7 @@ $$S\doteq\EMA\!\big(\Per(R^\lambda,95)-\Per(R^\lambda,5),\,0.99\big).$$
 Note I only need to *divide* by the range, not subtract an offset, because subtracting a state-independent constant from the return leaves the policy gradient unchanged — the baseline already handles the offset. With this, a single fixed entropy scale $\eta=3\times10^{-4}$ works everywhere, and the explore-when-sparse / exploit-when-dense behavior comes for free because I deliberately left small returns unscaled.
 
 Now, what gradient do I use for the actor? My earlier instinct in this line of work was the pathwise gradient: the dynamics are differentiable, so backpropagate the imagined return through the transition into the actions and read off $\partial(\text{return})/\partial(\text{action})$. That's lovely for continuous actions, but it needs a clean differentiable path, and for discrete actions there isn't one. If I want *one* estimator across discrete and continuous domains — and I do, that's the whole fixed-hyperparameter creed — then I should use the estimator that doesn't care about the action type. That's the score-function / Reinforce estimator: weight the log-probability of each action by a scalar advantage, $\mathbb E[A\,\nabla_\theta\log\pi_\theta(a\mid s)]$. Its usual weakness is variance, but I've already built the two things that tame it — a value baseline (so $A=R^\lambda_t-v(s_t)$ subtracts the state value) and the return normalization above (so the advantage scale is controlled). With those in hand, Reinforce becomes a single code path that works for discrete *and* continuous actions, which is worth more across domains than the lower variance of the pathwise gradient on the continuous subset. So the actor surrogate is
-$$\mathcal L(\theta)=-\textstyle\sum_t \sg\!\Big(\tfrac{R^\lambda_t-v_\psi(s_t)}{\max(1,S)}\Big)\,\log\pi_\theta(a_t\mid s_t)\;-\;\eta\,\mathrm H\!\big[\pi_\theta(a_t\mid s_t)\big],$$
+$$\mathcal L(\theta)=-\textstyle\sum_t\Big[\sg\!\Big(\tfrac{R^\lambda_t-v_\psi(s_t)}{\max(1,S)}\Big)\,\log\pi_\theta(a_t\mid s_t)+\eta\,\mathrm H\!\big[\pi_\theta(a_t\mid s_t)\big]\Big],$$
 where the advantage is stop-gradiented (it's a multiplier, not a path) and divided by the floored range.
 
 The critic. It predicts the distribution of the $\lambda$-return for each model state, using the symexp-twohot head from before. The $\lambda$-return blends $k$-step bootstraps so a finite imagination horizon $H$ can still account for reward beyond it — the value soaks up the tail — and it carries the predicted continuation flag $c_t\in\{0,1\}$ as the per-step discount so an imagined step that probably ends the episode is weighted down:
@@ -65,16 +65,24 @@ BINS = symexp(jnp.linspace(-20., 20., 255))            # dense near 0, huge reac
 
 def twohot(y, bins=BINS):
     y = jnp.clip(y, bins[0], bins[-1])
-    k = (bins[None] < y[..., None]).sum(-1) - 1         # lower bin index
+    k = (bins <= y[..., None]).sum(-1) - 1              # lower bin index
+    k = jnp.clip(k, 0, len(bins) - 2)                   # keep an upper neighbor
     lo, hi = bins[k], bins[k + 1]
-    w_hi = (y - lo) / (hi - lo)                          # linear interp weight
-    return onehot(k, len(bins)) * (1 - w_hi) + onehot(k + 1, len(bins)) * w_hi
+    w_hi = jnp.abs(y - lo) / jnp.abs(hi - lo)           # linear interp weight
+    w_lo = jnp.abs(hi - y) / jnp.abs(hi - lo)
+    return onehot(k, len(bins)) * w_lo + onehot(k + 1, len(bins)) * w_hi
+
+def twohot_mean(probs, bins=BINS):
+    neg = bins < 0
+    neg_sum = jnp.flip(probs[..., neg] * bins[neg], -1).sum(-1)
+    pos_sum = (probs[..., ~neg] * bins[~neg]).sum(-1)
+    return neg_sum + pos_sum
 
 class TwoHotHead:                                        # reward predictor and critic
     def __init__(self, net):
         self.net = net                                   # output weights init to ZERO
     def pred(self, feat):
-        return (jax.nn.softmax(self.net(feat)) * BINS).sum(-1)   # weighted-avg readout
+        return twohot_mean(jax.nn.softmax(self.net(feat)))       # weighted-avg readout
     def loss(self, feat, target):                        # scale-decoupled cross-entropy
         logits = jax.nn.log_softmax(self.net(feat))
         return -(twohot(target) * logits).sum(-1)
@@ -91,19 +99,19 @@ def unimix(probs, alpha=0.01):                           # 1% uniform floor on c
 def world_model_loss(model, batch):
     post, prior = model.rssm.observe(model.encode(batch['x']), batch['action'])
     feat = model.rssm.get_feat(post)
-    L_pred = -(model.dec.loss(feat, batch['x'])              # symlog MSE on (symlog'd) inputs
-               + model.rew.loss(feat, batch['reward'])       # twohot cross-entropy
-               + model.con.logp(feat, batch['cont']))        # logistic regression
+    L_pred = (model.dec.loss(feat, batch['x'])               # symlog MSE on vector inputs
+              + model.rew.loss(feat, batch['reward'])        # twohot cross-entropy
+              - model.con.logp(feat, batch['cont']))         # logistic regression NLL
     kl_dyn = jnp.maximum(1., kl(sg(post), prior))            # free bits: clip below 1 nat
     kl_rep = jnp.maximum(1., kl(post, sg(prior)))            # prior chases hard, post yields soft
     return (1.0 * L_pred + 1.0 * kl_dyn + 0.1 * kl_rep).mean()
 
 # --- lambda-return with continuation flags as per-step discount -------------
-def lambda_return(reward, value, cont, lam=0.95, gamma=0.997):
-    R = value[-1]                                            # bootstrap: R_T = v_T
+def lambda_return(reward, value, cont, bootstrap, lam=0.95, gamma=0.997):
+    R = bootstrap                                            # bootstrap: R_T = v_T
     out = []
-    for t in reversed(range(len(reward) - 1)):
-        R = reward[t] + gamma * cont[t] * ((1 - lam) * value[t + 1] + lam * R)
+    for t in reversed(range(len(reward))):
+        R = reward[t] + gamma * cont[t] * ((1 - lam) * value[t] + lam * R)
         out.append(R)
     return jnp.stack(out[::-1])
 
@@ -111,7 +119,7 @@ def lambda_return(reward, value, cont, lam=0.95, gamma=0.997):
 def actor_critic_loss(traj, actor, critic, slow_critic, retnorm):
     feat = traj['feat']
     value = critic.pred(feat)
-    ret = lambda_return(traj['reward'], value, traj['cont'])
+    ret = lambda_return(traj['reward'][1:], value[1:], traj['cont'][1:], value[-1])
 
     # percentile return normalization: scale DOWN large returns, floor at L=1
     S = retnorm.update(percentile(ret, 95) - percentile(ret, 5))   # EMA(., 0.99)

@@ -21,11 +21,11 @@ Pair a parametric memory (a pre-trained encoder–decoder, BART-large, ~400M par
 
   p(y|x) ≈ ∏_i Σ_{z∈top-k} p_η(z|x) · p_θ(y_i | x, z, y_<i).
 
-For a length-one output (classification, e.g. FEVER), the product collapses and the two models are identical.
+The retriever distribution p_η(z|x) is the top-k truncated distribution: raw DPR inner-product scores are softmax-normalized over the retrieved set. For a length-one output, the product collapses and the two models are identical. The FEVER implementation uses a classifier-head variant: regenerate the claim, classify from the final hidden state, then marginalize class probabilities over documents.
 
 ## Training
 
-Minimize the negative marginal log-likelihood Σ_j −log p(y_j|x_j) with Adam, no supervision on which z to retrieve. The **document encoder and index are kept fixed** (only the query encoder and BART are fine-tuned), avoiding REALM-style periodic re-indexing — this is found unnecessary for strong performance. Trainable params ≈ 110M (query encoder) + 406M (BART) ≈ a few hundred million, far fewer than a comparable closed-book model.
+Minimize the negative marginal log-likelihood Σ_j −log p(y_j|x_j) with Adam, no supervision on which z to retrieve. The **document encoder and index are kept fixed**; only the query encoder and BART are fine-tuned, which keeps the MIPS index stable and avoids REALM-style periodic re-indexing.
 
 ## Decoding
 
@@ -48,29 +48,43 @@ class DenseRetriever:                  # fixed doc encoder + index; trainable qu
 class Seq2SeqGenerator(nn.Module):     # BART-large; doc enters by concatenation
     def __init__(self, bart): super().__init__(); self.bart = bart
     def forward(self, x, z, y):
-        return self.bart(input=concat(x, z), labels=y).logits   # (n_docs, T, V)
+        # one encoder/decoder row per retrieved document
+        return self.bart(input_ids=concat_each(x, z), labels=repeat_for_docs(y, z)).logits
 
-def ragtoken_logprob(seq_logits, doc_scores, n_docs):           # marginalize per token
-    seq_lp = F.log_softmax(seq_logits, -1).view(
-        seq_logits.shape[0]//n_docs, n_docs, -1, seq_logits.size(-1))
+def _view_by_doc(seq_logits, doc_scores, n_docs):
+    seq_lp = F.log_softmax(seq_logits, -1).reshape(
+        seq_logits.size(0)//n_docs, n_docs, seq_logits.size(1), seq_logits.size(-1))
     doc_lp = F.log_softmax(doc_scores, 1)
-    return torch.logsumexp(seq_lp + doc_lp.unsqueeze(-1).unsqueeze(-1), dim=1)
+    return seq_lp, doc_lp
+
+def gather_target(token_logprobs, target, ignore_index=-100):
+    mask = target.ne(ignore_index)
+    safe_target = target.masked_fill(~mask, 0)
+    if token_logprobs.dim() == 4:
+        safe_target = safe_target.unsqueeze(1).expand(-1, token_logprobs.size(1), -1)
+        mask = mask.unsqueeze(1).expand(-1, token_logprobs.size(1), -1)
+    gathered = token_logprobs.gather(-1, safe_target.unsqueeze(-1)).squeeze(-1)
+    return gathered.masked_fill(~mask, 0.0)
+
+def ragtoken_nll(seq_logits, target, doc_scores, n_docs):       # marginalize per token
+    seq_lp, doc_lp = _view_by_doc(seq_logits, doc_scores, n_docs)
+    token_lp = torch.logsumexp(seq_lp + doc_lp.unsqueeze(-1).unsqueeze(-1), dim=1)
+    return -gather_target(token_lp, target).sum(1)
 
 def ragsequence_nll(seq_logits, target, doc_scores, n_docs):    # marginalize per sequence
-    seq_lp = F.log_softmax(seq_logits, -1).view(
-        seq_logits.shape[0]//n_docs, n_docs, -1, seq_logits.size(-1))
-    doc_lp = F.log_softmax(doc_scores, 1).unsqueeze(-1).unsqueeze(-1)
-    seq_lp = torch.cat([seq_lp[:, :, :1, :],                    # fold doc log-prob into ONE token
-                        seq_lp[:, :, 1:2, :] + doc_lp,
-                        seq_lp[:, :, 2:, :]], dim=2)
-    ll = gather_target(seq_lp, target).sum(2)                   # sum over tokens -> (B, K)
-    return -ll.logsumexp(1)                                     # logsumexp over docs
+    seq_lp, doc_lp = _view_by_doc(seq_logits, doc_scores, n_docs)
+    ll = gather_target(seq_lp, target).sum(2)                   # token log-likelihood per doc
+    return -torch.logsumexp(ll + doc_lp, dim=1)                 # add p_eta(z|x) once
 
-def train(retriever, generator, data, n_docs):
+def train(retriever, generator, data, n_docs, mode="sequence"):
     opt = torch.optim.Adam(list(retriever.q_enc.parameters()) + list(generator.parameters()))
     for x, y in data:
         docs, doc_scores = retriever.retrieve(x, n_docs)
-        loss = ragsequence_nll(generator(x, docs, y), y, doc_scores, n_docs).mean()
+        logits = generator(x, docs, y)
+        if mode == "token":
+            loss = ragtoken_nll(logits, y, doc_scores, n_docs).mean()
+        else:
+            loss = ragsequence_nll(logits, y, doc_scores, n_docs).mean()
         opt.zero_grad(); loss.backward(); opt.step()
 ```
 

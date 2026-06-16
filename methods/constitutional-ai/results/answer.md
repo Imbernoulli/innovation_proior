@@ -1,4 +1,4 @@
-# Constitutional AI (RLAIF)
+# Constitutional AI: SL-CAI and RL-CAI
 
 ## Problem
 
@@ -8,21 +8,21 @@ Train a helpful *and* harmless assistant **without any human feedback labels for
 
 Large LMs can already *recognize* harm (chain-of-thought reasoning improves this), so push human supervision upstream to a written constitution and let the model generate the harm signal itself. Two stages:
 
-1. **Supervised (Critique → Revision → SFT):** the model critiques and revises its own harmful responses, guided by sampled principles, and is finetuned on the revisions → **SL-CAI**.
-2. **RL from AI Feedback (RLAIF):** a feedback model labels which of two responses is more harmless per a principle; these AI labels (mixed with human *helpfulness* labels) train a preference model, against which SL-CAI is RL-finetuned → **RL-CAI**.
+1. **SL-CAI:** generate a response, self-critique it against a sampled constitutional principle, revise it (iterated), then finetune on the harmlessness revisions from all revision steps plus helpfulness samples.
+2. **RL-CAI:** a feedback model labels response pairs by sampled principles; those AI harmlessness labels (mixed with human *helpfulness* labels) train a preference model, then SL-CAI is RL-finetuned against that PM.
 
 ## Method
 
-**Supervised stage.** For each red-team prompt, sample a (usually harmful) response from a helpful RLHF model. Append a randomly-drawn principle's *critique request*, sample a critique; append its *revision request*, sample a revision. The (prompt, revision) pair is formatted like the original, so the critique→revision loop iterates (≈4 revisions). Use ~16 principles, sampled per step — diversity aids later RL exploration — and few-shot exemplars to keep the model from confusing critique vs revision turns; sample at $T=1$. Finetune a *pretrained* model on all revisions plus helpfulness samples (to retain helpfulness): one epoch, constant LR = 0.5 × pretraining LR, batch size 1024. Critiques help smaller models and add transparency, so they are kept even though large models revise nearly as well directly.
+**SL-CAI.** For each red-team prompt, sample a (usually harmful) response from a helpful RLHF model. Append a randomly-drawn constitutional principle's *critique request*, sample a critique; append its *revision request*, sample a revision. The (prompt, revision) pair is formatted like the original, so the critique→revision loop iterates for about four revisions. Use ~16 principles, sampled per step — diversity aids later RL exploration — and few-shot exemplars to keep the model from confusing critique vs revision turns; sample at $T=1$. Finetune a *pretrained* model on the harmlessness revisions from all revision steps plus helpfulness samples (to retain helpfulness): one epoch, constant LR = 0.5 × pretraining LR, batch size 1024. Critiques add transparency and can scaffold the repair, so they are kept even when direct revision is a viable ablation.
 
-**RL stage.** SL-CAI generates response pairs. A feedback model is asked, as multiple choice, which response is more harmless given a sampled principle; the normalized log-probabilities of "(A)"/"(B)" become soft preference targets. Optionally use chain-of-thought ("Let's think step by step"), which is more accurate but overconfident — so **clamp** the CoT-derived probabilities to ~40–60% for calibration (otherwise RL drifts to extreme outputs). Mix these AI harmlessness comparisons with human helpfulness comparisons, train a preference model (the same RLHF PM procedure), and RL-finetune SL-CAI against it (standard PPO with a KL penalty). Use SL-CAI for both generation and RL initialization so the PM matches the policy distribution. No human labels for harm appear anywhere.
+**RL-CAI.** SL-CAI generates response pairs. A feedback model is asked, as multiple choice, which response is more harmless given a sampled principle; the normalized log-probabilities of "(A)"/"(B)" become soft preference targets. Optionally use chain-of-thought ("Let's think step-by-step"), which is more accurate but overconfident — so **clamp** the CoT-derived probabilities to ~40–60% for calibration (otherwise RL drifts to extreme outputs). Mix these AI harmlessness comparisons with human helpfulness comparisons, train a preference model (the same RLHF PM procedure), and RL-finetune SL-CAI against it (standard PPO with a KL penalty). Use SL-CAI for both generation and RL initialization so the PM matches the policy distribution. No human labels for harm appear anywhere.
 
 ## Code
 
 ```python
 PRINCIPLES = [ ... ]  # ~16 short written rules; each has a critique_request + revision_request
 
-# Supervised stage: critique -> revision -> SL-CAI
+# SL-CAI: supervised critique -> revision data.
 def make_harmless_sft_data(helpful_model, red_team_prompts, principles, n_revisions=4):
     data = []
     for prompt in red_team_prompts:
@@ -31,10 +31,11 @@ def make_harmless_sft_data(helpful_model, red_team_prompts, principles, n_revisi
             p = random.choice(principles)                         # diversity
             critique = sample(helpful_model, FEWSHOT + prompt + resp + p.critique_request, T=1.0)
             revision = sample(helpful_model, FEWSHOT + prompt + resp + critique + p.revision_request, T=1.0)
-            data.append((prompt, revision)); resp = revision      # iterate
+            data.append((prompt, revision))                       # keep revision from every step
+            resp = revision                                       # iterate
     return data
 
-# RL stage: AI feedback -> PM -> RLAIF
+# RL-CAI: AI feedback -> PM -> RL.
 def ai_label(fb, prompt, a, b, principle, use_cot=False):
     if use_cot:
         cot = sample(fb, COT_FEWSHOT + prompt + principle + a + b
@@ -45,14 +46,19 @@ def ai_label(fb, prompt, a, b, principle, use_cot=False):
     p = softmax([logprob(fb, ctx, " (A)"), logprob(fb, ctx, " (B)")])[0]
     return min(0.6, max(0.4, p)) if use_cot else p               # clamp overconfident CoT
 
+def make_harmless_preference_data(sl_cai, red_team_prompts, principles, use_cot=True):
+    prefs = []
+    for prompt in red_team_prompts:
+        a, b = sample(sl_cai, prompt, T=1.0), sample(sl_cai, prompt, T=1.0)
+        p = random.choice(principles)
+        prefs.append(((prompt, a, b), ai_label(feedback_model, prompt, a, b, p, use_cot)))
+    return prefs
+
 def build_assistant():
     sft = make_harmless_sft_data(helpful_rlhf, red_team_prompts, PRINCIPLES)
     sl_cai = finetune(pretrained, sft + helpfulness_samples,
                       lr=0.5 * PRETRAIN_LR, epochs=1, batch_size=1024)
-    prefs = [((prompt, a, b), ai_label(feedback_model, prompt, a, b,
-                                       random.choice(PRINCIPLES), use_cot=True))
-             for prompt in red_team_prompts
-             for a, b in [(sample(sl_cai, prompt, T=1.0), sample(sl_cai, prompt, T=1.0))]]
+    prefs = make_harmless_preference_data(sl_cai, red_team_prompts, PRINCIPLES)
     pm = train_preference_model(prefs + human_helpfulness_comparisons)
     return rlhf(sl_cai, all_prompts, pm, ref_model=sl_cai)        # RL-CAI
 ```

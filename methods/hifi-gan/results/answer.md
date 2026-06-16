@@ -1,6 +1,6 @@
 # HiFi-GAN, distilled
 
-HiFi-GAN is a GAN-based neural vocoder that inverts a mel-spectrogram to a 22.05 kHz raw waveform in a single parallel pass, matching autoregressive fidelity while running faster than real time. Its central idea: because speech is a sum of sinusoids at many periods, the discriminator should audit the waveform's **periodic** structure directly, not only progressively averaged (low-passed) views of it.
+HiFi-GAN is a GAN-based neural vocoder that inverts a mel-spectrogram to a 22.05 kHz raw waveform in a single parallel pass, aiming for autoregressive-level fidelity while running faster than real time. Its central idea: because speech is a sum of sinusoids at many periods, the discriminator should audit the waveform's **periodic** structure directly, not only progressively averaged (low-passed) views of it.
 
 ## The problem
 
@@ -8,7 +8,7 @@ A stage-two vocoder must turn a mel-spectrogram into a waveform that is both per
 
 ## Key ideas
 
-**Multi-Period Discriminator (MPD).** For each period `p ∈ {2, 3, 5, 7, 11}` (primes, to minimize redundant coverage), reshape the 1D waveform of length `T` losslessly into a 2D array of shape `(T/p, p)` and apply 2D convolutions with kernel **width 1** along the period axis. This processes each periodic phase independently — capturing periodicity without any low-pass averaging — and because it reshapes (rather than subsamples), gradients reach every timestep.
+**Multi-Period Discriminator (MPD).** For each period `p ∈ {2, 3, 5, 7, 11}` (primes, to minimize redundant coverage), reflect-pad the 1D waveform if needed, reshape it losslessly into a 2D array of shape `(T/p, p)`, and apply 2D convolutions with kernel **width 1** along the period axis. This processes each periodic phase independently — capturing periodicity without any low-pass averaging — and because it reshapes (rather than subsamples), gradients reach every timestep.
 
 **Multi-Scale Discriminator (MSD).** Three sub-discriminators on raw, 2×- and 4×-average-pooled audio (from MelGAN), to capture consecutive long-term structure. The raw-audio sub-discriminator uses spectral norm; the others weight norm.
 
@@ -30,7 +30,7 @@ L_D = Σ_k L_adv(D_k; G)
 
 with `λ_fm = 2`, `λ_mel = 45`. Here `x` is the real waveform, `s` its mel conditioning, `φ` the waveform→mel transform.
 
-**Config (V1):** hidden width 512, upsample kernels [16, 16, 4, 4], MRF kernel sizes [3, 7, 11], dilations [[1,1],[3,1],[5,1]]×3; leaky-ReLU slope 0.1; weight normalization throughout. Trained on LJSpeech (22.05 kHz, 80-band mel; FFT/win/hop = 1024/1024/256) with AdamW (β₁=0.8, β₂=0.99, wd=0.01), lr 2×10⁻⁴, 0.999/epoch decay.
+**Config (V1):** hidden width 512, upsample rates [8, 8, 2, 2], upsample kernels [16, 16, 4, 4], MRF kernel sizes [3, 7, 11], and residual dilation pairs [[1,1],[3,1],[5,1]] repeated for each kernel size. In code this is stored as `resblock_dilation_sizes = [(1,3,5), (1,3,5), (1,3,5)]`, because the second conv in each pair always uses dilation 1. Leaky-ReLU slope 0.1; weight normalization throughout. Trained on LJSpeech (22.05 kHz, 80-band mel; FFT/win/hop = 1024/1024/256) with AdamW (β₁=0.8, β₂=0.99, wd=0.01), lr 2×10⁻⁴, 0.999/epoch decay.
 
 ## Working code
 
@@ -167,4 +167,12 @@ def discriminator_loss(real, gen):
 
 def generator_loss(gen):
     return sum(torch.mean((1 - dg) ** 2) for dg in gen)
+
+def mel_l1(mel_real, mel_fake):
+    return torch.mean(torch.abs(mel_real - mel_fake))
+
+# feature_loss returns the lambda_fm-weighted term; the generator update sums:
+# generator_loss(mpd) + generator_loss(msd)
+# + feature_loss(mpd) + feature_loss(msd)
+# + 45 * mel_l1(mel_real, mel_fake)
 ```
