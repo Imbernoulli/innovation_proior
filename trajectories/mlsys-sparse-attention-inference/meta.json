@@ -1,0 +1,53 @@
+{
+  "task": "mlsys-sparse-attention-inference",
+  "title": "Long-Context Inference-Time Sparse Attention: from dense oracle to content-adaptive block-sparse",
+  "domain": "Systems & efficiency",
+  "metrics": [
+    "niah_8k",
+    "longbench_qasper",
+    "longbench_multifieldqa_en"
+  ],
+  "metric_columns": [
+    "niah_acc",
+    "qasper_f1",
+    "multifieldqa_f1"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dense",
+      "method": "Dense (full-attention oracle)",
+      "reasoning": "01-dense-reasoning.md",
+      "answer": "01-dense-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "bigbird",
+      "method": "BigBird (global + window + random block-sparse)",
+      "reasoning": "02-bigbird-reasoning.md",
+      "answer": "02-bigbird-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "streaming-llm",
+      "method": "StreamingLLM (attention sinks + sliding window)",
+      "reasoning": "03-streaming-llm-reasoning.md",
+      "answer": "03-streaming-llm-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "block-topk",
+      "method": "Block-Top-K (NSA-style content-adaptive block selection)",
+      "reasoning": "04-block-topk-reasoning.md",
+      "answer": "04-block-topk-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "Block-Top-K (NSA-style content-adaptive block selection)",
+  "ranking_basis": "All four rows are baseline:* is_final,true at seed 42 (single seed -> mean = seed value). dense is the oracle rung (density 1.0, --allow-dense, exempt from the 0.25 budget) and fixes the quality ceiling: niah 1.0, qasper_f1 0.1406, multifieldqa_f1 0.3447. Among the three budget-respecting static/adaptive sparse rungs, ranked weak->strong by aggregate quality: bigbird (niah 0.2, qasper 0.0871, multifieldqa 0.2298; sum 0.5169, and over budget on 2 of 3 densities) < streaming_llm (niah 0.2, qasper 0.1103, multifieldqa 0.213; sum 0.5233, all densities 0.2344 under budget) < block_topk (niah 0.26, qasper 0.1082, multifieldqa 0.2074; sum 0.5756, the only sparse rung to beat chance on NIAH at 0.26). block_topk is the strongest: it is the only budget-respecting method that breaks NIAH above 0.2, the discriminator the static rungs cannot move.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (sparse-attn-eval/custom_sparse_attn.py, the SparseAttention class, lines 31-103, fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, no code) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines only). Same-named-vs-paper diffs: (1) streaming-llm here is NOT the paper's KV-cache eviction + within-cache position-reindexing scheme -- the harness runs use_cache=False (full parallel forward), so it is a static sink+window mask over the (N,N) causal matrix with the window solved from mask_sum/denom to hit budget exactly; the cache/latency story does not transfer. (2) bigbird here has no learned W_Q/W_K/W_V (frozen model, inference), cannot append ETC/extended global tokens (fixed N, density over N(N+1)/2), and has no block-sparse kernel (no Triton -> masked-softmax over full logits); global tokens are internal roles on the first 2 blocks, random count is sized with a ~12% conservative budget margin (round(0.25*0.88*n_blocks)) and sampled once into a deterministic cache. (3) block-topk here is the inference re-expression of the NSA block-selection branch: parameter-free mean-pooled-key block representatives (no learned projection), per-replicated-head selection (harness pre-replicates GQA, so the kernel-level cross-group importance sum is unnecessary), masked-softmax not a block-gather kernel; H2O/SnapKV/Quest are excluded by the task because their cache-keyed importance drifts under parallel forward. (4) dense is the empty edit (GQA/RoPE/is_causal all applied by the loop before the module). No finale added: block_topk (NSA block-selection) is already the strongest content-adaptive method on the edit surface, and the genuinely-stronger published candidates that fit parallel-forward without a decode cache are not clearly better here (flexprefill is already a leaderboard baseline with worse numbers: niah 0.14); the cache-keyed methods are out of scope by construction. All methods/<slug> reuse traces existed (streaming-llm, streamingllm, bigbird, block-topk, dense); none missing."
+}
