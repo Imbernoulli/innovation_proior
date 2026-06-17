@@ -12,21 +12,21 @@ But "measure distance in feature space" the way the synthesis papers do is too s
 
 Take the magnitude problem first, because the fix shapes the formula. At each spatial location of a feature map I have a vector across channels, `y^l_{hw} ∈ ℝ^{C_l}`. The issue is its overall length varies enormously between locations, channels, and layers. The clean way to neutralize that is to normalize each such vector to unit length in the channel dimension before comparing: `ŷ^l_{hw} = y^l_{hw} / ||y^l_{hw}||₂`. Now every location contributes a *direction*, not a magnitude, and the comparison across layers is on the same footing. Let me check what the squared L2 of normalized differences actually computes, because it should reduce to something familiar. With unit vectors `a, b`, `||a − b||² = ||a||² + ||b||² − 2 a·b = 2 − 2 cos∠(a,b)`. So comparing channel-normalized features with squared L2 is, up to a constant and factor, *cosine distance* in feature space. Good — that's a principled, magnitude-free comparison, and it means the un-calibrated version of my metric is exactly "cosine distance between deep features," which is a clean baseline I can fall back on. In code the normalization needs a floor so a zero-activation location doesn't divide by zero: `ŷ = y / (||y||₂ + ε)` with a tiny `ε`, say `1e-10`, well below any real activation norm.
 
-Now combine layers and reduce to a scalar. For each layer `l`, I have the per-location squared difference of normalized features. I want a single number, so I average over the spatial positions `(h, w)` of that layer — that makes it a patch-level quantity, robust to exactly where in the patch the difference sits — and then I sum the per-layer contributions to fold in low-level and high-level evidence together. Writing it out, with `w_l = 1`:
+Now combine layers and reduce to a scalar. For each layer `l`, I have the per-location squared difference of normalized features. I want a single number, so I average over the spatial positions `(h, w)` of that layer — that makes it a patch-level quantity, robust to exactly where in the patch the difference sits — and then I sum the per-layer contributions to fold in low-level and high-level evidence together. Writing it out, with all channel coefficients equal to 1:
 
   `d(x, x0) = Σ_l (1 / (H_l W_l)) Σ_{h,w} || ŷ^l_{hw} − ŷ0^l_{hw} ||²₂`.
 
 That is the cosine-distance-across-layers metric, and it is the thing I can compute with no human data at all, straight out of any frozen pretrained net. Before I learn anything, this gives me the clean control I need: compare the same normalized feature-distance recipe across VGG, AlexNet, SqueezeNet, self-supervised and unsupervised trunks, and a random-weight trunk. If the useful object is really the representation rather than ImageNet labels specifically, trained visual networks should give a much more plausible ordering of distortions than the shallow formulas, while a random network should be the sanity check that architecture alone is not enough. The definition of the distance does not depend on those comparisons. They only tell me whether the borrowed embedding is worth calibrating. For a usable loss, a small fast backbone such as AlexNet is a sensible default because the formula only needs the intermediate feature maps and their channel counts.
 
-Cosine distance over features gives me the nonlearned baseline. Can the human data calibrate it without asking the triplets to learn the representation itself? I can keep the representation frozen and learn the *smallest possible* correction on top of it. Look at the metric again: it weights every channel of every layer equally. But surely not every channel is equally relevant to perception — some directions in feature space carry variation a person would call a real difference, others carry variation people ignore. The minimal learnable correction is therefore a single non-negative scalar per channel that rescales that channel's contribution before the L2:
+Cosine distance over features gives me the nonlearned baseline. Can the human data calibrate it without asking the triplets to learn the representation itself? I can keep the representation frozen and learn the *smallest possible* correction on top of it. Look at the metric again: it weights every channel of every layer equally. But surely not every channel is equally relevant to perception — some directions in feature space carry variation a person would call a real difference, others carry variation people ignore. The minimal learnable correction is therefore a single non-negative coefficient per channel on the squared channel disagreement:
 
-  `d(x, x0) = Σ_l (1 / (H_l W_l)) Σ_{h,w} || w_l ⊙ (ŷ^l_{hw} − ŷ0^l_{hw}) ||²₂`,
+  `d(x, x0) = Σ_l (1 / (H_l W_l)) Σ_{h,w,c} α^l_c (ŷ^l_{hwc} − ŷ0^l_{hwc})²`, with `α^l_c ≥ 0`.
 
-with `w_l ∈ ℝ^{C_l}` a learned vector, one per layer. Setting `w_l = 1` for all `l` recovers cosine distance exactly, so this is a strict generalization that can only help if there is signal in the data. And the parameter count is tiny — for VGG it is 64+128+256+512+512 = 1472 numbers, for AlexNet 64+192+384+256+256 = 1152. That's the point: I am not fitting a similarity *function* with millions of parameters that can memorize the context-dependent labels; I am calibrating a fixed feature space with a couple of thousand scalars. The code can store this calibration as a `1×1` convolution from `C_l` channels to `1` channel with no bias, applied to the squared per-location differences. Written as the equation above, the conceptual scale sits inside the norm; written the way the package computes it, the no-bias `1×1` layer stores the equivalent nonnegative coefficients after the square has been absorbed into the linear weights. Dropout before that linear layer is light regularization while fitting the calibration.
+The paper writes the same object as a channel scale `w_l` inside the squared norm, `||w_l ⊙ (ŷ^l_{hw} − ŷ0^l_{hw})||²₂`; in implementation the stored quantity is the equivalent `α = w²`, learned directly as a `1×1` convolution applied to the squared per-location differences. Setting every stored coefficient to 1 recovers cosine distance exactly, so this is a strict generalization that can only help if there is signal in the data. And the parameter count is tiny — for VGG it is 64+128+256+512+512 = 1472 numbers, for AlexNet 64+192+384+256+256 = 1152. That's the point: I am not fitting a similarity *function* with millions of parameters that can memorize the context-dependent labels; I am calibrating a fixed feature space with a couple of thousand scalars. Dropout before the `1×1` layer is light regularization while fitting the calibration.
 
 One constraint on the stored linear coefficients is forced, not optional. The package applies the learned `1×1` layer to squared channel differences; if one of those coefficients became negative, increasing a feature difference in that channel would *lower* the distance. That would destroy the monotonic meaning of the score. So the learned coefficients must be nonnegative. The clean way to enforce this during training is projection: after each gradient step, clamp any negative `1×1` weight back to zero. It is a projected-gradient step onto the nonnegative orthant, and it costs nothing.
 
-Now, how do I actually fit `w` to the human triplets without falling back into the trap of regressing the raw preference? The data is a triplet `(x, x0, x1, h)` where `h = 0` means the person chose `x0`, `h = 1` means the person chose `x1`, and aggregated judgments can sit between them. From my metric I get two distances, `d0 = d(x, x0)` and `d1 = d(x, x1)`. The naive thing is a ranking loss: force a fixed margin, push `d0` and `d1` apart by some constant whenever the human prefers one. Let me think about whether a *constant* margin is right. It isn't — some pairs are nearly tied for people (a genuinely ambiguous triplet) and some are obvious, and a fixed margin punishes the metric for not separating the ambiguous ones as hard as the obvious ones. The margin should depend on the pair. So instead of hard-coding the relationship between `(d0, d1)` and the preference, I let a small network `G` learn it: feed it the distance pair and have it output a probability `ĥ = G(d0, d1) ∈ (0, 1)` that the human prefers `x1`, then train with binary cross-entropy against the recorded preference,
+Now, how do I actually fit these coefficients to the human triplets without falling back into the trap of regressing the raw preference? The data is a triplet `(x, x0, x1, h)` where `h = 0` means the person chose `x0`, `h = 1` means the person chose `x1`, and aggregated judgments can sit between them. From my metric I get two distances, `d0 = d(x, x0)` and `d1 = d(x, x1)`. The naive thing is a ranking loss: force a fixed margin, push `d0` and `d1` apart by some constant whenever the human prefers one. Let me think about whether a *constant* margin is right. It isn't — some pairs are nearly tied for people (a genuinely ambiguous triplet) and some are obvious, and a fixed margin punishes the metric for not separating the ambiguous ones as hard as the obvious ones. The margin should depend on the pair. So instead of hard-coding the relationship between `(d0, d1)` and the preference, I let a small network `G` learn it: feed it the distance pair and have it output a probability `ĥ = G(d0, d1) ∈ (0, 1)` that the human prefers `x1`, then train with binary cross-entropy against the recorded preference,
 
   `L(x, x0, x1, h) = − h log G(d0, d1) − (1 − h) log(1 − G(d0, d1))`.
 
@@ -108,10 +108,10 @@ class NetLinLayer(nn.Module):
 
 class LPIPS(nn.Module):
     """Conceptual form:
-    d = sum_l (1/H_l W_l) sum_{h,w} ||w_l * (yhat0^l - yhat1^l)||_2^2.
-    The package stores the equivalent nonnegative coefficients on squared differences in 1x1 convs."""
+    d = sum_l mean_hwc alpha_lc * (yhat0^l - yhat1^l)^2, with alpha_lc >= 0."""
 
-    def __init__(self, net='alex', pretrained=True, version='0.1', use_dropout=True, model_path=None):
+    def __init__(self, net='alex', pretrained=True, version='0.1',
+                 use_dropout=True, model_path=None, eval_mode=True):
         super().__init__()
         assert net == 'alex'
         self.version = version
@@ -130,6 +130,8 @@ class LPIPS(nn.Module):
                 model_path = os.path.abspath(os.path.join(
                     os.path.dirname(inspect.getfile(self.__init__)), 'weights/v%s/%s.pth' % (version, net)))
             self.load_state_dict(torch.load(model_path, map_location='cpu'), strict=False)
+        if eval_mode:
+            self.eval()
 
     def forward(self, in0, in1, normalize=False):
         if normalize:                                  # inputs given in [0,1] -> map to [-1,1]
@@ -159,15 +161,26 @@ class Dist2LogitLayer(nn.Module):
         return self.model(torch.cat((d0, d1, d0 - d1, d0 / (d1 + eps), d1 / (d0 + eps)), dim=1))
 
 
-def train_on_human_judgments(metric, G, triplet_loader, nepoch=5, nepoch_decay=5, lr=1e-4):
-    bce = nn.BCELoss()
-    params = list(metric.lins.parameters()) + list(G.parameters())   # frozen trunk: linear coeffs + G
+class BCERankingLoss(nn.Module):
+    def __init__(self, chn_mid=32):
+        super().__init__()
+        self.net = Dist2LogitLayer(chn_mid=chn_mid)
+        self.loss = nn.BCELoss()
+
+    def forward(self, d0, d1, judge_signed):
+        target = (judge_signed + 1.0) / 2.0
+        return self.loss(self.net(d0, d1), target)
+
+
+def train_on_human_judgments(metric, rank_loss, triplet_loader, nepoch=5, nepoch_decay=5, lr=1e-4):
+    metric.train()
+    rank_loss.train()
+    params = list(metric.lins.parameters()) + list(rank_loss.net.parameters())   # frozen trunk: linear coeffs + G
     opt = torch.optim.Adam(params, lr=lr, betas=(0.5, 0.999))
     for epoch in range(1, nepoch + nepoch_decay + 1):
         for x, x0, x1, h in triplet_loader:
             d0, d1 = metric(x, x0), metric(x, x1)
-            pred = G(d0, d1)                                          # P(h=1), i.e. human prefers x1
-            loss = bce(pred, h.view_as(pred))                        # h=0 for x0, h=1 for x1
+            loss = rank_loss(d0, d1, h.view_as(d0) * 2.0 - 1.0)       # raw h=0 for x0, h=1 for x1
             opt.zero_grad(); loss.backward(); opt.step()
             for lin in metric.lins:                                  # project learned coeffs >= 0
                 for m in lin.model:

@@ -12,10 +12,10 @@ as a link-prediction baseline is exactly the non-variational GAE.
 
 Unsupervised representation learning and link prediction on an undirected graph given by
 adjacency `A` (with optional node features `X`): learn a per-node embedding `z_i` and a way to
-score node pairs so that held-out true edges rank above sampled non-edges. Unlike random-walk
-embeddings (DeepWalk), spectral clustering, or plain matrix factorization — all structure-only,
-transductive, and trained as multi-stage pipelines — it ingests node features and trains end
-to end under a single objective.
+score node pairs so that held-out true edges rank above sampled non-edges. Unlike the common
+predecessors — structure-only transductive embeddings such as spectral clustering or matrix
+factorization, and random-walk pipelines such as DeepWalk — it ingests node features and trains
+end to end under a single objective.
 
 ## Key idea
 
@@ -44,13 +44,16 @@ Z = GCN(X, A)
 Loss — balanced reconstruction cross-entropy. Dense form (small graphs), positives up-weighted:
 
 ```
-L = norm · mean_{i,j}  weighted_BCE_with_logits( logit = z_i^T z_j, target = A_ij, pos_weight )
-pos_weight = (N² − ΣA) / ΣA          # negatives-to-positives ratio
-norm       = N² / ((N² − ΣA) · 2)    # keeps the loss on a comparable scale
+L = norm · mean_{i,j} weighted_BCE_with_logits(
+        logit = z_i^T z_j, target = A_label[i,j], pos_weight )
+pos_weight = (N² − ΣA_train) / ΣA_train          # negatives-to-positives ratio
+norm       = N² / ((N² − ΣA_train) · 2)          # keeps the loss on a comparable scale
 ```
 
-Here `ΣA` is the number of positive entries in the training adjacency used for rebalancing. In
-the dense TensorFlow path, the label matrix is then formed as `adj_train + I` before flattening.
+Here `ΣA_train` is the number of positive entries in `adj_train`, before reconstruction
+self-loop labels are added. In the dense TensorFlow path, the label matrix is then formed as
+`A_label = adj_train + I` before flattening, while `pos_weight` and `norm` still use
+`adj_train`.
 
 Sparse / scalable form (subsample non-edges per step):
 
@@ -134,6 +137,7 @@ class GraphConv(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.W = nn.Linear(in_dim, out_dim, bias=False)
+        nn.init.xavier_uniform_(self.W.weight)       # Glorot, matching the canonical code
 
     def forward(self, H, A_norm):
         return A_norm @ self.W(H)

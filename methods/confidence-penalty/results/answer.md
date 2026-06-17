@@ -14,9 +14,9 @@ an over-confident network places almost all its softmax mass on one class (low e
 Standard regularizers (weight decay, dropout, batch norm, early stopping) all act on weights
 or hidden activations and leave the output distribution unregularized. A good output
 regularizer should (1) improve generalization across architectures and tasks, (2) drop in
-without retuning the existing hyperparameters, (3) require no arbitrary choice of target
-probabilities for incorrect labels (no assumed label prior), and (4) be invariant to the
-network's parameterization — the output has a natural scale, the weights do not.
+without retuning the existing hyperparameters, (3) avoid writing an arbitrary wrong-label
+target distribution into the training labels, and (4) be invariant to the network's
+parameterization — the output has a natural scale, the weights do not.
 
 ## Key idea
 
@@ -41,10 +41,10 @@ dH / dz_i = p_i ( - log p_i - H(p) ),
 ```
 
 the **weighted deviation from the mean surprisal** (`- log p_i` is class `i`'s surprisal, `H`
-its mean under `p`). It pulls the dominant (confident) logit down and, because of the `p_i`
-weight, leaves near-zero classes essentially untouched — so it flattens toward uniform without
-destroying the relative probabilities among the incorrect classes ("dark knowledge"). One
-extra reduction over logits already computed; no auxiliary forward/backward passes.
+its mean under `p`). Under gradient descent on the loss term `- beta H`, it pulls the dominant
+(confident) logit down and, because of the `p_i` weight, barely touches near-zero classes — so
+it flattens toward uniform without explicitly forcing all incorrect classes to the same target.
+One extra reduction over logits already computed; no auxiliary forward/backward passes.
 
 ## Connection to label smoothing (the KL direction)
 
@@ -61,10 +61,11 @@ directions:
   over-confident classes — and it specifies no target for incorrect classes.
 
 So the confidence penalty is label smoothing with the KL direction reversed; the reversal is
-exactly why it (a) adapts its pressure to the model's current confidence, (b) preserves
-incorrect-class ratios, and (c) needs no assumed label prior `u` (important when label
-frequencies are non-uniform, e.g. language modeling). Choosing a non-uniform reference `u` in
-`D_KL(p || u)` generalizes to a family of confidence regularizers.
+exactly why it (a) adapts its pressure to the model's current confidence, (b) avoids explicitly
+equalizing incorrect-class ratios, and (c) avoids inserting a fixed wrong-label target
+distribution into every example. In its entropy form, the uniform distribution remains the
+maximum-entropy reference point; choosing a non-uniform reference `u` in `D_KL(p || u)`
+generalizes to a family of confidence regularizers when a task supplies such a prior.
 
 ## Annealing and thresholding
 
@@ -119,7 +120,8 @@ def compute_regularization(model, inputs, outputs, targets, config):
     return -beta * entropy                        # negative entropy => penalize confidence
 ```
 
-Thresholded (hinge) variant — penalize only when entropy has fallen below `Gamma`:
+Thresholded (hinge) variant — penalize each example only when its entropy has fallen below
+`Gamma`:
 
 ```python
 def compute_regularization_thresholded(model, inputs, outputs, targets, config):
@@ -128,6 +130,6 @@ def compute_regularization_thresholded(model, inputs, outputs, targets, config):
     Gamma = float(config.get("entropy_threshold", 0.8))
     log_p = F.log_softmax(outputs, dim=-1)
     p = log_p.exp()
-    entropy = -(p * log_p).sum(dim=-1).mean()
-    return beta * torch.clamp(Gamma - entropy, min=0.0)
+    entropy = -(p * log_p).sum(dim=-1)
+    return beta * torch.clamp(Gamma - entropy, min=0.0).mean()
 ```

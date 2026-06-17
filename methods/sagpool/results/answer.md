@@ -40,8 +40,8 @@ Two design points carry the method:
 
 - **Topology-aware scoring at sparse cost.** Replacing a feature-only projection `y = Xp/||p||`
   with a single-output graph convolution makes the keep/drop decision depend on graph
-  structure, while costing only one length-`F` weight vector per layer and reusing the
-  normalized Laplacian already computed by the block's convolution. Indexing `A_{idx,idx}`
+  structure, while costing only one length-`F` weight vector per layer and using the same
+  sparse normalized-adjacency operator as the block's convolution. Indexing `A_{idx,idx}`
   (rather than a dense contraction `S^T A S`) keeps storage at O(|V|+|E|) and parameters
   independent of node count.
 - **The gate is the differentiable bridge.** `top-rank` is a discrete `argsort` with zero
@@ -49,7 +49,7 @@ Two design points carry the method:
   kept features by `tanh(Z_idx)` makes the forward features depend continuously on `Z`, so
   gradient flows back to `Θ_att`. `tanh` is bounded (a wild score can't blow up a node),
   centered at zero (low-importance boundary nodes are suppressed toward zero, and sign is
-  preserved), and monotone (ranking order and gate magnitude agree).
+  preserved), and monotone (ranking order and signed gate value agree).
 
 A **ratio** `k ∈ (0,1]` (keep `⌈kN⌉` nodes), not a fixed count, adapts the coarsening to each
 graph's size and is what lets one module serve graphs of very different sizes.
@@ -65,8 +65,9 @@ scoring convs, `Z = σ(GNN_2(σ(GNN_1(X, A)), A))`. Multi-head: average `M` scor
 ## Architectures
 
 - **Hierarchical:** three blocks, each a graph-convolution layer followed by a SAGPool layer;
-  a per-block readout `s = (1/N Σ_i x_i) || (max_i x_i)` (mean concatenated with max); the
-  block readouts are summed and fed to a linear classifier.
+  a per-block readout combines mean and max. The paper writes `s = (1/N Σ_i x_i) || max_i x_i`;
+  the official implementation concatenates max then mean and sums the block readouts before the
+  linear classifier.
 - **Global:** three graph-convolution layers, outputs concatenated, one SAGPool readout, linear
   classifier. ReLU activations; graph convolution fixed to the Kipf-Welling rule for fairness
   across methods.
@@ -79,7 +80,8 @@ pooling layer = one `F×1` convolution weight, independent of `N`.
 ## Working code
 
 A SAGPool layer (scalar GCN score, `tanh` gate, sparse adjacency index) and a hierarchical
-`GraphReadout` built from three conv-then-pool blocks with summed mean||max readouts:
+`GraphReadout` built from three conv-then-pool blocks with summed max||mean readouts, matching
+the official implementation order:
 
 ```python
 import torch
@@ -98,16 +100,16 @@ class SAGPool(nn.Module):
         super().__init__()
         self.in_channels = in_channels
         self.ratio = ratio
-        # the only parameter: Z = sigma(D^-1/2 A~ D^-1/2 X Theta_att), Theta_att in R^{F x 1}
+        # Scalar GCN score; paper notation applies sigma to obtain Z.
         self.score_layer = Conv(in_channels, 1)
         self.non_linearity = non_linearity
 
     def forward(self, x, edge_index, edge_attr=None, batch=None):
         if batch is None:
             batch = edge_index.new_zeros(x.size(0))
-        score = self.score_layer(x, edge_index).squeeze()                 # Z in R^N
-        perm = topk(score, self.ratio, batch)                            # top-rank(Z, ceil(ratio*N))
-        x = x[perm] * self.non_linearity(score[perm]).view(-1, 1)        # gate -> trainable scores
+        score = self.score_layer(x, edge_index).squeeze()                 # raw scalar score
+        perm = topk(score, self.ratio, batch)                            # same order as tanh(score)
+        x = x[perm] * self.non_linearity(score[perm]).view(-1, 1)        # tanh gate
         batch = batch[perm]
         edge_index, edge_attr = filter_adj(                              # A[idx, idx], stays sparse
             edge_index, edge_attr, perm, num_nodes=score.size(0))
@@ -116,7 +118,7 @@ class SAGPool(nn.Module):
 
 class GraphReadout(nn.Module):
     """Hierarchical SAGPool readout: 3 x (GCN conv -> SAGPool), each block summarized
-    by mean||max; block summaries summed into one graph-level vector."""
+    by max||mean in the official-code order; block summaries are summed."""
 
     def __init__(self, hidden_dim, num_layers, ratio=0.5):
         super().__init__()
@@ -127,11 +129,11 @@ class GraphReadout(nn.Module):
         self.pool2 = SAGPool(hidden_dim, ratio=ratio)
         self.conv3 = GCNConv(hidden_dim, hidden_dim)
         self.pool3 = SAGPool(hidden_dim, ratio=ratio)
-        self.output_dim = hidden_dim * 2          # mean||max per block, summed across blocks
+        self.output_dim = hidden_dim * 2          # max||mean per block, summed across blocks
 
     def _readout(self, x, batch):
-        # s = (1/N sum_i x_i) || (max_i x_i)
-        return torch.cat([global_mean_pool(x, batch), global_max_pool(x, batch)], dim=-1)
+        # Official code uses max||mean; the paper equation writes mean||max.
+        return torch.cat([global_max_pool(x, batch), global_mean_pool(x, batch)], dim=-1)
 
     def forward(self, x, edge_index, batch, layer_outputs):
         x = F.relu(self.conv1(x, edge_index))
@@ -149,10 +151,13 @@ class GraphReadout(nn.Module):
         return s1 + s2 + s3
 ```
 
-For the modern PyTorch-Geometric library form, the same layer is `SAGPooling(in_channels,
-ratio=0.5, GNN=GCNConv, nonlinearity='tanh')`: it computes `score = tanh((X·w)/||w||)` (or a
-graph-conv score), `perm = topk(score, ratio, batch)`, `x = x[perm] * score[perm]`, and filters
-edges to the retained nodes, returning `(x, edge_index, edge_attr, batch, perm, score)`.
+For the modern PyTorch-Geometric library form, use
+`SAGPooling(in_channels, ratio=0.5, GNN=GCNConv, nonlinearity='tanh')` to match the paper's
+GCN-score choice. PyG defaults to `GraphConv` if `GNN` is not supplied. With `min_score=None`,
+the wrapper computes a scalar `GNN(X,A)` attention signal, passes it through `SelectTopK` with
+the tanh nonlinearity, gates retained features by the returned score, and filters edges with
+`FilterEdges`, returning `(x, edge_index, edge_attr, batch, perm, score)`. With `min_score` set,
+it switches to a softmax-threshold rule and ignores `ratio`.
 
 ## Relation to prior methods
 

@@ -121,9 +121,9 @@ training signal shapes *only* through the policy-gradient/return objective; noth
 makes the hidden state an explicit representation of *which task* the agent is in or *how
 uncertain* it is. There is no distribution to read an uncertainty off of, and the hidden state is
 trained purely to be useful for the next action rather than to be a calibrated summary of the task.
-In the gridworld and locomotion settings, a high-dimensional deterministic hidden state (e.g.
-128-dim) is observed to drift and behave unstably when the task is reset across multiple rollouts,
-and there is no separate signal grounding the hidden state in the task structure.
+A high-dimensional deterministic hidden state can mix task identity, transient episode details, and
+exploration bookkeeping in the same vector, with no separate signal grounding it in the task
+structure.
 
 **Probabilistic per-transition context — PEARL (Rakelly et al. 2019).** Learn a latent context
 variable `z` summarizing the task, infer its posterior with an amortized encoder, and condition an
@@ -263,13 +263,18 @@ class Agent(nn.Module):
         params = params.view(context.size(0), -1, self.context_encoder.output_size)
         mu = params[..., :self.latent_dim]
         sigma_squared = F.softplus(params[..., self.latent_dim:])
-        # aggregate into the posterior over the latent task, sample z, condition policy
-        ...
+        posterior = [
+            product_of_gaussians(task_mu, task_sigma_squared)
+            for task_mu, task_sigma_squared in zip(mu, sigma_squared)
+        ]
+        posterior_mu = torch.stack([p[0] for p in posterior])
+        posterior_sigma_squared = torch.stack([p[1] for p in posterior])
+        z = posterior_mu + torch.sqrt(posterior_sigma_squared) * torch.randn_like(posterior_mu)
+        return z, posterior_mu, posterior_sigma_squared
 
     def reset_belief(self, num_tasks=1):
         # reset the belief to the prior at the start of a new task
         self.context_encoder.reset(num_tasks)
-        ...
 
 
 def meta_train(task_distribution, agent, rl_optimizer):
@@ -282,5 +287,5 @@ def meta_train(task_distribution, agent, rl_optimizer):
             # (optional) train the encoder with an auxiliary model objective
 ```
 
-The final encoder code fills exactly the `ContextEncoder` stubs above (`__init__`, `forward`,
-`reset`); the surrounding loop, the posterior aggregation, and the policy are unchanged.
+The open design problem is to fill exactly the `ContextEncoder` stubs above (`__init__`,
+`forward`, `reset`); the surrounding loop, the posterior aggregation, and the policy are unchanged.

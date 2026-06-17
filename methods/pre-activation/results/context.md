@@ -9,14 +9,14 @@ match the shallower net and then improve on it. Reality contradicts this. Past a
 layers makes a plain feed-forward convolutional net *worse*, and crucially worse on the
 *training* set, not just the test set — so it is not overfitting, it is an optimization
 failure. Residual reformulation (below) pushes the usable depth dramatically — networks of
-100+ layers train and generalize well — but the same wall reappears further out: at ~1000
-layers even a residual net trains sluggishly at the start and a very wide/deep residual net
-can do *worse* than a more moderate one. The precise problem is to understand what still
-obstructs gradient and signal flow once identity shortcuts are in place, and to redesign the
-repeating building block so that the path connecting any two layers is as undistorted as
-possible — making extremely deep nets both easier to optimize and better-generalizing — while
-adding no parameters and no real computation, and changing nothing about the data pipeline,
-optimizer, classifier head, or initialization.
+100+ layers train and generalize well — but the depth lever is still not automatically a
+generalization lever: on CIFAR-10, a 1202-layer residual net can fit the training set extremely
+well yet test worse than a much smaller 110-layer residual net. The precise problem is to
+understand whether the repeating residual block still places any avoidable operation on the
+direct signal/gradient path once identity shortcuts are in place, and to redesign only that
+block so the path through long same-shape stretches is as undistorted as possible, while adding
+no parameters and no real computation and changing nothing about the data pipeline, optimizer,
+classifier head, or initialization.
 
 ## Background
 
@@ -45,13 +45,13 @@ y = F(x, {W_i}) + x ,     (identity shortcut, dims match)
 x_next = ReLU(y) ,
 ```
 
-where `F` is two stacked 3x3 convs each followed by BN and ReLU (with the final ReLU applied
-*after* the addition). Empirically the learned residuals have small responses, supporting the
-view that the identity reference is good preconditioning. This is what unlocked 100+-layer
-nets. When the channel count or spatial size changes, the shortcut cannot be a bare identity:
-either zero-pad the extra channels (parameter-free, "option A") or use a 1x1 convolution to
-project (parameter-carrying, "option B"); identity/projection were found sufficient and
-projection was reserved for dimension changes only.
+where `F` is `conv-BN-ReLU-conv-BN`, followed by addition and then the final ReLU. Empirically
+the learned residuals have small responses, supporting the view that the identity reference is
+good preconditioning. This is what unlocked 100+-layer nets. When the channel count or spatial
+size changes, the shortcut cannot be a bare identity: either zero-pad the extra channels
+(parameter-free, "option A") or use a 1x1 convolution to project (parameter-carrying, "option
+B"); identity/occasional projection were found sufficient, while projection on every shortcut
+was not treated as essential.
 
 **Batch Normalization (Ioffe & Szegedy 2015).** For each scalar feature, normalize over the
 mini-batch to zero mean and unit variance, then apply a learned per-channel scale `γ` and
@@ -87,12 +87,12 @@ deeper stack provably *can* represent everything a shallower one can.
 with `F` = conv-BN-ReLU-conv-BN and an identity shortcut, where the final ReLU is applied
 *after* the element-wise addition. Core idea: the additive shortcut preconditions the
 optimization toward identity, letting 100+-layer nets train. **Limitation it leaves open:**
-the gains do not continue smoothly to extreme depth. As reported by He et al. (2016a), a
+the gains do not continue automatically to extreme depth. As reported by He et al. (2016a), a
 1202-layer net (19.4M params) reaches 7.93% on CIFAR-10 — *worse* than a 110-layer net (1.7M
-params, 6.61%) — and the very deep net's training loss falls only slowly at the start of
-training. So at moderate depth the unit works well, but the depth lever stops paying off and
-even reverses past ~1000 layers, even though the deeper net's training error is comparable
-(i.e. the wall is back, and it is not simply overfitting at moderate depth).
+params, 6.61%) — even though the deeper net can drive training error very low; they attribute
+this case to overfitting on the small dataset. So at moderate depth the unit works well, but
+at ~1000 layers the design question is no longer just "can it fit?" It is whether the block
+keeps optimization and regularization as clean as possible when depth is pushed hard.
 
 **Highway Networks (Srivastava, Greff & Schmidhuber 2015).** Replace the bare additive
 shortcut with a learned, data-dependent gate. The block computes
@@ -116,8 +116,9 @@ The natural yardsticks already in use for block/architecture design at this time
 - **CIFAR-10 and CIFAR-100** (Krizhevsky 2009): 32x32 natural images, 10 and 100 classes,
   50k train / 10k test. The standard recipe trains from scratch with SGD, mini-batch 128
   (split across 2 GPUs), momentum 0.9, weight decay 1e-4, He initialization; learning rate
-  starts at 0.1 and is divided by 10 at fixed iteration milestones (a warmup at lr 0.01 for
-  the first few hundred iterations is sometimes used for very deep nets). Augmentation is the
+  starts at 0.1 and is divided by 10 at fixed iteration milestones (32k and 48k iterations in
+  the CIFAR residual-net recipe, with a 0.01 warmup for roughly the first 400 iterations in
+  the very deep cases). Augmentation is the
   light standard: 4-pixel zero-pad then random 32x32 crop, plus random horizontal flip. The
   CIFAR ResNet family is built from `n` residual units per stage over three stages of feature
   widths {16, 32, 64} (basic) or with bottleneck units; depth is `6n+2` (basic) or `9n+2`
@@ -204,7 +205,7 @@ class ResNet(nn.Module):
         return self.linear(out)
 
 
-# Existing training loop (fixed): SGD, cosine schedule, standard augmentation.
+# Existing training loop (fixed): SGD, step learning-rate schedule, standard augmentation.
 def train(model, loss_fn, data_loader, optimizer):
     for inputs, targets in data_loader:
         optimizer.zero_grad()

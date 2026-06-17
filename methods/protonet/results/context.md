@@ -64,13 +64,13 @@ arithmetic mean — argmin_z Σ_{x∈X} d_φ(x, z) = (1/|X|) Σ_x x — and, con
 distortion function with this mean-as-minimizer property must be a Bregman divergence (the family
 is exhaustive for it). They also established a bijection between regular exponential-family
 densities and regular Bregman divergences: every density p_ψ(z|θ) = exp{zᵀθ − ψ(θ) − g_ψ(z)} can
-be rewritten as exp{−d_φ(z, μ(θ)) − g_φ(z)}. Second, a diagnostic observation reported across
-this line of work: the *choice of distance* is not a cosmetic knob — using squared Euclidean
-rather than the more common cosine similarity can change few-shot accuracy substantially, and
-the gap is largest precisely when a method summarizes a class by averaging embeddings. Third,
-the empirical regularity that episodic training improves generalization, and that training on
-*harder* episodes (more classes per episode than at test time) can help, were observed in this
-period.
+be rewritten as exp{−d_φ(z, μ(θ)) − g_φ(z)}. Second, the *choice of distance* is not a cosmetic
+knob: NCA is built from negative squared Euclidean/Mahalanobis distances, nearest-class-mean
+classifiers use Mahalanobis distances to class means, and Matching Networks default to cosine
+similarity. These competing choices make the distance an open design variable, not a harmless
+implementation detail. Third, the prior episodic work typically chooses the episode "way" and
+"shot" to resemble the few-shot test task; whether those knobs must match test conditions exactly
+remains an open design question.
 
 ## Baselines
 
@@ -141,9 +141,10 @@ The yardsticks already established by this prior work:
   Euclidean), the number of classes per training episode ("way"), and whether the training shot
   matches the test shot.
 - A standard backbone in this setting is a four-block convolutional embedding
-  (each block: 3×3 conv → batch norm → ReLU → 2×2 max-pool); deeper ResNet-12 backbones with a
-  640-dim feature vector are also used. Optimization is by SGD (with Adam in some setups), a
-  modest learning rate, and a step schedule.
+  (each block: 3×3 conv -> batch norm -> ReLU -> 2×2 max-pool); on 28×28 Omniglot inputs this
+  yields a 64-dimensional embedding, while 84×84 miniImageNet inputs produce a larger flattened
+  embedding under the same block pattern. Optimization is by SGD-style episodic updates, commonly
+  with Adam and a step schedule.
 
 ## Code framework
 
@@ -162,7 +163,7 @@ from torch import Tensor
 
 
 def make_backbone(use_pooling: bool = True) -> nn.Module:
-    """Shared convolutional/ResNet embedding network: image -> 640-dim feature vector."""
+    """Shared embedding network: image -> feature vector."""
     ...
 
 

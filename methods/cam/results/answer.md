@@ -1,6 +1,6 @@
 # CAM (Causal Additive Models), distilled
 
-CAM recovers a directed causal DAG from purely observational data under a nonlinear additive-noise
+CAM estimates a directed causal DAG from purely observational data under a nonlinear additive-noise
 model `X_j = sum_{k in pa(j)} f_{j,k}(X_k) + eps_j`, `eps_j ~ N(0, sigma_j^2)` independent. Its
 organizing idea is to **decouple two problems that other methods fuse**: estimate the topological
 *order* with **unregularized** maximum likelihood, and select *edges* with **regularized** sparse
@@ -13,9 +13,9 @@ Constraint-based (PC/FCI) and score-based (GES) methods recover only the Markov 
 for linear-Gaussian SEMs — many edges stay undirected — because forward and backward linear-
 Gaussian models are observationally identical. CAM targets the *nonlinear* additive regime, where
 the full DAG (hence every arrow, hence intervention distributions) is identifiable from the
-observational distribution, and does so with a procedure that scales to many variables and is
-consistent in low- and high-dimensional (`p >> n`) regimes, with explicit positive-gap conditions
-for noise-distribution misspecification.
+observational distribution. Its likelihood targets have consistency guarantees in low- and
+high-dimensional (`p >> n`) regimes, with explicit positive-gap conditions for noise-distribution
+misspecification, and its greedy implementation is designed to scale to many variables.
 
 ## Key ideas
 
@@ -25,8 +25,8 @@ for noise-distribution misspecification.
    `xi''' = xi''(-nu''' f'/nu'' + f''/f') - 2 nu'' f'' f' + nu' f''' + nu' nu''' f'' f'/nu'' - nu'(f'')^2/f'`.
    Generically this necessary equation fails, so the direction is identifiable. Special case:
    Gaussian `X_1, N_2` with a backward model forces `f` linear — so **nonlinear `f` + Gaussian
-   noise is identifiable**. This lifts to the multivariate DAG and to the set of true orderings
-   `Pi^0`.
+   noise is identifiable**. Under the restricted-ANM multivariate conditions, this lifts to the
+   DAG and to the set of true orderings `Pi^0`.
 
 2. **Likelihood collapses to a sum of log residual scales.** Under additive-Gaussian errors,
    profiling out the functions, the expected negative log-likelihood is
@@ -54,8 +54,9 @@ for noise-distribution misspecification.
 
 - **PNS — preliminary neighborhood selection** (for high-dim): additively regress each `X_j` on all
   others by boosting (gamboost); over 100 boosting iterations, keep the variables selected most
-  often, capped at 10 candidate parents, and require selection frequency `> 0.02` (at least 3
-  selections out of 100). Under the population additive-influence condition `pa(j) subseteq A_j`
+  often, require selection frequency `> 0.02` (at least 3 selections out of 100), and if more than
+  10 pass the cutoff keep those strictly above the eleventh-largest frequency. Under the population
+  additive-influence condition `pa(j) subseteq A_j`
   and screening `A_j subseteq A_hat_j`, true parents survive; this sparsifies the search to
   feasibility for thousands of nodes.
 - **IncEdge — greedy order search.** Start empty; maintain a `p x p` gain matrix
@@ -67,19 +68,20 @@ for noise-distribution misspecification.
   Fits use penalized regression splines (`gam`, mgcv) with ~10 basis functions; per-node score is
   `-log(var(residuals))`. Handles ~30 nodes without PNS.
 - **Prune — regularized edge selection.** For each node, fit the additive model on its parents and
-  keep a parent only if its smooth term is significant (gam p-value <= 0.001, raise for small `n`);
+  keep a parent only if its smooth term is significant (CRAN `selGam`: gam p-value `< 0.001`; raise
+  the threshold for small `n`);
   equivalently use a Group-Lasso with sparsity-smoothness penalty. Screening keeps true edges with
   probability -> 1.
 
 ## Consistency
 
-- **Theorem 1 (low-dim).** Under smoothness/tail/moment conditions (A1)-(A4) and `xi_p > 0`,
+- **Theorem 1 (low-dim MLE target).** Under smoothness/tail/moment conditions (A1)-(A4) and `xi_p > 0`,
   `P[pi-hat in Pi^0] -> 1`.
-- **Theorem 2 (misspecified).** Same conclusion with independent non-Gaussian errors if the
+- **Theorem 2 (misspecified MLE target).** Same conclusion with independent non-Gaussian errors if the
   residual-variance gap is assumed positive: either `(A1)-(A4)` with `xi_p > 0`, or `(A1)-(A3)`
   with the finite-basis gap `liminf_n xi_p^{a_n} > 0`. The Gaussian likelihood is a working score;
   the positive gap is the condition that makes misspecification harmless for order recovery.
-- **Theorem 3 (high-dim, `p >> n`).** With PNS + restricted MLE, `(A1)`, `(A4)`, and `(B1)-(B4)`, if
+- **Theorem 3 (high-dim restricted MLE target, `p >> n`).** With PNS + restricted MLE, `(A1)`, `(A4)`, and `(B1)-(B4)`, if
   `max( sqrt(log(p)/n), max_{j,k} E[(f^0_{j,k}(X_k) - f^0_{n;j,k}(X_k))^2] ) = o(xi_p)`, or the
   same condition holds with `xi_p^{a_n}`, then `P[pi-hat in Pi^0] -> 1`. Lemma 0: under
   additive-influence `(B1)`, `pa(j) subseteq A_j`, so PNS is valid when `A_j subseteq A_hat_j` is
@@ -94,8 +96,9 @@ for noise-distribution misspecification.
 - **Decouple unpenalized order from penalized edges:** order is identifiable via `xi_p > 0` without
   sparsity; over-inclusion in the super-DAG is harmless for causal effects; only edge existence
   benefits from a penalty. This is the core simplification.
-- **Greedy decomposable search** instead of `p!` permutations or DAG-space search; recompute only
-  the edited column; forbid cycles by reachability.
+- **Greedy decomposable implementation** instead of enumerating `p!` permutations or DAG space;
+  recompute only the edited column; forbid cycles by reachability. The formal consistency results
+  are for the unrestricted/restricted MLE targets that this greedy routine estimates.
 - **Small basis count (~10):** enough nonlinearity to preserve identifiability (a linear fit kills
   `xi_p`), few enough to keep residual-variance estimates stable — an identifiability-vs-variance
   tradeoff distinct from the usual prediction bias-variance one.
@@ -135,16 +138,22 @@ def gamboost_selection_frequency(y, X_others):
 
 def preliminary_neighborhood_selection(X, max_neighbors=10, min_fraction_selected=0.02):
     """PNS (Step 1): keep, per node, the few candidate parents an additive boosting fit
-    selects most often. With 100 boosting steps, min_fraction_selected=0.02 means
-    picked at least 3 times because the implementation uses a strict '>' cutoff.
+    selects often. With 100 boosting steps, min_fraction_selected=0.02 means
+    picked at least 3 times because the implementation uses a strict '>' cutoff;
+    if more than max_neighbors pass, keep those strictly above the next frequency.
     Population condition: pa(j) subset A_j, with A_j screened into A_hat_j."""
     n, p = X.shape
     candidates = []
     for j in range(p):
         others = [k for k in range(p) if k != j]
         freq = gamboost_selection_frequency(X[:, j], X[:, others])
-        selected = [i for i in np.argsort(freq)[::-1] if freq[i] > min_fraction_selected]
-        candidates.append({others[i] for i in selected[:max_neighbors]})
+        above = [i for i, f in enumerate(freq) if f > min_fraction_selected]
+        if len(above) > max_neighbors:
+            cutoff = np.sort(freq)[::-1][max_neighbors]
+            selected = [i for i in above if freq[i] > cutoff]
+        else:
+            selected = above
+        candidates.append({others[i] for i in selected})
     return candidates
 
 
@@ -201,7 +210,7 @@ def prune(X, parents, cutoff_pval=0.001, num_basis=10):
         if not pa:
             continue
         _, pvals = gam_fit(X[:, j], X[:, pa], num_basis)
-        pruned[j] = [pa[i] for i in range(len(pa)) if pvals[i] <= cutoff_pval]
+        pruned[j] = [pa[i] for i in range(len(pa)) if pvals[i] < cutoff_pval]
     return pruned
 
 
@@ -224,5 +233,5 @@ def run_causal_discovery(X, num_basis=10, do_pns=True, cutoff_pval=0.001):
 The canonical implementation uses `SEMGAM` as `-log(var(residuals))` from an `mgcv::gam` fit,
 `numBasisFcts = 10`, `maxNumParents = min(p-1, round(n/20))`, optional PNS via `selGamBoost`
 with `atMostThatManyNeighbors = 10` and `atLeastThatMuchSelected = 0.02`, and optional pruning via
-`selGam` with `cutOffPVal = 0.001`. Output is a `p x p` adjacency matrix with `B[k,j] = 1`
-meaning `k -> j`.
+`selGam` with strict `pVal < cutOffPVal = 0.001`. Output is a `p x p` adjacency matrix with
+`B[k,j] = 1` meaning `k -> j`.

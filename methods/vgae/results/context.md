@@ -1,226 +1,146 @@
-# Context: unsupervised representation learning on graphs for link prediction (circa 2016)
+# Context: Unsupervised Link Prediction On Attributed Graphs
 
-## Research question
+## Research Problem
 
-Given a single large undirected graph with only a fraction of its edges observed, predict which
-of the unobserved node pairs are actually linked. The setting is one graph, not many: a citation
-network, a social network, a protein-interaction network, where we see the nodes, some attributes
-attached to each node, and an incomplete adjacency matrix, and we want to score every candidate
-pair by how likely it is to be a real edge. The practical target is to learn a function that maps
-each node to a vector and a function that scores a pair of vectors, trained only on the structure
-that is actually present (plus whatever node attributes we have), so that held-out edges score
-higher than held-out non-edges.
+We have one undirected, unweighted graph rather than a collection of independent examples. Its
+nodes may be documents, users, proteins, or entities; its observed edges are an incomplete view of
+which node pairs are related; and each node may also carry a feature vector such as a bag-of-words
+description. The practical task is link prediction: remove a small set of true edges, sample the
+same number of non-edges, train only on the remaining graph, and rank the held-out true edges above
+the sampled false ones.
 
-Two things make this hard at once. First, the supervision is one-class and lopsided: in a sparse
-graph the vast majority of the N^2 possible pairs are non-edges, so any scorer trained naively
-will be swamped by the easy negatives and learn to predict "no edge" everywhere. Second, and more
-fundamental, the two sources of evidence about a link — the graph topology around the two nodes,
-and the attributes (features) of the two nodes — live in different representations and most
-existing methods can use only one of them. A method that exploits topology typically throws away
-the features; a method that uses features typically ignores the graph. A solution would have to
-fold both into a single node representation, in an unsupervised way (we have no link labels beyond
-the edges themselves), and do it cheaply enough to run on graphs with thousands to tens of
-thousands of nodes. It would also be desirable for the learned representation to be more than a
-lookup table — to have some smooth, organized geometry so that "close in the space" means
-"likely to be linked," and so that the model is a genuine probabilistic model of the graph rather
-than a bag of per-node coordinates.
+The training signal is awkward. There are no external labels for links beyond the adjacency itself,
+and in a sparse graph the `N^2` possible node pairs are overwhelmingly zeros. A model trained as an
+ordinary binary classifier over all pairs can minimize loss by predicting "no edge" almost
+everywhere. A useful solution must therefore learn a per-node representation and a pair score from
+the graph's own connectivity while keeping rare positive edges from being drowned by easy negatives.
 
-## Background
+The harder modeling question is how to use both kinds of evidence. Structure-only methods can learn
+communities and proximity from edges, but ignore node attributes. Feature-only methods can compare
+node descriptions, but ignore the relation graph. The open slot is an end-to-end unsupervised model
+that maps `(X, A_train)` to node representations and uses them to score candidate pairs.
 
-The field state at the time has two largely separate lineages that bear on this problem.
+## Available Ingredients
 
-**Node-embedding / network-representation learning.** A line of work learns a low-dimensional
-vector per node from the graph structure alone, so that downstream tasks (classification, link
-prediction) can be run on the vectors with standard machinery. The dominant recent idea, imported
-from natural-language modeling, is to treat a graph like a corpus: generate sequences of nodes
-and learn embeddings that make co-occurring nodes similar, exactly as word2vec's skip-gram makes
-co-occurring words similar. These embeddings encode neighborhood and community structure in a
-continuous space of modest dimension. They are trained without labels, which is the right regime
-for our problem, but they are computed purely from the adjacency relation — the node attributes,
-when they exist, are simply not part of the model.
+Spectral graph methods embed nodes through eigenvectors of a graph matrix. With the symmetric
+normalized Laplacian `L = I - D^{-1/2} A D^{-1/2}`, the eigenbasis captures large-scale graph
+structure, and a low-dimensional projection can be used as node features for downstream scoring.
+This is a clean global summary of topology, but it is fixed, linear, expensive to compute at scale,
+and normally disconnected from node attributes.
 
-**Spectral / Laplacian methods.** An older lineage represents a graph through the spectrum of its
-Laplacian. The (symmetric normalized) graph Laplacian L = I - D^{-1/2} A D^{-1/2} has eigenvectors
-that capture global structure (cluster/community membership), and projecting nodes onto the leading
-eigenvectors gives an embedding. The same operator underlies spectral graph convolution: a signal
-x on the nodes is filtered in the Fourier domain g_theta * x = U g_theta(Lambda) U^T x, where U
-diagonalizes L. This is expensive (an O(N^2) dense eigenbasis multiply, plus the eigendecomposition
-itself), and it is again a structure-only view of the graph.
+Random-walk embedding methods take a different route. A method such as DeepWalk generates truncated
+walks from the graph, treats each walk like a sentence, and trains a SkipGram model so nodes that
+co-occur in walks receive nearby vectors. This gives useful unsupervised node embeddings and avoids
+an eigendecomposition, but it is still a structure-only pipeline: walk generation and word2vec-style
+training optimize a proxy objective over node IDs, not a single feature-aware graph model.
 
-**Neural networks that consume both structure and features.** A more recent development makes the
-two sources of evidence finally usable together. Starting from the spectral-convolution view above,
-a localized first-order approximation collapses the expensive Fourier machinery into a cheap,
-spatially-local operator. Approximating the filter by a first-order Chebyshev polynomial in L and
-sharing a single parameter gives g_theta * x ~ theta (I_N + D^{-1/2} A D^{-1/2}) x; the operator
-I_N + D^{-1/2} A D^{-1/2} has eigenvalues in [0, 2], so stacking many such layers risks
-exploding/vanishing signals. A *renormalization trick* fixes this by folding the self-loop into the
-adjacency before normalizing: with Atilde = A + I_N and Dtilde its degree matrix, the operator
-I_N + D^{-1/2} A D^{-1/2} is replaced by Dtilde^{-1/2} Atilde Dtilde^{-1/2}, whose spectrum is
-well-behaved for deep stacking. The resulting layer-wise propagation rule is
+A newer graph neural layer can combine structure and features directly. Starting from spectral
+graph convolution, a first-order approximation gives a local propagation rule. In its normalized
+form, after adding self-loops, one layer is
 
-```
-H^{(l+1)} = sigma( Dtilde^{-1/2} Atilde Dtilde^{-1/2} H^{(l)} W^{(l)} ),   H^{(0)} = X,
+```text
+H^{l+1} = sigma(D_tilde^{-1/2} A_tilde D_tilde^{-1/2} H^l W^l),     H^0 = X.
 ```
 
-so a two-layer network reads Z = Ahat ReLU(Ahat X W0) W1 with Ahat = Dtilde^{-1/2} Atilde Dtilde^{-1/2}.
-Each layer mixes a node's own feature vector with a normalized average of its neighbors' vectors and
-applies a learned linear map and nonlinearity; after L layers a node's representation has aggregated
-its L-hop neighborhood *and* the features along the way. The cost is O(|E|) per layer (a sparse-dense
-matmul), linear in the number of edges, and the whole thing is trained by full-batch gradient
-descent. This operator (Weisfeiler-Lehman-flavored: it is a differentiable, parameterized version
-of 1-dimensional WL neighborhood aggregation) is the first cheap, end-to-end-differentiable way to
-turn (X, A) into node representations that depend on both. It has so far been used with a softmax
-head and a cross-entropy label loss for *semi-supervised node classification*; for our problem there
-are no such labels.
+Each node receives a normalized mixture of its own features and its neighbors' features, then a
+learned linear map and nonlinearity. Stacking two layers gives access to a two-hop neighborhood.
+The computation is sparse-dense multiplication and scales linearly in the number of edges for fixed
+feature widths. In its original use, however, this encoder is trained with supervised node labels.
 
-**Amortized variational inference for latent-variable models.** Separately, a framework exists for
-fitting a latent-variable generative model p(x) = int p(z) p(x|z) dz when the likelihood p(x|z) is a
-neural network and both the marginal likelihood and the true posterior p(z|x) are intractable. The
-move is to introduce a *recognition model* (an encoder) q(z|x) that approximates the posterior, and
-to optimize the evidence lower bound
+Variational auto-encoding supplies a separate ingredient: a way to fit latent-variable models when
+the true posterior is intractable. For a latent `z`, prior `p(z)`, approximate posterior `q(z|x)`,
+and likelihood `p(x|z)`, the lower bound is
 
-```
-log p(x) = D_KL( q(z|x) || p(z|x) ) + L,    L = E_q[ log p(x|z) ] - D_KL( q(z|x) || p(z) ),
+```text
+L = E_q[log p(x|z)] - KL(q(z|x) || p(z)).
 ```
 
-which holds for any q because the KL to the true posterior is non-negative, so L lower-bounds
-log p(x). The bound splits cleanly into an expected reconstruction term E_q[log p(x|z)] and a
-regularizer D_KL(q(z|x) || p(z)) that pulls the approximate posterior toward a fixed prior p(z).
-Maximizing L wrt the encoder by a naive Monte-Carlo (score-function) gradient is too high-variance
-to be usable. The *reparameterization trick* removes that variance: instead of sampling z ~ q(z|x)
-directly, write z as a deterministic differentiable transform of a parameter-free noise variable,
-z = g(eps, x) with eps ~ p(eps); for a diagonal-Gaussian q(z|x) = N(mu, diag(sigma^2)) this is
+The first term rewards reconstruction; the second regularizes the approximate posterior toward the
+prior. For a diagonal Gaussian posterior, the sampling step can be written as
+`z = mu + sigma * eps`, `eps ~ N(0,I)`, so gradients pass through `mu` and `sigma`. The Gaussian
+KL against a standard normal has a closed form:
 
-```
-z = mu + sigma . eps,    eps ~ N(0, I),
+```text
+-KL = 0.5 * sum_j(1 + log sigma_j^2 - mu_j^2 - sigma_j^2).
 ```
 
-so the expectation becomes a differentiable average over eps and gradients flow into (mu, sigma).
-When both q(z|x) and the prior p(z) are Gaussian, the KL term has a closed form and needs no
-sampling at all. The standard derivation, for a diagonal Gaussian posterior N(mu, diag(sigma^2))
-against a standard-normal prior N(0, I) in J dimensions, evaluates the two Gaussian integrals
+This variational machinery is normally written for independent datapoints. A graph setting still
+has to decide what the datapoints, latent variables, and reconstruction target should be.
 
-```
-int q log p(z) dz = -J/2 log(2pi) - 1/2 sum_j ( mu_j^2 + sigma_j^2 ),
-int q log q(z) dz = -J/2 log(2pi) - 1/2 sum_j ( 1 + log sigma_j^2 ),
-```
+## Prior Baselines
 
-and subtracts to give
+Spectral clustering and related matrix-factor methods provide a topology-only embedding matrix
+`Z`. A candidate link can be scored by an affinity such as `z_i^T z_j`, but the embedding is not
+learned from node features and does not form an end-to-end neural encoder.
 
-```
--D_KL( q(z|x) || p(z) ) = 1/2 sum_j ( 1 + log(sigma_j^2) - mu_j^2 - sigma_j^2 ).
-```
+DeepWalk and later random-walk methods also produce one vector per node from graph structure. They
+capture neighborhood statistics through co-occurrence in walks, but they leave feature vectors
+outside the model and require a multi-stage training pipeline.
 
-In the canonical instantiation the encoder is a multilayer perceptron whose two output heads
-produce mu and log sigma^2 from a single input vector x; the decoder is another MLP giving a
-Bernoulli or Gaussian likelihood for x. This framework is for i.i.d. data — one independent x per
-datapoint, a per-datapoint posterior — and the encoder/decoder are dense networks.
+The supervised graph-convolutional classifier consumes both `X` and `A`, but its objective is node
+label cross-entropy. In link prediction there may be no node labels, and a representation optimized
+for a label taxonomy is not automatically optimized to explain missing edges.
 
-## Baselines
+The important gap is therefore not the absence of any node embedding method. It is the absence, in
+this setup, of a single unsupervised feature-and-structure model whose training objective is the
+graph's connectivity.
 
-These are the prior methods a new link-prediction approach would be measured against on the same
-citation networks.
+## Evaluation Setting
 
-**Spectral clustering (SC) (Tang & Liu, 2011).** Embed nodes via the leading eigenvectors of a
-matrix derived from the graph (Laplacian / modularity), then use the embedding for downstream tasks.
-To score a candidate link from such an embedding Z, one takes the inner product of the two node
-vectors (i.e. an entry of Z Z^T) as the affinity. The embedding is a global spectral summary of the
-adjacency. Limitation: it is computed from the graph structure only; there is no mechanism to admit
-node attributes, and the eigendecomposition does not scale gracefully. It is also a fixed linear
-projection of the adjacency, not a learned, feature-aware representation.
+The common benchmark uses citation networks such as Cora, Citeseer, and Pubmed. Nodes are
+documents, edges are citation links treated as undirected, and features are sparse bag-of-words
+vectors. A validation set of about five percent of edges and a test set of about ten percent of
+edges are removed from the graph. For validation and testing, the same number of unconnected node
+pairs is sampled as negatives.
 
-**DeepWalk (DW) (Perozzi, Al-Rfou & Skiena, 2014).** Generate truncated random walks from each
-node, treat each walk as a sentence and each node as a word, and run skip-gram (word2vec) on the
-resulting "corpus" to learn a vector per node so that nodes that co-occur in walks get similar
-vectors. The embeddings capture neighborhood and community membership and work well as unsupervised
-features. Limitation: the pipeline is multi-step (walk generation, then a separately optimized
-skip-gram objective), so it is not a single end-to-end model; the random-walk objective is a proxy
-for structural proximity rather than a generative model of the adjacency; and, like SC, it consumes
-only the graph topology — the node attributes never enter. Later refinements (LINE; node2vec, with
-its BFS/DFS-biased walks) sharpen the proximity notion but stay within the same structure-only,
-multi-step family and likewise leave features out.
+The model trains on the incomplete graph and all node features. It then scores held-out positive
+and negative pairs. The reported metrics are AUC and average precision. Featureless variants are
+also meaningful: replace the feature matrix with the identity so each node is represented by its
+own one-hot indicator and all usable signal comes from structure.
 
-**A feature-aware encoder used only for supervised classification.** The graph-convolutional
-propagation rule above can turn (X, A) into representations that depend on both structure and
-features, and is cheap and end-to-end differentiable. So far it has been wired to a softmax output
-and trained against node labels for semi-supervised classification. Limitation for our problem: that
-usage is supervised — it needs node labels, which we do not have here — and the representation it
-produces is tuned to a label taxonomy rather than to the graph's own connectivity. It has not been
-trained in an unsupervised regime where only the edges supervise.
+Because the graphs are modest citation networks and the graph encoder uses sparse operations,
+full-batch training is feasible. Hyperparameter selection is done on validation links, not on test
+links.
 
-## Evaluation settings
+## Scaffold Slot
 
-The natural yardsticks are citation networks where nodes are documents, edges are citation links,
-and each document carries a sparse bag-of-words feature vector: Cora (~2.7k nodes, ~1.4k-dim
-features), Citeseer (~3.3k nodes, ~3.7k-dim features), and Pubmed (~20k nodes). The protocol holds
-out a fraction of the edges and trains on the remaining incomplete graph: a validation set of ~5%
-of the links and a test set of ~10% of the links are removed, and for each held-out edge an equal
-number of randomly sampled non-edges (unconnected node pairs) is drawn. All node features are kept.
-A model scores every pair in the held-out sets, and is judged on its ability to rank true edges
-above non-edges — area under the ROC curve (AUC) and average precision (AP). The validation set is
-used for hyperparameter selection. Both featureless and feature-using variants are of interest
-(featureless = replace X with the identity matrix). Weights are initialized with the standard
-fan-in/fan-out scheme; training is full-batch.
-
-## Code framework
-
-The harness already in place wraps a `LinkPredictor` with three responsibilities: an `encode` that
-maps node features plus the training edges to a per-node representation, a `decode` that scores a
-batch of candidate node pairs from those representations, and a `forward` that runs the two in
-sequence. The training loop supplies node features `x`, the observed undirected training edges
-`edge_index`, and a set of candidate pairs `edge_label_index` (positive edges plus sampled
-negatives), and applies a binary edge-classification loss to the returned scores. The graph-
-convolution layer that mixes a node's features with its neighbors' is available as a primitive
-(`GCNConv`), as are negative sampling and the optimizer. What is *not* settled is the contents of
-`encode`/`decode` — the form of the node representation, what (if anything) is regularized, and how
-a pair is scored. That is the empty slot.
+The implementation harness expects a module with an encoder that builds node representations from
+the training graph, a decoder that scores candidate pairs, and a `forward` method that connects the
+two. The training loop supplies node features `x`, observed training edges `edge_index`, candidate
+pairs `edge_label_index`, and binary labels for those candidate pairs. The scaffold has not chosen
+the representation form, pair-scoring rule, or any regularizer.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
 
 
 class LinkPredictor(nn.Module):
-    """Encode nodes from (features, training edges); score candidate node pairs.
+    """Encode nodes from the training graph and score candidate node pairs."""
 
-    The neighborhood-aggregating GCN layer exists as a primitive; the node
-    representation, any regularization on it, and the pair-scoring rule are
-    the open design.
-    """
-
-    def __init__(self, in_channels, hidden_channels, num_layers, dropout):
+    def __init__(self, in_channels, hidden_channels, embedding_channels, dropout):
         super().__init__()
         self.dropout = dropout
-        # TODO: the encoder we will design -- maps (x, edge_index) to a
-        #       per-node representation built from GCN layers.
-        pass
+        # open slot: representation builder, pair scorer, and any regularizer
 
     def encode(self, x, edge_index):
-        # returns a per-node representation [N, hidden_channels]
-        # TODO: build the representation here.
-        pass
+        raise NotImplementedError
 
     def decode(self, z_src, z_dst):
-        # returns [num_edges] scores for the given source/destination rows
-        # TODO: the pair-scoring rule we will design.
-        pass
+        raise NotImplementedError
 
     def forward(self, x, edge_index, edge_label_index):
         z = self.encode(x, edge_index)
-        z_src = z[edge_label_index[0]]
-        z_dst = z[edge_label_index[1]]
-        return self.decode(z_src, z_dst)
+        return self.decode(z[edge_label_index[0]], z[edge_label_index[1]])
 
 
-# existing training loop the predictor plugs into
 def train(model, data, optimizer):
     model.train()
     optimizer.zero_grad()
-    # candidate edges: positives from the graph + sampled negatives
-    scores = model(data.x, data.edge_index, data.edge_label_index)
-    loss = F.binary_cross_entropy_with_logits(scores, data.edge_label)
+    logits = model(data.x, data.edge_index, data.edge_label_index)
+    recon = F.binary_cross_entropy_with_logits(logits, data.edge_label)
+    loss = recon
     loss.backward()
     optimizer.step()
     return float(loss)

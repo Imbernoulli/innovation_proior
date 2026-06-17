@@ -25,8 +25,8 @@ against it.
   It is a Bregman divergence, and for any Bregman divergence the mean is provably the
   representative minimizing total within-class divergence (argmin_c Σ_{x∈S_k} d_φ(x, c) =
   mean of S_k). Cosine distance is *not* a Bregman divergence, so averaging embeddings and then
-  scoring by cosine is inconsistent — which is why squared Euclidean outperforms cosine, most
-  strongly for this mean-prototype method.
+  scoring by cosine is inconsistent; this matches the paper's finding that squared Euclidean
+  improves over cosine most strongly for this mean-prototype method.
 
 ## Why the design choices
 
@@ -35,8 +35,8 @@ against it.
   (k-means) step decoupled from gradient training, breaking end-to-end learning — so one
   prototype, and let the deep embedding make a class unimodal around it.
 - **Squared Euclidean.** Bregman divergence ⇒ mean is the right representative; corresponds to a
-  spherical-Gaussian class-conditional via the exponential-family/Bregman bijection — a strong,
-  simple prior, which is exactly what the data-scarce regime wants.
+  spherical-Gaussian class-conditional with common fixed scale under the
+  exponential-family/Bregman bijection — a strong, simple prior for the data-scarce regime.
 - **Linear readout, deep embedding.** Expanding −‖f_φ(x) − c_k‖² = −f_φ(x)ᵀf_φ(x) +
   2c_kᵀf_φ(x) − c_kᵀc_k; the first term is class-independent and cancels in the softmax, leaving
   w_kᵀf_φ(x) + b_k with w_k = 2c_k, b_k = −c_kᵀc_k. So the classifier is *linear* on the
@@ -84,8 +84,8 @@ everything else is unchanged.
 
 ## Working code
 
-Filling the three method slots of the episodic harness, with prototypes computed by the
-existing per-class-mean utility and queries scored by distance to them:
+Filling the three method slots of the episodic harness, with prototypes computed as explicit
+per-class means and queries scored by the canonical negative squared Euclidean distance:
 
 ```python
 import torch
@@ -95,20 +95,28 @@ from torch import Tensor
 
 class PrototypicalNetworks(FewShotClassifier):
     """Each class is summarized by the mean of its embedded support examples (its prototype);
-    a query is classified by a softmax over its (negative squared) Euclidean distance to the
-    prototypes. Trained episodically with cross-entropy on the negative-distance logits."""
+    a query is classified by a softmax over its negative squared Euclidean distance to the
+    prototypes. Trained episodically with cross-entropy on the negative squared-distance logits."""
 
     def __init__(self):
-        backbone = make_backbone(use_pooling=True)        # nonlinear embedding f_phi -> 640-d
+        backbone = make_backbone(use_pooling=True)        # nonlinear embedding f_phi
         super().__init__(backbone=backbone, use_softmax=False)
 
     def process_support_set(self, support_images: Tensor, support_labels: Tensor):
-        # prototype c_k = mean of embedded support points of class k
-        self.compute_prototypes_and_store_support_set(support_images, support_labels)
+        support_features = self.compute_features(support_images)
+        self._raise_error_if_features_are_multi_dimensional(support_features)
+        # Episode labels are local 0..n_way-1, as in the canonical episodic loss.
+        n_way = int(torch.unique(support_labels).numel())
+        self.prototypes = torch.stack([
+            support_features[support_labels == label].mean(dim=0)
+            for label in range(n_way)
+        ])
 
     def forward(self, query_images: Tensor) -> Tensor:
         query_features = self.compute_features(query_images)        # f_phi(query)
-        scores = self.l2_distance_to_prototypes(query_features)     # logits = -distance to prototypes
+        self._raise_error_if_features_are_multi_dimensional(query_features)
+        sq_dist = ((query_features[:, None, :] - self.prototypes[None, :, :]) ** 2).sum(dim=2)
+        scores = -sq_dist                                           # logits = -squared distance
         return self.softmax_if_specified(scores)
 
     @staticmethod
@@ -119,27 +127,20 @@ class PrototypicalNetworks(FewShotClassifier):
         return F.cross_entropy(scores, labels)                      # -log p_phi(y=k|x)
 ```
 
-The harness utility `l2_distance_to_prototypes` returns the negative *non-squared* L2 distance
-(`-torch.cdist(query_features, prototypes)`), a monotone re-parameterization of the nearest-
-prototype rule that trains fine. The canonical paper object uses *squared* Euclidean — which is
-what makes the Bregman / spherical-Gaussian / linear-model equivalences exact. To score with the
-exact squared form:
-
-```python
-    def forward(self, query_images: Tensor) -> Tensor:
-        z = self.compute_features(query_images)                     # (n_query, d)
-        sq_dist = torch.cdist(z, self.prototypes) ** 2              # squared Euclidean (n_query, n_way)
-        return self.softmax_if_specified(-sq_dist)                  # logits = -squared distance
-```
+Code-faithfulness check: the official reference implementation computes
+`torch.pow(x - y, 2).sum(2)` and then applies `F.log_softmax(-dists, dim=1)`. A scaffold helper
+that returns `-torch.cdist(samples, prototypes)` is not the exact paper object: it preserves the
+nearest-prototype argmax but changes the softmax geometry and breaks the Bregman /
+spherical-Gaussian / linear-model equivalences.
 
 The prototype computation itself, for reference:
 
 ```python
 def compute_prototypes(support_features: Tensor, support_labels: Tensor) -> Tensor:
     """Prototype k = mean feature vector over support examples with label k."""
-    n_way = len(torch.unique(support_labels))
-    return torch.cat([
-        support_features[torch.nonzero(support_labels == label)].mean(0)
+    n_way = int(torch.unique(support_labels).numel())
+    return torch.stack([
+        support_features[support_labels == label].mean(dim=0)
         for label in range(n_way)
     ])
 ```

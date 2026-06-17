@@ -53,10 +53,9 @@ single-pass, numerically stable algorithm computes the exact mean and per-coordi
 the stochastic gradient at a fixed point in parameter space. At every epoch of training a small
 convolutional network (Resnet-20 on CIFAR-10), one can do an extra full pass over the data to
 compute the true gradient `g` and its per-coordinate standard deviation `sigma`, and then evaluate
-`phi(g)` and `phi(sigma)`. The observed phenomenon: throughout training the gradient density and
-the noise density are of the *same order*, and both are *dense* (`phi` far from `1/d`). The same
-density-at-initialization finding holds across a range of datasets and architectures. So in real
-deep networks neither the noise nor (apparently) the gradient is concentrated on a few coordinates.
+`phi(g)` and `phi(sigma)`. That diagnostic would say whether gradient signal and stochastic noise
+are spread across many coordinates or concentrated in a few, without yet committing to any
+particular compression rule.
 
 **Convex-optimization geometry available on the shelf.** For a norm `||.||`, the normalized
 steepest-descent direction is `argmin{ g^T v : ||v|| <= 1 }` (Boyd & Vandenberghe, Convex

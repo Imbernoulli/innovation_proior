@@ -27,9 +27,10 @@ normalize by the root-mean-square alone:
   ā_i = a_i / RMS(a) · g_i,   RMS(a) = sqrt( (1/n) Σ_{i=1}^n a_i^2 ),
 
 with a learned per-channel gain g (init 1) and no bias (no mean is removed, so there is no
-shift-invariance to restore). Because RMS is linear, RMS(αa) = α·RMS(a), re-scaling
-invariance to inputs and to whole-weight-matrix scaling is preserved; re-centering invariance
-and per-weight-vector re-scaling invariance are given up. Cost per call: one reduction (sum of
+shift-invariance to restore). Because RMS is homogeneous under scalar rescaling,
+RMS(αa) = |α|·RMS(a) and thus RMS(αa) = α·RMS(a) for positive α; positive re-scaling
+invariance to inputs and to whole-weight-matrix scaling is preserved, while re-centering
+invariance and per-weight-vector re-scaling invariance are given up. Cost per call: one reduction (sum of
 squares) and a reciprocal-sqrt, versus LayerNorm's two reductions plus a subtraction. The
 weight gradient is invariant to input scaling and inversely correlated with weight scale (an
 implicit per-layer learning-rate adaptor).
@@ -45,17 +46,19 @@ shared normalized input and run independently, summing both into the residual:
   parallel: y = x + Attn(LN(x)) + MLP(LN(x)).
 
 The residual stream stays an un-normalized identity path, so pre-normalization's well-behaved
-gradients at initialization survive (no warmup needed). One **shared (tied)** norm feeds both
-branches, which halves the normalization layers per block; attention's input projection and
-the MLP's input projection now read the same tensor and fuse into one wide input matmul, and
-the two output projections fuse into one wide output matmul; under op-sharding the two
-sublayer outputs are summed locally and rejoin the residual through a *single* all-reduce
-(one forward, one backward) instead of two. This yields roughly a 15% throughput increase at
-large scale. The only thing surrendered is one step of composition (the MLP no longer
-conditions on attention's output): a small quality cost at small scale that washes out by
-large scale. Tied vs untied (`MLP(LN2(x))` with a second independent norm) makes no measurable
-quality difference, so the tied single-norm form is chosen — it is the one that delivers the
-fusion and the halved norm count.
+gradients at initialization survive. One **shared (tied)** norm feeds both branches, which
+halves the normalization layers per block. In a large-scale op-sharded implementation that
+owns the attention and MLP kernels, the two branches read the same tensor, so the attention and
+MLP input projections can be fused or co-scheduled, and the two sublayer outputs are summed
+locally and rejoin the residual through a *single* all-reduce (one forward, one backward)
+instead of two. That is the source of the roughly 15% large-scale throughput gain. In the local
+decoder patch below, `CausalSelfAttention` and `MLP` are intentionally unchanged, so the code
+realizes the single-norm parallel wiring but not a literal fused matmul rewrite. The only thing surrendered
+is one step of composition (the MLP no longer conditions on attention's output): a small
+quality cost at small scale that washes out by large scale. Tied vs untied (`MLP(LN2(x))` with
+a second independent norm) makes no measurable quality difference, so the tied single-norm
+form is chosen — it is the one that delivers the halved norm count and keeps the fused-kernel
+path available.
 
 ## Defaults and why
 
@@ -64,27 +67,30 @@ fusion and the halved norm count.
 - **No bias** on the norm: nothing was re-centered, so there is no shift to restore.
 - **fp32 reduction**: the sum of squares over the channel dimension is computed in fp32 to
   preserve significance, then cast back to the working dtype.
-- **One shared (tied) norm** per block: the version that fuses the input matmuls and halves
-  the norm/all-reduce count, with quality equal to the untied variant.
-- **Output-projection init** scaled down (on the order of 1/(L·√d), constant adjusted for two
-  branches feeding one residual add) so activations do not grow with depth — an initialization
-  knob owned by the harness, not the block's forward.
+- **One shared (tied) norm** per block: halves the norm count, preserves the fused-projection
+  opportunity for kernel-owning implementations, and has quality equal to the untied variant in
+  the checks I trust.
+- **Residual-projection init** is not a forward change: a residual-output scheme on the order of
+  `2/(L·sqrt(d))` keeps activations from growing with depth, the factor of two compensating for
+  the parallel organization; the local scaffold already applies a `0.02/sqrt(2L)` scale to
+  residual `c_proj.weight` parameters, matching two residual-producing projections per block.
 
 ## Working code
 
-Drop-in for a GPT-style decoder (nanoGPT-style): `RMSNorm` keeps the `(ndim, bias)` signature
-so it replaces the norm class unchanged, and `Block` replaces the two-norm serial wiring with
-one-norm parallel wiring. `CausalSelfAttention` and `MLP` are unchanged.
+Drop-in for a GPT-style decoder (nanoGPT-style): keep the scaffold's `LayerNorm` class name and
+`(ndim, bias)` signature, but replace its body with RMSNorm so the final norm changes too.
+`Block` replaces the two-norm serial wiring with one-norm parallel wiring. `CausalSelfAttention`
+and `MLP` are unchanged.
 
 ```python
 import torch
 import torch.nn as nn
 
 
-class RMSNorm(nn.Module):
-    """Root Mean Square Layer Normalization. Normalize by RMS over the channel
-    dimension; learned per-channel gain; no bias. Keeps the (ndim, bias) constructor
-    signature so it is a drop-in for the standard norm (bias is intentionally ignored)."""
+class LayerNorm(nn.Module):
+    """RMSNorm under the scaffold's LayerNorm name. Normalize by RMS over the
+    channel dimension; learned per-channel gain; no bias. The bias argument is
+    intentionally ignored."""
 
     def __init__(self, ndim, bias):
         super().__init__()
@@ -103,7 +109,7 @@ class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.ln = RMSNorm(config.n_embd, bias=config.bias)   # single shared (tied) norm
+        self.ln = LayerNorm(config.n_embd, bias=config.bias) # single shared (tied) RMSNorm
         self.attn = CausalSelfAttention(config)              # unchanged
         self.mlp = MLP(config)                               # unchanged
 
@@ -119,6 +125,7 @@ class Block(nn.Module):
   reduction instead of two, no subtraction; equal to LayerNorm when the activations already
   have zero channel-mean.
 - **vs the serial pre-LN block:** collapse two norms into one shared norm and the two
-  sequential sublayers into two parallel branches summed into the residual; fuses input and
-  output matmuls and halves the per-block all-reduces, trading one composition step (small,
-  scale-vanishing quality cost) for throughput.
+  sequential sublayers into two parallel branches summed into the residual; under op-sharding
+  this halves the per-block all-reduces, and in systems that own the kernels it enables fused
+  same-input projections. The local patch preserves the wiring while leaving attention/MLP
+  internals unchanged.

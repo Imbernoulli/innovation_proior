@@ -48,17 +48,15 @@ whole pool, independent of any label. Concretely this is done in the network's
 *penultimate-layer* feature space — the `d`-dimensional representation `z(x)` just before the
 final linear classifier — selecting a geometrically spread-out set of `z`'s.
 
-The empirical landscape that motivates everything below — observed about *existing* methods,
-knowable before any new method — is that these two families are complementary and fragile.
-Uncertainty methods tend to win at small batch size and with simple models (MLPs), and to
-degrade badly at large batch, where they pile up near-duplicate uncertain points. Diversity /
-representative methods tend to win at large batch and when the architecture has strong
-inductive biases (convolutional nets on images) so the penultimate representation is
-meaningful, and to degrade — sometimes below uniform random selection — on harder data or
-weaker architectures where that representation is not informative. Which regime you are in is
-itself a function of the (often unknown) statistics of the data, so a practitioner has no
-reliable way to pick the right family in advance. Worse, deep-net softmax outputs are known to
-be overconfident and poorly calibrated, which undermines uncertainty scores directly.
+The design pressure is that these two families are complementary and fragile. Uncertainty
+methods have no within-batch interaction, so their failure should worsen as the batch grows:
+they can spend the budget on many versions of the same ambiguous point. Diversity /
+representative methods have the opposite blind spot: they can cover the pool while ignoring
+whether the covered points would actually change the classifier, and their success depends on
+the penultimate representation already being meaningful. Which regime you are in is itself a
+function of the data statistics and the architecture, so a practitioner has no reliable way to
+pick the right family in advance. Worse, deep-net softmax outputs are known to be
+overconfident and poorly calibrated, which undermines uncertainty scores directly.
 
 Two further pre-method facts about *how* deep nets learn frame the design space. First, deep
 nets are trained by gradient descent, so the natural currency of "how much will this example
@@ -163,10 +161,10 @@ it owns the labeled mask, retrains the model each round, and exposes the model's
 Nothing about *which* examples to pick is settled — that selection rule is exactly what is to
 be designed. The substrate is only the generic machinery: a `Strategy` base class that holds
 the pool features `X`, labels `Y`, the boolean labeled mask `idxs_lb`, and the current trained
-network, and gives the acquisition rule read access to the model through a few primitives —
-softmax probabilities for pool points, the penultimate-layer embeddings, and (since deep nets
-learn by gradients) the last-layer loss-gradient features. The one empty slot is `query(n)`:
-given the number of points to acquire, return the indices of the unlabeled examples to label.
+network, and gives the acquisition rule read access to the model through generic read-outs:
+softmax probabilities for pool points and the penultimate-layer embeddings. The one empty slot
+is `query(n)`: given the number of points to acquire, return the indices of the unlabeled
+examples to label.
 
 ```python
 import numpy as np
@@ -194,12 +192,6 @@ class Strategy:
     def get_embedding(self, X, Y, return_probs=False):
         """Penultimate-layer features z(x), shape [len(X), emb_dim]
         (optionally also the softmax probabilities)."""
-        ...
-
-    def get_grad_embedding(self, X, Y):
-        """Last-layer loss-gradient features, shape [len(X), emb_dim * n_classes].
-        For each example, the per-class blocks of the gradient of the (cross-entropy)
-        loss w.r.t. the final linear layer's weights."""
         ...
 
     def query(self, n):

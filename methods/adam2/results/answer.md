@@ -107,8 +107,10 @@ the middle term. The momentum control is
 `sum_t m_hat_{t,i}^2 / sqrt(t v_hat_{t,i}) <= (2 G_inf/((1-gamma)^2 sqrt(1-beta_2))) ||g_{1:T,i}||_2`;
 `gamma < 1` makes old gradients' contributions geometrically decaying. The third term is constant
 in `T` only because `beta_1` decays geometrically (`lambda < 1`); a constant momentum coefficient
-would make that summation grow like `Theta(T^{3/2})` and break this proof. The clean bound shrinks
-further when gradients are sparse, since it is written in per-coordinate gradient norms rather than
+would make that summation grow like `Theta(T^{3/2})` and break this proof. I use the theorem
+statement's `(1-beta_1)` denominator in that third term; the appendix's final display prints
+`beta_1`, inconsistent with the preceding derivation. The clean bound shrinks further when
+gradients are sparse, since it is written in per-coordinate gradient norms rather than
 `d·G_inf·sqrt(T)`.
 
 ## Relation to prior methods
@@ -147,6 +149,8 @@ class Adam:
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
         if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
+        if not 0.0 <= eps:
+            raise ValueError(f"Invalid epsilon value: {eps}")
         if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
             raise ValueError(f"Invalid beta parameters: {betas}")
         self.params = list(params)
@@ -206,6 +210,14 @@ import torch
 
 class Adamax:
     def __init__(self, params, lr=2e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
+        if not 0.0 <= lr:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        if not 0.0 <= eps:
+            raise ValueError(f"Invalid epsilon value: {eps}")
+        if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
+            raise ValueError(f"Invalid beta parameters: {betas}")
+        if not 0.0 <= weight_decay:
+            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
         self.params = list(params)
         self.lr, self.betas, self.eps, self.weight_decay = lr, betas, eps, weight_decay
         self.state = {id(p): {} for p in self.params}

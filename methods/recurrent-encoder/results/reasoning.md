@@ -47,15 +47,15 @@ And what's the prior `p_θ(m)` inside each `KL(q_φ(m|τ_{:t}) || p_θ(m))`? I c
 
 Now the question this whole exercise has been circling: what is the *encoder* architecture? `q_φ(m|τ_{:t})` is a function of the entire history `τ_{:t} = (s_0, a_0, r_1, s_1, …, s_t)`, a growing, ordered sequence, and I need to produce its output *online* at every `t`. Let me think about what the belief actually depends on. The Bayes posterior `p(m|τ_{:t})` is a function of the whole ordered history — the order matters, because the belief at step `t` is the belief at step `t−1` updated by the one new transition. So the encoder needs to (a) consume a variable-length, ordered sequence, (b) update its summary in `O(1)` per new transition rather than re-reading the whole history each step, and (c) carry forward a running summary that *is* the sufficient statistic of the past for inferring `m`. Read that list again — it's the exact job description of a recurrent network. Maintain a hidden state `h_t` that gets updated as `h_t = f(h_{t-1}, x_t)` from the previous hidden state and the newly embedded transition; `h_t` is my running compression of `τ_{:t}`; one cheap update per step; the prior-becomes-posterior structure I wanted falls right out of "carry the hidden state forward." The recurrent hidden state literally *is* the online belief accumulator. So encode the past trajectory with an RNN, and read the latent-task parameters off its hidden state. This is the same recurrence that RL² and Wang et al. use to do model-free meta-RL — feed the network the stream of `(state, action, reward)` and let adaptation live in the recurrent dynamics — and I'm reusing it as the inference engine.
 
-Let me make sure I'm not reaching for recurrence out of habit, by checking the obvious alternatives and watching them fail. Alternative one: re-encode the entire window from scratch at every step with a feedforward net over all `t` transitions. That's `O(t)` work per step and can't naturally take a growing input — it throws away the online structure I'm paying for. Wall. Alternative two — and this is the serious one, because it's exactly what the off-policy probabilistic-context line does — make the encoder *permutation-invariant*: pass each transition `c_n` independently through a net to get a Gaussian factor `Ψ(m|c_n) = N(μ(c_n), σ(c_n))`, then combine them as a product of Gaussians, `q(m|c_{1:N}) ∝ Π_n Ψ(m|c_n)`. This has a clean closed form and a real virtue: order-invariance means you can resample context batches from a replay buffer in any order and get the same posterior, which is exactly what you need to make the encoder play nicely inside an off-policy loop where the context data and the RL data are decoupled. But look at what order-invariance *costs* me. The product factorization treats the transitions as *conditionally independent given `m`*; the encoder is, by construction, blind to the order in which experience arrived. For pure task *identification* — "which of these fixed MDPs am I in" — independence given `m` is often fine, because the task is constant and any unordered bag of transitions pins it down. But the *belief I need for Bayes-optimal exploration* is `p(m|τ_{:t})`, an inherently sequential object: what I should do next depends on the trajectory of how my uncertainty has been shrinking, and the product-of-Gaussians encoder has thrown the sequence away. It also tends to give posterior-sampling-flavored exploration, which I already argued is less efficient than acting on the running belief. So the permutation-invariant encoder is the right tool for off-policy convenience and the wrong tool for online Bayes-optimality. I'll take the recurrent encoder and pay the price (recurrent forward/backward passes are slower, and the on-policy training that goes with it is less sample-efficient than off-policy) to get the ordered belief. That's a real, eyes-open trade, not a free lunch.
+Let me make sure I'm not reaching for recurrence out of habit, by checking the obvious alternatives and watching them fail. Alternative one: re-encode the entire window from scratch at every step with a feedforward net over all `t` transitions. That's `O(t)` work per step and can't naturally take a growing input — it throws away the online structure I'm paying for. Wall. Alternative two — and this is the serious one, because it is exactly what an off-policy probabilistic-context harness often wants — make the encoder *permutation-invariant*: pass each transition `c_n` independently through a net to get a Gaussian factor `Ψ(m|c_n) = N(μ(c_n), σ(c_n))`, then combine the factors as a product of Gaussians, `q(m|c_{1:N}) ∝ Π_n Ψ(m|c_n)`. This has a clean closed form and a real virtue: order-invariance means I can resample context batches from a replay buffer in any order and get the same posterior, which is useful when context data and RL data are decoupled. But I need to keep the roles separate. The product rule is a posterior *aggregation* rule for exchangeable Gaussian factors: emit a mean and a positive variance for each factor, apply `softplus` to the raw variance, and add precisions. The encoder I am deriving is the stateful map from an ordered stream to those belief parameters at every time step. For that online stream, a recurrent hidden state is the faithful object; the product-of-Gaussians machinery can stay in a surrounding adapter when a harness expects it, but it should not replace the GRU core that carries the ordered belief forward.
 
-There's one more design decision I've been carrying implicitly that I should make explicit, because it's the inductive bias that separates this from plain recurrent meta-RL. RL² carries a single *deterministic* hidden vector and trains it only through the return — nothing makes that hidden state an honest representation of *which task* or *how uncertain*. But I need uncertainty: the whole Bayes-optimal story is "act on your belief *including its spread*," so the policy has to be able to read how unsure I am. So the latent `m` must be a *distribution*, not a point — a Gaussian whose variance shrinks as the task gets pinned down. That's why the encoder outputs `μ` and a (log-)variance, why the objective is a *variational* ELBO with a KL term (the KL is what gives the latent a probabilistic meaning and an uncertainty I can trust), and why I sample `m` with the reparameterization trick `m = μ + exp(½ logvar) ⊙ ε`, `ε ~ N(0,I)`, so the sampling stays differentiable and a single Monte-Carlo draw backprops cleanly. Conditioning the policy on the *posterior* `(μ, σ)` — the belief — rather than only on a sample is the direct analogue of the BAMDP hyper-state `(s, b)`: the policy sees the state and the belief. And because the latent is trained to represent *only the task* (constant within a task, by the shared-`R`,`T` construction), the belief stays put once the task is identified, which is exactly the stability that a high-dimensional deterministic recurrent hidden state lacks across episode resets — the latent doesn't have to re-infer anything when the agent is reset to the start. If I strip the decoder and the KL away entirely, this whole thing collapses back to RL²: a recurrent net trained only by the return. So the decoder-plus-KL is precisely an *auxiliary objective* bolted onto recurrent meta-RL that forces the hidden state to become a calibrated task belief, and to be predictive about unseen transitions. That framing tells me exactly what I'm adding and why.
+There's one more design decision I've been carrying implicitly that I should make explicit, because it's the inductive bias that separates this from plain recurrent meta-RL. RL² carries a single *deterministic* hidden vector and trains it only through the return — nothing makes that hidden state an honest representation of *which task* or *how uncertain*. But I need uncertainty: the whole Bayes-optimal story is "act on your belief *including its spread*," so the policy has to be able to read how unsure I am. So the latent `m` must be a *distribution*, not a point — a Gaussian whose variance shrinks as the task gets pinned down. That's why the encoder outputs `mu` and `logvar`, why the objective is a *variational* ELBO with a KL term (the KL is what gives the latent a probabilistic meaning and an uncertainty I can trust), and why I sample `m` with the reparameterization trick `m=mu+exp(0.5*logvar)*eps`, `eps ~ N(0,I)`, so the sampling stays differentiable and a single Monte-Carlo draw backprops cleanly. Conditioning the policy on the *posterior* `(mu, sigma)` — the belief — rather than only on a sample is the direct analogue of the BAMDP hyper-state `(s, b)`: the policy sees the state and the belief. And because the latent is trained to represent *only the task* (constant within a task, by the shared-`R`,`T` construction), the belief stays put once the task is identified, which is exactly the stability that a high-dimensional deterministic recurrent hidden state lacks across episode resets — the latent doesn't have to re-infer anything when the agent is reset to the start. If I strip the decoder and the KL away entirely, this whole thing collapses back to RL²: a recurrent net trained only by the return. So the decoder-plus-KL is precisely an *auxiliary objective* bolted onto recurrent meta-RL that forces the hidden state to become a calibrated task belief, and to be predictive about unseen transitions. That framing tells me exactly what I'm adding and why.
 
-Now a practical wall I'll hit if I'm not careful about how the losses interact. The encoder parameters `φ` are *shared* between the model (it appears in every `ELBO_t`) and the policy (the policy conditions on `q_φ`'s output). So in principle I'd backprop both the RL loss and the ELBO through `φ`. But these two gradients pull in different directions — the RL loss wants the embedding to make the *next action* good, the ELBO wants it to *reconstruct the trajectory* — and forcing one set of parameters to serve both means a delicate `λ` trade-off and gradient interference. When I check whether the RL gradient through the encoder is even necessary, it turns out it mostly isn't: the reconstruction objective alone shapes a perfectly good task representation, and not backpropagating the RL loss through the encoder both removes the interference and saves a fortune in compute. The reason it saves compute is specific and worth seeing: with an on-policy algorithm like PPO I do several minibatch passes per batch of data, and if the RL loss flowed through the recurrent encoder I'd have to re-run forward/backward through the whole RNN on every one of those passes; cutting that dependency lets me compute the embeddings once and reuse them. So I'll train the VAE (encoder + decoder) and the policy with *separate* optimizers and learning rates, and even separate data buffers — the policy on the most recent on-policy data, the VAE on a larger buffer of stored trajectories — and `λ` only matters at all because `φ` is shared, which it now barely is. Decoupling is the engineering that makes the recurrent encoder trainable at scale.
+Now a practical wall I'll hit if I'm not careful about how the losses interact. The encoder parameters `φ` are *shared* between the model (they appear in every `ELBO_t`) and the policy (the policy conditions on `q_φ`'s output). So in principle I could backprop both the RL loss and the ELBO through `φ`. But these two gradients ask for different things — the RL loss wants the embedding to make the *next action* good, the ELBO wants it to *reconstruct the trajectory* — and forcing one set of parameters to serve both means a delicate `λ` trade-off and gradient interference. The clean split is to let the ELBO train the encoder and decoder, then feed the policy a detached belief. That keeps `φ` grounded in the task-prediction objective and saves compute: with an on-policy algorithm like PPO I do several minibatch passes per batch of data, and if the RL loss flowed through the recurrent encoder I'd have to re-run forward/backward through the whole RNN on every one of those passes; cutting that dependency lets me compute the embeddings once and reuse them. So I'll train the VAE (encoder + decoder) and the policy with *separate* optimizers and learning rates, and even separate data buffers — the policy on the most recent on-policy data, the VAE on a larger buffer of stored trajectories. Decoupling is the engineering that makes the recurrent encoder trainable at scale.
 
-Let me also pin the small architectural choices so they're reasons, not arbitrary. The transitions are heterogeneous — a state vector, an action vector, a scalar reward, all on different scales and dimensions — so I embed each modality with its own small feature extractor before fusing them, rather than concatenating raw and hoping one linear layer sorts it out. After fusing I can put a fully-connected layer or two before the recurrent cell to mix the embeddings, then the recurrent core, then a fully-connected layer or two, then *two separate heads* for `μ` and `logvar` (two heads because the mean and the log-variance are different functions of the hidden state and shouldn't share a final projection). For the recurrent core itself: a vanilla RNN would choke on the vanishing-gradient problem over a long horizon, and an LSTM has more gates (and parameters) than I need here; a GRU is the middle choice — gated enough to carry information across the horizon, lighter than an LSTM — which is the same call RL² and Wang made, so I'll use a GRU. I'll initialize the GRU's recurrent weights orthogonally and its biases to zero, the standard recipe for keeping recurrent dynamics well-conditioned at the start of training. And the latent dimension can be *tiny* — the task variation is genuinely low-dimensional (a goal location, a target speed, a parameter vector), so a 5-dimensional latent both suffices and *concentrates*, giving a sharp, stable posterior, in contrast to a 100-plus-dimensional deterministic recurrent hidden state that has room to drift and destabilize across resets.
+Let me also pin the small architectural choices so they're reasons, not arbitrary. The transitions are heterogeneous — a state vector, an action vector, a scalar reward, all on different scales and dimensions — so I embed each modality with its own small feature extractor before fusing them, rather than concatenating raw and hoping one linear layer sorts it out. After fusing I can put a fully-connected layer or two before the recurrent cell to mix the embeddings, then the recurrent core, then a fully-connected layer or two, then *two separate heads* for `μ` and `logvar` (two heads because the mean and the log-variance are different functions of the hidden state and shouldn't share a final projection). For the recurrent core itself: a vanilla RNN would choke on the vanishing-gradient problem over a long horizon, and an LSTM has more gates (and parameters) than I need here; a GRU is the middle choice — gated enough to carry information across the horizon, lighter than an LSTM — which is the same call RL² and Wang made, so I'll use a GRU. I'll initialize the GRU weight matrices orthogonally and its biases to zero, the standard recipe for keeping recurrent dynamics well-conditioned at the start of training. And the latent dimension can be *tiny* — the task variation is genuinely low-dimensional (a goal location, a target speed, a parameter vector), so a 5-dimensional latent both suffices and *concentrates*, giving a sharp, stable posterior, in contrast to a 100-plus-dimensional deterministic recurrent hidden state that has room to drift and destabilize across resets.
 
-At meta-test time the decoder is thrown away entirely — it was only ever scaffolding to train the belief — and I just roll the policy forward: encode the streaming experience with the GRU, read off the posterior `(μ, σ)`, condition the policy, act. No gradient adaptation, no planning. The policy learned during meta-training to act approximately Bayes-optimally as a function of the belief, so test-time "learning" is just the belief sharpening inside the recurrent state as data comes in.
+At meta-test time the decoder is thrown away entirely — it was only ever scaffolding to train the belief — and I just roll the policy forward: encode the streaming experience with the GRU, read off the posterior `(mu, sigma)`, condition the policy, act. No gradient adaptation, no planning. The only test-time state change is the belief sharpening inside the recurrent state as data comes in.
 
 Let me write the encoder I'd actually ship, filling the one empty slot — the experience-to-belief module. Per-modality embeddings, the GRU core, the two Gaussian heads, the reparameterized sample, an online forward that consumes one transition and the previous hidden state, and a prior path for `t = 0`:
 
@@ -128,7 +128,7 @@ class RNNEncoder(nn.Module):
         self.fc_logvar = nn.Linear(curr, latent_dim)
 
     def _sample_gaussian(self, mu, logvar):
-        # reparameterisation: m = mu + exp(0.5*logvar) * eps, differentiable in phi
+        # reparameterisation: m=mu+exp(0.5*logvar)*eps, differentiable in phi
         std = torch.exp(0.5 * logvar)
         return mu + std * torch.randn_like(std)
 
@@ -169,32 +169,39 @@ class RNNEncoder(nn.Module):
         return m, mu, logvar, output
 ```
 
-And to fill the concrete encoder slot of a PEARL-style harness — where the surrounding loop feeds ordered context as `(task, seq, feat)` and the agent turns the encoder's output into the posterior via `softplus` on the variance and a product of Gaussians — I collapse the per-modality embedders into one per-transition MLP, take the last recurrent state, and emit `2·latent_dim` numbers (`μ` and pre-softplus `σ²`) in one head; the recurrence is the only structural change from the per-transition baseline:
+And if the concrete slot sits inside a scaffold that already aggregates Gaussian factors, I keep that scaffold's `softplus` and product-of-Gaussians posterior update, but make the context module recurrent. The module embeds each transition with an MLP, passes the ordered sequence through a GRU with orthogonal weight initialization and zero biases, then emits mean and raw-variance parameters from two separate heads. Since this scaffold works in variance space after `softplus`, its sample is `mu + sqrt(var) * eps`; the log-variance encoder above is the one that uses `m=mu+exp(0.5*logvar)*eps`.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import rlkit.torch.pytorch_util as ptu
-from rlkit.torch.core import PyTorchModule
 
 
 def _identity(x):
     return x
 
 
-class CustomContextEncoder(PyTorchModule):
+def product_of_gaussians(mus, sigmas_squared):
+    sigmas_squared = torch.clamp(sigmas_squared, min=1e-7)
+    sigma_squared = 1.0 / torch.sum(torch.reciprocal(sigmas_squared), dim=0)
+    mu = sigma_squared * torch.sum(mus / sigmas_squared, dim=0)
+    return mu, sigma_squared
+
+
+class CustomContextEncoder(nn.Module):
     """Recurrent belief encoder filling the per-transition encoder slot."""
     IS_RECURRENT = True
 
     def __init__(self, hidden_sizes, input_size, output_size,
                  init_w=3e-3, hidden_activation=F.relu,
-                 output_activation=_identity, hidden_init=ptu.fanin_init,
+                 output_activation=_identity, hidden_init=nn.init.xavier_uniform_,
                  b_init_value=0.1, **kwargs):
-        self.save_init_params(locals())
         super().__init__()
+        if output_size % 2 != 0:
+            raise ValueError("output_size must be 2 * latent_dim")
         self.input_size = input_size
         self.output_size = output_size              # 2 * latent_dim (mu and sigma^2)
+        self.latent_dim = output_size // 2
         self.hidden_sizes = hidden_sizes
         self.hidden_activation = hidden_activation
         self.output_activation = output_activation
@@ -210,15 +217,22 @@ class CustomContextEncoder(PyTorchModule):
             self.__setattr__("fc{}".format(i), fc)
             self.fcs.append(fc)
 
-        self.last_fc = nn.Linear(in_size, output_size)
-        self.last_fc.weight.data.uniform_(-init_w, init_w)
-        self.last_fc.bias.data.uniform_(-init_w, init_w)
-
         # recurrent core over the ordered context; hidden state = running belief
-        self.hidden_dim = self.hidden_sizes[-1]
+        self.hidden_dim = in_size
         self.register_buffer('hidden', torch.zeros(1, 1, self.hidden_dim))
-        self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim,
-                            num_layers=1, batch_first=True)
+        self.gru = nn.GRU(input_size=in_size, hidden_size=self.hidden_dim,
+                          num_layers=1, batch_first=True)
+        for name, p in self.gru.named_parameters():
+            if 'bias' in name:
+                nn.init.constant_(p, 0)
+            elif 'weight' in name:
+                nn.init.orthogonal_(p)
+
+        self.fc_mu = nn.Linear(self.hidden_dim, self.latent_dim)
+        self.fc_raw_var = nn.Linear(self.hidden_dim, self.latent_dim)
+        for fc in (self.fc_mu, self.fc_raw_var):
+            fc.weight.data.uniform_(-init_w, init_w)
+            fc.bias.data.uniform_(-init_w, init_w)
 
     def forward(self, input, return_preactivations=False):
         task, seq, feat = input.size()              # ordered context (task, seq, feat)
@@ -229,12 +243,13 @@ class CustomContextEncoder(PyTorchModule):
 
         if self.hidden.size(1) != task:             # match hidden to current task dim
             self.reset(task)
-        zeros = torch.zeros(self.hidden.size()).to(ptu.device)
-        out, (hn, cn) = self.lstm(out, (self.hidden, zeros))
+        if self.hidden.device != input.device:
+            self.hidden = self.hidden.to(input.device)
+        out, hn = self.gru(out, self.hidden)
         self.hidden = hn
         out = out[:, -1, :]                         # last hidden state -> belief
 
-        preactivation = self.last_fc(out)           # -> (mu, sigma^2) params
+        preactivation = torch.cat((self.fc_mu(out), self.fc_raw_var(out)), dim=-1)
         output = self.output_activation(preactivation)
         if return_preactivations:
             return output, preactivation
@@ -242,6 +257,21 @@ class CustomContextEncoder(PyTorchModule):
 
     def reset(self, num_tasks=1):
         self.hidden = self.hidden.new_full((1, num_tasks, self.hidden_dim), 0)
+
+
+def infer_posterior(context_encoder, context, latent_dim):
+    params = context_encoder(context)
+    params = params.view(context.size(0), -1, context_encoder.output_size)
+    mus = params[..., :latent_dim]
+    sigmas_squared = F.softplus(params[..., latent_dim:])
+    posterior = [
+        product_of_gaussians(task_mus, task_sigmas_squared)
+        for task_mus, task_sigmas_squared in zip(mus, sigmas_squared)
+    ]
+    mu = torch.stack([p[0] for p in posterior])
+    sigma_squared = torch.stack([p[1] for p in posterior])
+    z = mu + torch.sqrt(sigma_squared) * torch.randn_like(mu)
+    return z, mu, sigma_squared
 ```
 
-Let me trace the whole chain back so I'm sure it hangs together. I wanted return-during-learning, whose principled optimum is the Bayes-optimal BAMDP policy that conditions on a belief over the task — but the BAMDP is triply intractable (unknown parameterization, intractable belief update, intractable belief-space planning), and the usual escape, posterior sampling, explores inefficiently. The meta-training distribution let me *learn* the belief instead of deriving it: amortize the intractable posterior with an inference network, the VAE move. I shrank the belief from "posterior over `R`,`T`" to "posterior over a low-dimensional latent task `m`" by sharing `R` and `T` across tasks, which made the inference tractable and let the shared model pool data over all tasks. Lower-bounding the intractable trajectory log-likelihood gave a per-context-length ELBO — reconstruction plus KL — and two subscripts in it did the real work: encode the *past* but decode past *and future* (so the belief learns to generalize to unseen states), and index the bound by every `t` with the prior set to the previous posterior (so the belief is trained to refine online). The belief is `p(m|τ_{:t})`, a function of an ordered, growing history that I must update online — which is exactly a recurrent network's job, so the encoder is a GRU whose hidden state is the running belief accumulator, with per-modality embeddings in and two Gaussian heads out; the rejected permutation-invariant product-of-Gaussians encoder is order-blind and only good for off-policy convenience. Making the latent a *distribution* (Gaussian, reparameterized, KL-regularized) is the inductive bias that turns a deterministic recurrent meta-RL net into a calibrated, uncertainty-aware task belief, and the small latent keeps that belief sharp and stable across resets. Not backpropagating the RL loss through the shared encoder removes gradient interference and the cost of re-encoding for every PPO minibatch, so the VAE and policy train with separate optimizers and buffers. At test time the decoder is discarded and the policy acts on the streaming belief with no planning — tractable, like posterior sampling, but conditioned on the running belief, so it explores approximately Bayes-optimally.
+Let me trace the whole chain back so I'm sure it hangs together. I wanted return-during-learning, whose principled optimum is the Bayes-optimal BAMDP policy that conditions on a belief over the task — but the BAMDP is triply intractable (unknown parameterization, intractable belief update, intractable belief-space planning), and the usual escape, posterior sampling, explores inefficiently. The meta-training distribution let me *learn* the belief instead of deriving it: amortize the intractable posterior with an inference network, the VAE move. I shrank the belief from "posterior over `R`,`T`" to "posterior over a low-dimensional latent task `m`" by sharing `R` and `T` across tasks, which made the inference tractable and let the shared model pool data over all tasks. Lower-bounding the intractable trajectory log-likelihood gave a per-context-length ELBO — reconstruction plus KL — and two subscripts in it did the real work: encode the *past* but decode past *and future* (so the belief learns to generalize to unseen states), and index the bound by every `t` with the prior set to the previous posterior (so the belief is trained to refine online). The belief is `p(m|τ_{:t})`, a function of an ordered, growing history that I must update online — which is exactly a recurrent network's job, so the canonical encoder is a GRU whose hidden state is the running belief accumulator, with per-modality embeddings in and two Gaussian heads out; if a surrounding scaffold uses exchangeable Gaussian factors, `softplus` and product-of-Gaussians aggregation belong outside that recurrent core. Making the latent a *distribution* (Gaussian, reparameterized, KL-regularized) is the inductive bias that turns a deterministic recurrent meta-RL net into a calibrated, uncertainty-aware task belief, and the small latent keeps that belief sharp and stable across resets. Detaching the belief on the policy path removes gradient interference and the cost of re-encoding for every PPO minibatch, so the VAE and policy train with separate optimizers and buffers. At test time the decoder is discarded and the policy acts on the streaming belief with no planning — tractable, like posterior sampling, but conditioned on the running belief, so it explores approximately Bayes-optimally.

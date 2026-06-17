@@ -43,8 +43,9 @@ Majority:  server pushes  sign[ sum_m sign(g~_m) ]  to all workers;
            x_{k+1} = x_k - delta * sign[ sum_{m=1}^M sign(g~_m) ]
 ```
 
-The implementation convention is `sign(0) = +1` via `>= 0`; for an even-worker vote tie, the server
-broadcasts `+1`. The no-loss repetition-code proof uses strict majority or a neutral tie rule.
+There are two zero conventions in the reference code. The original ICML reproduction code maps
+`sign(0) -> 0`; the later compressor/majority path uses `>= 0`, so wire-format zeros and even-worker
+vote ties map to `+1`. The no-loss repetition-code proof uses strict majority or a neutral tie rule.
 
 ## Convergence
 
@@ -177,17 +178,20 @@ class SignumCodec(SignSGDCodec):
 ```
 
 Local Signum optimizer (same rule as an update; `momentum=0` recovers signSGD). Mirrors the
-canonical Signum update `state = momentum*state + (1-momentum)*grad ; w = w - lr*sign(state)`,
-with `sign(0) -> +1` through `>= 0`:
+canonical MXNet Signum update: ordinary `wd` enters the rescaled gradient, optional `wd_lh` is
+decoupled as `w <- (1 - lr*wd_lh)w`, and `torch.sign` preserves the original local-optimizer
+`sign(0) -> 0` convention:
 
 ```python
 import torch
 
 
 class Signum:
-    def __init__(self, params, lr=0.01, momentum=0.9, weight_decay=0.0):
+    def __init__(self, params, lr=0.01, momentum=0.9, weight_decay=0.0,
+                 decoupled_weight_decay=0.0):
         self.params = list(params)
         self.lr, self.momentum, self.wd = lr, momentum, weight_decay
+        self.wd_lh = decoupled_weight_decay
         self.state = {id(p): None for p in self.params}
 
     @torch.no_grad()
@@ -198,16 +202,17 @@ class Signum:
                 continue
             g = p.grad
             if self.wd != 0:
-                g = g.add(p, alpha=self.wd)                   # weight decay
+                g = g.add(p, alpha=self.wd)                   # rescaled_grad includes wd*weight
             if beta != 0:
                 m = self.state[id(p)]
                 if m is None:
                     m = torch.zeros_like(g)
-                m.mul_(beta).add_(g, alpha=1 - beta)          # state=beta*state+(1-beta)*grad
+                m.mul_(beta).add_(g, alpha=1 - beta)          # state=beta*state+(1-beta)*rescaled_grad
                 self.state[id(p)] = m
-                direction = torch.where(m >= 0, torch.ones_like(m), -torch.ones_like(m))
-                p.add_(direction, alpha=-self.lr)             # x <- x - delta*sign(m)
+                direction = torch.sign(m)
             else:
-                direction = torch.where(g >= 0, torch.ones_like(g), -torch.ones_like(g))
-                p.add_(direction, alpha=-self.lr)             # signSGD: x <- x - delta*sign(g~)
+                direction = torch.sign(g)
+            if self.wd_lh != 0:
+                p.mul_(1 - self.lr * self.wd_lh)              # MXNet wd_lh-style decoupled decay
+            p.add_(direction, alpha=-self.lr)                 # signSGD/Signum signed step
 ```

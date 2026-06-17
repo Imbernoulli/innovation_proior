@@ -70,14 +70,16 @@ params `phi` are shared):
 L(phi, theta, psi) = E_{p(M)}[ J(psi, phi) + lambda * sum_{t=0}^{H^+} ELBO_t(phi, theta) ].
 ```
 
-With diagonal Gaussians and prior = previous posterior, each KL term is the full Gaussian-to-Gaussian
-divergence
+With diagonal Gaussians and prior = previous posterior, each chained KL term is the full
+Gaussian-to-Gaussian divergence
 
 ```
 KL( N(mu_t,S_t) || N(mu_{t-1},S_{t-1}) ) = 0.5 [ log|S_{t-1}|/|S_t| - K + tr(S_{t-1}^{-1} S_t) + (mu_{t-1}-mu_t)^T S_{t-1}^{-1} (mu_{t-1}-mu_t) ];
 ```
 
-the simpler unit-Gaussian prior gives `KL(q||N(0,I)) = -0.5 sum_k (1 + log sigma_k^2 - mu_k^2 - sigma_k^2)`.
+The first empty-history posterior is regularised against the unit Gaussian `N(0,I)`. If all KL terms
+are instead taken to that fixed unit prior, the formula reduces to
+`KL(q||N(0,I)) = -0.5 sum_k (1 + log sigma_k^2 - mu_k^2 - sigma_k^2)`.
 
 ## Defaults (MuJoCo, from the canonical setup)
 
@@ -129,11 +131,13 @@ class RNNEncoder(nn.Module):
         out, _ = self.gru(h, hidden_state)
         mu, logvar = self.fc_mu(out), self.fc_logvar(out)
         sample = self.reparameterise(mu, logvar)
+        recurrent_state = out
         if return_prior:
             sample = torch.cat((prior_sample, sample))
             mu = torch.cat((prior_mu, mu))
             logvar = torch.cat((prior_logvar, logvar))
-        return sample, mu, logvar
+            recurrent_state = torch.cat((hidden_state, recurrent_state))
+        return sample, mu, logvar, recurrent_state
 
 
 class RewardDecoder(nn.Module):
@@ -174,15 +178,20 @@ class StateTransitionDecoder(nn.Module):
         return self.net(h)
 ```
 
-The ELBO: encode once (posterior at every prefix `t`), decode the whole trajectory under each
-`q(m|tau_{:t})`, sum reconstruction over decode steps and over `t`, add the chained KL:
+The negative-ELBO loss: encode once (posterior at every prefix `t`), decode the whole trajectory under
+each `q(m|tau_{:t})`, sum reconstruction over decode steps and over `t`, add the chained KL:
 
 ```python
 def kl_chained_to_previous(mu, logvar):
-    """KL(q(m|tau_:t) || q(m|tau_:t-1)) per t. mu/logvar are [T+1, batch, latent]
-    (index 0 = prior). Diagonal Gaussians: per-coordinate sums."""
-    mu_t, logvar_t = mu[1:], logvar[1:]
-    mu_p, logvar_p = mu[:-1], logvar[:-1]
+    """KL terms for t=0..T. mu/logvar are [T+1, batch, latent]:
+    index 0 is the empty-history posterior, regularised to N(0,I);
+    later indices are regularised to the previous posterior."""
+    unit_mu = torch.zeros_like(mu[:1])
+    unit_logvar = torch.zeros_like(logvar[:1])
+    all_mu = torch.cat((unit_mu, mu), dim=0)
+    all_logvar = torch.cat((unit_logvar, logvar), dim=0)
+    mu_t, logvar_t = all_mu[1:], all_logvar[1:]
+    mu_p, logvar_p = all_mu[:-1], all_logvar[:-1]
     var_t, var_p = logvar_t.exp(), logvar_p.exp()
     return 0.5 * ((logvar_p - logvar_t)
                   + (var_t + (mu_p - mu_t).pow(2)) / var_p - 1.0).sum(dim=-1)
@@ -191,7 +200,7 @@ def kl_chained_to_previous(mu, logvar):
 def compute_elbo_loss(encoder, reward_decoder, state_decoder,
                       prev_obs, next_obs, actions, rewards,
                       kl_weight=0.1, rew_coeff=1.0, state_coeff=1.0, decode_state=True):
-    _, mu, logvar = encoder(actions, next_obs, rewards, hidden_state=None, return_prior=True)
+    _, mu, logvar, _ = encoder(actions, next_obs, rewards, hidden_state=None, return_prior=True)
     samples = encoder.reparameterise(mu, logvar)
     T = next_obs.shape[0]
     rew_loss = state_loss = 0.0
@@ -223,9 +232,10 @@ class VariBADAgent(nn.Module):
         _, self.mu, self.logvar, self.hidden = self.encoder.prior(batch_size)
 
     def update_belief(self, action, next_state, reward):
-        _, mu, logvar = self.encoder(action[None], next_state[None], reward[None],
-                                     hidden_state=self.hidden, return_prior=False)
+        _, mu, logvar, hidden = self.encoder(action[None], next_state[None], reward[None],
+                                             hidden_state=self.hidden, return_prior=False)
         self.mu, self.logvar = mu[-1], logvar[-1]
+        self.hidden = hidden[-1:].detach()
 
     def act(self, state, deterministic=False):
         belief = torch.cat((self.mu, self.logvar), dim=-1).detach()   # posterior, detached from RL

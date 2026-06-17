@@ -78,19 +78,12 @@ the variance and the iteration count.
 **Sign compression — 1-bit SGD (Seide et al. 2014), signSGD / Signum (Bernstein et al. 2018).**
 Send only the sign of each coordinate: `x_{t+1} = x_t − γ sign(g_t)`, one bit per coordinate.
 Extremely cheap, and close kin to adaptive methods (sign of a momentum-smoothed gradient is
-the `Signum` variant, which mirrors Adam's behavior). It converges only under benign
-conditions — Gaussian gradient noise, or a batch size that grows with the iteration count.
-**Gap:** the sign operator is biased, `E[sign(g)] ≠ ∇f`, and that bias is not benign. It
-forgets the *magnitude* of the gradient: on a one-dimensional problem with bimodal stochastic
-gradient (value `+4` with probability `1/4`, `−1` with probability `3/4`, mean `1/4`), the
-expected sign points the *wrong way*, so the objective increases in expectation for any
-positive step size. And it forgets *direction*: on the convex problem
-`f(x) = ε|x₁+x₂| + |x₁−x₂|`, started at `(1,1)`, the subgradient's sign is always `±(1,−1)`,
-so the iterates never leave the line `x₁+x₂ = 2` and `f(x_t) ≥ f(x_0)` for *every* step-size
-schedule, even with the full deterministic (sub)gradient. The discarded component
-`ε(1,1)` — the part the sign throws away — is exactly the direction toward the optimum, and it
-is thrown away again at every step. So a biased compressor can stall an otherwise convergent
-optimizer outright; sign methods are not merely slower, they can fail to converge.
+the `Signum` variant, which mirrors Adam's behavior). Existing guarantees require benign
+conditions, such as Gaussian gradient noise or batch sizes that grow with the iteration count.
+**Gap:** the sign operator is biased, `E[sign(g)] ≠ ∇f`, and it discards both magnitude and
+fine directional information. That makes it difficult to interpret the communicated vector as
+a descent direction under the standard SGD assumptions; the practical win is clear, but a
+general convergence explanation is missing.
 
 **Magnitude sparsification / gradient dropping — top-k (Aji & Heafield 2017; Dryden et al.
 2016; Strom 2015).** Of the `d` coordinates of `g`, keep only the `k` with the largest

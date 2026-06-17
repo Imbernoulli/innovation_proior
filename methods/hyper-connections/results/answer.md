@@ -53,6 +53,11 @@ the final normalization is `n` times the ordinary Pre-Norm hidden vector. The fi
 that global scale in the mathematical normalization rule, up to epsilon-level numerical differences in
 implementation, so the initialized model starts as the Pre-Norm baseline.
 
+For Transformer experiments, the paper also scales the initialization standard deviation of each residual
+branch output module by a factor of `sqrt(n)`: the FFN second linear layer and the attention output
+projection are the named cases. This is separate from the `HyperConnection` class in Appendix J and
+compensates for the final summation over streams before final normalization and unembedding.
+
 ## Cost
 
 Per hyper-connection module:

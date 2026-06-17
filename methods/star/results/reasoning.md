@@ -32,7 +32,7 @@ Now *with* memory control — only artifacts propagate, dialogues are forgotten.
 
 Now expand the parenthesis: `(n-1) + 2(n-2) = 3n - 5`, which for large `n` is `≈ 3n`. So `O(n)_w ≈ 3m(i+s) · n = \bar{C} n`, with `\bar{C} = 3m(i+s)`. Linear. Set the two side by side and the structural difference is exactly the one term: `n(n-1)/2` — all edges, the whole transcript — versus `(n-1)` — only the sink's own inflow. Memory control trades quadratic for linear by making each agent pay for its immediate incoming artifacts rather than the cumulative history of the entire network. *That's* what lets me push toward a thousand agents. Without it I'd choke around a few dozen, which is precisely where the prior systems choke.
 
-There's one place where "only the artifact propagates" needs more than just forgetting — convergent nodes. In a chain or a star spoke, a node has a single predecessor, so the artifact to refine is unambiguous. But the moment the topology has a node with several incoming edges — several parents — that node receives several artifacts at once and has to turn them into one before (or as part of) refining. How do I combine `k` incoming artifacts? The lazy answer is to dump all `k` into one prompt and ask the model to merge them. That's bad for two reasons: it reintroduces a context that grows with the in-degree, and more subtly, a model handed many candidates at once tends to skim — it can't really attend to all of them, so it picks one or shallowly staples them. I want the merge to be *productive*: the combination of two good artifacts should be able to come out better than either, a genuine strength-aggregation, not a concatenation. So instead of one flat merge, do it hierarchically — pair the artifacts up, merge each pair into one improved artifact, then pair those, and so on, a reduction tree. Each merge step is a small, focused interaction over a handful of candidates (a unit), and the number of candidates roughly halves each round until one remains. That keeps every individual merge prompt bounded, and it's "non-linear" in the good sense: quality can compound up the tree rather than being averaged away. So convergent nodes run a tournament-style pairwise aggregation over their incoming artifacts, and only the single aggregated artifact continues.
+There's one place where "only the artifact propagates" needs more than just forgetting — convergent nodes. In a chain or a star spoke, a node has a single predecessor, so the artifact to refine is unambiguous. But the moment the topology has a node with several incoming edges — several parents — that node receives several artifacts at once and has to turn them into one before (or as part of) refining. How do I combine `k` incoming artifacts? The lazy answer is to dump all `k` into one prompt and ask the model to merge them. That's bad for two reasons: it reintroduces a context that grows with the in-degree, and more subtly, a model handed many candidates at once tends to skim — it can't really attend to all of them, so it picks one or shallowly staples them. I want the merge to be *productive*: the combination of two good artifacts should be able to come out better than either, a genuine strength-aggregation, not a concatenation. So instead of one flat merge, I use a pooled small-batch reduction: group a few artifacts, merge each group into an improved artifact, then keep reducing until one remains. In the reference code this aggregation only fires once all predecessor solutions have arrived and the count is at least the configured aggregation unit; otherwise the node forwards the first available predecessor solution. That keeps the implementation honest: convergence gets a bounded reducer, but it is not an unconditional merge at every node with more than one possible parent.
 
 Let me also pin a small but real design knob: the agents shouldn't all behave identically up and down the graph. Early in the graph — shallow nodes, near the sources — I want exploration: many *different* drafts so the later stages have diverse material to refine and aggregate. Late in the graph — deep nodes, near the sink — I want convergence and polish, not more wild variation. The clean way to get that is to tie each node's sampling temperature to its depth: hot near the top, cold near the bottom. Concretely, with a node at depth `d` in a graph of total depth `D`, set its temperature to `1 - d/D` — full temperature at the sources, near zero at the sink. Diverge early, converge late, for free, with one line.
 
@@ -42,15 +42,15 @@ Now I finally have a general, scalable collaboration machine, and I can ask the 
 
 where `δ` is the floor (the single-agent baseline level), `γ` the total range it can climb, `α` the inflection point in log-scale (where rapid improvement happens), and `β` the steepness of that climb. Four numbers, fit per topology. The shape is forced by the mechanics — slow, then fast, then saturating — not pulled from a hat. A *collaborative scaling law*, the inference-time cousin of the neural one, but logistic rather than power-law because collaboration on a fixed task saturates.
 
-And there's a timing puzzle I can reason out. The neural scaling law needs *enormous* scale to show emergent jumps — billion-parameter models, `10^22`-ish training FLOPs — because every neuron has to learn world knowledge from scratch, all of them tuned simultaneously by gradient descent over a vast corpus. But my agents *already* carry the foundation model's knowledge; they aren't learning it, they're *coordinating* it through interaction. So collaborative emergence shouldn't need anywhere near that scale — the agents start knowledgeable and just need enough interaction to surface and combine the right aspects. I'd expect saturation around a hundred agents, not a billion neurons. Agent collaboration as a *shortcut* to higher effective intelligence when you can't afford to retrain.
+And there's a timing puzzle I can reason out. The neural scaling law needs *enormous* scale to show emergent jumps — billion-parameter models, `10^22`-ish training FLOPs — because every neuron has to learn world knowledge from scratch, all of them tuned simultaneously by gradient descent over a vast corpus. But my agents *already* carry the foundation model's knowledge; they aren't learning it, they're *coordinating* it through interaction. So collaborative emergence shouldn't need anywhere near that scale — the agents start knowledgeable and just need enough interaction to surface and combine the right aspects. The exact threshold is empirical, but I should look for it at tractable agent counts, not billion-neuron scale. Agent collaboration becomes a possible *shortcut* to higher effective intelligence when I can't afford to retrain.
 
-Can I say *why* adding agents surfaces new capability, mechanistically, rather than just asserting the S-curve? Here's the thread. Each interaction is the model sampling from its token distribution to produce a critique or a refinement — to raise some "aspect" of the artifact (a syntax issue, a runtime risk, a logic gap, an unmet requirement, a stylistic angle). The aspects a model raises are themselves long-tailed: a few common ones come up constantly, and a long tail of rare, specific ones come up only occasionally — token frequencies follow a Zipf/power law, the rank-`r` aspect appearing with probability roughly `1/r`. A rare aspect only gets raised if you *sample enough*. Now, how many samples does the collaboration draw? It's proportional to the interaction density — the number of edges — which in a dense graph grows like `n^2`. So the effective number of draws is `n ∝ |V|^2`. The probability that a given tail aspect `t` gets raised at least once across those draws is the classic `1 - (1 - p(t))^n`, and with `p(t) ∝ 1/r(t)` and the sample count `∝ |V|^2`,
+Can I say *why* adding agents surfaces new capability, mechanistically, rather than just asserting the S-curve? Here's the thread. Each interaction is the model sampling from its token distribution to produce a critique or a refinement — to raise some "aspect" of the artifact (a syntax issue, a runtime risk, a logic gap, an unmet requirement, a stylistic angle). The aspects a model raises are themselves long-tailed: a few common ones come up constantly, and a long tail of rare, specific ones come up only occasionally — token frequencies follow a Zipf/power law, the rank-`r` aspect appearing with probability roughly `1/r`. A rare aspect only gets raised if I sample enough. Now, how many samples does the collaboration draw? It is proportional to the interaction density — the number of edges — which in a dense graph grows like `|V|^2`. So the effective sample count, call it `N_s`, is proportional to `|V|^2`. The probability that a given tail aspect `t` gets raised at least once across those draws is the classic `1 - (1 - p(t))^{N_s}`, and with `p(t) ∝ 1/r(t)` and `N_s ∝ |V|^2`,
 
-  `p^n(t) = 1 - (1 - p(t))^n ∝ 1 - (1 - 1/r(t))^{|V|^2}`,
+  `p^{N_s}(t) = 1 - (1 - p(t))^{N_s} ∝ 1 - (1 - 1/r(t))^{|V|^2}`,
 
-which `→ 1` as `|V| → ∞`. So scaling the network drives the probability of hitting each rare "tail aspect" toward certainty: more agents means more samples means the long tail of refinement angles gets covered, and once a critic raises an aspect the actor overwhelmingly acts on it. The collaboration stops being confined to the few obvious fixes and starts catching the rare ones — and *that* sharp rise in distinct aspects covered is what an emergent jump looks like. The same scaling also lengthens artifacts, because more covered aspects means more to encode. The mechanism behind the S-curve is the long tail meeting `n^2` sampling.
+which `→ 1` as `|V| → ∞`. So scaling the network drives the probability of hitting each rare "tail aspect" toward certainty: more agents means more samples means the long tail of refinement angles gets covered, and once a critic raises an aspect the actor overwhelmingly acts on it. The collaboration stops being confined to the few obvious fixes and starts catching the rare ones — and *that* sharp rise in distinct aspects covered is what an emergent jump looks like. The same scaling also lengthens artifacts, because more covered aspects means more to encode. The mechanism behind the S-curve is the long tail meeting `|V|^2` sampling.
 
-Now, with the machine built and the scaling shape understood, which topology should I actually use? The family of DAGs I can write is large, but a few representative shapes span it. A **chain**, `0→1→2→…→(n-1)`: pure depth, each agent refines the last, no diversity — `n-1` edges, longest path. A **star**: one hub broadcasts to everyone else, `0→i` for every other `i`. That's the widest possible single-layer divergence — one seed, `n-1` independent parallel refinements, all siblings, depth one, `n-1` edges. A **tree**, branching like `i → 2i+1`, `i → 2i+2`: divergence with some depth. A **mesh**, every earlier node to every later one, `n(n-1)/2` edges: the densest. A **layered** shape: partition into layers and fully connect adjacent ones, MLP-like, balancing width and depth. And **random** shapes: start from the mesh and delete edges while keeping the graph connected — irregular.
+Now, with the machine built and the scaling shape understood, which topology should I actually use? The family of DAGs I can write is large, but a few representative shapes span it. A **chain**, `0→1→2→…→(n-1)`: pure depth, each agent refines the last, no diversity — `n-1` edges, longest path. A **star**: one hub broadcasts to everyone else, `0→i` for every other `i`. That's the widest possible single-layer divergence — one seed, `n-1` independent parallel refinements, all siblings, one interior hop from hub to leaf, `n-1` edges. A **tree**, branching like `i → 2i+1`, `i → 2i+2`: divergence with some depth. A **mesh**, every earlier node to every later one, `n(n-1)/2` edges: the densest. A **layered** shape: partition into layers and fully connect adjacent ones, MLP-like, balancing width and depth. And **random** shapes: sample a random subset of forward mesh edges. The intended role is irregularity and shortcuts; in the public generator I need to remember that the code samples between `n-1` and `n(n-1)/2` edges but does not explicitly test connectivity, even though the paper text describes maintaining connectivity.
 
 Let me reason about what these shapes do, because the choice isn't obvious and I can derive the tendencies from the mechanics I just built. Density first: a denser graph has more edges, hence more reflect/refine and aggregation steps, hence more chances to improve the artifact from more angles — so on average, more density correlates with longer, more thorough reasoning and better artifacts, mesh over tree over chain. But density isn't free and it isn't monotone in quality, because of two opposing forces I built in. On one hand, more edges, more aspects covered (the `n^2`-sampling argument). On the other hand, a convergent node with very high in-degree faces a hard aggregation problem — merging many divergent artifacts into one coherent one is genuinely difficult, and the densest meshes pile that on. And my own memory control has a side effect on *deep* shapes: because only the artifact propagates and the chatter is forgotten, a very deep path can lose track of what distant upstream agents intended, occasionally rolling an artifact back to a worse earlier version. So depth is risky under aggressive forgetting.
 
@@ -60,161 +60,8 @@ And there's a directional asymmetry worth pulling out, because some of these sha
 
 So the topology isn't a universal winner; it's a dial. Closed-domain, step-by-step logical tasks suit deeper, chain-like structures (sequential reasoning). Open-ended, creative, breadth-hungry tasks suit divergent, branchy structures (the star and friends), where many parallel aspects beat one deep thread. The right move in practice is to pick shape and scale by the task's openness and your compute budget, leaning divergent and irregular, around the inflection of the scaling curve — a node count near `2^4` is a reasonable default, with sparse irregular shapes when efficiency matters and denser ones when you can pay.
 
-Let me write the machine as code I'd actually run, filling the empty `run` slot — and I'll write the topology generators explicitly, because "which DAG" is the dial the whole thing turns on, and the star is one line of it. A node owns its predecessors, successors, the artifacts arriving from parents, and its own current solution — and crucially it keeps *only* that solution as long-term memory, never the dialogue. Execution is Kahn-peeling: grab the predecessor-free wavefront, drive each of its outgoing edges through critic-then-actor refinement, deposit the refined artifact at the child, aggregate at multi-parent children, then delete the wavefront and repeat.
+Let me translate the design into the runtime I actually need. A topology generator emits forward edges over nodes `0..n-1`; the star generator is the simplest divergent case, adding `(0, i)` for every `i` from `1` to `n-1`. The runtime then adds an input sentinel before source nodes and an output sentinel after sink nodes, so the interior star has one hub-to-leaf hop and the full execution has a clean single entry and single exit. A node owns its predecessor list, successor list, the artifacts arriving from parents, and its current `solution`. That `solution` is the long-term memory; the suggestion text and intermediate prompt history are logged but not propagated as state.
 
-```python
-import math
+The reference implementation gives me one more correction to keep straight: the paper's conceptual "critic on each edge" is not a separate `EdgeAgent` object in the public code. Each successor node's `optimize` call first uses an instructor-style prompt on the predecessor's solution to produce a suggestion, then uses an assistant-style prompt with the task, predecessor solution, and suggestion to produce the refined code. That still realizes the actor/critic split, but the split is prompt-level inside `Node.optimize`, not a separate edge class. Aggregation is similarly concrete: if a node has received all predecessor solutions and the count is at least `Aggregate_unit_num` (default `2`), it calls the `Pool` reducer, which groups candidate programs into small batches, optionally prunes large queues, and iterates until one code bundle remains; if the count is below the threshold or aggregation fails after retries, the code forwards the first available predecessor solution. So the final artifact should say "hierarchical pooled aggregation with threshold and fallback," not an unconditional merge at every multi-parent node.
 
-
-# ---- the topology dial: which DAG over nodes 0..n-1 ----
-# A DAG is given by directed edges (source, target) with source < target,
-# so a topological order always exists. These are the representative shapes;
-# the orchestrator below runs any of them identically.
-
-def generate_chain(n):
-    # 0 -> 1 -> ... -> n-1 : pure depth, no diversity (n-1 edges)
-    return [(i, i + 1) for i in range(n - 1)]
-
-def generate_star(n):
-    # hub-and-spoke: node 0 broadcasts to every other node, 0 -> i.
-    # widest single-layer divergence: one seed, n-1 parallel sibling refinements,
-    # depth 1, n-1 edges. The divergent extreme.
-    return [(0, i) for i in range(1, n)]
-
-def generate_tree(n):
-    # binary branching i -> 2i+1, i -> 2i+2 : divergence with depth (n-1 edges)
-    edges, i = [], 0
-    while len(edges) < n - 1:
-        edges.append((i, 2 * i + 1))
-        if len(edges) >= n - 1:
-            break
-        edges.append((i, 2 * i + 2))
-        i += 1
-    return edges
-
-def generate_mesh(n):
-    # every earlier node to every later one : densest, n(n-1)/2 edges
-    return [(u, v) for u in range(n) for v in range(n) if u < v]
-
-def generate_layered(n):
-    # MLP-like: ~log2(n) layers, fully connect adjacent layers (balanced width/depth)
-    layer_num = int(math.log(n, 2))
-    sizes = [n // layer_num for _ in range(layer_num)]
-    sizes[0] += n % layer_num
-    starts, ends = [0], [sizes[0]]
-    for k in range(1, layer_num):
-        starts.append(ends[-1]); ends.append(ends[-1] + sizes[k])
-    edges = []
-    for k in range(layer_num - 1):
-        for u in range(starts[k], ends[k]):
-            for v in range(starts[k + 1], ends[k + 1]):
-                edges.append((u, v))
-    return edges
-
-def generate_random(n):
-    # irregular: keep a connected subset of mesh edges (small-world short paths)
-    import random
-    space = [(u, v) for u in range(n) for v in range(n) if u < v]
-    random.shuffle(space)
-    edge_num = random.randint(n - 1, n * (n - 1) // 2)
-    return space[:edge_num]
-
-
-# ---- the agents on nodes and edges ----
-
-class Node:
-    """An actor on a node. Long-term memory = ONLY its final artifact (self.solution);
-    the dialogue that produced it is forgotten, so context stays linear, not quadratic."""
-    def __init__(self, node_id, model):
-        self.id = node_id
-        self.predecessors, self.successors = [], []
-        self.pre_solutions = {}          # parent_id -> artifact arriving on that edge
-        self.solution = Artifact()       # the only thing that propagates onward
-        self.depth = 0
-        self.model = model
-
-    def optimize(self, task, pre_solution):
-        """One edge's reflect-then-refine, dual-agent: the edge-critic reflects on the
-        incoming artifact and instructs; this node's actor refines accordingly."""
-        suggestion = "None."
-        if pre_solution:                                  # critic on the edge: reflect + instruct
-            suggestion = critic_agent(self.model).step(
-                instructor_prompt(task, pre_solution)).content
-        response = actor_agent(self.model, temperature=self.temperature).step(
-            assistant_prompt(task, pre_solution, suggestion)).content   # actor: refine
-        return response, Artifact(response), suggestion
-
-    def aggregate(self, task, unit_num):
-        """Convergent node: hierarchical pairwise tournament over incoming artifacts.
-        Merge in small units, halve the field each round -> 'non-linear' strength-
-        aggregation, never a flat concat that the model would only skim."""
-        pool = list(self.pre_solutions.values())
-        while len(pool) > 1:
-            if unit_num >= 4:
-                unit_num = unit_num // 2                   # shrink the merge group each round
-            nxt = []
-            for k in range(0, len(pool), unit_num):
-                group = pool[k:k + unit_num]
-                merged = merge_agent(self.model, temperature=1 - self.depth / self.graph_depth)\
-                    .step(cooperate_prompt(task, group)).content
-                nxt.append(Artifact(merged))
-            pool = nxt
-        self.solution = pool[0]
-
-
-class Collaboration:
-    """Fills the empty run() slot: organize agents as a DAG, run them in topological
-    order, route and aggregate artifacts, and keep only artifacts in long-term memory."""
-
-    def __init__(self, num_agents, task_prompt, model_name, topology="star",
-                 aggregate_unit_num=2):
-        self.task = task_prompt
-        self.unit_num = aggregate_unit_num
-        gen = {"chain": generate_chain, "star": generate_star, "tree": generate_tree,
-               "mesh": generate_mesh, "layered": generate_layered,
-               "random": generate_random}[topology]
-        edges = gen(num_agents)
-        self.nodes = {i: Node(i, model_name) for i in range(num_agents)}
-        self.IN, self.OUT = -1, -2                        # input / output sentinels
-        self.nodes[self.IN] = Node(self.IN, model_name)
-        self.nodes[self.OUT] = Node(self.OUT, model_name)
-        for u, v in edges:
-            self._add_edge(u, v)
-        for nd in list(self.nodes.values()):              # single source / single sink
-            if nd.id not in (self.IN, self.OUT) and not nd.predecessors:
-                self._add_edge(self.IN, nd.id)
-            if nd.id not in (self.IN, self.OUT) and not nd.successors:
-                self._add_edge(nd.id, self.OUT)
-        self._assign_depths()                             # temperature = 1 - depth/total_depth
-        self.nodes[self.IN].solution = Artifact(task_prompt)
-
-    def _add_edge(self, u, v):
-        self.nodes[u].successors.append(self.nodes[v])
-        self.nodes[v].predecessors.append(self.nodes[u])
-
-    def run(self):
-        nodes = dict(self.nodes)
-        while True:
-            wave = [nd for nd in nodes.values() if not nd.predecessors]   # Kahn: zero in-degree
-            if not wave:
-                break
-            advanced = set()
-            for cur in wave:                              # data flow along the original edges
-                for nxt in cur.successors:
-                    _, artifact, _ = nxt.optimize(self.task, cur.solution.as_text())
-                    nxt.pre_solutions[cur.id] = artifact
-                    advanced.add(nxt.id)
-            for nid in advanced:                          # set each advanced node's solution
-                nd = self.nodes[nid]
-                if len(nd.pre_solutions) >= 2:            # convergent -> hierarchical aggregate
-                    nd.aggregate(self.task, self.unit_num)
-                else:                                     # single parent -> take the refinement
-                    nd.solution = next(iter(nd.pre_solutions.values()))
-            for cur in wave:                              # peel the wavefront
-                for nxt in list(cur.successors):
-                    nxt.predecessors.remove(cur)
-                del nodes[cur.id]
-        return self.nodes[self.OUT].solution
-```
-
-Let me trace the causal chain back to the start. I wanted to know whether collaboration scales with agent count, but couldn't even build a system to measure it, because the existing ones are tiny, hand-wired per task, and explode quadratically in context when everyone reads everyone. Modeling agents as nodes and message-passing as edges made it a graph; forbidding cycles made it a DAG, which kills information backflow and guarantees a topological order I can run by Kahn-peeling wavefronts. Splitting roles by geometry — actors on nodes producing artifacts, critics on edges issuing the instruction that turns one artifact into the next — gave each edge a dual-agent reflect-then-refine loop, the proven unit of useful interaction, iterated a few turns. The scaling killer, context explosion, I beat with memory control: keep only the final artifact in long-term memory and forget the dialogue, which I checked drops the worst-case sink context from `C n^2` (it would inherit every edge's transcript) to `\bar{C} n` (it pays only for its own incoming artifacts), the difference being exactly the `n(n-1)/2`-versus-`(n-1)` term. Convergent nodes, where forgetting alone isn't enough, get a hierarchical pairwise tournament that compounds quality instead of skimming a flat concatenation. With the machine built, the scaling shape follows from the mechanics — slow, then fast, then saturating because a task has finite improvable aspects — so a logistic in `log|V|`, not a power law; and the mechanism under it is the long-tailed (Zipf) distribution of refinement aspects meeting `|V|^2` sampling density, which drives the chance of covering each rare aspect, `1 - (1 - 1/r(t))^{|V|^2}`, toward one. The topology is a dial, not a fixed answer: density helps until aggregation and deep-path forgetting hurt, wider beats deeper under forgetting, irregular small-world shapes shorten paths and dodge that forgetting at lower cost, and divergent beats convergent because fan-out is smooth while merging is hard — which puts the star, pure shallow fan-out from one seed, at the divergent extreme, the natural choice for breadth-first tasks. And all of it drops into one orchestrator: pick a DAG generator (the star is `(0, i)` for every other `i`), peel it in topological order, refine on every edge, aggregate at every convergent node, and carry only artifacts forward.
+Let me trace the causal chain back to the start. I wanted to know whether collaboration scales with agent count, but couldn't even build a system to measure it, because the existing ones are tiny, hand-wired per task, and explode quadratically in context when everyone reads everyone. Modeling agents as nodes and message-passing as edges made it a graph; forbidding cycles made it a DAG, which kills information backflow and guarantees a topological order I can run by Kahn-peeling wavefronts. Splitting roles by geometry — actors on nodes producing artifacts, critics on directed relations issuing the instruction that turns one artifact into the next — gave each edge a reflect-then-refine step, implemented in code as the successor node first generating suggestions and then generating revised code. The scaling killer, context explosion, I beat with memory control: keep only the final artifact in long-term memory and forget the dialogue, which I checked drops the worst-case sink context from `C n^2` (it would inherit every edge's transcript) to `\bar{C} n` (it pays only for its own incoming artifacts), the difference being exactly the `n(n-1)/2`-versus-`(n-1)` term. Convergent nodes, where forgetting alone isn't enough, get pooled small-batch aggregation once enough predecessor artifacts are present. With the machine built, the scaling shape follows from the mechanics — slow, then fast, then saturating because a task has finite improvable aspects — so a logistic in `log|V|`, not a power law; and the mechanism under it is the long-tailed Zipf distribution of refinement aspects meeting `|V|^2` sampling density, which drives the chance of covering each rare aspect, `1 - (1 - 1/r(t))^{|V|^2}`, toward one. The topology is a dial, not a fixed answer: density helps until aggregation and deep-path forgetting hurt, wider beats deeper under forgetting, irregular short-path shapes can dodge that forgetting at lower cost, and divergent usually beats convergent because fan-out is smooth while merging is hard. That puts the star, pure shallow fan-out from one seed followed by one output-side synthesis, at the divergent extreme and makes it the natural breadth-first topology in the family.

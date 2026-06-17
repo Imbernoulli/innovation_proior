@@ -45,9 +45,10 @@ Second, the gradient of a KL-type loss has a known instability. Following the pe
 `∇_θ D_KL(p, q_θ) = − r_{p,q_θ}·∇_θ q_θ(y|x)`, where `r_{p1,p2}` is the ratio between two
 distributions — the negative gradient of the model probability, weighted *inversely* by that
 probability. When `q_θ(y|x) ≈ 0`, the ratio `r_{p,q_θ}` explodes and the gradient norm becomes very
-large, producing a big, potentially noisy parameter step. The reverse KL gradient is
-`∇_θ D_KL(q_θ, p) = −(log r_{q_θ,p} + 1)·∇_θ q_θ(y|x)`, whose coefficient `log r_{q_θ,p}` likewise
-blows up where the teacher probability `p(y|x) ≈ 0`.
+large, producing a big, potentially noisy parameter step. For the minimized reverse KL,
+`∇_θ D_KL(q_θ, p) = (log r_{q_θ,p} + 1)·∇_θ q_θ(y|x)`, whose coefficient `log r_{q_θ,p}` likewise
+blows up where the teacher probability `p(y|x) ≈ 0`. Some implementations accumulate the negative
+KL and then negate it at reduction time; the final minimized loss has this sign.
 
 Third, **where you sample the training sequences matters.** Training on a fixed dataset is
 *off-policy*: the prefixes the student conditions on in training are not the prefixes it generates

@@ -58,7 +58,7 @@ Overall objective combines the RL return and the summed ELBO:
 L(φ, θ, ψ) = E_{p(M)}[ J(ψ, φ) + λ Σ_{t=0}^{H⁺} ELBO_t(φ, θ) ].
 ```
 
-Latent sampled by reparameterization `m = μ + exp(½ logvar) ⊙ ε`, `ε ~ N(0,I)`. In practice
+Latent sampled by reparameterization `m=mu+exp(0.5*logvar)*eps`, `eps ~ N(0,I)`. In practice
 subsample the `t`'s if `H⁺` is large. The RL loss is **not** backpropagated through the encoder
 (avoids gradient interference and the cost of re-encoding for every on-policy minibatch); VAE and
 policy use separate optimizers, learning rates, and data buffers. At meta-test time the decoder is
@@ -77,7 +77,7 @@ E_ρ[ log p_θ(τ_{:H⁺}) ] = E_ρ[ log ∫ p_θ(τ_{:H⁺}, m) (q_φ(m|τ_{:t}
 
 Per-modality feature extractors (state / action / reward each embedded separately, since they have
 different scales/dims) → optional FC → **single-layer GRU** (gated, handles long horizons,
-lighter than LSTM; orthogonal recurrent-weight init, zero bias init) → optional FC → **two
+lighter than LSTM; orthogonal GRU weight init, zero bias init) → optional FC → **two
 separate heads** for `μ` and `logvar`. Latent dim is small (≈5; task variation is
 low-dimensional, so a tiny latent gives a sharp, stable posterior, unlike a large deterministic
 recurrent hidden state that drifts across resets). The decoder is a learned reward function
@@ -184,35 +184,43 @@ class RNNEncoder(nn.Module):
 ```
 
 Filling the per-transition encoder slot of a PEARL-style harness (ordered context `(task, seq,
-feat)`; the agent applies `softplus` to the variance and a product of Gaussians): collapse the
-per-modality embedders into one per-transition MLP, take the last recurrent state, emit
-`2·latent_dim` numbers (`μ`, pre-softplus `σ²`) in one head — the recurrence is the only
-structural change from the per-transition baseline.
+feat)`; the surrounding agent applies `softplus` to raw variances and aggregates factors with a
+product of Gaussians): collapse the per-modality embedders into one per-transition MLP, pass the
+ordered sequence through a GRU, and emit `μ` plus raw-variance parameters from two separate heads.
+The scaffold then samples in variance space as `z = mu + sqrt(var) * eps`; the canonical logvar
+encoder above samples as `m=mu+exp(0.5*logvar)*eps`.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import rlkit.torch.pytorch_util as ptu
-from rlkit.torch.core import PyTorchModule
 
 
 def _identity(x):
     return x
 
 
-class CustomContextEncoder(PyTorchModule):
+def product_of_gaussians(mus, sigmas_squared):
+    sigmas_squared = torch.clamp(sigmas_squared, min=1e-7)
+    sigma_squared = 1.0 / torch.sum(torch.reciprocal(sigmas_squared), dim=0)
+    mu = sigma_squared * torch.sum(mus / sigmas_squared, dim=0)
+    return mu, sigma_squared
+
+
+class CustomContextEncoder(nn.Module):
     """Recurrent belief encoder in the per-transition encoder slot."""
     IS_RECURRENT = True
 
     def __init__(self, hidden_sizes, input_size, output_size,
                  init_w=3e-3, hidden_activation=F.relu,
-                 output_activation=_identity, hidden_init=ptu.fanin_init,
+                 output_activation=_identity, hidden_init=nn.init.xavier_uniform_,
                  b_init_value=0.1, **kwargs):
-        self.save_init_params(locals())
         super().__init__()
+        if output_size % 2 != 0:
+            raise ValueError("output_size must be 2 * latent_dim")
         self.input_size = input_size
         self.output_size = output_size               # 2 * latent_dim
+        self.latent_dim = output_size // 2
         self.hidden_sizes = hidden_sizes
         self.hidden_activation = hidden_activation
         self.output_activation = output_activation
@@ -227,14 +235,21 @@ class CustomContextEncoder(PyTorchModule):
             self.__setattr__("fc{}".format(i), fc)
             self.fcs.append(fc)
 
-        self.last_fc = nn.Linear(in_size, output_size)
-        self.last_fc.weight.data.uniform_(-init_w, init_w)
-        self.last_fc.bias.data.uniform_(-init_w, init_w)
-
-        self.hidden_dim = self.hidden_sizes[-1]
+        self.hidden_dim = in_size
         self.register_buffer('hidden', torch.zeros(1, 1, self.hidden_dim))
-        self.lstm = nn.LSTM(self.hidden_dim, self.hidden_dim,
-                            num_layers=1, batch_first=True)
+        self.gru = nn.GRU(input_size=in_size, hidden_size=self.hidden_dim,
+                          num_layers=1, batch_first=True)
+        for name, p in self.gru.named_parameters():
+            if 'bias' in name:
+                nn.init.constant_(p, 0)
+            elif 'weight' in name:
+                nn.init.orthogonal_(p)
+
+        self.fc_mu = nn.Linear(self.hidden_dim, self.latent_dim)
+        self.fc_raw_var = nn.Linear(self.hidden_dim, self.latent_dim)
+        for fc in (self.fc_mu, self.fc_raw_var):
+            fc.weight.data.uniform_(-init_w, init_w)
+            fc.bias.data.uniform_(-init_w, init_w)
 
     def forward(self, input, return_preactivations=False):
         task, seq, feat = input.size()
@@ -245,12 +260,13 @@ class CustomContextEncoder(PyTorchModule):
 
         if self.hidden.size(1) != task:
             self.reset(task)
-        zeros = torch.zeros(self.hidden.size()).to(ptu.device)
-        out, (hn, cn) = self.lstm(out, (self.hidden, zeros))
+        if self.hidden.device != input.device:
+            self.hidden = self.hidden.to(input.device)
+        out, hn = self.gru(out, self.hidden)
         self.hidden = hn
         out = out[:, -1, :]
 
-        preactivation = self.last_fc(out)
+        preactivation = torch.cat((self.fc_mu(out), self.fc_raw_var(out)), dim=-1)
         output = self.output_activation(preactivation)
         if return_preactivations:
             return output, preactivation
@@ -258,6 +274,21 @@ class CustomContextEncoder(PyTorchModule):
 
     def reset(self, num_tasks=1):
         self.hidden = self.hidden.new_full((1, num_tasks, self.hidden_dim), 0)
+
+
+def infer_posterior(context_encoder, context, latent_dim):
+    params = context_encoder(context)
+    params = params.view(context.size(0), -1, context_encoder.output_size)
+    mus = params[..., :latent_dim]
+    sigmas_squared = F.softplus(params[..., latent_dim:])
+    posterior = [
+        product_of_gaussians(task_mus, task_sigmas_squared)
+        for task_mus, task_sigmas_squared in zip(mus, sigmas_squared)
+    ]
+    mu = torch.stack([p[0] for p in posterior])
+    sigma_squared = torch.stack([p[1] for p in posterior])
+    z = mu + torch.sqrt(sigma_squared) * torch.randn_like(mu)
+    return z, mu, sigma_squared
 ```
 
 ## Relation to prior methods

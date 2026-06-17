@@ -49,12 +49,13 @@ GELU'(z)    = Φ(z) + z·φ(z),        φ(z) = exp(−z²/2)/√(2π)
   content path. So the nonlinearity goes on the gate; the value stays linear.
 - **Swish gate.** Swish₁ is unbounded above, smooth, and non-monotonic (a small sub-zero
   "bump"). As a gate it can pass content at greater-than-unit gain (amplify) and softly
-  suppress or sign-flip near zero — strictly richer than σ's pure `(0,1)` attenuation. Swish₁
-  is the `β=1` Swish from an automated activation search (and coincides with the SiLU proposed
-  independently for RL); the winning searched functions all had the `b(x, g(x))` "raw value
-  recombined with a gate of itself" structure. Its derivative dips below 1 in magnitude for
-  small `|z|`, so it lacks ReLU's exact-1 gradient flow — but that is irrelevant here, because
-  the gradient highway runs through the *linear* value path, not through the gate's derivative.
+  suppress or sign-flip on the negative bump — strictly richer than σ's pure `(0,1)`
+  attenuation. Swish₁ is the `β=1` Swish from an automated activation search (and coincides
+  with the SiLU proposed independently for RL); the winning searched functions all had the
+  `b(x, g(x))` "raw value recombined with a gate of itself" structure. At `β=1`, its derivative
+  has magnitude below 1 for inputs below roughly `1.25`, so it lacks ReLU's exact-1 gradient
+  flow on that region — but that is irrelevant here, because the gradient highway runs through
+  the *linear* value path, not through the gate's derivative.
 
 ## Matched-budget sizing (the 2/3 / 8/3 rule)
 
@@ -69,12 +70,15 @@ matrices, `3·d·d_ff'` params):
 FLOPs scale identically (three `d×d_ff'` matmuls = two `d×d_ff` matmuls). With the standard 4×
 expansion `d_ff = 4d`, this gives `d_ff' = (8/3)·d ≈ 2.667·d` (e.g. `d_ff=3072 → 2048` at
 `d=768`); the parameter counts match exactly (`2·d·4d = 8d² = 3·d·(8/3)d`). Biases are
-omitted; in a GPT-style implementation the exact target `(8/3)·d` is rounded up to a multiple
-of 64 for matmul-friendly shapes, an explicit sub-1% implementation nudge at common widths.
+omitted. If a host implementation rounds `d_ff'` to a hardware-friendly multiple, that is an
+explicit implementation choice and its small budget delta should be recorded separately from the
+paper formula.
 
 ## Final layer
 
-GPT-style implementation (gate `w1`, value `w3`, down-projection `c_proj`):
+Canonical bias-free implementation (gate `wi_0`, value `wi_1`, down-projection `wo`; dropout,
+when used, is applied to the hidden product before `wo`, matching the Mesh/T5 feed-forward
+layer):
 
 ```python
 import torch
@@ -82,22 +86,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class MLP(nn.Module):
-    """SwiGLU feed-forward sublayer: ( Swish_1(xW) ⊗ (xV) ) W2, at 8/3 hidden width
-    so 3 matrices match the budget of the baseline 2-matrix FFN at 4x expansion."""
+class SwiGLUFFN(nn.Module):
+    """SwiGLU feed-forward: ( Swish_1(xW) ⊗ (xV) ) W2.
 
-    def __init__(self, config):
+    Pass d_ff = (2/3) * d_ff_base; for T5-base, d_ff_base=3072 -> d_ff=2048.
+    """
+
+    def __init__(self, d_model, d_ff, dropout=0.0):
         super().__init__()
-        hidden_dim = int(8 / 3 * config.n_embd)            # (2/3) * 4d
-        hidden_dim = ((hidden_dim + 63) // 64) * 64        # round up to a multiple of 64
-        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)      # gate proj W
-        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=config.bias)      # value proj V
-        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=config.bias)  # down proj W2
-        self.dropout = nn.Dropout(config.dropout)
+        self.wi_0 = nn.Linear(d_model, d_ff, bias=False)  # gate projection W
+        self.wi_1 = nn.Linear(d_model, d_ff, bias=False)  # value projection V
+        self.dropout = nn.Dropout(dropout)
+        self.wo = nn.Linear(d_ff, d_model, bias=False)    # down projection W2
 
-    def forward(self, x):                                   # (B, T, n_embd) -> (B, T, n_embd)
-        # SwiGLU: SiLU(xW) * (xV), then project back. F.silu(z) == z*sigmoid(z) == Swish_1.
-        return self.dropout(self.c_proj(F.silu(self.w1(x)) * self.w3(x)))
+    def forward(self, x):                                  # (B, T, d_model) -> (B, T, d_model)
+        # F.silu(z) == z * sigmoid(z) == Swish_1(z).
+        h = F.silu(self.wi_0(x)) * self.wi_1(x)
+        return self.wo(self.dropout(h))
 ```
 
 LabML-style generic gated feed-forward module (choose the gate activation to get GLU / ReGLU /
@@ -140,6 +145,8 @@ class FeedForward(nn.Module):
 
 To size `d_ff` for a matched-budget comparison against a baseline FFN of width `d_ff_base`,
 set `d_ff = (2/3) * d_ff_base` (i.e. `8/3 * d_model` when the baseline uses `4 * d_model`).
+If `2*d_ff_base` is not divisible by 3, choose and document an explicit rounding rule rather than
+silently flooring.
 
 Mesh TensorFlow expresses the same hidden product with `dense_product`, choosing the gate
 activation per factor (`["swish", "linear"]` ⇒ SwiGLU):
@@ -175,4 +182,4 @@ y = mtf.layers.dense(
 | SwiGLU    | Swish₁ = SiLU = `x·σ(x)` | `Swish₁(xW) ⊗ (xV)`      |
 
 All use three matrices `(W, V, W2)` and are sized to the matched 2/3 hidden width when
-compared against a two-matrix FFN, with optional round-up to a hardware-friendly multiple.
+compared against a two-matrix FFN, with any hardware-friendly rounding documented explicitly.

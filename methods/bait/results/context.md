@@ -79,9 +79,10 @@ near-duplicate batches, because a batch of similar uncertain points is wasteful 
 resolve the others. Pure diversity methods (cover the penultimate-layer space, e.g. coreset
 selection) ignore which points the model is actually unsure about. The best-performing combined
 method on deep nets at the time, BADGE, works well empirically but its behavior is "fairly
-limited" in explanation, it cannot be run on regression at all, and — as becomes visible when one
-deliberately tests it on a random, uninformative feature projection that mimics the convex
-regime — it performs poorly when the high-norm feature directions are not the discriminative ones.
+limited" in explanation, it cannot be run on regression at all, and its gradient geometry depends
+heavily on the representation being meaningful. If the highest-norm directions of a fixed feature
+space are not the discriminative ones, there is no obvious reason for its determinant objective to
+choose the directions the pool actually cares about.
 The theoretically clean methods, conversely, were derived for convex models with single-point
 queries and lean on solving a semidefinite program, which does not scale to neural dimensionality.
 
@@ -124,8 +125,8 @@ a single vector — effectively a rank-one summary of the point — discarding t
 per-example second-order structure; (iii) the determinant objective scores a batch purely by its
 own internal spread and has no channel through which the *pool* distribution can enter — it cannot
 weight directions by how much they matter under `U`; (iv) the hallucinated-label construction is
-intrinsically classification-bound and has no regression analogue; and (v) empirically it stumbles
-on feature bases where the highest-norm directions are not the discriminative ones.
+intrinsically classification-bound and has no regression analogue; and (v) it has no explicit
+guardrail against feature bases where the highest-norm directions are not the discriminative ones.
 
 **The classical two-phase MLE design** (Chaudhuri et al. 2015). In the convex, well-specified
 setting: label a small random batch, fit a crude `θ_1`, then choose a labeling distribution that
@@ -201,19 +202,12 @@ class Strategy:
         [len(X), emb_dim * n_classes] — the single hallucinated-gradient vector."""
         ...
 
-    def get_exp_grad_embedding(self, X, Y):
-        """Per-class last-layer loss gradients, each class's gradient scaled by the
-        square root of that class's predicted probability, shape
-        [len(X), n_classes, emb_dim * n_classes]."""
-        ...
-
     def train(self):
         """Retrain the model from scratch on the current labeled set."""
         ...
 
     def query(self, n) -> np.ndarray:
         # Return n indices into the unlabeled pool to send to the oracle.
-        # TODO: the batch acquisition rule we will design.
         raise NotImplementedError
 
 

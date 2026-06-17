@@ -22,21 +22,21 @@ Expand the inner sum: Σ_i (p_i − I(y=i))^2 = Σ_i p_i^2 − 2 Σ_i p_i I(y=i)
 
   ‖g_x^y‖^2 = (Σ_i p_i^2 + 1 − 2 p_y) ‖z‖^2.
 
-Now look at how this depends on the choice of label y: the only y-dependent piece is −2 p_y. To *minimize* ‖g_x^y‖ over y I want to *maximize* p_y — which means argmin_y ‖g_x^y‖ = argmax_y p_y = ŷ. So the label I hallucinated is exactly the one that gives the *smallest* possible gradient norm. That's not laziness, that's a guarantee: for the unknown true label y, ‖g_x‖ = ‖g_x^{ŷ}‖ ≤ ‖g_x^y‖. The hallucinated-label gradient norm is a *lower bound* on the gradient norm the example will really induce once I see its label. So when I pick a point because its g_x is large, I'm guaranteed it will produce at least that much update — I can't be fooled into thinking a point is informative when it isn't; the bound only ever understates. And conversely, look at the magnitude as a function of confidence: if the model is sharp, p ≈ e_ŷ, then Σ p_i^2 ≈ 1 and 2 p_ŷ ≈ 2, so Σ p_i^2 + 1 − 2 p_ŷ ≈ 0 — the gradient embedding nearly vanishes for confident points. If p is flat, that quantity is large. So ‖g_x‖ is small for confident examples and large for uncertain ones: the magnitude of this one cheap hallucinated gradient *is* a conservative uncertainty score. The lazy choice turns out to be the conservative-estimate choice. Good — I'll commit to last-layer gradient embedding at the hallucinated label, g_x = (p − e_ŷ) ⊗ z.
+Now look at how this depends on the choice of label y: the only y-dependent piece is −2 p_y. To *minimize* ‖g_x^y‖ over y I want to *maximize* p_y — which means argmin_y ‖g_x^y‖ is the argmax set of p_y. If several classes tie for maximum probability, every tied class is a minimizer; an implementation can pick any deterministic tie-break, and NumPy's argmax will pick the first. So the label I hallucinate is exactly one that gives the *smallest* possible gradient norm. That's not laziness, that's a guarantee: for the unknown true label y, ‖g_x‖ = ‖g_x^{ŷ}‖ ≤ ‖g_x^y‖. The hallucinated-label gradient norm is a *lower bound* on the gradient norm the example will really induce once I see its label. So when I pick a point because its g_x is large, I'm guaranteed it will produce at least this much last-layer gradient — the bound only ever understates. And conversely, look at the magnitude as a function of confidence: if the model is sharp, p ≈ e_ŷ, then Σ p_i^2 ≈ 1 and 2 p_ŷ ≈ 2, so Σ p_i^2 + 1 − 2 p_ŷ ≈ 0 — the gradient embedding nearly vanishes for confident points. If p is flat, that quantity is large. So ‖g_x‖ is small for confident examples and large for uncertain ones: the magnitude of this one cheap hallucinated gradient *is* a conservative uncertainty score. The lazy choice turns out to be the conservative-estimate choice. Good — I'll commit to last-layer gradient embedding at the hallucinated label, g_x = (p − e_ŷ) ⊗ z.
 
 Now the batch. I have, for every pool point, a vector g_x whose *length* means uncertainty and whose *direction* (mostly inherited from z and from which class block r lights up) means identity/representation. I want a batch of B points that are individually long (uncertain) and collectively spread out (diverse), and — the binding constraint — with no tradeoff knob. What's the natural mathematical object for "a set that is high-quality and diverse at once"? A determinantal point process. Sample a size-B set Y with probability ∝ det(L_Y), where L_Y is the Gram matrix of the chosen {g_x}. Why is that the right object? Because the determinant of a Gram matrix of vectors equals the squared product of their lengths times the squared volume of the parallelepiped they span. The length part rewards big gradients — uncertainty. The volume part is large only when the vectors point in genuinely different directions — diversity — and collapses to zero the instant two chosen vectors are parallel. So det(L_Y) is *simultaneously* a quality score and a diversity score, fused, with no coefficient weighting one against the other. And it even self-adjusts to batch size for free: when B is small, the volume constraint is easy to satisfy, so the length factor dominates and the sampler behaves like uncertainty sampling; when B is large, spanning a B-dimensional volume with non-parallel vectors gets hard, so the diversity factor takes over. That's exactly the regime-adaptive behavior I was failing to get by hand — small-batch → uncertainty, large-batch → diversity — and here it's automatic. This is the criterion I want.
 
 So why don't I just sample from a k-DPP over the gradient embeddings and call it done? Cost. Sampling from a k-DPP is genuinely expensive — exact samplers are high-order polynomial in the batch size and the embedding dimension, MCMC samplers have a mixing-time problem, and at the large batch sizes I care about it simply blows up memory. Wall. The criterion is right but I can't afford to draw from it. So I need something that *behaves* like the k-DPP — favors long, mutually-spread-out vectors — but is cheap and, ideally, has no knobs.
 
-Here's where an old, unrelated tool snaps into place. k-means++ seeding. Its job in life is to initialize Lloyd's algorithm: pick the first center uniformly, then repeatedly sample the next center from the data with probability proportional to its *squared distance to the nearest already-chosen center* — D^2 weighting — with the guarantee that the resulting potential is within 8(ln k + 2) of optimal. I never thought of it as a sampler for active learning. But look at what D^2 weighting does in *my* gradient-embedding space. After I've chosen some points, the next point is drawn with probability ∝ (distance to the nearest chosen point)^2. A point that's far from everything already in the batch is much more likely to be picked — that's diversity, and the squaring sharpens it. And the magnitude is in there too, once I'm careful about where distances are measured from: a long gradient vector tends to be far from the others, and if I seed the very first point by its length rather than uniformly, I plant the batch on the single most uncertain example and let D^2 spread out from there. So k-means++ seeding in gradient space pulls toward exactly the same kind of set a k-DPP would — high-magnitude and diverse — but it's a handful of cheap passes over the data with no matrix determinant, no inverse, no MCMC, and no tradeoff hyperparameter. It's the affordable surrogate for the determinant.
+Here's where an old, unrelated tool snaps into place. k-means++ seeding. Its job in life is to initialize Lloyd's algorithm: pick the first center uniformly, then repeatedly sample the next center from the data with probability proportional to its *squared distance to the nearest already-chosen center* — D^2 weighting. In that standard uniform-first form it has the 8(ln k + 2) expected-potential guarantee. I should not automatically transfer that theorem to the variant I'm about to use, because I want the first point to be the largest gradient instead of a uniform draw. But the D^2 recurrence itself is still the right primitive to inspect. After I've chosen some points, the next point is drawn with probability ∝ (distance to the nearest chosen point)^2. A point that's far from everything already in the batch is much more likely to be picked — that's diversity, and the squaring sharpens it. And the magnitude is in there too, once I'm careful about where distances are measured from: a long gradient vector tends to be far from the others, and if I seed the very first point by its length rather than uniformly, I plant the batch on the single most uncertain example and let D^2 spread out from there. So k-means++-style seeding in gradient space pulls toward exactly the same kind of set a k-DPP would — high-magnitude and diverse — but it's a handful of cheap passes over the data with no matrix determinant, no inverse, no MCMC, and no tradeoff hyperparameter. It's the affordable surrogate for the determinant.
 
 Let me make the seeding concrete so I trust it. The first center: instead of uniform, I take the point with the largest ‖g_x‖ — the most uncertain example — so the batch starts from maximal uncertainty. Then for each subsequent pick I maintain, for every pool point, D(x) = the distance from g_x to its nearest already-chosen gradient embedding, and I sample the next point with probability D(x)^2 / Σ D^2. Repeat until I have B. Each new center is, in expectation, far from the current batch (diversity) and, because gradient length contributes to those distances, biased toward long vectors (uncertainty). Already-chosen points get distance zero so they can't be re-picked. That's the whole acquisition rule. No coefficient anywhere — the only "tradeoff" is the geometry of the D^2 rule interacting with batch size, which is exactly the free, automatic tradeoff I wanted.
 
 I should sanity-check that this k-means++ surrogate really tracks the k-DPP and isn't just a vibe. The thing both samplers are supposed to produce is batches that are *diverse* (large Gram determinant of the selected gradient embeddings) and *high-magnitude* (large average ‖g_x‖). Measuring those two quantities on the batches each sampler returns, the k-means++ batches sit right on top of the k-DPP batches on both axes — and, if anything, k-means++ tends to find batches that are a touch more diverse and higher-magnitude than the k-DPP, since the k-DPP's extra stochasticity occasionally lets a mediocre set through. Meanwhile furthest-first traversal — the k-Center sampler that Core-Set uses — produces batches that are markedly *less* diverse and lower-magnitude in this gradient space, which is the tell that pure k-Center is leaving informativeness on the table. So the cheap seeding gives up essentially nothing in batch quality relative to the expensive determinant, while costing far less. That settles it: k-means++ seeding over hallucinated last-layer gradient embeddings.
 
-Let me try to understand *why* this beats plain uncertainty sampling in a case I can actually compute, because the lower-bound argument tells me the magnitudes mean something but not why the diversity *helps the updates*. Take binary logistic regression, the stripped-down case: Y = {−1,+1}, predictive probability p_w(y|x) = σ(y w·x), and the hallucinated label is just ŷ = sign(w·x). The gradient of the logistic loss at the hallucinated label is ĝ_x = ∂/∂w log(1 + e^{−ŷ w·x}) = (1 − p_w(ŷ|x))·(−ŷ x), and at the true label g̃_x = (1 − p_w(y|x))·(−y x). Now restrict attention to the points right on the margin, S_w = {x : w·x = 0} — the genuinely uncertain ones, where p_w(+1|x) = p_w(−1|x) = 1/2. On that set the hallucinated and true gradients differ only by a sign: ĝ_x = s_x g̃_x with s_x ∈ {±1}. A sign flip doesn't change a Gram matrix's determinant, so a DPP (and hence my k-means++ surrogate) over the hallucinated gradients samples the same diverse sets as one over the true-label gradients. Why does that matter? Because sampling the *uncertain* points is already known to be doing something specific — uncertainty sampling on the margin set behaves like preconditioned stochastic gradient descent on the expected 0-1 loss (Mussmann & Liang) — and sampling those gradients *diversely*, via a determinant, is known to *reduce the variance* of the resulting mini-batch gradient estimate (the determinantal mini-batch diversification line). Put the two together: restricted to the low-margin region, my method is doing the same descent on the 0-1 loss that uncertainty sampling does, but with a lower-variance gradient direction because the batch is diverse rather than redundant. So the diversity isn't a separate goal bolted on — it makes the *uncertainty* updates better. That's the intuition I was missing, and it's exactly why grabbing one cluster of near-identical uncertain points (plain uncertainty sampling) is wasteful: their gradients are nearly collinear, so the batch's combined update is high-variance and mostly one direction repeated.
+Let me try to understand *why* this beats plain uncertainty sampling in a case I can actually compute, because the lower-bound argument tells me the magnitudes mean something but not why the diversity *helps the updates*. Take binary logistic regression, the stripped-down case: Y = {−1,+1}, predictive probability p_w(y|x) = σ(y w·x), and the hallucinated label is +1 when p_w(+1|x) > 1/2 and −1 otherwise. The gradient of the logistic loss at the hallucinated label is ĝ_x = ∂/∂w log(1 + e^{−ŷ w·x}) = (1 − p_w(ŷ|x))·(−ŷ x), and at the true label g̃_x = (1 − p_w(y|x))·(−y x). Now restrict attention to the points right on the margin, S_w = {x : w·x = 0} — the genuinely uncertain ones, where p_w(+1|x) = p_w(−1|x) = 1/2 and my tie-break (the `> 1/2` test above) hallucinates −1. On that set the hallucinated and true gradients differ only by a sign: ĝ_x = s_x g̃_x with s_x ∈ {±1}. A sign flip doesn't change a Gram matrix's determinant, so a DPP (and hence my k-means++ surrogate) over the hallucinated gradients samples the same diverse sets as one over the true-label gradients. Why does that matter? Because sampling the *uncertain* points is already known to be doing something specific — uncertainty sampling on the margin set behaves like preconditioned stochastic gradient descent on the expected 0-1 loss (Mussmann & Liang) — and sampling those gradients *diversely*, via a determinant, is known to *reduce the variance* of the resulting mini-batch gradient estimate (the determinantal mini-batch diversification line). Put the two together: restricted to the low-margin region, my method is doing the same descent on the 0-1 loss that uncertainty sampling does, but with a lower-variance gradient direction because the batch is diverse rather than redundant. So the diversity isn't a separate goal bolted on — it makes the *uncertainty* updates better. That's the intuition I was missing, and it's exactly why grabbing one cluster of near-identical uncertain points (plain uncertainty sampling) is wasteful: their gradients are nearly collinear, so the batch's combined update is high-variance and mostly one direction repeated.
 
-Now let me write the thing as an algorithm and then as code I'd actually ship. Each round, with the current model θ_t: for every unlabeled x, get the softmax p and the penultimate embedding z, form the residual r = p − e_ŷ (ŷ = argmax p), and the gradient embedding is g_x = r ⊗ z. Then run k-means++ seeding on {g_x} to pick B points: first the largest-‖g‖ point, then D^2-weighted draws. Query those, add to the labeled set, retrain from scratch, repeat.
+Now let me write the thing as an algorithm and then as code I'd actually ship. Each round, with the current model θ_t: for every unlabeled x, get the softmax p and the penultimate embedding z, form the residual r = p − e_ŷ (ŷ = argmax p), and the gradient embedding is g_x = r ⊗ z. The reference implementation uses the opposite residual e_ŷ − p, but that only multiplies every gradient embedding by −1, so all norms, distances, and Gram determinants are unchanged. Then run k-means++-style seeding on {g_x} to pick B points: first the largest-‖g‖ point, then D^2-weighted draws. Query those, add to the labeled set, retrain from scratch, repeat.
 
 One implementation worry before I code it: the gradient embedding g_x = r ⊗ z is a K·d-dimensional vector per example. For K classes and a few-hundred-dimensional z that's fine to materialize, and the most transparent code does exactly that — build the [n, K·d] matrix of gradient embeddings and run k-means++ on it. But I can avoid ever forming the outer products, which matters when K·d is large, by exploiting the factorization. The only thing k-means++ ever needs is *distances* between gradient embeddings, and for outer-product vectors those collapse. For g_a = r_a ⊗ z_a and g_b = r_b ⊗ z_b,
 
@@ -46,59 +46,9 @@ so the K·d-dimensional inner product is just the product of a K-dimensional inn
 
   ‖g_a − g_b‖^2 = ‖g_a‖^2 + ‖g_b‖^2 − 2⟨g_a,g_b⟩ = ‖r_a‖^2‖z_a‖^2 + ‖r_b‖^2‖z_b‖^2 − 2 (r_a·r_b)(z_a·z_b).
 
-So I keep z and r separately, precompute the per-point squared norms ‖z‖^2 and ‖r‖^2, and compute any distance from one z·z and one r·r dot product — never touching the K·d space. The first center is the argmax of ‖g‖^2 = ‖r‖^2 ‖z‖^2, the most uncertain point, exactly as designed. Numerically the distance-squared can come out slightly negative from floating point, so I clip it at zero before the square root.
+So I keep z and r separately, precompute the per-point squared norms ‖z‖^2 and ‖r‖^2, and compute any distance from one z·z and one r·r dot product — never touching the K·d space. The first center is the argmax of ‖g‖^2 = ‖r‖^2 ‖z‖^2, the most uncertain point, exactly as designed. Numerically the distance-squared can come out slightly negative from floating point, so I clip it at zero before the square root. There is one degenerate case to be honest about: if all remaining embeddings have zero distance to the chosen set, the D^2 distribution is undefined and mathematically any remaining tied point is equivalent. The canonical code does not special-case this; if I claim reference faithfulness, I should not hide a robust fallback inside the artifact.
 
-Here's the straightforward, materialize-the-embedding version first, since it's the clearest statement of the method:
-
-```python
-import numpy as np
-from scipy import stats
-
-
-def query(self, n):
-    # unlabeled candidates
-    idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
-
-    # gradient embedding g_x = (p - e_yhat) (x) z(x), flattened to [m, emb_dim * K].
-    # yhat = argmax_i p_i is the model's own (hallucinated) label; block i is
-    # (p_i - I(yhat=i)) * z(x). Its norm is a lower bound on the true-label
-    # gradient norm and is small for confident points -> magnitude = uncertainty.
-    gradEmb = self.get_grad_embedding(self.X[idxs_unlabeled],
-                                      self.Y.numpy()[idxs_unlabeled]).numpy()
-
-    # k-means++ seeding in gradient space: long + spread-out batch, no hyperparameters.
-    chosen = kmeans_pp(gradEmb, n)
-    return idxs_unlabeled[chosen]
-
-
-def kmeans_pp(X, k):
-    # X: [m, D] gradient embeddings. Returns k indices, D^2-seeded.
-    m = X.shape[0]
-    norms2 = (X ** 2).sum(axis=1)
-    # first center: the largest-norm (most uncertain) gradient embedding
-    first = int(np.argmax(norms2))
-    chosen = [first]
-    # D2[x] = squared distance from x to its nearest chosen center
-    D2 = ((X - X[first]) ** 2).sum(axis=1)
-    D2[first] = 0.0
-    while len(chosen) < k:
-        total = D2.sum()
-        if total == 0:                              # all remaining coincide with chosen
-            remaining = list(set(range(m)) - set(chosen))
-            ind = int(np.random.choice(remaining))
-        else:
-            probs = D2 / total                      # sample proportional to D^2
-            ind = int(stats.rv_discrete(values=(np.arange(m), probs)).rvs())
-            while ind in chosen:
-                ind = int(stats.rv_discrete(values=(np.arange(m), probs)).rvs())
-        chosen.append(ind)
-        newD = ((X - X[ind]) ** 2).sum(axis=1)      # distances to the new center
-        D2 = np.minimum(D2, newD)                   # keep nearest-center distance
-        D2[chosen] = 0.0                            # never re-pick a chosen point
-    return chosen
-```
-
-And the version I'd really run, factoring the outer product so I never build the K·d embeddings — same algorithm, distances computed from the separate z (embedding) and r (probability-residual) factors:
+The version I'd really run is therefore the factored reference version: it never builds the K·d embeddings, and it computes distances from the separate z (embedding) and r (probability-residual) factors.
 
 ```python
 import numpy as np
@@ -106,9 +56,8 @@ from scipy import stats
 
 
 def _distance(R, Z, center):
-    # squared distance from every (r,z) to a chosen (r0,z0), using
-    # ||r (x) z - r0 (x) z0||^2 = ||r||^2||z||^2 + ||r0||^2||z0||^2
-    #                             - 2 (r . r0)(z . z0).
+    # Distance from every (r,z) to a chosen (r0,z0), using the squared-distance
+    # identity and then taking a square root, matching the reference helper.
     (r_vec, r_n2), (z_vec, z_n2) = R, Z
     (r0_vec, r0_n2), (z0_vec, z0_n2) = center
     dist = r_n2 * z_n2 + r0_n2 * z0_n2 - 2.0 * (r_vec @ r0_vec) * (z_vec @ z0_vec)
@@ -124,7 +73,7 @@ def query(self, n):
     embs, probs = embs.numpy(), probs.numpy()
     m = len(idxs_unlabeled)
 
-    # r = e_yhat - p  (sign vs (p - e_yhat) is irrelevant: norms and Gram are even)
+    # r = e_yhat - p; this global sign flip preserves norms and Gram matrices.
     z_n2 = np.sum(embs ** 2, axis=-1)               # ||z||^2 per point
     yhat = np.argmax(probs, axis=-1)
     r = -1.0 * probs
@@ -146,16 +95,11 @@ def query(self, n):
             newD = _distance(R, Z, mu[-1]).ravel().astype(float)
             D2 = np.minimum(D2, newD)               # nearest-chosen-center distance
             D2[list(chosen)] = 0.0
-            Dsq = D2 ** 2
-            total = Dsq.sum()
-            if total == 0:
-                ind = int(np.random.choice(list(set(range(m)) - chosen)))
-            else:
-                dist = Dsq / total                  # sample proportional to D^2
-                sampler = stats.rv_discrete(name='custm', values=(np.arange(m), dist))
+            dist = (D2 ** 2) / sum(D2 ** 2)         # sample proportional to D^2
+            sampler = stats.rv_discrete(name='custm', values=(np.arange(m), dist))
+            ind = int(sampler.rvs(size=1)[0])
+            while ind in chosen:
                 ind = int(sampler.rvs(size=1)[0])
-                while ind in chosen:
-                    ind = int(sampler.rvs(size=1)[0])
             mu.append(((r[ind], r_n2[ind]), (embs[ind], z_n2[ind])))
         chosen.add(ind)
         chosen_list.append(ind)

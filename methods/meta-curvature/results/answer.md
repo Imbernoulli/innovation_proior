@@ -89,7 +89,8 @@ identity/ones factor creation in `maml.py:70-90`; gradient transformation in `ma
 inner updates in `maml.py:130-151`; Adam meta-optimization in `maml.py:191-195`. That code uses
 TensorFlow layouts `[kh, kw, Cin, Cout]` and `[Cin, Cout]`. The PyTorch equivalent below uses the
 paper/PyTorch layout `[C_out, C_in, ...]`, so output-mode multiplication appears on the left rather
-than as the right-multiply used by the TensorFlow code.
+than as the right-multiply used by the TensorFlow code; a direct checkpoint port would transpose that
+output-mode factor.
 
 ```python
 from typing import List
@@ -101,21 +102,30 @@ INNER_LR = 0.5
 
 
 class MetaCurvature(nn.Module):
-    """Per-parameter Kronecker-factored meta-curvature: identity-initialized factor
-    matrices (output / input / filter modes) transform the gradient as
-    MC(G) = G x3 M_f x2 M_i x1 M_o before the SGD step."""
+    """Per-parameter meta-curvature transform.
+
+    Conv weights use output/input/filter mode factors; 2D weights follow the
+    released code and use only input/output factors; 1D parameters use an
+    elementwise scale.
+    """
 
     def __init__(self, param: Tensor):
         super().__init__()
         kw = {"device": param.device, "dtype": param.dtype}  # factors on param's device
-        if param.dim() >= 2:                       # conv [Co,Ci,kh,kw] or linear [Co,Ci]
+        if param.dim() > 2:                        # conv [Co,Ci,kh,kw]
             c_out, c_in = param.shape[0], param.shape[1]
-            d = int(param[0, 0].numel()) if param.dim() > 2 else 1
+            d = int(param[0, 0].numel())
             self.c_out, self.c_in, self.d = c_out, c_in, d
             self.M_o = nn.Parameter(torch.eye(c_out, **kw))
             self.M_i = nn.Parameter(torch.eye(c_in, **kw))
             self.M_f = nn.Parameter(torch.eye(d, **kw))
             self.kind = "tensor"
+        elif param.dim() == 2:                     # linear [Co,Ci]
+            c_out, c_in = param.shape
+            self.c_out, self.c_in = c_out, c_in
+            self.M_o = nn.Parameter(torch.eye(c_out, **kw))
+            self.M_i = nn.Parameter(torch.eye(c_in, **kw))
+            self.kind = "matrix"
         else:                                      # released code uses elementwise 1D scaling
             self.scale = nn.Parameter(torch.ones_like(param))
             self.kind = "vector"
@@ -123,6 +133,9 @@ class MetaCurvature(nn.Module):
     def transform(self, g: Tensor) -> Tensor:
         if self.kind == "vector":
             return self.scale * g
+        if self.kind == "matrix":
+            G = torch.einsum("oi,ji->oj", g, self.M_i)        # input mode
+            return torch.einsum("oi,jo->ji", G, self.M_o)     # output mode
         G = g.reshape(self.c_out, self.c_in, self.d)
         G = torch.einsum("oid,fd->oif", G, self.M_f)         # x3 M_f  (filter mode)
         G = torch.einsum("oid,ji->ojd", G, self.M_i)         # x2 M_i  (input mode)
@@ -175,8 +188,9 @@ class InnerLoopOptimizer(nn.Module):
 ```
 
 The factors are identity-initialized (so adaptation starts as MAML), the gradient is preconditioned by
-three `n`-mode products per weight tensor (a Kronecker-factored transform, never materialized as the
-full matrix), the update is differentiable so the outer loop backprops into both `θ` and the `M`
+three `n`-mode products for convolution tensors (a Kronecker-factored transform, never materialized as
+the full matrix), the update is differentiable so the outer loop backprops into both `θ` and the `M`
 matrices, and `meta_parameters()` hands the factors to the meta-optimizer. For a linear layer the
-spatial mode collapses (`d = 1`, `M_f` is `1×1`); 1D bias and batch-norm parameters use an
-elementwise scale, matching the released TensorFlow code.
+paper's spatial mode collapses to `d = 1`; the released code omits that redundant scalar and uses only
+input/output factors. 1D bias and batch-norm parameters use an elementwise scale, also matching the
+released TensorFlow code.

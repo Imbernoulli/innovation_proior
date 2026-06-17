@@ -1,196 +1,166 @@
 # BADGE, distilled
 
 BADGE (Batch Active learning by Diverse Gradient Embeddings) is a pool-based batch
-active-learning acquisition rule for deep networks. It represents each unlabeled example by the
-gradient of the loss with respect to the network's last layer, computed at the model's own
-predicted ("hallucinated") label, and selects each batch by running k-means++ seeding in that
-gradient-embedding space. The gradient's *magnitude* encodes predictive uncertainty (it is a
-lower bound on the true-label gradient norm), and the k-means++ `D^2` seeding makes the batch
-*diverse* — so every batch is simultaneously uncertain and diverse, with no hyperparameter
-trading the two off.
+active-learning rule for deep classifiers. For each unlabeled example it forms a last-layer
+gradient embedding using the model's own predicted, or hallucinated, label; then it chooses a
+batch with k-means++-style `D^2` seeding in that gradient space. The embedding norm is a
+conservative uncertainty signal, and distances between embeddings give within-batch diversity,
+with no hand-tuned uncertainty/diversity coefficient.
 
 ## Problem it solves
 
-Choosing, each round, a batch of `B` unlabeled examples to label so a deep classifier reaches
-high accuracy with few total labels. Scoring examples independently (uncertainty sampling)
-yields redundant near-duplicate batches; pure representative/diversity selection ignores
-informativeness. Active learning also cannot afford a tunable tradeoff coefficient, because
-re-tuning it changes which points are queried and thus costs labels. BADGE needs none.
+Each active-learning round must choose `B` unlabeled examples to label. Independent uncertainty
+scores can return many near-duplicates from one ambiguous region, while pure representative
+selection can cover the pool without asking whether those examples would move the classifier.
+Because changing an active-learning hyperparameter changes which labels are bought, a practical
+batch rule should avoid a tunable tradeoff parameter.
 
 ## Key idea
 
-For a softmax network `f(x;θ) = softmax(W z(x;V))` with penultimate embedding `z ∈ R^d`,
-last-layer weights `W ∈ R^{K×d}`, and softmax output `p`, the cross-entropy gradient w.r.t. the
-last layer factors block-wise:
+For a softmax network `f(x; theta) = softmax(W z(x; V))`, penultimate embedding
+`z in R^d`, last-layer weights `W in R^{K x d}`, and class probabilities `p`, the
+cross-entropy gradient with respect to the final layer has class block
 
-```
-(g_x^y)_i = (p_i - I(y = i)) z(x;V)        =>   g_x^y = (p - e_y) ⊗ z .
-```
-
-It is an outer product of a probability-residual vector `r = p - e_y` (uncertainty) and the
-penultimate embedding `z` (representation/diversity) — both properties in one vector.
-
-**Hallucinated label and the lower bound.** The true label is unknown, so use the model's
-prediction `ŷ = argmax_i p_i` and set `g_x = g_x^{ŷ}`. The norm is
-
-```
-‖g_x^y‖^2 = ( Σ_i p_i^2 + 1 - 2 p_y ) ‖z‖^2 ,
+```text
+(g_x^y)_i = (p_i - I(y = i)) z(x; V),      so      g_x^y = (p - e_y) tensor z.
 ```
 
-whose only `y`-dependence is `-2 p_y`, so `argmin_y ‖g_x^y‖ = argmax_y p_y = ŷ`. Hence
-`‖g_x‖ ≤ ‖g_x^y‖` for the unknown true `y`: the hallucinated-label gradient norm is a lower
-bound on the true-label one. It is near zero for confident points (`p ≈ e_ŷ ⇒ r ≈ 0`) and large
-for uncertain ones — a conservative uncertainty score that can only understate informativeness.
+The residual vector `p - e_y` carries uncertainty, and `z` carries representation. Since the
+true label is unknown, use `yhat = argmax_i p_i` and define `g_x = g_x^yhat`. Its squared norm is
 
-**Diversity by seeding, not by a determinant.** The ideal selector is a `k`-DPP over `{g_x}`:
-`P(Y) ∝ det(L_Y)`, `L` the Gram matrix, whose determinant fuses magnitude (quality) and spanned
-volume (diversity) with no tradeoff coefficient and adapts to batch size automatically (small
-`B` → magnitude dominates → uncertainty; large `B` → linear-independence dominates → diversity).
-But `k`-DPP sampling is too expensive (high-order-polynomial exact samplers; MCMC mixing).
-BADGE substitutes **k-means++ seeding** (Arthur & Vassilvitskii 2007): start from the
-largest-norm gradient embedding, then sample each next point with probability proportional to
-its squared distance to the nearest already-chosen point (`D^2` weighting). This pulls toward
-long, mutually-distant vectors — empirically matching the `k`-DPP's batch diversity and
-magnitude at far lower cost — with no hyperparameter.
+```text
+||g_x^y||^2 = (sum_i p_i^2 + 1 - 2 p_y) ||z||^2.
+```
 
-**Why diversity helps the updates (binary logistic regression).** On the margin set
-`S_w = {x : w·x = 0}` the hallucinated and true-label gradients agree up to a sign, so DPP /
-k-means++ sampling of the hallucinated gradients equals sampling of the true ones (a Gram
-determinant is sign-invariant). Uncertainty sampling on `S_w` is preconditioned SGD on the
-expected 0-1 loss (Mussmann & Liang 2018) and diverse (determinantal) gradient sampling reduces
-the variance of the mini-batch update (Zhang et al. 2017) — so BADGE performs the same descent
-direction as uncertainty sampling but with lower variance, i.e. diversity improves the
-uncertainty updates rather than competing with them.
+The only label-dependent term is `-2 p_y`, so the minimum over labels is attained by any largest
+probability class: `argmin_y ||g_x^y|| = argmax_y p_y`. If there is a tie, every tied maximizer is
+also a minimizer; the code uses NumPy's deterministic first-maximum tie rule. Therefore
+`||g_x^yhat|| <= ||g_x^y||` for the unknown true `y`. Confident examples have residual near zero;
+uncertain examples have larger residual norm.
+
+To make a batch both high-magnitude and diverse, an ideal object is a `k`-DPP over gradient
+embeddings, because a Gram determinant rewards vector lengths and spanned volume. Exact or MCMC
+`k`-DPP sampling is expensive, so BADGE uses the `D^2` recurrence from k-means++ seeding in
+gradient space. Standard k-means++ starts its first center uniformly and has the
+`8(ln k + 2)` expected-potential guarantee; the canonical BADGE implementation modifies the first
+center to be the largest-norm gradient embedding, so that theorem should not be quoted as a
+formal guarantee for BADGE's exact sampler.
 
 ## Algorithm
 
-```
+```text
 Input: net f, unlabeled pool U, initial labels M, rounds T, batch size B.
-S <- M random examples from U, with queried labels;  train θ_1 on S.
+S <- M random examples from U, with queried labels; train theta_1 on S.
 for t = 1..T:
     for each x in U \ S:
-        ŷ(x) <- argmax_i f(x;θ_t)_i                 # hallucinated label
-        g_x  <- ∂/∂θ_out ℓ_CE(f(x;θ_t), ŷ(x))       # last-layer gradient embedding
-    S_t <- k-means++ seeding on { g_x : x in U \ S } to pick B points;  query their labels.
-    S   <- S ∪ S_t
-    train θ_{t+1} on S
-return θ_{T+1}
+        yhat(x) <- argmax_i f(x; theta_t)_i
+        g_x <- d/d theta_out CE(f(x; theta_t), yhat(x))
+    choose S_t by k-means++-style seeding on {g_x : x in U \ S}:
+        first center <- argmax_x ||g_x||^2
+        each later center <- sample x with probability D(x)^2 / sum_u D(u)^2
+        where D(x) = min distance from g_x to an already chosen center
+    query labels for S_t
+    S <- S union S_t
+    train theta_{t+1} on S
+return theta_{T+1}
 ```
 
-k-means++ seeding (Arthur & Vassilvitskii): `c_1 ~` largest-norm point (here, vs. uniform, to
-seed on maximal uncertainty); then `c_t` sampled with probability `D(x)^2 / Σ_x D(x)^2`, where
-`D(x) = min_{c chosen} ‖g_x - c‖`. Guarantee on the seeding potential: `E[φ] ≤ 8(ln k + 2) φ_OPT`.
+If all remaining embeddings have zero distance to the chosen set, the mathematical `D^2`
+distribution is undefined and any remaining tied point is equivalent. The pinned reference code
+does not special-case that degenerate event.
 
 ## Working code
 
-Drop-in `query(n)` for the pool-based harness. Two equivalent forms.
-
-Straightforward form — materialize the `K·d` gradient embeddings and run k-means++ on them:
-
-```python
-import numpy as np
-from scipy import stats
-
-
-def query(self, n):
-    idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
-    # g_x = (p - e_yhat) (x) z(x), flattened to [m, emb_dim * n_classes].
-    # block i = (p_i - I(yhat=i)) * z(x); norm = lower bound on true-label grad norm.
-    grad_emb = self.get_grad_embedding(self.X[idxs_unlabeled],
-                                       self.Y.numpy()[idxs_unlabeled]).numpy()
-    chosen = kmeans_pp(grad_emb, n)            # D^2 seeding: long + diverse batch
-    return idxs_unlabeled[chosen]
-
-
-def kmeans_pp(X, k):
-    m = X.shape[0]
-    norms2 = (X ** 2).sum(axis=1)
-    first = int(np.argmax(norms2))             # most uncertain point seeds the batch
-    chosen = [first]
-    D2 = ((X - X[first]) ** 2).sum(axis=1)     # squared dist to nearest chosen center
-    D2[first] = 0.0
-    while len(chosen) < k:
-        total = D2.sum()
-        if total == 0:                         # remaining points coincide with chosen
-            ind = int(np.random.choice(list(set(range(m)) - set(chosen))))
-        else:
-            probs = D2 / total                 # sample proportional to D^2
-            ind = int(stats.rv_discrete(values=(np.arange(m), probs)).rvs())
-            while ind in chosen:
-                ind = int(stats.rv_discrete(values=(np.arange(m), probs)).rvs())
-        chosen.append(ind)
-        D2 = np.minimum(D2, ((X - X[ind]) ** 2).sum(axis=1))
-        D2[chosen] = 0.0
-    return chosen
-```
-
-Factored form — never builds the `K·d` outer products, using
-`⟨r_a⊗z_a, r_b⊗z_b⟩ = (r_a·r_b)(z_a·z_b)`, hence
-`‖g_a-g_b‖^2 = ‖r_a‖^2‖z_a‖^2 + ‖r_b‖^2‖z_b‖^2 - 2(r_a·r_b)(z_a·z_b)`:
+Faithful core of `JordanAsh/badge` at commit `a2d18acd372cf0f61d9e75bfb0c879c107fbf9f6`.
+The implementation uses `r = e_yhat - p`, the negative of the paper-gradient residual
+`p - e_yhat`; norms, pairwise distances, and Gram determinants are unchanged by this global sign.
 
 ```python
 import numpy as np
 from scipy import stats
 
 
-def _distance(R, Z, center):
-    # squared distance of every (r, z) to a chosen (r0, z0) via the factorization
-    (r_vec, r_n2), (z_vec, z_n2) = R, Z
-    (r0_vec, r0_n2), (z0_vec, z0_n2) = center
-    dist = r_n2 * z_n2 + r0_n2 * z0_n2 - 2.0 * (r_vec @ r0_vec) * (z_vec @ z0_vec)
-    return np.sqrt(np.clip(dist, a_min=0, a_max=None))    # clip FP-negative dist^2
+def distance(X1, X2, mu):
+    Y1, Y2 = mu
+    X1_vec, X1_norm_square = X1
+    X2_vec, X2_norm_square = X2
+    Y1_vec, Y1_norm_square = Y1
+    Y2_vec, Y2_norm_square = Y2
+    dist = (
+        X1_norm_square * X2_norm_square
+        + Y1_norm_square * Y2_norm_square
+        - 2 * (X1_vec @ Y1_vec) * (X2_vec @ Y2_vec)
+    )
+    # Numerical errors may cause the distance squared to be negative.
+    assert np.min(dist) / np.max(dist) > -1e-4
+    return np.sqrt(np.clip(dist, a_min=0, a_max=None))
 
 
-def query(self, n):
-    idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
-    embs, probs = self.get_embedding(self.X[idxs_unlabeled],
-                                     self.Y.numpy()[idxs_unlabeled], return_probs=True)
-    embs, probs = embs.numpy(), probs.numpy()
-    m = len(idxs_unlabeled)
+def init_centers(X1, X2, chosen, chosen_list, mu, D2):
+    if len(chosen) == 0:
+        ind = np.argmax(X1[1] * X2[1])
+        mu = [((X1[0][ind], X1[1][ind]), (X2[0][ind], X2[1][ind]))]
+        D2 = distance(X1, X2, mu[0]).ravel().astype(float)
+        D2[ind] = 0
+    else:
+        newD = distance(X1, X2, mu[-1]).ravel().astype(float)
+        D2 = np.minimum(D2, newD)
+        D2[chosen_list] = 0
+        Ddist = (D2 ** 2) / sum(D2 ** 2)
+        customDist = stats.rv_discrete(name="custm", values=(np.arange(len(Ddist)), Ddist))
+        ind = customDist.rvs(size=1)[0]
+        while ind in chosen:
+            ind = customDist.rvs(size=1)[0]
+        mu.append(((X1[0][ind], X1[1][ind]), (X2[0][ind], X2[1][ind])))
+    chosen.add(ind)
+    chosen_list.append(ind)
+    return chosen, chosen_list, mu, D2
 
-    z_n2 = np.sum(embs ** 2, axis=-1)                     # ||z||^2
-    yhat = np.argmax(probs, axis=-1)
-    r = -1.0 * probs
-    r[np.arange(m), yhat] += 1.0                          # r = e_yhat - p (uncertainty)
-    r_n2 = np.sum(r ** 2, axis=-1)                        # ||r||^2
 
-    R, Z = (r, r_n2), (embs, z_n2)
-    chosen, chosen_list, mu, D2 = set(), [], None, None
-    for _ in range(n):
-        if len(chosen) == 0:
-            ind = int(np.argmax(r_n2 * z_n2))            # largest ||g||^2: most uncertain
-            mu = [((r[ind], r_n2[ind]), (embs[ind], z_n2[ind]))]
-            D2 = _distance(R, Z, mu[0]).ravel().astype(float)
-            D2[ind] = 0.0
-        else:
-            D2 = np.minimum(D2, _distance(R, Z, mu[-1]).ravel().astype(float))
-            D2[list(chosen)] = 0.0
-            Dsq = D2 ** 2
-            total = Dsq.sum()
-            if total == 0:
-                ind = int(np.random.choice(list(set(range(m)) - chosen)))
-            else:
-                sampler = stats.rv_discrete(name='custm',
-                                            values=(np.arange(m), Dsq / total))
-                ind = int(sampler.rvs(size=1)[0])
-                while ind in chosen:
-                    ind = int(sampler.rvs(size=1)[0])
-            mu.append(((r[ind], r_n2[ind]), (embs[ind], z_n2[ind])))
-        chosen.add(ind)
-        chosen_list.append(ind)
-    return idxs_unlabeled[chosen_list]
+class BadgeSampling(Strategy):
+    def __init__(self, X, Y, idxs_lb, net, handler, args):
+        super(BadgeSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
+
+    def query(self, n):
+        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        embs, probs = self.get_embedding(
+            self.X[idxs_unlabeled],
+            self.Y.numpy()[idxs_unlabeled],
+            return_probs=True,
+        )
+        embs = embs.numpy()
+        probs = probs.numpy()
+
+        m = (~self.idxs_lb).sum()
+        mu = None
+        D2 = None
+        chosen = set()
+        chosen_list = []
+        emb_norms_square = np.sum(embs ** 2, axis=-1)
+        max_inds = np.argmax(probs, axis=-1)
+
+        probs = -1 * probs
+        probs[np.arange(m), max_inds] += 1
+        prob_norms_square = np.sum(probs ** 2, axis=-1)
+        for _ in range(n):
+            chosen, chosen_list, mu, D2 = init_centers(
+                (probs, prob_norms_square),
+                (embs, emb_norms_square),
+                chosen,
+                chosen_list,
+                mu,
+                D2,
+            )
+        return idxs_unlabeled[chosen_list]
 ```
 
 ## Relation to prior methods
 
-- **Uncertainty sampling** (least-confidence / margin / entropy): BADGE's gradient *norm* is an
-  uncertainty score, but BADGE adds batch diversity via seeding, removing the duplicate-batch
-  pathology of independent scoring.
-- **Core-Set / k-Center** (Sener & Savarese 2018): operates in penultimate space `z` for
-  diversity only; BADGE uses the gradient embedding `r ⊗ z`, which contains `z` *and*
-  uncertainty `r`, and seeds with `D^2` (k-means++) rather than furthest-first (k-Center).
-- **EGL** (Settles et al. 2008): scores by expected gradient length but per-example, with no
-  diversity and an average over all `K` labels; BADGE uses one hallucinated-label gradient
-  (cheaper, lower-bound-justified) and builds a diverse batch.
-- **k-DPP** (Kulesza & Taskar 2011): the ideal quality-diversity selector BADGE approximates;
-  k-means++ seeding matches its batch diversity/magnitude at far lower cost.
+- **Uncertainty sampling:** the gradient norm is an uncertainty score, but the batch is selected
+  with distances between examples rather than independent top-`B` ranking.
+- **Core-Set / k-Center:** Core-Set uses only representation geometry; BADGE uses the
+  representation multiplied by a probability residual, so uncertainty and representation live in
+  one embedding.
+- **EGL:** expected gradient length averages over possible labels and remains a scalar
+  per-example score; BADGE uses one lower-bound gradient and then diversifies the batch.
+- **k-DPP:** BADGE approximates the same quality/diversity geometry with a cheaper seeding rule.

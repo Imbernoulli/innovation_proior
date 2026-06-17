@@ -47,13 +47,13 @@ And now the question of what `t` should be. In the bound I wrote one `ELBO_t` fo
 
   L(phi, theta, psi) = E_{p(M)}[ J(psi, phi) + lambda * sum_{t=0}^{H^+} ELBO_t(phi, theta) ].
 
-Now the prior in each `ELBO_t`'s KL. The lazy choice is a fixed `N(0,I)` for every `t`. But think about what the KL is doing: `KL(q(m|tau_{:t}) || p(m))` regularises the posterior toward the prior. If the prior is the *same* fixed Gaussian at every step, then at every step I'm pulling the belief back toward total ignorance — which fights the contraction I want. What I actually want is a Bayesian filter: my belief at step `t` should be regularised toward my belief at step `t-1`, not toward the origin. So set the prior in `ELBO_t` to the *previous posterior*, `p(m) := q_phi(m | tau_{:t-1})`, with the very first prior being `q_phi(m) = N(0,I)`. Now the KL term `KL(q(m|tau_{:t}) || q(m|tau_{:t-1}))` penalises *changing my mind without evidence* — it lets the posterior sharpen as data justifies it, but discourages it from jolting around step to step. The beliefs chain. Concretely, with diagonal Gaussians `q(m|tau_{:t}) = N(mu_t, S_t)` and previous `N(mu_{t-1}, S_{t-1})`, the per-step KL is the full Gaussian-to-Gaussian formula, not the simple-to-`N(0,I)` one:
+Now the prior in each `ELBO_t`'s KL. The lazy choice is a fixed `N(0,I)` for every `t`. But think about what the KL is doing: `KL(q(m|tau_{:t}) || p(m))` regularises the posterior toward the prior. If the prior is the *same* fixed Gaussian at every step, then at every step I'm pulling the belief back toward total ignorance — which fights the contraction I want. What I actually want is a Bayesian filter: my belief at step `t` should be regularised toward my belief at step `t-1`, not toward the origin. So set the prior in `ELBO_t` to the *previous posterior*, `p(m) := q_phi(m | tau_{:t-1})`, while the empty-history posterior is itself regularised against `N(0,I)`. Now the KL chain penalises *changing my mind without evidence* — it lets the posterior sharpen as data justifies it, but discourages it from jolting around step to step, and it still anchors the first belief to a unit Gaussian. Concretely, with diagonal Gaussians `q(m|tau_{:t}) = N(mu_t, S_t)` and previous `N(mu_{t-1}, S_{t-1})`, the per-step KL is the full Gaussian-to-Gaussian formula, not the simple-to-`N(0,I)` one:
 
   KL( N(mu_t, S_t) || N(mu_{t-1}, S_{t-1}) ) = 0.5 [ log|S_{t-1}|/|S_t| - K + tr(S_{t-1}^{-1} S_t) + (mu_{t-1}-mu_t)^T S_{t-1}^{-1} (mu_{t-1}-mu_t) ],
 
-with `K` the latent dimension; for diagonal covariances every trace, log-det, and quadratic form is just a sum over coordinates. (If I instead want the simpler `KL(q || N(0,I)) = -0.5 sum (1 + log sigma^2 - mu^2 - sigma^2)`, that's the special case where the prior is the fixed unit Gaussian — a perfectly reasonable cheaper option, and the one I'd reach for when I don't want to chain.)
+with `K` the latent dimension; for diagonal covariances every trace, log-det, and quadratic form is just a sum over coordinates. The first term is the same formula with `mu_{-1}=0` and `S_{-1}=I`, i.e. `KL(q(m|tau_:0) || N(0,I))`. If I instead want every posterior pulled to the fixed unit Gaussian, the formula becomes the simpler `KL(q || N(0,I)) = -0.5 sum (1 + log sigma^2 - mu^2 - sigma^2)`.
 
-Now the encoder itself. The posterior must be computed *online*, folding in one transition at a time, and it must respect the *order* of experience — what I should do next depends on the whole sequence so far, not on an unordered bag of transitions. That rules out the permutation-invariant set encoder; the right primitive is recurrent. So: embed each `(a, s, r)` with small feature extractors, concatenate, run a GRU whose hidden state carries the running summary, and read out `mu` and `log sigma^2` of the Gaussian posterior from the hidden state. One GRU step per environment step = one belief update per environment step, which is exactly the online structure I wanted; and because it's recurrent, feeding the whole trajectory through in one pass gives me the posterior at *every* prefix length `t` at once — precisely the `q(m|tau_{:t})` for all `t` that the summed ELBO needs. When the task resets (a new episode within the same task, or a genuinely new task), I zero the hidden state where the done flag fires so the prior re-initialises. And notice what falls out: if I take this whole construction and *delete* the decoder and the entire ELBO objective, I'm left with a recurrent policy fed `(s, a, r)` trained by RL — that's RL². So RL² is the special case of my method with no inference machinery. The differences that remain are exactly the inductive biases I argued I needed: a *stochastic* latent (the Gaussian, which can represent uncertainty — an opaque hidden vector cannot say "I'm not sure yet," and being able to say so is what drives early exploration), and the decoder reconstructing past *and future* transitions and rewards (the auxiliary loss that forces the task into the latent and lets the agent infer about unseen states). The unification tells me I haven't invented a fourth competitor; I've found the principled object that RL² was a crude approximation to.
+Now the encoder itself. The posterior must be computed *online*, folding in one transition at a time, and it must respect the *order* of experience — what I should do next depends on the whole sequence so far, not on an unordered bag of transitions. That rules out the permutation-invariant set encoder; the right primitive is recurrent. So: embed each `(a, s, r)` with small feature extractors, concatenate, run a GRU whose hidden state carries the running summary, and read out `mu` and `log sigma^2` of the Gaussian posterior from the hidden state. One GRU step per environment step = one belief update per environment step, which is exactly the online structure I wanted; and because it's recurrent, feeding the whole trajectory through in one pass gives me the posterior at *every* prefix length `t` at once — precisely the `q(m|tau_{:t})` for all `t` that the summed ELBO needs. Across ordinary episode boundaries inside the same task I keep that hidden state, because the BAMDP horizon is allowed to span multiple rollouts; I zero it only when the BAMDP/task is done and a fresh task begins. And notice what falls out: if I take this whole construction and *delete* the decoder and the entire ELBO objective, I'm left with a recurrent policy fed `(s, a, r)` trained by RL — that's RL². So RL² is the special case of my method with no inference machinery. The differences that remain are exactly the inductive biases I argued I needed: a *stochastic* latent (the Gaussian, which can represent uncertainty — an opaque hidden vector cannot say "I'm not sure yet," and being able to say so is what drives early exploration), and the decoder reconstructing past *and future* transitions and rewards (the auxiliary loss that forces the task into the latent and lets the agent infer about unseen states). The unification tells me I haven't invented a fourth competitor; I've found the principled object that RL² was a crude approximation to.
 
 How does the policy condition on the belief? This is where I have to resist the obvious-but-wrong choice once more. The tempting thing is to *sample* `m ~ q(m|tau_{:t})` and feed the sample to the policy. But that's posterior sampling — act as if one draw were the truth, and you get exactly the inefficient committing-to-a-hypothesis behaviour I'm trying to beat. Instead, condition the policy on the *posterior itself* — both the mean and the variance: `pi(a_t | s_t, q(m|tau_{:t}))`, implemented by concatenating `(mu_t, log sigma^2_t)` with the state. Now the policy can *see* its own uncertainty and act on it: when the variance is high it can choose to probe; when it's low it can exploit. That's the BAMDP hyper-state `(s_t, b_t)` made concrete, with the learned latent belief playing the role of `b_t`. Feeding the distribution rather than a sample is the difference between Bayes-optimal-style reasoning and posterior sampling — it's the same distinction that separated efficient sweeping from random-goal-chasing back in the gridworld, now baked into what the policy gets to see.
 
@@ -109,11 +109,13 @@ class RNNEncoder(nn.Module):
         out, _ = self.gru(h, hidden_state)                     # one belief update per step
         mu, logvar = self.fc_mu(out), self.fc_logvar(out)      # posterior at every prefix t
         sample = self.reparameterise(mu, logvar)
+        recurrent_state = out
         if return_prior:                                       # prepend the t=0 prior
             sample = torch.cat((prior_sample, sample))
             mu = torch.cat((prior_mu, mu))
             logvar = torch.cat((prior_logvar, logvar))
-        return sample, mu, logvar
+            recurrent_state = torch.cat((hidden_state, recurrent_state))
+        return sample, mu, logvar, recurrent_state
 ```
 
 The decoders are the latent-conditioned, task-shared reward and transition functions; they reconstruct the *whole* trajectory (future included) from an `m` inferred off a prefix:
@@ -161,7 +163,7 @@ class StateTransitionDecoder(nn.Module):
         return self.net(torch.cat((latent, hs, ha), dim=-1))
 ```
 
-The ELBO ties them together — encode the trajectory once to get a posterior at every prefix `t`, then for each `t` decode the *whole* trajectory under a sample from `q(m|tau_{:t})`, sum the reconstruction over all decode steps and over all `t`, and add the KL chained to the previous posterior:
+The negative ELBO loss ties them together — encode the trajectory once to get a posterior at every prefix `t`, then for each `t` decode the *whole* trajectory under a sample from `q(m|tau_{:t})`, sum the reconstruction losses over all decode steps and over all `t`, and add the KL chained to the previous posterior:
 
 ```python
 def gaussian_nll_mse(pred, target):
@@ -170,11 +172,15 @@ def gaussian_nll_mse(pred, target):
 
 
 def kl_chained_to_previous(mu, logvar):
-    """KL(q(m|tau_:t) || q(m|tau_:t-1)) for each t, chaining beliefs.
-    mu, logvar are [T+1, batch, latent] (index 0 is the N(0,I)-style prior).
-    Diagonal Gaussians: each trace / log-det / quadratic is a per-coordinate sum."""
-    mu_t, logvar_t = mu[1:], logvar[1:]                # posterior at t = 1..T
-    mu_p, logvar_p = mu[:-1], logvar[:-1]              # prior = posterior at t-1
+    """KL terms for t=0..T. mu/logvar are [T+1, batch, latent]:
+    index 0 is the empty-history posterior, regularised to N(0,I);
+    later indices are regularised to the previous posterior."""
+    unit_mu = torch.zeros_like(mu[:1])
+    unit_logvar = torch.zeros_like(logvar[:1])
+    all_mu = torch.cat((unit_mu, mu), dim=0)
+    all_logvar = torch.cat((unit_logvar, logvar), dim=0)
+    mu_t, logvar_t = all_mu[1:], all_logvar[1:]
+    mu_p, logvar_p = all_mu[:-1], all_logvar[:-1]
     var_t, var_p = logvar_t.exp(), logvar_p.exp()
     kl = 0.5 * ((logvar_p - logvar_t)                  # log|S_{t-1}|/|S_t|
                 + (var_t + (mu_p - mu_t).pow(2)) / var_p  # tr(S_{t-1}^-1 S_t) + Mahalanobis
@@ -187,7 +193,7 @@ def compute_elbo_loss(encoder, reward_decoder, state_decoder,
                       kl_weight=0.1, rew_coeff=1.0, state_coeff=1.0, decode_state=True):
     """One VAE update. Sequences are [T, batch, dim]; reconstruct past AND future."""
     # posterior at every prefix t (length T+1 incl. prior)
-    _, mu, logvar = encoder(actions, next_obs, rewards, hidden_state=None, return_prior=True)
+    _, mu, logvar, _ = encoder(actions, next_obs, rewards, hidden_state=None, return_prior=True)
     samples = encoder.reparameterise(mu, logvar)       # one m per ELBO term t
     T = next_obs.shape[0]
 
@@ -225,9 +231,10 @@ class MetaRLAgent(nn.Module):
 
     def update_belief(self, action, next_state, reward):
         # online: fold one transition into the running posterior (no prior prepended)
-        _, mu, logvar = self.encoder(action[None], next_state[None], reward[None],
-                                     hidden_state=self.hidden, return_prior=False)
+        _, mu, logvar, hidden = self.encoder(action[None], next_state[None], reward[None],
+                                             hidden_state=self.hidden, return_prior=False)
         self.mu, self.logvar = mu[-1], logvar[-1]
+        self.hidden = hidden[-1:].detach()
 
     def act(self, state, deterministic=False):
         belief = torch.cat((self.mu, self.logvar), dim=-1).detach()  # feed the posterior, detached

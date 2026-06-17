@@ -50,7 +50,7 @@ noise prediction is gone. `v` also interpolates the two good behaviors: at high 
 (`alpha_t -> 1`) `v -> eps` (≈ noise prediction); at low SNR (`alpha_t -> 0`) `v -> -x_0`
 (≈ clean-image prediction).
 
-## Why it is the most stable choice for few-step sampling
+## Why it is stable for few-step sampling
 
 A deterministic DDIM step from level `t` to a lower level `s` is, in this basis, a pure
 rotation:
@@ -63,7 +63,7 @@ z_s = cos(phi_s - phi_t) z_t + sin(phi_s - phi_t) v_hat
 derived from `z_s = alpha_s x_hat + sigma_s eps_hat` and the rotation expressions for
 `x_hat, eps_hat`, using `cos(A-B)=cos A cos B + sin A sin B`, `sin(A-B)=sin A cos B - cos A sin B`.
 The step coefficients depend only on the angular step size `delta`, not on the SNR, so large,
-few steps are as well-behaved as many small ones.
+few steps avoid the extra endpoint amplification that fixed-axis parameterizations introduce.
 
 ## Loss weighting
 

@@ -144,7 +144,7 @@ features-and-structure to representation, hence no end-to-end coupling to a link
 **Matrix factorization for link prediction (Koren et al. 2009; Ahmed et al. 2013).** Fit
 low-rank `z_i` by reconstructing `Â_{ij} = z_i^T z_j` against adjacency entries under squared
 loss, then predict unseen links by the inner product. *Core math:* low-rank
-approximation of `A`. **Gaps:** again no node features, transductive, and it requires a large
+approximation of `A`. **Gaps:** again no node features, transductive, and it needs a large
 rank to express even simple neighborhood heuristics (Nickel et al. 2014); the reconstruction
 target is the raw binary adjacency under a squared loss rather than a probabilistic edge model.
 
@@ -173,16 +173,15 @@ contribute.
 
 ## Code framework
 
-The pieces that already exist are: a sparse-matrix data pipeline that hands us the (training)
+The pieces that already exist are: a sparse-matrix data pipeline that hands us the training
 adjacency `A` in COO form and a node-feature matrix `X`; the graph-convolution primitive — a
 layer that maps node representations to new node representations by mixing each node with its
 neighbors through the normalized propagation matrix; an automatic-differentiation library and
-a gradient-based optimizer (Adam); and an evaluation routine that, given per-node embeddings
-and a set of positive / negative candidate pairs, computes AUC and AP. What is *not* settled —
-and is exactly what the method must supply — is two empty slots: how to turn `(X, A)` into
-node embeddings under an **unsupervised** signal, and how to turn a pair of embeddings into an
-edge score together with the loss that trains both. Everything below the two `# TODO`s already
-exists.
+a gradient-based optimizer (Adam); and an evaluation routine that, given model-produced node
+vectors and a set of positive / negative candidate pairs, computes AUC and AP. What is not
+settled is the graph representation learner itself: the model must learn from observed
+connectivity, use `X` when available, and expose scores for candidate pairs. The scaffold below
+leaves that contribution as a single generic slot.
 
 ```python
 import torch
@@ -205,28 +204,23 @@ class GraphConv(nn.Module):
 
 
 class GraphModel(nn.Module):
-    """Maps node features + structure to per-node representations and scores
-    node pairs. Both the embedding objective and the pair-scoring rule are the
-    contribution — left empty here."""
+    """Consumes node features plus graph structure and provides link scores."""
 
     def __init__(self, in_dim, hidden_dim, emb_dim):
         super().__init__()
-        # TODO: the encoder we will design, built from GraphConv layers,
-        #       producing per-node representations from (X, A).
+        # TODO: the model we will design.
         pass
 
     def encode(self, X, A_norm):
-        # TODO: produce per-node representations Z from features and structure.
+        # TODO: the representation rule we will design.
         pass
 
     def score_pairs(self, Z, pair_index):
-        # TODO: turn the representations of a batch of node pairs into edge
-        #       scores (logits).
+        # TODO: the candidate-pair scoring rule we will design.
         pass
 
     def loss(self, Z, A):
-        # TODO: the unsupervised objective that trains the encoder and the
-        #       pair-scoring rule from the observed adjacency.
+        # TODO: the unsupervised objective we will design.
         pass
 
 

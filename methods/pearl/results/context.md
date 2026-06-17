@@ -45,9 +45,10 @@ adaptation is literally fine-tuning.
 
 **A structural fact about tasks: the context is a set.** Identifying an MDP from experience does not
 depend on the order of the transitions. A collection `{(s_i,a_i,s'_i,r_i)}` carries the same
-information about the reward and dynamics however it is permuted — the Markov property means each
-transition is an independent sample of the same `r` and `p(s'|s,a)`. So whatever summarizes the
-context to identify the task should treat that context as an unordered set, not a sequence.
+information about the reward and dynamics however it is permuted: the Markov model is specified by
+local transition and reward laws, not by the order in which those local observations happened to
+arrive. So whatever summarizes the context to identify the task should treat that context as an
+unordered set, not a sequence.
 
 **Amortized variational inference.** A latent-variable model `z ~ p(z)`, `x ~ p_θ(x|z)` can be
 trained even when the posterior `p(z|x)` is intractable by introducing a *recognition network*
@@ -169,7 +170,8 @@ The natural yardsticks were continuous-control locomotion meta-RL benchmarks sim
   per-step noise is hopeless, so it is the discriminating test for whether an agent can explore by
   testing hypotheses.
 
-Protocol: a fixed split of training vs. test tasks per family; fixed horizon (e.g. 200 steps);
+Protocol: a fixed split of training vs. test tasks per family; a fixed horizon per family (200 steps
+for the MuJoCo-style locomotion families, 20 for the point-robot family);
 adaptation performed by collecting exploration trajectories on a held-out task and then evaluating;
 the yardstick is *test-task return versus number of meta-training samples* — i.e. both final
 performance and how many samples meta-training consumed to get there. Returns are averaged over

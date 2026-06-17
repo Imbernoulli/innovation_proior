@@ -140,15 +140,15 @@ The natural yardsticks already in use for link prediction at the time:
   NS (collaboration), PB (political blogs), Yeast and E.coli (biological interaction), C.ele
   (neural), Power (electrical grid), Router (Internet topology) — node counts from a few hundred
   to a few thousand, average degree from ~2.5 (Power, Router) to ~27 (PB). Larger graphs (arXiv,
-  Facebook, BlogCatalog, Wikipedia, PPI) for scalability. Citation graphs (Cora, CiteSeer) and
-  an OGB collaboration graph are standard for benchmarking modern link predictors.
+  Facebook, BlogCatalog, Wikipedia, PPI) for scalability; citation graphs such as Cora and
+  CiteSeer add node attributes to the same link-prediction setting.
 - **Protocol**: randomly hold out a fraction (e.g. 10%, or 50% for a harder split) of observed
   edges as positive test links; sample an equal number of unconnected node pairs as negative
   test links; train on the remaining observed edges plus an equal number of sampled negative
   (non-)edges. A validation split is used to set hyperparameters.
 - **Metrics** (higher is better): area under the ROC curve (AUC) and average precision (AP) for
-  the small graphs; ranking metrics — mean reciprocal rank (MRR) and Hits@K (the fraction of
-  true edges ranked in the top K against negatives) — for the citation and OGB graphs.
+  balanced held-out positives and negatives; when the evaluation is phrased as ranking a true
+  edge against many negatives, mean reciprocal rank (MRR) and Hits@K are the natural summaries.
 
 ## Code framework
 
@@ -195,7 +195,6 @@ class LinkPredictor(nn.Module):
         pass
 
 
-# existing training loop the predictor plugs into
 def train(model, x, edge_index, optimizer):
     model.train()
     optimizer.zero_grad()

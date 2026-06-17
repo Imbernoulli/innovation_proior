@@ -127,11 +127,10 @@ target,
 and policy regularization puts it inside the actor objective,
 `max_pi E[ E_{a''~pi}[Q(s, a'')] - alpha·D̂(pi(·|s), pi_b(·|s)) ]`.
 It surveyed KL, kernel MMD and Wasserstein for `D̂` and found no consistent advantage.
-**Gap:** the two penalties were given the *same* coefficient `alpha` (or only one location
-was enabled at a time), and the framework was instantiated with stochastic policies and
-sample-based density divergences requiring a separately learned behavior model — never
-collapsed to the cheap deterministic-policy case nor allowed to weigh its two sides
-separately.
+**Gap:** the framework names the two penalty locations, but its practical instantiations still
+leave open whether a simple deterministic actor-critic can get the same protection without a
+separately learned behavior model, and whether the actor-side and critic-side pressures should
+really be forced to share one knob.
 
 **IQL (Kostrikov, Nair & Levine 2022).** A contrasting offline approach that sidesteps
 querying OOD actions entirely: it fits an expectile value function `V` by asymmetric
@@ -190,7 +189,7 @@ class DeterministicActor(nn.Module):
     def __init__(self, state_dim, action_dim, max_action):
         super().__init__()
         self.max_action = max_action
-        self.net = None  # TODO: the actor network we will design
+        self.net = None  # network choice left open
 
     def forward(self, state):
         pass
@@ -201,7 +200,7 @@ class Critic(nn.Module):
     whether to normalize between layers are choices to be settled."""
     def __init__(self, state_dim, action_dim):
         super().__init__()
-        self.net = None  # TODO: the critic network we will design
+        self.net = None  # network choice left open
 
     def forward(self, state, action):
         pass

@@ -90,19 +90,19 @@ from structure, latent, and explicit features jointly. Two leak fixes:
 
 ## GNN engine — propagation conv + sorting pool (DGCNN)
 
-Graph convolution (random-walk-normalized, a "soft Weisfeiler-Lehman"):
+Paper-level DGCNN graph convolution (random-walk-normalized, a "soft Weisfeiler-Lehman"):
 
 ```
 Z = f(D̃^{-1} Ã X W),   Ã = A + I,   row i: f( (1/(|Γ(i)|+1)) [X_i W + Σ_{j∈Γ(i)} X_j W] )
 ```
 
 Stack conv layers (e.g. 4 layers, `32,32,32,1` channels), **concatenate** every layer's per-node
-output into a multi-hop descriptor, then **SortPooling**: sort nodes by their final conv features
-(last channel desc., earlier channels break ties), truncate/pad to `k` (a high percentile of
-subgraph sizes), and run a 1-D CNN + dense head. Sorting is permutation-invariant (isomorphic
-subgraphs → same representation) yet keeps node/topology info that summing would wash out. `h`
-selected from `{1,2}` (exponential decay ⇒ higher hops add little; `h=3` can explode on hubs):
-use `h=2` if Adamic-Adar beats Common Neighbors on validation, else `h=1`.
+output into a multi-hop descriptor, then **SortPooling**: sort nodes by their final conv states
+(the PyG reference path sorts by the last channel descending), truncate/pad to `k` (the
+training-set quantile when `k <= 1`, with a floor of `10`), and run a 1-D CNN + dense head.
+Sorting is permutation-invariant (isomorphic subgraphs → same representation) yet keeps
+node/topology info that summing would wash out. `h` is selected from `{1,2}`: use `h=2` if
+Adamic-Adar beats Common Neighbors on validation, else `h=1`, avoiding large subgraphs around hubs.
 
 ## Working code
 
@@ -120,6 +120,10 @@ import torch.nn.functional as F
 from torch.nn import Conv1d, MaxPool1d, Linear, Embedding, ModuleList
 from torch_geometric.data import Data
 from torch_geometric.nn import GCNConv, global_sort_pool
+
+
+def neighbors(fringe, A):
+    return set(A[list(fringe)].indices)
 
 
 def drnl_node_labeling(adj, src, dst):
@@ -171,24 +175,33 @@ def k_hop_subgraph(src, dst, num_hops, A, node_features=None, y=1):
 
 
 def construct_pyg_graph(node_ids, adj, dists, node_features, y):
-    u, v, _ = ssp.find(adj)
+    u, v, r = ssp.find(adj)
     edge_index = torch.stack([torch.LongTensor(u), torch.LongTensor(v)], 0)
+    edge_weight = torch.LongTensor(r).to(torch.float)
     z = drnl_node_labeling(adj, 0, 1)            # targets at positions 0, 1
-    return Data(node_features, edge_index, y=torch.tensor([y]), z=z,
+    return Data(node_features, edge_index, edge_weight=edge_weight, y=torch.tensor([y]), z=z,
                 node_id=torch.LongTensor(node_ids), num_nodes=adj.shape[0])
 
 
 class LinkPredictor(torch.nn.Module):
     """SEAL: DGCNN over each candidate edge's enclosing subgraph."""
     def __init__(self, hidden_channels, num_layers, max_z, k=0.6,
-                 train_dataset=None, use_feature=False, node_embedding=None):
+                 train_dataset=None, dynamic_train=False,
+                 use_feature=False, node_embedding=None):
         super().__init__()
         self.use_feature = use_feature
         self.node_embedding = node_embedding
         if k <= 1:                                # k as a percentile of subgraph sizes
-            num_nodes = sorted([g.num_nodes for g in train_dataset])
-            k = num_nodes[int(math.ceil(k * len(num_nodes))) - 1]
-            k = max(10, k)
+            if train_dataset is None:
+                k = 30
+            elif dynamic_train:
+                num_nodes = sorted([g.num_nodes for g in train_dataset[:1000]])
+                k = num_nodes[int(math.ceil(k * len(num_nodes))) - 1]
+                k = max(10, k)
+            else:
+                num_nodes = sorted([g.num_nodes for g in train_dataset])
+                k = num_nodes[int(math.ceil(k * len(num_nodes))) - 1]
+                k = max(10, k)
         self.k = int(k)
 
         self.z_embedding = Embedding(max_z, hidden_channels)
@@ -215,7 +228,7 @@ class LinkPredictor(torch.nn.Module):
         self.lin1 = Linear(dense_dim, 128)
         self.lin2 = Linear(128, 1)
 
-    def forward(self, z, edge_index, batch, x=None, node_id=None):
+    def forward(self, z, edge_index, batch, x=None, edge_weight=None, node_id=None):
         # node information matrix X = [DRNL label || attrs || latent embedding]
         h = self.z_embedding(z)
         if h.ndim == 3:
@@ -227,7 +240,7 @@ class LinkPredictor(torch.nn.Module):
 
         xs = [h]
         for conv in self.convs:                    # multi-hop substructure features
-            xs.append(torch.tanh(conv(xs[-1], edge_index)))
+            xs.append(torch.tanh(conv(xs[-1], edge_index, edge_weight)))
         x = torch.cat(xs[1:], dim=-1)              # per-node concat of all layers
 
         x = global_sort_pool(x, batch, self.k)     # SortPooling

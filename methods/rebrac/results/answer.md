@@ -31,9 +31,15 @@ model is needed), and let the two strengths be **independent**:
 - **Critic (value penalty), `beta_2`** — pessimize the clipped-double-Q bootstrap toward the
   dataset's own next action `a_hat'`:
   `a' = clip(pi_target(s') + clip(N(0, sigma), -c, c), -1, 1)` (target smoothing),
-  `next_q = min_{i=1,2} Q_{theta'_i}(s', a') - beta_2 (a' - a_hat')^2`,
+  `next_q = min_{i=1,2} Q_{theta'_i}(s', a') - beta_2 ||a' - a_hat'||_2^2`,
   `y = r + gamma (1 - done) next_q`,
   `L_critic = sum_i mean( (Q_{theta_i}(s, a) - y)^2 )`.
+
+The paper equations and CORL single-file implementation stop there. The original `DT6A/ReBRAC`
+repository's offline JAX file adds one implementation-only case: after forming this Bellman
+target, it floors the target at a precomputed Monte Carlo return-to-go,
+`y = max(y, mc_return)`. That calibration is absent from the paper equations and CORL, so it
+should be treated as a reference-code variant, not as the core ReBRAC formula.
 
 `beta_1` and `beta_2` are **decoupled** and tuned per environment (the original framework used
 one shared coefficient). The actor penalty is the load-bearing one; the critic penalty
@@ -50,8 +56,9 @@ completes the two-sided regularization but contributes less on most tasks.
 - **Three hidden layers, width 256, ReLU.** Depth helps the value/policy fit on a large
   static dataset; the two-layer base is a holdover. Saturates around 3-5 layers; drops at 6.
 - **Larger batch + scaled learning rate on dense locomotion.** Batch 1024, lr `1e-3` for
-  Gym-MuJoCo (lower-variance gradients, faster convergence). Kept small (256, lr `1e-4` /
-  `3e-4`) on sparse-reward / harder domains where larger batches hurt — a per-domain knob.
+  Gym-MuJoCo (lower-variance gradients, faster convergence). Kept small on sparse-reward /
+  harder domains where larger batches hurt; AntMaze configs use batch 256, actor lr `3e-4`,
+  and critic lr as low as `5e-5`.
 - **Discount.** `gamma = 0.999` on long sparse-reward tasks, else `0.99`. For a length-`L`
   episode with a single terminal reward, the signal reaches the start discounted by `gamma^L`:
   `0.99^1000 ~= 4e-5` (erased) vs `0.999^1000 ~= 0.37` (survives). Pure horizon arithmetic.
@@ -63,16 +70,19 @@ completes the two-sided regularization but contributes less on most tasks.
 
 ## Defaults
 
-`tau = 5e-3`, `policy_noise (sigma) = 0.2`, `noise_clip (c) = 0.5`, `policy_freq = 2`,
-hidden dim 256, 3 hidden layers, ReLU, Adam. Per-env `(beta_1, beta_2)`, learning rate, batch
-size, and `gamma` as above. (E.g. halfcheetah-medium-v2: `beta_1 = 0.001`, `beta_2 = 0.01`,
-lr `1e-3`, batch 1024, `gamma = 0.99`.)
+Implementation defaults are `tau = 5e-3`, `policy_noise (sigma) = 0.2`, `noise_clip (c) =
+0.5`, `policy_freq = 2`, hidden dim 256, 3 hidden layers, ReLU, Adam, `actor_ln = False`,
+`critic_ln = True`, and `normalize_q = True`. The dataclass placeholder sets
+`beta_1 = beta_2 = 1.0`; actual runs use per-environment YAML overrides for `(beta_1,
+beta_2)`, learning rates, batch size, and `gamma`. For example, `halfcheetah-medium-v2` uses
+`beta_1 = 0.001`, `beta_2 = 0.01`, lr `1e-3`, batch 1024, and `gamma = 0.99`.
 
 ## Working code
 
-Faithful to the canonical (CORL/JAX) implementation, written in the PyTorch shape of the
-TD3+BC base it builds on. The dataset must store the next action `a_hat'` for the critic
-penalty.
+Faithful to the paper/CORL JAX update, written in the PyTorch shape of the TD3+BC base it
+builds on. The dataset must store the next action `a_hat'` for the critic penalty. The
+`mc_returns` branch below is disabled by default and exists only to mirror the extra target
+floor in the original `DT6A/ReBRAC` repository.
 
 ```python
 import copy
@@ -122,15 +132,16 @@ class Critic(nn.Module):
 
 class ReBRAC:
     def __init__(self, state_dim, action_dim, max_action,
-                 actor_bc_coef=0.01, critic_bc_coef=0.01,   # beta_1, beta_2 (decoupled, per-env)
+                 actor_bc_coef=1.0, critic_bc_coef=1.0,     # beta_1, beta_2; YAML overrides per env
                  discount=0.99, tau=5e-3, lr=1e-3,
                  policy_noise=0.2, noise_clip=0.5, policy_freq=2,
-                 normalize_q=True, device="cuda"):
+                 normalize_q=True, use_mc_return_floor=False, device="cuda"):
         self.device = device
         self.beta_1, self.beta_2 = actor_bc_coef, critic_bc_coef
         self.discount, self.tau, self.max_action = discount, tau, max_action
         self.policy_noise, self.noise_clip = policy_noise, noise_clip
         self.policy_freq, self.normalize_q = policy_freq, normalize_q
+        self.use_mc_return_floor = use_mc_return_floor
         self.total_it = 0
 
         self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
@@ -146,7 +157,12 @@ class ReBRAC:
 
     def train(self, batch):
         self.total_it += 1
-        states, actions, rewards, next_states, dones, next_actions_data = batch
+        if self.use_mc_return_floor:
+            states, actions, rewards, next_states, dones, next_actions_data, mc_returns = batch
+            mc_returns = mc_returns.squeeze(-1)
+        else:
+            states, actions, rewards, next_states, dones, next_actions_data = batch
+            mc_returns = None
         not_done = 1.0 - dones.squeeze(-1)
         rewards = rewards.squeeze(-1)
 
@@ -161,6 +177,8 @@ class ReBRAC:
             bc_penalty = ((next_actions - next_actions_data) ** 2).sum(-1)   # value penalty
             next_q = next_q - self.beta_2 * bc_penalty
             target_q = rewards + not_done * self.discount * next_q
+            if mc_returns is not None:
+                target_q = torch.maximum(target_q, mc_returns)               # DT6A repo variant
 
         critic_loss = (F.mse_loss(self.critic_1(states, actions), target_q)
                        + F.mse_loss(self.critic_2(states, actions), target_q))
@@ -190,9 +208,11 @@ class ReBRAC:
 
 ## Relation to prior methods
 
-- **TD3+BC** = ReBRAC with only the actor penalty (no critic value penalty), a single coupled
-  coefficient with `alpha = 2.5`, two layers, no LayerNorm, batch 256, and added state
-  normalization.
+- **TD3+BC** = ReBRAC's actor-side idea without the critic value penalty (`beta_2 = 0`),
+  with two layers, no LayerNorm, batch 256, and added state normalization. In TD3+BC's loss
+  scaling `lambda = alpha / mean|Q|` with default `alpha = 2.5`; in ReBRAC's
+  `beta_1 * BC - Q / mean|Q|` scaling, that default corresponds to `beta_1 = 1 / alpha =
+  0.4`.
 - **BRAC** = the general two-location framework (value penalty + policy regularization) with a
   *shared* coefficient, a stochastic policy, and a density divergence (KL/MMD/Wasserstein)
   against a learned behavior model. ReBRAC is its deterministic-policy, squared-distance,

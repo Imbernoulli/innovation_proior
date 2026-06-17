@@ -34,7 +34,7 @@ One inherited choice I'll deliberately *drop*: TD3+BC also normalized the state 
 
 Let me also nail the update *schedule*, because TD3's delayed-update structure interacts with how I've split the losses. The critic gets updated every step — it needs all the gradient steps it can get to fit a moving target. The actor and the target networks update on the delayed cadence, every `policy_freq = 2` steps. So on a delayed step I do critic-then-actor-then-soft-target; on a non-delayed step I do critic only. That's the two-timescale structure that lets the critic error shrink between policy moves, and I keep it exactly.
 
-Now let me make sure the pieces compose into one coherent training step before I write code. Per step: sample `(s, a, r, s', â', done)`. Build the smoothed next action `a' = clip(pi_target(s') + clip(N(0,0.2),-0.5,0.5), -1, 1)`. Bootstrap `q = min(Q1_target(s',a'), Q2_target(s',a'))`, then apply the value penalty `q <- q - beta_2·sum((a' - â')^2)`. Target `y = r + gamma·(1-done)·q`. Critic loss `MSE(Q1(s,a), y) + MSE(Q2(s,a), y)`, step both critics. If it's a delayed step: actor action `pi = actor(s)`, value `q_pi = Q1(s, pi)`, normalizer `lambda = stopgrad(1/mean|q_pi|)`, actor loss `mean(beta_1·sum((pi-a)^2) - lambda·q_pi)`, step the actor; then soft-update all three targets at `tau`. Every signal traces to a piece I argued for: the min and smoothing and delay are TD3's overestimation/variance controls, the two `beta` penalties are the decoupled deterministic BRAC value-and-policy regularization, `lambda` is TD3+BC's scale normalization, LayerNorm in the critic is the extrapolation bound, depth/batch/`gamma` are the read-off design choices.
+Now let me make sure the pieces compose into one coherent training step before I write code. Per step: sample `(s, a, r, s', â', done)`. Build the smoothed next action `a' = clip(pi_target(s') + clip(N(0,0.2),-0.5,0.5), -1, 1)`. Bootstrap `q = min(Q1_target(s',a'), Q2_target(s',a'))`, then apply the value penalty `q <- q - beta_2·sum((a' - â')^2)`. Target `y = r + gamma·(1-done)·q`. That is the core equation. If my dataset preparation also carries an empirical return-to-go, I can keep a separate calibration switch that floors `y` at that observed return; that is not the behavior-regularization idea, so it must stay explicit and optional. Critic loss `MSE(Q1(s,a), y) + MSE(Q2(s,a), y)`, step both critics. If it's a delayed step: actor action `pi = actor(s)`, value `q_pi = Q1(s, pi)`, normalizer `lambda = stopgrad(1/mean|q_pi|)`, actor loss `mean(beta_1·sum((pi-a)^2) - lambda·q_pi)`, step the actor; then soft-update all three targets at `tau`. Every signal traces to a piece I argued for: the min and smoothing and delay are TD3's overestimation/variance controls, the two `beta` penalties are the decoupled deterministic BRAC value-and-policy regularization, `lambda` is TD3+BC's scale normalization, LayerNorm in the critic is the extrapolation bound, depth/batch/`gamma` are the read-off design choices.
 
 Let me write it as the code I'd actually ship, filling the loss and network slots in the offline actor-critic harness. The critic carries LayerNorm between hidden layers; the actor does not.
 
@@ -94,10 +94,10 @@ class ReBRAC:
     plus the TD3+BC value normalization on the actor."""
 
     def __init__(self, state_dim, action_dim, max_action,
-                 actor_bc_coef=0.01, critic_bc_coef=0.01,   # beta_1, beta_2 (per-env)
+                 actor_bc_coef=1.0, critic_bc_coef=1.0,     # beta_1, beta_2; YAML overrides per env
                  discount=0.99, tau=5e-3, lr=1e-3,
                  policy_noise=0.2, noise_clip=0.5, policy_freq=2,
-                 normalize_q=True, device="cuda"):
+                 normalize_q=True, use_mc_return_floor=False, device="cuda"):
         self.device = device
         self.beta_1 = actor_bc_coef          # actor-side BC penalty strength
         self.beta_2 = critic_bc_coef         # critic-side BC penalty strength (decoupled)
@@ -108,6 +108,7 @@ class ReBRAC:
         self.noise_clip = noise_clip
         self.policy_freq = policy_freq       # delayed actor/target updates (TD3)
         self.normalize_q = normalize_q
+        self.use_mc_return_floor = use_mc_return_floor
         self.total_it = 0
 
         self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
@@ -124,7 +125,12 @@ class ReBRAC:
     def train(self, batch):
         self.total_it += 1
         # batch carries the dataset's own next action a_hat' for the critic penalty
-        states, actions, rewards, next_states, dones, next_actions_data = batch
+        if self.use_mc_return_floor:
+            states, actions, rewards, next_states, dones, next_actions_data, mc_returns = batch
+            mc_returns = mc_returns.squeeze(-1)
+        else:
+            states, actions, rewards, next_states, dones, next_actions_data = batch
+            mc_returns = None
         not_done = 1.0 - dones.squeeze(-1)
         rewards = rewards.squeeze(-1)
 
@@ -143,6 +149,8 @@ class ReBRAC:
             bc_penalty = ((next_actions - next_actions_data) ** 2).sum(-1)
             next_q = next_q - self.beta_2 * bc_penalty
             target_q = rewards + not_done * self.discount * next_q
+            if mc_returns is not None:
+                target_q = torch.maximum(target_q, mc_returns)
 
         critic_loss = (F.mse_loss(self.critic_1(states, actions), target_q)
                        + F.mse_loss(self.critic_2(states, actions), target_q))

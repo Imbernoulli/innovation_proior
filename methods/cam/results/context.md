@@ -202,7 +202,7 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
     The pipeline that maps data -> DAG is unspecified here. Fill the slot below."""
     n, p = X.shape
     B = np.zeros((p, p))
-    # TODO: the procedure we will design — turn X into a DAG.
+    # Open slot: derive the data-to-DAG procedure.
     return B
 ```
 

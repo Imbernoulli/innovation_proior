@@ -50,8 +50,9 @@ teacher = (1 - gamma) v_{s,u}(I_s) + gamma v_{u,t}(X_{s,u}(I_s)),   X_{s,u}(I_s)
 
 Working in `v`-space divides out the `(t-s)^2` factor that the `X`-space residual carries, so the
 effective learning rate no longer depends on the gap. The `sg[·]` (stopgradient) on the teacher
-makes the composed two-jump term a frozen target (instantaneous-parameter teacher, EMA factor
-`delta = 0`) and the full jump `v_{s,t}` the student, so the externally-anchored diagonal truth
+makes the composed two-jump term a frozen target and the full jump `v_{s,t}` the student. In the
+official self-distillation implementation, `teacher_params` is the current parameter tree and the
+two teacher calls are wrapped in `jax.lax.stop_gradient`, so the externally anchored diagonal truth
 flows outward into the off-diagonal rather than being corrupted by it.
 
 ## Correctness and the known caveat
@@ -70,7 +71,7 @@ and shifts the input distribution, a structural difficulty of self-consistent bo
 
 - Batch split `eta = 0.75` diagonal (flow matching) / `0.25` off-diagonal (PSD). Off-diagonal
   `(s,t)` drawn uniformly on the upper triangle `s < t`; midpoint `u = (s+t)/2`.
-- Teacher params = current params (`delta = 0`). Cost: 3 network evals per off-diagonal sample
+- Teacher params = current params, with stopgradient on the two teacher calls. Cost: 3 network evals per off-diagonal sample
   (`v_{s,t}`, `v_{s,u}`, `v_{u,t}`), 1 per diagonal sample.
 - Network: EDM2-style U-Net taking `(s, dt = t-s)`, `sigma_data` input/output preconditioning,
   a `logvar` head for `w_{s,t}`; square-root LR schedule, gradient clipping, EMA for evaluation.
@@ -140,6 +141,6 @@ def psd_term(params, teacher_params, x0, x1, label, s, t, u, h, rng,
 ```
 
 The intermediate time is supplied as the midpoint `u = 0.5 * (s + t)` for the midpoint variant
-(`h` unused); `(s,t)` are sampled by drawing two uniform times and ordering them; the teacher
-parameters are the current parameters. The full loss averages `diagonal_term` over the `eta`
-fraction of the batch on `s = t` and `psd_term` over the `1 - eta` fraction on `s < t`.
+(`h` unused); `(s,t)` are sampled by drawing two uniform times and ordering them; the code passes
+the current parameter tree as `teacher_params`. The full loss averages `diagonal_term` over the
+`eta` fraction of the batch on `s = t` and `psd_term` over the `1 - eta` fraction on `s < t`.

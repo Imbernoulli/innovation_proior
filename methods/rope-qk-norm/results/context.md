@@ -1,5 +1,3 @@
-# Context: self-attention for GPT-style pretraining (circa 2021-2024)
-
 ## Research question
 
 The single layer where a Transformer language model decides *which* token attends to *which*
@@ -24,11 +22,11 @@ near-one-hot row. The `1/sqrt(d_k)` factor calibrates the *expected* score only 
 initialization; it is not a bound, and as the projection matrices move during training the
 query/key norms grow and the scores climb back into the saturated regime.
 
-The goal at this layer: inject position so that the attention logit depends on the *relative*
-offset (and generalizes past the trained length), and at the same time keep the logit
-magnitude under control for the *whole* run, so the attention distribution can stay expressive
-and training stays stable — all without touching anything outside the attention module
-(optimizer, schedule, data, loss, and the rest of the stack are fixed).
+The layer-level requirement is therefore twofold: order information should be usable as an
+offset relation rather than merely as a slot ID, and the attention scores should not be able to
+grow until the softmax rows collapse. The edit budget is intentionally narrow: optimizer,
+schedule, data, loss, and the rest of the stack are fixed, so any remedy has to live inside the
+attention module.
 
 ## Background
 
@@ -41,7 +39,7 @@ typical score scales like `sqrt(d_k)`; dividing by `sqrt(d_k)` renormalizes the 
 to ~1 at initialization. This is a *one-time calibration under init-time independence
 assumptions*, not a property maintained through training.
 
-Two background concepts the method rests on.
+Two background concepts matter for this setting.
 
 *Normalization that controls magnitude.* LayerNorm (Ba et al. 2016) maps a feature vector `a`
 to `(a − mu)/sigma · g + b`: it re-centers (subtract the mean) and re-scales (divide by the
@@ -51,18 +49,19 @@ a_i^2)` and a learned gain `g`. Their hypothesis, borne out empirically, is that
 *re-centering* invariance is dispensable — mean-subtraction does not reduce the variance of
 the hidden states or gradients — while the *re-scaling* invariance is what stabilizes
 magnitudes; dropping the mean makes RMSNorm cheaper (reported ~7-64% faster) and a strict drop
-in. A vector passed through RMSNorm has each component at unit root-mean-square (times the
-gain), so its Euclidean norm is pinned to `sqrt(n) · (gain RMS)` regardless of the input scale.
+in. In the no-gain or scalar-gain case, a vector passed through RMSNorm lands on a fixed
+`sqrt(n)`-scale sphere regardless of the input magnitude; a learned per-coordinate gain can then
+add anisotropic scaling, but the raw input norm no longer controls the output norm.
 
-*Relative position as rotation, latent in sinusoids.* The sinusoidal absolute encoding
+*Relative shift structure latent in sinusoids.* The sinusoidal absolute encoding
 `p_{i,2t} = sin(i / 10000^{2t/d})`, `p_{i,2t+1} = cos(i / 10000^{2t/d})` stacks sinusoids whose
 wavelengths sweep geometrically from `2*pi` to `~10000·2*pi`. A latent fact: shifting position
 `i -> i + k` maps each `(sin(wi), cos(wi))` pair to `(sin(w(i+k)), cos(w(i+k)))`, which is a
-*rotation by a fixed angle `wk`* of that pair, independent of `i`. So sinusoids already carry
-relative shift as a rotation — but the additive scheme never uses it as the mechanism.
+fixed phase transformation of that pair, independent of `i`. So sinusoids contain algebraic
+relative-shift structure, but the additive scheme buries it in the expanded dot-product terms.
 
 The motivating diagnostic findings (about the *existing* attention block, knowable before any
-fix). When Transformers are scaled up, training loss is observed to *diverge after a few
+redesign). When Transformers are scaled up, training loss is observed to *diverge after a few
 thousand steps* — documented at ~8B parameters for a vision Transformer (Dehghani et al. 2023)
 and connected to earlier reports — and the cause is traced to *extremely large values in the
 attention logits*, which drive the attention weights to be almost one-hot with near-zero
@@ -70,7 +69,7 @@ entropy (Zhai et al. 2023 named this "attention entropy collapse"). The same ins
 reproducible at *small* scale by training at high learning rate (Wortsman et al. 2023): the
 "max attention logit", typically largest in the first layer, grows without bound, the
 learning-rate-vs-loss curve shows an explosion past a critical LR, and the run diverges. These
-are facts about the baseline mechanism, not about any proposed fix.
+are facts about the baseline mechanism, not about a proposed replacement.
 
 ## Baselines
 
@@ -87,7 +86,8 @@ not on the offset `m − n`; and the table caps the context at `L` with nothing 
 
 **Sinusoidal absolute encoding (Vaswani et al. 2017).** The fixed closed form above; not
 length-capped, but *gap:* still absolute and additive, with the same cross-term contamination —
-the relative structure is latent (as rotation) but unused.
+the relative structure is latent in the trigonometric shift identities but unused by the additive
+mechanism.
 
 **Relative position families (Shaw et al. 2018; Transformer-XL, Dai et al. 2019; T5, Raffel et
 al. 2020; DeBERTa, He et al. 2020).** These make attention explicitly relative by editing the

@@ -34,7 +34,7 @@ The third — the SDP — is the real algorithmic problem, and it's where I'll s
 
 But greedy comes with a caveat I need to face honestly. Greedy enjoys its `(1-1/e)` guarantee only for *submodular* objectives, and the trace functional here is not submodular. So plain forward greedy can get stuck in a suboptimal batch — it commits early to points that looked good but become redundant once later points are added, and it can't take them back. I don't want to abandon greedy (it's the only tractable thing), so let me fix its myopia directly: instead of forward-selecting exactly `B`, *oversample* — greedily add `2B` points — and then run a *backward* pass that greedily *removes* points one at a time, each time deleting the point whose removal hurts the objective least, down to `B`. The forward pass casts a wide net; the backward pass prunes the ones that turned out redundant in the company of the others. This forward-then-backward selection recovers batches the forward-only version misses, precisely because it can undo an early greedy mistake. Why `2B` and not `5B`? It's a compute-versus-quality dial — each extra forward point costs a scoring pass over the pool — and a factor of two buys most of the benefit; larger multipliers didn't help. The backward step is the same objective with a minus sign: `x̃ = argmin_{x∈S} tr((M_i - I(x;θ^L))^{-1} I(θ^L))`, remove `x̃`, `M_{i-1} = M_i - I(x̃)`.
 
-Now the part that decides whether any of this is real or just notation: can I actually *compute* that argmin over the whole pool, every greedy step, without dying? Naively, for each candidate `x` I'd form `M_i + I(x;θ^L)`, invert a `dk × dk` matrix, multiply by `I(θ^L)`, and take a trace — per candidate, per greedy step, over the whole pool. That's absurd; `dk` is in the thousands and the pool is huge. I need to exploit structure, and the structure is that `I(x;θ^L)` is *low rank*. Each point's Fisher is rank `k` (the number of classes): I can write `I(x;θ^L) = V_x V_x^T` where `V_x` is a `dk × k` matrix whose columns are the per-class last-layer loss gradients, each scaled by the square root of that class's predicted probability. Let me verify this scaling reproduces the Fisher I derived. The per-class gradient is `g_c = (1[c=·] - π) ⊗ x^L`... more concretely, the column for class `c` is the softmax-loss gradient `(1[class=c] - π_c)` times `x^L`, scaled by `√π_c`. Then `V_x V_x^T = Σ_c π_c · g_c g_c^T`, and that sum is exactly `x^L x^L^T ⊗ (diag(π) - π π^T)` — the Fisher I computed for multiclass logistic regression. So the `√p` scaling isn't a hack; it's what makes the outer product of these gradient columns equal the true pointwise Fisher. (And notice: BADGE uses *one* such column — the gradient at the single hallucinated label — and does *not* scale it by `√p`. So BADGE's embedding is one column of `V_x`, a rank-one shadow of the full rank-`k` Fisher. BADGE is throwing away `k-1` directions of per-point information and the probability weighting. That's advantage one of using the full `V_x`.)
+Now the part that decides whether any of this is real or just notation: can I actually *compute* that argmin over the whole pool, every greedy step, without dying? Naively, for each candidate `x` I'd form `M_i + I(x;θ^L)`, invert a `dk × dk` matrix, multiply by `I(θ^L)`, and take a trace — per candidate, per greedy step, over the whole pool. That's absurd; `dk` is in the thousands and the pool is huge. I need to exploit structure, and the structure is that `I(x;θ^L)` is *low rank*. Each point's Fisher is rank `k` (the number of classes): I can write `I(x;θ^L) = V_x V_x^T` where `V_x` is a `dk × k` matrix. The column for possible label `c` is `√π_c ((e_c - π) ⊗ x^L)`. This is the negative of the cross-entropy gradient under label `c`, not the gradient itself under my `ℓ = -log p` convention, but the sign vanishes in the outer product. Then `V_x V_x^T = Σ_c π_c ((e_c - π)⊗x^L)((e_c - π)⊗x^L)^T`, and that sum is exactly `x^L x^L^T ⊗ (diag(π) - π π^T)` — the Fisher I computed for multiclass logistic regression. So the `√p` scaling isn't a hack; it's what makes the outer product of these sign-flipped gradient columns equal the true pointwise Fisher. (And notice: BADGE uses *one* such hallucinated-label vector and does *not* scale it by `√p`. So BADGE's embedding is one column-shaped shadow of `V_x`, a rank-one approximation of the full rank-`k` Fisher. BADGE is throwing away `k-1` directions of per-point information and the probability weighting. That's advantage one of using the full `V_x`.)
 
 With `I(x;θ^L) = V_x V_x^T`, the candidate score becomes a low-rank update of an inverse, and the Woodbury / Sherman–Morrison machinery applies. The Woodbury identity:
 
@@ -52,7 +52,7 @@ Now the crucial algebraic move, and it's not optional — it's the difference be
 
   tr( M_i^{-1} V_x A^{-1} V_x^T M_i^{-1} I(θ) ) = tr( V_x^T M_i^{-1} I(θ) M_i^{-1} V_x · A^{-1} ).
 
-Why does that matter so much? In the un-rotated form `M_i^{-1} V_x A^{-1} V_x^T M_i^{-1} I(θ)`, the leading operations involve `dk × dk` matrices that depend on `x` — I'd build a fresh huge matrix for every candidate. In the rotated form, I precompute `B := M_i^{-1} I(θ) M_i^{-1}` *once* per greedy step (it doesn't depend on `x`), and then for each candidate the whole score is `tr(V_x^T B V_x · A^{-1})` — products of `dk × k` and `k × k` matrices, all small. Even better, I can stack all candidates' `V_x` into one tensor and compute every candidate's score in a *single* batched matrix multiply on the GPU. The trace rotation is what turns "a giant matrix per point" into "a tiny inner product per point, all at once." Once I pick `x̃`, I update the inverse with the same Woodbury formula, `M_{i+1}^{-1} = M_i^{-1} - M_i^{-1} V_{x̃} A^{-1} V_{x̃}^T M_i^{-1}`, and march on. For the backward pass it's identical with the sign flipped: `A = -I + V_x^T M_i^{-1} V_x`, removing the chosen point's contribution.
+Why does that matter so much? In the un-rotated form `M_i^{-1} V_x A^{-1} V_x^T M_i^{-1} I(θ)`, the leading operations involve `dk × dk` matrices that depend on `x` — I'd build a fresh huge matrix for every candidate. In the rotated form, I precompute `B := M_i^{-1} I(θ) M_i^{-1}` *once* per greedy step (it doesn't depend on `x`), and then for each candidate the whole score is `tr(V_x^T B V_x · A^{-1})` — products of `dk × k` and `k × k` matrices, all small. Even better, I can stack all candidates' factors into one tensor and compute every candidate's score in a *single* batched matrix multiply on the GPU. I just have to remember the implementation stores the transpose: each `X[i]` is `V_x^T` with shape `k × dk`, so the batched code writes `X @ currentInv @ X.transpose(1, 2)` where the math writes `V_x^T M_i^{-1} V_x`. The trace rotation is what turns "a giant matrix per point" into "a tiny inner product per point, all at once." Once I pick `x̃`, I update the inverse with the same Woodbury formula, `M_{i+1}^{-1} = M_i^{-1} - M_i^{-1} V_{x̃} A^{-1} V_{x̃}^T M_i^{-1}`, and march on. For the backward pass the code uses the same subtraction-form update with `A = -I + V_x^T M_i^{-1} V_x`; because that `A^{-1}` carries the removal sign, deleting `argmin(-traceEst)` is the same as deleting the selected point whose removal least increases the actual objective.
 
 Let me make sure I assemble `I(θ)` and `M_0` consistently. `I(θ^L) = (1/|U|) Σ_{x∈U} V_x V_x^T` is the pool Fisher — sum the per-point outer products over the whole pool, divided by pool size. `M_0` starts from the *labeled* Fisher `(1/|S|) Σ_{x∈S} V_x V_x^T` plus `λI`. There's a normalization subtlety I should get right: I'm about to add `K = B` new points to the `nLabeled` I already have, so the relative weight of the seed Fisher versus the candidates should reflect that I'll end up with `nLabeled + K` points. Concretely, scale the seed contribution into `M_0` by `nLabeled/(nLabeled+K)` and scale the candidate Fishers by `K/(nLabeled+K)` — equivalently scale each `V_x` by `√(K/(nLabeled+K))` — so the trace objective is evaluated as if the new batch joins the existing labeled set in the correct proportion. That keeps the greedy objective consistent with the risk I derived rather than over- or under-weighting the seed.
 
@@ -70,122 +70,4 @@ Let me also pin down *why incorporating `I(θ)` is the load-bearing piece*, beca
 
 So the causal chain is closed. I refused to choose a design criterion by taste and instead derived the MLE/Bayes error, which forced the weighted trace `tr((Σ_S I(x;θ))^{-1} I_U(θ))` — A-optimality with the pool Fisher inside — and showed a determinant structurally cannot carry that pool term. Three neural obstacles fell to three fixes: huge Fisher → last-layer Fisher; shifting representation → recompute every round; intractable SDP → greedy. Greedy's non-submodularity → oversample forward to `2B`, prune backward to `B`. And the per-step argmin, which looked like a `dk × dk` inversion per candidate, collapsed via the low-rank `V_x V_x^T` structure, the Woodbury identity (a `k × k` inverse), and the trace rotation (precompute `M^{-1} I(θ) M^{-1}` once, score every candidate with a batched small matmul) into something I can run on a GPU over the whole pool at once. The regression case is the same machinery with rank-one `xx^T`.
 
-Let me write it as the algorithm I'd actually run each round, filling the one open slot in the harness — the batch acquisition rule:
-
-```
-Each round t, given current network θ_t, pool U, labeled set S, batch size B:
-  build V_x for every x in U      # dk×k Fisher factors: per-class last-layer grads, ×√p_class
-  I(θ) ← (1/|U|) Σ_{x∈U} V_x V_x^T            # pool (target) Fisher
-  M_0  ← λI + (|S|/(|S|+B)) · (1/|S|) Σ_{x∈S} V_x V_x^T   # seed Fisher + ridge prior
-  scale each candidate V_x by √(B/(|S|+B))    # weight the new batch correctly
-  currentInv ← M_0^{-1}
-  # forward: oversample to 2B (trace is not submodular, so we'll prune)
-  for i in 1..2B:
-      Bmat ← currentInv @ I(θ) @ currentInv               # precompute once per step
-      A_x  ← I + V_x^T currentInv V_x          (k×k, every candidate)
-      score(x) ← tr( V_x^T Bmat V_x @ A_x^{-1} )           # rotated trace, all candidates at once
-      x̃ ← argmax_x score(x) over unselected
-      currentInv ← currentInv - currentInv V_{x̃} A_{x̃}^{-1} V_{x̃}^T currentInv   # Woodbury add
-  # backward: prune to B
-  for i in 2B..B+1:
-      A_x  ← -I + V_x^T currentInv V_x         (k×k, over selected)
-      score(x) ← tr( V_x^T (currentInv I(θ) currentInv) V_x @ A_x^{-1} )
-      x̃ ← the selected point whose removal least worsens the objective
-      currentInv ← currentInv - currentInv V_{x̃} A_{x̃}^{-1} V_{x̃}^T currentInv   # Woodbury remove
-  return the B selected indices
-```
-
-And concretely, grounded in the implementation, the selection routine and the per-round query look like this:
-
-```python
-import numpy as np
-import torch
-
-
-def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
-    """Greedy A-optimal batch selection: minimize tr((sum_S V V^T)^{-1} I(theta)).
-    X[i] = V_{x_i}, a (rank x dim)-shaped Fisher factor with V V^T = I(x; theta^L).
-    `fisher` = I(theta^L) (pool Fisher); `iterates` = labeled-set Fisher used to seed M_0.
-    Forward-oversample to 2K, then backward-prune to K (trace is not submodular)."""
-    indsAll = []
-    dim = X.shape[-1]
-    rank = X.shape[-2]
-
-    # M_0^{-1}: ridge prior lamb*I plus the already-labeled Fisher, weighted by
-    # nLabeled/(nLabeled+K) so the new batch of K joins the seed in correct proportion.
-    currentInv = torch.inverse(lamb * torch.eye(dim) + iterates * nLabeled / (nLabeled + K))
-    # scale candidate Fisher factors by sqrt(K/(nLabeled+K)) -> the new-batch weighting
-    X = X * np.sqrt(K / (nLabeled + K))
-
-    # ---- forward selection, over-sample by 2x ----
-    over_sample = 2
-    for i in range(int(over_sample * K)):
-        # rotated-trace score for ALL candidates at once (Woodbury + cyclic trace):
-        #   score(x) = tr( V_x^T M^{-1} I(theta) M^{-1} V_x  (I + V_x^T M^{-1} V_x)^{-1} )
-        innerInv = torch.inverse(torch.eye(rank) + X @ currentInv @ X.transpose(1, 2))
-        traceEst = torch.diagonal(
-            X @ currentInv @ fisher @ currentInv @ X.transpose(1, 2) @ innerInv,
-            dim1=-2, dim2=-1).sum(-1)
-
-        # pick the largest-scoring not-yet-selected point (minimizes the trace objective)
-        traceEst = traceEst.detach().cpu().numpy()
-        for j in np.argsort(traceEst)[::-1]:
-            if j not in indsAll:
-                ind = j
-                break
-        indsAll.append(ind)
-
-        # commit via the same Woodbury low-rank inverse update: M^{-1} <- M^{-1} - M^{-1} V A^{-1} V^T M^{-1}
-        xt_ = X[ind].unsqueeze(0)
-        innerInv = torch.inverse(torch.eye(rank) + xt_ @ currentInv @ xt_.transpose(1, 2))
-        currentInv = (currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv)[0]
-
-    # ---- backward pruning: remove K extras, deleting the least-useful each time ----
-    for i in range(len(indsAll) - K):
-        xt_ = X[indsAll]
-        # sign-flipped inner term (-I) because we are subtracting a point's Fisher
-        innerInv = torch.inverse(-1 * torch.eye(rank) + xt_ @ currentInv @ xt_.transpose(1, 2))
-        traceEst = torch.diagonal(
-            xt_ @ currentInv @ fisher @ currentInv @ xt_.transpose(1, 2) @ innerInv,
-            dim1=-2, dim2=-1).sum(-1)
-        delInd = torch.argmin(-1 * traceEst).item()      # removal that least worsens the objective
-
-        xt_ = X[indsAll[delInd]].unsqueeze(0)
-        innerInv = torch.inverse(-1 * torch.eye(rank) + xt_ @ currentInv @ xt_.transpose(1, 2))
-        currentInv = (currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv)[0]
-        del indsAll[delInd]
-
-    return indsAll
-
-
-class BaitSampling(Strategy):
-    def __init__(self, X, Y, idxs_lb, net, handler, args):
-        super(BaitSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
-        self.lamb = args['lamb']             # ridge / prior precision (default 1)
-
-    def query(self, n):
-        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
-
-        # rank-k Fisher factors V_x for the whole pool: per-class last-layer grads, scaled by sqrt(p)
-        xt = self.get_exp_grad_embedding(self.X, self.Y)     # [n_pool, k, d*k], V_x V_x^T = I(x; theta^L)
-
-        # pool Fisher I(theta^L) = (1/|U|) sum_x V_x V_x^T, accumulated in batches
-        batchSize = 1000
-        fisher = torch.zeros(xt.shape[-1], xt.shape[-1])
-        for i in range(int(np.ceil(len(self.X) / batchSize))):
-            xt_ = xt[i * batchSize:(i + 1) * batchSize]
-            fisher = fisher + torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt), 0)
-
-        # seed Fisher from the already-labeled points, to initialize M_0
-        init = torch.zeros(xt.shape[-1], xt.shape[-1])
-        xt2 = xt[self.idxs_lb]
-        for i in range(int(np.ceil(len(xt2) / batchSize))):
-            xt_ = xt2[i * batchSize:(i + 1) * batchSize]
-            init = init + torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt2), 0)
-
-        chosen = select(xt[idxs_unlabeled], n, fisher, init,
-                        lamb=self.lamb, nLabeled=np.sum(self.idxs_lb))
-        return idxs_unlabeled[chosen]
-```
-
-That's the whole thing, and every piece traces to a step in the reasoning: `get_exp_grad_embedding` builds the `√p`-scaled per-class gradients so `V_x V_x^T` is the exact pointwise Fisher; `fisher` is the pool Fisher `I(θ^L)`; `init` seeds `M_0`; `select` runs the A-optimal greedy with the Woodbury-plus-trace-rotation scoring that lets me evaluate every candidate at once, oversampling forward to `2n` and pruning backward to `n` because the trace isn't submodular. The same routine, with rank-one `xx^T` instead of rank-`k` `V_x`, handles regression — which is the generality the gradient-determinant heuristic never had.
+Let me write it as the algorithm I'd actually run each round, filling the one open slot in the harness: build the sign-flipped, `√p`-scaled per-class final-layer factors for every pool point; form the pool Fisher by averaging `V_x V_x^T` over the whole pool; form the labeled-set Fisher the same way over already labeled points; initialize `M_0^{-1}` from `λI` plus the labeled Fisher, weighted by `nLabeled/(nLabeled+B)`; scale candidate factors by `√(B/(nLabeled+B))`; greedily add `2B` unlabeled points by maximizing the rotated Woodbury trace-decrease score; then greedily prune back to `B` using the negative-update score. The reference implementation makes this literal: `get_exp_grad_embedding` stores `V_x^T` as a `k × dk` tensor, `query` accumulates `xt_.transpose(1, 2) @ xt_` for both the pool Fisher and the labeled seed Fisher, and `select` runs forward to `2n` and backward to `n` with the exact `+I` and `-I` inner inverses. The regression case is the same Fisher-trace principle with rank-one `x^L(x^L)^T` factors rather than the classification code path, which is why the method has a regression version even though the canonical classification file is built around softmax probabilities and per-class factors.

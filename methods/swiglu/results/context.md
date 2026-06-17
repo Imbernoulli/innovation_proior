@@ -1,5 +1,3 @@
-# Context: the Transformer feed-forward sublayer and its pointwise nonlinearity (circa 2019-2020)
-
 ## Research question
 
 A Transformer block alternates two sublayers: multi-head self-attention, which mixes
@@ -57,12 +55,11 @@ sign" replacements became available:
   some gate `g(x)` of itself (ReLU itself fits this, with `b=max` and `g(x)=0`). Second,
   *functions that use division performed poorly, because the output explodes when the
   denominator is near zero*; division was only successful when the denominator stays bounded
-  away from zero — i.e. multiplicative recombination is the reliable way to make a unit
-  data-dependent, not division. Swish's measured properties: smooth, unbounded above, bounded
+  away from zero. Swish's measured properties: smooth, unbounded above, bounded
   below, and — unusually — **non-monotonic**, with a small "bump" below zero (a large fraction
   of trained preactivations land in that `−5 ≤ x ≤ 0` bump region). Its derivative is
   `Swish_β'(x) = σ(βx) + βx·σ(βx)(1−σ(βx)) = β·Swish_β(x) + σ(βx)(1 − β·Swish_β(x))`, whose
-  magnitude is below 1 for `|x|` smaller than roughly 1.25 at `β=1` — so the *exact-1 derivative*
+  magnitude is below 1 for inputs below roughly 1.25 at `β=1` — so the *exact-1 derivative*
   that made ReLU's gradient flow well is not, by itself, the distinguishing advantage it once
   appeared to be. `β→∞` recovers ReLU and `β=0` gives the scaled linear map `x/2`, so Swish
   interpolates smoothly between linear and ReLU. With `β=1`, Swish and GELU trace nearly the

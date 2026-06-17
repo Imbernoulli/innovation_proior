@@ -14,8 +14,8 @@ Deep networks put a normalization layer after every convolution, but the field's
 pick one normalizer (batch / instance / layer) by hand and stamp it into every layer. The best
 choice depends on the task, the architecture, and — sharply — the batch size, and it plausibly
 differs across layers of one network. A single global hand-made choice is cumbersome and
-suboptimal; in particular batch-statistic normalization degrades as the batch shrinks (noisy
-batch estimates) and fails at one sample per batch.
+suboptimal; in particular batch-statistic normalization degrades as the per-GPU sample count
+shrinks and fails to converge in the reported one-sample-per-GPU setting.
 
 ## Key idea
 
@@ -67,8 +67,9 @@ a single normalizer.
 
 ## Why it works (weight-space / geometric reading)
 
-Reparameterizing a filter as direction × length (weight normalization, `v·(wᵢᵀx)/‖wᵢ‖₂`), for a
-zero-mean unit-variance patch `x` the three normalizers become:
+As a simplifying weight-space comparison, reparameterize a filter as direction ×
+length (weight normalization, `v·(wᵢᵀx)/‖wᵢ‖₂`). For a zero-mean unit-variance patch `x`, the
+three normalizers are written as:
 
 ```
 ĥ_in = γ (wᵢᵀx)/‖wᵢ‖₂ + β                                       (free length)
@@ -87,8 +88,9 @@ batch noise. Combining,
 `w_ln` slides toward LN's learning ability; `w_bn` sets the strength of the length
 regularization. SN is a continuous dial between **learning ability** and **generalization**.
 This explains small-batch behavior: when the batch is small BN's `γ²` regularization is driven
-by noise, so gradient descent lowers `w_bn` and raises `w_ln`. At `N=1`, batch ≡ instance, so SN
-degrades gracefully to IN+LN where BN would fail.
+by noise, so gradient descent lowers `w_bn` and raises `w_ln`. At `N=1`, the training statistic
+for BN is the same spatial statistic as IN, so the batch branch can be removed and the layer
+uses the IN/LN switch.
 
 ## Joint single-set training (not bilevel)
 
@@ -100,8 +102,8 @@ than memorizing.
 
 ## Backprop (for frameworks without autodiff)
 
-Standard normalization backward plus a softmax-Jacobian gradient into `λ`. With ĥ = γh̃ + β,
-h̃ = (h−μ)/sqrt(σ²+ε):
+Standard normalization backward plus softmax-Jacobian gradients into the control parameters.
+With ĥ = γh̃ + β, h̃ = (h−μ)/sqrt(σ²+ε):
 
 ```
 ∂L/∂h̃ = (∂L/∂ĥ)·γ
@@ -111,14 +113,17 @@ h̃ = (h−μ)/sqrt(σ²+ε):
        + [2w_in(h−μ_in)/(HW) ∂L/∂σ² + 2w_ln(h−μ_ln)/(CHW) Σ_c(∂L/∂σ²)_c + 2w_bn(h−μ_bn)/(NHW) Σ_n(∂L/∂σ²)_n]
        + [w_in/(HW) ∂L/∂μ + w_ln/(CHW) Σ_c(∂L/∂μ)_c + w_bn/(NHW) Σ_n(∂L/∂μ)_n]
 ∂L/∂γ  = Σ_nij (∂L/∂ĥ)·h̃ ,   ∂L/∂β = Σ_nij ∂L/∂ĥ
-∂L/∂λ_in = w_in(1−w_in) Σ_nc[(∂L/∂μ)μ_in + (∂L/∂σ²)σ²_in]
-         − w_in w_ln  Σ_nc[(∂L/∂μ)μ_ln + (∂L/∂σ²)σ²_ln]
-         − w_in w_bn  Σ_nc[(∂L/∂μ)μ_bn + (∂L/∂σ²)σ²_bn]      (cyclic for λ_ln, λ_bn)
+∂L/∂λ_in = w_in(1−w_in) Σ_nc[(∂L/∂μ)μ_in]
+         − w_in w_ln  Σ_nc[(∂L/∂μ)μ_ln]
+         − w_in w_bn  Σ_nc[(∂L/∂μ)μ_bn]                      (cyclic for λ_ln, λ_bn)
+∂L/∂λ'_in = w'_in(1−w'_in) Σ_nc[(∂L/∂σ²)σ²_in]
+          − w'_in w'_ln  Σ_nc[(∂L/∂σ²)σ²_ln]
+          − w'_in w'_bn  Σ_nc[(∂L/∂σ²)σ²_bn]                 (cyclic for λ'_ln, λ'_bn)
 ```
 
-The `λ` gradient is exactly the softmax Jacobian `∂w_k/∂λ_z = w_k(δ_kz − w_z)` chained through
-`μ = Σ w_k μ_k`, `σ² = Σ w'_k σ²_k`: each control parameter rises with how much its own statistic
-cuts the loss, falls with how much the competitors do.
+The gradients are exactly the softmax Jacobian `∂w_k/∂λ_z = w_k(δ_kz − w_z)` chained through
+`μ = Σ w_k μ_k` and `σ² = Σ w'_k σ²_k`. Tying the mean and variance weights would be more
+compact; with tied weights the mean and variance terms add into a single combined gradient.
 
 ## Inference
 
@@ -129,6 +134,12 @@ means/variances. Batch average uses the final settled network for every sample, 
 biased and converges faster and more stably; a small number of samples suffices. Default `ε=1e-5`.
 
 ## Working code
+
+This block mirrors the released `switchablenorms/Switchable-Normalization` PyTorch implementation
+for `SwitchNorm2d`, including the `using_bn` switch, `last_gamma`, `momentum=0.9`, running
+buffers, and the reuse path from instance statistics. The shorter scaffold implementation below
+instead spells out the statistics directly and therefore sets `unbiased=False` for the
+population-variance denominator `1/|I|`.
 
 ```python
 import torch
@@ -188,6 +199,7 @@ class SwitchNorm2d(nn.Module):
                     self.running_var.mul_(self.momentum).add_((1 - self.momentum) * var_bn.data)
                 else:                                       # batch-average accumulation
                     self.running_mean.add_(mean_bn.data)
+                    # Divide accumulated buffers by the number of minibatches before eval.
                     self.running_var.add_(mean_bn.data ** 2 + var_bn.data)
             else:
                 mean_bn = self.running_mean
@@ -247,6 +259,6 @@ class CustomNorm(nn.Module):
 ## Variants
 
 - **Sparse SN:** apply `argmax` to each layer's control parameters after training so each layer
-  keeps a single normalizer — comparable accuracy, single-normalizer inference cost.
+  keeps a single normalizer.
 - **Group SN:** split channels into groups and give each group its own softmax — more switch
   capacity at the cost of more control parameters.

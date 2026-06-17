@@ -2,8 +2,8 @@
 
 LPIPS (Learned Perceptual Image Patch Similarity) is a perceptual distance between two images:
 run both through a frozen, ImageNet-pretrained CNN, channel-normalize the features at several
-layers, take the squared difference, scale it per channel by a small learned non-negative weight
-vector calibrated on human similarity judgments, average over space, and sum over layers. It rests
+layers, take the squared difference, linearly weight each channel by a small learned non-negative
+coefficient calibrated on human similarity judgments, average over space, and sum over layers. It rests
 on the idea that an internal feature space trained for visual prediction is a better starting point
 than pixels or a from-scratch triplet classifier, so the human data is used for a small calibration
 rather than to learn the whole representation.
@@ -27,23 +27,23 @@ Borrow the emergent perceptual structure of a pretrained classifier instead of l
   `ŷ^l_{hw} = y^l_{hw} / (||y^l_{hw}||₂ + ε)` — so loud channels can't dominate and per-layer
   distances are comparable. With unit weights this reduces to cosine distance because
   `||a - b||² = 2 - 2 cos(a, b)` for unit vectors.
-- Add the **minimal learnable calibration**: a non-negative per-channel weight vector
-  `w_l ∈ ℝ^{C_l}` (e.g. 1152 scalars for AlexNet) — too few to overfit the labels, enough to
-  reweight feature channels while leaving the trunk fixed. `w_l = 1` recovers cosine distance.
+- Add the **minimal learnable calibration**: non-negative per-channel coefficients
+  `α_l ∈ ℝ_+^{C_l}` (e.g. 1152 scalars for AlexNet) — too few to overfit the labels, enough to
+  reweight feature channels while leaving the trunk fixed. `α_l = 1` recovers cosine distance.
 
 ## Final form
 
 The distance:
 
 ```
-d(x, x0) = Σ_l (1 / (H_l W_l)) Σ_{h,w} || w_l ⊙ ( ŷ^l_{hw} − ŷ0^l_{hw} ) ||²₂
+d(x, x0) = Σ_l (1 / (H_l W_l)) Σ_{h,w,c} α^l_c ( ŷ^l_{hwc} − ŷ0^l_{hwc} )²,  α^l_c ≥ 0
 ```
 
 Implemented per layer in the package as: channel L2-normalize features → squared difference →
 dropout plus a no-bias `1×1` conv whose learned coefficients are clamped nonnegative → spatial
-average → sum over layers. The equation writes the conceptual channel scale inside the norm; the
-package stores the equivalent nonnegative coefficients after the square has been absorbed into the
-linear weights on squared channel differences.
+average → sum over layers. The paper writes the same idea as
+`||w_l ⊙ (ŷ^l_{hw} − ŷ0^l_{hw})||²₂`; the package stores and learns the equivalent
+nonnegative coefficients `α = w²` directly on squared channel differences.
 
 Calibration ("lin" config: freeze `F`, learn only the linear calibration): a small head `G` maps a
 distance pair to a preference probability `ĥ = G(d0, d1) ∈ (0, 1)`, where `h = 0` means `x0` is
@@ -54,6 +54,8 @@ L = − h log G(d0, d1) − (1 − h) log(1 − G(d0, d1))
 ```
 
 A *learned* `G` (rather than a fixed-margin ranking loss) supplies a pair-dependent margin.
+The canonical package implements `G` as `Dist2LogitLayer` on five channels
+`(d0, d1, d0 - d1, d0 / (d1 + 0.1), d1 / (d0 + 0.1))`.
 Non-negativity of the stored `1×1` coefficients is required because they multiply squared feature
 differences, and is enforced by clamping them to `≥ 0` after each Adam step (`lr = 1e-4`,
 `β1 = 0.5`; five epochs at the initial rate, five epochs with linear decay, batch size 50).
@@ -139,9 +141,9 @@ class NetLinLayer(nn.Module):
 
 
 class LPIPS(nn.Module):
-    """Conceptual form: sum_l mean_hw ||w_l * (yhat0^l - yhat1^l)||_2^2.
-    The package stores the equivalent nonnegative coefficients on squared differences in 1x1 convs."""
-    def __init__(self, net='alex', pretrained=True, version='0.1', use_dropout=True, model_path=None):
+    """sum_l mean_hwc alpha_lc * (yhat0^l - yhat1^l)^2, with alpha_lc >= 0."""
+    def __init__(self, net='alex', pretrained=True, version='0.1',
+                 use_dropout=True, model_path=None, eval_mode=True):
         super().__init__()
         assert net == 'alex'                                # vgg/squeeze: swap slices + chns
         self.version = version
@@ -160,6 +162,8 @@ class LPIPS(nn.Module):
                 model_path = os.path.abspath(os.path.join(
                     os.path.dirname(inspect.getfile(self.__init__)), 'weights/v%s/%s.pth' % (version, net)))
             self.load_state_dict(torch.load(model_path, map_location='cpu'), strict=False)
+        if eval_mode:
+            self.eval()
 
     def forward(self, in0, in1, normalize=False):
         if normalize:                                       # inputs in [0,1] -> [-1,1]
@@ -174,7 +178,7 @@ class LPIPS(nn.Module):
         return val
 ```
 
-Calibration on human triplets (`G` head + BCE + non-negativity projection):
+Calibration on human triplets (canonical `BCERankingLoss` target mapping + non-negativity projection):
 
 ```python
 class Dist2LogitLayer(nn.Module):
@@ -190,14 +194,26 @@ class Dist2LogitLayer(nn.Module):
         return self.model(torch.cat((d0, d1, d0 - d1, d0 / (d1 + eps), d1 / (d0 + eps)), dim=1))
 
 
-def train_on_human_judgments(metric, G, triplet_loader, nepoch=5, nepoch_decay=5, lr=1e-4):
-    bce = nn.BCELoss()
-    params = list(metric.lins.parameters()) + list(G.parameters())   # frozen trunk: coeffs + G only
+class BCERankingLoss(nn.Module):
+    def __init__(self, chn_mid=32):
+        super().__init__()
+        self.net = Dist2LogitLayer(chn_mid=chn_mid)
+        self.loss = nn.BCELoss()
+
+    def forward(self, d0, d1, judge_signed):
+        target = (judge_signed + 1.0) / 2.0
+        return self.loss(self.net(d0, d1), target)
+
+
+def train_on_human_judgments(metric, rank_loss, triplet_loader, nepoch=5, nepoch_decay=5, lr=1e-4):
+    metric.train()
+    rank_loss.train()
+    params = list(metric.lins.parameters()) + list(rank_loss.net.parameters())   # frozen trunk: coeffs + G only
     opt = torch.optim.Adam(params, lr=lr, betas=(0.5, 0.999))
     for epoch in range(1, nepoch + nepoch_decay + 1):
         for x, x0, x1, h in triplet_loader:
             d0, d1 = metric(x, x0), metric(x, x1)
-            loss = bce(G(d0, d1), h.view(d0.shape))                  # h=0 for x0, h=1 for x1
+            loss = rank_loss(d0, d1, h.view_as(d0) * 2.0 - 1.0)      # raw h=0 for x0, h=1 for x1
             opt.zero_grad(); loss.backward(); opt.step()
             for lin in metric.lins:                                  # project learned coeffs >= 0
                 for m in lin.model:

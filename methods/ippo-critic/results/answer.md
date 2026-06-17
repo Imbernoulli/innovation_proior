@@ -1,9 +1,9 @@
 # IPPO critic, distilled
 
 The IPPO (Independent PPO) critic is a **per-agent decentralised value function**: each agent `a`
-estimates its own value `V_φ(z^a)` from its **local observation only** (plus an agent one-hot id), with
-no global state and no peer information. One critic is parameter-shared across all agents. It is the
-local-input value-function variant for cooperative multi-agent PPO.
+estimates its own value from its **local observation stream**. In the canonical EPyMARL artifact this
+is `V_φ(z^a, one_hot(a))`: current local observation plus an agent one-hot id, with no global state
+and no peer information. One critic is parameter-shared across all agents.
 
 ## Problem it solves
 
@@ -14,19 +14,19 @@ fixes the bias-variance of every advantage and whether the method survives multi
 
 ## Key idea
 
-Condition the critic on **exactly the information the actor uses** — the agent's own local observation —
-rather than on the global state. Two reasons make this a good default for a partially observable
-problem:
+Keep the critic on the agent's **local information stream** rather than on the bare global state. Two
+reasons make this a good default for a partially observable problem:
 
 - **Lower variance.** A centralised critic that conditions on other agents' information requires the
   actor update to average over variables outside one agent's actor input. That marginalisation is often
   estimated through samples and can inject variance into the per-agent update. A decentralised critic
   already removes peer information from its input.
-- **Lower bias.** A critic keyed on the bare global state `s` is biased relative to the actor's
+- **Avoid state-only history bias.** A critic keyed on the bare global state `s` is biased relative to the actor's
   history-conditioned objective: within one state many histories map to it, so `V(s) = E_{h|s}[V(h)]`
   averages over them and cannot represent the value rising as evidence accumulates (information-gathering
-  looks worthless). A critic on the agent's own observation/history keeps the information set the actor
-  conditions on. (The unbiased centralised alternative would be a history-state critic `V(h,s)`, since
+  looks worthless). A local-observation critic is still an approximation when full local history matters,
+  but it does not replace the actor's local information channel with a state-only one. (The unbiased
+  centralised alternative would be a history-state critic `V(h,s)`, since
   `V^π(h) = E_{s|h}[V^π(h,s)]`; a state-only critic is the biased one.)
 
 The non-stationarity that usually condemns independent learning (co-learners change the dynamics; value
@@ -36,7 +36,7 @@ right sufficient condition: telescoping the joint return into single-agent chang
 return if every coordinate term is non-negative. A trust-region single-agent step can supply such a
 term on the induced POMDP with other agents held fixed; practical PPO is an approximation of that
 logic, while vanilla actor-critic / Q-learning lack even this local improvement story. The local
-`V_φ(z^a)` is the natural baseline for that induced POMDP.
+`V_φ(z^a, one_hot(a))` is the reference implementation's local baseline for that induced POMDP.
 
 **Parameter sharing + agent id.** With homogeneous agents, one shared critic pools all agents' data
 (`N`× the samples per step, faster value learning); a one-hot agent id appended to the input restores
@@ -46,20 +46,23 @@ per-agent specialisation without breaking the local information constraint.
 
 Per agent `a` (parameters shared across `a`):
 
-- **Critic:** `V_φ(z^a)` — MLP on `[z^a ; one-hot(a)]`, two hidden layers + ReLU, scalar head.
-- **Advantage:** GAE `A^a_t = Σ_{l=0}^{T-t-1} (γλ)^l δ^a_{t+l}`,
+- **Critic:** `V_φ(z^a, one_hot(a))` — MLP on `[z^a ; one-hot(a)]`, two hidden layers + ReLU, scalar head.
+- **GAE advantage:** `A^a_t = Σ_{l=0}^{T-t-1} (γλ)^l δ^a_{t+l}`,
   `δ^a_t = r_t + γ V_φ(z^a_{t+1}) - V_φ(z^a_t)`, with team reward `r_t` shared across agents. At
-  `λ=1`, the truncated residual sum telescopes to a bootstrapped return minus `V_φ(z^a_t)`. The
-  practical learner uses a fixed `q_nstep=5` target
+  `λ=1`, the truncated residual sum telescopes to a bootstrapped return minus `V_φ(z^a_t)`.
+- **EPyMARL advantage:** the learner uses a fixed `q_nstep=5` target
   `R_t^{a,(n)} = Σ_{l=0}^{n-1} γ^l r_{t+l} + γ^n V_{\bar φ}(z^a_{t+n})` and passes the masked TD error
   `R_t^{a,(n)} - V_φ(z^a_t)` to the actor.
 - **Actor loss:** clipped surrogate on the agent's own ratio
   `r^a = π_θ(u^a|τ^a)/π_θold(u^a|τ^a)`,
   `L^a(θ) = E[ min(r^a A^a, clip(r^a, 1-ε, 1+ε) A^a) ]`, plus an entropy bonus.
-- **Critic loss:** mean-squared regression of `V_φ(z^a)` to the return target in the EPyMARL learner.
-- **Defaults:** `γ = 0.99`, GAE `λ = 0.95` for the GAE estimator, clip `ε = 0.2`, advantage
-  normalisation for the GAE setup, Adam, reward standardisation and gradient-norm clipping in the
-  EPyMARL learner, and `hidden_dim` supplied by the config.
+- **Critic loss:** mean-squared regression of `V_φ(z^a, one_hot(a))` to the return target in the
+  EPyMARL learner; this code path does not implement the original value-clipped loss.
+- **Reference defaults:** original setup uses `γ = 0.99`, GAE `λ = 0.95`, clip `ε = 0.2`, advantage
+  normalisation, learning rate `1e-4`, and grad-norm cap `0.5`. EPyMARL `ippo.yaml` uses
+  `γ = 0.99`, `eps_clip = 0.2`, `q_nstep = 5`, `epochs = 4`, `lr = 3e-4`, `hidden_dim = 128`,
+  `entropy_coef = 0.001`, `standardise_rewards = True`, `standardise_returns = False`,
+  `target_update_interval_or_tau = 0.01`, and `grad_norm_clip = 10`.
 
 ## Working code
 
@@ -118,7 +121,8 @@ class ACCritic(nn.Module):
 
 How it plugs into the PPO-in-MARL learner (fixed): the target critic's values produce fixed `n`-step
 returns, the actor is updated by the clipped surrogate on each agent's own ratio, and the critic is fit
-by masked regression onto those returns.
+by masked regression onto those returns. This is EPyMARL's implementation path, not the original
+GAE/value-clipping path.
 
 ```python
 # advantage from the local critic; PPO clipped actor update on each agent's own ratio
@@ -141,6 +145,7 @@ critic_loss = ((target_returns.detach() - v) ** 2 * mask).sum() / mask.sum()
   reads a global value input rather than local `obs`. A history-state value can be unbiased, but a bare
   state critic is biased under partial observability and central inputs can raise actor-update variance
   and input dimensionality.
-- **IPPO vs IAC:** IPPO is independent actor-critic with PPO's clipped policy objective. Removing policy
-  and value clipping gives an IAC-like variant; lowering the effective learning rate is not an
-  equivalent substitute for clipping.
+- **IPPO vs IAC:** IPPO is independent actor-critic with PPO's clipped policy objective. In the de Witt
+  ablations, removing policy and value clipping gives an IAC-like variant; EPyMARL keeps policy
+  clipping but uses an unclipped value regression. Lowering the effective learning rate is not an
+  equivalent substitute for policy clipping.

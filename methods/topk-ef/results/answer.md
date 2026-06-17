@@ -4,8 +4,8 @@ EF-TopK is a gradient compressor for communication-efficient distributed SGD. Ea
 transmits only the `k = max(1, int(d · ratio))` largest-magnitude coordinates of a gradient
 tensor (their values and indices) and zeros the rest — but the suppressed `(d − k)`
 coordinates are not discarded. They are accumulated in a local per-tensor residual ("error
-feedback" / "memory") and added back into the gradient before the next compression, so every
-coordinate's signal is eventually transmitted, only delayed. This converts a *biased*
+feedback" / "memory") and added back into the gradient before the next compression, so
+persistent suppressed signal is delayed rather than erased. This converts a *biased*
 compressor — which on its own can stall or fail to converge — into one that matches plain
 SGD's convergence rate.
 
@@ -27,8 +27,8 @@ quality.
   can reverse the mean direction or freeze a fixed direction forever).
 - **Error feedback** fixes this. Keep a residual `e_t` of all suppressed mass. Each step
   compress the error-corrected vector `p_t = γ g_t + e_t`, step with `C(p_t)`, and stash the
-  remainder `e_{t+1} = p_t − C(p_t)`. Suppressed coordinates accumulate in `e_t` until they
-  cross into the top-k and are sent in one shot — nothing forgotten, only delayed.
+  remainder `e_{t+1} = p_t − C(p_t)`. Persistent suppressed signal accumulates in `e_t` until
+  it can be selected — delayed rather than erased.
 
 ## Algorithm (EC-SGD with a `δ`-approximate compressor)
 
@@ -63,23 +63,26 @@ E||e_t||^2 <= 4 (1 - delta) gamma^2 sigma^2 / delta^2     (= 0 when delta = 1)
 
 **Non-convex rate (smooth `f`).** Apply `L`-smoothness on the virtual SGD iterate, trade
 `∇f(x̃_t)` for `∇f(x_t)` paying `‖∇f(x_t) − ∇f(x̃_t)‖² ≤ L²‖e_t‖²`, substitute the residual
-bound, telescope:
+bound, and keep the Young-inequality parameter `ρ` through the telescope. For any `0 < ρ < 2`:
 
 ```
-min_t E||grad f(x_t)||^2 <= 2 f_0 / (gamma (T+1)) + L gamma sigma^2 / 2
-                            + 4 gamma^2 L^2 sigma^2 (1 - delta) / delta^2,   f_0 = f(x_0) - f*.
+avg_t E||grad f(x_t)||^2 <= f_0 / (gamma (1-rho/2) (T+1))
+                            + L gamma sigma^2 / (2-rho)
+                            + 4 gamma^2 L^2 sigma^2 (1-delta) / (rho (2-rho) delta^2),
 ```
 
-With `γ = 1/√(T+1)`:
+where `f_0 = f(x_0) - f*`. Since the average upper-bounds `min_t`, a simple fixed choice
+`ρ = 1` gives:
 
 ```
-min_t E||grad f(x_t)||^2 <= (4 f_0 + L sigma^2) / (2 sqrt(T+1))
-                            + 4 L^2 sigma^2 (1 - delta) / (delta^2 (T+1)).
+min_t E||grad f(x_t)||^2 <= 2 f_0 / (gamma (T+1)) + L gamma sigma^2
+                            + 4 gamma^2 L^2 sigma^2 (1-delta) / delta^2.
 ```
 
-The leading `O(1/√T)` term **matches plain SGD**; the compression quality `δ` appears only in
-the `O(1/T)` higher-order term, so after `T ≥ O(1/δ²)` steps it is negligible — **compression
-for free** asymptotically.
+With `γ = 1/√(T+1)`, this is `O(1/√T)` with the `δ` penalty only in the `O(1/T)` term.
+Letting `ρ` decrease slowly with `T` makes the first two constants approach the plain-SGD proof
+constants while keeping the compression penalty higher order. This is the precise asymptotic
+"compression for free" claim: compression quality does not enter the leading `O(1/√T)` term.
 
 **Non-smooth convex rate.** Without smoothness, `∇f(x̃_t) ≈ ∇f(x_t)` fails, so `δ` enters the
 leading constant. Using Cauchy-Schwarz after taking expectation, and `‖∂f‖ ≤ σ`, the average
@@ -89,8 +92,8 @@ iterate `x̄_T` satisfies
 E[f(x_bar_T)] - f* <= ||x_0 - x*||^2 / (2 gamma (T+1)) + gamma sigma^2 (1/2 + 2 sqrt(1-delta)/delta),
 ```
 
-with the optimal `γ` on the order of `1/√T`, this is
-`O(σ‖x_0 − x^⋆‖/√T)·√(1 + 4√(1−δ)/δ)` — still the right `1/√T` order, which the
+optimizing the displayed bound over `γ` gives
+`σ‖x_0 − x^⋆‖√(1 + 4√(1−δ)/δ)/√(T+1)` — still the right `1/√T` order, which the
 naive biased compressor could not guarantee. For `k = 1` (top-1, `δ = 1/d`) this is a
 convergent greedy-coordinate method on non-smooth functions.
 
@@ -121,9 +124,9 @@ class Compressor:
 
     Keeps the k = max(1, int(d * compress_ratio)) largest-magnitude coordinates
     of each gradient tensor. The (d-k) suppressed coordinates are accumulated in a
-    per-tensor residual and added back before the next compression, so every
-    coordinate's signal is eventually transmitted (only delayed) -- which makes the
-    biased top-k compressor match SGD's convergence rate."""
+    per-tensor residual and added back before the next compression, so persistent
+    suppressed signal is delayed rather than erased -- which makes the biased
+    top-k compressor match SGD's convergence rate."""
 
     def __init__(self, compress_ratio=0.01):
         self.compress_ratio = compress_ratio
@@ -160,4 +163,7 @@ class Compressor:
 
 This mirrors the standard GRACE call sequence in one scaffold-compatible class: compensate with
 the residual, run `TopKCompressor` logic (flatten, `topk(|·|, k)`, gather values, scatter on
-decompress), then run `ResidualMemory.update` logic by storing `tensor − decompressed`.
+decompress), then run `ResidualMemory.update` logic by storing `tensor − decompressed`. The
+paper equations put the learning rate inside `p_t = γg_t + e_t`; this scaffold keeps residuals
+in gradient units because the optimizer applies the learning rate after decompression, which is
+the usual GRACE-style integration for homogeneous compressors such as top-k.

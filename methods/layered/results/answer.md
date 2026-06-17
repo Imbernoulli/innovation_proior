@@ -62,9 +62,10 @@ Goal: a shape that is neither pure depth (chain: width 1, no aggregation) nor pu
 (star: depth ~2, no iterative refinement) nor pure density (mesh: ~`n^2/2` edges,
 information overload). The MLP layout interleaves both:
 
-- **Layer count** `L = floor(log2 N)` — depth grows only logarithmically. Memory control
-  penalizes *deep* topologies (distant agents are lost, causing artifact rollbacks), so
-  shallow-and-wide is preferred: depth ~ `log N`, width ~ `N / log N`.
+- **Layer count** `L = floor(log2 N)` for the canonical multi-agent generator's
+  nontrivial domain (`N >= 2`). Depth grows only logarithmically. Memory control
+  penalizes *deep* topologies (distant agents can be lost, causing artifact rollbacks),
+  so shallow-and-wide is preferred: depth ~ `log N`, width ~ `N / log N`.
 - **Equal split, remainder to the front.** Each layer gets `N // L` agents; the remainder
   `N % L` goes to layer 0, making the source layer the broadest parallel-exploration
   stage (most independent initial drafts entering the network).
@@ -77,10 +78,12 @@ information overload). The MLP layout interleaves both:
   numbering is itself a valid topological order and the DAG property is automatic.
 
 Worked sizes: `N=4` -> `L=2`, layers `[2,2]`, edges `{0->2,0->3,1->2,1->3}`; `N=8` ->
-`L=3`, `[4,2,2]`, 12 edges; `N=16` -> `L=4`, `[4,4,4,4]`, 48 edges. Degeneracy to note:
-for `N<4`, `floor(log2 N)=1` gives a single layer and hence *no* internal edges (the
-agents connect to the task only via the runtime's input/output sentinels) — vacuous, but
-not a crash; the interesting regime is `N>=4`.
+`L=3`, `[4,2,2]`, 12 edges; `N=16` -> `L=4`, `[4,4,4,4]`, 48 edges. Edge cases to note:
+`N=2` and `N=3` give `L=1`, a single layer, and therefore *no* internal edges; the
+runtime still connects the nodes through input/output sentinels. `N=1` is the
+single-agent variant in the scaling study; as a standalone scaffold case it should return
+`[]` before entering the canonical multi-layer body. The first non-vacuous layered
+topology is `N=4`.
 
 Because every non-source node is heavily convergent, the layered shape revises artifacts
 far more often and produces longer, more complete artifacts than a chain — the upside of
@@ -104,7 +107,9 @@ reasoning rather than learning from scratch.
 ## Working code (the layered edge generator)
 
 The field-appropriate final artifact is the deterministic edge generator that fills the
-runtime's one open slot. Grounded in the canonical `generate_mlp`:
+runtime's one open slot. It matches the canonical `generate_mlp` for `node_num >= 2`; the
+single-agent guard only makes the scaffold total on `node_num <= 1` and does not change
+the canonical `N=2,3` zero-edge cases:
 
 ```python
 import math
@@ -119,6 +124,9 @@ def generate_topology(node_num: int) -> list[tuple[int, int]]:
     (synthesis). Wide-and-shallow so the artifact-only memory mechanism does not
     lose distant agents.
     """
+    if node_num <= 1:
+        return []
+
     layer_num = int(math.log(node_num, 2))           # depth ~ log2(N): few, wide layers
 
     layers = [node_num // layer_num for _ in range(layer_num)]

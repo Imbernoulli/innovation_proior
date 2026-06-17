@@ -40,10 +40,9 @@ ratios, which is a cost worth avoiding.
 the maximum-entropy one is the least committal — it assumes no structure beyond what the
 constraints force (Jaynes, 1957). In supervised learning, searching for the maximum-entropy
 model subject to constraints on empirical statistics is what gives rise to maximum likelihood
-in log-linear models (Berger et al., 1996). Entropy of a softmax output,
-`H(p_theta(y|x)) = - sum_i p_theta(y_i|x) log p_theta(y_i|x)`, is therefore the natural scalar
-that measures how committal — how confident — a prediction is: it is maximal for the uniform
-distribution and zero for a one-hot spike.
+in log-linear models (Berger et al., 1996). For a softmax output, the available scalar
+`H(p_theta(y|x)) = - sum_i p_theta(y_i|x) log p_theta(y_i|x)` measures how committal a
+distribution is: it is maximal for the uniform distribution and zero for a one-hot spike.
 
 **Entropy regularization that already existed in two corners.** First, in network *training as
 optimization*: deterministic annealing (Rose, 1998), derivable from the maximum-entropy

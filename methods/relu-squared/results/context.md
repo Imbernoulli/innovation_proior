@@ -44,16 +44,20 @@ state and the load-bearing concepts:
   roughly unchanged and differs from ReLU mainly in how gently it handles the region around
   zero.
 
-- **Rectified polynomials as activations, from associative-memory theory.** Krotov & Hopfield
-  (2016) study dense associative memories whose energy uses a rectified polynomial
-  `F(x) = x^n` for `x >= 0` and `0` for `x < 0`, with integer `n`. The `n = 2` case recovers
-  the standard quadratic Hopfield network; for `n > 2` each term in the energy becomes
-  *sharper*, which lets the network pack and reliably retrieve more memories — they derive a
-  capacity `K^max = alpha_n N^{n-1}` that grows with `n`. They state the open question
-  directly: above the threshold, should an activation grow linearly, sub-linearly, or *faster*
-  than linearly, and are there functions that beat ReLU? This is the precedent that a
-  rectified, faster-than-linear activation can have a principled upside — but it lives in
-  shallow energy-based models and on MNIST, never in a deep Transformer FFN.
+- **Rectified polynomials from associative-memory theory.** Krotov & Hopfield (2016)
+  study dense associative memories whose energy uses a rectified polynomial
+  `F_n(x) = x^n` for `x >= 0` and `0` for `x < 0`, with integer `n`. The `n = 2`
+  energy case recovers the standard quadratic Hopfield network; for `n > 2` each
+  term in the energy becomes *sharper*, which lets the network pack and reliably
+  retrieve more memories — they derive a capacity `K^max = alpha_n N^{n-1}` that
+  grows with `n`. In their feed-forward neural-network dual, an energy power maps
+  to a rectified-polynomial activation of one lower degree, so the load-bearing
+  lesson is not a ready-made Transformer formula but the question they pose
+  directly: above the threshold, should an activation grow linearly, sub-linearly,
+  or *faster* than linearly, and are there functions that beat ReLU? This is the
+  precedent that changing above-threshold growth can have a principled upside —
+  but it lives in shallow energy-based models and on MNIST, never in a deep
+  Transformer FFN.
 
 - **Multiplicative interactions as a source of representational power.** A separate line
   (Jayakumar et al. 2020) shows that layers built on a *product* of two learned quantities
@@ -127,11 +131,8 @@ The yardsticks already in use for this kind of FFN change, as pre-existing facts
   re-tuning. Optimizer is Adafactor with 10K warmup at lr 0.01 and inverse-square-root decay.
 
 - **Metrics:** cross-entropy validation loss / perplexity (primary, lower better); for the
-  larger comparisons, downstream one-shot task accuracy in a GPT-3-style pretraining-then-
-  one-shot protocol. The target task for this trace's harness is GPT-2-Medium-scale
-  (24 layers, d=1024, ~355M params) decoder-only pretraining on FineWeb-10B with the GPT-2
-  tokenizer, scored by FineWeb validation cross-entropy and by WikiText-2 / LAMBADA perplexity
-  and ARC-Easy / HellaSwag / PIQA / WinoGrande accuracy.
+  larger comparisons, downstream one-shot task accuracy in a GPT-3-style
+  pretraining-then-one-shot protocol.
 
 ## Code framework
 
@@ -162,7 +163,7 @@ class MLP(nn.Module):
 
     def forward(self, x):
         x = self.c_fc(x)            # up-projection to the 4x hidden dimension
-        # TODO: the pointwise nonlinearity we will choose for this hidden state
+        # pointwise activation slot
         x = self.c_proj(x)          # down-projection back to n_embd
         x = self.dropout(x)
         return x

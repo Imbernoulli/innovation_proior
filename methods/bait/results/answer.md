@@ -1,216 +1,240 @@
-# BAIT, distilled
+# BAIT, Distilled
 
-BAIT (Batch Active learning via Information maTrices) is a pool-based batch active-learning rule
-for neural networks. It views the network as a probability model `p(y | x, θ)`, takes the
-Fisher-information / MLE-error objective from classical estimation theory, and makes it tractable
-at neural scale. Each round it greedily selects the batch whose accumulated last-layer Fisher best
-"covers" the pool Fisher, in the A-optimality (trace) sense, using a forward-oversample /
-backward-prune greedy made efficient by the Woodbury identity and a trace rotation. It applies
-unchanged to classification and regression, and to convex models.
+BAIT (Batch Active learning via Information maTrices) is a batch active-learning rule that selects
+points by minimizing a Fisher-information estimate of downstream error. It takes the trace
+objective from convex MLE theory, restricts it to the neural network's last layer, and makes the
+greedy selection tractable with low-rank Fisher factors, Woodbury updates, and a forward/backward
+greedy pass.
 
-## Problem it solves
+## Objective
 
-Batch active learning for deep networks: at each round pick `B` pool points to label, retrain, and
-repeat, to reach low loss with the fewest labels. Needs to trade off uncertainty, diversity, and
-representativeness, be principled (so its behavior is predictable and extensible), and run at
-neural dimensionality — properties no prior method had together.
+For a labeled candidate batch `S`, the target objective is the weighted trace
 
-## Key idea
-
-Read the network as `p(y | x, θ)` with loss `ℓ = -log p`; fitting is MLE. The expected excess
-MLE error (and, equivalently, the Bayes risk in the linear-Gaussian case) of labeling a set `S` is
-governed by the **weighted trace of the inverse Fisher**:
-
-```
-S* = argmin_{S ⊂ U, |S| ≤ B}  tr( (Σ_{x ∈ S} I(x; θ))^{-1}  I_U(θ) ),
+```text
+argmin_{S subset U, |S| <= B} tr((sum_{x in S} I(x; theta))^{-1} I_U(theta)),
 ```
 
-where `I(x; θ) = E_{y∼p(·|x,θ)} ∇²ℓ(x,y;θ)` is the per-example Fisher (label-independent for GLMs
-and Gaussian regression) and `I_U(θ) = (1/|U|) Σ_{x∈U} I(x; θ)` is the pool Fisher. This is
-A-optimality with the pool Fisher as the target metric.
+where `I(x; theta) = E_y [nabla^2 ell(x,y;theta)]` under the negative-log-likelihood convention and
+`I_U(theta)` is the pool Fisher. Constant normalizations of `I_U` do not change the argmin; the
+reference implementation averages the pool Fisher.
 
-Why trace (A-optimality) and not determinant (D-optimality): the trace objective *is* the MLE
-error / Bayes risk, and it genuinely couples the selected Fisher to the pool via `I_U`. A
-determinant cannot: `det(I(x;θ)^{-1} I(θ)) = det(I(x;θ)^{-1}) · det(I(θ))` and `det(I(θ))` is
-constant in `x`, so `argmax_x det(I(x;θ)^{-1} I(θ)) = argmax_x det(I(x;θ)^{-1})` for *any* `I(θ)` —
-a determinant is structurally blind to the pool geometry. The pool term `I_U` is what makes
-selection robust even on poor / random feature bases; dropping it reduces BAIT to per-point Fisher
-maximization (a known, weaker objective).
+Two derivations point to the same trace:
 
-## Where the objective comes from
+- Bayesian linear regression gives `BayesRisk(S) = sigma^2 tr(Lambda_S^{-1} Sigma)`, with
+  `Lambda_S = sum_{x in S} xx^T + lambda sigma^2 I`.
+- Chaudhuri et al.'s active-MLE analysis gives leading error
+  `tr(I_Gamma(theta*)^{-1} I_U(theta*))/m`, with matching lower/upper bounds up to lower-order
+  terms.
 
-- **Bayesian linear regression (Bayes risk).** Prior `θ* ~ N(0, λ^{-1}I)`, noise `σ²`; MAP = ridge
-  with regularizer `λσ²`. For `Λ_S = Σ_{x∈S} xx^T + λσ²I` and pool second moment
-  `Σ = (1/n)Σ_i x_i x_i^T`, the Bayes risk is exactly `BayesRisk(S) = σ² tr(Λ_S^{-1} Σ)` — and the
-  RHS has no labels, so it can be minimized before querying.
-- **Frequentist MLE error** (Chaudhuri, Kakade, Netrapalli & Sanghavi, NeurIPS 2015). The expected
-  excess log-likelihood error of the MLE on `m` labels from distribution `Γ` is, with matched
-  upper/lower bounds, `tr(I_Γ(θ*)^{-1} I_U(θ*)) / m`. Same weighted trace.
+This is why BAIT uses a trace rather than a determinant. A determinant cannot carry the pool metric
+in the same way: `det(I(x;theta)^{-1} I(theta)) = det(I(x;theta)^{-1}) det(I(theta))`, and the
+second factor is constant in `x`.
 
-The two coincide in linear regression (`I(x;θ) = xx^T/σ²`), differing only by the regularizer `λ`.
+## Neural Adaptation
 
-## Three neural obstacles → three fixes
+BAIT makes three changes to the ideal objective:
 
-1. Full-network `I(x;θ)` is enormous → use the **last-layer Fisher** `I(x;θ^L)`; `θ^L = θ` for
-   linear models.
-2. The representation shifts every round → **recompute** the Fisher each round (iterative, unlike
-   the convex one-shot two-phase scheme).
-3. Exact selection is an SDP, infeasible in high dimensions → **greedy** selection.
+1. Use only the last-layer Fisher `I(x; theta^L)`, so the parameter dimension is `emb_dim * n_class`.
+2. Recompute the Fisher every active-learning round, because the representation changes after
+   retraining.
+3. Replace the SDP/combinatorial selection with greedy selection.
 
-## Algorithm (forward-backward greedy)
+The trace objective is not submodular, so BAIT first greedily selects `2B` points, then greedily
+removes `B` points to return a batch of size `B`.
 
-The trace functional is **not submodular**, so plain forward greedy is suboptimal. BAIT
-oversamples forward to `2B`, then prunes backward to `B` (oversample factor 2 chosen for the
-compute/quality trade-off; larger gave no gain).
+## Fisher Factors
 
-```
-Init S with B_0 random labels; fit θ_1.
-for t = 1..T:
-    I(θ_t^L) = (1/|U|) Σ_{x∈U} I(x; θ_t^L)                 # pool Fisher
-    M_0 = λI + (1/|S|) Σ_{x∈S} I(x; θ_t^L)                 # seed Fisher + ridge prior
-    for i = 1..2B:   # forward (oversample)
-        x̃ = argmin_{x∈U} tr( (M_i + I(x;θ_t^L))^{-1} I(θ_t^L) );  M_{i+1} = M_i + I(x̃;θ_t^L)
-    for i = 2B..B+1: # backward (prune)
-        x̃ = argmin_{x∈S} tr( (M_i - I(x;θ_t^L))^{-1} I(θ_t^L) );  M_{i-1} = M_i - I(x̃;θ_t^L)
-    query labels for S; retrain θ_t on S.
+For multiclass logistic regression, with penultimate representation `x^L` and softmax vector `pi`,
+
+```text
+I(x; theta^L) = x^L (x^L)^T otimes (diag(pi) - pi pi^T).
 ```
 
-## Efficient per-candidate evaluation (Woodbury + trace rotation)
+Define `V_x` as a `dk x k` matrix whose column for possible class `c` is
+`sqrt(pi_c) ((e_c - pi) otimes x^L)`. This is the sign-flipped cross-entropy gradient under class
+`c`; the sign is irrelevant because BAIT uses outer products. Then
 
-Write `I(x;θ^L) = V_x V_x^T`, with `V_x` a `dk × k` matrix whose columns are the per-class
-last-layer loss gradients scaled by `√(class probability)` (so `V_x V_x^T = x^L x^L^T ⊗
-(diag(π) - π π^T)`, the exact multiclass-logistic Fisher). Then with `A = I + V_x^T M_i^{-1} V_x`
-(a `k × k`, easily inverted matrix):
-
-```
-tr((M_i + V_x V_x^T)^{-1} I(θ))
-   = tr(M_i^{-1} I(θ))                              # constant in x
-   - tr(M_i^{-1} V_x A^{-1} V_x^T M_i^{-1} I(θ))
-
-⇒ argmin = argmax_x tr( V_x^T (M_i^{-1} I(θ) M_i^{-1}) V_x · A^{-1} )      # cyclic trace rotation
+```text
+V_x V_x^T = I(x; theta^L).
 ```
 
-The rotation puts `V_x` outside, so `M_i^{-1} I(θ) M_i^{-1}` is precomputed once per step and every
-candidate is scored with small (`k × k`, `dk × k`) products — all candidates in one batched GPU
-matmul, never forming a `dk × dk` matrix per point. After selecting `x̃`, update the inverse with
-the same identity: `M_{i+1}^{-1} = M_i^{-1} - M_i^{-1} V_{x̃} A^{-1} V_{x̃}^T M_i^{-1}`. The backward
-pass is identical with `A = -I + V_x^T M_i^{-1} V_x`.
+The reference code stores the transpose: `X[i]` has shape `[k, dk]` and equals `V_x.T`, so a point's
+Fisher contribution is `X[i].T @ X[i]`.
 
-## Regression reduction
+## Efficient Score
 
-For `k`-output regression `y = Wx + N(0, Σ)`, `I(x;W) = xx^T ⊗ Σ^{-1}`. By Kronecker algebra the
-noise covariance cancels:
+For adding a candidate with factor `V_x`,
 
-```
-tr( (Σ_{x∈S} I(x;θ))^{-1} I_U(θ) ) = k · tr( (Σ_{x∈S} x^L x^L^T)^{-1} (Σ_{x∈U} x^L x^L^T) ).
+```text
+(M + V_x V_x^T)^{-1}
+  = M^{-1} - M^{-1} V_x (I + V_x^T M^{-1} V_x)^{-1} V_x^T M^{-1}.
 ```
 
-So regression uses **rank-one** `x^L x^L^T` instead of rank-`k` `V_x V_x^T` — even cheaper,
-roughly coreset-speed. (BADGE cannot do regression at all: its hallucinated-gradient embedding
-needs a most-likely class.)
+Dropping the constant term, the greedy add score is
 
-## Relation to BADGE
+```text
+tr(V_x^T M^{-1} I(theta) M^{-1} V_x (I + V_x^T M^{-1} V_x)^{-1}),
+```
 
-BADGE's gradient embedding `g_x = ∇_{θ_out} ℓ(x, ŷ; θ_out)` (at the model's most-likely label `ŷ`)
-is a **single column** of `V_x`, *unscaled* by `√p` — a rank-one shadow of `I(x;θ)`. BADGE
-maximizes the Gram determinant of these `g_x` (≈ k-DPP / D-optimality), via k-means++ seeding.
-BAIT's two gains: (i) the full rank-`k` Fisher `V_x V_x^T` instead of one gradient column, and
-(ii) the pool Fisher `I(θ)` (impossible inside a determinant). BAIT pays ~`k×` more compute per
-selected point, justified when label cost dominates compute.
+so the best add is the largest score. In the backward pass the update uses
+`-I + V_x^T M^{-1} V_x`; with that signed inverse, the reference code removes
+`argmin(-traceEst)`, equivalently the point whose removal least increases the objective.
 
-## Working code
+## Regression
 
-Fills the `query` slot of the harness. `get_exp_grad_embedding` returns `V_x` for each point
-(per-class last-layer gradients scaled by `√p`); `select` runs the A-optimal forward-backward
-greedy with Woodbury + trace-rotation scoring.
+For `k`-output Gaussian regression under the same negative-log-likelihood convention,
+
+```text
+I(x; W) = xx^T otimes Sigma^{-1}.
+```
+
+The covariance cancels in the trace objective:
+
+```text
+tr((sum_{x in S} I(x;theta))^{-1} I_U(theta))
+  = k * tr((sum_{x in S} x^L (x^L)^T)^{-1} (sum_{x in U} x^L (x^L)^T)).
+```
+
+Thus regression uses rank-one `x^L (x^L)^T` factors. BADGE has no analogous regression path because
+its embedding depends on a most-likely class label.
+
+## Reference-Faithful Core
+
+The authors' classification code is in `methods/bait/code/bait_sampling.py` and
+`methods/bait/code/strategy.py`. Its essential logic is:
 
 ```python
+import gc
 import numpy as np
 import torch
+from torch.nn import functional as F
+
+
+def get_exp_grad_embedding(model, loader, n_pool, n_labels, emb_dim, probs=None):
+    """Return X with shape [n_pool, n_labels, emb_dim * n_labels] = V_x.T."""
+    model.eval()
+    embedding = np.zeros([n_pool, n_labels, emb_dim * n_labels])
+    with torch.no_grad():
+        for assumed in range(n_labels):
+            for x, y, idxs in loader:
+                x = x.cuda()
+                logits, features = model(x)
+                features = features.data.cpu().numpy()
+                batch_probs = F.softmax(logits, dim=1).data.cpu().numpy()
+                for j in range(len(y)):
+                    idx = int(idxs[j])
+                    for c in range(n_labels):
+                        start, end = emb_dim * c, emb_dim * (c + 1)
+                        if c == assumed:
+                            block = features[j] * (1.0 - batch_probs[j][c])
+                        else:
+                            block = features[j] * (-batch_probs[j][c])
+                        embedding[idx][assumed][start:end] = block
+                    p = probs[idx][assumed] if probs is not None else batch_probs[j][assumed]
+                    embedding[idx][assumed] *= np.sqrt(p)
+    return torch.Tensor(embedding)
 
 
 def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
-    """Greedy A-optimal batch selection: minimize tr((sum_S V V^T)^{-1} I(theta)).
-    X[i] = V_{x_i}, shape (rank, dim), with V V^T = I(x; theta^L).
-    fisher = I(theta^L) (pool Fisher); iterates = labeled-set Fisher seeding M_0.
-    Forward-oversample to 2K, then backward-prune to K (the trace is not submodular)."""
+    """X stores V_x.T with shape [n_candidates, rank, dim]."""
     indsAll = []
     dim = X.shape[-1]
     rank = X.shape[-2]
 
-    # M_0^{-1} = (lamb*I + labeled_Fisher * nLabeled/(nLabeled+K))^{-1};
-    # scale candidate factors by sqrt(K/(nLabeled+K)) so the new batch joins the seed in proportion.
-    currentInv = torch.inverse(lamb * torch.eye(dim) + iterates * nLabeled / (nLabeled + K))
+    currentInv = torch.inverse(
+        lamb * torch.eye(dim).cuda() + iterates.cuda() * nLabeled / (nLabeled + K)
+    )
     X = X * np.sqrt(K / (nLabeled + K))
+    fisher = fisher.cuda()
 
-    # ---- forward selection, over-sample by 2x ----
     over_sample = 2
-    for i in range(int(over_sample * K)):
-        # rotated-trace score for ALL candidates at once:
-        #   score(x) = tr( V_x^T M^{-1} I(theta) M^{-1} V_x  (I + V_x^T M^{-1} V_x)^{-1} )
-        innerInv = torch.inverse(torch.eye(rank) + X @ currentInv @ X.transpose(1, 2))
+    for _ in range(int(over_sample * K)):
+        xt_ = X.cuda()
+        innerInv = torch.inverse(
+            torch.eye(rank).cuda() + xt_ @ currentInv @ xt_.transpose(1, 2)
+        ).detach()
+        bad = torch.where(torch.isinf(innerInv))
+        innerInv[bad] = torch.sign(innerInv[bad]) * np.finfo("float32").max
         traceEst = torch.diagonal(
-            X @ currentInv @ fisher @ currentInv @ X.transpose(1, 2) @ innerInv,
-            dim1=-2, dim2=-1).sum(-1)
+            xt_ @ currentInv @ fisher @ currentInv @ xt_.transpose(1, 2) @ innerInv,
+            dim1=-2,
+            dim2=-1,
+        ).sum(-1)
 
         traceEst = traceEst.detach().cpu().numpy()
-        for j in np.argsort(traceEst)[::-1]:        # largest score = best decrease of the objective
+        for j in np.argsort(traceEst)[::-1]:
             if j not in indsAll:
                 ind = j
                 break
         indsAll.append(ind)
 
-        # Woodbury low-rank inverse update: M^{-1} <- M^{-1} - M^{-1} V A^{-1} V^T M^{-1}
-        xt_ = X[ind].unsqueeze(0)
-        innerInv = torch.inverse(torch.eye(rank) + xt_ @ currentInv @ xt_.transpose(1, 2))
-        currentInv = (currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv)[0]
+        xt_ = X[ind].unsqueeze(0).cuda()
+        innerInv = torch.inverse(
+            torch.eye(rank).cuda() + xt_ @ currentInv @ xt_.transpose(1, 2)
+        ).detach()
+        currentInv = (
+            currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv
+        ).detach()[0]
 
-    # ---- backward pruning: remove K extras, deleting the least-useful each time ----
-    for i in range(len(indsAll) - K):
-        xt_ = X[indsAll]
-        innerInv = torch.inverse(-1 * torch.eye(rank) + xt_ @ currentInv @ xt_.transpose(1, 2))
+    for _ in range(len(indsAll) - K):
+        xt_ = X[indsAll].cuda()
+        innerInv = torch.inverse(
+            -1 * torch.eye(rank).cuda() + xt_ @ currentInv @ xt_.transpose(1, 2)
+        ).detach()
         traceEst = torch.diagonal(
             xt_ @ currentInv @ fisher @ currentInv @ xt_.transpose(1, 2) @ innerInv,
-            dim1=-2, dim2=-1).sum(-1)
+            dim1=-2,
+            dim2=-1,
+        ).sum(-1)
         delInd = torch.argmin(-1 * traceEst).item()
 
-        xt_ = X[indsAll[delInd]].unsqueeze(0)
-        innerInv = torch.inverse(-1 * torch.eye(rank) + xt_ @ currentInv @ xt_.transpose(1, 2))
-        currentInv = (currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv)[0]
+        xt_ = X[indsAll[delInd]].unsqueeze(0).cuda()
+        innerInv = torch.inverse(
+            -1 * torch.eye(rank).cuda() + xt_ @ currentInv @ xt_.transpose(1, 2)
+        ).detach()
+        currentInv = (
+            currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv
+        ).detach()[0]
         del indsAll[delInd]
 
+    del xt_, innerInv, currentInv
+    torch.cuda.empty_cache()
+    gc.collect()
     return indsAll
 
 
-class BaitSampling(Strategy):
-    def __init__(self, X, Y, idxs_lb, net, handler, args):
-        super(BaitSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
-        self.lamb = args['lamb']                       # ridge / prior precision (default 1)
+def query_bait(strategy, n):
+    idxs_unlabeled = np.arange(strategy.n_pool)[~strategy.idxs_lb]
+    xt = strategy.get_exp_grad_embedding(strategy.X, strategy.Y)
 
-    def query(self, n):
-        idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+    batchSize = 1000
+    fisher = torch.zeros(xt.shape[-1], xt.shape[-1])
+    for i in range(int(np.ceil(len(strategy.X) / batchSize))):
+        xt_ = xt[i * batchSize:(i + 1) * batchSize].cuda()
+        fisher += torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt), 0).detach().cpu()
+        del xt_
+        torch.cuda.empty_cache()
+        gc.collect()
 
-        # rank-k Fisher factors V_x for the whole pool: per-class last-layer grads scaled by sqrt(p)
-        xt = self.get_exp_grad_embedding(self.X, self.Y)   # [n_pool, k, d*k], V_x V_x^T = I(x; theta^L)
+    init = torch.zeros(xt.shape[-1], xt.shape[-1])
+    xt2 = xt[strategy.idxs_lb]
+    for i in range(int(np.ceil(len(xt2) / batchSize))):
+        xt_ = xt2[i * batchSize:(i + 1) * batchSize].cuda()
+        init += torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt2), 0).detach().cpu()
+        del xt_
+        torch.cuda.empty_cache()
+        gc.collect()
 
-        # pool Fisher I(theta^L) = (1/|U|) sum_x V_x V_x^T
-        batchSize = 1000
-        fisher = torch.zeros(xt.shape[-1], xt.shape[-1])
-        for i in range(int(np.ceil(len(self.X) / batchSize))):
-            xt_ = xt[i * batchSize:(i + 1) * batchSize]
-            fisher = fisher + torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt), 0)
-
-        # seed Fisher from the already-labeled points (for M_0)
-        init = torch.zeros(xt.shape[-1], xt.shape[-1])
-        xt2 = xt[self.idxs_lb]
-        for i in range(int(np.ceil(len(xt2) / batchSize))):
-            xt_ = xt2[i * batchSize:(i + 1) * batchSize]
-            init = init + torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt2), 0)
-
-        chosen = select(xt[idxs_unlabeled], n, fisher, init,
-                        lamb=self.lamb, nLabeled=np.sum(self.idxs_lb))
-        return idxs_unlabeled[chosen]
+    chosen = select(
+        xt[idxs_unlabeled],
+        n,
+        fisher,
+        init,
+        lamb=strategy.lamb,
+        nLabeled=np.sum(strategy.idxs_lb),
+    )
+    return idxs_unlabeled[chosen]
 ```
 
-Defaults: `λ = 1` (`0.01` for CIFAR-10), seed with ~100 random labels, retrain from scratch each
-round (no warm-starting), oversample factor 2.
+Defaults used in the reported experiments and reference code path: seed with about 100 random labels, retrain from scratch
+each round, use `lambda = 1` except `0.01` for CIFAR-10, and use forward oversampling factor `2`.

@@ -22,7 +22,7 @@ Does this actually fix convergence, or does it just feel right? I need to prove 
 
   `x̃_{t+1} = x_{t+1} − e_{t+1} = (x_t − Δ_t) − (p_t − Δ_t) = x_t − p_t = x_t − (γ g_t + e_t) = (x_t − e_t) − γ g_t = x̃_t − γ g_t.`
 
-The virtual iterate `x̃_t` does *exact, plain SGD*: `x̃_{t+1} = x̃_t − γ g_t`, no compression in sight. The `Δ_t` and the `C(·)` canceled perfectly. So error feedback isn't approximating SGD heuristically — it's running honest SGD on a shadow sequence `x̃`, and the only thing standing between `x̃_t` and the iterate I actually have, `x_t`, is the residual `e_t`. If I can show `e_t` stays *bounded*, then `x_t ≈ x̃_t`, and because `f` is smooth its gradient doesn't change fast, so `∇f(x_t) ≈ ∇f(x̃_t)`, and the SGD descent on `x̃` carries over to `x`. Error feedback is a *delayed* gradient method. Each step a fraction of the gradient information goes out, the rest waits in `e_t`, and eventually all of it is transmitted, just late. On a smooth function a small delay barely matters.
+The virtual iterate `x̃_t` does *exact, plain SGD*: `x̃_{t+1} = x̃_t − γ g_t`, no compression in sight. The `Δ_t` and the `C(·)` canceled perfectly. So error feedback isn't approximating SGD heuristically — it's running honest SGD on a shadow sequence `x̃`, and the only thing standing between `x̃_t` and the iterate I actually have, `x_t`, is the residual `e_t`. If I can show `e_t` stays *bounded*, then `x_t ≈ x̃_t`, and because `f` is smooth its gradient doesn't change fast, so `∇f(x_t) ≈ ∇f(x̃_t)`, and the SGD descent on `x̃` carries over to `x`. Error feedback is a *delayed* gradient method. Each step a fraction of the gradient information goes out, and the rest waits in `e_t` instead of being silently lost. On a smooth function a small delay barely matters.
 
 So the linchpin is: keep `e_t` bounded. For that I need to say something quantitative about the compressor, and the right abstraction is to stop talking about top-k specifically and talk about what property of it I'm actually using. What I need is that compressing `p` doesn't lose *too much* of `p`. Say `C` is a `δ`-approximate compressor, for some `δ ∈ (0,1]`, if
 
@@ -72,19 +72,19 @@ Substitute the residual bound `E‖e_t‖² ≤ 4(1−δ)γ²σ²/δ²`:
 
   `E_t[f(x̃_{t+1})] ≤ f(x̃_t) − γ(1 − ρ/2)‖∇f(x_t)‖² + (Lγ²σ²/2) + (γ³L²σ²/(2ρ))·4(1−δ)/δ².`
 
-Rearrange, take total expectation, sum `t = 0…T`, telescope `f(x̃_0) − f(x̃_{T+1})` (with `x̃_0 = x_0` since `e_0 = 0`, and `f(x̃_{T+1}) ≥ f^⋆`), and keep the standard smooth-SGD variance term separate from the residual penalty. The averaged bound I need is
+Now I have to keep `ρ` all the way through the telescope; otherwise the constants stop checking out. Rearrange, take total expectation, sum `t = 0…T`, telescope `f(x̃_0) − f(x̃_{T+1})` (with `x̃_0 = x_0` since `e_0 = 0`, and `f(x̃_{T+1}) ≥ f^⋆`), and divide by `γ(1−ρ/2)`. For any `0 < ρ < 2`,
 
-  `(1/(T+1)) Σ_{t=0}^T E‖∇f(x_t)‖² ≤ 2(f(x_0) − f^⋆)/(γ(T+1)) + Lγσ²/2 + 4γ²L²σ²(1−δ)/δ².`
+  `(1/(T+1)) Σ_{t=0}^T E‖∇f(x_t)‖² ≤ f₀/(γ(1−ρ/2)(T+1)) + Lγσ²/(2−ρ) + 4γ²L²σ²(1−δ)/(ρ(2−ρ)δ²),`
 
-The left side upper-bounds `min_t E‖∇f(x_t)‖²`, so with `f₀ = f(x_0) − f^⋆`,
+where `f₀ = f(x_0) − f^⋆`. The left side upper-bounds `min_t E‖∇f(x_t)‖²`. If I take the simple fixed choice `ρ = 1`, I get the coarse but clean bound
 
-  `min_t E‖∇f(x_t)‖² ≤ 2f₀/(γ(T+1)) + Lγσ²/2 + 4γ²L²σ²(1−δ)/δ².`
+  `min_t E‖∇f(x_t)‖² ≤ 2f₀/(γ(T+1)) + Lγσ² + 4γ²L²σ²(1−δ)/δ².`
 
-Now look at the structure as a function of `γ`. The first term wants `γ` large, the last two want it small. Balance with `γ = 1/√(T+1)`:
+Balance with `γ = 1/√(T+1)`:
 
-  `min_t E‖∇f(x_t)‖² ≤ (4f₀ + Lσ²)/(2√(T+1)) + 4L²σ²(1−δ)/(δ²(T+1)).`
+  `min_t E‖∇f(x_t)‖² ≤ (2f₀ + Lσ²)/√(T+1) + 4L²σ²(1−δ)/(δ²(T+1)).`
 
-The leading term is `O(1/√(T+1))` — the *same* order as plain SGD under the same assumptions, `min_t E‖∇f(x_t)‖² ≤ (2f₀ + Lσ²)/(2√(T+1))`. The compression quality `δ` appears *only* in the second term, which is `O(1/T)` — strictly higher order. So after about `T ≥ O(1/δ²)` iterations the compression term is dominated and the rate is indistinguishable from uncompressed SGD. Compression is asymptotically *free*: I get to send `k/d` of the coordinates and pay nothing in the leading-order convergence rate. The starvation that killed naive top-k is gone — every coordinate's information is eventually delivered, just delayed, and on a smooth function delay is cheap.
+For any fixed `ρ`, the leading term is still `O(1/√(T+1))`, and the compression quality `δ` appears only in the higher-order `O(1/T)` term. If I want the leading constants to approach the plain-SGD constants as well, I can let `ρ` decrease slowly with `T`; for example, `ρ = (T+1)^{-1/4}` keeps the residual penalty higher order while making the first two constants tend to the SGD proof constants. That is the precise "compression for free" statement I can defend: no compression-dependent leading `O(1/√T)` term, with the `δ` penalty delayed into a smaller-order term. The starvation that killed naive top-k is gone — persistent suppressed signal is carried forward rather than discarded, and on a smooth function that delay is cheap.
 
 I want to double check this isn't a fluke of smoothness, because deep losses are non-convex but also locally rough. What if `f` is convex but *non-smooth*? Then I can't say `∇f(x_t) ≈ ∇f(x̃_t)`, so I expect `δ` to bite the leading term. Run the convex argument on `x̃` with a subgradient `∂f(x_t)` and optimum `x^⋆`:
 
@@ -98,7 +98,7 @@ Telescope, use convexity `⟨∂f(x_t), x_t − x^⋆⟩ ≥ f(x_t) − f^⋆` t
 
   `E[f(x̄_T)] − f^⋆ ≤ ‖x_0 − x^⋆‖²/(2γ(T+1)) + γσ²(1/2 + 2√(1−δ)/δ).`
 
-Optimize `γ = O(1/√T)` and the rate is `O(σ‖x_0 − x^⋆‖/√T)` times `√(1 + 4√(1−δ)/δ)`. Here `δ` *does* sit in the leading constant — exactly as I anticipated, because without smoothness the gradient at `x̃_t` and `x_t` can differ even when the points are close, so the delay isn't free anymore. That's the honest picture: smooth → compression free in the leading term; non-smooth → compression shows up in the constant but the method still converges at the right `1/√T` order, which the naive biased compressor could not even guarantee. And for `k = 1`, top-1, this is a convergent greedy-coordinate method on non-smooth functions — the first such guarantee I'm aware of.
+Optimizing `γ` gives `σ‖x_0 − x^⋆‖√(1 + 4√(1−δ)/δ)/√(T+1)`. Here `δ` *does* sit in the leading constant — exactly as I anticipated, because without smoothness the gradient at `x̃_t` and `x_t` can differ even when the points are close, so the delay isn't free anymore. That's the honest picture: smooth → compression free in the leading term; non-smooth → compression shows up in the constant but the method still converges at the right `1/√T` order, which the naive biased compressor could not even guarantee. And for `k = 1`, top-1, this is a convergent greedy-coordinate method on non-smooth functions — the first such guarantee I'm aware of.
 
 There's one more thing worth seeing, on generalization, because in over-parameterized least squares the *which* zero-loss solution you reach matters. SGD's iterates always lie in the span of the gradients, and the min-norm point in the solution set — the one SGD's span constraint drives you toward — is the max-margin solution, which is the well-generalizing one. A biased compressor like top-k or sign breaks the span property: the iterate drifts off the gradient span and can land on a worse solution. But error feedback keeps me close. From the virtual-iterate identity, `x_t − e_t = x_0 − Σ_{i=0}^{t-1} γ g_i`, so when `x_0 = 0`, `x_t − e_t` lies *exactly* in the gradient span, and therefore the distance from `x_t` to the span is at most `‖e_t‖`. With the residual bounded by `O(γ√(1−δ)/δ)·max_i‖g_i‖` and `γ` decaying, that distance shrinks as I converge. So error feedback restores not just convergence but the implicit-regularization property — the iterate is always within `‖e_t‖` of where unbiased SGD would be.
 
@@ -120,8 +120,8 @@ class Compressor:
     Keeps the k = max(1, int(d * compress_ratio)) largest-magnitude coordinates
     of each gradient tensor; the rest are zeroed but NOT discarded. The suppressed
     part is accumulated in a per-tensor residual and added back before the next
-    compression, so every coordinate's signal is eventually transmitted -- only
-    delayed. This is what turns a biased compressor into one that matches SGD's
+    compression, so persistent suppressed signal is delayed rather than erased.
+    This is what turns a biased compressor into one that matches SGD's
     convergence rate."""
 
     def __init__(self, compress_ratio=0.01):
@@ -157,4 +157,4 @@ class Compressor:
         return tensor_decompressed.view(shape)
 ```
 
-Communication is the bottleneck in distributed SGD, so I want to send a tiny slice of the gradient each step. Gradients are positively skewed, so the largest-magnitude coordinates hold almost all the energy — top-k is the natural sparsifier, applied per tensor so different-scale layers each get their share. But top-k is biased, and a biased compressor isn't a stochastic gradient anymore, so the SGD guarantees evaporate; concretely, the sign and the naive-top-k failure modes show a biased compressor can reverse the mean direction or permanently starve a fixed direction and stall. The fix is to not throw the suppressed coordinates away but accumulate them in a per-tensor residual and add them back before the next compression — error feedback — so every coordinate eventually crosses the threshold and is sent, only delayed. Defining the virtual iterate `x̃_t = x_t − e_t` shows error feedback runs *exact* SGD on `x̃`, with the residual `e_t` the only gap to the real iterate; the contraction property of top-k (`δ = k/d`) makes a Young's-inequality recursion bound `E‖e_t‖² ≤ 4(1−δ)γ²σ²/δ²`, so the gap is bounded and `O(γ²)`; smoothness then carries SGD's descent from `x̃` to `x` and lands `min_t E‖∇f(x_t)‖² ≤ 2f₀/(γ(T+1)) + Lγσ²/2 + 4γ²L²σ²(1−δ)/δ²`, which at `γ = 1/√(T+1)` is SGD's `O(1/√T)` rate with the compression cost relegated to the `O(1/T)` higher-order term. In the non-smooth convex case the same residual delay can no longer be hidden by Lipschitz gradients, so `δ` enters the leading constant, but the averaged iterate still converges at `1/√T`. The implementation is exactly the mechanism: error-correct, top-k, stash the remainder; scatter to rebuild.
+So I end with a compressor that is as simple as the original greedy sparsifier but no longer forgets its mistakes. The proof object is not the sparse update by itself; it is the pair of the sparse update and the residual. Top-k gives me the contraction parameter `δ = k/d`, the residual recursion keeps the delayed mass bounded, and the virtual iterate identity tells me exactly why the real iterate shadows SGD. In the smooth case, the constant-correct bound is the `ρ`-parameterized one, with the `δ` term strictly higher order for fixed `ρ`; in the non-smooth convex case, `δ` must enter the leading constant because there is no Lipschitz-gradient bridge between `x_t` and `x̃_t`. The code is just that mechanism made local to each tensor: add residual, take absolute top-k, scatter-decompress, and store what was not sent.

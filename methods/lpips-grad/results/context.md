@@ -111,10 +111,11 @@ score orders images the way people do.
   distortions to get `x0, x1`, and record which a human says is closer to `x` (`h ∈ {0,1}`).
   In the usual data-loader convention, `h = 0` means `x0` is chosen and `h = 1` means `x1` is
   chosen; aggregated judgments can be fractional.
-  Patches are 64×64 to focus on low-level similarity and to cover a huge distortion space; an
-  algorithm is scored by how often its ordering agrees with the human votes (with multiple votes
-  per triplet, partial credit by vote fraction). The achievable human-consistency ceiling itself
-  is below 1: if humans split `(p, 1−p)`, a human agent scores `p² + (1−p)²` in expectation.
+  Patch-level judgments are a natural way to focus on low-level similarity while covering a large
+  distortion space; an algorithm is scored by how often its ordering agrees with the human votes
+  (with multiple votes per triplet, partial credit by vote fraction). The achievable
+  human-consistency ceiling itself is below 1: if humans split `(p, 1−p)`, a human agent scores
+  `p² + (1−p)²` in expectation.
 - **A just-noticeable-difference (JND) protocol**: show a reference and a distorted patch briefly
   and ask "same or different"; a good metric should rank confusable pairs as close. Scored by area
   under the precision-recall curve (mAP). This is a *second, less subjective* perceptual task,
@@ -124,8 +125,8 @@ score orders images the way people do.
   warps, compression), distortions produced by passing patches through many small CNNs (to
   mimic deep-method artifacts), and real outputs from super-resolution, frame interpolation,
   video deblurring, and colorization systems — the actual deployment setting for a perceptual
-  metric. The natural network substrates to evaluate distances in are pretrained AlexNet, VGG,
-  and SqueezeNet, plus self-supervised and unsupervised variants, and a random-weight control.
+  metric. Candidate learned feature spaces should be compared against controls so that any gain is
+  not mistaken for a property of architecture alone.
 
 ## Code framework
 

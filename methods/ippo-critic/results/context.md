@@ -58,9 +58,9 @@ et al., 2016): for a finite rollout segment,
 `δ_t = r_t + γV(x_{t+1}) - V(x_t)`, where `x_t` is the value input. Small `λ` relies more on short
 bootstraps and has lower variance but more bias from the value estimate; large `λ` relies more on
 long returns and has lower bootstrap bias but higher variance. At `λ=1` the truncated GAE sum
-telescopes to `Σ_{l=0}^{T-t-1} γ^l r_{t+l} + γ^{T-t} V(x_T) - V(x_t)`. PPO also commonly clips the
-value update, `L^VF = max{ (V - V̂)², (V_old + clip(V - V_old, -ε, +ε) - V̂)² }`, to keep the critic
-inside its own trust region. A practical `n`-step target has the same bootstrapped-return shape,
+telescopes to `Σ_{l=0}^{T-t-1} γ^l r_{t+l} + γ^{T-t} V(x_T) - V(x_t)`. Some PPO implementations also
+clip the value update, `L^VF = max{ (V - V̂)², (V_old + clip(V - V_old, -ε, +ε) - V̂)² }`, to keep the
+critic inside its own trust region; others use an unclipped squared TD error. A practical `n`-step target has the same bootstrapped-return shape,
 `R_t^{(n)} = Σ_{l=0}^{n-1} γ^l r_{t+l} + γ^n V(x_{t+n})`, with advantage
 `Â_t^{(n)} = R_t^{(n)} - V(x_t)`.
 
@@ -109,7 +109,7 @@ information outside one agent's actor input, the actor update has to average ove
 information; in practice this marginalisation is often estimated by sampling and raises variance in
 the per-agent update; (ii) it scales poorly as the number of agents and the observation/action
 dimensions grow, both in input width and in learnability; (iii) a critic keyed on the bare state `s`
-is biased in partial observability for the reason above, so the central information helps only when
+is biased in partial observability because it discards history information, so the central information helps only when
 the critic retains history information rather than discarding it for `s`.
 
 **Value-function factorisation (VDN, QMIX; Sunehag et al., 2018; Rashid et al., 2018).** Sidestep the
@@ -138,16 +138,18 @@ during training only. The protocol: train roughly 5-20M environment steps per ma
 is the **test win rate** (fraction of test episodes won under the greedy policy), with the test
 episode return as a secondary metric, evaluated separately per map. A pure-Python reimplementation of
 SMAC that removes the StarCraft II binary dependency makes the same maps runnable as a lightweight
-benchmark. Standard fixed protocol choices are `γ = 0.99`, GAE `λ = 0.95`, clip `ε = 0.2`, gradient-
-norm clipping, advantage normalisation, a small set of parallel actors, and Adam; the common team
-reward is broadcast to all agents.
+benchmark. The GAE-based PPO setup uses `γ = 0.99`, GAE `λ = 0.95`, clip `ε = 0.2`, gradient-
+norm clipping, advantage normalisation, parallel actors, and Adam; the common team reward is
+broadcast to all agents. The bundled reference harness uses the same clipped policy objective but
+computes fixed `q_nstep = 5` bootstrapped targets, standardises rewards by default, leaves return
+standardisation off in the local config, and fits the critic with an unclipped masked squared TD error.
 
 ## Code framework
 
 The substrate is the existing CTDE actor-critic harness: a parameter-shared decentralised actor (the
 recurrent agent network), a learner that runs the PPO clipped surrogate on the actor and a regression
-loss on the critic, the episode buffer, Adam, the GAE / `n`-step return computation, and reward/return
-standardisation. All of that is fixed. The one open slot is the critic module — what it conditions on
+loss on the critic, the episode buffer, Adam, the GAE or harness `n`-step target machinery, and
+reward standardisation. All of that is fixed. The one open slot is the critic module — what it conditions on
 and how it maps that input to a per-agent value. The learner calls `critic(batch)` over a whole
 sequence and then does `.squeeze(3)`, so the critic must return shape `(B, T, n_agents, 1)`; it must
 set `self.output_type = "v"`. The body is left empty.

@@ -78,10 +78,11 @@ the batch, their *quality* depends on how many samples the batch has. With a lar
 batch mean and variance are good estimates of the population statistics; as the batch shrinks
 the estimates become noisy, and the normalization injects that noise into every forward pass.
 This is a reported, reproducible degradation — batch-statistic normalization that is excellent
-at batch 32 loses accuracy as the batch drops, and at a single sample per batch the batch
-statistics are degenerate and training fails to converge. Tasks like detection and segmentation
-force exactly this regime, because large input images leave room for only a couple of samples
-per GPU.
+with many samples per GPU loses accuracy as the per-GPU sample count drops, and in the
+one-sample-per-GPU convolutional case its training statistic collapses to the same spatial
+scope as instance-style pooling while retaining the batch-normalization train/test machinery.
+Tasks like detection and segmentation force the small-minibatch regime, because large input
+images leave room for only a couple of samples per GPU.
 
 ## Baselines
 
@@ -94,10 +95,9 @@ dimensions, per channel: `I_bn = {(n,i,j)}`, so `μ_bn, σ²_bn ∈ R^{C}` — `
 mean and one variance per channel. At test time the batch is not available or not
 representative, so BN replaces the batch statistics with population estimates accumulated during
 training (a running average). **Limitation:** the statistics are estimated from the batch, so
-their noise grows as the batch shrinks; accuracy degrades steadily at small batch and collapses
-at a single sample per batch, where the batch statistics are degenerate. It also carries a
-train/test discrepancy (live batch statistics during training, accumulated population statistics
-at test).
+their noise grows as the batch shrinks; accuracy degrades steadily at small batch and, in the
+reported one-sample-per-GPU setting, the method fails to converge. It also carries a train/test
+discrepancy (live batch statistics during training, accumulated population statistics at test).
 
 **Instance Normalization — IN (Ulyanov, Vedaldi & Lempitsky 2016).** Pool over only the spatial
 dimensions, separately for each sample and channel: `I_in = {(i,j)}`, so `μ_in, σ²_in ∈ R^{N×C}`

@@ -16,15 +16,15 @@ same block is stacked very deep: the residual path of a pre-normalized block is 
 un-normalized identity highway onto which every sublayer adds its raw output, and nothing in the
 block bounds how large the values on that highway can become.
 
-The goal is a block whose normalization and wiring reduce the validation loss reached for a
-fixed compute budget on deep, large-scale pretraining — and that does so *robustly*, without the
-training diverging — while leaving the dataset, tokenizer, optimizer, schedule, and the
+The goal is a block whose normalization and wiring keep deep, large-scale pretraining robust —
+preventing forward-scale overflow without sacrificing final modeling quality — while leaving the
+dataset, tokenizer, optimizer, schedule, and the
 attention and feed-forward computations themselves untouched. Two sub-questions sit underneath.
 First, which part of the standard normalization is actually responsible for its stabilizing
 effect, so the rest can be removed. Second, given that pre-normalization is chosen specifically
 to keep the residual path un-normalized (for the gradient benefit), what controls the *scale*
 of the activations flowing along that un-normalized path as depth grows, and what would have to
-change in the block to keep that scale bounded without giving up the gradient benefit. A good
+change in the block to keep that scale controlled without giving up the gradient benefit. A good
 answer keeps the well-behaved-at-initialization gradients of pre-normalization while preventing
 the forward activations from growing without bound through depth.
 
@@ -54,9 +54,10 @@ the residual branch (Pre-LN), `x ← x + Sublayer(LN(x))`, so the residual strea
 normalized, makes the last-layer gradient `O(d√(ln d / L))` — it shrinks with depth, is
 well-behaved at initialization, and trains stably without warmup. That gradient benefit is the
 reason Pre-LN is the prevailing choice. The same analysis records a *forward*-side fact that is
-the load-bearing one here: in Post-LN the expected squared hidden-state norm is constant in
-depth, `E[‖x^post_{l}‖^2] = (3/2) d`, whereas in Pre-LN it **grows linearly with depth**,
-`(1 + l/2) d ≤ E[‖x^pre_{l}‖^2] ≤ (1 + 3l/2) d`. The mechanism is structural: the residual
+the load-bearing one here: in Post-LN the residual sum immediately before the next normalization
+has constant expected squared norm, `E[‖x^{post,5}_l‖^2] = (3/2) d`, and the post-normalized state
+itself is projected back to norm `√d`; in Pre-LN the residual stream **grows linearly with
+depth**, `(1 + l/2) d ≤ E[‖x^pre_l‖^2] ≤ (1 + 3l/2) d`. The mechanism is structural: the residual
 stream is an identity path, so each layer's sublayer output is added in raw and never rescaled,
 and the norms accumulate down the stack.
 
@@ -125,31 +126,22 @@ x ← LN2(x + MLP(x))
 ```
 
 Because the norm sits on the residual sum, the forward hidden-state scale is held constant in
-depth (`E[‖x^post_l‖^2] = (3/2) d`), so it does not suffer the runaway forward growth above.
+depth (the residual sum has `E[‖x^{post,5}_l‖^2] = (3/2) d`, then the state is normalized back to
+scale `√d`), so it does not suffer the runaway forward growth above.
 **Limitation:** normalizing the residual sum is exactly what makes the parameter gradients near
 the output large at initialization (`O(d√(ln d))`, independent of `L`); the arrangement requires
 a carefully tuned learning-rate warmup and is delicate and slow to optimize, especially as depth
 grows. It buys forward-scale control at the price of the gradient health that motivated
 pre-normalization in the first place.
 
-**RMSNorm (Zhang & Sennrich 2019).** Tests the hypothesis that re-centering is dispensable by
-dropping the mean entirely and normalizing by the root-mean-square alone:
-
-```
-ā_i = a_i / RMS(a) · g_i,   RMS(a) = sqrt( (1/n) Σ_{i=1}^n a_i^2 )
-```
-
-with learned gain `g` (init 1) and no bias by default — there is no mean removed, hence no
-re-centering invariance a bias would need to restore. Because RMS is linear,
-`RMS(αa) = α·RMS(a)`, RMSNorm is invariant to re-scaling of the inputs and of the whole weight
-matrix (the `α` cancels) but is **not** invariant to shifts and **not** to per-weight-vector
-re-scaling. It does one reduction (sum of squares) and no subtraction, versus LayerNorm's two
-reductions and a subtraction, and equals LayerNorm exactly when the input's mean is already
-zero. Its weight gradient is invariant to input scaling and inversely correlated with weight
-scale, acting as an implicit per-layer learning-rate adaptor. **Where it leaves off:** it is a
-drop-in replacement for the *normalization op only*. It changes neither where the norm sits nor
-how the residual and sublayers are wired, so on its own it does nothing about the forward-scale
-growth of a pre-normalized stack. It is an ingredient, not a block design.
+**Scale-only activation normalization.** The standard LayerNorm calculation suggests an
+orthogonal possibility: if the stabilizing part is the division by a channel-wise scale, then the
+mean-subtraction and its extra reduction may be unnecessary for this problem. A scale-only
+normalizer would still need a learned gain initialized to one, a small denominator floor, and the
+same per-token/channel shape as LayerNorm so it can replace the existing normalization slot.
+**Where it leaves off:** changing the normalization statistic alone changes neither where the
+norm sits nor how the residual and sublayers are wired, so on its own it does not resolve the
+forward-scale growth of a pre-normalized stack. It is at most an ingredient, not a block design.
 
 **Initialization-based residual scaling (Zhang, Dauphin & Ma 2019, "Fixup").** A different
 route to deep stability: with sufficiently careful per-layer initialization, residual networks
@@ -160,17 +152,15 @@ benefits it does not address the scale aggravation along an un-normalized residu
 
 ## Evaluation settings
 
-The natural yardstick is GPT-style decoder-only pretraining held fixed except for the block's
-normalization and wiring. A representative protocol: a GPT-2-Medium-class model (24 layers, 16
-heads, model width 1024, ≈355M parameters), pre-normalized decoder, trained on a large web-text
-corpus (a FineWeb-scale 10B-token sample) with the GPT-2 byte-pair tokenizer over a few billion
-tokens, fixed micro-batch, gradient accumulation, and multi-GPU data parallelism, with the
-optimizer, learning-rate schedule, and data pipeline frozen across variants. Quality is read off
-held-out **validation cross-entropy / loss** on the same corpus (primary), language-model
-**perplexity** on WikiText-2 and LAMBADA, and zero/few-shot **downstream accuracy** on ARC-Easy,
-HellaSwag, PIQA, and WinoGrande. For the stability question, the natural diagnostic is the
-magnitude of activations along the residual stream as a function of depth and training step, and
-whether training survives at a given learning rate, depth, and precision rather than diverging.
+The natural yardstick is a deep transformer pretraining run held fixed except for the block's
+normalization and wiring: same data, tokenizer, optimizer, learning-rate schedule, precision
+mode, and attention/MLP internals. In the large multimodal setting that exposes the problem, the
+model is a multi-billion-parameter, 48-layer GPT-style decoder trained mostly in 16-bit precision;
+for diagnosis, a cheaper stressed setting uses a 64-layer, 1024-wide transformer, a deliberately
+large learning rate, and a small batch to reproduce value explosion. Quality is read off the
+same held-out modeling loss used by the training setup, but the stabilization question is judged
+first by the activation scale along the residual stream, whether the largest dimensions enter the
+`10^4-10^5` overflow range, and whether training survives rather than NaN-ing.
 
 ## Code framework
 

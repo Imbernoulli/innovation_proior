@@ -95,10 +95,10 @@ Now the inner update. Replace the raw gradient with its meta-curvature transform
 
   θ' = θ − α · MC(∇L_train(θ)) = θ − α · (∇L ×_3 M_f ×_2 M_i ×_1 M_o),
 
-per layer, with `α` the (fixed) inner learning rate. The released sinusoid/Omniglot implementation
-reuses the same transform when there are several inner steps, while the paper reports separate
-meta-curvature matrices per step for the WRN-feature MLP experiments. The meta-parameters are the
-model initialization `θ` *and* all the `{M_o, M_i, M_f}` across layers, all meta-trained together.
+per layer, with `α` the fixed inner learning rate. If I take several inner steps, the simplest version
+reuses the same transform each time; if I need more capacity in a small head, I can allocate
+step-specific transforms. The meta-parameters are the model initialization `θ` *and* all the `{M_o,
+M_i, M_f}` across layers, all meta-trained together.
 
 Two decisions the construction forces. First, initialization of the `M` matrices. At the start of
 meta-training I have no reason to prefer any curvature, and I want to begin from behavior I trust —
@@ -148,101 +148,17 @@ autodiff outer loop (no inversion, no new higher-order cost). The result is a st
 generalization-oriented preconditioner of the inner-loop gradient that captures coordinate dependencies a
 coordinate-wise diagonal cannot, at the cost of a few small matrices per layer.
 
-Let me write it as the inner-loop optimizer it actually is. Per parameter tensor I create three
-identity-initialized factor matrices sized to its modes (a 4D PyTorch conv weight `[C_out, C_in, kh,
-kw]` folds the spatial dims into `d = kh·kw`; a 2D linear weight is the `d = 1` case). The released
-TensorFlow code stores conv weights as `[kh, kw, C_in, C_out]` and right-multiplies the output-mode
-factor; this code is the same paper transform written in PyTorch's `[C_out, C_in, ...]` layout. For
-1D bias and normalization parameters, the released code uses an elementwise factor initialized to ones,
-so I should mirror that rather than inventing a dense bias matrix. The transform reshapes the gradient
-to `[C_out, C_in, d]`, applies the three `n`-mode products as matrix multiplies, reshapes back, and the
-differentiable update is `p ← p − α MC(g)`; `meta_parameters()` returns the factors so the outer loop
-meta-optimizes them with `θ`.
-
-```python
-from typing import List
-import torch
-import torch.nn.functional as F
-from torch import Tensor, nn
-
-INNER_LR = 0.5
-
-
-class MetaCurvature(nn.Module):
-    """Per-parameter Kronecker-factored meta-curvature: three identity-initialized
-    factor matrices (output / input / filter modes) transform the inner gradient
-    as MC(G) = G x3 M_f x2 M_i x1 M_o before the SGD step."""
-
-    def __init__(self, param: Tensor):
-        super().__init__()
-        kw = {"device": param.device, "dtype": param.dtype}  # factors on param's device
-        if param.dim() >= 2:                       # conv [Co,Ci,kh,kw] or linear [Co,Ci]
-            c_out, c_in = param.shape[0], param.shape[1]
-            d = int(param[0, 0].numel()) if param.dim() > 2 else 1
-            self.c_out, self.c_in, self.d = c_out, c_in, d
-            self.M_o = nn.Parameter(torch.eye(c_out, **kw))
-            self.M_i = nn.Parameter(torch.eye(c_in, **kw))
-            self.M_f = nn.Parameter(torch.eye(d, **kw))
-            self.kind = "tensor"
-        else:                                      # released code uses elementwise 1D scaling
-            self.scale = nn.Parameter(torch.ones_like(param))
-            self.kind = "vector"
-
-    def transform(self, g: Tensor) -> Tensor:
-        if self.kind == "vector":
-            return self.scale * g
-        G = g.reshape(self.c_out, self.c_in, self.d)        # mode-1 x mode-2 x mode-3
-        G = torch.einsum("oid,fd->oif", G, self.M_f)        # x3 M_f  (filter mode)
-        G = torch.einsum("oid,ji->ojd", G, self.M_i)        # x2 M_i  (input mode)
-        G = torch.einsum("oid,jo->jid", G, self.M_o)        # x1 M_o  (output mode)
-        return G.reshape(g.shape)
-
-
-class InnerLoopOptimizer(nn.Module):
-    """MAML inner loop with a learned, Kronecker-factored gradient preconditioner.
-    Identity initialization starts exactly as MAML."""
-
-    def __init__(self, model: nn.Module, inner_lr: float = INNER_LR):
-        super().__init__()
-        self.inner_lr = inner_lr
-        self.mc = nn.ModuleList([MetaCurvature(p) for p in model.parameters()])
-
-    def adapt(self, model: nn.Module, support_x: Tensor, support_y: Tensor,
-              n_steps: int) -> nn.Module:
-        model.train()
-        for _ in range(n_steps):
-            loss = F.cross_entropy(model(support_x), support_y)
-            grads = torch.autograd.grad(
-                loss, model.parameters(), retain_graph=True, create_graph=True
-            )
-            updates = [-self.inner_lr * mc.transform(g)
-                       for mc, g in zip(self.mc, grads)]
-            model = self._apply_update(model, updates)
-        return model
-
-    def _apply_update(self, model: nn.Module, updates: List[Tensor]) -> nn.Module:
-        # differentiable p <- p + u (re-route parameter tensors so the outer loop
-        # can backprop into theta AND the M matrices)
-        i = 0
-        for p in model.parameters():
-            p.update = updates[i]
-            i += 1
-
-        def reroute(module: nn.Module) -> nn.Module:
-            for name in module._parameters:
-                p = module._parameters[name]
-                if p is not None and getattr(p, "update", None) is not None:
-                    module._parameters[name] = p + p.update
-                    p.update = None
-            for name in module._modules:
-                module._modules[name] = reroute(module._modules[name])
-            return module
-
-        return reroute(model)
-
-    def meta_parameters(self) -> List[Tensor]:
-        return list(self.mc.parameters())
-```
+Let me write it as the inner-loop optimizer it actually is, without adding decorative parameters. For a
+convolutional weight in PyTorch layout `[C_out, C_in, kh, kw]`, I fold the spatial dimensions into
+`d = kh·kw`, create identity-initialized `M_o`, `M_i`, and `M_f`, reshape the gradient to `[C_out,
+C_in, d]`, apply the three mode products, and reshape back. For a 2D linear weight, `d = 1` makes the
+filter-mode factor a redundant scalar, so I use only the input and output matrices. For 1D bias and
+normalization parameters, an elementwise factor initialized to ones is enough; a dense bias matrix would
+invent cross-coordinate coupling I did not justify. If I translate between layouts, `[kh, kw, C_in,
+C_out]` naturally right-multiplies the output-mode factor, while `[C_out, C_in, ...]` puts the same
+output-mode multiplication on the left. The differentiable update is still `p ← p − α MC(g)`, and the
+inner optimizer returns only the curvature factors as optimizer-state meta-parameters while the outer
+loop separately optimizes the shared initialization `θ`.
 
 The causal chain, start to finish: in the meta-learning frame the inner step is plain SGD and the
 inner optimizer is known to matter, so I want a better-conditioned step — precondition the gradient with

@@ -22,7 +22,7 @@ without bound exactly where the sampler is most exposed. The precise goal is to 
 predicted quantity (and the matching loss and the matching inverse conversion the sampler uses)
 so that the implied clean-image estimate `x_hat` stays well-behaved across the *entire* range of
 signal-to-noise ratios, especially the low-SNR end and the few-step sampling regime, where the
-standard choice is known to degrade. Getting this right under a fixed backbone, schedule,
+standard choice is most exposed. Getting this right under a fixed backbone, schedule,
 optimizer and sampler is the problem.
 
 ## Background
@@ -64,10 +64,12 @@ understood.
   early misstep, and at the extreme of a single step the input is pure noise (SNR exactly zero);
   any pathology in how the network output maps to `x_hat` at low SNR is exposed directly in the
   sample.
-- **The cosine schedule.** Nichol & Dhariwal (2021) introduce `alpha_t = cos(0.5 * pi * t)` for
-  `t` in `[0, 1]`, which spends comparatively more of the schedule at intermediate and low
-  signal-to-noise ratios than the original linear schedule, so the low-SNR regime is a
-  non-negligible fraction of both training and sampling.
+- **Cosine noise schedules.** Nichol & Dhariwal (2021) replace the original linear beta schedule
+  with a cosine cumulative schedule, using a small offset in their implementation to avoid the
+  endpoint singularity. In a continuous variance-preserving harness the same idea can be written
+  as the simpler `alpha_t = cos(0.5 * pi * t)`, `sigma_t = sin(0.5 * pi * t)`, so the path spans
+  pure signal at one end and pure noise at the other. Either way, the low-SNR regime is a
+  non-negligible part of the problem rather than a corner case that can be ignored.
 
 The prevailing recipe — predict the noise, weight the loss by the signal-to-noise ratio, sample
 with many steps — was tuned in the many-step regime and inherits a specific blind spot at the
@@ -114,11 +116,10 @@ the other.
 **Loss weightings already in use.** Beyond the predicted quantity, the loss weighting is its own
 lever. The standard signal-to-noise weighting `w(lambda_t) = exp(lambda_t)` puts essentially all
 weight at high SNR and zero weight at SNR zero, which is precisely the wrong emphasis for
-few-step sampling, where the low-SNR end matters most. Alternatives such as a clipped/truncated
-signal-to-noise weight (flooring the weight so the low-SNR end is not ignored) are the kind of
-adjustment the weighting knob allows; the open question is which weighting keeps a nonzero,
-sensible emphasis at the low-SNR end while still matching high-SNR behavior to the proven noise
-loss.
+few-step sampling, where the low-SNR end matters most. The open question is how to choose the
+output target and the weighting together so the loss still trains the quantity the sampler needs at
+the exposed low-SNR endpoint, without giving up the high-SNR behavior that made noise prediction
+useful.
 
 ## Evaluation settings
 

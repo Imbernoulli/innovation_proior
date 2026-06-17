@@ -24,13 +24,12 @@ the teacher likes — the ratio `r_{p,q_θ}` explodes, the gradient norm blows u
 takes a huge step in a direction estimated from almost no probability mass, i.e. a noisy direction. So
 forward KL has a built-in instability exactly where the student is most wrong. That is one disease.
 
-Now the reverse direction, the one I actually want for mode-seeking. I follow the same sample-wise sign
-convention as the token implementation: inspect the accumulated term `Σ q_θ·(log p − log q_θ)`, then the
-scalar loss negates that accumulated value to minimize the KL. The `θ`-dependence is now in *both* the
-outer weighting `q_θ` and the `log q_θ` inside. The product rule gives `Σ (∇q_θ)·(log p − log q_θ)` from
-the weighting and `−Σ q_θ·∇log q_θ = −Σ ∇q_θ` from the inner log, so the sample-wise coefficient is
-`−(log(q_θ/p) + 1)`. Collapsed onto the sampled sequence, the coefficient written for reverse KL is
-`∇_θ D_KL(q_θ, p) = −(log r_{q_θ,p} + 1)·∇_θ q_θ(y|x)`, with `r_{q_θ,p} = q_θ/p`. The magnitude is what
+Now the reverse direction, the one I actually want for mode-seeking. I have to separate two signs that
+are easy to conflate. The literal divergence is `D_KL(q_θ, p) = Σ q_θ·(log q_θ − log p)`, so the product
+rule gives `(log(q_θ/p) + 1)·∇q_θ`. The token-loss code I need to match accumulates the negative quantity
+`Σ q_θ·(log p − log q_θ)` first and then negates it at reduction time; that accumulator has the opposite
+sign, but the minimized scalar loss has
+`∇_θ D_KL(q_θ, p) = (log r_{q_θ,p} + 1)·∇_θ q_θ(y|x)`, with `r_{q_θ,p} = q_θ/p`. The magnitude is what
 matters for stability, and that magnitude blows up at the *other* end: when `p(y|x) ≈ 0` — the teacher
 assigns near-zero probability to what the student did — the log ratio `log(q_θ/p) → +∞`. Same disease,
 mirror image: forward KL is unstable where the student vanishes, reverse KL is unstable where the teacher
@@ -58,15 +57,15 @@ either alone. Skew the KL by computing it against a mixture instead of against t
 For the direction I care about, mix the *teacher* with a sliver of the student and take the reverse KL
 of the student against that mixture. Write `p̃ = (1−α)·p + α·q_θ` for the skewed teacher, with `α` small,
 and define `D_SRKL^α(p, q_θ) = D_KL(q_θ, p̃) = D_KL(q_θ, (1−α)·p + α·q_θ)`. At `α = 0` this is exactly
-reverse KL, `D_KL(q_θ, p)`; as `α` grows, the mixture floor rises. In the same sample-wise convention,
-the inner ratio is now `q_θ/p̃`, and `p̃` itself depends on `θ` through its `α·q_θ` leg. Carrying that
-dependence through, the coefficient becomes `log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃}`, i.e.
-`∇_θ D_SRKL^α(p, q_θ) = −(log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃})·∇_θ q_θ(y|x)`, with `r_{q_θ,p̃} = q_θ/p̃`.
+reverse KL, `D_KL(q_θ, p)`; as `α` grows, the mixture floor rises. For the minimized SRKL, the inner
+ratio is now `q_θ/p̃`, and `p̃` itself depends on `θ` through its `α·q_θ` leg. Carrying that dependence
+through, the coefficient becomes `log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃}`, i.e.
+`∇_θ D_SRKL^α(p, q_θ) = (log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃})·∇_θ q_θ(y|x)`, with `r_{q_θ,p̃} = q_θ/p̃`.
 Compare to plain reverse KL's `log r_{q_θ,p} + 1`. Two things changed and both help. The ratio inside
 the log is now `q_θ/p̃` instead of `q_θ/p`, and on an SGO where `p ≈ 0` the mixture still has the
 `α·q_θ` leg, so `p̃ ≥ α·q_θ` and `r_{q_θ,p̃} ≤ 1/α`; the log no longer diverges. The new
-`−α·r_{q_θ,p̃}` term subtracts from the coefficient and grows when the ratio grows, pulling the
-coefficient back down where it would otherwise run away. So the skewed reverse KL has a bounded,
+`−α·r_{q_θ,p̃}` term subtracts from the positive reverse-KL coefficient and grows when the ratio grows,
+pulling the coefficient back down where it would otherwise run away. So the skewed reverse KL has a bounded,
 well-behaved gradient on precisely the teacher-unfamiliar SGOs that wrecked plain reverse KL. The
 interpolation prevents the denominator of the ratio from reaching zero, which is what makes the gradient
 stable.
@@ -109,11 +108,13 @@ coefficient and re-bound. Doing that, `E[|(1/(1−α))·(D_SKL^α(p^1_n,p^2_n) �
 c_1^*(α)/n^2 + c_2·log^2(α n)/((1−α)^2 n) + c_3·log^2(c_4 n)/(α^2 (1−α)^2 n)` with `c_1^*(α) =
 min{1/(α^2 (1−α)^2), χ^2^2/(1−α)^4}`. Now the `α`-dependence is a real trade-off: the inverse-`α`
 pieces want `α` larger, the inverse-`(1−α)` pieces want `α` smaller, and the normalized curve appears
-convex over the useful range rather than giving a one-sided answer. There is a genuine sweet spot — small
-enough that I have only nudged the original KL direction, large enough that the denominator floor and
-the estimation-error reduction kick in. A mild value, `α = 0.1`, sits below the theorem's `α < 1/8`
-range and gives 10% of the other distribution. In the reverse direction I care about, that means
-`p̃ = 0.9·p + 0.1·q_θ`: enough to floor the denominator while leaving the reverse target mostly teacher.
+convex over the useful range rather than giving a one-sided answer. The reverse case adds a warning once
+I normalize the coefficient: SKL stays more robust as `α` grows, but SRKL has its smallest variance at
+`α = 0.1` and gets worse beyond that. There is a genuine sweet spot — small enough that I have only
+nudged the original KL direction, large enough that the denominator floor and the estimation-error
+reduction kick in. A mild value, `α = 0.1`, sits below the bound's `α < 1/8` range and gives 10% of the
+other distribution. In the reverse direction I care about, that means `p̃ = 0.9·p + 0.1·q_θ`: enough to
+floor the denominator while leaving the reverse target mostly teacher.
 So `α = 0.1`.
 
 This also tells me precisely why skewing is *not* the same as the generalized JSD I could have reached
@@ -151,8 +152,7 @@ is negative because I accumulate `Σ q_θ·(log p̃ − log q_θ)` (the negative
 reduction. The skewed *forward* variant is the same skeleton with the mixture floored on the student leg,
 `q̃_θ = α·p + (1−α)·q_θ`, and the teacher as the outer weight, `Σ p·log q̃_θ`, where the target-entropy
 `Σ p·log p` is constant in `θ` and can be dropped for training. If I wanted to report the numeric SKL
-value, I would add that constant back; if I want code faithful to the canonical implementation, I leave it
-out.
+value, I would add that constant back; for the training loss I leave it out.
 
 ```python
 import torch
@@ -207,14 +207,14 @@ mismatch — but the combination trains badly. The gradient analysis says why: f
 vanishes, and on SGOs the teacher vanishes constantly, so my chosen configuration sits exactly in
 reverse KL's blow-up regime. The blow-up is caused by a raw distribution going to zero in a denominator,
 so I floor that denominator by skewing the KL against a mixture: skewed reverse KL `D_KL(q_θ, (1−α)p +
-α q_θ)`, whose gradient coefficient `log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃}` cannot diverge on
+α q_θ)`, whose minimized-loss gradient coefficient `log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃}` cannot diverge on
 teacher-vanishing samples because `p̃ ≥ α q_θ` and the extra `−α·r` term pulls it back. Skewing also
 reduces the inverse-`α` contribution in the empirical L2 estimation bound, but normalizing by the
-gradient scale introduces inverse-`(1−α)` terms and makes the useful curve appear convex, so I take the
-mild point `α = 0.1` — still 90% teacher in the reverse target, but strong enough to floor the denominator.
+gradient scale introduces inverse-`(1−α)` terms and makes the useful curve appear convex; the normalized
+SRKL check also singles out `α = 0.1`, so I take that mild point — still 90% teacher in the
+reverse target, but strong enough to floor the denominator.
 This is structurally distinct from generalized JSD, whose single `β` ties the two legs' skews together
-as `β` and `1−β` (with the official DistiLLM `js_distance(lam)` using `lam = 1−β` for that same
-quantity); one freely tuned mild skewed KL hits the operating point JSD cannot reach. The
+as `β` and `1−β`; one freely tuned mild skewed KL hits the operating point JSD cannot reach. The
 data-side scheduling (adaptive SGO probability, off-policy replay buffer) is a separate, orthogonal
 system whose success rides on the skewed loss's fast early convergence; the loss itself is the masked,
 vocabulary-summed skewed reverse KL at `α = 0.1`, keeping both legs of the reverse-KL gradient and

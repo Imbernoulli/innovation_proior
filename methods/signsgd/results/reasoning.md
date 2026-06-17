@@ -129,7 +129,7 @@ This is `xi(k) = O(1/sqrt k)` — feed it into the master lemma with `delta_k = 
 
 The momentum reads cleanly as a bias-variance knob: the `||sigma||_1 sqrt(1-beta)` (variance) term and the `delta||L||_1/(1-beta)` (bias) term are the two halves, and `beta` slides between them. The `C` is a warmup — the variance bound needed `k >= C` so the stale-momentum tail is negligible — and the precise condition is the smallest `C` with `(C/2)beta^C <= (1/(1-beta^2))(1/(C+1))` and `beta^{C+1} <= 1/2`, which for `beta = 0.9` is `C = 54`, trivially short. During warmup I keep accumulating momentum but just step with `sign(g~)` (plain signSGD), so no iterations are wasted; switching optimizers after a short warmup is something practitioners already do anyway.
 
-One discretization detail to pin down before code: `sign(0)`. The implementation path I am matching uses `tensor >= 0`, so zero maps to `+1`. That convention keeps every coordinate binary; in majority vote it also means an exact tie in the vote sum is broadcast as `+1`.
+One discretization detail to pin down before code: `sign(0)`. The original ICML reproduction code used a sign function that maps zero to `0`; the later majority-vote/compressor path I am matching for the wire format uses `tensor >= 0`, so zero maps to `+1`. The `>= 0` convention keeps every communicated coordinate binary; in majority vote it also means an exact tie in the vote sum is broadcast as `+1`.
 
 Now let me land this in the codec slot. The compression map is the sign of the gradient, stored as `uint8` bits in this simple implementation; the side information for reconstruction is just the shape; decode maps the bits back to `±1`; and the server-side aggregate is the majority vote, `sign(sum of the per-worker sign vectors)`, with ties following the same `>= 0` convention. Signum is the same encoder with a momentum buffer interposed before the sign. The update direction the codec returns is `±1` per coordinate, and the training loop scales it by the learning rate — so `delta` is the entire step size, exactly the trust-region radius of the `l_inf` box that the non-stochastic version is doing steepest descent on.
 
@@ -187,19 +187,22 @@ class SignumCodec(SignSGDCodec):
         return [bits], shape
 ```
 
-Equivalently, when there's no parameter server and Signum is just a local optimizer, it's the same rule written as an update: keep a momentum state, take its sign, step by `delta`.
+Equivalently, when there's no parameter server and Signum is just a local optimizer, it's the same rule written as an update: form the rescaled gradient, keep a momentum state, take its sign, optionally apply the decoupled MXNet-style `wd_lh` shrink, then step by `delta`. Here I mirror the original MXNet/local-optimizer convention for exact zeros, so `sign(0)` produces a zero step.
 
 ```python
 import torch
 
 
 class Signum:
-    """Local Signum optimizer: state = beta*state + (1-beta)*grad; step by sign(state).
-    (beta = 0 recovers signSGD.) sign(0) maps to +1 via >= 0."""
+    """Local Signum optimizer: state = beta*state + (1-beta)*rescaled_grad.
+    beta = 0 recovers signSGD. torch.sign mirrors the original ICML code:
+    sign(0) produces a zero step."""
 
-    def __init__(self, params, lr=0.01, momentum=0.9, weight_decay=0.0):
+    def __init__(self, params, lr=0.01, momentum=0.9, weight_decay=0.0,
+                 decoupled_weight_decay=0.0):
         self.params = list(params)
         self.lr, self.momentum, self.wd = lr, momentum, weight_decay
+        self.wd_lh = decoupled_weight_decay
         self.state = {id(p): None for p in self.params}
 
     @torch.no_grad()
@@ -210,18 +213,19 @@ class Signum:
                 continue
             g = p.grad
             if self.wd != 0:
-                g = g.add(p, alpha=self.wd)                  # weight decay folded in
+                g = g.add(p, alpha=self.wd)                  # rescaled_grad includes wd*weight
             if beta != 0:
                 m = self.state[id(p)]
                 if m is None:
                     m = torch.zeros_like(g)
-                m.mul_(beta).add_(g, alpha=1 - beta)         # state=beta*state+(1-beta)*grad
+                m.mul_(beta).add_(g, alpha=1 - beta)         # state=beta*state+(1-beta)*rescaled_grad
                 self.state[id(p)] = m
-                direction = torch.where(m >= 0, torch.ones_like(m), -torch.ones_like(m))
-                p.add_(direction, alpha=-self.lr)            # x <- x - delta*sign(m)
+                direction = torch.sign(m)
             else:
-                direction = torch.where(g >= 0, torch.ones_like(g), -torch.ones_like(g))
-                p.add_(direction, alpha=-self.lr)            # x <- x - delta*sign(g~)  (signSGD)
+                direction = torch.sign(g)
+            if self.wd_lh != 0:
+                p.mul_(1 - self.lr * self.wd_lh)             # decoupled MXNet Signum shrink
+            p.add_(direction, alpha=-self.lr)                # x <- x - delta*sign(...)
 ```
 
 Let me trace the causal chain back. Communication, not computation, is the bottleneck in distributed training, so the goal was to say one bit per coordinate in both directions while keeping an SGD-class non-convex rate. The crudest one-bit message is the sign of the gradient, and the field's principled compressors avoided the *biased* sign by randomizing to unbias — which inflates variance by `sqrt(d)` and makes their guarantees vacuous at deep-learning scale. So I went the other way: keep the biased sign, and confront the bias. A flipped sign with nonzero true gradient needs the noise to beat the signal, so `P[wrong] <= sigma_i/|g_i|`, and the magnitude cancels — the damage of bias is capped purely by the noise scale `sigma_i`, independent of the gradient size. With coordinate-wise smoothness (the natural majorization for a box-shaped sign step), a one-step descent bound plus a growing batch and `delta ~ 1/sqrt(||L||_1 K)` telescoped to the `1/sqrt N` rate in `l_1` — and translating through the density `phi(v) = ||v||_1^2/(d||v||_2^2)` gave the ratios `R_1 = sqrt(phi(L))/phi(g)` and `R_2 = phi(sigma)/phi(g)`, which a Welford measurement puts in the favorable dense-gradient, dense-noise regime for real networks. Under unimodal-symmetric noise, Gauss's inequality sharpened the flip probability and gave a small-batch rate with a mixed `l_1`/variance-weighted-`l_2` norm. The return trip was compressed by majority vote, `sign[sum_m sign(g~_m)]`: a sign that's right more than half the time turns the workers into a repetition code, and under symmetry the binomial tail gives the full `sqrt M` variance reduction of distributed SGD with one bit each way. Folding momentum *inside* the sign gave Signum, where a martingale variance bound and a Hessian-splitting bias bound made `beta` an explicit bias-variance knob, all of it riding a single master lemma that only asks how often the signed quantity agrees with the true gradient. And the whole thing drops into the parameter-server codec as: encode = sign bit, aggregate = majority vote with the implementation's `>= 0` tie convention, decode = `±1` — one bit, both directions.

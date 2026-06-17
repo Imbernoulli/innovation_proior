@@ -57,10 +57,15 @@ meta-train and meta-test; test-time adaptation is on-policy, which naively force
 ## Losses (z appended to the state; `z̄` = detached)
 
 ```
-L_critic = E_{(s,a,r,s')~B, z~q_φ(z|c)} [ ( Q(s,a,z) − ( r + V̄(s', z̄) ) )² ]   # encoder gets grads here
+L_critic = E_{(s,a,r,s',d)~B, z~q_φ(z|c)} [
+    ( Q(s,a,z) − ( ηr + (1−d)γ V̄(s', z̄) ) )²
+]                                                                                 # encoder gets grads here
 L_actor  = E_{s~B, a~π, z~q_φ(z|c)} [ D_KL( π(a|s, z̄) ‖ exp(Q(s,a,z̄))/𝒵(s) ) ]
 L_KL     = β · KL( q_φ(z|c) ‖ N(0, I) )                                          # information bottleneck
 ```
+
+Here `η` is Oyster's `reward_scale`; the paper suppresses `γ` and terminal masking in the displayed
+critic equation, but the reference implementation uses both.
 
 ## Meta-training (Algorithm)
 
@@ -90,18 +95,22 @@ while not done:
 ```
 c = {}
 for k = 1..K:
-    z ~ q_φ(z|c)                 # k=1: prior
+    z ~ q_φ(z|c)                 # empty c gives the prior
     roll out π(a|s,z) for an episode (z fixed)  -> trajectory D_k
-    c = c ∪ D_k                  # accumulate, posterior narrows
-report return after ~2 trajectories aggregated, acting with deterministic z
+    c = c ∪ D_k                  # accumulate only this task's experience
+    periodically re-infer q_φ(z|c)
+report online returns by rollout and final return after the configured eval budget
 ```
 
 ## Defaults
 
-`latent_dim=5`; encoder 3-layer MLP, hidden 200, out `2·latent_dim` (mean + pre-softplus var);
+Common Oyster defaults: `latent_dim=5`; encoder 3-layer MLP, hidden 200, out `2·latent_dim`
+(mean + pre-softplus variance);
 actor/critic net size 300; two Q-nets + V + slow target V, `τ=5e-3`; Adam, lr `3e-4`; `γ=0.99`;
 reward scale `5.0` (= 1/entropy-temperature); `β=kl_lambda=0.1`; meta-batch 16; RL batch 256;
-context/embedding batch 64; policy mean/std regularizer weights `1e-3`.
+context/embedding batch 64; policy mean/std regularizer weights `1e-3`. Task configs override these:
+MuJoCo runs often use context batches 100 or 256 and two exploration trajectories before posterior
+eval, while point-robot configs use reward scale 100 and larger context batches.
 
 ## Working code
 
@@ -264,7 +273,7 @@ class PEARLSoftActorCritic:
         self.context_optimizer = optim.Adam(agent.context_encoder.parameters(), lr=lr)
 
     def collect_initial_data(self):
-        n = self.config.get('num_initial_steps', 200)
+        n = self.config.get('num_initial_steps', 2000)
         for idx in self.train_tasks:
             self.env.reset_task(idx)
             collect_data(self.agent, self.env, self.sampler,
@@ -273,7 +282,7 @@ class PEARLSoftActorCritic:
 
     def train_iteration(self, iteration_idx):
         for _ in range(self.num_tasks_sample):
-            idx = np.random.randint(len(self.train_tasks))
+            idx = np.random.choice(self.train_tasks)
             self.env.reset_task(idx)
             self.enc_replay_buffer.task_buffers[idx].clear()
             if self.num_steps_prior > 0:

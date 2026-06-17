@@ -1,32 +1,23 @@
 # File:Line Changelog
 
-- `methods/hyper-connections/results/context.md:1` rewrote the context into exactly five `##` sections.
-- `methods/hyper-connections/results/context.md:35` replaced leaked method-specific prior discussion with pre-method pressure points.
-- `methods/hyper-connections/results/context.md:49` stated replacement constraints without naming the target method or disclosing the `n`-stream construction.
-- `methods/hyper-connections/results/reasoning.md:7` rebuilt the derivation from the need for multiple residual depth patterns.
-- `methods/hyper-connections/results/reasoning.md:9` corrected the matrix block form and update equation: `HC = [[0, B], [A_m, A_r]]`, `H_hat = B^T T(h_0)^T + H'`.
-- `methods/hyper-connections/results/reasoning.md:21` corrected DHC implementation shapes: packed alpha predictor `(d, n+1)` and beta predictor `(d,)`.
-- `methods/hyper-connections/results/reasoning.md:23` fixed the initialization equivalence claim: row-sum is `n` times the Pre-Norm vector before final normalization, with epsilon-level implementation differences.
-- `methods/hyper-connections/results/reasoning.md:25` aligned the implementation narrative with Appendix J: static broadcasts, `alpha.transpose(-1, -2) @ h`, and `torch.einsum("blh,bln->blnh", h_o, beta)`.
-- `methods/hyper-connections/results/reasoning.md:27` corrected overhead formulas to `n(n+2)`, `|theta_norm| + d_model(n+2) + n(n+2) + 2`, and `O(d_model*n*(n+1))`.
-- `methods/hyper-connections/results/answer.md:9` rewrote the core method equations and dimensions.
-- `methods/hyper-connections/results/answer.md:29` corrected dynamic equations and predictor shapes.
-- `methods/hyper-connections/results/answer.md:41` corrected static initialization and the Pre-Norm scale caveat.
-- `methods/hyper-connections/results/answer.md:60` corrected SHC/DHC parameter counts and width-connection compute.
-- `methods/hyper-connections/results/answer.md:74` replaced the working code with an Appendix-J-faithful implementation.
-- `methods/hyper-connections/results/answer.md:135` replaced Transformer wiring with the paper's attention/FFN hyper-connection sequence.
-- `methods/hyper-connections/code/paper_algorithm_2_reference.py:1` added a local canonical transcription of Appendix J Algorithm 2 for verification.
-- `methods/hyper-connections/code/paper_algorithm_2_reference.py:17` encoded `static_beta = ones(rate)` and `static_alpha = [e_{layer_id mod rate}, I]`.
-- `methods/hyper-connections/code/paper_algorithm_2_reference.py:25` encoded zero-initialized dynamic alpha/beta functions, `0.01` scales, and `LayerNorm`.
-- `methods/hyper-connections/code/paper_algorithm_2_reference.py:32` encoded the canonical width connection.
-- `methods/hyper-connections/code/paper_algorithm_2_reference.py:55` encoded the canonical depth connection.
-- `methods/hyper-connections/notes/source_matrix.md:5` added primary source and TeX evidence pointers.
-- `methods/hyper-connections/notes/source_matrix.md:7` added load-bearing ancestor coverage for the Pre-Norm/Post-Norm trade-off.
-- `methods/hyper-connections/notes/source_matrix.md:12` added third-party implementation/explainer coverage while marking it non-canonical.
-- `methods/hyper-connections/notes/discovery_synthesis.md:22` documented the row-sum scale correction and epsilon caveat.
-- `methods/hyper-connections/notes/discovery_synthesis.md:24` documented code-faithfulness corrections against Appendix J.
-- `methods/hyper-connections/refs/self_accounts/search_log.md:3` documented that no author technical self-account or official code repository was found.
-- `methods/hyper-connections/results/.codex_review.json:7` changed the review record from stale/read-only to `codex_reviewed: true` and `outcome: fixed`.
-- `methods/hyper-connections/results/.codex_review.json:15` recorded line-by-line math/code checks against the canonical reference.
-- `methods/hyper-connections/notes/strict_check_output.txt:5` documented that `scripts/check_strict_method.py` is absent in this checkout.
-- `methods/hyper-connections/notes/strict_check_output.txt:9` recorded substitute verification commands and results.
+- `methods/hyper-connections/results/context.md:49` restored scaffold purity by removing the appended `## Code framework` section and code block; the file now ends after exactly five pre-method `##` sections.
+- `methods/hyper-connections/results/reasoning.md:23` added the transformer-level `sqrt(n)` initialization-std factor while preserving the `n`-scaled row-sum and epsilon-level normalization caveats.
+- `methods/hyper-connections/results/answer.md:56` added the paper's `sqrt(n)` initialization-std factor for the FFN second linear layer and attention output projection, explicitly separate from the Appendix J `HyperConnection` class.
+- `methods/hyper-connections/notes/discovery_synthesis.md:22` documented the same `sqrt(n)` transformer initialization detail alongside the static row-sum equivalence correction.
+- `methods/hyper-connections/notes/source_matrix.md:5` added the primary-source pointer for the transformer output-module `sqrt(n)` initialization factor.
+- `methods/hyper-connections/notes/source_matrix.md:17` corrected the stale strictness note that said the method was absent from `methods.json`.
+- `methods/hyper-connections/notes/source_matrix.md:18` recorded the 2026-06-16 web recheck finding no official author code repository; Appendix J remains the canonical implementation artifact.
+- `methods/hyper-connections/refs/self_accounts/search_log.md:3` updated the self-account result to include both author retrospectives and official author code.
+- `methods/hyper-connections/refs/self_accounts/search_log.md:8` added the 2026-06-16 code-search query set.
+- `methods/hyper-connections/refs/self_accounts/search_log.md:10` recorded public paper-page checks for arXiv and OpenReview with no official code link.
+- `methods/hyper-connections/refs/self_accounts/search_log.md:11` marked public GitHub results as third-party or derivative, not canonical author code.
+- `methods/hyper-connections/results/.codex_review.json:4` changed the review outcome to `fixed`.
+- `methods/hyper-connections/results/.codex_review.json:13` recorded math checks for core equations, dynamic/static cases, `sqrt(n)` initialization, residual special cases, sequential/parallel cases, and overhead constants.
+- `methods/hyper-connections/results/.codex_review.json:18` recorded Appendix J code-faithfulness checks.
+- `methods/hyper-connections/results/.codex_review.json:23` recorded the scaffold/posterior-leak fix in `context.md`.
+- `methods/hyper-connections/results/.codex_review.json:28` recorded the canonical-code search result.
+- `methods/hyper-connections/notes/strict_check_output.txt:3` refreshed the substitute-check timestamp.
+- `methods/hyper-connections/notes/strict_check_output.txt:9` recorded Python compile and tensor-shape checks for the local Appendix J transcription.
+- `methods/hyper-connections/notes/strict_check_output.txt:14` recorded the initialization equivalence smoke test.
+- `methods/hyper-connections/notes/strict_check_output.txt:15` recorded structural checks for section count, target-name leakage, reasoning headers, review JSON validity, evidence files, and answer-code fidelity.
+- `methods/hyper-connections/results/changelog.md:1` replaced the stale changelog with this current file:line audit record.

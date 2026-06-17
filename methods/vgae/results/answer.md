@@ -1,80 +1,86 @@
-# VGAE (Variational Graph Auto-Encoder), distilled
+# VGAE: Variational Graph Auto-Encoder
 
-VGAE is an unsupervised latent-variable model for a single attributed graph. A graph
-convolutional encoder maps each node to a Gaussian posterior over a latent vector; a
-parameter-free inner-product decoder reconstructs the adjacency from those vectors; and the
-model is trained by maximizing the evidence lower bound (reconstruction minus a KL pull toward a
-standard-normal prior). It fuses graph structure and node features in one end-to-end model and,
-having learned to reconstruct the observed edges, scores unobserved node pairs for link prediction.
-Dropping the stochastic part recovers the deterministic Graph Auto-Encoder (GAE).
+VGAE is an unsupervised latent-variable model for one attributed graph. A GCN encoder maps
+`(X, A_train)` to a diagonal Gaussian posterior for every node, an inner-product Bernoulli decoder
+reconstructs adjacency entries, and training maximizes an ELBO. Its deterministic sibling, GAE,
+removes the posterior variance, sampling, and KL term.
 
-## Problem it solves
+## Model
 
-Link prediction on one undirected graph with node features and a partially observed adjacency:
-learn a per-node representation and a pair-scoring rule, unsupervised (only the edges supervise),
-that uses *both* topology and features, so that held-out edges rank above held-out non-edges.
-Prior unsupervised methods (random-walk skip-gram embeddings such as DeepWalk/node2vec, spectral
-embeddings) use structure only; the feature-aware GCN encoder existed but was tied to a supervised
-node-classification loss.
+Encoder:
 
-## Key idea
-
-- **Encoder (GCN, two heads).** A two-layer graph convolution computes, per node, the parameters
-  of a diagonal-Gaussian posterior q(z_i | X, A) = N(z_i | μ_i, diag(σ_i²)). A shared first GCN
-  layer feeds two second-layer GCN heads: μ = GCN_μ(X, A) and log σ = GCN_σ(X, A) (output log σ so
-  σ = exp(log σ) > 0 with no constraint to enforce). Each layer mixes a node with a renormalized
-  average of its neighbors, so z_i depends on structure and features together.
-- **Reparameterization.** Sample z_i = μ_i + σ_i ⊙ ε, ε ~ N(0, I) at train time (low-variance
-  pathwise gradient into μ, σ); use z_i = μ_i at test time.
-- **Decoder (inner product).** p(A_ij = 1 | z_i, z_j) = σ(z_iᵀ z_j), i.e. Â = σ(Z Zᵀ). No
-  parameters; symmetric (undirected); permutation-equivariant; geometry = proximity in latent
-  space → high edge probability.
-- **Objective (ELBO).** L = E_{q(Z|X,A)}[log p(A|Z)] − D_KL(q(Z|X,A) ‖ p(Z)) with prior
-  p(Z) = ∏_i N(z_i | 0, I). The reconstruction is a (re-weighted / negative-sampled) binary
-  cross-entropy on edges vs. non-edges; the KL is closed-form and weighted 1/N to match the
-  per-edge reconstruction scale.
-
-## The Gaussian KL (closed form)
-
-For a diagonal-Gaussian posterior N(μ, diag(σ²)) against the standard-normal prior N(0, I) in J
-latent dimensions, per node:
-
-```
--D_KL( q || p ) = 1/2 * sum_j ( 1 + log(sigma_j^2) - mu_j^2 - sigma_j^2 )
-               = 1/2 * sum_j ( 1 + 2*log_sigma_j - mu_j^2 - exp(2*log_sigma_j) ).
+```text
+q(Z | X,A) = prod_i N(z_i | mu_i, diag(sigma_i^2))
+mu        = GCN_mu(X,A)
+log sigma = GCN_sigma(X,A)
 ```
 
-Maximized (KL = 0) at μ = 0, σ² = 1, i.e. when the posterior equals the prior. Derivation:
-∫q log p = −J/2 log(2π) − ½Σ(μ_j² + σ_j²) and ∫q log q = −J/2 log(2π) − ½Σ(1 + log σ_j²);
-subtracting cancels the constants and leaves the expression above.
+`GCN_mu` and `GCN_sigma` share the first GCN layer. The paper writes the normalized adjacency as
+`D^{-1/2} A D^{-1/2}` because `A` is defined with self-loops already present. The canonical code
+starts from `adj_train`, adds self-loops in preprocessing, and uses symmetric normalization.
 
-## Design choices and why
+Decoder and prior:
 
-- **GCN encoder, not an MLP:** an MLP sees a node's features only; the GCN aggregates the
-  neighborhood, fusing topology and features. Random-walk / spectral baselines fuse neither with
-  features.
-- **Two heads sharing a trunk:** mean and spread are both functions of the same neighborhood
-  evidence; sharing the first layer avoids duplicating the network.
-- **Output log σ:** keeps σ positive for any real network output; numerically stable. (Clamp log σ
-  at a ceiling, e.g. 10, so exp(log σ) cannot explode early in training.)
-- **Inner-product decoder:** cheapest scoring rule with the right "near = linked" bias; no params;
-  symmetric for undirected graphs; equivariant. An MLP-on-[z_i; z_j] decoder adds parameters and
-  breaks the clean geometry.
-- **Positive re-weighting / negative sampling:** A is sparse, so unbalanced BCE collapses to
-  "predict no edge"; re-weight the rare positives (or pair each edge with a sampled non-edge).
-- **KL weighted by 1/N:** reconstruction is a per-edge mean, the KL a per-node sum; the 1/N puts
-  them on a comparable per-unit footing so the trade-off does not drift with graph size.
-- **Centered Gaussian prior:** a standard, analytic-KL default; in mild tension with the
-  inner-product decoder, which rewards large-norm embeddings while the prior pulls toward the
-  origin. Gentle (1/N) weighting keeps reconstruction able to spread the embeddings out.
-- **Full-batch training:** small graphs fit in memory; GCN is O(|E|) per layer; Adam, Glorot init.
-- **GAE special case:** drop the log-σ head, sampling, and KL → deterministic Z = GCN(X, A),
-  Â = σ(Z Zᵀ). Featureless: set X = I (one-hot node identity), structure-only.
+```text
+p(A_ij = 1 | z_i, z_j) = sigmoid(z_i^T z_j)
+p(A | Z) = prod_i prod_j p(A_ij | z_i, z_j)
+p(Z) = prod_i N(z_i | 0,I)
+```
 
-## Final model (code)
+Training objective:
 
-Encoder/decoder filling the `LinkPredictor` interface, with the variational heads, reparameterization,
-inner-product decoder, and closed-form KL; grounded in the canonical implementation.
+```text
+ELBO = E_q[log p(A | Z)] - KL(q(Z | X,A) || p(Z)).
+```
+
+Reparameterization:
+
+```text
+z_i = mu_i + sigma_i * eps_i,     eps_i ~ N(0,I)
+```
+
+Use sampled `z` while training and `mu` for evaluation.
+
+## KL And Loss
+
+For one coordinate:
+
+```text
+-KL(N(mu, sigma^2) || N(0,1))
+  = 0.5 * (1 + log sigma^2 - mu^2 - sigma^2)
+  = 0.5 * (1 + 2*logstd - mu^2 - exp(2*logstd)).
+```
+
+Positive KL, averaged over nodes:
+
+```python
+kl_loss = -0.5 * mean_nodes(sum_dim(
+    1 + 2 * logstd - mu**2 - exp(2 * logstd)
+))
+```
+
+The official TensorFlow implementation adds this node-averaged KL with an extra `1 / num_nodes`
+factor by subtracting the negative-KL term `(0.5 / N) * mean_nodes(...)` from the reconstruction
+cost. PyG's `VGAE.kl_loss()` returns the same positive node-averaged KL, so the matching sampled
+training loss is:
+
+```text
+loss = reconstruction_loss + kl_loss / num_nodes
+```
+
+Dense canonical reconstruction uses all adjacency entries with positive reweighting:
+
+```text
+pos_weight = (N^2 - sum(adj_train)) / sum(adj_train)
+norm       = N^2 / ((N^2 - sum(adj_train)) * 2)
+labels     = adj_train + I
+recon      = norm * mean(weighted_BCE_with_logits(flatten(Z Z^T), flatten(labels), pos_weight))
+```
+
+Sparse/scaffold training may instead score positive edges plus sampled non-edges, which is the
+paper's allowed zero-subsampling alternative.
+
+## Reference-Faithful Code
 
 ```python
 import torch
@@ -82,73 +88,57 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 
-MAX_LOGSTD = 10  # clamp on log sigma; exp(log sigma) stays bounded
-
 
 class LinkPredictor(nn.Module):
-    """Variational Graph Auto-Encoder.
+    """Variational graph auto-encoder for link prediction."""
 
-    GCN encoder with mu / log-sigma heads (shared trunk) -> per-node Gaussian posterior;
-    reparameterized sampling at train time, mu at eval; inner-product decoder sigma(z_i^T z_j);
-    ELBO = reconstruction (BCE, applied by the loop) - KL(q || p), p = N(0, I).
-    """
-
-    def __init__(self, in_channels, hidden_channels, num_layers=2, dropout=0.0):
+    def __init__(self, in_channels, hidden_channels=32, latent_channels=16, dropout=0.0):
         super().__init__()
         self.dropout = dropout
-        self.shared_convs = nn.ModuleList()
-        if num_layers > 1:
-            self.shared_convs.append(GCNConv(in_channels, hidden_channels))
-            for _ in range(num_layers - 2):
-                self.shared_convs.append(GCNConv(hidden_channels, hidden_channels))
-            last_in = hidden_channels
-        else:
-            last_in = in_channels
-        self.conv_mu = GCNConv(last_in, hidden_channels)       # mu  = GCN_mu(X, A)
-        self.conv_logstd = GCNConv(last_in, hidden_channels)   # log sigma = GCN_sigma(X, A)
-        self._mu = None
-        self._logstd = None
+        self.conv_hidden = GCNConv(in_channels, hidden_channels)
+        self.conv_mu = GCNConv(hidden_channels, latent_channels)
+        self.conv_logstd = GCNConv(hidden_channels, latent_channels)
+        self.mu = None
+        self.logstd = None
 
     def encode(self, x, edge_index):
-        for conv in self.shared_convs:                          # shared GCN trunk
-            x = conv(x, edge_index)
-            x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
-        self._mu = self.conv_mu(x, edge_index)
-        self._logstd = self.conv_logstd(x, edge_index).clamp(max=MAX_LOGSTD)
+        h = self.conv_hidden(x, edge_index)
+        h = F.relu(h)
+        h = F.dropout(h, p=self.dropout, training=self.training)
+        self.mu = self.conv_mu(h, edge_index)
+        self.logstd = self.conv_logstd(h, edge_index)
         if self.training:
-            std = torch.exp(self._logstd)                       # z = mu + sigma * eps
-            return self._mu + torch.randn_like(std) * std
-        return self._mu                                         # eval: posterior mean
+            return self.mu + torch.randn_like(self.logstd) * torch.exp(self.logstd)
+        return self.mu
 
     def decode(self, z_src, z_dst):
-        return (z_src * z_dst).sum(dim=-1)                      # logit = z_i^T z_j
+        return (z_src * z_dst).sum(dim=-1)
 
     def kl_loss(self):
-        mu, logstd = self._mu, self._logstd                    # +D_KL(q || p)
-        return -0.5 * torch.mean(
-            torch.sum(1 + 2 * logstd - mu.pow(2) - torch.exp(2 * logstd), dim=-1)
-        )
+        return -0.5 * torch.mean(torch.sum(
+            1 + 2 * self.logstd - self.mu.pow(2) - torch.exp(2 * self.logstd),
+            dim=-1,
+        ))
 
     def forward(self, x, edge_index, edge_label_index):
         z = self.encode(x, edge_index)
         return self.decode(z[edge_label_index[0]], z[edge_label_index[1]])
 ```
 
-Training objective (reconstruction + per-node-averaged KL):
+Sampled-edge training loop:
 
 ```python
 def train_step(model, data, optimizer):
     model.train()
     optimizer.zero_grad()
     logits = model(data.x, data.edge_index, data.edge_label_index)
-    recon = F.binary_cross_entropy_with_logits(logits, data.edge_label)   # -E_q[log p(A|Z)]
-    loss = recon + (1.0 / data.num_nodes) * model.kl_loss()               # + (1/N) D_KL(q || p)
+    recon = F.binary_cross_entropy_with_logits(logits, data.edge_label)
+    loss = recon + model.kl_loss() / data.num_nodes
     loss.backward()
     optimizer.step()
     return float(loss)
 ```
 
-Typical config: 2 GCN layers, 32-dim hidden, 16-dim latent, Glorot init, Adam lr ≈ 0.01,
-full-batch, a couple hundred iterations. GAE = the same model with the log-σ head, sampling, and
-KL removed (deterministic Z = GCN(X, A), Â = σ(Z Zᵀ)).
+GAE special case: replace the two posterior heads with one embedding head `Z = GCN(X,A)`, remove
+sampling and `kl_loss`, and keep the same dot-product decoder `sigmoid(Z Z^T)`. Featureless case:
+set `X = I`.

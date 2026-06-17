@@ -151,18 +151,19 @@ The natural yardsticks for few-step image generation, all pre-existing:
   compute-vs-quality trade-off is visible; a held-out set of Inception statistics
   (`cifar_stats.npz`) is precomputed. Lower FID is better, under a fixed training budget.
 - **Protocol:** train with a square-root learning-rate schedule, gradient clipping, an
-  exponential-moving-average copy of the parameters for evaluation, a batch split between a
-  diagonal (flow-matching) portion and an off-diagonal (finite-gap) portion, and FID measured
-  on a large pool of generated samples.
+  exponential-moving-average copy of the parameters for evaluation, and FID measured on a large
+  pool of generated samples. The harness can allocate separate examples to diagonal
+  flow-matching calls and off-diagonal finite-gap calls, but the off-diagonal signal itself is
+  the open design slot.
 
 ## Code framework
 
 The map plugs into a standard two-time flow-map training harness. The interpolant, a network
-object `X` with a finite-jump forward call, a diagonal velocity call via `calc_b`, a time
-derivative via `partial_t`, and a learned `(s,t)` weight via `calc_weight`, the batch sampler
-that draws diagonal and off-diagonal time pairs, the EMA, and the optimizer all already exist.
-The diagonal flow-matching term is settled. What is **not** settled — and is exactly the slot to
-design — is the off-diagonal term that supplies a learning signal for finite-gap jumps `s != t`.
+object `X` with a finite-jump forward call, a diagonal velocity call via `calc_b`, time
+derivative helpers such as `partial_t`, an optional `(s,t)` loss-weight call via `calc_weight`,
+samplers for diagonal and ordered time pairs, the EMA, and the optimizer all already exist. The
+diagonal flow-matching term is settled. What is **not** settled is the off-diagonal term that
+supplies a learning signal for finite-gap jumps `s != t`.
 
 ```python
 import jax
@@ -172,7 +173,7 @@ import jax.numpy as jnp
 # --- existing: interpolant, network, weighted-loss convention ---
 # X.apply(params, s, t, x, ...)                    -> candidate finite jump
 # X.apply(params, t, x, ..., method="calc_b")      -> diagonal velocity prediction
-# X.apply(params, s, t,      method="calc_weight") -> w_{s,t}      (learned log-var weight)
+# X.apply(params, s, t,      method="calc_weight") -> w_{s,t}      (optional loss weight)
 
 
 def diagonal_term(params, x0, x1, label, t, rng, *, interp, X):

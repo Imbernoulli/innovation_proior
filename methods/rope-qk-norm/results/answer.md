@@ -3,9 +3,10 @@
 The combined attention recipe for GPT-style pretraining makes two orthogonal changes inside the
 self-attention block. **RoPE (Rotary Position Embedding)** replaces learned absolute position
 embeddings: it rotates each per-head query/key 2-plane by an angle proportional to the token's
-position, so the attention logit depends only on the *relative* offset `m − n`. **QK-Norm**
+position, so the attention logit depends only on the *relative* offset, with the sign determined by
+which side carries the relative rotation. **QK-Norm**
 normalizes the per-head queries and keys (RMSNorm along the head dimension) *before* the dot
-product, pinning `||q||` and `||k||` so the attention logits cannot grow unbounded over
+product, bounding `||q||` and `||k||` so the attention logits cannot grow unbounded over
 training. Because RoPE is a rotation (orthogonal, norm-preserving), the magnitude control that
 QK-Norm installs survives the rotation, so the two stack with no interference and the logit ends
 up both relative-only and magnitude-bounded.
@@ -30,40 +31,46 @@ Two persistent defects of the standard GPT-2 attention block, at once:
 **RoPE.** Demand `<f_q(x_m, m), f_k(x_n, n)> = g(x_m, x_n, m − n)` with boundary `f(x, 0) = Wx`.
 In 2D (`R^2 ≅ C`) the norm-preserving solution makes position a pure rotation: `f(x_m, m) = (W
 x_m) e^{i m theta}`. Tile across `d/2` independent 2-planes at geometric frequencies `theta_i =
-10000^{-2(i-1)/d}`; the block-diagonal rotation `R^d_{Theta,m}` is orthogonal, and since
+10000^{-2(i-1)/d}` for head dimension `d`; the block-diagonal rotation `R^d_{Theta,m}` is orthogonal, and since
 rotations compose,
 
   q_m^T k_n = x_m^T W_q^T R^d_{Theta, n−m} W_k x_n,
 
-so the logit depends only on `m − n`. No learned position table, no length cap; norm-preserving.
+so the logit depends only on the offset. The apparent `n−m` versus `m−n` sign is a convention:
+with the relative matrix acting on the key side, `(R_m q)^T(R_n k)=q^T R_{n−m}k`; in the complex
+product it is equivalently `Re[q k* e^{i(m−n)theta}]`. No learned position table, no length cap;
+norm-preserving.
 
 **QK-Norm.** The magnitudes are what `1/sqrt(d_k)` cannot bound. Fix them: pass the per-head `q`
-and `k` through RMSNorm along the head dimension (`RMSNorm(a) = a / RMS(a)`, `RMS(a) =
-sqrt((1/d_k) sum a_i^2)`, no learned gain in this form) so `||q||, ||k|| = sqrt(d_k)`, pinned for
-all of training regardless of how large the raw projections grow. Then `|q·k| <= d_k` by
-Cauchy-Schwarz, a fixed ceiling — the bound `1/sqrt(d_k)` never gave. Normalize `q` and `k`
+and `k` through RMSNorm along the head dimension (`RMSNorm(a) = a / sqrt(mean(a_i^2) + eps)`,
+no learned gain in this form). For nonzero vectors with negligible epsilon this gives
+`||q||, ||k|| = sqrt(d_k)`; including epsilon and zero vectors, it gives
+`||q||, ||k|| <= sqrt(d_k)`. Then `|q·k| <= d_k` by Cauchy-Schwarz, a fixed ceiling — the
+bound `1/sqrt(d_k)` never gave. Normalize `q` and `k`
 only (not `v`, which is averaged not scored), per head, along the head dimension (after the
 multi-head split — that is the dimension the dot product contracts).
 
 **Why keep `1/sqrt(d_k)` (not replace it with a learnable temperature).** This is the training-
 stability variant of QK-norm, not the cosine-attention variant (Henry et al. 2020) that
 L2-normalizes to unit length and swaps `1/sqrt(d_k)` for a learned `g ≈ log2(L^2 − L)`. RMSNorm
-*fixes* the per-vector scale to `sqrt(d_k)` rather than crushing it to a unit cosine, so the
-logits sit at `O(sqrt(d_k))` before the divide and `1/sqrt(d_k)` is exactly the right calibration
-back to `O(1)` — now *enforced through training* instead of merely true at init. No separate
-temperature is needed: the magnitude is fixed and `1/sqrt(d_k)` recovers the `O(1)` range.
+*fixes* the per-vector scale near `sqrt(d_k)` rather than crushing it to a unit cosine, so the raw
+dot product keeps the usual typical scale while having a hard ceiling of `d_k`; after the
+`1/sqrt(d_k)` divide the typical logits are back in the `O(1)` range and the ceiling is
+`sqrt(d_k)`. No separate temperature is needed in this scaffold variant.
 
 **Why they combine cleanly.** RoPE fixes *where* position lives in the logit; QK-Norm fixes *how
-big* the logit can get — orthogonal failure modes. They commute because RoPE is orthogonal:
-RMSNorm pins the norm, the rotation preserves it, so each guarantee holds in the presence of the
-other. Order is near-equivalent; the standard recipe normalizes then rotates.
+big* the logit can get — orthogonal failure modes. In the no-gain RMSNorm variant they commute
+mathematically because RoPE is orthogonal and the same epsilon-adjusted RMS denominator is used;
+RMSNorm bounds the norm, the rotation preserves it, so each guarantee holds in the presence of the other.
+The reference scaffold normalizes
+then rotates.
 
 ## Final algorithm (per head, per layer)
 
 ```
 # inputs: q, k, v of shape [B, n_head, T, d_k]
-q = rms_norm(q, over head dim d_k)        # QK-Norm: pin ||q||
-k = rms_norm(k, over head dim d_k)        # QK-Norm: pin ||k||
+q = rms_norm(q, over head dim d_k)        # QK-Norm: bound/pin ||q||
+k = rms_norm(k, over head dim d_k)        # QK-Norm: bound/pin ||k||
 q = rope(q)                               # rotate plane i by position * theta_i
 k = rope(k)                               # theta_i = 10000^{-2(i-1)/d_k}
 att = softmax( q @ k^T / sqrt(d_k) )      # 1/sqrt(d_k) KEPT, causal mask
@@ -106,7 +113,7 @@ class CausalSelfAttention(nn.Module):
                      .view(1, 1, config.block_size, config.block_size),
             )
         self.use_pos_emb = False  # RoPE replaces learned position embeddings
-        # RoPE frequencies: theta_i = 10000^{-2i/head_dim} (sinusoidal geometric spread)
+        # RoPE frequencies: theta_i = 10000^{-2i/head_dim} for zero-indexed i
         inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
         self.register_buffer("inv_freq", inv_freq)
 
@@ -129,7 +136,7 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
         v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
 
-        # QK-Norm (RMSNorm along head dim) THEN RoPE; rotation preserves the pinned norm.
+        # QK-Norm (RMSNorm along head dim) THEN RoPE; rotation preserves the bounded norm.
         q = self._apply_rope(F.rms_norm(q, (q.size(-1),)), T)
         k = self._apply_rope(F.rms_norm(k, (k.size(-1),)), T)
 
@@ -158,8 +165,8 @@ class CausalSelfAttention(nn.Module):
   additive expansion with learned tables/biases living inside the `N×N` logit matrix; RoPE
   solves the relative constraint in closed form with no extra parameters.
 - **vs. cosine-attention QK-Norm (Henry et al. 2020):** that L2-normalizes `q, k` to unit
-  length and replaces `1/sqrt(d_k)` with a learned temperature; the variant here uses RMSNorm
-  (scale fixed to `~sqrt(d_k)`, not crushed to a cosine) and *keeps* `1/sqrt(d_k)`. Same
+  length and replaces `1/sqrt(d_k)` with a learned temperature; the variant here uses no-gain RMSNorm
+  (norm bounded near `sqrt(d_k)`, not crushed to a unit cosine) and *keeps* `1/sqrt(d_k)`. Same
   bounded-logit goal, lighter change, aimed at training stability at scale.
 - **vs. `1/sqrt(d_k)` alone:** that is an init-time variance calibration, not a bound; QK-Norm
-  converts it into a property that holds for the whole run by pinning the per-vector magnitude.
+  converts it into a property that holds for the whole run by bounding the per-vector magnitude.

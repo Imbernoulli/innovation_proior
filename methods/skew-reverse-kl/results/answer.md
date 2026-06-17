@@ -28,12 +28,15 @@ zero. With skew parameter `α`:
 
 ## Why it works
 
-**Stable gradient.** Plain KL gradients are `∇_θ D_KL(p, q_θ) = −r_{p,q_θ}·∇_θ q_θ` (explodes when
-`q_θ → 0`) and `∇_θ D_KL(q_θ, p) = −(log r_{q_θ,p} + 1)·∇_θ q_θ` (explodes when `p → 0`). Skewing gives:
+**Stable gradient.** For the minimized scalar KL losses, the plain gradients are
+`∇_θ D_KL(p, q_θ) = −r_{p,q_θ}·∇_θ q_θ` (explodes when `q_θ → 0`) and
+`∇_θ D_KL(q_θ, p) = (log r_{q_θ,p} + 1)·∇_θ q_θ` (explodes when `p → 0`). Some code accumulates the
+negative reverse-KL integrand before a final negation; the minimized loss has the sign shown here.
+Skewing gives:
 
 ```
-∇_θ D_SKL^α(p, q_θ)   = −(1−α)·r_{p, q̃_θ}·∇_θ q_θ,            q̃_θ = α·p + (1−α)·q_θ
-∇_θ D_SRKL^α(p, q_θ)  = −(log r_{q_θ, p̃} + 1 − α·r_{q_θ, p̃})·∇_θ q_θ,   p̃ = (1−α)·p + α·q_θ
+∇_θ D_SKL^α(p, q_θ)   = −(1−α)·r_{p, q̃_θ}·∇_θ q_θ,           q̃_θ = α·p + (1−α)·q_θ
+∇_θ D_SRKL^α(p, q_θ)  = (log r_{q_θ, p̃} + 1 − α·r_{q_θ, p̃})·∇_θ q_θ,   p̃ = (1−α)·p + α·q_θ
 ```
 
 For SRKL, the interpolation prevents the denominator of the ratio from reaching zero on
@@ -50,7 +53,8 @@ limit noisy.
 **Choosing α.** A modern (Adam-style) optimizer normalizes out a uniformly smaller gradient scale, so
 the relevant quantity rescales the L2 error by the inverse approximate gradient scale, `1/(1−α)`. That
 normalized bound appears convex in `α` (the inverse-`α` pieces want `α` large, the
-inverse-`(1−α)` pieces want `α` small). The selected value is `α = 0.1`: 10% mixing floors the
+inverse-`(1−α)` pieces want `α` small), and the normalized-coefficient results report that SRKL is best at
+`α = 0.1` and worsens for larger values. The selected value is `α = 0.1`: 10% mixing floors the
 denominator while leaving the reverse target 90% teacher.
 
 **Distinct from JSD.** Generalized JSD is

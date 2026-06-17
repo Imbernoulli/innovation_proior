@@ -33,7 +33,7 @@ learned initialization. Three ingredients fully specify such an optimizer — in
 direction, learning rate — and the few-shot regime makes the defaults (follow the gradient, one
 hand-set rate) liabilities.
 
-Two threads inform a curvature-based answer. First, **second-order optimization**: Newton's method
+Two background threads make that open question concrete. First, **second-order optimization**: Newton's method
 preconditions the gradient with the inverse Hessian, `θ − α H^{-1} ∇L`, taking a local quadratic view
 of the loss; natural gradient descent preconditions with the inverse Fisher information matrix, `θ − α
 F^{-1} ∇L`, a steepest-descent direction in distribution space. Both accelerate gradient descent on
@@ -71,9 +71,9 @@ positions within a layer). The curvature of a real loss is not diagonal.
 **K-FAC (Martens & Grosse 2015) as an inner optimizer.** The natural candidate for a structured
 preconditioner: approximate the Fisher by `A ⊗ G` and precondition with its inverse. **Gap:** A ∈
 `R^{C_in d × C_in d}` is expensive to maintain computationally and spatially even for small nets;
-computed from training-loss statistics it ignores generalization; and applied as a meta-learned
-inner optimizer it tends to overfit the meta-training set. It motivates the factorization but not the
-recipe.
+computed from training-loss statistics it ignores generalization; and as a few-shot inner optimizer it
+would still estimate curvature from the tiny support set. It motivates a structured preconditioner but
+does not by itself solve the support/query generalization problem.
 
 The state of the field before the target work: MAML scales but its inner step is plain SGD; Meta-SGD
 adds a learned coordinate-wise preconditioner but does not model cross-coordinate dependencies; and

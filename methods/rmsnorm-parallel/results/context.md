@@ -1,4 +1,4 @@
-# Context: the transformer block under scaling pressure (circa 2021-2022)
+# Context: the transformer block under scaling pressure
 
 ## Research question
 
@@ -105,9 +105,10 @@ dropping the mean entirely and normalizing by the root-mean-square alone:
 ```
 
 with learned gain `g` (init 1) and no bias by default — there is no mean removed, hence no
-re-centering invariance that a bias would need to restore. Because RMS is linear,
-`RMS(αa) = α·RMS(a)`, RMSNorm is invariant to re-scaling of the inputs and of the weight matrix
-(the `α` cancels) but is **not** invariant to shifts and **not** to per-weight-vector re-scaling.
+re-centering invariance that a bias would need to restore. Because RMS is homogeneous under
+scalar rescaling, `RMS(αa) = |α|·RMS(a)` (and `α·RMS(a)` for positive `α`), RMSNorm is
+invariant to re-scaling of the inputs and of the weight matrix (the positive scale cancels) but
+is **not** invariant to shifts and **not** to per-weight-vector re-scaling.
 It does one reduction (sum of squares) and no subtraction, versus LayerNorm's two reductions and
 a subtraction. Its gradient with respect to the weight matrix carries a factor inversely
 correlated with weight scale, acting as an implicit per-layer learning-rate adaptor. **Where it
@@ -128,9 +129,9 @@ scales with layers and devices.
 The natural yardstick is GPT-style decoder-only pretraining held fixed except for the block's
 normalization and wiring. A representative protocol: a GPT-2-Medium-class model (24 layers, 16
 heads, model width 1024, ≈355M parameters), pre-normalized decoder, trained on a large
-web-text corpus (a FineWeb-scale 10B-token sample) with the GPT-2 byte-pair tokenizer over a few
-billion tokens, fixed micro-batch, gradient accumulation, and multi-GPU data parallelism, with
-the optimizer, learning-rate schedule, and data pipeline frozen across variants. Quality is read
+web-text corpus with the GPT-2 byte-pair tokenizer over a few billion tokens, fixed micro-batch,
+gradient accumulation, and multi-GPU data parallelism, with the optimizer, learning-rate
+schedule, and data pipeline frozen across variants. Quality is read
 off held-out **validation cross-entropy / loss** on the same corpus (primary), language-model
 **perplexity** on WikiText-2 and LAMBADA, and zero/few-shot **downstream accuracy** on
 ARC-Easy, HellaSwag, PIQA, and WinoGrande. Efficiency is read off training **throughput**

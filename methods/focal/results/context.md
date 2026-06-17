@@ -1,5 +1,3 @@
-# Context: offline meta-reinforcement learning and task inference (circa 2019-2020)
-
 ## Research question
 
 The setting is reinforcement learning that must be both *offline* and *meta*. Offline means the
@@ -116,21 +114,13 @@ pairs are pushed apart by a margin-`m` hinge. Hadsell et al. make two observatio
 First, minimizing *only* the attractive term over similar pairs collapses the embedding to a constant
 (every distance goes to zero), so an explicit repulsive term between dissimilar pairs is mandatory.
 Second, the repulsive margin term behaves like a spring that acts *only within radius `m`*: it exerts
-zero force once a pair is already farther than `m` apart, and only a weak force when a dissimilar pair
-happens to start close together. A related concern from graph embedding (Luo et al. 2011): a purely
-quadratic distance objective — the Laplacian-embedding form `Σ_{ij} W_{ij} ‖Y_i − Y_j‖²` — over-weights
+zero force once a pair is already farther than `m` apart, and its short-range force is bounded rather
+than singular when a dissimilar pair happens to start very close together. A related concern from
+graph embedding (Luo et al. 2011): a purely quadratic distance objective — the Laplacian-embedding
+form `Σ_{ij} W_{ij} ‖Y_i − Y_j‖²` — over-weights
 keeping *dissimilar* points apart and under-preserves the local topology of *similar* points, which
 that work addresses by replacing the quadratic with an inverse-of-distance objective
 `Σ_{ij} W_{ij} / (‖Y_i − Y_j‖² + σ²)`.
-
-**A diagnostic about distance objectives.** A useful pre-method measurement on an embedding space is
-the *effective separation rate* — the fraction of different-task embedding pairs whose distance
-exceeds what randomly placed vectors would have (on the bounded cube `(−1,1)^l`, the expected random
-pairwise distance is `√(2l/3)`) — alongside the plain root-mean-square pairwise distance. These two
-numbers can disagree sharply: a square-distance objective and an inverse-distance objective can
-produce embeddings with nearly identical RMS distance yet very different separation rates. RMS
-distance is a single global number; it does not certify that *every* pair of distinct clusters is
-actually pulled apart.
 
 ## Baselines
 
@@ -161,8 +151,8 @@ fits rather than a single jointly-trained embedding.
 
 The shared limitation across these baselines: each ties task inference to the value-learning signal
 (Bellman gradients) and/or carries probabilistic/exploration machinery that the offline setting
-cannot use, and none of them imposes a *direct* geometric pressure that guarantees the embeddings of
-every pair of distinct tasks are pulled apart.
+cannot use, and none of them imposes a *direct* geometric penalty on merged embeddings for distinct
+tasks.
 
 ## Evaluation settings
 
@@ -183,8 +173,8 @@ The natural yardsticks, all pre-existing:
   draw a batch of logged transitions as context, encode it to `z`, and roll out the policy
   *deterministically* conditioned on `z` with no exploration. The metric is average episodic return
   on the held-out tasks, averaged over random seeds.
-- **Embedding diagnostics.** t-SNE visualizations of the per-task embedding vectors; the effective
-  separation rate and RMS pairwise distance defined above; the dimensionality of the latent space.
+- **Embedding diagnostics.** t-SNE or PCA visualizations of per-task embedding vectors, simple
+  cluster-separation statistics, and the dimensionality of the latent space.
 
 ## Code framework
 

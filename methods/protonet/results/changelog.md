@@ -1,0 +1,27 @@
+# Protonet Strict Rereview Changelog
+
+- `methods/protonet/results/context.md:67` Replaced target-paper empirical distance/way conclusions with pre-method design facts from NCA, nearest-class-mean, and Matching Networks; the context now treats distance, way, and shot as open choices rather than leaking the final outcome.
+- `methods/protonet/results/context.md:143` Removed later `ResNet-12`/`640-d` scaffold leakage and restored paper-era backbone facts: four convolutional blocks, 64-dimensional Omniglot output, larger miniImageNet flattening under the same block pattern, and Adam/step-schedule episodic updates.
+- `methods/protonet/results/context.md:165` Cleaned the scaffold docstring from "convolutional/ResNet" and "640-dim" to a neutral shared embedding network.
+- `methods/protonet/results/reasoning.md:11` Rechecked the Bregman derivative and rewrote the sign-sensitive step explicitly: `grad_c d_phi(x,c) = H_phi(c)(c-x)`, so summing gives `H_phi(c)(|S_k|c - sum_x x)` and the mean follows.
+- `methods/protonet/results/reasoning.md:13` Converted the Euclidean-vs-cosine claim into an in-frame prediction from the Bregman/mean inconsistency instead of hindsight phrasing.
+- `methods/protonet/results/reasoning.md:15` Removed the unsupported "unit-variance" constant; squared Euclidean now corresponds to a spherical Gaussian family with a common fixed scale up to distance-convention constants.
+- `methods/protonet/results/reasoning.md:19` Tightened the one-shot equivalence case to require the same embedding and distance and corrected the softmax wording to negative distance.
+- `methods/protonet/results/reasoning.md:63` Replaced the scaffold helper call with explicit support feature computation and per-class mean prototypes under episode-local labels.
+- `methods/protonet/results/reasoning.md:78` Kept the forward score faithful to the canonical implementation: explicit squared Euclidean distances, then negation as logits.
+- `methods/protonet/results/reasoning.md:94` Removed final-summary hindsight about reported results and restated Euclidean-over-cosine as the derivation's prediction for the averaging method.
+- `methods/protonet/results/answer.md:27` Softened the squared-Euclidean superiority statement to match the paper's finding rather than overstate a theorem.
+- `methods/protonet/results/answer.md:37` Fixed the spherical-Gaussian scale language to avoid an unsupported unit-variance constant.
+- `methods/protonet/results/answer.md:87` Made the working-code description explicit: prototypes are computed as per-class means, not via a helper that could hide noncanonical scoring.
+- `methods/protonet/results/answer.md:101` Removed the `640-d` scaffold assumption from the embedding comment.
+- `methods/protonet/results/answer.md:105` Replaced `compute_prototypes_and_store_support_set` with explicit support feature extraction and per-class mean construction.
+- `methods/protonet/results/answer.md:118` Preserved exact squared-distance logits in the answer code, matching `torch.pow(x - y, 2).sum(2)` followed by `F.log_softmax(-dists, dim=1)` in the canonical reference implementation.
+- `methods/protonet/results/answer.md:130` Added the code-faithfulness warning that `-torch.cdist(samples, prototypes)` preserves argmax but changes probabilities, gradients, and the Bregman/Gaussian/linear-head equivalences.
+- `methods/protonet/results/answer.md:139` Aligned the standalone prototype helper with the episode-local label assumption used in the canonical episodic loss.
+- `methods/protonet/notes/synthesis.md:9` Removed the later MLS-Bench/ResNet-12 note and recorded the paper-era convolutional embedding facts.
+- `methods/protonet/notes/synthesis.md:13` Updated scaffold mapping to explicit support features and per-class mean prototypes.
+- `methods/protonet/notes/synthesis.md:55` Reworded Euclidean-vs-cosine as a prediction matched by the paper's empirical finding.
+- `methods/protonet/notes/synthesis.md:56` Corrected the spherical-Gaussian scale statement.
+- `methods/protonet/notes/discovery_synthesis.md:59` Recorded the leak and scaffold-purity fixes in the review notes.
+- `methods/protonet/notes/discovery_synthesis.md:65` Updated the files-changed audit list for this rereview pass.
+- `methods/protonet/results/.codex_review.json:1` Refreshed the review marker with this pass's timestamp and evidence scope.

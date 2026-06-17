@@ -6,15 +6,15 @@ Self-attention scores every pair of token representations by a compatibility fun
 those scores into a distribution with a softmax; the distribution is then used to mix the value
 vectors. The compatibility function in use is a scaled dot product, and the softmax that sits on
 top of it has a property that is easy to forget: it depends only on the *differences* between its
-inputs, and those inputs are unbounded. A single large score can therefore dominate the whole row
-of attention weights and silence every other connection, no matter how slightly larger it is on a
-relative basis. Concretely, `softmax([760, 752, 750])` and `softmax([12, 4, 2])` are the same
-distribution, `[0.99962, 0.00034, 0.00005]` — a near one-hot, "winner-take-all" assignment. If the
-dot products that feed the softmax routinely sit at large magnitudes, attention heads are pushed
-into this saturated, peaky regime and cannot easily express the diffuse, many-to-many patterns
-that some modeling tasks need.
+inputs, and those inputs are unbounded. A large score difference can therefore dominate the whole
+row of attention weights and silence every other connection, even when that difference is small
+relative to the absolute score magnitudes. Concretely, `softmax([760, 752, 750])` and
+`softmax([12, 4, 2])` are the same distribution, `[0.99962, 0.00034, 0.00005]` — a near one-hot,
+"winner-take-all" assignment. If the dot products that feed the softmax can grow without bound,
+attention heads can be pushed into this saturated, peaky regime and cannot easily express the
+diffuse, many-to-many patterns that some modeling tasks need.
 
-The problem matters most where data is scarce. On low-resource machine translation — a few
+The problem matters most where data is scarce. On low-resource machine translation — roughly ten
 thousand to a few hundred thousand sentence pairs — the model has little signal to learn rich
 attention structure, and a head that can only concentrate is a head whose capacity is being
 wasted. The precise goal: keep the input to the attention softmax inside a controlled range, so
@@ -88,17 +88,17 @@ normalization-centric changes, each contributing about +0.3 BLEU for roughly +1.
   `ScaleNorm(x; g) = g · x/||x||`, a single learned scalar `g` (initialized to `sqrt(d)`) in place
   of LayerNorm's `2d` scale-and-shift parameters. It projects each activation onto a
   `(d−1)`-sphere with a learned radius, expressing the inductive bias that each sublayer's
-  activations have an ideal global scale. ScaleNorm applies its `l2` normalization along the
-  *embedding* dimension, to the whole vector — to queries, keys *and* values — *before* the input
-  is split into heads. RMSNorm can be viewed as ScaleNorm with a per-unit scale vector instead of
-  one scalar; dividing RMSNorm's gains by `sqrt(d)` recovers ScaleNorm.
+  activations have an ideal global scale. In the low-resource Transformer codepath, this acts on the
+  whole embedding-dimension residual vector before the attention projections and head split. RMSNorm
+  can be viewed as the related rescaling-only family member with per-unit gains; tying those gains
+  and dividing by `sqrt(d)` recovers ScaleNorm.
 
 The gap this leaves is specific. The `1/sqrt(d_k)` factor controls only the initial scale of the
-attention logits, not their range during training. ScaleNorm and RMSNorm normalize the residual
-stream — and ScaleNorm normalizes whole pre-split vectors including the values — but neither acts
-on the per-head query and key vectors that actually form the dot products inside the softmax, and
-neither bounds those dot products. So the saturation failure mode above is left untouched at the
-one place it originates: the compatibility scores entering the attention softmax.
+attention logits, not their range during training. ScaleNorm and RMSNorm normalize residual-stream
+activations, and a residual-stream normalization before the attention projections still does not make
+each post-split per-head query/key vector unit length. Neither method directly bounds the dot
+products that enter the attention softmax. So the saturation failure mode above is left untouched at
+the one place it originates: the compatibility scores entering the attention softmax.
 
 ## Baselines
 
@@ -123,13 +123,12 @@ it does nothing to bound the dot products feeding the softmax.
 
 **ScaleNorm + FixNorm + PreNorm (Nguyen & Salazar 2019).** The state-of-the-art low-resource
 recipe described above: PreNorm for stable warmup-light training, FixNorm for rare words, and
-ScaleNorm — `g · x/||x||` along the embedding dimension, applied to queries, keys and values
-before the multi-head split — as a fast single-scalar replacement for LayerNorm. ScaleNorm+FixNorm
-at the final linear layer coincides with cosine normalization with a learned scale. Limitation:
-ScaleNorm normalizes whole pre-split vectors, including the values that are merely averaged and the
-embedding-dimension geometry that the per-head dot product does not see; it replaces LayerNorm
-rather than acting where the softmax saturation originates, and it leaves the per-head
-query-key scores unbounded.
+ScaleNorm — `g · x/||x||` along the embedding dimension on the residual-stream vector before the
+attention projections and multi-head split — as a fast single-scalar replacement for LayerNorm.
+ScaleNorm+FixNorm at the final linear layer coincides with cosine normalization with a learned
+scale. Limitation: ScaleNorm normalizes one whole pre-split vector, not each post-split scoring
+vector; it replaces LayerNorm rather than acting where the softmax saturation originates, and it
+leaves the per-head query-key scores unbounded.
 
 **Cosine normalization (Luo et al. 2018) and softmax-free attention (Richter & Wattenhofer 2020).**
 The first bounds inner products in fully-connected layers to `[−1, 1]` via cosine similarity; the
@@ -145,7 +144,7 @@ scaling.
 The natural yardsticks, all pre-existing:
 
 - **Five low-resource translation pairs.** Galician→English and Slovak→English (TED Talks corpus,
-  the two lowest-resource pairs at roughly 6k and 61k examples), Arabic→English and English→Hebrew
+  the two lowest-resource pairs at roughly 10k and 61k examples), Arabic→English and English→Hebrew
   (TED Talks, 100-300k examples), and English→Vietnamese (IWSLT'15, 133k examples) — spanning
   resource levels, language families, writing directions, and English-as-source vs. -as-target.
 - **Architecture and optimization.** Transformer with hidden dimension 512 and feed-forward
