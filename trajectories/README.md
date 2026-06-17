@@ -14,9 +14,23 @@ re-expresses each in this task's scaffold and threads the reflections through.
 
 ## The two artifacts per task
 
+### 0. Published-only / ablation-heavy gates (READ FIRST — these decide whether to build anything)
+
+- **`methods/<slug>` exists ONLY for a genuine published method.** A `methods/` trace is a
+  paper-to-reasoning artifact, so it is created **only** when a specific published paper introduced
+  *exactly* that method (you can name the title + arXiv/venue). **Never** create a `methods/` trace for
+  an ablation / config variant / generic control — e.g. "no weight decay", "vanilla adam", "identity",
+  "l2norm", "default", "nope", token-level vs sequence-level IS, k1/k2/k3 KL estimators,
+  outcome-only/group-std/batch-std reward normalization, weighted-nll, plain SGD/BC/ERM/cross-entropy
+  controls. The bar is "a paper introduced exactly this method", not "this resembles a paper". When
+  unsure, do one quick web check; if you cannot point to the paper, it is an ablation — skip it.
+- **A task gets a trajectory ONLY if its ladder is mostly published methods** (≥2 genuine published-method
+  baselines). If the ladder is **ablation-heavy** (mostly knobs/variants), do **not** build a trajectory
+  for it — the iteration-of-papers framing does not apply.
+
 ### 1. Per-baseline standalone traces — live in `methods/<slug>/`
 
-Every baseline of the task gets the ordinary **paper-to-reasoning** triplet
+Every **published-method** baseline of the task gets the ordinary **paper-to-reasoning** triplet
 (`results/{context,reasoning,answer}.md`), produced exactly per
 `.claude/skills/paper-to-reasoning/SKILL.md` — in-frame, fully grounded in retrieved sources, and
 passed through the per-method Codex review gate (`.codex_review.json`). These are the full-length

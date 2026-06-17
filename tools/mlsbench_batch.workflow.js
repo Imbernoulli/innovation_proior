@@ -17,10 +17,12 @@ const METHOD_SCHEMA = {
     ok: { type: 'boolean' },
     title: { type: 'string' },
     arxiv: { type: 'string', description: 'arXiv id, or "" if none / pre-arXiv' },
-    codex_outcome: { type: 'string', enum: ['completed', 'failed', 'not_run'] },
+    published: { type: 'boolean', description: 'true only if a specific published paper introduced exactly this method' },
+    skipped: { type: 'boolean', description: 'true if NO trace was created because the baseline is an ablation/variant, not a published method' },
+    codex_outcome: { type: 'string', enum: ['completed', 'failed', 'not_run', 'skipped'] },
     notes: { type: 'string' },
   },
-  required: ['slug', 'ok', 'title', 'arxiv', 'codex_outcome'],
+  required: ['slug', 'ok', 'title', 'arxiv', 'published', 'codex_outcome'],
 }
 
 const TRAJ_SCHEMA = {
@@ -28,6 +30,7 @@ const TRAJ_SCHEMA = {
   properties: {
     task: { type: 'string' },
     ok: { type: 'boolean' },
+    skipped: { type: 'boolean', description: 'true if NO trajectory was built because the task is ablation-heavy (<2 published-method baselines)' },
     title: { type: 'string', description: 'trajectory display title (baseline-iteration framing)' },
     steps: { type: 'array', items: { type: 'string' }, description: 'baseline slugs weak->strong' },
     endpoint: { type: 'string', description: 'display name of the final step (strongest baseline, or finale)' },
@@ -50,7 +53,10 @@ READ FIRST:
 - \`${REPO}/methods/adam/results/{context,reasoning,answer}.md\` — the quality/voice bar.
 - To IDENTIFY exactly which published method "${m.baseline}" is: read \`${MLS}/tasks/${m.task}/task_description.md\` and \`${MLS}/tasks/${m.task}/edits/${m.baseline}.edit.py\` (the authoritative definition). Then find its real published reference.
 
-DO (per the skill):
+PUBLISHED-ONLY GATE (do this FIRST, it is mandatory):
+A \`methods/<slug>\` trace is a paper-to-reasoning artifact, so it exists ONLY for a baseline that is a GENUINE PUBLISHED METHOD — a specific published paper introduced exactly this method (you can name the title + arXiv id/venue). If "${m.baseline}" is instead an ABLATION / CONFIG VARIANT / generic control with no dedicated paper — e.g. "no weight decay", "vanilla adam", "identity", "l2norm", "default", "multi epoch", "nope/no positional encoding", a loss-coefficient or granularity or normalization toggle of one underlying method (token-level vs sequence-level, k1/k2/k3, outcome-only/group-std/batch-std, weighted-nll, huber-pinball), a plain SGD/Adam/BC/ERM/cross-entropy used as a control — then DO NOT create any files. Return immediately with ok:true, published:false, skipped:true, codex_outcome:"skipped", title:"", arxiv:"", and notes explaining what the edit.py actually does and why it is not a published method. Be strict: the bar is "a paper introduced exactly this method", not "this resembles ideas from a paper". When unsure, do ONE quick web search; if you cannot point to that paper, treat it as an ablation and skip.
+
+ONLY IF published=true, DO (per the skill):
 1. Grounded retrieval — actually fetch + read the primary paper, its load-bearing ancestors, and a third-party explainer; capture into \`methods/${m.slug}/{src,refs,notes}/\`. NEVER write from memory; verify every equation/constant against a retrieved source.
 2. Write the three deliverables to \`methods/${m.slug}/results/\`: \`context.md\` (5 sections, in-frame, no target-method name as a paper), \`reasoning.md\` (first-person present, continuous prose, NO section headers, derive don't gesture, full appendix-level depth, lands on real code/the field-appropriate final form), \`answer.md\` (distilled + faithful code). English.
 3. **Run the write-enabled Codex review gate YOURSELF** (you have Bash): resolve \`ls ~/.claude/plugins/cache/*/codex/*/scripts/codex-companion.mjs\`, run \`node "<path>" task "Review AND FIX in place the paper-to-reasoning deliverables for ${m.slug} at ${REPO}/methods/${m.slug}/results/. Prioritize math/derivation correctness, then code faithfulness, then posterior/hindsight leaks, then scaffold purity. Output a file:line changelog." --write --model gpt-5.5 --effort xhigh\`. Re-verify its changelog yourself, then write \`methods/${m.slug}/results/.codex_review.json\` = {"method":"${m.slug}","codex_reviewed":true,"outcome":"completed","reviewed_at":"<UTC ISO8601>","reviewer":"gpt-5.5","effort":"xhigh","evidence":"this-run"}. If the runtime was unavailable, write outcome "not_run"/"failed" and say so (do not fake it).
@@ -59,7 +65,7 @@ HARD CONSTRAINTS:
 - This is the canonical PAPER version of the method (not the task scaffold). Identify the method correctly from the edit.py, but the trace is the normal paper-to-reasoning derivation.
 - Do NOT edit \`methods.json\`, \`trajectories.json\`, any other method, or run \`git\`. Only write under \`methods/${m.slug}/\`.
 
-RETURN the schema: slug="${m.slug}", ok (did all 3 files + codex marker get written), title (the method's real published title), arxiv (id or ""), codex_outcome, notes (the reference you used + anything notable).`
+RETURN the schema: slug="${m.slug}", ok, published (true if a real paper introduced exactly this method), skipped (true if you created nothing because it is an ablation/variant), title, arxiv, codex_outcome, notes (the reference you used, or why it was skipped).`
 }
 
 function trajPrompt(t) {
@@ -69,6 +75,8 @@ READ FIRST (obey exactly):
 - \`${REPO}/trajectories/README.md\` — THE SPEC. Every rule is mandatory.
 - \`${REPO}/trajectories/rl-intrinsic-exploration/\` — the reference conformant example (meta.json, 00-initial-context.md, 01-ppo-reasoning.md, 01-ppo-answer.md, 01-feedback.md, a later step).
 - \`${MLS}/tasks/${t.task}/{task_description.md,config.json,leaderboard.csv}\` AND the edit surface \`${MLS}/tasks/${t.task}/edits/*.edit.py\` + the scaffold template/editable file in config.json.
+
+ABLATION-HEAVY GATE (do this FIRST, mandatory): classify each baseline as a GENUINE PUBLISHED METHOD (a specific paper introduced exactly it) vs an ABLATION/CONFIG VARIANT (a knob/toggle/generic control with no dedicated paper — see the examples below). If FEWER THAN 2 baselines are genuine published methods (the ladder is mostly ablations/variants), DO NOT build a trajectory: create nothing and return ok:true, skipped:true, with notes listing the per-baseline classification and why the task is ablation-heavy. Only proceed when the ladder is genuinely a sequence of published methods. (Examples of ablation/variant, NOT a paper: "no weight decay", "vanilla adam", "identity", "l2norm", "default", "nope", token-level vs sequence-level IS, k1/k2/k3 KL estimators, outcome-only/group-std/batch-std reward normalization, weighted-nll, plain SGD/BC/ERM/cross-entropy controls.)
 
 STEPS:
 1. Rank the task's baselines weak->strong from the \`is_final,true\` \`baseline:*\` leaderboard rows (state basis in meta.json; mind metric direction).
