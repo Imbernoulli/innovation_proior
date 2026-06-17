@@ -1,0 +1,1 @@
+Let $ABC$ be an acute, scalene triangle, and let $M$, $N$, and $P$ be the midpoints of $BC$, $CA$, and $AB$, respectively. Let the perpendicular bisectors of $AB$ and $AC$ intersect ray $AM$ in points $D$ and $E$ respectively, and let lines $BD$ and $CE$ intersect in point $F$, inside of triangle $ABC$. Prove that points $A$, $N$, $F$, and $P$ all lie on one circle.

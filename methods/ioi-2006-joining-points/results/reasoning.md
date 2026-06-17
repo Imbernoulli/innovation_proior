@@ -1,0 +1,189 @@
+OK, let me think this through from scratch. I have a square. The top two corners are green, the bottom two are red. Scattered inside are more green and red points, and I'm told no three of all these points lie on a common line. I have to draw segments: each segment joins two same-color points, no segment may cross any other, and in the end the greens must all hang together in one connected piece and the reds all in another. Exactly $g-1$ green segments and $r-1$ red — so each color ends up as a spanning *tree*, and the two trees must not cross each other. I'm promised a valid wiring always exists; I just have to find one.
+
+Let me first try the obvious thing, because it tells me where the difficulty really is. The legal moves are spelled out: pick two same-color points not yet connected, check the candidate segment against everything I've drawn, accept if it crosses nothing. So I could just be greedy — keep grabbing same-color pairs and adding the ones that happen to be clean. But the moment I write that down I see two problems. First, every acceptance check has to compare the candidate against all the segments already on the board, and there are up to $n$ of those, and I place up to $n$ of them, so that's $\Theta(n^2)$ work, and $n$ here can be $5\times10^4$ per color. Second, and worse, greed gives me no guarantee I'm walking *toward* a valid global wiring — I can accept a few green segments that happen to box in a red point so that the red point can't reach its tree without crossing green. Legality move-by-move doesn't imply a legal endgame exists from where I've painted myself. So greedy is both too slow and not obviously correct. Scrap it.
+
+So I should stop thinking "which edges can I add" and start thinking "what structure can I *build* that is non-crossing by construction." Let me consider building each color's tree on its own first. Within the green points alone I can certainly make a non-crossing connected graph — triangulate the green set, pull out a spanning tree, done, and that's $O(g\log g)$, clean. Same for red. But here's the wall: I built them in two separate universes. Nothing I did stops a green tree edge from slicing straight through a red tree edge. The two point sets are interleaved in the same square, and a construction that is internally fine for green can be globally illegal against red. Triangulating the *combined* set doesn't save me either — that planar graph has bichromatic edges, and I need monochrome trees; forcing it back to one-color-at-a-time just hands me the cross-color crossing question all over again. The real difficulty isn't connectivity per color — that's easy — it's keeping the two colors out of each other's way at the same time.
+
+So I need the two colors to live in *separate regions of the plane* that I keep disjoint as I go. If green segments and red segments are always confined to regions whose interiors don't overlap, they can't cross. Let me hold onto that: keep building a partition of the plane into cells, and never let a segment leave its cell.
+
+Now what's special about this configuration that I can exploit? The corners. Green sits at the top two corners, red at the bottom two. So green "owns" the top and red "owns" the bottom in some rough sense. Let me cut the square in two by a diagonal — say from the top-right green corner to the bottom-left red corner. That gives me two triangles. The top base of the square (top-left green to top-right green) is a green edge I'm happy to draw; the bottom base (bottom-left red to bottom-right red) is a red edge I'm happy to draw. So I draw those two edges right away — top edge green, bottom edge red, both perfectly legal, they're on the boundary and cross nothing.
+
+Now look at one of those triangles, say the upper one with the two green corners and one red corner. It has one drawn edge — the green top edge — and one apex of the *other* color, the red corner. And inside it sit some greens and some reds. I have the same kind of object in the lower triangle: a drawn red edge along the bottom, a green apex, mixed points inside. Two triangles, each with a single already-drawn monochrome edge and an opposite-colored apex. That feels like a recursive shape. Let me chase it.
+
+Let me name the recurring situation. I have a triangle. Two of its corners are the same color $c$, and the edge between them is *already drawn* (it's a legal segment of color $c$). The third corner — the apex — is the other color $c'$. Inside the triangle are some leftover green and red points. My job is to wire everything inside this triangle into the right trees without ever leaving the triangle, so I can never collide with whatever's happening outside it. That's the subproblem. The whole task is two copies of it, one per starting triangle, and the points get handed to whichever triangle they fall inside (one side-of-the-diagonal test each).
+
+Now, inside one triangle: what are the easy cases? If there are no interior points at all, I'm done with this triangle — its edge is drawn, its three corners belong to trees that will get stitched together elsewhere, nothing to do here. Next easy case: suppose every interior point is color $c$, the *same* color as the drawn edge. Then I have a bunch of $c$-colored points and two $c$-colored corners, and not a single point of the other color inside to get in the way. I can just fan all of them out to one of the $c$-colored corners — draw a segment from that corner to each interior $c$-point. Do those cross? They all share the corner as a common endpoint, and they all live inside a convex triangle, so any two of them meet only at that shared corner — a star never crosses itself. And they're inside the triangle so they don't escape to bother anyone outside. So that case is just: star them to a same-colored vertex. Clean, and it's $O(\text{number of points})$. Symmetrically, if everything inside is the *opposite* color $c'$, I fan them all to the apex (which is the lone $c'$ vertex). Same star argument.
+
+The hard case is mixed: some $c$ and some $c'$ inside the same triangle. The two colors can collide now, and I have to actually do something. I can't just fan the greens one way and the reds another and hope — those two fans would cross. I need to *cut the triangle* so that the cut separates work into smaller triangles of the same shape, and crucially, every cut I make has to be a legal monochrome segment.
+
+What legal segment can I draw inside this triangle right now? The apex is color $c'$. If I take some interior point of color $c'$ and join it to the apex, that's a same-color segment, both endpoints $c'$. Does it cross anything? The apex is a vertex of the triangle, the chosen point is strictly inside, so the whole segment lies strictly inside the triangle — it can't cross the triangle's own edges, and it can't cross anything outside the triangle because it never leaves. So joining an interior $c'$-point to the apex is always legal. Good — that's my cut. Call the chosen point $Q$.
+
+Now what does drawing $Q$-to-apex do to the triangle? $Q$ is an interior point; the apex is one corner. Hmm, a single segment from an interior point to one corner only chops the triangle into two pieces, not a tidy set of triangles. Let me look harder. The triangle has three corners: the two same-colored ones, call them $A$ and $B$ (the drawn edge is $A$–$B$), and the apex $C$. I've put $Q$ strictly inside and drawn $Q$–$C$. If I think of $Q$ as a new vertex and imagine the three segments from $Q$ to each of $A$, $B$, $C$, those three segments cut triangle $ABC$ into exactly three smaller triangles that tile it: $(A,B,Q)$, $(B,C,Q)$, $(C,A,Q)$. But I've only actually *drawn* $Q$–$C$, not $Q$–$A$ or $Q$–$B$. That's fine — I don't need to draw those now. The point is that the three regions are the natural sub-triangles, and I want each of them to be a fresh instance of my subproblem, with one already-drawn monochrome edge.
+
+Let me check each of the three sub-triangles for the invariant, because this is the point where the recursion either really works or falls apart. In $(A,B,Q)$, the edge $A$-$B$ is the parent's already-drawn edge of color $c$, and the third corner $Q$ has color $c'$, so the same shape is preserved. In $(C,Q,A)$, the edge $C$-$Q$ is the segment I just drew, now of color $c'$, and the third corner $A$ has color $c$, so the roles simply swap. In $(Q,C,B)$, the edge $Q$-$C$ is again the new drawn edge of color $c'$, and the third corner $B$ has color $c$. All three children have a single drawn monochrome edge and an opposite-colored apex; every child's drawn edge is genuinely already on the board, either from the parent or from the new $Q$-$C$ cut. And the three triangles tile the parent with disjoint interiors, so anything I draw inside one child can't cross anything inside another, and none of it can cross the parent's boundary. Crossing-freeness is automatic, forever, by induction: every segment I ever draw lives strictly inside some triangle of the current partition, and those triangles never overlap.
+
+Now I just distribute the leftover interior points: each interior point (other than $Q$ itself) falls into exactly one of the three sub-triangles — test it against $(C,Q,A)$, then $(A,B,Q)$, else it's in $(Q,C,B)$ — and gets handed down. Recurse on all three. The recursion bottoms out at the easy cases: a triangle with no interior points, or one that's gone single-colored inside and gets starred to a vertex.
+
+Let me sanity-check that this actually produces the *trees* I need and the right counts. Every interior point, of either color, eventually becomes either a $Q$ that I joined to an apex of its own color, or a leaf in a star that I joined to a same-colored vertex. So every interior point gets exactly one segment attaching it, of its own color, to something that is (transitively) tied back to a colored corner. The greens all reach the green corners; the reds all reach the red corners; the green corners are tied together by the very first top edge I drew, the reds by the bottom edge. So green is one connected non-crossing tree, red is another, they never cross. And the count: I draw the two corner edges, then exactly one new segment per interior point (its attaching segment, whether as a $Q$-cut or a star-leaf). Interior greens number $g-2$ and interior reds $r-2$, plus the one green corner-edge and one red corner-edge, gives $g-1$ green and $r-1$ red segments total. Exactly right — it's a spanning tree per color, no more, no less. The construction *is* correct, and it's valid by the tiling argument. 
+
+So I have a correct algorithm. Now — is it fast? Let me think about the cost. A call on a triangle holding $m$ interior points does $O(m)$ work: scan to pick $Q$, scan again to bucket the points into three children. Then it recurses on the three children, whose point-counts add up to $m-1$. So the total work is $O(n)$ per level of the recursion, and the only question is the *depth*. If the split is lopsided — if one child swallows almost all $m$ points every time — the depth is $\Theta(m)$ and the whole thing degrades to $\Theta(n^2)$, right back to the quadratic wall I was trying to escape. So the choice of $Q$ is not cosmetic; it's the entire efficiency of the method.
+
+What goes wrong with a careless $Q$? Suppose I always grab, say, the first $c'$-point I happen to see. An adversary lines the $c'$-points up so that this point is extreme, and the cut $Q$–$C$ leaves nearly all the other points on one side, in a single child. Depth blows up. So I want $Q$ chosen so the cut *balances* the points between the children. 
+
+Where does the balance come from, geometrically? The bad situation is repeatedly cutting with an extreme point of the apex color: the new ray barely changes the subproblem, so almost all of the mixed work survives. The fix is to make the chosen point central among the apex-color candidates in the current triangular wedge. I do not want a global polar angle, because the wedge can sit across any branch cut; what I actually need is the local order of rays inside one triangle. Since a triangle angle is smaller than a half-turn, two rays from the apex have an exact local order by the sign of their cross product. Taking the median in that local order gives me a cut ray that is not extreme: the apex-color candidates to one side of the ray and to the other side are both at most half of that candidate set. So a mixed branch cannot keep choosing a point at the very edge of the available apex-color fan; the color that supplies legal cuts is forced inward instead of being peeled away one point at a time.
+
+Let me make sure that's enough for the full scan count, because the edge-color points and the middle child $(A,B,Q)$ also have to be charged. A point of the edge color may ride along through several triangles, but it is scanned only while its current triangle is mixed. Once the opposite-color population in that branch disappears, the whole triangle becomes a single-color star and terminates in one scan. So the accounting is by mixed levels, not by testing every possible segment against every other segment. With the median chosen in linear time, each mixed level costs linear work over the points still present at that level, and the non-extreme cut choice is the balance condition that gives the $O(n\log n)$ construction. If I pick $Q$ uniformly at random among the $c'$-points instead, the same recursive shape gives $O(n\log n)$ expected time; the median is the deterministic way to avoid adversarial extreme cuts.
+
+One more thing nags at me before I trust the leaves. When a triangle goes single-colored and I star all the interior points to a vertex — I claimed that's non-crossing. Let me re-examine, because "star inside a convex region" is the load-bearing fact. The triangle is convex; the apex of the star is one of its vertices; every interior point is inside the triangle, hence visible from that vertex along a segment that stays inside. Two such segments emanate from the same vertex; two distinct rays from a common point only meet at that point; so no two cross except at the shared vertex, which is allowed. And none of them leave the triangle, so they don't disturb anything outside. Good, the leaves are clean.
+
+And let me double check the cross-color separation one final time, concretely, because that was the whole point of the difficulty. Green segments and red segments — can any green segment cross any red segment? Every segment ever drawn lies strictly inside exactly one triangle of the partition that existed when it was drawn, and that triangle is a subset of one of the children all the way up. Two segments cross only if their containing regions overlap in their interiors. But the partition is a tiling by interior-disjoint triangles at every stage, and refining a triangle only subdivides it — it never makes two previously-disjoint triangles overlap. So two segments drawn in different triangles can't cross, regardless of color; and two drawn in the same triangle are either the same star (share an apex, don't cross) or a $Q$-cut plus its descendants (the descendants live in sub-triangles strictly to one side). There is simply no way for a green and a red segment to meet in their interiors. The colors are kept apart by geometry, not by checking.
+
+Now let me also pin down the seeding precisely so the corners and the diagonal are handled right. I draw the green top edge (green corner #1 to green corner #2) and the red bottom edge (red corner #1 to red corner #2). The diagonal I use to split the square — from the top-right green corner to the bottom-left red corner — is *bichromatic*, so I must **not** draw it; it's only the line I use to decide which starting triangle each interior point belongs to. Upper triangle: the two green corners and the bottom-left red corner, drawn edge = green top edge, apex = that red corner. Lower triangle: the two red corners and the top-right green corner, drawn edge = red bottom edge, apex = that green corner. Each interior point goes to the upper triangle if it's inside it, else the lower one. Then I run the recursion on each. The diagonal is the boundary the two triangles share; since neither side ever draws a segment that crosses that shared boundary (everything stays strictly inside its triangle), the two halves can't interfere.
+
+Let me now turn this into real code. I'll keep an explicit work-stack rather than actual recursion, because at $5\times10^4$ points per color a manual stack sidesteps any interpreter recursion limit and the bucketing is the same. Points carry a color tag and an index; I keep green and red in separate index namespaces (so green #3 and red #3 are different points) and emit each segment as the two indices plus the color character. Orientation is exact integer arithmetic; the strict point-in-triangle test is "same sign on all three directed edges," and since no three points are collinear I never see a zero. For the median I compare rays from the apex by exact cross products inside the current wedge, then use a median-of-medians selector so the selection step is linear in the number of candidates.
+
+```python
+import sys
+
+def cross(ax, ay, bx, by, cx, cy):
+    # twice the signed area of (A,B,C); exact in 64-bit ints
+    return (ax - bx) * (cy - by) - (cx - bx) * (ay - by)
+
+def sgn(v):
+    return 1 if v > 0 else (-1 if v < 0 else 0)
+
+def inside(A, B, C, X, P):
+    # strict interior: same orientation sign on all three directed edges
+    ax, ay = P[A]; bx, by = P[B]; cx, cy = P[C]; xx, xy = P[X]
+    s1 = sgn(cross(ax, ay, bx, by, xx, xy))
+    s2 = sgn(cross(bx, by, cx, cy, xx, xy))
+    s3 = sgn(cross(cx, cy, ax, ay, xx, xy))
+    return s1 == s2 and s2 == s3
+
+def solve(P, g, r):
+    out = []
+    G1, G2 = ('g', 1), ('g', 2)      # top-left, top-right corners (green)
+    R1, R2 = ('r', 1), ('r', 2)      # bottom-left, bottom-right corners (red)
+
+    def median_item(items, less):
+        target = len(items) // 2
+
+        def small_sort(a):
+            for i in range(1, len(a)):
+                x = a[i]
+                j = i
+                while j > 0 and less(x, a[j - 1]):
+                    a[j] = a[j - 1]
+                    j -= 1
+                a[j] = x
+
+        def select(a, k):
+            a = list(a)
+            while True:
+                if len(a) <= 32:
+                    small_sort(a)
+                    return a[k]
+                medians = []
+                for i in range(0, len(a), 5):
+                    group = a[i:i + 5]
+                    small_sort(group)
+                    medians.append(group[len(group) // 2])
+                pivot = select(medians, len(medians) // 2)
+                lows, equals, highs = [], [], []
+                for x in a:
+                    if x == pivot:
+                        equals.append(x)
+                    elif less(x, pivot):
+                        lows.append(x)
+                    elif less(pivot, x):
+                        highs.append(x)
+                    else:
+                        equals.append(x)
+                if k < len(lows):
+                    a = lows
+                elif k < len(lows) + len(equals):
+                    return equals[0]
+                else:
+                    k -= len(lows) + len(equals)
+                    a = highs
+
+        return select(items, target)
+
+    # the two monochrome base edges -- always legal, on the boundary
+    out.append((1, 2, 'g'))
+    out.append((1, 2, 'r'))
+
+    # diagonal G2--R1 is bichromatic: NOT drawn, only used to split the points.
+    # Upper triangle (G1,G2,R1): drawn edge G1-G2 (green), apex R1.
+    # Lower triangle (R1,R2,G2): drawn edge R1-R2 (red),   apex G2.
+    interior = [k for k in P if k not in (G1, G2, R1, R2)]
+    upper, lower = [], []
+    for k in interior:
+        (upper if inside(G1, G2, R1, k, P) else lower).append(k)
+
+    # work-stack of subproblems: (A, B, Apex, pts)
+    #   edge A-B already drawn and monochrome; Apex is the opposite color
+    stack = [(G1, G2, R1, upper), (R1, R2, G2, lower)]
+
+    while stack:
+        A, B, Apex, pts = stack.pop()
+        if not pts:
+            continue                         # empty triangle: nothing to do
+        cEdge = A[0]                          # color of the drawn edge A-B
+        cApex = Apex[0]                       # opposite color
+        same = [k for k in pts if k[0] == cEdge]
+        opp  = [k for k in pts if k[0] == cApex]
+
+        if not opp:                           # all interior are edge-color:
+            for k in same:                    # star them to a same-color vertex
+                out.append((A[1], k[1], cEdge))
+            continue
+        if not same:                          # all interior are apex-color:
+            for k in opp:                      # star them to the apex
+                out.append((Apex[1], k[1], cApex))
+            continue
+
+        # mixed: pick Q as the median apex-color point in the current angular wedge
+        apx, apy = P[Apex]
+        def angle_less(U, V):
+            ux, uy = P[U]; vx, vy = P[V]
+            return cross(ux, uy, apx, apy, vx, vy) > 0
+
+        Q = median_item(opp, angle_less)
+
+        out.append((Q[1], Apex[1], cApex))    # the legal cut: Q--Apex, both apex-color
+
+        # the three children tiling (A,B,Apex): (Apex,Q,A), (A,B,Q), (Q,Apex,B)
+        c1, c2, c3 = [], [], []
+        for k in pts:
+            if k == Q:
+                continue
+            if inside(Apex, Q, A, k, P):
+                c1.append(k)
+            elif inside(A, B, Q, k, P):
+                c2.append(k)
+            else:
+                c3.append(k)
+        stack.append((Apex, Q, A, c1))        # drawn edge Apex-Q, apex A
+        stack.append((A, B, Q, c2))           # drawn edge A-B,    apex Q
+        stack.append((Q, Apex, B, c3))        # drawn edge Q-Apex, apex B
+
+    return out
+
+def main():
+    data = sys.stdin.buffer.read().split()
+    it = iter(data)
+    g = int(next(it)); P = {}
+    for i in range(1, g + 1):
+        P[('g', i)] = (int(next(it)), int(next(it)))
+    r = int(next(it))
+    for i in range(1, r + 1):
+        P[('r', i)] = (int(next(it)), int(next(it)))
+    out = solve(P, g, r)
+    sys.stdout.write('\n'.join(f"{a} {b} {c}" for a, b, c in out) + '\n')
+
+if __name__ == "__main__":
+    main()
+```
+
+So I end up with exactly the shape I needed: greedy edge-by-edge is gone, and every decision happens inside a triangle whose interior is disjoint from all the others. The corner coloring gives me the two initial triangles. Empty triangles do nothing; single-colored triangles become stars; mixed triangles get one legal apex-color cut that recreates the same invariant in three smaller triangles. Choosing that cut point as a local wedge median keeps the recursion from peeling off extremes, so I get logarithmic mixed depth, linear work per depth level, and exactly $g-1$ green plus $r-1$ red non-crossing segments.

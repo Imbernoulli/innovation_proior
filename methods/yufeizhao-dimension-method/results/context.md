@@ -1,0 +1,1 @@
+In a town of $n$ citizens, clubs are formed such that each club has an odd number of members, and every two distinct clubs share an even number of members. Prove that the number of clubs is at most $n$.

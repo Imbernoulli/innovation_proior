@@ -1,0 +1,1 @@
+An international society has its members from six different countries. The list of members has 1978 names, numbered 1, 2, ..., 1978. Prove that there is at least one member whose number is the sum of the numbers of two members from his own country, or twice the number of a member from his own country.

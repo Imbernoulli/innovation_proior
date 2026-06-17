@@ -1,0 +1,113 @@
+Let me take the recurrence version first, because it's the cleanest place to feel the difficulty. I have $a_n = c_1 a_{n-1} + c_2 a_{n-2} + \dots + c_d a_{n-d}$, the $d$ coefficients $c_1,\dots,c_d$ are fixed once and for all, I'm handed the first $d$ values $a_0,\dots,a_{d-1}$, and I want $a_N$ with $N$ possibly $10^{18}$, everything mod $m$. The completely honest first move: just run the recurrence forward. Keep a sliding window of the last $d$ values, compute the next one as that fixed weighted sum, slide, repeat, $N$ times. Correct, dead simple, and for small $N$ perfectly fine. So let me cost it, because I already suspect it dies.
+
+Each step is $O(d)$ multiply-adds, and there are $N$ steps, so $O(dN)$. With $N = 10^{18}$ that's on the order of $10^{18}$ operations no matter how I tune the constant. A machine doing $10^9$ simple operations a second would need $\sim 10^9$ seconds — decades. So the forward scan is hopeless not because each step is expensive but because there are astronomically many steps. The enemy is the *count of steps*, the linear dependence on $N$. If I'm going to survive $N = 10^{18}$, the work has to grow like $\log N$, not $N$ — roughly sixty-ish units of work, not $10^{18}$ of them. So the question becomes: is there structure that lets me leap across many steps at once instead of taking them one at a time?
+
+Stare at what a single step actually *is*. I have the window $(a_{n-1}, a_{n-2}, \dots, a_{n-d})$ and I produce the next window $(a_n, a_{n-1}, \dots, a_{n-d+1})$. The new window is: one freshly computed value $a_n = \sum_j c_j a_{n-j}$, and then the old window shifted by one with its oldest entry dropped. Two things jump out. First, every entry of the new window is a *linear* combination of the entries of the old window — $a_n$ is the weighted sum, and each shifted entry is literally "copy this old entry," which is also a (trivial) linear combination. Second — and this is the part that matters — the rule mapping old window to new window is *exactly the same at every step*. It doesn't depend on $n$. The coefficients $c_j$ are fixed; the shift is fixed. Step $5$ and step $5{,}000{,}000$ apply the identical transformation. So I'm not doing $N$ different things; I'm doing the *same* thing $N$ times in a row. That repetition is the structure I was hoping for.
+
+Let me name the state so I can write the step down. Let $v_n$ be the column vector stacking $d$ consecutive terms, newest on top:
+$$v_n = \begin{pmatrix} a_n \\ a_{n-1} \\ \vdots \\ a_{n-d+1} \end{pmatrix}.$$
+I want the linear map $L$ with $v_n = L\, v_{n-1}$. Reading off the components of the new window in terms of the old window $v_{n-1} = (a_{n-1}, a_{n-2}, \dots, a_{n-d})^\top$:
+
+the top entry of $v_n$ is $a_n = c_1 a_{n-1} + c_2 a_{n-2} + \dots + c_d a_{n-d}$ — that's the dot product of the row $(c_1, c_2, \dots, c_d)$ with $v_{n-1}$.
+
+The second entry of $v_n$ is $a_{n-1}$, which is the *first* entry of $v_{n-1}$ — so that row picks out coordinate $1$: $(1, 0, \dots, 0)$.
+
+The third entry of $v_n$ is $a_{n-2}$, the *second* entry of $v_{n-1}$ — row $(0, 1, 0, \dots, 0)$.
+
+And so on down: the $i$-th entry of $v_n$ (for $i \ge 2$) is the $(i-1)$-th entry of $v_{n-1}$. Each of those rows is a single $1$ sitting just below the diagonal. So the map is a square array of numbers,
+$$T = \begin{pmatrix} c_1 & c_2 & c_3 & \cdots & c_d \\ 1 & 0 & 0 & \cdots & 0 \\ 0 & 1 & 0 & \cdots & 0 \\ \vdots & & \ddots & & \vdots \\ 0 & 0 & \cdots & 1 & 0 \end{pmatrix},$$
+a $d \times d$ table where the top row carries the recurrence coefficients and the sub-diagonal carries $1$s that shift the window down. And the operation "new entry $i$ = weighted sum of old entries with weights from row $i$" is exactly: multiply this table by the vector, $v_n = T v_{n-1}$, where the $i$-th component of the product is $\sum_k T[i,k]\, (v_{n-1})_k$. That's the right rule — I just verified row by row that it reproduces one step of the recurrence.
+
+If one step is $v_n = T v_{n-1}$ with the *same* $T$ every time, then two steps are $v_n = T(T v_{n-2}) = T\,T\, v_{n-2}$, and unrolling all the way down to the given initial window $v_{d-1} = (a_{d-1}, \dots, a_0)^\top$,
+$$v_{N} = \underbrace{T\, T \cdots T}_{N - (d-1)}\; v_{d-1}.$$
+The whole forward scan collapsed into applying the *same table* a bunch of times in a row — that's $T$ "raised to a power." The number of steps $N$ is no longer the length of a loop; it's an *exponent* on a fixed object $T$. Counting walks turns out to be the same picture: if $G[i][j]$ is the number of edges $i \to j$, then the number of length-$1$ walks $i \to j$ is $G[i][j]$, and the number of length-$2$ walks $i \to j$ is $\sum_k G[i][k]\,G[k][j]$ (pick the midpoint $k$, multiply the independent choices, sum over midpoints) — which is exactly the $(i,j)$ entry of $G$ times $G$. By the same midpoint argument the count of length-$N$ walks $i \to j$ is the $(i,j)$ entry of the $N$-fold product of $G$ with itself. So both problems reduce to the identical task: take a fixed $d \times d$ table of numbers and compute the $N$-fold product of it with itself, mod $m$. The exponential-in-$N$ blow-up of the answers is fine; I'm working mod $m$ the whole way, so the entries stay bounded.
+
+So the problem is now: compute $T^N$ fast. Naively forming $T^N$ as $T \cdot T \cdots T$ is still $N-1$ table-by-table products — I've reorganized the work but not reduced its *count*; it's still linear in $N$. I need to compute a power without doing a number of multiplications proportional to the exponent. So forget matrices for a second and ask the baby question: given an ordinary number $a$, how would I compute $a^N$ in far fewer than $N$ multiplications? The waste in $a \cdot a \cdots a$ is that I keep multiplying by the *same small thing*. But $a^4 = (a^2)^2$ — compute $a^2$ once (one multiply), then square it (one more multiply), and I have $a^4$ in two multiplies instead of three. $a^8 = (a^4)^2$, one more. Each squaring *doubles* the exponent I can reach. So with $k$ squarings I reach $a^{2^k}$, meaning to reach exponent $N$ I need only about $\log_2 N$ squarings. For general $N$ that isn't a power of two, write $N$ in binary: $a^N = a^{\sum_i b_i 2^i} = \prod_{i:\, b_i = 1} a^{2^i}$. Walk the bits of $N$ from low to high, keep a running "current square" that starts at $a$ and gets squared each bit, and whenever the bit is $1$ fold that current square into an accumulator. The cost is one squaring per bit plus at most one extra multiply per set bit — $O(\log N)$ multiplications total. Concretely: $a^t = (a^{\lfloor t/2 \rfloor})^2$ when $t$ is even, and $(a^{\lfloor t/2 \rfloor})^2 \cdot a$ when $t$ is odd, recursed down — same thing.
+
+The whole trick that makes this legal for *numbers* is that I'm free to regroup the product $a \cdot a \cdots a$ however I like — multiplication of numbers is associative, so $(a \cdot a)(a \cdot a)$ and $((a \cdot a) \cdot a) \cdot a$ are the same value, and I'm allowed to compute the cheap grouping. To port the trick to tables, I need the same freedom: I need $(T \cdot T) \cdot T = T \cdot (T \cdot T)$, i.e. table-multiplication has to be associative too, or "$T^N$" isn't even well-defined as a single value and squaring isn't licensed. So let me actually check that, not assume it. Take three tables $A$ ($a \times b$), $B$ ($b \times c$), $C$ ($c \times e$), with the product rule $(XY)[i,j] = \sum_k X[i,k]\,Y[k,j]$. Then
+$$((AB)C)[i,j] = \sum_{l} (AB)[i,l]\, C[l,j] = \sum_{l}\Big(\sum_{k} A[i,k]\,B[k,l]\Big) C[l,j] = \sum_{l}\sum_{k} A[i,k]\,B[k,l]\,C[l,j].$$
+That's a finite double sum of ordinary products, and finite sums of numbers can be reordered freely, so swap the order of summation:
+$$= \sum_{k}\sum_{l} A[i,k]\,B[k,l]\,C[l,j] = \sum_{k} A[i,k]\Big(\sum_{l} B[k,l]\,C[l,j]\Big) = \sum_{k} A[i,k]\,(BC)[k,j] = (A(BC))[i,j].$$
+Equal entrywise, so $(AB)C = A(BC)$. Good — the table product is associative, exactly because the underlying number arithmetic is. So $T^N$ is unambiguous, and I can group the $N$-fold product as repeated squaring just like the scalar case. $T^N = (T^{N/2})^2$ when $N$ is even, $= (T^{\lfloor N/2\rfloor})^2 \cdot T$ when odd, recursed down — or iteratively, walk the bits of $N$, keep an accumulator that starts at the identity table $I$ (the table with $1$s on the diagonal and $0$s elsewhere, which leaves any table unchanged under the product — the table analogue of the number $1$), keep a "current power" $B$ that starts at $T$ and gets squared each bit, and fold $B$ into the accumulator whenever the bit is set.
+
+There are only $O(\log N)$ bits, so only $O(\log N)$ squarings and $O(\log N)$ folds. What does one table product of two $d \times d$ tables cost? Each of the $d^2$ output entries is a sum over $d$ terms, so $O(d^2 \cdot d) = O(d^3)$ number-multiplications. Multiply: the whole power costs $O(d^3 \log N)$. At $N = 10^{18}$, $\log_2 N \approx 60$, so I have about sixty bit rounds, with at most one extra fold per round, instead of $10^{18}$ recurrence steps. The $N$-dependence has dropped from linear to logarithmic, and the price is the $d^3$ from one table product.
+
+The modulus slots in without any fuss, and it's worth being careful about *where* I reduce. The product rule is built entirely out of integer multiplications and additions, and reduction mod $m$ commutes with both: $(x + y) \bmod m = ((x \bmod m) + (y \bmod m)) \bmod m$ and likewise for products. So if I keep every entry of every table reduced into $[0, m)$ after each operation, the final entries are the true counts mod $m$ — I never have to form the gigantic exact counts, which is the only reason this is even representable. Practically I reduce inside the accumulation of each output entry, so entries never grow across iterations; in a fixed-width-integer language I still choose a type wide enough for one product before the reduction, and in a big-integer language the reduction is for speed and size.
+
+Let me make sure the recurrence-to-table wiring is right with the smallest case, plain Fibonacci: $a_n = a_{n-1} + a_{n-2}$, so $d = 2$, $c_1 = c_2 = 1$, and
+$$T = \begin{pmatrix} 1 & 1 \\ 1 & 0 \end{pmatrix}.$$
+Check the action on a window: $T \binom{a_{n-1}}{a_{n-2}} = \binom{a_{n-1} + a_{n-2}}{a_{n-1}} = \binom{a_n}{a_{n-1}}$ — top entry is the new Fibonacci number, bottom entry is the old one shifted down. Exactly $v_n = T v_{n-1}$. With initial window $v_1 = \binom{a_1}{a_0} = \binom{1}{0}$, I get $v_N = T^{N-1} v_1$, and the Fibonacci number $a_N$ is the top entry. Equivalently $T^N \binom{1}{0} = \binom{a_{N+1}}{a_N}$, so $a_N$ reads off the bottom entry of $T^N \binom{1}{0}$. Tracing small powers: $T^2 = \begin{pmatrix} 2 & 1 \\ 1 & 1 \end{pmatrix}$, $T^3 = \begin{pmatrix} 3 & 2 \\ 2 & 1 \end{pmatrix}$, $T^4 = \begin{pmatrix} 5 & 3 \\ 3 & 2 \end{pmatrix}$ — those entries are consecutive Fibonacci numbers $(2,1,1)$, $(3,2,2,1)$, $(5,3,3,2)$, matching $T^n = \begin{pmatrix} F_{n+1} & F_n \\ F_n & F_{n-1} \end{pmatrix}$. The wiring holds. And a general $d$-term recurrence is the same construction with the full top row $(c_1,\dots,c_d)$ and the sub-diagonal of $1$s. For the walk-counting form there's no companion-matrix bookkeeping at all: $T$ is just the edge-count table $G$ itself, and the answer is the single entry $(T^N)[s][t]$.
+
+One boundary case before I write it: if $N \le d - 1$ for the recurrence, the answer is just one of the given initial terms $a_N$ and I shouldn't even build a power (the exponent $N - (d-1)$ would go negative). So guard that: return $a_N \bmod m$ directly when $N < d$. For the walk problem $N = 0$ is the empty walk — the identity table — which the binary-power loop already returns correctly since it starts the accumulator at $I$ and never enters the loop.
+
+One step of the process has become multiplication by a fixed $d \times d$ table $T$ (companion table for a recurrence, edge-count table for walks), so repeated steps become a power of that table; compute the needed power by binary exponentiation — accumulator starts at the identity, square the running power once per bit of the exponent and fold it in on set bits — reducing every entry mod $m$ throughout; read the answer from the resulting table or table-vector product. $O(d^3 \log N)$ time, $O(d^2)$ space. Here it is:
+
+```python
+def walks(adj,s,t,N,m):
+    """Number of length-N walks s -> t in a directed graph (adj[i][j] = #edges i->j)."""
+    d = len(adj)
+
+    def mul(A, B):
+        p, q, r = len(A), len(B), len(B[0])
+        C = [[0] * r for _ in range(p)]
+        for i in range(p):
+            Ai, Ci = A[i], C[i]
+            for k in range(q):
+                a = Ai[k]
+                if a == 0:
+                    continue
+                Bk = B[k]
+                for j in range(r):
+                    Ci[j] = (Ci[j] + a * Bk[j]) % m
+        return C
+
+    R = [[1 % m if i == j else 0 for j in range(d)] for i in range(d)]
+    B = [[x % m for x in row] for row in adj]
+    while N > 0:
+        if N & 1:
+            R = mul(R, B)
+        B = mul(B, B)
+        N >>= 1
+    return R[s][t]
+
+
+def linrec(coeffs,init,N,m):
+    """Evaluate a_n = sum_j coeffs[j]*a_{n-1-j} at index N; init = [a_0, ..., a_{d-1}]."""
+    d = len(coeffs)
+    if N < d:
+        return init[N] % m
+
+    def mul(A, B):
+        p, q, r = len(A), len(B), len(B[0])
+        C = [[0] * r for _ in range(p)]
+        for i in range(p):
+            Ai, Ci = A[i], C[i]
+            for k in range(q):
+                a = Ai[k]
+                if a == 0:
+                    continue
+                Bk = B[k]
+                for j in range(r):
+                    Ci[j] = (Ci[j] + a * Bk[j]) % m
+        return C
+
+    def power(M, exponent):
+        R = [[1 % m if i == j else 0 for j in range(d)] for i in range(d)]
+        B = [[x % m for x in row] for row in M]
+        while exponent > 0:
+            if exponent & 1:
+                R = mul(R, B)
+            B = mul(B, B)
+            exponent >>= 1
+        return R
+
+    T = [[0] * d for _ in range(d)]
+    T[0] = [c % m for c in coeffs]
+    for i in range(1, d):
+        T[i][i - 1] = 1
+    v0 = [[init[d - 1 - i] % m] for i in range(d)]
+    vN = mul(power(T, N - (d - 1)), v0)
+    return vN[0][0]
+```
+
+I end with the whole path in front of me: the per-step update is the same linear map at every index, so repeated steps become a power of one fixed table; a forward scan costs a number of products linear in the exponent and dies at $N = 10^{18}$, but because the table product is associative I may regroup the repeated product as squaring and reach the needed exponent in $O(\log N)$ table products; each table product is $O(d^3)$ and I keep every entry mod $m$ so entries stay bounded; total $O(d^3 \log N)$, and the walk count or recurrence value is read from the resulting table or table-vector product.
