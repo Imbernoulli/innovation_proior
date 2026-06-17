@@ -213,3 +213,42 @@ New domains in use: `Math olympiad`, `Competition math`, `Informatics olympiad`,
 `web.evanchen.cc` and AoPS 403 bots → browser User-Agent. Codeforces/DMOJ 403 → `r.jina.ai` proxy. IMO shortlist
 PDFs 403 to curl but load via WebFetch. IOL idea-analysis lives in the author **slide decks**, not the terse answer keys.
 Not recoverable: 陈丹琦 plug-DP & 陈首元 LCT (doc/ppt only, no PDF); Mo's algorithm (never a formal 论文).
+
+---
+
+## Wave 4 (live, 19 — all Codex gpt-5.5 xhigh-reviewed + re-verified)
+
+**Pure mathematics:** `furstenberg-primes` · `monsky-theorem` · `sylvester-gallai` · `crossing-number-inequality`
+**Math olympiad:** `imo-2009-grasshopper` · `imo-2017-hunter-rabbit`
+**Competition math:** `putnam-2016-a4` · `putnam-2020-b6` · `yufei-zhao-lte` · `evanchen-monsters`
+**Physics olympiad:** `physicscup-2024-satellites` · `physicscup-2022-projective-optics` · `physicscup-2023-mhd-flux` · `kalda-infinite-ladder` · `kalda-huygens-fastest-path`
+**Linguistics olympiad:** `iol-2025-dzongkha` · `iol-2022-proto-chamic`
+**Information theory:** `bregman-permanent-entropy` · **Probability & combinatorics:** `hundred-prisoners`
+
+Running total across waves 1–4: **43 traces.**
+
+---
+
+## Wave-5 backlog — competition-coding candidates (vetted, two-source: solution + idea-analysis)
+
+Each passes the gate (a real solution URL + a real "why it works" analysis URL); none duplicate the already-built CP set (centroid decomposition, SBT, suffix array, eertree, min-cut, matrix exponentiation, Aliens trick, BalkanOI time-is-money, IOI 2014 Game, IOI 2006 Joining Points). Anchor problem in parentheses.
+
+| Technique | Elegant idea | Sources |
+|---|---|---|
+| **Heavy-Light Decomposition** (SPOJ QTREE path queries) | split tree into heavy chains; any root path crosses O(log n) chains | cp-algorithms/graph/hld + oi-wiki 树链剖分 |
+| **DSU on tree / small-to-large** (CF 600E subtree color counts) | reuse the heavy child's counts; O(n log n) by the light-edge bound | oi-wiki dsu-on-tree + CF blog 44351 "Sack" |
+| **Segment Tree Beats (吉司机)** (range-chmin + sum) | store max + 2nd-max; chmin recursion breaks early → potential argument | CF blog 57319 (jiry_2) + USACO Guide |
+| **Persistent Segment Tree** (static range k-th smallest) | path-copy only the O(log n) touched nodes per version | oi-wiki 可持久化线段树 + USACO Guide |
+| **2-SAT via SCC** (binary-constraint feasibility) | clause = two implications; x & ¬x in one SCC ⇒ unsat | cp-algorithms/graph/2SAT + oi-wiki |
+| **Suffix Automaton** (# distinct substrings) | minimal DFA of all suffixes via endpos classes + suffix links | cp-algorithms SAM + oi-wiki 后缀自动机 |
+| **Link-Cut Tree** (dynamic tree path queries) | preferred-path splay forest; access() exposes a root path | oi-wiki LCT |
+| **Manacher's algorithm** (longest palindromic substring) | reuse mirror radii inside the rightmost palindrome → O(n) | cp-algorithms Manacher |
+| **Z-algorithm** (pattern matching) | rightmost-match window copies z-values from the mirror prefix | cp-algorithms Z-function |
+| **Berlekamp–Massey** (recover a linear recurrence) | incrementally maintain the shortest LFSR on each mismatch | oi-wiki BM + CF blog 61306 |
+| **IOI 2018 "Werewolf" (Kruskal Reconstruction Tree)** | two reconstruction trees turn reachability into a 2D range intersection | IOI 2018 booklet + mzhang2021 KRT tutorial |
+| **Mo's algorithm** (offline range-distinct) | sort queries by (√n block of L, then R) → O((n+q)√n) | cp-algorithms sqrt decomposition |
+| **Hopcroft–Karp** (max bipartite matching at 10⁵) | BFS-layer + maximal set of shortest augmenting paths → O(E√V) | cp-algorithms Kuhn + oi-wiki bigraph-match |
+| **ICPC WF 2017 "Money for Nothing"** (max-area over staircases) | quadrangle inequality ⇒ monotone optimum ⇒ D&C on Monge | ICPC 2017 problems + solutions PDFs |
+| **集训队论文 贾志豪《组合游戏略述》** (Multi-SG game) | extend Sprague–Grundy beyond Nim via structural transforms | jsdelivr NOIpaper PDF |
+
+*(Honorable mentions: Euler-tour+RMQ LCA, wavelet tree, dominator tree (Lengauer–Tarjan), Dilworth/min-path-cover, standalone monotone Convex Hull Trick.)*

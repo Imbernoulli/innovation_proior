@@ -1,0 +1,71 @@
+Two little magnetized spheres, dipole moments $m$, radius $R$, sitting in a liquid, and I pull them apart along their common axis from an initial center separation $3R$ out to $L\gg R$. I want the force I have to keep applying once they sit at distance $L$. Let me first pretend the liquid isn't there and see what number I'd get, because that's the answer I instinctively reach for.
+
+In vacuum, two coaxial dipoles with moments aligned along the line joining them attract, and the interaction energy of two dipoles a distance $r$ apart goes like $\mu_0 m^2/r^3$. The force is the derivative, so $F\sim \mu_0 m^2/r^4$. At $r=L$ that's $\mu_0 m^2/L^4$ — it *decays* as I separate them, like everything dipolar. So in vacuum, holding them at large $L$ takes almost no force; the attraction is feeble out there. Fine. That would be the whole story if the surrounding medium were inert.
+
+But the problem is hammering on one detail and I keep wanting to ignore it: the liquid is "brought into a highly conductive state," treat it as superconductive, "except that the existing magnetic field is not expelled from it." That last clause is doing a lot of work. A true superconductor expels field by the Meissner effect, but here I'm explicitly told the field already threading the liquid stays put. So I should use the ideal-conductor limit with no Meissner expulsion: the field is already in place, and the fluid is free to move. That's a magnetohydrodynamics setup, not an electrostatics-of-dipoles setup. And the fluid is incompressible and fills all of space. I should not be computing a vacuum dipole-dipole force at all. The medium will do something.
+
+So what does infinite conductivity actually impose? Take any closed loop that I imagine painted onto the fluid — a loop of fluid material, moving and deforming with the flow. Ohm's law in the fluid is $\mathbf{J}=\sigma(\mathbf{E}+\mathbf{v}\times\mathbf{B})$. If $\sigma\to\infty$ and I want the current density $\mathbf{J}$ to stay finite — and it must, an infinite current is unphysical — then the thing in parentheses has to vanish: $\mathbf{E}+\mathbf{v}\times\mathbf{B}=0$ in the fluid. Now look at the EMF around my co-moving loop. The rate of change of flux through a loop that moves with the material is
+
+$$\frac{d\Phi}{dt}=\frac{d}{dt}\int_S \mathbf{B}\cdot d\mathbf{A}=-\oint_{\partial S}(\mathbf{E}+\mathbf{v}\times\mathbf{B})\cdot d\boldsymbol{\ell},$$
+
+— that's just Faraday's law written in the frame of a moving, deforming circuit, where the $\mathbf{v}\times\mathbf{B}$ piece accounts for the motion of the boundary. The integrand is exactly the quantity I just argued is zero everywhere in the fluid. So $d\Phi/dt=0$. The magnetic flux through *any* loop that moves with the fluid is frozen — constant for all time. If it weren't, a changing flux would induce an EMF, the EMF would drive a current, and with $\sigma=\infty$ that current would be infinite. Nature forbids it by keeping the flux pinned.
+
+This is the whole game: flux freezing. The field is glued to the fluid. Field lines are carried along by the material like threads in a moving fabric. Let me make sure I trust it as a statement about *field lines*, not just about one chosen loop, because that's the picture I'll actually compute with. Imagine a flux tube — a tube-shaped surface that everywhere runs along $\mathbf{B}$, so by construction zero flux pierces its sides; it's a bundle of field lines. Let the whole tube surface be advected with the fluid. Take any little patch of the side wall. The flux through that patch is zero now, and by the freezing result the flux through it can't change, so it stays zero. True for every patch, so the side stays flux-free forever: the advected tube remains a flux tube. The lines really do move with the matter. And the flux threading the tube's end caps is likewise conserved. Good — I can talk about a definite bundle of field lines being dragged around, carrying a fixed amount of flux.
+
+Now I need one more constraint and then a geometry. The fluid is incompressible: $\nabla\cdot\mathbf{v}=0$, so any material volume is conserved. If I close a co-moving flux tube with two material caps, the volume inside that tube is fixed even as the tube is stretched and bent. Flux through it is constant because the caps move with the fluid, and the volume inside it is constant because the liquid cannot compress. Those two conservation laws together are what will generate a force.
+
+Let me set up the actual motion. The two spheres lie on an axis; the dipoles are parallel to that axis. That gives the whole configuration cylindrical symmetry about the line of centers — the figure-eight dipole field, but now embedded in fluid that has to get out of the way as the spheres recede from each other. Consider a thin co-moving flux tube running coaxially, straddling the gap, with its two base patches lying on the two sphere surfaces. Why do those patches remain on the surfaces? Because the sphere surface is impenetrable: in each sphere's frame the fluid velocity has no normal component at the boundary, so a material point of fluid that is on the boundary does not cross into or away from the solid. As the spheres move apart, those material patches are carried along the boundaries and the tube's ends move apart with them. The bridge between the sphere surfaces starts with length of order the initial gap, $\sim R$, and gets dragged out to length $\sim L$.
+
+Here's the squeeze. The tube's length grows from $\sim R$ to $\sim L$. Its volume is fixed. So its cross-sectional area must shrink: if $V\sim A\,\ell$ is constant and $\ell$ runs from $R$ up to $L$, then $A\propto 1/\ell$, and at the end $A\sim A_0\,(R/L)$. For a near-zone bundle with initial volume of order $R^3$, this same statement is $A(L)\sim R^3/L$ in the long bridge. The tube is pulled into a long thin filament. Now bring in freezing: the flux $\Phi=B_\parallel A$ through it is conserved, with $B_\parallel$ the field component along the tube axis. If $A$ falls like $1/\ell$, then $B_\parallel$ must rise like $\ell$ to keep $\Phi$ fixed:
+
+$$B_\parallel \propto \frac{1}{A}\propto \ell \quad\Longrightarrow\quad B_\parallel = B_{\parallel,0}\,\frac{L}{R}$$
+
+at the end. That's the crux and it's the opposite of the vacuum intuition: pulling the spheres apart doesn't dilute the field in the gap, it *concentrates* it. The lines can't escape — they're frozen to fluid that can't compress — so stretching the tube crams the lines together transversely, and the field between the spheres goes *up* by a factor $L/R$, not down. The field lines are stretched out into a long narrow rope joining the two spheres, like a taut bundle.
+
+So there has to be a restoring force, and it has to *grow* with separation, which is the surprise — the vacuum force decayed. Let me get the magnitude from energy. Magnetic energy density is $B^2/2\mu_0$. In the stretched tube the field is up by $L/R$, so the energy *density* is up by $(L/R)^2$; the volume is unchanged; so the energy stored in this tube scales as
+
+$$U_{\rm tube}\propto U_{\rm tube,0}\left(\frac{L}{R}\right)^2.$$
+
+(The transverse field component does the opposite — the tube is thinning, so that component drops under the same deformation — but it cannot cancel the positive axial energy growth, and it does not change the scaling I am after.)
+
+I want the *total* field energy, not just one thin tube, so let me fix the overall scale and argue the bulk of the energy lives in the stretched region. Initially, before pulling, the field is just two near-touching dipoles. The near field of a dipole is $B\sim \mu_0 m/r^3$, and the bulk of $\int B^2/2\mu_0\,dV$ for a dipole comes from the near zone $r\sim R$, because $B^2\sim 1/r^6$ falls so fast that the small-$r$ shell dominates. So the initial magnetic energy is, by dimensions,
+
+$$U_0\sim \frac{1}{\mu_0}\left(\frac{\mu_0 m}{R^3}\right)^2 R^3=\mu_0\frac{m^2}{R^3}.$$
+
+Now picture a fat co-moving flux tube that envelops *both* spheres — large enough that it always contains them as they separate. Near the fixed-radius spheres its transverse size is still set by $R$, but the material volume that began in the near-zone bridge is only order $R^3$ and is now spread over length $L$, so the bridge cross-section is order $R^3/L$. Large variations of area along the bridge would only pile extra magnetic energy into the narrowest parts, so for a scaling estimate the bridge can be treated as having one area scale. The same volume-conservation and flux-freezing argument applies there: area $\propto 1/L$, field $\propto L$. Initially, that tube contains a significant fraction of the near-zone dipole energy, and the near zone is where the dipole-field energy is concentrated. Once $L\gg R$, the stretched bridge dominates the change in total energy: the parts of the original field that *didn't* get stretched still hold only an order $U_0$ amount, negligible next to $U_0(L/R)^2$. So the total energy at separation $L$ is
+
+$$U(L)\sim U_0\left(\frac{L}{R}\right)^2=\mu_0\frac{m^2 L^2}{R^5}.$$
+
+The force follows. By cylindrical symmetry it is along the axis. The magnetic force on a sphere is minus the gradient of the stored energy with respect to the separation coordinate, and the external holding force has the opposite sign:
+
+$$F=-\frac{dU}{dL}\quad\Longrightarrow\quad |F|\sim \mu_0\frac{m^2 L}{R^5}.$$
+
+The magnetic force is attractive — $U$ increases with $L$, so the field pulls the spheres back together. The external force I supply to hold them apart points outward and has that magnitude, growing linearly in $L$. That linear-in-$L$ behavior is striking: the field has organized itself into a flux rope, but its cross-section keeps shrinking as it lengthens, so the field strength and the tension both grow with separation instead of settling to a fixed string tension.
+
+Let me sanity-check this against a completely different route, because the energy argument quietly ignored the fluid's thermal pressure, and the pressure has to do *something* — it must rearrange to keep the incompressible fluid in equilibrium, and that pressure could in principle carry stress across the gap. Suppose I instead draw a large box around just one sphere, with one face on the symmetry plane between the two spheres, and ask for the total force transmitted across the box surface by the field plus the fluid. In ideal MHD the stress on the medium is the Maxwell stress plus an isotropic fluid pressure,
+
+$$\mathsf{T}=\frac{\mathbf{B}\mathbf{B}}{\mu_0}-\left(\frac{B^2}{2\mu_0}+(P-P_\infty)\right)\mathsf{I},$$
+
+where the dyad $\mathbf{B}\mathbf{B}/\mu_0$ is the tension along field lines, the $-B^2/2\mu_0$ is the magnetic pressure across them, and $P-P_\infty$ is the fluid pressure measured relative to its value far away. The force on the box contents is $\oint \mathsf{T}\cdot\hat{\mathbf n}\,dS$. I can take the box large enough that, away from the stretched bridge, the remaining field is only the rapidly decaying dipolar tail; the leading contribution is the face cutting through the bridge on the symmetry plane.
+
+I need to know $P$ on that plane, and equilibrium gives it. The fluid is in mechanical equilibrium, so the force density on it vanishes: the magnetic force density $(\nabla\times\mathbf{B})\times\mathbf{B}/\mu_0=(\mathbf{B}\cdot\nabla)\mathbf{B}/\mu_0-\nabla(B^2/2\mu_0)$ must balance the pressure gradient,
+
+$$\frac{(\mathbf{B}\cdot\nabla)\mathbf{B}}{\mu_0}-\nabla\!\left(\frac{B^2}{2\mu_0}+(P-P_\infty)\right)=0.$$
+
+On the symmetry plane the field lines in the rope are essentially straight and axial, so the tension term $(\mathbf{B}\cdot\nabla)\mathbf{B}/\mu_0$ — curvature plus along-field variation — is small on the transverse scale that sets the pressure balance: it varies over the long scale $L$, giving $\sim B^2/(\mu_0 L)$, whereas the pressure terms vary across the thin rope over its width $w\ll L$, giving $\sim B^2/(\mu_0 w)$. Dropping the tension term for that transverse balance leaves $B^2/2\mu_0+(P-P_\infty)\approx\text{const}$ across the plane. Evaluate that constant far out on the plane, where $B\to 0$ and $P\to P_\infty$: the constant is zero. So on the symmetry plane the magnetic pressure and the excess fluid pressure cancel, $P-P_\infty=-B^2/2\mu_0$. The fluid pressure is *low* inside the rope, exactly enough to offset the magnetic pressure trying to fatten the tube — which is physically why the thin rope is stable.
+
+Put that back in the stress integral on the plane. With $\hat{\mathbf n}$ along the axis, the tension term gives $\mathbf{B}\mathbf{B}/\mu_0\cdot\hat{\mathbf n}=(B^2/\mu_0)\hat{\mathbf n}$ for an axial field, and the bracket term is $-(B^2/2\mu_0+(P-P_\infty))\hat{\mathbf n}=0$ by what I just found. So
+
+$$\mathbf{F}=\int_{\rm plane}\frac{B^2}{\mu_0}\,\hat{\mathbf n}\,dS,$$
+
+and the thermal pressure has dropped out entirely — reassuring, since the energy method also ignored it. Now plug in the scalings: on the plane the field is up by $L/R$ over its near-zone value, so $B\sim (\mu_0 m/R^3)(L/R)$, while the rope's cross-sectional area there is $\sim 1/L$ (volume $\sim R^3$ spread over length $\sim L$), i.e. $S\sim R^3/L$. Then
+
+$$F\sim \frac{B^2}{\mu_0}S\sim \frac{1}{\mu_0}\left(\frac{\mu_0 m}{R^3}\frac{L}{R}\right)^2\frac{R^3}{L}=\mu_0\frac{m^2 L}{R^5},$$
+
+the same result, independent route. Two methods, one answer.
+
+So the chain is: infinite conductivity pins the flux through every co-moving loop (else infinite currents), which freezes the field into the fluid and turns each bundle of field lines into a material flux tube of conserved flux; incompressibility conserves each co-moving tube's volume; dragging the spheres from $\sim R$ to $L$ stretches the axial tube and, at fixed volume, thins it, so conserved flux forces the field up by $L/R$; the magnetic energy, dominated by this stretched near-zone rope, climbs like $(L/R)^2$ from its initial $\mu_0 m^2/R^3$; and the magnitude of the axial holding force is the energy gradient,
+
+$$\boxed{\,F_{\rm hold}\sim \mu_0\frac{m^2 L}{R^5}\,}$$
+
+with the magnetic force attractive and, unlike the vacuum dipole force, growing in magnitude with separation because the field is a frozen-in, stretched rope under tension rather than a free field that dilutes.

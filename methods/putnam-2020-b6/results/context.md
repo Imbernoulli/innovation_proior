@@ -1,0 +1,11 @@
+# Context
+
+## Problem
+
+Let $n$ be a positive integer. Prove that
+
+$$
+\sum_{k=1}^{n} (-1)^{\lfloor k(\sqrt{2}-1)\rfloor} \ge 0.
+$$
+
+(As usual, $\lfloor x\rfloor$ denotes the greatest integer less than or equal to $x$.)
