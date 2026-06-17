@@ -1,5 +1,3 @@
-# Context: few-shot image classification by learned comparison (circa 2016-2017)
-
 ## Research question
 
 The goal is to build a classifier that recognises *novel* visual categories from only a
@@ -46,16 +44,16 @@ Two further pre-existing pieces matter. First, **metric-based recognition**: rat
 training a classifier head per task, learn an embedding `f` such that, in embedding space, a
 query can be labelled by a simple comparison to the support examples — nearest neighbour, a
 kernel/attention weighted vote, or a per-class summary. The transferable knowledge is then the
-embedding `f` plus a *comparison rule*, and inference on a new task is a feed-forward
+embedding `f` plus a *scoring rule*, and inference on a new task is a feed-forward
 computation. Second, the observation — reported across this line of work — that the *choice of
-comparison rule matters a great deal*: on the same embedding, swapping one fixed distance for
+scoring rule matters a great deal*: on the same embedding, swapping one fixed distance for
 another (cosine vs. squared Euclidean) moves accuracy substantially, and the comparison rule
 that happens to pair well with the way prototypes are formed (means) is not the one most people
 reached for first. That fixed comparison functions are this sensitive — and that the "right" one
 is dataset- and design-dependent — is a pre-method fact about the landscape, established before
-any new method, and it is the soft spot the rest of this document circles.
+this scoring slot is settled.
 
-Also in the air, from a different problem entirely, was the idea of computing relations between
+Also in the air, from a different problem entirely, was the idea of processing relations between
 entities with a learned network. Santoro et al. (2017) proposed a module for relational
 reasoning *within a single image's set of objects*: take a set of object representations
 `O = {o_1,…,o_n}`, and compute `RN(O) = f_φ( Σ_{i,j} g_θ(o_i, o_j) )`, where `g_θ` is a single
@@ -64,9 +62,8 @@ input), the pairwise outputs are **summed** (so the result is invariant to objec
 `f_φ` reduces the pooled vector to an answer. Two properties of this construction were
 emphasised: using one shared `g_θ` for all pairs is data-efficient and resists overfitting any
 particular pairing, and summation gives an order-invariant aggregation over a set. This was
-built to reason about object-object relations inside one scene — a different task — but it
-established a concrete, trainable way to turn "the relation between two things" into a learned
-function of their concatenation.
+built to reason about object-object relations inside one scene, so it remained a different tool
+from few-shot classification rather than a ready-made classifier.
 
 ## Baselines
 
@@ -97,7 +94,9 @@ mean prototype is the matched cluster centre; and expanding the distance,
 `‖f − c_k‖² = ‖f‖² − 2 c_kᵀf + ‖c_k‖²`, the `‖f‖²` term is constant across classes, so the
 classifier is **linear in `f`** (weights `2c_k`, bias `−‖c_k‖²`). Empirically squared Euclidean
 beats cosine — cosine is not a Bregman divergence, breaking the mean-as-optimal-centre argument.
-In the one-shot case `c_k` is the single support point, so Prototypical and Matching coincide.
+In the one-shot case `c_k` is the single support point, so the prototype step reduces to comparing
+the query against one support embedding per class; it is structurally close to Matching Networks,
+but it is not identical unless the embedding and scoring function are made the same.
 **Limitation it leaves open:** the comparison is again a *fixed* metric, and the squared-Euclidean
 softmax is exactly a *linear* classifier in embedding space — so the method works only to the
 extent that the embedding alone can render every novel class linearly separable with a
@@ -144,18 +143,14 @@ protocol with mean classification accuracy over many sampled test episodes:
   64-filter 3×3 conv + batch normalisation + ReLU (with max-pooling), as used by the
   metric-based baselines. Optimisation by Adam (Kingma & Ba 2015), initial learning rate `1e-3`,
   annealed during training; models trained end-to-end from scratch with no additional dataset.
-- Related fine-grained / many-class benchmarks in the broader setting include CIFAR-FS (100
-  classes derived from CIFAR-100) and CUB-200 (200 bird species), evaluated under the same
-  episodic accuracy protocol.
 
 ## Code framework
 
-The new method plugs into the episodic few-shot harness that already exists for the baselines.
-What is *not* settled is how a query should be scored against the support set — that scoring rule
-is exactly the contribution to be designed — so the substrate is only the generic episodic
-machinery: an embedding backbone that turns images into features, a method object that ingests
-the support set, a `forward` that returns per-class scores for queries, and a loss. The single
-empty slot is how support information is summarised and how a query is compared against it.
+The episodic few-shot harness already exists for the baselines. What is *not* settled is how a
+query should be scored against the support set, so the substrate is only the generic episodic
+machinery: an embedding backbone that turns images into features, a method object that ingests the
+support set, a `forward` that returns per-class scores for queries, and a loss. The single empty
+slot is how support information is summarised and how a query is compared against it.
 
 ```python
 import torch
@@ -171,13 +166,13 @@ def make_backbone() -> nn.Module:
 
 class EpisodicFewShotMethod(nn.Module):
     """Generic C-way K-shot classifier. Given a labelled support set it must score each
-    query against the C classes. The scoring rule is what we will design."""
+    query against the C classes. The scoring rule remains open."""
 
     def __init__(self):
         super().__init__()
         self.backbone = make_backbone()
         # any extra modules the scoring rule needs go here
-        # TODO: the comparison machinery we will design
+        # TODO: the scoring machinery to be designed
 
     def compute_features(self, images: Tensor) -> Tensor:
         return self.backbone(images)
@@ -209,4 +204,4 @@ def train(method, optimizer, episode_sampler):
 ```
 
 The sampler draws one episode (support + query, both `C`-way `K`-shot) at a time;
-`process_support_set` / `forward` / `compute_loss` are where the scoring rule will live.
+`process_support_set` / `forward` / `compute_loss` are where the scoring rule must be supplied.

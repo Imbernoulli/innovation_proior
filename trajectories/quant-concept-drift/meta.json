@@ -1,0 +1,57 @@
+{
+  "task": "quant-concept-drift",
+  "title": "Quant Concept Drift: temporal-shift-robust CSI300 return prediction",
+  "domain": "Time series",
+  "metrics": [
+    "csi300",
+    "csi300_shifted",
+    "csi300_recent"
+  ],
+  "metric_columns": [
+    "ic",
+    "icir",
+    "rank_ic",
+    "rank_icir",
+    "annualized_return",
+    "max_drawdown",
+    "information_ratio"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "tra",
+      "method": "TRA (Temporal Routing Adaptor)",
+      "reasoning": "01-tra-reasoning.md",
+      "answer": "01-tra-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "adarnn",
+      "method": "AdaRNN (adaptive temporal-distribution matching)",
+      "reasoning": "02-adarnn-reasoning.md",
+      "answer": "02-adarnn-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "lgbm",
+      "method": "LightGBM (strong non-adaptive control)",
+      "reasoning": "03-lgbm-reasoning.md",
+      "answer": "03-lgbm-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "double-ensemble",
+      "method": "DoubleEnsemble (sample-reweighting + feature-selection ensemble)",
+      "reasoning": "04-double-ensemble-reasoning.md",
+      "answer": "04-double-ensemble-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "DoubleEnsemble (sample-reweighting + feature-selection ensemble)",
+  "ranking_basis": "Ranked by the task aggregate (gmean over the 3 temporal regimes of each regime's equally-weighted sigmoid-mapped 7-metric mean) on the is_final,true baseline:* mean rows. tra 0.5602 < adarnn 0.5607 < lgbm 0.5707. tra and adarnn (both adaptive sequence models) are essentially tied and both collapse on the far csi300_recent regime (info ratio ~0.48); tra is marginally weaker overall and is deterministic, adarnn is non-deterministic with high csi300_recent seed variance (seed-42 info ratio 0.004). The non-adaptive LightGBM is strongest: it survives csi300_recent (info ratio 1.10) and has the shallowest drawdown. Finale DoubleEnsemble (qlib DEnsembleModel, ICDM 2020) ensembles the exact winning LightGBM, made drift-robust via sample-reweighting and feature-selection.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_model.py CustomModel + workflow_config.yaml dataset/processor blocks; baseline fills from edits/{tra,adarnn,lgbm}.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold code) -> feedback (numbers only, baselines). Same-named-vs-paper diffs honored in the reasonings: TRA uses Alpha158+FilterCol(20 cols)+MTSDatasetH seq_len=60, num_states=3, attentive LSTM (not the paper's generic GRU/full-feature view); AdaRNN runs at len_seq=1 (Alpha158 flat 158 features unsqueezed to [N,1,158], single-timestep GRU so per-state matching/len_win degenerate) with periods from a fixed n_splits=2 chronological halves (NOT the paper's max-diversity greedy period discovery), cosine distance, dw=0.5; LightGBM's colsample_bytree/subsample are vanilla booster knobs (NOT GOSS, NOT temporal adaptation) with infer_processors:[] (raw factors). Finale carries no feedback. methods/{tra,adarnn,lgbm} single-round traces reused untouched as derivation references; methods/double-ensemble trace created for the finale (context+reasoning+answer, faithful to qlib/contrib/model/double_ensemble.py)."
+}

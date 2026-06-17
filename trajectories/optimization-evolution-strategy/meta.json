@@ -1,0 +1,53 @@
+{
+  "task": "optimization-evolution-strategy",
+  "title": "Evolutionary Optimization Strategy: operators for continuous black-box minimization",
+  "domain": "Optimization",
+  "metrics": [
+    "rastrigin-30d",
+    "rosenbrock-30d",
+    "ackley-30d",
+    "rastrigin-100d"
+  ],
+  "metric_columns": [
+    "best_fitness",
+    "convergence_gen"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "de",
+      "method": "DE/rand/1/bin (Differential Evolution)",
+      "reasoning": "01-de-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-de-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ga_sbx",
+      "method": "GA (tournament + SBX + polynomial mutation)",
+      "reasoning": "02-ga_sbx-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ga_sbx-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "lshade",
+      "method": "L-SHADE (success-history adaptive DE + linear population reduction)",
+      "reasoning": "03-lshade-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-lshade-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "jso",
+      "method": "jSO (weighted current-to-pBest-w/1 adaptive DE)",
+      "reasoning": "04-jso-reasoning.md",
+      "finale": true,
+      "answer": "04-jso-answer.md"
+    }
+  ],
+  "endpoint": "jSO (weighted current-to-pBest-w/1 adaptive DE)",
+  "ranking_basis": "Ranked by the is_final,true baseline:* mean rows (best_fitness, lower is better, across all four benchmarks). de is weakest on every metric (rastrigin-30d 256.8, rosenbrock-30d 48302, ackley-30d 10.0, rastrigin-100d 925.8). ga_sbx is middle (8.05 / 138.3 / 1.12 / 113.8). lshade is strongest overall (7.30 / 13.28 / ~9.4e-12 / 132.5): it wins rastrigin-30d, rosenbrock, and ackley decisively (Ackley near machine precision) and trails ga_sbx only on rastrigin-100d. cmaes appears in the leaderboard (baseline:cmaes) but is NOT a config.json baseline, has no aggregated mean row (only partial seeds 123/456), and is excluded from the ladder.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (deap/custom_evolution.py lines 87-225: custom_select/custom_crossover/custom_mutate/run_evolution, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). The finale jSO is a real published method (Brest, Maucec & Boskovic, 'Single Objective Real-Parameter Optimization: Algorithm jSO', CEC 2017, the CEC 2017 winner), a clearly-stronger successor to L-SHADE that fits the same edit surface; it carries no feedback. methods/{de,ga-sbx,lshade,cma-es} single-round traces are reused untouched as derivation references; methods/jso created for the finale."
+}

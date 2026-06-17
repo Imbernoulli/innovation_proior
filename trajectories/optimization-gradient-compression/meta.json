@@ -1,0 +1,53 @@
+{
+  "task": "optimization-gradient-compression",
+  "title": "Gradient Compression: communication-efficient distributed training",
+  "domain": "Optimization",
+  "metrics": [
+    "resnet20-cifar10",
+    "vgg11-cifar100",
+    "resnet56-cifar10"
+  ],
+  "metric_columns": [
+    "best_acc",
+    "test_acc",
+    "test_loss"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "PowerSGD (warm-started low-rank + error feedback)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "qsgd",
+      "method": "QSGD (unbiased stochastic quantization)",
+      "reasoning": "01-qsgd-reasoning.md",
+      "answer": "01-qsgd-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "topk_ef",
+      "method": "EF-TopK (top-k sparsification + error feedback)",
+      "reasoning": "02-topk_ef-reasoning.md",
+      "answer": "02-topk_ef-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "signsgd",
+      "method": "SignSGD with error feedback",
+      "reasoning": "03-signsgd-reasoning.md",
+      "answer": "03-signsgd-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "powersgd",
+      "method": "PowerSGD (warm-started low-rank + error feedback)",
+      "reasoning": "04-powersgd-reasoning.md",
+      "answer": "04-powersgd-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Metric = best test accuracy (higher better), per-seed and mean from is_final,true baseline:* rows. qsgd weakest: VGG-11/CIFAR-100 mean 48.76 with two collapsed seeds (38.57, 37.91) and a weak ResNet-20 seed (86.78) -- its fixed s=256 full-tensor quantization plus a clip-to-norm-1.0 with NO error feedback deletes gradient energy and collapses on the hardest setting. topk_ef middle: error feedback eliminates the collapse (VGG mean 70.24, all seeds ~70; ResNet-20 92.25) but its 99%-sparse stale support leaves ResNet-56 at 93.85, below qsgd's non-collapsed 94.08. signsgd strongest baseline: highest on all three settings (ResNet-20 92.52, VGG 70.77, ResNet-56 94.14) with the tightest seed spread -- a dense one-bit-per-coordinate signal with EF + mean-magnitude scaling beats top-k's sparse-but-stale signal on these dense-gradient CNNs.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_compressor.py Compressor class, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The methods/<slug> single-round traces (topk-ef, qsgd, signsgd) are the derivation reference and are left untouched. SAME-NAMED-vs-PAPER diffs the trajectory matches to THIS task's edit.py, not the generic paper: (1) qsgd -- fixed quantum_num=256 (not s=sqrt(d) or ratio-derived), NO bucketing (full-tensor norm), and a clip_norm=1.0 pre-clip with NO error feedback (the comment claims unbiased-so-no-EF but the clip is biased and unrepaired); ratio knob unused. (2) signsgd -- NO majority-vote return-trip (single-node sim, no aggregate), NO momentum/Signum; plain sign + error feedback + mean-magnitude reconstruction; sign(0)->+1 via >=0; ratio knob unused. (3) topk_ef -- matches the paper EF-TopK closely; minor impl diffs (values via tensor_flat[indices] not gather; residual inline). Finale = PowerSGD (Vogels/Karimireddy/Jaggi NeurIPS 2019, arXiv:1905.13727), a genuinely stronger published method the task explicitly cites as a design point but does not run as a baseline; it fits the compress/decompress edit surface and is the only baseline-or-finale on the ladder that compresses LINEARLY (all-reduceable), which the three baselines forfeit. Its methods/powersgd trace was created here (context+reasoning+answer); Codex review gate could not run (companion access token revoked in this env) so it was verified manually (AST-parse + functional round-trip test: shape match, exact EF virtual-iterate invariant, 1-D passthrough) and line-by-line vs the canonical algorithm/official repo."
+}

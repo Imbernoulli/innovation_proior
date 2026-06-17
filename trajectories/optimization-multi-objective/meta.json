@@ -1,0 +1,78 @@
+{
+  "task": "optimization-multi-objective",
+  "title": "Multi-Objective Optimization: climbing the MOEA survival ladder",
+  "domain": "Optimization",
+  "metrics": [
+    "zdt1",
+    "zdt3",
+    "dtlz2",
+    "dtlz1"
+  ],
+  "metric_columns": [
+    "hv",
+    "igd",
+    "spread"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "moead",
+      "method": "MOEA/D (decomposition)",
+      "reasoning": "01-moead-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-moead-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "agemoea",
+      "method": "AGE-MOEA (adaptive geometry)",
+      "reasoning": "02-agemoea-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-agemoea-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "rvea",
+      "method": "RVEA (reference-vector guided)",
+      "reasoning": "03-rvea-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-rvea-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "nsga2",
+      "method": "NSGA-II (crowding distance)",
+      "reasoning": "04-nsga2-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-nsga2-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "nsga3",
+      "method": "NSGA-III (reference-point niching)",
+      "reasoning": "05-nsga3-reasoning.md",
+      "feedback": "05-feedback.md",
+      "answer": "05-nsga3-answer.md"
+    },
+    {
+      "n": 6,
+      "slug": "spea2",
+      "method": "SPEA2 (strength + k-NN density)",
+      "reasoning": "06-spea2-reasoning.md",
+      "feedback": "06-feedback.md",
+      "answer": "06-spea2-answer.md"
+    },
+    {
+      "n": 7,
+      "slug": "sms-emoa",
+      "method": "SMS-EMOA (S-metric hypervolume selection)",
+      "reasoning": "07-sms-emoa-reasoning.md",
+      "finale": true,
+      "answer": "07-sms-emoa-answer.md"
+    }
+  ],
+  "endpoint": "SMS-EMOA (S-metric hypervolume selection)",
+  "ranking_basis": "Weak->strong by aggregate rank across all metrics (HV higher-better; IGD, Spread lower-better) over the four is_final,true baseline:* mean rows. Average per-metric rank: moead 4.50 (weakest), agemoea 3.83, rvea 2.92, nsga2 2.00, nsga3 1.25, spea2 0.50 (strongest). moead weakest: plain Tchebycheff (no PBI) + uncapped neighbor takeover -> worst 3-obj convergence (DTLZ2 HV 2.737) and diversity collapse (DTLZ1 spread 4.41, one seed 8.49). agemoea next: diversity-only Lp survival fixes spread (DTLZ2 0.519) but drops convergence (DTLZ2 HV 2.572, worst). rvea: APD time-ramp restores 3-obj convergence (DTLZ2 HV 2.789) but un-normalized angle penalty + hard-wired horizon throw a DTLZ1 blow-up seed (spread 3.45). nsga2: parameter-free crowding -> stable, wins 2-obj, but L1 cuboid mis-reads DTLZ2 sphere (HV 2.741 < rvea). nsga3: reference-point niching beats nsga2 on DTLZ2 (HV 2.790) and ZDT spread. spea2: k-NN true-density truncation -> step-change spread (DTLZ2 0.106, ZDT1 0.149) at no convergence cost, best IGD. Finale SMS-EMOA optimizes the headline HV metric directly (least-hypervolume-contributor survival), the gap spea2 left.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (deap/custom_moea.py CustomMOEA, scaffold from edits/*.edit.py). Each baseline step = reasoning (full derivation, prose, reflection on prior numbers embedded throughout) -> answer (distilled + scaffold code) -> feedback (numbers only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (moead, agemoea, rvea, nsga2, nsga3, spea2) are reused untouched as derivation references. Finale SMS-EMOA is a real published method (Beume, Naujoks, Emmerich, EJOR 2007) not in the task baselines; it gets its own methods/sms-emoa trace and carries no feedback."
+}

@@ -1,0 +1,62 @@
+{
+  "task": "pde-design-solver",
+  "title": "PDE Design Solver: neural operators for industrial CFD design",
+  "domain": "AI for science",
+  "metrics": [
+    "Car",
+    "AirfRANS",
+    "AirCraft"
+  ],
+  "metric_columns": [
+    "rho_d",
+    "c_d",
+    "l2_press",
+    "l2_velo"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "Transolver++ (eidetic states)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "pointnet",
+      "method": "PointNet (global max-pool set encoder)",
+      "reasoning": "01-pointnet-reasoning.md",
+      "answer": "01-pointnet-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "graphunet",
+      "method": "Graph U-Net (multi-scale graph)",
+      "reasoning": "02-graphunet-reasoning.md",
+      "answer": "02-graphunet-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "graphsage",
+      "method": "GraphSAGE (flat message passing)",
+      "reasoning": "03-graphsage-reasoning.md",
+      "answer": "03-graphsage-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "transolver",
+      "method": "Transolver (Physics-Attention)",
+      "reasoning": "04-transolver-reasoning.md",
+      "answer": "04-transolver-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "transolver-plus",
+      "method": "Transolver++ (eidetic states)",
+      "reasoning": "05-transolver-plus-reasoning.md",
+      "answer": "05-transolver-plus-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "From the is_final=true baseline:* rows (seed 42; rho_d higher=better, c_d and l2 errors lower=better). pointnet weakest: worst Car rho_d (0.962) and worst c_d (0.0247), and field errors only beaten among graph models by the lossy U-Net. graphunet next: its spatial hierarchy raises rho_d to 0.981 but its random pooling + nearest-neighbor unpooling make EVERY field error worse than pointnet (Car 0.113/0.050, AirfRANS 0.064/0.099). graphsage stronger: lossless flat message passing gives the best graph fields (Car 0.089/0.033, AirfRANS 0.046/0.037) and best graph c_d (0.0193), dipping only on rho_d (0.978 < U-Net's 0.981) — it dominates the U-Net on 5 of 6 field/error metrics. transolver strongest baseline: sweeps the published benchmarks (rho_d 0.9896, c_d 0.0136, Car 0.0809/0.0218, AirfRANS 0.0335/0.0156).",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (models/Custom.py lines 1-64 + CONFIG_OVERRIDES at line 74; scaffold from edits/*.edit.py, template edits/custom_template.py). Each step = reasoning (full derivation, prose; reflection on the prior result embedded for i>1) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces are the derivation reference and untouched. Same-named-vs-paper diffs: pointnet = stripped design variant (NO T-nets/orthogonality regularizer, single global pool over the one mesh, raises on geo=None though it never message-passes); graphunet = geometric variant (RANDOM node sampling not learned top-k, radius_graph rebuild not adjacency powers, nearest-neighbor spatial unpool not scatter-by-index, encoder consumes only fun_dim); graphsage = MEAN aggregation not max-pool, NO neighbor sampling (full neighborhood), coordinates concatenated into node features; transolver = paper-faithful (two-stream projection, learnable per-head temperature, orthogonal slice init), geo ignored. Finale = Transolver++ (arXiv:2502.02414, thuml/Transolver_plus): eidetic states via per-point adaptive temperature + Gumbel-softmax slicing + single-stream projection; re-expressed inline in Custom.py (the shipped layers.Physics_Attention is read-only), with the reference's multi-GPU all_reduce and gradient-checkpointing stripped (inapplicable: one mesh, one device, batch 1)."
+}
