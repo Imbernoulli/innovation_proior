@@ -1,0 +1,203 @@
+Let me start from what actually goes wrong when I hand raw goal observations to a goal-conditioned agent. I have an offline dataset of unlabeled trajectories, and I want a policy that reaches an arbitrary goal `g` from an arbitrary state `s`. The default move is to concatenate the raw observation of `g` with `s` and feed `[s, g]` into the value function and the actor. The trouble is that the raw observation is a terrible coordinate system for a *goal*. Two frames that look almost identical can be a long detour apart in the maze, and two frames that look very different can be a single step apart. The raw observation also carries exogenous junk — textures, distractor objects, proprioceptive jitter — none of which has anything to do with whether I can get there. So a network conditioned on raw `g` is forced to learn the entire reachability geometry of the environment from scratch, tangled up with learning control, while also having to ignore the junk. I want to factor that out: learn a map `phi(g)` from raw goal observation into some vector space, slot it in front of the agent so that everywhere the agent used to see `g` it now sees `phi(g)`, and arrange for the geometry of that vector space to already encode "how hard is it to reach this goal." If I can do that, the actor and value get handed a coordinate system where the thing they care about — distance-to-reach — is already laid out for them.
+
+So what should "close in representation space" *mean*? The only notion of closeness that matters for goal reaching is temporal: how many steps does it take an optimal policy to get from one state to another. Let me write `d*(s, g)` for that optimal temporal distance — the minimum number of steps to reach `g` from `s`. I'd love a `phi` such that ordinary distance between `phi(s)` and `phi(g)` *is* that temporal distance. But that immediately raises the question of how I'd ever *learn* such a `phi` from offline data. I don't have `d*` labels; I have trajectories. Stare at this for a second. There's a classical identity I should lean on: if I set up the goal-reaching reward as `r(s, g) = -1(s != g)` — minus one for every step you're not at the goal — and terminate the episode when `s = g`, then the return is just the negative count of steps until I reach `g`. So the optimal value function for this reward is exactly the negative optimal temporal distance:
+
+  V*(s, g) = -d*(s, g).
+
+That's the hinge. "Distance to goal" and "goal-conditioned value function" are the same object. And value functions I *can* learn from offline data — that's a solved problem. So instead of trying to regress `d*` directly, I'll learn a goal-conditioned value function `V(s, g)` from the data, and I'll *force its functional form* to be a distance between two embeddings. If I parameterize
+
+  V(s, g) = -||phi(s) - phi(g)||
+
+and then train `V` to satisfy the goal-conditioned Bellman equations, then at convergence `||phi(s) - phi(g)|| ≈ -V(s,g) ≈ d*(s,g)`, which is exactly the isometry I wanted: distances between embeddings equal temporal distances in the MDP. The value-learning machinery does the work of injecting `d*` into `phi`, and I never need a distance label.
+
+Notice what this parameterization buys me before I even train it. First, it's *symmetric in its two arguments* — `||phi(s) - phi(g)|| = ||phi(g) - phi(s)||` — so a single network `phi`, shared between states and goals, suffices; I encode a state and a goal with the very same map and just take the distance between their codes. That's economical and it's the natural object: the thing I'm modeling is a distance, and a distance takes two points from the same space. Second, `V(s, s) = -||phi(s) - phi(s)|| = 0` is guaranteed by construction, for free, with no learning — which is correct, since being already at the goal costs nothing. Third, `V <= 0` always, also correct since temporal distance is nonnegative. The parameterization bakes in three facts the value function would otherwise have to discover. And the goal representation I'll hand downstream is simply `phi(g)` itself — encode the raw goal with `phi`, and that vector replaces `g` everywhere.
+
+Now I have to confront the symmetry I just praised, because temporal distance is *not* symmetric. Getting up a cliff costs more than coming down; a one-way passage costs infinity one way and one step the other. So `d*(s, g) != d*(g, s)` in general, and it's really a quasimetric — triangle inequality and `d*(s,s)=0` hold, but symmetry fails. My `||phi(s) - phi(g)||` is rigidly symmetric. Wall. Am I dead? Let me think about what I'm actually going to *use* `phi` for. I am not going to use this potentially-wrong parameterized `V(s,g)` to drive the policy directly. I only want `phi` as a *representation* — a coordinate system handed to the downstream agent. So the question isn't "is the symmetric metric exactly `d*`," it's "is the best symmetric approximation of `d*` a good enough coordinate system." There's a known obstruction lurking even if I drop asymmetry: not every metric, even a symmetric one, embeds isometrically into a Euclidean space — there are finite metric spaces with no isometric `l2` embedding (Indyk–Matoušek; Pitis et al.). So I should stop hoping for an *exact* isometry and reframe the goal as finding the best *approximate* symmetric Hilbert embedding of the MDP's temporal structure. That's an honest target, and it's the one the value-learning objective will actually optimize. I'll keep the symmetric form, accept that it's an approximation in asymmetric environments, and lean on the empirical question of whether the approximation is useful — which is exactly the kind of thing the downstream success rate will answer.
+
+Why insist the embedding space be Euclidean with the `l2` norm specifically, rather than some other metric — `l1`, `l∞`, a learned quasimetric? The `l2` norm has a property the others lack: it is induced by an inner product, `||x||_2 = sqrt(x^T x)`, so the space is a *Hilbert* space — a complete vector space with an inner product `<x,y>` whose induced metric is the norm distance. The `l1` and `l∞` norms give metric spaces but not Hilbert spaces; there is no inner product consistent with them. Right now I only strictly need a metric to talk about goal-reaching distance, so why pay for the inner product? Because the inner product is latent structure I'll want to spend later — it's what lets me, at test time, talk about *directions* in the representation space and do elementary linear-algebra operations (projections, regressions, midpoints) on goal codes, not just distances. A bare quasimetric gives me distances and nothing else; a Hilbert geometry gives me distances *and* an algebra. Since fixing `Z = R^D` with `l2` costs me nothing in the representation-learning objective, I take the stronger geometry: embed temporal distance into a Hilbert space, not merely into an arbitrary metric set.
+
+Now the real work: how do I train `V(s, g) = -||phi(s) - phi(g)||` to satisfy `V* = -d*` from a *fixed offline dataset of suboptimal trajectories*? The optimal Bellman backup for the goal-reaching reward is `V*(s,g) = max over reachable s' of [ -1(s != g) + gamma V*(s', g) ]`. That `max` is the problem. Offline, I cannot take a real max over actions or next states without evaluating transitions absent from the data, and querying out-of-distribution actions in an offline value function is the classic route to catastrophic overestimation — the value head happily hallucinates a great action that isn't there. So I need a way to approximate the optimal "best you could do here" backup using *only* transitions the dataset actually contains. 
+
+The tool for this is expectile regression, the move behind IQL. Recall the expectile loss, an asymmetric squared error:
+
+  L_2^tau(u) = |tau - 1(u < 0)| * u^2,   with tau in (0, 1).
+
+For `tau > 1/2` this weights positive residuals `u > 0` more heavily than negative ones — by `tau` versus `1 - tau`. Why does that approximate a max? Picture fitting a single scalar `v` to a distribution of targets `q` by minimizing `E[L_2^tau(q - v)]`. With ordinary squared error (`tau = 1/2`) the minimizer is the mean of `q`. As I crank `tau` upward, the asymmetric penalty makes it more and more expensive to sit below the high targets, so the fitted `v` is pulled up toward the top of the distribution; in the limit `tau -> 1`, `v` approaches the *maximum* of the support of `q`. That's the in-sample max. So if I regress `V(s, g)` toward the TD targets `-1(s != g) + gamma V_bar(s', g)` computed over the *dataset's own* transitions `(s, s')`, using an upper expectile, then `V` is pulled toward the best achievable backup among transitions that actually occur — an optimal-style `max` that never invents a transition. The behavior policy may be terrible on average, but as long as the dataset occasionally contains the good next step out of `s`, the upper expectile will latch onto it. This is exactly what makes recovering *optimal* `d*` (not behavior-policy distance) from suboptimal offline data possible, and it's action-free: I'm taking the expectile over the next-state distribution induced by the data, no actions in the loss at all, which is perfect since a pure goal representation shouldn't need actions.
+
+So the objective for the parameterized value is
+
+  E[ L_2^tau( -1(s != g) + gamma V_bar(s', g) - V(s, g) ) ],
+
+with `V_bar` a slowly-updated target network for stability, and substituting the parameterization this is the objective on `phi` directly:
+
+  E[ L_2^tau( -1(s != g) - gamma ||phi_bar(s') - phi_bar(g)|| + ||phi(s) - phi(g)|| ) ],
+
+where `phi_bar` is the target representation. Let me sanity-check the signs, because a flipped sign here would be silent and fatal. The TD residual inside the loss is `target - prediction`. The prediction is `V(s,g) = -||phi(s)-phi(g)||`, so `-V(s,g) = +||phi(s)-phi(g)||` — that's why the current-distance term enters with a *plus*. The target is `-1(s!=g) + gamma V_bar(s',g) = -1(s!=g) - gamma||phi_bar(s')-phi_bar(g)||` — that's the `-1` and the `-gamma||·||` terms. Residual `= target - prediction = (-1(s!=g) - gamma||phi_bar(s')-phi_bar(g)||) - (-||phi(s)-phi(g)||)`, which is exactly the expression above. Good, the signs are consistent.
+
+I should pause on the discount `gamma`, because `d*` is *undiscounted* — it's a raw step count — yet I've written `gamma` into the backup. Why? Without a discount, the goal-reaching value can be a large negative number that grows with horizon, and the undiscounted fixed-point iteration is numerically nastier to fit with bootstrapped TD on a function approximator. The discount keeps the backup contractive and the magnitudes bounded, at the cost that what I converge to is a *discounted* approximation of the temporal structure rather than the exact step count. Combined with the symmetry approximation and the embeddability obstruction, the honest description of what this objective finds is "the best discounted symmetric Hilbert approximation of the MDP's temporal distances," not an exact isometry. I'll accept that — `phi` only has to be a *useful* coordinate system, and the downstream task will tell me if it is.
+
+One more numerical landmine in the parameterization. The norm `||phi(s) - phi(g)|| = sqrt(sum_i (phi(s)_i - phi(g)_i)^2)` has a square root, and the derivative of `sqrt(x)` is `1/(2 sqrt(x))`, which blows up as `x -> 0`. At the start of training, or for `s` near `g`, the squared distance is tiny and the gradient through the `sqrt` explodes, giving NaNs. The fix is to floor the argument of the square root: compute `sqrt(max(squared_dist, eps))` with a small `eps` (say `1e-6`). That bounds the gradient by `1/(2 sqrt(eps))` near zero and removes the singularity, while being negligible everywhere the distance is healthy. It's a small constant but it's load-bearing — without it the whole thing diverges on the first batch.
+
+Now, what `tau` do I pick, and what's the rest of the value-learning scaffold? `tau` controls how aggressively I take the in-sample max. Too low and `V` regresses toward the behavior-distance backup; too high and the regression becomes brittle, chasing the single luckiest transition and inheriting its noise. For goal-reaching uses I want an upper expectile, often in the `0.7`-`0.95` range, while a representation-only pretraining run can choose a more neutral setting such as `0.5` when the objective is not trying to be strongly optimistic. The mechanism stays the same: the expectile is the in-support replacement for the unavailable max. For the rest of the scaffold I'll reuse the offline-GCRL value-learning recipe that already works: an ensemble of two value heads with a target network (the twin trick — taking the `min` of two heads in the bootstrap target curbs the overestimation that bootstrapping breeds), layer-normalized value MLPs (LayerNorm stabilizes offline TD, where the targets are themselves moving), and a hindsight goal-relabeling sampler so the goals seen during training are reachable from the states. Standard relabeling would draw the goal for a transition either from the future of the same trajectory — a geometric distribution over how far ahead — or uniformly from the dataset, and crucially I do *not* need the `g = s` case that the usual sampler includes, because `V(s, s) = 0` is already guaranteed by my parameterization; I redistribute that probability mass to the future-state and random-state bins (e.g. ~0.625 future, ~0.375 random). That's a small but real economy that falls directly out of the structure I chose.
+
+Let me get the twin-expectile backup exactly right, because the way the expectile *weight* is keyed is subtle and easy to botch. I have two value heads `V_1, V_2` and their targets `V_1_bar, V_2_bar`. I compute the bootstrap distance from the target network. For the goal-reaching setup I'll carry the reward and termination as `masks` and shifted `rewards`: a transition gets `reward = -1` (one step of cost) unless it lands on the goal/terminal, and `mask = 1` unless terminal (so the bootstrap is zeroed at the goal). The next-state backup uses the `min` of the two target heads, `next_v = min(V_1_bar(s',g), V_2_bar(s',g))`, giving the conservative target `q = reward + gamma * mask * next_v`. Now the expectile *weight* — whether this residual is "above" or "below" — should be decided by a single, shared advantage signal, not separately per head, so that both heads agree on which transitions to treat as optimistic. I use the *target* value `v_t = (V_1_bar(s,g) + V_2_bar(s,g)) / 2` and define `adv = q - v_t`; the sign of `adv` is what the expectile keys on. Then each head is regressed toward its own per-head target `q_i = reward + gamma * mask * V_i_bar(s', g)`, with the loss
+
+  L = E[ |tau - 1(adv < 0)| * (q_1 - V_1(s,g))^2 + |tau - 1(adv < 0)| * (q_2 - V_2(s,g))^2 ].
+
+The important detail: the weight `|tau - 1(adv < 0)|` is computed from the *target advantage* `adv`, while the squared residual it multiplies is the *online* head error `q_i - V_i`. Decoupling "which way is up" (from the target nets) from "how wrong am I" (from the online nets) is what keeps the expectile estimate stable under bootstrapping — if I keyed the weight on the online residual it would chase its own tail. This is the refinement of plain IQL that the offline-GCRL recipe contributes, and it's exactly what I want for fitting `phi`.
+
+So the auxiliary representation loss the agent adds to its objective is this twin-expectile value loss, computed with `V(s,g) = -sqrt(max(||phi(s)-phi(g)||^2, eps))` as the value parameterization, and the goal code it hands downstream is `phi(g)`. That's the whole representation: one shared `phi` network, encoding both states and goals, trained so that latent distance is temporal distance, with the metric structure of a Hilbert space.
+
+I want to convince myself this is actually a *good representation for goal reaching*, not just a plausible one — that handing the downstream policy `phi(g)` and a geometry where distance is reachability genuinely makes goal-reaching easy. The clean statement to aim for: if `phi`'s embedding error is small, then *moving so as to decrease the latent distance to `phi(g)`* is an optimal goal-reaching strategy. Let me try to prove it, because if it's true it's the justification for the entire approach. Fix `s != g`, so `d*(s, g) >= 1`. Suppose the local embedding error is bounded: for every neighbor `s'` of `s` (states reachable in one step) and for `s` itself, `|d*(s', g) - ||phi(s') - phi(g)|| | <= eps_e`. Consider the move that the latent geometry recommends — step to the neighbor `s_hat'` that maximizes progress in the goal direction. To show this is optimal, it suffices to show the true temporal distance drops by exactly one: `d*(s_hat', g) = d*(s, g) - 1`. Bound the deviation from that ideal by inserting the embedding twice and using the triangle inequality:
+
+  |d*(s_hat', g) - (d*(s,g) - 1)|
+   <= |d*(s_hat',g) - ||phi(s_hat')-phi(g)|| |
+      + | ||phi(s_hat')-phi(g)|| - (||phi(s)-phi(g)|| - 1) |
+      + | (||phi(s)-phi(g)|| - 1) - (d*(s,g) - 1) |.
+
+The first and third terms are each at most `eps_e` by the local-error bound. So
+
+  |d*(s_hat', g) - (d*(s,g) - 1)| <= 2 eps_e + | ||phi(s_hat')-phi(g)|| - (||phi(s)-phi(g)|| - 1) |.
+
+Now I need to control the middle term — how close the latent distance after the step gets to "one less than before." Here the directional move matters. Define the *ideal next latent point*, the point one unit from `phi(s)` straight toward `phi(g)`:
+
+  z'*(s,g) := phi(s) + (phi(g) - phi(s)) / ||phi(g) - phi(s)||.
+
+The recommended policy maximizes the directional reward `< phi(s') - phi(s), (phi(g)-phi(s))/||phi(g)-phi(s)|| >` over reachable `s'` with `||phi(s) - phi(s')|| <= 1`, and lands at `phi(s_hat')`; call the directional error `||phi(s_hat') - z'*(s,g)|| <= eps_d`. First note `||phi(s_hat')-phi(g)|| + 1 >= ||phi(s_hat')-phi(g)|| + ||phi(s)-phi(s_hat')|| >= ||phi(s)-phi(g)||` by the triangle inequality (a single latent step is at most length 1), so the middle absolute value opens with a definite sign: `||phi(s_hat')-phi(g)|| - (||phi(s)-phi(g)|| - 1) >= 0`, letting me drop the bars. Then insert `z'*`:
+
+  ||phi(s_hat')-phi(g)|| <= ||phi(s_hat') - z'*(s,g)|| + ||z'*(s,g) - phi(g)|| <= eps_d + ||z'*(s,g) - phi(g)||.
+
+So the middle term is at most `eps_d + [ ||z'*(s,g) - phi(g)|| - (||phi(s)-phi(g)|| - 1) ]`. Now compute `||z'*(s,g) - phi(g)||`, splitting on whether the latent goal is at least a unit away. If `||phi(g)-phi(s)|| >= 1`: `z'*` sits on the segment from `phi(s)` toward `phi(g)`, one unit along it, so `||z'*(s,g) - phi(g)|| = | ||phi(g)-phi(s)|| - 1 | = ||phi(g)-phi(s)|| - 1`, and the bracket is exactly zero. If `||phi(g)-phi(s)|| < 1`: then `z'*` overshoots past `phi(g)`, and `||z'*(s,g) - phi(g)|| = 1 - ||phi(g)-phi(s)||`, so the bracket is `(1 - ||phi(s)-phi(g)||) - (||phi(s)-phi(g)|| - 1) = 2(1 - ||phi(s)-phi(g)||)`. But in this regime `||phi(s)-phi(g)|| < 1 <= d*(s,g)`, so `1 - ||phi(s)-phi(g)|| <= d*(s,g) - ||phi(s)-phi(g)|| <= eps_e`, making the bracket at most `2 eps_e`. Either case, the bracket is at most `2 eps_e`. Putting it together:
+
+  |d*(s_hat', g) - (d*(s,g) - 1)| <= 2 eps_e + eps_d + 2 eps_e = 4 eps_e + eps_d.
+
+The left side is the absolute difference of two *integers* (`d*` is an integer step count). If `4 eps_e + eps_d < 1`, that integer-valued quantity is strictly less than 1, hence it is *exactly zero*. So `d*(s_hat', g) = d*(s,g) - 1`: the recommended step provably reduces the true temporal distance by one, which means the direction-following policy is optimal at `(s,g)`. Applied at every state along the way, it's an optimal goal-reaching policy. The rounding-to-an-integer step is what turns an approximate distance bound into an *exact* optimality guarantee — small enough embedding error and the discreteness of step counts snaps the answer to optimal.
+
+I should also pin down why the directional objective — maximize the inner product `< phi(s') - phi(s), (phi(g)-phi(s))/||phi(g)-phi(s)|| >` subject to a unit latent step — actually lands at that ideal point `z'*` when `z'*` is reachable. By Cauchy–Schwarz, `< phi(s')-phi(s), u > <= ||phi(s')-phi(s)|| * ||u||` for the unit vector `u = (phi(g)-phi(s))/||phi(g)-phi(s)||`, and with the constraint `||phi(s')-phi(s)|| <= 1` and `||u|| = 1` the objective is at most 1. The point `z'* = phi(s) + u` gives `< z'* - phi(s), u > = < u, u > = 1`, attaining the upper bound. So whenever `z'*` is a feasible next latent state, the inner-product objective selects exactly it — confirming that "move to maximize directional progress" and "move one unit toward `phi(g)`" coincide. This is exactly the place the *inner product* of the Hilbert space earns its keep: the optimality argument runs through Cauchy–Schwarz, which needs the inner product, not just the metric. The choice of `l2`/Hilbert back at the start wasn't decoration; it's what makes the goal-reaching guarantee go through. And it tells me the representation is more than a passive feature extractor: because the geometry is a Hilbert geometry, the *direction* `phi(g) - phi(s)` is itself an actionable control signal, so the downstream agent can be steered by elementary algebra on goal codes rather than re-learning geometry on top of frozen features.
+
+So let me put this into the code I'd actually ship. The representation should live inside the goal-conditioned value module itself, because the object I am fitting is a value function whose last operation is a distance. The agent keeps a separate target copy of that value module, and its `phi` method exposes the first ensemble member as the goal code. The value module is a two-member ensemble of layer-normalized representation MLPs mapping observations to `R^D`, with no final activation, and its call returns `V(s,g) = -sqrt(max(||phi(s)-phi(g)||^2, 1e-6))`. The loss is the twin-expectile goal-conditioned value loss: rewrite the sampled goal-reaching reward/mask, build the conservative target with the minimum target head, key the expectile weight on the target advantage, and regress each online head to its own per-head bootstrap target.
+
+```python
+import jax
+import jax.numpy as jnp
+import flax.linen as nn
+from typing import Callable, Sequence
+
+from jaxrl_m.networks import MLP, ensemblize, default_init
+from jaxrl_m.typing import PRNGKey, Shape, Dtype, Array
+
+
+class LayerNormMLP(nn.Module):
+    hidden_dims: Sequence[int]
+    activations: Callable = nn.gelu
+    activate_final: bool = False
+    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_init()
+
+    @nn.compact
+    def __call__(self, x):
+        for i, size in enumerate(self.hidden_dims):
+            x = nn.Dense(size, kernel_init=self.kernel_init)(x)
+            if i + 1 < len(self.hidden_dims) or self.activate_final:
+                x = self.activations(x)
+                x = nn.LayerNorm()(x)
+        return x
+
+
+class LayerNormRepresentation(nn.Module):
+    hidden_dims: tuple = (256, 256)
+    activate_final: bool = True
+    ensemble: bool = True
+
+    @nn.compact
+    def __call__(self, observations):
+        module = LayerNormMLP
+        if self.ensemble:
+            module = ensemblize(module, 2)
+        return module(self.hidden_dims, activate_final=self.activate_final)(observations)
+
+
+class Representation(nn.Module):
+    hidden_dims: tuple = (256, 256)
+    activate_final: bool = True
+    ensemble: bool = True
+
+    @nn.compact
+    def __call__(self, observations):
+        module = MLP
+        if self.ensemble:
+            module = ensemblize(module, 2)
+        return module(self.hidden_dims, activate_final=self.activate_final,
+                      activations=nn.gelu)(observations)
+
+
+class GoalConditionedPhiValue(nn.Module):
+    hidden_dims: tuple = (256, 256)
+    readout_size: tuple = (256,)
+    skill_dim: int = 2
+    use_layer_norm: bool = True
+    ensemble: bool = True
+    encoder: nn.Module = None
+
+    def setup(self):
+        repr_class = LayerNormRepresentation if self.use_layer_norm else Representation
+        phi = repr_class((*self.hidden_dims, self.skill_dim),
+                         activate_final=False, ensemble=self.ensemble)
+        if self.encoder is not None:
+            phi = nn.Sequential([self.encoder(), phi])
+        self.phi = phi
+
+    def get_phi(self, observations):
+        return self.phi(observations)[0]
+
+    def __call__(self, observations, goals=None, info=False):
+        phi_s = self.phi(observations)
+        phi_g = self.phi(goals)
+        squared_dist = ((phi_s - phi_g) ** 2).sum(axis=-1)
+        return -jnp.sqrt(jnp.maximum(squared_dist, 1e-6))
+
+
+def expectile_loss(adv, diff, expectile):
+    weight = jnp.where(adv >= 0, expectile, 1.0 - expectile)
+    return weight * (diff ** 2)
+
+
+def compute_value_loss(agent, batch, network_params):
+    batch['masks'] = 1.0 - batch['rewards']
+    batch['rewards'] = batch['rewards'] - 1.0
+
+    next_v1, next_v2 = agent.network(
+        batch['next_observations'], batch['goals'], method='target_value')
+    next_v = jnp.minimum(next_v1, next_v2)
+    q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_v
+
+    v1_t, v2_t = agent.network(
+        batch['observations'], batch['goals'], method='target_value')
+    v_t = (v1_t + v2_t) / 2.0
+    adv = q - v_t
+
+    q1 = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_v1
+    q2 = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_v2
+    v1, v2 = agent.network(
+        batch['observations'], batch['goals'], method='value', params=network_params)
+    v = (v1 + v2) / 2.0
+
+    value_loss1 = expectile_loss(adv, q1 - v1, agent.config['expectile']).mean()
+    value_loss2 = expectile_loss(adv, q2 - v2, agent.config['expectile']).mean()
+    value_loss = value_loss1 + value_loss2
+
+    return value_loss, {
+        'value_loss': value_loss,
+        'v max': v.max(),
+        'v min': v.min(),
+        'v mean': v.mean(),
+        'abs adv mean': jnp.abs(adv).mean(),
+        'adv mean': adv.mean(),
+        'adv max': adv.max(),
+        'adv min': adv.min(),
+        'accept prob': (adv >= 0).mean(),
+    }
+```
+
+The target value network is a deep copy of this same value module, initialized from the online value parameters and then updated by exponential moving average in the agent's outer loop, with a smoothing coefficient on the order of `0.005`. The downstream goal code is just `agent.network(g, method='phi')`, which calls `get_phi` and returns the first ensemble member.
+
+Let me close the loop on the causal chain. Raw goal observations are a bad coordinate system for goal reaching because visual/coordinate proximity has nothing to do with reachability, and the agent is forced to learn the environment's geometry tangled with control. The only proximity that matters is temporal distance `d*`, and the classical identity `V*(s,g) = -d*(s,g)` says temporal distance *is* a goal-conditioned value function — which I can learn offline. So I parameterize the value as a distance between embeddings, `V(s,g) = -||phi(s)-phi(g)||`, which makes the learned `phi` an approximate isometry from the MDP's temporal structure into a vector space, and gives `V(s,s)=0`, `V<=0`, and a single shared symmetric encoder for free. I make the space `l2`/Hilbert rather than a bare metric because the inner product is structure I'll spend at test time and — as the optimality proof shows via Cauchy–Schwarz — it's what turns the representation into an actionable control direction. I learn it from suboptimal offline data with action-free expectile regression, whose upper expectile approximates the optimal in-sample max backup so I recover `d*` rather than behavior distance, using the twin-head target-advantage-keyed scheme for stability and a square-root floor to keep the gradient finite. I accept that asymmetry of `d*`, the embeddability obstruction, and the stabilizing discount make this the best discounted symmetric Hilbert *approximation* rather than an exact isometry — and the goal-reaching theorem proves that as long as the embedding error is below the `4 eps_e + eps_d < 1` threshold, following the latent direction to the goal is exactly optimal, the integer-valued step count snapping the approximate bound to a hard guarantee. The result is a goal representation whose coordinates already encode reachability, handed to the downstream agent as `phi(g)`.
