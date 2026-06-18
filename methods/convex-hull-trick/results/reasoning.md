@@ -1,0 +1,130 @@
+I start with the transition exactly as written:
+
+$$
+dp[i] = \min_{0 \le j < i}\big(dp[j] + b[j]\cdot a[i]\big).
+$$
+
+The direct code is almost too honest: for each `i`, scan every earlier `j`, compute `dp[j] + b[j] * a[i]`, and keep the minimum. It is correct, but the total number of comparisons is $1+2+\cdots+(n-1)$, so the transition is quadratic. The only way out is to stop treating the inner minimum as a fresh unrelated search each time.
+
+For a fixed finished state `j`, the expression as a function of the future query value $x$ is
+
+$$
+L_j(x) = b[j]x + dp[j].
+$$
+
+So a finished state is a line: slope `b[j]`, intercept `dp[j]`. Querying state `i` asks for the minimum height among all currently available lines at $x=a[i]$. The DP is therefore maintaining the lower envelope of a growing set of lines, then reading that envelope at a sequence of query points.
+
+The slope order matters. If I walk the lower envelope from left to right, the winning slope can only decrease: at very negative $x$, the largest slope drops fastest, and at very positive $x$, the smallest slope wins. Each useful line owns one contiguous interval, and the useful lines appear in decreasing slope order. The input gives exactly the order I want for insertion, because `b[j]` is non-increasing as `j` grows. The queries also arrive in the order I want, because `a[i]` is non-decreasing. This should let both ends of one deque move monotonically.
+
+Before I use any three-line geometry, I have to handle the non-strict part of "non-increasing." Equal slopes never both matter. If two lines have the same slope, the smaller intercept is always at least as good at every $x$; the larger intercept can be discarded immediately. If the new equal-slope line has a smaller intercept, it replaces the old last line. After that normalization, adjacent stored slopes are strict, which is exactly what the crossing test needs.
+
+Now take three consecutive stored lines in decreasing slope order: $(m_1,c_1)$, $(m_2,c_2)$, $(m_3,c_3)$ with $m_1>m_2>m_3$, where the third line is the newcomer. The middle line survives only if it is below the envelope formed by the outer two somewhere. The outer two cross at
+
+$$
+x^* = \frac{c_3-c_1}{m_1-m_3}.
+$$
+
+At that crossing the outer lines have the same height. If the middle line is at or above that height, it never owns an interval and should be removed; if it is strictly below, it carves out a real middle interval and must stay. So the bad-line condition is
+
+$$
+m_2x^* + c_2 \ge m_3x^* + c_3.
+$$
+
+Substitute $x^*$ and avoid the division. Since $m_1-m_3>0$, multiplying through preserves the inequality:
+
+$$
+(c_2-c_3)(m_1-m_3) \ge (m_3-m_2)(c_3-c_1).
+$$
+
+That is the comparison I want in code. It computes products of integer differences and never forms a fractional breakpoint. In Python those products are exact because integers widen automatically; in a fixed-width language I would evaluate this comparison in a wider type than the raw DP values, because the cross-products can overflow even when each line value fits in 64 bits.
+
+I want to sanity-check the direction before trusting it. Let $L_1=2x$, $L_2=0$, and $L_3=-2x$. All three meet at the origin, so the middle line owns no positive-width interval and should be removed. The left side is $(0-0)(2-(-2))=0$ and the right side is $(-2-0)(0-0)=0$, so the inequality is true and the middle line is removed. If I lower the middle line to $L_2=-5$, the left side becomes $(-5-0)4=-20$ while the right side remains $0$, so the inequality is false and the middle line survives. The sign is right.
+
+Insertion is now simple. A new line belongs at the back because its slope is no larger than the slopes already stored. While the last stored line is made unnecessary by the line before it and the newcomer, I pop from the back. Then I append the new line. A line can be appended once and removed from the back at most once.
+
+Querying uses the other monotonicity. Since $x=a[i]$ never decreases, the best line can only move forward along the stored envelope. At the front of the deque, I compare the first two lines at the current $x$. If the second line is no higher than the first, the first line will never be best again for this or any later query, so I pop it from the front. I repeat until the front line is strictly better than the next line or there is no next line, then return the front value. A line can be removed from the front at most once.
+
+Those two one-way movements are the amortization: every state line is inserted once, then it either stays, leaves from the back during a later insertion, or leaves from the front during a later query. The total number of deque mutations is linear, and each failed while-loop comparison is attached to one outer operation, so the full DP is $O(n)$.
+
+```python
+import sys
+
+
+def read_input(data):
+    """Parse n, then the arrays a[0..n-1] and b[0..n-1] as integers."""
+    it = iter(data)
+    n = int(next(it))
+    a = [int(next(it)) for _ in range(n)]
+    b = [int(next(it)) for _ in range(n)]
+    return n, a, b
+
+
+class Transition:
+    """Stores finished states and answers min(value + slope * x)."""
+
+    def __init__(self):
+        from collections import deque
+        self.lines = deque()
+
+    def register(self, slope, value):
+        """Make one finished state available to later transitions."""
+        lines = self.lines
+
+        if lines and lines[-1][0] == slope:
+            if lines[-1][1] <= value:
+                return
+            lines.pop()
+
+        new_line = (slope, value)
+        while len(lines) >= 2:
+            m1, c1 = lines[-2]
+            m2, c2 = lines[-1]
+            m3, c3 = new_line
+            if (c2 - c3) * (m1 - m3) < (m3 - m2) * (c3 - c1):
+                break
+            lines.pop()
+
+        lines.append(new_line)
+
+    def query(self, x):
+        """Return the best transition value at x."""
+        lines = self.lines
+        while len(lines) >= 2:
+            m1, c1 = lines[0]
+            m2, c2 = lines[1]
+            if m2 * x + c2 > m1 * x + c1:
+                break
+            lines.popleft()
+
+        slope, value = lines[0]
+        return slope * x + value
+
+
+def solve(n, a, b):
+    dp = [0] * n
+    dp[0] = 0
+
+    tr = Transition()
+    tr.register(b[0], dp[0])
+
+    for i in range(1, n):
+        dp[i] = tr.query(a[i])
+        tr.register(b[i], dp[i])
+
+    return dp
+
+
+def main():
+    data = sys.stdin.buffer.read().split()
+    if not data:
+        return
+    n, a, b = read_input(data)
+    dp = solve(n, a, b)
+    sys.stdout.write(str(dp[n - 1]) + "\n")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The recurrence becomes linear because the expression contributed by each finished state is a line, the ordered slopes let me repair the useful lower boundary by popping from the back, the ordered queries let me discard expired front lines permanently, and the redundancy comparison stays exact by using the cross-product inequality instead of a divided breakpoint.

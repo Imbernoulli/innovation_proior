@@ -1,0 +1,93 @@
+In front of me is a directed acyclic graph on $n$ vertices, and I want to cover all of it with as few vertex-disjoint paths as possible — every vertex on exactly one path, the number of paths minimized. The honest first move is to ask what a "path cover" even is as a combinatorial object, because right now it's just a picture: a few chains of arrows lying over the vertices, none touching. Let me try to brute-force it to feel the shape. I could enumerate every way to partition the vertices into directed paths and take the partition with the fewest pieces. On five vertices that's fine; at a few thousand it's hopeless — the number of partitions explodes. So the brute force tells me what the answer *is* but not how to get it fast. I need structure.
+
+So stare at a single path in some cover: $v_1 \to v_2 \to v_3 \to \dots \to v_k$. What's true of each vertex on it? Every vertex except the last has exactly one vertex immediately after it on the path — its successor. Every vertex except the first has exactly one vertex immediately before it — its predecessor. The endpoints are the exceptions: the head has no predecessor, the tail has no successor. And that's the *whole* description of a path — a path is nothing but "who follows whom," a chain of successor links. So a cover by disjoint paths is, across all of it, a choice of successors: for some vertices I name "the next vertex on my path," for others (the path tails) I name nobody.
+
+Let me make that precise, because if I can pin down exactly which successor-choices are legal, I've turned a picture into a constraint problem. Write the choice as a partial function: for each vertex $v$ I either pick one out-edge $v \to w$ and declare $w$ to be $v$'s successor, or I pick nothing. What makes a set of such choices a valid disjoint-path cover? First, every chosen link has to be a real edge of the graph — I can only walk where arrows go. Second — and this is the part that encodes "disjoint" and "exactly once" — each vertex can be *someone's* successor at most once. If two different vertices both named $w$ as their successor, then $w$ would have two predecessors on its path, so two paths would crash into $w$; that's not a disjoint cover. So the successor choice must be injective: no vertex is claimed as a successor twice. And of course no vertex chooses more than one successor, since I let each vertex pick at most one out-edge. Third, I'd worry about cycles — what if the successor links close up into a loop $v_1 \to v_2 \to \dots \to v_1$? Then those vertices are on a cycle, not a path. But the graph is acyclic; following edges can never return to where it started, so the successor links can never form a cycle. That third worry just evaporates because of the DAG assumption — I'll come back to how load-bearing that is.
+
+So a disjoint-path cover is exactly: a set of edges of the graph in which every vertex has at most one chosen out-edge and at most one chosen in-edge. (Out-degree $\le 1$ is "each vertex picks at most one successor"; in-degree $\le 1$ is "each vertex is claimed by at most one predecessor.") That's a clean local condition. Now, how many paths does such a choice give me? Count the pieces. Start with no links chosen at all: then nobody has a successor, every vertex is its own isolated path, that's $n$ paths. Now switch on the chosen successor links one at a time. Each link $v \to w$ I turn on glues the path ending at $v$ to the path starting at $w$ — two separate fragments become one. Because the choice is injective on both sides (each $v$ has at most one out-link, each $w$ at most one in-link), turning on a link never creates a branch or a merge-of-three; it always joins exactly two distinct fragments into one, dropping the path count by exactly one. So if I chose $M$ links total, the number of paths is $n - M$. That's the formula I wanted: **paths $= n - (\text{number of chosen links})$.** To minimize the number of paths I want to *maximize* the number of chosen links, subject to: only real edges, at most one out per vertex, at most one in per vertex.
+
+Now look hard at that constraint — "choose as many edges as possible so that each vertex is used at most once as a tail and at most once as a head." The "tail" role and the "head" role of a vertex are independent: vertex $v$ being the source of a chosen edge is a completely separate budget from $v$ being the target of a chosen edge. The constraint never ties $v$'s out-choice to $v$'s in-choice. That independence is the tell. If the source-role and the target-role of each vertex are independent one-time budgets, then I should give every vertex *two separate identities* — one identity that can be spent as a source, one that can be spent as a target — and the constraint becomes "use each identity at most once."
+
+Make the two copies literal. For every vertex $v$ create a left copy $v_{\text{out}}$, standing for "$v$ acting as a source / having a successor," and a right copy $v_{\text{in}}$, standing for "$v$ acting as a target / having a predecessor." For every directed edge $v \to w$ of the graph, draw one edge between the copies: $v_{\text{out}} - w_{\text{in}}$. Now what is a set of original edges with out-degree $\le 1$ and in-degree $\le 1$ at every vertex, in this new graph? An edge $v \to w$ is chosen iff $v_{\text{out}} - w_{\text{in}}$ is chosen. "At most one chosen out-edge at $v$" means $v_{\text{out}}$ touches at most one chosen edge. "At most one chosen in-edge at $w$" means $w_{\text{in}}$ touches at most one chosen edge. So a legal successor choice is exactly a set of edges in this two-sided graph in which every copy — left or right — touches at most one chosen edge. That is the definition of a matching. And the new graph is bipartite by construction: every edge runs from a left ($\cdot_{\text{out}}$) copy to a right ($\cdot_{\text{in}}$) copy, never left-to-left or right-to-right.
+
+So the whole thing collapses. Maximizing the number of chosen links over all legal successor choices is the same as finding a maximum-cardinality matching in this bipartite split graph. Let $M$ be the size of that maximum matching. Then the minimum number of paths is
+
+$$\boxed{\,n - M\,}.$$
+
+Let me convince myself the correspondence is exact and not just suggestive, in both directions, because the $-M$ is where it's easy to fool yourself. Take any matching in the split graph. Map each matched edge $v_{\text{out}} - w_{\text{in}}$ back to the original edge $v \to w$, and collect those into a subgraph $F$ of the DAG. Because it's a matching, $v_{\text{out}}$ is matched at most once, so in $F$ vertex $v$ has out-degree at most one; and $w_{\text{in}}$ is matched at most once, so $w$ has in-degree at most one. A directed subgraph in which every vertex has in-degree $\le 1$ and out-degree $\le 1$ is a disjoint union of simple paths and simple cycles — that's a standard fact: follow out-edges from any vertex and you can never branch (out-degree $\le 1$) nor merge (in-degree $\le 1$), so each connected piece is a single chain that is either open (a path) or closed (a cycle). But the graph is acyclic, so $F$ has no cycles. Hence $F$ is a set of vertex-disjoint directed paths covering all the matched links, and it touches all $n$ vertices (vertices with no chosen link are length-zero paths). The number of paths in $F$ is $n - |F| = n - |M|$, by the gluing count above. Conversely, any vertex-disjoint path cover hands me back its successor links, every link is a real edge, and the injective-on-both-sides property makes those links a matching of the split graph of size $n - (\text{number of paths})$. So covers of $G$ and matchings of the split graph are in bijection with sizes tied by paths $= n - |\text{matching}|$, and minimizing the left side is maximizing the right. Minimum path cover $= n - M$.
+
+And now I see exactly why I had to assume the DAG is acyclic, and where this would break otherwise. The bijection routed through "$F$ has indegree and outdegree $\le 1$, so it's paths-or-cycles, and acyclicity kills the cycles." On a general directed graph $F$ could contain a cycle, and a matched cycle is not a path: it covers its vertices as a loop, not as a simple path with two endpoints. Then the matching count could make $n - M$ too small, even zero on a directed cycle. (Indeed minimum path cover on a general digraph is NP-hard; the clean reduction is a DAG-only phenomenon.) Acyclicity is not decoration here; it's the hinge that makes "matching $\Leftrightarrow$ path cover" hold.
+
+Let me also notice what this is computing when the DAG is special. Suppose the graph is the comparability relation of a partial order — draw $v \to w$ whenever $v \prec w$. Then a directed path in this graph is a sequence $v_1 \prec v_2 \prec \dots \prec v_k$ of pairwise-comparable elements, i.e. a *chain* of the poset. A vertex-disjoint path cover is then a partition of the poset into chains, and the minimum path cover is the minimum number of chains needed to cover all elements. There's a beautiful theorem about that quantity: the minimum number of chains covering a finite poset equals the maximum size of an *antichain* — a set of pairwise-incomparable elements (Dilworth's theorem; the maximum antichain size is the *width* of the poset). So the same $n - M$ that solves minimum path cover also computes the width of any finite poset, with the antichain on the other side of the equality acting as a certificate of optimality: you can't cover with fewer chains than the largest set of mutually-incomparable elements, because two incomparable elements can never share a chain. The matching reduction is the constructive, computational face of Dilworth's min-chain-cover $=$ max-antichain identity.
+
+One care: for a poset I should feed in the strict comparability edges, the transitive DAG with an edge $v \to w$ whenever $v \prec w$, because a "chain" in the poset is any increasing subset, not only cover-relation-adjacent elements. If I instead give the algorithm only some sparse DAG edge set, then it solves the path-cover problem for that edge set, which may be a different object. For the plain problem in front of me the input *is* the DAG, so I just take its edges as given.
+
+So the algorithm is settled: build the split bipartite graph, find a maximum matching $M$, return $n - M$. The one remaining piece is the matching itself, and I have a maximum-bipartite-matching routine available; let me make sure I know what it's doing so the $O(n \cdot m)$ cost is honest. Kuhn's method is augmenting paths. Keep, for each right vertex, the left vertex it's currently matched to (or none). Process left vertices one at a time; for the current left vertex run a DFS that tries to "place" it: walk to a neighboring right vertex $w$; if $w$ is free, claim it and we're done; if $w$ is already taken by some left vertex $u'$, recursively try to re-place $u'$ on a *different* right vertex, and if that succeeds, $w$ frees up for the current vertex. A `used` flag per right vertex stops the DFS from revisiting a right vertex within one augmentation. Each left vertex triggers at most one DFS that touches each edge once, so the whole thing is $O(V \cdot E)$ — here $O(n \cdot m)$, fine for a few thousand vertices. Berge's lemma is the reason it's correct: a matching is maximum exactly when no augmenting path exists, and Kuhn's DFS finds an augmenting path from a left vertex whenever one exists, so when every left vertex has been tried the matching is maximum. The count of successful placements is $M$.
+
+Now I just wire it to the split graph. Each original vertex $v$ contributes left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$); both sides have exactly $n$ indices. For each DAG edge $v \to w$ I add, in the bipartite adjacency, $w$ to the neighbor list of left vertex $v$, which is exactly the edge $v_{\text{out}} - w_{\text{in}}$. Then `min_path_cover` calls the given matching routine on these two $n$-vertex sides, stores its size, and returns $n - M$.
+
+```python
+import sys
+
+sys.setrecursionlimit(1_000_000)
+
+
+def read_dag(data):
+    """Parse n, m, and m directed edges (1-based in input) into a 0-based
+    adjacency list of a DAG. Returns (n, adj)."""
+    it = iter(data)
+    n = int(next(it))
+    m = int(next(it))
+    adj = [[] for _ in range(n)]
+    for _ in range(m):
+        u = int(next(it)) - 1
+        v = int(next(it)) - 1
+        adj[u].append(v)
+    return n, adj
+
+
+def bipartite_matching(n_left, n_right, adj):
+    """Maximum-cardinality matching of a bipartite graph by Kuhn's
+    augmenting-path search. adj[u] lists right vertices joined to left vertex u.
+    Returns the size of a maximum matching. O(V * E)."""
+    match_right = [-1] * n_right       # right vertex -> its matched left vertex
+
+    def try_kuhn(u, used):
+        for w in adj[u]:
+            if not used[w]:
+                used[w] = True
+                if match_right[w] == -1 or try_kuhn(match_right[w], used):
+                    match_right[w] = u
+                    return True
+        return False
+
+    size = 0
+    for u in range(n_left):
+        used = [False] * n_right
+        if try_kuhn(u, used):
+            size += 1
+    return size
+
+
+def min_path_cover(n, adj):
+    bip = [[] for _ in range(n)]
+    for v in range(n):
+        for w in adj[v]:
+            bip[v].append(w)
+    matching_size = bipartite_matching(n, n, bip)
+    return n - matching_size
+
+
+def main():
+    data = sys.stdin.buffer.read().split()
+    if not data:
+        return
+    n, adj = read_dag(data)
+    print(min_path_cover(n, adj))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The whole chain, in one breath: a disjoint-path cover is a choice of "successor on my path" for some vertices, and the only constraints are that each link is a real edge and that no vertex is used twice — once as a source, once as a target — which are *independent* one-time budgets, so I split each vertex into a source-copy and a target-copy and the legal successor choices become exactly the matchings of the resulting bipartite graph; turning on $M$ links glues $n$ singleton paths down to $n - M$, so minimizing paths is maximizing the matching and the answer is $n - M$; the bijection holds because an indegree-$\le 1$, outdegree-$\le 1$ subgraph of an *acyclic* graph is forced to be disjoint paths with no cycles, and on a poset this same $n - M$ is the minimum chain cover, equal by Dilworth's theorem to the largest antichain.
