@@ -1,0 +1,141 @@
+The thing in front of me is a string $s$, growing one character at a time, and after each character I want the count of distinct non-empty substrings of the current prefix. The honest first move: keep a set of all substrings. When the prefix has length $m$, its substrings are the $\binom{m+1}{2}$ pieces $s[i..j)$; throw them in a hash set, the size is the answer. Correct, and on a tiny string fine. But the count of substrings is $\Theta(m^2)$, and just enumerating them across a string of length $n$ is $\Theta(n^3)$ work and $\Theta(n^2)$ stored characters. At $n=10^6$ that's dead on arrival. So the set-of-strings framing is the enemy from the start — I'm storing and re-deriving overlapping pieces of a string I already hold, and most of the work is redundant because substrings nest inside each other.
+
+So I want one object that *represents* every substring without storing each one separately, and from which the distinct count falls out cheaply. The cleanest such object is an automaton: a directed graph with a start state, edges labelled by characters, where reading a string off the labels along a path means "this string is a substring of $s$." If I build the machine so that every substring of $s$ is exactly the set of strings spelled by paths starting at the initial state $t_0$ — and no path spells a non-substring — then the number of distinct substrings is just the number of distinct non-empty paths from $t_0$. That reframes counting strings as counting paths in a DAG, and paths in a DAG I can count by dynamic programming in time linear in the graph. The whole question becomes: how small can such a machine be, and can I keep it correct as $s$ grows?
+
+The naive version of this machine is a trie of all substrings — or equivalently the trie of all suffixes, since every substring is a prefix of some suffix. That trie has correct path-semantics: a path from the root spells exactly a substring. But it can have $\Theta(n^2)$ nodes; a string whose suffixes share little prefix forces almost every substring to occupy its own place. So path-semantics alone is cheap to *state* and expensive to *store*. I need to collapse nodes. The trie keeps a separate node for every distinct substring; that's far more than necessary, because many different substrings are interchangeable for the purpose of "what can come next and where does it lead." If I can identify *when two substrings can safely share a single state*, I shrink the machine.
+
+When is it safe to merge two substrings $u$ and $w$ into one state? In a deterministic automaton, the state a string lands in must determine the string's entire future behaviour: which continuations stay inside $s$, and which state each continuation leads to. Two substrings can share a state precisely when they have the same future — and the future of a substring inside $s$ is governed by *where it occurs*. Concretely, the set of characters that may legally follow $u$, and the longer continuations that stay inside $s$, are exactly the characters and tails sitting immediately after the occurrences of $u$ in $s$. So what I really need to know about a substring is not the substring itself but the set of places it ends. Let me define, for a substring $t$, its set of ending positions — the indices in $s$ at which an occurrence of $t$ finishes. Call it $\mathrm{endpos}(t)$. Two substrings with the *same* ending-position set are followed by exactly the same things in exactly the same places: every continuation that extends one extends the other identically. They are interchangeable. So I'll merge substrings into one state exactly when their ending-position sets coincide — group all substrings into equivalence classes by $\mathrm{endpos}(\cdot)$, one state per class, plus $t_0$ for the empty string.
+
+Before I trust that, I should understand the structure of these classes, because the whole machine — its size, its links, the count — will live or die on it. Take two non-empty substrings $u$ and $w$, say $|u| \le |w|$. First claim: they share an ending-position set iff $u$ occurs in $s$ *only* as a suffix of $w$. One direction is immediate — if every place $u$ ends is also a place $w$ ends and vice versa, then wherever $w$ ends, $u$ ends there too with $|u|\le|w|$, so $u$ is a suffix of $w$, and $u$ can occur nowhere else (every $u$-occurrence carries a $w$-occurrence ending at the same spot). The other direction is just as direct: if $u$ is a suffix of $w$ and only ever appears as that suffix, then the two end at exactly the same positions. Good.
+
+Now the laminar structure, which is the load-bearing fact. Take any $u$ with $|u|\le|w|$ and ask how $\mathrm{endpos}(u)$ and $\mathrm{endpos}(w)$ can overlap. Suppose they share even one position $p$ — both $u$ and $w$ end at $p$. Then with $|u|\le|w|$, the string ending at $p$ of length $|u|$ is a suffix of the one of length $|w|$, i.e. $u$ is a suffix of $w$. But then *every* occurrence of $w$ has $u$ sitting at its tail, ending at the same spot — so every ending position of $w$ is an ending position of $u$, giving $\mathrm{endpos}(w) \subseteq \mathrm{endpos}(u)$. And if they share no position, the sets are disjoint. So any two of these sets are either nested or disjoint — never crossing. That is exactly the condition for the sets to form a tree by inclusion. This is a strong constraint and I'll lean on it twice: once to bound the number of states, once to define the links.
+
+One more structural fact about a single class, because I'll need it to count. Fix an equivalence class and sort its substrings by decreasing length. By the first claim, any two of them have the shorter as a proper suffix of the longer, so no two share a length — they have strictly decreasing lengths. Let $w$ be the longest and $u$ the shortest in the class. I claim the class is *exactly* the suffixes of $w$ whose length runs over a contiguous interval $[\,|u|,\,|w|\,]$ with no gaps. Take any suffix $v$ of $w$ with $|u|\le|v|\le|w|$. Since $u$ occurs only as a suffix of $w$, and $v$ sits between them, $v$ too can occur only as a suffix of $w$ (an occurrence of $v$ elsewhere would drag $u$ along to a non-suffix spot, contradicting that $u$ is glued to $w$). So $v$ shares $w$'s ending set and is in the class. Hence a state $v$ holds precisely the suffixes of its longest string with lengths in a contiguous interval. Write $\mathrm{len}(v)$ for the length of the longest string in the state, and $\mathrm{minlen}(v)$ for the shortest. Then the state owns exactly $\mathrm{len}(v)-\mathrm{minlen}(v)+1$ distinct substrings. That's the per-state count I'll sum.
+
+This already hands me the answer formula, almost. Summing $\mathrm{len}(v)-\mathrm{minlen}(v)+1$ over all states $v\ne t_0$ counts every distinct non-empty substring exactly once, since the classes partition the substrings. But $\mathrm{minlen}(v)$ is awkward to carry. Let me express it through the tree. For a state $v\ne t_0$ with longest string $W=\mathrm{longest}(v)$, look at the suffixes of $W$ in decreasing length: the first several are in $v$'s own class (they share $W$'s ending set), and at some point a suffix drops into a *different* class (at the latest the empty suffix, which is $t_0$). The shortest string of $v$ is the last one still in $v$'s class; the next suffix, one character shorter, is the longest string of a different class. Point a link from $v$ to that state — the state of the longest proper suffix of $\mathrm{longest}(v)$ that lives in a different ending-position class. Then the shortest string of $v$ has length one more than the longest string of $\mathrm{link}(v)$:
+
+$$\mathrm{minlen}(v) = \mathrm{len}(\mathrm{link}(v)) + 1.$$
+
+So the per-state count $\mathrm{len}(v)-\mathrm{minlen}(v)+1$ becomes simply
+
+$$\mathrm{len}(v) - \mathrm{len}(\mathrm{link}(v)),$$
+
+and the total number of distinct non-empty substrings is
+
+$$\sum_{v \ne t_0} \big(\mathrm{len}(v) - \mathrm{len}(\mathrm{link}(v))\big).$$
+
+That's a single pass over the states with no graph traversal at all — no path-DP needed, just two integers per state. (I could instead count paths in the DAG with $d[v]=1+\sum_{\text{edges }v\to w} d[w]$ and report $d[t_0]-1$; same answer, but the closed form needs no recursion and no extra array, and it's the same fact read off the per-state intervals, so I'll take it.) And these links: where do they lead structurally? $\mathrm{link}(v)$'s ending set strictly contains $v$'s (its string is a shorter suffix occurring in at least all of $v$'s places and, being in another class, at least one more), and following links from any $v$ shortens the string each step, so the chain reaches $t_0$. The links therefore form a tree rooted at $t_0$ — and it is precisely the inclusion tree of the ending-position sets I found above. The structure is self-consistent.
+
+Now the real work: building and *maintaining* this machine online, one character at a time, cheaply. I have the automaton for $s$ and I append a character $c$ to get $s+c$. What changes? The substrings of $s+c$ are the substrings of $s$ plus the brand-new ones — and every brand-new substring ends at the freshly appended position, so each is some suffix of $s$ with $c$ stuck on the end. So all I'm injecting is: for every suffix $x$ of $s$, the string $x+c$, plus the single character $c$ itself (which is $x+c$ with $x$ empty). The whole prefix $s+c$ is itself one of these new strings and is the longest; it has an ending set never seen before (only one occurrence, ending at the new last position), so it needs its own fresh state. Make a state $cur$ with $\mathrm{len}(cur)=\mathrm{len}(last)+1$, where $last$ is the state of the whole string $s$. Its link I don't yet know.
+
+How do I reach all the suffixes of $s$ in one structure? That's exactly what the suffix links give me: starting from $last$ (the state whose longest string is $s$) and walking links, I pass through states whose longest strings are the successively shorter suffixes of $s$ — every suffix of $s$ is the longest string of some state on this chain or sits inside one of them. So I walk up from $last$. At each state $p$ on the chain, I want to record that the suffix it represents, followed by $c$, is now a valid substring — i.e. add a transition labelled $c$ from $p$ to the new state $cur$. As long as $p$ has *no* outgoing $c$-edge yet, that means $x+c$ (for $p$'s suffix $x$) never occurred in $s$ before: it's genuinely new, so add the edge $p \xrightarrow{c} cur$ and keep walking up the links. I stop the moment one of two things happens.
+
+First stop: I walk all the way off the top of the chain (past $t_0$, into the fictitious $-1$). That means *no* suffix of $s$ was ever followed by $c$ — the character $c$ is new to the string entirely. Then every $x+c$ is new, $c$ occurs only at the end, and the smallest non-empty new string $c$ has the broadest ending set, sitting at $t_0$'s child level — so $\mathrm{link}(cur)=t_0$. Done with this character.
+
+Second stop, the interesting one: at some state $p$ I find an *existing* $c$-edge, $p \xrightarrow{c} q$. This says $x+c$ (with $x=\mathrm{longest}(p)$, the suffix of $s$ at this chain position) already occurred inside $s$ — it's an old substring, I must not add a parallel edge, and I stop the walk. The only thing left is the link of $cur$. The link should point to the state whose longest string is exactly $x+c$ — that's the longest proper suffix of $s+c$ that already existed as a substring of $s$, which is the right "longest suffix in another class" for $cur$. So I want a state whose $\mathrm{len}$ equals $\mathrm{len}(p)+1$ and that represents $x+c$. The edge $p\xrightarrow{c}q$ lands me in $q$, whose strings end where $x+c$ ends — but $q$ might be *bigger* than $x+c$: its longest string could be longer than $\mathrm{len}(p)+1$.
+
+Two cases, and the distinction is whether the edge is "tight." If $\mathrm{len}(q)=\mathrm{len}(p)+1$, then $q$'s longest string *is* $x+c$ — the edge is tight, $q$ already represents exactly what I want, so $\mathrm{link}(cur)=q$ and I'm done. The transition is tight whenever following the longest path into $q$ grows the length by exactly one; these tight edges are the ones that never need fixing later.
+
+The hard case is $\mathrm{len}(q) > \mathrm{len}(p)+1$ — a loose edge. Here $q$'s class contains strings longer than $x+c$: its longest string is some $y$ with $|y|>|x+c|$, and $x+c$ is a *proper* suffix of $y$. In $s$ alone, $x+c$ and $y$ had the same ending set — that's why they shared state $q$. But with the new character appended, $x+c$ picks up a new ending position (the appended index, since $x$ is a suffix of $s$ so $x+c$ is a suffix of $s+c$ ending there) while $y$, being longer, does *not* end at that new position (it's not a suffix of $s+c$, or it would have shown up on my walk as a longer match). So $x+c$ and $y$ no longer have the same ending set: their classes have split. The single state $q$ now has to become two states. I have to split it at the length boundary $\mathrm{len}(p)+1$: the strings of length $\le \mathrm{len}(p)+1$ in $q$ (down to $\mathrm{minlen}(q)$) form one class — they all gained the new ending position — and the strings of length $>\mathrm{len}(p)+1$ keep $q$'s old ending set.
+
+So I clone $q$. Make a new state $clone$ that is a *copy* of $q$ — same outgoing transitions, same link — but with $\mathrm{len}(clone)=\mathrm{len}(p)+1$. The copy keeps the transitions because every string that left through $q$ still leaves the same way; I'm only relabelling which state owns the short strings. The $clone$ takes over the short half of $q$'s interval; $q$ keeps the long half, and now $q$'s shortest string is one longer than $clone$'s longest, so $\mathrm{link}(q)$ must point at $clone$. The new state $cur$ I just built also has its longest-proper-suffix-in-another-class equal to $x+c$, which is now exactly $\mathrm{longest}(clone)$, so $\mathrm{link}(cur)=clone$ as well. The last repair: some of the edges that pointed into $q$ should now point into $clone$ — specifically the $c$-edges coming from the chain at and above $p$ that were spelling $x+c$ and its shorter suffixes. Those are exactly the suffixes of $x+c$; they live on the link chain from $p$ upward. So I continue walking up the links from $p$, and as long as the $c$-edge still leads to $q$, redirect it to $clone$; stop when it leads elsewhere or I fall off the top. Edges spelling longer strings into $q$ are untouched — they still want the long half. After all that, set $last=cur$ and the machine for $s+c$ is correct.
+
+Now, is this actually linear? Two things to bound: the number of states/edges in the final machine, and the total work across all the walks.
+
+States first. The construction creates one $cur$ per character, and at most one $clone$ per character, so after $n$ characters there are at most $2n$ states — linear. I can pin it tighter and independently of the algorithm using the laminar tree. The ending sets form a tree by inclusion; the leaves correspond to the most-specific classes, and there are at most $n$ of them. After suppressing single-child internal nodes, every internal node has degree at least two, so a tree with at most $n$ leaves has at most $2n-1$ nodes. The state count is therefore $\le 2n-1$ for $n\ge 2$.
+
+Edges next. Split the transitions into tight ones ($\mathrm{len}(q)=\mathrm{len}(p)+1$) and loose ones. The tight edges, one can take the longest-path-in tree of the DAG: it uses only tight edges and is a spanning tree of the states, so there are fewer than the number of states of them, $\le 2n-2$. For the loose edges: each loose edge $p\xrightarrow{c}q$ I can charge to a distinct string — take $u\,c\,w$ where $u$ is the longest path from $t_0$ to $p$ (made of tight edges) and $w$ is the longest path from $q$ to a state representing a full suffix; this string is a suffix of $s$, it uses this one loose edge in the middle, and different loose edges give different such strings, none equal to all of $s$ (that path is all tight). There are only $n-1$ proper non-empty suffixes available, so at most $n-1$ loose edges. Total edges $\le 3n-3$, and a touch tighter to $3n-4$ since the extremal state-count string doesn't also maximize edges. Linear either way.
+
+Finally the running time, which has three non-obvious loops. The first is the walk from $last$ adding $c$-edges: every iteration that doesn't stop *adds* a transition to the machine, and the machine has $O(n)$ transitions total over the whole run, so all these iterations summed across all characters are $O(n)$ amortized — even though one character can do many. The second is copying $q$'s transitions into $clone$: over a fixed alphabet that's a bounded number of entries per clone, and there are $O(n)$ clones, so $O(n)$. The third is the redirect walk from $p$ upward swapping $q$ for $clone$ on the $c$-edges. This one needs care because it's a *second* link-walk per character. In the loose case, after the redirection finishes, the string that was at that redirect depth becomes the second link ancestor of the new $last=cur$; its starting position as a suffix of the current string has moved to the right. That suffix position cannot move right more than $n$ times across the whole construction, so the total number of redirect iterations is $O(n)$. With a fixed alphabet, every state has $O(1)$ outgoing entries, so copying a transition dictionary is bounded and hash lookups are expected constant; fixed transition arrays give the same $O(n)$ worst-case bound with $O(nk)$ memory for alphabet size $k$.
+
+So the online update is exactly: make $cur$, walk up from $last$ adding $c$-edges until a $c$-edge exists or I fall off; if I fell off, link $cur$ to the root; else look at the edge's target $q$ — if the edge is tight, link $cur$ to $q$; if loose, clone $q$ at length $\mathrm{len}(p)+1$, redirect the suffix-chain of $c$-edges from $q$ to the clone, link both $q$ and $cur$ to the clone; set $last=cur$. And the distinct-substring count is $\sum_{v\ne t_0}(\mathrm{len}(v)-\mathrm{len}(\mathrm{link}(v)))$. I can maintain that sum online: a clone only partitions $q$'s old length interval, so $q$ plus $clone$ contributes the same amount $q$ used to contribute; the only net increase is the new state $cur$, namely $\mathrm{len}(cur)-\mathrm{len}(\mathrm{link}(cur))$. Let me write it with parallel arrays: $\mathrm{len}$, $\mathrm{link}$, a per-state dictionary of transitions, and a running total.
+
+```python
+class SubstringCounter:
+    """Online suffix automaton over integer character codes.
+
+    One state per ending-position equivalence class (plus the root t0 = state 0).
+    State v stores len[v] (length of its longest string), link[v] (the suffix
+    link: the state of the longest proper suffix of longest(v) lying in another
+    class), and trans[v] (character-code -> state). The distinct non-empty
+    substrings owned by v are exactly the suffixes of longest(v) with lengths in
+    [len[link[v]] + 1, len[v]], i.e. len[v] - len[link[v]] of them.
+    """
+
+    def __init__(self):
+        self.length = [0]      # len of the root's longest string (empty) is 0
+        self.link = [-1]       # root has no suffix link
+        self.trans = [dict()]  # root's outgoing transitions
+        self.last = 0          # state whose longest string is the whole prefix
+        self.total = 0         # current number of distinct non-empty substrings
+
+    def extend(self, c):
+        # New state for the whole prefix s + c; its longest string grew by one.
+        cur = len(self.length)
+        self.length.append(self.length[self.last] + 1)
+        self.link.append(-1)
+        self.trans.append(dict())
+
+        # Walk suffix links from last, attaching a c-edge to cur for every
+        # suffix of s that was not yet followed by c (those x + c are new).
+        p = self.last
+        while p != -1 and c not in self.trans[p]:
+            self.trans[p][c] = cur
+            p = self.link[p]
+
+        if p == -1:
+            # c never followed any suffix of s: c is new, link cur to the root.
+            self.link[cur] = 0
+        else:
+            q = self.trans[p][c]
+            if self.length[p] + 1 == self.length[q]:
+                # Tight edge: q's longest string is exactly x + c. Link straight.
+                self.link[cur] = q
+            else:
+                # Loose edge: x + c gained the new ending position but q's longer
+                # strings did not, so q's class splits. Clone q at length len(p)+1.
+                clone = len(self.length)
+                self.length.append(self.length[p] + 1)
+                self.link.append(self.link[q])         # clone copies q's link
+                self.trans.append(dict(self.trans[q]))  # and q's transitions
+                # Redirect the suffix chain of c-edges from q over to the clone.
+                while p != -1 and self.trans[p].get(c) == q:
+                    self.trans[p][c] = clone
+                    p = self.link[p]
+                self.link[q] = clone
+                self.link[cur] = clone
+
+        self.last = cur
+        self.total += self.length[cur] - self.length[self.link[cur]]
+        return self
+
+    def count_distinct_substrings(self):
+        return self.total
+
+
+def count_distinct_substrings(text):
+    """Number of distinct non-empty substrings of text, built online."""
+    sc = SubstringCounter()
+    code = {}
+    for ch in text:
+        if ch not in code:
+            code[ch] = len(code)
+        sc.extend(code[ch])
+    return sc.count_distinct_substrings()
+
+
+def distinct_substrings_per_prefix(text):
+    """For each prefix text[:i+1], the running count of distinct non-empty
+    substrings -- one online pass."""
+    sc = SubstringCounter()
+    code = {}
+    out = []
+    for ch in text:
+        if ch not in code:
+            code[ch] = len(code)
+        sc.extend(code[ch])
+        out.append(sc.count_distinct_substrings())
+    return out
+```
+
+The whole chain: counting distinct substrings as a set of strings is $\Theta(n^2)$ because substrings nest and the work is thrown away, so instead I build one automaton in which every substring is a distinct path from the start and the count is a graph quantity; the machine stays small by merging substrings that share an ending-position set, and those sets are laminar, so the merged states carry a length interval $[\,\mathrm{len}(\mathrm{link}(v))+1,\,\mathrm{len}(v)\,]$ and the distinct count is just $\sum_v(\mathrm{len}(v)-\mathrm{len}(\mathrm{link}(v)))$; appending a character injects exactly the suffixes-plus-$c$, handled by walking suffix links from the last state and adding edges, with a clone whenever a too-long shared state must split at the new ending position; and because each character adds at most one new state plus one clone while the two link walks amortize over the linear-size transition set and the monotone redirect argument, the machine is $\le 2n-1$ states with $O(n)$ transitions and the construction is $O(n)$ over a fixed alphabet.
