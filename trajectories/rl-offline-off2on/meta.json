@@ -1,0 +1,52 @@
+{
+  "task": "rl-offline-off2on",
+  "title": "Offline-to-Online RL: preventing catastrophic forgetting in fine-tuning",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "pen-cloned-v1",
+    "hammer-cloned-v1",
+    "hammer-expert-v1"
+  ],
+  "metric_columns": [
+    "d4rl_score_pen_cloned_v1",
+    "d4rl_score_hammer_cloned_v1",
+    "d4rl_score_hammer_expert_v1"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "spot",
+      "method": "SPOT (support-constrained TD3 + VAE)",
+      "reasoning": "01-spot-reasoning.md",
+      "answer": "01-spot-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "awac",
+      "method": "AWAC (advantage-weighted actor-critic)",
+      "reasoning": "02-awac-reasoning.md",
+      "answer": "02-awac-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "iql",
+      "method": "IQL (implicit Q-learning)",
+      "reasoning": "03-iql-reasoning.md",
+      "answer": "03-iql-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "cal-ql",
+      "method": "Cal-QL (calibrated Q-learning)",
+      "reasoning": "04-cal-ql-reasoning.md",
+      "answer": "04-cal-ql-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "No is_final=true baseline rows exist for this task; ordering uses the measured baseline:* (is_final=false) rows in leaderboard.csv (2026-05-05), consistent with published consensus. spot weakest: pen-cloned 56.4, hammer-cloned 19.7 (one-seed-driven), and a collapse to 2.5 on the held-out hammer-expert variant (lowest across the three tasks). awac next: hammer-expert recovers to 126.8 and pen-cloned 63.7, but hammer-cloned collapses to 0.34 (over-conservative on the noisy mixture). iql strongest: pen-cloned 103.0, hammer-cloned 76.7 (positive on every seed), hammer-expert 129.7 — dominates the other two on all three tasks. Finale Cal-QL (Nakamoto et al., NeurIPS 2023, arXiv:2303.05479) is a genuinely stronger published off2on method not in the task baselines; ranked by published consensus, not a measured row.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (CORL/algorithms/finetune/custom_finetune.py editable region lines 258-477: network classes + OfflineOnlineAlgorithm, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers, baselines only). The finale Cal-QL carries no feedback; its bar (IQL's real numbers) lives at the close of its reasoning. methods/<slug> single-round traces (spot, awac, iql, and the new cal-ql) are the derivation references and stay untouched for Methods mode. Same-named-vs-paper diffs: all three baselines and the finale match the task's CORL edit.py, NOT the papers' generic versions (see report)."
+}

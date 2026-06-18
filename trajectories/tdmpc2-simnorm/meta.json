@@ -1,0 +1,34 @@
+{
+  "task": "tdmpc2-simnorm",
+  "title": "TD-MPC2 Latent Normalization: bounding and shaping the world-model latent",
+  "domain": "Self-supervised",
+  "metrics": [
+    "walker-walk",
+    "cheetah-run",
+    "cartpole-swingup"
+  ],
+  "metric_columns": [
+    "episode_reward"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "rmsnorm",
+      "method": "RMSNorm (group-wise)",
+      "reasoning": "01-rmsnorm-reasoning.md",
+      "answer": "01-rmsnorm-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "simnorm",
+      "method": "SimNorm (simplicial normalization)",
+      "reasoning": "02-simnorm-reasoning.md",
+      "answer": "02-simnorm-answer.md",
+      "feedback": "02-feedback.md"
+    }
+  ],
+  "ranking_basis": "Two genuine published-method baselines (simnorm, rmsnorm); l2norm and identity are generic ablation/control variants (no dedicated paper, no methods/ trace) and are excluded from the published-method ladder. walker-walk (~976-977) and cartpole-swingup (~873-881) saturate for every normalization, so cheetah-run is the discriminating metric. Ranked by the is_final,true mean cheetah-run episode reward: rmsnorm 680.96 (weakest) < simnorm 798.47 (strongest). SimNorm is also the established TD-MPC2 default and the published best here, so no finale is added.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_simnorm.py: CustomSimNorm, lines 16-43, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Same-named-vs-paper diffs: the task's rmsnorm.edit.py is GROUP-WISE RMSNorm (reshape into 16 groups of 8, RMS within each group, learnable gain of size 8, eps INSIDE the sqrt) -- not the canonical full-vector RMSNorm of methods/rmsnorm; the trajectory derives and shows the group-wise form to match the harness. The task's simnorm.edit.py is the canonical SimNorm (matches methods/simnorm) at latent_dim=128 / simnorm_dim=8 = 16 groups (the methods trace discusses d=512/L=64; algorithm identical). methods/<slug> single-round traces are untouched."
+}

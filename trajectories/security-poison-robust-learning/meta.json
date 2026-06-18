@@ -1,0 +1,53 @@
+{
+  "task": "security-poison-robust-learning",
+  "title": "Poison-Robust Learning: a noise-tolerant objective under label-flip poisoning",
+  "domain": "Security",
+  "metrics": [
+    "resnet20-cifar10-labelflip",
+    "vgg16bn-cifar100-labelflip",
+    "mobilenetv2-fmnist-labelflip"
+  ],
+  "metric_columns": [
+    "test_acc",
+    "poison_fit",
+    "robust_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "bootstrap",
+      "method": "Bootstrap (soft target interpolation)",
+      "reasoning": "01-bootstrap-reasoning.md",
+      "answer": "01-bootstrap-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "symmetric_ce",
+      "method": "Symmetric Cross Entropy (CE + RCE)",
+      "reasoning": "02-symmetric_ce-reasoning.md",
+      "answer": "02-symmetric_ce-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "generalized_ce",
+      "method": "Generalized Cross Entropy (L_q)",
+      "reasoning": "03-generalized_ce-reasoning.md",
+      "answer": "03-generalized_ce-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "normalized-loss-functions",
+      "method": "Active Passive Loss (NCE + RCE)",
+      "reasoning": "04-normalized-loss-functions-reasoning.md",
+      "answer": "04-normalized-loss-functions-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "Active Passive Loss (NCE + RCE)",
+  "ranking_basis": "Ranked weak->strong by measured robust_score (primary metric, higher better), mean over the three is_final,true baseline rows {resnet20-cifar10, vgg16bn-cifar100, mobilenetv2-fmnist} seed 42. Means: bootstrap 0.8077 (vgg100 0.5586 / rn20 0.8942 / mnv2 0.9702), symmetric_ce 0.8811 (0.7613 / 0.9137 / 0.9682), generalized_ce 0.9058 (0.8205 / 0.9325 / 0.9643). cross_entropy (mean 0.8265) is the default scaffold fill / ERM control shown in the initial context, not a rung. bootstrap is weakest: its self-vote endorses memorized labels on CIFAR-100 (poison_fit 0.5642, robust_score 0.5586, below ERM). The ordering is driven by the CIFAR-100 (vgg16bn) column where the three methods separate cleanly.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_robust_loss.py: RobustLoss.compute_loss, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). Finale NCE+RCE (Ma et al., ICML 2020) carries no feedback. Same-named-baseline diffs: (1) the task's `bootstrap` is Reed et al. 2015 SOFT label-bootstrapping at beta=0.8 (paper soft default 0.95) -- the methods/bootstrap trace is Efron's statistical bootstrap, an UNRELATED method, so it could not be reused as the derivation reference; the step-1 derivation is grounded directly in Reed et al. (2) symmetric_ce uses alpha=1.0, beta=0.5 (paper CIFAR-10 default alpha=0.1, beta=1.0) and realizes A=log(1e-4) via one_hot.clamp_min(1e-4); the methods/symmetric-ce trace is the TF/Keras tunable-coefficient version. (3) generalized_ce uses q=0.7 with clamp_min(1e-8), matching methods/generalized-ce; the harness exposes no per-sample state so the truncated/self-paced L_q variant is unreachable. The contract exposes only (logits, labels, epoch) -- no sample indices, no model/optimizer access, no cross-epoch state -- which is why heavier noisy-label methods (co-teaching, DivideMix, PENCIL) do not fit; NCE+RCE does, being a pure per-batch loss."
+}

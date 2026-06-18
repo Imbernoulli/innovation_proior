@@ -1,0 +1,43 @@
+{
+  "task": "vla-openvla-pdac-continuous-head",
+  "title": "OpenVLA-OFT PD&AC: action-method design under a 6000-step budget",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "goal_a",
+    "goal_b",
+    "goal_c"
+  ],
+  "metric_columns": [
+    "success_rate"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "cont-diffusion",
+      "method": "PD&AC + Cont-Diffusion",
+      "reasoning": "01-cont-diffusion-reasoning.md",
+      "answer": "01-cont-diffusion-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "pdac-discrete",
+      "method": "PD&AC discrete",
+      "reasoning": "02-pdac-discrete-reasoning.md",
+      "answer": "02-pdac-discrete-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "cont-l1",
+      "method": "PD&AC + Cont-L1",
+      "reasoning": "03-cont-l1-reasoning.md",
+      "answer": "03-cont-l1-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "PD&AC + Cont-L1",
+  "ranking_basis": "No is_final,true leaderboard row exists; ranked by the real validated seed-42 6000-step baseline anchors recorded in tasks/.../reproducibility.md §15 (\"Final complete seed-42 rows used for protocol validation\"), which match leaderboard rows of 2026-04-29. Score = geometric mean of success_rate over goal_a/goal_b/goal_c (higher better). cont_diffusion weakest (0.1111/0.0000/0.0833, gm 0, arithmetic mean ~0.065; eval ~550-700s/subset from the 50-step rollout; under-trained denoiser at 6000 steps per the task description). pdac_discrete middle (0.2222/0.1111/0.0000, gm 0 but arithmetic mean ~0.111, two non-zero subsets, single-pass eval ~130-190s). cont_l1 strongest (0.7778/0.8889/0.4167, gm 0.6605, the only non-trivial score). Ordering also matches the task description's stated reduced-budget consensus (diffusion under-trained vs L1; discrete < L1).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (openvla-oft/mlsbench/custom_pdac_method.py; CustomActionMethod + plumbing hooks; baselines from edits/{cont_diffusion,pdac_discrete,cont_l1}.edit.py, each replacing lines 1-155 with edits/official_*_template.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/{cont-diffusion,pdac-discrete,cont-l1} single-round traces reused as derivation references and left untouched. No finale: cont_l1 already dominates (gm 0.66) and, in this explicitly budget-constrained regime where the task frames L1 as the intended winner, no published action-method is clearly stronger without speculation (e.g. a flow-matching head would be conjectural against L1 here), so the ladder stops at the strongest baseline. Same-named-vs-paper diffs: discrete's decode_discrete_actions argmaxes only over the action sub-vocabulary [vocab_size-256, vocab_size) and validates bounds (the scaffold default argmaxes over the full vocabulary, which could pick a non-action token); cont_l1 and discrete forward with zeroed action_token_features placeholders while cont_diffusion injects projected noisy-action features + sinusoidal timestep tokens; the paper-level parallel-decode/chunking machinery is the fixed trunk, not part of any edit."
+}

@@ -1,0 +1,45 @@
+{
+  "task": "rl-value-discrete",
+  "title": "RL Value-Based Discrete Control: representing the return",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "cartpole-v1",
+    "lunarlander-v2",
+    "acrobot-v1"
+  ],
+  "metric_columns": [
+    "eval_return_cartpole_v1",
+    "eval_return_lunarlander_v2",
+    "eval_return_acrobot_v1"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dueling-dqn",
+      "method": "Dueling DQN",
+      "reasoning": "01-dueling-dqn-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-dueling-dqn-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "qr-dqn",
+      "method": "QR-DQN (quantile regression)",
+      "reasoning": "02-qr-dqn-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-qr-dqn-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "c51",
+      "method": "C51 (categorical distributional)",
+      "reasoning": "03-c51-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-c51-answer.md"
+    }
+  ],
+  "endpoint": "C51 (categorical distributional)",
+  "ranking_basis": "Discriminated by LunarLander-v2 (widest spread; CartPole near-saturated at 500 for all three, Acrobot tight in the low -80s). dueling_dqn weakest: LunarLander mean 89.06 with one seed (456) at -89.25 in the crash basin (measured is_final,false rows; no is_final,true row exists for this baseline). qr_dqn next: LunarLander mean 197.15, worst seed lifted to 194.99, spread tightened (is_final,true). c51 strongest: LunarLander mean 233.63, all seeds in the 190-258 band (is_final,true). CartPole/Acrobot roughly on par across all three.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_value_discrete.py: QNetwork head + ValueAlgorithm, scaffold default = plain DQN, baseline fills from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). methods/<slug> single-round traces (dueling-dqn, qr-dqn, c51) are the derivation reference and left untouched. No finale: the obvious stronger published method, Rainbow (Hessel et al. 2018), is not faithfully implementable on this fixed edit surface -- its defining components (prioritized replay and n-step returns) require changing the FIXED uniform one-step replay buffer, which is outside the editable region (lines 174-242, QNetwork+ValueAlgorithm only). A 3-of-6-component partial Rainbow would not be faithful to the reference, so the ladder stops at the strongest baseline, C51."
+}

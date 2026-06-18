@@ -1,0 +1,52 @@
+{
+  "task": "ts-classification",
+  "title": "Multivariate Time Series Classification: a general UEA encoder",
+  "domain": "Time series",
+  "metrics": [
+    "EthanolConcentration",
+    "FaceDetection",
+    "Handwriting"
+  ],
+  "metric_columns": [
+    "accuracy_EthanolConcentration",
+    "accuracy_FaceDetection",
+    "accuracy_Handwriting"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dlinear",
+      "method": "DLinear (decomposition-linear classifier)",
+      "reasoning": "01-dlinear-reasoning.md",
+      "answer": "01-dlinear-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "patchtst",
+      "method": "PatchTST (patch + channel-independent Transformer)",
+      "reasoning": "02-patchtst-reasoning.md",
+      "answer": "02-patchtst-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "timesnet",
+      "method": "TimesNet (2-D period reshape + Inception, mask-aware pooling)",
+      "reasoning": "03-timesnet-reasoning.md",
+      "answer": "03-timesnet-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "moderntcn",
+      "method": "ModernTCN (large-kernel depthwise conv + cross-variable ConvFFN)",
+      "reasoning": "04-moderntcn-reasoning.md",
+      "answer": "04-moderntcn-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by mean test accuracy over the three datasets from the is_final,true baseline:* rows (seed 42, higher is better): dlinear 0.4006 < patchtst 0.4082 < timesnet 0.4431. dlinear is weakest (worst on Handwriting 0.2306, only narrowly wins FaceDetection). patchtst > dlinear: best FaceDetection (0.6853) and Handwriting (0.2541) vs dlinear, near-tied EthanolConcentration. timesnet strongest: best EthanolConcentration (0.3194) and Handwriting (0.3353) by clear margins, losing only narrowly on FaceDetection (0.6745). Finale ModernTCN (ICLR 2024 Spotlight) is not a leaderboard baseline; it is added as the published-stronger endpoint because it is the established next rung above TimesNet on the UEA classification benchmark (UEA average accuracy ModernTCN 74.2 > TimesNet 73.6 > PatchTST 72.5 > DLinear 67.5, consistently reported across the ModernTCN paper and independent follow-up benchmarks), and it directly targets the cross-channel weakness TimesNet leaves on FaceDetection via its dedicated cross-variable ConvFFN. It carries no feedback.",
+  "notes": "MLS-Bench trajectory grounded in the real edit surface: the single editable file models/Custom.py (Model class with classification(x_enc, x_mark_enc) -> [B, num_class], scaffold from edits/custom_template.py, instantiated by edits/mid_edit.py). The three baselines run the reference models/{DLinear,TimesNet,PatchTST}.py; each step's Custom.py fill replicates that model's classification path line-for-line (the literal edit an agent would make), importing the read-only layers/ modules. Same-named-vs-paper diffs noted below. methods/<slug> single-round traces (dlinear, patchtst, timesnet, moderntcn) are the derivation reference and are untouched; the finale gets a new methods/moderntcn trace. The finale Custom.py re-expresses the canonical ModernTCN classification model self-contained (no layers/ import); the depthwise large-kernel conv is kept in its train-time two-branch (large+small conv+BN, summed) form, which fuses to one equivalent kernel at inference."
+}

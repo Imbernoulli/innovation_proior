@@ -1,0 +1,59 @@
+{
+  "task": "ts-short-term-forecast",
+  "title": "M4 Short-Term Forecasting: climbing the forecaster ladder",
+  "domain": "Time series",
+  "metrics": [
+    "m4_monthly",
+    "m4_quarterly",
+    "m4_yearly"
+  ],
+  "metric_columns": [
+    "smape",
+    "mape"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dlinear",
+      "method": "DLinear (decomposition + linear)",
+      "reasoning": "01-dlinear-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-dlinear-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "patchtst",
+      "method": "PatchTST (patch Transformer, channel-independent)",
+      "reasoning": "02-patchtst-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-patchtst-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "timemixer",
+      "method": "TimeMixer (multi-scale decomposable mixing)",
+      "reasoning": "03-timemixer-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-timemixer-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "timesnet",
+      "method": "TimesNet (FFT period discovery + 2D conv)",
+      "reasoning": "04-timesnet-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-timesnet-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "nbeats",
+      "method": "N-BEATS (double-residual basis-expansion stack)",
+      "reasoning": "05-nbeats-reasoning.md",
+      "finale": true,
+      "answer": "05-nbeats-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by measured M4 SMAPE (primary, lower is better) from is_final,true baseline:* leaderboard rows, seed 42. Per-pattern SMAPE (Monthly/Quarterly/Yearly): dlinear 13.395/10.501/14.358 (mean 12.751, weakest on every pattern); patchtst 12.968/10.219/13.679 (mean 12.289, beats dlinear on all three); timemixer 12.802/10.209/13.379 (mean 12.130, beats patchtst on all three); timesnet 12.803/10.089/13.442 (mean 12.111, strongest). timesnet > timemixer is narrow and driven entirely by Quarterly (10.089 vs 10.209) and a near-tie on Monthly, with timemixer actually better on Yearly (13.379 vs 13.442); on mean SMAPE timesnet edges ahead. Finale N-BEATS (Oreshkin et al., ICLR 2020) is the published pure-deep M4 winner, not among the task baselines, fits the univariate Custom.py edit surface exactly.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (models/Custom.py, the single editable file; scaffold from edits/custom_template.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold Custom.py fill) -> feedback (numbers, baselines only). The finale (N-BEATS) carries no feedback. Critical same-named-vs-paper diffs: the Custom evaluation scripts (m4_*.sh) run --model Custom under ONE fixed set of hyperparameters (d_model=512, d_ff=512, e_layers=2, lr=1e-3, batch 16, 10 epochs, patience 3) and do NOT pass the per-method tuned flags the reference models' own scripts use; the M4 short-term exp overrides seq_len = 2*pred_len and label_len = pred_len, so windows are short (Monthly 36, Quarterly 16, Yearly 12), NOT the seq_len=104/52/42 the task_description.md quotes (that is the LTSF protocol); the harness calls model(batch_x, None, dec_inp, None), so x_mark_enc/x_mark_dec are None and any embedding must accept None marks. The load-bearing fix is in TimeMixer: the Custom scripts do not pass --down_sampling_layers/_window/_method, which default to 0/1/None and would collapse TimeMixer to a single-scale MLP, so the Custom.py fill sets down_sampling_layers=1, window=2, avg pooling internally. methods/<slug> single-round traces (dlinear, patchtst, timemixer, timesnet) all existed and were reused as derivation references; methods/nbeats was created for the finale (grounded + Codex)."
+}

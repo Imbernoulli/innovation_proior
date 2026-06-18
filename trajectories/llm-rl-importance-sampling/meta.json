@@ -1,0 +1,55 @@
+{
+  "task": "llm-rl-importance-sampling",
+  "title": "LLM RL Importance Sampling: granularity and clipping for clipped policy optimization",
+  "domain": "Language models",
+  "metrics": [
+    "gsm8k",
+    "math500",
+    "amc23"
+  ],
+  "metric_columns": [
+    "score_mean",
+    "gsm8k_accuracy",
+    "math500_accuracy",
+    "amc_accuracy"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "first_k_tokens",
+      "method": "First-K truncated IS (K=64)",
+      "reasoning": "01-first_k_tokens-reasoning.md",
+      "answer": "01-first_k_tokens-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "sequence_level",
+      "method": "GSPO (sequence-level IS)",
+      "reasoning": "02-sequence_level-reasoning.md",
+      "answer": "02-sequence_level-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "token_level",
+      "method": "PPO/GRPO (token-level clipped IS)",
+      "reasoning": "03-token_level-reasoning.md",
+      "answer": "03-token_level-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "cispo",
+      "method": "CISPO (clipped IS weight, stop-gradient)",
+      "reasoning": "04-cispo-reasoning.md",
+      "answer": "04-cispo-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "No is_final,true baseline rows exist (baselines carry is_final=false by design — they do not call submit()), but the baseline:* rows are real measured runs. Ranking uses the latest complete matched-config triple, 2026-04-21, seed 42 (single seed = mean), by primary score_mean (higher is better): first_k_tokens -0.751 < sequence_level -0.6973 < token_level -0.6758. The ordering is coherent across components: truncation hurts the long-response benchmarks most (math500 0.2875, amc 0.0828) by discarding late-token gradient; sequence-level IS recovers them (math500 0.3108, amc 0.0964) by keeping all tokens with a length-normalized weight; token-level wins overall, led by gsm8k 0.4554, by keeping per-token resolution in this small dense (non-MoE) 0.5B regime where per-token variance was not the binding constraint.",
+  "endpoint": "CISPO (clipped IS weight, stop-gradient)",
+  "finale_slug": "cispo",
+  "notes": "MLS-Bench trajectory grounded in the task edit surface (custom_policy_loss.py: compute_custom_policy_loss; baseline fills from baselines/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Code lives in the answer only. Finale (CISPO) carries no feedback; its bar (token_level's -0.6758) lives at the close of its reasoning. methods/token-level and methods/sequence-level single-round traces are the derivation references (untouched); methods/cispo was created this run (grounded + Codex-reviewed) for the finale. first_k_tokens is a task-invented config variant (prefix-detach, no dedicated paper) and has no methods/ trace; it is the weakest rung."
+}

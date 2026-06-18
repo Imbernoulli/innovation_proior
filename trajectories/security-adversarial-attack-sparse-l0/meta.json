@@ -1,0 +1,68 @@
+{
+  "task": "security-adversarial-attack-sparse-l0",
+  "title": "Sparse Adversarial Attack (L0): climbing from blind rearrangement to gradient-guided support search",
+  "domain": "Security",
+  "metrics": [
+    "Rebuffi-R18-L2",
+    "Augustin-L2",
+    "Engstrom-L2"
+  ],
+  "metric_columns": [
+    "asr_Rebuffi_R18_L2",
+    "asr_Augustin_L2",
+    "asr_Engstrom_L2"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "pixle",
+      "method": "Pixle (pixel-rearrangement, black-box)",
+      "reasoning": "01-pixle-reasoning.md",
+      "answer": "01-pixle-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "jsma",
+      "method": "JSMA (Jacobian saliency map, white-box)",
+      "reasoning": "02-jsma-reasoning.md",
+      "answer": "02-jsma-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "onepixel",
+      "method": "One-Pixel (differential evolution, black-box)",
+      "reasoning": "03-onepixel-reasoning.md",
+      "answer": "03-onepixel-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "sparsefool",
+      "method": "SparseFool (boundary linearization, white-box)",
+      "reasoning": "04-sparsefool-reasoning.md",
+      "answer": "04-sparsefool-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "sparse_rs",
+      "method": "Sparse-RS (L0 random search, black-box)",
+      "reasoning": "05-sparse_rs-reasoning.md",
+      "answer": "05-sparse_rs-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "sparse-pgd",
+      "method": "Sparse-PGD / sPGD (gradient-guided support search, white-box)",
+      "reasoning": "06-sparse-pgd-reasoning.md",
+      "answer": "06-sparse-pgd-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by measured ASR (mean over the three RobustBench L2 models) from the is_final baseline:* rows of leaderboard.csv (higher ASR = stronger; all seed 42): pixle 0.011 < jsma 0.047 < onepixel 0.153 < sparsefool 0.187 < sparse_rs 0.922. Per-model order is consistent with the mean except sparsefool trailing onepixel on Augustin-L2 (0.113 vs 0.18) while leading on the other two, reflecting its local-linear boundary model's sensitivity to per-model boundary curvature.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (run_attack body in torchattacks/bench/custom_attack.py, lines 7-23, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. methods/<slug> single-round traces are the derivation reference and untouched. Finale sparse-pgd (Sparse-PGD/sPGD, Zhong & Liu, TPAMI, arXiv:2405.05075) is a genuinely stronger published white-box L0 attack that uses the gradient Sparse-RS leaves unused; it carries no feedback. Same-named-vs-paper diffs: onepixel uses the scipy-DE torchattacks wrapper with steps=6/popsize=8 (untargeted), not the textbook DE/rand/1 F=0.5; jsma is set to least-likely targeted with gamma=pixels/(C*H*W)=24/3072 to keep <=24 features (the methods trace uses (y+1)%n_classes targets and pair-saliency); sparsefool is the torchattacks wrapper (steps=20, lam=3.0); sparse_rs is inlined (torchattacks has no Sparse-RS); pixle uses tiny 1-2px patches, random mapping, restart-iterative."
+}

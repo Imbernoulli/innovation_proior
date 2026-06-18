@@ -1,0 +1,43 @@
+{
+  "task": "ts-imputation",
+  "title": "Time Series Imputation: from linear interpolation to channel-independent patches",
+  "domain": "Time series",
+  "metrics": [
+    "ETTh1",
+    "Weather",
+    "ECL"
+  ],
+  "metric_columns": [
+    "mse",
+    "mae"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dlinear",
+      "method": "DLinear (decomposition + linear)",
+      "reasoning": "01-dlinear-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-dlinear-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "timesnet",
+      "method": "TimesNet (FFT period folding + 2-D conv)",
+      "reasoning": "02-timesnet-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-timesnet-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "patchtst",
+      "method": "PatchTST (channel-independent patch Transformer)",
+      "reasoning": "03-patchtst-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-patchtst-answer.md"
+    }
+  ],
+  "ranking_basis": "Metric is MSE/MAE on masked entries (lower better); ranked by mean over the three datasets at seed 42 (the only is_final,true baseline rows). dlinear weakest (mean MSE 0.1044 / MAE 0.2088). timesnet next (0.0670 / 0.1512). patchtst strongest (0.0659 / 0.1459) - it wins decisively on the high-channel ECL (0.0624 vs timesnet 0.0915), pulling the mean below timesnet even though timesnet edges it on ETTh1.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (models/Custom.py: the Model class with the imputation contract, scaffold from edits/custom_template.py). The baselines are run from the read-only reference models (models/{DLinear,TimesNet,PatchTST}.py), not edit.py files; each step's answer code is the literal Custom.py fill that reproduces that reference model's imputation path under the eval config. Same-named-vs-paper diffs: the reused methods/<slug> single-round traces derive these methods for OTHER tasks (dlinear and patchtst for long-horizon forecasting, timesnet for anomaly detection), so the trajectory re-derives each for imputation and re-expresses the code accordingly - the load-bearing imputation-specific change is the masked-statistics normalisation (mean/std over observed entries only, holes re-zeroed, detached) used by TimesNet and PatchTST, plus pred_len=seq_len (no predict_linear, no de-levelling). The harness passes pred_len=96 to Custom.py (not the upstream imputation convention pred_len=0), so the fills key all lengths off seq_len rather than configs.pred_len. No finale: PatchTST/TimesNet are the canonical strong models on the TS-Lib random-mask imputation benchmark and no published method cleanly and consistently beats them on this exact protocol + edit surface, so the ladder stops at the strongest baseline."
+}

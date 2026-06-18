@@ -1,15 +1,21 @@
 [
   {
-    "task": "ai4bio-protein-inverse-folding",
-    "title": "Protein Inverse Folding: designing the structure encoder",
-    "domain": "AI for biology",
-    "endpoint": ""
+    "domain": "Language models",
+    "endpoint": "DFSDT (depth-first search with decision tree)",
+    "task": "agent-tool-reasoning",
+    "title": "Agent Tool-Use Reasoning: search policy for an LLM tool agent"
   },
   {
     "task": "ai4bio-mutation-effect-prediction",
     "title": "Protein Mutation Effect Prediction: a supervised head over frozen ESM-2 embeddings",
     "domain": "AI for biology",
     "endpoint": "MLP (single-hidden-layer prediction head)"
+  },
+  {
+    "task": "ai4bio-protein-inverse-folding",
+    "title": "Protein Inverse Folding: designing the structure encoder",
+    "domain": "AI for biology",
+    "endpoint": ""
   },
   {
     "task": "ai4bio-protein-structure-repr",
@@ -36,12 +42,6 @@
     "endpoint": "Uni-Mol (pretrained SE(3)-invariant 3D Transformer)"
   },
   {
-    "task": "pde-design-solver",
-    "title": "PDE Design Solver: neural operators for industrial CFD design",
-    "domain": "AI for science",
-    "endpoint": "Transolver++ (eidetic states)"
-  },
-  {
     "task": "ai4sci-pla-binding-affinity",
     "title": "Protein-Ligand Binding Affinity: heterogeneous interaction GNNs on 3D structure",
     "domain": "AI for science",
@@ -60,6 +60,12 @@
     "endpoint": "Set Transformer pooling (SAB + PMA)"
   },
   {
+    "task": "causal-discovery-discrete",
+    "title": "Causal Discovery on Discrete Bayesian Networks: from DAG hill-climbing to less-greedy equivalence search",
+    "domain": "Causal inference",
+    "endpoint": "LGES (less greedy equivalence search, BDeu)"
+  },
+  {
     "task": "causal-observational-linear-gaussian",
     "title": "Causal Discovery from Linear Gaussian Observations: CPDAG recovery",
     "domain": "Causal inference",
@@ -70,12 +76,6 @@
     "title": "Causal Discovery from Observational Linear Non-Gaussian Data (LiNGAM)",
     "domain": "Causal inference",
     "endpoint": ""
-  },
-  {
-    "task": "causal-discovery-discrete",
-    "title": "Causal Discovery on Discrete Bayesian Networks: from DAG hill-climbing to less-greedy equivalence search",
-    "domain": "Causal inference",
-    "endpoint": "LGES (less greedy equivalence search, BDeu)"
   },
   {
     "task": "causal-observational-nonlinear",
@@ -90,94 +90,16 @@
     "endpoint": ""
   },
   {
-    "task": "ml-active-learning",
-    "title": "Active Learning: pool-based batch query strategy",
-    "domain": "Classical ML",
-    "endpoint": "BADGE (diverse gradient embeddings)"
-  },
-  {
-    "task": "ml-clustering-algorithm",
-    "title": "Clustering Algorithm Design: one method across blobs, moons, and high-D digits",
-    "domain": "Classical ML",
-    "endpoint": "HDBSCAN (hierarchical density, EOM extraction)"
-  },
-  {
-    "task": "ml-continual-regularization",
-    "title": "Continual Learning: regularization against catastrophic forgetting",
-    "domain": "Classical ML",
-    "endpoint": ""
-  },
-  {
-    "task": "ml-dimensionality-reduction",
-    "title": "Dimensionality Reduction: nonlinear 2D embedding design",
-    "domain": "Classical ML",
-    "endpoint": ""
-  },
-  {
-    "task": "ml-federated-aggregation",
-    "title": "Federated Aggregation: taming client drift under non-IID data",
-    "domain": "Classical ML",
-    "endpoint": "FedDyn (Federated Dynamic Regularization)"
-  },
-  {
-    "task": "ml-missing-data-imputation",
-    "title": "Missing Data Imputation: climbing from the column mean to non-linear chained equations",
-    "domain": "Classical ML",
-    "endpoint": "Iterative ExtraTrees imputation (gain slot)"
-  },
-  {
-    "task": "ml-ensemble-boosting",
-    "title": "ML Ensemble Boosting: sample-weighting and update strategy design",
-    "domain": "Classical ML",
-    "endpoint": "XGBoost-style (second-order regularized Newton step)"
-  },
-  {
-    "task": "ml-calibration",
-    "title": "Probability Calibration: post-hoc mappings from rigid to bend-both-ways",
-    "domain": "Classical ML",
-    "endpoint": ""
-  },
-  {
-    "task": "ml-selective-deferral",
-    "title": "Selective Deferral Under Subgroup Shift: the acceptance rule",
-    "domain": "Classical ML",
-    "endpoint": "Group-wise thresholding (per-subgroup quantile cuts)"
-  },
-  {
-    "task": "ml-subgroup-calibration-shift",
-    "title": "Subgroup Calibration Under Shift: a worst-group reliability ladder",
-    "domain": "Classical ML",
-    "endpoint": "Beta calibration (3-parameter)"
-  },
-  {
-    "task": "ml-symbolic-regression",
-    "title": "Symbolic Regression: GP search strategy",
-    "domain": "Classical ML",
-    "endpoint": ""
-  },
-  {
-    "task": "ml-anomaly-detection",
-    "title": "Unsupervised Anomaly Detection: the tabular scoring rule",
-    "domain": "Classical ML",
-    "endpoint": "Isolation Forest"
-  },
-  {
-    "task": "cv-3dgs-regularizer",
-    "title": "3D Gaussian Splatting Regularizer: a parameter-only prior for novel-view quality",
-    "domain": "Computer vision",
-    "endpoint": "Compactness L1 + effective-rank shape barrier (warmup 7000)"
-  },
-  {
     "task": "cv-3dgs-densification",
     "title": "3DGS Densification: climbing the density-control ladder",
     "domain": "Computer vision",
     "endpoint": "EDC (long-axis split + recovery-aware pruning)"
   },
   {
-    "task": "cv-diffusion-conditioning",
-    "title": "Class-Conditional Diffusion: conditioning-injection ladder",
+    "task": "cv-3dgs-regularizer",
+    "title": "3D Gaussian Splatting Regularizer: a parameter-only prior for novel-view quality",
     "domain": "Computer vision",
-    "endpoint": ""
+    "endpoint": "Compactness L1 + effective-rank shape barrier (warmup 7000)"
   },
   {
     "task": "cv-classification-loss",
@@ -192,10 +114,46 @@
     "endpoint": "Cutout (contiguous input-space deletion)"
   },
   {
+    "task": "cv-dbm-sampler",
+    "title": "Diffusion Bridge Sampling: few-step image-to-image translation under a hard NFE budget",
+    "domain": "Computer vision",
+    "endpoint": "ECSI (endpoint-conditioned stochastic interpolants)"
+  },
+  {
+    "task": "cv-dbm-scheduler",
+    "title": "Diffusion-Bridge Time Scheduler: few-step sampling placement (NFE = 5)",
+    "domain": "Computer vision",
+    "endpoint": "Cosine schedule"
+  },
+  {
+    "task": "cv-diffusion-cfg",
+    "title": "Diffusion CFG: classifier-free guidance on the data manifold",
+    "domain": "Computer vision",
+    "endpoint": "CFG-Zero* (optimized scale + zero-init)"
+  },
+  {
+    "task": "cv-diffusion-conditioning",
+    "title": "Class-Conditional Diffusion: conditioning-injection ladder",
+    "domain": "Computer vision",
+    "endpoint": ""
+  },
+  {
     "task": "cv-diffusion-efficiency",
     "title": "CV Diffusion Efficiency: sampler update rule at NFE = 20",
     "domain": "Computer vision",
     "endpoint": "UniPC (unified predictor-corrector)"
+  },
+  {
+    "task": "cv-diffusion-prediction",
+    "title": "Diffusion Prediction Parameterization: choosing the training target under a fixed pipeline",
+    "domain": "Computer vision",
+    "endpoint": "epsilon-prediction (DDPM default)"
+  },
+  {
+    "task": "cv-flowmaps-training",
+    "title": "Flow Maps: self-distillation loss design for one-step generation",
+    "domain": "Computer vision",
+    "endpoint": "LSD (Lagrangian Self-Distillation)"
   },
   {
     "task": "cv-multitask-loss",
@@ -208,36 +166,6 @@
     "title": "CV Sample Reweighting: long-tail class-weight design",
     "domain": "Computer vision",
     "endpoint": "Balanced-Softmax-inspired log-prior weighting (Ren et al., NeurIPS 2020)"
-  },
-  {
-    "task": "cv-dbm-sampler",
-    "title": "Diffusion Bridge Sampling: few-step image-to-image translation under a hard NFE budget",
-    "domain": "Computer vision",
-    "endpoint": "ECSI (endpoint-conditioned stochastic interpolants)"
-  },
-  {
-    "task": "cv-diffusion-cfg",
-    "title": "Diffusion CFG: classifier-free guidance on the data manifold",
-    "domain": "Computer vision",
-    "endpoint": "CFG-Zero* (optimized scale + zero-init)"
-  },
-  {
-    "task": "cv-diffusion-prediction",
-    "title": "Diffusion Prediction Parameterization: choosing the training target under a fixed pipeline",
-    "domain": "Computer vision",
-    "endpoint": "epsilon-prediction (DDPM default)"
-  },
-  {
-    "task": "cv-dbm-scheduler",
-    "title": "Diffusion-Bridge Time Scheduler: few-step sampling placement (NFE = 5)",
-    "domain": "Computer vision",
-    "endpoint": "Cosine schedule"
-  },
-  {
-    "task": "cv-flowmaps-training",
-    "title": "Flow Maps: self-distillation loss design for one-step generation",
-    "domain": "Computer vision",
-    "endpoint": "LSD (Lagrangian Self-Distillation)"
   },
   {
     "task": "cv-vae-loss",
@@ -282,16 +210,22 @@
     "endpoint": "Fixup-style residual scaling + zero-gamma BN"
   },
   {
-    "task": "graph-graph-classification",
-    "title": "Graph Classification Readout: from learned soft pooling to degree-aware multi-aggregation",
-    "domain": "Graph & mesh",
-    "endpoint": "PNA-style degree-aware multi-aggregation readout"
+    "task": "dlm-dkv-policy",
+    "title": "Diffusion LM KV Cache Policy: quality-preserving cache reuse for LLaDA denoising",
+    "domain": "Language models",
+    "endpoint": ""
   },
   {
     "task": "graph-generation",
     "title": "Graph Generation: a generative model for small graphs under MMD",
     "domain": "Graph & mesh",
     "endpoint": "GraphVAE (GCN-encoder VAE, no matching)"
+  },
+  {
+    "task": "graph-graph-classification",
+    "title": "Graph Classification Readout: from learned soft pooling to degree-aware multi-aggregation",
+    "domain": "Graph & mesh",
+    "endpoint": "PNA-style degree-aware multi-aggregation readout"
   },
   {
     "task": "graph-link-prediction",
@@ -312,8 +246,26 @@
     "endpoint": "JacobiConv (Jacobi-basis orthogonal-polynomial filter)"
   },
   {
-    "task": "dlm-dkv-policy",
-    "title": "Diffusion LM KV Cache Policy: quality-preserving cache reuse for LLaDA denoising",
+    "domain": "Self-supervised",
+    "endpoint": "MPPI (Model Predictive Path Integral)",
+    "task": "jepa-planning",
+    "title": "JEPA World-Model Planning: derivative-free planners on a frozen latent model"
+  },
+  {
+    "task": "jepa-regularizer",
+    "title": "JEPA Anti-Collapse Regularizer: from collapse to a derived distributional target",
+    "domain": "Self-supervised",
+    "endpoint": "SIGReg / BCS (sliced isotropic-Gaussian Epps-Pulley test)"
+  },
+  {
+    "domain": "Classical ML",
+    "endpoint": "ER (Experience Replay)",
+    "task": "libero-lifelong",
+    "title": "LIBERO Lifelong Learning: continual robot manipulation without forgetting"
+  },
+  {
+    "task": "llm-dllm-demask-strategy",
+    "title": "Masked Diffusion LM Demasking: which positions to unmask, how many",
     "domain": "Language models",
     "endpoint": ""
   },
@@ -342,34 +294,16 @@
     "endpoint": "MLA (multi-head latent attention, latent KV compression)"
   },
   {
+    "domain": "Alignment",
+    "endpoint": "",
+    "task": "llm-offline-rl",
+    "title": "LLM Offline RL: preference loss for math reasoning"
+  },
+  {
     "task": "llm-on-policy-distillation",
     "title": "LLM On-Policy Distillation: which loss transfers reasoning",
     "domain": "Language models",
     "endpoint": "Skewed Reverse KL (SRKL, DistiLLM)"
-  },
-  {
-    "task": "llm-ptq-algorithm",
-    "title": "LLM Post-Training Quantization: low-bit weights without retraining",
-    "domain": "Language models",
-    "endpoint": "AWQ (activation-aware weight quantization)"
-  },
-  {
-    "task": "llm-pretrain-kernel",
-    "title": "LLM Pretraining Kernel: the FFN activation in a two-matrix slot",
-    "domain": "Language models",
-    "endpoint": "ReLU² (pure torch, custom autograd)"
-  },
-  {
-    "task": "llm-pretrain-normalization",
-    "title": "LLM Pretraining Normalization: norm rule & block placement",
-    "domain": "Language models",
-    "endpoint": "RMSNorm in a plain sequential Pre-LN block"
-  },
-  {
-    "task": "llm-pretrain-linear-attention",
-    "title": "LLM Pretraining: a subquadratic-attention ladder (decay -> data-dependent gate -> delta-rule write)",
-    "domain": "Language models",
-    "finale": "Gated DeltaNet (gated delta rule)"
   },
   {
     "task": "llm-pretrain-attention",
@@ -378,16 +312,22 @@
     "endpoint": "Differential Transformer"
   },
   {
-    "task": "llm-pretrain-mlp",
-    "title": "LLM Pretraining: feed-forward (MLP) sublayer design",
+    "task": "llm-pretrain-bitlinear",
+    "title": "LLM Pretraining: Native Low-Bit Linear (BitLinear)",
     "domain": "Language models",
-    "endpoint": "ReLU² (squared-ReLU / Primer-EZ, 4x width)"
+    "endpoint": "LSQ (Learned Step Size Quantization)"
   },
   {
-    "task": "llm-pretrain-lr-schedule",
-    "title": "LLM Pretraining: learning-rate schedule shape",
+    "task": "llm-pretrain-kernel",
+    "title": "LLM Pretraining Kernel: the FFN activation in a two-matrix slot",
     "domain": "Language models",
-    "endpoint": "WSD with inverse-sqrt cooldown + extended warmup"
+    "endpoint": "ReLU² (pure torch, custom autograd)"
+  },
+  {
+    "task": "llm-pretrain-linear-attention",
+    "title": "LLM Pretraining: a subquadratic-attention ladder (decay -> data-dependent gate -> delta-rule write)",
+    "domain": "Language models",
+    "finale": "Gated DeltaNet (gated delta rule)"
   },
   {
     "task": "llm-pretrain-loss",
@@ -396,10 +336,28 @@
     "endpoint": "Sigmoid logit soft-cap cross-entropy (modded-nanoGPT, A,B,C=23,5,7.5)"
   },
   {
-    "task": "llm-pretrain-bitlinear",
-    "title": "LLM Pretraining: Native Low-Bit Linear (BitLinear)",
+    "task": "llm-pretrain-lr-schedule",
+    "title": "LLM Pretraining: learning-rate schedule shape",
     "domain": "Language models",
-    "endpoint": "LSQ (Learned Step Size Quantization)"
+    "endpoint": "WSD with inverse-sqrt cooldown + extended warmup"
+  },
+  {
+    "task": "llm-pretrain-mlp",
+    "title": "LLM Pretraining: feed-forward (MLP) sublayer design",
+    "domain": "Language models",
+    "endpoint": "ReLU² (squared-ReLU / Primer-EZ, 4x width)"
+  },
+  {
+    "task": "llm-pretrain-normalization",
+    "title": "LLM Pretraining Normalization: norm rule & block placement",
+    "domain": "Language models",
+    "endpoint": "RMSNorm in a plain sequential Pre-LN block"
+  },
+  {
+    "task": "llm-pretrain-optimizer",
+    "title": "LLM Pretraining Optimizer: lowering val loss past AdamW",
+    "domain": "Optimization",
+    "finale": "SOAP (Adam in Shampoo's eigenbasis)"
   },
   {
     "task": "llm-pretrain-residual",
@@ -408,10 +366,28 @@
     "endpoint": "Hyper-Connections (DHC, n parallel residual streams)"
   },
   {
+    "task": "llm-ptq-algorithm",
+    "title": "LLM Post-Training Quantization: low-bit weights without retraining",
+    "domain": "Language models",
+    "endpoint": "AWQ (activation-aware weight quantization)"
+  },
+  {
     "task": "llm-qat-algorithm",
     "title": "LLM QAT Algorithm: low-bit weight quantization-aware training",
     "domain": "Language models",
     "endpoint": "OmniQuant LWC (learnable weight clipping)"
+  },
+  {
+    "domain": "Language models",
+    "endpoint": "REINFORCE++-baseline (group-mean center + global token whitening)",
+    "task": "llm-rl-advantage",
+    "title": "LLM RL: advantage estimation for GRPO-style training"
+  },
+  {
+    "domain": "Language models",
+    "endpoint": "CISPO (clipped IS weight, stop-gradient)",
+    "task": "llm-rl-importance-sampling",
+    "title": "LLM RL Importance Sampling: granularity and clipping for clipped policy optimization"
   },
   {
     "task": "llm-scaling-law-discovery",
@@ -420,10 +396,10 @@
     "endpoint": "Human literature laws (Tao / Expert-B / Muennighoff)"
   },
   {
-    "task": "llm-dllm-demask-strategy",
-    "title": "Masked Diffusion LM Demasking: which positions to unmask, how many",
-    "domain": "Language models",
-    "endpoint": ""
+    "task": "marl-centralized-critic",
+    "title": "Cooperative MARL: Centralized Critic Architecture for MAPPO",
+    "domain": "Reinforcement learning",
+    "endpoint": "Agent-Specific (AS) central-V critic"
   },
   {
     "task": "meta-fewshot-classification",
@@ -438,22 +414,124 @@
     "endpoint": "Meta-Curvature (learned Kronecker-factored gradient preconditioner)"
   },
   {
-    "task": "meta-rl-algorithm",
-    "title": "Meta-RL Algorithm Design: context-based fast adaptation",
-    "domain": "Meta-learning",
-    "endpoint": "PEARL (probabilistic product-of-Gaussians encoder + posterior sampling)"
-  },
-  {
     "task": "meta-rl",
     "title": "Meta-RL: context encoder for PEARL task inference",
     "domain": "Meta-learning",
     "endpoint": "Attention encoder (single-block self-attention aggregator)"
   },
   {
+    "task": "meta-rl-algorithm",
+    "title": "Meta-RL Algorithm Design: context-based fast adaptation",
+    "domain": "Meta-learning",
+    "endpoint": "PEARL (probabilistic product-of-Gaussians encoder + posterior sampling)"
+  },
+  {
+    "task": "ml-active-learning",
+    "title": "Active Learning: pool-based batch query strategy",
+    "domain": "Classical ML",
+    "endpoint": "BADGE (diverse gradient embeddings)"
+  },
+  {
+    "task": "ml-anomaly-detection",
+    "title": "Unsupervised Anomaly Detection: the tabular scoring rule",
+    "domain": "Classical ML",
+    "endpoint": "Isolation Forest"
+  },
+  {
+    "task": "ml-calibration",
+    "title": "Probability Calibration: post-hoc mappings from rigid to bend-both-ways",
+    "domain": "Classical ML",
+    "endpoint": ""
+  },
+  {
+    "task": "ml-clustering-algorithm",
+    "title": "Clustering Algorithm Design: one method across blobs, moons, and high-D digits",
+    "domain": "Classical ML",
+    "endpoint": "HDBSCAN (hierarchical density, EOM extraction)"
+  },
+  {
+    "task": "ml-continual-regularization",
+    "title": "Continual Learning: regularization against catastrophic forgetting",
+    "domain": "Classical ML",
+    "endpoint": ""
+  },
+  {
+    "task": "ml-dimensionality-reduction",
+    "title": "Dimensionality Reduction: nonlinear 2D embedding design",
+    "domain": "Classical ML",
+    "endpoint": ""
+  },
+  {
+    "task": "ml-ensemble-boosting",
+    "title": "ML Ensemble Boosting: sample-weighting and update strategy design",
+    "domain": "Classical ML",
+    "endpoint": "XGBoost-style (second-order regularized Newton step)"
+  },
+  {
+    "task": "ml-federated-aggregation",
+    "title": "Federated Aggregation: taming client drift under non-IID data",
+    "domain": "Classical ML",
+    "endpoint": "FedDyn (Federated Dynamic Regularization)"
+  },
+  {
+    "task": "ml-missing-data-imputation",
+    "title": "Missing Data Imputation: climbing from the column mean to non-linear chained equations",
+    "domain": "Classical ML",
+    "endpoint": "Iterative ExtraTrees imputation (gain slot)"
+  },
+  {
+    "task": "ml-selective-deferral",
+    "title": "Selective Deferral Under Subgroup Shift: the acceptance rule",
+    "domain": "Classical ML",
+    "endpoint": "Group-wise thresholding (per-subgroup quantile cuts)"
+  },
+  {
+    "task": "ml-subgroup-calibration-shift",
+    "title": "Subgroup Calibration Under Shift: a worst-group reliability ladder",
+    "domain": "Classical ML",
+    "endpoint": "Beta calibration (3-parameter)"
+  },
+  {
+    "task": "ml-symbolic-regression",
+    "title": "Symbolic Regression: GP search strategy",
+    "domain": "Classical ML",
+    "endpoint": ""
+  },
+  {
+    "task": "mlsys-fused-attention",
+    "title": "Fused Attention Kernel: climbing the FlashAttention ladder in Triton on H100",
+    "domain": "Systems & efficiency",
+    "endpoint": "FlashAttention v3-inspired (autotuned blocks + software pipelining)"
+  },
+  {
+    "task": "mlsys-moe-load-balance",
+    "title": "MoE Expert-Parallelism Load Balancing: from greedy to vectorized placement",
+    "domain": "Systems & efficiency",
+    "endpoint": ""
+  },
+  {
+    "task": "mlsys-sparse-attention-inference",
+    "title": "Long-Context Inference-Time Sparse Attention: from dense oracle to content-adaptive block-sparse",
+    "domain": "Systems & efficiency",
+    "endpoint": "Block-Top-K (NSA-style content-adaptive block selection)"
+  },
+  {
+    "task": "optimization-bilevel",
+    "title": "Optimization Bilevel: one first-order update for penalty-based bilevel descent",
+    "domain": "Optimization",
+    "endpoint": "V-PBGD (value-function penalty bilevel gradient descent)"
+  },
+  {
     "task": "optimization-convex-concave",
     "title": "Convex-Concave Saddle Points: noise-robust extragradient ladder",
     "domain": "Optimization",
     "endpoint": ""
+  },
+  {
+    "task": "optimization-diagonal-net",
+    "title": "Optimizer Design for Diagonal-Net Sparse Recovery: implicit bias and sample complexity",
+    "domain": "Optimization",
+    "endpoint": "Adam, no bias correction (lr=0.1, beta2=0.95)"
   },
   {
     "task": "optimization-dp-sgd",
@@ -480,40 +558,10 @@
     "endpoint": "BOHB (Bayesian Optimization + Hyperband)"
   },
   {
-    "task": "llm-pretrain-optimizer",
-    "title": "LLM Pretraining Optimizer: lowering val loss past AdamW",
-    "domain": "Optimization",
-    "finale": "SOAP (Adam in Shampoo's eigenbasis)"
-  },
-  {
     "task": "optimization-multi-objective",
     "title": "Multi-Objective Optimization: climbing the MOEA survival ladder",
     "domain": "Optimization",
     "endpoint": "SMS-EMOA (S-metric hypervolume selection)"
-  },
-  {
-    "task": "optimization-online-bandit",
-    "title": "Online Bandits: exploration-exploitation across three regimes",
-    "domain": "Optimization",
-    "endpoint": "Thompson Sampling (Beta / LinTS / discounted)"
-  },
-  {
-    "task": "optimization-bilevel",
-    "title": "Optimization Bilevel: one first-order update for penalty-based bilevel descent",
-    "domain": "Optimization",
-    "endpoint": "V-PBGD (value-function penalty bilevel gradient descent)"
-  },
-  {
-    "task": "optimization-diagonal-net",
-    "title": "Optimizer Design for Diagonal-Net Sparse Recovery: implicit bias and sample complexity",
-    "domain": "Optimization",
-    "endpoint": "Adam, no bias correction (lr=0.1, beta2=0.95)"
-  },
-  {
-    "task": "optimization-pac-bayes-bound",
-    "title": "PAC-Bayes Bound Optimization: tightening the risk certificate",
-    "domain": "Optimization",
-    "endpoint": "Quadratic / inverted-kl bound (fquad)"
   },
   {
     "task": "optimization-nas",
@@ -522,70 +570,34 @@
     "endpoint": "BANANAS (path-encoded MLP-ensemble predictor)"
   },
   {
+    "task": "optimization-online-bandit",
+    "title": "Online Bandits: exploration-exploitation across three regimes",
+    "domain": "Optimization",
+    "endpoint": "Thompson Sampling (Beta / LinTS / discounted)"
+  },
+  {
+    "task": "optimization-pac-bayes-bound",
+    "title": "PAC-Bayes Bound Optimization: tightening the risk certificate",
+    "domain": "Optimization",
+    "endpoint": "Quadratic / inverted-kl bound (fquad)"
+  },
+  {
     "task": "optimization-variance-reduction",
     "title": "Variance Reduction for Stochastic Optimization: SGD to recursive momentum",
     "domain": "Optimization",
     "endpoint": ""
   },
   {
-    "task": "marl-centralized-critic",
-    "title": "Cooperative MARL: Centralized Critic Architecture for MAPPO",
-    "domain": "Reinforcement learning",
-    "endpoint": "Agent-Specific (AS) central-V critic"
+    "task": "pde-design-solver",
+    "title": "PDE Design Solver: neural operators for industrial CFD design",
+    "domain": "AI for science",
+    "endpoint": "Transolver++ (eidetic states)"
   },
   {
-    "task": "rl-offline-continuous",
-    "title": "Offline RL: Q-value overestimation suppression in continuous control",
-    "domain": "Reinforcement learning",
-    "endpoint": "SAC-RND (anti-exploration by random network distillation)"
-  },
-  {
-    "task": "rl-onpolicy-continuous",
-    "title": "On-Policy Continuous Control: the policy-update rule, weak to strong",
-    "domain": "Reinforcement learning",
-    "endpoint": "RPO (Robust Policy Optimization)"
-  },
-  {
-    "task": "rl-intrinsic-exploration",
-    "title": "RL Intrinsic Exploration: sparse-reward novelty bonus",
-    "domain": "Reinforcement learning",
-    "finale": "Never Give Up (NGU)"
-  },
-  {
-    "task": "rl-offpolicy-continuous",
-    "title": "RL Off-Policy Continuous Control: from a single critic to a target-free normalized critic",
-    "domain": "Reinforcement learning",
-    "endpoint": "CrossQ (BatchRenorm critic, no target networks)"
-  },
-  {
-    "task": "rl-value-atari",
-    "title": "RL Value-Based Atari: from decoupled targets to an implicit return distribution",
-    "domain": "Reinforcement learning",
-    "endpoint": "IQN (Implicit Quantile Networks)"
-  },
-  {
-    "task": "jepa-regularizer",
-    "title": "JEPA Anti-Collapse Regularizer: from collapse to a derived distributional target",
-    "domain": "Self-supervised",
-    "endpoint": "SIGReg / BCS (sliced isotropic-Gaussian Epps-Pulley test)"
-  },
-  {
-    "task": "mlsys-fused-attention",
-    "title": "Fused Attention Kernel: climbing the FlashAttention ladder in Triton on H100",
-    "domain": "Systems & efficiency",
-    "endpoint": "FlashAttention v3-inspired (autotuned blocks + software pipelining)"
-  },
-  {
-    "task": "mlsys-sparse-attention-inference",
-    "title": "Long-Context Inference-Time Sparse Attention: from dense oracle to content-adaptive block-sparse",
-    "domain": "Systems & efficiency",
-    "endpoint": "Block-Top-K (NSA-style content-adaptive block selection)"
-  },
-  {
-    "task": "mlsys-moe-load-balance",
-    "title": "MoE Expert-Parallelism Load Balancing: from greedy to vectorized placement",
-    "domain": "Systems & efficiency",
-    "endpoint": ""
+    "task": "quant-concept-drift",
+    "title": "Quant Concept Drift: temporal-shift-robust CSI300 return prediction",
+    "domain": "Time series",
+    "endpoint": "DoubleEnsemble (sample-reweighting + feature-selection ensemble)"
   },
   {
     "task": "quant-graph-stock",
@@ -594,9 +606,267 @@
     "endpoint": ""
   },
   {
-    "task": "quant-concept-drift",
-    "title": "Quant Concept Drift: temporal-shift-robust CSI300 return prediction",
+    "domain": "Reinforcement learning",
+    "endpoint": "Dual bilinear (inner-product) representation",
+    "task": "rl-gcrl-goal-representation",
+    "title": "Goal Representation for Goal-Conditioned RL: from raw goals to a dual reachability code"
+  },
+  {
+    "task": "rl-intrinsic-exploration",
+    "title": "RL Intrinsic Exploration: sparse-reward novelty bonus",
+    "domain": "Reinforcement learning",
+    "finale": "Never Give Up (NGU)"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "IQL (Implicit Q-Learning)",
+    "task": "rl-offline-adroit",
+    "title": "Offline RL on Adroit: narrow human-demo dexterous manipulation"
+  },
+  {
+    "task": "rl-offline-continuous",
+    "title": "Offline RL: Q-value overestimation suppression in continuous control",
+    "domain": "Reinforcement learning",
+    "endpoint": "SAC-RND (anti-exploration by random network distillation)"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "",
+    "task": "rl-offline-off2on",
+    "title": "Offline-to-Online RL: preventing catastrophic forgetting in fine-tuning"
+  },
+  {
+    "task": "rl-offpolicy-continuous",
+    "title": "RL Off-Policy Continuous Control: from a single critic to a target-free normalized critic",
+    "domain": "Reinforcement learning",
+    "endpoint": "CrossQ (BatchRenorm critic, no target networks)"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "SimBa (simplicity-bias residual encoder on the FastTD3 backbone)",
+    "task": "rl-offpolicy-sample-efficiency",
+    "title": "Off-Policy RL Sample Efficiency: scaling humanoid locomotion under a fixed budget"
+  },
+  {
+    "task": "rl-onpolicy-continuous",
+    "title": "On-Policy Continuous Control: the policy-update rule, weak to strong",
+    "domain": "Reinforcement learning",
+    "endpoint": "RPO (Robust Policy Optimization)"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "",
+    "task": "rl-reward-learning",
+    "title": "RL Reward Learning: inverse RL from expert demonstrations"
+  },
+  {
+    "task": "rl-value-atari",
+    "title": "RL Value-Based Atari: from decoupled targets to an implicit return distribution",
+    "domain": "Reinforcement learning",
+    "endpoint": "IQN (Implicit Quantile Networks)"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "C51 (categorical distributional)",
+    "task": "rl-value-discrete",
+    "title": "RL Value-Based Discrete Control: representing the return"
+  },
+  {
+    "domain": "Optimization",
+    "endpoint": "Diffuser (Classifier Guidance + candidate re-ranking)",
+    "task": "robo-diffusion-guidance",
+    "title": "Robo-Diffusion Guidance: steering a trajectory diffusion planner"
+  },
+  {
+    "domain": "Optimization",
+    "endpoint": "",
+    "task": "robo-diffusion-policy",
+    "title": "Robo-Diffusion Policy: offline RL with a diffusion actor on D4RL MuJoCo"
+  },
+  {
+    "domain": "Optimization",
+    "endpoint": "",
+    "task": "robo-diffusion-sampling-method",
+    "title": "Robo-Diffusion Sampling: efficient reverse-process solver at low NFE"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "CRPO (constraint-rectified policy optimization)",
+    "task": "safe-exploration-fixed-budget",
+    "title": "Safe Exploration Under a Fixed Cost Budget: constraint-handling update rules"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "PID Lagrangian (CPPOPID)",
+    "task": "safe-rl",
+    "title": "Safe RL: constraint-handling mechanism design"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "",
+    "task": "security-adversarial-attack-black-box-score",
+    "title": "Score-Based Query Black-Box Attack under Linf Constraint"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "",
+    "task": "security-adversarial-attack-sparse-l0",
+    "title": "Sparse Adversarial Attack (L0): climbing from blind rearrangement to gradient-guided support search"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "AutoAttack (standard ensemble)",
+    "task": "security-adversarial-attack-white-box-linf",
+    "title": "White-Box L_inf Evasion: from one signed step to a worst-case ensemble"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "",
+    "task": "security-adversarial-training",
+    "title": "Adversarial Training: robustness against L_inf attacks"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "",
+    "task": "security-backdoor-defense",
+    "title": "Backdoor Defense: poisoned-sample scoring weak to strong"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "",
+    "task": "security-machine-unlearning",
+    "title": "Machine Unlearning: targeted update rules for class forgetting"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "RelaxLoss (Chen, Yu, Fritz, ICLR 2022)",
+    "task": "security-membership-inference-defense",
+    "title": "Membership Inference Defense: training-time loss regularization"
+  },
+  {
+    "domain": "Security",
+    "endpoint": "Active Passive Loss (NCE + RCE)",
+    "task": "security-poison-robust-learning",
+    "title": "Poison-Robust Learning: a noise-tolerant objective under label-flip poisoning"
+  },
+  {
     "domain": "Time series",
-    "endpoint": "DoubleEnsemble (sample-reweighting + feature-selection ensemble)"
+    "endpoint": "",
+    "task": "stf-traffic-forecast",
+    "title": "Spatial-Temporal Traffic Forecasting: from linear to identity"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "",
+    "task": "synth-associative-recall",
+    "title": "Synthetic Associative Recall (MQAR): a sub-quadratic recall mixer"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "Transformer + ALiBi (linear distance bias)",
+    "task": "synth-copy",
+    "title": "Synthetic Copy: positional encoding for length generalization"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "",
+    "task": "synth-dyck",
+    "title": "Synthetic Dyck-(k,m): length-generalizing stack architectures"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "",
+    "task": "synth-flip-flop",
+    "title": "Synth Flip-Flop: eliminating attention glitches on a 1-bit memory"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "",
+    "task": "synth-matrix-completion",
+    "title": "Synthetic Matrix Completion: neural matrix factorization architecture"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "",
+    "task": "synth-modular-addition",
+    "title": "Synth Modular Addition: killing the grokking delay"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "",
+    "task": "synth-multi-index",
+    "title": "Synth Multi-Index: recovering the hidden subspace of a fixed two-layer MLP"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "LSTM (single-layer recurrent)",
+    "task": "synth-semiautomata",
+    "title": "Synth-Semiautomata: architectures for finite-state simulation"
+  },
+  {
+    "domain": "Sequence modeling",
+    "endpoint": "One giant step + ridge readout",
+    "task": "synth-single-index",
+    "title": "Synthetic Single-Index Recovery: learning the hidden direction"
+  },
+  {
+    "domain": "Learning theory",
+    "endpoint": "Curriculum / layer-wise saddle-to-saddle SGD",
+    "task": "synth-staircase",
+    "title": "Synth-Staircase: learning sparse functions on the hypercube"
+  },
+  {
+    "domain": "Self-supervised",
+    "endpoint": "MPPI (Model Predictive Path Integral)",
+    "task": "tdmpc2-planning",
+    "title": "TD-MPC2 Planning: the trajectory-optimizer refit rule"
+  },
+  {
+    "domain": "Self-supervised",
+    "endpoint": "",
+    "task": "tdmpc2-simnorm",
+    "title": "TD-MPC2 Latent Normalization: bounding and shaping the world-model latent"
+  },
+  {
+    "domain": "Time series",
+    "endpoint": "TimesNet (period-aware 2D-variation reconstructor)",
+    "task": "ts-anomaly-detection",
+    "title": "Time Series Anomaly Detection: the reconstruction backbone"
+  },
+  {
+    "domain": "Time series",
+    "endpoint": "",
+    "task": "ts-classification",
+    "title": "Multivariate Time Series Classification: a general UEA encoder"
+  },
+  {
+    "domain": "Time series",
+    "endpoint": "",
+    "task": "ts-exogenous-forecast",
+    "title": "Exogenous-variable forecasting: fusing covariates into the target channel (features=MS)"
+  },
+  {
+    "domain": "Time series",
+    "endpoint": "",
+    "task": "ts-imputation",
+    "title": "Time Series Imputation: from linear interpolation to channel-independent patches"
+  },
+  {
+    "domain": "Time series",
+    "endpoint": "",
+    "task": "ts-long-term-forecast",
+    "title": "Long-Term Multivariate Forecasting: from linear decomposition to endogenous/exogenous attention"
+  },
+  {
+    "domain": "Time series",
+    "endpoint": "",
+    "task": "ts-short-term-forecast",
+    "title": "M4 Short-Term Forecasting: climbing the forecaster ladder"
+  },
+  {
+    "domain": "Reinforcement learning",
+    "endpoint": "PD&AC + Cont-L1",
+    "task": "vla-openvla-pdac-continuous-head",
+    "title": "OpenVLA-OFT PD&AC: action-method design under a 6000-step budget"
   }
 ]

@@ -1,0 +1,59 @@
+{
+  "task": "ts-long-term-forecast",
+  "title": "Long-Term Multivariate Forecasting: from linear decomposition to endogenous/exogenous attention",
+  "domain": "Time series",
+  "metrics": [
+    "ETTh1",
+    "Weather",
+    "ECL"
+  ],
+  "metric_columns": [
+    "mse",
+    "mae"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dlinear",
+      "method": "DLinear (decomposition + linear)",
+      "reasoning": "01-dlinear-reasoning.md",
+      "answer": "01-dlinear-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "patchtst",
+      "method": "PatchTST (channel-independent patch attention)",
+      "reasoning": "02-patchtst-reasoning.md",
+      "answer": "02-patchtst-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "itransformer",
+      "method": "iTransformer (inverted cross-variate attention)",
+      "reasoning": "03-itransformer-reasoning.md",
+      "answer": "03-itransformer-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "timemixer",
+      "method": "TimeMixer (multi-scale decomposable mixing)",
+      "reasoning": "04-timemixer-reasoning.md",
+      "answer": "04-timemixer-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "timexer",
+      "method": "TimeXer (endogenous/exogenous attention)",
+      "reasoning": "05-timexer-reasoning.md",
+      "answer": "05-timexer-answer.md",
+      "feedback": "05-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ordered weak->strong by mean test MSE across ETTh1/Weather/ECL from the is_final,true baseline:* leaderboard rows (seed 42; lower is better), tie-broken by mean MAE. Mean MSE: dlinear 0.2676 > patchtst 0.2451 > itransformer 0.2395 > timemixer 0.2317 > timexer 0.2283, strictly monotone. Note the per-dataset ordering is not monotone (itransformer wins ECL but loses ETTh1; timemixer wins ETTh1/Weather but trails itransformer on ECL), which is exactly the temporal-vs-cross-variate trade the trajectory reflects on; the mean-MSE ranking gives the clean weak->strong ladder and timexer is strongest on the headline metric.",
+  "notes": "MLS-Bench-based trajectory. The edit surface is models/Custom.py (a Model(nn.Module) filling the frozen Time-Series-Library direct-multi-step loop); the baselines are the TS-Lib reference models run via their own per-dataset scripts, so each step's code re-expresses that reference model as a Custom.py fill. Same-named-vs-paper diffs: (1) the baselines' own scripts tune d_model/e_layers/n_heads/batch_size/lr per dataset, but Custom is evaluated under one fixed config (d_model=512, e_layers=2, n_heads=8, dropout=0.1, lr=1e-4, batch_size=32, train_epochs=10) for all three datasets, so each step runs in a regime its own recipe would not choose (e.g. iTransformer/TimeXer over-parameterized on 7-channel ETTh1; TimeMixer/TimeXer trained at lr=1e-4/batch=32 vs their lr=0.01/batch=128 and batch=4 recipes). (2) TimeMixer is the sharpest case: the harness passes down_sampling_layers=0/window=1/method=None (run.py defaults), which would collapse the multiscale ladder to one scale and make the architecture inert, so the Custom fill hardcodes its own scale config (down_sampling_layers=3, window=2, avg) internally. (3) DLinear reads moving_avg=25 from configs (the default), so all three datasets share one kernel where a per-dataset script could tune it. (4) PatchTST hardcodes stride=8 (the loop passes no stride) and uses a BatchNorm encoder norm. All five methods/<slug> traces (dlinear, patchtst, itransformer, timemixer, timexer) already existed and were reused as derivation references, untouched. No finale added: TimeXer is a recent (2024) cross-variate SOTA and no clearly-stronger published method reliably beats it at this fixed seq_len=96 / fixed-config edit surface, so per spec the ladder stops at the strongest baseline rather than inventing one."
+}

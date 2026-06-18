@@ -1,0 +1,61 @@
+{
+  "task": "security-machine-unlearning",
+  "title": "Machine Unlearning: targeted update rules for class forgetting",
+  "domain": "Security",
+  "metrics": [
+    "resnet20-cifar10-class0",
+    "vgg16bn-cifar100-class0",
+    "mobilenetv2-fmnist-class0"
+  ],
+  "metric_columns": [
+    "retain_acc",
+    "forget_acc",
+    "forget_mia_auc",
+    "unlearn_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "retain-finetune",
+      "method": "Retain-only finetuning (scaffold default)",
+      "reasoning": "01-retain-finetune-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-retain-finetune-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "negative-gradient",
+      "method": "NegGrad+ (gradient ascent on forget loss)",
+      "reasoning": "02-negative-gradient-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-negative-gradient-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "bad-teacher",
+      "method": "Bad Teacher (incompetent-teacher distillation)",
+      "reasoning": "03-bad-teacher-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-bad-teacher-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "scrub",
+      "method": "SCRUB (min-max KL distillation)",
+      "reasoning": "04-scrub-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-scrub-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "salun",
+      "method": "SalUn (saliency-masked random labeling)",
+      "reasoning": "05-salun-reasoning.md",
+      "finale": true,
+      "answer": "05-salun-answer.md"
+    }
+  ],
+  "ranking_basis": "Primary metric unlearn_score (higher better), is_final,true baseline:* rows, seed 42. retain_finetune is the scaffold default starting rung (passive: high retain_acc 0.8082/0.6860/0.8185 across resnet20/vgg16bn/mobilenetv2, weak forgetting, MIA AUC stuck below 0.5). The published-method ladder then climbs by forgetting mechanism: negative_gradient is the weakest measured (unbounded hard-label ascent collapses retain_acc to 0.1726/0.0101/0.1111, unlearn_score 0.6822/0.5489/0.6910, below the passive baseline); bad_teacher (bounded dual-teacher distillation) recovers utility on the two visible benchmarks (0.8031/0.6895) but the noisy random teacher collapses the hidden mobilenetv2-fmnist (0.1009); scrub (clean single-teacher min-max) is strongest baseline, stable across all three (0.8115/0.6915/0.8198). Finale SalUn localizes the edit to forget-salient weights, expected to match/beat scrub.",
+  "notes": "MLS-Bench-based trajectory. Initial context and every step's code are the task's real edit surface (custom_unlearning.py: UnlearningMethod.unlearn_step, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. methods/<slug> single-round traces (bad-teacher, scrub) are reused untouched as derivation reference; methods/negative-gradient/results was an empty stub (no trace) so NegGrad+ was derived from edits/negative_gradient.edit.py plus the NegGrad discussion in the scrub/bad-teacher traces. Finale SalUn has a new methods/salun trace (grounded + Codex). retain_finetune is a generic control, not a published method; the >=2-published-method gate is met by negative_gradient (NegGrad, Golatkar et al. 2020), bad_teacher (Chundawat et al. 2023), scrub (Kurmanji et al. 2023)."
+}

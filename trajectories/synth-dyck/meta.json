@@ -1,0 +1,44 @@
+{
+  "task": "synth-dyck",
+  "title": "Synthetic Dyck-(k,m): length-generalizing stack architectures",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "dyck-k2-m3",
+    "dyck-k8-m5",
+    "dyck-length-ood"
+  ],
+  "metric_columns": [
+    "ood_token_acc",
+    "id_token_acc",
+    "ood_string_acc"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "transformer",
+      "method": "Causal Transformer (learned absolute positions)",
+      "reasoning": "01-transformer-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-transformer-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "lstm",
+      "method": "2-layer LSTM",
+      "reasoning": "02-lstm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-lstm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "stack_rnn",
+      "method": "Stack-augmented RNN (soft PUSH/POP/NO-OP)",
+      "reasoning": "03-stack_rnn-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-stack_rnn-answer.md"
+    }
+  ],
+  "ranking_basis": "Per-env score = ood_token_acc (headline length-OOD generalization), task score = geometric mean across the three envs. transformer weakest: fits in-distribution but collapses on length-OOD (geomean 0.785; ood_string_acc ~0 on every env) because learned absolute positions are untrained past the training length. lstm middle (geomean 0.962): length-independent recurrence removes the absolute-position failure, near-perfect on dyck-k2-m3 and strong on dyck-length-ood, but precision-breaks on dyck-k8-m5 (ood_token 0.924 yet ood_string 0.001 — a dense state smears the 8-way depth-5 stack). stack_rnn strongest (geomean 1.0): an explicit differentiable stack holds the top symbol per-slot, perfect token AND string accuracy on all three envs.",
+  "notes": "MLS-Bench-based trajectory; initial context and every step's code are the task's real edit surface (build_model in pytorch-examples/synth_dyck/custom_strategy.py, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose; reflection on the prior result embedded for i>1) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers only, baselines). The scaffold code block lives in the answer only. methods/<slug> single-round traces (transformer, lstm, stack-rnn) are the derivation reference and are untouched. No finale: the strongest baseline (stack_rnn) already scores a perfect 1.0 on every metric in every env, so no published method can clear its bar."
+}

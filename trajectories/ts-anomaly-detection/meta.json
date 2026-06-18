@@ -1,0 +1,45 @@
+{
+  "task": "ts-anomaly-detection",
+  "title": "Time Series Anomaly Detection: the reconstruction backbone",
+  "domain": "Time series",
+  "metrics": [
+    "PSM",
+    "MSL",
+    "SMAP"
+  ],
+  "metric_columns": [
+    "f_score",
+    "precision",
+    "recall"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "patchtst",
+      "method": "PatchTST (channel-independent patch Transformer reconstructor)",
+      "reasoning": "01-patchtst-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-patchtst-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "dlinear",
+      "method": "DLinear (decomposition-linear reconstructor)",
+      "reasoning": "02-dlinear-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-dlinear-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "timesnet",
+      "method": "TimesNet (period-aware 2D-variation reconstructor)",
+      "reasoning": "03-timesnet-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-timesnet-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by mean point-adjusted F1 across PSM/MSL/SMAP from the is_final,true baseline:* leaderboard rows (seed 42; higher is better). patchtst 0.8135 (PSM 0.9617, MSL 0.7904, SMAP 0.6883) < dlinear 0.8194 (PSM 0.9663, MSL 0.8187, SMAP 0.6733) < timesnet 0.8287 (PSM 0.9738, MSL 0.8180, SMAP 0.6943). patchtst weakest: its 512-wide encoder reconstructs anomalies too faithfully, sagging MSL/SMAP recall. dlinear edges it via the under-flexible linear map lifting MSL, but regresses on SMAP whose period shifts window to window. timesnet strongest: per-window FFT period discovery + 2D intra/inter-period conv adapts to each window, recovering SMAP and topping PSM.",
+  "notes": "MLS-Bench trajectory grounded in the task's real edit surface (models/Custom.py: the Model class implementing anomaly_detection as same-length reconstruction; harness scores per-point reconstruction MSE -> anomaly_ratio percentile threshold -> point-adjusted F1). Each step's answer code is the literal TS-Lib anomaly_detection fill for that model (DLinear/PatchTST/TimesNet), NOT the paper's forecasting version. Same-named-vs-paper diffs: (1) PatchTST/DLinear methods/<slug> traces are forecasting-framed (horizon T, FlattenHead -> pred_len); the scaffold anomaly fill sets target_window = seq_len for a reconstruction head and pred_len = seq_len, no horizon. (2) DLinear's TS-Lib anomaly path applies NO reversible instance normalization (the trend linear absorbs the level), unlike the paper's normalized-linear variant and unlike PatchTST/TimesNet which both keep the per-window mean/std normalize-denormalize wrapper. (3) DLinear weights are initialized to the uniform 1/seq_len average. (4) TimesNet methods trace is already anomaly-framed and its code matches the scaffold verbatim. No finale: TimesNet is the strongest baseline and no clearly-stronger published method fits this fixed MSE-reconstruction edit surface (e.g. Anomaly Transformer needs a custom minimax association-discrepancy training loop the harness does not expose). All three methods/<slug> traces existed and were reused as derivation references.",
+  "endpoint": "TimesNet (period-aware 2D-variation reconstructor)"
+}

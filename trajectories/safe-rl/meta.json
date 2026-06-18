@@ -1,0 +1,44 @@
+{
+  "task": "safe-rl",
+  "title": "Safe RL: constraint-handling mechanism design",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "SafetyPointGoal1-v0",
+    "SafetyCarGoal1-v0",
+    "SafetyPointButton1-v0"
+  ],
+  "metric_columns": [
+    "reward",
+    "cost"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "naive",
+      "method": "Naive (no constraint handling)",
+      "reasoning": "01-naive-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-naive-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ppo-lag",
+      "method": "PPOLag (Adam dual multiplier)",
+      "reasoning": "02-ppo-lag-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ppo-lag-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "pid-lag",
+      "method": "PID Lagrangian (CPPOPID)",
+      "reasoning": "03-pid-lag-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-pid-lag-answer.md"
+    }
+  ],
+  "endpoint": "PID Lagrangian (CPPOPID)",
+  "ranking_basis": "Ranked weak->strong on the safe-RL objective (high return ONLY when cost is controlled at the budget d=25). naive weakest by design: highest return (PointGoal 25.5 / CarGoal 32.8 / PointButton 19.7) but cost wildly over budget on every seed (51 / 61 / 152). ppo_lag (integral-only Adam dual) pulls cost down but still ~2x over budget everywhere (45.6 / 46.7 / 56.2) while already paying heavily in return (15.1 / 18.6 / 4.0) -- the worst of both worlds. pid_lag is the only baseline whose cost is actually controlled at the budget across all three envs (19.3 / 19.3 / 25.0), satisfying the constraint the objective requires; return is the honest price (0.2 / 2.0 / 0.5). Numbers from baseline:* is_final,true rows.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_lag.py: the CustomLag(PPO) subclass's _init/_init_log/_update/_compute_adv_surrogate methods + imports, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer, not the reasoning. methods/ppo-lag and methods/pid-lag single-round traces are reused as derivation references and left untouched. No finale: stronger published safe-RL methods (CPO, FOCOPS) require trust-region/projection machinery the harness does not expose (the edit surface is only the multiplier-update rule + the (adv_r - lam*adv_c)/(1+lam) blend), so pid_lag (CPPOPID) is the endpoint. Same-named-vs-paper diffs: this task's ppo_lag inlines the omnisafe Lagrange class (Adam on lambda via loss -lambda*(Jc-d), clamp to [0,inf)); this task's pid_lag hardcodes the CPPOPID config inline (kp=0.1, ki=0.01, kd=0.01, EMA alpha=0.95, derivative delay=10, integral seeded 0.0) and omits the general PIDLagrangian's sum_norm/diff_norm/penalty_max branches and configurable EMA alphas."
+}

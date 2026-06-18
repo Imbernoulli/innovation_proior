@@ -1,0 +1,43 @@
+{
+  "task": "robo-diffusion-sampling-method",
+  "title": "Robo-Diffusion Sampling: efficient reverse-process solver at low NFE",
+  "domain": "Optimization",
+  "metrics": [
+    "hopper-medium-v2",
+    "walker2d-medium-v2",
+    "halfcheetah-medium-v2"
+  ],
+  "metric_columns": [
+    "normalized_score",
+    "sampling_steps"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ddpm",
+      "method": "DDPM (ancestral, 100 steps)",
+      "reasoning": "01-ddpm-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ddpm-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ddim",
+      "method": "DDIM (deterministic, 20 steps)",
+      "reasoning": "02-ddim-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ddim-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "dpm_solver",
+      "method": "DPM-Solver++ 2M (10 steps)",
+      "reasoning": "03-dpm_solver-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-dpm_solver-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by task score = gmean over 3 envs of sigmoid(normalized_score) * penalty(sampling_steps), penalty=exp(-0.015*(steps-10)) above 10 steps else 1.0, from is_final,true baseline:* rows (seed 42). default/DDPM 100 steps = 0.172 (penalty ~0.26 plus the lowest returns) < ddim 20 steps = 0.587 (penalty 0.861, returns rise on determinism) < dpm_solver/DPM-Solver++ 2M 10 steps = 0.686 (penalty 1.0 at the NFE floor, highest returns on every env). Both quality and NFE penalty agree on the ordering.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (two YAML lines, solver + sampling_steps in CleanDiffuser/configs/custom/mujoco/mujoco.yaml; edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the two-line YAML edit) -> feedback (numbers, baselines only). Same-named-vs-paper diffs: methods/ddpm and methods/ddim are image-domain derivations; here they sample a frozen DQL diffusion *policy* over D4RL actions via CleanDiffuser's solver registry, edited only by solver name + step count. The dpm_solver baseline is DPM-Solver++ 2M (solver=ode_dpmsolver++_2M) -- the multistep (2M), data-prediction (++) variant -- which is a distinct method from the singlestep noise-prediction DPM-Solver in methods/dpm-solver; step 3's reasoning derives the ++/2M variant specifically (data-face for action-box boundedness + stability under sharp policy conditioning; multistep for 1 NFE/step at the budget). No finale: DPM-Solver++ 2M at 10 steps already sits at the NFE penalty floor with top quality on all three envs, and no clearly-stronger published method fits the two-line solver edit surface (going below 10 steps yields no penalty benefit). methods/<slug> single-round traces untouched."
+}

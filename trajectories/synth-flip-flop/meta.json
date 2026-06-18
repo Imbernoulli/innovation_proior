@@ -1,0 +1,44 @@
+{
+  "task": "synth-flip-flop",
+  "title": "Synth Flip-Flop: eliminating attention glitches on a 1-bit memory",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "dense",
+    "sparse",
+    "long_ctx"
+  ],
+  "metric_columns": [
+    "read_error_rate",
+    "seq_error_rate",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "transformer",
+      "method": "Vanilla causal Transformer",
+      "reasoning": "01-transformer-reasoning.md",
+      "answer": "01-transformer-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "ssm",
+      "method": "Selective diagonal SSM (Mamba-style)",
+      "reasoning": "02-ssm-reasoning.md",
+      "answer": "02-ssm-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "lstm",
+      "method": "1-layer LSTM (recurrent skyline)",
+      "reasoning": "03-lstm-reasoning.md",
+      "answer": "03-lstm-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the overall task score = geometric mean of the per-split score (1 - seq_error_rate) from the is_final,true baseline:* rows (seed 42). transformer: score_dense=0.2315, score_sparse=0.801, score_long_ctx=0.002 -> geomean ~= 0.072 (weakest: soft attention re-selects the memory bit every read, the small per-read error compounds across many reads, and learned absolute positions fail to extrapolate to T=1024). ssm: 1.0 / 0.723 / 1.0 -> geomean ~= 0.898 (carries the bit in a linear gated state, fixing dense and long_ctx, but the analog exp(-Delta*A) carry leaks over the 100+ ignore holds of the sparse tail). lstm: 1.0 / 1.0 / 1.0 -> geomean 1.0 (exact additive carry with saturating gates holds the bit losslessly across any number of ignores; the perfect recurrent skyline). No finale: the strongest baseline already scores a perfect 1.0 on every split, so no published method can be a stronger endpoint.",
+  "notes": "MLS-Bench-based trajectory: 00-initial-context.md and every step's answer code are the task's real edit surface (custom_strategy.py FlipFlopModel + build_model, lines 191-241, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, all three baselines have feedback; no finale). The leaderboard has only seed 42, so per-seed tables show seed 42 (= mean). Same-named-baseline-vs-paper diffs: (transformer) task uses 4-layer/8-head/d_model=256 ~3M params, a downsized version of the paper's 6-layer/d_model=512 canonical baseline, same qualitative attention-glitch behaviour. (ssm) the task baseline is a tiny pure-PyTorch selective diagonal SSM with a naive python for-loop scan (d_model=64, d_state=8, 1 block, exact-ZOH Ar=exp(-Delta*A) with first-order input update Delta*B*x), NOT the hardware-aware fused parallel-scan Mamba in methods/ssm; the reasoning is grounded in the loop implementation and notes that the fused CUDA kernel cannot ship in-container and is unnecessary at T<=1024. (lstm) the task baseline is the minimal 1-layer hidden=128 ~133K-param cell, matching Liu et al. R2 exactly. attn_sharp baseline was EXCLUDED from the ladder: it is a fixed low-temperature-softmax / attention-sharpening config variant (tau=0.5 divisor), a knob/regularizer from a section of the FFLM paper rather than a method with its own dedicated paper, so it is an ablation/variant under the published-only gate; the ladder still has 3 genuine published methods. methods/<slug> single-round traces (transformer, lstm, ssm) are untouched and reused as derivation references; no methods/attn_sharp trace exists or was created."
+}

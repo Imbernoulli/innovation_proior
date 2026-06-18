@@ -1,0 +1,44 @@
+{
+  "task": "synth-matrix-completion",
+  "title": "Synthetic Matrix Completion: neural matrix factorization architecture",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "rank3-50",
+    "rank5-100",
+    "rank10-200"
+  ],
+  "metric_columns": [
+    "test_rel_fro",
+    "full_rel_fro",
+    "train_mse"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "shallow_mf",
+      "method": "Shallow (depth-2) matrix factorization",
+      "reasoning": "01-shallow_mf-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-shallow_mf-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "nuclear_norm",
+      "method": "Nuclear-norm minimization (SVT)",
+      "reasoning": "02-nuclear_norm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-nuclear_norm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "deep_mf",
+      "method": "Deep (depth-3) matrix factorization",
+      "reasoning": "03-deep_mf-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-deep_mf-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by test_rel_fro (lower better; is_final,true baseline rows, seed 42). On the two well-sampled environments the order is clean and monotone: rank3-50 shallow_mf 0.452 > nuclear_norm 0.250 > deep_mf 0.010; rank5-100 shallow_mf 0.596 > nuclear_norm 0.311 > deep_mf 0.047. On rank10-200 all three collapse to ~0.92-0.93 (information floor at 10% observed, n=200), so it does not separate them. shallow_mf weakest (depth-2 implicit bias is only nuclear-norm strength, coarsened by Adam); nuclear_norm middle (targets the nuclear-norm fit directly via SVT but cannot beat that ceiling); deep_mf strongest (depth-3 saturating low-rank bias beats nuclear-norm strength by an order of magnitude on both well-sampled environments).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py EDITABLE block lines 138-228: build_strategy + MatrixRecoveryStrategy + the reference strategy class, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The code block lives in the answer only, so the stacked view shows it once. methods/{shallow-mf,nuclear-norm,deep-mf} single-round traces are the derivation reference and are left untouched. No finale: deep_mf is the Arora et al. 2019 depth-3 SOTA and wins decisively on the well-sampled environments; no clearly-stronger published method fits the edit surface without speculation, so the ladder stops at the strongest baseline."
+}

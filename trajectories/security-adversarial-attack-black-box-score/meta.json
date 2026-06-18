@@ -1,0 +1,42 @@
+{
+  "task": "security-adversarial-attack-black-box-score",
+  "title": "Score-Based Query Black-Box Attack under Linf Constraint",
+  "domain": "Security",
+  "metrics": [
+    "asr",
+    "avg_queries"
+  ],
+  "metric_columns": [
+    "asr",
+    "avg_queries"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "random_search",
+      "method": "Random Search (uniform greedy)",
+      "reasoning": "01-random_search-reasoning.md",
+      "answer": "01-random_search-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "spsa",
+      "method": "SPSA (simultaneous-perturbation gradient estimation)",
+      "reasoning": "02-spsa-reasoning.md",
+      "answer": "02-spsa-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "square",
+      "method": "Square Attack (random search, square updates)",
+      "reasoning": "03-square-reasoning.md",
+      "answer": "03-square-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by mean asr over the is_final,true baseline:* leaderboard rows (seed 42, primary metric asr higher-is-better; avg_queries lower-is-better as tie-break). random_search mean asr 0.474 @ 65 queries (weakest: self-caps at 64 candidate steps, unstructured interior noise); spsa mean asr 0.816 @ 768 queries (estimated-gradient descent, but 256 queries/step caps it to ~3 steps, step-starved on the hard VGG11-BN pairs at ~0.61); square mean asr 0.958 @ 149 queries (strongest on BOTH axes: structured one-query corner/square moves win on asr and early-exit drives avg_queries far below budget).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (the body of run_attack in torchattacks/bench/custom_attack.py, lines 7-56, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers, baselines only). No finale: Square Attack is the established SOTA for Linf score-based black-box attacks (1.8-3x more query-efficient and higher asr than the prior SignHunter SOTA; on CIFAR all methods approach ~100% asr) and is already strongest here on both metrics, so per the spec the ladder stops at the strongest baseline. Same-named-vs-paper: the task's random_search baseline is a GENERIC CONTROL (uniform-noise greedy hill-climb, no dedicated paper) and is unrelated to the methods/random-search trace (which is Bergstra & Bengio hyperparameter random search); spsa and square are genuine published methods (Uesato et al. 2018; Andriushchenko et al. 2020) whose methods/<slug> traces are the derivation references. The trajectory code is the literal torchattacks edit (random_search = hand-written uniform search capped at 64 steps; spsa = torchattacks.SPSA with delta=lr=0.01, nb_sample=128, nb_iter=n_queries//256; square = torchattacks.Square Linf, p_init=0.8, loss=margin, resc_schedule), not the paper harnesses in methods/."
+}

@@ -1,0 +1,45 @@
+{
+  "task": "security-backdoor-defense",
+  "title": "Backdoor Defense: poisoned-sample scoring weak to strong",
+  "domain": "Security",
+  "metrics": [
+    "resnet20-cifar10-badnets",
+    "vgg16bn-cifar100-blend",
+    "mobilenetv2-fmnist-badnets"
+  ],
+  "metric_columns": [
+    "clean_acc",
+    "asr",
+    "poison_recall",
+    "defense_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "activation-clustering",
+      "method": "Activation Clustering (Chen et al., 2018)",
+      "reasoning": "01-activation-clustering-reasoning.md",
+      "answer": "01-activation-clustering-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "spectral-signature",
+      "method": "Spectral Signatures (Tran et al., 2018)",
+      "reasoning": "02-spectral-signature-reasoning.md",
+      "answer": "02-spectral-signature-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "spectre",
+      "method": "SPECTRE (Hayase et al., 2021)",
+      "reasoning": "03-spectre-reasoning.md",
+      "answer": "03-spectre-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Two genuine published-method baselines form the ladder (gate: confidence_filter and zscore_outlier are ablation/variant controls with no dedicated paper -- zscore_outlier's own edit.py states it is NOT Fine-Pruning; confidence_filter is a generic per-class confidence z-score -- so they are excluded from the rung sequence). defense_score is the harness objective (higher better) but is near-tied across all baselines (0.42-0.43 mean) because no filter at the 1.5*eps budget breaks the trigger shortcut (asr stays ~0.97-1.0 everywhere), so defense_score is dominated by retrain/clean-acc noise. The discriminating signal is the filter-stage poison_recall (the diagnostic that measures actual detection): activation_clustering recall 0.0016/0.0/0.0 (high-dim 2-means collapses to an arbitrary bisection) < spectral_signature recall 0.2688/0.0/0.1192 (per-class top-eigenvector squared projection actually surfaces poison). So activation-clustering (weakest) -> spectral-signature (stronger detector), consistent with published consensus that spectral signatures detect poison where naive per-class clustering does not.",
+  "notes": "MLS-Bench trajectory grounded in the task's real edit surface (custom_backdoor_defense.py: BackdoorDefense class, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). Code lives in the answer, not the reasoning. Single seed 42 (config.json). Baseline answer code is the literal edits/<slug>.edit.py fill. Same-named-vs-paper diffs: (1) activation_clustering -- the task edit runs raw 2-means DIRECTLY on penultimate features with NONE of the paper's ICA/PCA dimensionality reduction, silhouette test, or exclusionary-reclassification test; this omission is exactly why measured recall collapses to ~0 (high-dim distance concentration), and the step reasoning derives the no-reduction baseline and its failure rather than the paper's full pipeline. (2) spectral_signature -- the task edit matches the paper/methods trace faithfully (per-class top right singular vector, squared centered projection, cached training labels). Finale SPECTRE (Hayase, Kong, Somani, Oh, ICML 2021, arXiv:2104.11315) is a real published improvement over spectral signatures that fits the fit/score_samples interface; its methods/spectre trace was created (grounded + verified), code ast-parses and runs (recall 1.0 on strong signatures, >= spectral on weak). Codex review gate could not run (account usage limit, resets 2026-06-20); .codex_review.json records direct line-by-line verification against the SPECTRE reference impls instead."
+}

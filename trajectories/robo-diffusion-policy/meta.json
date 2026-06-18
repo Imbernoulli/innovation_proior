@@ -1,0 +1,44 @@
+{
+  "task": "robo-diffusion-policy",
+  "title": "Robo-Diffusion Policy: offline RL with a diffusion actor on D4RL MuJoCo",
+  "domain": "Optimization",
+  "metrics": [
+    "hopper-medium-v2",
+    "walker2d-medium-v2",
+    "halfcheetah-medium-v2"
+  ],
+  "metric_columns": [
+    "normalized_score",
+    "episode_reward",
+    "training_time"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "diffusion_policy",
+      "method": "Diffusion Policy (diffusion behavior cloning)",
+      "reasoning": "01-diffusion_policy-reasoning.md",
+      "answer": "01-diffusion_policy-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "idql",
+      "method": "IDQL (Implicit Diffusion Q-Learning)",
+      "reasoning": "02-idql-reasoning.md",
+      "answer": "02-idql-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "default",
+      "method": "DQL (Diffusion Q-Learning)",
+      "reasoning": "03-default-reasoning.md",
+      "answer": "03-default-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline rows' geometric mean over the three normalized_score columns: diffusion_policy mean (0.4900, 0.6558, 0.4224) ~ 0.514 < idql mean (0.6235, 0.8268, 0.4756) ~ 0.625 < default/DQL mean (1.0101, 0.8994, 0.5131) ~ 0.781. Direction: higher normalized_score is better. diffusion_policy is weakest (pure BC, no reward signal, ceiling = behavior policy); idql adds an in-sample value function and inference-time advantage reranking over the same BC actor; DQL trains the actor toward high-Q with BC+eta*Q and reranks by Q, breaking the best-of-mu ceiling (hopper 0.62 -> 1.01).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (CleanDiffuser/pipelines/custom_policy.py editable region; scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold edit code) -> feedback (numbers, baselines only). Code lives in the answer only; reasonings are code-free. No finale: DQL (default) already nearly saturates hopper-medium and the best agent submissions on the leaderboard only marginally exceed it, so no clearly-stronger published method fits the edit surface with confidence. Same-named-vs-paper diffs: (1) idql -- the methods/idql trace hand-rolls IDQLMlp/TwinQ/V (ResidualBlock score net), but the task imports IDQLMlp/IDQLQNet/IDQLVNet from cleandiffuser.utils/nn_diffusion and takes the BC step via actor.update(act,obs)['loss']; the algorithm (decoupled expectile critic + softmax(adv*beta) reranking) is identical. (2) diffusion_policy -- the methods/diffusion-policy trace hand-rolls NoisePredMLP + a full DDPM sampler, but the task reuses DQLMlp + DiscreteDiffusionSDE with actor.update/.ema_update and single-action actor.sample; same diffusion-BC algorithm. (3) default/DQL has NO methods/<slug> trace (none exists for DQL); its step-3 reasoning was derived fresh against edits/default.edit.py (OPS=[], the unmodified template) -- twin DQLCritic, actor.loss + eta*q_loss with the randomized normalized double-Q term, actor-sampled bootstrap target, Q-reranking at inference."
+}

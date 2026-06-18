@@ -1,0 +1,53 @@
+{
+  "task": "rl-offpolicy-sample-efficiency",
+  "title": "Off-Policy RL Sample Efficiency: scaling humanoid locomotion under a fixed budget",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "h1hand-stand-v0",
+    "h1hand-walk-v0",
+    "h1hand-run-v0"
+  ],
+  "metric_columns": [
+    "mean_reward_h1hand_stand_v0",
+    "mean_reward_h1hand_walk_v0",
+    "mean_reward_h1hand_run_v0"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "endpoint": "SimBa (simplicity-bias residual encoder on the FastTD3 backbone)",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ppo",
+      "method": "PPO (on-policy)",
+      "reasoning": "01-ppo-reasoning.md",
+      "answer": "01-ppo-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "fastsac",
+      "method": "FastSAC (max-entropy off-policy, distributional)",
+      "reasoning": "02-fastsac-reasoning.md",
+      "answer": "02-fastsac-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "fasttd3",
+      "method": "FastTD3 (deterministic off-policy, distributional)",
+      "reasoning": "03-fasttd3-reasoning.md",
+      "answer": "03-fasttd3-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "simba",
+      "method": "SimBa (simplicity-bias residual encoder on the FastTD3 backbone)",
+      "reasoning": "04-simba-reasoning.md",
+      "answer": "04-simba-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "No leaderboard.csv exists for rl-offpolicy-sample-efficiency (the repo and MLS-Bench history contain no final baseline rows for this task), so the weak->strong order is by published consensus, verified by web lookup of the methods' papers/benchmarks. ppo weakest: on-policy, cannot reuse experience, least sample-efficient under the fixed ~12.8M-frame budget; on HumanoidBench it falls furthest behind on the harder-to-explore tasks. fastsac > ppo: off-policy max-entropy actor-critic reuses replay experience. fasttd3 > fastsac: the FastTD3 source establishes the deterministic FastTD3 backbone outperforms SAC-family methods on HumanoidBench locomotion under parallel-env budgets (the stochastic actor pays an entropy tax; deterministic exploitation + 128-env exploration wins). Each feedback states plainly that no leaderboard result exists and gives the consensus basis; no numbers are fabricated.",
+  "notes": "MLS-Bench trajectory grounded in the task edit surface (custom_algorithm.py lines 50-331: Actor, Critic, build_algorithm, update_critic, update_actor, soft_update). The task ships only a single custom_template.py whose DEFAULT fill is FastTD3-shaped TD3 (deterministic actor + per-env noise, twin categorical distributional critics, clipped double-Q); there are no per-baseline edits/<slug>.edit.py files. Baselines are defined by scripts/{ppo,fastsac,fasttd3}.sh. Same-named-vs-paper diffs: (1) PPO here is NOT a fill of the editable off-policy contract at all -- it runs as a separate stable-baselines3 on-policy script (16 envs, 800k steps), bypassing the replay buffer/distributional critic; its answer code is the literal ppo.sh setup. (2) FastSAC here is NOT textbook scalar-critic SAC -- it uses the substrate's CATEGORICAL DISTRIBUTIONAL critic with the entropy bonus folded into the projection's reward (reward - alpha*log pi'), LayerNorm+SiLU bodies, AdamW weight_decay 0.1, cosine LR, tau 0.1, num_updates 2; the methods/fastsac trace's generic scalar-Q SAC code is the derivation reference only. (3) FastTD3 here is the literal scaffold default (plain ReLU MLP, no LayerNorm); matches methods/fasttd3. The reasonings derive against THESE implementations, not the papers' generic forms. Finale = SimBa (Lee et al., ICLR 2025, arXiv:2410.09754): the third SimBa ingredient (RSNorm running-stat obs normalization) is already supplied by the fixed loop's EmpiricalNormalization, so the edit installs only the residual encoder body (embed -> N pre-LN inverted-bottleneck residual blocks -> final LayerNorm) into Actor and Critic, keeping the entire FastTD3 algorithm/loss/exploration unchanged; canonical sizes (actor 1 block/128, critic 2 blocks/512), He-normal block init, orthogonal embedding, verified against the official SonyResearch/simba reference impl (scale_rl/networks/layers.py + agents/sac/sac_network.py SACEncoder). methods/simba trace created (grounded + Codex)."
+}

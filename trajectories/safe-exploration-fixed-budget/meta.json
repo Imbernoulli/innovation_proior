@@ -1,0 +1,53 @@
+{
+  "task": "safe-exploration-fixed-budget",
+  "title": "Safe Exploration Under a Fixed Cost Budget: constraint-handling update rules",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "SafetyPointGoal1-v0",
+    "SafetyCarGoal1-v0",
+    "SafetyPointButton1-v0"
+  ],
+  "metric_columns": [
+    "ep_ret",
+    "ep_cost",
+    "budget_success_rate"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "naive",
+      "method": "Naive PPO (no constraint handling)",
+      "reasoning": "01-naive-reasoning.md",
+      "answer": "01-naive-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "ppo_lag",
+      "method": "PPO-Lag (adaptive Lagrangian multiplier)",
+      "reasoning": "02-ppo_lag-reasoning.md",
+      "answer": "02-ppo_lag-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "pid_lag",
+      "method": "PID-Lag (PID-controlled multiplier)",
+      "reasoning": "03-pid_lag-reasoning.md",
+      "answer": "03-pid_lag-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "crpo",
+      "method": "CRPO (constraint-rectified policy optimization)",
+      "reasoning": "04-crpo-reasoning.md",
+      "answer": "04-crpo-answer.md",
+      "finale": true
+    }
+  ],
+  "endpoint": "CRPO (constraint-rectified policy optimization)",
+  "ranking_basis": "Measured leaderboard from the same task lineage (harbor safe-rl, is_final,true baseline rows, seeds {42,123,456}; identical edit surface and scaffold). The task's objective is safety under a fixed budget, so the primary key is budget_success_rate (1 iff final ep_cost <= 25), then cost-under-budget, with reward secondary. naive weakest: budget_success_rate 0.000 on every run, cost 51-152 (up to 6x over limit) -- it ignores the cost stream and posts the highest reward by trading away all safety. ppo_lag stronger: still budget_success_rate 0.000 everywhere but cost roughly halved (46-56), the slow integral multiplier lowers cost without ever crossing under 25. pid_lag strongest baseline: the only baseline to satisfy the budget -- budget_success_rate PointGoal 1.0, CarGoal/Button 0.667, cost ~19-25 -- at the cost of near-zero reward. A method violating the budget on 100% of runs cannot rank above one that satisfies it, whatever its reward, since budget_success_rate is the task metric.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (custom_lag.py CustomLag(PPO): _init/_init_log/_update/_compute_adv_surrogate, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). budget_margin_lag is excluded as an ablation/config variant -- the task_description.md states it is 'a practical MLS-Bench substitute' for CUP/Simmer with no dedicated paper. Same-named-vs-paper diffs: ppo_lag uses OmniSafe's Lagrange helper (Adam dual ascent) rather than the paper's generic projected subgradient -- same algorithm, helper-wrapped; the normalized blend (adv_r - lambda*adv_c)/(1+lambda) is the harness's, present in all Lagrangian rungs. pid_lag uses fixed CPPO-PID-style gains kp=0.1/ki=0.01/kd=0.01, EMA 0.95 smoothing, a 10-epoch derivative-delay deque, and a [0,100] clamp -- the harness's concrete instantiation, not the paper's general controller. Finale CRPO matches canonical OmniSafe OnCRPO (on_policy/primal/crpo.py) line for line: if Jc <= cost_limit + distance return adv_r else -adv_c, distance=2.0 (OnCRPO.yaml default); re-expressed in the PPO-backed custom_lag surface (canonical OnCRPO subclasses TRPO; this task's substrate is PPO, same as the other rungs). Codex review on the finale was UNAVAILABLE this run (companion returned status 1, empty output; session account rate-limited until 2026-06-20 per task-resume-candidate) -- recorded honestly in methods/crpo/results/.codex_review.json with codex_reviewed:false; the scaffold was verified by hand against the canonical reference and ast-parses."
+}

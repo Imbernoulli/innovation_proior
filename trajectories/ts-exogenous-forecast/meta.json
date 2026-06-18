@@ -1,0 +1,51 @@
+{
+  "task": "ts-exogenous-forecast",
+  "title": "Exogenous-variable forecasting: fusing covariates into the target channel (features=MS)",
+  "domain": "Time series",
+  "metrics": [
+    "ETTh1",
+    "Weather",
+    "ECL"
+  ],
+  "metric_columns": [
+    "mse",
+    "mae"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dlinear",
+      "method": "DLinear (channel-independent decomposition-linear)",
+      "reasoning": "01-dlinear-reasoning.md",
+      "answer": "01-dlinear-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "patchtst",
+      "method": "PatchTST (channel-independent patch Transformer)",
+      "reasoning": "02-patchtst-reasoning.md",
+      "answer": "02-patchtst-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "itransformer",
+      "method": "iTransformer (cross-variate attention)",
+      "reasoning": "03-itransformer-reasoning.md",
+      "answer": "03-itransformer-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "timexer",
+      "method": "TimeXer (endogenous/exogenous separation)",
+      "reasoning": "04-timexer-reasoning.md",
+      "answer": "04-timexer-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong from is_final,true baseline:* rows (seed 42; MSE/MAE, lower is better). dlinear weakest (worst on every metric of all three datasets; Weather MSE 0.005652 is ~4x the others, ECL 0.3873/0.4512 worst). timexer strongest (best ETTh1 MSE 0.057073, best Weather 0.001329/0.026885, best ECL 0.261645/0.364639). patchtst vs itransformer are near-tied on average rank (patchtst 2.33, itransformer 2.50): patchtst wins ETTh1 (0.058292/0.182538 vs 0.058923/0.186680) but loses Weather (0.001652/0.029337 vs 0.001346/0.026998) and ECL MSE. patchtst placed before itransformer because it is still channel-independent (ignores exogenous covariates), so it is the natural rung before the first cross-variate model; itransformer is the first rung that fuses channels at all, matching the exogenous-fusion theme the task is about. Ladder is the canonical channel-independent-linear -> channel-independent-patch-transformer -> cross-variate-attention -> endo/exo-separation progression.",
+  "notes": "MLS-Bench-based trajectory; editable surface is models/Custom.py (the Model class), and every step's answer code is the literal Custom.py fill re-expressing that baseline in the Time-Series-Library scaffold (importing series_decomp, PatchEmbedding, DataEmbedding_inverted, Encoder/EncoderLayer/FullAttention/AttentionLayer). The task has no per-baseline edits/<slug>.edit.py files: the baselines are the reference models in Time-Series-Library/models/ (DLinear.py, PatchTST.py, iTransformer.py, TimeXer.py) run via scripts/<slug>.sh, so the trajectory code is grounded against those reference models, not generic paper code. Same-named-vs-paper diffs: (a) TimeXer's MS path encodes only the target as the endogenous (patched) stream and the remaining channels as exogenous variate tokens, with de-normalization using the target channel's stats (stdev[:,0,-1:]); the trajectory matches this, not the paper's multivariate forecast_multi path. (b) DLinear uses the shared-weight (individual=False) path, not the per-channel-individual variant. (c) PatchTST/iTransformer/TimeXer all use the Non-stationary-Transformer per-instance normalization that the TS-Lib reference models carry. All four methods/<slug> single-round traces already existed and were reused as derivation references (untouched). No finale: TimeXer (NeurIPS 2024) is purpose-built for exogenous forecasting and is the strongest baseline here; no published method is clearly stronger on this MS setting, so the trajectory stops at the strongest baseline per spec."
+}

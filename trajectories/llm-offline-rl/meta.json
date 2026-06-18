@@ -1,0 +1,60 @@
+{
+  "task": "llm-offline-rl",
+  "title": "LLM Offline RL: preference loss for math reasoning",
+  "domain": "Alignment",
+  "metrics": [
+    "gsm8k",
+    "math500",
+    "aime2024"
+  ],
+  "metric_columns": [
+    "gsm8k_accuracy",
+    "math500_accuracy",
+    "aime2024_accuracy"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "simpo",
+      "method": "SimPO (reference-free, length-normalized + margin)",
+      "reasoning": "01-simpo-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-simpo-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "ipo",
+      "method": "IPO (bounded squared-target preference loss)",
+      "reasoning": "02-ipo-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-ipo-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "orpo",
+      "method": "ORPO (reference-free odds-ratio + SFT)",
+      "reasoning": "03-orpo-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-orpo-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "dpo",
+      "method": "DPO (reference-based Bradley-Terry MLE)",
+      "reasoning": "04-dpo-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-dpo-answer.md"
+    },
+    {
+      "n": 5,
+      "slug": "dpop",
+      "method": "DPOP / DPO-Positive (DPO + one-sided chosen barrier)",
+      "reasoning": "05-dpop-reasoning.md",
+      "answer": "05-dpop-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "No leaderboard result with is_final,true for this task yet; the four baselines are ranked weak->strong by the task's real measured numbers (the populated baseline:* rows, seed 42, 2026-05-14) on the average of the three benchmarks: simpo 54.46 (gsm8k 86.05 / math500 74.0 / aime 3.33) < ipo 55.66 (85.9 / 74.4 / 6.67) < orpo 57.03 (85.37 / 72.4 / 13.33) < dpo 57.81 (85.9 / 74.2 / 13.33). simpo weakest: reference-free and purely relative, AIME collapses to 3.33 (correct-chain likelihood erosion on near-identical math pairs). dpo strongest: it alone has both the reference anchor and a self-pacing growth term.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (compute_preference_loss in LLaMA-Factory dpo/trainer.py, selected via pref_loss; the use_ref_model line in finetuning_args.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code block) -> feedback (numbers, baselines only). methods/<slug> single-round traces (simpo, ipo, orpo, dpo) are the derivation references and are untouched. Finale dpop (DPO-Positive, Pal et al. 2024, Smaug, arXiv:2402.13228) is a genuine published method stronger than DPO that fits the custom slot; it carries no feedback."
+}

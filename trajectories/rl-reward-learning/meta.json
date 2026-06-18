@@ -1,0 +1,42 @@
+{
+  "task": "rl-reward-learning",
+  "title": "RL Reward Learning: inverse RL from expert demonstrations",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "halfcheetah-v4",
+    "hopper-v4",
+    "walker2d-v4"
+  ],
+  "metric_columns": [
+    "eval_return"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "gail",
+      "method": "GAIL (generative adversarial imitation learning)",
+      "reasoning": "01-gail-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-gail-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "airl",
+      "method": "AIRL (adversarial inverse RL)",
+      "reasoning": "02-airl-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-airl-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "bc",
+      "method": "BC (behavioral cloning, maximum-likelihood)",
+      "reasoning": "03-bc-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-bc-answer.md"
+    }
+  ],
+  "ranking_basis": "By measured leaderboard mean episodic return (higher better), per environment, summed across HalfCheetah/Hopper/Walker2d. bc (is_final,true): HC 2142.69, Hop 1386.70, Walk 1227.70. airl (post-fix re-run rows, is_final,false): HC 2514.44, Hop 840.11, Walk 357.98. gail (post-fix re-run rows, is_final,false): HC 1646.13, Hop 25.72, Walk 77.79. Weak->strong = gail < airl < bc: GAIL collapses on the terminating bodies (Hopper/Walker near zero) from adversarial saturation; AIRL recovers them via done-aware potential shaping + reward-output normalization but stays two-dead-one-alive per seed; BC (plain max-likelihood cloning) is strongest overall, winning Hopper and Walker2d decisively because clean dense MuJoCo demos make a stable supervised fit beat the unstable min-max game (it modestly trails AIRL only on the non-terminal HalfCheetah). The earlier is_final,true gail/airl rows were replaced on the leaderboard by these post-fix re-runs (commit: replace pre-fix baseline rows with post-fix re-runs); the re-runs are the current authoritative numbers and match the edits/{gail,airl}.edit.py implementations.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_irl.py lines 231-357: RewardNetwork + IRLAlgorithm, scaffold from edits/{gail,airl,bc}.edit.py and custom_template.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. No finale: the strongest baseline is plain BC, and the natural stronger published candidate (IQ-Learn) learns a Q-function and replaces the policy learner, which does not fit this edit surface (the harness exposes only RewardNetwork + IRLAlgorithm feeding rewards to a FIXED PPO loop). Same-named-vs-paper diffs: (1) methods/bc is Pomerleau's ALVINN road-follower (population-coded steering, perspective-transform recovery synthesis, pure-pursuit relabeling, mean-steering replay buffer) -- the task's BC shares NONE of that; it is maximum-likelihood cloning of the fixed Gaussian policy (-E[log pi(a|s)] over MuJoCo expert (s,a)), with a dummy zero reward net, trained in update() via the policy optimizer handed in by set_policy. (2) methods/gail derives the TRPO-stepped trajectory algorithm; the task's GAIL hands the reward to the FIXED clipped-PPO substrate (no trust-region step to build), serves -logsigmoid(-f), and adds a RunningNorm on obs inputs plus bumped inner disc updates/batch since args are fixed outside the edit region. (3) methods/airl derives the generic shaped discriminator; the task's AIRL additionally layers a RunningNorm on the reward OUTPUT (so the FIXED template-level buffer-reward normalization stays near-identity), keeps obs-input RunningNorm, applies done-aware shaping gamma*(1-done)*h(s')-h(s) on the discriminator side only (compute_reward has no dones at rollout time), assumes expert dones = 0 (demos store none), and bumps inner updates/batch. methods/{bc,gail,airl} single-round traces left untouched."
+}

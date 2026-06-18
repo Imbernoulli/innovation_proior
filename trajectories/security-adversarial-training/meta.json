@@ -1,0 +1,53 @@
+{
+  "task": "security-adversarial-training",
+  "title": "Adversarial Training: robustness against L_inf attacks",
+  "domain": "Security",
+  "metrics": [
+    "SmallCNN-MNIST",
+    "PreActResNet18-C10",
+    "VGG11BN-C10",
+    "PreActResNet18-C100"
+  ],
+  "metric_columns": [
+    "clean_acc",
+    "robust_acc_fgsm",
+    "robust_acc_pgd"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "pgdat",
+      "method": "PGD-AT (Madry et al., 2018)",
+      "reasoning": "01-pgdat-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-pgdat-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "trades",
+      "method": "TRADES (Zhang et al., 2019)",
+      "reasoning": "02-trades-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-trades-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mart",
+      "method": "MART (Wang et al., 2020)",
+      "reasoning": "03-mart-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mart-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "awp",
+      "method": "AWP + TRADES (Wu et al., 2020)",
+      "reasoning": "04-awp-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-awp-answer.md"
+    }
+  ],
+  "ranking_basis": "Primary metric is PGD-50 robust accuracy (higher is better), read from is_final,true baseline:* leaderboard rows (seed 42). pgdat is the floor (single-term saddle-point objective; CIFAR-100 PGD-50 0.2214 lowest). trades > pgdat: adds the trade-off knob, lifts MNIST 0.8932->0.9350 and C100 0.2214->0.2268, though robustness-heavy beta=6.0 costs CIFAR-10 clean. mart > trades: per-example misclassification reweighting recovers CIFAR robustness (C10 0.4410->0.4891, VGG 0.4065->0.4746 board-best, C100 0.2268->0.2713). awp strongest: directly flattens the weight loss landscape to cure robust overfitting, best on C10 (0.5370) and C100 (0.3043) and recovers MNIST (0.9217); the only baseline whose mechanism attacks the train/test robust-generalization gap rather than the loss allocation.",
+  "notes": "MLS-Bench Security trajectory: initial context and every step's code are the task's real edit surface (custom_adv_train.py: the AdversarialTrainer class, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Single seed (42). No finale: AWP+TRADES is the consensus strong cure for robust overfitting among methods that use no extra data and fit this train_step-only interface; no clearly stronger published method drops in cleanly without architecture/data changes, so the ladder ends at the strongest baseline. methods/<slug> single-round traces (pgdat, trades, mart, awp) are untouched. Same-named-vs-paper diffs: (1) the standalone 'standard' leaderboard row is not a config baseline (it is the non-adversarial scaffold default / ablation control), so it is excluded from the ladder; (2) trades/awp use reduction='batchmean' for the KL where the methods traces used 'sum' then 1/batch_size (same math); (3) mart's task edit detaches the clean logits (self.model(images).detach()) so the KL target and (1-p_y) soft gate come from a frozen clean pass, whereas the methods/mart trace keeps clean logits attached so the regularizer gradient flows through p(x) too -- a real implementation diff, reproduced from the edit.py; (4) mart's task edit hardcodes beta=6.0, overriding the task description's headline lambda=5.0."
+}

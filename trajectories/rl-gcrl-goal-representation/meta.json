@@ -1,0 +1,43 @@
+{
+  "task": "rl-gcrl-goal-representation",
+  "title": "Goal Representation for Goal-Conditioned RL: from raw goals to a dual reachability code",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "antmaze-large-navigate-v0",
+    "cube-single-play-v0",
+    "pointmaze-large-navigate-v0"
+  ],
+  "metric_columns": [
+    "success_rate"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "state_identity",
+      "method": "Identity (raw-state goal)",
+      "reasoning": "01-state_identity-reasoning.md",
+      "answer": "01-state_identity-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "dual_hilbert",
+      "method": "Dual Hilbert (symmetric metric) representation",
+      "reasoning": "02-dual_hilbert-reasoning.md",
+      "answer": "02-dual_hilbert-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "dual_bilinear",
+      "method": "Dual bilinear (inner-product) representation",
+      "reasoning": "03-dual_bilinear-reasoning.md",
+      "answer": "03-dual_bilinear-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "Dual bilinear (inner-product) representation",
+  "ranking_basis": "No leaderboard.csv for this task; ordered by published consensus (dual-goal-representations, ICLR 2026, arXiv:2510.06714). state_identity weakest by design (raw goals, no learned rep; the explicit weak floor every learned goal-rep method improves over). dual_hilbert < dual_bilinear: under GCIVL the paper's Table 4 ('Dual (Symmetric)' vs 'Dual (Inner Product)') has inner-product ahead on average and on antmaze-large + cube manipulation (universal, directed aggregator vs provably-less-expressive symmetric metric); close on pointmaze-large. Inner-product is the paper's recommended default and best overall goal-rep method. No fabricated numbers used.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_train.py GoalRepresentation class, lines 41-120, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold edit code) -> feedback (consensus basis, NO numbers — no leaderboard exists). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (dual-bilinear, dual-hilbert) are the derivation reference and untouched. Same-named-vs-paper diffs: the methods/ traces implement the rep via a jaxrl_m GCBilinearValue wrapper / GoalConditionedPhiValue with a separate-method 'target_value' agent call; the TASK edits implement it inline as explicit ensemblize(MLP,2) phi/psi networks computing the value by hand ((phi_s*psi_g/sqrt(rep_dim)).sum(-1) for bilinear; -sqrt(max(||phi_s-phi_g||^2,1e-6)) for hilbert), with a private twin rep_critic+target_rep_critic (concatenated [obs,goal,actions] MLP heads) the loop EMA-updates, and the harness keys the expectile advantage on q_t=min(target_rep_critic) (NOT a shared target-advantage of two distance heads as in the methods trace). The trajectory code and reasoning match the task edit.py, not the jaxrl_m paper harness. No finale: dual_bilinear is the paper's recommended best for this exact goal-representation edit surface; clearly-stronger published methods (HIQL, CRL, GCFBC) are downstream-AGENT swaps, not goal-rep-module swaps, so they do not fit this edit contract."
+}

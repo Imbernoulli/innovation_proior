@@ -1,0 +1,53 @@
+{
+  "task": "robo-diffusion-guidance",
+  "title": "Robo-Diffusion Guidance: steering a trajectory diffusion planner",
+  "domain": "Optimization",
+  "metrics": [
+    "hopper-medium-v2",
+    "walker2d-medium-v2",
+    "halfcheetah-medium-v2"
+  ],
+  "metric_columns": [
+    "hopper_normalized_score",
+    "walker2d_normalized_score",
+    "halfcheetah_normalized_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "no-guidance",
+      "method": "No guidance (unconditional trajectory diffusion)",
+      "reasoning": "01-no-guidance-reasoning.md",
+      "answer": "01-no-guidance-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "decision-diffuser",
+      "method": "Decision Diffuser (state-only CFG + inverse dynamics)",
+      "reasoning": "02-decision-diffuser-reasoning.md",
+      "answer": "02-decision-diffuser-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "cfg",
+      "method": "Classifier-Free Guidance (same backbone)",
+      "reasoning": "03-cfg-reasoning.md",
+      "answer": "03-cfg-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "diffuser",
+      "method": "Diffuser (Classifier Guidance + candidate re-ranking)",
+      "reasoning": "04-diffuser-reasoning.md",
+      "answer": "04-diffuser-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "Diffuser (Classifier Guidance + candidate re-ranking)",
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline:* leaderboard rows (seed 42), aggregated as the geometric mean of D4RL normalized score across hopper/walker2d/halfcheetah (higher is better): no_guidance 0.4763 (h 0.4362, w 0.6019, c 0.4115) < decision_diffuser 0.6571 (h 0.9345, w 0.6972, c 0.4355) < cfg 0.6616 (h 0.9207, w 0.7620, c 0.4129) < default 0.6848 (h 0.9623, w 0.7655, c 0.4359). decision_diffuser < cfg is close (0.6571 vs 0.6616) and turns on cfg's higher walker2d (0.7620 vs 0.6972) outweighing decision_diffuser's higher hopper/halfcheetah; default is strongest on the aggregator and on hopper and halfcheetah.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (CleanDiffuser/pipelines/custom_guidance.py, scaffold from edits/{no_guidance,decision_diffuser,cfg,default}.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). No finale: the strongest baseline (Diffuser CG + re-ranking) is the substrate default and no published guidance method clearly and verifiably dominates it on this exact harness, so the ladder stops at it. Same-named-vs-paper diffs noted in the agent return. methods/<slug> single-round traces (no-guidance, cfg, decision-diffuser) reused as derivation references and left untouched; methods/diffuser has only a .codex_review.json stub (no reasoning), so the default rung's derivation reuses methods/no-guidance (which is the Diffuser paper trace) plus the classifier-guidance derivation."
+}

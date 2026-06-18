@@ -1,0 +1,76 @@
+{
+  "task": "stf-traffic-forecast",
+  "title": "Spatial-Temporal Traffic Forecasting: from linear to identity",
+  "domain": "Time series",
+  "metrics": [
+    "METR-LA",
+    "PEMS-BAY",
+    "PEMS04"
+  ],
+  "metric_columns": [
+    "mae",
+    "rmse",
+    "mape"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "dlinear",
+      "method": "DLinear (decomposition-linear)",
+      "reasoning": "01-dlinear-reasoning.md",
+      "answer": "01-dlinear-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "timemixer",
+      "method": "TimeMixer (decomposable multiscale mixing)",
+      "reasoning": "02-timemixer-reasoning.md",
+      "answer": "02-timemixer-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "stemgnn",
+      "method": "StemGNN (spectral temporal graph network)",
+      "reasoning": "03-stemgnn-reasoning.md",
+      "answer": "03-stemgnn-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "softs",
+      "method": "SOFTS (series-core fusion / STAR)",
+      "reasoning": "04-softs-reasoning.md",
+      "answer": "04-softs-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "timesnet",
+      "method": "TimesNet (temporal 2D-variation modeling)",
+      "reasoning": "05-timesnet-reasoning.md",
+      "answer": "05-timesnet-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "itransformer",
+      "method": "iTransformer (inverted Transformer)",
+      "reasoning": "06-itransformer-reasoning.md",
+      "answer": "06-itransformer-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "stid",
+      "method": "STID (spatial-temporal identity)",
+      "reasoning": "07-stid-reasoning.md",
+      "answer": "07-stid-answer.md",
+      "finale": true
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by mean MAE rank across the three datasets from the is_final,true baseline:* leaderboard rows (MAE lower is better; rank-sum: dlinear 15, timemixer 11, stemgnn 7, softs 5, timesnet 4, itransformer 3). dlinear weakest (worst MAE on all three datasets). The ladder is bunched at the top: timesnet wins PEMS04 (flow) via explicit temporal 2D-period modeling, while softs and itransformer win the speed grids via explicit cross-node modeling, so itransformer is best-on-average but no single baseline wins all three. Finale STID (baseline:stid in the leaderboard, MAE 3.156 on METR-LA, far below every baseline's best of 3.832) is a genuinely stronger published method (Shao et al., CIKM 2022) that fits the edit surface and resolves the standoff by buying spatial+temporal distinguishability directly with identity embeddings.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_model.py: CustomConfig + Custom, scaffold fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only, baselines). The code block lives in the answer only. methods/<slug> single-round traces (dlinear, timemixer, stemgnn, softs, timesnet, itransformer) are reused as derivation references and left untouched; methods/stid was created for the finale (grounded + manual reference-verification fallback, Codex usage-limited). Same-named-vs-paper diffs noted per step: stemgnn drops the explicit backcast-loss and basis-expansion heads and uses a lean unrescaled-Laplacian 4-channel polynomial ([0,L,2L^2,4L^3-L]); timesnet is the forecasting variant (predict_linear extends input_len->input_len+output_len) with cross-node mixing only via the dense value-embedding conv, not a graph; itransformer is the lean encoder-only inverted Transformer with plain MultiHeadAttention and unused timestamps; softs uses RevIN+STAR exactly as the paper; stid re-expresses the canonical 1x1-Conv2d arch as nn.Linear/nn.Parameter over [B,N,h] (mathematically identical)."
+}

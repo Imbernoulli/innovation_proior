@@ -1,0 +1,53 @@
+{
+  "task": "jepa-planning",
+  "title": "JEPA World-Model Planning: derivative-free planners on a frozen latent model",
+  "domain": "Self-supervised",
+  "metrics": [
+    "horizon-30",
+    "horizon-60",
+    "horizon-90"
+  ],
+  "metric_columns": [
+    "success_rate",
+    "mean_dist",
+    "mean_steps_to_success"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "random",
+      "method": "Random search (single-pass shooting)",
+      "reasoning": "01-random-reasoning.md",
+      "answer": "01-random-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "cem",
+      "method": "CEM (Cross-Entropy Method)",
+      "reasoning": "02-cem-reasoning.md",
+      "answer": "02-cem-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "icem",
+      "method": "iCEM (improved CEM: colored noise + elite reuse)",
+      "reasoning": "03-icem-reasoning.md",
+      "answer": "03-icem-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "mppi",
+      "method": "MPPI (Model Predictive Path Integral)",
+      "reasoning": "04-mppi-reasoning.md",
+      "answer": "04-mppi-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "MPPI (Model Predictive Path Integral)",
+  "ranking_basis": "Ranked by measured success_rate (higher better) on the is_final,true baseline leaderboard rows, seed 42, averaged across the three horizon benchmarks (30/60/90). random 0.55/0.70/0.70 (mean 0.650) < cem 0.70/0.85/0.95 (mean 0.833) < icem 0.80/0.90/0.85 (mean 0.850) < mppi 0.75/0.95/0.95 (mean 0.883). The orderings cross by horizon (icem leads at 30, mppi at 60/90), so the mean across horizons settles the ladder; mean_dist (lower better) agrees on random as weakest. random/cem/mppi are stored as plain model rows in leaderboard.csv; only icem carries the baseline: prefix. No finale: MPPI is the strongest baseline and no clearly stronger published planner for this exact frozen-JEPA latent-planning setting was found to add without inventing one.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (eb_jepa/custom_planner.py: CustomPlanner.plan, scaffold from edits/*.edit.py, editable lines 323-367). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). methods/<slug> single-round traces (methods/cem, methods/mppi, methods/icem) are the derivation reference and untouched. SAME-NAMED-BASELINE DIFFS: (1) the task's `random` baseline is single-pass random *shooting* over action sequences for trajectory planning (a generic lower-bound control), NOT the published random-search method whose methods/random-search trace is Bergstra & Bengio hyperparameter random search; that trace was deliberately NOT used as the derivation reference. (2) The task's iCEM edit lands the core (colored noise beta=2.5, elite reuse 0.3, decay gamma=1.25, momentum alpha=0.1, across-step shift via t0, best-so-far) but on the single-plan-per-observation interface, not the paper's full per-step MPC harness; it folds 'execute the best evaluated sequence' into a best-so-far + final-mean fallback rather than the paper's per-iteration mean injection / per-task beta tuning, and overrides the harness's (200,20) budget to (900,10). (3) The task's MPPI edit is the discrete sampling core (CEM skeleton + exponential cost-weighted elite update, temperature=0.005, max_std=2.0, white noise, stochastic weighted-sampling action selection), NOT the full path-integral derivation with the Girsanov covariance-scaling likelihood ratio, since there is no analytic control-affine model here. No methods/<slug> trace was missing for any baseline used."
+}

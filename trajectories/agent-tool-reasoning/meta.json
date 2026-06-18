@@ -1,0 +1,46 @@
+{
+  "task": "agent-tool-reasoning",
+  "title": "Agent Tool-Use Reasoning: search policy for an LLM tool agent",
+  "domain": "Language models",
+  "metrics": [
+    "deepseek",
+    "qwen72b",
+    "qwen7b"
+  ],
+  "metric_columns": [
+    "pass_rate",
+    "avg_queries",
+    "give_up_rate",
+    "sopr"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "greedy_chain",
+      "method": "Greedy chain (CoT@1 / single-chain ReAct)",
+      "reasoning": "01-greedy_chain-reasoning.md",
+      "answer": "01-greedy_chain-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "dfs_ranked",
+      "method": "DFS with LLM ranking (with_filter=True)",
+      "reasoning": "02-dfs_ranked-reasoning.md",
+      "answer": "02-dfs_ranked-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "dfsdt",
+      "method": "DFSDT (depth-first search with decision tree)",
+      "reasoning": "03-dfsdt-reasoning.md",
+      "answer": "03-dfsdt-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "DFSDT (depth-first search with decision tree)",
+  "ranking_basis": "Ranked by measured I1-instruction pass_rate (primary metric, higher better), confirmed across all three backbones. The live leaderboard's baseline rows (3-backbone schema) are marked is_final=false but are the real measured runs (git history shows the same runs were is_final=true under an earlier per-setting schema before a 'Publish baseline-only leaderboards' revert; the averaged summary in that history gives greedy_chain 0.453 / dfs_ranked 0.633 / dfsdt 0.707 pass_rate). greedy_chain weakest (0.44/0.62/0.30 across DeepSeek/Qwen-72B/Qwen-7B, lowest pass on every backbone, lowest avg_queries=3.7/3.9/5.5 — the symptom of no retraction). dfs_ranked middle (0.72/0.82/0.36) — retraction lifts pass but the O(n^2) pairwise ranking explodes avg_queries to 33.1/35.1/52.7. dfsdt strongest (0.78/0.90/0.44) — dominates dfs_ranked on pass_rate on every backbone AND on cost (18.3/12.4/39.6 queries), by keeping the tree+backtracking and dropping the ranking.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (search() in custom_search.py lines 368-439; baseline fills are edits/{greedy_chain,dfs_ranked,dfsdt}.edit.py). Each step = reasoning (full derivation, prose, reflection on prior numbers embedded throughout for i>1) -> answer (distilled summary + the scaffold code) -> feedback (numbers only, baselines only). The code block lives in the answer, not the reasoning. methods/<slug> single-round traces (greedy-chain=ReAct, dfs-ranked, dfsdt) are the derivation reference and are untouched. No finale: DFSDT already dominates dfs_ranked on both pass_rate and cost, and the README bar (a clearly-stronger published method faithfully fitting THIS budget-constrained edit surface) is not clearly met — value-guided successors like MCTS/ToolChain* lean on the very per-node evaluation cost DFSDT was designed to avoid, so none is a safe 'clearly stronger' claim on this benchmark. Stopped at the strongest baseline."
+}

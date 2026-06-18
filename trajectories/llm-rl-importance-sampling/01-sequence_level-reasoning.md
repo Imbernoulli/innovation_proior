@@ -1,0 +1,1 @@
+Superseded. This trajectory was rebuilt with a three-baseline ladder ranked from the measured leaderboard (first_k_tokens < sequence_level < token_level) plus a CISPO finale. See meta.json. The sequence-level derivation now lives at 02-sequence_level-reasoning.md.

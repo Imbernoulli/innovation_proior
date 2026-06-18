@@ -1,0 +1,44 @@
+{
+  "task": "synth-semiautomata",
+  "title": "Synth-Semiautomata: architectures for finite-state simulation",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "memory_unit",
+    "grid_world",
+    "random_dfa"
+  ],
+  "metric_columns": [
+    "test_accuracy",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "transformer",
+      "method": "Transformer (depth-1 causal)",
+      "reasoning": "01-transformer-reasoning.md",
+      "answer": "01-transformer-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "looped_transformer",
+      "method": "Looped Transformer (shared block x6)",
+      "reasoning": "02-looped_transformer-reasoning.md",
+      "answer": "02-looped_transformer-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "lstm",
+      "method": "LSTM (single-layer recurrent)",
+      "reasoning": "03-lstm-reasoning.md",
+      "answer": "03-lstm-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ranked by geometric mean of test_accuracy across the three environments from the is_final,true baseline:* leaderboard rows (seed 42). All three solve memory_unit (1.0); the discriminator is the non-solvable random_dfa (S5 regime). transformer 0.566 (memory_unit 1.0, grid_world 0.882, random_dfa 0.205) < looped_transformer 0.676 (1.0, 1.0, 0.309) < lstm 0.729 (1.0, 1.0, 0.388). The depth-1 Transformer collapses on the non-solvable group and leaks on grid_world; looping a shared block buys O(log T) effective depth and closes both solvable envs but only marginally lifts random_dfa; the LSTM's O(T) exact-per-token recurrence wins random_dfa and the aggregate.",
+  "notes": "MLS-Bench-based trajectory: the initial context and every step's code are the task's real edit surface (custom_strategy.py editable region: build_model / get_optimizer_config / forward_logits, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, leaderboard rows). methods/<slug> single-round traces are reused as derivation references only and left untouched. Same-named-vs-paper diffs: (1) methods/transformer is the full encoder-decoder NMT Transformer; this task's transformer is an encoder-only depth-1 state classifier (TransformerEncoder, learned absolute positions, per-token logit head). (2) methods/looped-transformer is the programmable-computer construction (SUBLEQ/FLEQ, binary addressing, attention-as-permutation); this task's looped_transformer borrows ONLY 'recurrence depth from looping a shared block' and is literally one shared encoder layer applied 6 times with no memory/command layout. (3) methods/lstm is a financial sequence-to-one regressor (last-hidden readout, masked MSE); this task's lstm is a per-token state classifier reading out ALL hidden states under per-token cross-entropy, lr 1e-3 / wd 1e-9. No finale added: the LSTM is the established recurrent ceiling for state-tracking on non-solvable automata, and no clearly-stronger published method fits the edit surface without speculative reimplementation (deeper Transformer is a config variant, not a new paper; selective-SSM / DeltaNet state-tracking variants are not clearly stronger than a full nonlinear RNN on these short T=40 sequences).",
+  "endpoint": "LSTM (single-layer recurrent)"
+}

@@ -1,0 +1,55 @@
+{
+  "task": "synth-copy",
+  "title": "Synthetic Copy: positional encoding for length generalization",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "delim",
+    "repeat",
+    "reverse"
+  ],
+  "metric_columns": [
+    "exact_match_id",
+    "token_acc_id",
+    "exact_match_ood",
+    "token_acc_ood",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "lstm_attn",
+      "method": "Bahdanau LSTM seq2seq attention",
+      "reasoning": "01-lstm_attn-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-lstm_attn-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "transformer_sinusoidal",
+      "method": "Transformer + sinusoidal absolute PE",
+      "reasoning": "02-transformer_sinusoidal-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-transformer_sinusoidal-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "transformer_nope",
+      "method": "Transformer + NoPE (no positional encoding)",
+      "reasoning": "03-transformer_nope-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-transformer_nope-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "transformer_alibi",
+      "method": "Transformer + ALiBi (linear distance bias)",
+      "reasoning": "04-transformer_alibi-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-transformer_alibi-answer.md"
+    }
+  ],
+  "endpoint": "Transformer + ALiBi (linear distance bias)",
+  "ranking_basis": "Ranked by the is_final,true baseline:* rows (seed 42), using the task-level summary = geometric mean of per-variant score (score = 0.5*exact_match_id + 0.5*exact_match_ood). Measured geomeans: lstm_attn 0.5000, transformer_sinusoidal 0.5000, transformer_nope 0.7055, transformer_alibi 0.7570. lstm_attn and transformer_sinusoidal tie at 0.5000 (both perfect ID, zero OOD exact match); lstm_attn placed weakest as the non-Transformer recurrent reference whose order handling is implicit, with transformer_sinusoidal second (the canonical absolute-PE Transformer, whose OOD token_acc 0.07/0.07/0.03 is actually below lstm_attn's 0.37/0.21/0.18 — the 'best absolute code is the worst extrapolator' datum that motivates dropping the code). transformer_nope (0.7055) < transformer_alibi (0.7570) by measured geomean. No finale: ALiBi is the measured strongest on this exact copy/reverse harness, and no published method is clearly stronger here (Kazemnejad et al. rank rotary below ALiBi/NoPE, and on this harness ALiBi already beats NoPE), so the ladder stops at the strongest baseline.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py lines 301-332: build_positional_scheme + build_model, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). methods/<slug> single-round traces (lstm-attn, transformer-sinusoidal, transformer-nope, transformer-alibi) are the derivation references and untouched. Same-named-vs-paper diffs: (1) lstm_attn is a SINGLE-STREAM Bahdanau encoder-decoder that splits source/target at SEP inside one forward(tokens) call with an active=pos>=sep_pos gate, using plain LSTM/LSTMCell + linear readout (no GRU/maxout/beam-search of the methods trace). (2) transformer_sinusoidal has NO sqrt(d_model) embedding scaling and NO dropout (task fixes dropout=0.0), unlike the canonical recipe; the frozen table indexes the whole stream with a clamp that never fires (table 256 >> 2*L_train). (3) transformer_nope returns an empty scheme; harness supplies the BOS anchor and unconditional causal mask the existence proof needs. (4) transformer_alibi builds the FULL signed relative-distance matrix (rel = idx[None,:]-idx[:,None], bias=slope*rel, [H,T,T]) applied BEFORE the loop's causal mask -- it does NOT use the canonical softmax-shift row-broadcast trick nor fold the bias into the mask; attention weights are identical to canonical ALiBi. n_heads=4 -> slopes 1/4,1/16,1/64,1/256. Measured: ALiBi's reverse OOD exact (0.25) is below NoPE's (0.40), exactly the monotone-recency-vs-reverse risk flagged in the rung-4 reasoning; ALiBi still wins the geomean via delim/repeat."
+}

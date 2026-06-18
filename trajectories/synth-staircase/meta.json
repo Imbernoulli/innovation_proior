@@ -1,0 +1,45 @@
+{
+  "task": "synth-staircase",
+  "title": "Synth-Staircase: learning sparse functions on the hypercube",
+  "domain": "Learning theory",
+  "metrics": [
+    "h1",
+    "h2",
+    "h3"
+  ],
+  "metric_columns": [
+    "test_mse",
+    "fourier_recovery",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ntk",
+      "method": "NTK (frozen random features)",
+      "reasoning": "01-ntk-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ntk-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "mean-field-sgd",
+      "method": "Mean-field two-layer SGD",
+      "reasoning": "02-mean-field-sgd-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-mean-field-sgd-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "curriculum-layerwise",
+      "method": "Curriculum / layer-wise saddle-to-saddle SGD",
+      "reasoning": "03-curriculum-layerwise-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-curriculum-layerwise-answer.md"
+    }
+  ],
+  "endpoint": "Curriculum / layer-wise saddle-to-saddle SGD",
+  "ranking_basis": "Ranked by the primary leaderboard metric: geometric mean of per-environment score = exp(-test_mse), all is_final,true baseline:* rows. ntk weakest (aggregate 0.1045): frozen random features sit at the trivial predictor on all three targets (test_mse ~ 2.78/2.99/1.00, recovery ~ 0.96/1.00/1.00). mean_field_sgd next (0.1167): feature learning climbs the leap-1 staircase, lowering h1 to 2.45 (score 0.086), but is identically stuck on the non-MSP h2 (3.00) and h3 (1.00). curriculum_layerwise strongest (0.6109): layer-wise saddle-to-saddle + Adam + mu-P escapes the saddle that froze mean-field SGD, learning h1 (0.46), h2 (1.00->0.997, score 0.369) and even h3 (test_mse 0.018, score 0.982).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py: build_model / get_optimizer / train_step, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). No finale: curriculum_layerwise already lands the task's own SOTA mechanism (saddle-to-saddle / leap-complexity, Abbe et al. 2023) and no clearly-stronger published method verifiably beats it on these leap-k targets at this budget. methods/<slug> single-round traces (mean-field-sgd, ntk) are the derivation reference and are untouched; curriculum_layerwise has no methods/<slug> (it is a published-mechanism composite, derived here against its edit.py). Same-named-vs-paper diffs: this task's ntk is the frozen-first-layer ReLU random-features regression (w~N(0,1/d), b~N(0,1), train readout only, 1/sqrt(M) output), NOT the deep-MLP infinite-width kernel recursion of methods/ntk; the trajectory reasoning is rebuilt around the random-features lower-bound argument accordingly. mean-field-sgd's edit.py matches methods/mean-field-sgd. curriculum_layerwise is a composite (mu-P init + per-layer Adam + layer-wise alternation) motivated by the saddle-to-saddle paper, not a single-paper method."
+}

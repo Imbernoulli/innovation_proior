@@ -1,0 +1,45 @@
+{
+  "task": "synth-modular-addition",
+  "title": "Synth Modular Addition: killing the grokking delay",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "p59",
+    "p97",
+    "p113"
+  ],
+  "metric_columns": [
+    "test_accuracy",
+    "score",
+    "mean_steps_to_grok",
+    "grok_rate"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "default",
+      "method": "Nanda one-layer transformer + AdamW(wd=1.0)",
+      "reasoning": "01-default-reasoning.md",
+      "answer": "01-default-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "grokfast",
+      "method": "Grokfast-EMA gradient hook",
+      "reasoning": "02-grokfast-reasoning.md",
+      "answer": "02-grokfast-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "mlp",
+      "method": "Gromov quadratic MLP",
+      "reasoning": "03-mlp-reasoning.md",
+      "answer": "03-mlp-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline:* leaderboard rows (aggregate = geom mean over p59/p97/p113 of weighted_mean(score, test_accuracy); ties broken by grok_rate up / mean_steps_to_grok down). default weakest: groks but slowly and fragilely -- on p59 seed 456 never groks inside 30000 steps (grok_rate 0.667, test_accuracy 0.992, mean_steps_to_grok 15167); p97/p113 perfect but 2833/2333 steps. grokfast stronger: grok_rate 1.0 on every prime, p59 worst-case grok pulled from 'never' to 5500 steps, mean_steps_to_grok 5500/3500/3167. mlp strongest: test_accuracy=score=1.0 and grok_rate=1.0 on all three primes with the lowest and most uniform steps-to-grok (2833/2000/2000) and an order-of-magnitude smaller wall-clock (elapsed ~6s vs ~40-130s). The two failing config-variant baselines (no_wd, vanilla_adam) are ablations, not published methods, and are excluded from the published-method ladder.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py: build_model + make_optimizer + TrainHook, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). The ladder is the published-method baselines weak->strong (default -> grokfast -> mlp); the no_wd and vanilla_adam baselines are knob/optimizer ablations and are not rungs. No finale: the strongest baseline (mlp) is already at the ceiling -- 1.0 accuracy, grok_rate 1.0, and mean_steps_to_grok ~2000 near the 500-step eval-grid floor -- so no published method is clearly stronger on this edit surface. Derivation references: methods/grokking (Power 2022, the default's grokking/weight-decay setup) and methods/grokfast (Lee 2024, the EMA gradient filter); methods/mlp is an unrelated method (1985 backprop MLP), so the Gromov 2023 quadratic-MLP derivation was authored fresh here. methods/default and methods/mlp slugs in the repo do NOT correspond to these baselines."
+}

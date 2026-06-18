@@ -1,0 +1,45 @@
+{
+  "task": "synth-single-index",
+  "title": "Synthetic Single-Index Recovery: learning the hidden direction",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "relu-d100",
+    "hermite-d100",
+    "sign-d100"
+  ],
+  "metric_columns": [
+    "test_mse",
+    "direction_recovery",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "sgd_mlp",
+      "method": "Vanilla SGD MLP (reference baseline)",
+      "reasoning": "01-sgd_mlp-reasoning.md",
+      "answer": "01-sgd_mlp-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "frozen_bias",
+      "method": "Frozen-bias shallow network",
+      "reasoning": "02-frozen_bias-reasoning.md",
+      "answer": "02-frozen_bias-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "damian_giant_step",
+      "method": "One giant step + ridge readout",
+      "reasoning": "03-damian_giant_step-reasoning.md",
+      "answer": "03-damian_giant_step-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "One giant step + ridge readout",
+  "ranking_basis": "Ranked weak->strong by score (= direction_recovery, higher better) averaged across the three links, from is_final,true baseline:* leaderboard rows. All three tie near 0.998 on the easy relu-d100 (k=1); the hard links separate them. sgd_mlp: hermite 0.656, sign 0.210 (avg ~0.621, weakest). frozen_bias: hermite 0.614, sign 0.467 (avg ~0.693) -- the bias freeze tightens sign on average but does not aggregate the weak k=3 signal, so hermite is flat. damian_giant_step: hermite 0.983, sign 0.995 (avg ~0.991, strongest) -- the full-batch giant step saturates every link.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py: Strategy class + build_strategy, lines 176-239, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). Code lives in the answer only. Endpoint is the strongest baseline; no finale (direction recovery already saturates near 1 across all three links, so no published method clearly improves on it). Same-named-vs-paper diffs: step 1 sgd_mlp is a generic SGD/MLP control (no dedicated paper); steps 2-3 reuse methods/frozen-bias and methods/damian-giant-step as derivation references but the trajectory code matches the task's edit.py, which keeps only the one essential move of each method on the FIXED wide MLP -- frozen_bias drops the paper's tied single-direction architecture, time-scale separation, sparse-readout warm-start, and fresh-sample ridge refit (keeps only the bias freeze + unit-sphere init); damian_giant_step matches its methods trace closely but realises the analysis's weight-decay-cancelled init-erase via a convex mix rather than exact cancellation."
+}

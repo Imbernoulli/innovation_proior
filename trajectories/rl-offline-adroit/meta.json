@@ -1,0 +1,43 @@
+{
+  "task": "rl-offline-adroit",
+  "title": "Offline RL on Adroit: narrow human-demo dexterous manipulation",
+  "domain": "Reinforcement learning",
+  "metrics": [
+    "pen-human-v1",
+    "hammer-human-v1",
+    "door-cloned-v1"
+  ],
+  "metric_columns": [
+    "d4rl_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "awac",
+      "method": "AWAC (Advantage-Weighted Actor-Critic)",
+      "reasoning": "01-awac-reasoning.md",
+      "answer": "01-awac-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "rebrac",
+      "method": "ReBRAC (Revisited minimalist TD3+BC)",
+      "reasoning": "02-rebrac-reasoning.md",
+      "answer": "02-rebrac-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "iql",
+      "method": "IQL (Implicit Q-Learning)",
+      "reasoning": "03-iql-reasoning.md",
+      "answer": "03-iql-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "IQL (Implicit Q-Learning)",
+  "ranking_basis": "No is_final,true baseline rows exist; ordering uses the recorded baseline:awac / baseline:rebrac / baseline:iql runs (real measured D4RL normalized scores, higher better). awac weakest: Pen mean 67.1 but with a 70-point seed spread (32.8-106.7), Hammer 1.05, Door 0.59. rebrac middle: Pen tightens (74.6, 40-point spread) but Hammer drops to a systematic 0.35 floor and Door collapses to 0.016. iql strongest: dominates on all three metrics (Pen 91.6, Hammer 1.54, Door 3.69) and is tightest on Pen. Order also matches published consensus on Adroit human-v1 (IQL the established top performer of the three; AWAC the oldest/weakest, built for online fine-tuning).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (CORL/algorithms/offline/custom_adroit.py: CONFIG_OVERRIDES + network classes + OfflineAlgorithm, scaffold from edits/*.edit.py, lines 214-416). Each step = reasoning (full derivation, prose, reflection on prior numbers embedded for i>1) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, baselines only). Code lives in the answer, not the reasoning. methods/<slug> single-round traces (awac, rebrac, iql) reused as derivation reference, untouched. No finale: IQL is the strongest measured baseline and no clearly-stronger published method fits the fixed-256-width / param-budget edit surface without invention."
+}

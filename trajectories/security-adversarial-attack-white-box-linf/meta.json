@@ -1,0 +1,59 @@
+{
+  "task": "security-adversarial-attack-white-box-linf",
+  "title": "White-Box L_inf Evasion: from one signed step to a worst-case ensemble",
+  "domain": "Security",
+  "metrics": [
+    "ResNet20-C10",
+    "VGG11BN-C10",
+    "MobileNetV2-C10",
+    "ResNet20-C100",
+    "VGG11BN-C100",
+    "MobileNetV2-C100"
+  ],
+  "metric_columns": [
+    "asr_ResNet20_C10",
+    "asr_VGG11BN_C10",
+    "asr_MobileNetV2_C10",
+    "asr_ResNet20_C100",
+    "asr_VGG11BN_C100",
+    "asr_MobileNetV2_C100"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "fgsm",
+      "method": "FGSM (fast gradient sign method)",
+      "reasoning": "01-fgsm-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-fgsm-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "mifgsm",
+      "method": "MI-FGSM (momentum iterative FGSM)",
+      "reasoning": "02-mifgsm-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-mifgsm-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "pgd",
+      "method": "PGD (projected gradient descent)",
+      "reasoning": "03-pgd-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-pgd-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "autoattack",
+      "method": "AutoAttack (standard ensemble)",
+      "reasoning": "04-autoattack-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-autoattack-answer.md"
+    }
+  ],
+  "endpoint": "AutoAttack (standard ensemble)",
+  "ranking_basis": "ASR (higher better), seed 42 baseline:* is_final,true rows. fgsm weakest by construction (single linearized step; mean 0.768, VGG only 0.617/0.621). mifgsm (0.894 mean) > fgsm: iterating recovers the curvature underfit, saturating ResNet/MobileNetV2 (0.98-0.999) and lifting VGG to ~0.714/0.720. pgd vs mifgsm: pgd edges VGG higher (0.720/0.736) by dropping the transfer-tuned momentum that blunts the single-model inner maximizer; pgd and autoattack are essentially tied on the five shared columns (0.8822 vs 0.8816), pgd marginally ahead on the harder VGG columns while autoattack reports MobileNetV2-C10=1.0 where pgd is blank. autoattack placed last (endpoint) by published consensus: it is the standard worst-case-over-ensemble reference attack (adaptive APGD-CE + targeted APGD-DLR + FAB + Square) that strictly dominates a fixed-step CE-PGD by construction, so its number is the trustworthy ceiling even where raw ASR ties; the near-tie on undefended models reflects architectural L_inf robustness on VGG, not a weaker attack.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (run_attack in torchattacks/bench/custom_attack.py, fills from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers only). Code lives in the answer, not the reasoning. methods/<slug> single-round traces are reused as derivation references and left untouched. Same-named-vs-paper diffs: (1) this task's mifgsm uses steps=40, alpha=eps/10 AND a uniform random start, whereas the methods/mifgsm trace uses steps=10, alpha=eps/steps, no random start; in this single-model white-box setting transfer is irrelevant, so the harness MI-FGSM is iterative sign-ascent with a momentum-smoothed direction + random launch, and the reasoning does NOT import the transfer/ensemble story as the operative reason. (2) the methods/pgd trace clips only the image; this task's pgd clips delta to [-eps,eps] then the image to [0,1] (explicit budget projection), steps=40 alpha=eps/4 random start. (3) the methods/fgsm trace clips only the image; this task's fgsm projects delta to [-eps,eps] then clamps the image (no-op for one step, shared form with later rungs), and uses F.cross_entropy. (4) the methods/autoattack trace reimplements APGD+DLR+FAB+Square from scratch; this task's autoattack is the single torchattacks.AutoAttack(version='standard') library call with n_classes and env SEED passed, device unused. No finale: AutoAttack is the strongest baseline and the standard published ceiling for this edit surface; nothing clearly stronger and published fits, so the ladder stops at the strongest baseline."
+}

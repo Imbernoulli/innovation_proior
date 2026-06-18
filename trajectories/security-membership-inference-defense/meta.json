@@ -1,0 +1,54 @@
+{
+  "task": "security-membership-inference-defense",
+  "title": "Membership Inference Defense: training-time loss regularization",
+  "domain": "Security",
+  "metrics": [
+    "resnet20-cifar10",
+    "vgg16bn-cifar100",
+    "mobilenetv2-fmnist"
+  ],
+  "metric_columns": [
+    "test_acc",
+    "mia_auc",
+    "privacy_gap",
+    "privacy_score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "erm",
+      "method": "ERM (plain cross-entropy)",
+      "reasoning": "01-erm-reasoning.md",
+      "answer": "01-erm-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "label_smoothing",
+      "method": "Label Smoothing (Szegedy et al., 2016)",
+      "reasoning": "02-label_smoothing-reasoning.md",
+      "answer": "02-label_smoothing-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "confidence_penalty",
+      "method": "Confidence Penalty (Pereyra et al., 2017)",
+      "reasoning": "03-confidence_penalty-reasoning.md",
+      "answer": "03-confidence_penalty-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "relaxloss",
+      "method": "RelaxLoss (Chen, Yu, Fritz, ICLR 2022)",
+      "reasoning": "04-relaxloss-reasoning.md",
+      "answer": "04-relaxloss-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "RelaxLoss (Chen, Yu, Fritz, ICLR 2022)",
+  "ranking_basis": "Primary metric privacy_score = test_acc - max(mia_auc - 0.5, 0), higher better, seed 42. relaxloss is strongest by measurement (mean privacy_score 0.6832; only method to push mia_auc toward 0.5 on all three benchmarks). The three weaker rungs cluster within ~0.04 mean privacy_score (erm 0.525, label_smoothing 0.508, confidence_penalty 0.487) AND the vgg16bn-cifar100 column is confounded by a degenerate training collapse for confidence_penalty (test_acc 0.01 = chance), so a numeric tie-break across the simpler rungs is unreliable; ordering among erm/label_smoothing/confidence_penalty therefore follows published consensus and design strength (no defense -> uniform mean-shift -> adaptive mean-shift), with each feedback stating this plainly. relaxloss > all by measurement.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_membership_defense.py: MembershipDefense.compute_loss, scaffold from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + scaffold code) -> feedback (numbers, baselines only). Code lives in the answer only. methods/<slug> single-round traces (label-smoothing, confidence-penalty, relaxloss) are the derivation reference and left untouched. Same-named-vs-paper diffs: (1) label_smoothing edit uses the built-in F.cross_entropy(label_smoothing=0.1) flag, not the methods trace's hand-rolled LabelSmoothingCrossEntropy module (numerically identical). (2) confidence_penalty edit is the PLAIN fixed-beta=0.1 unscheduled form using torch.softmax + torch.log(clamp_min 1e-8); the methods trace additionally derives the annealed/hinge-threshold variant and uses the more stable log_softmax route -- the harness omits the schedule/hinge and ignores epoch, so the reasoning derives against the plain version and notes the omission and the resulting CIFAR-100 collapse risk. (3) relaxloss edit is a faithful match to the methods trace and the official repo (alpha=0.5 if K==100 else 1.0, upper=1.0 no-op, even/odd two-phase, posterior flattening on misclassified with detached soft targets). No erm methods trace exists (erm is a generic control / ablation, not a published method); it serves as the conceptual rung-1 floor only. No finale added: methods that beat RelaxLoss on the privacy-utility tradeoff (DP-SGD, adversarial regularization, SELENA, DMP/distillation) all require changes outside the single-scalar compute_loss edit surface (optimizer/gradient access, auxiliary networks, ensembles, or reference data), so nothing strictly stronger is publishable within this contract."
+}

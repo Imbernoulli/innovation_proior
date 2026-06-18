@@ -1,0 +1,47 @@
+{
+  "task": "libero-lifelong",
+  "title": "LIBERO Lifelong Learning: continual robot manipulation without forgetting",
+  "domain": "Classical ML",
+  "metrics": [
+    "avg_final_success",
+    "auc",
+    "fwt",
+    "nbt"
+  ],
+  "metric_columns": [
+    "avg_final_success",
+    "auc",
+    "fwt",
+    "nbt"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "ewc",
+      "method": "EWC (Elastic Weight Consolidation, online)",
+      "reasoning": "01-ewc-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-ewc-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "agem",
+      "method": "A-GEM (Averaged Gradient Episodic Memory)",
+      "reasoning": "02-agem-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-agem-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "er",
+      "method": "ER (Experience Replay)",
+      "reasoning": "03-er-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-er-answer.md"
+    }
+  ],
+  "endpoint": "ER (Experience Replay)",
+  "ranking_basis": "Ranked weak->strong by the canonical LIBERO lifelong metric auc (score_spec.py uses auc; avg_final_success agrees), from the latest committed leaderboard rows (seed 42; the task has no is_final,true rows, so each step's feedback states this plainly and reports the final recorded is_final,false numbers). ewc (auc 0.0487, avg_final 0.045) < agem (auc 0.2166, avg_final 0.22) < er (auc 0.4323, avg_final 0.495). The story is coherent: EWC's decayed weight-spring barely holds the early tasks; A-GEM's gradient veto caps but never reduces the old loss (nbt 0.573); ER descends the old loss directly via co-training and wins.",
+  "notes": "MLS-Bench trajectory: initial context and every step's code are the task's real edit surface (Custom(Sequential) in LIBERO/libero/lifelong/algos/custom.py lines 37-65, from edits/*.edit.py over custom_template.py whose default fill is plain Sequential fine-tuning). Each step = reasoning (full derivation, prose, reflection on the prior measured numbers embedded throughout for i>1) -> answer (distilled summary + the literal scaffold edit code) -> feedback (numbers only, baselines). methods/<slug> single-round traces (ewc, agem, er) are the derivation reference and are untouched. Same-named-vs-paper diffs: (1) EWC here is ONLINE EWC -- a single decayed running Fisher (gamma 0.9) + single anchor, not one-Fisher-per-task; and it uses the EMPIRICAL Fisher from the demonstrated actions ((-nll).mean().backward() over the data), not the model-distribution Fisher of the methods/ewc trace; e_lambda 50000 with the 1/2 factor absorbed. (2) ER here keeps NO reservoir / balanced / k-means writer -- just the first n_memories=1000 sequence windows per finished task, ConcatDataset + RandomSampler + cycle; n_memories is hardcoded (not cfg.lifelong.n_memories); merge_datas handles only (dict/OrderedDict) and (FloatTensor/LongTensor); persistent_workers guarded on num_workers>0. (3) A-GEM matches the paper's closed-form average-constraint projection; n_memories=1000, two-backward .grad sequencing, helpers _project/_store_grad/_overwrite_grad are module-level. No finale: no clearly-stronger published continual-learning method fits this edit surface cleanly -- e.g. DER++ needs the policy logits for its distillation term, which compute_loss does not expose -- so per spec the ladder stops at the strongest baseline (ER)."
+}

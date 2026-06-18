@@ -1,0 +1,51 @@
+{
+  "task": "synth-associative-recall",
+  "title": "Synthetic Associative Recall (MQAR): a sub-quadratic recall mixer",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "mqar-128",
+    "mqar-512",
+    "mqar-2048"
+  ],
+  "metric_columns": [
+    "test_accuracy",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "lstm",
+      "method": "LSTM (recurrent floor)",
+      "reasoning": "01-lstm-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-lstm-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "linear_attention",
+      "method": "Linear attention (elu+1 feature map)",
+      "reasoning": "02-linear_attention-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-linear_attention-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "based",
+      "method": "BASED (Taylor-2 spiky linear attention)",
+      "reasoning": "03-based-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-based-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "transformer",
+      "method": "Full causal multi-head attention",
+      "reasoning": "04-transformer-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-transformer-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by leaderboard test_accuracy (higher is better), means over mqar-128/512/2048 on seed 42. lstm weakest: near-chance everywhere (0.0265 / 0.000469 / 0.000266) — fixed-size recurrent state with no content-addressed comparison. linear_attention next: explicit query-key score solves the easy setting (0.813) but the gentle elu+1 kernel collapses with key count (0.368 / 0.163). based stronger: spiky Taylor-2 kernel near-solves short settings (0.988 / 0.972) but the fixed-shape state floor leaves mqar-2048 at 0.180. transformer strongest: full softmax attention never compresses the bindings, holding ~0.996 flat across all three lengths.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py CustomMixer slot, second layer of a fixed 2-layer hybrid whose first layer is a short causal conv; fills from edits/*.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the literal scaffold edit) -> feedback (numbers, all four baselines have leaderboard rows). The code block lives in the answer only. methods/<slug> single-round traces (transformer, lstm, linear-attention, based) are the derivation references and are left untouched. No finale: full causal attention is the published recall ceiling for MQAR (Zoology Fig.2) and no published sub-quadratic method clearly exceeds full-attention accuracy at mqar-2048, so the ladder stops at the strongest baseline. Same-named-vs-paper diffs: (1) based.edit.py is single-head, feature_dim=16, computes the kernel directly as 1+qk+0.5*qk^2 (no explicit phi materialization), normalizes by the masked row-sum of the FULL Taylor-2 kernel (including the +1 constant), and carries its OWN internal depthwise short conv used both as an input pre-mix (h=x+local) and an output residual (out_proj(out)+local) — whereas methods/based uses multi-head TaylorExp with an explicit feature map and a cumsum(phi(k)) denominator; (2) linear_attention.edit.py uses the quadratic masked-matmul training view with row-sum normalization and head_dim=32 single-head, while methods/linear-attention emphasizes the recurrent prefix-sum view and hand-derived cumulative-sum gradients; (3) transformer.edit.py is a minimal SDPA call (is_causal=True handles both 1/sqrt(d_k) scaling and the causal mask), num_heads=2, with NO positional encoding inside the mixer (the substrate's tied embeddings + fixed first-layer short conv supply position), unlike methods/transformer's full encoder-decoder with sinusoidal positions; (4) lstm.edit.py is a single-layer nn.LSTM(hidden=d_model)+out_proj, matching methods/lstm's cell but without the qlib regression harness. All four methods/<slug> traces existed and were reused; none missing."
+}

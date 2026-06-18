@@ -1,0 +1,45 @@
+{
+  "task": "tdmpc2-planning",
+  "title": "TD-MPC2 Planning: the trajectory-optimizer refit rule",
+  "domain": "Self-supervised",
+  "metrics": [
+    "walker-walk",
+    "cheetah-run",
+    "cartpole-swingup"
+  ],
+  "metric_columns": [
+    "episode_reward_walker_walk",
+    "episode_reward_cheetah_run",
+    "episode_reward_cartpole_swingup"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "icem",
+      "method": "iCEM (colored-noise CEM)",
+      "reasoning": "01-icem-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-icem-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "cem",
+      "method": "CEM (Cross-Entropy Method)",
+      "reasoning": "02-cem-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-cem-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mppi",
+      "method": "MPPI (Model Predictive Path Integral)",
+      "reasoning": "03-mppi-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mppi-answer.md"
+    }
+  ],
+  "endpoint": "MPPI (Model Predictive Path Integral)",
+  "ranking_basis": "Ranked weak->strong by the is_final,true baseline:* leaderboard means (episode reward, higher is better), averaged across the three DMControl tasks: icem (walker 978.30, cheetah 796.46, cartpole 881.23; avg 885.33) < cem (976.96 / 833.48 / 867.26; avg 892.57) < mppi (978.31 / 889.90 / 877.21; avg 915.14). Walker is saturated for all three; the ladder is discriminated by cheetah-run (the hard high-frequency task) and cartpole, where mppi's soft value-weighted refit both lifts the mean and closes the seed gap.",
+  "notes": "MLS-Bench trajectory grounded in the task's real edit surface (custom_planner.py: the custom_plan() function, lines 15-120; scaffold default = TD-MPC2 MPPI). Each step is the literal edits/<slug>.edit.py fill. SAME-NAMED-vs-PAPER diffs: (1) the task's iCEM is a TRIMMED version of the paper method (methods/icem) -- it uses a one-pole EMA recursion (colored_noise_beta=0.5) as a cheap time-domain colored-noise surrogate, NOT the paper's rFFT power-law (1/f^beta) sampler, and it OMITS population decay, best-action execution, momentum, and cross-step elite shifting; it keeps only EMA-colored noise + keep-elites (0.1) + noise decay (0.9) on top of CEM. (2) The task's MPPI uses temperature=0.5 (paper trace methods/mppi uses 0.005), fixed iterations=6 / num_samples=512 / num_elites=64 / horizon=3, warm-starts num_pi_trajs=24 learned-policy trajectories (absent from the paper trace), and commits via Gumbel-softmax over elites. (3) The task's CEM matches the methods/cem derivation (unweighted elite mean/std) but in the TD-MPC2 scaffold with policy warm-starts and value (not cost) objective. All three methods/<slug> traces existed and were reused as derivation references; none was regenerated. No finale added: MPPI is already the TD-MPC2 default and the strongest baseline (near the world model's ceiling); no clearly-stronger published no-grad sampling planner fits this exact edit surface, so the ladder stops at the strongest baseline per the spec."
+}

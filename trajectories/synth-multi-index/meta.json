@@ -1,0 +1,44 @@
+{
+  "task": "synth-multi-index",
+  "title": "Synth Multi-Index: recovering the hidden subspace of a fixed two-layer MLP",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "r2",
+    "r3",
+    "r4"
+  ],
+  "metric_columns": [
+    "test_mse",
+    "subspace_err",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "sgd_mlp",
+      "method": "Vanilla joint SGD (the floor)",
+      "reasoning": "01-sgd_mlp-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-sgd_mlp-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "two_stage",
+      "method": "Two-stage (frozen-readout spherical SGD + ridge)",
+      "reasoning": "02-two_stage-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-two_stage-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mean_field_langevin",
+      "method": "Mean-field Langevin + moment subspace estimate",
+      "reasoning": "03-mean_field_langevin-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mean_field_langevin-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked by the is_final,true baseline:* leaderboard rows on the higher-is-better `score`, consistent across all three ranks. sgd_mlp weakest: score means 5e-6/1.4e-5/1.7e-5 (r2/r3/r4), subspace_err pinned at ~sqrt(2r) (1.95/2.37/2.74), test_mse 10.4/9.8/9.1 (above Var[g]=6). two_stage middle: score 2.4e-4/9.4e-5/1.4e-4, subspace_err barely below sqrt(2r) (1.81/2.30/2.58), test_mse ~7.2-7.6 (the gain is the convex ridge fit, not subspace recovery). mean_field_langevin strongest: score 0.047/0.049/0.049 (two orders above two_stage), subspace_err breaks the sqrt(2r) band (0.66/0.88/0.92), test_mse 4.3/3.5/3.3 -- the only rung to actually find V*.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py lines 251-325: init_model / make_dataset / get_optimizer_config / training_step, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> feedback (numbers, baselines only) with an answer (distilled summary + the scaffold code). The code block lives in the answer, not the reasoning. No finale: the strongest baseline already finishes the subspace job with a moment estimator (E[y^2 x x^T] top-r eigenspace) plus an installed bias-grid feature basis and closed-form ridge -- a near-optimal spectral+ridge recovery for this info-exponent-3 link; nothing clearly stronger is published that fits this edit surface, so the ladder stops there. Reused derivation references: methods/mean-field-sgd (Abbe leap/MSP SGD dynamics) for sgd_mlp, methods/two-stage for two_stage, methods/mean-field-langevin for mean_field_langevin."
+}

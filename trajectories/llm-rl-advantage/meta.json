@@ -1,0 +1,47 @@
+{
+  "task": "llm-rl-advantage",
+  "title": "LLM RL: advantage estimation for GRPO-style training",
+  "domain": "Language models",
+  "metrics": [
+    "gsm8k",
+    "math500",
+    "amc"
+  ],
+  "metric_columns": [
+    "score_mean",
+    "gsm8k_accuracy",
+    "math500_accuracy",
+    "amc_accuracy",
+    "gsm8k_reward_mean"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "grpo",
+      "method": "GRPO (group z-score advantage)",
+      "reasoning": "01-grpo-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-grpo-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "dr_grpo",
+      "method": "Dr. GRPO (group-mean, no std)",
+      "reasoning": "02-dr_grpo-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-dr_grpo-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "reinforce_plus_plus_baseline",
+      "method": "REINFORCE++-baseline (group-mean center + global token whitening)",
+      "reasoning": "03-reinforce_plus_plus_baseline-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-reinforce_plus_plus_baseline-answer.md"
+    }
+  ],
+  "endpoint": "REINFORCE++-baseline (group-mean center + global token whitening)",
+  "ranking_basis": "Ranked by the task's primary normalized metric, the leaderboard score_mean column (higher = better; includes the hidden AIME-2024 split): grpo -0.5166 (weakest) < dr_grpo -0.5049 < reinforce_plus_plus_baseline -0.5029 (strongest). The three baseline rows are is_final,false (no is_final,true baseline rows exist for this task), but they are the only recorded measured runs for each baseline:<slug> and are used as the real numbers. The ordering also matches conceptual lineage: grpo (group z-score) -> dr_grpo removes the difficulty-biasing per-group std -> reinforce_plus_plus_baseline keeps group-mean centering but adds back cross-prompt scale via global token-level whitening. Per-benchmark 3-accuracy means agree that grpo is weakest (0.2858 vs dr_grpo 0.2917, rpp 0.2874); dr_grpo and rpp swap on that simpler unweighted mean, but the official score_mean (the scored metric) places rpp strongest.",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (the single editable function compute_custom_advantage in verl/verl/trainer/ppo/custom_advantage.py, lines 17-72; fills taken verbatim from baselines/<slug>.edit.py). Each step = reasoning (full derivation, prose, code-free) -> answer (distilled summary + the scaffold code block) -> feedback (numbers, baselines only). Same-named-baseline vs paper diffs: in this task ONLY the advantage function is editable; the clipped actor loss, its token-aggregation, and the KL-to-reference loss are fixed OUTSIDE the edit surface. So (1) the task GRPO is the group z-score advantage alone, with no KL term and no dual-clip in the fill (the methods/grpo trace derives the full KL-into-loss + k3 + dual-clip recipe, none of which is editable here); (2) the task Dr. GRPO is GRPO minus the per-group std only -- the methods/dr-grpo trace's other half, replacing the loss's per-response 1/|o| length bias with a constant divisor, lives in the fixed actor loss and is NOT applied here; (3) the task REINFORCE++-baseline is group-mean center + masked_whiten over batch tokens only -- the methods/reinforce-plus-plus-baseline trace's k2 reverse-KL loss term is the fixed KL setting and is NOT in the fill. All three methods/<slug> traces already existed and were reused as derivation references (none missing). No finale added: the three GRPO-family estimators are at the frontier and which beats which is marginal; no clearly-stronger published method fits this advantage-only edit surface (RLOO is the method REINFORCE++-baseline improves on, not a stronger endpoint), so the ladder stops at the strongest baseline."
+}
