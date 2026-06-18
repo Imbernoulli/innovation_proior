@@ -192,10 +192,9 @@ initializations that left them well short of attention on language.
 
 The scaffold is a generic causal sequence-model harness: a token embedding, a residual stack of
 pre-normalized blocks, an output head, the diagonal-SSM recurrence primitives that already
-exist, and one empty sequence-mixing slot where the contribution will go. The recurrence
-primitive below is the LTI building block known from prior structured SSMs; how its parameters
-are produced, and how the recurrence is evaluated efficiently, are exactly what the empty slot
-must decide.
+exist, and one empty sequence-mixing slot. The recurrence primitive below is the LTI building
+block known from prior structured SSMs; different mixers can choose how to instantiate the
+parameters and how to evaluate the recurrence.
 
 ```python
 import torch
@@ -205,10 +204,13 @@ import torch.nn.functional as F
 
 # --- diagonal-SSM recurrence primitives (already known) -------------------
 
-def discretize(delta, A, B):
-    # delta: (..., D), A: (D, N) diagonal, B: (..., N)
-    dA = torch.exp(delta.unsqueeze(-1) * A)            # Ā = exp(Δ A)
-    dB = delta.unsqueeze(-1) * B.unsqueeze(-2)         # B̄ (a discretized input matrix)
+def discretize_zoh(delta, A, B):
+    # delta: (..., D), A: (D, N) diagonal entries, B: (D, N)
+    delta_A = delta.unsqueeze(-1) * A
+    dA = torch.exp(delta_A)                            # Ā = exp(Δ A)
+    # B̄ = ((exp(ΔA) - 1) / A) B, with the A -> 0 limit equal to ΔB.
+    scale = torch.where(A.abs() > 1e-8, torch.expm1(delta_A) / A, delta.unsqueeze(-1))
+    dB = scale * B
     return dA, dB
 
 

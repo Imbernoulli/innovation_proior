@@ -17,9 +17,9 @@ A first answer is to read each hidden state straight through a small head to a c
 and regress it to the demonstration. That works, but robot demonstration data is frequently
 **multimodal** — at a given observation an expert may have several equally valid ways to proceed
 (go left or right around an obstacle; regrasp now or later) — and a head trained to output one
-vector per observation is structurally a *conditional-mean* predictor. When the conditional
-action distribution `p(actions | observation)` has multiple modes, the mean of those modes can
-be an action that is itself invalid (the midpoint between "left" and "right" drives into the
+vector per observation is structurally a point estimator (mean under L2, median under L1). When
+the conditional action distribution `p(actions | observation)` has multiple modes, a single
+compromise action can be invalid (the midpoint between "left" and "right" drives into the
 obstacle). The goal is a local action method, sitting on the same parallel-decoding trunk and
 trained from the same fixed offline demonstrations, that can represent a **multimodal**
 conditional action distribution rather than collapsing it to a point — without changing the base
@@ -42,9 +42,9 @@ hanging off the action-slot hidden states.
 per-sample distance between a single predicted action and the logged action. Under a squared
 (L2) loss the optimum is the conditional mean `E[a | o]`; under an absolute (L1) loss it is the
 conditional median. Both are *point* estimators. It is a documented failure mode of behavioral
-cloning that when the demonstrations are multimodal the point estimate averages across modes and
-produces actions in low-density regions between them; this is exactly what motivated energy-based
-and generative policy classes (Florence et al. 2021, Implicit BC) over plain regression heads.
+cloning that when the demonstrations are multimodal a point estimate can collapse the alternatives
+into a low-density compromise action; this is exactly what motivated energy-based and generative
+policy classes (Florence et al. 2021, Implicit BC) over plain regression heads.
 So the limitation we must get past is intrinsic to fitting one deterministic vector per
 observation, not to any particular trunk.
 
@@ -81,23 +81,25 @@ schedule defined directly on the cumulative product,
   bar_alpha_t = f(t) / f(0),    f(t) = cos^2( ((t/T + s) / (1 + s)) * (pi/2) ),
 
 which keeps `bar_alpha_t` changing slowly near `t = 0` and `t = T` and roughly linear in the
-middle — important for low-dimensional, small-range data where the linear schedule over-noises.
-Second, the forward chain used for training need not be the chain used for sampling: Song, Meng &
-Ermon (2020) showed a family of **non-Markovian** processes share the same training objective,
-giving a generative update that first forms a prediction of the clean datum,
+middle; later action-diffusion work adopted this schedule for control data. Second, the forward
+chain used for training need not be the chain used for sampling: Song, Meng & Ermon (2020) showed
+a family of **non-Markovian** processes share the same training objective, giving a generative
+update that first forms a prediction of the clean datum,
 
   x0_hat = ( x_t - sqrt(1 - bar_alpha_t) eps_theta(x_t, t) ) / sqrt(bar_alpha_t),
 
-and then steps `x_{t-1} = sqrt(bar_alpha_{t-1}) x0_hat + sqrt(1 - bar_alpha_{t-1} - sigma^2)
-eps_theta + sigma z`. With `sigma = 0` the update is **deterministic**, and the same trained
-`eps_theta` can be sampled on a sparse subsequence of timesteps, so far fewer reverse steps are
-needed than the number used in the forward chain.
+and then steps to the previous selected noise level `s < t` as
+`x_s = sqrt(bar_alpha_s) x0_hat + sqrt(1 - bar_alpha_s - sigma_t^2) eps_theta + sigma_t z`.
+With `sigma_t = 0` the update is **deterministic**, and the same trained `eps_theta` can be sampled
+on a sparse subsequence of timesteps, so far fewer reverse steps are needed than the number used in
+the forward chain.
 
 **Conditioning a denoiser on an observation, for control.** In robot imitation, this generative
 construction had been applied to action sequences (Chi et al. 2023, "Diffusion Policy"). The key
 adaptation is to model the *conditional* distribution `p(A_t | O_t)` of an action chunk `A_t`
 given an observation `O_t`, rather than a joint over states and actions, by feeding the
-observation into the noise predictor: `L = MSE(eps^k, eps_theta(O_t, A_t^0 + eps^k, k))`. They
+observation into the noise predictor: `L = MSE(eps^k, eps_theta(O_t, A_t^k, k))`, where `A_t^k`
+is the clean action chunk corrupted to noise level `k`. They
 also used the cosine schedule and receding-horizon execution (predict a chunk, execute part of
 it, replan), and reported that this generative policy class handled multimodal demonstrations
 where regression collapsed. In those systems the observation is injected into a *dedicated*

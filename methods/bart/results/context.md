@@ -51,16 +51,16 @@ string or even the same length.
 design. Left-only decoders do poorly on span-extraction tasks because future
 context is needed for the classification decision — bidirectionality matters for
 understanding. Conversely, objectives lacking any left-to-right autoregressive
-component are weaker at generation. Span-level masking that hides the *number* of
-missing tokens (rather than fixed-length masking) forces the model to reason about
-length. And it is established that data scale, batch size, and optimization
-details matter as much as the objective itself, so comparisons must control for
-them (Liu et al. 2019). For machine translation, pretraining the *encoder* with
-learned representations helps, but gains from putting a pretrained language model
-in the *decoder* have been limited (Edunov et al. 2019), and the biggest MT gains
-have required pretraining on both source and target languages (MASS, Song et al.
-2019; XLM, Lample & Conneau 2019), which needs monolingual data for every language
-of interest.
+component are weaker at generation. Fixed-width masked spans still expose the
+number of hidden tokens, so they do not test whether a model can infer missing
+length from context. And it is established that data scale, batch size, and
+optimization details matter as much as the objective itself, so comparisons must
+control for them (Liu et al. 2019). For machine translation, pretraining the
+*encoder* with learned representations helps, but gains from putting a pretrained
+language model in the *decoder* have been limited (Edunov et al. 2019), and the
+biggest MT gains have required pretraining on both source and target languages
+(MASS, Song et al. 2019; XLM, Lample & Conneau 2019), which needs monolingual data
+for every language of interest.
 
 ## Baselines
 

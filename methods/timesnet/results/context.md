@@ -62,13 +62,12 @@ independent. Second, the **2D-locality view** familiar from vision: convolutiona
 cheap and effective precisely when the structure they must capture is *local in the grid they
 slide over*; a pattern that is non-local in the input layout is invisible to a small kernel.
 
-A diagnostic observation about real data sets the stage: running an FFT over fixed-length
-segments of the standard benchmarks and recording the most significant period lengths shows a
-spread of several coexisting periods per series, not a single one — empirical confirmation
-that multi-periodicity is the rule, not the exception. And on the anomaly-detection side, a
-known failure mode anchors the problem: a plain attention encoder trained to reconstruct
-windows scores worst among deep backbones, because its pairwise similarity is dominated by the
-many normal points and the rare abnormal pattern gets washed out.
+A practical diagnostic about real data sets the stage: fixed-length windows usually contain
+several coexisting scales rather than a single clean period, so a model that assumes one
+dominant cycle is brittle. And on the anomaly-detection side, a known failure mode anchors the
+problem: a point-wise attention encoder trained for reconstruction can let the many normal
+points dominate its similarities, washing out the rare abnormal pattern the score should keep
+sharp.
 
 ## Baselines
 
@@ -113,7 +112,7 @@ given series carries, so it cannot separate the within-cycle and across-cycle co
 window, trained to reconstruct it; reconstruction error is the anomaly score. **Gap (observed
 on anomaly detection):** vanilla attention compares every pair of time points, and the
 similarity is dominated by the many *normal* points, so the rare abnormal pattern the task
-cares about gets washed out — the worst average F1 among the deep backbones.
+cares about can get washed out.
 
 The reusable vision pieces on the table: the **Inception block** (Szegedy et al. 2015), which
 runs several 2D convolution kernels of different sizes in parallel and combines them, giving a
@@ -228,5 +227,5 @@ def train(model, data_loader, optimizer):
         optimizer.step()
 ```
 
-The outer loop supplies normalized windows and scores reconstruction error; `TemporalBlock` is
-the empty slot where the backbone will live.
+The outer loop supplies fixed windows and scores reconstruction error; `TemporalBlock` is the
+empty slot where the backbone will live.

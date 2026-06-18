@@ -73,8 +73,8 @@ Gradient with respect to `x_s`. Hold the `y` factor fixed and differentiate the 
 
     ∂V_i/∂x_s = Σ_n Σ_m  U_{nm} · max(0, 1 − |y_s^i − n|) ·
                   {  0   if |m − x_s^i| ≥ 1
-                    +1   if m ≥ x_s^i
-                    −1   if m < x_s^i }.
+                    +1   if |m − x_s^i| < 1 and m ≥ x_s^i
+                    −1   if |m − x_s^i| < 1 and m < x_s^i }.
 
 It only sums over the support, and it weights each contribution by the input value and the orthogonal `y`-weight — so its sign and size tell the localisation network which way to slide the sampling point to reduce the loss. The `y_s` derivative is identical with `x` and `y` swapped. The absolute value has a kink at `x_s = m`, so strictly there's no derivative there; I just pick a sub-gradient at the kink, which is exactly what SGD is happy with. So this is a sub-differentiable sampler.
 
@@ -94,7 +94,7 @@ There's a second stability issue. The transform parameters are enormously high-l
 
 What does this buy architecturally? The module is cheap — a small localisation net plus a four-tap read per output pixel — so the overhead is a few percent and I can place it freely. Put it right at the input and it pose-normalises the raw image. Put it deeper and it warps a feature map, with the localisation network now reading richer features to decide the transform. Stack several at increasing depth to warp increasingly abstract representations. Or run several *in parallel* on the same map: each can lock onto a different object or part — one settles on a bird's head, another on its body — and I concatenate their outputs. A useful side effect: if I let the output grid be smaller than the input, the module crops *and* downsamples in one step, so I can feed it a high-resolution image, attend to a small region, and pass a small canonical crop downstream — attention that actually saves computation rather than costing it. (The one caveat: with a fixed small bilinear kernel, downsampling by a large factor will alias, since four taps can't average a big region.) And because `θ` explicitly encodes the pose of whatever the module locked onto, I can even feed `θ` forward as a feature.
 
-Let me write it as code, with the affine grid and bilinear sampler as the framework's `affine_grid` / `grid_sample` (which implement exactly the output→input mapping and the bilinear read with the sub-gradients I derived), and the three pieces wired in order.
+Let me write it as code, with the affine grid and bilinear sampler as the framework's `affine_grid` / `grid_sample`. These are the standard PyTorch primitives for the same output→input affine grid and bilinear read; I set the modern `align_corners` convention explicitly so the boundary convention is not hidden in a version default.
 
 ```python
 import torch
@@ -139,11 +139,11 @@ class Net(nn.Module):
 
         # 2) grid generator: map the regular OUTPUT grid back to SOURCE coords
         #    (x_s, y_s)^T = A_theta (x_t, y_t, 1)^T, in normalised [-1,1] coords
-        grid = F.affine_grid(theta, x.size())
+        grid = F.affine_grid(theta, x.size(), align_corners=False)
 
         # 3) bilinear sampler: read x at the source coords; differentiable in
         #    both x (-> earlier layers) and the grid (-> theta -> localisation)
-        x = F.grid_sample(x, grid)
+        x = F.grid_sample(x, grid, align_corners=False)
         return x
 
     def forward(self, x):

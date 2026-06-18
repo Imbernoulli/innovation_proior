@@ -44,20 +44,25 @@ Total loss over `K=5` unrolled steps:
 l_t(θ) = Σ_{k=0}^{K} [ l^r(u_{t+k}, r^k_t) + l^v(z_{t+k}, v^k_t) + l^p(π_{t+k}, p^k_t) ] + c‖θ‖².
 ```
 
-`l^p` is cross-entropy. Board games: `l^v` squared error, `l^r = 0`. Atari: `l^v`, `l^r` are cross-entropy over a categorical representation `φ(·)` of the scalar — support of 601 integers in `[−300,300]` with an invertible squash `h(x) = sign(x)(√(|x|+1) − 1) + εx`, `ε = 0.001` — which is stable across the wide value/reward scales where MSE is not.
+`l^p(π,p) = -Σ_a π(a) log p(a)`. Board games: `l^v` is squared error and the reward loss is omitted. Atari: `l^v`, `l^r` are cross-entropy losses `-φ(y)^T log q` over a categorical representation `φ(·)` of the scalar — support of 601 integers in `[−300,300]` with an invertible squash `h(x) = sign(x)(√(|x|+1) − 1) + εx`, `ε = 0.001` — which is stable across the wide value/reward scales where MSE is not.
 
-Gradient conditioning for the BPTT unroll: scale each head's loss by `1/K`; halve the gradient entering the dynamics function at each step; min-max scale the internal state to `[0,1]` after `h` and `g`. (Reanalyze variant: re-run MCTS on old trajectories with the latest weights for fresh policy targets and a target-network value, for sample efficiency.)
+Gradient conditioning for the BPTT unroll: keep the initial observation loss unscaled, scale recurrent-step losses by `1/K`, halve the gradient entering the dynamics function at each recurrent step, and min-max scale the internal state to `[0,1]` after `h` and `g`. The updated pseudocode omits reward loss at `k=0`, where no dynamics transition has been predicted. (Reanalyze variant: re-run MCTS on old trajectories with the latest weights for fresh policy targets and a target-network value, for sample efficiency.)
 
 ## Working code
 
 ```python
-import math, numpy, torch
+import math
+import numpy
+import torch
+import torch.nn.functional as F
 
 
 def support_to_scalar(logits, support_size):
     probs = torch.softmax(logits, dim=1)
-    support = torch.arange(-support_size, support_size + 1).float().to(logits.device)
-    x = torch.sum(support * probs, dim=1, keepdim=True)
+    support = torch.arange(
+        -support_size, support_size + 1, device=logits.device, dtype=probs.dtype
+    )
+    x = (support * probs).sum(dim=1, keepdim=True)
     eps = 0.001
     x = torch.sign(x) * (((torch.sqrt(1 + 4 * eps * (torch.abs(x) + 1 + eps)) - 1) / (2 * eps)) ** 2 - 1)
     return x
@@ -65,16 +70,23 @@ def support_to_scalar(logits, support_size):
 
 def scalar_to_support(x, support_size):
     eps = 0.001
+    original_shape = x.shape
+    x = x.reshape(-1, 1)
     x = torch.sign(x) * (torch.sqrt(torch.abs(x) + 1) - 1) + eps * x
     x = torch.clamp(x, -support_size, support_size)
-    floor = x.floor(); prob = x - floor
-    logits = torch.zeros(x.shape[0], x.shape[1], 2 * support_size + 1, device=x.device)
-    logits.scatter_(2, (floor + support_size).long().unsqueeze(-1), (1 - prob).unsqueeze(-1))
-    idx = floor + support_size + 1
-    prob = prob.masked_fill_(2 * support_size < idx, 0.0)
-    idx = idx.masked_fill_(2 * support_size < idx, 0.0)
-    logits.scatter_(2, idx.long().unsqueeze(-1), prob.unsqueeze(-1))
-    return logits
+    floor = x.floor()
+    prob = x - floor
+    lower = (floor + support_size).long()
+    upper = lower + 1
+    target = torch.zeros(x.shape[0], 2 * support_size + 1, device=x.device, dtype=x.dtype)
+    target.scatter_add_(1, lower.clamp(0, 2 * support_size), 1 - prob)
+    upper_weight = prob * (upper <= 2 * support_size).to(x.dtype)
+    target.scatter_add_(1, upper.clamp(0, 2 * support_size), upper_weight)
+    return target.reshape(*original_shape, 2 * support_size + 1)
+
+
+def scale_gradient(x, scale):
+    return x * scale + x.detach() * (1 - scale)
 
 
 def scale_to_01(s):
@@ -115,15 +127,16 @@ class MinMaxStats:
 
 
 class Node:
-    def __init__(self, prior):
+    def __init__(self, prior, to_play=0):
         self.N, self.value_sum, self.prior = 0, 0.0, prior
+        self.to_play = to_play
         self.reward, self.state, self.children = 0.0, None, {}
     def expanded(self): return len(self.children) > 0
     def value(self): return 0 if self.N == 0 else self.value_sum / self.N
-    def expand(self, reward, state, policy_logits, actions):
-        self.reward, self.state = reward, state
+    def expand(self, reward, state, policy_logits, actions, to_play=0):
+        self.to_play, self.reward, self.state = to_play, reward, state
         ps = torch.softmax(torch.tensor([policy_logits[0][a] for a in actions]), 0).tolist()
-        for a, p in zip(actions, ps): self.children[a] = Node(p)
+        for a, p in zip(actions, ps): self.children[a] = Node(p, to_play)
 
 
 def ucb(parent, child, mm, c1=1.25, c2=19652, discount=0.997):
@@ -132,11 +145,20 @@ def ucb(parent, child, mm, c1=1.25, c2=19652, discount=0.997):
     return pb_c * child.prior + value_score
 
 
+def backpropagate(path, value, to_play, discount, mm):
+    for node in reversed(path):
+        node.value_sum += value if node.to_play == to_play else -value
+        node.N += 1
+        mm.update(node.value())
+        value = node.reward + discount * value
+
+
 def run_mcts(model, observation, legal_actions, num_simulations=50, discount=0.997):
     root = Node(0)
     value, reward, policy_logits, state = model.initial_inference(observation)
     root.expand(support_to_scalar(reward, model.support).item(), state, policy_logits, legal_actions)
     mm = MinMaxStats()
+    backpropagate([root], support_to_scalar(value, model.support).item(), 0, discount, mm)
     for _ in range(num_simulations):
         node, path = root, [root]
         while node.expanded():
@@ -145,11 +167,7 @@ def run_mcts(model, observation, legal_actions, num_simulations=50, discount=0.9
         parent = path[-2]
         value, reward, policy_logits, state = model.recurrent_inference(parent.state, torch.tensor([[action]]))
         node.expand(support_to_scalar(reward, model.support).item(), state, policy_logits, list(range(model.n_actions)))
-        value = support_to_scalar(value, model.support).item()
-        for n in reversed(path):
-            n.value_sum += value; n.N += 1
-            mm.update(n.reward + discount * n.value())
-            value = n.reward + discount * value
+        backpropagate(path, support_to_scalar(value, model.support).item(), 0, discount, mm)
     visits = numpy.array([c.N for c in root.children.values()], dtype="float32")
     pi = dict(zip(root.children.keys(), visits / visits.sum()))
     return root, pi, root.value()
@@ -158,15 +176,17 @@ def run_mcts(model, observation, legal_actions, num_simulations=50, discount=0.9
 def compute_target_value(root_values, rewards, index, td_steps=10, discount=0.997):
     b = index + td_steps
     value = root_values[b] * discount ** td_steps if b < len(root_values) else 0.0
-    for i, r in enumerate(rewards[index + 1: b + 1]):
+    # Same indexing as the DeepMind pseudocode: rewards[i] is the reward
+    # following the action stored at history index i.
+    for i, r in enumerate(rewards[index:b]):
         value += r * discount ** i
     return value
 
 
 def loss_function(value, reward, policy_logits, t_value, t_reward, t_policy):
-    lv = (-t_value * torch.nn.LogSoftmax(1)(value)).sum(1)
-    lr = (-t_reward * torch.nn.LogSoftmax(1)(reward)).sum(1)
-    lp = (-t_policy * torch.nn.LogSoftmax(1)(policy_logits)).sum(1)
+    lv = -(t_value * F.log_softmax(value, dim=1)).sum(1)
+    lr = -(t_reward * F.log_softmax(reward, dim=1)).sum(1)
+    lp = -(t_policy * F.log_softmax(policy_logits, dim=1)).sum(1)
     return lv, lr, lp
 
 
@@ -175,17 +195,17 @@ def update_weights(model, optimizer, batch, K):
     target_v = scalar_to_support(target_v, model.support)
     target_r = scalar_to_support(target_r, model.support)
     value, reward, policy, state = model.initial_inference(obs)
-    preds = [(value, reward, policy)]
-    for k in range(1, actions.shape[1]):
+    preds = [(1.0, value, reward, policy)]
+    for k in range(actions.shape[1]):
         value, reward, policy, state = model.recurrent_inference(state, actions[:, k])
-        state.register_hook(lambda grad: grad * 0.5)        # half gradient into dynamics
-        preds.append((value, reward, policy))
-    v_loss = r_loss = p_loss = 0
-    for k, (value, reward, policy) in enumerate(preds):
+        preds.append((1.0 / K, value, reward, policy))
+        state = scale_gradient(state, 0.5)
+    loss = 0
+    for k, (gradient_scale, value, reward, policy) in enumerate(preds):
         lv, lr, lp = loss_function(value, reward, policy, target_v[:, k], target_r[:, k], target_pi[:, k])
-        if k == 0: lr = torch.zeros_like(lr)                # no reward target at root step
-        v_loss = v_loss + lv; r_loss = r_loss + lr; p_loss = p_loss + lp
-    loss = (v_loss + r_loss + p_loss).mean() / K            # 1/K gradient scaling
+        step_loss = lv + lp + (lr if k > 0 else 0)          # no root reward loss
+        loss = loss + scale_gradient(step_loss, gradient_scale)
+    loss = loss.mean()
     optimizer.zero_grad(); loss.backward(); optimizer.step()
     return loss.item()
 ```

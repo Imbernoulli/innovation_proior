@@ -115,7 +115,9 @@ The forecaster slots into the Time-Series-Library harness: a data loader yields
 `x_enc [B, T, N]` (lookback, all channels), `x_mark_enc [B, T, F]` (calendar/time features),
 `x_dec`, `x_mark_dec`, and a target tensor; the training loop runs Adam on an MSE loss with early
 stopping. The model is one `nn.Module` with a fixed signature; only its internals are open. The parts
-below already exist as generic primitives; the contribution fills the single empty module.
+below already exist as generic primitives; the contribution fills the single empty module. A known
+per-instance normalization helper is available to the module, but using it, where to place it, and
+what the Transformer block should operate over remain design choices.
 
 ```python
 import torch
@@ -152,7 +154,6 @@ class SeriesForecaster(nn.Module):
         raise NotImplementedError
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        x_enc, means, stdev = instance_normalize(x_enc)
         # TODO: produce dec_out [B, pred_len, N]
         raise NotImplementedError
 

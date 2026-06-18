@@ -3,47 +3,57 @@
 ## Problem
 
 Multivariate time series forecasting: from a lookback $\mathbf{X}\in\mathbb{R}^{T\times N}$ ($T$
-steps, $N$ variates) predict the next $S$ steps $\mathbf{Y}\in\mathbb{R}^{S\times N}$. The trouble
-with the standard recipe — embed each timestamp's $N$ variates into a "temporal token" and run
-attention over the $T$ tokens — is that the token fuses physically heterogeneous, often
-time-misaligned channels at one instant, so attention learns uninformative instant-to-instant maps,
-layer norm blends unrelated channels, a permutation-invariant operator sits on the ordered time axis,
-cost is $O(T^2)$ in lookback, and accuracy does not improve with longer history. Plain linear models
-beat these Transformers.
+steps, $N$ variates) predict the next $S$ steps $\mathbf{Y}\in\mathbb{R}^{S\times N}$. The standard
+Transformer recipe embeds each timestamp's $N$-variate slice as a temporal token and attends over
+the $T$ tokens. That makes attention compare instantaneous, physically heterogeneous, often
+time-lagged mixtures; it puts a permutation-invariant operation on the ordered time axis; it costs
+$O(T^2)$ in lookback length; and longer history often fails to help.
 
 ## Key idea
 
-Invert the tokenization axis, leaving every Transformer component unchanged. Make each **variate** a
-token: embed the whole lookback series of one channel into a $D$-vector. Then:
-- **Self-attention runs across the $N$ variate tokens** → the score map is $N\times N$, a learned
-  multivariate-correlation matrix; permutation invariance is now correct (variates are unordered).
-- **The FFN runs per variate token** over its series representation → the temporal/nonlinear modeling,
-  the job where linear/MLP forecasters excel; shared across variates (channel-independent temporal
-  pathway).
-- **Layer norm normalizes each variate token** across its features → puts series on a common scale,
-  removing cross-variate measurement discrepancy and non-stationarity, instead of fusing channels.
-- **No positional encoding** — temporal order is held in the embedding's per-timestep weights and the
-  FFN; the only axis attention sees (variates) has no order.
-- **Encoder-only**, with a single linear **projection $\mathbb{R}^D\!\to\!\mathbb{R}^S$** for one-shot
-  multi-step output. Wrapped in reversible instance normalization (subtract/divide by per-series
-  lookback mean/std, restore on output).
+Invert the token axis without inventing new Transformer modules. Make each **variate** a token by
+embedding its whole lookback series into a $D$-vector:
 
-A consequence: lookback $T$ is the embedding's input width, not the token count ($N$), so longer
-history helps and does not raise attention cost; efficient-attention variants drop in unchanged for
-large $N$; the model is not tied to a fixed number of variates.
+- self-attention runs across the $N$ variate tokens, so its score map is a learned proxy for
+  cross-variate dependence;
+- the FFN runs independently on each variate token, so nonlinear temporal representation learning
+  sits in the per-series pathway where linear/MLP forecasters are strong;
+- LayerNorm acts on each variate token's feature vector, reducing per-variate representation scale
+  discrepancies instead of normalizing a mixed timestamp token;
+- no positional encoding is added on the variate axis; temporal order is fixed by the ordered
+  coordinates of the `Linear(T, D)` embedding and subsequent per-token maps;
+- output is encoder-only: a linear projection $\mathbb{R}^D\to\mathbb{R}^S$ maps each final variate
+  token to the whole forecast horizon.
 
 ## Architecture
 
-Per variate $n$:
-$$\mathbf{h}^0_n=\operatorname{Embedding}(\mathbf{X}_{:,n}),\quad
-\mathbf{H}^{l+1}=\operatorname{TrmBlock}(\mathbf{H}^l),\ l=0,\dots,L-1,\quad
-\hat{\mathbf{Y}}_{:,n}=\operatorname{Projection}(\mathbf{h}^L_n),$$
-with $\operatorname{Embedding}:\mathbb{R}^T\!\to\!\mathbb{R}^D$, $\operatorname{Projection}:\mathbb{R}^D\!\to\!\mathbb{R}^S$.
-Each block (residual + post-LayerNorm per sublayer):
-$$\mathbf{H}=\operatorname{LayerNorm}(\mathbf{H}+\operatorname{SelfAttn}(\mathbf{H})),\qquad
-\mathbf{H}=\operatorname{LayerNorm}(\mathbf{H}+\operatorname{FFN}(\mathbf{H})).$$
-Per-token layer norm: $\operatorname{LayerNorm}(\mathbf{H})=\{(\mathbf{h}_n-\operatorname{Mean}(\mathbf{h}_n))/\sqrt{\operatorname{Var}(\mathbf{h}_n)}\}$.
-Attention scores: $\mathbf{A}_{i,j}=(\mathbf{Q}\mathbf{K}^\top/\sqrt{d_k})_{i,j}\propto\mathbf{q}_i^\top\mathbf{k}_j$, $\mathbf{A}\in\mathbb{R}^{N\times N}$.
+For variate $n$:
+$$
+\mathbf{h}^0_n=\operatorname{Embedding}(\mathbf{X}_{:,n}),\qquad
+\mathbf{H}^{l+1}=\operatorname{TrmBlock}(\mathbf{H}^l),\ l=0,\dots,L-1,\qquad
+\hat{\mathbf{Y}}_{:,n}=\operatorname{Projection}(\mathbf{h}^L_n).
+$$
+
+Here $\operatorname{Embedding}:\mathbb{R}^T\to\mathbb{R}^D$ and
+$\operatorname{Projection}:\mathbb{R}^D\to\mathbb{R}^S$ are MLPs in general; the realization uses a
+single linear layer for each. A block is post-norm:
+$$
+\mathbf{H}=\operatorname{LN}(\mathbf{H}+\operatorname{SelfAttn}(\mathbf{H})),\qquad
+\mathbf{H}=\operatorname{LN}(\mathbf{H}+\operatorname{FFN}(\mathbf{H})).
+$$
+
+Schematically LayerNorm is
+$(\mathbf{h}_n-\operatorname{Mean}(\mathbf{h}_n))/\sqrt{\operatorname{Var}(\mathbf{h}_n)}$ per token;
+PyTorch `nn.LayerNorm(d_model)` implements the usual affine form with `eps=1e-5`.
+
+For one attention head,
+$$
+s_{ij}=\frac{\mathbf{q}_i^\top\mathbf{k}_j}{\sqrt{d_k}},\qquad
+\alpha_{ij}=\operatorname{softmax}_j(s_{ij}),\qquad
+\mathbf{o}_i=\sum_j\alpha_{ij}\mathbf{v}_j.
+$$
+The pre-softmax score map can reveal variate-wise correlations because tokens represent normalized
+whole-series summaries, but it is not a literal Pearson-correlation matrix.
 
 ## Code
 
@@ -71,24 +81,25 @@ class DataEmbedding_inverted(nn.Module):
 
 
 class FullAttention(nn.Module):
-    def __init__(self, attention_dropout=0.1):
+    def __init__(self, attention_dropout=0.1, output_attention=False):
         super().__init__()
         self.dropout = nn.Dropout(attention_dropout)
+        self.output_attention = output_attention
 
     def forward(self, queries, keys, values):
         B, L, H, E = queries.shape
-        scale = 1. / sqrt(E)
+        scale = 1. / sqrt(E)                                 # default 1/sqrt(head_dim)
         scores = torch.einsum("blhe,bshe->bhls", queries, keys)
         A = self.dropout(torch.softmax(scale * scores, dim=-1))
         V = torch.einsum("bhls,bshd->blhd", A, values)
-        return V.contiguous()
+        return V.contiguous(), (A if self.output_attention else None)
 
 
 class AttentionLayer(nn.Module):
-    def __init__(self, d_model, n_heads):
+    def __init__(self, inner_attention, d_model, n_heads):
         super().__init__()
         d_keys = d_model // n_heads
-        self.inner_attention = FullAttention()
+        self.inner_attention = inner_attention
         self.query_projection = nn.Linear(d_model, d_keys * n_heads)
         self.key_projection = nn.Linear(d_model, d_keys * n_heads)
         self.value_projection = nn.Linear(d_model, d_keys * n_heads)
@@ -102,8 +113,8 @@ class AttentionLayer(nn.Module):
         queries = self.query_projection(queries).view(B, L, H, -1)
         keys = self.key_projection(keys).view(B, S, H, -1)
         values = self.value_projection(values).view(B, S, H, -1)
-        out = self.inner_attention(queries, keys, values).view(B, L, -1)
-        return self.out_projection(out)
+        out, attn = self.inner_attention(queries, keys, values)
+        return self.out_projection(out.view(B, L, -1)), attn
 
 
 class EncoderLayer(nn.Module):
@@ -118,11 +129,12 @@ class EncoderLayer(nn.Module):
         self.activation = F.relu if activation == "relu" else F.gelu
 
     def forward(self, x):
-        x = x + self.dropout(self.attention(x, x, x))        # cross-variate correlation
+        new_x, attn = self.attention(x, x, x)                # cross-variate correlation
+        x = x + self.dropout(new_x)
         y = x = self.norm1(x)
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))     # series representation, per token
-        return self.norm2(x + y)
+        return self.norm2(x + y), attn
 
 
 class Encoder(nn.Module):
@@ -132,11 +144,13 @@ class Encoder(nn.Module):
         self.norm = norm_layer
 
     def forward(self, x):
+        attns = []
         for layer in self.layers:
-            x = layer(x)
+            x, attn = layer(x)
+            attns.append(attn)
         if self.norm is not None:
             x = self.norm(x)
-        return x
+        return x, attns
 
 
 class Model(nn.Module):
@@ -144,42 +158,56 @@ class Model(nn.Module):
         super().__init__()
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
+        self.output_attention = configs.output_attention
+        self.use_norm = configs.use_norm
         self.enc_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model, configs.dropout)
         self.encoder = Encoder(
             [
                 EncoderLayer(
-                    AttentionLayer(configs.d_model, configs.n_heads),
+                    AttentionLayer(
+                        FullAttention(attention_dropout=configs.dropout,
+                                      output_attention=configs.output_attention),
+                        configs.d_model, configs.n_heads,
+                    ),
                     configs.d_model, configs.d_ff,
                     dropout=configs.dropout, activation=configs.activation,
                 ) for _ in range(configs.e_layers)
             ],
             norm_layer=nn.LayerNorm(configs.d_model),
         )
-        self.projection = nn.Linear(configs.d_model, configs.pred_len, bias=True)
+        self.projector = nn.Linear(configs.d_model, configs.pred_len, bias=True)
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        means = x_enc.mean(1, keepdim=True).detach()
-        x_enc = x_enc - means
-        stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
-        x_enc = x_enc / stdev
+        if self.use_norm:
+            means = x_enc.mean(1, keepdim=True).detach()
+            x_enc = x_enc - means
+            stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
+            x_enc = x_enc / stdev
 
         _, _, N = x_enc.shape
-        enc_out = self.enc_embedding(x_enc, x_mark_enc)
-        enc_out = self.encoder(enc_out)
-        dec_out = self.projection(enc_out).permute(0, 2, 1)[:, :, :N]   # [B, S, N]
+        enc_out = self.enc_embedding(x_enc, x_mark_enc)        # [B, T, N] -> [B, N(+F), D]
+        enc_out, attns = self.encoder(enc_out)                 # attention over variate tokens
+        dec_out = self.projector(enc_out).permute(0, 2, 1)[:, :, :N]
 
-        dec_out = dec_out * (stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
-        dec_out = dec_out + (means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1))
-        return dec_out
+        if self.use_norm:
+            dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
+            dec_out = dec_out + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
+
+        return dec_out, attns
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+        dec_out, attns = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+        if self.output_attention:
+            return dec_out[:, -self.pred_len:, :], attns
         return dec_out[:, -self.pred_len:, :]
 ```
 
-Typical configuration on the standard benchmarks: `d_model=512`, `d_ff=512`, `e_layers=2`,
-`n_heads=8`, `dropout=0.1`; Adam, MSE loss, batch size 32, learning rate $10^{-4}$, a fixed small
-number of epochs with early stopping; lookback `seq_len=96`, horizon `pred_len=96`. For exogenous /
-`features=MS` evaluation the model outputs all $N$ channels and the harness scores only the target
-channel; covariate time-feature marks enter as additional tokens and are dropped by the `[:, :, :N]`
-slice.
+`DataEmbedding_inverted` permutes `[B,T,N]` to `[B,N,T]`, optionally concatenates
+`x_mark_enc.permute(0,2,1)` as extra covariate tokens, applies `nn.Linear(seq_len, d_model)`, and
+drops out. `FullAttention` uses no causal mask; its scale is `1/sqrt(head_dim)`, and it returns
+attention weights only when `output_attention=True`. The encoder layer is residual attention,
+`LayerNorm`, a two-layer `Conv1d(kernel_size=1)` FFN, residual add, and second `LayerNorm`.
+
+The experiment appendix uses Adam, L2/MSE loss, batch size 32, 10 epochs, learning rate in
+`{1e-3, 5e-4, 1e-4}`, block count `L in {2,3,4}`, and token dimension `D in {256,512}`; other widths
+such as `d_ff`, heads, dropout, and activation come from the configuration.

@@ -106,7 +106,7 @@ for a small `ε` like `1e-4`. This also controls the *true* error: by the near-i
 
 Two structural properties make each iteration genuinely cheap, and they're worth saying out loud because they're what make this scale. The `Y^k` are supported on `Omega` by induction from `Y^0`, so they're sparse with `m` nonzeros and the residual update is `O(m)`. And because `tau` is large, the shrink kills most singular values, so `X^k` is low rank — empirically the rank is even nondecreasing, climbing to its final value only near the end — which means I never need the full SVD of `Y^k`. I only need the singular triplets *above* `tau`. So in the large-scale realization I'd compute a *partial* SVD with an iterative Lanczos bidiagonalization (e.g. PROPACK), asking for `s_k = r_{k-1} + 1` singular values and incrementing by a few until one falls below `tau`; since `Y^k` is sparse it multiplies vectors fast, and the partial SVD is far cheaper than a dense one. Storage is just the current low-rank `X^k` in factored form plus the sparse `Y^k`. For the synthetic sizes here a dense SVD per step is fine; the partial-SVD machinery is what carries the same algorithm to a billion entries.
 
-Let me assemble the whole thing into code I'd actually run, filling the single empty slot — the recovery iteration — in the strategy harness. The pieces map one-to-one to the reasoning: `tau = 5n`, `δ = 1.2/p`, the `k_0` warm start, the shrink `D_tau` via SVD, the residual-accumulating `Y`-update on the mask, and the relative-residual stop.
+Let me assemble the whole thing into code I'd actually run, filling the single empty slot in the recovery harness. The pieces map one-to-one to the reasoning: `tau = 5n` for the square case, `δ = 1.2/p`, the `k_0` warm start, the shrink `D_tau` via SVD, the residual-accumulating `Y`-update on the mask, and the relative-residual stop.
 
 ```python
 import math
@@ -124,10 +124,10 @@ class NuclearNormSVT:
     and makes X^k low rank and Y^k sparse.
     """
 
-    def __init__(self, tau_factor=5.0, delta_factor=1.2, train_thres=1e-7):
+    def __init__(self, tau_factor=5.0, delta_factor=1.2, tol=1e-4):
         self.tau_factor = float(tau_factor)      # tau = tau_factor * n  (=> 5n)
         self.delta_factor = float(delta_factor)  # delta = delta_factor / p  (=> 1.2/p)
-        self.train_thres = float(train_thres)    # relative-residual stop on Omega
+        self.tol = float(tol)                    # relative-residual stop on Omega
 
     @torch.no_grad()
     def recover(self, observed_values, observed_mask, n, rank_hint,
@@ -141,44 +141,45 @@ class NuclearNormSVT:
         delta = self.delta_factor / max(p, 1e-6)                  # delta = 1.2 / p
 
         # Warm start: skip the trivial steps where the shrink kills everything.
-        # While k*delta*||P_Omega(M)|| <= tau we have X^k = 0, Y^k = k*delta*P_Omega(M);
-        # jump straight to k_0, the first iterate with a nonzero shrink.
-        M_obs_norm = float(M_obs.norm().item())
-        k0 = max(1.0, math.ceil(tau / (delta * max(M_obs_norm, 1e-6))))
+        # While k*delta*||P_Omega(M)||_2 <= tau, X^k = 0 and
+        # Y^k = k*delta*P_Omega(M); jump to k_0.
+        norm_proj_m = float(torch.linalg.matrix_norm(M_obs, ord=2).item())
+        k0 = max(1, math.ceil(tau / (delta * max(norm_proj_m, 1e-6))))
         Y = (k0 * delta) * M_obs                                  # Y^0 = k_0 * delta * P_Omega(M)
 
         X = torch.zeros_like(M_obs)
-        denom = float(n_observed)
+        norm_obs = max(float(M_obs.norm().item()), 1e-6)
+        log_every = max(int(log_iters), 1)
         for it in range(1, max_iters + 1):
             # X^k = D_tau(Y^{k-1}): soft-threshold the singular values of Y.
             U, S, Vh = torch.linalg.svd(Y, full_matrices=False)
             S_thresh = torch.clamp(S - tau, min=0.0)             # (sigma_i - tau)_+
             X = (U * S_thresh) @ Vh
 
+            residual = (M_obs - X) * mask
+            rel_res = float(residual.norm().item() / norm_obs)
+            train_mse = float(residual.pow(2).sum().item() / float(n_observed))
+            if it == 1 or it % log_every == 0 or it == max_iters or rel_res <= self.tol:
+                print(
+                    f"TRAIN_METRICS iter={it} rel_res={rel_res:.6e} "
+                    f"train_mse={train_mse:.6e}",
+                    flush=True,
+                )
+            if rel_res <= self.tol:
+                break
+
             # Dual / residual update, supported on Omega:
             # Y^k = Y^{k-1} + delta * P_Omega(M - X^k)
-            residual = (M_obs - X) * mask
             Y = Y + delta * residual
-
-            train_mse = float(residual.pow(2).sum().item() / denom)
-            if it == 1 or it % log_iters == 0 or it == max_iters:
-                print(f"TRAIN_METRICS iter={it} train_mse={train_mse:.6e}", flush=True)
-                # Relative residual on Omega ~ relative reconstruction error (near-isometry).
-                if train_mse <= self.train_thres:
-                    break
 
         return X.detach().cpu()
 
 
 def build_strategy():
-    return NuclearNormSVT(tau_factor=5.0, delta_factor=1.2, train_thres=1e-7)
+    return NuclearNormSVT(tau_factor=5.0, delta_factor=1.2, tol=1e-4)
 ```
 
-(The benchmark's relative-residual test uses the squared residual on `Omega` divided by the
-number of observations; it is the same KKT-driven stop as `||P_Omega(X^k - M)||_F /
-||P_Omega(M)||_F <= ε`, just expressed as a mean squared residual. For `k_0` I use the
-Frobenius norm of the observed data in place of the spectral norm `||P_Omega(M)||_2` — a
-slightly more conservative warm start that overshoots no further than the exact `k_0`.)
+For a rectangular version I would replace `tau = 5n` by `tau = 5 sqrt(n_1 n_2)`, exactly as the numerical driver does. For the warm start I need the spectral norm of the sparse observed matrix; in this dense harness I compute it directly, while a large implementation would use a `normest`-style approximation.
 
 So the causal chain. I had the right convex objective handed to me — minimum nuclear norm
 subject to fitting the observed entries — but interior-point solvers couldn't scale it past

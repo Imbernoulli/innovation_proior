@@ -4,7 +4,7 @@ Stare at the curve a bit longer. The training loss falls off a cliff early; the 
 
 How do I make "fast part" and "slow part" precise? The parameter update each step is `u(t) = θ(t+1) − θ(t)`. If I just look at one scalar parameter, then `u(t)` is a sequence indexed by training step `t` — a sequence of little nudges. A sequence indexed by time is a *signal*. And the most natural way to split a signal into "slow-varying" and "fast-varying" is the language I already have for exactly that: frequency. Take the discrete-time Fourier transform of the update sequence, `U(ω) = Σ_t u(t) e^{-iωt}`. Then "the slow-varying component of the parameter motion" is literally the low-frequency part of `U(ω)`, and "the fast-varying component" is the high-frequency part. My hypothesis, restated, is that the low-frequency content of `U(ω)` is what drives generalization and the high-frequency content is what drives overfitting. If that's right, then accelerating generalization means *boosting the low-frequency content* of the parameter motion.
 
-Now I have to be a little careful, because I don't act on `u(t)` directly — the optimizer produces `u(t)` from the gradient `g(t)`. But for a first-order optimizer the update is built linearly out of the gradient stream (plain SGD: `u = −η g`; momentum: a running average of `g`; Adam: an EMA of `g` rescaled). The gradient signal `g(t)` and the update signal `u(t)` are tied together. So instead of trying to reshape `u`, I can reshape `g` — boost the low frequencies of the *gradient* signal `g(t)` and let that propagate into `u`. I'll have to come back and check that "boost low frequencies of `g`" really does mean "boost low frequencies of `u`," because if the optimizer does something frequency-dependent in between, the equivalence could break. Hold that thought. For now the working plan is: amplify the low-frequency component of the per-parameter gradient sequence.
+Now I have to be a little careful, because I don't act on `u(t)` directly — the optimizer produces `u(t)` from the gradient `g(t)`. For plain SGD and SGD with momentum the update is a linear system driven by the gradient stream; adaptive methods such as Adam still consume that same stream, but their changing preconditioner means they will need empirical support rather than the exact linear proof. So instead of trying to reshape `u`, I can try to reshape `g` — boost the low frequencies of the *gradient* signal `g(t)` and let that propagate into `u`. I'll have to come back and check when "boost low frequencies of `g`" really does mean "boost low frequencies of `u`," because if the optimizer does something input-dependent in between, exact equivalence can break. Hold that thought. For now the working plan is: amplify the low-frequency component of the per-parameter gradient sequence.
 
 Amplifying low frequencies of a signal is a standard operation. I want a transform that multiplies `G(ω)` by something larger near `ω = 0` than near `ω = π`. The cleanest way to get an *amplifier* (rather than a filter that throws information away) is to take a low-pass-filtered copy of the signal and *add it back* to the original. If `h(t)` is a low-pass filter and `*` is convolution, then
 
@@ -36,7 +36,7 @@ The way you get a low-pass filter with `O(1)` state is to make it recursive — 
 
 This is exactly the same recursion that lives inside momentum and inside Adam, which is reassuring — it's a known, stable smoother. Its impulse response is geometric: a unit impulse at the input at time 0 produces `μ(t) = (1−α) α^t` for `t ≥ 0`. Folding in my amplification gain `λ`, the equivalent filter is
 
-  `h(t) = λ (1 − α)(1) α^t`,    `t ≥ 0`,
+  `h(t) = λ (1 − α) α^t`,    `t ≥ 0`,
 
 i.e. `h(t) = λ(1−α) Σ_{τ≥0} α^τ δ(t − τ)`. One buffer per parameter, the size of the model — done with the memory blowup. The window length of the moving average is replaced by `α`: a decay close to 1 has effective memory `≈ 1/(1−α)` steps, so `α` plays the role `w` did, it sets the cutoff, while `λ` is still the gain.
 
@@ -62,7 +62,7 @@ Now I have to pay off the debt I left earlier. I designed everything as a filter
 
   `x(t) = A x(t−1) + B g(t)`,    `u(t) = C x(t) + D g(t)`,
 
-with scalar coefficients `A, B, C, D`. This covers the optimizers I care about. Plain SGD-with-momentum keeps `m(t) = μ m(t−1) + (1−τ) g(t)` and steps `u(t) = −η m(t)`, so `A = μ`, `B = 1−τ`, `C = −η`, `D = 0`. Nesterov's look-ahead steps `u(t) = −η(g(t) + μ m(t))`, so `A = μ`, `B = 1−τ`, `C = −ημ`, `D = −η`. For stability the state can't blow up, so `0 < A < 1`.
+with scalar coefficients `A, B, C, D`. This is the exact case the proof can cover. Plain SGD-with-momentum keeps `m(t) = μ m(t−1) + (1−τ) g(t)` and steps `u(t) = −η m(t)`, so `A = μ`, `B = 1−τ`, `C = −η`, `D = 0`. Nesterov's look-ahead steps `u(t) = −η(g(t) + μ m(t))`, so `A = μ`, `B = 1−τ`, `C = −ημ`, `D = −η`. For stability the state can't blow up, so `0 < A < 1`.
 
 Move to the frequency domain. The state recursion `x(t) = A x(t−1) + B g(t)` becomes, using the shift property `F{x(t−1)} = e^{-iω} X(ω)`,
 
@@ -76,85 +76,12 @@ Now run the filtered gradient `ĝ = g + h * g`, i.e. `Ĝ(ω) = (1 + H(ω)) G(ω)
 
   `Û(ω) / U(ω) = [H_io(ω) Ĝ(ω)] / [H_io(ω) G(ω)] = Ĝ(ω) / G(ω) = 1 + H(ω)`.
 
-That's the punchline. The ratio of filtered-to-unfiltered *update* spectra equals `1 + H(ω)`, which is exactly the ratio of filtered-to-unfiltered *gradient* spectra. In other words, if I define the equivalent post-optimizer filter `ĥ` by `û = u + ĥ * u`, then `1 + Ĥ(ω) = 1 + H(ω)`, so `ĥ = h`. Filtering the gradient by `h` is identical to filtering the update by `h`, for any linear optimizer. The `H_io` term — whatever the optimizer does, momentum, Nesterov, the lot — cancels top and bottom because it's linear and unchanged. So my hypothesis about the slow component of the *motion* is faithfully served by acting on the *gradient*. (The cancellation needs `H_io` to be the same on both runs, which is just "the optimizer is linear and I didn't change its coefficients," and it needs the filter not to be degenerate — as long as `1 + H` genuinely depends on `H` there's a real correspondence.)
+That's the punchline. The ratio of filtered-to-unfiltered *update* spectra equals `1 + H(ω)`, which is exactly the ratio of filtered-to-unfiltered *gradient* spectra. In other words, if I define the equivalent post-optimizer filter `ĥ` by `û = u + ĥ * u`, then `1 + Ĥ(ω) = 1 + H(ω)`, so `ĥ = h`. Filtering the gradient by `h` is identical to filtering the update by `h` for this linear optimizer family. The `H_io` term cancels top and bottom because it is linear and unchanged. So, at least for SGD with momentum and Nesterov momentum, my hypothesis about the slow component of the *motion* is faithfully served by acting on the *gradient*. The cancellation needs `H_io` to be the same on both runs, which is just "the optimizer is linear and I didn't change its coefficients," and the paper then relies on experiments, not this exact proof, for Adam and AdamW.
 
-This is more than a sanity check; it tells me *where* to put the code. I could have implemented the slow-component boost the "honest" way — intercept the optimizer's update `u` and add a filtered copy of it. But that means writing a custom optimizer object that exposes its updates, which is fiddly and has to be redone per optimizer. The equivalence says I can instead act on the gradients, which in any autograd framework are sitting right there in `p.grad` after `backward()` and before `step()`, and get *exactly the same effect* on the parameter motion regardless of which optimizer consumes them. So the implementation is: between `loss.backward()` and `optimizer.step()`, update the per-parameter EMA buffer and add `λ` times it back into `p.grad`. A few lines, optimizer-agnostic, no new optimizer class. The theorem is what licenses the cheap implementation.
+This is more than a sanity check; it tells me *where* to put the code. I could have implemented the slow-component boost the "honest" way — intercept the optimizer's update `u` and add a filtered copy of it. But that means writing a custom optimizer object that exposes its updates, which is fiddly and has to be redone per optimizer. The linear equivalence says I can instead act on the gradients, which in any autograd framework are sitting right there in `p.grad` after `backward()` and before `step()`, and get the same spectral effect on the parameter motion for the theorem-covered optimizer class. The same hook can still be handed to Adam or AdamW, but there it is a practical implementation choice backed by the paper's experiments, not by the exact cancellation argument. So the implementation is: between `loss.backward()` and `optimizer.step()`, update the per-parameter EMA buffer and add `λ` times it back into `p.grad`. A few lines, no new optimizer class.
 
-Let me also be precise about how this differs from just turning up momentum, because the recursion `μ ← αμ + (1−α)g` looks like a momentum buffer and I don't want to be reinventing momentum. The difference is structural. Ordinary momentum *consumes* the smoothed gradient *as* the update — the average becomes the step. Here I add the smoothed gradient as a *residual* on top of the raw gradient, `ĝ = g + λμ`, and only *then* feed it to the optimizer, which still does its own thing. Formally it's closer to Nesterov, which also mixes the current gradient with the momentum buffer before stepping — but Nesterov-style mixing (as in NAdam) happens *inside* the optimizer, whereas here the mixing happens *before* the optimizer, on the gradient, independent of it. And because of the equivalence I just proved, "before the optimizer, on the gradient" is legitimate: it imposes the low-frequency boost on the update regardless of what the optimizer is. That independence is the point — the same hook works with SGD, with Adam, with AdamW, without touching any of them.
+Let me also be precise about how this differs from just turning up momentum, because the recursion `μ ← αμ + (1−α)g` looks like a momentum buffer and I don't want to be reinventing momentum. The difference is structural. Ordinary momentum *consumes* the smoothed gradient *as* the update — the average becomes the step. Here I add the smoothed gradient as a *residual* on top of the raw gradient, `ĝ = g + λμ`, and only *then* feed it to the optimizer, which still does its own thing. Formally it's closer to Nesterov, which also mixes the current gradient with the momentum buffer before stepping — but Nesterov-style mixing (as in NAdam) happens *inside* the optimizer, whereas here the mixing happens *before* the optimizer, on the gradient, independent of it. The exact equivalence makes this placement mathematically clean for linear SGD-family optimizers, and the same placement is simple enough to test with Adam and AdamW without touching either optimizer.
 
-So the final form is the EMA gradient filter. For each parameter, maintain a running EMA `μ` of its gradient initialized to the first gradient seen; every step, decay it by `α`, mix in `(1−α)` of the current gradient, and add `λμ` back into the current gradient before the optimizer reads it. The moving-average version is the conceptual stepping stone — same idea, rectangular instead of geometric window — that I keep around as the easy-to-explain sibling, but the EMA is what I actually use because it's the same low-pass boost at `1/w` of the memory. Let me write both.
+So the final form is the EMA gradient filter. For each parameter, maintain a running EMA `μ` of its gradient initialized to the first gradient seen; every step, decay it by `α`, mix in `(1−α)` of the current gradient, and add `λμ` back into the current gradient before the optimizer reads it. The moving-average version is the conceptual stepping stone — same idea, rectangular instead of geometric window — that I keep around as the easy-to-explain sibling, but the EMA is what I actually use because it's the same low-pass boost at `1/w` of the memory. In code, the moving-average helper is a dictionary of per-parameter `deque`s, with `window_size=100`, `lamb=5.0`, optional `mean` versus `sum`, a warmup gate, and a `trigger` flag for ablation that disables the added slow component. The EMA helper is just a dictionary of tensors, with defaults `alpha=0.98` and `lamb=2.0`; it initializes from detached current gradients, updates `grads[n] = alpha*grads[n] + (1-alpha)*g`, and writes `p.grad = p.grad + lamb*grads[n]`. The training-loop change is exactly where the theorem told me to put it: initialize `grads = None`, run `loss.backward()`, call the gradient filter, then call `optimizer.step()`.
 
-```python
-from collections import deque
-from typing import Dict, Optional, Literal
-import torch
-import torch.nn as nn
-
-
-# Stepping-stone: windowed moving-average (FIR) low-pass boost.
-# Stores the last `window_size` gradients per parameter (w x memory).
-def gradfilter_ma(
-    m: nn.Module,
-    grads: Optional[Dict[str, deque]] = None,
-    window_size: int = 100,
-    lamb: float = 5.0,
-    filter_type: Literal['mean', 'sum'] = 'mean',
-    warmup: bool = True,
-) -> Dict[str, deque]:
-    if grads is None:
-        # one fixed-capacity queue per parameter
-        grads = {n: deque(maxlen=window_size)
-                 for n, p in m.named_parameters() if p.requires_grad and p.grad is not None}
-
-    for n, p in m.named_parameters():
-        if p.requires_grad and p.grad is not None:
-            grads[n].append(p.grad.data.detach())        # push this step's gradient
-
-            # add lambda * (slow gradient) back onto the raw gradient: g_hat = g + lambda*mean(Q)
-            if not warmup or len(grads[n]) == window_size:
-                if filter_type == "mean":
-                    avg = sum(grads[n]) / len(grads[n])
-                elif filter_type == "sum":
-                    avg = sum(grads[n])
-                else:
-                    raise ValueError(f"Unrecognized filter_type {filter_type}")
-                p.grad.data = p.grad.data + avg * lamb
-
-    return grads
-
-
-# Final form: one-pole exponential-moving-average (IIR) low-pass boost.
-# One buffer per parameter (1 x memory). alpha = cutoff, lamb = low-freq gain.
-def gradfilter_ema(
-    m: nn.Module,
-    grads: Optional[Dict[str, torch.Tensor]] = None,
-    alpha: float = 0.98,
-    lamb: float = 2.0,
-) -> Dict[str, torch.Tensor]:
-    if grads is None:
-        # initialize each EMA buffer to the first gradient seen
-        grads = {n: p.grad.data.detach()
-                 for n, p in m.named_parameters() if p.requires_grad and p.grad is not None}
-
-    for n, p in m.named_parameters():
-        if p.requires_grad and p.grad is not None:
-            # EMA of the gradient:  mu <- alpha*mu + (1-alpha)*g     (low-pass on g)
-            grads[n] = grads[n] * alpha + p.grad.data.detach() * (1 - alpha)
-            # high-boost the slow part:  g_hat = g + lambda*mu  ->  spectral gain 1 + H(w)
-            p.grad.data = p.grad.data + grads[n] * lamb
-
-    return grads
-
-
-# Plugs into the existing loop with two added lines: keep a running `grads`,
-# and call the filter after backward() and before the optimizer reads p.grad.
-grads = None
-for batch in dataloader:
-    model.zero_grad()
-    loss = criterion(model(batch))
-    loss.backward()                                  # fills p.grad for every parameter
-    grads = gradfilter_ema(model, grads=grads, alpha=0.98, lamb=2.0)   # boost slow gradients
-    optimizer.step()                                 # any first-order optimizer, untouched
-```
-
-Pulling the chain together: the training and validation losses move on two timescales because the parameter motion mixes a fast component (overfitting) and a slow component (generalization); reading the per-parameter update sequence as a time signal lets me name those as high- and low-frequency content, so accelerating generalization means amplifying the low frequencies of the motion; I amplify by adding a low-pass-filtered copy of the gradient back onto itself, which gives spectral gain `1 + H(ω)` — big at DC, ≈1 at Nyquist; a windowed moving average does this but costs `w`× memory, so I switch to a one-pole EMA, whose transfer function `λ(1−α)/(1−αe^{-iω})` gives low-frequency gain `1+λ` and near-unit high-frequency gain with a single buffer and `α` as the cutoff; and because for any linear optimizer filtering the gradient is provably equivalent to filtering the update (the optimizer's transfer function cancels), I can implement the whole thing as a two-line hook on `p.grad` that works with whatever optimizer is already in place.
+Pulling the chain together: the training and validation losses move on two timescales because the parameter motion mixes a fast component (overfitting) and a slow component (generalization); reading the per-parameter update sequence as a time signal lets me name those as high- and low-frequency content, so accelerating generalization means amplifying the low frequencies of the motion; I amplify by adding a low-pass-filtered copy of the gradient back onto itself, which gives spectral gain `1 + H(ω)` — big at DC, ≈1 at Nyquist; a windowed moving average does this but costs `w`× memory, so I switch to a one-pole EMA, whose transfer function `λ(1−α)/(1−αe^{-iω})` gives low-frequency gain `1+λ` and near-unit high-frequency gain with a single buffer and `α` as the cutoff; and because for linear SGD-family optimizers filtering the gradient is provably equivalent to filtering the update (the optimizer's transfer function cancels), I can implement the whole thing as a hook on `p.grad`, then use the same hook empirically with Adam and AdamW.

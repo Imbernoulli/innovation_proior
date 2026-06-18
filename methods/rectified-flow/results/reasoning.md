@@ -127,11 +127,11 @@ Sum over $k=0,\dots,K$ and the left side telescopes:
 $$
 \sum_{k=0}^{K}\Big(S(\vec Z^{k+1})+V((Z_0^k,Z_1^k))\Big)=\mathbb E\|X_1-X_0\|^2-\mathbb E\|Z_1^{K+1}-Z_0^{K+1}\|^2\le \mathbb E\|X_1-X_0\|^2,
 $$
-the last step because $\mathbb E\|Z_1^{K+1}-Z_0^{K+1}\|^2\ge0$. The left side is a sum of $K+1$ non-negative terms bounded by a constant $\mathbb E\|X_1-X_0\|^2$ that doesn't grow with $K$, so the smallest term must shrink:
+the last step because $\mathbb E\|Z_1^{K+1}-Z_0^{K+1}\|^2\ge0$. The left side is a sum of $K+1$ non-negative terms bounded by a constant $\mathbb E\|X_1-X_0\|^2$ that doesn't grow with $K$, so the smallest indexed rectification gap must shrink:
 $$
-\min_{k\le K} S(\vec Z^k)\ \le\ \frac{\mathbb E\|X_1-X_0\|^2}{K}.
+\min_{0\le k\le K}\Big(S(\vec Z^{k+1})+V((Z_0^k,Z_1^k))\Big)\ \le\ \frac{\mathbb E\|X_1-X_0\|^2}{K+1}.
 $$
-Reflow drives straightness to zero at an $O(1/K)$ rate. So iterating the rectification — recoupling on the flow's own output and refitting — provably straightens the paths, and a straight flow is a one-step flow. That's the inference win, earned, not assumed. (Practically I won't run $K$ large: each reflow refits $v^X$ from finite samples, and estimation error accumulates, so one or two rounds is the sweet spot — the first reflow already gives nearly straight paths.)
+In particular the best straightness term among $\vec Z^1,\ldots,\vec Z^{K+1}$ is no larger than that same bound, so reflow drives straightness to zero at an $O(1/K)$ rate. So iterating the rectification — recoupling on the flow's own output and refitting — provably straightens the paths, and a straight flow is a one-step flow. That's the inference win, earned, not assumed. (Practically I won't run $K$ large: each reflow refits $v^X$ from finite samples, and estimation error accumulates, so one or two rounds is the sweet spot — the first reflow already gives nearly straight paths.)
 
 Let me also pin down what "fully straightened" even is, because the telescoping says the gaps vanish but I should know the fixed point. The reflow gaps for a round are zero exactly when both $S(\vec Z^{k+1})=0$ and $V((Z_0^k,Z_1^k))=0$. From the identity, $\mathbb E\|Z_1-Z_0\|^2=\mathbb E\|X_1-X_0\|^2$ (cost stops decreasing) forces $S=V=0$. $V((X_0,X_1))=0$ means $X_1-X_0=\mathbb E[X_1-X_0\mid X_t]$ almost surely — the line direction is determined by the current point, so the lines genuinely don't cross. And then $X_t=X_0+\int_0^t(X_1-X_0)\mathrm{d}s=X_0+\int_0^t v^X(X_s,s)\mathrm{d}s$, so the interpolation *is* the flow, $\vec X=\vec Z$: the coupling is a fixed point of $\mathrm{Rectify}$. So "straight coupling" $\iff$ "non-crossing interpolation" $\iff$ "fixed point of rectification" $\iff$ "flow coincides with its chords." All the same condition, and it requires a strictly convex $c$ to detect (any strictly convex cost stops decreasing exactly there — strict convexity is what makes the second Jensen tight only on a degenerate conditional).
 
@@ -175,7 +175,7 @@ Sampling is just integrating the learned field from a source draw. If the flow i
 @torch.no_grad()
 def euler_sample(model, z0, N=1, eps=1e-3):
     # Integrate dZ_t = v_theta(Z_t, t) dt from Z_0 ~ pi_0 to Z_1.
-    x, dt = z0.clone(), (1.0 - eps) / N
+    x, dt = z0.clone(), 1.0 / N
     for i in range(N):
         t = torch.ones(z0.shape[0], device=z0.device) * (i / N * (1.0 - eps) + eps)
         x = x + model(x, t * 999) * dt                            # one Euler step along the field
@@ -211,7 +211,8 @@ And once the flow is nearly straight, I can distill it into a literal one-step m
 
 ```python
 def distill_one_step_loss(model, z0, z1):
-    v = model(z0, torch.zeros(z0.shape[0], device=z0.device))           # the t=0 term of the flow loss
+    t = torch.full((z0.shape[0],), 1e-3, device=z0.device)              # practical t ~= 0 endpoint
+    v = model(z0, t * 999)                                             # the t=0 term of the flow loss
     return ((v - (z1 - z0)) ** 2).mean()                                # T_hat(z0) = z0 + v(z0, 0)
 ```
 

@@ -29,7 +29,7 @@ the average line direction passing through $(x,t)$ — which is single-valued an
 
 - **Marginal preserving.** $\mathrm{Law}(Z_t)=\mathrm{Law}(X_t)$ for all $t$; hence $Z_1\sim\pi_1$ when $Z_0\sim\pi_0$ — $(Z_0,Z_1)$ is a valid coupling. (Both laws solve the same continuity equation $\partial_t\rho_t+\mathrm{div}(v^X_t\rho_t)=0$ with the same initial condition.)
 - **Convex transport cost does not increase.** $\mathbb{E}[c(Z_1-Z_0)]\le\mathbb{E}[c(X_1-X_0)]$ for **every** convex $c$ — a Pareto descent over all convex costs, by two applications of Jensen.
-- **Straightening by Reflow.** Recoupling on the flow's own output and refitting, $\vec Z^{k+1}=\mathrm{RectFlow}((Z_0^k,Z_1^k))$, drives the straightness $S(\vec Z)=\int_0^1\mathbb{E}\|(Z_1-Z_0)-\dot Z_t\|^2\mathrm{d}t$ to zero at rate $\min_{k\le K}S(\vec Z^k)\le \mathbb{E}\|X_1-X_0\|^2/K$. A near-straight flow runs accurately with very few (even one) Euler steps.
+- **Straightening by Reflow.** Recoupling on the flow's own output and refitting, $\vec Z^{k+1}=\mathrm{RectFlow}((Z_0^k,Z_1^k))$, drives the straightness $S(\vec Z)=\int_0^1\mathbb{E}\|(Z_1-Z_0)-\dot Z_t\|^2\mathrm{d}t$ to zero. More precisely, $\sum_{k=0}^K(S(\vec Z^{k+1})+V((Z_0^k,Z_1^k)))\le\mathbb E\|X_1-X_0\|^2$, so the best rectification gap among those $K+1$ rounds is at most $\mathbb E\|X_1-X_0\|^2/(K+1)$. A near-straight flow runs accurately with very few (even one) Euler steps.
 - **Distillation.** Once near-straight, fit $\hat T(z_0)=z_0+v(z_0,0)$ so $Z_1\approx\hat T(Z_0)$ in a single call; this is exactly the $t=0$ term of the training objective.
 
 ## Algorithm
@@ -70,7 +70,7 @@ Sampling by forward Euler (a near-straight flow needs only a handful of steps; a
 @torch.no_grad()
 def euler_sample(model, z0, N=1, eps=1e-3):
     """Integrate dZ_t = v_theta(Z_t, t) dt from Z_0 ~ pi_0 to Z_1."""
-    x, dt = z0.clone(), (1.0 - eps) / N
+    x, dt = z0.clone(), 1.0 / N
     for i in range(N):
         t = torch.ones(z0.shape[0], device=z0.device) * (i / N * (1.0 - eps) + eps)
         x = x + model(x, t * 999) * dt
@@ -108,8 +108,9 @@ Distillation to a one-step generator (train only at $t=0$; LPIPS works better th
 
 ```python
 def distill_one_step_loss(model, z0, z1):
-    """One-step map T_hat(z0) = z0 + v(z0, 0); the t=0 case of the flow objective."""
-    v = model(z0, torch.zeros(z0.shape[0], device=z0.device))
+    """One-step map T_hat(z0) = z0 + v(z0, 0); implemented at a small endpoint eps."""
+    t = torch.full((z0.shape[0],), 1e-3, device=z0.device)
+    v = model(z0, t * 999)
     return ((v - (z1 - z0)) ** 2).mean()        # or LPIPS(z0 + v, z1)
 ```
 

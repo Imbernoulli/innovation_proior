@@ -1,139 +1,95 @@
-# Neural Logic Network — the differentiable DNF
+# Neural Logic Networks: differentiable DNF
 
-## Problem
+Represent Boolean truth values in `[0,1]` and use product logic:
 
-Learn an unknown Boolean function `f: {0,1}^n → {0,1}` from labelled examples `(x, y)` by
-gradient descent, with two simultaneous requirements: (1) it must fit, including functions
-additive MLPs handle poorly (skewed-distribution DNF, large XOR/parity); (2) the trained
-parameters must be *directly decodable* into an explicit logical formula — a DNF: an OR of
-ANDs of literals — so a human can read off exactly which variables, in which polarity, the
-function uses.
-
-## Key idea
-
-Build the network from *multiplicative* logic layers with no bias terms, using the product
-relaxation of Boolean algebra over `[0,1]`:
-
-```
-NOT x = 1 - x        x AND y = x·y        x OR y = 1 - (1-x)(1-y)
+```text
+not(x) = 1 - x
+and(x, y) = x*y
+or(x, y) = 1 - (1 - x)(1 - y)
 ```
 
-AND is a product (true iff all factors are 1, with no threshold to tune), OR is the De
-Morgan dual (a noisy-OR). To learn *which* variables enter a clause, attach to each input a
-per-variable **membership** decision rather than a softmax-over-inputs selector — an
-independent include/exclude (here include-positive / include-negated / skip) gate, so the
-clause size need not be known in advance and the choice can be read off after training. The
-parameters then *are* the formula.
+For each neuron, learn one scalar membership per input:
 
-**Conjunction layer** (neuron `j`, membership `m_i^{(j)} ∈ [0,1]`):
-
-```
-y_conj^{(j)} = Π_i ( 1 - m_i^{(j)} (1 - x_i) ),   m_i = σ(c·w_i), c > 1
+```text
+m_i = sigmoid(c*w_i), c >= 1
 ```
 
-`m_i → 0` ⇒ factor → 1 (variable dropped); `m_i → 1` ⇒ factor → `x_i` (literal required).
+Conjunction neuron:
 
-**Disjunction layer** (De Morgan / noisy-OR):
-
-```
-y_disj^{(j)} = 1 - Π_i ( 1 - m_i^{(j)} x_i )
+```text
+O_conj(x) = product_i (1 - m_i(1 - x_i))
 ```
 
-**DNF model:** `DNF(x) = DISJ( CONJ(x) )` — a bank of soft conjunctions OR'd together. (CNF
-is `CONJ(DISJ(x))`; a CNF+DNF block is `1 - (1-CNF)(1-DNF)`.)
+All cases for one factor:
 
-Implementation essentials, each load-bearing:
-- **Log-domain products** `exp(Σ log(ε + factor))` — the long products underflow and vanish
-  the gradient otherwise; valid because all factors lie in `[0,1]`.
-- **Sparse initialization** — start most memberships near 0 (factors ≈ 1) and only a few near
-  1; a dense half-on start crushes every gradient through the product of many sub-1 terms.
-- **Three-way categorical literal** (pos / neg / skip via softmax) so terms can use either
-  polarity without ever selecting `x_i` and `¬x_i` together.
-- **Per-term gate** `σ(g_j)` so a term can be switched off; over-provision terms and let the
-  gates prune.
-- **Sparsity penalties** — one-sided literal-width penalty `(usage − w)_+^2` and a mean-gate
-  penalty — to push toward short, few-term (crisp DNF) solutions.
+```text
+(x_i, m_i) = (0,0) -> 1
+(x_i, m_i) = (1,0) -> 1
+(x_i, m_i) = (0,1) -> 0
+(x_i, m_i) = (1,1) -> 1
+```
 
-Convergence intuition: `∂y_conj/∂m_i ∝ (x_i − 1)`, so memberships are driven by
-counterexamples (`x_i = 0` while the clause should fire); with a small learning rate and
-counterexamples present in each batch, a single layer converges.
+Disjunction neuron:
 
-## Final form (code)
+```text
+O_disj(x) = 1 - product_i (1 - m_i*x_i)
+```
+
+All cases for the selected contribution `m_i*x_i`:
+
+```text
+(0,0) -> 0
+(1,0) -> 0
+(0,1) -> 0
+(1,1) -> 1
+```
+
+A DNF is a conjunction layer followed by a disjunction layer:
+
+```text
+DNF(x) = DISJ(CONJ(x))
+```
+
+The derivative that controls membership learning is:
+
+```text
+d O_conj / d m_i =
+  -(1 - x_i) product_{k != i}(1 - m_k(1 - x_k))
+```
+
+So only examples with `x_i = 0` move `m_i` directly; the loss sign decides whether this
+pushes the membership up or down.
+
+Reference-faithful TensorFlow shape:
 
 ```python
-import torch
-from torch import nn
+def sharp_sigmoid(w, c=1.0):
+    return tf.sigmoid(c * w)
 
+def logic_layer_and(x, W, c=1.0):
+    m = sharp_sigmoid(W, c)                 # [units, n]
+    z = tf.expand_dims(m, 0) * (1.0 - tf.expand_dims(x, -2))
+    return tf.reduce_prod(1.0 - z, axis=-1)
 
-class NeuralDNF(nn.Module):
-    """Differentiable DNF: soft conjunctions (membership-gated products of literals)
-    aggregated by a noisy-OR. Trained parameters decode directly into the formula:
-    each term's literals from its per-variable pos/neg/skip categorical, each term's
-    presence from its gate."""
+def logic_layer_or(x, W, c=1.0):
+    m = sharp_sigmoid(W, c)                 # [units, n]
+    z = tf.expand_dims(m, 0) * tf.expand_dims(x, -2)
+    return 1.0 - tf.reduce_prod(1.0 - z, axis=-1)
 
-    def __init__(self, n_features: int, n_terms: int):
-        super().__init__()
-        self.literal_logits = nn.Parameter(torch.empty(n_terms, n_features, 3))  # pos/neg/skip
-        self.term_logits = nn.Parameter(torch.empty(n_terms))                    # term gates
-        self.out_bias = nn.Parameter(torch.zeros(1))
-        self.n_features, self.n_terms = n_features, n_terms
-        self.reset_parameters()
-
-    def reset_parameters(self) -> None:
-        with torch.no_grad():
-            self.literal_logits[..., 0].fill_(-4.0)   # positive literal off
-            self.literal_logits[..., 1].fill_(-4.0)   # negative literal off
-            self.literal_logits[..., 2].fill_(4.0)    # skip on  -> sparse start
-            self.literal_logits.add_(0.03 * torch.randn_like(self.literal_logits))
-            self.term_logits.fill_(-3.0)
-            self.out_bias.zero_()
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        probs = torch.softmax(self.literal_logits, dim=-1)
-        pos, neg, skip = probs[..., 0], probs[..., 1], probs[..., 2]
-        literal = (
-            pos.unsqueeze(0) * x.unsqueeze(1)
-            + neg.unsqueeze(0) * (1.0 - x.unsqueeze(1))
-            + skip.unsqueeze(0)
-        ).clamp(min=1e-6, max=1.0)
-        conj = torch.exp(torch.log(literal).sum(dim=-1)).clamp(max=1.0)      # AND, log domain
-        term_prob = torch.sigmoid(self.term_logits).unsqueeze(0) * conj      # gate each term
-        log_not = torch.log1p(-term_prob.clamp(max=1.0 - 1e-6)).sum(dim=-1)
-        prob = (1.0 - torch.exp(log_not)).clamp(min=1e-6, max=1.0 - 1e-6)    # noisy-OR
-        return torch.log(prob) - torch.log1p(-prob) + self.out_bias          # -> logit
-
-    def literal_usage(self) -> torch.Tensor:
-        probs = torch.softmax(self.literal_logits, dim=-1)
-        return (probs[..., 0] + probs[..., 1]).sum(dim=-1)                    # expected #literals/term
-
-
-def fit_and_predict(model, train_x, train_y, test_x, term_width, seed,
-                    lr=2e-3, epochs=30, batch_size=512):
-    torch.manual_seed(seed)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
-    criterion = nn.BCEWithLogitsLoss()
-    n = train_x.shape[0]
-    target_width = float(term_width)
-    model.train()
-    for _ in range(epochs):
-        perm = torch.randperm(n)
-        for start in range(0, n, batch_size):
-            idx = perm[start:start + batch_size]
-            logits = model(train_x[idx]).view(-1)
-            loss = criterion(logits, train_y[idx])
-            usage = model.literal_usage()
-            width_penalty = ((usage - target_width).clamp(min=0.0) ** 2).mean()   # short terms
-            gate_penalty = torch.sigmoid(model.term_logits).mean()                # few terms
-            total = loss + 1e-4 * width_penalty + 1e-4 * gate_penalty
-            optimizer.zero_grad(set_to_none=True)
-            total.backward()
-            optimizer.step()
-    model.eval()
-    with torch.no_grad():
-        return (model(test_x).view(-1) >= 0.0).long()
+def dnf(x, W_and, W_or, c=1.0):
+    clauses = logic_layer_and(x, W_and, c)
+    return logic_layer_or(clauses, W_or, c)
 ```
 
-The number of conjunction neurons is over-provisioned (e.g. `n_terms = max(4·s, 32)` for an
-`s`-term target); the term gates and sparsity penalties prune the surplus. After training,
-the formula is read directly from the parameters: term `j`'s literals are the variables whose
-`pos`/`neg` mass dominates `skip`, and a term is present when `σ(g_j)` is large.
+For long conjunctions, the same product can be evaluated in a stable log form:
+
+```text
+product_i factor_i = exp(sum_i log(epsilon + factor_i))
+```
+
+For mixed-polarity rules, feed negated atoms or `1 - x_i` as additional input items; each
+item still has one scalar membership. In wide layers, initialize most memberships near
+zero, either with a small subset near one or with negative-mean logits, so the initial
+products do not crush the gradients. After training, read a formula by thresholding
+conjunction memberships for literals and disjunction memberships for active clauses;
+prune any thresholded-on literal whose removal leaves the loss unchanged.

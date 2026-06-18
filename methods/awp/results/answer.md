@@ -21,10 +21,10 @@ min_w  max_{v in V}  rho(w + v),
         rho(w + v) = (1/n) sum_i max_{||x'_i - x_i|| <= eps}  ell( f_{w+v}(x'_i), y_i ).
 ```
 
-Minimizing `rho(w) + (rho(w+v) - rho(w))` collapses to `min_w rho(w+v)`: optimizing at the
-perturbed point both lowers the loss and flattens the surface. A *worst-case* `v` is used
-(not random), which is far more efficient and gives a conservative upper bound on the
-expected sharpness term in the PAC-Bayes flatness bound.
+Minimizing `rho(w) + (rho(w+v) - rho(w))` collapses to `min_w rho(w+v)`: the update descends
+from a deliberately high-loss nearby point, so sharp local rises are penalized without carrying a
+separate scalar regularizer. A *worst-case* `v` is used (not random), which is far more efficient
+and gives a conservative upper bound on the expected sharpness term in the PAC-Bayes flatness bound.
 
 ## Weight perturbation: direction and size
 
@@ -73,10 +73,11 @@ that CE; AWP is otherwise unchanged.
 The PAC-Bayes flatness bound (Neyshabur et al. 2017) rewrites the randomized-predictor error as
 empirical loss plus **expected sharpness**
 `E_u[Lhat(f_{w+u})] - Lhat(f_w)` plus the KL complexity of the posterior perturbation
-distribution `Q` relative to a data-independent prior `P`. With `P = N(0, sigma^2 I)` and the
-same spherical variance around `w`, the KL part is `||w||^2/(2*sigma^2)`. If
-`sigma^2 = a*||w||^2`, that contribution becomes `1/(2a)`, so the scale-fixed bound depends on
-expected sharpness. For perturbations supported on the same feasible set,
+distribution `Q` relative to a data-independent prior `P`. With `P = N(0, sigma^2 I)` and
+`Q = N(w, sigma^2 I)`, the KL part is `||w||^2/(2*sigma^2)`. If
+`sigma^2 = a*||w||^2`, that contribution becomes `1/(2a)`, where `a` is the relative variance
+scale. With this scale fixed, the data-dependent part is expected sharpness. For perturbations
+supported on the same feasible set,
 `E_u[rho(w+u)] - rho(w) <= max_u rho(w+u) - rho(w)`, so minimizing worst-case sharpness reduces
 a sufficient upper bound on the expected sharpness term that controls the robust generalization
 gap.

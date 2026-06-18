@@ -14,13 +14,13 @@ The other option that people reach for is to relax the discreteness: Gumbel-soft
 
 Let me set that aside and look at the *other* problem, because I suspect it's tangled with this one. The strongest likelihood models around are powerful autoregressive decoders — PixelCNN over an image grid, WaveNet over audio, both factorizing p(x) = Π_i p(x_i | x_{<i}) and modeling the data extremely well on their own. What happens if I use one as my VAE's decoder? I've seen this fail and I want to understand *why* precisely. Look back at the ELBO. The KL term KL(q(z|x)||p(z)) is minimized — driven all the way to zero — by setting q(z|x) = p(z), i.e. by making the posterior *ignore x entirely*. If the decoder is strong enough to model p(x) without any help from z, then the optimizer can drive KL to zero (free reduction of the objective) and lose almost nothing on the reconstruction term, because the decoder picks up the slack. So it does exactly that. The latent goes silent; the decoder does all the work. That's posterior collapse, and it's not a bug in the optimizer — the objective is *telling* it to throw the latent away. There's even an argument that, measured purely by log-likelihood, the best model is one with a powerful decoder and no informative latent at all. Which is a disaster if your entire goal is to *learn the latent*.
 
-So now I see the two walls are really one shape. The KL term is the villain twice over: it's the thing that has no low-variance gradient when z is discrete, and it's the thing that switches the latent off when the decoder is strong. What if I could make the KL term... not matter?
+So now I see the two walls touch, but I should not blame the wrong term. The high-variance discrete-gradient problem comes from differentiating expectations through sampled categories, especially the reconstruction term. The KL term is the collapse pressure: with a strong decoder, it rewards q for becoming the prior and forgetting x. What if I choose the discrete posterior and prior so that the KL term contributes no training pressure at all?
 
 Here's the move. Suppose I make the posterior *deterministic*. The encoder produces a vector, and q(z|x) puts all its mass on one symbol — a one-hot. And suppose I fix the prior p(z) to be *uniform* over the K symbols and never train it during the autoencoder phase. Then compute the KL:
 
   KL(q || p) = Σ_z q(z) log( q(z)/p(z) ) = 1 · log( 1 / (1/K) ) = log K.
 
-It's a constant. Independent of x, independent of the encoder parameters. So in the ELBO its gradient is zero — it just drops out of training. And that's *exactly* what I want against posterior collapse: there's no KL pressure pulling q toward p anymore, because KL is pinned at log K no matter what the encoder does. The optimizer can't buy a free reduction by silencing the latent; the only way to lower the loss is the reconstruction term, and that term needs z to carry information. The discrete bottleneck is now load-bearing by construction. Two birds: the awkward KL gradient is gone *and* the collapse mechanism is gone, both from the same decision to use a deterministic one-hot posterior with a fixed uniform prior.
+It's a constant. Independent of x, independent of the encoder parameters. With N independent latent positions it is N log K, still constant. So in the ELBO its gradient is zero and it drops out of autoencoder training. That is exactly what I want against the usual posterior-collapse route: there is no KL reward for pushing q(z|x) back to a data-independent prior. The decoder could still be expressive, but the objective no longer gives the optimizer a free KL win for silencing the latent channel. The remaining way for the encoder/decoder pair to improve the autoencoder objective is the data term. The fixed-uniform prior is only a training device; if I want to generate later, I will have to learn a real prior over the resulting codes afterward.
 
 But I've only relocated the hard part. If q is a deterministic one-hot, how do I produce it, and how on earth do I get gradients through it? Let me make the bottleneck concrete. I'll keep a codebook — an embedding table e ∈ R^{K×D}, K prototype vectors each of dimension D. The encoder outputs a continuous vector z_e(x) ∈ R^D. To discretize, I take the nearest prototype:
 
@@ -28,7 +28,7 @@ But I've only relocated the hard part. If q is a deterministic one-hot, how do I
 
 This is just vector quantization — represent a vector by the index of its nearest codebook entry. The posterior is q(z=k|x) = 1 for that k and 0 otherwise, deterministic and one-hot, exactly as I assumed above. Forward pass: encode, snap to nearest code, decode from the code. Clean.
 
-Now the gradient. The reconstruction loss is log p(x | z_q(x)), and z_q = e_{argmin}. The argmin is piecewise constant — nudge z_e a little and the chosen index doesn't change, so ∂z_q/∂z_e = 0 almost everywhere. The gradient hits the quantizer and dies. The decoder learns fine (it gets gradient w.r.t. its own input z_q), but the encoder gets nothing from reconstruction. Dead.
+Now the gradient. The data term is log p(x | z_q(x)) if I am maximizing the ELBO, or -log p(x | z_q(x)) if I write the implementable loss to minimize. Either way, z_q = e_{argmin}. The argmin is piecewise constant: nudge z_e a little and the chosen index doesn't change, so ∂z_q/∂z_e = 0 almost everywhere. The gradient hits the quantizer and dies. The decoder learns fine because it gets gradient with respect to its own input z_q, but the encoder gets nothing from reconstruction. Dead.
 
 Let me stare at the geometry of what's happening at the quantizer. z_e and z_q live in the *same* D-dimensional space — z_q is just the nearest codebook point to z_e. The decoder, by backprop, hands me ∇_{z_q} L: the direction in that space I should move the decoder's input to lower reconstruction loss. And z_e is sitting right there in the same space. So even though the map z_e → z_q has zero derivative, the gradient *at z_q* is still a perfectly sensible direction to move *z_e*: "to reconstruct better, the encoder's output should head this way," which on the next forward pass might even snap to a better code. The information is right there; the argmin just refuses to pass it.
 
@@ -60,13 +60,13 @@ This is the commitment loss. It pins z_e near its selected prototype, kills the 
 
 Look at what the two stop-gradients did. There's really one quantity here, the squared gap ‖z_e − e‖² between the encoder output and its chosen code, and *two* things that ought to close it: the dictionary should come to the encoder, and the encoder should commit to the dictionary. If I wrote a single un-split term, both z_e and e would receive gradients from it simultaneously and chase each other on the same objective — unstable, and it muddies which part is doing the representation learning. By splitting it with stop-gradients I cleanly partition responsibility: sg[z_e] in one copy means "this term only updates the codebook," sg[e] in the other means "this term only updates the encoder." Two forces, two owners, one gap.
 
-Putting it together, the full objective is three terms:
+Putting it together, the training loss I minimize has three terms:
 
-  L = log p(x | z_q(x))  +  ‖ sg[z_e(x)] − e ‖₂²  +  β ‖ z_e(x) − sg[e] ‖₂².
+  L_min = -log p(x | z_q(x))  +  ‖ sg[z_e(x)] − e ‖₂²  +  β ‖ z_e(x) − sg[e] ‖₂².
 
-Term one — reconstruction — trains the decoder directly and the encoder through the straight-through copy; the embeddings get nothing from it. Term two — the codebook/VQ term — trains the embeddings only (encoder frozen by sg). Term three — commitment — trains the encoder only (codebook frozen by sg). And the KL term that would normally sit in the ELBO? It's log K, constant, so it's gone. Every part of the model has exactly one clean source of gradient. With a whole field of N latents (a 32×32 grid for an image, a long sequence for audio), reconstruction is over the whole field and I just average the codebook and commitment terms over the N positions.
+Term one, the negative data log-likelihood or a reconstruction surrogate such as MSE, trains the decoder directly and the encoder through the straight-through copy; the embeddings get nothing from it. Term two, the codebook/VQ term, trains the embeddings only because the encoder side is frozen by sg. Term three, the commitment term, trains the encoder only because the codebook side is frozen by sg. If I instead write the ELBO-style objective to maximize, the first sign flips back to +log p(x|z_q(x)); the auxiliary squared terms are still penalties. And the KL term that would normally sit in the ELBO? It is log K per latent position, constant, so it is gone from the gradients. With a whole field of N latents (a 32×32 grid for an image, a long sequence for audio), reconstruction is over the whole field and I average the codebook and commitment terms over positions, just as the reference implementation averages over tensor elements.
 
-Let me sanity-check the likelihood story, since I claimed this is still a VAE. The marginal is log p(x) = log Σ_k p(x|z_k) p(z_k). The decoder was only ever trained on z = z_q(x), the MAP code, so once it's converged it shouldn't put meaningful probability on x given any other z — the sum collapses onto the single MAP term, log p(x) ≈ log p(x|z_q(x)) p(z_q(x)). And since I'm dropping all but one nonnegative term out of a sum inside a log, Jensen gives log p(x) ≥ log p(x|z_q(x)) p(z_q(x)) — it's a genuine lower bound, so reporting it as one is honest.
+Let me sanity-check the likelihood story, since I claimed this is still a VAE. The marginal is log p(x) = log Σ_k p(x|z_k) p(z_k). The decoder is trained with z = z_q(x), the MAP code under the deterministic posterior, so once it has converged the intended approximation is that the sum is dominated by that code: log p(x) ≈ log p(x|z_q(x)) p(z_q(x)). Separately, because every summand is nonnegative, keeping only the z_q(x) summand gives an exact lower bound: log Σ_k p(x|z_k)p(z_k) ≥ log p(x|z_q(x))p(z_q(x)). The bound is just monotonicity of log over a partial sum.
 
 Now, there's a slicker way to handle the codebook than the squared-error term, and it's worth deriving because the squared-error version couples the dictionary update to whatever optimizer I'm using on the encoder. Go back to what term two is really doing: it's k-means. Fix the assignments for a moment; let {z_{i,1}, …, z_{i,n_i}} be the encoder outputs currently assigned to prototype e_i. The term is Σ_j ‖z_{i,j} − e_i‖², and minimizing over e_i has a closed form — set the derivative to zero, 2 Σ_j (e_i − z_{i,j}) = 0, so
 
@@ -110,7 +110,9 @@ class VectorQuantizer(nn.Module):
         dist = (flat.pow(2).sum(1, keepdim=True)
                 - 2 * flat @ self.embedding.weight.t()
                 + self.embedding.weight.pow(2).sum(1))
-        idx = dist.argmin(1)                      # the one-hot posterior, as indices
+        idx = dist.argmin(1)                      # one-hot posterior, as flat indices
+        encodings = F.one_hot(idx, self.K).to(flat.dtype)
+        indices = idx.view(z_e.shape[:-1])        # [B, H, W], matching Sonnet's shape
         z_q = self.embedding(idx).view(z_e.shape) # z_q(x) = e_k, snapped to nearest
 
         # codebook term: move e toward z_e (sg freezes the encoder so only e moves)
@@ -122,8 +124,11 @@ class VectorQuantizer(nn.Module):
         # straight-through: forward returns e_k, backward copies grad to z_e unchanged
         z_q = z_e + (z_q - z_e).detach()
 
+        avg_probs = encodings.mean(0)
+        perplexity = torch.exp(-(avg_probs * (avg_probs + 1e-10).log()).sum())
+
         z_q = z_q.permute(0, 3, 1, 2).contiguous()  # back to [B, D, H, W]
-        return z_q, vq_loss
+        return z_q, vq_loss, indices, perplexity
 ```
 
 And the EMA variant of the codebook update, replacing the codebook squared-error term with the online k-means mean, optimizer-independent and with Laplace-smoothed counts so rare codes don't die:
@@ -149,28 +154,32 @@ class VectorQuantizerEMA(nn.Module):
                 - 2 * flat @ self.embedding.t()
                 + self.embedding.pow(2).sum(1))
         idx = dist.argmin(1)
-        onehot = F.one_hot(idx, self.K).type(flat.dtype)   # assignments
+        onehot = F.one_hot(idx, self.K).to(flat.dtype)     # assignments
+        indices = idx.view(z_e.shape[:-1])
         z_q = self.embedding[idx].view(z_e.shape)
 
         if self.training:
-            # N_i <- gamma N_i + (1 - gamma) n_i  (counts per code)
-            n = onehot.sum(0)
-            self.cluster_size.mul_(self.decay).add_(n, alpha=1 - self.decay)
-            # m_i <- gamma m_i + (1 - gamma) sum of z_e assigned to code i
-            dw = onehot.t() @ flat
-            self.ema_w.mul_(self.decay).add_(dw, alpha=1 - self.decay)
-            # Laplace smoothing of the counts so unused codes don't blow up / die
-            N = self.cluster_size.sum()
-            cluster = ((self.cluster_size + self.eps)
-                       / (N + self.K * self.eps) * N)
-            # e_i = m_i / N_i
-            self.embedding.copy_(self.ema_w / cluster.unsqueeze(1))
+            with torch.no_grad():
+                # N_i <- gamma N_i + (1 - gamma) n_i  (counts per code)
+                n = onehot.sum(0)
+                self.cluster_size.mul_(self.decay).add_(n, alpha=1 - self.decay)
+                # m_i <- gamma m_i + (1 - gamma) sum of z_e assigned to code i
+                dw = onehot.t() @ flat.detach()
+                self.ema_w.mul_(self.decay).add_(dw, alpha=1 - self.decay)
+                # Laplace smoothing of the counts so unused codes don't blow up / die
+                N = self.cluster_size.sum()
+                cluster = ((self.cluster_size + self.eps)
+                           / (N + self.K * self.eps) * N)
+                # e_i = m_i / N_i
+                self.embedding.copy_(self.ema_w / cluster.unsqueeze(1))
 
         # only the commitment term remains in the loss; the codebook is EMA-updated
         commit_loss = self.beta * F.mse_loss(z_q.detach(), z_e)
         z_q = z_e + (z_q - z_e).detach()        # straight-through, as before
+        avg_probs = onehot.mean(0)
+        perplexity = torch.exp(-(avg_probs * (avg_probs + 1e-10).log()).sum())
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
-        return z_q, commit_loss
+        return z_q, commit_loss, indices, perplexity
 ```
 
 Dropping this into the autoencoder is just: encode to z_e, quantize, decode from z_q, and add the bottleneck's loss to the reconstruction loss.
@@ -183,18 +192,18 @@ class Model(nn.Module):
 
     def forward(self, x):
         z_e = self.encoder(x)
-        z_q, vq_loss = self.vq(z_e)
+        z_q, vq_loss, indices, perplexity = self.vq(z_e)
         x_rec = self.decoder(z_q)
-        return x_rec, vq_loss
+        return x_rec, vq_loss, indices, perplexity
 
 
 def train_step(model, x, optimizer):
     optimizer.zero_grad()
-    x_rec, vq_loss = model(x)
+    x_rec, vq_loss, _, _ = model(x)
     loss = F.mse_loss(x_rec, x) + vq_loss   # term 1 + (terms 2,3)
     loss.backward()                          # straight-through carries grad to encoder
     optimizer.step()
     return loss
 ```
 
-So the causal chain, end to end: I wanted discrete, useful latents that survive a strong decoder, and the single decision that buys both is a deterministic one-hot posterior with a fixed uniform prior — it pins the KL at the constant log K, which simultaneously removes the awkward discrete-KL gradient and removes the pressure that silences latents under a powerful decoder. Making that one-hot concrete is vector quantization: encode, snap to the nearest codebook vector, decode. The snap kills the encoder's reconstruction gradient, so I route it around the argmin with a straight-through copy — biased but low-variance, the property the score-function and Gumbel routes never delivered. That copy then starves the codebook of gradient, so the codebook gets its own k-means term (or, equivalently and optimizer-independently, an EMA of its assigned encoder outputs); and because the latent scale is unconstrained and the encoder can run away from its code, a commitment term pins the encoder to what it picked — the two stop-gradients cleanly splitting one gap into "dictionary moves" and "encoder commits." Finally, since the prior was held uniform for training, I fit an expressive autoregressive prior over the learned codes afterward to actually generate.
+So the causal chain, end to end: I wanted discrete, useful latents that survive a strong decoder, and the single decision that opens the path is a deterministic one-hot posterior with a fixed uniform prior during autoencoder training. It pins the KL at log K per latent position, removing the usual KL pressure that silences latents under a powerful decoder. Making that one-hot concrete is vector quantization: encode, snap to the nearest codebook vector, decode. The snap kills the encoder's reconstruction gradient, so I route it around the argmin with a straight-through copy -- biased but low-variance, the property the score-function and Gumbel routes never delivered cleanly. That copy then starves the codebook of gradient, so the codebook gets its own k-means term or, equivalently and optimizer-independently, an EMA of its assigned encoder outputs. Because the latent scale is unconstrained and the encoder can run away from its code, a commitment term pins the encoder to what it picked; the two stop-gradients split one gap into "dictionary moves" and "encoder commits." Finally, since the prior was held uniform for training, I fit an expressive autoregressive prior over the learned codes afterward to generate.

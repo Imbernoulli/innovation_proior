@@ -1,4 +1,4 @@
-# Context: learning single-index models with shallow networks (circa 2021-2022)
+# Context: single-index recovery with gradient-trained shallow models
 
 ## Research question
 
@@ -166,7 +166,7 @@ The natural yardsticks for this problem, all pre-existing.
 The method plugs into a fixed shallow-network training harness. The model is a two-layer ReLU
 MLP `Linear(d, W) -> ReLU -> Linear(W, 1)`; the data generator, the link functions, the
 evaluation, and the outer driver are all fixed. The learner only controls four callbacks:
-how to *initialize* the two layers (any in-place scheme; parameters may be frozen), how to build
+how to *initialize* the two layers, how to choose the parameters passed to the optimizer, how to build
 the *optimizer* over the trainable parameters, how to run one *training step* on a minibatch,
 and an optional *finalize* hook for a post-hoc re-fit. Nothing about how the direction is to be
 discovered or how the readout dictionary should be chosen is settled — that is exactly what is
@@ -221,5 +221,5 @@ def direction_estimate(net: TwoLayerMLP) -> torch.Tensor:
     return theta_hat / theta_hat.norm().clamp_min(1e-12)
 ```
 
-The empty `init_two_layer`, `make_optimizer`, and `finalize` slots are where the method's
-choices about which parameters move, which are held fixed, and how the readout is fit will go.
+The empty `init_two_layer`, `make_optimizer`, and `finalize` slots are where the learner's
+choices about initialization, optimizer scope, per-step updates, and any readout refit will go.

@@ -32,7 +32,7 @@ Now the shifted partition creates an annoying bookkeeping problem, and I have to
 
 Here's the way around it. Instead of padding, *cyclically shift* the whole feature map toward the top-left by `⌊M/2⌋` — `torch.roll` with negative shift on the two spatial axes — so the tokens that fell off the top and left wrap around to the bottom and right. After this roll, the regular `M×M` partition (the cheap one!) again tiles the map perfectly: I'm back to exactly the original number of windows, four not nine. The catch: a window near the bottom/right edge now contains a mix of tokens that are *not* actually neighbors in the image — some are the genuine bottom-right tokens, others are the wrapped-around top/left tokens, glued together only by the roll. If I let them attend freely, I'd be letting the bottom of the image attend to the top, which is nonsense — those regions aren't adjacent.
 
-So I need attention to respect the *original* region each token came from, even though the roll has interleaved them inside one window tensor. That's a masking job. Label every token by which of the original sub-regions it belongs to. The roll splits each spatial axis into three bands — the part that wasn't shifted, a strip of width `M - ⌊M/2⌋`, and a strip of width `⌊M/2⌋` that wrapped — so the 2-D map gets up to nine region labels (the cross product). Within a batched window, two tokens should attend to each other only if they carry the *same* region label. Build the mask exactly that way: for each window, form the pairwise table of (label of query) vs (label of key); where the labels match, bias 0; where they differ, bias `−∞` (in practice a large negative like `−100`). Add this bias to the attention logits *before* softmax. The `−∞` entries get exponentiated to zero, so each token's attention is confined to its own original region — no spurious top-attends-to-bottom. After the attention, roll the map back (`torch.roll` with the positive shift) to undo the cyclic shift and put every token back where it belongs. The payoff: the number of windows stayed at the regular count, so I kept the linear, batched efficiency, and the shifted-window cross-talk costs essentially nothing beyond a roll and an additive mask.
+So I need attention to respect the *original* region each token came from, even though the roll has interleaved them inside one window tensor. That's a masking job. Label every token by which of the original sub-regions it belongs to. For a shift `s = ⌊M/2⌋`, the implementation slices each spatial axis as `[0:-M]`, `[-M:-s]`, and `[-s:]`; on an `8×8` map with `M=4, s=2` that becomes bands of widths `4, 2, 2`, but the first band is generally `H-M`, not another fixed-width window strip. The 2-D cross product gives up to nine region labels. Within a batched window, two tokens should attend to each other only if they carry the *same* region label. Build the mask exactly that way: for each window, form the pairwise table of (label of query) vs (label of key); where the labels match, bias 0; where they differ, bias `−∞` (in practice a large negative like `−100`). Add this bias to the attention logits *before* softmax. The `−∞` entries get exponentiated to zero, so each token's attention is confined to its own original region — no spurious top-attends-to-bottom. After the attention, roll the map back (`torch.roll` with the positive shift) to undo the cyclic shift and put every token back where it belongs. The payoff: the number of windows stayed at the regular count, so I kept the linear, batched efficiency, and the shifted-window cross-talk costs essentially nothing beyond a roll and an additive mask.
 
 Let me make sure I can actually build that mask mechanically, because it's the fiddly part. I want a per-window `M²×M²` matrix of 0/`−∞`. Trick: make a single-channel image the size of the feature map, paint it with integer region ids using the band structure — slice the height into `[0:−M]`, `[−M:−⌊M/2⌋]`, `[−⌊M/2⌋:]` and the width the same way, and assign a running counter `0..8` to each of the nine `(h-band, w-band)` rectangles. Run the *same* window-partition on this id-image. Now for each window I have a length-`M²` vector of region ids; compute the pairwise difference `ids[:,None] - ids[None,:]`; entries equal to 0 mean same region (keep, bias 0), nonzero means different region (mask, bias `−100`). That's the attention mask, precomputed once per shifted block since it depends only on geometry, not on the data.
 
@@ -94,13 +94,14 @@ def window_reverse(windows, window_size, H, W):
 
 class WindowAttention(nn.Module):
     # full self-attention INSIDE one window, plus the learned relative position bias
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, attn_drop=0., proj_drop=0.):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None,
+                 attn_drop=0., proj_drop=0.):
         super().__init__()
         self.dim = dim
         self.window_size = window_size  # (M, M)
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = head_dim ** -0.5  # the 1/sqrt(d) so logits don't saturate softmax
+        self.scale = qk_scale or head_dim ** -0.5  # the 1/sqrt(d) so logits don't saturate softmax
 
         # the small bias table B-hat: (2M-1)*(2M-1) distinct offsets, one column per head
         self.relative_position_bias_table = nn.Parameter(
@@ -154,11 +155,11 @@ class WindowAttention(nn.Module):
         return x
 
 
-class SwinBlock(nn.Module):
+class ShiftedWindowBlock(nn.Module):
     # one Transformer block; even blocks use the regular grid (shift 0), odd blocks the shifted grid
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
-                 mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0., drop_path=0.,
-                 act_layer=nn.GELU, norm_layer=nn.LayerNorm):
+                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm):
         super().__init__()
         self.input_resolution = input_resolution
         self.window_size = window_size
@@ -170,7 +171,8 @@ class SwinBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(dim, to_2tuple(self.window_size), num_heads,
-                                    qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop)
+                                    qkv_bias=qkv_bias, qk_scale=qk_scale,
+                                    attn_drop=attn_drop, proj_drop=drop)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         self.mlp = Mlp(dim, int(dim * mlp_ratio), act_layer=act_layer, drop=drop)
@@ -197,6 +199,7 @@ class SwinBlock(nn.Module):
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
         shortcut = x
         x = self.norm1(x).view(B, H, W, C)
 
@@ -230,6 +233,8 @@ class PatchMerging(nn.Module):
     def forward(self, x):
         H, W = self.input_resolution
         B, L, C = x.shape
+        assert L == H * W, "input feature has wrong size"
+        assert H % 2 == 0 and W % 2 == 0, f"x size ({H}*{W}) are not even."
         x = x.view(B, H, W, C)
         x0 = x[:, 0::2, 0::2, :]
         x1 = x[:, 1::2, 0::2, :]
@@ -242,13 +247,14 @@ class PatchMerging(nn.Module):
 class BasicLayer(nn.Module):
     # one stage: `depth` blocks alternating regular/shifted, then an optional downsample
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
-                 mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0., drop_path=0.,
-                 norm_layer=nn.LayerNorm, downsample=None):
+                 mlp_ratio=4., qkv_bias=True, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., norm_layer=nn.LayerNorm, downsample=None):
         super().__init__()
         self.blocks = nn.ModuleList([
-            SwinBlock(dim, input_resolution, num_heads, window_size,
+            ShiftedWindowBlock(dim, input_resolution, num_heads, window_size,
                       shift_size=0 if (i % 2 == 0) else window_size // 2,  # even regular, odd shifted
-                      mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop, attn_drop=attn_drop,
+                      mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                      drop=drop, attn_drop=attn_drop,
                       drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
                       norm_layer=norm_layer)
             for i in range(depth)])
@@ -264,31 +270,48 @@ class BasicLayer(nn.Module):
 
 class PatchEmbed(nn.Module):
     # stem: split into 4x4 patches and linearly embed -> stride-4 token map
-    def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=nn.LayerNorm):
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
         img_size, patch_size = to_2tuple(img_size), to_2tuple(patch_size)
+        self.img_size = img_size
+        self.patch_size = patch_size
         self.patches_resolution = [img_size[0] // patch_size[0], img_size[1] // patch_size[1]]
+        self.num_patches = self.patches_resolution[0] * self.patches_resolution[1]
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
         self.norm = norm_layer(embed_dim) if norm_layer is not None else None
 
     def forward(self, x):
+        B, C, H, W = x.shape
+        assert H == self.img_size[0] and W == self.img_size[1], \
+            f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         x = self.proj(x).flatten(2).transpose(1, 2)
         if self.norm is not None:
             x = self.norm(x)
         return x
 
 
-class SwinTransformer(nn.Module):
+class WindowedPyramidTransformer(nn.Module):
     # stem -> 4 stages (C, 2C, 4C, 8C; strides 4,8,16,32) -> LN -> global-average-pool -> linear head
     def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24),
-                 window_size=7, mlp_ratio=4., qkv_bias=True, drop_rate=0.,
-                 attn_drop_rate=0., drop_path_rate=0.1, norm_layer=nn.LayerNorm):
+                 window_size=7, mlp_ratio=4., qkv_bias=True, qk_scale=None,
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
+                 norm_layer=nn.LayerNorm, ape=False, patch_norm=True):
         super().__init__()
+        self.num_classes = num_classes
         self.num_layers = len(depths)
+        self.embed_dim = embed_dim
+        self.ape = ape
+        self.patch_norm = patch_norm
         self.num_features = int(embed_dim * 2 ** (self.num_layers - 1))
-        self.patch_embed = PatchEmbed(img_size, patch_size, in_chans, embed_dim, norm_layer)
+        self.patch_embed = PatchEmbed(
+            img_size, patch_size, in_chans, embed_dim,
+            norm_layer=norm_layer if self.patch_norm else None)
+        num_patches = self.patch_embed.num_patches
         res = self.patch_embed.patches_resolution
+        if self.ape:
+            self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
+            trunc_normal_(self.absolute_pos_embed, std=.02)
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # drop-path grows w/ depth
@@ -298,20 +321,46 @@ class SwinTransformer(nn.Module):
                 dim=int(embed_dim * 2 ** i),
                 input_resolution=(res[0] // 2 ** i, res[1] // 2 ** i),
                 depth=depths[i], num_heads=num_heads[i], window_size=window_size,
-                mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, drop=drop_rate, attn_drop=attn_drop_rate,
+                mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate,
                 drop_path=dpr[sum(depths[:i]):sum(depths[:i + 1])], norm_layer=norm_layer,
                 downsample=PatchMerging if i < self.num_layers - 1 else None))
 
         self.norm = norm_layer(self.num_features)
         self.avgpool = nn.AdaptiveAvgPool1d(1)
         self.head = nn.Linear(self.num_features, num_classes) if num_classes > 0 else nn.Identity()
+        self.apply(self._init_weights)
 
-    def forward(self, x):
-        x = self.pos_drop(self.patch_embed(x))
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+
+    @torch.jit.ignore
+    def no_weight_decay(self):
+        return {"absolute_pos_embed"}
+
+    @torch.jit.ignore
+    def no_weight_decay_keywords(self):
+        return {"relative_position_bias_table"}
+
+    def forward_features(self, x):
+        x = self.patch_embed(x)
+        if self.ape:
+            x = x + self.absolute_pos_embed
+        x = self.pos_drop(x)
         for layer in self.layers:
             x = layer(x)
         x = self.norm(x)
         x = self.avgpool(x.transpose(1, 2)).flatten(1)   # global average pool, no class token
+        return x
+
+    def forward(self, x):
+        x = self.forward_features(x)
         return self.head(x)
 ```
 

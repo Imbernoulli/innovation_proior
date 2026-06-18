@@ -95,7 +95,7 @@ discounted objective under potential-based reward transformations.
 **The actor-critic precedent and its known limitation.** Actor-critic methods
 (Konda & Tsitsiklis 2003; Hafner & Riedmiller 2011) replace the empirical return
 in the gradient by a learned value function, lowering variance but introducing
-bias. The diagnostic fact that motivates everything below is the
+bias. The diagnostic fact that the missing estimator must address is the
 **bias/variance asymmetry along the spectrum of estimators**: a one-step
 bootstrapped estimate $\delta_t$ has low variance but is heavily biased whenever
 the value function is imperfect (which it always is for a neural net being
@@ -188,9 +188,9 @@ parameters and to compare against a state-independent (time-dependent) baseline.
 The primitives that already exist: a simulator with a step function, an
 automatic-differentiation library for the policy and value networks, a
 trust-region / natural-gradient optimizer driven by conjugate gradient with
-matrix–vector products, and a batch rollout loop. The contribution will be the
+matrix–vector products, and a batch rollout loop. The missing piece is the
 estimator that turns rewards and value predictions into the per-timestep
-multiplier $\Psi_t$ in the policy gradient — that slot is left empty here.
+multiplier $\Psi_t$ in the policy gradient.
 
 ```python
 import numpy as np
@@ -224,8 +224,7 @@ def estimate_targets(rewards, values, episode_boundaries, **knobs):
     """Turn a batch of rewards and value predictions into:
        - the per-timestep multiplier Psi_t fed to the policy gradient, and
        - regression targets for the value function.
-    This per-timestep credit signal is the whole contribution; everything
-    else above already exists.
+    Everything else above already exists; this is the unresolved design slot.
     """
     # TODO: design Psi_t to trade off bias against variance of the gradient.
     pass

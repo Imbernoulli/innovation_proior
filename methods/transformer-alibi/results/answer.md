@@ -6,8 +6,8 @@ A decoder-only transformer LM's cost is dominated by the training input length `
 is `O(L^2)`). Trained at `L` with the usual added position embeddings, it fails to
 **extrapolate**: scored at `L_valid > L` its perplexity improves for only a few dozen extra
 tokens and then degrades, because the position signal past `L` is out of distribution. Goal:
-train short and cheap, run long, and keep perplexity — with no extra runtime, memory, or
-parameters over the cheapest existing position method, and ideally no learned parameters.
+train short and cheap, run long, and keep perplexity — with no extra runtime or parameters
+over the cheapest existing position method, and only negligible auxiliary mask memory.
 
 ## Key idea
 
@@ -16,7 +16,7 @@ Use **no position embeddings at all**. After the query–key dot product (and af
 **linear in the query–key distance**, with a fixed per-head slope:
 
 ```
-softmax( q_i K^T  +  m · [-(i-1), ..., -2, -1, 0] )
+softmax( (q_i K^T) / sqrt(d_k)  +  m · [-(i-1), ..., -2, -1, 0] )
 ```
 
 The nearest key (distance 0) gets penalty 0; a key `d` steps back gets `-m·d`. The slope
@@ -58,7 +58,7 @@ The bias is **not** scaled by `sqrt(d_k)`.
 - **What the gains are.** Under stride-1 sliding-window inference (which removes the early token
   curse), ALiBi's perplexity stays **flat** as `L_valid` grows (sinusoidal explodes). So the
   nonoverlapping-inference gains from longer inputs come from reducing the early token curse,
-  not (yet) from attending beyond `L_train` — but ALiBi matches/beats alternatives at
+  not from demonstrated use of context beyond `L_train` — but ALiBi matches/beats alternatives at
   `L_valid = L_train` while being simpler and parameter-free, and beats the cheap alternative at
   `L_valid > L_train`.
 
@@ -79,7 +79,7 @@ def alibi_slopes(n_heads):
     if math.log2(n_heads).is_integer():
         return torch.tensor(pow2(n_heads))
     closest = 2 ** math.floor(math.log2(n_heads))
-    extra = pow2(2 * closest)[0::2][: n_heads - closest]    # interleave from next pow-of-2 set
+    extra = pow2(2 * closest)[0::2][: n_heads - closest]    # every-other extra from next set
     return torch.tensor(pow2(closest) + extra)
 
 

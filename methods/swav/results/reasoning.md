@@ -31,13 +31,13 @@ But wait. I've removed every explicit negative. What stops the collapse now? If 
 
 Stare at what collapse *is*: all images getting the same code, i.e. all the assignment mass piling onto one prototype. The clean way to forbid that is to *forbid the pile-up by construction*: require that within a batch the codes spread evenly across the prototypes — each prototype must receive roughly the same total share of the batch. If every prototype is forced to claim its fair fraction `B/K` of the batch's assignment mass, then "everything to one code" is simply not in the feasible set. That's an **equipartition** constraint, and it replaces the role negatives were playing — instead of pushing images apart pairwise, I globally insist the batch be partitioned evenly.
 
-Let me make that precise. For a batch with embedding matrix `Z = [z_1, ..., z_B]` (each column a `D`-vector on the sphere) and prototype matrix `C = [c_1, ..., c_K]`, I want a code matrix `Q ∈ R^{K×B}`, column `q_n` being image `n`'s soft assignment over the `K` prototypes. I want `Q` to put mass where similarity `C^T Z` is high — maximize `Tr(Q^T C^T Z) = Σ_n q_n^T (C^T z_n)` — subject to the marginals: every column of `Q` is a distribution over prototypes summing to `1/B` (so the whole `Q` sums to 1, a joint distribution), and every *row* sums to `1/K` so each prototype gets equal total mass. That is the transportation polytope
+Let me make that precise. For a batch with embedding matrix `Z = [z_1, ..., z_B]` (each column a `D`-vector on the sphere) and prototype matrix `C = [c_1, ..., c_K]`, I want a code matrix `Q ∈ R^{K×B}`, column `q_n` being image `n`'s soft assignment over the `K` prototypes. In the optimal-transport solve I represent `Q` as a joint distribution: every column sums to `1/B`, every row sums to `1/K`, and the whole matrix sums to one. After multiplying this solution by `B`, each column becomes an ordinary per-image code summing to one and each prototype receives `B/K` total assignment weight. I want that joint `Q` to put mass where similarity `C^T Z` is high — maximize `Tr(Q^T C^T Z) = Σ_n q_n^T (C^T z_n)` — subject to those marginals. That is the transportation polytope
 
     Q = { Q ∈ R_+^{K×B} :  Q 1_B = (1/K) 1_K ,  Q^T 1_K = (1/B) 1_B }.
 
 A pure linear program over this polytope would give a hard, vertex assignment — a permutation-like matching — which is brittle and, as I'll see, too aggressive online. So I soften it: add an entropy term and maximize
 
-    max_{Q ∈ Q}  Tr(Q^T C^T Z) + ε H(Q),   H(Q) = -Σ_{ij} Q_{ij} log Q_{ij}.
+    max_{Q ∈ 𝒬}  Tr(Q^T C^T Z) + ε H(Q),   H(Q) = -Σ_{ij} Q_{ij} log Q_{ij}.
 
 The `ε H(Q)` does two things. It makes the problem strictly concave so the solution is unique and smooth, and it gives me a closed-form structure (coming next) that I can iterate cheaply. But I have to be careful with `ε`: it pulls `Q` toward the *maximum-entropy* point of the polytope, which is the uniform matrix where every image is assigned equally to every prototype — that is itself a collapse, just a different one. So `ε` has to stay *small*; a large `ε` washes out the similarity term and hands me back the uniform-everything solution. Small `ε`, strong adherence to the data, with just enough smoothing to be stable.
 
@@ -54,13 +54,13 @@ The `α_i` part depends only on the row, the `β_j` part only on the column. Fol
 
     Q^* = Diag(u) exp(C^T Z / ε) Diag(v).
 
-So the optimal soft code is just the exponentiated similarity matrix `exp(C^T Z/ε)` rescaled by one factor per row and one per column. And `u, v` are exactly the scalings that make the row marginals hit `1/K` and the column marginals hit `1/B`. That's a matrix-balancing problem, and it has a dead-simple iterative solution: fix the kernel `K_mat = exp(C^T Z/ε)`, then alternate — rescale the rows so each sums to `1/K`, then rescale the columns so each sums to `1/B`, repeat. Each step is `u ← r ⊘ (K_mat v)`, `v ← c ⊘ (K_mat^T u)` with `r = 1_K/K`, `c = 1_B/B`. This is Sinkhorn–Knopp. It converges geometrically; I find about **3** iterations already enough — fewer (one) and the marginals aren't enforced and the loss won't converge; many more barely changes anything and, oddly, *slightly hurts*, which is a hint I'll come back to. And it's all matrix multiplies, trivial on a GPU, and across machines I only need to share the row/column sums, not the whole feature matrix — so it distributes far more cheaply than gathering everyone's features for pairwise negatives.
+So the optimal soft code is just the exponentiated similarity matrix `exp(C^T Z/ε)` rescaled by one factor per row and one per column. And `u, v` are exactly the scalings that make the row marginals hit `1/K` and the column marginals hit `1/B`. That's a matrix-balancing problem, and it has a dead-simple iterative solution: fix the kernel `K_mat = exp(C^T Z/ε)`, then alternate — rescale the rows so each sums to `1/K`, then rescale the columns so each sums to `1/B`, repeat. In distributed training the row sums and total sum are all-reduced across workers, and after the normalized OT solve the implementation multiplies by the global `B` so each local returned code column sums to one. This is Sinkhorn–Knopp. It converges geometrically; I find about **3** iterations already enough — fewer (one) and the marginals aren't enforced and the loss won't converge; many more barely changes anything and, oddly, *slightly hurts*, which is a hint I'll come back to. And it's all matrix multiplies, trivial on a GPU, and across machines I only need to share normalization statistics, not the whole feature matrix — so it distributes far more cheaply than gathering everyone's features for pairwise negatives.
 
-Two subtleties before I trust this. First, hard versus soft codes. SeLa, the offline ancestor that first cast this assignment as optimal transport, *rounds* `Q^*` to a hard assignment. When I tried the analog online — round to discrete codes — it converged faster but to a clearly worse model; the soft `Q^*` wins. The reason lines up with the Sinkhorn-iterations observation: rounding is an extremely aggressive optimization step, far sharper than a gradient update, and online (where the codes are recomputed every batch on a moving network) over-committing to a hard code early locks in mistakes. The soft, lightly-smoothed code is gentler and tracks the slowly-improving features better. So I keep `Q^*` soft, with small `ε` and just 3 Sinkhorn steps — exactly enough structure, not enough to over-commit.
+Two subtleties before I trust this. First, hard versus soft codes. SeLa, the offline ancestor that first casts this assignment as optimal transport, *rounds* `Q^*` to a hard assignment. If I take the same online analog and round to discrete codes, it converges faster but lands at a clearly worse model; the soft `Q^*` wins. The reason lines up with the Sinkhorn-iterations observation: rounding is an extremely aggressive optimization step, far sharper than a gradient update, and online (where the codes are recomputed every batch on a moving network) over-committing to a hard code early locks in mistakes. The soft, lightly-smoothed code is gentler and tracks the slowly-improving features better. So I keep `Q^*` soft, with small `ε` and just 3 Sinkhorn steps — exactly enough structure, not enough to over-commit.
 
 Second, and this is the one that almost slipped past me: the codes are *targets*. If gradients flow back through `q` into the prototypes and the encoder, the model can cheat by warping the codes to make the loss small rather than improving the features. So I compute `Q^*` under stop-gradient — it is the supervision signal for this batch — and let gradients flow only through the *prediction* side, the softmax `p`. The encoder and prototypes learn to predict a code they didn't get to tamper with.
 
-Let me also sanity-check why this won't collapse the way the unconstrained version would. The equipartition constraint forces, every batch, that each prototype claims an equal `B/K` share — so "all images → one code" is infeasible, and "all images → uniform over all codes" is pushed away by keeping `ε` small. The contrast that negatives used to provide is now enforced as a constraint on the assignment, not as pairwise repulsion. And here's a satisfying check on whether the prototypes are behaving like semantic class centroids or just like contrast anchors: vary their number over an order of magnitude — three thousand, thirty thousand, a hundred thousand — and the features barely move. Even *fixing* the prototypes at random and never training them works almost as well. If they were class centroids, their number and their learning would matter a lot; that they don't tells me their real job is to be a stable reference frame against which views are made consistent, not to discover the "true" categories. I'll still learn them (a small gain) and pick a few thousand, but I now understand they're anchors, not classes.
+Let me also sanity-check why this won't collapse the way the unconstrained version would. The equipartition constraint forces, every batch, that each prototype claims an equal `1/K` share of normalized mass, or `B/K` assignment weight after the code is rescaled — so "all images → one code" is infeasible, and "all images → uniform over all codes" is pushed away by keeping `ε` small. The contrast that negatives used to provide is now enforced as a constraint on the assignment, not as pairwise repulsion. And here's a satisfying check on whether the prototypes are behaving like semantic class centroids or just like contrast anchors: vary their number over an order of magnitude — three thousand, thirty thousand, a hundred thousand — and the features barely move. Even *fixing* the prototypes at random and never training them works almost as well. If they were class centroids, their number and their learning would matter a lot; that they don't tells me their real job is to be a stable reference frame against which views are made consistent, not to discover the "true" categories. I'll still learn them (a small gain) and pick a few thousand, but I now understand they're anchors, not classes.
 
 One more practical hole. The equipartition only makes sense if the batch is at least as big as the number of prototypes I'm spreading across — I need `B` comparable to `K` to partition `B` images into `K` parts at all. With a small batch (256) and a few thousand prototypes, `B ≪ K` and the constraint is degenerate. Contrastive methods hit the same wall and answered it with a memory bank or a 65k queue. I can answer it far more cheaply: since the codes only need *enough features to balance the assignment*, I keep a small rolling queue of recent embeddings — about three thousand, the same order as `K` — and prepend them to `Z` *only for the Sinkhorn assignment step*. I still compute the loss on the current batch's codes alone. Three thousand stored vectors is fifteen batches of 256, versus MoCo's sixty-five thousand from two hundred and fifty batches — a tiny tail, no momentum encoder, no second network. (I'll also wait a few epochs before switching the queue on, because in the very first epochs the network changes so fast that stale queued features would just confuse the assignment.)
 
@@ -72,14 +72,25 @@ But which views produce codes? My first instinct is symmetry — let every view 
 
 There's a second reason to mix sizes rather than just shrink everything: training purely on downsized crops biases the features (a train/test resolution mismatch), so I keep two full-resolution crops in the mix and only *add* the small ones. Simple, and it doesn't increase memory the way more big crops would.
 
-Let me assemble the loop and make sure every piece traces back. Per batch: augment each image into `2 + V` views; forward them through the ConvNet, a 2-layer MLP projection head, L2-normalize to get embeddings `z`; the prototype layer gives scores `z^T C`. For each of the two full-res crops, under no-grad, run Sinkhorn on its scores (with the queue prepended if batches are small) to get the soft code `q`. Then for every *other* view, take its softmax-over-prototypes prediction `p` at temperature `τ` and accumulate the cross-entropy `-Σ_k q^(k) log p^(k)`. Backprop through the predictions only (codes are detached), SGD-update the encoder and prototypes, and renormalize the prototype columns to the unit sphere after the step. A couple of stabilizers fall out of the structure: freeze the prototypes for the first epoch so the assignment has something stable to balance against while the encoder is still random; and since I'm training with very large batches for throughput, use LARS with a warmup-then-cosine learning-rate schedule.
+Let me assemble the loop and make sure every piece traces back. Per batch: augment each image into `2 + V` views; forward them through the ConvNet, a 2-layer MLP projection head, L2-normalize to get embeddings `z`; the prototype layer gives scores `z^T C`. For each of the two full-res crops, under no-grad, run Sinkhorn on its scores (with the queue prepended if batches are small) to get the soft code `q`. Then for every *other* view, take its softmax-over-prototypes prediction `p` at temperature `τ` and accumulate the cross-entropy `-Σ_k q^(k) log p^(k)`. Backprop through the predictions only (codes are detached), SGD-update the encoder and prototypes, and normalize the prototype vectors before they are used on the next iteration. A couple of stabilizers fall out of the structure: freeze the prototypes for the first epoch so the assignment has something stable to balance against while the encoder is still random; and since I'm training with very large batches for throughput, use LARS with a warmup-then-cosine learning-rate schedule.
 
 Causal chain, end to end: contrastive learning works but only because of many negatives, and negatives are the expensive part → replace per-instance negatives with a small fixed set of prototype anchors and contrast *cluster assignments* instead of features → keep it online by computing codes from the current batch and making the objective a *swapped* prediction (predict one view's code from the other's embedding) rather than regressing offline targets → that removes the only thing preventing collapse, so re-introduce anti-collapse *structurally* as an equipartition constraint on the batch assignment → solve that as an entropy-regularized optimal-transport problem whose optimum is `Diag(u) exp(C^T Z/ε) Diag(v)`, computed by a few Sinkhorn row/column normalizations, kept soft and detached, with small `ε` → patch small batches with a tiny feature queue instead of a 65k bank → and amplify the view signal cheaply with multi-crop, computing codes only from the full-resolution crops. Now the code.
 
 ```python
-import math
 import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
+import torch.distributed as dist
+
+def _dist_ready():
+    return dist.is_available() and dist.is_initialized()
+
+def _all_reduce(x):
+    if _dist_ready():
+        dist.all_reduce(x)
+    return x
+
+def _world_size():
+    return dist.get_world_size() if _dist_ready() else 1
 
 # ---------- model: backbone + projection head + prototypes ----------
 class Encoder(nn.Module):
@@ -108,28 +119,37 @@ class Encoder(nn.Module):
 
 # ---------- the codes: entropy-regularized OT with equipartition, via Sinkhorn ----------
 @torch.no_grad()
-def sinkhorn(scores, epsilon=0.05, n_iters=3):
-    # scores: B x K of z^T C for the full-res crops; Q = exp(scores/eps)^T is K x B
-    Q = torch.exp(scores / epsilon).t()
-    Q /= Q.sum()                                             # make Q a joint distribution (sums to 1)
-    K, B = Q.shape
-    r, c = torch.ones(K) / K, torch.ones(B) / B              # target marginals: rows 1/K, cols 1/B
-    for _ in range(n_iters):
-        Q *= (r / Q.sum(dim=1)).unsqueeze(1)                 # rescale rows  -> each prototype gets 1/K
-        Q *= (c / Q.sum(dim=0)).unsqueeze(0)                 # rescale cols  -> each image gets 1/B
-    Q /= Q.sum(dim=0, keepdim=True)                          # columns sum to 1: Q is a soft assignment
-    return Q.t()                                             # B x K soft codes (kept soft, not rounded)
+def distributed_sinkhorn(out, args):
+    # out: local-B x K scores for one full-resolution crop, plus optional queued scores
+    Q = torch.exp(out / args.epsilon).t()                    # K x local-B, matching paper notation
+    B = Q.shape[1] * _world_size()                           # global number of samples being assigned
+    K = Q.shape[0]
+
+    Q /= _all_reduce(torch.sum(Q))                           # normalized joint distribution
+    for _ in range(args.sinkhorn_iterations):
+        sum_of_rows = _all_reduce(torch.sum(Q, dim=1, keepdim=True))
+        Q /= sum_of_rows
+        Q /= K                                               # row marginal: 1/K, globally
+
+        Q /= torch.sum(Q, dim=0, keepdim=True)
+        Q /= B                                               # column marginal: 1/B
+
+    Q *= B                                                   # columns sum to 1, i.e. usable soft codes
+    return Q.t()
 
 # ---------- training: swapped prediction across (multi-crop) views ----------
-def train(loader, model, optimizer, lr_schedule, args, queue=None):
+def train(loader, model, optimizer, epoch, lr_schedule, args, queue=None):
     model.train()
     use_queue = False
+    n_crops = int(np.sum(args.nmb_crops))
+    prototypes = model.module.prototypes if hasattr(model, "module") else model.prototypes
     for it, views in enumerate(loader):                      # views: list of [2 full-res] + [V small] crop-batches
-        for g in optimizer.param_groups: g["lr"] = lr_schedule[it]
+        iteration = epoch * len(loader) + it
+        for g in optimizer.param_groups: g["lr"] = lr_schedule[iteration]
 
         with torch.no_grad():                                # keep prototypes on the unit sphere
-            w = F.normalize(model.prototypes.weight.data.clone(), dim=1, p=2)
-            model.prototypes.weight.copy_(w)
+            w = F.normalize(prototypes.weight.data.clone(), dim=1, p=2)
+            prototypes.weight.copy_(w)
 
         embedding, output = model(views)                     # output: (sum_crops * B) x K scores
         embedding = embedding.detach()
@@ -142,20 +162,20 @@ def train(loader, model, optimizer, lr_schedule, args, queue=None):
                 if queue is not None:                        # small-batch patch: enlarge Z for the assignment only
                     if use_queue or not torch.all(queue[i, -1] == 0):
                         use_queue = True
-                        out = torch.cat((queue[i] @ model.prototypes.weight.t(), out))
+                        out = torch.cat((queue[i] @ prototypes.weight.t(), out))
                     queue[i, bs:] = queue[i, :-bs].clone()
                     queue[i, :bs] = embedding[crop_id * bs:(crop_id + 1) * bs]
-                q = sinkhorn(out, args.epsilon, args.sinkhorn_iters)[-bs:]   # detached target code
+                q = distributed_sinkhorn(out, args)[-bs:]      # detached target code
 
             subloss = 0                                      # predict q from every OTHER view's embedding
-            for v in np.delete(np.arange(args.n_crops), crop_id):
-                p = output[bs * v: bs * (v + 1)] / args.temperature
-                subloss -= torch.mean(torch.sum(q * F.log_softmax(p, dim=1), dim=1))
-            loss += subloss / (args.n_crops - 1)
+            for v in np.delete(np.arange(n_crops), crop_id):
+                x = output[bs * v: bs * (v + 1)] / args.temperature
+                subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
+            loss += subloss / (n_crops - 1)
         loss /= len(args.crops_for_assign)
 
         optimizer.zero_grad(); loss.backward()
-        if it < args.freeze_prototypes_iters:                # freeze prototypes early for a stable assignment
+        if iteration < args.freeze_prototypes_niters:         # freeze prototypes early for a stable assignment
             for n, prm in model.named_parameters():
                 if "prototypes" in n: prm.grad = None
         optimizer.step()

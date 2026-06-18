@@ -30,7 +30,7 @@ forward, IMS predictions have relatively low variance — but each step is fed i
 roll-out lengthens, which is precisely the failure mode of long horizons. *Direct multi-step*
 (DMS) forecasting (Chevillon 2007) instead optimizes the full `T`-step objective in one shot: a
 single map from the length-`L` history to the length-`T` horizon. DMS has no recursion and
-therefore no error accumulation, and is preferable when `T` is large or a clean unbiased
+therefore no recursive error accumulation, and is preferable when `T` is large or a clean unbiased
 single-step model is hard to obtain — i.e. exactly the long-term regime. This IMS/DMS
 distinction is a property of the *training strategy*, orthogonal to the architecture that
 implements the map.
@@ -39,7 +39,7 @@ implements the map.
 split a series into a slowly varying *trend-cyclical* component and a *seasonal / remainder*
 component (the additive model `y = trend + seasonal + remainder`), because each component is
 individually more regular and therefore more predictable than their sum (Cleveland et al.'s STL,
-1990; Hamilton). The trend-cycle is commonly estimated by a moving average of the raw series;
+1990). The trend-cycle is commonly estimated by a moving average of the raw series;
 the remainder is what is left after subtracting it. Autoformer (Xu et al., NeurIPS 2021) folded
 this into a deep network as a `series_decomp` block — a moving-average kernel extracts the
 trend, the residual is taken as the seasonal part, and the block is inserted between neural
@@ -50,29 +50,27 @@ primitive in this literature.
 **The dominant architecture and a property of it that matters here.** Self-attention
 (Vaswani et al., 2017) is the engine behind the recent surge of forecasting models. Its core
 operation computes pairwise affinities between all elements of a sequence and forms each output
-as an affinity-weighted sum of value vectors. A structural fact about that operation: it is
-*permutation-invariant* — permute the input tokens and the set of outputs is permuted
-identically, with no other change, because the affinities depend only on the content of pairs,
-not on their positions. Order information must therefore be injected separately, via positional
-encodings added to the token embeddings. For language and vision this is benign: the tokens
+as an affinity-weighted sum of value vectors. A structural fact about that operation: before any
+positional signal is added, it is permutation-equivariant — permute the input tokens and the
+output tokens are permuted in the same way, with no other change, because the affinities depend
+only on the content of pairs, not on their positions. Order information must therefore be injected
+separately, via positional encodings added to the token embeddings. For language and vision this is benign: the tokens
 carry rich semantic content, and the meaning of a sentence is largely preserved even if some
 words are reordered, so attention's job is to find content correlations and a little positional
 hinting suffices. Numerical time series are different in kind: an individual value like a
 temperature or an electricity reading carries almost no standalone semantic content, and the
 information lives almost entirely in the *order and spacing* of the points. On such data,
-positional encodings restore order only partially, and any operation built on top of a
-permutation-invariant core risks discarding the very signal that matters.
+positional encodings restore order only partially, and any operation built on top of an
+order-blind core risks discarding the very signal that matters.
 
-**Diagnostic findings about the existing systems.** Two empirical observations about the
-prevailing Transformer forecasters set up the problem. First, when the look-back window `L` is
-varied, their forecasting error does not reliably decrease as `L` grows; it fluctuates or even
-worsens with more history. A model that genuinely extracts temporal relations from a longer
-context ought to do *better* with more of it, so this is evidence that these models are not
-effectively using long histories. Second, several of the benchmark datasets exhibit a clear
-*distribution shift* between the training and test portions — the overall level of the series
-drifts over time (pronounced on the ETTh1/ETTh2 hourly-transformer-temperature datasets, for
-instance) — which any forecaster that regresses absolute values will be penalized by. Both are
-facts about the data and the existing models, observable before any new method exists.
+**Diagnostics that a fair comparison must expose.** Two checks are especially relevant before
+crediting a complex sequence model. First, vary the look-back window `L`: if a model really
+extracts temporal relations from longer context, more history should help rather than merely add
+noise. Second, inspect the chronological train/test split for level shifts: on datasets such as the
+hourly electricity-transformer-temperature series, the overall level can drift over time, and a
+forecaster that regresses absolute values needs a causal way to re-anchor to the current level. The
+method slot below should be judged under these diagnostics, not only by headline benchmark
+tables.
 
 ## Baselines
 
@@ -106,8 +104,8 @@ a pyramidal attention with `O(L)` complexity to capture multi-scale dependencies
 attends in the frequency domain (Fourier/wavelet-enhanced blocks) with `O(L)` complexity and a
 mixture-of-experts decomposition with multiple kernel sizes. Both DMS. **Gap:** the same
 pattern — ever more intricate attention variants, each reporting a new best, each leaving open
-whether the intricate part is what is responsible, and each exhibiting the look-back-window
-insensitivity noted above (more history does not buy them accuracy).
+whether the intricate part is what is responsible. The look-back-window and order-sensitivity
+diagnostics above are still unresolved for this whole family.
 
 A common thread across these: the *non-Transformer* baselines they were compared against in
 their own evaluations were IMS forecasters (autoregressive statistical and RNN models), which
@@ -124,17 +122,17 @@ The natural yardstick already in use for long-term multivariate forecasting:
   Electricity (321 clients' hourly consumption); broader studies in this area also use ETTm,
   Traffic, Exchange-Rate, and ILI. These datasets and their public splits predate any new
   method.
-- **Task.** Multivariate-in / multivariate-out (`features = M`): all channels are predicted. A
-  fixed protocol of look-back `L = 96`, label length `48`, and horizon `T = 96`; the standard
-  long-term study additionally sweeps horizons (96 / 192 / 336 / 720) and look-back windows.
+- **Task.** Multivariate-in / multivariate-out (`features = M`): all channels are predicted. The
+  standard long-term study sweeps horizons (96 / 192 / 336 / 720 for most datasets, shorter
+  horizons for weekly ILI) and look-back windows, so both accuracy and use of additional history
+  can be inspected.
 - **Preprocessing.** Channel-wise standardization (zero-mean, unit-variance using training-set
   statistics); chronological train/validation/test split; sliding-window sampling of
   (look-back, horizon) pairs.
 - **Metrics.** Mean squared error (MSE) and mean absolute error (MAE) computed over all channels
   and all horizon steps on the standardized series; lower is better.
-- **Protocol.** Trained by direct multi-step regression with the MSE loss, Adam optimizer
-  (learning rate `1e-4`), batch size 32, up to 10 epochs with early stopping (patience 3), under
-  a unified data pipeline so that architectural choices can be compared head-to-head.
+- **Protocol.** Trained by direct multi-step regression with the MSE loss under a unified data
+  pipeline so that architectural choices can be compared head-to-head.
 
 ## Code framework
 
@@ -162,13 +160,12 @@ class Model(nn.Module):
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
         self.channels = configs.enc_in
-        # TODO: the forecasting architecture we will design — the map
-        #       [batch, seq_len, C] -> [batch, pred_len, C].
+        # Architecture slot: the map [batch, seq_len, C] -> [batch, pred_len, C].
         pass
 
     def forward(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None, mask=None):
         # x_enc: [batch, seq_len, C]
-        # TODO: produce the horizon and return [batch, pred_len, C]
+        # Architecture slot: produce the horizon and return [batch, pred_len, C].
         pass
 
 

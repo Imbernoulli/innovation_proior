@@ -2,7 +2,7 @@ Let me start from the thing that keeps biting me, which is the loss, not the arc
 
 The obvious default loss is per-pixel Euclidean distance: train `G` to minimize `E_{x,y}[‖y − G(x)‖_2^2]`. I keep reaching for it and it keeps producing mush. Let me be precise about why, because the reason is going to drive everything. For a given input `x`, there are usually many plausible outputs — many photos consistent with one label map, many colorings consistent with one grayscale image. Call that conditional distribution `p(y|x)`. What does squared error actually ask `G` to output? The minimizer of `E_{y~p(y|x)}[‖y − ŷ‖_2^2]` over `ŷ` is the conditional mean `ŷ = E[y|x]`. So the net, doing its job perfectly, outputs the *average* of all the plausible sharp images. Average a red car and a blue car pixelwise and you get a brownish smear; average ten edge placements and you get a soft gray band where the edge should be. The blur isn't a bug in the optimizer — it's the L2-optimal answer to an ill-posed question. And there's a second problem hiding underneath: per-pixel loss treats every output pixel as independent given `x`. It has no way to say "these pixels together don't form a coherent boundary." It's an unstructured loss.
 
-Could I just swap L2 for L1, `E[‖y − G(x)‖_1]`? It helps a little and it's worth understanding why. The minimizer of expected L1 error is the conditional *median*, not the mean. A median picks a representative single value rather than blending; under a bimodal `p(y|x)` the median sits at one of the modes (or between, but it doesn't smear the way the mean does), and it's robust to outliers. So L1 blurs *less* than L2. But "less blurry" is not "sharp." The median of many plausible high-frequency patterns is still soft — L1 still can't hallucinate a crisp edge it isn't sure the exact location of, and it'll still wash out color when several colors are plausible (it'll pick the median color, which trends gray). So L1 is a better default but not the answer.
+Could I just swap L2 for L1, `E[‖y − G(x)‖_1]`? It helps a little and it's worth understanding why. With a separable per-pixel absolute loss, a minimizer is a conditional *median*, not the mean. That does not magically pick a true semantic mode — with several plausible colors or edge placements it can still land on a central value — but it is less pulled by outlying alternatives than the squared-error mean. So L1 blurs *less* than L2. But "less blurry" is not "sharp." The median of many plausible high-frequency patterns can still be soft, L1 still can't hallucinate a crisp edge it isn't sure the exact location of, and it'll still wash out color when several colors are plausible. So L1 is a better default but not the answer.
 
 People have built structured losses by hand — CRFs, SSIM, feature-matching in a fixed network, Gram-matrix statistics for texture. Each one bakes in a particular idea of what structure to preserve, and each is task-specific expert work. That's exactly the hand-engineering I'm trying to escape. I don't want to pick the structure; I want the structure to be learned from the data.
 
@@ -25,7 +25,7 @@ L_cGAN(G, D) = E_{x,y}[ log D(x, y) ]
 
 `G` minimizes this against a `D` that maximizes it: `G* = arg min_G max_D L_cGAN(G, D)`. The single change from the plain GAN — feeding `x` into `D` — is what turns "make something realistic" into "make something realistic *that goes with this input*." (I'll keep the unconditional `L_GAN`, with `D(y)` and `D(G(x,z))`, around as a control so I can later check that conditioning `D` actually matters and isn't just decoration.)
 
-Is the cGAN alone enough? When I imagine training it, I expect sharp outputs — `D` kills blur — but I also worry about it wandering. The adversarial loss only constrains the output to be *a* plausible matching image; nothing pins it close to *the* ground-truth target, and GAN training is twitchy, so I'd expect occasional structural artifacts where `G` invents plausible-but-wrong detail. The earlier hand-built systems found it useful to mix in a traditional regression term to anchor the output, and I think they were right — but I'll mix in L1, not L2. I already worked out why: L2's optimum is the conditional mean (heavy blur), L1's is the median (a single representative, less blur). I want the regression term to gently pull `G`'s output toward the ground truth without itself reintroducing a lot of blur, and L1 does that better. So:
+Is the cGAN alone enough? When I imagine training it, I expect sharp outputs — `D` kills blur — but I also worry about it wandering. The adversarial loss only constrains the output to be *a* plausible matching image; nothing pins it close to *the* ground-truth target, and GAN training is twitchy, so I'd expect occasional structural artifacts where `G` invents plausible-but-wrong detail. The earlier hand-built systems found it useful to mix in a traditional regression term to anchor the output, and I think they were right — but I'll mix in L1, not L2. I already worked out why: L2's optimum is the conditional mean (heavy blur), while separable L1 is minimized by a conditional median and tends to blur less. I want the regression term to gently pull `G`'s output toward the ground truth without itself reintroducing as much blur, and L1 does that better. So:
 
 ```
 L_L1(G) = E_{x,y,z}[ ‖ y − G(x, z) ‖_1 ].
@@ -79,7 +79,7 @@ For the discriminator, the `70 × 70` PatchGAN is `C64 - C128 - C256 - C512` the
 
 Optimization follows the standard GAN protocol: alternate one gradient step on `D`, then one on `G`. Use the non-saturating generator update — train `G` to maximize `log D(x, G(x,z))`. One tweak I want: divide the `D` objective by 2 when stepping `D`, which slows `D`'s learning relative to `G` so the discriminator doesn't run away from the generator. Adam, learning rate `2 × 10^{-4}`, `β1 = 0.5`, `β2 = 0.999` — the low `β1` is the usual GAN stabilizer. Initialize weights from `N(0, 0.02^2)`, train from scratch. For augmentation, random jitter — upsize `256 → 286` and random-crop back to `256` — plus horizontal mirroring. At inference I do something slightly unusual: I keep dropout *on* (it's my noise source), and I run BatchNorm using the statistics of the test batch rather than accumulated training statistics; with batch size 1 that's exactly instance normalization, which behaves well for image synthesis. There's a subtlety with batch size 1 and the bottleneck: BatchNorm on a `1 × 1`-spatial, batch-1 activation zeroes it, effectively cutting the innermost layer — fine for the U-Net because the skips route around the bottleneck anyway, but it means a plain encoder-decoder needs a batch size greater than 1 to train at all.
 
-Let me check the objective is actually self-consistent by re-deriving the split one more time, because the whole design hinges on it. The full loss is `min_G max_D L_cGAN(G,D) + λ L_L1(G)`. The L1 term `λ E‖y − G(x,z)‖_1` is minimized, per pixel, by the conditional median — it nails the *coarse, low-frequency* content (right region, right rough color) but cannot commit to sharp high-frequency detail or vivid color, because the median of many plausible fine patterns is soft and the median of many plausible colors is gray. The `L_cGAN` term has `D` see `(x, y)`, so it scores correspondence-and-realism; restricting `D` to `N × N` patches and averaging makes it a high-frequency / local-texture critic, since fine detail is local while global structure is already covered by L1. So `D` supplies exactly the high-frequency, sharp, colorful detail L1 misses, conditioned on the input so it can't be satisfied by an unmatched but realistic image; L1 supplies the low-frequency anchoring to the true target. The two are complementary by construction, and dropping either one should leave a predictable hole — L1-only gives blur, cGAN-only gives sharp-but-sometimes-wrong-and-artifacty, and the unconditional GAN-only gives realistic-but-uncorrelated-with-input (since `D` can't see `x`, correspondence has nothing enforcing it). That's the whole method.
+Let me check the objective is actually self-consistent by re-deriving the split one more time, because the whole design hinges on it. The full loss is `min_G max_D L_cGAN(G,D) + λ L_L1(G)`. The L1 term `λ E‖y − G(x,z)‖_1` is minimized, per pixel, by a conditional median; in practice it gives a good *coarse, low-frequency* anchor (right region, right rough color) but cannot commit to sharp high-frequency detail or vivid color when several fine patterns or colors are plausible. The `L_cGAN` term has `D` see `(x, y)`, so it scores correspondence-and-realism; restricting `D` to `N × N` patches and averaging makes it a high-frequency / local-texture critic, since fine detail is local while global structure is already covered by L1. So `D` supplies exactly the high-frequency, sharp, colorful detail L1 misses, conditioned on the input so it can't be satisfied by an unmatched but realistic image; L1 supplies the low-frequency anchoring to the true target. The two are complementary by construction, and dropping either one should leave a predictable hole — L1-only gives blur, cGAN-only gives sharp-but-sometimes-wrong-and-artifacty, and the unconditional GAN-only gives realistic-but-uncorrelated-with-input (since `D` can't see `x`, correspondence has nothing enforcing it). That's the whole method.
 
 Now the code, grounded in a standard implementation. The generator is built recursively from a skip-connection block — innermost first, then wrapped outward — so each block downsamples, hands off to its inner submodule, upsamples, and (unless it's the outermost block) concatenates its input onto its output, which is exactly the U-Net skip:
 
@@ -95,7 +95,7 @@ class UnetSkipConnectionBlock(nn.Module):
     structure bypasses the bottleneck."""
     def __init__(self, outer_nc, inner_nc, input_nc=None, submodule=None,
                  outermost=False, innermost=False,
-                 norm_layer=nn.BatchNorm2d, use_dropout=False):
+                 norm_layer=nn.BatchNorm2d, use_dropout=True):
         super().__init__()
         self.outermost = outermost
         if input_nc is None:
@@ -149,12 +149,12 @@ class UnetGenerator(nn.Module):
         return self.model(x)
 ```
 
-The discriminator is the PatchGAN: a few strided convs whose stacked receptive field is `N × N`, ending in a 1-channel map of per-patch scores (no final spatial pooling — running it convolutionally *is* the averaging-over-patches, since each output cell scores one patch):
+The discriminator is the PatchGAN: a few strided convs whose stacked receptive field is `N × N`, ending in a 1-channel map of per-patch scores. In the original Torch code this map is passed through a sigmoid and a BCE loss; in the PyTorch port I use logits and `BCEWithLogitsLoss`, which is the same cross-entropy objective with the sigmoid folded into the loss. The averaging over patches happens in the scalar loss over this score map:
 
 ```python
 class NLayerDiscriminator(nn.Module):
-    """PatchGAN: classifies each NxN patch of [x, y] as real/fake. n_layers sets
-    the receptive field (n_layers=3 -> 70x70). Output is a map of patch scores."""
+    """PatchGAN: classifies each NxN patch of [x, y]. n_layers sets
+    the receptive field (n_layers=3 -> 70x70). Output is a map of logits."""
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
         super().__init__()
         kw, padw = 4, 1
@@ -167,14 +167,14 @@ class NLayerDiscriminator(nn.Module):
         nf_mult_prev, nf_mult = nf_mult, min(2**n_layers, 8)
         seq += [nn.Conv2d(ndf*nf_mult_prev, ndf*nf_mult, kw, 1, padw, bias=False),  # stride 1: grow RF
                 norm_layer(ndf*nf_mult), nn.LeakyReLU(0.2, True)]
-        seq += [nn.Conv2d(ndf*nf_mult, 1, kw, 1, padw)]   # -> 1-channel patch-score map
+        seq += [nn.Conv2d(ndf*nf_mult, 1, kw, 1, padw)]   # logits: no sigmoid before BCEWithLogits
         self.model = nn.Sequential(*seq)
 
     def forward(self, x):
         return self.model(x)
 ```
 
-The GAN loss compares the patch-score map against an all-real or all-fake target of the same shape (BCEWithLogits is the non-saturating real/fake cross-entropy; the all-ones target for `G` is what implements "maximize `log D`"):
+The GAN loss compares the patch-score map against an all-real or all-fake target of the same shape. `BCEWithLogitsLoss` averages over the per-patch logits; the all-ones target for `G` is the non-saturating update that implements "maximize `log D`":
 
 ```python
 class GANLoss(nn.Module):
@@ -196,8 +196,10 @@ def optimize(G, D, criterionGAN, criterionL1, optG, optD, real_A, real_B, lambda
 
     # --- update D: real pair (x,y) vs fake pair (x, G(x)) ---
     optD.zero_grad()
-    pred_fake = D(torch.cat((real_A, fake_B), 1).detach())   # condition D on x: feed [x, fake]
-    pred_real = D(torch.cat((real_A, real_B), 1))            # feed [x, real]
+    fake_AB = torch.cat((real_A, fake_B.detach()), 1)        # detach G output, not D's output
+    real_AB = torch.cat((real_A, real_B), 1)
+    pred_fake = D(fake_AB)                                   # condition D on x: feed [x, fake]
+    pred_real = D(real_AB)                                   # feed [x, real]
     loss_D = (criterionGAN(pred_fake, False) + criterionGAN(pred_real, True)) * 0.5  # /2 slows D
     loss_D.backward(); optD.step()
 

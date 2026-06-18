@@ -72,7 +72,7 @@ class Mlp(nn.Module):
 
 class PatchEmbed(nn.Module):
     # Split image into non-overlapping patches and linearly embed each (conv with stride=kernel=patch).
-    def __init__(self, patch_size=4, in_chans=3, embed_dim=96, norm_layer=nn.LayerNorm):
+    def __init__(self, patch_size=4, in_chans=3, embed_dim=128, norm_layer=nn.LayerNorm):
         super().__init__()
         self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
         self.norm = norm_layer(embed_dim) if norm_layer is not None else None
@@ -126,7 +126,7 @@ class Downsample(nn.Module):
 class VisionTransformerBackbone(nn.Module):
     # Patchify -> several stages of Blocks with a Downsample between stages -> pooled head.
     def __init__(self, patch_size=4, in_chans=3, num_classes=1000,
-                 embed_dim=96, depths=(2, 2, 6, 2), num_heads=(3, 6, 12, 24),
+                 embed_dim=128, depths=(2, 2, 2, 2), num_heads=(4, 8, 16, 32),
                  mlp_ratio=4., norm_layer=nn.LayerNorm):
         super().__init__()
         self.patch_embed = PatchEmbed(patch_size, in_chans, embed_dim, norm_layer)

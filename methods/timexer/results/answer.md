@@ -1,17 +1,17 @@
 # TimeXer, distilled
 
 TimeXer treats forecasting-with-exogenous-variables as the primitive behind long-term
-multivariate forecasting: for any one channel being predicted (endogenous), the other channels
-are side (exogenous) information. It gives the two variable roles **different granularities** and
+multivariate forecasting: for any one channel being predicted (endogenous), other available
+series can act as side information. It gives the variable roles **different granularities** and
 bridges them with a **learnable global token**. The endogenous series becomes `N` patch tokens
-(fine temporal detail); each exogenous series becomes a single variate token (a cheap,
-alignment-free whole-series summary). A per-endogenous learnable global token sits inside the
-endogenous self-attention and is the sole query in a cross-attention against the exogenous
-tokens, so external information flows one direction — exogenous → global → patches — at cost
-linear in the number of channels. Full multivariate forecasting is this primitive run in
-parallel over all channels via channel independence (every channel takes its turn as
-endogenous, shared weights). No Transformer component is modified; only the granularity
-assignment and the bridge token are new.
+(fine temporal detail); each exogenous or context series becomes a single variate token (a cheap
+whole-window summary). A per-endogenous learnable global token sits inside the endogenous
+self-attention and is the only query for that target in cross-attention against the variate
+tokens, so external information flows through exogenous/context tokens → global → patches without
+updating the variate-token pool. Per target this is linear in the number of context tokens; the
+canonical multivariate path runs all targets in parallel, so its total cross-attention is
+`O(n_vars · C_pool)`. No Transformer component is modified; only the granularity assignment and
+the bridge token are new.
 
 ## Problem it solves
 
@@ -30,20 +30,23 @@ coarse token and pay `O(C²)`, modeling every channel's interactions and injecti
   length-`P` patches, linear-embed each (`R^P → R^D`, bias-free) plus a sinusoidal positional
   embedding. Self-attention over the patch tokens captures intra-endogenous temporal dependency.
 - **Exogenous = variate tokens.** Embed each whole exogenous series into one vector
-  (`R^{T_ex} → R^D`). `C` tokens, `O(C)` not `O(C²)`, and no time-alignment / equal-length /
-  no-missing-value assumption.
+  (`R^{T_ex} → R^D` in the formulation; `R^T → R^D` for the fixed-window TS-Lib code). `C`
+  tokens, `O(C)` per endogenous target, and less dependence on timestamp-by-timestamp alignment
+  than concatenating covariates at each time step. The implementation still expects fixed-length
+  numeric tensors after any required preprocessing.
 - **Learnable global token `G` as bridge.** One learnable `D`-vector per endogenous series,
   concatenated to the patch tokens. It (1) joins the endogenous self-attention over `[P_en, G]` —
   realizing patch-to-patch, patch-to-global, and global-to-patch in one stock layer — and (2) is
   the only query in an exogenous-to-endogenous cross-attention (query `G`, key/value the exogenous
   tokens), so side channels inform the endogenous series one-directionally. Path of external info:
-  exogenous tokens → `G` → patches.
+  exogenous tokens → `G` → later self-attention over patches and `G`, with the one-block case still
+  exposing the updated `G` directly to the flatten head.
 - **Per-series normalization** (Non-stationary-Transformer style) wraps the model; **a single
   linear head** maps each endogenous series' `N+1` output tokens to the whole horizon (no decoder);
   trained with L2.
-- **Multivariate forecasting:** treat each channel in turn as endogenous, the whole multivariate
-  look-back as the shared exogenous variate-token pool, with shared self/cross-attention (channel
-  independence); every channel is predicted in parallel.
+- **Multivariate forecasting:** treat each channel in turn as endogenous; in the canonical
+  `features=M` path, every channel's global token queries a shared variate-token pool built from
+  the full multivariate look-back. Every channel is predicted in parallel.
 
 ## Per-block computation (L blocks)
 
@@ -55,7 +58,10 @@ For block `l`, with patch tokens `P^l_en`, global token `G^l_en`, exogenous toke
 P^{l+1}_en, G^{l+1}_en = LayerNorm([P̂, Ĝ] + FFN([P̂, Ĝ]))                      # position-wise FFN
 ```
 
-Complexity: self-attention `O((N+1)²) = O((T/P+1)²)`; cross-attention `O((N+1)·C)`, linear in `C`.
+Complexity per endogenous target: self-attention `O((N+1)²) = O((T/P+1)²)`; global-to-context
+cross-attention `O(C_pool)`. In the all-channel `features=M` implementation, there are `n_vars`
+global queries against `C_pool` variate tokens, so the cross-attention term is
+`O(n_vars · C_pool)`.
 
 ## Code
 
@@ -195,6 +201,27 @@ class Model(nn.Module):
         self.head = FlattenHead(configs.enc_in, self.head_nf, configs.pred_len,
                                 head_dropout=configs.dropout)
 
+    def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        if self.use_norm:
+            means = x_enc.mean(1, keepdim=True).detach()
+            x_enc = x_enc - means
+            stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
+            x_enc = x_enc / stdev
+
+        # single-target path: last channel is endogenous, earlier channels are exogenous
+        en_embed, n_vars = self.en_embedding(x_enc[:, :, -1].unsqueeze(-1).permute(0, 2, 1))
+        ex_embed = self.ex_embedding(x_enc[:, :, :-1], x_mark_enc)
+
+        enc_out = self.encoder(en_embed, ex_embed)
+        enc_out = torch.reshape(enc_out, (-1, n_vars, enc_out.shape[-2], enc_out.shape[-1]))
+        enc_out = enc_out.permute(0, 1, 3, 2)                                 # [B, n_vars, D, N+1]
+        dec_out = self.head(enc_out).permute(0, 2, 1)                         # [B, S, n_vars]
+
+        if self.use_norm:
+            dec_out = dec_out * stdev[:, 0, -1:].unsqueeze(1).repeat(1, self.pred_len, 1)
+            dec_out = dec_out + means[:, 0, -1:].unsqueeze(1).repeat(1, self.pred_len, 1)
+        return dec_out
+
     def forecast_multi(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         if self.use_norm:
             means = x_enc.mean(1, keepdim=True).detach()
@@ -218,12 +245,17 @@ class Model(nn.Module):
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name in ("long_term_forecast", "short_term_forecast"):
-            dec_out = self.forecast_multi(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            if self.features == "M":
+                dec_out = self.forecast_multi(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            else:
+                dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]
         return None
 ```
 
 Defaults for the fixed protocol: `seq_len=96`, `pred_len=96`, `patch_len=16`, `n_heads=8`,
 `factor=3`, `dropout=0.1`, `e_layers` and `d_model`/`d_ff` per dataset; Adam at `1e-4`, L2 loss,
-up to 10 epochs with early stopping. With `features=M` every channel is endogenous in parallel
-via channel independence and all channels are predicted and scored.
+up to 10 epochs with early stopping. With `features=M`, every channel is endogenous in parallel,
+the full multivariate look-back is the shared variate-token pool, and all channels are predicted
+and scored. With non-`M` settings, the official path predicts the last channel and uses the earlier
+channels as exogenous inputs.

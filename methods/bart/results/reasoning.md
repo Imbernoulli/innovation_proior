@@ -18,13 +18,14 @@ A few things fall out of that comparison that sharpen the design. Token masking 
 
 Now, how do I read a representation out for *discriminative* finetuning, given that I have a decoder and not just an encoder? For classification I feed the same (uncorrupted) input to both the encoder and the decoder, and take the decoder's final hidden state as the sequence representation. But which position? In a masked encoder you'd use a special class token at the front. Here the decoder is causal — a position can only attend to positions before it — so a token at the *front* would see almost nothing. I want the readout token to have attended over the *entire* decoded sequence, so I append the class token at the *end*; being last, its representation has attended to everything. For token-level tasks like SQuAD endpoint classification I run the full document through encoder and decoder and use the per-token top decoder states, with start/end classifiers over them. For generation tasks — summarization, dialogue, abstractive QA — there's nothing to invent: the encoder reads the input, the decoder generates the output autoregressively, exactly as in pretraining.
 
-Machine translation is the case that needs a real idea, because BART is pretrained only on English, yet I want to translate, say, Romanian into English. Reframe it: translating foreign-to-English is like *denoising* — the foreign sentence is a heavily "corrupted" encoding of the English meaning, and BART is already an expert at denoising encoded input into clean English. So keep the entire pretrained BART, encoder and decoder, as a fixed target-side English model, and only swap out the piece that's language-specific: BART's encoder *embedding* layer. Replace it with a small new randomly-initialized source encoder that has its own foreign vocabulary, whose job is to map Romanian tokens into the kind of representation BART's encoder stack knows how to denoise into English. Train end-to-end on bitext, backpropagating BART's reconstruction loss into the new encoder. This needs only monolingual English pretraining — no pretraining on the source language at all, unlike approaches that must pretrain on both languages. To avoid wrecking the pretrained weights early, do it in two steps: first freeze most of BART and update only the new source encoder plus the thin interface to BART — its positional embeddings and the self-attention input projection of its first encoder layer — then unfreeze and train everything for a short while.
+Machine translation is the case that needs a real idea, because BART is pretrained only on English, yet I want to translate, say, Romanian into English. Reframe it: translating foreign-to-English is like *denoising* — the foreign sentence is a heavily "corrupted" encoding of the English meaning, and BART is already an expert at denoising encoded input into clean English. So start from the entire pretrained BART stack as a target-side English denoiser, and only replace the piece that's language-specific: BART's encoder *embedding* layer. Replace it with a small new randomly-initialized source encoder that has its own foreign vocabulary, whose job is to map Romanian tokens into the kind of representation BART's encoder stack knows how to denoise into English. Train end-to-end on bitext, backpropagating BART's reconstruction loss into the new encoder. This needs only monolingual English pretraining — no pretraining on the source language at all, unlike approaches that must pretrain on both languages. To avoid wrecking the pretrained weights early, do it in two steps: first freeze most of BART and update only the new source encoder plus the thin interface to BART — its positional embeddings and the self-attention input projection of its first encoder layer — then unfreeze and train everything for a short while.
 
 Two scaling details for the large run. I'll match the strong masked-model scale: batch eight thousand, half a million steps, byte-level BPE, the 160GB mixture, mask thirty percent of tokens per document under infilling and permute all sentences. And since at that scale the model is fitting the data rather than overfitting, I'll disable dropout for the final tenth of training so it can fully fit; generation finetuning uses label-smoothed cross-entropy with smoothing 0.1, and decoding uses beam search of width five with length tuning.
 
 Let me write it. The body is a standard seq2seq Transformer; the contribution is the corruption functions and the end-token classification readout.
 
 ```python
+import math
 import torch, torch.nn as nn, torch.nn.functional as F
 
 # --- noising functions: arbitrary because encoder/decoder are decoupled ---
@@ -35,47 +36,83 @@ def token_masking(tokens, mask_id, p=0.15):
     return out                                    # same length, in place
 
 def token_deletion(tokens, p=0.15):
-    keep = torch.rand_like(tokens, dtype=torch.float) >= p
+    keep = torch.rand(tokens.shape, device=tokens.device) >= p
     return tokens[keep]                           # shorter: model must locate gaps
 
+def _poisson_span_lengths(mask_budget, lam, device):
+    dist = torch.distributions.Poisson(torch.tensor(float(lam), device=device))
+    lengths, covered = [], 0
+    while covered < mask_budget:
+        for draw in dist.sample((max(mask_budget, 1),)).long().tolist():
+            lengths.append(draw)
+            covered += draw
+            if covered >= mask_budget:
+                break
+    if lengths:
+        lengths[-1] -= covered - mask_budget
+    return lengths
+
 def text_infilling(tokens, mask_id, lam=3.0, frac=0.30):
-    # replace whole spans (len ~ Poisson(lam), incl. 0) with a SINGLE mask each
-    out, i, masked = [], 0, 0
-    target = int(frac * len(tokens))
-    while i < len(tokens):
-        if masked < target and torch.rand(1) < 0.2:
-            span = int(torch.poisson(torch.tensor(lam)))   # 0 => pure insertion
-            out.append(mask_id)                            # one mask hides the whole span
-            masked += span; i += span                      # length is now hidden
-        else:
-            out.append(tokens[i]); i += 1
-    return torch.tensor(out)
+    # fairseq: mask_length="span-poisson", poisson_lambda=3, replace_length=1
+    n = len(tokens)
+    budget = int(math.ceil(frac * n))
+    lengths = _poisson_span_lengths(budget, lam, tokens.device)
+    starts = torch.randperm(max(n, 1), device=tokens.device).tolist()
+    used = torch.zeros(n, dtype=torch.bool, device=tokens.device)
+    spans = []
+    for length in lengths:
+        if length == 0:
+            pos = int(torch.randint(n + 1, (1,), device=tokens.device))
+            spans.append((pos, 0))                         # pure insertion
+            continue
+        while starts and used[starts[-1]]:
+            starts.pop()
+        if not starts:
+            break
+        start = starts.pop()
+        end = min(start + length, n)
+        used[start:end] = True
+        spans.append((start, end - start))
+    mask = torch.tensor([mask_id], dtype=tokens.dtype, device=tokens.device)
+    out, i = [], 0
+    for start, length in sorted(spans):
+        if start > i:
+            out.append(tokens[i:start])
+        out.append(mask)                                  # one mask hides whole span
+        i = max(i, start + length)
+    if i < n:
+        out.append(tokens[i:])
+    return torch.cat(out) if out else tokens
 
 def sentence_permutation(sentences):
     perm = torch.randperm(len(sentences))
     return [sentences[k] for k in perm]           # recover document order
 
 def document_rotation(tokens):
-    k = int(torch.randint(len(tokens), (1,)))
-    return torch.cat([tokens[k:], tokens[:k]])    # find the true start
+    if len(tokens) <= 2:
+        return tokens
+    k = int(torch.randint(1, len(tokens) - 1, (1,), device=tokens.device))
+    return torch.cat([tokens[:1], tokens[k:-1], tokens[1:k], tokens[-1:]])  # find true start
 
 # --- pretraining: encoder sees corruption, decoder reconstructs the ORIGINAL ---
-def pretraining_loss(model, document, mask_id):
+def pretraining_loss(model, document, mask_id, pad_id):
     sents = split_sentences(document)
     noised = flatten(sentence_permutation(sents))
     noised = text_infilling(noised, mask_id)             # infilling + permutation
     logits = model(src_tokens=noised, prev_output_tokens=shift_right(document))
-    return F.cross_entropy(logits.view(-1, logits.size(-1)), document.view(-1))
+    return F.cross_entropy(logits.view(-1, logits.size(-1)), document.view(-1),
+                           ignore_index=pad_id)
 
 # --- discriminative readout: classification token at the END of the decoder ---
 class ClassificationHead(nn.Module):
-    def __init__(self, d_model, inner, n_classes, dropout=0.1):
+    def __init__(self, d_model, inner, n_classes, dropout=0.0):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
         self.dense = nn.Linear(d_model, inner)
         self.out_proj = nn.Linear(inner, n_classes)
-    def forward(self, dec_out, eos_mask):
+    def forward(self, dec_out, src_tokens, eos_id):
         # take the FINAL eos position: causal decoder => it attended to everything
+        eos_mask = src_tokens.eq(eos_id)
         sent = dec_out[eos_mask, :].view(dec_out.size(0), -1, dec_out.size(-1))[:, -1, :]
         x = self.dropout(sent)
         x = torch.tanh(self.dense(x))

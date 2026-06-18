@@ -32,10 +32,10 @@ A   : static, diagonal                    # (D, N); only enters via Ā = exp(ΔA
 `A` is left static because it affects the model only through `Ā = exp(Δ A)`; selectivity in `Δ`
 already makes `Ā` (and `B̄`) selective, so making `A` selective is redundant.
 
-Discretization (ZOH) of the diagonal system: `Ā = exp(Δ A)`,
-`B̄ = (Δ A)^{-1}(exp(Δ A) − I)·Δ B`; the implementation keeps the exact `Ā = exp(Δ A)` and a
-first-order input update `B̄ ≈ Δ B`. The recurrence is `h_t = Ā_t h_{t−1} + B̄_t x_t`,
-`y_t = C_t h_t`.
+For the mathematical SSM, zero-order-hold discretization gives `Ā = exp(Δ A)` and
+`B̄ = (Δ A)^{-1}(exp(Δ A) − I)·Δ B`. The canonical code keeps the exact transition
+`Ā = exp(Δ A)` but uses the simplified input update `B̄ x_t ≈ (Δ B_t) x_t`, so the scan forms
+`delta * B * u`. The recurrence is `h_t = Ā_t h_{t−1} + B̄_t x_t`, `y_t = C_t h_t`.
 
 ## Connection to gating (why softplus + linear Δ)
 
@@ -49,10 +49,11 @@ B̄_t = −(exp(−Δ_t) − 1) = 1 − Ā_t = σ(Linear(x_t)),
 
 so with `g_t = σ(Linear(x_t))` the recurrence is the classical RNN gate
 `h_t = (1 − g_t) h_{t−1} + g_t x_t`. The heuristic gate is the special case of selective
-discretization: large `Δ` (g→1) overwrites/focuses, small `Δ` (g→0) persists/ignores, `Δ→∞`
-resets. This is the principled reason for the softplus and the linear-in-input form, and for
-projecting to a low rank then broadcasting (if a token should be ignored, all `D` channels
-should ignore it together).
+discretization: large `Δ` (g→1) forgets the previous state and focuses on the current input,
+while small `Δ` (g→0) persists/ignores. A literal zero reset also requires the current boundary
+input/write term to be zeroed or learned appropriately. This is the principled reason for the
+softplus and linear-in-input form; the minimal construction uses a one-dimensional broadcast gate,
+and the implementation uses its low-rank generalization.
 
 ## Efficient computation
 
@@ -65,12 +66,13 @@ efficiency with three classical techniques:
   `h ↦ a h + b`): `O(L)` work, `O(log L)` depth. FLOPs `O(BLDN)` (linear in `L`, low constant)
   versus `O(BLD log L)` for the FFT convolution.
 - **Kernel fusion.** The expanded state has size `B·L·D·N` (a factor of `N` larger than the
-  `B·L·D` input/output). Load `Δ, A, B, C` from HBM to SRAM, discretize and scan and multiply by
-  `C` entirely in SRAM, write back only `y` of size `B·L·D`. This cuts HBM IO by `O(N)`
-  (≈20–40× in practice).
+  `B·L·D` input/output). Load the smaller `Δ, A, B, C` tensors (scaling like
+  `O(BLD + BLN + DN)` in the variable-B/C path), discretize, scan, and multiply by `C` entirely
+  in SRAM, then write back only `y` of size `B·L·D`. This cuts asymptotic HBM IO by `O(N)`;
+  reported kernel speedups are 20–40× versus a standard scan implementation.
 - **Recomputation.** Do not store the intermediate states for the backward pass; recompute them
-  in SRAM from the (small) reloaded inputs, avoiding `O(BLDN)` HBM reads. Net activation memory
-  matches an optimized attention implementation.
+  in SRAM from the reloaded inputs and output gradient, avoiding `O(BLDN)` HBM reads. Net
+  activation memory matches an optimized attention implementation.
 
 ## Architecture (homogeneous block)
 
@@ -88,7 +90,7 @@ wrap in a pre-norm residual. Most parameters are the projections (`3ED²`/block;
   but multiplies materialized state by `N` — affordable only because of the fused scan.
 - `expand = E = 2`: capacity-matches a Transformer layer with two blocks.
 - `dt_rank = ceil(d_model / 16)`: low-rank `Δ` projection; negligible parameters next to the main
-  projections, and the low-rank-then-broadcast form expresses the shared "write vs keep" decision.
+  projections, generalizing the one-dimensional broadcast gate.
 - `A = −exp(A_log)`, `A_log = log(arange(1, N+1))`: S4D-Real init, `A_n = −(n+1)`, a spread of
   decay rates; stored in log space to keep `A < 0`.
 - Δ bias initialized so `softplus(bias) ∈ [0.001, 0.1]`: a spread of starting memory horizons.
@@ -96,8 +98,9 @@ wrap in a pre-norm residual. Most parameters are the projections (`3ED²`/block;
 
 ## Working code
 
-Selective scan (sequential reference; the production path fuses this into one SRAM kernel with a
-parallel scan and recomputes states in the backward pass):
+Selective scan (sequential reference for the real-valued variable-B/C path used by the Mamba
+block; the canonical reference also handles constant, grouped, and complex `B, C` with the same
+state update):
 
 ```python
 import torch
@@ -132,6 +135,11 @@ def selective_scan_ref(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta
     return y
 ```
 
+Reference-case map: if `B` is constant the canonical function uses
+`einsum("bdl,dn,bdl->bdln", delta, B, u)`; if `B` or `C` are grouped 4D tensors it repeats groups
+across channels before the same recurrence; if `A` is complex it views paired real tensors as
+complex and returns `2 * real(y)`. The Mamba block above uses the real variable-B/C path.
+
 The Mamba block:
 
 ```python
@@ -154,17 +162,22 @@ class Mamba(nn.Module):
         self.act = nn.SiLU()
         self.x_proj = nn.Linear(self.d_inner, self.dt_rank + 2 * d_state, bias=False)
         self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True)
+        dt_init_std = self.dt_rank ** -0.5
+        nn.init.uniform_(self.dt_proj.weight, -dt_init_std, dt_init_std)
 
         # Δ bias init so softplus(bias) ~ Uniform([dt_min, dt_max]); inverse-softplus.
         dt = torch.exp(torch.rand(self.d_inner) * (math.log(dt_max) - math.log(dt_min))
                        + math.log(dt_min)).clamp(min=dt_init_floor)
         with torch.no_grad():
             self.dt_proj.bias.copy_(dt + torch.log(-torch.expm1(-dt)))
+        self.dt_proj.bias._no_reinit = True
 
         # S4D-Real: A = -exp(A_log), A_n = -(n+1); stored in log space, kept in fp32.
         A = torch.arange(1, d_state + 1, dtype=torch.float32).repeat(self.d_inner, 1)
         self.A_log = nn.Parameter(torch.log(A))
+        self.A_log._no_weight_decay = True
         self.D = nn.Parameter(torch.ones(self.d_inner))                   # per-channel skip
+        self.D._no_weight_decay = True
         self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
 
     def forward(self, hidden_states):           # (B, L, D)
@@ -190,8 +203,8 @@ class Mamba(nn.Module):
 
 - *Variable spacing:* the gate can drive `g_t → 0` to filter noise tokens between relevant
   inputs (the Selective Copying mechanism; language fillers like "um").
-- *Filtering context:* a selective model can reset its state to drop irrelevant history, so
-  quality can improve monotonically with context length, unlike LTI models whose fixed kernel
-  cannot ignore old junk.
-- *Boundary resetting:* with `Δ_t → ∞` (or `g_t → 1`) the state resets at sequence boundaries,
-  keeping packed/independent sequences from bleeding into one another.
+- *Filtering context:* a selective model has a mechanism to ignore transient inputs or flush old
+  history, unlike LTI models whose fixed kernel cannot condition on the content being seen.
+- *Boundary resetting:* with large `Δ_t` (or `g_t → 1` in the exact gate case), the previous state
+  can be forgotten at sequence boundaries; the current boundary input/write term determines
+  whether that is a literal zero reset or an overwrite by a learned boundary state.

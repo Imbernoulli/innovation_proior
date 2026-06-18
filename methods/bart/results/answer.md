@@ -32,22 +32,24 @@ large model uses text infilling (masking 30% of tokens) plus permuting all
 sentences.
 
 **Architecture.** Standard seq2seq Transformer with GeLU activations and N(0,0.02)
-init. Base 6+6 layers, large 12+12, hidden 1024. Versus a masked encoder: each
-decoder layer cross-attends to the encoder; the extra pre-prediction feed-forward
-network is dropped (the decoder already builds rich features). ~10% more
-parameters than a same-sized masked model.
+init. Base uses 6+6 layers with hidden size 768; large uses 12+12 layers with
+hidden size 1024. Versus a masked encoder: each decoder layer cross-attends to
+the encoder; the extra pre-prediction feed-forward network is dropped (the
+decoder already builds rich features). ~10% more parameters than a same-sized
+masked model.
 
 **Finetuning.** Classification: feed the same input to encoder and decoder; append
 a class token at the *end* and read its decoder hidden state (a causal decoder's
 last position has attended to everything). Token tasks (SQuAD): per-token top
 decoder states with start/end classifiers. Generation: encoder reads input,
 decoder generates output autoregressively (label-smoothed cross-entropy 0.1, beam
-5 with length tuning). Machine translation: keep all of BART as a fixed target-side
-English denoiser and replace its source embedding with a small new randomly-init
-source encoder (own foreign vocabulary) that maps foreign tokens to a
-BART-denoisable representation; train in two steps — first freeze most of BART and
-update only the new encoder, BART's positional embeddings, and the first encoder
-layer's self-attention input projection, then briefly unfreeze all.
+5 with length tuning). Machine translation: reuse the whole pretrained English
+BART stack as the target-side denoising model, replace its encoder word embedding
+with a small randomly initialized source encoder (own foreign vocabulary), and
+train that encoder to map foreign tokens to a BART-denoisable representation.
+Training is two-stage: first freeze most BART parameters and update only the new
+encoder, BART's positional embeddings, and the first encoder layer's
+self-attention input projection; then briefly unfreeze all parameters.
 
 ## Configuration
 
@@ -57,6 +59,7 @@ news/books/stories/web; dropout disabled for the final 10% of steps.
 ## Code
 
 ```python
+import math
 import torch, torch.nn as nn, torch.nn.functional as F
 
 # ---- noising functions (encoder/decoder decoupled => arbitrary corruption) ----
@@ -67,40 +70,83 @@ def token_masking(tokens, mask_id, p=0.15):
     return out
 
 def token_deletion(tokens, p=0.15):
-    return tokens[torch.rand_like(tokens, dtype=torch.float) >= p]
+    return tokens[torch.rand(tokens.shape, device=tokens.device) >= p]
+
+def _poisson_span_lengths(mask_budget, lam, device):
+    dist = torch.distributions.Poisson(torch.tensor(float(lam), device=device))
+    lengths, covered = [], 0
+    while covered < mask_budget:
+        for draw in dist.sample((max(mask_budget, 1),)).long().tolist():
+            lengths.append(draw)
+            covered += draw
+            if covered >= mask_budget:
+                break
+    if lengths:
+        lengths[-1] -= covered - mask_budget
+    return lengths
 
 def text_infilling(tokens, mask_id, lam=3.0, frac=0.30):
-    out, i, masked, target = [], 0, 0, int(frac*len(tokens))
-    while i < len(tokens):
-        if masked < target and torch.rand(1) < 0.2:
-            span = int(torch.poisson(torch.tensor(lam)))   # 0 => insertion
-            out.append(mask_id); masked += span; i += span # one mask hides whole span
-        else:
-            out.append(tokens[i]); i += 1
-    return torch.tensor(out)
+    # Fairseq semantics: mask_length="span-poisson", poisson_lambda=3,
+    # replace_length=1. Positive spans become one mask; zero spans insert a mask.
+    n = len(tokens)
+    budget = int(math.ceil(frac * n))
+    lengths = _poisson_span_lengths(budget, lam, tokens.device)
+    starts = torch.randperm(max(n, 1), device=tokens.device).tolist()
+    used = torch.zeros(n, dtype=torch.bool, device=tokens.device)
+    spans = []
+    for length in lengths:
+        if length == 0:
+            pos = int(torch.randint(n + 1, (1,), device=tokens.device))
+            spans.append((pos, 0))
+            continue
+        while starts and used[starts[-1]]:
+            starts.pop()
+        if not starts:
+            break
+        start = starts.pop()
+        end = min(start + length, n)
+        used[start:end] = True
+        spans.append((start, end - start))
+    mask = torch.tensor([mask_id], dtype=tokens.dtype, device=tokens.device)
+    out, i = [], 0
+    for start, length in sorted(spans):
+        if start > i:
+            out.append(tokens[i:start])
+        out.append(mask)
+        i = max(i, start + length)
+    if i < n:
+        out.append(tokens[i:])
+    return torch.cat(out) if out else tokens
 
 def sentence_permutation(sentences):
     return [sentences[k] for k in torch.randperm(len(sentences))]
 
 def document_rotation(tokens):
-    k = int(torch.randint(len(tokens), (1,)))
-    return torch.cat([tokens[k:], tokens[:k]])
+    if len(tokens) <= 2:       # keep <s> and </s> fixed when present
+        return tokens
+    k = int(torch.randint(1, len(tokens) - 1, (1,), device=tokens.device))
+    return torch.cat([tokens[:1], tokens[k:-1], tokens[1:k], tokens[-1:]])
 
 # ---- pretraining: reconstruct the ORIGINAL document ----
-def pretraining_loss(model, document, mask_id):
+def pretraining_loss(model, document, mask_id, pad_id):
     noised = flatten(sentence_permutation(split_sentences(document)))
     noised = text_infilling(noised, mask_id)
     logits = model(src_tokens=noised, prev_output_tokens=shift_right(document))
-    return F.cross_entropy(logits.view(-1, logits.size(-1)), document.view(-1))
+    return F.cross_entropy(
+        logits.view(-1, logits.size(-1)),
+        document.view(-1),
+        ignore_index=pad_id,
+    )
 
 # ---- classification readout at the END of the (causal) decoder ----
 class ClassificationHead(nn.Module):
-    def __init__(self, d_model, inner, n_classes, dropout=0.1):
+    def __init__(self, d_model, inner, n_classes, dropout=0.0):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
         self.dense = nn.Linear(d_model, inner)
         self.out_proj = nn.Linear(inner, n_classes)
-    def forward(self, dec_out, eos_mask):
+    def forward(self, dec_out, src_tokens, eos_id):
+        eos_mask = src_tokens.eq(eos_id)
         sent = dec_out[eos_mask, :].view(dec_out.size(0), -1, dec_out.size(-1))[:, -1, :]
         x = torch.tanh(self.dense(self.dropout(sent)))
         return self.out_proj(self.dropout(x))

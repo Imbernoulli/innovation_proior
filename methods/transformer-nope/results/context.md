@@ -1,5 +1,3 @@
-# Context: positional information in decoder-only Transformers and length generalization
-
 ## Research question
 
 A causal (decoder-only) Transformer can be trained to solve algorithmic sequence tasks —
@@ -48,8 +46,9 @@ The load-bearing prior facts:
   proportional to their absolute positions; because `(R^{tθ})^T R^{iθ} = R^{(i−t)θ}`, the
   dot product depends only on the relative offset `i − t`. It is usually classed as relative.
 - **ALiBi (Press et al. 2022), used in BLOOM.** Subtract a distance-proportional penalty from
-  the score: `q_t^T k_i − (t−i)·C^{(m+1)}` with a per-head slope `C = 2^{−2^{−log₂(#heads+3)}}`
-  (for 8 heads the slopes are `1/2, 1/2², …, 1/2⁸`). The linear penalty creates a strong
+  the score: `q_t^T k_i - (t-i) m_h`; for a power-of-two head count `n`,
+  `m_h = start^(h+1)` with `start = 2^(-2^(-(log2(n)-3)))`, so for 8 heads the slopes are
+  `1/2, 1/2^2, ..., 1/2^8`. The linear penalty creates a strong
   preference for nearby tokens (recency bias). It was introduced to make language-model
   perplexity extrapolate to longer inputs.
 
@@ -76,9 +75,9 @@ new method:
   perplexity is known not to track downstream performance (Tay et al. 2022). The signal lives
   in the out-of-distribution, longer-length regime on structured tasks.
 
-The construction tools available for proving what a no-PE model *can* represent come from the
-program-synthesis-into-attention line: RASP (Weiss et al. 2021) and Tracr (Lindner et al.
-2023) show how to hand-build attention weights that compute specific quantities, which makes
+The construction tools available for proving what a masked attention model *can* represent come
+from the program-synthesis-into-attention line: RASP (Weiss et al. 2021) and Tracr (Lindner et
+al. 2023) show how to hand-build attention weights that compute specific quantities, which makes
 it possible to exhibit an explicit weight setting rather than argue abstractly.
 
 ## Baselines

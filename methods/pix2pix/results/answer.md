@@ -6,7 +6,7 @@ Map an input image to a corresponding output image of the same scene in a differ
 
 ## Key idea
 
-Per-pixel regression blurs: the L2-optimal output under a multimodal `p(y|x)` is the conditional mean, an average of plausible images. So learn the loss adversarially. A conditional GAN's discriminator sees the (input, output) *pair*, so it enforces not just realism but **correspondence to the input**. Add an L1 term to anchor the output to the ground truth; L1 (conditional median) blurs less than L2 (conditional mean). The L1 term already captures the **low frequencies**, so the discriminator only needs to police **high-frequency** detail — which is local — so it can be a **PatchGAN** that classifies each `N × N` patch and averages (a learned local texture/MRF loss: fewer parameters, faster, applies to any image size). The generator is a **U-Net**: an encoder-decoder with skip connections so aligned low-level structure bypasses the bottleneck. Noise is supplied only as **dropout** (explicit noise input gets ignored).
+Per-pixel regression blurs: the L2-optimal output under a multimodal `p(y|x)` is the conditional mean, an average of plausible images. So learn the loss adversarially. A conditional GAN's discriminator sees the (input, output) *pair*, so it enforces not just realism but **correspondence to the input**. Add an L1 term to anchor the output to the ground truth; separable L1 is minimized by a conditional median and blurs less than L2 in practice. The L1 term already captures the **low frequencies**, so the discriminator only needs to police **high-frequency** detail — which is local — so it can be a **PatchGAN** that classifies each `N × N` patch and averages (a learned local texture/MRF loss: fewer parameters, faster, applies to any image size). The generator is a **U-Net**: an encoder-decoder with skip connections so aligned low-level structure bypasses the bottleneck. Noise is supplied only as **dropout** (explicit noise input gets ignored).
 
 ## Objective
 
@@ -35,7 +35,7 @@ Training: alternate one step on `D`, one on `G`; non-saturating generator update
 Modules: `Ck` = Conv(4×4, stride 2)-BatchNorm-ReLU with k filters; `CDk` adds Dropout 0.5. No BatchNorm on the first `C64`. LeakyReLU(0.2) in the encoder and discriminator; plain ReLU in the decoder.
 
 - **U-Net generator** (256×256): encoder `C64-C128-C256-C512-C512-C512-C512-C512` to a 1×1 bottleneck; U-Net decoder `CD512-CD1024-CD1024-C1024-C1024-C512-C256-C128`, then a conv to the output channels and Tanh. Skip connections concatenate encoder layer `i` onto decoder layer `n−i` (this doubles the decoder input channels vs. a plain encoder-decoder).
-- **70×70 PatchGAN discriminator**: `C64-C128-C256-C512`, then a conv to a 1-channel patch-score map, then sigmoid. Input channels = `input_nc + output_nc` (it receives the concatenation `[x, y]`). Receptive field is set by depth: `1×1` PixelGAN (`C64-C128` with 1×1 convs), `16×16`, `70×70`, `286×286` ImageGAN.
+- **70×70 PatchGAN discriminator**: `C64-C128-C256-C512`, then a conv to a 1-channel patch-score map. In the paper/original Torch implementation this is followed by sigmoid and BCE; the PyTorch code below uses logits plus `BCEWithLogitsLoss`, the same cross-entropy with the sigmoid folded into the loss. Input channels = `input_nc + output_nc` (it receives the concatenation `[x, y]`). Receptive field is set by depth: `1×1` PixelGAN (`C64-C128` with 1×1 convs), `16×16`, `70×70`, `286×286` ImageGAN.
 
 ## Code
 
@@ -99,7 +99,7 @@ class UnetGenerator(nn.Module):
 
 
 class NLayerDiscriminator(nn.Module):
-    """PatchGAN: classifies each NxN patch of [x, y]; output is a map of patch scores."""
+    """PatchGAN: classifies each NxN patch of [x, y]; output is a map of logits."""
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d):
         super().__init__()
         kw, padw = 4, 1
@@ -112,7 +112,7 @@ class NLayerDiscriminator(nn.Module):
         nf_mult_prev, nf_mult = nf_mult, min(2**n_layers, 8)
         seq += [nn.Conv2d(ndf*nf_mult_prev, ndf*nf_mult, kw, 1, padw, bias=False),
                 norm_layer(ndf*nf_mult), nn.LeakyReLU(0.2, True)]
-        seq += [nn.Conv2d(ndf*nf_mult, 1, kw, 1, padw)]
+        seq += [nn.Conv2d(ndf*nf_mult, 1, kw, 1, padw)]  # no sigmoid before BCEWithLogits
         self.model = nn.Sequential(*seq)
 
     def forward(self, x):
@@ -136,8 +136,10 @@ def optimize(G, D, criterionGAN, criterionL1, optG, optD, real_A, real_B, lambda
 
     # update D on conditional pairs [x, y]
     optD.zero_grad()
-    pred_fake = D(torch.cat((real_A, fake_B), 1).detach())
-    pred_real = D(torch.cat((real_A, real_B), 1))
+    fake_AB = torch.cat((real_A, fake_B.detach()), 1)         # detach G output only
+    real_AB = torch.cat((real_A, real_B), 1)
+    pred_fake = D(fake_AB)
+    pred_real = D(real_AB)
     loss_D = (criterionGAN(pred_fake, False) + criterionGAN(pred_real, True)) * 0.5
     loss_D.backward(); optD.step()
 
@@ -158,7 +160,7 @@ def optimize(G, D, criterionGAN, criterionL1, optG, optD, real_A, real_B, lambda
 ## Why the design works
 
 - **Conditioning the discriminator on `x`** turns "looks like a real image" into "is a real (input, output) pair," so the loss penalizes input/output mismatch. An unconditional `D` lets `G` collapse to producing the same realistic output regardless of input.
-- **L1 over L2**: L2's optimum is the conditional mean (averages modes → blur); L1's is the conditional median (a single representative → sharper), and L1 is more robust.
+- **L1 over L2**: L2's optimum is the conditional mean (averages modes -> blur); separable L1 is minimized by a conditional median, which is less pulled by outlying alternatives and blurs less in practice, but can still choose central grayish values.
 - **Low/high-frequency split**: L1 already captures low frequencies, so the discriminator only needs to enforce high-frequency correctness. High-frequency structure is local → a patch discriminator suffices. A PatchGAN models the image as a Markov random field (independence beyond a patch diameter), has fewer parameters, runs convolutionally, and applies to arbitrarily large images.
 - **U-Net skips**: input and output share aligned low-level structure; skip connections shuttle it directly across, instead of forcing it through the bottleneck.
 - **Dropout as noise**: an explicit Gaussian `z` input gets ignored because the conditioning is nearly deterministic; dropout injects stochasticity that cannot be trivially routed around.

@@ -32,11 +32,11 @@ Two: it spreads out to uniform. Every coordinate gets `1/K`, for *every* image. 
 
 These are genuinely different failure modes — opposite ends, even: maximally peaked versus maximally flat — and that's the lever. If I can find one operation that pushes *away* from "one dimension dominates" and another that pushes *away* from "uniform," and they pull in opposite directions, then balancing the two might hold me in the stable middle where the output actually depends on the input.
 
-Take the "one dimension dominates" mode first. The runaway happens because some coordinate of the teacher logits drifts persistently high relative to the others, and the softmax amplifies that into near-one-hot. The cheapest thing that kills a persistent per-coordinate bias is to *subtract the running mean of the teacher logits* before the softmax. Maintain a center `c` — an exponential moving average of the teacher's output over batches — and use `g_t(x) − c`. This is just adding a bias term to the teacher, `g_t(x) ← g_t(x) − c`, and it only needs a *first-order* statistic, the mean. That's a big deal versus Sinkhorn: the mean is cheap, it doesn't couple samples in a fancy iterative way, and I can EMA it across batches:
+Take the "one dimension dominates" mode first. The runaway happens because some coordinate of the teacher logits drifts persistently high relative to the others, and the softmax amplifies that into near-one-hot. The cheapest thing that kills a persistent per-coordinate bias is to *subtract the running mean of the teacher logits* before the softmax. Maintain a center `c` — an exponential moving average of the teacher's raw outputs over batches — and use `g_t(x) − c`. This is just adding a bias term with value `−c` to the teacher logits, and it only needs a *first-order* statistic, the mean. That's a big deal versus Sinkhorn: the mean is cheap, it doesn't couple samples in a fancy iterative way, and I can EMA it across batches:
 
-`c ← m c + (1−m) (1/B) Σ_i g_θt(x_i)`,
+`c ← m c + (1−m) (1/|T|) Σ_{z∈T} g_θt(z)`,
 
-so it works across batch sizes. Centering recenters the logits so no single coordinate can sit permanently above the rest — it kills the dominant-dimension collapse. But — and here's the catch I have to be honest about — if centering is *all* I do, what does it encourage? It keeps subtracting off whatever structure shows up in the mean, flattening the per-coordinate differences. Pushed to its limit, centering drives the teacher output toward *uniform*. So centering cures mode one and walks me straight into mode two.
+where `T` is the set of teacher global-view outputs in the minibatch, all-reduced across workers in distributed training. Centering recenters the logits so no single coordinate can sit permanently above the rest — it kills the dominant-dimension collapse. But — and here's the catch I have to be honest about — if centering is *all* I do, what does it encourage? It keeps subtracting off whatever structure shows up in the mean, flattening the per-coordinate differences. Pushed to its limit, centering drives the teacher output toward *uniform*. So centering cures mode one and walks me straight into mode two.
 
 Now the uniform mode. What prevents a distribution from flattening to `1/K`? Make it *peaky*: use a low teacher temperature `τ_t`. Dividing logits by a small `τ_t` before the softmax sharpens the distribution, concentrating mass and pulling it away from uniform. So sharpening cures mode two. But — symmetric catch — if sharpening is *all* I do, a peaky distribution with nothing recentering it will let one coordinate win and dominate: I'm back in mode one.
 
@@ -46,9 +46,9 @@ I want to make the complementarity precise, not just hand-wave "opposite directi
 
 `H(P_t, P_s) = h(P_t) + D_KL(P_t ‖ P_s)`,
 
-where `h(P_t) = −Σ P_t log P_t` is the teacher's own entropy and `D_KL` is the divergence from teacher to student. Now here's the diagnostic: `D_KL → 0` means the student perfectly matches the teacher — but if that happens while the teacher output is *constant across inputs*, that's exactly collapse. So watching `D_KL` collapse to zero is my collapse detector. And `h(P_t)`, the teacher entropy, tells me *which* collapse: if the teacher went one-hot, its entropy `h → 0`; if it went uniform, its entropy `h → −log(1/K) = log K` (the max). So I can predict, and check, what each broken configuration does. Run it with sharpening but *no centering*: I expect the teacher to be peaky and one coordinate to take over, so `D_KL → 0` and `h → 0`. Run it with centering but *no sharpening*: I expect the teacher to flatten, so `D_KL → 0` and `h → log K`. Two different collapse entropies from dropping two different operations — that's the proof, in measurable quantities, that they induce *opposite* failure modes. With both on, `h` settles between the extremes and `D_KL` stays bounded away from zero: no collapse.
+where `h(P_t) = −Σ P_t log P_t` is the teacher's own entropy and `D_KL` is the divergence from teacher to student. I have to be careful here: `D_KL → 0` alone only says the student is matching the teacher, and a perfect noncollapsed student could in principle do that. The collapse diagnostic in these ablations is the pair of facts: the KL falls toward zero *and* the teacher entropy lands at an extreme, showing an input-independent teacher. If the teacher went one-hot, its entropy `h → 0`; if it went uniform, its entropy `h → −log(1/K) = log K` (the max). So I can predict, and check, what each broken configuration does. Run it with sharpening but *no centering*: I expect the teacher to be peaky and one coordinate to take over, so the KL falls and `h → 0`. Run it with centering but *no sharpening*: I expect the teacher to flatten, so the KL falls and `h → log K`. Two different collapse entropies from dropping two different operations are measurable evidence that they induce *opposite* failure modes. With both on, `h` stays away from the extremes and the KL does not show the same degenerate fall.
 
-Let me sanity-check the directions of the knobs and the hyperparameters, because a sign error here would be silent. `τ_s = 0.1` for the student; I want the *teacher* sharper than the student so the target is a confident thing the student is pulled toward, so `τ_t < τ_s`, around 0.04-0.07. And I should watch the boundary: too *high* a teacher temperature means too little sharpening, so centering wins and I'd expect the loss to drift toward `ln K` — the uniform-collapse signature — and indeed that's the failure I'd guard against above roughly 0.07. The other end, `τ_t → 0`, is the argmax — a hard one-hot target — which is the dominant-dimension danger zone, fine only because centering counterbalances it. One more subtlety: at the very start of training the teacher is essentially random and very fragile to collapse, so it's safer to *warm up* `τ_t` from a small value (say 0.04) up to its target (0.07) over the first several epochs rather than slam it high immediately. And the center's EMA rate `m`: it just has to track the moving mean; too slow (m far too close to 1) and the center lags reality and lets a dimension run away before it's corrected, so a moderate `m` like 0.9 is the safe regime. The teacher momentum `λ` I'll put on a cosine schedule from 0.996 toward 1: early on the student is changing fast so the teacher should follow a bit more loosely; late in training I want a very stable, heavily-averaged teacher.
+Let me sanity-check the directions of the knobs and the hyperparameters, because a sign error here would be silent. `τ_s = 0.1` for the student; I want the *teacher* sharper than the student so the target is a confident thing the student is pulled toward, so `τ_t < τ_s`, around 0.04-0.07. And I should watch the boundary: too *high* a teacher temperature means too little sharpening, so centering wins and I'd expect the loss to drift toward `ln K` — the uniform-collapse signature; in practice a fixed value much above ~0.06 falls into this. That argues for keeping a conservative target around `τ_t = 0.04`, and for warming `τ_t` up from a small value (say 0.04) toward 0.07 over the first several epochs rather than slamming it high immediately, since early on the teacher is essentially random and very fragile to collapse. The other end, `τ_t → 0`, is the argmax — a hard one-hot target — which is the dominant-dimension danger zone, fine only because centering counterbalances it. And the center's EMA rate `m`: it just has to track the moving mean; too slow (m far too close to 1) and the center lags reality and lets a dimension run away before it's corrected, so a moderate `m` like 0.9 is the safe regime. The teacher momentum `λ` I'll put on a cosine schedule from 0.996 toward 1: early on the student is changing fast so the teacher should follow a bit more loosely; late in training I want a very stable, heavily-averaged teacher.
 
 A couple of architecture choices in the head are load-bearing for stability, so let me reason them out rather than just declare them. The head `h` maps the backbone feature to the `K`-dim output. I'll make it a small MLP — three linear layers with GELU and hidden width 2048 — and crucially put an *ℓ2-normalization bottleneck* near the end: project down to a low-dimensional bottleneck (say 256), ℓ2-normalize it onto the unit sphere, then a final linear layer to `K`. Why the ℓ2 bottleneck? Without it, as I deepen the head the output magnitudes are free to blow up or shrink and the whole thing destabilizes — a deep head trained without the normalization just collapses outright. Normalizing onto the sphere bounds the bottleneck representation and lets me use a *deep* head (which helps accuracy) and a very *large* `K` (also helps) without the training falling apart. The final `K`-dim layer I weight-normalize and fix its gain to 1, and I freeze that last layer for the first epoch — early on, before the features mean anything, letting the output layer chase the target just adds instability, so I hold it still while the backbone finds its footing. Big `K` (tens of thousands, e.g. 65536) helps and the bottleneck keeps the parameter cost moderate.
 
@@ -61,25 +61,43 @@ Now let me put it in code, because the loss has a few indexing subtleties (which
 ```python
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 import torch.nn.functional as F
 import numpy as np
 
 
-class Head(nn.Module):
+class DINOHead(nn.Module):
     # backbone feature -> 3-layer MLP (GELU) -> l2-normalized bottleneck -> weight-normed K-dim layer
-    def __init__(self, in_dim, out_dim, nlayers=3, hidden_dim=2048,
-                 bottleneck_dim=256, norm_last_layer=True):
+    def __init__(self, in_dim, out_dim, use_bn=False, norm_last_layer=True,
+                 nlayers=3, hidden_dim=2048, bottleneck_dim=256):
         super().__init__()
-        layers = [nn.Linear(in_dim, hidden_dim), nn.GELU()]
-        for _ in range(nlayers - 2):
-            layers += [nn.Linear(hidden_dim, hidden_dim), nn.GELU()]
-        layers += [nn.Linear(hidden_dim, bottleneck_dim)]
-        self.mlp = nn.Sequential(*layers)
-        # weight-normalized last layer; gain fixed (and frozen) to steady early training
+        nlayers = max(nlayers, 1)
+        if nlayers == 1:
+            self.mlp = nn.Linear(in_dim, bottleneck_dim)
+        else:
+            layers = [nn.Linear(in_dim, hidden_dim)]
+            if use_bn:
+                layers.append(nn.BatchNorm1d(hidden_dim))
+            layers.append(nn.GELU())
+            for _ in range(nlayers - 2):
+                layers.append(nn.Linear(hidden_dim, hidden_dim))
+                if use_bn:
+                    layers.append(nn.BatchNorm1d(hidden_dim))
+                layers.append(nn.GELU())
+            layers.append(nn.Linear(hidden_dim, bottleneck_dim))
+            self.mlp = nn.Sequential(*layers)
+        self.apply(self._init_weights)
+        # weight-normalized last layer; gain initialized to 1 and optionally frozen
         self.last_layer = nn.utils.weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
         self.last_layer.weight_g.data.fill_(1)
         if norm_last_layer:
             self.last_layer.weight_g.requires_grad = False
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         x = self.mlp(x)
@@ -125,12 +143,17 @@ class DINOLoss(nn.Module):
 
     @torch.no_grad()
     def update_center(self, teacher_output):
-        batch_center = teacher_output.mean(dim=0, keepdim=True)   # first-order statistic only
+        batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
+        if dist.is_available() and dist.is_initialized():
+            dist.all_reduce(batch_center)
+            batch_center = batch_center / (len(teacher_output) * dist.get_world_size())
+        else:
+            batch_center = batch_center / len(teacher_output)
         self.center = self.center * self.center_momentum \
-            + batch_center * (1 - self.center_momentum)           # EMA -> robust across batch sizes
+            + batch_center * (1 - self.center_momentum)           # EMA of raw teacher logits
 ```
 
-Note that the centering uses the *raw* teacher logits (before the center subtraction and softmax) to update `c`, and the update happens after computing the loss; the softmax in the loss subtracts the current `c` and divides by the low teacher temperature — center, then sharpen, exactly the two complementary operations. The double loop matches each teacher global view against every student view *except the identical one*, which is the multi-crop "predict a different view's distribution" rule, including local-to-global because every local crop is in `student_out` and gets matched to both teacher globals.
+Note that the centering uses the *raw* teacher logits (before the center subtraction and softmax) to update `c`, and in distributed training I all-reduce that mean across workers so the center reflects the global batch. The update happens after computing the loss; the softmax in the loss subtracts the current `c` and divides by the low teacher temperature — center, then sharpen, exactly the two complementary operations. The double loop matches each teacher global view against every student view *except the identical one*, which is the multi-crop "predict a different view's distribution" rule, including local-to-global because every local crop is in `student_out` and gets matched to both teacher globals.
 
 The train step ties it together: student gets all crops, teacher gets only the two globals, gradient flows into the student only, then the teacher is nudged by EMA.
 
@@ -162,4 +185,4 @@ def train_one_epoch(student, teacher, dino_loss, data_loader, optimizer,
                 pt.data.mul_(m).add_((1 - m) * ps.detach().data)
 ```
 
-So the whole causal chain: I want label-free features and the natural "match two views" objective collapses to a constant, so I reframe matching as distillation of a teacher's softened output distribution; with no labels the teacher has to be built from the student, and a weight-EMA teacher is a Polyak-Ruppert running ensemble that leads the student and supplies improving targets, so I set `θ_t ← λ θ_t + (1−λ) θ_s` with stop-gradient and the same architecture for both (no predictor needed); the loss is cross-entropy between teacher-on-a-global-view and student-on-a-different-view, summed over multi-crop pairs so small local crops learn to predict the global distribution; and collapse, which now means an input-independent teacher distribution, comes in exactly two opposite modes — one dimension dominating versus uniform — which I kill with two complementary teacher-only operations, centering (subtract an EMA of the teacher logits, cheap first-order, batch-robust; kills the dominant dimension but tends toward uniform) and sharpening (low `τ_t`; kills uniform but tends toward a dominant dimension), the two balancing each other, as the `H = h + D_KL` decomposition makes exact: missing centering sends teacher entropy to 0, missing sharpening sends it to `log K`, both together hold `D_KL` off zero. An ℓ2-bottleneck head lets it go deep with huge `K`, and dropping BN makes it architecture-agnostic and, on the Transformer, entirely BN-free.
+So the whole causal chain: I want label-free features and the natural "match two views" objective collapses to a constant, so I reframe matching as distillation of a teacher's softened output distribution; with no labels the teacher has to be built from the student, and a weight-EMA teacher is a Polyak-Ruppert running ensemble that leads the student and supplies improving targets, so I set `θ_t ← λ θ_t + (1−λ) θ_s` with stop-gradient and the same architecture for both (no predictor needed); the loss is cross-entropy between teacher-on-a-global-view and student-on-a-different-view, summed over multi-crop pairs so small local crops learn to predict the global distribution; and collapse, which now means an input-independent teacher distribution, comes in exactly two opposite modes — one dimension dominating versus uniform — which I counter with two complementary teacher-only operations, centering (subtract an EMA of the teacher logits, cheap first-order, batch-robust; kills the dominant dimension but tends toward uniform) and sharpening (low `τ_t`; kills uniform but tends toward a dominant dimension), the two balancing each other. The `H = h + D_KL` decomposition gives the diagnostic: missing centering sends teacher entropy to 0, missing sharpening sends it to `−log(1/K)=log K`, and both failures show the same degenerate KL fall. An ℓ2-bottleneck head lets it go deep with huge `K`, and dropping BN makes it architecture-agnostic and, on the Transformer, entirely BN-free.

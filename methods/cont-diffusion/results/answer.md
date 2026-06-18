@@ -4,10 +4,10 @@
 
 On a parallel-decoding, action-chunking vision-language-action trunk, the simplest continuous
 action head regresses the action-slot hidden states to a single vector per timestep (L1 → median,
-L2 → mean). Robot demonstrations are multimodal, so a point estimator averages incompatible modes
-into invalid actions. **Cont-Diffusion** replaces the point head with a generative one that
-represents the full conditional distribution `p(action chunk | observation)` and samples from it,
-while reusing the existing trunk as the conditioning network.
+L2 → mean). Robot demonstrations can be multimodal, so a point estimator can collapse incompatible
+modes to one invalid compromise action. **Cont-Diffusion** replaces the point head with a
+generative one that represents the full conditional distribution `p(action chunk | observation)`
+and samples from it, while reusing the existing trunk as the conditioning network.
 
 ## Key idea
 
@@ -26,17 +26,19 @@ dim `D = 7`.
 
 - **Schedule.** Squared-cosine (`squaredcos_cap_v2`), `bar_alpha_t = f(t)/f(0)`,
   `f(t) = cos^2(((t/T + s)/(1+s)) * pi/2)` — keeps `bar_alpha_t` smooth at both ends for
-  low-range action data.
+  the control-data denoising schedule used by the code path.
 - **Forward (one shot).** `x_t = sqrt(bar_alpha_t) x_0 + sqrt(1 - bar_alpha_t) eps`,
   `eps ~ N(0, I)`.
 - **Training objective (epsilon-prediction MSE).**
   `L = E_{x_0, eps, t} || eps - eps_theta(x_t, t, observation) ||^2`,
   where `eps_theta` is the trunk forward pass (noisy chunk + timestep injected) followed by the
   MLP noise predictor on the action-slot hidden states.
-- **Sampler (DDIM, deterministic, step-skippable).** From `x_T ~ N(0, I)`, for each `t` in a
-  chosen subsequence: form `x0_hat = (x_t - sqrt(1 - bar_alpha_t) eps_theta)/sqrt(bar_alpha_t)`,
-  then `x_{t-1} = sqrt(bar_alpha_{t-1}) x0_hat + sqrt(1 - bar_alpha_{t-1} - sigma^2) eps_theta +
-  sigma z`; with `sigma = 0` this is deterministic. Inference latency = one trunk pass per step.
+- **Sampler (DDIM, deterministic by default, step-skippable).** From `x_T ~ N(0, I)`, for each
+  selected timestep `t`, form `x0_hat = (x_t - sqrt(1 - bar_alpha_t) eps_theta)/sqrt(bar_alpha_t)`.
+  If `s` is the next lower selected timestep, take
+  `x_s = sqrt(bar_alpha_s) x0_hat + sqrt(1 - bar_alpha_s - sigma_t^2) eps_theta + sigma_t z`.
+  The scheduler call leaves `eta` at its default `0`, so `sigma_t = 0` and the update is
+  deterministic. Inference latency = one trunk pass per selected step.
 
 Components: a per-scalar **noisy-action projector** (`R^1 -> R^d`, one embedding per action
 scalar, matching the trunk's one-slot-per-action-dimension layout), a **sinusoidal timestep

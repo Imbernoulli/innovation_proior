@@ -1,150 +1,145 @@
-# Activation Clustering, distilled
+# Activation Clustering, Distilled
 
-Activation Clustering (AC) detects backdoor-poisoned training examples by clustering, per class, the
-penultimate-layer (last hidden layer) activations of the training data. In a poisoned target class,
-the injected samples form a distinct sub-population from the clean samples in feature space — because
-the network amplifies the trigger — so two-means on the (dimensionality-reduced) activations splits
-the class into a clean cluster and a poison cluster. The poison cluster is the *smaller* one
-(adversary poisons under half the class). It needs no trusted/clean dataset and no per-point
-retraining, and it flags individual training rows.
+Activation Clustering detects backdoor-poisoned training rows by analyzing hidden activations of the
+suspect model. In a poisoned target class, legitimate target examples and triggered source examples
+receive the same label for different internal reasons, so their late-layer activations can form
+separate subpopulations. The detector reduces each class's activations to a low-dimensional space,
+runs 2-means, then decides which clusters, if any, are poison.
 
-## Problem it solves
+The canonical output is a clean/poison assignment, not a continuous suspicion score:
 
-Given only a (possibly) backdoor-poisoned model and the untrusted training set — no trusted clean
-data — identify which individual training examples are the injected poison, so they can be removed
-and the model retrained. The attack (BadNets-style) stamps a fixed trigger on source-class images,
-relabels them to a target class, and appends them; the model keeps normal clean accuracy and only
-misbehaves on triggered inputs, so held-out validation cannot reveal it.
+- `1` means clean / keep the row.
+- `0` means poison / remove or relabel the row.
 
-## Key idea
+## Core Algorithm
 
-1. The poison is a minority sub-population. It is invisible in pixel space (its variation is buried
-   under natural image variance) but separable in the network's learned representation, because the
-   trigger is a strong predictor of the target label and the feature extractor is pushed to amplify
-   it. So analyze last-hidden-layer activations, not inputs (early layers carry generic low-level
-   features that only add noise).
-2. Segment activations by class and analyze each class alone — this removes the loud between-class
-   variance and leaves clean-vs-poison as the dominant within-class structure.
-3. Reduce dimensionality before clustering. Flattened activations are tens/hundreds of thousands of
-   dimensions, where Euclidean distance loses contrast and clustering fails. Reduce to ~10
-   dimensions. ICA is preferred over PCA: PCA's max-variance axes track natural within-class spread,
-   while ICA's independent/non-Gaussian components surface a distinct injected sub-population. Robust
-   to using 6/10/14 components.
-4. Cluster each class with k-means, k=2 (two compact blobs; faster and at least as accurate as
-   DBSCAN/GMM/affinity propagation here).
-5. k-means always returns two clusters, so add a poison-vs-clean test:
-   - **Relative size:** a poisoned class splits lopsidedly (~p% / (100-p)%, p < 50); a clean class
-     splits ~50/50. Lopsided => poisoned; the smaller cluster is poison.
-   - **Silhouette score:** high (>~0.10-0.15) when two clusters genuinely fit (poisoned); low when
-     one blob was arbitrarily bisected (clean). Take the smaller cluster when high.
-   - **Exclusionary reclassification (most accurate; needs a retrain):** retrain without the suspect
-     cluster, then classify it. Clean data is classified as its label; poison is reclassified to its
-     source class. With l = #classified-as-label and p = #classified-as-the-top-other-class, the ExRe
-     score l/p > T (default 1) => clean, < T => poison (and that other class is the source).
+Input: untrusted training set `D_p`, trained suspect model `F`, classes `1..n`.
 
-In all cases the smaller cluster is the poison cluster; the methods differ only in deciding whether
-poison is present.
+1. Query `F` on the training samples and collect the last hidden layer activations.
+2. Flatten each activation tensor to one vector.
+3. Segment activations by class. The paper's Algorithm 1 bins by `F(s)`; ART bins by `y_train`.
+4. For each class:
+   - reduce dimension, typically to 10 components;
+   - run k-means with `k=2`;
+   - analyze the two clusters with one of the rules below.
+5. Return a report and `is_clean_lst`, with one clean/poison bit per original training row.
 
-## Suspicion score (final scoring rule)
+Paper experiments use ICA before 2-means and report that 6, 10, and 14 components behave similarly.
+ART's `ActivationDefence` object default is `reduce="PCA"` and `nb_dims=10`; its standalone
+`cluster_activations` helper defaults to `reduce="FastICA"`.
 
-Per class, two-means the activations, pick the smaller cluster as poison, and score each sample:
+## Cluster Analysis Cases
 
-```
-score(sample) = 10 * [sample in smaller cluster] + 1 / (||feature - small_centroid|| + 1e-8)
-```
+**Smaller cluster (`cluster_analysis="smaller"`).**
+Mark `argmin(bincount(clusters))` as poison and all other clusters clean. This is ART's object
+default. It does not decide that a class is unpoisoned; even a clean class gets its smaller 2-means
+split marked suspicious. Ties choose cluster 0 through `argmin`.
 
-The membership term (the constant 10) dominates the ranking, so every flagged-poison point sorts
-above every clean point when the harness removes the top-scoring fraction. The closeness term breaks
-ties *within* the poison cluster, ranking the densest, most-certain poison (closest to the cluster
-core) highest. The harness then removes the top 1.5*epsilon fraction (an over-estimate of the poison
-count, for high recall) and retrains. Backdoor repair: relabel flagged poison to its source class
-and continue training to convergence (faster than retraining from scratch).
+**Relative size (`cluster_analysis="relative-size"`).**
+Mark clusters whose rounded class fraction is below the threshold. ART defaults to
+`size_threshold=0.35`, rounds fractions to two decimals, and uses strict `<`, not `<=`.
 
-## Full algorithm
+**Silhouette (`cluster_analysis="silhouette-scores"`).**
+Intended rule: flag a cluster only if it is small enough and the class has a high enough silhouette
+score. ART defaults to `size_threshold=0.35` and `silhouette_threshold=0.1`. The paper reports that
+thresholds around `0.10` to `0.15` were reasonable, with a trusted clean set preferred for
+calibration when available.
 
-```
-Input: untrusted training set D_p with classes {1..n}; trained model F.
-1. Query F with all of D_p; collect last-hidden-layer activations, flatten each to a 1-D vector.
-2. Segment activations by class: A[i] = activations of all samples labeled i.
-3. For each class i:
-     red      = reduce_dimensionality(A[i])      # ICA (default) or PCA, ~10 dims
-     clusters = kmeans(red, k=2)                 # two-means
-     analyze_for_poison(clusters)                # relative-size / silhouette / exclusionary-reclass
-                                                 # -> smaller cluster is poison if poison present
-4. Flag members of poison clusters; remove and retrain (or relabel-to-source and continue training).
-```
+**Distance (`cluster_analysis="distance"`).**
+For each class, compute the median reduced activation of the whole class and the median of each of
+its two clusters. A cluster is suspicious if it is closer to another class's median than to its own
+class median, while the sibling cluster is not. This is an ART implementation option, not the paper's
+main automatic rule.
 
-## Working code
+**Exclusionary reclassification (`ex_re_threshold > 0`).**
+After an analyzer has marked suspicious clusters, train a fresh clone on the rows currently marked
+clean. For each suspicious cluster, predict its held-out rows. Let `l` be the number predicted as
+the cluster's label and `p` be the number predicted as the most common other class. If `p == 0` or
+`l / p > T`, clear the cluster as clean. Otherwise keep it poison, record `l / p` as the ExRe score,
+and relabel the rows to the top other class. Equality `l / p == T` remains suspicious in ART.
 
-Faithful to the IBM Adversarial Robustness Toolbox `ActivationDefence` (`analyze_by_size`: poison =
-the smaller cluster), filling the harness's `fit` / `score_samples` slot.
+## Minimal Reference Logic
 
 ```python
 import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.decomposition import FastICA, PCA
+from sklearn.metrics import silhouette_score
 
 
-class BackdoorDefense:
-    """Per-class 2-means activation clustering. The smaller cluster in a class is the
-    poison sub-population (adversary poisons < 50% of the class)."""
+def reduce_dimensionality(x, nb_dims=10, reduce="FastICA"):
+    if x.shape[1] <= nb_dims:
+        return x
+    if reduce == "FastICA":
+        return FastICA(n_components=nb_dims, max_iter=1000, tol=0.005).fit_transform(x)
+    if reduce == "PCA":
+        return PCA(n_components=nb_dims).fit_transform(x)
+    raise ValueError(f"{reduce} dimensionality reduction method not supported")
 
-    def __init__(self):
-        self.class_labels_cluster = {}   # cls -> per-sample indicator: 1 if in the smaller cluster
-        self.class_small_center = {}     # cls -> centroid of the smaller (poison) cluster
-        self.class_indices = {}          # cls -> global sample indices
 
-    def _kmeans2(self, X, max_iter=50):
-        # Two-means on the rows of X (two compact blobs: clean vs poison).
-        n = len(X)
-        c0, c1 = X[0].copy(), X[n // 2].copy()     # spread-out deterministic init
-        labels = np.zeros(n, dtype=int)
-        for _ in range(max_iter):
-            d0 = np.linalg.norm(X - c0, axis=1)
-            d1 = np.linalg.norm(X - c1, axis=1)
-            new_labels = (d1 < d0).astype(int)     # 1 if closer to c1, else 0
-            if np.array_equal(new_labels, labels):
-                break
-            labels = new_labels
-            if (labels == 0).any():
-                c0 = X[labels == 0].mean(axis=0)
-            if (labels == 1).any():
-                c1 = X[labels == 1].mean(axis=0)
-        n0, n1 = (labels == 0).sum(), (labels == 1).sum()
-        small_label = 0 if n0 <= n1 else 1         # minority cluster = poison
-        small_center = c0 if small_label == 0 else c1
-        return labels, small_label, small_center
+def assign_clean(clusters, poison_clusters):
+    poison_clusters = np.asarray(list(poison_clusters), dtype=int)
+    clean = np.ones_like(clusters, dtype=int)
+    clean[np.isin(clusters, poison_clusters)] = 0
+    return clean
 
-    def fit(self, features, labels, poison_fraction, **kwargs):
-        features = np.asarray(features, dtype=np.float64)
-        labels_arr = np.asarray(labels)
-        for cls in np.unique(labels_arr):
-            mask = labels_arr == cls
-            cls_feat = features[mask]
-            indices = np.where(mask)[0]
-            self.class_indices[int(cls)] = indices
-            if len(cls_feat) < 4:                  # too few to two-means: treat as clean
-                self.class_labels_cluster[int(cls)] = np.zeros(len(cls_feat), dtype=int)
-                self.class_small_center[int(cls)] = cls_feat.mean(axis=0)
-                continue
-            clust_labels, small_label, small_center = self._kmeans2(cls_feat)
-            self.class_labels_cluster[int(cls)] = (clust_labels == small_label).astype(int)
-            self.class_small_center[int(cls)] = small_center
 
-    def score_samples(self, features, logits):
-        features = np.asarray(features, dtype=np.float64)
-        scores = np.zeros(len(features))
-        for cls in self.class_indices:
-            indices = self.class_indices[cls]
-            is_small = self.class_labels_cluster[cls]
-            small_center = self.class_small_center[cls]
-            for j, global_idx in enumerate(indices):
-                membership_score = float(is_small[j]) * 10.0          # dominant: small-cluster member
-                dist = np.linalg.norm(features[global_idx] - small_center)
-                closeness = 1.0 / (dist + 1e-8)                       # tie-break: closeness to core
-                scores[global_idx] = membership_score + closeness
-        return scores
+def analyze_smaller(clusters):
+    sizes = np.bincount(clusters)
+    return assign_clean(clusters, {int(np.argmin(sizes))})
+
+
+def analyze_relative_size(clusters, size_threshold=0.35, r_size=2):
+    sizes = np.bincount(clusters)
+    pct = np.round(sizes / float(sizes.sum()), r_size)
+    poison = set(np.where(pct < round(size_threshold, r_size))[0])
+    return assign_clean(clusters, poison)
+
+
+def analyze_silhouette(clusters, reduced, size_threshold=0.35, silhouette_threshold=0.1):
+    sizes = np.bincount(clusters)
+    pct = np.round(sizes / float(sizes.sum()), 2)
+    small = set(np.where(pct < round(size_threshold, 2))[0])
+    if small and round(silhouette_score(reduced, clusters), 4) > round(silhouette_threshold, 4):
+        return assign_clean(clusters, small)
+    return np.ones_like(clusters, dtype=int)
+
+
+def detect_from_activations(activations, labels, reduce="FastICA", analysis="smaller"):
+    labels = np.asarray(labels)
+    is_clean = np.ones(len(labels), dtype=int)
+    report = {}
+
+    for cls in np.unique(labels):
+        idx = np.where(labels == cls)[0]
+        x = reduce_dimensionality(np.asarray(activations[idx]), reduce=reduce)
+        clusters = KMeans(n_clusters=2).fit_predict(x)
+
+        if analysis == "smaller":
+            clean_bits = analyze_smaller(clusters)
+        elif analysis == "relative-size":
+            clean_bits = analyze_relative_size(clusters)
+        elif analysis == "silhouette-scores":
+            clean_bits = analyze_silhouette(clusters, x)
+        else:
+            raise ValueError("distance and ExRe need class-center/model-retraining state")
+
+        is_clean[idx] = clean_bits
+        report[f"Class_{int(cls)}"] = {
+            "cluster_sizes": np.bincount(clusters).tolist(),
+            "marked_poison": int(np.sum(clean_bits == 0)),
+        }
+
+    return report, is_clean.tolist()
 ```
 
-The canonical ART version additionally reduces the activations (FastICA / PCA to ~10 dims) before
-k-means and supports the relative-size, silhouette, and exclusionary-reclassification analyses to
-decide whether a class is poisoned at all; the `smaller`-cluster rule above is its default and is
-what the per-sample scoring rule rests on.
+## Implementation Caveats
+
+The paper-faithful detector uses last-hidden-layer activations. Current ART `main` contains an
+active line in `_get_activations` that overwrites `classifier.get_activations(...)` with
+`classifier.predict(self.x_train)` despite the nearby comment `# wrong way to get activations`. A
+paper-faithful implementation should remove that overwrite.
+
+Current ART `main` also appears to assign `clean_clusters` incorrectly inside the high-silhouette
+branch of `analyze_by_silhouette_score`. The intended rule is the one above: when the small cluster
+passes both thresholds, that small cluster is poison and the other cluster is clean.

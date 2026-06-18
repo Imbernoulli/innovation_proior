@@ -88,9 +88,12 @@ and accuracy degrades as numbers grow past the training range.
 
 **FIRE — functional interpolation for relative position (Li et al. 2023).** A learned additive
 relative bias in attention: `A(X) = X W_Q (X W_K)^T + B`, with
-`B_{ij} = f_θ( log(c·(i−j)+1) / log(c·max(i,L)+1) )`, where `f_θ` is a small MLP and `c, L`
-are learnable scalars. The log-and-normalize argument keeps the bias bounded and smooth as
-(i−j) grows, so it interpolates to relative distances larger than those seen in training;
+`B_{ij} = f_θ(ψ(i−j) / ψ(max{L,i}))` under the causal-distance convention `j ≤ i`, where
+`ψ(x)=log(c x + 1)`, `f_θ` is a small MLP, and `c, L` are learnable scalars. The released
+FIRE code applies the log transform to the absolute relative-distance tensor, so the safe
+reading is "bounded normalized distance," not a signed logarithm. The log-and-normalize
+argument keeps the bias bounded and smooth as the query-key distance grows, so it interpolates
+to relative distances larger than those seen in training;
 combined with randomized positions it gives the strongest reported length generalization on
 addition (≈2.5× when paired with index-style randomization, Zhou et al. 2024). **Limitation:**
 the bias is a function of the raw query–key offset over the *whole* sequence; it has no notion

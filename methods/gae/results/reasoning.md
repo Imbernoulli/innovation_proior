@@ -56,7 +56,7 @@ And in general, summing $k$ of them with the $\gamma^l$ weights, every interior 
 $$
 \hat A_t^{(k)}\;\equiv\;\sum_{l=0}^{k-1}\gamma^l \delta_{t+l}=-V(s_t)+r_t+\gamma r_{t+1}+\dots+\gamma^{k-1}r_{t+k-1}+\gamma^k V(s_{t+k}).
 $$
-That's a clean reading: $\hat A_t^{(k)}$ is the $k$-step return — $k$ real rewards followed by a bootstrap $\gamma^k V(s_{t+k})$ off the value function — minus the baseline $V(s_t)$. So $k$ literally interpolates between my two endpoints. At $k=1$ it's $\delta_t$. As $k\to\infty$, the bootstrap term $\gamma^k V(s_{t+k})$ is crushed by $\gamma^k\to0$, so its contribution (and the bias it carries from $V$ being wrong) vanishes, and I get $-V(s_t)+\sum_{l\ge0}\gamma^l r_{t+l}$, the Monte-Carlo return minus baseline. And crucially the $-V(s_t)$ out front is always just a baseline, so it never affects the bias no matter what $V$ is; all of the bias lives in that bootstrap tail $\gamma^k V(s_{t+k})$, which shrinks with $k$. So larger $k$ = less bias, more variance. There's my spectrum, parameterized by an integer $k$.
+That's a clean reading: $\hat A_t^{(k)}$ is the $k$-step return — $k$ real rewards followed by a bootstrap $\gamma^k V(s_{t+k})$ off the value function — minus the baseline $V(s_t)$. So $k$ literally interpolates between my two endpoints. At $k=1$ it's $\delta_t$. As $k\to\infty$, the bootstrap term $\gamma^k V(s_{t+k})$ is crushed by $\gamma^k\to0$, so its future-tail contribution vanishes, and I get $-V(s_t)+\sum_{l\ge0}\gamma^l r_{t+l}$, the Monte-Carlo return minus baseline. I have to be precise about "bias" here. As a point estimate of $A^{\pi,\gamma}$, an imperfect $V(s_t)$ can still shift the conditional mean, because the true advantage subtracts $V^{\pi,\gamma}(s_t)$. But in the policy-gradient estimator that $-V(s_t)$ is a state-only baseline, so it contributes zero after multiplying by $\nabla\log\pi(a_t\mid s_t)$ and averaging over $a_t$. The policy-gradient bias introduced by bootstrapping is in the future tail; larger $k$ discounts that tail more heavily, at the price of more variance. There's my spectrum, parameterized by an integer $k$.
 
 But an integer knob is clumsy — I'd have to commit to one horizon $k$ for the bootstrap, and that's a hard, discrete bias/variance choice. I'd rather have a soft knob that blends all the $k$ together. And there's a well-known way to blend $n$-step estimators smoothly: weight them geometrically, the way the $\lambda$-return does for value estimation. There, instead of picking one $n$-step return you take $(1-\lambda)\sum_{k\ge1}\lambda^{k-1}(\text{$k$-step return})$, a single parameter $\lambda$ sliding from one-step ($\lambda=0$) to Monte-Carlo ($\lambda=1$). The exact same construction should work here, except I'm averaging $k$-step *advantage* estimators, not value targets. Let me just do it:
 $$
@@ -151,13 +151,13 @@ Second, the policy update. I have low-variance, low-(enough)-bias advantage esti
 $$
 \max_\theta\ \frac1N\sum_n\frac{\pi_\theta(a_n\mid s_n)}{\pi_{\theta_\text{old}}(a_n\mid s_n)}\hat A_n\quad\text{s.t.}\quad \frac1N\sum_n D_{\mathrm{KL}}\!\big(\pi_{\theta_\text{old}}(\cdot\mid s_n)\,\|\,\pi_\theta(\cdot\mid s_n)\big)\le\epsilon.
 $$
-Same machinery as for the value function: linearize the (importance-weighted) objective, quadratize the KL, and the step direction is $\theta-\theta_\text{old}\propto -F^{-1}g$ with $F$ the average Fisher information and $g$ the policy gradient estimate — solved by conjugate gradient with Fisher-vector products and a line search to land on the KL boundary. The direction $F^{-1}g$ is the natural policy gradient; it falls out here not because I went looking for it but because the KL constraint *is* the Fisher metric to second order. Reparameterization-invariant steps, for free, as a consequence of "stay close in distribution."
+Same machinery as for the value function: linearize the (importance-weighted) objective, quadratize the KL, and the ascent step for this maximization is $\theta-\theta_\text{old}\propto F^{-1}g$ with $F$ the average Fisher information and $g$ the policy gradient estimate. If I hand the optimizer a loss $\ell(\theta)=-\frac1N\sum_n\frac{\pi_\theta(a_n\mid s_n)}{\pi_{\theta_\text{old}}(a_n\mid s_n)}\hat A_n$, then the same update is a descent step $-F^{-1}\nabla\ell$. That is exactly the sign convention implementation code usually uses. The direction $F^{-1}g$ is the natural policy gradient; it falls out here not because I went looking for it but because the KL constraint *is* the Fisher metric to second order. Reparameterization-invariant steps, for free, as a consequence of "stay close in distribution."
 
 One ordering subtlety bites here, and it's the same overfitting trap in a different guise. In each iteration I have both a policy update and a value-function update; which first? I must compute the advantages (hence the policy step) using the *old* value function $V_{\phi_i}$, and update $V$ *after*. If I fit $V$ first and then computed advantages with the freshly-fitted $V_{\phi_{i+1}}$, I'd be using a $V$ that was just trained to predict the returns in this very batch — pushing $\delta_t\to0$ on exactly these samples — and the policy gradient would be biased toward zero (in the extreme, an overfit $V$ makes every residual zero and the gradient vanishes). So: advantages and policy step with the old $V$, then refit $V$.
 
 Putting the loop together: simulate the current policy for a batch of timesteps; compute $\delta_t=r_t+\gamma V(s_{t+1})-V(s_t)$ everywhere with the current $V$; compute $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$; take the TRPO policy step using those advantages; then refit $V$ with the trust-region value update; repeat.
 
-Now the code. The advantage computation is the centerpiece, and there's a subtlety worth noting: I don't actually sum the infinite series naively per timestep — that'd be $O(T^2)$. The series $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$ obeys a one-line backward recursion, because $\hat A_t=\delta_t+\gamma\lambda\,\hat A_{t+1}$ (pull out the $l=0$ term and reindex). So I sweep backward through each episode accumulating $\delta_t+\gamma\lambda\cdot(\text{running})$, which is $O(T)$. At an episode boundary the recursion resets (no bootstrapping across the terminal), which I handle with a "nonterminal" mask. The returns I'll regress $V$ onto are just $\hat A_t+V(s_t)$ — adding the baseline back recovers the (value-targeted) return.
+Now the code. The advantage computation is the centerpiece, and there's a subtlety worth noting: I don't actually sum the infinite series naively per timestep — that'd be $O(T^2)$. The series $\hat A_t=\sum_l(\gamma\lambda)^l\delta_{t+l}$ obeys a one-line backward recursion, because $\hat A_t=\delta_t+\gamma\lambda\,\hat A_{t+1}$ (pull out the $l=0$ term and reindex). So I sweep backward through each episode accumulating $\delta_t+\gamma\lambda\cdot(\text{running})$, which is $O(T)$. At an episode boundary the recursion resets. Separately, the value function is fit to the Monte-Carlo discounted return $\sum_l\gamma^l r_{t+l}$, not to $\hat A_t+V(s_t)$ unless I deliberately choose the TD($\lambda$)-style target that the paper says was tried and did not improve on the $\lambda=1$ target.
 
 ```python
 import numpy as np
@@ -183,7 +183,7 @@ def compute_gae(rewards, values, last_value, gamma, lam):
     rewards : r_0 .. r_{T-1}
     values  : V(s_0) .. V(s_{T-1})  (current value function)
     last_value : V(s_T), the bootstrap; 0 if s_T is terminal
-    Returns the advantages A_t and the value-regression targets (A_t + V(s_t)).
+    Returns the advantages A_t and Monte-Carlo discounted value targets.
     """
     # delta_t = r_t + gamma * V(s_{t+1}) - V(s_t)   (the TD residual / shaped reward)
     vals_next = np.append(values[1:], last_value)
@@ -191,8 +191,8 @@ def compute_gae(rewards, values, last_value, gamma, lam):
     # A_t = sum_l (gamma*lambda)^l delta_{t+l}, via the backward recursion
     #       A_t = delta_t + gamma*lambda * A_{t+1}.
     advantages = discount_cumsum(deltas, gamma * lam)
-    # GAE(gamma,1) limit check: with lam=1, advantages == discounted return - V(s_t).
-    returns = advantages + values            # regression target for the value fn
+    # Value-function target used in the paper/rllab: discounted return.
+    returns = discount_cumsum(np.append(rewards, last_value), gamma)[:-1]
     return advantages, returns
 ```
 
@@ -204,14 +204,17 @@ def compute_gae_batch(rewards, values, dones, last_value, gamma, lam):
     episodes; dones[t]=1 if s_{t+1} is terminal (don't bootstrap across it)."""
     T = len(rewards)
     adv = np.zeros(T, dtype=np.float32)
+    returns = np.zeros(T, dtype=np.float32)
     lastgaelam = 0.0
+    running_return = last_value
     for t in reversed(range(T)):
         nonterminal = 1.0 - dones[t]
         next_value = last_value if t == T - 1 else values[t + 1]
         delta = rewards[t] + gamma * next_value * nonterminal - values[t]
         lastgaelam = delta + gamma * lam * nonterminal * lastgaelam
         adv[t] = lastgaelam
-    returns = adv + values
+        running_return = rewards[t] + gamma * nonterminal * running_return
+        returns[t] = running_return
     return adv, returns
 ```
 
@@ -224,7 +227,7 @@ def train(env, policy, value_fn, n_iters, batch_steps, gamma, lam, kl_policy, kl
         #    current value function (advantages must use the OLD V_phi_i).
         batch = collect_batch(env, policy, value_fn, batch_steps)
 
-        # 2. per episode: TD residuals -> GAE advantages + value targets
+        # 2. per episode: TD residuals -> GAE advantages; rewards -> MC value targets
         advs, rets = [], []
         for ep in batch.episodes:
             last_v = 0.0 if ep.terminated else value_fn.predict(ep.last_state)
@@ -234,8 +237,8 @@ def train(env, policy, value_fn, n_iters, batch_steps, gamma, lam, kl_policy, kl
         rets = np.concatenate(rets)
 
         # 3. policy step: KL-trust-region (TRPO) on the importance-weighted
-        #    objective with these advantages; direction ~ -F^{-1} g (natural grad),
-        #    solved by CG + Fisher-vector products, line search to the KL boundary.
+        #    objective with these advantages; ascent direction ~ F^{-1} g
+        #    (or descent on the negative surrogate), solved by CG/FVP + line search.
         trpo_step(policy, batch.states, batch.actions, advs, kl_policy)
 
         # 4. THEN refit the value function under its own trust region, so the

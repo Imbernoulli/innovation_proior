@@ -8,7 +8,7 @@ The goal is a single general-purpose recipe: one architecture, one objective, th
 
 ## Background
 
-**Per-pixel regression and why it blurs.** The simplest way to learn an image-to-image map is to train a CNN to minimize a per-pixel distance to the ground truth, typically the Euclidean (L2) distance `E[‖y − f(x)‖_2^2]`. This has a well-understood failure mode. When the conditional distribution `p(y|x)` is multimodal — many distinct output images are plausible for a given input — the predictor that minimizes expected squared error is the conditional mean `E[y|x]`. Averaging many sharp, mutually inconsistent plausible images produces a blur. This is why L2-regression outputs are smooth and desaturated (Pathak et al. 2016 on inpainting; Zhang et al. 2016 on colorization both report this). The L1 distance has the same qualitative weakness but is milder: its minimizer is the conditional *median* rather than the mean, which tends to select a single plausible value instead of blending them, and is more robust to outliers — so L1 blurs less than L2, though it still cannot synthesize sharp high-frequency detail on its own.
+**Per-pixel regression and why it blurs.** The simplest way to learn an image-to-image map is to train a CNN to minimize a per-pixel distance to the ground truth, typically the Euclidean (L2) distance `E[‖y − f(x)‖_2^2]`. This has a well-understood failure mode. When the conditional distribution `p(y|x)` is multimodal — many distinct output images are plausible for a given input — the predictor that minimizes expected squared error is the conditional mean `E[y|x]`. Averaging many sharp, mutually inconsistent plausible images produces a blur. This is why L2-regression outputs are smooth and desaturated (Pathak et al. 2016 on inpainting; Zhang et al. 2016 on colorization both report this). The L1 distance has the same qualitative weakness but is milder: for a separable per-pixel absolute loss, its minimizer is a conditional median rather than a mean, making it less sensitive to outlying modes and less blurry in practice, though it can still choose central grayish values and cannot synthesize sharp high-frequency detail on its own.
 
 **Structured vs. unstructured losses.** Per-pixel classification or regression treats the output space as *unstructured*: each output pixel is modeled as conditionally independent of all others given the input. Such a loss cannot penalize the joint configuration of the output — whether the pixels together form a coherent object boundary, a plausible texture, a realistic global layout. A *structured* loss instead penalizes the joint configuration. A large body of work builds structured losses by hand: conditional random fields (Chen et al. 2014), the SSIM perceptual metric (Wang et al. 2004), feature matching in a fixed deep network (Dosovitskiy & Brox 2016), nonparametric losses, the convolutional pseudo-prior, and losses that match covariance/Gram statistics of deep features (Johnson et al. 2016, "perceptual loss"). Each of these fixes a particular notion of structure in advance. None is general; choosing the right one is itself expert work.
 
@@ -96,9 +96,9 @@ class Critic(nn.Module):
         raise NotImplementedError
 
 
-def critic_realism_loss(critic, real_pair, fake_pair):
+def critic_realism_loss(critic, real_payload, fake_payload):
     # Standard GAN real/fake classification loss (BCEWithLogits / cross-entropy).
-    # TODO: what exactly is a "pair" here — output alone, or input together with output?
+    # TODO: what exactly is scored here — output alone, or input together with output?
     raise NotImplementedError
 
 
@@ -107,11 +107,17 @@ def reconstruction_loss(fake_out, real_out):
     raise NotImplementedError
 
 
+def critic_payload(x, out):
+    # TODO: decide whether the learned loss sees output alone or also the input,
+    #       and whether it judges one global image or many local regions.
+    raise NotImplementedError
+
+
 def train_step(G, D, opt_G, opt_D, x, y):
     fake = G(x)
     # --- update D ---
     opt_D.zero_grad()
-    loss_D = critic_realism_loss(D, real_pair=(x, y), fake_pair=(x, fake.detach()))
+    loss_D = critic_realism_loss(D, critic_payload(x, y), critic_payload(x, fake.detach()))
     loss_D.backward(); opt_D.step()
     # --- update G ---
     opt_G.zero_grad()

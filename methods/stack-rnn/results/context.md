@@ -1,182 +1,108 @@
-# Context: learning algorithmic sequence patterns with recurrent nets (circa 2014)
+## Research Question
 
-## Research question
+The data is a stream of discrete symbols made by short deterministic generators: `a^n b^n`,
+`a^n b^n c^n`, `a^n b^{2n}`, `a^n b^m c^{n+m}`, bracket-like recursive strings, memorization in
+reverse order, and binary addition with the answer emitted in reverse. Training sees only a
+concatenated stream. The model is not told where one generated sequence ends, and for the main
+toy problems it is not told which future symbols are forced by the generator. At evaluation time,
+the only score that matters is whether it predicts those forced symbols on lengths and nesting
+depths beyond the training range.
 
-We have a stream of discrete symbols produced by a short, deterministic algorithm — strings
-like `a^n b^n`, `a^n b^n c^n`, `a^n b^{2n}`, well-nested brackets, or "memorize this string and
-echo it back." We see the stream during training only up to some modest length, with no markers
-for where one generated sequence ends and the next begins. The goal is a next-symbol predictor
-that learns the *generating rule*, not the particular strings: after training on short examples
-it must keep predicting the deterministically-forced symbols correctly on sequences **strictly
-longer and more deeply nested than anything it saw**. Length generalization is the whole point —
-a model that hits 100% up to the training length and then collapses on longer inputs has learned
-to memorize, not to count or to track structure. The precise difficulty: recognizing an
-arbitrarily deep nested / counting pattern needs memory whose usable capacity grows with the
-nesting depth or the count, but the natural recurrent models carry only a fixed-width hidden
-vector. Closing that gap — giving a gradient-trained recurrent net an *unbounded, structured*
-memory it can learn to operate, with no supervision on how to operate it — is the problem.
+The hard part is not next-token prediction in the ordinary statistical sense. A local model can learn
+that many `a` tokens are followed by more `a` tokens and many `b` tokens by more `b` tokens. The
+test asks for something stronger: infer the compact rule behind the stream and execute that same
+rule for larger `n`. In `a^n b^n`, the predictor must know when the `b` run has exactly matched
+the previous `a` run. In nested brackets, it must know which opener is most recent. In reversal, it
+must remember the symbols in last-in-first-out order. These are memory-organization demands, not
+just longer-range correlations.
 
-## Background
+## Existing Recurrent Machinery
 
-The dominant model for sequential symbol prediction is the simple recurrent network of Elman
-(1990): a hidden state `h_t` carries information forward through time,
+The standard sequence model is the Elman simple recurrent network. For a one-hot input token
+`x_t`, hidden width `m`, and vocabulary size `d`, it keeps a hidden state
 
 ```
-h_t = sigmoid(U x_t + R h_{t-1}),     y_t = softmax(V h_t),
+h_t = sigmoid(U x_t + R h_{t-1})
+y_t = softmax(V h_t).
 ```
 
-with `x_t` the one-hot current token, `U` an embedding, `R` the recurrent matrix, `V` the output
-projection. Trained by backpropagation through time with SGD, this captures N-gram-like local
-statistics and is the workhorse of neural language modeling (Mikolov 2012). The structural fact
-that drives everything below: `h_t` lives in a fixed `R^m`. Whatever the model knows about the
-entire prefix it has read must be squeezed into those `m` numbers, and `m` is chosen before the
-data is seen.
+The recurrent edge makes the previous internal state available at the next step, so time is
+represented implicitly in the trajectory of `h_t`. This is enough to learn many temporal
+regularities and N-gram-like predictive structures, but the prefix is compressed into a fixed
+`R^m` vector chosen before seeing the sequence length. If the task needs a resource that grows
+with the count or nesting depth, the ordinary hidden state has no such resource.
 
-The diagnostic findings about these models, knowable before any fix, set up the problem:
+The long-memory recurrent line weakens this objection but does not remove it. LSTM memory cells
+and gates can preserve error flow over long time lags and can behave like counters on some
+one-turn languages. Constrained recurrent matrices and slowly changing context units similarly
+make longer summaries easier to keep. These mechanisms show that structure in the recurrence
+matters, and that gradient descent can train useful long-memory dynamics. They still leave open
+the shape of memory needed for order-sensitive recursion: a counter or slow summary is not the
+same thing as an addressable last-in-first-out store.
 
-- **SRNs "count without a counter," but only over a limited range.** Wiles & Elman (1995) showed
-  a simple recurrent net can fit `a^n b^n` and appear to generalize for a *limited* span of `n`;
-  Rodriguez et al. (1999) and Christiansen & Chater dissected this and found the network is mostly
-  *memorizing* the patterns it saw, using internal dynamics that approximate a counter near the
-  trained regime and then break down outside it. Larger vocabularies can be learned but still do
-  not generalize to longer sequences generated by the same rule.
-- **LSTMs can count, because some of their units can be linear.** Hochreiter & Schmidhuber (1997)
-  introduced multiplicative gating to fight vanishing/exploding gradients; Gers & Schmidhuber
-  (2001) observed that the gates let a unit behave linearly, so it can add and subtract a constant
-  per step and thereby *count*. This is enough to length-generalize on one-turn counter languages
-  like `a^n b^n` and `a^n b^n c^n`. But a counter is not a stack: the memory is still a fixed-width
-  vector, and on tasks that need genuine last-in-first-out bookkeeping or verbatim memorization the
-  LSTM regresses to memorizing the training lengths.
-- **Discrete external stacks are the right idea but hard to train.** Das, Giles & Sun (1992) and
-  Zeng et al. (1994) bolted an *external stack* onto an RNN (the neural-network pushdown automaton).
-  The stack gives unbounded memory of exactly the kind a nested/counting pattern needs. The
-  reported difficulty: the stack's PUSH/POP operations are *discrete*, and a discrete external
-  stack "may be hard to learn on long sequences" with gradient-based training.
-- **Constraining the recurrent matrix buys longer memory.** Mikolov et al. (2014) showed that
-  forcing part of `R` to be diagonal / self-connected linear units (the SRCN) lets an RNN hold
-  information over longer spans — evidence that *structuring* the recurrence, rather than enlarging
-  it, is a lever for memory.
-- **Gating is a general, differentiable controller.** The same multiplicative gates used in LSTMs
-  and GRUs (Cho 2014; Chung 2015) are a learnable, end-to-end-trainable way for a network to decide,
-  per step, how much of one signal versus another to let through.
+## Formal-Language Pressure
 
-The deeper context is automata-theoretic: the counting / nesting patterns above are the toy core
-of the context-free languages, and the abstract machine that recognizes context-free languages is
-the pushdown automaton — a finite controller plus a stack. So the patterns are exactly the ones a
-stack is built for, and the question is whether a *learned, gradient-trained* net can acquire that
-stack-plus-controller behavior from raw sequences.
+The motivating generators sit near the boundary between regular-looking local statistics and
+context-free structure. A finite-state controller can remember which phase it is in, such as "still
+reading `a`" versus "now reading `b`", but it cannot keep an unbounded count or an unbounded
+nesting stack. A pushdown automaton adds exactly one ingredient: a stack that can grow and whose
+top is read first. That makes it the natural abstract machine for many context-free patterns.
 
-## Baselines
+This observation cuts both ways. It explains why fixed recurrent vectors are a poor fit for the
+unbounded case, but it also warns that the useful memory operation is structured. A fully general
+random-access memory can do far more than the toy languages require; a bag-like slow context unit
+does too little; and a hand-designed symbolic recognizer solves only a chosen grammar. The missing
+piece is a way to put a simple structured memory under a learned neural controller.
 
-These are the prior models a new approach is measured against and reacts to.
+## Prior Memory-Augmented Baselines
 
-**Simple recurrent network (Elman 1990).** `h_t = sigmoid(U x_t + R h_{t-1})`, `y_t =
-softmax(V h_t)`; trained by BPTT + SGD. Core strength: cheap, captures local statistical
-structure. **Gap:** the hidden state is a fixed-width vector, so the model encodes the whole prefix
-in `m` numbers; on counting/nesting it fits the trained lengths and then drops to chance on longer
-inputs — it memorizes rather than learning the rule.
+Early neural pushdown automata already paired recurrent controllers with external stack memory and
+showed that grammatical structure can be learned with stack actions. That work establishes the
+right bias: a recurrent state machine plus a stack can represent the relevant rules. Its drawback
+for this setting is trainability and generality. The earlier systems often used specialized error
+functions, hints, isolated grammars, or hard action mechanisms, so they do not yet give a clean
+drop-in next-symbol predictor trained from the raw stream alone.
 
-**LSTM (Hochreiter & Schmidhuber 1997; Gers & Schmidhuber 2001).** Adds input/forget/output gates
-and a cell state; gates can make a unit linear, so it can increment and decrement a count and
-length-generalize on one-turn counter languages such as `a^n b^n`, `a^n b^n c^n`. **Gap:** the
-memory is still a single fixed-width vector with no last-in-first-out organization; on tasks that
-require nesting deeper than a single counter or verbatim recall it falls back to memorizing trained
-lengths, and to store a new value it must overwrite (erase) existing state.
+The Neural Turing Machine gives another path: attach a differentiable memory matrix to a neural
+controller and use soft attention for reading and writing. It is trainable by gradient descent and
+can learn algorithmic behaviors such as copy and sort. But the memory is a fixed-size matrix, and
+the read/write/addressing interface is much broader than a last-in-first-out problem demands. For
+the simple generators here, the question is whether a narrower memory topology can be learned more
+directly while retaining gradient-based training.
 
-**Neural-network pushdown automaton — Das, Giles & Sun (1992); Zeng et al. (1994).** An RNN
-controller paired with an *external stack*, giving exactly the unbounded memory a nested pattern
-needs; the controller is trained to drive PUSH / POP. **Gap:** the stack operations are discrete,
-which makes the controller difficult to train with gradient methods, and the reported behavior is
-that such discrete external stacks are hard to learn on long sequences.
+## Evaluation and Code Frame
 
-**Neural Turing Machine — Graves et al. (2014).** An RNN/LSTM controller with a differentiable
-*tape* and content/location-based attention for reading and writing. Differentiable end to end, and
-powerful on copy/sort. **Gap:** the memory is *fixed size* rather than growing with the input, and
-the full read/write attention is markedly more machinery than these simple stack-shaped problems
-call for, which makes it comparatively hard and unstable to train on them.
+The controlled benchmark is next-symbol prediction on generated streams. Training uses small
+parameters, commonly `n < 20` for the counting tasks, and testing pushes to longer cases such as
+`n` up to 60. The score is sequence-level correctness on the deterministic part of the generated
+string. For binary addition, the deterministic output positions are supplied; for the other toy
+streams, sequence boundaries and deterministic-position labels are absent. A standard language
+modeling sanity check on Penn Treebank can be used to ensure that the model is not only a toy
+recognizer.
 
-**SRCN — Mikolov et al. (2014).** A standard RNN with additional self-connected linear units
-(a partially constrained recurrent matrix) that hold an exponentially-decaying summary of the past.
-Strong on language-model perplexity. **Gap:** the long-memory units capture a bag-of-words-like
-average, not a structured, addressable last-in-first-out memory, so they do not by themselves track
-nesting depth.
-
-## Evaluation settings
-
-The natural yardsticks already in use for this question:
-
-- **Algorithmically generated symbol streams.** Sequences from short generators — `a^n b^n`,
-  `a^n b^n c^n`, `a^n b^n c^n d^n`, `a^n b^{2n}`, `a^n b^m c^{n+m}` — concatenated into one stream
-  with no sequence boundaries given (unsupervised next-symbol prediction). A model is scored only on
-  the *deterministically forced* symbols (the closing portion that the rule fixes). Train on small
-  `n` (e.g. `n < 20`), test on much larger `n` (e.g. up to 60): performance above chance on the
-  unseen longer lengths is the test of generalization, and the parameter `n` is grown incrementally
-  during training.
-- **Well-nested bracket languages (Dyck).** Strings over `k` bracket pairs with bounded nesting
-  depth `m`; the valid next symbols at any position are fixed by the stack of currently-open
-  brackets. Train on bounded lengths, test on strictly longer / deeper strings; metrics are
-  next-valid-symbol accuracy (token level) and whole-string accuracy (every position correct), with
-  the **length-out-of-distribution split as the headline number**.
-- **Memorization and string reversal.** Read a string, then reproduce it (often in reverse, after a
-  center marker), again train-short / test-long.
-- **Binary addition.** `"101+1="` → predict the sum's digits in reverse; a supervised variant where
-  the forced tokens are marked.
-- **Word-level language modeling.** Penn Treebank perplexity, as a sanity check that a model built
-  for algorithmic patterns is still a reasonable language model.
-- Protocol for the synthetic tasks: SGD with backpropagation through time (truncated to ~50 steps),
-  hard gradient clipping, an initial learning rate that is halved when validation entropy stops
-  improving, and — for the harder patterns where plain SGD stalls in a poor local minimum —
-  random restarts on top of SGD.
-
-## Code framework
-
-The new model drops into a standard next-token recurrent harness: embed the input ids, run a
-recurrent module step by step over time, project the per-step state to vocabulary logits, and train
-with token-level cross-entropy over the non-padding positions using AdamW with gradient clipping.
-Everything except the recurrent module already exists; the recurrent module itself — how the state
-is carried and what extra memory, if any, it maintains — is exactly what is to be designed, so it is
-left as one empty slot under a fixed parameter budget.
+The implementation frame is an ordinary recurrent next-symbol harness: embed the current token,
+update a recurrent controller state, project the state to vocabulary probabilities, and train with
+BPTT and SGD. The open slot is the controller update and whatever memory it is allowed to access;
+everything around that slot is conventional.
 
 ```python
 import torch
 import torch.nn as nn
 
 
-class SequenceModel(nn.Module):
-    """Next-token predictor over a bracket/symbol vocabulary.
-    Maps input ids [B, T] to logits [B, T, vocab]. The recurrent core that
-    carries information across time — and any extra memory it keeps — is the
-    open design problem; everything around it (embedding, output head) is fixed.
-    Must stay within the trainable-parameter budget."""
-
+class StreamPredictor(nn.Module):
     def __init__(self, vocab: int, hidden: int):
         super().__init__()
-        self.embed = nn.Embedding(vocab, hidden)
-        # TODO: the recurrent architecture we will design.
-        self.head = nn.Linear(hidden, vocab)
+        self.in_embed = nn.Embedding(vocab, hidden)
+        self.controller = None  # TODO: define the recurrent state and any allowed memory.
+        self.out = nn.Linear(hidden, vocab, bias=False)
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
-        B, T = input_ids.shape
-        embeddings = self.embed(input_ids)        # [B, T, hidden]
         states = []
-        for t in range(T):
-            emb = embeddings[:, t]                 # [B, hidden]
-            # TODO: update the per-step state (and any memory) from emb and the
-            #       previous state; append the state we read out at this step.
-            pass
-        return self.head(torch.stack(states, dim=1))
-
-
-# existing training loop the model plugs into
-def train(model, data_loader, optimizer):
-    for input_ids, targets, mask in data_loader:   # mask = non-PAD positions
-        optimizer.zero_grad()
-        logits = model(input_ids)                  # [B, T, vocab]
-        loss = cross_entropy(logits[mask], targets[mask])
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optimizer.step()
+        state = None
+        for token in input_ids.transpose(0, 1):
+            x_t = self.in_embed(token)
+            state = self.controller(x_t, state)
+            states.append(state.hidden)
+        return self.out(torch.stack(states, dim=1))
 ```
-
-The outer loop supplies the symbol stream and scores the forced positions; the per-step state
-update — and whatever memory it reads from and writes to — is the single slot the design fills.

@@ -1,80 +1,47 @@
 # VICReg: Variance-Invariance-Covariance Regularization
 
-## Problem
+## Method
 
-Joint-embedding self-supervised learning trains a network so that two augmented views of an image
-produce similar embeddings. The bare "make views agree" objective is solved by a constant vector —
-**collapse**. Prior methods avoid collapse with negatives (SimCLR/MoCo), clustering (SwAV), asymmetric
-predictor + stop-gradient / momentum encoder (SimSiam/BYOL), or a cross-branch decorrelation matrix
-with embedding standardization (Barlow Twins). All of these either need large batches/memory, are
-dynamics-dependent and ill-understood, or *couple* the two branches (shared weights, EMA, or a
-cross-correlation), which forces the branches to be identical.
+For two embedding batches \(X,Y\in R^{B\times d}\), use a three-part objective:
 
-## Key idea
+\[
+s_{\text{math}}(X,Y)=\frac{1}{B}\sum_{b=1}^B \|x_b-y_b\|_2^2
+\]
 
-Prevent collapse with two **explicit regularizers applied to each branch separately**, plus a simple
-invariance term — no negatives, no momentum encoder, no stop-gradient, no predictor, no quantization,
-no normalization of the embeddings. Because the regularizers are per-branch, the two branches need
-share nothing: they can have different architectures, weights, or input modalities.
+\[
+v(X)=\frac{1}{d}\sum_{j=1}^d \max\left(0,\gamma-\sqrt{\operatorname{Var}(X_{:,j})+\epsilon}\right)
+\]
 
-Given two batches of embeddings `Z = [z_1..z_n]`, `Z' = [z'_1..z'_n]` (each `n × d`), write `z^j` for
-the j-th coordinate across the batch.
+\[
+C(X)=\frac{1}{B-1}\sum_{b=1}^B (x_b-\bar x)(x_b-\bar x)^T,\qquad
+c(X)=\frac{1}{d}\sum_{i\ne j} C(X)_{ij}^2
+\]
 
-1. **Invariance** — pull the two views together, plain MSE, no normalization:
-   `s(Z, Z') = (1/n) Σ_i ‖z_i − z'_i‖²`.
+\[
+\ell_{\text{math}}(X,Y)=\lambda s_{\text{math}}(X,Y)+\mu[v(X)+v(Y)]+\nu[c(X)+c(Y)].
+\]
 
-2. **Variance** — hinge keeping each dimension's batch standard deviation above a floor `γ`:
-   `v(Z) = (1/d) Σ_j max(0, γ − √(Var(z^j) + ε))`, with `γ = 1`, `ε = 1e-4`.
-   Using the **standard deviation, not the variance**, is essential: `d√Var/dVar = 1/(2√Var) → ∞` as
-   `Var → 0`, so the restoring gradient is strongest exactly at collapse; the variance-in-the-hinge
-   variant has vanishing gradient there and fails to escape collapse. This term forbids **trivial
-   collapse** (everything shrinking to a point — zero variance).
+Published ImageNet settings use \(\gamma=1\), \(\epsilon=10^{-4}\), \(\lambda=\mu=25\), and \(\nu=1\).
+The standard-deviation hinge is the important anti-collapse detail: in the active region its gradient
+is proportional to \(-(x_k-\bar x)/\sqrt{\operatorname{Var}(x)+\epsilon}\), so small nonzero
+deviations get amplified much more than they would under a variance hinge. With nonzero
+\(\epsilon\), an exactly constant column has zero embedding-gradient but positive loss; the term is a
+near-collapse gradient amplifier and removes the constant solution as a zero-loss optimum.
 
-3. **Covariance** — drive every off-diagonal of each branch's embedding covariance to zero:
-   `C(Z) = (1/(n−1)) Σ_i (z_i − z̄)(z_i − z̄)ᵀ`, `c(Z) = (1/d) Σ_{i≠j} [C(Z)]²_{ij}`.
-   This decorrelates the dimensions and forbids **informational collapse** (the guaranteed variance
-   being duplicated into a low-dimensional subspace). Borrowed from Barlow Twins' decorrelation, but on
-   each branch's covariance, not a cross-correlation between branches — so no inter-branch coupling and
-   no embedding standardization is needed (the variance term owns the scale).
+Variance and covariance are both required. Variance alone permits copied coordinates; covariance
+alone is minimized by a constant batch. Invariance makes the non-collapsed, decorrelated coordinates
+stable across augmentations.
 
-**Why both are needed.** Variance alone permits all dimensions to copy one informative direction
-(informational collapse). Covariance alone collapses outright — the cheapest way to zero all
-off-diagonal covariances is to send everything to a constant (all covariances zero). Together,
-variance forces per-dimension spread and covariance spreads that variance across `d` decorrelated
-dimensions; invariance ties the two views so the budget is spent on augmentation-stable features.
+## Canonical PyTorch Core
 
-## Objective
-
-```
-ℓ(Z, Z') = λ·s(Z, Z') + μ·[v(Z) + v(Z')] + ν·[c(Z) + c(Z')]
-```
-
-On ImageNet: `λ = μ = 25`, `ν = 1`, `γ = 1`, `ε = 1e-4`. The recipe is `λ = μ > ν` (balancing the two
-terms that fight — invariance vs. variance — and keeping the ~`d²`-term covariance gradient from
-destabilizing training); `λ = μ` with `ν > μ` is unstable, `λ = μ` with `ν < μ` is stable, and the
-exact value of `λ = μ` matters little.
-
-## Architecture / training
-
-- **Encoder** `f_θ`: ResNet-50, 2048-d representation (kept for downstream; the head is discarded
-  after pretraining).
-- **Expander** `h_φ`: MLP that *expands* the representation (e.g. `2048-8192-8192-8192`), Linear + BN +
-  ReLU on hidden layers, final plain Linear (`bias=False`), no normalization on the output. Expanding
-  (not projecting down) lets linear decorrelation in the embedding remove higher-order *dependencies*
-  in the representation; performance rises with embedding width and saturates around 8192.
-- **Optimizer**: LARS, 1000 epochs, weight decay `1e-6`, `lr = base_lr × batch/256` with
-  `base_lr = 0.2`, batch 2048, cosine decay with 10 warmup epochs, final lr `0.002`.
-- **Augmentations**: random resized crop (224), horizontal flip, color jitter, grayscale, Gaussian
-  blur, solarization, ImageNet normalization.
-- **No embedding normalization**: l2-normalizing the embeddings hurts ~3.5%; standardizing them turns
-  the covariance into a correlation in a narrow `[−1,1]` range and hurts ~0.2%.
-
-## Code
+The official `facebookresearch/vicreg` code uses slightly different constant scaling from those
+equations: `F.mse_loss` is an elementwise mean over `B*d`, and the two branch variance losses are
+averaged with `/ 2`. The tuned command-line coefficients are calibrated to this implementation.
 
 ```python
 import torch
 import torch.nn.functional as F
-from torch import nn, optim
+from torch import nn
 import torch.distributed as dist
 
 
@@ -82,44 +49,42 @@ class VICReg(nn.Module):
     def __init__(self, args):
         super().__init__()
         self.args = args
-        self.num_features = int(args.mlp.split("-")[-1])      # embedding dim d
-        self.backbone, self.embedding = build_resnet(args.arch, zero_init_residual=True)
+        self.num_features = int(args.mlp.split("-")[-1])
+        self.backbone, self.embedding = resnet.__dict__[args.arch](
+            zero_init_residual=True
+        )
         self.projector = Projector(args, self.embedding)
 
     def forward(self, x, y):
-        x = self.projector(self.backbone(x))                  # (n, d)
+        x = self.projector(self.backbone(x))
         y = self.projector(self.backbone(y))
 
-        # invariance: MSE between paired views, no normalization
         repr_loss = F.mse_loss(x, y)
 
-        # gather across GPUs, then center each dimension over the batch
         x = torch.cat(FullGatherLayer.apply(x), dim=0)
         y = torch.cat(FullGatherLayer.apply(y), dim=0)
         x = x - x.mean(dim=0)
         y = y - y.mean(dim=0)
 
-        # variance: hinge on the STD (gamma = 1 -> `1 - std`), eps = 1e-4
         std_x = torch.sqrt(x.var(dim=0) + 0.0001)
         std_y = torch.sqrt(y.var(dim=0) + 0.0001)
         std_loss = torch.mean(F.relu(1 - std_x)) / 2 + torch.mean(F.relu(1 - std_y)) / 2
 
-        # covariance: off-diagonal squared, per branch, scaled by 1/d
         cov_x = (x.T @ x) / (self.args.batch_size - 1)
         cov_y = (y.T @ y) / (self.args.batch_size - 1)
-        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(self.num_features) \
-            + off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
+        cov_loss = off_diagonal(cov_x).pow_(2).sum().div(self.num_features)
+        cov_loss += off_diagonal(cov_y).pow_(2).sum().div(self.num_features)
 
         loss = (
-            self.args.sim_coeff * repr_loss      # lambda = 25
-            + self.args.std_coeff * std_loss     # mu     = 25
-            + self.args.cov_coeff * cov_loss     # nu     = 1
+            self.args.sim_coeff * repr_loss
+            + self.args.std_coeff * std_loss
+            + self.args.cov_coeff * cov_loss
         )
         return loss
 
 
 def Projector(args, embedding):
-    mlp_spec = f"{embedding}-{args.mlp}"          # e.g. 2048-8192-8192-8192
+    mlp_spec = f"{embedding}-{args.mlp}"
     f = list(map(int, mlp_spec.split("-")))
     layers = []
     for i in range(len(f) - 2):
@@ -136,9 +101,24 @@ def off_diagonal(x):
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 ```
 
-Training step: sample a batch, build two views `x, y`, `loss = model(x, y)`, `loss.backward()`,
-`optimizer.step()` with LARS (bias/norm params excluded from weight decay and LARS adaptation) under a
-warmup + cosine learning-rate schedule. No target network, no memory bank, no stop-gradient.
+Implementation details that matter for faithfulness:
 
-After pretraining, discard the expander and use `model.backbone` (the frozen ResNet-50 representation)
-for downstream tasks.
+- Gather embeddings from all distributed workers before estimating variance and covariance.
+- Center each branch before covariance; centering before `x.var(dim=0)` is harmless because variance
+  is translation-invariant.
+- In the original PyTorch 1.8 code, `x.var(dim=0)` uses the unbiased sample variance, consistent with
+  the covariance denominator `batch_size - 1`.
+- Use the effective global batch size in the covariance denominator after gathering.
+- Use `sim_coeff=25`, `std_coeff=25`, `cov_coeff=1`, `mlp="8192-8192-8192"`.
+- Hidden projector layers are Linear + BatchNorm + ReLU; the final embedding layer is Linear with
+  `bias=False` and no final normalization.
+- LARS excludes one-dimensional parameters, such as biases and normalization parameters, from weight
+  decay and LARS adaptation.
+- The official augmentation code uses two BYOL-style views: both use random resized crop, flip,
+  color jitter with probability 0.8, grayscale with probability 0.2, and ImageNet normalization; view
+  one uses Gaussian blur probability 1.0 and solarization 0.0, view two uses Gaussian blur 0.1 and
+  solarization 0.2.
+
+For the 1000-epoch ImageNet run, the reference command uses batch size 2048 and base learning rate
+0.2. The code sets `base_lr_eff = base_lr * batch_size / 256`, warms up for 10 epochs, then cosine
+decays to `base_lr_eff * 0.001`.

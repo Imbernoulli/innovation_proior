@@ -1,137 +1,132 @@
-# Mean-Field Langevin Algorithm (MFLA) for multi-index models, distilled
+# Mean-field Langevin training for multi-index models
 
-The mean-field Langevin algorithm trains a two-layer network by **noisy, weight-decayed
-gradient descent** and reads that training as a convex optimization over the *distribution* of
-neurons. Lifting the width-`m` network to a measure `mu` over first-layer weights makes the
-risk a convex functional of `mu`; adding entropy regularization makes the Wasserstein gradient
-flow of that functional exactly a Langevin diffusion, whose injected Gaussian noise performs
-the saddle-escape that single-trajectory SGD must pay for with extra samples. The payoff:
-sample complexity scaling almost linearly with an *effective dimension* `d_eff`, independent of
-the information/leap exponent of the link.
+## Core object
 
-## Problem it solves
+The target model is
 
-Learning a multi-index target `y = g(Ux) + xi` (`U in R^{k x d}` orthonormal, `k = O(1)`,
-`g` unknown) with a *standard* first-order training procedure at sample complexity near the
-information floor `n ~ d`, for arbitrary `g` — escaping the `n ~ d^{s-1}` wall that gradient
-descent pays for links of information/leap exponent `s >= 3`.
-
-## Key idea
-
-Represent the network by the empirical measure `mu = (1/m) sum_j delta_{w_j}` over its
-first-layer neuron weights:
-
-```
-yhat(x; mu) = integral Psi(x; w) dmu(w),    R(mu) = integral ||w||^2 dmu(w).
+```text
+y = g(U x) + xi,
+U = (u_1/sqrt(k), ..., u_k/sqrt(k))^T,
 ```
 
-The prediction is linear in `mu` and the loss is convex, so the risk `J(mu)` is **convex in
-`mu`** even though it is non-convex in `W`. Regularize the *measure* with entropy and minimize
-the free energy
+with orthonormal `u_i`, zero-mean subGaussian noise `xi`, and fixed `k << d`. The source
+normalization matters: for isotropic `Sigma = I_d`,
 
-```
-F_beta(mu) = J(mu) + (1/beta) H(mu | tau),    H(mu | tau) = integral ln(dmu/dtau) dmu,
-```
-
-with inverse temperature `beta`. Its Wasserstein gradient flow is the **mean-field Langevin
-dynamics**
-
-```
-dw_t = - grad J'[mu_t](w_t) dt + sqrt(2 beta^{-1}) dB_t,
+```text
+c_x = sqrt(tr(Sigma)),       r_x = || Sigma^{1/2} U^T ||_F,
+d_eff = c_x^2 / r_x^2 = d.
 ```
 
-where `J'[mu]` is the first variation of `J`. The entropy term *is* the diffusion: the noise
-escapes the near-flat region around initialization that traps SGD.
+For general covariance, `d_eff` is small only when input variance is concentrated in directions
+that overlap the target subspace.
 
-**Weight decay = KL regularizer.** An `L2` penalty plus entropy is a relative entropy to a
-Gaussian base measure:
+## Measure-space lift
 
-```
-(lambda/2) integral ||w||^2 dmu + (1/beta) H(mu | Leb) = (1/beta) H(mu | gamma) + const,
-    gamma = N(0, (lambda beta)^{-1} I).
-```
+Write the width-`m` first layer as an empirical measure
 
-So the drift splits into the data gradient plus a `-lambda w` weight-decay term, and the
-algorithm is just noisy weight-decayed gradient descent.
-
-## Convergence
-
-The controlling object is the **proximal Gibbs distribution** of the current measure,
-`p_mu  ∝  exp(-beta J'[mu])`, which fills the duality gap. If `p_mu` satisfies a
-**log-Sobolev inequality** with constant `C_LSI` uniformly along the trajectory
-(`H(mu | p_mu) <= (C_LSI/2) I(mu | p_mu)`, the measure-space analogue of strong convexity),
-the free energy contracts geometrically:
-
-```
-F_beta(mu_t) - F_beta(mu*_beta) <= exp(-2t / (beta C_LSI)) (F_beta(mu_0) - F_beta(mu*_beta)).
+```text
+mu_W = (1/m) sum_j delta_{w_j},
+yhat(x; mu) = integral Psi(x; w) dmu(w).
 ```
 
-The finite-width, discrete-time iteration contracts one step at a time,
+The prediction is linear in `mu`, so a convex pointwise loss makes the risk convex as a functional
+of `mu`. The Euclidean free energy is
 
-```
-F^m(mu_{l+1}) - F(mu*) <= exp(-eta / (2 beta C_LSI)) (F^m(mu_l) - F(mu*)) + eta * A,
-    A = O(eta + 1/m + ...),
-```
-
-so accuracy `epsilon` needs `eta, 1/m` below `epsilon` and `l ~ (beta C_LSI / eta) log(1/epsilon)`.
-
-## Sample vs. compute: the effective dimension
-
-Define the **effective dimension**
-
-```
-d_eff = tr(Sigma) / || Sigma^{1/2} U^T ||_F^2 = c_x^2 / r_x^2,
-    c_x = tr(Sigma)^{1/2},    r_x = || Sigma^{1/2} U^T ||_F.
+```text
+F_{beta,lambda}(mu)
+  = empirical_risk(mu) + (lambda/2) integral ||w||^2 dmu + beta^{-1} H(mu).
 ```
 
-With `lambda = lambdatilde r_x^2` and `beta = Theta(d_eff / lambdatilde)`, the **sample
-complexity is `n = Otilde(d_eff)`**, almost linear and *independent of the link's
-information/leap exponent*. Isotropic data gives `d_eff ~ d`; covariances that concentrate
-variance in the relevant directions give `d_eff = polylog(d)`.
+Since
 
-The exponent that once governed the *statistics* is paid instead in *compute*, through
-`C_LSI`:
-
-- **Euclidean (free weights).** Holley–Stroock gives `C_LSI <= (1/(beta lambda)) exp(4 C_rho
-  iota beta)`. With `beta ~ d_eff`, iterations/width scale as `exp(d_eff)` — quasipolynomial in
-  `d` only when `d_eff = polylog(d)`. (An `exp(beta)` LSI is unavoidable in the Euclidean
-  worst case.)
-- **Riemannian (weights on the sphere).** Constrain neurons to `S^{d-1}`; drop the `L2`
-  penalty (the manifold is compact) and project after each step. Positive Ricci curvature
-  (`Ric >= (d-2) g`) via Bakry–Émery gives `C_LSI <= (rho d - beta C_rho K)^{-1} ~ 1/d` for
-  `beta` up to order `d` — **polynomial in `d`**, no `exp(beta)`.
-
-## Architecture choices
-
-- **Second layer frozen at signed `+-1/m`** (half `+`, half `-`): keeps the predictor a plain
-  average over a measure of first-layer neurons (the convex lift is over the first-layer
-  distribution), while signed halves let non-negative activations represent signed targets.
-- **Bounded smooth activation** `phi_{kappa,iota}` (`C^2`, `|phi| <= iota`, bounded `phi'`,
-  `phi''`): boundedness lets Holley–Stroock certify the LSI; smoothness controls the
-  Euler–Maruyama error. Recovers ReLU as `kappa, iota -> infinity`; plain ReLU is used in code.
-- **Spherical initialization / projection:** realizes the polynomial-LSI Riemannian setting and
-  keeps neuron norms `O(1)`.
-- **Bias coordinate** (append `1` to `x`): a learnable threshold per neuron.
-- **Large fresh-sample pool:** the drift `-grad J'[mu]` is a population gradient; drawing from
-  a large pool approximates it and reflects the `n ~ d_eff` statistical statement and
-  propagation of chaos.
-
-## Final update
-
-Euler–Maruyama of the Langevin SDE, with the data gradient scaled by width `m` (per-neuron
-gradient is `O(1/m)`; the measure-space drift is `O(1)`):
-
-```
-w_j^{l+1} = w_j^l - m eta grad_{w_j} Jhat_lambda(W) + sqrt(2 eta beta^{-1}) xi_j^l,
-            xi_j^l ~ N(0, I) iid,
+```text
+(lambda/2) integral ||w||^2 dmu + beta^{-1} H(mu | Leb)
+  = beta^{-1} H(mu | gamma) + const,
+gamma = N(0, (lambda beta)^{-1} I),
 ```
 
-i.e. `subtract eta * data_grad`, `subtract eta * lambda * w_j` (decay), `add sqrt(2 eta / beta)`
-Gaussian noise; in the Riemannian variant, renormalize `w_j` to the sphere afterward. The noise
-constant is the Euler–Maruyama factor `sqrt(2 eta beta^{-1})` (equivalently `sqrt(2 eta) *
-noise_std` with `noise_std = 1/sqrt(beta)`), not `sqrt(eta/beta)`.
+weight decay is exactly the Gaussian-base KL regularizer in the lifted problem.
 
-## Working code
+## Dynamics and constants
+
+The mean-field Langevin SDE is
+
+```text
+d w_t = - grad_w J'[mu_t](w_t) dt + sqrt(2 / beta) dB_t,
+```
+
+and the Eq. 10 Euler-Maruyama MFLA update is
+
+```text
+w_j^{l+1}
+  = w_j^l - m eta grad_{w_j} Jhat_lambda(W^l)
+    + sqrt(2 eta / beta) xi_j^l,
+xi_j^l ~ N(0, I).
+```
+
+The `m` factor is required because the per-neuron gradient of the averaged network objective is
+`O(1/m)`. Expanding `Jhat_lambda` gives the concrete drift
+
+```text
+- lr * m * data_gradient - lr * lambda * W.
+```
+
+The official notebook uses the same gradient and weight decay scaling, but its empirical noise line
+is
+
+```python
+2 * np.sqrt(lr * inv_temp) * torch.randn_like(W)
+```
+
+with `inv_temp = beta^{-1}`. That is `sqrt(4 lr / beta)`, whereas Eq. 10 is
+`sqrt(2 lr / beta)`.
+
+## Guarantees
+
+The proximal Gibbs law is
+
+```text
+nu_mu(dw) proportional exp(-beta J'[mu](w)) tau(dw).
+```
+
+If these laws satisfy an LSI with constant `C_LSI`, then
+
+```text
+F_beta(mu_t) - F_beta(mu_beta*)
+  <= exp(-2t / (beta C_LSI))
+     (F_beta(mu_0) - F_beta(mu_beta*)).
+```
+
+In Euclidean space, bounded smooth activations and a Lipschitz loss give the Holley-Stroock bound
+
+```text
+C_LSI <= (1 / (beta lambda)) exp(4 C_rho iota beta).
+```
+
+With `lambda = lambda_tilde r_x^2` and `beta = Otilde(d_eff / lambda_tilde)`, the main theorem
+gives sample complexity
+
+```text
+n = Otilde(d_eff),
+```
+
+independent of the information/leap exponent of `g`, while width and iteration bounds are
+exponential in `d_eff` in the worst case.
+
+The compact Riemannian result is conditional. On a manifold with
+`Ric >= rho d * metric`, if there exists a good reference measure with empirical risk
+`bar_epsilon` and entropy `bar_Delta` against the uniform measure, then for
+`beta < rho d/(C_rho K)`,
+
+```text
+C_LSI <= (rho d - beta C_rho K)^{-1}.
+```
+
+This gives a polynomial-time route under the entropy-spread assumption. It does not prove that
+this assumption yields `bar_Delta ~ d_eff` for fixed-`k` multi-index models; that case remains
+open.
+
+## Faithful reference implementation
 
 ```python
 import math
@@ -139,63 +134,99 @@ import torch
 
 
 def predict(X, W, a, phi):
-    """Two-layer net with fixed second layer a: yhat = phi(X W^T) @ a."""
     return phi(X @ W.T) @ a
 
 
 def first_layer_gradient(X, y, W, a, phi, phiprime):
-    """Gradient of the per-batch squared loss w.r.t. first-layer weights W -> [m, d]."""
+    """Matches the notebook gradient: two 1/sqrt(n) factors give the mean loss gradient."""
     n = X.shape[0]
-    residual = (predict(X, W, a, phi) - y).reshape(1, -1)          # [1, n]
-    backprop = phiprime(W @ X.T) * a.reshape(-1, 1)                # [m, n]
-    return (backprop * residual) @ X / n                          # [m, d]
+    v1 = phiprime(W @ X.T) * a.reshape(-1, 1) / math.sqrt(n)
+    v2 = X * (predict(X, W, a, phi) - y).reshape(-1, 1) / math.sqrt(n)
+    return v1 @ v2
 
 
 def relu(z):
-    return torch.clamp(z, min=0.0)
+    return torch.maximum(z, torch.zeros_like(z))
 
 
 def reluprime(z):
     return (z >= 0).to(z.dtype)
 
 
-def make_fixed_second_layer(m):
-    """Signed halves +1/m and -1/m so non-negative activations represent signed targets."""
-    return torch.cat([torch.ones(m // 2), -torch.ones(m - m // 2)]) / m
+def make_signed_second_layer(m, *, device=None, dtype=None):
+    """Notebook convention: scalar neurons with fixed +1/m and -1/m output weights."""
+    a = torch.cat([torch.ones(m // 2), -torch.ones(m - m // 2)])
+    return (a / m).to(device=device, dtype=dtype)
 
 
-def init_first_layer_on_sphere(m, d):
-    """Neurons (= particles of the measure mu) initialized uniformly on the unit sphere."""
-    W = torch.randn(m, d)
+def init_first_layer_on_sphere(m, d, *, device=None, dtype=None):
+    """Notebook initialization; the notebook does not project after later updates."""
+    W = torch.randn(m, d, device=device, dtype=dtype)
     return W / W.norm(dim=1, keepdim=True).clamp(min=1e-8)
 
 
-def mfla_step(W, X, y, a, phi, phiprime, lr, weight_decay, beta, project_to_sphere=True):
-    """One mean-field Langevin update = noisy, weight-decayed gradient descent.
+def mfla_step(
+    W,
+    X,
+    y,
+    a,
+    phi,
+    phiprime,
+    lr,
+    weight_decay,
+    inv_temp,
+    *,
+    match_notebook_noise=True,
+):
+    """One first-layer update.
 
-      drift  = -(data gradient) - lambda * w           (data fit + weight decay = KL drift)
-      noise  = sqrt(2 * lr / beta) * standard Gaussian (Euler-Maruyama of the diffusion)
-    The m prefactor rescales the O(1/m) per-neuron gradient to the O(1) measure-space drift.
+    match_notebook_noise=True reproduces the official notebook:
+        noise = 2 * sqrt(lr * inv_temp) * N(0, I).
+    match_notebook_noise=False uses Eq. 10:
+        noise = sqrt(2 * lr * inv_temp) * N(0, I).
     """
     m = W.shape[0]
-    g = first_layer_gradient(X, y, W, a, phi, phiprime)           # [m, d]
-    noise = math.sqrt(2.0 * lr / beta) * torch.randn_like(W)
-    W = W - lr * m * g - lr * weight_decay * W + noise
-    if project_to_sphere:                                         # Riemannian retraction
-        W = W / W.norm(dim=1, keepdim=True).clamp(min=1e-8)
-    return W
+    grad = first_layer_gradient(X, y, W, a, phi, phiprime)
+    coeff = 2.0 if match_notebook_noise else math.sqrt(2.0)
+    noise = coeff * math.sqrt(lr * inv_temp) * torch.randn_like(W)
+    return W - lr * m * grad - lr * weight_decay * W + noise
 
 
-def train_mfla(X, y, n_iters=3000, m=50, lr=0.1, weight_decay=0.01,
-               inv_temp=0.001, project_to_sphere=True):
-    """inv_temp = 1/beta. Append a bias coordinate to X before calling for a learnable threshold."""
-    d = X.shape[1]
-    beta = 1.0 / inv_temp
-    a = make_fixed_second_layer(m).to(X)
-    W = init_first_layer_on_sphere(m, d).to(X)
+def train_mfla(
+    X,
+    y,
+    *,
+    n_iters=3000,
+    width=50,
+    lr=0.1,
+    inv_temp=0.001,
+    weight_decay=0.01,
+    append_bias=True,
+    match_notebook_noise=True,
+):
+    if append_bias:
+        X = torch.cat([X, torch.ones(X.shape[0], 1, device=X.device, dtype=X.dtype)], dim=1)
+    W = init_first_layer_on_sphere(width, X.shape[1], device=X.device, dtype=X.dtype)
+    a = make_signed_second_layer(width, device=X.device, dtype=X.dtype)
     losses = []
     for _ in range(n_iters):
-        W = mfla_step(W, X, y, a, relu, reluprime, lr, weight_decay, beta, project_to_sphere)
+        W = mfla_step(
+            W,
+            X,
+            y,
+            a,
+            relu,
+            reluprime,
+            lr,
+            weight_decay,
+            inv_temp,
+            match_notebook_noise=match_notebook_noise,
+        )
         losses.append(torch.mean((predict(X, W, a, relu) - y) ** 2).item())
-    return W, losses
+    return W, a, losses
 ```
+
+The theoretical Euclidean architecture fixes all outer weights at `+1` and represents signed
+outputs by paired neurons `Psi(x; w) = phi(<x_tilde, omega_1>) - phi(<x_tilde, omega_2>)` with
+`w in R^{2d+2}`. The notebook's signed scalar-neuron implementation is the corresponding practical
+encoding used for experiments.

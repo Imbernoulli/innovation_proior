@@ -36,8 +36,8 @@ closed-form solution.
    `[max(x_i-eps,0), min(x_i+eps,1)]`; because these are same-axis boxes, this is implemented
    by clipping `delta = x' - x` to `[-eps, eps]`, then clipping `x + delta` to `[0,1]`.
 
-4. **Random start (with optional restarts).** The gradient exactly at `x` is corrupted by sharp local
-   curvature artifacts that mask the true ascent direction. Sample `u_i ~ Uniform(-eps, eps)`,
+4. **Random start (with optional restarts).** The gradient exactly at `x` can be distorted by
+   sharp local curvature artifacts that mask the true ascent direction. Sample `u_i ~ Uniform(-eps, eps)`,
    set `x_0 = clip(x + u, 0, 1)`, and then run the projected iteration. If extra attack budget
    is available, repeat from several starts and keep the highest-loss result.
 
@@ -66,19 +66,20 @@ Equivalently, `x_{t+1} = Pi_C( x_t + alpha*sign(∇_x L(theta, x_t, y)) )`, wher
 ## Hyperparameters and why
 
 - **Step direction `sign(grad)`** — L_inf-steepest ascent (not raw gradient, which is L_2).
-- **Step size `alpha`** — small enough not to overshoot the box every step (projection then
-  wastes the step at the boundary), large enough that `steps*alpha` exceeds the box diameter
-  `2*eps` so the iterate can cross the ball from any start and move along the boundary. A common
-  rule is `alpha = 2.5*eps/steps` (total reach `2.5*eps`); with many steps a larger `alpha`
-  such as `eps/4` is also fine (e.g. `steps=40` gives reach `10*eps`).
+- **Step size `alpha`** — a configured attack-budget parameter, not part of the definition. It
+  should be small enough that repeated gradients matter, but large enough to move around the
+  box within the step budget. For evaluations where any random start should be able to cross
+  the box, `steps*alpha` should exceed the coordinate diameter `2*eps`; one thorough setting is
+  `alpha = 2.5*eps/steps` over 100 steps. Concrete dataset-scale choices: 40 steps of size
+  `0.01` for MNIST `eps=0.3`, and CIFAR steps of size `2` with `eps=8` in 0--255 pixel units.
+  On `[0,1]` CIFAR inputs, `eps=8/255` and `alpha=eps/4=2/255` match that scale.
 - **`steps`** — more steps generally strengthen the search up to diminishing returns; tens of
   steps in practice.
 - **Random start magnitude `eps`** — sample each perturbation coordinate uniformly from
   `[-eps, eps]`, then clip to `[0,1]`; optional restarts sample basins.
-- **Loss** — cross-entropy is the default; a logit-margin loss
-  `max_{j != y} z_j - z_y` is the drop-in when the attack should optimize the decision
-  boundary margin directly, optionally with a confidence offset. The iteration is unchanged
-  otherwise.
+- **Loss** — cross-entropy is the default; the iteration also accepts a
+  Carlini-Wagner-style logit hinge, `-relu(z_y - max_{j != y} z_j + kappa)`, when the attack
+  should optimize a confidence-margin objective. The iteration is unchanged otherwise.
 
 ## Relation to prior methods
 
@@ -132,7 +133,7 @@ def run_attack(
     _ = n_classes
     model.eval()
     steps = 40
-    alpha = eps / 4.0                       # steps*alpha = 10*eps >> 2*eps diameter
+    alpha = eps / 4.0                       # CIFAR-style default: eps=8/255 -> step size 2/255
 
     x = images.clone().detach().to(device)       # ball is centered at the clean image
     labels = labels.clone().detach().to(device)

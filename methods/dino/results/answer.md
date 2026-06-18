@@ -31,15 +31,15 @@ min_θs   Σ_{x ∈ {x_1^g, x_2^g}}   Σ_{x' ∈ V, x' ≠ x}   H( P_t(x), P_s(x
 θ_t ← λ θ_t + (1 − λ) θ_s
 ```
 
-**Centering** (EMA bias on teacher logits, batch size `B`, rate `m`):
+**Centering** (EMA bias on raw teacher logits, rate `m`; average over the teacher's global-view outputs, all-reduced in distributed training):
 
 ```
-c ← m c + (1 − m) (1/B) Σ_i g_θt(x_i)
+c ← m c + (1 − m) (1/|T|) Σ_{z ∈ T} g_θt(z)
 ```
 
-**Sharpening**: a low teacher temperature `τ_t` (≈0.04–0.07, warmed up from 0.04 over the first epochs), with `τ_s = 0.1` so the teacher target is sharper than the student.
+**Sharpening**: a low teacher temperature `τ_t`, with `τ_s = 0.1` so the teacher target is sharper than the student. The paper recipe warms `τ_t` from `0.04` to `0.07` over 30 epochs; the official code default keeps `τ_t = 0.04`, and its README uses the warmup-to-`0.07` setting for the boosted ViT-S run.
 
-**Why it does not collapse.** There are two collapse modes: the teacher output becomes constant either by one dimension dominating, or by going uniform. Decompose the loss as `H(P_t, P_s) = h(P_t) + D_KL(P_t ‖ P_s)`; a constant teacher output drives `D_KL → 0`. Centering subtracts the mean logit, so no single dimension can dominate — but centering alone flattens the output toward uniform. Sharpening (low `τ_t`) concentrates the distribution and prevents the uniform mode — but alone it lets one dimension dominate. The two push in opposite directions; applied together they balance and hold `D_KL` away from zero. (Without centering, the teacher entropy collapses to 0; without sharpening, to `log K`.)
+**Why it does not collapse.** There are two collapse modes: the teacher output becomes input-independent either by one dimension dominating, or by going uniform. Decompose the per-sample loss as `H(P_t, P_s) = h(P_t) + D_KL(P_t ‖ P_s)`. `D_KL → 0` by itself only says that the student is matching the teacher; in the paper's failing ablations, that happens together with a teacher entropy extreme, which identifies collapse. Centering subtracts the mean logit, so no single dimension can dominate — but centering alone flattens the output toward uniform. Sharpening (low `τ_t`) concentrates the distribution and prevents the uniform mode — but alone it lets one dimension dominate. The two push in opposite directions; applied together they balance. Without centering, the teacher entropy collapses to `0`; without sharpening, it collapses to `−log(1/K) = log K`.
 
 ## Working code
 
@@ -48,6 +48,7 @@ The loss and the training step are the heart.
 ```python
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 import torch.nn.functional as F
 import numpy as np
 
@@ -72,11 +73,18 @@ class DINOHead(nn.Module):
                 layers.append(nn.GELU())
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
-        # weight-normalized last layer; gain fixed to 1 (and frozen) stabilizes early training
+        self.apply(self._init_weights)
+        # weight-normalized last layer; gain initialized to 1 and optionally frozen
         self.last_layer = nn.utils.weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
         self.last_layer.weight_g.data.fill_(1)
         if norm_last_layer:
             self.last_layer.weight_g.requires_grad = False
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         x = self.mlp(x)
@@ -100,6 +108,8 @@ class MultiCropWrapper(nn.Module):
         start_idx, output = 0, torch.empty(0, device=x[0].device)
         for end_idx in idx_crops:
             out = self.backbone(torch.cat(x[start_idx:end_idx]))
+            if isinstance(out, tuple):     # XCiT returns a tuple in the official wrapper
+                out = out[0]
             output = torch.cat((output, out))
             start_idx = end_idx
         return self.head(output)
@@ -143,9 +153,14 @@ class DINOLoss(nn.Module):
 
     @torch.no_grad()
     def update_center(self, teacher_output):
-        batch_center = teacher_output.mean(dim=0, keepdim=True)   # first-order stat only
+        batch_center = torch.sum(teacher_output, dim=0, keepdim=True)
+        if dist.is_available() and dist.is_initialized():
+            dist.all_reduce(batch_center)
+            batch_center = batch_center / (len(teacher_output) * dist.get_world_size())
+        else:
+            batch_center = batch_center / len(teacher_output)
         self.center = self.center * self.center_momentum \
-            + batch_center * (1 - self.center_momentum)           # EMA -> batch-size robust
+            + batch_center * (1 - self.center_momentum)           # EMA of raw teacher logits
 
 
 def train_one_epoch(student, teacher, dino_loss, data_loader, optimizer,
@@ -211,4 +226,4 @@ Data augmentation produces the crops: two global crops at 224² (large scale ran
 
 ## Defaults
 
-`τ_s = 0.1`, `τ_t` warmed 0.04→0.07 over 30 epochs (keep ≤ ~0.06 once warm), center momentum `m = 0.9`, teacher momentum `λ` cosine 0.996→1, `K = 65536`, bottleneck `d = 256`, head = 3-layer MLP (GELU, hidden 2048) + ℓ2 norm + weight-normed linear, BN-free for ViT, AdamW with `lr = 0.0005·bs/256` (10-epoch warmup, cosine decay), weight decay cosine 0.04→0.4, gradient clip 3.0, freeze last layer for the first epoch. Multi-crop: 2×224² + (e.g.) 8×96². Evaluate frozen features with linear probe or hyperparameter-free weighted k-NN (k=20).
+`τ_s = 0.1`, `τ_t = 0.04` in the official code default and `0.04→0.07` over 30 epochs in the paper/README boosted ViT-S recipe, center momentum `m = 0.9`, teacher momentum `λ` cosine 0.996→1, `K = 65536`, bottleneck `d = 256`, head = 3-layer MLP (GELU, hidden 2048) + ℓ2 norm + weight-normed linear, BN-free for ViT. The official code default freezes `weight_g` with `norm_last_layer=True`; the boosted ViT-S command sets `norm_last_layer=False`, while still canceling last-layer gradients for the first epoch. Optimization: AdamW with `lr = 0.0005·bs/256` (10-epoch warmup, cosine decay), weight decay cosine 0.04→0.4, gradient clip 3.0. Multi-crop: 2×224² + (e.g.) 8×96². Evaluate frozen features with linear probe or hyperparameter-free weighted k-NN (k=20).

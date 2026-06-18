@@ -1,186 +1,173 @@
 # Frozen-bias shallow network for single-index models, distilled
 
-The frozen-bias network is a two-layer ReLU model in which all hidden neurons share a single
-inner direction `theta`, the per-neuron biases (and signs) are sampled once at random
-initialization and *never trained*, and only the shared direction `theta` and the readout `c`
-are optimized by gradient descent. Freezing the biases collapses the high-dimensional,
-non-convex direction-recovery problem onto a benign one-dimensional landscape in the correlation
-`m = <theta, theta*>`, which lets ordinary gradient descent recover the hidden direction `theta*`
-with near-optimal sample complexity *and* learn the unknown link `f_*` non-parametrically at a
-rate independent of the ambient dimension.
-
 ## Problem it solves
 
-Single-index regression `y = f_*(<theta*, x>) + xi`, `x ~ N(0, I_d)`, `theta* in S^{d-1}`, with
-*both* the direction `theta*` and the univariate link `f_*` unknown. Recover `theta*`
-(parametric, high-dimensional) and estimate `f_*` (non-parametric, one-dimensional) with one
-shallow network trained by gradient descent — no prior knowledge of `f_*`, no bespoke estimator.
+Single-index regression has
 
-## Architecture
-
-```
-G(x; c, theta) = (1/sqrt(N)) sum_{i=1}^N c_i * phi(eps_i <theta, x> - b_i),   phi = ReLU,
+```text
+y = f_*(<theta*, x>) + xi,        x ~ N(0,I_d),        theta* in S^{d-1},
 ```
 
-with `theta in S^{d-1}` shared across all neurons, `b_i ~ N(0, tau^2)` (`tau > 1`) and
-`eps_i in {+1,-1}` Rademacher, both *frozen* at initialization. Trained parameters: `theta` and
-`c`. Objective: Tikhonov-regularized squared error `L(c, theta) = E[(y - G)^2] + lambda ||c||^2`
-(empirically, the sample average).
+with both the high-dimensional direction `theta*` and the one-dimensional link `f_*` unknown. The goal is one shallow network trained by gradient methods that recovers the direction and fits the link without hard-wiring `f_*` as the activation and without a bespoke Hermite/slicing estimator.
 
-## Key idea
+## Theorem-level construction
 
-- **Tie the inner weights, freeze the biases.** One direction `theta` does the high-dimensional
-  inference; the frozen `{(b_i, eps_i)}` form a fixed one-dimensional random-feature dictionary
-  in `u = <theta, x>` that the readout `c` combines to build the link. The biases are the *lazy*
-  (kernel) part; the direction is the *rich* (feature-learning) part.
-- **Landscape collapse.** Because the biases do not depend on `theta`, the population loss
-  depends on `theta` only through `m = <theta, theta*>`:
+The clean model ties every hidden unit to one shared direction and randomizes only the scalar feature dictionary:
 
-  ```
-  L(c, theta) = 1 + c^T Q_lambda c - 2 <c, sum_{j>=s} alpha_j m^j T_j> + sigma^2,
-  ```
-
-  with `f_* = sum_j alpha_j h_j` (Hermite), `T_j = T h_j`, `Q = T T^*`, `Q_lambda = Q + lambda I`.
-  Hence `nabla_theta L = -(sum_{j>=s} <T_j, c> j alpha_j m^{j-1}) theta*` is colinear with
-  `theta*`: the whole `d`-dimensional flow reduces to a scalar flow in `m`.
-- **Benign topology.** The projected loss `Lbar(theta) = min_c L = -<g_m, P_lambda g_m> +
-  (1+sigma^2)`, `g_m = sum_{j>=s} alpha_j m^j h_j`, `P_lambda = Sigma(Sigma+lambda I)^{-1}`. In
-  the ideal limit (`lambda -> 0`, infinite features) `Lbar = -sum_{j>=s} alpha_j^2 m^{2j} +
-  (1+sigma^2)` is strictly decreasing in `|m|`: only critical points are the equator `m=0` and
-  the poles `m=+-1`. With finite regularized features this is preserved (see below).
-- **Information exponent sets the rate.** With `s = min{j : alpha_j != 0}`, near the equator the
-  signal scales like `m^{s-1}`; the random init sits at `m_0 = Theta(1/sqrt(d))`; beating the
-  uniform empirical-gradient error `~ sqrt(d/n)` gives recovery at `n = Theta(d^s)`.
-
-## Why the finite-feature landscape stays benign
-
-Critical-point equation (dividing the `dLbar/dm = 0` condition by 2):
-
-```
-sum_{j>=s} alpha_j^2 j m^{2j-1} = <(I - P_lambda) g_m, gbar_m>_gamma,   gbar_m = sum_{j>=s} j alpha_j m^{j-1} h_j.
+```text
+G(x;c,theta) = (1/sqrt(N)) sum_{i=1}^N c_i phi(eps_i <theta,x> - b_i),
+phi(u)=max(0,u), theta in S^{d-1}.
 ```
 
-- **Left side** `>= alpha_s^2 s |m|^{2s-1}` (leading Hermite term dominates).
-- **Right side**: Cauchy-Schwarz + random-feature approximation. With `N >= (C/lambda)
-  log(1/(lambda delta))` features (degrees-of-freedom bound, Bach 2017b), `||(I-P_lambda) f||^2
-  <= 4 A(f, lambda)` for zero-mean `f`. RKHS approximation error (ReLU Sobolev representation):
+The signs `eps_i` are Rademacher, the biases `b_i ~ N(0,tau^2)` with `tau > 1`, and both are fixed after initialization. The trained variables are `theta` and `c`. The frozen biases define a one-dimensional random-feature dictionary in `u=<theta,x>`; the shared `theta` carries the high-dimensional search.
 
-  ```
-  A(f, lambda) <= C ( tau^{1+beta} ||f''||_4^2 * lambda^beta + lambda C_f^2 ),   beta = (1 - 1/tau^2)/(3 + 1/tau^2).
-  ```
+## Population algebra
 
-  `beta > 0` requires `tau > 1`. Both sides scale like `|m|^{2s-1}`, so for
+Write `f_* = sum_j alpha_j h_j` in normalized Hermite polynomials, let `s=min{j: alpha_j != 0}`, let `m=<theta,theta*>`, let `T_j=T h_j`, and set `Q_lambda=Q+lambda I`. With `||f_*||_gamma=1`,
 
-  ```
-  lambda < lambda* = ( 4 sqrt(C tau^{1+beta}) Ktilde C_{f_*}^2 / (alpha_s^2 s) )^{-2/beta}
-  ```
-
-  the right side is strictly below the left for all `m != 0` — contradiction, no critical point
-  with `0 < |m| < 1`. `N ~ 1/lambda` features suffice; `N` is independent of `d`.
-
-## Recovery guarantee
-
-Uniform gradient concentration `sup ||nabla L_n - nabla L|| = O(r^2 sqrt(D/n))`, `D = max{d, N}`
-(at the ReLU kink, controlled by Gaussian anti-concentration of activation flips), transfers the
-benign topology to the empirical landscape. Run two-phase gradient flow (Riemannian on `theta`):
-phase 1 optimizes only `theta` from a small/sparse readout `c(0)` (`||c(0)||_0 = N_0`, norm
-`rho`) until `T_0 = Otilde(d^{s/2-1})`; phase 2 jointly optimizes `c, theta`. Then with constant
-probability,
-
-```
-1 - |<theta_T, theta*>| = Otilde( lambda^{-4} max{ (d+N)/n, d^4/n^2 } ),
+```text
+L(c,theta) = 1 + c^T Q_lambda c
+             - 2 <c, sum_{j>=s} alpha_j m^j T_j> + sigma^2.
 ```
 
-so for `lambda = Theta(1)` and `s > 2` the sample complexity is `n = Theta(d^s)`, near-optimal
-relative to the `d^{s-1}` lower bound for gradient methods. The two-phase schedule (lazy/rich
-relative scaling) avoids the `c`-`theta` entanglement that would otherwise cost `d^{2s}`.
+Thus
 
-## Fine-tuning (decoupled non-parametric rate)
-
-Re-fit the readout alone by ridge regression on a *fresh* sample (sample splitting breaks the
-data-kernel dependence), with a separate small `lambda'`:
-
-```
-chat = argmin_c (1/n') sum_i (c^T Phi(<theta_hat, x_i'>) - y_i')^2 + lambda' ||c||^2.
+```text
+nabla_c L = 2(Q_lambda c - sum_{j>=s} alpha_j m^j T_j),
+c*(m) = Q_lambda^{-1} sum_{j>=s} alpha_j m^j T_j.
 ```
 
-Excess risk splits into a `d`-independent non-parametric term plus a direction-error term:
+Differentiating the displayed loss makes the `theta` derivative colinear with `theta*` (up to the harmless global factor 2 that is divided out in the stationary equation). The optimized readout gives
 
-```
-E[ ||F_hat - F_*||^2 ] <~ ||f_*''||^{2/(beta+1)} (sigma^2 tau^2 / n')^{beta/(beta+1)} + ||f_*'||^2 (1 - |m|).
-```
-
-Large `lambda` in phase 1 (fast recovery), small `lambda'` in the re-fit (low excess risk).
-
-## Non-smooth optimization note
-
-Squared loss on a ReLU net is non-smooth; "gradient flow" is the subgradient inclusion
-`zdot in -partial L(z)` (Clarke). Existence + descent hold because the loss is definable in an
-o-minimal structure (admits a chain rule), so `dL/dt = -||partial-bar L||^2 <= 0`; the spherical
-constraint is handled by projecting the subdifferential (and `<z, zdot> = 0` on the sphere). A
-smooth activation removes this and improves the `s in {1,2}` rates to `d^s`, but ReLU is the
-practitioner default.
-
-## Direction estimator
-
-```
-theta_hat = normalize( sum_j |c_j| w_j ),
+```text
+Lbar(theta) = - <g_m, P_hat_lambda g_m>_gamma + 1 + sigma^2,
+g_m = sum_{j>=s} alpha_j m^j h_j.
 ```
 
-`w_j` the first-layer rows, `c_j` the readout weights (a single shared direction in the tied
-model; this is the standard estimator for an untied implementation).
+The critical equation is
 
-## Working code
+```text
+sum_{j>=s} alpha_j^2 j m^{2j-1}
+  = <(I-P_hat_lambda) g_m, gbar_m>_gamma,
+gbar_m = sum_{j>=s} j alpha_j m^{j-1} h_j.
+```
 
-Filling the shallow-network harness: initialize a shared inner direction on the sphere, freeze
-the biases, train direction + readout with SGD on squared loss, optional ridge re-fit.
+In the ideal infinite-feature, unregularized limit the right side is zero and `Lbar = 1+sigma^2 - sum_j alpha_j^2 m^{2j}`, strictly decreasing in `|m|`. For finite random features, the Bach-style approximation bound
+
+```text
+N >= C/lambda * log(1/(lambda delta)),
+||(I-P_hat_lambda)f||_gamma^2 <= 4 A(f,lambda)
+```
+
+plus the ReLU RKHS approximation rate
+
+```text
+A(f,lambda) <= C(tau^{1+beta} ||f''||_4^2 lambda^beta + lambda C_f^2),
+beta = (1 - 1/tau^2)/(3 + 1/tau^2),
+```
+
+makes the right side strictly smaller than `alpha_s^2 s |m|^{2s-1}` whenever `m != 0`, provided `lambda < lambda*`. Hence the population critical directions are only the equator `m=0` and the poles `theta=+-theta*`, with a unique readout `c` for each critical direction.
+
+## Optimization and risk
+
+The empirical loss concentrates uniformly despite ReLU kinks by controlling activation-pattern flips with Gaussian anti-concentration. The gradient flow uses a time-scale schedule
+
+```text
+dot c(t) = - zeta(t) nabla_c L_n(c,theta),     zeta(t)=1{t>T_0},
+dot theta(t) = - nabla_theta^S L_n(c,theta),
+```
+
+with sparse small-norm `c(0)` for the first phase. The precise theorem requires
+
+```text
+n = Otilde(max{ (d+N)d^{s-1}/lambda^4, d^{(s+3)/2}/lambda^2 })
+```
+
+and gives
+
+```text
+1 - |<theta_T,theta*>|
+  = Otilde(lambda^{-4} max{(d+N)/n, d^4/n^2}).
+```
+
+For ReLU with `lambda=Theta(1)` and `s>2`, this is the advertised `Otilde(d^s)` batch-gradient-flow recovery rate. The ReLU cases `s=1` and `s=2` are `d^2` and `d^2.5`; replacing ReLU by the smooth activation analyzed in the appendix can improve those cases to `d^s`.
+
+After direction recovery, a fresh-sample ridge refit of `c` with a separate `lambda_{n'}` yields
+
+```text
+E[||F_hat-F_*||^2 | theta_hat]
+  <= C ||f_*''||_gamma^{2/(beta+1)} (sigma^2 tau^2/n')^{beta/(beta+1)}
+     + C ||f_*'||_gamma^2 (1-|<theta_hat,theta*>|).
+```
+
+The first term is one-dimensional and does not scale with ambient `d`; the second term is the price of imperfect direction recovery.
+
+## MLS-Bench scaffold implementation
+
+The local benchmark code cannot instantiate the exact tied-direction theorem model because `TwoLayerMLP` exposes independent first-layer rows. Its reference `frozen_bias.edit.py` is therefore a scaffold adaptation: initialize those rows on the unit sphere, sample `fc1.bias` uniformly in `[-1,1]`, freeze only that bias vector, train all remaining parameters with SGD and MSE, and leave the optional ridge refit unused. The block below matches the local reference edit.
 
 ```python
-import math
-import torch
-import torch.nn as nn
-
-
 class Strategy:
-    """Frozen-bias shallow network: biases sampled once at init and frozen; only the
-    (shared) first-layer direction and the readout are trained. Freezing the biases
-    collapses the d-dimensional landscape to a benign 1-D landscape in m = <theta, theta*>."""
+    """Frozen-bias shallow network (Bietti et al., NeurIPS 2022, Thm 1)."""
 
-    def __init__(self, config):
+    def __init__(self, config: TaskConfig) -> None:
         self.config = config
 
-    def init_two_layer(self, net, config):
+    def init_two_layer(self, net: TwoLayerMLP, config: TaskConfig) -> None:
+        # Random first-layer weights on the unit sphere; biases sampled
+        # uniformly in [-1, 1] and frozen (see Bietti et al. 2022, eqn. 3).
         with torch.no_grad():
             W = torch.randn_like(net.fc1.weight)
-            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)   # rows on the unit sphere
+            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)
             net.fc1.weight.copy_(W)
-            net.fc1.bias.uniform_(-1.0, 1.0)                      # biases sampled once...
-        net.fc1.bias.requires_grad_(False)                       # ...and FROZEN (the key move)
+            net.fc1.bias.uniform_(-1.0, 1.0)
+        net.fc1.bias.requires_grad_(False)
 
-        bound = 1.0 / math.sqrt(config.width)                    # small readout (lazy/rich scale)
+        bound = 1.0 / math.sqrt(config.width)
         nn.init.uniform_(net.fc2.weight, -bound, bound)
         nn.init.zeros_(net.fc2.bias)
 
-    def make_optimizer(self, net, config):
-        params = [p for p in net.parameters() if p.requires_grad]  # frozen biases excluded
+    def make_optimizer(
+        self,
+        net: TwoLayerMLP,
+        config: TaskConfig,
+    ) -> torch.optim.Optimizer:
+        params = [p for p in net.parameters() if p.requires_grad]
         return torch.optim.SGD(
-            params, lr=config.base_lr, momentum=config.momentum,
-            weight_decay=config.weight_decay,                      # Tikhonov lambda
+            params,
+            lr=config.base_lr,
+            momentum=config.momentum,
+            weight_decay=config.weight_decay,
         )
 
-    def training_step(self, net, optimizer, x, y, step, config):
+    def training_step(
+        self,
+        net: TwoLayerMLP,
+        optimizer: torch.optim.Optimizer,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        step: int,
+        config: TaskConfig,
+    ) -> StepMetrics:
         net.train()
         optimizer.zero_grad(set_to_none=True)
         preds = net(x)
-        loss = torch.mean((preds - y) ** 2)                        # squared-error objective
+        loss = torch.mean((preds - y) ** 2)
         loss.backward()
         optimizer.step()
-        return loss
+        return StepMetrics(loss=float(loss.item()), extra={})
 
-    def finalize(self, net, x_train, y_train, config):
-        return                                                     # optional ridge re-fit goes here
+    def finalize(
+        self,
+        net: TwoLayerMLP,
+        x_train: torch.Tensor,
+        y_train: torch.Tensor,
+        config: TaskConfig,
+    ) -> None:
+        return
 
 
-def build_strategy(config):
+def build_strategy(config: TaskConfig) -> Strategy:
     return Strategy(config)
+
 ```

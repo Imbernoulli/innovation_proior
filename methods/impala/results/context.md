@@ -60,12 +60,11 @@ policy being evaluated.
 and run asynchronously across many actors, the behaviour policy that produced a
 trajectory is *stale* — several gradient updates behind the learner's current
 policy at the moment of the update. The larger the throughput and the number of
-machines, the larger this lag. Empirically, agents that ignore this lag and apply
-an on-policy update to lagged data, or that patch it heuristically, learn less
-stably and degrade as the lag grows; the degradation worsens monotonically with
-the number of update steps the actor is behind. This is a pre-method fact about
-decoupled architectures: scaling buys throughput but injects off-policiness, and
-that off-policiness is harmful unless corrected.
+machines, the larger this lag can become. An update that ignores this mismatch is
+using an on-policy formula on data from the wrong action distribution; an
+informal numerical patch can at best damp a symptom. This is the core pre-method
+constraint on decoupled architectures: scaling buys throughput but injects
+off-policiness, and that off-policiness needs a principled correction.
 
 ## Baselines
 

@@ -81,12 +81,16 @@ delta = 1.2 / p = 1.2 * n1 n2 / m.
 converges empirically and takes far larger steps.)
 
 **Threshold.** Pick `tau` large enough that `tau||X||_*` dominates `(1/2)||X||_F^2`. For
-`M = M_L M_R^*` with Gaussian factors, `||M||_F ≈ n√r` and `||M||_* ≈ n r`, so
+square `n×n` matrices generated as `M = M_L M_R^*` with Gaussian factors,
+`||M||_F ≈ n√r` and `||M||_* ≈ n r`, so
 `tau||M||_* / ((1/2)||M||_F^2) ≈ 2 tau/n`; setting this ≈ 10 gives
 
 ```
 tau = 5 n.
 ```
+
+For a rectangular `n1×n2` implementation, the same calibration is usually written
+`tau = 5 sqrt(n1 n2)`; this reduces to `5n` in the square case.
 
 **Warm start.** While `k delta ||P_Omega(M)||_2 <= tau`, the shrink yields `X^k = 0` and
 `Y^k = k delta P_Omega(M)`. Skip those trivial steps: define `k_0` by
@@ -126,12 +130,12 @@ import torch
 
 
 class NuclearNormSVT:
-    """Singular Value Thresholding (Cai, Candes, Shen) for matrix completion."""
+    """Singular Value Thresholding for matrix completion."""
 
-    def __init__(self, tau_factor=5.0, delta_factor=1.2, train_thres=1e-7):
+    def __init__(self, tau_factor=5.0, delta_factor=1.2, tol=1e-4):
         self.tau_factor = float(tau_factor)      # tau = tau_factor * n   (=> 5n)
         self.delta_factor = float(delta_factor)  # delta = delta_factor / p  (=> 1.2/p)
-        self.train_thres = float(train_thres)    # relative-residual stop on Omega
+        self.tol = float(tol)                    # relative-residual stop on Omega
 
     @torch.no_grad()
     def recover(self, observed_values, observed_mask, n, rank_hint,
@@ -145,32 +149,40 @@ class NuclearNormSVT:
         delta = self.delta_factor / max(p, 1e-6)                  # delta = 1.2 / p
 
         # Warm start: jump over the trivial steps where the shrink kills everything.
-        M_obs_norm = float(M_obs.norm().item())
-        k0 = max(1.0, math.ceil(tau / (delta * max(M_obs_norm, 1e-6))))
+        norm_proj_m = float(torch.linalg.matrix_norm(M_obs, ord=2).item())
+        k0 = max(1, math.ceil(tau / (delta * max(norm_proj_m, 1e-6))))
         Y = (k0 * delta) * M_obs                                  # Y^0 = k_0 * delta * P_Omega(M)
 
         X = torch.zeros_like(M_obs)
-        denom = float(n_observed)
+        norm_obs = max(float(M_obs.norm().item()), 1e-6)
+        log_every = max(int(log_iters), 1)
         for it in range(1, max_iters + 1):
             # X^k = D_tau(Y^{k-1}): soft-threshold the singular values.
             U, S, Vh = torch.linalg.svd(Y, full_matrices=False)
             S_thresh = torch.clamp(S - tau, min=0.0)             # (sigma_i - tau)_+
             X = (U * S_thresh) @ Vh
-            # Dual / residual update, supported on Omega.
-            residual = (M_obs - X) * mask
-            Y = Y + delta * residual
 
-            train_mse = float(residual.pow(2).sum().item() / denom)
-            if it == 1 or it % log_iters == 0 or it == max_iters:
-                print(f"TRAIN_METRICS iter={it} train_mse={train_mse:.6e}", flush=True)
-                if train_mse <= self.train_thres:                # relative residual ~ recon error
-                    break
+            # Stop on the same relative residual used by Algorithm 1 and SVT.m.
+            residual = (M_obs - X) * mask
+            rel_res = float(residual.norm().item() / norm_obs)
+            train_mse = float(residual.pow(2).sum().item() / float(n_observed))
+            if it == 1 or it % log_every == 0 or it == max_iters or rel_res <= self.tol:
+                print(
+                    f"TRAIN_METRICS iter={it} rel_res={rel_res:.6e} "
+                    f"train_mse={train_mse:.6e}",
+                    flush=True,
+                )
+            if rel_res <= self.tol:
+                break
+
+            # Dual / residual update, supported on Omega.
+            Y = Y + delta * residual
 
         return X.detach().cpu()
 
 
 def build_strategy():
-    return NuclearNormSVT(tau_factor=5.0, delta_factor=1.2, train_thres=1e-7)
+    return NuclearNormSVT(tau_factor=5.0, delta_factor=1.2, tol=1e-4)
 ```
 
 For large matrices, replace the dense `torch.linalg.svd` with a partial SVD (Lanczos

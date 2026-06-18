@@ -12,7 +12,7 @@ A unifying lens is to represent the transport *implicitly as a continuous-time p
 
 **Diffusion / score-based SDEs.** Define a forward noising SDE $\mathrm{d}U_t=b(U_t,t)\,\mathrm{d}t+\sigma_t\,\mathrm{d}W_t$, typically an Ornstein–Uhlenbeck process, that collapses data into an approximate Gaussian; then learn the time-reversal as a generative SDE. Training reduces to a regression (denoising score matching): along a corruption $V_t=\alpha_t X_1+\beta_t\xi$ with $\xi\sim\mathcal N(0,I)$, a network regresses the noise/score, $\min_v\int_0^1 w_t\,\mathbb E\|v(V_t,t)-Y_t\|^2\mathrm{d}t$, with target $Y_t$ a known linear combination of $V_t$ and $\xi$. The schedules $\alpha_t,\beta_t$ follow from the chosen SDE: the OU drift gives an exponential $\alpha_t=\exp(-\tfrac14 a(1-t)^2-\tfrac12 b(1-t))$ and $\beta_t=\sqrt{1-\alpha_t^2}$ (variance-preserving) or $\beta_t=1-\alpha_t^2$ (sub-variance-preserving), or $\alpha_t=1$ with growing $\beta_t$ (variance-exploding).
 
-A diagnostic observation tied the two families together: any such SDE admits a **probability-flow ODE** with the *same marginal laws* at every time, obtained by halving the noise term of the drift. So a stochastic, many-step diffusion sampler can be replaced by a deterministic ODE that can be integrated with a numerical solver. This is the basis of deterministic few-step samplers derived from diffusion models. Yet inspecting the resulting ODE trajectories on simple targets reveals two pathologies inherited from the SDE derivation: the paths are **curved** rather than straight, and they have **non-uniform speed** — the exponential $\alpha_t$ keeps the flow nearly still for early $t$ and concentrates almost all motion in the late phase. A curved, non-uniform ODE incurs large discretization error under a coarse solver, so even the deterministic version still needs many sequential steps. These are pre-existing, observable facts about the induced ODEs, independent of any new method.
+A diagnostic observation tied the two families together: any such SDE admits a **probability-flow ODE** with the *same marginal laws* at every time, obtained by replacing the reverse-SDE score term with its half-strength deterministic counterpart. So a stochastic, many-step diffusion sampler can be replaced by a deterministic ODE that can be integrated with a numerical solver. This is the basis of deterministic few-step samplers derived from diffusion models. Yet inspecting the resulting ODE trajectories on simple targets reveals two pathologies inherited from the SDE derivation: the paths are **curved** rather than straight, and they have **non-uniform speed** — the exponential $\alpha_t$ keeps the flow nearly still for early $t$ and concentrates almost all motion in the late phase. A curved, non-uniform ODE incurs large discretization error under a coarse solver, so even the deterministic version still needs many sequential steps. These are pre-existing, observable facts about the induced ODEs, independent of any new method.
 
 **Optimal transport (OT).** OT frames the same goal as choosing the coupling that minimizes a transport cost $\mathbb E[c(Z_1-Z_0)]$ for a cost function $c$ (e.g. $c(\cdot)=\|\cdot\|^\alpha$, $\alpha\ge1$). It gives a principled notion of a "nice" coupling and a rich convex-analysis toolkit. In one dimension the unique *monotone* coupling is simultaneously optimal for all non-negative convex costs. But classical OT solvers scale poorly to high dimension and large sample counts, and faithfully minimizing a particular $c$ does not reliably translate into better generative quality.
 
@@ -54,15 +54,15 @@ class VelocityField(torch.nn.Module):
     def forward(self, x, t):
         raise NotImplementedError
 
-# --- TODO: a training objective that produces v_theta from (x0, x1) pairs. ---
+# --- open slot: a training objective that produces v_theta from (x0, x1) pairs. ---
 def transport_loss(model, x0, x1):
-    pass  # TODO
+    raise NotImplementedError("transport objective")
 
 # --- known: a black-box ODE/numerical integrator over a learned drift ---
 @torch.no_grad()
 def integrate(model, z0, N):
     """Integrate dZ_t = model(Z_t, t) dt from t=0 to t=1, returning Z_1."""
-    pass  # filled by a standard Euler / RK45 solver once `model` is trained
+    raise NotImplementedError("standard Euler / RK45 solver")
 
 # --- known: a standard supervised training loop ---
 def train(model, data_iter, opt):

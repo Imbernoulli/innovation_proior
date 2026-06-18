@@ -113,8 +113,8 @@ The natural yardsticks already in use, all predating any fix:
   accuracy, validation-loss convergence speed is the yardstick.
 - **IMDb sentiment** — a small LSTM exhibiting the same delayed-generalization signature; best
   validation loss/accuracy and convergence speed.
-- Protocol: identical initialization and fixed data split across runs; the filter/optimizer
-  hyperparameters chosen by a small grid search over a gain factor and a window/decay parameter;
+- Protocol: identical initialization and fixed data split across runs; any optimizer-side
+  hyperparameters chosen by a small grid search over a gain factor and a memory/decay parameter;
   comparisons read off the time/steps to reach a fixed validation threshold.
 
 ## Code framework

@@ -189,10 +189,16 @@ def from_logits(behaviour_policy_logits, target_policy_logits, actions,
   return from_importance_weights(
       log_rhos, discounts, rewards, values, bootstrap_value,
       clip_rho_threshold, clip_pg_rho_threshold)
+
+def off_policy_targets(behaviour_policy_logits, target_policy_logits, actions,
+                       discounts, rewards, values, bootstrap_value):
+  returns = from_logits(behaviour_policy_logits, target_policy_logits, actions,
+                        discounts, rewards, values, bootstrap_value)
+  return returns.vs, returns.pg_advantages
 ```
 
 Learner loss (the three weighted terms; cross-entropy carries the `−log π`, so
-multiplying by the V-trace PG advantage gives the policy-gradient ascent):
+multiplying by the corrected PG advantage gives the policy-gradient ascent):
 
 ```python
 def compute_baseline_loss(advantages):              # 0.5 Σ (v_s − V(x_s))^2
@@ -212,15 +218,13 @@ def compute_policy_gradient_loss(logits, actions, advantages):
 def learner_loss(behaviour_logits, target_logits, actions,
                  discounts, rewards, values, bootstrap_value,
                  baseline_cost=0.5, entropy_cost=0.01):
-  vtrace_returns = from_logits(
-      behaviour_policy_logits=behaviour_logits,
-      target_policy_logits=target_logits, actions=actions,
-      discounts=discounts, rewards=rewards, values=values,
-      bootstrap_value=bootstrap_value)
+  value_targets, pg_advantages = off_policy_targets(
+      behaviour_logits, target_logits, actions, discounts, rewards, values,
+      bootstrap_value)
   loss  = compute_policy_gradient_loss(
-      target_logits, actions, vtrace_returns.pg_advantages)
+      target_logits, actions, pg_advantages)
   loss += baseline_cost * compute_baseline_loss(
-      vtrace_returns.vs - values)
+      value_targets - values)
   loss += entropy_cost * compute_entropy_loss(target_logits)
   return loss
 ```

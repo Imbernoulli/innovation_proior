@@ -6,20 +6,20 @@ Learn a *discrete* latent representation that keeps the high-level, semantically
 
 ## Key idea
 
-Make the posterior a **deterministic one-hot** over a finite codebook and fix the prior **uniform**. The encoder emits a continuous vector `z_e(x)`; quantize it to the nearest codebook vector `z_q(x)=e_k`; decode from `z_q(x)`.
+Make the posterior a **deterministic one-hot** over a finite codebook and keep the prior **uniform during autoencoder training**. The encoder emits a continuous vector `z_e(x)`; quantize it to the nearest codebook vector `z_q(x)=e_k`; decode from `z_q(x)`. After the autoencoder has learned codes, train the real autoregressive prior over those codes.
 
-- With a deterministic one-hot posterior and uniform prior, `KL(q‖p)=log K` is **constant**, so it drops from the objective. This both removes the discrete-KL gradient problem and removes the mechanism behind posterior collapse — the latent channel can no longer be switched off for free, so a powerful decoder is forced to use it.
+- With a deterministic one-hot posterior and uniform prior, `KL(q‖p)=log K` per latent position is **constant** (`N log K` for `N` independent positions), so it drops from the autoencoder gradients. This removes the usual KL incentive to switch the latent channel off when the decoder is powerful.
 - The nearest-neighbor `argmin` is non-differentiable, so the encoder is trained with a **straight-through estimator**: forward uses `e_k`, backward copies the decoder-input gradient straight onto `z_e`. Low-variance (biased) — the property score-function (NVIL/VIMCO) and Gumbel-softmax routes never delivered cleanly.
 
 ## Final objective
 
-For one latent (averaged over the `N` latents of a feature map for the codebook and commitment terms):
+For a minimization loss, one latent position uses:
 
 ```
-L = log p(x | z_q(x))  +  ‖ sg[z_e(x)] − e ‖₂²  +  β ‖ z_e(x) − sg[e] ‖₂²
+L_min = -log p(x | z_q(x))  +  ‖ sg[z_e(x)] − e ‖₂²  +  β ‖ z_e(x) − sg[e] ‖₂²
 ```
 
-where `z_q(x) = e_k`, `k = argmin_j ‖z_e(x) − e_j‖₂`, `e ∈ R^{K×D}`, and `sg[·]` is stop-gradient (identity forward, zero gradient backward).
+where `z_q(x) = e_k`, `k = argmin_j ‖z_e(x) − e_j‖₂`, `e ∈ R^{K×D}`, and `sg[·]` is stop-gradient (identity forward, zero gradient backward). Equivalently, the ELBO-style objective has `+log p(x|z_q(x))` as the data term and treats the two squared terms as penalties. For a feature map, the codebook and commitment terms are averaged over positions, matching the reference implementation's tensor mean.
 
 - **Term 1 (reconstruction):** trains the decoder directly and the encoder via straight-through; the embeddings receive nothing here.
 - **Term 2 (codebook / VQ):** online k-means — moves each code `e` toward its assigned encoder outputs (`sg` freezes the encoder).
@@ -36,6 +36,16 @@ N_i ← γ N_i + (1−γ) n_i,   m_i ← γ m_i + (1−γ) Σ_j z_{i,j},   e_i =
 ```
 
 With EMA, only the commitment term (Term 3) remains in the loss.
+
+## Likelihood accounting
+
+For a selected code `z_q(x)`, the complete model marginal satisfies
+
+```
+log p(x) = log Σ_k p(x|z_k)p(z_k) ≥ log p(x|z_q(x))p(z_q(x))
+```
+
+because the right-hand side keeps one nonnegative summand from the full sum. The paper's MAP approximation is the stronger empirical claim that, after training, the selected code dominates that sum.
 
 ## Generation
 
@@ -66,6 +76,8 @@ class VectorQuantizer(nn.Module):
                 - 2 * flat @ self.embedding.weight.t()
                 + self.embedding.weight.pow(2).sum(1))
         idx = dist.argmin(1)                                       # nearest code
+        encodings = F.one_hot(idx, self.K).to(flat.dtype)
+        indices = idx.view(z_e.shape[:-1])                         # [B, H, W]
         z_q = self.embedding(idx).view(z_e.shape)                 # z_q = e_k
 
         codebook_loss = F.mse_loss(z_q, z_e.detach())            # term 2: e -> z_e
@@ -73,8 +85,10 @@ class VectorQuantizer(nn.Module):
         vq_loss = codebook_loss + self.beta * commit_loss
 
         z_q = z_e + (z_q - z_e).detach()                          # straight-through
+        avg_probs = encodings.mean(0)
+        perplexity = torch.exp(-(avg_probs * (avg_probs + 1e-10).log()).sum())
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
-        return z_q, vq_loss, idx
+        return z_q, vq_loss, indices, perplexity
 
 
 class VectorQuantizerEMA(nn.Module):
@@ -96,22 +110,26 @@ class VectorQuantizerEMA(nn.Module):
                 - 2 * flat @ self.embedding.t()
                 + self.embedding.pow(2).sum(1))
         idx = dist.argmin(1)
-        onehot = F.one_hot(idx, self.K).type(flat.dtype)
+        onehot = F.one_hot(idx, self.K).to(flat.dtype)
+        indices = idx.view(z_e.shape[:-1])
         z_q = self.embedding[idx].view(z_e.shape)
 
         if self.training:
-            n = onehot.sum(0)
-            self.cluster_size.mul_(self.decay).add_(n, alpha=1 - self.decay)
-            dw = onehot.t() @ flat
-            self.ema_w.mul_(self.decay).add_(dw, alpha=1 - self.decay)
-            N = self.cluster_size.sum()
-            cluster = (self.cluster_size + self.eps) / (N + self.K * self.eps) * N
-            self.embedding.copy_(self.ema_w / cluster.unsqueeze(1))
+            with torch.no_grad():
+                n = onehot.sum(0)
+                self.cluster_size.mul_(self.decay).add_(n, alpha=1 - self.decay)
+                dw = onehot.t() @ flat.detach()
+                self.ema_w.mul_(self.decay).add_(dw, alpha=1 - self.decay)
+                N = self.cluster_size.sum()
+                cluster = (self.cluster_size + self.eps) / (N + self.K * self.eps) * N
+                self.embedding.copy_(self.ema_w / cluster.unsqueeze(1))
 
         commit_loss = self.beta * F.mse_loss(z_q.detach(), z_e)
         z_q = z_e + (z_q - z_e).detach()
+        avg_probs = onehot.mean(0)
+        perplexity = torch.exp(-(avg_probs * (avg_probs + 1e-10).log()).sum())
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
-        return z_q, commit_loss, idx
+        return z_q, commit_loss, indices, perplexity
 
 
 class VQVAE(nn.Module):
@@ -121,18 +139,18 @@ class VQVAE(nn.Module):
 
     def forward(self, x):
         z_e = self.encoder(x)
-        z_q, vq_loss, idx = self.vq(z_e)
+        z_q, vq_loss, indices, perplexity = self.vq(z_e)
         x_rec = self.decoder(z_q)
-        return x_rec, vq_loss, idx
+        return x_rec, vq_loss, indices, perplexity
 
 
 def train_step(model, x, optimizer):
     optimizer.zero_grad()
-    x_rec, vq_loss, _ = model(x)
-    loss = F.mse_loss(x_rec, x) + vq_loss     # reconstruction + (codebook + commit)
+    x_rec, vq_loss, _, _ = model(x)
+    loss = F.mse_loss(x_rec, x) + vq_loss     # MSE surrogate + VQ auxiliary terms
     loss.backward()
     optimizer.step()
     return loss
 ```
 
-The encoder/decoder are standard strided-conv + residual-block stacks; after training, a PixelCNN/WaveNet is fit over the index field `idx` to sample new codes for generation.
+The encoder/decoder are standard strided-conv + residual-block stacks; after training, a PixelCNN/WaveNet is fit over the `indices` field to sample new codes for generation.

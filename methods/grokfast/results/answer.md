@@ -50,7 +50,8 @@ parameter (model-sized state).
 
 ## Why acting on the gradient is legitimate (equivalence theorem)
 
-Write any first-order optimizer as a linear time-invariant system with scalar state `x`:
+For the theorem-covered optimizer class, write the optimizer as a linear time-invariant system with
+scalar state `x`:
 
 ```
 x(t) = A x(t−1) + B g(t),    u(t) = C x(t) + D g(t),    0 < A < 1.
@@ -64,11 +65,12 @@ transfer function is `H_io(ω) = U/G = BC/(1−A e^{-iω}) + D`. Feeding the fil
 Û(ω)/U(ω) = Ĝ(ω)/G(ω) = 1 + H(ω)   ⟹   ĥ = h.
 ```
 
-Filtering the gradient by `h` is identical to filtering the parameter update by the same `h` — the
-optimizer's response cancels. This is why Grokfast can be a hook on `p.grad` (sitting in any
-autograd framework between `backward()` and `step()`) instead of a bespoke optimizer, and why it
-works unchanged with SGD, Adam, or AdamW. It differs from momentum: the smoothed gradient is added
-as a **residual to the raw gradient before the optimizer**, not consumed as the update itself.
+For linear SGD-family optimizers, filtering the gradient by `h` is identical to filtering the
+parameter update by the same `h`: the optimizer's response cancels. This is why Grokfast can be a
+hook on `p.grad` (between `backward()` and `step()`) instead of a bespoke optimizer. Adam/AdamW
+support is a practical hook-level application verified empirically in the paper, not a consequence of
+this exact LTI proof. It differs from momentum: the smoothed gradient is added as a **residual to
+the raw gradient before the optimizer**, not consumed as the update itself.
 
 ## Code (canonical implementation)
 
@@ -86,6 +88,7 @@ def gradfilter_ma(
     lamb: float = 5.0,
     filter_type: Literal['mean', 'sum'] = 'mean',
     warmup: bool = True,
+    trigger: bool = False, # For ablation study.
 ) -> Dict[str, deque]:
     if grads is None:
         grads = {n: deque(maxlen=window_size)
@@ -93,7 +96,7 @@ def gradfilter_ma(
     for n, p in m.named_parameters():
         if p.requires_grad and p.grad is not None:
             grads[n].append(p.grad.data.detach())
-            if not warmup or len(grads[n]) == window_size:
+            if not warmup or len(grads[n]) == window_size and not trigger:
                 if filter_type == "mean":
                     avg = sum(grads[n]) / len(grads[n])
                 elif filter_type == "sum":

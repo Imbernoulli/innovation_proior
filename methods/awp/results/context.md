@@ -85,11 +85,11 @@ E_nu[ L(f_{w+nu}) ]  <=  Lhat(f_w)
 where `n` is the training-set size, `Lhat` is the empirical loss, `Q` is the posterior
 distribution induced by the perturbation around `w`, and `P` is a data-independent prior. The
 middle braced term is the **expected sharpness**: how much the empirical loss rises, on
-average, when the weights are jittered. If `P = N(0, sigma^2 I)` and the perturbation has the
-same spherical variance, then `KL(Q || P) = ||w||^2 / (2*sigma^2)`. Tying the variance to the
-weight scale, for example `sigma^2 = a*||w||^2`, fixes this KL contribution at `1/(2a)`. Once
-that scale choice is fixed, the remaining data-dependent quantity in the bound is the expected
-sharpness of the weight loss landscape.
+average, when the weights are jittered. If `P = N(0, sigma^2 I)` and
+`Q = N(w, sigma^2 I)`, then `KL(Q || P) = ||w||^2 / (2*sigma^2)`. Writing the variance as
+`sigma^2 = a*||w||^2` fixes this KL contribution at `1/(2a)`; `a` is the variance-to-squared-
+norm ratio, not an extra learned parameter. Once that relative scale is fixed, the remaining
+data-dependent quantity in the bound is the expected sharpness of the weight loss landscape.
 
 ## Baselines
 

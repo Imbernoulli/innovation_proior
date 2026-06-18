@@ -38,17 +38,17 @@ V_i^c = Σ_n Σ_m  U_{nm}^c · max(0, 1 − |x_s^i − m|) · max(0, 1 − |y_s^
 ∂V_i^c/∂U_{nm}^c = max(0, 1 − |x_s^i − m|) · max(0, 1 − |y_s^i − n|)
 
 ∂V_i^c/∂x_s^i = Σ_n Σ_m U_{nm}^c · max(0, 1 − |y_s^i − n|) · {  0  if |m − x_s^i| ≥ 1
-                                                              +1  if m ≥ x_s^i
-                                                              −1  if m < x_s^i }
+                                                              +1  if |m − x_s^i| < 1 and m ≥ x_s^i
+                                                              −1  if |m − x_s^i| < 1 and m < x_s^i }
 ```
 
-(`∂V/∂y_s` symmetric; the integer/nearest-neighbour kernel is rejected because its gradient w.r.t. `x_s` is zero almost everywhere.) Finally `∂x_s/∂θ` is immediate from the affine (`∂x_s/∂θ11 = x_t`, etc.), so `∂L/∂θ` chains through and the localisation network trains by ordinary backprop. The 3-D extension simply adds a `max(0,1−|z_s−l|)` factor and a 3×4 affine.
+(`∂V/∂y_s` symmetric; at `m=x_s` or `n=y_s` the bilinear kernel has a kink, so the displayed branch is a sub-gradient convention. The integer/nearest-neighbour kernel is rejected because its gradient w.r.t. `x_s` is zero almost everywhere.) Finally `∂x_s/∂θ` is immediate from the affine (`∂x_s/∂θ11 = x_t`, etc.), so `∂L/∂θ` chains through and the localisation network trains by ordinary backprop. The 3-D extension simply adds a `max(0,1−|z_s−l|)` factor and a 3×4 affine.
 
 **Practicalities.** Initialise the regression layer to the identity transform (weights 0, bias `[1,0,0,0,1,0]`) so the module starts as a no-op and the host net trains like a normal CNN, deviating only as it helps. Use a lower learning rate for the localisation network (≈1/10, or far less on a large pretrained backbone) since `θ` is high-leverage. The module is cheap (~few % overhead); place one at the input to pose-normalise, several at depth to warp abstract features, or several in parallel to attend to multiple objects/parts; a smaller output grid crops-and-downsamples in one step (saving compute, with mild aliasing for large downsampling).
 
 ## Code
 
-Grounded in the standard PyTorch implementation: `F.affine_grid` builds the normalised output grid and applies `A_θ` output→input; `F.grid_sample` does the bilinear read with exactly the sub-gradients above.
+Grounded in the standard PyTorch implementation: `F.affine_grid` builds the normalised output grid and applies `A_θ` output→input; `F.grid_sample` performs the bilinear read. The `align_corners` convention only fixes the boundary coordinate convention, so it should be set explicitly.
 
 ```python
 import torch
@@ -90,8 +90,8 @@ class Net(nn.Module):
         xs = self.localization(x)
         xs = xs.view(-1, 10 * 3 * 3)
         theta = self.fc_loc(xs).view(-1, 2, 3)     # A_theta per sample
-        grid = F.affine_grid(theta, x.size())      # grid generator (output->input)
-        x = F.grid_sample(x, grid)                 # bilinear sampler
+        grid = F.affine_grid(theta, x.size(), align_corners=False)
+        x = F.grid_sample(x, grid, align_corners=False)
         return x
 
     def forward(self, x):

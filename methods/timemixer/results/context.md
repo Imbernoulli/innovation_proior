@@ -1,216 +1,187 @@
-# Context: deep time-series forecasting under intricate temporal variations (circa 2021-2023)
+# Context: multiscale deep time-series forecasting before the method
 
 ## Research question
 
-Given a length-`P` window of past observations of a series with `C` variates, predict the
-length-`F` future. The hard part is not the regression head; it is that real-world series carry
-*intricate, deeply mixed* temporal variations. In a single window the signal is simultaneously
-increasing, decreasing, oscillating at several rhythms, and drifting, and these are entangled
-inside the same scalar stream. A traffic sensor recorded every five minutes shows a sharp
-intraday commute rhythm; the same road averaged to a daily series loses that rhythm and instead
-shows weekday/weekend and holiday structure; averaged to a monthly series it shows mostly a slow
-macroscopic drift. So the same physical process presents different patterns depending on the
-sampling scale: fine scales expose microscopic detail, coarse scales expose macroscopic
-structure. A forecaster that commits to a single resolution sees only one slice of this. The goal
-is a cheap forecasting component for a fixed short look-back (`P=96`) and many variates that can
-handle mixed seasonal, periodic, and trend-like variation without assuming one native sampling
-resolution is the whole story, plugged into a fixed training/evaluation pipeline so that
-architectural choices can be compared head-to-head.
+Given a past window `x` of length `P` with `C` observed variates, predict a future window of length
+`F` with the same variates. The hard part is not the final regression interface. The hard part is
+that a real window is a superposition of several temporal behaviors: short oscillations, longer
+periodic structure, a slow level or trend, local shocks, and distribution drift between train and
+test windows.
+
+A single sampling rate exposes only one view of that mixture. A five-minute traffic series can show
+commute spikes; a daily aggregation suppresses those spikes and exposes weekday or holiday
+structure; a still coarser view mostly exposes slow macro movement. The same physical process can
+therefore look microscopic at a fine scale and macroscopic at a coarse scale. The open question is
+how to use cheap neural components to forecast from this kind of signal without forcing every
+temporal variation through one native-resolution representation and one final head.
+
+The desired component should fit a standard forecasting harness: it receives `[B, P, C]` past
+values, optional time features for the past and decoder side, and returns `[B, F, C]`. It should be
+efficient enough for long horizons and many channels, so attention or recurrence is not a necessary
+default. The architecture inside that slot is unsettled.
 
 ## Background
 
-By this time deep forecasters are organized around two questions: which backbone models the
-temporal axis, and which structural prior is imposed to tame intricate variations.
+Deep time-series forecasters before this point organize around a few reusable ideas.
 
-On backbones, four families coexist. RNNs (LSTM/GRU, DeepAR) carry a recurrent state but have a
-limited effective receptive field and serialize badly over long horizons. Temporal CNNs (TCN,
-MICN) convolve along time but their receptive field is bounded by depth and kernel size.
-Transformers (Informer, Autoformer, FEDformer, Pyraformer, PatchTST, the Non-stationary
-Transformer) buy global temporal context through attention, at quadratic-ish cost that a long
-literature then tries to cut. Pure-MLP forecasters (N-BEATS, N-HiTS, LightTS, DLinear) regress
-the future from the past with linear/MLP layers and are strikingly competitive at a fraction of
-the cost — DLinear in particular showed that a one-layer linear map on a decomposed series rivals
-elaborate Transformers, which reset expectations about how much machinery the task actually needs.
+The first is direct multi-step prediction. Instead of rolling a one-step predictor forward and
+feeding predictions back into itself, the model maps the whole look-back window to the whole horizon
+in one forward pass. This avoids recursive error accumulation and matches the common long-term
+forecasting protocol.
 
-On structural priors, two paradigms dominate. The first is **series decomposition**. It is an old
-idea from classical analysis — STL (Cleveland et al. 1990) separates a series into seasonal and
-trend components precisely because the two hold *distinct properties*: the seasonal part is
-short-term, roughly stationary, repeating; the trend is long-term, non-stationary, slowly varying.
-Autoformer (Wu et al. 2021) brought this into deep models as a differentiable block: a moving
-average over time is the trend, the residual is the season, and the network processes the two
-separately. FEDformer used multiple averaging kernels; DLinear (Zeng et al. 2023) decomposed as a
-pre-processing step and then applied one linear layer to each component. The second paradigm is
-**multiperiodicity**: N-BEATS fits trigonometric bases, FiLM projects onto Legendre polynomials,
-and TimesNet (Wu et al. 2023) uses an FFT to discover dominant periods, reshapes the 1D series
-into a 2D tensor indexed by (intra-period, inter-period), and runs 2D convolutions. Both paradigms
-disentangle the signal along a single axis — season-vs-trend, or one period-length vs another.
+The second is seasonal-trend decomposition. Classical time-series analysis separates a slow
+trend-like component from faster seasonal or residual variation because the two are easier to model
+separately than as one mixed signal. In deep forecasting, a common differentiable version is a
+length-preserving moving average: pad the ends by repeating boundary values, average-pool with
+stride 1 to get a smooth trend, and define the seasonal residual as `x - trend`.
 
-The motivating empirical facts that sit underneath all of this are already well documented.
-Coarsening a series by averaging is *not* information-preserving in a benign way: it
-systematically removes high-frequency structure and retains low-frequency structure (an average
-pool is a low-pass filter). So a downsampling ladder of a series produces views whose dominant
-content shifts from microscopic to macroscopic as you climb. In seasonality analysis (Box & Jenkins
-1970), larger periods are described through aggregations of smaller periods — a weekly cycle can
-be understood through daily cycles — while slow trend analysis treats high-frequency movement as a
-disturbance around a lower-frequency level. There is also a documented distribution-shift problem:
-the mean and variance of these series drift between training and test windows, so a model fit on
-raw values transfers poorly, and reversible per-instance standardization (RevIN; Kim et al. 2022;
-the Non-stationary Transformer, Liu et al. 2022) was introduced to absorb it. These are facts
-about what averaging, temporal aggregation, and drift do to a signal, knowable before any model.
+The third is multiscale representation. Pooling or aggregating along time is a low-pass operation:
+it suppresses high-frequency detail and keeps slower structure. Models such as pyramidal attention
+and splitting trees already show that a network can process several temporal resolutions internally.
+The unresolved design issue is what should remain separate, what should be mixed, and at what point
+the model should collapse the scales into a forecast.
+
+The fourth is cheap mixing. MLP-style blocks can mix along a chosen axis using Linear layers and a
+nonlinearity. A temporal Linear can map one sequence length to another; a channel FeedForward can
+mix hidden features at a fixed time step. These primitives are much cheaper than attention and are
+already available in the forecasting codebase.
+
+The fifth is reversible instance normalization. Many forecasting benchmarks have train-test
+level and variance shift. A per-window normalization can store the current window's mean and
+standard deviation, train the model on normalized values, and then invert the transformation at the
+output.
 
 ## Baselines
 
-These are the prior forecasters a new design is measured against and reacts to.
+**Autoformer.** Uses moving-average series decomposition inside a Transformer-style forecasting
+model. Its decomposition block provides a reusable primitive: `trend = MovingAvg(x)` and
+`season = x - trend`, with length preserved by endpoint padding. Its limitation here is that the
+decomposition is applied at the model's chosen representation scale, not as a full design for
+interacting among several sampled scales.
 
-**Autoformer (Wu et al., NeurIPS 2021).** Embeds series decomposition as a module:
-`trend = AvgPool1d(x, kernel)` (with edge-replication padding so length is preserved),
-`season = x - trend`, and the Transformer processes season and trend with an Auto-Correlation
-attention. Core idea: decomposition makes each component more predictable than the raw mixture.
-Gap: the decomposition is applied at a *single resolution* — one moving-average kernel on the
-original-scale series — so it never sees how the seasonal/trend split changes when you look at the
-series more coarsely or more finely.
+**DLinear.** Decomposes a look-back window into seasonal and trend components, maps each component
+directly from past length to future length with one temporal Linear, and sums the two forecasts. It
+shows that simple temporal linear maps can be strong and efficient. Its limitation is that it uses
+one native-resolution view of the series.
 
-**DLinear (Zeng et al., AAAI 2023).** Decompose with a moving average into season + trend, then
-apply *one linear layer per component* mapping length `P` to length `F`, channel-independently
-(each variate handled by its own scalar-channel pipeline). Strikingly strong and cheap. Gap: a
-single scale and a single linear map per component; there is no mechanism for information at one
-resolution to inform another, so whatever the original sampling rate happens to be is the only
-view the model ever forms.
+**TimesNet and other multiperiodicity models.** Detect dominant periods, often with an FFT, and
+process period-specific structures. They disentangle variation along a period axis. Their limitation
+for this setup is that period decomposition is not the same as a sampling-scale ladder from fine to
+coarse observations.
 
-**TimesNet (Wu et al., ICLR 2023).** FFT picks the top-`k` dominant frequencies; for each, the 1D
-series is folded into a 2D tensor (period length × number of periods) and processed by Inception
-2D convolutions, then the per-frequency outputs are amplitude-weighted and summed. Core idea:
-disentangle along the *period* axis and reuse 2D vision backbones. Gap: it disentangles by period
-rather than by sampling scale, and the 2D-conv Inception blocks are comparatively heavy; the
-period decomposition does not produce the micro-to-macro scale ladder.
+**Pyraformer and SCINet.** Build multiscale internal representations using a pyramidal structure or
+a splitting tree. Their limitation is that the forecast interface still tends to consume a merged
+representation rather than preserving a separate forecasting role for each scale.
 
-**N-HiTS (Challu et al., AAAI 2023).** A pure-MLP successor to N-BEATS that introduces multi-rate
-data sampling and hierarchical interpolation across a stack of blocks, each block specializing to
-a frequency band via pooling. Core idea: process the series at several rates with cheap MLPs. Gap:
-its blocks pass a single residual down the stack and produce the forecast by hierarchically
-interpolating and summing block outputs; it does not separate season from trend and route each
-across scales with its own direction.
-
-**MLP-Mixer (Tolstikhin et al., 2021).** Not a forecaster, but the relevant primitive: pure-MLP
-information integration. It alternates a token-mixing MLP (across spatial positions) with a
-channel-mixing MLP (across features), showing that *mixing* — a learned linear map along an axis,
-wrapped in a nonlinearity — is enough to integrate information without attention or convolution.
-This is the cheap mixing primitive available off the shelf.
-
-**Pyraformer (ICLR 2022) and SCINet (NeurIPS 2022).** Both build *multiscale* temporal
-representations: Pyraformer with a pyramidal attention over a coarsening tree, SCINet with a
-bifurcate downsampling tree that interleaves and recombines even/odd subsequences. Core idea:
-let the model see the series at several resolutions. Gap: although they form multiscale features
-internally, the architecture ultimately relies on a re-merged representation for the forecast,
-so the separate scale views are not retained as separate forecasting objects at the output
-interface.
+**PatchTST and related channel-independent forecasters.** Treat variates independently with shared
+weights, which is useful when `C` ranges from a few channels to hundreds and cross-channel
+correlations are weak or unstable. The open question is how to combine that regularization with
+multiscale temporal modeling.
 
 ## Evaluation settings
 
-The Time-Series-Library protocol (Wu et al., ICLR 2023) standardizes splits, per-channel z-score
-standardization fit on the training split, and metric computation, so architectural contributions
-are comparable. Long-term multivariate benchmarks, all with `features=M` (multivariate in →
-multivariate out), look-back `seq_len=96`, horizon `pred_len=96`:
+The surrounding protocol is a standard long- and short-term forecasting benchmark setup. The model
+is trained with Adam, default beta values `(0.9, 0.999)`, and an MSE loss for long-term forecasting.
+Long-term experiments use multivariate-in, multivariate-out windows on datasets such as ETT,
+Weather, Solar-Energy, Electricity, and Traffic, typically sweeping horizons such as 96, 192, 336,
+and 720. Short-term experiments include PeMS traffic-network datasets and the univariate M4
+subsets.
 
-- **ETTh1** — 7 channels, hourly Electricity Transformer Temperature (Zhou et al., AAAI 2021).
-- **Weather** — 21 channels, 10-minute meteorological observations.
-- **ECL / Electricity** — 321 channels, hourly client electricity consumption.
+The metrics are task dependent. Long-term forecasting commonly reports MSE and MAE over all horizon
+steps and variates. PeMS short-term forecasting commonly reports MAE, MAPE, and RMSE. M4 uses
+SMAPE, MASE, and OWA. These are yardsticks only: no outcome or ablation result is assumed in the
+setup.
 
-Optimizer Adam with `(β1,β2)=(0.9,0.999)`; learning rate around `1e-2`; an L2 (MSE) training
-loss. Metrics: MSE and MAE over all channels after the inverse standardization, lower is better.
-(Settings only — the fixed yardstick, no outcomes.)
+The data loader provides `x_enc`, `x_mark_enc`, `x_dec`, and `x_mark_dec`. The architecture may use
+calendar/time features when present, but it must not inspect the true future values. Normalization
+statistics must be computed from observed windows and then reused only to invert the prediction.
 
 ## Code framework
 
-The component plugs into a fixed Time-Series-Library harness. A data loader yields four tensors
-per window — `x_enc` (`[B, seq_len, enc_in]`, the past), `x_mark_enc` (`[B, seq_len, time_feat]`,
-calendar features of the past), and the decoder-side `x_dec` / `x_mark_dec` — and the model must
-implement `forecast(...)` returning `[B, pred_len, c_out]`; `forward` slices the last `pred_len`
-steps. An Adam optimizer, an MSE loss, and a fixed training loop are provided. The existing
-primitives are generic: an `AvgPool1d` (a parameter-free temporal low-pass / downsampler),
-`nn.Linear` and `GELU` (the MLP mixing primitive), a moving-average series-decomposition block
-that splits a window into `(season = x - movavg, trend = movavg)`, a no-positional-encoding
-token (+ time-feature) embedding, and a reversible per-series instance-normalization layer that
-standardizes a window on the way in and inverts it on the way out. What is *not* fixed is the
-architecture between embedding the past and emitting the future — that is exactly the slot to
-design.
+The available toolbox already contains the generic pieces below. The missing part is the
+architecture that arranges them between the observed past and the future prediction.
 
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
-class series_decomp(nn.Module):
-    """Moving-average decomposition (Autoformer 2021): trend = AvgPool(x), season = x - trend."""
+class SeriesDecomp(nn.Module):
+    """Length-preserving moving-average decomposition."""
     def __init__(self, kernel_size):
         super().__init__()
         self.kernel_size = kernel_size
         self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=1, padding=0)
 
-    def forward(self, x):                                   # x: [B, T, C]
+    def forward(self, x):                         # x: [B, T, C]
         front = x[:, :1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
-        end   = x[:, -1:, :].repeat(1, self.kernel_size // 2, 1)
-        xp    = torch.cat([front, x, end], dim=1)
-        trend = self.avg(xp.permute(0, 2, 1)).permute(0, 2, 1)
-        return x - trend, trend                            # season, trend
+        end = x[:, -1:, :].repeat(1, self.kernel_size // 2, 1)
+        padded = torch.cat([front, x, end], dim=1)
+        trend = self.avg(padded.permute(0, 2, 1)).permute(0, 2, 1)
+        season = x - trend
+        return season, trend
 
 
 class Normalize(nn.Module):
-    """RevIN (Kim et al. 2022): per-instance standardize on 'norm', invert on 'denorm'."""
-    def __init__(self, num_features, eps=1e-5, affine=True):
+    """Reversible per-instance normalization over non-channel dimensions."""
+    def __init__(self, num_features, eps=1e-5, affine=True, non_norm=False):
         super().__init__()
-        self.eps, self.affine = eps, affine
+        self.eps = eps
+        self.affine = affine
+        self.non_norm = non_norm
         if affine:
             self.affine_weight = nn.Parameter(torch.ones(num_features))
             self.affine_bias = nn.Parameter(torch.zeros(num_features))
 
-    def forward(self, x, mode):                            # mode in {'norm','denorm'}
-        if mode == 'norm':
-            self.mean = x.mean(1, keepdim=True).detach()
-            self.stdev = torch.sqrt(x.var(1, keepdim=True, unbiased=False) + self.eps).detach()
+    def forward(self, x, mode):                   # x: [B, T, C]
+        if mode == "norm":
+            dims = tuple(range(1, x.ndim - 1))
+            self.mean = x.mean(dim=dims, keepdim=True).detach()
+            self.stdev = torch.sqrt(x.var(dim=dims, keepdim=True, unbiased=False) + self.eps).detach()
+            if self.non_norm:
+                return x
             x = (x - self.mean) / self.stdev
             if self.affine:
                 x = x * self.affine_weight + self.affine_bias
             return x
-        else:
+        if mode == "denorm":
+            if self.non_norm:
+                return x
             if self.affine:
                 x = (x - self.affine_bias) / (self.affine_weight + self.eps * self.eps)
             return x * self.stdev + self.mean
+        raise NotImplementedError
 
 
-class DataEmbedding_wo_pos(nn.Module):
-    """Token (+ optional time-feature) embedding to d_model, NO positional encoding."""
-    def __init__(self, c_in, d_model, embed, freq, dropout):
+class TemporalMLP(nn.Module):
+    """Generic length-changing temporal mixer."""
+    def __init__(self, in_len, out_len):
         super().__init__()
-        # token conv (c_in -> d_model) + optional temporal embedding; details fixed by the harness
-        ...
+        self.net = nn.Sequential(
+            nn.Linear(in_len, out_len),
+            nn.GELU(),
+            nn.Linear(out_len, out_len),
+        )
 
-    def forward(self, x, x_mark):                          # -> [B, T, d_model]
-        ...
+    def forward(self, x):                         # x: [B, D, in_len]
+        return self.net(x)
 
 
 class Model(nn.Module):
-    """The forecasting architecture to design: from the [B, seq_len, enc_in] past
-    produce the [B, pred_len, c_out] future. The downsampler, the GELU-MLP mixing
-    primitive, the decomposition block, the embedding, and per-series RevIN already
-    exist; how to arrange them between past and future is the open slot."""
+    """Forecasting slot to fill."""
     def __init__(self, configs):
         super().__init__()
-        self.task_name = configs.task_name
-        self.seq_len   = configs.seq_len
-        self.pred_len  = configs.pred_len
-        self.enc_in    = configs.enc_in
-        self.c_out     = configs.c_out
-        self.d_model   = configs.d_model
-        # TODO: the architecture we will design here.
+        self.seq_len = configs.seq_len
+        self.pred_len = configs.pred_len
+        self.enc_in = configs.enc_in
+        self.c_out = configs.c_out
+        self.d_model = configs.d_model
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        # x_enc: [B, seq_len, enc_in]  ->  return [B, pred_len, c_out]
-        # TODO: how to build past representations and produce the future.
-        pass
+        # x_enc: [B, seq_len, enc_in]
+        # return: [B, pred_len, c_out]
+        raise NotImplementedError
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-        return out[:, -self.pred_len:, :]
+        return self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
 ```

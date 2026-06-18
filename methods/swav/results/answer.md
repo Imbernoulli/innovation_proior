@@ -20,7 +20,7 @@ For a batch of embeddings `Z = [z_1,...,z_B]` (`D×B`) and prototypes `C` (`D×K
     max_{Q ∈ 𝒬}  Tr(Q^T C^T Z) + ε H(Q),   H(Q) = -Σ_{ij} Q_{ij} log Q_{ij},
     𝒬 = { Q ∈ ℝ_+^{K×B} : Q 1_B = (1/K) 1_K,  Q^T 1_K = (1/B) 1_B }.
 
-The row constraint enforces equipartition (each prototype gets `B/K` of the mass); the column constraint makes each code a distribution. The optimum has closed form
+The row constraint gives each prototype `1/K` of the normalized OT mass, while each column has mass `1/B`; after the implementation multiplies the solution by `B`, each sample's code sums to one and each prototype receives `B/K` total assignment weight. The optimum has closed form
 
     Q* = Diag(u) exp( C^T Z / ε ) Diag(v),
 
@@ -28,7 +28,7 @@ where `u ∈ ℝ^K`, `v ∈ ℝ^B` are obtained by the **Sinkhorn–Knopp** algo
 
 ## Practical pieces
 
-- **Prototypes** are a bias-free linear layer with columns renormalized to unit norm after each step; frozen for the first epoch. Their number barely matters (3k–100k equivalent) and even fixed-random prototypes work nearly as well — they are contrast anchors, not class centroids. Default `K = 3000`.
+- **Prototypes** are a bias-free linear layer whose prototype vectors are renormalized to unit norm at the start of each iteration (equivalently, before using the weights after the previous step); frozen for the first epoch. Their number barely matters (3k–100k equivalent) and even fixed-random prototypes work nearly as well — they are contrast anchors, not class centroids. Default `K = 3000`.
 - **Small batches:** prepend a small rolling **queue** of recent embeddings (~3k vectors) to `Z` *for the Sinkhorn assignment only* (loss still on batch codes). Far cheaper than a 65k memory bank or a momentum encoder. Turned on after a few epochs.
 - **Multi-crop:** use 2 full-resolution crops (224) plus `V` low-resolution crops (96) for many cheap extra views. Compute codes **only from the full-resolution crops**; every view predicts those codes:
 
@@ -42,6 +42,18 @@ where `u ∈ ℝ^K`, `v ∈ ℝ^B` are obtained by the **Sinkhorn–Knopp** algo
 ```python
 import numpy as np
 import torch, torch.nn as nn, torch.nn.functional as F
+import torch.distributed as dist
+
+def _dist_ready():
+    return dist.is_available() and dist.is_initialized()
+
+def _all_reduce(x):
+    if _dist_ready():
+        dist.all_reduce(x)
+    return x
+
+def _world_size():
+    return dist.get_world_size() if _dist_ready() else 1
 
 class Encoder(nn.Module):
     def __init__(self, output_dim=128, hidden_mlp=2048, nmb_prototypes=3000):
@@ -65,49 +77,58 @@ class Encoder(nn.Module):
         return z, self.prototypes(z)                            # (embeddings, scores z^T C)
 
 @torch.no_grad()
-def sinkhorn(scores, epsilon=0.05, n_iters=3):
-    Q = torch.exp(scores / epsilon).t()                        # K x B
-    Q /= Q.sum()
-    K, B = Q.shape
-    r, c = torch.ones(K) / K, torch.ones(B) / B
-    for _ in range(n_iters):
-        Q *= (r / Q.sum(dim=1)).unsqueeze(1)                   # rows -> 1/K  (equipartition)
-        Q *= (c / Q.sum(dim=0)).unsqueeze(0)                   # cols -> 1/B
-    Q /= Q.sum(dim=0, keepdim=True)                            # columns sum to 1
-    return Q.t()                                               # B x K soft codes
+def distributed_sinkhorn(out, args):
+    Q = torch.exp(out / args.epsilon).t()                       # K x local-B scores
+    B = Q.shape[1] * _world_size()                              # global number of assigned samples
+    K = Q.shape[0]
 
-def train(loader, model, optimizer, lr_schedule, args, queue=None):
+    Q /= _all_reduce(torch.sum(Q))                              # normalized joint mass
+    for _ in range(args.sinkhorn_iterations):
+        sum_of_rows = _all_reduce(torch.sum(Q, dim=1, keepdim=True))
+        Q /= sum_of_rows
+        Q /= K                                                  # rows -> 1/K globally
+
+        Q /= torch.sum(Q, dim=0, keepdim=True)
+        Q /= B                                                  # columns -> 1/B
+
+    Q *= B                                                      # columns now sum to 1: assignment codes
+    return Q.t()                                                # local-B x K soft codes
+
+def train(loader, model, optimizer, epoch, lr_schedule, args, queue=None):
     model.train(); use_queue = False
-    for it, views in enumerate(loader):                        # [2 full-res] + [V small] crop-batches
-        for g in optimizer.param_groups: g["lr"] = lr_schedule[it]
+    n_crops = int(np.sum(args.nmb_crops))
+    prototypes = model.module.prototypes if hasattr(model, "module") else model.prototypes
+    for it, views in enumerate(loader):                         # [2 full-res] + [V small] crop-batches
+        iteration = epoch * len(loader) + it
+        for g in optimizer.param_groups: g["lr"] = lr_schedule[iteration]
         with torch.no_grad():                                  # keep prototypes on the sphere
-            w = F.normalize(model.prototypes.weight.data.clone(), dim=1, p=2)
-            model.prototypes.weight.copy_(w)
+            w = F.normalize(prototypes.weight.data.clone(), dim=1, p=2)
+            prototypes.weight.copy_(w)
 
         embedding, output = model(views)
         embedding = embedding.detach(); bs = views[0].size(0)
 
         loss = 0
-        for i, crop_id in enumerate(args.crops_for_assign):    # codes from full-res crops only
+        for i, crop_id in enumerate(args.crops_for_assign):     # codes from full-res crops only
             with torch.no_grad():
                 out = output[bs*crop_id: bs*(crop_id+1)].detach()
                 if queue is not None:                          # small-batch queue (assignment only)
                     if use_queue or not torch.all(queue[i, -1] == 0):
                         use_queue = True
-                        out = torch.cat((queue[i] @ model.prototypes.weight.t(), out))
+                        out = torch.cat((queue[i] @ prototypes.weight.t(), out))
                     queue[i, bs:] = queue[i, :-bs].clone()
                     queue[i, :bs] = embedding[crop_id*bs:(crop_id+1)*bs]
-                q = sinkhorn(out, args.epsilon, args.sinkhorn_iters)[-bs:]   # detached target
+                q = distributed_sinkhorn(out, args)[-bs:]        # detached target
 
             subloss = 0
-            for v in np.delete(np.arange(args.n_crops), crop_id):
-                p = output[bs*v: bs*(v+1)] / args.temperature
-                subloss -= torch.mean(torch.sum(q * F.log_softmax(p, dim=1), dim=1))
-            loss += subloss / (args.n_crops - 1)
+            for v in np.delete(np.arange(n_crops), crop_id):
+                x = output[bs*v: bs*(v+1)] / args.temperature
+                subloss -= torch.mean(torch.sum(q * F.log_softmax(x, dim=1), dim=1))
+            loss += subloss / (n_crops - 1)
         loss /= len(args.crops_for_assign)
 
         optimizer.zero_grad(); loss.backward()
-        if it < args.freeze_prototypes_iters:                  # freeze prototypes early
+        if iteration < args.freeze_prototypes_niters:           # freeze prototypes early
             for n, prm in model.named_parameters():
                 if "prototypes" in n: prm.grad = None
         optimizer.step()

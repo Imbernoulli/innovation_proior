@@ -4,11 +4,9 @@
 
 A time series presents, at each step `t`, a value (or for the multivariate case an
 `M`-channel vector `x_t in R^M`), observed over a look-back window of length `L`. The task is
-to predict the next `T` values `(x_{L+1}, ..., x_{L+T})`. Two regimes both matter: long-term
-multivariate forecasting, where `T` runs into the hundreds and errors compound; and short,
-univariate, many-series forecasting (one channel per series, thousands of short series, e.g.
-the M4 competition), where each series is brief and the model is judged by a percentage error
-across very different seasonal patterns. The Transformer is the obvious tool — its attention
+to predict the next `T` values `(x_{L+1}, ..., x_{L+T})`, often hundreds of steps ahead, while
+also learning representations that can transfer to downstream time-series tasks. The
+Transformer is the obvious tool — its attention
 learns relations between sequence elements with no fixed locality assumption, and it powers
 the strongest sequence models in language, vision, and speech. Yet on the standard
 forecasting benchmarks a one-layer linear model with no attention at all matches or beats
@@ -64,13 +62,11 @@ assumptions:
   per-token layer-norm cannot temper, whereas a batch-norm over the batch/time dimension can.
 
 A diagnostic finding from the linear-model work sharpens the problem. The complex Transformer
-baselines do **not** improve when given a longer window — their error stays flat or rises as
-`L` grows, evidence they overfit rather than exploit the extra history. The simple linear
-model, by contrast, keeps improving with longer `L`. So the Transformers were both expensive
-on long windows *and* unable to benefit from them. And on a representative long-horizon case,
-lengthening the look-back from `L=96` to `L=336` genuinely lowers error (MSE roughly 0.52 to
-0.40), so the older history carries usable signal that the quadratic cost forced everyone to
-throw away.
+baselines do **not** reliably improve when given a longer window — their error stays flat or
+rises as `L` grows, evidence they overfit rather than exploit the extra history. The simple
+linear model, by contrast, can keep improving with longer `L`. So the Transformers were both
+expensive on long windows *and* unable to benefit from them, even though older history can carry
+usable signal.
 
 ## Baselines
 
@@ -130,13 +126,6 @@ one, and why, was open.
   train/val/test split. Look-back `L` is a knob; a fair comparison fixes the same `L` across
   models. The larger datasets (Weather, Traffic, Electricity) have many series, so results
   there are more stable and less prone to overfitting.
-- **Short-term univariate benchmark (M4 competition).** 100,000 short real-world series in six
-  seasonal patterns; the Time-Series-Library protocol wraps the Monthly / Quarterly / Yearly
-  subsets with fixed per-pattern look-back and horizon (Monthly `L=104, T=18`; Quarterly
-  `L=52, T=8`; Yearly `L=42, T=6`), one channel (`enc_in = c_out = 1`), SMAPE training loss,
-  and SMAPE / MAPE / OWA scoring on the official test horizon. Optimizer Adam, learning rate
-  `1e-3`, batch size 16, about 10 epochs with early stopping on validation loss. SMAPE is the
-  symmetric percentage error `(200/T) * sum |y - yhat| / (|y| + |yhat|)`.
 - **Representation-learning protocol.** Self-supervised pre-train on the unlabelled series,
   then either linear-probe (train only the head) or end-to-end fine-tune, and forecast.
 
@@ -144,8 +133,8 @@ one, and why, was open.
 
 The model plugs into a fixed forecasting harness (a `Time-Series-Library`-style pipeline): a
 data loader that yields standardized sliding windows `x_enc in [B, L, M]` with their calendar
-marks and a decoder placeholder; an Adam optimizer; a loss (MSE for long-term, SMAPE for M4)
-scored against the horizon; and a training loop with validation-based early stopping. The
+marks and a decoder placeholder; an Adam optimizer; a horizon loss such as MSE; and a training
+loop with validation-based early stopping. The
 encoder/attention primitives already exist as reusable layers — a generic `EncoderLayer`
 (multi-head attention + position-wise feed-forward + residual + a configurable normalization),
 a `FullAttention` scaled-dot-product block, and an `AttentionLayer` that wraps the QKV
@@ -164,8 +153,8 @@ from layers.SelfAttention_Family import FullAttention, AttentionLayer
 class Model(nn.Module):
     """Forecasting model for the fixed harness.
 
-    configs carries: task_name (e.g. 'short_term_forecast'), seq_len (L),
-    pred_len (T), enc_in / c_out (number of channels M; M = 1 for univariate M4),
+    configs carries: task_name (e.g. 'long_term_forecast'), seq_len (L),
+    pred_len (T), enc_in / c_out (number of channels M),
     d_model (D), d_ff (F), e_layers, n_heads (H), dropout, activation, factor.
 
     forecast() receives x_enc [B, L, M] and must return [B, T, M].
@@ -196,10 +185,10 @@ def train(model, loss_fn, data_loader, optimizer):
     for x_enc, x_mark_enc, x_dec, x_mark_dec, target in data_loader:
         optimizer.zero_grad()
         out = model(x_enc, x_mark_enc, x_dec, x_mark_dec)   # [B, T, M]
-        loss = loss_fn(out, target)                          # MSE (long-term) or SMAPE (M4)
+        loss = loss_fn(out, target)                          # e.g. MSE on the forecast horizon
         loss.backward()
         optimizer.step()
 ```
 
 The `TODO`s — tokenization, channel routing, normalization, and the horizon head — are
-exactly the slots the method fills.
+exactly the design slots that remain open.

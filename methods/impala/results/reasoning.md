@@ -8,7 +8,7 @@ Let me sanity-check the obvious alternative, which is to keep it synchronous: on
 
 There's a closer relative, GA3C, which already decouples the forward pass (acting) from the backward pass (learning) with dynamic batching on the GPU. Good instinct, same as mine. But it learns *on-policy* on data that the decoupling has made *off-policy*, and it gets instabilities; their patch is to add a small constant to the action probabilities when forming the policy gradient. That's a band-aid over a real wound, and the wound is exactly the thing I'm about to walk into.
 
-Because here's the cost of decoupling. By the time a trajectory reaches the learner and the learner computes its gradient, the learner's policy has already moved — it's done several updates while that trajectory was being generated and queued. So the policy that *generated* the data, call it the behaviour policy μ, lags behind the learner's current policy, call it π, by several updates. The faster and more distributed I make this, the bigger the lag. My data is off-policy, and the gap grows with exactly the scale I'm chasing. If I run an on-policy actor-critic update on it — pretend μ = π — I'm computing a gradient for the wrong distribution. That's the source of GA3C's instability, and I should expect it to get worse as I add machines. Let me even picture the controlled experiment: hold everything fixed and artificially increase the number of update steps the actor is behind. On-policy learning should degrade monotonically as that lag grows, and the heuristic ε-correction not much better. So policy-lag is the enemy, and the question becomes: how do I correctly learn the value function and the policy of the *learner's* policy π from trajectories drawn under a *different*, lagged policy μ?
+Because here's the cost of decoupling. By the time a trajectory reaches the learner and the learner computes its gradient, the learner's policy has already moved — it's done several updates while that trajectory was being generated and queued. So the policy that *generated* the data, call it the behaviour policy μ, lags behind the learner's current policy, call it π, by several updates. The faster and more distributed I make this, the bigger the lag. My data is off-policy, and the gap grows with exactly the scale I'm chasing. If I run an on-policy actor-critic update on it — pretend μ = π — I'm computing a gradient for the wrong distribution. That's the source of GA3C's instability, and I should expect the damage to grow as I add machines. A tiny ε in the action probabilities can keep logs finite, but it does not change which policy generated the sample. So policy-lag is the enemy, and the question becomes: how do I correctly learn the value function and the policy of the *learner's* policy π from trajectories drawn under a *different*, lagged policy μ?
 
 This is off-policy learning, and I know the textbook tool: importance sampling. If I want an expectation under π but I sample under μ, I reweight by the ratio π/μ. For a single step that's `π(a|x)/μ(a|x)`. For a multi-step return I'd reweight the whole thing by the *product* of per-step ratios, `∏_t π(a_t|x_t)/μ(a_t|x_t)`. Unbiased, in principle. But stare at that product. The more off-policy I am — the more μ and π disagree — the wilder the individual ratios, and a product of n of them can blow up exponentially or collapse to near zero. The variance of that estimator grows with the horizon. So raw importance sampling on n-step returns is a non-starter at the lags I expect. I need the correction, but I need to tame its variance, and I need it to target a *state-value* V, because my actor-critic learns V, not a state-action Q.
 
@@ -45,7 +45,7 @@ Let me verify the t=0 term reproduces the leading piece: `γ^0 · 1 · (ρ_{-1} 
 
 For this to be a contraction in sup-norm I want: the weights are non-negative (in expectation), and their total is < 1. Then `|R V_1(x) − R V_2(x)|` is a convex-ish combination — a non-negative-weighted sum, with total weight η — of differences `|V_1 − V_2|` at other states, hence `≤ η ‖V_1 − V_2‖_∞`.
 
-Non-negativity first. `E_μ α_t = E_μ[ρ_{t-1} − c_{t-1} ρ_t]`. Here's where `c̄ ≤ ρ̄` earns its keep. Since c_{t-1} and ρ_{t-1} are the *same* ratio clipped at c̄ and ρ̄ respectively with c̄ ≤ ρ̄, we always have `c_{t-1} ≤ ρ_{t-1}`. So `ρ_{t-1} − c_{t-1} ρ_t ≥ c_{t-1} − c_{t-1} ρ_t = c_{t-1}(1 − ρ_t)`. Take expectations: `E_μ α_t ≥ E_μ[c_{t-1}(1 − ρ_t)]`. And `E_μ ρ_t ≤ E_μ[π(a_t|x_t)/μ(a_t|x_t)] = Σ_a μ(a) π(a)/μ(a) = Σ_a π(a) = 1` — truncating the ratio downward only lowers it, and the untruncated expected ratio is exactly 1. With c_{t-1} ≥ 0, that gives `E_μ α_t ≥ 0`. So the weights are non-negative in expectation. (That's exactly why I needed `ρ̄ ≥ c̄`: it's what makes `ρ_{t-1} ≥ c_{t-1}` so the first bound goes through.)
+Non-negativity first. `E_μ α_t = E_μ[ρ_{t-1} − c_{t-1} ρ_t]`. Here's where `c̄ ≤ ρ̄` earns its keep. Since c_{t-1} and ρ_{t-1} are the *same* ratio clipped at c̄ and ρ̄ respectively with c̄ ≤ ρ̄, we always have `c_{t-1} ≤ ρ_{t-1}`. So `ρ_{t-1} − c_{t-1} ρ_t ≥ c_{t-1} − c_{t-1} ρ_t = c_{t-1}(1 − ρ_t)`. Take expectations: `E_μ α_t ≥ E_μ[c_{t-1}(1 − ρ_t)]`. This last expectation is non-negative only after conditioning on the history through x_t: c_{t-1} is already fixed and non-negative, while `E_μ[ρ_t | x_t] ≤ E_μ[π(a_t|x_t)/μ(a_t|x_t) | x_t] = Σ_a π(a|x_t) = 1`. Hence `E_μ[c_{t-1}(1 − ρ_t)] = E_μ[c_{t-1} E_μ[1 − ρ_t | x_t]] ≥ 0`. So the weights are non-negative in expectation. (That's exactly why I need `ρ̄ ≥ c̄`: it makes `ρ_{t-1} ≥ c_{t-1}` before the conditional-expectation step.)
 
 Now the total weight, η. Sum the coefficients:
 `Σ_{t≥0} γ^t E_μ[(∏_{s=0}^{t-2}c_s)(ρ_{t-1} − c_{t-1}ρ_t)]`.
@@ -142,9 +142,15 @@ def from_logits(behaviour_policy_logits, target_policy_logits, actions,
     log_rhos = target_log_probs - behaviour_log_probs     # log π(a) − log μ(a)
     return from_importance_weights(log_rhos, discounts, rewards, values,
                                    bootstrap_value, clip_rho_threshold, clip_pg_rho_threshold)
+
+def off_policy_targets(behaviour_policy_logits, target_policy_logits, actions,
+                       discounts, rewards, values, bootstrap_value):
+    returns = from_logits(behaviour_policy_logits, target_policy_logits, actions,
+                          discounts, rewards, values, bootstrap_value)
+    return returns.vs, returns.pg_advantages
 ```
 
-And the learner loss — the three weighted terms. The cross-entropy carries the `−log π`, so multiplying it by the V-trace advantage and summing gives the policy-gradient ascent on `ρ_s ∇log π · (q_s − V)`; the baseline term regresses V toward v_s; the entropy term keeps the policy from collapsing:
+And the learner loss — the three weighted terms. The cross-entropy carries the `−log π`, so multiplying it by the corrected advantage and summing gives the policy-gradient ascent on `ρ_s ∇log π · (q_s − V)`; the baseline term regresses V toward v_s; the entropy term keeps the policy from collapsing:
 
 ```python
 def baseline_loss(vs, values):
@@ -162,13 +168,13 @@ def build_learner(agent, trajectories, baseline_cost=0.5, entropy_cost=0.01):
     out = agent.unroll(trajectories.actions, trajectories.env_outputs,
                        trajectories.initial_state)        # recompute target π's logits & V
     bootstrap_value = out.value[-1]                       # V(x_T) bootstrap for the tail
-    vt = from_logits(
+    value_targets, pg_advantages = off_policy_targets(
         behaviour_policy_logits=trajectories.behaviour_policy_logits,
         target_policy_logits=out.policy_logits, actions=trajectories.actions,
         discounts=trajectories.discounts, rewards=trajectories.rewards,
         values=out.value, bootstrap_value=bootstrap_value)
-    loss  = policy_gradient_loss(out.policy_logits, trajectories.actions, vt.pg_advantages)
-    loss += baseline_cost * baseline_loss(vt.vs, out.value)
+    loss  = policy_gradient_loss(out.policy_logits, trajectories.actions, pg_advantages)
+    loss += baseline_cost * baseline_loss(value_targets, out.value)
     loss += entropy_cost * entropy_loss(out.policy_logits)
     optimizer = tf.train.RMSPropOptimizer(1e-3, decay=0.99, momentum=0.0, epsilon=0.01)
     return optimizer.minimize(loss)

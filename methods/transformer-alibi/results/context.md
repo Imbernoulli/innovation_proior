@@ -17,12 +17,13 @@ run on longer contexts at test time, and this was assumed to generalize; the tra
 hoped to inherit the same property. The precise problem: does a transformer LM trained at `L`
 keep its perplexity when scored at `L_valid > L`, and if not, *why* not — and can the
 position-representation mechanism be changed so that it does, **without** spending any extra
-runtime, memory, or parameters relative to the cheapest existing position method?
+runtime or parameters, and with at most negligible mask memory overhead relative to the cheapest
+existing position method?
 
 A solution has to clear three bars simultaneously: (1) it must genuinely extrapolate to much
-longer inputs; (2) it must be no slower and no more memory-hungry than the cheapest current
-position method; (3) ideally it adds no learned parameters, so a single recipe transfers
-across model sizes and datasets without retuning.
+longer inputs; (2) it must be no slower than the cheapest current position method and can add
+only negligible auxiliary memory; (3) ideally it adds no learned parameters, so a single recipe
+transfers across model sizes and datasets without retuning.
 
 ## Background
 
@@ -109,7 +110,8 @@ extrapolation, but not efficient.
 **Relative position bias on attention scores (Shaw et al., 2018; the T5 variant of Raffel et
 al., 2020).** Add no signal to the token embeddings. Instead, after each query–key dot-product
 score, add a *learned scalar bias* that depends only on the relative distance between query
-and key, shared across the network and tuned per head. Distances are **bucketed**: nearby
+and key; the T5 variant shares these parameters across layers while using different learned
+scalars per head. Distances are **bucketed**: nearby
 distances each get their own learned bias, while distances beyond a cutoff are pooled into
 shared buckets — which intuitively might help past training length, since a never-seen
 distance falls into an already-learned far bucket. Like rotary, it injects position at every

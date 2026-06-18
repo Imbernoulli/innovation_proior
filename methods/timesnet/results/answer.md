@@ -18,17 +18,20 @@ the points it reconstructs poorly are flagged. So the task reduces to modeling t
 variation of a normal window well. Real variation mixes several overlapping periodicities, and each
 point depends both on its temporal neighbors (short-range, intraperiod) and on the same phase in
 adjacent cycles (long-range, interperiod); a 1D model can present only the first as locality, and
-plain point-wise attention reconstructs worst here because its similarity is dominated by the many
-normal points.
+plain point-wise attention can let the many normal points dominate its similarity structure.
 
 ## Key idea
 
 For a window `X_1D` of length `T` with `C` channels:
 
-1. **Period discovery.** Compute `A = Avg_C(Amp(FFT(X_1D)))`, the amplitude spectrum averaged over
-   channels. Zero out the DC term (`A[0]=0`: it is the mean, not a period). Take the top-`k`
-   frequencies `f_1..f_k` by amplitude (only `f ≤ T/2`, by conjugate symmetry; top-`k` denoises the
-   sparse spectrum), giving periods `p_i = ceil(T/f_i)` and amplitudes `A_{f_i}`.
+1. **Period discovery.** Compute the real FFT along time. In the canonical implementation, the
+   peak list is selected from `frequency_list = mean_{batch, channel}(|FFT(X_1D)|)`, so one top-`k`
+   frequency set is shared by the mini-batch; the returned weights are the per-example
+   channel-averaged amplitudes at those selected frequencies. Zero out the DC term (`A[0]=0`: it is
+   the mean, not a period). Take the top-`k` nonzero frequencies `f_1..f_k` by amplitude (the real
+   FFT gives only `0..floor(T/2)` by conjugate symmetry; top-`k` denoises the sparse spectrum).
+   Mathematically, frequency `f_i` corresponds to about `ceil(T/f_i)` samples per cycle; the
+   reference code uses `p_i = T // f_i` and then pads/truncates around that integer period.
 2. **Reshape to 2D.** Zero-pad along time to a multiple of `p_i`, reshape to a
    `(length/p_i) × p_i` grid per channel: columns = intraperiod (within a cycle), rows = interperiod
    (same phase across cycles). This yields `k` 2D tensors of shape `[num_periods, p_i, C]`.
@@ -58,7 +61,7 @@ threshold at the anomaly-ratio percentile of the score distribution, and reports
 ## Final algorithm (one TimesBlock)
 
 ```
-A, {f_1..f_k}, {p_1..p_k} = Period(X)          # FFT amplitude, drop DC, top-k
+A, {f_1..f_k}, {p_1..p_k} = Period(X)          # rFFT, drop DC, top-k; p_i = T // f_i in code
 for i in 1..k:
     X2D_i = Reshape_{p_i}(Pad(X))              # [num_periods, p_i, C]; cols=intra, rows=inter
     Y2D_i = Inception(X2D_i)                   # shared multi-scale 2D conv
@@ -70,7 +73,7 @@ return X' + X                                  # residual
 
 ## Default configuration (anomaly detection)
 
-`top_k = 3`, a few residual layers (`e_layers ≈ 3`), inception with `num_kernels = 6`, `seq_len =
+`top_k = 3`, three residual layers (`e_layers = 3`), inception with `num_kernels = 6`, `seq_len =
 100`, `pred_len = 0`, `c_out = enc_in` (reconstruction). Model width sized to the channel count:
 `d_model = d_ff = min(max(2^ceil(log C), d_min=32), d_max=128)`. Adam `lr = 1e-4`,
 `(beta_1, beta_2) = (0.9, 0.999)`, batch size 128, up to 10 epochs, MSE loss. Inputs are Z-score
@@ -87,8 +90,8 @@ normalized per dataset; threshold at the `anomaly_ratio` percentile; metric poin
 - **ResNet.** Residual stacking of the blocks for stable depth.
 - **Non-stationary Transformer (Series Stationarization).** The instance-normalize / de-normalize
   wrapper, restoring each window's own scale around the shared backbone.
-- **Transformer reconstruction baseline.** Outperformed on anomaly detection because point-wise
-  attention is distracted by the dominant normal points, while period-aware 2D modeling highlights
+- **Transformer reconstruction baseline.** Relevant failure mode: point-wise attention can be
+  distracted by the dominant normal points, while period-aware 2D modeling highlights
   variations that violate the periodicity.
 - **Generality.** Because the input is now a 2D grid, the inception block can be swapped for any 2D
   vision backbone (ResNet, ResNeXt, ConvNeXt, Swin); the inception version is chosen for efficiency.
@@ -107,7 +110,7 @@ from layers.Conv_Blocks import Inception_Block_V1
 def FFT_for_Period(x, k=2):
     # x: [B, T, C]
     xf = torch.fft.rfft(x, dim=1)
-    frequency_list = abs(xf).mean(0).mean(-1)     # amplitude over batch and channels
+    frequency_list = abs(xf).mean(0).mean(-1)     # amplitude averaged over batch and channels
     frequency_list[0] = 0                         # drop DC (the mean, not a period)
     _, top_list = torch.topk(frequency_list, k)
     top_list = top_list.detach().cpu().numpy()
@@ -180,8 +183,10 @@ class Model(nn.Module):
             enc_out = self.layer_norm(self.model[i](enc_out))     # residual TimesBlocks + LayerNorm
         dec_out = self.projection(enc_out)                        # [B, seq_len, c_out]
 
-        dec_out = dec_out.mul(stdev[:, 0, :].unsqueeze(1).repeat(1, self.seq_len, 1))
-        dec_out = dec_out.add(means[:, 0, :].unsqueeze(1).repeat(1, self.seq_len, 1))
+        dec_out = dec_out.mul(
+            stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1))
+        dec_out = dec_out.add(
+            means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len + self.seq_len, 1))
         return dec_out
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):

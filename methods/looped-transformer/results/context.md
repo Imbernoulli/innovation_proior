@@ -1,176 +1,99 @@
-# Context: making a fixed-size attention network execute arbitrary programs (circa 2022-2023)
+## Research Question
 
-## Research question
+A standard transformer encoder of `L` layers carries out `L` stages of computation and then
+stops. That is a poor fit for tasks whose natural description is iterative: follow a program
+counter, update memory, run a numerical recurrence, or make several passes over examples while
+updating a model stored in the input. The open question is whether an attention network with
+fixed weights and fixed depth can be made to execute computations whose length is not known
+when the network is designed.
 
-A transformer with `L` layers does a fixed amount of computation per forward pass: information
-flows through exactly `L` attention+MLP stages and stops. Yet many things we want models to do
-are *iterative* — run an algorithm for `T` steps, sweep a dataset for several epochs, apply a
-recurrence whose length is not known at design time. The precise problem: can a transformer of
-**fixed depth**, not growing with the length of the computation, carry out an arbitrary
-iterative program — a calculator, numerical linear algebra, an optimizer training a small
-network on data given in its own input — where the only thing that scales with the size of the
-computation is the *number of times the network is invoked*, not the number of layers it has?
+The target is constructive rather than statistical. The desired object is not a trained model
+that happens to solve a benchmark, but an explicit set of transformer weights whose effect can
+be verified algebraically. The hard constraints are: depth should not scale with the number of
+program steps, the input should carry enough mutable state to support read/write behavior, the
+primitive operations should include arithmetic and branching, and approximation errors from
+softmax attention should be bounded rather than hidden.
 
-A solution would have to (1) decouple the network's depth from the number of program steps;
-(2) give the network a way to address and edit specific locations of its input (read a
-variable, write a result back) the way a CPU reads and writes RAM; (3) implement, inside the
-fixed attention/MLP primitives, the operations a general program needs — arithmetic, control
-flow (a conditional jump), and at least a rich class of nonlinear functions; and (4) do all of
-this with weights one can actually exhibit, so the claim is a construction and not just an
-existence theorem. Each existing result below achieves some of these; none achieves all four at
-fixed depth with explicit weights. Closing that gap is the problem.
+## Existing Tools
 
-## Background
+The transformer layer under discussion takes an input matrix `X in R^{d x n}`, with columns as
+tokens, and applies multi-head attention followed by a position-wise ReLU network:
 
-By this time the transformer (Vaswani et al. 2017) is the dominant sequence architecture. A
-layer is an attention sublayer followed by a position-wise MLP. Writing the input as a matrix
-`X ∈ R^{d×n}` (each of the `n` tokens a `d`-dimensional column), the layer computes
-
-```
-Attn(X) = X + Σ_i V_i X · softmax( X^T K_i^T Q_i X )      (per head i, softmax over columns)
-f(X)    = Attn(X) + W_2 · ReLU( W_1 Attn(X) + b_1 1^T ) + b_2 1^T
+```text
+Attn(X) = X + sum_h V_h X softmax(X^T K_h^T Q_h X)
+f(X)    = Attn(X) + W2 ReLU(W1 Attn(X) + b1 1^T) + b2 1^T.
 ```
 
-with a temperature `λ ≥ 0` available inside the softmax. Two facts about this layer are
-load-bearing. First, attention's score matrix `X^T K^T Q X` lets any column's output depend on
-*any other column* — a content-addressable, all-to-all mixing. Second, with a high softmax
-temperature the column-softmax of a score matrix approaches a hard, one-hot selection, i.e. an
-(approximate) permutation matrix; so attention can *move* a chosen column's contents to another
-position. The MLP, being a ReLU network, is a universal approximator of continuous functions on
-its own.
+The softmax is column-wise and may use a temperature parameter. This gives two reusable facts.
+First, attention can compare one column with all other columns through a bilinear score. Second,
+a high-temperature softmax can approximate a hard selector when one score is separated from the
+others by a margin. The feedforward sublayer supplies exact piecewise-linear gates and binary
+arithmetic on bounded discrete encodings.
 
-Several strands of prior work establish the landscape. **Expressivity / Turing-completeness:**
-Pérez, Marinković & Barceló (2019) and Pérez et al. (2021) prove transformers can simulate
-Turing machines, and Wei, Chen & Ma (2022, "statistically meaningful approximation") give a
-finite-precision version; these constructions use unbounded/high precision and recursive links
-around attention. **Recursion in architectures:** Universal Transformers (Dehghani et al. 2018)
-already tie weights across depth and apply a block repeatedly, showing recurrence is compatible
-with attention. **In-context learning of algorithms:** Garg et al. (2022) show a from-scratch
-GPT-2 learns in-context to fit linear functions and small nets, working entirely at the level
-of vector embeddings rather than language; Akyürek et al. (2022) and von Oswald et al. (2022)
-argue trained in-context learners *implement* learning algorithms implicitly, and give a
-hardcoded single linear-self-attention layer equal to one gradient-descent step on linear
-regression. **Automata:** Liu et al. (2022) show shallow transformers find "shortcut" solutions
-that replicate an automaton's computation with far fewer layers than reasoning steps — but only
-for restricted families, since a general shortcut would collapse circuit-complexity classes
-widely believed distinct. The standing tension across all of this: the constructions that are
-*general* (Turing-complete) are abstract and depth- or precision-hungry, while the ones that are
-*concrete* (one GD step, one automaton) are shallow but special-purpose and tied to a single
-model/loss; depth keeps scaling with the number of computation steps.
-
-Two pieces of classical theory sit in the toolbox. **One-instruction-set computers:** Mavaddat
-& Parhami (1988) show a single instruction suffices for universal computation. The canonical
-example, `SUBLEQ(a,b,c)`, subtracts `mem[a]` from `mem[b]`, stores the result in `b`, and jumps
-to instruction `c` if the result is `≤ 0`; a machine looping over `SUBLEQ` instructions is
-Turing complete given enough memory. **Sigmoid approximation:** Barron (1993) proves any
-function with a bounded Fourier-magnitude integral (`f ∈ Γ_{C,B}`, `f(0)=0`) can be approximated
-by a linear combination of `m` sigmoids `Σ_i c_i σ(a_i^T x)` with error `O(m^{-1/2})` once the
-sigmoid sharpness satisfies `τ ≥ m^{1/2} ln m`.
+Several older ideas are relevant before any new construction is chosen. Binary encodings give a
+low-width way to represent addresses and counters. One-instruction-set computers show that a
+minimal instruction with subtraction and a conditional jump can be computationally universal.
+Barron's approximation theorem says that bounded functions in a Fourier-integral class can be
+approximated by sums of sigmoids with `O(m^{-1/2})` error. None of these facts alone gives a
+transformer computer, but each supplies a possible component.
 
 ## Baselines
 
-**RASP / Tracr (Weiss, Goldberg & Yahav 2021; Lindner et al. 2023).** RASP is a domain-specific
-language whose primitives mirror an encoder's select/aggregate operations; programs (count,
-sort, histogram, recognize Dyck-`k`) compile into transformer weights, and Tracr is a compiler
-that realizes this. **Gap:** the compiled network's size scales with the program — more lines of
-code means a bigger/deeper transformer — and the language's expressivity is limited (no general
-nonlinear functions, iteration is awkward) with Turing-completeness unclear, as discussed by the
-authors themselves and by Merrill & Sabharwal (2022).
+RASP and Tracr show that some sequence algorithms can be compiled into transformer weights.
+They make the programming interface explicit, but the compiled transformer grows with the
+program and the language is not a general low-level machine model.
 
-**Hardcoded in-context gradient descent (Akyürek et al. 2022; von Oswald et al. 2022).** Both
-exhibit explicit weights making a transformer implement gradient-based learning at inference
-time: von Oswald shows a single linear self-attention layer's update on the input equals one
-step of gradient descent on a regression loss; Akyürek constructs a constant-depth decoder that
-performs one SGD step for a linear model. **Gap:** restricted to linear models and a single loss
-(least squares), and crucially a fixed forward pass equals a *fixed number* of update steps — to
-run `T` iterations you need depth proportional to `T`, and there is no mechanism for general
-control flow or for nonlinear models / backprop.
+In-context learning constructions by Akyurek et al. and von Oswald et al. show hardcoded
+transformers that implement gradient-descent-like updates. These are concrete and algebraic,
+but they cover a narrow learning problem and a fixed number of update steps per forward pass.
+Longer optimization still costs more depth or more separately specified computation.
 
-**Abstract Turing-completeness constructions (Pérez et al. 2019/2021; Wei, Chen & Ma 2022).**
-These prove transformers can simulate any Turing machine, sometimes with a recurrent link.
-**Gap:** they are existence/simulation arguments at the level of "there is a transformer that
-does it," typically needing high or unbounded precision and not yielding a recipe for a
-*particular* algorithm or a way to compile a high-level program; they don't bound the depth
-needed for a single step of useful computation.
+Turing-completeness results for transformers prove much broader expressivity. They establish
+that attention architectures can simulate computation under appropriate assumptions, but they
+do not by themselves give a compact recipe for compiling a particular arithmetic or learning
+program into a small fixed-depth block with explicit read/write operations.
 
-**Universal Transformer (Dehghani et al. 2018).** Shares one block's weights across depth and
-applies it for a number of steps, with a halting mechanism. **Gap:** it is a *trained*
-architecture aimed at better generalization, not a construction with known weights that
-provably executes a specified program; what one block's single application computes is left to
-learning.
+Universal Transformers and other recurrent attention architectures reuse a block over multiple
+steps. They show that recurrence around attention is a reasonable architectural move, but they
+leave the content of one recurrent step to training rather than specifying the weights that
+execute a known instruction.
 
-**Standard deep transformer for an iterative task.** The default alternative to any of the above
-is simply: stack enough layers. **Gap:** depth then grows with the number of reasoning/iteration
-steps, which is exactly what becomes impractical for long computations and, for the hardest
-tasks, would imply circuit-complexity collapses believed false (Liu et al. 2022).
+## Evaluation Frame
 
-## Evaluation settings
+The right checks are structural. One should ask how many transformer layers, heads, and width
+coordinates are required for one computational step; whether those quantities remain fixed as
+the number of executed steps grows; how state is addressed and overwritten; how branch
+conditions are represented; and how softmax approximation error is kept below a requested
+tolerance.
 
-The natural yardsticks are constructive, not statistical — the artifact is a set of explicit
-weight matrices, and the question is *what programs they execute and at what size*. The relevant
-measurements are: the depth (number of layers), number of heads, and width (embedding
-dimension) required to execute one instruction / one program step; whether the depth stays
-constant as the *program length* (number of instructions / iterations `T`) grows; and the
-approximation error of the realized computation as a function of the softmax temperature `λ` and
-the number of sigmoid terms `m`. Concrete targets to demonstrate, drawn from what a "general
-computer" should do: execute a `SUBLEQ`/OISC program (with example programs such as factorial,
-list reversal, linear search); run a basic calculator; run numerical linear algebra (matrix
-transpose, matrix multiplication, matrix inversion, power iteration); and run an in-context
-learning algorithm — SGD with backpropagation training a small (e.g. two-layer) network on data
-supplied in the input. Inputs are `d`-dimensional embedding vectors rather than tokens (an
-embedding layer maps tokens to these), so the construction can be reasoned about as block-matrix
-algebra. Integers are stored as fixed-width `±1` binary vectors (`N` bits), in two's complement.
+For a useful construction, the input length may grow with the amount of memory and program text,
+and the number of invocations may grow with runtime. What should not grow is the depth of the
+instruction executor. Any claim of exact or approximate execution has to specify the numeric
+encoding, the valid integer range, the softmax temperature or padding constants that control
+error, and the cleanup operation that prevents small errors from accumulating indefinitely.
 
-## Code framework
+## Starting Scaffold
 
-The construction plugs into the standard transformer-layer primitive that already exists, plus
-the recurrence that ties one block's output back to its own input. What is *not* yet settled —
-and is exactly what has to be designed — is how to format the input so the network can address
-its own memory, and what each fixed-depth block must compute so that looping it executes a
-program. The substrate below is just the generic pieces: a transformer layer, a way to attach
-position information to columns, and an outer loop.
+The scaffold available before the key design decision is only a fixed transformer block and an
+external driver that can call it repeatedly. The unresolved part is what state format and what
+weights make one call correspond to one meaningful computational step.
 
 ```python
-import torch
-import torch.nn as nn
+def transformer_layer(X, Qs, Ks, Vs, W1, b1, W2, b2, lam):
+    attn = X
+    for Q, K, V in zip(Qs, Ks, Vs):
+        scores = X.T @ K.T @ Q @ X
+        P = column_softmax(lam * scores)
+        attn = attn + V @ X @ P
+    return attn + W2 @ relu(W1 @ attn + b1) + b2
 
 
-class TransformerLayer(nn.Module):
-    """One standard layer: multi-head attention (with a softmax temperature) + a
-    position-wise ReLU MLP, each with a residual connection. Weights are given, not trained."""
-
-    def __init__(self, d_model, n_heads, lam):
-        super().__init__()
-        self.attn = nn.MultiheadAttention(d_model, n_heads)   # K, Q, V supplied as weights
-        self.lam = lam                                        # softmax temperature
-        self.W1 = nn.Linear(d_model, 4 * d_model)
-        self.W2 = nn.Linear(4 * d_model, d_model)
-
-    def forward(self, X):
-        X = X + self.attn(X, X, X)[0]                         # content-addressed mixing
-        X = X + self.W2(torch.relu(self.W1(X)))              # position-wise nonlinearity
-        return X
-
-
-def positional_columns(n, dim):
-    """Attach position information to each of the n columns. Encoding scheme TBD."""
-    pass  # TODO: how a column's index is represented so attention can address it
-
-
-def build_block(spec):
-    """Assemble a fixed-depth stack of TransformerLayers whose weights make one application
-    of the block do one step of the computation. Depth must NOT grow with program length."""
-    # TODO: the construction we will design — what one application of the looped block computes,
-    #       and the weights that realize it.
-    pass
-
-
-def run(block, X, T):
-    """Drive the computation by feeding the block's output back as its next input."""
+def run_recurrent_block(block, X, T):
     for _ in range(T):
-        X = block(X)        # one program step per pass
+        X = block(X)
     return X
 ```
 
-The single open slot is `build_block` (and the column-addressing scheme it relies on): what one
-pass of the looped block must compute, and the explicit weights that make it so.
+Everything important is still missing from this scaffold: the address representation, the
+mutable state layout, the read/write mechanism, the branch test, the arithmetic subroutines,
+and the error correction needed when softmax is used instead of a true hardmax.

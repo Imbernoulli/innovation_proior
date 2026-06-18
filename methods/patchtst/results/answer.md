@@ -14,9 +14,7 @@ baseline, while keeping the multi-layer representation a linear model cannot off
 Forecast the next `T` values of a series from a length-`L` look-back, where (a) point-wise
 attention tokenizes each step and so attends over units with no local meaning and pays
 `O(L^2)` cost that forbids a long history, and (b) channel-mixing entangles all channels under
-one attention pattern and overfits the modest datasets. For the short, univariate, many-series
-M4 setting this specializes to one channel per series (`enc_in = c_out = 1`), trained on the
-SMAPE metric.
+one attention pattern and overfits the modest datasets.
 
 ## Key ideas
 
@@ -28,36 +26,38 @@ SMAPE metric.
 are robust across patch-length sweeps; e.g. `L=336 -> N=42`, `L=512 -> N=64`.
 
 **Channel-independence.** Split the `M`-channel input into `M` univariate series and run each
-through the *same* shared backbone independently. More preferable than channel-mixing because:
+through the *same* shared backbone independently. This is preferable to channel-mixing because:
 *adaptability* (each series gets its own attention map rather than one shared compromise);
 *data efficiency* (only temporal structure is learned, not joint cross-channel interactions
 that need much more data); *less overfitting* (mixing fits spurious cross-channel coincidences
 and overfits after a few epochs). Implemented for free by folding the channel axis into the
 batch axis: `[B, M, L] -> [B*M, N, P]`, run the encoder, reshape back. The weights are shared,
-so the channel count at train time need not match test time — the univariate M4 case is the
-native one (`M = 1`).
+so the channel count at train time need not match test time, and the univariate case is just
+the `M = 1` instance.
 
-**Vanilla encoder over patches.** Linear-project each patch to `D` with `W_p in R^{D x P}` (no
-bias), add a positional embedding (patches are otherwise an unordered set), then a standard
+**Vanilla encoder over patches.** Linear-project each patch to `D` with `W_p in R^{D x P}`,
+add a positional encoding (patches are otherwise an unordered set), then a standard
 multi-head scaled dot-product encoder
 `Attention(Q,K,V) = softmax(Q K^T / sqrt(d_k)) V` with a position-wise FFN `D -> F -> D` and
 residuals. Normalization is **BatchNorm**, not LayerNorm: outlier time steps corrupt per-token
-statistics, while BatchNorm dilutes a single outlier patch across the batch.
+statistics, while BatchNorm dilutes a single outlier patch across the batch. The original
+backbone uses a biased patch projection and learnable positional parameter by default; the
+Time-Series-Library adapter shown below uses `bias=False` and a fixed sinusoidal
+`PositionalEmbedding`.
 
 **Reversible instance normalization.** Before patching, per instance and per channel subtract
-the look-back mean and divide by `sqrt(var + eps)` (biased variance, `eps = 1e-5`, statistics
-detached); add the mean and scale back to the forecast. Decouples shape-learning from
-level-tracking and counters train/test distribution shift.
+the look-back mean and divide by `sqrt(var + eps)` (biased variance, `eps = 1e-5`); add the
+mean and scale back to the forecast. The original RevIN module stores detached statistics and
+can use affine parameters; the Time-Series-Library forecasting adapter detaches the mean and
+computes the same biased scale directly. This decouples shape-learning from level-tracking and
+counters train/test distribution shift.
 
 **Head.** Flatten the `D x N` encoder output per series and project with one linear layer to
 the horizon `T` (`head_nf = D * N`). This per-series shared head avoids the oversized
 `(L*D) x (M*T)` joint head that a channel-mixing model needs and that overfits.
 
-**Loss.** MSE per channel averaged over channels for the long-horizon benchmarks;
-**SMAPE** for M4, `(200/T) * sum_t |y_t - yhat_t| / (|y_t| + |yhat_t|)`, training on the
-percentage metric so large-magnitude series do not dominate. M4 config is small (a couple of
-encoder layers, few heads, small `d_model`, Adam `lr=1e-3`, batch 16, ~10 epochs) because the
-short single-variable series would otherwise overfit.
+**Loss.** MSE per channel averaged over channels for the long-horizon forecasting benchmarks:
+`E_x (1/M) sum_i ||xhat^{(i)} - x^{(i)}||_2^2`.
 
 ## Final architecture (forward pass)
 
@@ -66,7 +66,7 @@ x in R^{B x L x M}
   -> instance-normalize per (instance, channel): subtract mean, divide by sqrt(var+eps)
   -> permute to [B, M, L]
   -> pad S copies of last value; unfold into patches -> [B, M, N, P]; fold channels -> [B*M, N, P]
-  -> linear patch embed W_p (R^P -> R^D, no bias) + positional embed -> [B*M, N, D]
+  -> linear patch embed W_p (R^P -> R^D; TS-Lib uses no bias) + positional embed -> [B*M, N, D]
   -> e_layers vanilla Transformer encoder layers (MHA + FFN + residual, BatchNorm) -> [B*M, N, D]
   -> reshape -> [B, M, N, D] -> permute -> [B, M, D, N]
   -> flatten head: (D*N) -> T  -> [B, M, T] -> permute -> [B, T, M]
@@ -84,8 +84,10 @@ differ.
 
 ## Working code
 
-The canonical Time-Series-Library implementation (what the short-term M4 run uses), filling
-the harness `Model` slot. The encoder/attention layers are the library's reusable primitives.
+The Time-Series-Library forecasting adapter in this method directory fills the harness
+`Model` slot. The encoder/attention layers are the library's reusable primitives; the original
+PatchTST backbone has the same patch/channel dataflow but uses configurable learned positional
+encoding and RevIN.
 
 ```python
 import torch
@@ -159,7 +161,7 @@ class Model(nn.Module):
         # reversible per-instance normalization
         means = x_enc.mean(1, keepdim=True).detach()
         x_enc = x_enc - means
-        stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5).detach()
+        stdev = torch.sqrt(torch.var(x_enc, dim=1, keepdim=True, unbiased=False) + 1e-5)
         x_enc /= stdev
 
         # channel-independent patching: channels folded into the batch axis
@@ -209,5 +211,5 @@ class PatchEmbedding(nn.Module):
         return self.dropout(x), n_vars
 ```
 
-For M4 short-term forecasting the harness sets `task_name='short_term_forecast'`,
-`enc_in=c_out=1`, and the training loss to SMAPE; the architecture above is unchanged.
+For other forecasting tasks in the same library, the task name and loss can change, but the
+patch/channel dataflow above is unchanged.

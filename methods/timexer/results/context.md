@@ -19,10 +19,9 @@ different sampling, missing values, temporal misalignment), predict the next `S`
 channel, `x̂_{T+1:T+S} = F_θ(x_{1:T}, z_{1:T_ex})`, and do so for all channels at once. A good
 solution must (a) model fine intra-target temporal structure, (b) let the side channels
 influence the target, (c) stay cheap as the channel count `C` grows, and (d) tolerate irregular
-side series — without forcing alignment or imputation. It must do this inside a fixed
-look-back/horizon and a standard forecasting pipeline, and it should ideally make ordinary
-multivariate forecasting — predict every channel — fall out of the same machinery rather than
-needing a separate design.
+side series better than per-timestamp concatenation does. It must do this inside a fixed
+look-back/horizon and a standard forecasting pipeline, while still supporting the ordinary
+multivariate case where every channel is predicted.
 
 ## Background
 
@@ -65,7 +64,7 @@ NBEATSx, Olivares et al. 2023; TiDE, Das et al. 2023) incorporate covariates, ty
 concatenating exogenous features onto endogenous features *at each time step* and projecting jointly.
 That concatenation forces the endogenous and exogenous series to be aligned in time, equal in
 length, and equally sampled — exactly the assumptions that break under missing values and uneven
-sampling in real data.
+sampling in real data unless a preprocessing layer has already repaired them.
 
 ## Baselines
 
@@ -88,8 +87,8 @@ look-back as a single token via a linear `R^T → R^D` map, giving `C` tokens, a
 encoder so self-attention runs *across* variate tokens (cross-variate correlation) and the FFN runs
 *within* each token. Gap for this setting: the whole series is compressed into one coarse token by a
 linear projection, so intra-series temporal detail is lost; and it treats every channel as an equal
-token, spending `O(C²)` attention modeling interactions *into* channels we never predict and letting
-exogenous noise flow into the target representation.
+token, spending `O(C²)` attention over the channel set even in settings where many channels are only
+informers for the current target.
 
 **Crossformer (Zhang et al. 2022).** Patch every series and run a two-stage attention across both
 time and variate dimensions. It does model cross-variate structure, but only by redesigning the
@@ -99,9 +98,9 @@ channels that are only meant to inform.
 
 The shared shape of the gap: one camp captures intra-target temporal detail but no cross-channel
 influence (DLinear, PatchTST); the other captures cross-channel influence but loses intra-target
-detail and pays `O(C²)` while treating informer channels as if they were targets (iTransformer,
-Crossformer). None gives fine temporal modeling of the target *and* cheap, one-directional,
-irregularity-tolerant ingestion of side channels at once.
+detail or pays heavily across channels (iTransformer, Crossformer). The open slot is a model that
+keeps the target's temporal resolution while letting side information affect it without forcing all
+channels into the same representation.
 
 ## Evaluation settings
 
@@ -121,9 +120,10 @@ better.
 
 The pipeline already provides the data loaders, the optimizer/loss, the standard attention and
 embedding primitives, and the training loop. What must be filled in is one model class with a fixed
-interface: `__init__(configs)`, a `forecast(...)` that maps all input channels to a per-channel
-forecast, and a thin `forward(...)` that slices the horizon. Output is `[batch, pred_len, c_out]`
-with `c_out == enc_in`; every channel is predicted and scored.
+interface: `__init__(configs)`, forecasting routines for single-target and multivariate settings,
+and a thin `forward(...)` that selects the right path and slices the horizon. Output is
+`[batch, pred_len, c_out]`; in multivariate mode `c_out == enc_in`, so every channel is predicted and
+scored.
 
 Pre-existing primitives that can be reused unchanged:
 
@@ -194,27 +194,37 @@ class AttentionLayer(nn.Module):
 
 
 class Model(nn.Module):
-    """Exogenous-aware forecaster shell. The architecture that turns all input channels into a
-    per-channel forecast is the open slot."""
+    """Forecasting shell. The architecture that maps the provided history to the requested
+    horizon is the open slot."""
 
     def __init__(self, configs):
         super().__init__()
         self.task_name = configs.task_name
+        self.features = configs.features
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
         self.enc_in = configs.enc_in
         self.c_out = configs.c_out
-        # TODO: define the embedding(s), encoder, and head we will design.
+        # TODO: define the embedding(s), encoder, and head for the forecasting slot.
 
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
-        # x_enc: [batch, seq_len, enc_in] — all channels of the multivariate series.
-        # returns: [batch, pred_len, c_out]  (a forecast for every channel)
-        # TODO: implement the forecasting computation.
+        # Single-target convention: the target channel is selected by the model,
+        # and the remaining channels/time marks may be used as side information.
+        # TODO: implement the single-target forecasting computation.
+        raise NotImplementedError
+
+    def forecast_multi(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
+        # Multivariate convention: x_enc is [batch, seq_len, enc_in] and the
+        # result is [batch, pred_len, enc_in].
+        # TODO: implement the all-channel forecasting computation.
         raise NotImplementedError
 
     def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
         if self.task_name in ("long_term_forecast", "short_term_forecast"):
-            dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            if self.features == "M":
+                dec_out = self.forecast_multi(x_enc, x_mark_enc, x_dec, x_mark_dec)
+            else:
+                dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
             return dec_out[:, -self.pred_len:, :]
         return None
 ```

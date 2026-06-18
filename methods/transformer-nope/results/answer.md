@@ -33,16 +33,19 @@ rewards. Two constructions show the architecture is expressive enough:
 
 - **Relative (layers `l ≥ 2`).** With absolute position in coordinate 3, choose `W_Q`, `W_K`
   so `q_t = [1, −t, …]` (row 1 reads coord 1, row 2 reads coord 3 with `−1`) and
-  `k_i = [i, 1, …]` (row 1 reads coord 3, row 2 reads coord 1). Then
+  `k_i = [i, 1, …]` (row 1 reads coord 3, row 2 reads coord 1). Make the remaining
+  content rows ignore the first three reserved coordinates. Then
 
   `⟨q_t, k_i⟩ = 1·i + (−t)·1 + Σ_{j≥3} q_{t,j} k_{i,j} = f_cnt(q_t, k_i) − (t − i)`,
 
-  a score that depends only on the relative distance `t − i`. (`−(t − i)` is the simplest
-  reachable `f_rel`; since layer 1's MLP can write any function of absolute position into
-  coordinate 3, richer `f_rel` are reachable.)
+  a score with a pure linear relative term. The sign is non-positive for causal positions
+  `t ≥ i`, and farther past keys receive a larger negative offset. This construction proves the
+  reachable `f_rel(d) = -d`; richer relative functions require additional position features and
+  matching query-key weights, not just one scalar coordinate.
 
-So NoPE contains absolute and relative encodings as special cases; constraining none of them,
-it deviates where a fixed prescription would mismatch. Empirically (by Jensen–Shannon
+So NoPE contains an absolute code and a relative-score construction as explicit weight settings;
+constraining neither with a hand-designed PE, it can deviate where a fixed prescription would
+mismatch. Empirically (by Jensen–Shannon
 distance between attention distributions) the learned mechanism resembles a relative
 encoding with bimodal short- and long-range attention — exactly what copy/reverse need — and
 it costs nothing extra in the attention because no bias or rotation is computed.
@@ -70,7 +73,7 @@ def build_positional_scheme(config) -> PositionalScheme:
     The decoder's causal mask carries order on its own. Layer 1 can recover
     absolute position (uniform attention over t identical keys -> 1/t,
     anchored at <bos>); later layers can express a relative score depending
-    on (t - i). SGD learns which to use; no positional params are added.
+    on (t - i). SGD learns which signal to use; no positional params are added.
     """
     return PositionalScheme(
         name="nope",

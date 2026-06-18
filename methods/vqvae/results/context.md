@@ -46,11 +46,11 @@ The first term is a reconstruction term; the second pulls the approximate poster
 
 - **Datasets.** CIFAR-10 (32×32 natural images) for the likelihood comparison against continuous VAEs; ImageNet downsampled to 128×128 and 84×84 frames from the DeepMind Lab environment for high-resolution images and for action-conditional video; raw speech from VCTK (109 speakers) and a larger 460-speaker corpus / LibriSpeech for audio, with ground-truth phoneme sequences available (used only as an external probe, never for training).
 - **Metrics.** Negative log-likelihood in bits/dim for images (lower bounds reported for latent-variable models); reconstruction quality; for the unsupervised-speech probe, accuracy of a fixed mapping from discrete latent values to the 41 phoneme classes against a random-latent chance baseline; qualitative coherence of samples and of speaker conversion.
-- **Protocol.** Train encoder/decoder by gradient descent (Adam, learning rate 2e-4, batch size 128, ~250k steps for the CIFAR comparison). A common encoder/decoder backbone of strided convolutions and residual blocks is shared across the latent-variable models being compared, varying only the latent capacity (number of latents; for discrete models also the codebook size K). For generation, an autoregressive model is fit over the latents after the autoencoder is trained, and samples are drawn by ancestral sampling followed by decoding.
+- **Protocol.** Train encoder/decoder by gradient descent (Adam, learning rate 2e-4, batch size 128, ~250k steps for the CIFAR comparison). A common encoder/decoder backbone of strided convolutions and residual blocks is shared across the latent-variable models being compared, varying only the latent capacity (number of latents; for discrete models also the alphabet/codebook size K). If the missing bottleneck supplies a grid or sequence of discrete codes, the existing autoregressive machinery can be used to model those codes for generation.
 
 ## Code framework
 
-The pieces below already exist before the method: a convolutional encoder/decoder, a reconstruction loss, an optimizer, a training loop, and (for generation) an autoregressive model over discrete symbols. What does not yet exist is the bottleneck that turns the encoder's continuous output into a discrete latent and back — that is the one empty slot.
+The pieces below already exist before the method: a convolutional encoder/decoder, a reconstruction loss, an optimizer, a training loop, and a prior model that can score or sample discrete symbol grids/sequences. What does not yet exist is the bottleneck that turns the encoder's continuous output into a discrete latent and back -- that is the one empty slot.
 
 ```python
 import torch
@@ -150,10 +150,9 @@ def train_step(model, x, optimizer):
 
 
 def fit_prior_over_latents(latent_codes):
-    """After the autoencoder is trained: fit an autoregressive model over the
-    latents so we can ancestral-sample new codes and decode them. Such models
-    (masked-convolutional over a grid, dilated-causal over a sequence) already
-    exist. Pre-method the latents themselves don't exist yet, so this is a stub."""
+    """Fit an autoregressive model over a supplied grid/sequence of discrete
+    latents. Masked-convolutional and dilated-causal models already exist;
+    pre-method, the missing piece is how those latents are produced."""
     # TODO
     pass
 ```

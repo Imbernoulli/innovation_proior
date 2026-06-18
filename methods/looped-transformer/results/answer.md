@@ -1,152 +1,142 @@
 # Looped Transformers as Programmable Computers
 
-## Problem
+## Final Method
 
-A transformer of `L` layers performs a fixed `L` stages of computation per forward pass, so
-running an iterative algorithm for `T` steps the naive way needs depth growing with `T`. The
-goal is a **fixed-depth** transformer that, **placed in a loop**, executes an arbitrary
-iterative program — a calculator, numerical linear algebra, an in-context learning algorithm —
-where only the *number of loop iterations* scales with the computation, not the number of
-layers, and the weights are given explicitly.
+Use a fixed transformer block as an instruction executor and run it recurrently:
 
-## Key idea
+```text
+for t = 1..T:
+    X <- TF(W; X)
+```
 
-Treat the fixed-depth transformer as a CPU and the loop as its clock. Run `X ← TF(W; X)` for
-`T` iterations, feeding the output back as input. The network's depth only needs to suffice for
-**one instruction**; program length lives in `T`. Make this work by:
+The input matrix `X in R^{d x n}` is mutable state. Its columns are divided into scratchpad,
+memory, and commands, and every column carries a `+/-1` binary address `p_i` of length `log n`.
+If two addresses differ in `k` bits, then `p_i^T p_j = log n - 2k`; the matching address is
+therefore separated from every nonmatch by at least two.
 
-1. **Punchcard input layout.** Columns are `d`-dim embedding vectors partitioned into
-   Scratchpad `S` | Memory `M` | Commands `C`. Each column carries a `±1` binary positional code
-   `p_i` (length `log n`) of its index, used as both program counter and data pointers:
-   `p_i^T p_i = log n`, and `p_i^T p_j ≤ log n − 2` for `i ≠ j` (codes differing in `k ≥ 1`
-   coordinates give `log n − 2k`).
-2. **Read/write via attention as an approximate permutation.** Set key = query projecting onto
-   the position rows, so the score matrix is the Gram matrix `p_i^T p_j`; a softmax temperature
-   `λ ≥ log(n^3/ε)` sharpens it to within `ε` of a permutation that selects the addressed
-   column. The value matrix routes the selected contents to the scratchpad; a large-constant
-   ReLU gate keyed on a scratchpad-indicator bit `b` performs the overwrite. `write` is the same
-   with the gate sign flipped. Each is 1 layer, width `O(log n + d)`.
-3. **Arithmetic and control in the ReLU MLP.** Binary pointer increment (1-hidden-layer ReLU,
-   `8d` units); two's-complement subtraction (bit-flip `2·ReLU(−b)−1`, add 1, add); a `≤ 0`
-   flag from the sign bit and an all-`−1` test; a conditional jump selecting between the
-   incremented PC and the jump target; a piecewise-linear error-correction layer that snaps
-   `±ε`-noisy values back to exact `{−1, 0, 1}`.
+One transformer layer is
 
-These assemble into one **`SUBLEQ(a,b,c)`** instruction in a **9-layer, 2-head** looped
-transformer (`SUBLEQ` is a one-instruction-set computer, hence Turing complete). Generalizing
-the single operation to a menu of `M` hardcoded **function blocks** gives **`FLEQ`**:
-`mem[c] = f_m(mem[a], mem[b]); if mem[flag] ≤ 0 goto p`, executed by a `9 + max_m l_m`-layer
-transformer with `Σ_m h_m` heads and width `O(Md + log n)`. Setting `flag` to a constant-1 cell
-gives a pure function call; setting `a,b,c` to dummy cells gives a pure branch.
+```text
+Attn(X) = X + sum_h V_h X softmax(X^T K_h^T Q_h X)
+f(X)    = Attn(X) + W2 ReLU(W1 Attn(X) + b1 1^T) + b2 1^T.
+```
 
-**Nonlinear functions come from the softmax itself.** Putting slopes `a_{ji}` in the key,
-coefficients `c_{ji}` in the value, identity in the query, and padding each `a_{ji}` with a bias
-`−log(3d−1)` (and `x` with a trailing `1`) makes the per-column softmax denominator
-`(3d−1) + e^{a^T x}`, so each head outputs `c_{ji} σ(a_{ji}^T x)`; summing `m` heads gives
-`Σ_i c_{ji} σ(a_{ji}^T x)`. By Barron (1993) this approximates any `f ∈ Γ_{C,B}, f(0)=0` with
-error `O(m^{-1/2})` for `τ ≥ m^{1/2} ln m` — a universal approximator at constant depth (vs a
-ReLU MLP needing depth `O(log 1/ε)` for `x^2`). The same large-constant padding read the other
-way *linearizes* the softmax, giving matrix multiplication `A^T B + εM` (2 layers). Transpose,
-matrix inversion (Newton) and power iteration follow, each in a 13-layer looped transformer.
+Setting `K = Q` to read the address rows makes attention an approximate address selector. With
+temperature at least `log(n^3/epsilon)` in the simplified selector bound, the softmax is within
+`epsilon` of the intended permutation; the full bounded-input read/write bound uses
+`lambda > log(G d n^3 / epsilon)`. Value matrices move selected data into a buffer, and ReLU
+gates keyed by a scratchpad indicator overwrite the destination and clear the buffer.
 
-**SGD with backprop is a `FLEQ` program.** Linear SGD (`w ← w − η Σ_i (w^T x_i − y_i) x_i`) and
-two-layer-net backprop (`z=W_1x+b_1`, `a=σ(z)`, `o=W_2a+b_2`; `δ_2=o−y`,
-`δ_1=σ'(z)⊙W_2δ_2` with `σ'(z)=σ(z)(1−σ(z))`; outer-product gradients; subtract `η·`gradient)
-each run in a 13-layer, 1-head looped transformer of width `O(log D + d)`; the number of loops
-scales with `T·D`. All constructed transformers have depth `≤ 13`.
+## SUBLEQ Executor
 
-## Final form (the looped construction)
+The core instruction is
+
+```text
+SUBLEQ(a, b, c):
+    mem[b] <- mem[b] - mem[a]
+    if mem[b] <= 0: goto c
+    else: goto next instruction
+```
+
+Each command is `[p_a; p_b; p_c]`. Integers are stored as `N` `+/-1` bits
+`[b_N, ..., b_1]`:
+
+```text
+if b_N = -1: value = sum_{i=1}^{N-1} 2^{i-1} (b_i + 1)/2
+if b_N = +1: value = -2^{N-1} + sum_{i=1}^{N-1} 2^{i-1} (b_i + 1)/2
+```
+
+Subtraction uses two's-complement negation: flip bits with `2 ReLU(-b) - 1`, add one using the
+binary-add ReLU network, then add to `mem[b]`.
+
+The branch flag must be
+
+```text
+flag = ReLU(b_N) + ReLU(1 - N - sum_i b_i).
+```
+
+This is `1` for negative values by the sign bit, `1` for zero because zero is the all-`-1`
+pattern, and `0` for positive values. The signs matter: the equivalent preactivation
+`-sum_i b_i - N + 1` gives the same indicator.
+
+The program-counter update is
+
+```text
+p_next = 2 ReLU(p_inc - flag * 1)
+       + 2 ReLU(p_jump - (1 - flag) * 1)
+       - 1,
+```
+
+with residual-cancel terms for the old program counter. Softmax residue is removed by
+
+```text
+b_clean = (ReLU(b + 1 - eps) - ReLU(b + eps)) / (1 - 2 eps)
+        + (ReLU(b - eps) - ReLU(b - 1 + eps)) / (1 - 2 eps)
+        - 1.
+```
+
+One `SUBLEQ` instruction is then a 9-layer, 2-head looped transformer of width
+`O(log n + N)`, with integer range `[-2^{N-1}+1, 2^{N-1}-1]`. Laid out as a sequence of
+fixed-depth sublayers, one instruction step is:
 
 ```python
-import torch
-import torch.nn as nn
-
-
-class TFLayer(nn.Module):
-    """Standard transformer layer with a tunable softmax temperature `lam` and a position-wise
-    ReLU MLP. All weights are SET (hardcoded), not trained."""
-
-    def __init__(self, d_model, n_heads, lam):
-        super().__init__()
-        self.lam = lam
-        self.K = nn.ParameterList(nn.Parameter(torch.zeros(d_model, d_model)) for _ in range(n_heads))
-        self.Q = nn.ParameterList(nn.Parameter(torch.zeros(d_model, d_model)) for _ in range(n_heads))
-        self.V = nn.ParameterList(nn.Parameter(torch.zeros(d_model, d_model)) for _ in range(n_heads))
-        self.W1 = nn.Parameter(torch.zeros(4 * d_model, d_model))
-        self.b1 = nn.Parameter(torch.zeros(4 * d_model))
-        self.W2 = nn.Parameter(torch.zeros(d_model, 4 * d_model))
-        self.b2 = nn.Parameter(torch.zeros(d_model))
-
-    def forward(self, X):                                   # X: [d_model, n], columns = tokens
-        out = X.clone()
-        for K, Q, V in zip(self.K, self.Q, self.V):
-            scores = (K @ X).transpose(0, 1) @ (Q @ X)      # p_i^T p_j (read) or a^T x (sigmoid)
-            P = torch.softmax(self.lam * scores, dim=0)     # high lam: approx permutation / sigmoid
-            out = out + V @ X @ P
-        ones = torch.ones(1, X.shape[1])
-        return out + self.W2 @ torch.relu(self.W1 @ out + self.b1[:, None] @ ones) + self.b2[:, None] @ ones
-
-
-def pos_encoding(i, log_n):
-    """+/-1 binary code of column index i: self-product log_n, off-diagonal <= log_n - 1."""
-    return torch.tensor([1.0 if (i >> k) & 1 else -1.0 for k in range(log_n)])
-
-
-def compute_flag_bits(bits, N):
-    """0/1 indicator of (two's-complement integer) <= 0 from N +/-1 bits b_N..b_1 (b_N = MSB)."""
-    b_N = bits[-1]
-    return torch.relu(b_N) + torch.relu(1.0 - N - bits.sum())   # negative OR all-bits-(-1) == 0
-
-
-def next_pc(p_inc, p_jump, flag):
-    """Conditional jump: flag=1 -> p_jump, flag=0 -> p_inc (both +/-1 codes)."""
-    return 2.0 * torch.relu(p_inc - flag) + 2.0 * torch.relu(p_jump - (1.0 - flag)) - 1.0
-
-
-def fix_bits(b, eps):
-    """Snap softmax (not hardmax) residue back to exact {-1, 0, 1}; |b - exact| < eps < 0.5."""
-    s = 1.0 / (1.0 - 2.0 * eps)
-    return (s * (torch.relu(b + 1 - eps) - torch.relu(b + eps))
-            + s * (torch.relu(b - eps) - torch.relu(b - 1 + eps)) - 1.0)
-
-
-def build_fleq_computer(d_model, lam, function_block_specs):
-    """9-layer SUBLEQ skeleton (read instr; read mem[a],mem[b] with 2 heads; subtract; write
-    back; flag; branch; error-correct) + the layers of the deepest function block f_m.
-    Depth is constant in program length; heads are summed across blocks. Weights set per lemmas."""
-    skeleton = [TFLayer(d_model, n_heads=2, lam=lam) for _ in range(9)]
-    if function_block_specs:
-        depth = max(l for (l, h) in function_block_specs)
-        heads = sum(h for (l, h) in function_block_specs)
-        body = [TFLayer(d_model, n_heads=heads, lam=lam) for _ in range(depth)]
-    else:
-        body = []
-    return skeleton + body
-
-
-def run(layers, X, T):
-    """Loop = clock: T iterations execute T program instructions on a fixed-depth network."""
-    for _ in range(T):
-        for layer in layers:
-            X = layer(X)
+def subleq_step(X):
+    X = read_inst(X)              # 1 layer
+    X = read_mem(X)               # 1 layer, 2 heads (mem[a], mem[b])
+    X = subtract_mem(X)           # 3 layers: flip bits, add one, add/clear
+    X = write_mem(X)              # 1 layer
+    X = conditional_branching(X)  # 3 layers: flag, PC+1, select/clear
+    X = error_correction(X)       # 1 layer
     return X
 ```
 
-## Why the choices
+Looping this step for `T` iterations executes a `T`-instruction `SUBLEQ` program; the depth is
+fixed at nine and only `T` grows.
 
-- **Loop, not a deep stack:** depth would otherwise scale with the number of program lines; a
-  CPU reuses one ALU across cycles. The loop is the only mechanism that makes program length
-  free of depth.
-- **`±1` binary positional codes:** width `log n` (not `n` as one-hot), a strict margin of `≥2`
-  between the diagonal and off-diagonal Gram entries that the temperature can exploit, appended
-  as a suffix for clean block-matrix arguments.
-- **Key = query for reads:** makes the attention score depend only on whether two columns share
-  an address, peaking on the matching column.
-- **Temperature `λ ≥ log(n^3/ε)`:** turns softmax into a near-permutation; hardmax would be
-  exact but non-differentiable, so softmax is used and the residual error is cleaned later.
-- **Two's complement:** subtraction = negate (flip + add 1) + add, and the sign test is a single
-  MSB read, so branching is cheap.
-- **Sigmoid from softmax (bias `−log(3d−1)`):** reuses the existing nonlinearity instead of
-  adding MLP depth; Barron then makes `m` heads a universal approximator at constant depth.
-- **One function block per `f_m`:** simpler bookkeeping; `M` is small in practice so width `Md`
-  is acceptable. Restricting global attention to scratchpad columns drops cost `O(n^2 d) → O(nd)`.
+## Unified FLEQ Executor
+
+To avoid expressing all numerical work through subtraction alone, replace the subtraction slot
+with a menu of transformer-based function blocks:
+
+```text
+FLEQ(a, b, c, m, flag, p, d_h, d_w):
+    mem[c] <- f_m(mem[a], mem[b])
+    if mem[flag] <= 0: goto p
+```
+
+If the function blocks have depths `l_m` and head counts `h_m`, the unified executor has
+`9 + max_m l_m` layers, `sum_m h_m` heads, and width `O(Md + log n)`. A fixed positive
+flag cell gives a pure function call; dummy input/output cells give a pure branch.
+
+## Function Blocks
+
+Nonlinear functions are encoded by forcing softmax to act as a sigmoid. For a selected function
+index `j`, the block stores slopes and coefficients so that `m` heads output
+
+```text
+sum_{i=1}^m c_{ji} sigmoid(a_{ji}^T x).
+```
+
+By Barron's theorem, any `f in Gamma_{C,B}` with `f(0)=0` can be approximated with error
+`O(m^{-1/2})` when the sigmoid sharpness satisfies `tau >= m^{1/2} log m`. This gives a 3-layer,
+`m`-head function block; the `m` terms can alternatively be packed across dimension to use a
+single head.
+
+Matrix transpose is a 4-layer, 1-head function block using vectorization and fixed permutation.
+Matrix multiplication is a 2-layer, 1-head block: padding the softmax with a large constant
+linearizes it, yielding `A^T B + eps M` with `||M|| <= 1`.
+
+## Consequences
+
+`SUBLEQ` gives a universal one-instruction computer at fixed transformer depth. `FLEQ` makes the
+same executor practical for numerical programs. With multiplication, transpose, subtraction,
+and sigmoid-style function blocks, the construction gives fixed-depth looped transformers for:
+
+- a basic calculator,
+- Newton matrix inversion,
+- power iteration with Newton inverse-square-root normalization,
+- linear-model SGD over in-context data,
+- two-layer sigmoid-network SGD with backpropagation.
+
+The headline depth for these applications is at most 13 layers; runtime is paid in the number
+of recurrent invocations, not in a deeper transformer.

@@ -58,7 +58,7 @@ raw gradient is the steepest-ascent direction only under the L_2 metric.
 A third background fact is about the *local loss surface*. Empirically the loss as a function
 of the input, restricted to the eps-ball around a clean point, is not benign: there are sharp
 curvature artifacts localized right next to the data point that can mask the true direction of
-steepest ascent, so the gradient evaluated exactly at `x` can point in a misleading direction
+steepest ascent, so the gradient evaluated exactly at `x` can be a misleading local cue
 (Tramer et al. 2017). This leaves an open diagnostic question for any first-order attack:
 whether a local procedure can consistently reach high-loss points in the box, or whether the
 non-concavity hides substantially worse points from the search.
@@ -119,7 +119,7 @@ escape the non-smooth neighborhood of the data point before linearizing:
 x' = x + alpha * sign( N(0, I) ),    x_adv = x' + (eps - alpha) * sign( ∇_x L(theta, x', y) ),    alpha < eps.
 ```
 
-Core idea — the gradient at the exact data point is corrupted by sharp local curvature
+Core idea — the gradient at the exact data point can be distorted by sharp local curvature
 artifacts that mask the true ascent direction; a small random pre-step jumps off that
 non-smooth point so the subsequent linearization sees a more honest gradient. **Gap:** after
 the random jump it is still a *single* linearized step, so it inherits FGSM's one-shot
@@ -147,8 +147,6 @@ itself a single fixed-budget L_inf procedure.
   `ASR = 1 - (robust accuracy)`, the fraction of initially-correct examples whose label is
   flipped. An output that violates the norm, escapes `[0,1]`, or is non-finite counts as a
   failed attack on that example.
-- For an L_2-bounded variant of the same harness, steps are taken in the normalized gradient
-  direction rather than its sign, and projection is onto the L_2 ball.
 
 ## Code framework
 
