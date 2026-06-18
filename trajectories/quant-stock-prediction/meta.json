@@ -1,0 +1,49 @@
+{
+  "task": "quant-stock-prediction",
+  "title": "Quant Stock Prediction: cross-sectional return signal on Chinese equities",
+  "domain": "Time series",
+  "metrics": [
+    "csi300",
+    "csi100",
+    "csi300_recent"
+  ],
+  "metric_columns": [
+    "ic",
+    "icir",
+    "rank_ic",
+    "rank_icir",
+    "annualized_return",
+    "max_drawdown",
+    "information_ratio"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "transformer",
+      "method": "Transformer (encoder-only, sequence-to-one)",
+      "reasoning": "01-transformer-reasoning.md",
+      "answer": "01-transformer-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "lgbm",
+      "method": "LightGBM (histogram leaf-wise GBDT)",
+      "reasoning": "02-lgbm-reasoning.md",
+      "answer": "02-lgbm-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "lstm",
+      "method": "LSTM (gated recurrent regressor)",
+      "reasoning": "03-lstm-reasoning.md",
+      "answer": "03-lstm-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "LSTM (gated recurrent regressor)",
+  "ranking_basis": "Ranked from is_final,true baseline:* rows (seed 42; lgbm deterministic across seeds {42,123,456}). transformer weakest: csi300 IC 0.0117, and NEGATIVE portfolio information ratio on all three universes (csi300 -0.44, csi100 -1.01, csi300_recent -1.09) — a near-noise ranking paying TopkDropout churn. lgbm middle: positive csi300/csi300_recent IR (0.280 / 0.266), IC 0.0399, but csi100 IR negative (-0.334). lstm strongest: csi300 IR 1.03 (best by far), IC 0.0473 (best), csi300_recent IR 0.885; csi100 IR -0.258 (least negative of the three). Ordering by overall signal+portfolio quality is transformer < lgbm < lstm.",
+  "notes": "MLS-Bench trajectory; initial context and every step's code are the task's real edit surface (custom_model.py CustomModel + the editable workflow_config.yaml processor block), from edits/*.edit.py. Same-named-vs-paper diffs: (1) transformer is the qlib ENCODER-ONLY sequence-to-one regressor (no decoder, no causal mask, no cross-attention, no tied embeddings, no label smoothing, no warmup schedule) on DatasetH, trained with plain constant-rate Adam — NOT the paper's full encoder-decoder transduction model from methods/transformer; the harness omits the entire generation half and the warmup-then-inverse-sqrt schedule. (2) lgbm runs the DEFAULT gbdt booster (not goss), so GOSS does NOT fire (subsample is plain bagging, the a=0 case) and EFB is largely inert on the dense Alpha360 matrix — the methods/lgbm GOSS/EFB speed story is present in the engine but not exercised by this deployment; lgbm ALSO edits the workflow processor block (infer_processors: [] — strips RobustZScoreNorm+Fillna that hurt a tree). (3) lstm is the qlib NON-TS LSTM on ordinary DatasetH: each sample is the flat 360-vector with the 60x6 sequence reconstructed INSIDE the model (x.reshape(N,6,60).permute(0,2,1)), not a TSDatasetH of genuine overlapping windows; it KEEPS the default neural processor block (inverse of the lgbm edit). No finale: no clearly-stronger single published method fits this exact fixed-Alpha360 DatasetH interface with consensus dominance over LSTM (GATs needs a stock graph beyond the fixed feature view; ALSTM/GRU are contested/marginal on qlib's own Alpha360 benchmarks), so the ladder stops at the strongest baseline per the spec's 'never invent one'. All three baselines reused existing methods/<slug> traces (lgbm, lstm, transformer) as derivation references; none missing."
+}

@@ -1,0 +1,51 @@
+{
+  "task": "synth-dnf",
+  "title": "Synth-DNF: learning DNF concepts from uniform random examples",
+  "domain": "Learning theory",
+  "metrics": [
+    "random-n30-s10-w4",
+    "monotone-n40-s20-w4",
+    "sparse-n60-s10-w4"
+  ],
+  "metric_columns": [
+    "test_accuracy",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "deep_dnf",
+      "method": "deep_dnf (differentiable DNF / noisy-OR)",
+      "reasoning": "01-deep_dnf-reasoning.md",
+      "feedback": "01-feedback.md",
+      "answer": "01-deep_dnf-answer.md"
+    },
+    {
+      "n": 2,
+      "slug": "rf",
+      "method": "rf (Random Forest)",
+      "reasoning": "02-rf-reasoning.md",
+      "feedback": "02-feedback.md",
+      "answer": "02-rf-answer.md"
+    },
+    {
+      "n": 3,
+      "slug": "mlp",
+      "method": "mlp (MLP + AdamW + BCE)",
+      "reasoning": "03-mlp-reasoning.md",
+      "feedback": "03-feedback.md",
+      "answer": "03-mlp-answer.md"
+    },
+    {
+      "n": 4,
+      "slug": "gbdt",
+      "method": "gbdt (Gradient-Boosted Decision Trees)",
+      "reasoning": "04-gbdt-reasoning.md",
+      "feedback": "04-feedback.md",
+      "answer": "04-gbdt-answer.md"
+    }
+  ],
+  "ranking_basis": "Ranked weak->strong by geometric mean of per-family test_accuracy from the is_final,true baseline:* rows (seed 42): deep_dnf 0.8532 < rf 0.9057 < mlp 0.9415 < gbdt 0.9999. deep_dnf weakest, sunk by the mixed-polarity random family (0.7605) where the noisy-OR accumulates precision errors; rf gains on random (0.9346) via exact axis-aligned splits but drops on the wide 20-term monotone family (0.8536); mlp recovers random to near-perfect (0.9989) but the wide monotone family stays the bottleneck (0.8461); gbdt cracks monotone (0.9996) via sequential residual error-correction while holding random/sparse at the ceiling (1.0/1.0).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (custom_strategy.py: build_model/make_dataset/fit_and_predict, lines 217-304, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). Same-named-vs-paper diffs: deep_dnf's task edit ADDS a data-driven candidate-term mining warm start (_mine_candidate_terms) not in the canonical differentiable-DNF method, and uses a 3-way pos/neg/skip categorical literal; gbdt's task edit ties tree depth to config.term_width (max(4,w+1)=5) and adds stochastic subsampling + early stopping, beyond generic Friedman gradient boosting; rf and mlp are the plain published methods. No finale: gbdt already saturates at geomean 0.9999 (1.0/0.9996/1.0), so no published method can clearly clear it. methods/<slug> derivation references reused for deep-dnf, mlp, gradient-boosting; rf had no methods/<slug> trace, so its reasoning was authored grounded in Breiman 2001 directly."
+}

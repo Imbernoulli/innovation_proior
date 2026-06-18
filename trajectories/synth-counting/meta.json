@@ -1,0 +1,45 @@
+{
+  "task": "synth-counting",
+  "title": "Synth-Counting: length-extrapolating integer counters",
+  "domain": "Sequence modeling",
+  "metrics": [
+    "exact",
+    "abc",
+    "length-ood"
+  ],
+  "metric_columns": [
+    "in_dist_accuracy",
+    "ood_accuracy",
+    "extrapolation_gap",
+    "score"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "lstm",
+      "method": "LSTM (gated counter)",
+      "reasoning": "01-lstm-reasoning.md",
+      "answer": "01-lstm-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "transformer",
+      "method": "Transformer (sinusoidal PE)",
+      "reasoning": "02-transformer-reasoning.md",
+      "answer": "02-transformer-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "abacus",
+      "method": "Abacus (count-positional embeddings)",
+      "reasoning": "03-abacus-reasoning.md",
+      "answer": "03-abacus-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "ranking_basis": "All three share score_exact=0.0 (no method extrapolates the exact-count regression to 2-4x length), so the aggregate geometric mean is floored there and the discriminating axis is length extrapolation/retention -- exactly what the task probes. lstm weakest: in-dist abc 0.994 but retention only 0.530 (extrapolation_gap 0.470) and abc OOD at chance 0.524 -- a memorized, length-specific counter. transformer middle: retention 0.771 (gap 0.230), abc OOD still chance 0.524, in-dist abc 0.754 -- attention degrades more gracefully than the LSTM's compounding accumulator but gains no genuine OOD generalization. abacus strongest: retention 0.925 and the only baseline whose abc OOD accuracy rises off chance (0.669) -- the run-indexed count-positional embedding with randomized training shift is the only one that actually generalizes the count OOD, which is what the task scores. This ordering also matches published consensus (count-indexed PE > sinusoidal Transformer > LSTM on length extrapolation for counting).",
+  "notes": "MLS-Bench-based trajectory: initial context and every step's code are the task's real edit surface (the build_model body of pytorch-examples/synth_counting/custom_strategy.py, lines 180-209, from edits/*.edit.py). Each step = reasoning (full derivation, prose) -> answer (distilled summary + the scaffold code) -> feedback (numbers, baselines only). Code lives in the answer only; reasonings are code-free. No finale: Abacus is the published SOTA the task is built around (McLeish et al. 2024) and no clearly stronger published method fits this run-counting encoder slot, so the ladder stops at the strongest baseline. Same-named-vs-paper diffs: (1) the task's abacus.edit.py indexes offset within a run of *identical symbols* (per-run reset on symbol change), whereas methods/abacus is per-*number* digit alignment for multi-digit arithmetic; the task excludes PAD and CLS from run logic, computes 'counted' tokens by exclusion (not a digit-token isin), uses no operand reversal, train_offset=100 and max_count=4096, and feeds a CLS-pooled encoder through a fixed head (not a decoder LM). (2) lstm.edit.py is encoder-only (embedding -> 2-layer LSTM -> read last valid position -> LayerNorm); the methods/lstm trace's qlib Adam/masked-MSE/grad-value-clip/early-stop training loop is replaced by the fixed harness (AdamW 3e-4, smooth-L1/BCE, 6000 steps, seed 42). (3) transformer.edit.py is an encoder-only CLS-pooled classifier (scaled embedding + sinusoidal PE + 2 pre-norm layers); the methods/transformer trace's decoder, cross-attention, causal mask, label smoothing, tied embeddings, and warmup schedule are not part of this slot. All three methods/<slug> traces existed and were reused as derivation references (none missing)."
+}
