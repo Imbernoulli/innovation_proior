@@ -1,0 +1,205 @@
+The thing in front of me is a forest of $n$ nodes, each holding a value, and four operations that arrive online: `link(u, v)` joins two nodes that are currently in different trees, `cut(u, v)` deletes an existing edge, `connected(u, v)` asks whether two nodes share a tree, and a path query asks for the aggregate - say the sum - of node values along the unique simple path between $u$ and $v$. The path query alone, on a *fixed* tree, I know how to do well, so let me start there and watch exactly where it breaks, because the break is the whole problem.
+
+On a fixed rooted tree, the standard move for path aggregates is to decompose the tree into a small number of vertical chains so that any root-to-node path is covered by a few contiguous chain-segments, lay each chain out as a contiguous array, and put a segment tree (or any range-aggregate structure) over each. The decomposition that makes "few" precise: at every node, call the child whose subtree is largest the *heavy* child, and the edge to it the heavy edge; every other child-edge is light. Follow heavy edges and you get maximal heavy chains that partition the vertices. The key fact is that any root-to-node path crosses at most $\log n$ *light* edges - because each time you step down a light edge, the subtree you descend into has at most half the size of the one you left (if it had more than half, it would have been the heavy child), so you can halve at most $\log n$ times. So a path touches $O(\log n)$ heavy chains, each query is $O(\log n)$ chain-segments times $O(\log n)$ per segment-tree query, $O(\log^2 n)$, and it's beautiful - on a fixed tree.
+
+Now turn on `link` and `cut`. The instant I delete an edge or add one, subtree sizes change, and the heavy/light labelling that the whole decomposition rests on can flip all over the tree. A node that was a heavy child stops being one; a chain that was contiguous in the array is no longer the right chain; the array labelling itself, the thing the segment trees are indexed by, is computed once from a frozen shape and has no meaning after the shape moves. I could in principle recompute the decomposition after every edit, but that's $O(n)$ per operation and defeats the point. The heavy-light decomposition is *static*: it's a one-time preprocessing of a tree that never changes. So that's the wall - not the chain idea, but the *fixedness* of which chains we pick.
+
+Let me look harder at *why* the chain idea was good, separately from why the heavy-light *choice* of chains was static, because maybe I can keep the first and throw away the second. What the chains bought me: a path is a handful of contiguous ranges, and a contiguous range in an ordered structure supports fast aggregation. Nothing about that needed the chains to be the heavy chains specifically. The heavy-light rule was just *one* way to choose chains so the count stays $O(\log n)$. So the question becomes: can I choose the chains *dynamically* - let the data structure decide, on the fly, which child of each node is "on a chain" with it - and still keep paths cheap?
+
+Suppose at every node I allow at most one child to be "the chosen child," the one this node is chained together with, and I leave that choice mutable. Following chosen edges down from any node gives a chain; these chains partition the vertices just like heavy chains did, except now *I* control them and can change them. Call the chosen edges "real" and the rest "virtual." A chain of real edges is a path in the tree, top to bottom. The aggregate-over-a-range tool wants each chain stored as an ordered sequence. So store each chain in a balanced BST - a splay tree - where the in-order order of the nodes is their order *along the chain*, i.e. by depth: shallowest (closest to the chain's top) first, deepest last. Then a contiguous depth-range along a chain is exactly a subtree of that splay tree, and its aggregate is a value I keep at the splay-subtree root. Good - that's the same payoff as the segment tree gave per heavy chain, but now per *mutable* chain.
+
+But the chains are pieces; the tree is the whole. I need to glue the splay trees so that the represented forest is recoverable. Each chain has a topmost node; in the real tree that node has a parent, which sits on some *other* chain. So let the root of each chain's splay tree carry a parent pointer to that parent node - the node above the chain's top in the real tree. This is a "path-parent" link, and it crosses one of the virtual edges. There's an asymmetry I should make explicit, because it's load-bearing: the chain's splay root points *up* to its path-parent, but that parent does **not** point back down to this child. Why not symmetric? Because a node has exactly one parent but can have arbitrarily many children hanging off it by virtual edges; a single up-pointer is $O(1)$ to store and follow, whereas listing all the virtual children would be unbounded. So the rule is: a child on a virtual edge knows its parent, but the parent does not know that particular child. The consequence I'll lean on constantly: a node $x$ is the root of its own splay tree exactly when its parent pointer leads to a node that does *not* claim $x$ as either of its two splay-children - that virtual-edge parent is precisely the path-parent, and it's invisible from above.
+
+So now the represented forest is a forest of splay trees joined by path-parent pointers, and I have to make the four operations work on *that*. Let me figure out the one primitive everything will reduce to. The operation I keep wanting is: given a node $x$, take the entire path from $x up to the root of its tree and make it a single chain - one splay tree - so that the path's information is sitting in one ordered structure I can read off. Call it `access(x)`. If I can do this, a path query from the root to $x$ is just "the aggregate of the splay tree after `access(x)`."
+
+How to build that path-to-root chain. Walk up from $x$ chain by chain. First, $x$'s own chain: splay $x$ to the root of its splay tree, so $x$ is on top and the splay tree's left part is everything *above* $x$ on this chain (shallower), the right part everything *below* (deeper). I want the path that goes *up* from $x$, so the part of this chain below $x$ should be cut off from this chain - those deeper nodes are no longer on the same chain as $x$ once $x$ is the bottom of the path-to-root. So detach the right subtree: it becomes a chain of its own, joined back by a path-parent pointer to $x$ (and since "parent doesn't know child," I just stop pointing to it from $x$ - its own splay root still points up to $x$, which is now correct, it's a virtual child of $x$). Now $x$'s chain is exactly $x$ and everything above it on this chain.
+
+Then climb. $x$'s splay tree (rooted at $x$) has a path-parent $p$ - the node above this chain's top. I want to merge $x$'s chain onto $p$'s chain, making $x$ the chosen child of $p$. So splay $p$ to the root of *its* splay tree, detach $p$'s current deeper part (same reasoning - $p$'s old chosen-child chain becomes virtual), and attach $x$'s whole splay tree as $p$'s deeper (right) subtree, because every node in $x$'s chain is deeper in the real tree than $p$. Then move up to $p$ and repeat: splay, attach the lower chain as the right subtree, continue, until I reach the root of the tree, whose splay tree has no path-parent. At the end, splay $x$ back to the top so the result is rooted at $x$. The whole root-to-$x$ path is now one splay tree. Concretely the loop is: keep a variable `last` for the chain I'm carrying up (initially nothing), and for the current node `cur` starting at $x$: splay `cur`, set its right (deeper) child to `last`, refresh `cur`'s aggregate, set `last = cur`, and move `cur` to its path-parent; stop when there is no path-parent. Then splay $x$.
+
+Let me make sure the "detach the old deeper part" is actually free. When I splay `cur` and then overwrite its right child with `last`, the node that *was* `cur`'s right child - the root of `cur`'s old deeper chain - still has its parent pointer set to `cur`. I'm just no longer pointing *down* to it from `cur`. By the asymmetry rule, that's exactly what "it became a virtual child" means: it knows its parent, the parent forgot it. So overwriting the right child *is* the detach; I don't touch the old child at all. Nice - that's why one pointer write per level suffices.
+
+Now `connected(u, v)`. Two nodes are in the same tree iff they have the same root. So I want `find_root(x)`: the topmost (shallowest) node of $x$'s tree. After `access(x)`, the whole path from the real root down to $x$ is one splay tree, and the real root is the *shallowest* node on it - which, since in-order is by depth, is the leftmost node of the splay tree. So splay $x$ to the top, then walk left children all the way down (pushing down any pending lazy tags as I go - I'll get to those), and the last node I reach is the root; splay *it* to the top to keep the amortized cost honest. Then `connected(u, v)` is just `find_root(u) == find_root(v)`.
+
+`link(u, v)`, given $u$ and $v$ in different trees: I want to add the edge so that, say, $u$'s tree hangs under $v$. The clean way is to make $u$ a fresh virtual child of $v$ - set $u$'s parent pointer to $v$ without $v$ pointing back. But $u$ might be buried in the middle of its tree, and I want the new edge to be a genuine tree edge, i.e. $u$ should become a *root* so that attaching it under $v$ doesn't create a cycle or a malformed shape. Which means I need an operation I've been avoiding: re-rooting a tree at a chosen node.
+
+So here's the next wall, and it's the real subtlety. `access(x)` gives me the path from the *current* root down to $x$, as a splay tree ordered by depth. But a path query between two arbitrary nodes $u$ and $v$ isn't a root-to-node path - it goes *up* from $u$ to the lowest common ancestor and then *down* to $v$, so its depths are not monotone, and a non-monotone sequence cannot live in one depth-keyed splay tree at all. Everything I've built assumes "a chain goes strictly top-to-bottom." A $u$-to-$v$ path that bends at an ancestor violates that. I keep hitting this: `access` only ever pulls out root-to-node paths.
+
+The fix is to make $u$ the root. If I re-root the tree at $u$, then the lowest common ancestor of $u$ and $v$ is $u$ itself, the bend disappears, the $u$-to-$v$ path becomes a clean root-to-$v$ path, and `access(v)` (after rooting at $u$) lays it out as one chain. So I need `make_root(u)`. The same operation also unblocks `link`: re-root $u$'s tree at $u$, then hang $u$ under $v$.
+
+How do I re-root at $x$? Picture the tree's edges oriented child-to-parent, all arrows pointing toward the current root. Re-rooting at $x$ means $x$ becomes the new root and *every* arrow on the old path from $x$ up to the old root flips direction - what used to be $x$'s parent becomes $x$'s child, and so on up the line; nodes off that path keep their relationships. So re-rooting is precisely: reverse the orientation of the $x$-to-old-root path, and leave everything else alone. Now `access(x)` already hands me exactly that path as one splay tree, ordered by depth from shallow (old root) to deep ($x$). Reversing the path's orientation is reversing the *order* of that sequence: the old root, currently the shallowest/leftmost, must become the deepest, and $x$ must become the shallowest. That's a range-reverse of the splay tree. So `make_root(x)` = `access(x)`, then reverse the whole splay tree's order, then ($x$ is now the shallowest, i.e. the new root). And note a plain `access` can't do this on its own: `access` makes the path a chain but leaves depth order intact, so $x$ stays the deepest node, not the root - the reversal is the extra ingredient.
+
+Reversing a balanced BST's order naively is $O(\text{size})$, which would wreck the bound. But order-reversal of a whole subtree is the classic lazy-tag trick: reversing the in-order sequence of a subtree is the same as swapping every node's left and right child throughout the subtree, and I can defer that. Keep a boolean `rev` flag on each node meaning "this subtree's order is logically reversed, not yet pushed down." To reverse a splay tree rooted at $r$: swap $r$'s two children and toggle `rev[r]`. Whenever I'm about to *look at* a node's children - during a rotation, or while descending in `find_root`, or before splaying through it - I first `pushdown`: if its `rev` is set, I swap *its children's* children-pointers (i.e. apply the reversal one level down), toggle the flag on both children, and clear it on this node. So the reversal propagates lazily exactly to the nodes I actually visit. Crucially, before I splay a node I must push down the pending flags all the way along the path from its splay-root down to it, top first, or a rotation will move a node whose orientation hasn't been resolved and corrupt the order. So `splay(x)` begins by walking up to the splay-root, collecting the chain, and pushing down from the top down to $x$.
+
+With `make_root` in hand the rest falls out. `link(u, v)`: `make_root(u)` so $u$ is a root, then set $u$'s parent pointer to $v$ - a new virtual edge, $v$ doesn't point back, done. (If the problem didn't promise different trees I'd guard with a `find_root` check, but it does.)
+
+`cut(u, v)`, removing an existing edge: `make_root(u)` makes $u$ the root, then `access(v)` pulls the $u$-to-$v$ path into one splay tree ordered by depth, then splay $v$. If $(u, v)$ is really an edge, then $u$ and $v$ are *adjacent* on this path with $u$ shallower - so after splaying $v$, $u$ is the node immediately shallower than $v$, which in the depth-ordered splay tree is $v$'s left child, and moreover $u$ has nothing between it and $v$, so $u$ itself has no right child. That's the signature of a direct edge: $v$'s left child is $u$ and $u$'s right child is empty. When that holds, sever both sides - clear $v$'s left child and clear $u$'s parent pointer - and the two trees split. (Checking that signature also lets me reject a `cut` of a non-edge safely.)
+
+`path_query(u, v)`: `make_root(u)`, then `access(v)`. Now the $u$-to-$v$ path is exactly the splay tree containing $v$, and $v$ has been splayed to its root, so the aggregate I keep at $v$ - the sum of values over its splay subtree - is the sum over the whole path. Read it off. And updating a single node's value is just: splay it to the top so it owns no stale ancestor aggregate, change its value, refresh.
+
+So everything is `access` plus a constant amount of pointer surgery, which means the whole cost analysis reduces to: how expensive is `access`, amortized? Two things happen in an `access`: a sequence of splays, and a sequence of "chosen-child changes" (each level of the climb switches one node's chosen child to the chain coming from below). For the splays, splay trees give the standard amortized bound: define the size $s(x)$ as the number of nodes in $x$'s subtree counting *all* edges below it, real and virtual, set the potential to $\sum_x \log s(x)$, and the access lemma says a splay of $x$ costs at most $3(\log s(\text{root}) - \log s(x)) + 1$ amortized; summed over an operation these telescope, giving $O(\log n)$ amortized per splay because $s$ of the whole forest's top is $n$.
+
+The other cost is the number of chosen-child changes per `access` - the length of the climb. Here I reuse the heavy-light bound, but applied to the *represented* tree (which `access` doesn't reshape) rather than to a static array. Classify each virtual edge as heavy or light by the same rule as before: the edge from $v$ up to its parent is heavy if $v$'s subtree is more than half its parent's, light otherwise. A single `access` makes a root-to-$x$ path of chosen edges; along it, the number of *light* edges it newly makes chosen is at most $\log n$, by the halving argument. The chosen edges it makes from *heavy* virtual edges could be many in one operation, but they're paid for globally: every time a heavy edge becomes chosen, some heavy edge had to become *un*chosen to make room, and each "heavy becomes unchosen" is charged against a "light becomes chosen," of which there are only $O(\log n)$ per operation. So the total number of chosen-child changes is $O(\log n)$ amortized per `access`. Multiply by the $O(\log n)$ splay cost and you'd get $O(\log^2 n)$; but the sharper accounting folds the chosen-child changes into the *same* $\sum \log s(x)$ potential - each graft attaches $x$'s tree as a child with $s(x) \le s(\text{parent})$, so the per-level splay terms telescope across the whole climb to $3(\log s(\text{top}) - \log s(x)) + O(\#\text{changes})$, which is $O(\log n)$ since $s(\text{top}) = n$. `cut` only lowers the potential and `link` raises it by at most $\log n$, so every operation is $O(\log n)$ amortized. That's the target: $n$ and the number of operations up to $10^5$ each cost $O(\log n)$, comfortably fast.
+
+Let me write it. Node $0$ is a null sentinel so I never special-case missing children; real nodes are $1..n$; each node stores its value `val`, the subtree sum `sm`, the two splay children `ch`, the parent `fa` (which doubles as splay-parent when claimed and path-parent when not), and the lazy `rev` flag. `_is_root` tests the asymmetry; `_splay` pushes the pending `rev` chain down before rotating; `access`, `make_root`, `find_root` are the climb, the reverse, and the leftmost-walk; the four forest operations are thin wrappers. I'll keep the pushdown-before-splay loop iterative so a long chain can't overflow the call stack.
+
+```python
+import sys
+
+
+class Forest:
+    """A dynamic forest with per-node values: link, cut, connected, and
+    path-sum queries. Node 0 is a null sentinel; real nodes are 1..n."""
+
+    def __init__(self, n, values):
+        self.ch = [[0, 0] for _ in range(n + 1)]  # splay children: [left, right]
+        self.fa = [0] * (n + 1)                   # splay parent OR path-parent
+        self.val = [0] * (n + 1)                  # node value
+        self.sm = [0] * (n + 1)                   # sum of values in this splay subtree
+        self.rev = [0] * (n + 1)                  # lazy "reverse this subtree" flag
+        for i in range(1, n + 1):
+            self.val[i] = self.sm[i] = values[i - 1]
+
+    # x roots its own splay tree iff its parent claims neither child slot
+    # (then fa[x] is a path-parent, a virtual edge: child knows parent, not back).
+    def _is_root(self, x):
+        f = self.fa[x]
+        return self.ch[f][0] != x and self.ch[f][1] != x
+
+    def _side(self, x):
+        return 1 if self.ch[self.fa[x]][1] == x else 0
+
+    def _pushup(self, x):                          # in-order = depth order
+        l, r = self.ch[x]
+        self.sm[x] = self.sm[l] + self.val[x] + self.sm[r]
+
+    def _apply_rev(self, x):                        # reverse = swap children + flag
+        if x:
+            self.ch[x][0], self.ch[x][1] = self.ch[x][1], self.ch[x][0]
+            self.rev[x] ^= 1
+
+    def _pushdown(self, x):
+        if self.rev[x]:
+            self._apply_rev(self.ch[x][0])
+            self._apply_rev(self.ch[x][1])
+            self.rev[x] = 0
+
+    def _rotate(self, x):
+        y = self.fa[x]
+        z = self.fa[y]
+        k = self._side(x)
+        if not self._is_root(y):                    # only relink z if y wasn't a splay root
+            self.ch[z][self._side(y)] = x
+        self.fa[x] = z
+        w = self.ch[x][k ^ 1]
+        self.ch[y][k] = w
+        if w:
+            self.fa[w] = y
+        self.ch[x][k ^ 1] = y
+        self.fa[y] = x
+        self._pushup(y)
+        self._pushup(x)
+
+    def _splay(self, x):
+        # push pending reversals down the whole root..x chain first, top-down
+        stack = [x]
+        y = x
+        while not self._is_root(y):
+            y = self.fa[y]
+            stack.append(y)
+        while stack:
+            self._pushdown(stack.pop())
+        while not self._is_root(x):
+            y = self.fa[x]
+            if not self._is_root(y):
+                if self._side(x) == self._side(y):
+                    self._rotate(y)                 # zig-zig: rotate the parent first
+                else:
+                    self._rotate(x)                 # zig-zag
+            self._rotate(x)
+
+    # make the path from the real root down to x one splay tree, x on top
+    def access(self, x):
+        last = 0
+        cur = x
+        while cur:
+            self._splay(cur)
+            self.ch[cur][1] = last                  # graft the lower chain as the deeper subtree
+            self._pushup(cur)                       # (old right child becomes virtual: parent forgets it)
+            last = cur
+            cur = self.fa[cur]
+        self._splay(x)
+        return last
+
+    def make_root(self, x):
+        self.access(x)                              # path real-root..x as a chain
+        self._apply_rev(x)                          # reverse it: x becomes the new root
+
+    def find_root(self, x):
+        self.access(x)
+        while self.ch[x][0]:                        # shallowest node = leftmost
+            self._pushdown(x)
+            x = self.ch[x][0]
+        self._splay(x)
+        return x
+
+    def connected(self, u, v):
+        if u == v:
+            return True
+        return self.find_root(u) == self.find_root(v)
+
+    def link(self, u, v):                           # u, v in different trees
+        self.make_root(u)
+        if self.find_root(v) != u:
+            self.fa[u] = v                          # new virtual edge; v doesn't point back
+
+    def cut(self, u, v):
+        self.make_root(u)
+        # after access(v)+splay(v): (u,v) is an edge iff u is v's left child
+        # with no right child of its own (nothing between them on the path).
+        self.access(v)
+        if self.ch[v][0] == u and self.fa[u] == v and self.ch[u][1] == 0:
+            self.ch[v][0] = 0
+            self.fa[u] = 0
+            self._pushup(v)
+
+    def path_query(self, u, v):
+        self.make_root(u)                           # root at u: u..v is now a clean chain
+        self.access(v)                              # v on top, sm[v] = sum over the path
+        return self.sm[v]
+
+    def set_val(self, x, value):
+        self._splay(x)
+        self.val[x] = value
+        self._pushup(x)
+
+
+def main():
+    data = sys.stdin.buffer.read().split()
+    if not data:
+        return
+    it = iter(data)
+    n = int(next(it))
+    q = int(next(it))
+    values = [int(next(it)) for _ in range(n)]
+    forest = Forest(n, values)
+    out = []
+    for _ in range(q):
+        op = next(it).decode()
+        a = int(next(it))
+        b = int(next(it))
+        if op == "link":
+            forest.link(a, b)
+        elif op == "cut":
+            forest.cut(a, b)
+        elif op == "conn":
+            out.append("1" if forest.connected(a, b) else "0")
+        elif op == "path":
+            out.append(str(forest.path_query(a, b)))
+    sys.stdout.write("\n".join(out))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The whole chain: a static heavy-light decomposition makes path queries cheap only because the chains never move, so `link`/`cut` that reshape the tree kill it; keep the "path = a few ordered ranges" idea but make the chains *mutable* - each node picks at most one chosen child, the forest splits into chosen-paths, each stored as a splay tree keyed by depth, the pieces glued by one-way path-parent pointers; the single primitive `access(x)` makes the root-to-$x$ path one such splay tree by climbing and grafting, after which `connected` is "same leftmost node," `link`/`cut` are a couple of pointer writes, and a $u$-to-$v$ path query works once `make_root(u)` straightens the path - re-rooting being a lazy order-reversal of the accessed chain; and the heavy-light light-edge bound, reused on the represented tree and folded into the splay potential $\sum \log s(x)$, makes every operation $O(\log n)$ amortized.

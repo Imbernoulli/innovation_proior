@@ -1,0 +1,168 @@
+In front of me is a list of numbers — the first $2k$ of them — living in $\mathbb{Z}_p$ for some prime $p$, and a promise: this sequence obeys some linear recurrence of order at most $k$. I don't know the order, I don't know the coefficients. I want two things out of this: the shortest recurrence the data is consistent with, and then the $N$-th term for an $N$ that can be $10^{18}$. The second half already tells me something about the first: $N$ is astronomically large, so whatever I recover, I'm not going to generate terms one at a time up to index $N$. But let me park the $N$-th-term question and first just nail down the recurrence, because without it there's nothing to evaluate.
+
+So: a linear recurrence of order $m$ is a fixed list $c_0, \dots, c_{m-1}$ with $a_i = \sum_{j=0}^{m-1} c_j\, a_{i-j-1}$ for every $i \ge m$. Each term is the same weighted combination of the $m$ terms immediately before it. If I knew $m$, the unknowns are exactly $c_0, \dots, c_{m-1}$, and each index $i \ge m$ where I have data hands me one linear equation in those unknowns. That's the obvious handle: it's a linear system, solve it.
+
+Let me try that honestly. Suppose I just guess the order is exactly $k$ (the worst case the bound allows). Then I have $k$ unknowns $c_0, \dots, c_{k-1}$, and I form equations from indices $i = k, k+1, \dots, 2k-1$ — that's exactly $k$ equations, and it's exactly why I was handed $2k$ terms: $k$ to seed the first window and $k$ more to write $k$ constraints. The coefficient matrix has row $i$ equal to $(a_{i-1}, a_{i-2}, \dots, a_{i-k})$ and right-hand side $a_i$. A square $k \times k$ system over $\mathbb{Z}_p$. Gaussian elimination, picking pivots and using modular inverses for the division (which is fine, $p$ is prime, so every nonzero element is invertible). That's $O(k^3)$, and it spits out a coefficient vector.
+
+But wait — does it spit out the *shortest* one? No. I assumed order exactly $k$. If the true recurrence has order $m < k$, then the order-$k$ system is rank-deficient: its rows are dependent, elimination produces a zero pivot somewhere, and I get a whole family of solutions, not the minimal one. I'd have to detect the rank, figure out which $m$ it corresponds to, and extract the genuine order-$m$ recurrence from the null structure. That's doable but fiddly. And there's a sharper problem hiding underneath: if I instead try to find the order by guessing it, I'd loop $m = 1, 2, 3, \dots$ and for each $m$ solve an $m \times m$ system and check whether the resulting coefficients actually predict the rest of the terms. Each solve is $O(m^3)$, and I might go all the way to $m = k$, so that's $\sum_{m=1}^{k} O(m^3) = O(k^4)$. For the kinds of $k$ I care about that's already painful, and it feels deeply wasteful — every time I bump $m$ up by one I throw away all the elimination work I did for the previous $m$ and start a fresh system from scratch.
+
+Stare at that waste. The order-$m$ system and the order-$(m+1)$ system share almost everything — same data, just one more column and one more row. And more basically: the truth is the data has *one* shortest recurrence, of *one* order, and I'm hunting for it by brute force over a parameter I could instead discover. The clean question isn't "for each candidate order, does a recurrence exist?" It's "what is the shortest recurrence consistent with the data I've seen so far, and how does it have to change when I see one more term?" That reframing — process the terms one at a time, always holding the shortest recurrence that fits everything seen so far — is incremental, and incremental is exactly what dodges the re-solving.
+
+Let me set that up. I'll scan $a_0, a_1, a_2, \dots$ left to right. At each point I hold a current candidate recurrence $C = (c_0, \dots, c_{m-1})$, my best guess at the shortest recurrence fitting all terms read so far. When the next term $a_i$ arrives, I do the one thing the recurrence claims I can do: predict it. The prediction is $\hat{a}_i = \sum_{j=0}^{m-1} c_j\, a_{i-j-1}$. Two cases. If $\hat{a}_i = a_i$, my current $C$ still explains everything, including this new term — nothing to do, move on. If $\hat{a}_i \ne a_i$, then $C$ is *wrong* on term $i$; it fits everything up to $i-1$ but mispredicts $i$. I need to repair it.
+
+Call the gap the discrepancy: $\delta_i = \hat{a}_i - a_i$ (I'll fix the sign convention as predicted-minus-actual and stay consistent). When $\delta_i \ne 0$, $C$ has to change. But here's the constraint that makes this subtle, and the whole point of wanting the *shortest* recurrence: I want the repaired $C$ to predict $a_i$ correctly *without breaking any of the earlier terms it already got right*, and I want to grow the order as little as possible — ideally not at all. Since the current prediction is too high by $\delta_i$ in the field, the added piece must change the prediction by $-\delta_i = a_i - \hat{a}_i$, while changing every earlier already-correct prediction by $0$.
+
+How do I nudge a recurrence's prediction at one position by a controlled amount while leaving its earlier predictions alone? Let me think about what "adding a vector to $C$" does to predictions. If I replace $C$ by $C + G$ for some coefficient vector $G = (g_0, g_1, \dots)$, then at any position $t$ the prediction changes by $\sum_j g_j\, a_{t-j-1}$ — call that the *value of $G$ at $t$*, written $G(t)$. I want $G(i) = -\delta_i = a_i - \hat{a}_i$, the actual-minus-predicted gap, and I want $G(t) = 0$ for every earlier position $t < i$ where $C$ was already correct. A $G$ that's zero at all the old positions and exactly the gap at $i$ — add it, and the earlier terms stay correct while $i$ becomes correct.
+
+Where do I get such a $G$? This is the moment to stop and look at what the *history* of my scan has lying around. Right now $C$ failed at $i$ with a known nonzero discrepancy. But $C$ wasn't always what it is — it became this only because at some earlier step it *also* failed and I repaired it. So somewhere back in my scan there was a previous recurrence — call it $B = (b_0, b_1, \dots)$ — which was the current one up until the moment it failed at some position $f < i$, with its own known nonzero discrepancy $\delta_f$ there. The useful object is not the prediction vector of $B$ by itself; it is the residual of the recurrence,
+$$R_B(t) = a_t - \sum_j b_j a_{t-j-1}.$$
+For all positions where $B$ was correct, $R_B(t)=0$. At the failing position $f$, its prediction was $a_f + \delta_f$, so $R_B(f)=a_f-(a_f+\delta_f)=-\delta_f$. This is exactly the silent-then-nonzero shape I need, with one sign that I can account for.
+
+Now I need to turn that residual, whose leading term is the current term $a_t$ itself, into a legal lookback coefficient vector at the later index $i$. Shift the residual by $i-f$: the $+1$ coefficient on $a_f$ becomes a lookback coefficient at index $i-f-1$, and the $-b_j$ coefficients become entries at indices $i-f+j$. So the unit repair vector is
+$$(0,\dots,0,1,-b_0,-b_1,\dots),$$
+with $i-f-1$ leading zeros. At position $i$ it evaluates to $R_B(f)=-\delta_f$; at every earlier position it evaluates to an earlier residual where $B$ was already correct, so it is $0$. I want a contribution of $-\delta_i$, and the unit repair contributes $-\delta_f$, so the scale is simply $\delta_i\,\delta_f^{-1}$. The repair is therefore to add this scaled shifted residual to $C$. The earlier predictions stay untouched, and the prediction at $i$ moves by $-\delta_i$, so it becomes $a_i$. The denominator is nonzero by construction, and because $p$ is prime, I can divide by it using a modular inverse.
+
+Now the order. The shifted residual has $(i-f-1)$ zeros, then one leading residual coefficient, then $\text{len}(B)$ recurrence coefficients, so its length is exactly $i-f+\text{len}(B)$. If that exceeds the current $\text{len}(C)=m$, the new $C$ is longer — the order grew. If it doesn't, the order stays put. So the order only increases when the repair genuinely needs reach the current order can't supply. That's the "grow only when forced" behavior I wanted, and it's automatic: I don't decide to grow, the arithmetic grows only when the fix vector is longer than what I have.
+
+There's still the very first failure to handle, before any $B$ exists. Scanning from the start, $C$ is empty (order 0, predicts nothing, effectively predicts $0$ for every term). The first time a term is nonzero — say at position $i$ — the empty $C$ "mispredicts" it. There's no prior failing recurrence to shift. But the right thing here is forced and simple: I can't reproduce a nonzero term with a recurrence of order $\le i$ that has to start from all-zero history (the first $i$ terms were zero, and a linear recurrence on all-zero history stays zero), so the minimal honest move is to declare an order-$(i+1)$ recurrence and let it be all zeros for now. That moves $a_i$ into the seed window rather than asking the recurrence to predict it, and it records a failing recurrence with a known discrepancy at position $i$, so the *next* failure has a $B$ to work with. Concretely I set $C$ to $i+1$ zeros, and stash this failure as my reference: $f = i$, $\delta_f = \hat{a}_i - a_i = -a_i$ (predicted zero minus actual). From here on every failure has the machinery above.
+
+One thing I glossed: *which* past failing recurrence do I use as $B$? Each time I repair, the recurrence I'm about to overwrite was itself "correct so far then failed at $i$" — it's a candidate $B$ for future repairs. If I always kept the most recent one, the shift length $i - f$ would be small (good, less order growth) but $B$ itself might be long. What I actually care about is the *resulting* order after shifting: $i - f + \text{len}(B)$. So when a failure happens, I should remember, as the reference $B$ for next time, whichever choice makes that future grown-order smallest. The current pre-repair $C$ has score $\text{len}(C)-i$ for a future shifted length, while the old reference has score $\text{len}(B)-f$. The current $C$ is at least as good exactly when $\text{len}(C)-i \le \text{len}(B)-f$, equivalently $i-f+\text{len}(B)\ge \text{len}(C)$. That is the moment to swap the reference to the just-overwritten $C$, recording its failing position $i$ and its discrepancy. This is the bookkeeping that keeps the order minimal across the whole scan, and it's the part I have to get exactly right.
+
+Let me make sure the discrepancy bookkeeping is consistent, because this is precisely where a flipped sign silently corrupts everything. At a failing step I compute $t=\hat{a}_i$ and $d=t-a_i$. The unit shifted residual from the reference contributes $-\text{ld}$ at $i$, where $\text{ld}$ is the reference's prediction-minus-actual discrepancy. I need the contribution $a_i-t=-d$, so the scale must satisfy $\kappa(-\text{ld})=-d$, hence $\kappa=d\,\text{ld}^{-1}$. Same sign convention on top and bottom; no stray minus sign.
+
+Check it on $1,2,4,8,\dots$. At $i=0$ the empty recurrence predicts $0$, actual is $1$, so I store $\text{ld}=0-1=-1$ and set $C=(0)$. At $i=1$, $C=(0)$ predicts $0$, actual is $2$, so $d=-2$. The stored reference has no $b_j$ terms, so the shifted residual is just a coefficient at index $0$; its unit value at $i=1$ is $a_0=1=-\text{ld}$. The scale is $d/\text{ld}=(-2)/(-1)=2$, so the repair adds coefficient $2$ and gives $C=(2)$. That is the recurrence $a_i=2a_{i-1}$, and the later powers of two now predict correctly. Settled: the code should compute `k = d * inv(ld, p) % p`, put `k` at index `i - lf - 1`, and then append `-last[j] * k` for the reference coefficients.
+
+Let me also re-examine the reference-update test with this convention. After repairing at $i$, I decide whether to make the just-overwritten $C$ the new reference $B$. I keep, as $B$, whichever yields the smaller future grown-order. The grown order from using a reference with failing position $f'$ and length $\ell'$ is, at a future failure $i'$, $i'-f'+\ell'$; the part I control now is $\ell'-f'$ because $i'$ is common to both choices. The old reference gives $\text{len}(B)-f$. The candidate I am about to overwrite gives $\text{len}(C)-i$. So I switch to the candidate when $\text{len}(C)-i \le \text{len}(B)-f$, equivalently $i-f+\text{len}(B)\ge \text{len}(C)$. This is the comparison `i - lf + len(last) >= len(cur)` triggering the swap, and at that moment I store `last = prev`, `lf = i`, and `ld = d`.
+
+I think the recurrence-finding is fully pinned down. Each term costs the current order to predict and, on a failure, the current order to repair; under the promised bound the order is at most $k$, and there are $O(k)$ supplied terms, so the whole scan is $O(k^2)$ — a clean drop from the $O(k^4)$ guess-and-resolve and even from the single $O(k^3)$ elimination, and it discovers the order for free. And the promise that $2k$ terms suffice now makes sense: if the true shortest order is $m \le k$, then the scan has at least the first $2m$ terms, enough information for the minimal recurrence to be forced by its own prefix, while the remaining supplied terms keep checking the same coefficients.
+
+Now the second half: the $N$-th term, $N$ up to $10^{18}$. I have $C = (c_0, \dots, c_{m-1})$ with $a_i = \sum_{j} c_j a_{i-j-1}$. The plodding way is to just run the recurrence forward from the $m$ seed terms, computing $a_m, a_{m+1}, \dots, a_N$, each in $O(m)$, total $O(Nm)$. At $N = 10^{18}$ that's a non-starter. I need to jump to index $N$ in roughly $\log N$ steps, not $N$ steps.
+
+The recurrence is linear, which screams "matrix power": stack the last $m$ terms into a state vector and the recurrence is a fixed $m \times m$ companion matrix $M$ acting on it, so the state at index $N$ is $M^{N-m+1}$ applied to the seed state, and $M^{\text{power}}$ comes from binary exponentiation in $O(m^3 \log N)$. That works and I'll keep it in my pocket. But $m^3$ per multiply is heavier than it needs to be, and there's a slicker view that uses the recurrence's *polynomial* structure.
+
+Here's the structure. Associate to the recurrence its characteristic polynomial $f(x) = x^m - \sum_{j=0}^{m-1} c_j x^{m-1-j}$. The recurrence relation $a_i - \sum_j c_j a_{i-j-1} = 0$ is exactly the statement that the "shift" operator (advance the index by one) annihilates $f$: if I think of indexing terms by powers of $x$, then $x^m \equiv \sum_j c_j x^{m-1-j} \pmod{f(x)}$. More usefully: define for any polynomial $g(x) = \sum_t g_t x^t$ the linear functional $\Lambda(g) = \sum_t g_t a_t$, reading off the $a$-term for each power. Then $\Lambda$ is linear, and the recurrence says $\Lambda(x^t f(x)) = 0$ for every $t \ge 0$ — because $\Lambda(x^t f) = a_{t+m} - \sum_j c_j a_{t+m-1-j}$, which is the recurrence at index $t + m$, zero. So $\Lambda$ kills every multiple of $f$. Therefore $\Lambda(g)$ depends only on $g \bmod f$: if $g \equiv h \pmod f$ then $g - h$ is a multiple of $f$ and $\Lambda(g - h) = 0$, so $\Lambda(g) = \Lambda(h)$.
+
+Now I want $a_N = \Lambda(x^N)$. By the above, $\Lambda(x^N) = \Lambda(x^N \bmod f)$. And $x^N \bmod f$ is a polynomial of degree $< m$, say $\sum_{i=0}^{m-1} s_i x^i$, so $a_N = \Lambda\big(\sum_i s_i x^i\big) = \sum_{i=0}^{m-1} s_i a_i$ — a length-$m$ dot product with the seed terms I already have. So the entire problem reduces to computing $x^N \bmod f(x)$, a single polynomial of degree $< m$. And that I get by binary exponentiation in the ring of polynomials modulo $f$: square-and-multiply on the bits of $N$, where each "multiply" is a polynomial product (degree $< 2m$) followed by a reduction modulo $f$ back to degree $< m$. Each polynomial multiply is $O(m^2)$ and each reduction is $O(m^2)$, and there are $O(\log N)$ of them, so $O(m^2 \log N)$ — better than the companion matrix's $O(m^3 \log N)$.
+
+Let me work out the reduction concretely, since it's the load-bearing operation. Given a product $r(x) = \sum_{e=0}^{2m-2} r_e x^e$, I want $r \bmod f$. For each power $x^e$ with $e \ge m$, I rewrite it using $x^m \equiv \sum_{j=0}^{m-1} c_j x^{m-1-j} \pmod f$, but applied at the top: $x^e = x^{e-m}\cdot x^m \equiv x^{e-m}\sum_j c_j x^{m-1-j} = \sum_j c_j x^{e-1-j}$. So a coefficient sitting at index $e \ge m$ pushes its weight down: $r_{e-1-j} \mathrel{+}= r_e\, c_j$ for $j = 0, \dots, m-1$, lowering the top index by at least one each time. Sweep $e$ from high down to $m$, folding each top coefficient into the $m$ slots just below it; when the sweep is done, only indices $0, \dots, m-1$ remain nonzero, and that's $r \bmod f$.
+
+Binary exponentiation needs a starting "$x^1$" and an accumulator "$x^0 = 1$". I keep two degree-$<m$ polynomials: $s$ (the accumulating result, init $1$) and $t$ (the running square of $x$, init $x$). Walk the bits of $N$ from least significant: if the bit is set, $s \leftarrow s\cdot t \bmod f$; always $t \leftarrow t\cdot t \bmod f$; shift $N$ right. At the end $s = x^N \bmod f$, and $a_N = \sum_i s_i a_i$. One wrinkle at $m = 1$: then $f(x) = x - c_0$, $x \equiv c_0 \pmod f$, and "$x^1$" already reduces to the constant $c_0$, so I seed $t$ as the constant $c_0$ rather than the literal $x$ (which would be degree $1 = m$, out of range); a small special case. And if $N$ is small — smaller than the number of seed terms I hold — I just return $a_N$ directly without any of this. If the recovered recurrence is empty (order 0, the sequence was all zeros), every term is $0$.
+
+Putting the two halves together I can write it as runnable code. Modular power and inverse first (inverse by Fermat, since $p$ is prime — and I needed exactly that for the $1/\text{ld}$ in the repair). Then the incremental scan that maintains the current recurrence `cur`, the last failing recurrence `last`, and its failing position `lf` and discrepancy `ld`. Then the polynomial-power evaluator. The parsing just reads $p$, $N$, the term count, and the terms.
+
+```python
+import sys
+
+
+def power(a, b, p):
+    a %= p
+    r = 1
+    while b:
+        if b & 1:
+            r = r * a % p
+        a = a * a % p
+        b >>= 1
+    return r
+
+
+def inv(a, p):
+    return power(a, p - 2, p)  # Fermat; p prime
+
+
+def find_recurrence(seq, p):
+    """Shortest C with a_i = sum_j C[j]*a[i-j-1], over Z_p."""
+    cur = []            # current shortest recurrence so far
+    last = []           # the recurrence current right before the last failure
+    lf = -1             # failing index of `last`
+    ld = 0              # discrepancy (predicted - actual) of `last` at lf
+    for i in range(len(seq)):
+        # predict a_i from the current recurrence
+        t = 0
+        for j in range(len(cur)):
+            t = (t + seq[i - j - 1] * cur[j]) % p
+        d = (t - seq[i]) % p          # discrepancy, predicted - actual
+        if d == 0:
+            continue                  # current recurrence still fits
+        if not cur:
+            # first nonzero term: set the order floor, record this failure
+            cur = [0] * (i + 1)
+            lf = i
+            ld = d
+            continue
+        # build the scaled, shifted residual of the last failing recurrence
+        k = d * inv(ld, p) % p        # discrepancy now / discrepancy then
+        c = [0] * (i - lf - 1)
+        c.append(k)                   # the +1-at-index-(i-lf-1), scaled
+        for j in range(len(last)):
+            c.append((-last[j] * k) % p)
+        if len(c) < len(cur):
+            c.extend([0] * (len(cur) - len(c)))
+        prev = cur                    # remember pre-repair cur as a candidate ref
+        c = [(c[j] + (cur[j] if j < len(cur) else 0)) % p
+             for j in range(len(c))]
+        # keep, as `last`, whichever reference grows the order least next time
+        if i - lf + len(last) >= len(cur):
+            last = prev
+            lf = i
+            ld = d
+        cur = c
+    return [x % p for x in cur]
+
+
+def kth_term(rec, seq, N, p):
+    """a_N mod p from rec = C[0..m-1] and the seed terms seq."""
+    m = len(rec)
+    if N < len(seq):
+        return seq[N] % p
+    if m == 0:
+        return 0
+
+    def mulmod(a, b):
+        # multiply two deg<m polys, reduce mod x^m - sum rec[j] x^{m-1-j}
+        r = [0] * (2 * m)
+        for i in range(m):
+            if a[i]:
+                ai = a[i]
+                for j in range(m):
+                    r[i + j] = (r[i + j] + ai * b[j]) % p
+        for e in range(2 * m - 1, m - 1, -1):
+            if r[e]:
+                re = r[e]
+                for j in range(m):
+                    r[e - 1 - j] = (r[e - 1 - j] + re * rec[j]) % p
+        return r[:m]
+
+    s = [0] * m
+    s[0] = 1                          # accumulator = 1
+    t = [0] * m
+    if m == 1:
+        t[0] = rec[0] % p             # x reduces to the constant c_0
+    else:
+        t[1] = 1                      # running square = x
+    K = N
+    while K:
+        if K & 1:
+            s = mulmod(s, t)
+        t = mulmod(t, t)
+        K >>= 1
+    return sum(s[i] * seq[i] for i in range(m)) % p
+
+
+def main():
+    data = sys.stdin.buffer.read().split()
+    if not data:
+        return
+    it = iter(data)
+    p = int(next(it))
+    N = int(next(it))
+    cnt = int(next(it))
+    seq = [int(next(it)) % p for _ in range(cnt)]
+    rec = find_recurrence(seq, p)
+    print(kth_term(rec, seq, N, p))
+
+
+if __name__ == "__main__":
+    main()
+```
+
+The whole chain: a linear recurrence makes each term a fixed combination of the previous $m$, so guessing the order and solving a square system works but costs $O(k^4)$ across guesses and throws away work; instead scan the terms once holding the current shortest recurrence, predict each term, and on a nonzero discrepancy repair it by adding a scaled-and-shifted copy of the last recurrence that failed — the shift moves that recurrence's lone failing spot onto the current position and the scale (discrepancy-now over discrepancy-then, needing a modular inverse, hence $p$ prime) sets it to exactly close the gap, growing the order only when the fix vector reaches past the current length and keeping, as the reference for next time, whichever past failure shifts to the shortest result — all in $O(k^2)$; then to leap to index $N$, read the recurrence as $x^m \equiv \sum_j c_j x^{m-1-j} \pmod{f}$, so $a_N = \Lambda(x^N) = \Lambda(x^N \bmod f) = \sum_i (x^N \bmod f)_i\, a_i$, and compute $x^N \bmod f$ by square-and-multiply with polynomial multiply-then-reduce, $O(m^2 \log N)$.
