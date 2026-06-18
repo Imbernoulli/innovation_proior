@@ -9,12 +9,32 @@ Maintain an integer array `a[1..n]` under online range operations:
 3. `sum l r`: report `sum(a[l..r])`.
 
 The array and the operation stream can both be very large, so scanning a range for
-each operation is too slow. A useful implementation must keep the usual segment
-tree shape, answer the two read-only queries by merging node aggregates, and make
-range `chmin` avoid descending to every covered leaf whenever the node summary is
-strong enough to handle the update locally.
+each operation is too slow.
 
-## Code framework
+## Baseline
+
+A segment tree already gives the right traversal shape. Range `max` and range
+`sum` queries can split across children and merge answers. The unresolved part is
+the range update: a fully covered node should be handled locally only when its
+stored summary is enough to update both the aggregate values and any delayed
+state exactly.
+
+## Failure mode
+
+A cap by `x` changes precisely the entries greater than `x`. Two intervals can
+have the same length, maximum, and sum while containing different numbers of
+entries above the cap, so an ordinary sum/max summary cannot always update a
+covered node without looking inside it.
+
+## Target
+
+The implementation should keep the ordinary recursive segment-tree interface,
+answer the two read-only queries by merging node aggregates, and make the update
+descend only in the cases where the current node summary is genuinely
+insufficient. The worst case for one operation may still open several nodes, so
+the design also needs an amortized argument for a long operation sequence.
+
+## Scaffold
 
 The input loop, recursive segment tree, range splitting, and query traversal are
 ordinary infrastructure. The open part is the node summary and the range-update

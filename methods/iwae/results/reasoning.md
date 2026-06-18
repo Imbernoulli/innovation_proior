@@ -8,7 +8,7 @@ What's bothering me is the shape of that objective. It's an *expectation under q
 
 And because I'm training the generative model jointly against this same objective, the model will wriggle to make the demand satisfiable. The cheapest way to stop being punished for the missing eighty percent is to make the true posterior into something the simple factorial Gaussian `q` can actually match — approximately factorial, smoothly predictable from `x` by a feed-forward net. So the objective quietly reshapes `p` to have simple posteriors. That's a real, measurable thing: trained models end up using far fewer latent dimensions than they're given. If I measure, for each latent dimension `u`, how much its inferred mean moves across the dataset — `A_u = Cov_x( E_{q(u|x)}[u] )` — I find the dimensions split into two clusters: a handful that are genuinely active and a large pile sitting essentially at the prior, carrying nothing. The capacity is there; the objective is throwing it away. That's the wall: the bound is loose exactly where the posterior is complex, and rather than tolerate the looseness the objective destroys the model's expressiveness.
 
-So I want a different bound. Something that doesn't insist every `q`-sample be a good explanation, that tolerates a recognition network which is only *sometimes* right, and — if I can get it — something strictly tighter than `L`.
+So I want a different bound. Something that doesn't insist every `q`-sample be a good explanation, that tolerates a recognition network which is only *sometimes* right, and -- if I can get it -- something at least as tight as `L`, with real improvement whenever the old Jensen step has slack.
 
 Where would tightness come from? Let me look again at the very first line of the derivation, the place where I threw something away. I had `log p(x) = log E_q[w]` with `w = p(x,h)/q(h|x)`, and I applied Jensen to pull the `log` inside, turning `log E_q[w]` into `E_q[log w]`. That Jensen step is *exactly* the inequality — it's where all the slack lives. The reason it's loose is that I'm taking the log of a single random weight `w`, and a single sample of `w` is a terrible estimator of `E_q[w] = p(x)`: it's unbiased but wildly variable, and `log` of a wildly variable thing sits far below `log` of its mean.
 
@@ -56,15 +56,15 @@ In particular `L_{k+1} ≥ L_k`. Combined with the first result, I have the full
 
   log p(x) ≥ … ≥ L_{k+1} ≥ L_k ≥ … ≥ L_2 ≥ L_1 = L(x).
 
-That's exactly what I wanted: every extra sample makes the bound tighter (never looser), and the bottom of the ladder is the plain VAE bound. The combinatorial averaging-over-subsets trick is the whole engine — it lets me express the bigger average as an average of smaller averages and then spend one Jensen step to climb.
+That's exactly what I wanted: every extra sample makes the bound no looser, and the bottom of the ladder is the plain VAE bound. I should not call this strictly tighter in every case; if the weights are already constant almost surely, there is no Jensen slack left and the inequalities can be equal. The combinatorial averaging-over-subsets trick is the whole engine -- it lets me express the bigger average as an average of smaller averages and then spend one Jensen step to climb.
 
 Third: does it become *exact* in the limit? I'd like `L_k → log p(x)` as `k → ∞`, so that the ladder actually reaches the ceiling. Look at the random variable inside the log,
 
   M_k = (1/k) Σ_{i=1}^k w_i.
 
-This is an average of `k` i.i.d. copies of `w = p(x,h)/q(h|x)` with mean `E_q[w] = p(x)`. By the strong law of large numbers, if `w` is well-behaved, `M_k → p(x)` almost surely. I need a condition for that and for moving the limit through the expectation and the log. Suppose `w = p(x,h)/q(h|x)` is *bounded* — the proposal nowhere starves the target by an unbounded factor. Then `M_k` is bounded too, `M_k → p(x)` a.s. by SLLN, `log` is continuous so `log M_k → log p(x)` a.s., and boundedness lets me pass the limit through the expectation (bounded convergence), giving `L_k = E[log M_k] → log p(x)`. So under a bounded-weight assumption the bound is consistent: drive `k` up and `L_k` converges to the true log-likelihood. The ladder reaches the ceiling.
+This is an average of `k` i.i.d. copies of `w = p(x,h)/q(h|x)` with mean `E_q[w] = p(x)`. By the strong law of large numbers, if `w` is well-behaved, `M_k -> p(x)` almost surely. I need a condition for that and for moving the limit through the expectation and the log. The paper states the result under bounded importance weights, and in the model class here the weights are also positive, so the log is finite. Under that bounded positive-weight regularity, `M_k -> p(x)` a.s. by SLLN, `log` is continuous so `log M_k -> log p(x)` a.s., and the log averages converge in expectation. So under the paper's bounded-weight assumption the bound is consistent: drive `k` up and `L_k` converges to the true log-likelihood. The ladder reaches the ceiling.
 
-So I now have a one-parameter family of bounds, tightening monotonically from the VAE bound up to the exact log-likelihood, controlled by the number of importance samples `k`. And crucially, look back at *why* it relaxes the pressure on `q`. The VAE objective `E_q[log w]` punishes the bad samples one at a time. The new objective `E_q[ log (1/k) Σ w_i ]` lets a *batch* of `k` samples pool their weight before the log — if even one of the `k` draws lands a high weight, the average `(1/k)Σ w_i` is already large and the log is happy, no matter that the other `k−1` draws were poor. That is precisely the "twenty percent good is fine" tolerance I wanted. The recognition net no longer has to be right on every draw; it has to be right on *some* draw out of `k`. Which means the generative model is no longer forced to flatten its posteriors into the factorial mold — it's free to keep complex posteriors as long as `q` can occasionally hit them. The relaxation and the tightness are the same coin.
+So I now have a one-parameter family of bounds, tightening monotonically in the non-strict sense from the VAE bound up to the exact log-likelihood, controlled by the number of importance samples `k`. And crucially, look back at *why* it relaxes the pressure on `q`. The VAE objective `E_q[log w]` punishes the bad samples one at a time. The new objective `E_q[ log (1/k) Σ w_i ]` lets a *batch* of `k` samples pool their weight before the log -- if some of the `k` draws land high weights, the average `(1/k)Σ w_i` can be large even when the other draws are poor. That is precisely the "twenty percent good is useful" tolerance I wanted. The recognition net no longer has to be right on every draw; high-weight draws get to dominate the pooled estimate. Which means the generative model is no longer forced to flatten its posteriors into the factorial mold -- it's free to keep complex posteriors as long as `q` can often enough hit them. The relaxation and the tightness are the same coin.
 
 Now, an objection that I have to take seriously, because it's the standard reason people are scared of importance sampling: doesn't the importance-weighting estimator blow up in high dimensions? Plain importance sampling of `p(x)` is infamous for enormous, even infinite, variance when the proposal `q` is a poor match — the weight distribution gets heavy-tailed, a single sample dominates the average, and the estimate is garbage. With `h` in tens of dimensions, mismatch between `q` and the posterior is the norm. So shouldn't `M_k` be hopelessly noisy?
 
@@ -181,7 +181,7 @@ class IWAE(nn.Module):
         return log_prior + log_lik - log_q    # log w_i, shape (k, batch)
 
     def objective(self, x):
-        # Maximize the k-sample bound L_k via the surrogate sum_i wtilde_i * log w_i.
+        # Training surrogate, not the numerical value of L_k.
         log_w = self.log_weights(x)                                  # log w_i
         log_w_stable = log_w - torch.max(log_w, 0, keepdim=True)[0]  # subtract max (stability)
         w = torch.exp(log_w_stable)
@@ -193,7 +193,6 @@ class IWAE(nn.Module):
     def log_likelihood_estimate(self, x):
         # L_k = logmeanexp_i(log w_i): held-out estimate of log p(x).
         log_w = self.log_weights(x)
-        k = log_w.shape[0]
         m = torch.max(log_w, 0, keepdim=True)[0]
         return torch.mean(m.squeeze(0) + torch.log(torch.mean(torch.exp(log_w - m), 0)))
 
@@ -202,10 +201,10 @@ def train_step(model, x, optimizer, k):
     # Replicate each example k times along a leading sample axis.
     x = x.unsqueeze(0).expand(k, *x.shape)
     optimizer.zero_grad()
-    loss = -model.objective(x)        # maximize L_k  ==  minimize -surrogate
+    loss = -model.objective(x)        # maximize the surrogate whose gradient is grad L_k
     loss.backward()
     optimizer.step()
     return loss.item()
 ```
 
-To recap the chain that got me here. The VAE bound is an expectation under `q` of a single log-importance-weight, which punishes every poor `q`-sample and so forces the model to keep its posteriors simple, killing latent dimensions. The slack lives in one Jensen step where I took the log of a single, high-variance weight. Replacing that single weight by a `k`-sample average of importance weights — still an unbiased estimator of `p(x)` — keeps it a valid lower bound (Jensen again), makes it monotonically tighter in `k` (because the `k`-average is an average over random sub-samples of `m`-averages, and Jensen over that sub-sampling climbs from `L_m` to `L_k`), and makes it exact as `k → ∞` (SLLN on the bounded weights). The estimator doesn't explode despite high-dimensional importance sampling because I take the *log* of the average, whose right tail is `e^{-b}`-bounded by Markov on the weight ratio. The reparameterized gradient of this bound is a self-normalized-importance-weighted average of per-sample score gradients, `Σ_i w̃_i ∇_θ log w_i`, which I realize in code as the gradient of the detached-weight surrogate `Σ_i w̃_i log w_i`. The net effect is an autoencoder whose updates are importance-weighted, free to keep complex posteriors because it only needs the recognition net to be right on some sample out of `k`.
+To recap the chain that got me here. The VAE bound is an expectation under `q` of a single log-importance-weight, which punishes every poor `q`-sample and so encourages the model to keep its posteriors simple, killing latent dimensions. The slack lives in one Jensen step where I took the log of a single, high-variance weight. Replacing that single weight by a `k`-sample average of importance weights -- still an unbiased estimator of `p(x)` -- keeps it a valid lower bound (Jensen again), makes it monotonically no looser in `k` (because the `k`-average is an average over random sub-samples of `m`-averages, and Jensen over that sub-sampling climbs from `L_m` to `L_k`), and makes it exact as `k -> infinity` under the bounded positive-weight regularity used by the paper. The estimator doesn't explode despite high-dimensional importance sampling because I take the *log* of the average, whose right tail is `e^{-b}`-bounded by Markov on the weight ratio. The reparameterized gradient of this bound is a self-normalized-importance-weighted average of per-sample score gradients, `Σ_i w̃_i ∇_θ log w_i`, which I realize in code as the gradient of the detached-weight surrogate `Σ_i w̃_i log w_i`. The net effect is an autoencoder whose updates are importance-weighted, free to keep complex posteriors because good posterior samples can carry more of the update.

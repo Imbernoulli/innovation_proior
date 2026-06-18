@@ -1,36 +1,22 @@
-# ShuffleNet, distilled
+# ShuffleNet
 
-ShuffleNet is an extremely computation-efficient CNN for mobile devices (≈10–150 MFLOPs). Its key insight: at tiny budgets the dense 1×1 (pointwise) convolutions dominate the FLOPs, so it makes them *grouped* (pointwise group convolution) to free budget for more channels, and adds a cheap, parameter-free *channel shuffle* to restore the cross-group information flow that grouping otherwise breaks.
+ShuffleNet is a mobile-budget CNN block built from three choices:
 
-## The problem
+- group the expensive `1x1` pointwise convolutions;
+- insert a parameter-free channel permutation so stacked grouped pointwise layers do not isolate channel groups;
+- use a depthwise `3x3` only on the narrow bottleneck.
 
-State-of-the-art efficient blocks (grouped 3×3, depthwise separable) make the *spatial* convolution cheap but leave the *pointwise* 1×1 convolutions dense — and in a small network those dominate (≈93% of a grouped-3×3 residual unit's multiply-adds at cardinality 32). Expensive pointwise convs force a small channel count, and thin feature maps cannot carry enough information. Cut the pointwise cost → afford more channels → more accuracy at fixed budget.
+For a stride-1 bottleneck with input/output width `c`, bottleneck width `m`, feature map `h x w`, and `g` pointwise groups:
 
-## The key ideas
+```text
+ResNet bottleneck:      hw(2cm + 9m^2)
+ResNeXt bottleneck:     hw(2cm + 9m^2/g)
+ShuffleNet bottleneck:  hw(2cm/g + 9m)
+```
 
-- **Pointwise group convolution.** Group the 1×1 layers (as cardinality grouped the 3×3): each 1×1 connects only within a channel group, cutting its cost by ~`g`, freeing FLOPs for wider feature maps.
-- **Channel shuffle.** Stacking group convs blocks cross-group information flow (each output channel depends only on its group's inputs). Fix with a parameter-free permutation: reshape the `g·n` channels to `(g, n)`, transpose to `(n, g)`, flatten back — so each next group receives a subgroup from every previous group. It's nearly free, works even when the two convs have different group counts, and is differentiable (trains end-to-end).
-- **Depthwise spatial conv on the bottleneck only.** The 3×3 is depthwise (cheapest spatial conv), applied only on the narrow bottleneck to limit depthwise's poor compute/memory-access overhead on mobile. No ReLU after the depthwise conv (Xception).
+The stride-2 unit average-pools the shortcut and concatenates it with the learned branch, so the branch produces only `out_channels - in_channels`.
 
-## The ShuffleNet unit (from the ResNet bottleneck)
-
-- **Stride 1 (residual add):** `1×1 group conv (reduce) → BN → ReLU → channel shuffle → 3×3 depthwise (stride 1) → BN → 1×1 group conv (expand) → BN`, then `+ identity`, then ReLU. Bottleneck = ¼ of output channels.
-- **Stride 2 (downsample):** 3×3 average pool (stride 2) on the shortcut; depthwise conv at stride 2; combine by *channel concatenation* (cheaply doubles channels between stages) instead of addition.
-- No second channel shuffle after the expand conv (comparable scores).
-
-**FLOPs** for input `c×h×w`, bottleneck `m`: ResNet `hw(2cm + 9m²)`, ResNeXt `hw(2cm + 9m²/g)`, **ShuffleNet `hw(2cm/g + 9m)`** — pointwise term cut by `g`, spatial term linear in `m`. So a fixed budget buys wider feature maps.
-
-## The architecture
-
-Stem: 3×3/stride-2 → 24 channels; 3×3/stride-2 maxpool. Three stages of ShuffleNet units (first unit per stage stride-2/concat, rest stride-1/add); output channels double per stage; bottleneck = ¼ output. Stage repeats: 4 / 8 / 4 units (i.e. 1+3, 1+7, 1+3). Global 7×7 avg pool → 1000-FC.
-
-Group count `g` controls pointwise sparsity; widths are adapted to `g` to hold ~140 MFLOPs (stage-2 output channels 144/200/240/272/384 for g=1/2/3/4/8). Larger `g` → more channels (more info) but fewer input channels per filter; smallest models favor largest `g`. Stage-2's first pointwise conv is *not* grouped (its input is only the 24 stem channels). A scale factor `s` ("ShuffleNet s×") scales widths → ~`s²` complexity (1×≈140M, 0.5×≈38M, 0.25×≈13M).
-
-## Training recipe
-
-Inherited from the grouped-residual recipe with two small-net adjustments (tiny nets underfit, not overfit): weight decay 4e-5 (not 1e-4), linearly decayed LR from 0.5 to 0, less aggressive scale augmentation. SGD, batch 1024 on 4 GPUs, ~3×10⁵ iterations. Eval: single 224×224 center crop from 256× resize.
-
-## Working code
+Reference-implementation note: the paper describes the channel shuffle immediately after the first grouped pointwise layer. The Megvii ShuffleNetV1 PyTorch reference applies the shuffle after the depthwise BN and before the second grouped pointwise layer. The code below follows that released reference.
 
 ```python
 import torch
@@ -39,86 +25,136 @@ import torch.nn.functional as F
 
 
 def channel_shuffle(x, groups):
-    N, C, H, W = x.size()
-    n = C // groups
-    x = x.view(N, groups, n, H, W)
-    x = torch.transpose(x, 1, 2).contiguous()
-    return x.view(N, C, H, W)
+    batch, channels, height, width = x.size()
+    assert channels % groups == 0
+    group_channels = channels // groups
+    x = x.reshape(batch, group_channels, groups, height, width)
+    x = x.permute(0, 2, 1, 3, 4).contiguous()
+    return x.reshape(batch, channels, height, width)
 
 
-class ShuffleUnit(nn.Module):
-    def __init__(self, in_channels, out_channels, groups=3,
-                 grouped_conv=True, combine='add'):
+class ShuffleV1Block(nn.Module):
+    def __init__(self, inp, oup, *, group, first_group, mid_channels, stride):
         super().__init__()
-        self.groups = groups
-        self.combine = combine
-        self.bottleneck = out_channels // 4
-        if combine == 'add':
-            self.depthwise_stride = 1
-        else:
-            self.depthwise_stride = 2
-            out_channels = out_channels - in_channels      # concat adds in_channels back
-        first_groups = groups if grouped_conv else 1
-        self.compress = nn.Sequential(
-            nn.Conv2d(in_channels, self.bottleneck, 1, groups=first_groups, bias=False),
-            nn.BatchNorm2d(self.bottleneck), nn.ReLU(inplace=True))
-        self.dwconv = nn.Conv2d(self.bottleneck, self.bottleneck, 3,
-                                stride=self.depthwise_stride, padding=1,
-                                groups=self.bottleneck, bias=False)
-        self.dwbn = nn.BatchNorm2d(self.bottleneck)
-        self.expand = nn.Sequential(
-            nn.Conv2d(self.bottleneck, out_channels, 1, groups=groups, bias=False),
-            nn.BatchNorm2d(out_channels))
+        assert stride in (1, 2)
+        self.stride = stride
+        self.group = group
+        outputs = oup - inp if stride == 2 else oup
+
+        self.branch_main_1 = nn.Sequential(
+            nn.Conv2d(inp, mid_channels, 1, 1, 0,
+                      groups=1 if first_group else group, bias=False),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, mid_channels, 3, stride, 1,
+                      groups=mid_channels, bias=False),
+            nn.BatchNorm2d(mid_channels),
+        )
+        self.branch_main_2 = nn.Sequential(
+            nn.Conv2d(mid_channels, outputs, 1, 1, 0, groups=group, bias=False),
+            nn.BatchNorm2d(outputs),
+        )
+        if stride == 2:
+            self.branch_proj = nn.AvgPool2d(kernel_size=3, stride=2, padding=1)
+
+    def forward(self, old_x):
+        x = self.branch_main_1(old_x)
+        if self.group > 1:
+            x = channel_shuffle(x, self.group)
+        x = self.branch_main_2(x)
+        if self.stride == 1:
+            return F.relu(x + old_x)
+        return torch.cat((self.branch_proj(old_x), F.relu(x)), 1)
+
+
+class ShuffleNetV1(nn.Module):
+    stage_repeats = [4, 8, 4]
+    stage_out = {
+        3: {
+            "0.5x": [-1, 12, 120, 240, 480],
+            "1.0x": [-1, 24, 240, 480, 960],
+            "1.5x": [-1, 24, 360, 720, 1440],
+            "2.0x": [-1, 48, 480, 960, 1920],
+        },
+        8: {
+            "0.5x": [-1, 16, 192, 384, 768],
+            "1.0x": [-1, 24, 384, 768, 1536],
+            "1.5x": [-1, 24, 576, 1152, 2304],
+            "2.0x": [-1, 48, 768, 1536, 3072],
+        },
+    }
+
+    def __init__(self, n_class=1000, model_size="1.0x", group=3):
+        super().__init__()
+        if group not in self.stage_out:
+            raise ValueError("Megvii reference supports group 3 or 8")
+        if model_size not in self.stage_out[group]:
+            raise ValueError("model_size must be 0.5x, 1.0x, 1.5x, or 2.0x")
+
+        self.stage_out_channels = self.stage_out[group][model_size]
+        input_channel = self.stage_out_channels[1]
+
+        self.first_conv = nn.Sequential(
+            nn.Conv2d(3, input_channel, 3, 2, 1, bias=False),
+            nn.BatchNorm2d(input_channel),
+            nn.ReLU(inplace=True),
+        )
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+
+        features = []
+        for idxstage, numrepeat in enumerate(self.stage_repeats):
+            output_channel = self.stage_out_channels[idxstage + 2]
+            for i in range(numrepeat):
+                stride = 2 if i == 0 else 1
+                first_group = idxstage == 0 and i == 0
+                features.append(ShuffleV1Block(
+                    input_channel, output_channel,
+                    group=group,
+                    first_group=first_group,
+                    mid_channels=output_channel // 4,
+                    stride=stride,
+                ))
+                input_channel = output_channel
+
+        self.features = nn.Sequential(*features)
+        self.globalpool = nn.AvgPool2d(7)
+        self.classifier = nn.Linear(self.stage_out_channels[-1], n_class, bias=False)
+        self._initialize_weights()
 
     def forward(self, x):
-        residual = x
-        if self.combine == 'concat':
-            residual = F.avg_pool2d(residual, kernel_size=3, stride=2, padding=1)
-        out = self.compress(x)
-        out = channel_shuffle(out, self.groups)
-        out = self.dwbn(self.dwconv(out))                  # no ReLU after depthwise
-        out = self.expand(out)
-        if self.combine == 'add':
-            out = out + residual
-        else:
-            out = torch.cat((residual, out), 1)
-        return F.relu(out)
+        x = self.first_conv(x)
+        x = self.maxpool(x)
+        x = self.features(x)
+        x = self.globalpool(x)
+        x = x.contiguous().view(-1, self.stage_out_channels[-1])
+        return self.classifier(x)
+
+    def _initialize_weights(self):
+        for name, module in self.named_modules():
+            if isinstance(module, nn.Conv2d):
+                if "first" in name:
+                    nn.init.normal_(module.weight, 0, 0.01)
+                else:
+                    nn.init.normal_(module.weight, 0, 1.0 / module.weight.shape[1])
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.BatchNorm2d):
+                nn.init.constant_(module.weight, 1)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0001)
+                nn.init.constant_(module.running_mean, 0)
+            elif isinstance(module, nn.BatchNorm1d):
+                nn.init.constant_(module.weight, 1)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0.0001)
+                nn.init.constant_(module.running_mean, 0)
+            elif isinstance(module, nn.Linear):
+                nn.init.normal_(module.weight, 0, 0.01)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
 
 
-class ShuffleNet(nn.Module):
-    _stage_out = {1: [144, 288, 576], 2: [200, 400, 800], 3: [240, 480, 960],
-                  4: [272, 544, 1088], 8: [384, 768, 1536]}
-
-    def __init__(self, groups=3, num_classes=1000, scale=1.0):
-        super().__init__()
-        self.groups = groups
-        stage_out = [int(scale * c) for c in self._stage_out[groups]]
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(3, 24, 3, stride=2, padding=1, bias=False),
-            nn.BatchNorm2d(24), nn.ReLU(inplace=True))
-        self.maxpool = nn.MaxPool2d(3, stride=2, padding=1)
-        self.stage2 = self._make_stage(24, stage_out[0], repeats=3, first_grouped=False)
-        self.stage3 = self._make_stage(stage_out[0], stage_out[1], repeats=7, first_grouped=True)
-        self.stage4 = self._make_stage(stage_out[1], stage_out[2], repeats=3, first_grouped=True)
-        self.fc = nn.Linear(stage_out[2], num_classes)
-
-    def _make_stage(self, in_ch, out_ch, repeats, first_grouped):
-        layers = [ShuffleUnit(in_ch, out_ch, self.groups,
-                              grouped_conv=first_grouped, combine='concat')]
-        for _ in range(repeats):
-            layers.append(ShuffleUnit(out_ch, out_ch, self.groups,
-                                      grouped_conv=True, combine='add'))
-        return nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.maxpool(self.conv1(x))
-        x = self.stage2(x); x = self.stage3(x); x = self.stage4(x)
-        x = F.adaptive_avg_pool2d(x, 1).flatten(1)
-        return self.fc(x)
-
-
-model = ShuffleNet(groups=3, num_classes=1000, scale=1.0)    # ~140 MFLOPs
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.9, weight_decay=4e-5)
-# linear LR 0.5 -> 0 over ~3e5 iterations, batch 1024 on 4 GPUs, light scale augmentation.
+model = ShuffleNetV1(n_class=1000, model_size="1.0x", group=3)
 ```
+
+Paper architecture table at `1.0x`: stage outputs are `[144, 288, 576]`, `[200, 400, 800]`, `[240, 480, 960]`, `[272, 544, 1088]`, and `[384, 768, 1536]` for `g = 1, 2, 3, 4, 8`, with complexities about `143M, 140M, 137M, 133M, 137M`. The released Megvii code specializes pretrained-friendly tables for `g=3` and `g=8`.

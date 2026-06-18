@@ -13,13 +13,13 @@ Model the waveform with the chain rule, `p(x) = Π_t p(x_t | x_1,…,x_{t-1})`, 
 **Output.** μ-law companding to 8 bits, then a 256-way categorical:
 `f(x) = sign(x)·ln(1+μ|x|)/ln(1+μ)`, `μ = 255`, quantized to 256 levels. The log warp puts fine resolution at small amplitudes (where hearing is most sensitive), so 256 levels reconstruct speech near-perfectly; a categorical softmax makes no assumption about the distribution's shape (beats a Gaussian / mixture-density output).
 
-**Causal convolutions.** Each output at `t` depends only on inputs at `≤ t` (left-pad by `(k-1)·dilation`, drop the tail). Training is one parallel forward pass over the ground-truth waveform; generation is sequential (sample fed back in).
+**Causal convolutions.** With the next-sample alignment, the output at position `t` may depend on inputs `x_1,…,x_t` and is trained against `x_{t+1}`; equivalently, logits aligned to `x_t` must mask the present sample too. Training is one parallel forward pass over the ground-truth waveform; generation is sequential (sample fed back in).
 
 **Dilated stack and receptive field.** For a stack of causal layers of filter width `k` with dilations `d_1,…,d_L`:
 
 `RF = (k − 1)·Σ_ℓ d_ℓ + 1`.
 
-With `k = 2` and a doubling block `1,2,4,…,512` (10 layers), `Σ d_ℓ = 2^10 − 1 = 1023`, so `RF = 1024` from 10 layers — exponential reach for linear depth/compute. Repeat the block `M` times to extend the field further (and restart at dilation 1 so fine structure is re-modeled at each block).
+With `k = 2` and a doubling block `1,2,4,…,512` (10 layers), `Σ d_ℓ = 2^10 − 1 = 1023`, so `RF = 1024` from 10 layers — exponential reach for linear depth/compute. Repeating an `N`-layer doubling block `M` times gives `RF = (k−1)·M·(2^N−1)+1` for the dilated stack; an implementation with a width-2 initial causal input convolution adds one more sample of receptive field.
 
 **Gated activation.** `z = tanh(W_f * x) ⊙ σ(W_g * x)`. The sigmoid is a learned, input-conditioned multiplicative gate on the tanh content; beats ReLU for audio.
 
@@ -56,7 +56,7 @@ def mu_law_decode(quantized, mu=QUANT - 1):
 
 
 class CausalConv1d(nn.Module):
-    """1-D conv that depends only on current and past inputs."""
+    """Same-length 1-D conv whose output[t] depends only on input[:t+1]."""
     def __init__(self, in_ch, out_ch, kernel_size=2, dilation=1):
         super().__init__()
         self.pad = (kernel_size - 1) * dilation
@@ -88,8 +88,8 @@ class ResidualBlock(nn.Module):
 
 
 class WaveNet(nn.Module):
-    def __init__(self, n_blocks=3, n_layers=10,
-                 res_ch=32, dil_ch=32, skip_ch=256, cond_ch=None):
+    def __init__(self, n_blocks=5, n_layers=10,
+                 res_ch=32, dil_ch=32, skip_ch=512, cond_ch=None):
         super().__init__()
         self.input_conv = CausalConv1d(QUANT, res_ch, 2, 1)
         self.dilations = [2 ** i for i in range(n_layers)] * n_blocks  # 1..512 repeated
@@ -102,7 +102,7 @@ class WaveNet(nn.Module):
 
     @property
     def receptive_field(self):
-        # (k-1)*sum(dilations)+1 for the dilated stack, +(k-1) for the input conv
+        # Reference-code convention: dilated stack plus the initial width-2 causal conv.
         return (2 - 1) * sum(self.dilations) + 1 + (2 - 1)
 
     def forward(self, x_onehot, cond=None):
@@ -111,12 +111,17 @@ class WaveNet(nn.Module):
         for block in self.blocks:
             x, skip = block(x, cond)
             skips = skips + skip
-        return self.head(skips)  # (B, QUANT, T) next-sample logits
+        return self.head(skips)  # logits aligned with input positions
 
 
 def loss_fn(model, waveform, cond=None):
-    # cross-entropy == -Σ log p(x_t | x_<t)
+    # output position t reads waveform[:t+1] and predicts waveform[t+1].
     x = F.one_hot(waveform[:, :-1], QUANT).float().transpose(1, 2)
+    target = waveform[:, 1:]
     logits = model(x, cond)
-    return F.cross_entropy(logits, waveform[:, 1:])
+    # Match the reference implementation: drop positions without a full receptive field.
+    warmup = model.receptive_field - 1
+    if target.size(1) <= warmup:
+        raise ValueError("waveform must be longer than the model receptive field")
+    return F.cross_entropy(logits[:, :, warmup:], target[:, warmup:])
 ```

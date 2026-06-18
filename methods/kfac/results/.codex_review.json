@@ -1,9 +1,10 @@
 {
   "method": "kfac",
   "codex_reviewed": false,
-  "outcome": "errored",
-  "reviewed_at": "2026-05-30T02:33:42.219Z",
-  "reviewer": null,
-  "evidence": "session:f600e444-e46c-4e2c-a6e9-e555f4f530fc",
-  "reason": "invocation cancelled/rejected/errored before Codex completed"
+  "outcome": "failed",
+  "reviewed_at": "2026-06-18T09:55:00Z",
+  "reviewer": "gpt-5.5",
+  "effort": "xhigh",
+  "evidence": "this-run-rereview",
+  "reason": "Codex (gpt-5.5, xhigh) genuinely ran to completion (exit 0) with --write, fetched the canonical KFAC3-MATLAB reference, and applied edits; but its rewrite failed re-verification: it deleted the required runnable python code block from answer.md and reasoning.md (no python block left to ast-parse) and rewrote reasoning.md/answer.md with in-frame-voice and posterior/hindsight leaks ('the paper', 'official MATLAB code', source filenames like KFAC_train_3.m). The damaging rewrite was reverted to the committed baseline; deliverables left unchanged from HEAD."
 }

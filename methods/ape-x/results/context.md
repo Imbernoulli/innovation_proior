@@ -11,13 +11,12 @@ to *harness more machines* is comparatively underexplored.
 
 Standard distributed training of neural networks parallelizes the computation of **gradients** so as
 to update parameters faster. The narrower question here is whether there is a *different* axis to
-scale on: instead of (or in addition to) distributing gradient computation, distribute the
-**generation and selection of experience data**. Concretely — if we can run hundreds of environment
-instances in parallel and feed all their experience into one place, which experience should the
-learner actually train on, and does generating-and-selecting more data, by itself, suffice to push
-the state of the art? A solution would have to reach the best-known final performance on the Arcade
-Learning Environment in a small fraction of the usual wall-clock time, without per-game
-hyperparameter tuning, and ideally generalize to continuous-control problems as well.
+scale on: let environment interaction happen on many machines, but keep the parameter update itself
+stable. Concretely — if hundreds of environment instances run in parallel, what should be
+communicated, what can safely be stale, and how should a learner spend a fixed update budget? A
+solution would have to reach the best-known final performance on the Arcade Learning Environment in a
+small fraction of the usual wall-clock time, without per-game hyperparameter tuning, and ideally
+generalize to continuous-control problems as well.
 
 ## Background
 
@@ -47,10 +46,11 @@ of the policy, which additionally guards against overfitting. Prioritized experi
 the absolute temporal-difference error |δ|, a free by-product of each update that measures how
 "surprising" a transition still is. It draws transition k with probability
 `P(k) = p_k^α / Σ_j p_j^α` (so α = 0 recovers uniform sampling), corrects the induced bias with an
-importance-sampling weight `w_k = (N·P(k))^{-β}` normalized by its maximum, and inserts each new
-transition at the **maximum** priority seen so far, only refining that priority once the transition
-is first sampled. Sampling and updating at scale are made O(log N) by a sum-tree (and a parallel
-min-tree for the maximum weight). A large ablation across value-based ingredients (Rainbow,
+importance-sampling weight `w_k = (N·P(k))^{-β}` normalized by the largest possible weight under the
+current replay distribution, and inserts each new transition at the **maximum** priority seen so far,
+only refining that priority once the transition is first sampled. Sampling and updating at scale are
+made O(log N) by a sum-tree (and a parallel min-tree for the smallest current sampling probability).
+A large ablation across value-based ingredients (Rainbow,
 Hessel et al. 2018) found prioritization to be the single most important contributor to performance.
 Biased replay is especially helpful in RL because the reward signal can be sparse and the data
 distribution depends on the agent's own policy.
@@ -85,9 +85,9 @@ actor-critic; GA3C and PAAC adapted it to GPUs.
 **Gorila DQN (Nair et al. 2015).** Distributes deep RL by replicating actor + local-replay + learner
 bundles and **distributing gradient computation**: local learners compute gradients and ship them to
 a central parameter server. Gap it leaves open: each bundle's replay is *local* and sampled
-*uniformly*, so a valuable transition found by one bundle cannot be exploited by another; and because
-the thing communicated is gradients, the system inherits distributed-SGD's sensitivity to staleness
-and latency.
+*uniformly*, so the training data distribution is fragmented across replicas; and because the thing
+communicated is gradients, the system inherits distributed-SGD's sensitivity to staleness and
+latency.
 
 **DQN with uniform experience replay (Mnih et al. 2015).** Single learner, sliding-window 10⁶
 buffer, minibatches of 32 sampled uniformly, target network, reward clipping, ε-greedy behavior.
@@ -128,11 +128,10 @@ pixels.
 
 ## Code framework
 
-The primitives that already exist: an environment with the standard Atari wrappers, a
-value/policy network module, a sum-tree/min-tree-backed prioritized buffer with proportional sampling
-and IS weights (from prior prioritized replay), a target network, an optimizer, and a Huber loss. How
-these primitives should be organized across machines to scale by generating more experience is the
-empty slot below.
+The primitives that already exist: an environment with the standard Atari wrappers, a value/policy
+network module, a sum-tree/min-tree-backed prioritized buffer with proportional sampling and IS
+weights (from prior prioritized replay), a target network, an optimizer, and a Huber loss. How these
+primitives should be scheduled and connected across machines is the empty slot below.
 
 ```python
 import numpy as np
@@ -175,8 +174,8 @@ class MultiStepStorage:
     def __init__(self, n_steps, gamma):
         # TODO: rolling deque of the last n transitions
         pass
-    def add(self, state, reward, action, done, value_estimates):
-        # TODO: emit (S_t, A_t, n-step return, S_{t+n}) when the window is full
+    def add(self, transition):
+        # TODO: emit ready items with accumulated return and bootstrap discount
         pass
     def make_batch(self):
         # TODO: return the batch of n-step transitions

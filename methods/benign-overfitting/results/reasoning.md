@@ -1,109 +1,197 @@
-Let me sit with the thing that shouldn't happen. You take a standard image classifier, a big network, and you train it with gradient descent until the training loss is zero — every example fit exactly. Then you go further: you randomly flip some of the labels, inject genuine noise into the targets, and train again until zero training error. The network now reproduces those corrupted labels perfectly. By everything I was taught, that estimate has memorized the noise; it is the canonical picture of overfitting, the one the textbook draws to scare you ("interpolating fits are unlikely to predict future data well at all"). And yet on held-out data it predicts respectably. Zero training loss, label noise and all, and it still generalizes. That is not supposed to be possible.
+I start from the part that looks impossible. If the labels contain noise and I force the training residuals all the way to zero, the noise has to be written somewhere into the fitted parameter. In the classical picture that is already the end of the story: the parameter has memorized random errors, so prediction should be bad. But that conclusion is smuggling in an assumption. It assumes that every direction in which the parameter can move matters about equally for prediction.
 
-I don't understand neural networks well enough to attack that directly, so let me strip the setting down to the barest place where the same puzzle could still live. Linear prediction, squared loss. A covariate x in some space, a response y, and I predict with x^⊤θ. There's an optimal linear rule θ\*, the minimizer of E(y − x^⊤θ)². If I want a *perfect* fit to be forced — to actually witness interpolation rather than choose it — I need more parameters than samples: the dimension of the parameter space has to exceed n, so that the system Xθ = y is underdetermined and a θ achieving zero residual exists. Among the infinitely many interpolants I'll take the most natural one, the smallest in norm. That's the ridgeless limit of ridge regression, the pseudoinverse solution. So: linear regression, p > n, least-norm interpolation. If the deep-net mystery survives even *here*, then I can hope to see exactly what makes it tick, because here I can compute everything.
+In squared-loss linear prediction, that assumption is false as soon as the covariates are anisotropic. Prediction risk is not ordinary Euclidean error in the parameter. It is the covariance-weighted error. If `Sigma` is the covariance, then an error in a large-eigenvalue direction is expensive and an error in a tiny-eigenvalue direction is almost invisible. So I stop asking whether the noise is memorized. It is. I ask where the memorized noise lands, and how much the covariance charges for it.
 
-The question I actually want to answer is sharper than "does it generalize." I want a knife-edge: for which problems is fitting the noise exactly *harmless*, and for which is it fatal? And "the problem" is really two things — the optimal direction θ\*, and the covariance Σ = E[xx^⊤] of the inputs. I suspect Σ is where the action is, because Σ controls two separate things at once: how the label noise gets distributed across the parameter space when I interpolate, and how an error in any given direction of parameter space costs me in prediction. Same operator governing both. So let me just turn the crank and see what Σ does.
+I take the simplest exact-fit rule that has a chance of being canonical. When there are more directions than samples, the equations `X theta = y` have many solutions, so I choose the one with the smallest norm:
 
-First, the estimator. I want min ‖θ‖ subject to Xθ = y, where X is the map taking θ to the vector of n predictions (x_i^⊤θ). The least-squares solutions solve the normal equations X^⊤Xθ = X^⊤y; the minimum-norm one is the pseudoinverse, θ̂ = (X^⊤X)^†X^⊤y. But there's a cleaner form. Because p > n and the data are generic, XX^⊤ (an n×n matrix) is invertible, and I can write θ̂ = X^⊤(XX^⊤)^{-1}y. Let me sanity-check it interpolates: Xθ̂ = XX^⊤(XX^⊤)^{-1}y = y. Yes. And it's in the row space of X, which is the smallest-norm choice. Good — that's the object.
+```tex
+\hat\theta = X^\top(XX^\top)^{-1}y.
+```
 
-Now the excess risk. For a new point, R(θ̂) = E_{x,y}[(y − x^⊤θ̂)² − (y − x^⊤θ\*)²]. Write y = x^⊤θ\* + ε where ε = y − x^⊤θ\* has mean zero given x. Then y − x^⊤θ̂ = ε + x^⊤(θ\* − θ̂), and squaring, the cross term Eε·x^⊤(θ\*−θ̂) vanishes because ε is mean-zero given x and θ̂ doesn't depend on this fresh x. So R(θ̂) = E_x (x^⊤(θ\* − θ̂))². That's clean and it's important: the excess risk is just the Σ-weighted squared length of the parameter error, R(θ̂) = (θ\* − θ̂)^⊤Σ(θ\* − θ̂). Σ is the metric. An error in a high-variance direction of x is expensive; an error in a near-zero-variance direction is nearly free. Hold onto that — it's going to be the whole story.
+This rule is the zero-regularization limit of ridge regression in the full-row-rank regime. It also gives me algebra I can trust. With `y = X theta^* + epsilon`, I can write
 
-Now substitute. The labels are y = Xθ\* + ε with ε the vector of noises. So
-θ̂ = X^⊤(XX^⊤)^{-1}(Xθ\* + ε) = X^⊤(XX^⊤)^{-1}Xθ\* + X^⊤(XX^⊤)^{-1}ε.
-Call P = X^⊤(XX^⊤)^{-1}X. That's the orthogonal projection onto the row space of X — the n-dimensional subspace the sample "sees." So θ̂ = Pθ\* + X^⊤(XX^⊤)^{-1}ε. The parameter error splits:
-θ\* − θ̂ = (I − P)θ\* − X^⊤(XX^⊤)^{-1}ε.
-The first piece is the part of θ\* that lies in the (huge) subspace the sample is blind to — the projection of θ\* off the row space. The second piece is the noise, pushed back into parameter space through the pseudoinverse. Two completely different sources of error, and they're orthogonal in origin: one doesn't even involve ε, the other is *only* ε.
+```tex
+\hat\theta
+  = X^\top(XX^\top)^{-1}X\theta^*
+    + X^\top(XX^\top)^{-1}\epsilon.
+```
 
-Plug into R = (θ\*−θ̂)^⊤Σ(θ\*−θ̂). Up to the cross term (which I can either keep, or bound by 2× the sum of squares — let me carry the factor of 2 for the upper bound and use the conditional variance lower bound in expectation), I get two quadratic forms:
-R(θ̂) ≤ 2 θ\*^⊤ B θ\* + 2 ε^⊤ C ε,
-and in expectation over ε, since the cross term has mean zero and the conditional noise variance is at least σ², E_ε R(θ̂) ≥ θ\*^⊤ B θ\* + σ² tr(C), where
-B = (I − P) Σ (I − P), C = (XX^⊤)^{-1} X Σ X^⊤ (XX^⊤)^{-1}.
-Let me read these. The bias term θ\*^⊤Bθ\*: take θ\*, project it onto the part of space the sample missed, then measure that residual in the Σ-metric. It's the price of the signal I couldn't see. The variance term ε^⊤Cε, whose expectation is at least σ²tr(C), is the price of embedding the noise. tr(C) is, quite literally, how much the label noise costs me when I force the estimate to absorb all of it. The entire benign-vs-harmful question now reduces to: when is tr(C) small?
+Let
 
-So let me think hard about both, but the variance term is where I expect the deep-net mystery to live, so let me get the bias out of the way first because I think it's the standard one.
+```tex
+P = X^\top(XX^\top)^{-1}X.
+```
 
-The bias. B = (I−P)Σ(I−P). Here's a trick: (I−P) annihilates the row space of X, and the row space is spanned by the columns of X^⊤, so (I−P)X^⊤ = 0. That means inside the quadratic form I can subtract *any* multiple of X^⊤X without changing anything: (I−P)(Σ − (1/n)X^⊤X)(I−P) gives the same value as (I−P)Σ(I−P), because the X^⊤X piece dies against (I−P) on both sides. And ‖I−P‖ ≤ 1 since it's a projection. So θ\*^⊤Bθ\* ≤ ‖Σ − (1/n)X^⊤X‖ ‖θ\*‖². The bias is controlled by how well the *sample* covariance concentrates around the *true* covariance. That's a covariance-estimation question, and there's machinery for it: the concentration of (1/n)X^⊤X around Σ is governed by the effective rank r(Σ) = tr(Σ)/‖Σ‖. The bound (Koltchinskii–Lounici-style) is that ‖Σ − (1/n)X^⊤X‖ ≤ c‖Σ‖ max{√(r_0/n), r_0/n, √(t/n)} with high probability, where r_0(Σ) = tr(Σ)/‖Σ‖ = (Σ_i λ_i)/λ_1. So the bias is small provided r_0(Σ) ≪ n — the *scale* of the problem, the sum of eigenvalues measured in units of the top one, is small compared to the sample size. Fine: that's a clean, classical-looking condition. The contribution to θ̂ coming "from θ\*" is not too distorted when r_0 ≪ n.
+Then `P` is the projection onto the row space seen by the sample, and
 
-Now the heart: tr(C), the cost of the noise. Before I compute, let me do a back-of-the-envelope to find out what I'm even hoping for, because I have a bad feeling about the obvious case. Take the borderline case p = n exactly, and Σ = I. Then X is square (n×n), XX^⊤ = XX^⊤, and C = (XX^⊤)^{-1}X·I·X^⊤(XX^⊤)^{-1} = (XX^⊤)^{-1}XX^⊤(XX^⊤)^{-1} = (XX^⊤)^{-1}. For Gaussian X, tr(XX^⊤) is about n², so the harmonic-arithmetic inequality already gives tr((XX^⊤)^{-1}) ≥ n²/tr(XX^⊤), a quantity of constant order; small singular values of a square Gaussian matrix only increase this inverse trace. So the variance term is at least order σ² — it does *not* vanish. Overfitting is harmful here. That's the disaster the classics warned about, and it's real.
+```tex
+\theta^*-\hat\theta
+  = (I-P)\theta^* - X^\top(XX^\top)^{-1}\epsilon.
+```
 
-So why would adding *more* directions help? Naively more parameters means more noise to fit, more variance, worse. But stare at what went wrong: with p = n and isotropic Σ, the noise vector ε had to be reproduced using exactly n directions all of equal, order-one importance — every direction I used to soak up noise was a direction that *matters* for prediction (Σ = I weights them all equally). There was nowhere to put the noise where it wouldn't be measured. The cost of memorizing each noise coordinate landed squarely on a prediction-relevant axis.
+Now the two errors are separated. The first term is signal the sample does not see. The second term is pure training noise pushed back into parameter space by the pseudoinverse.
 
-That reframes everything. The reason interpolation hurts isn't interpolation per se — it's that the noise has to go *somewhere*, and if every available direction is prediction-relevant, the noise lands on prediction. What I want is the opposite: a parameter space with a few important directions carrying the signal and a vast reservoir of *unimportant*, low-variance directions where the noise can be parked almost for free, because Σ barely weights them. If I can spread the noise thinly across enough such directions, each picks up a vanishing share, and the total Σ-weighted cost stays small. Overparameterization isn't the disease — it might be the cure, provided the extra directions are the harmless kind. Let me make that precise and see what "enough" and "harmless" turn into.
+The excess risk of any fitted parameter is
 
-To compute tr(C) I should work in the eigenbasis of Σ. Write Σ = Σ_j λ_j v_j v_j^⊤. Define z_i = Xv_i/√λ_i — the projections of the data onto the i-th eigendirection, rescaled to unit variance. By the assumption that x = VΛ^{1/2}z with independent subgaussian coordinates, these z_i ∈ ℝ^n are independent, isotropic, subgaussian vectors. Then Xv_i = √λ_i z_i, so
-XX^⊤ = Σ_i λ_i z_i z_i^⊤ =: A, and X Σ X^⊤ = Σ_i λ_i² z_i z_i^⊤.
-Now tr(C) = tr((XX^⊤)^{-1}XΣX^⊤(XX^⊤)^{-1}) = tr(A^{-1}(Σ_i λ_i² z_i z_i^⊤)A^{-1}) = Σ_i λ_i² z_i^⊤ A^{-2} z_i. So
-tr(C) = Σ_i λ_i² z_i^⊤ A^{-2} z_i, A = Σ_j λ_j z_j z_j^⊤.
-Each direction i contributes λ_i² z_i^⊤A^{-2}z_i. There's a coupling problem: z_i appears both as the test vector and inside A. Let me decouple it with Sherman–Morrison. Split A = λ_i z_i z_i^⊤ + A_{−i}, where A_{−i} = Σ_{j≠i} λ_j z_j z_j^⊤ is independent of z_i. The Sherman–Morrison–Woodbury identity, applied to z_i^⊤(λ_i z_i z_i^⊤ + A_{−i})^{-2}z_i, gives
-λ_i² z_i^⊤ A^{-2} z_i = λ_i² z_i^⊤ A_{−i}^{-2} z_i / (1 + λ_i z_i^⊤ A_{−i}^{-1} z_i)².
-Now z_i is independent of A_{−i}, so every quadratic form is a vector hitting a matrix it's independent of — those concentrate. This is the form I can control.
+```tex
+R(\hat\theta)
+  = E_x (x^\top(\theta^*-\hat\theta))^2
+  = (\theta^*-\hat\theta)^\top\Sigma(\theta^*-\hat\theta).
+```
 
-I need to understand A. The intuition I built — a few signal directions, a sea of low-variance ones — says I should *split the spectrum*. Pick a level k. The top k eigenvalues λ_1,…,λ_k are the "important" ones; the tail λ_{k+1},… are the reservoir. Write A_k = Σ_{i>k} λ_i z_i z_i^⊤, the part of A coming only from the tail. The whole game is the behavior of A_k's eigenvalues. Each z_i z_i^⊤ is, in expectation, the identity (the z_i are isotropic), so A_k is a weighted sum of roughly-identity matrices, E[A_k] = (Σ_{i>k}λ_i) I. The question is whether A_k actually *looks* like a multiple of the identity, i.e. whether its smallest eigenvalue is comparable to its largest.
+So the split becomes two covariance-weighted quantities:
 
-Concentration. For a fixed unit vector v, v^⊤A_k v = Σ_{i>k} λ_i (v^⊤z_i)² is a weighted sum of subexponential variables (squares of subgaussians), so Bernstein gives v^⊤A_k v ≈ Σ_{i>k}λ_i with fluctuation of order λ_{k+1}·(stuff) (the largest weight in the tail is λ_{k+1}). Sweeping v over an ε-net of the sphere and converting net-control to operator-norm control, I get: with high probability
-(1/c)Σ_{i>k}λ_i − cλ_{k+1}n ≤ μ_n(A_k) ≤ μ_1(A_k) ≤ c(Σ_{i>k}λ_i + λ_{k+1}n).
-Read the lower bound. The smallest eigenvalue of A_k is at least a constant times Σ_{i>k}λ_i minus a slop term λ_{k+1}n. For *all* n eigenvalues of A_k to be pinned to the same order — for A_k to behave isotropically — I need the mass Σ_{i>k}λ_i to *dominate* the slop λ_{k+1}n. That is exactly:
-Σ_{i>k}λ_i ≫ λ_{k+1}n, i.e. (Σ_{i>k}λ_i)/λ_{k+1} ≫ n.
-And there it is — that ratio is a quantity worth a name. Define the effective rank of the tail,
-r_k(Σ) = (Σ_{i>k}λ_i)/λ_{k+1}.
-The condition r_k(Σ) ≥ b·n (for a suitable constant b) is precisely "there are at least ~n low-variance directions of comparable size beyond level k." When it holds, the slop term is beaten, Σ_{i>k}λ_i + λ_{k+1}n ≤ (1 + 1/b)Σ_{i>k}λ_i = (1+1/b)λ_{k+1}r_k(Σ), and symmetrically on the low side, so *all* n eigenvalues of A_k collapse to within a constant factor of λ_{k+1}r_k(Σ). The tail acts like a scalar matrix. That's the precise meaning of "the noise spreads evenly": when r_k ≥ bn, the reservoir of small directions is so flat and so numerous that the n-dimensional Gram matrix it builds is essentially isotropic, and noise poured into it distributes uniformly. r_k counts the harmless directions and asks: are there at least n of them?
+```tex
+B = (I-P)\Sigma(I-P),
+\qquad
+C = (XX^\top)^{-1}X\Sigma X^\top(XX^\top)^{-1}.
+```
 
-Let me now actually bound tr(C) using a split level k (with r_k ≥ bn) and a finer split level l ≤ k. From the Sherman–Morrison form,
-tr(C) = Σ_{i≤l} λ_i² z_i^⊤A_{−i}^{-2}z_i/(1+λ_i z_i^⊤A_{−i}^{-1}z_i)² + Σ_{i>l} λ_i² z_i^⊤A^{-2}z_i.
-First, the small-index terms i ≤ l. For these, because r_k ≥ bn, the eigenvalues of A_{−i} restricted to the directions that matter are pinned near λ_{k+1}r_k(Σ), so z_i^⊤A_{−i}^{-2}z_i ≲ ‖z_i‖²/(λ_{k+1}r_k(Σ))² and z_i^⊤A_{−i}^{-1}z_i ≳ ‖Π z_i‖²/(λ_{k+1}r_k(Σ)) where Π projects onto the bottom n−k eigenvectors of A_{−i}. The ratio then collapses: each such term is ≲ z_i^⊤A_{−i}^{-2}z_i/(z_i^⊤A_{−i}^{-1}z_i)² ≲ ‖z_i‖²/‖Πz_i‖⁴. Now ‖z_i‖² concentrates at n and ‖Πz_i‖² (a codimension-k projection of an isotropic vector) concentrates at n − O(k) ≈ n. So each i ≤ l term is ≲ n/n² = 1/n, and the l of them sum to ≲ l/n. That's the cost of the directions I treat as "signal": one over the sample size apiece. Makes sense — fitting one signal direction costs like estimating one parameter from n samples.
+The signal term is `theta^{*T} B theta^*`. The noise term is `epsilon^T C epsilon`, and in expectation it is at least `sigma^2 tr(C)`. This is the first real simplification: the whole question of whether exact fitting of noise is harmful is now mostly the question of whether `tr(C)` is small.
 
-Second, the tail terms i > l. Here z_i^⊤A^{-2}z_i ≲ ‖z_i‖²/μ_n(A)² and μ_n(A) ≳ λ_{k+1}r_k(Σ) (the smallest eigenvalue of the full A is at least that of A_k, which is pinned). So
-Σ_{i>l} λ_i² z_i^⊤A^{-2}z_i ≲ (Σ_{i>l}λ_i² ‖z_i‖²)/(λ_{k+1}r_k(Σ))².
-The numerator Σ_{i>l}λ_i²‖z_i‖² is a weighted sum of subexponentials with weights λ_i² in blocks of size n; its expectation is n Σ_{i>l}λ_i² and Bernstein keeps it there up to a constant. So the tail contributes
-≲ n Σ_{i>l}λ_i² / (λ_{k+1}r_k(Σ))².
-Putting the two halves together, for any l ≤ k with r_k ≥ bn,
-tr(C) ≲ l/n + n Σ_{i>l}λ_i² / (λ_{k+1}r_k(Σ))².
-There's a trade in l: raising l moves a direction from the tail sum (cheap if λ is small) into the per-direction 1/n cost. I should minimize over l. And I should pick the split k cleverly too. Let me take the *smallest* qualifying split, k\* = min{k ≥ 0 : r_k(Σ) ≥ bn}. (Is the choice of k arbitrary-looking? It is somewhat illusory: any two qualifying k's give λ_{k+1}r_k(Σ) within constant factors, because that quantity *is* the pinned smallest eigenvalue of A — so the bound doesn't really depend on which qualifying k I use. k\* just simplifies it.)
+The bias term is not the mystery. Because `(I-P)X^T = 0`, I can subtract the empirical covariance inside the quadratic form:
 
-At l = k\*, something lovely happens to the tail. By definition of k\*, λ_{k\*+1} r_{k\*}(Σ) = Σ_{i>k\*}λ_i. So the tail term becomes
-n Σ_{i>k\*}λ_i² / (Σ_{i>k\*}λ_i)².
-That ratio (Σ_{i>k\*}λ_i)²/(Σ_{i>k\*}λ_i²) is a *second* effective rank — not the tail-sum-over-leading-eigenvalue this time, but tail-sum-squared-over-sum-of-squares. Name it
-R_k(Σ) = (Σ_{i>k}λ_i)² / (Σ_{i>k}λ_i²).
-So the tail term is exactly n/R_{k\*}(Σ), and
-tr(C) ≲ k\*/n + n/R_{k\*}(Σ).
-(That l = k\* is genuinely the minimizer takes a short check: the function l ↦ l/(bn) + bn Σ_{i>l}λ_i²/(λ_{k\*+1}r_{k\*})² is a sum of per-index terms min{1/(bn), bnλ_i²/(λ_{k\*+1}r_{k\*})²}, switching at the largest i with λ_i ≥ λ_{k\*+1}r_{k\*}/(bn); the definition of k\* forces that switch to be exactly k\*. So minimizing gives k\*/(bn) + bn/R_{k\*}.)
+```tex
+(I-P)\Sigma(I-P)
+  = (I-P)(\Sigma - n^{-1}X^\top X)(I-P)
+```
 
-Now I want to know this is *tight*, not just an upper bound — otherwise I haven't characterized anything, I've only found a sufficient condition. So I need a matching lower bound on tr(C). Go back to a single term: λ_i² z_i^⊤A_{−i}^{-2}z_i/(1+λ_i z_i^⊤A_{−i}^{-1}z_i)². Using the eigenvalue control of A_{−i} from the *other* side (μ_{k+1}(A_{−i}) ≲ Σ_{j>k}λ_j + λ_{k+1}n) and the concentration ‖Πz_i‖² ≈ n, ‖z_i‖² ≈ n, a single term is bounded below by
-(1/(cn)) · (1 + (Σ_{j>k}λ_j + nλ_{k+1})/(nλ_i))^{-2}.
-Summing this over i and using a "sum of positive variables stays at least half its mean" lemma (each term exceeds its target with high probability, so the sum exceeds half the sum of targets with high probability), I get tr(C) ≳ (1/n) Σ_i min{1, n²λ_i²/(Σ_{j>k}λ_j)², λ_i²/λ_{k+1}²}. Now split on whether this k qualifies. If r_k(Σ) < bn, the second term inside the minimum is larger than the third, so the third term controls the useful lower bound and tr(C) ≳ (k+1)/(b²n). In particular, if *no* k ≤ n/c qualifies, i.e. k\* ≥ n/c, then tr(C) ≳ 1, a constant. That's the harmful regime: the tail never goes isotropic, the noise has nowhere flat to spread, and the variance term stays order σ². Exactly the p = n, Σ = I disaster, now general.
+inside the relevant expression. Projection has norm at most one, so this term is bounded by a sample-covariance deviation times `||theta^*||^2`. The usual effective scale `tr(Sigma)/||Sigma||` has to be small compared with `n`, up to concentration factors. That is the condition saying the signal is not too large for the sample to see.
 
-If I take a qualifying k, and in particular k = k\*, the lower bound becomes (1/(cb²)) min_{l≤k\*}(l/n + b²n Σ_{i>l}λ_i²/(λ_{k\*+1}r_{k\*})²), the *same* expression as the upper bound up to constants. The best-k computation then gives const·(k\*/n + n/R_{k\*}).
+The variance term is where the strange part lives. I diagonalize the covariance. Write `Sigma v_i = lambda_i v_i`, and define
 
-So the two-sided result lands:
-tr(C) is, up to constants, k\*/n + n/R_{k\*}(Σ) when k\*/n is small, and Ω(1) when k\* ≥ n/c.
-And feeding both terms back into the risk decomposition, with the bias term bounded by the r_0 condition, the excess risk of the least-norm interpolant is bracketed by
-R(θ̂) ≲ ‖θ\*‖²‖Σ‖ max{√(r_0/n), r_0/n, √(log(1/δ)/n)} + σ_y² log(1/δ) (k\*/n + n/R_{k\*}(Σ)),
-and from below E R(θ̂) ≳ σ²(k\*/n + n/R_{k\*}(Σ)), with the separate verdict E R(θ̂) ≳ σ² whenever k\* ≥ n/c.
+```tex
+z_i = Xv_i/\sqrt{\lambda_i}.
+```
 
-Let me read what this *says*, because the conditions are the actual discovery. The variance side is now two-sided, and together with the bias upper bound it points to three quantities that have to vanish:
-r_0(Σ)/n → 0 (the bias condition: the scale of the problem is small, so the signal isn't distorted);
-k\*/n → 0 (few important directions: r_k reaches bn already at a small k, meaning the reservoir of ≥ n harmless directions starts early);
-n/R_{k\*}(Σ) → 0 (the harmless directions are *balanced* — R large means no single tail eigenvalue dominates, so the noise truly dilutes instead of piling onto one axis).
+Under the model assumptions, the `z_i` are independent standardized subgaussian vectors in `R^n`. Then
 
-And the necessity is real, not just sufficiency. There's even a lower bound for the bias side: a packing/fat-shattering argument (reduce least-norm interpolation to learning a quantized weight vector, then count how many well-separated θ\* the Σ-metric can pack) shows that if r_0(Σ)/(n log(1+r_0(Σ))) is bounded below, then for some θ\* the risk is ≳ ‖θ\*‖²‖Σ‖ — i.e. r_0 ≪ n is forced, up to a log. So large r_0 doesn't just inflate the upper bound; it genuinely breaks prediction.
+```tex
+A = XX^\top = \sum_i \lambda_i z_i z_i^\top,
+\qquad
+X\Sigma X^\top = \sum_i \lambda_i^2 z_i z_i^\top,
+```
 
-Why *two* effective ranks, and not one — let me make sure I understand the division of labor, because it's the subtle part. r_k measures whether the tail is large *enough* in number: it's tail-mass over the leading tail eigenvalue, and r_k ≥ bn is what makes the n×n Gram matrix A_k isotropic — it sets *where* the reservoir begins, fixing k\*. R_k measures whether the tail is *balanced*: it's tail-mass-squared over sum-of-tail-squares, an inverse participation ratio, and n/R_k is the actual variance penalty — *how evenly* the noise spreads. They're linked: r_k ≤ R_k ≤ r_k² (and r_k ≥ 1 always), with equality r_k = R_k when the tail eigenvalues are all equal. So when the reservoir is perfectly flat, the two ranks coincide and equal the count of directions; when one tail eigenvalue dominates, R_k collapses toward 1 even if r_k is large, the noise concentrates on that direction, and overfitting turns harmful. One rank to locate the reservoir, the other to grade its flatness. I couldn't have collapsed them into one — they answer different questions.
+and therefore
 
-Now the most interesting consequence: what eigenvalue patterns actually satisfy all three? There's a tension. To make k\*/n + n/R_{k\*} small I want the tail to decay *slowly* — slow decay keeps R_k large (balanced) and lets r_k hit bn early (k\* small). But to make r_0(Σ)/n small I need Σ_i λ_i finite and not too big — I want the eigenvalues *summable*, which pushes toward *fast* decay. Slow enough to spread noise, summable enough to not blow up the scale. Two ways to resolve that tension.
+```tex
+tr(C) = \sum_i \lambda_i^2 z_i^\top A^{-2}z_i.
+```
 
-First, infinite dimensions, fixed Σ. Now summability is a real constraint. Try a polynomial-with-log spectrum, λ_k = k^{-α} ln^{-β}(k+1). Summability needs α > 1, or α = 1 with β > 1. But slow decay for R_k needs α as small as possible — α ≤ 1. The two collide at α = 1: there I need β > 1 for the sum to converge, and one checks that's exactly enough to keep R_k large and k\* small. So in infinite dimensions, benign overfitting happens *only* on a razor's edge: α = 1 and β > 1. The eigenvalues must decay just barely fast enough to be summable and not one bit faster. That's a measure-zero kind of condition — benign overfitting in a fixed infinite-dimensional space is a fragile, special thing.
+This expression says exactly how each covariance direction contributes to the cost of memorizing label noise. But `z_i` also appears inside `A`, so I need to decouple one direction at a time. Splitting
 
-Second, finite but very high dimension. Truncate at p_n directions and put a small isotropic floor: λ_k = γ_k + ε_n for k ≤ p_n, zero after, with γ_k decaying even exponentially, say γ_k = Θ(e^{-k/τ}). Now summability is automatic (finite dimension), so I'm free to make the tail as flat as I like. The floor ε_n turns the bottom of the spectrum into ≈ p_n nearly-equal directions — a perfect reservoir. Working it through, this is benign iff p_n = ω(n) (more directions than samples, by a growing factor) and n e^{-o(n)} = ε_n p_n = o(n) (the total isotropic mass is small compared to n, but not exponentially small). The exact decay of γ_k stops mattering — even exponential decay of the "real" features is fine, because the isotropic floor does the noise-absorbing. This is the *generic* benign scenario: a huge-but-finite parameter space with many weak, comparable directions satisfying that floor condition. It's a much wider window than the infinite-dimensional razor's edge.
+```tex
+A = \lambda_i z_i z_i^\top + A_{-i}
+```
 
-That distinction is the punchline I didn't expect walking in. I thought "more parameters help" would be a smooth story. Instead the geometry of the spectrum decides it sharply, and finite-but-enormous dimension is qualitatively friendlier than honest infinite dimension. And it suggests, for the deep-net phenomenon that started all this, that the relevant feature covariance has a heavy, slowly-decaying tail in a very high but finite-dimensional space — exactly the regime where the variance term k\*/n + n/R_{k\*} can vanish while the model interpolates every noisy label.
+and using Sherman-Morrison gives
 
-Let me write the result cleanly. The min-norm interpolant θ̂ = X^⊤(XX^⊤)^{-1}y has excess risk
-R(θ̂) = (θ\* − θ̂)^⊤Σ(θ\* − θ̂) ≤ 2 θ\*^⊤Bθ\* + 2 ε^⊤Cε, with E_ε R ≥ θ\*^⊤Bθ\* + σ² tr(C),
-B = (I − P)Σ(I − P), C = (XX^⊤)^{-1}XΣX^⊤(XX^⊤)^{-1}, P = X^⊤(XX^⊤)^{-1}X.
-Define r_k(Σ) = (Σ_{i>k}λ_i)/λ_{k+1}, R_k(Σ) = (Σ_{i>k}λ_i)²/(Σ_{i>k}λ_i²), k\* = min{k : r_k(Σ) ≥ bn}. Then with high probability
-θ\*^⊤Bθ\* ≤ c‖θ\*‖²‖Σ‖ max{√(r_0/n), r_0/n, √(log(1/δ)/n)},
-tr(C) ≍ k\*/n + n/R_{k\*}(Σ) when k\* < n/c, and σ² tr(C) = Ω(σ²) when k\* ≥ n/c.
-So I call a sequence of covariances Σ_n benign when these three quantities vanish:
-r_0(Σ_n)/n → 0, k\*_n/n → 0, n/R_{k\*_n}(Σ_n) → 0.
+```tex
+\lambda_i^2 z_i^\top A^{-2}z_i
+=
+\frac{\lambda_i^2 z_i^\top A_{-i}^{-2}z_i}
+{(1+\lambda_i z_i^\top A_{-i}^{-1}z_i)^2}.
+```
 
-The causal chain, start to finish: excess risk is the Σ-weighted parameter error, which splits into a bias from the unseen part of θ\* and a variance from the embedded noise; the bias is small when the scale r_0 ≪ n; the variance is tr(C), and writing tr(C) in Σ's eigenbasis and decoupling each direction with Sherman–Morrison reveals that the noise cost is set by whether the small-eigenvalue tail forms an isotropic n-dimensional Gram matrix — which happens exactly when the effective rank r_k exceeds n, locating a reservoir of ≥ n harmless directions starting at a small index k\*; the size of the noise penalty is then n/R_{k\*}, governed by the *balance* of that reservoir; and so overfitting is benign when the signal scale is controlled and there are many low-variance, comparably-sized directions to dilute the noise into, a geometry that is broad in the finite-dimensional floor example and fragile in the fixed infinite-dimensional example.
+Now `z_i` is independent of `A_{-i}`, so quadratic forms can concentrate. This is the place where the geometry has to enter.
+
+I check the failure case first. If `p = n` and `Sigma = I`, then there are exactly enough equally important directions to interpolate. The noise cannot be moved into a cheap subspace. In that case `C = (XX^T)^{-1}`, and for a square Gaussian design the trace is bounded below by a constant, often worse near exact squareness. Exact fitting is harmful. This tells me the phenomenon cannot be explained by interpolation alone, nor by overparameterization counted naively. I need extra directions whose covariance weights are small.
+
+So I split the spectrum. The first `k` directions are the directions I may need for signal. The tail after `k` is the possible reservoir for noise. Define
+
+```tex
+A_k = \sum_{i>k}\lambda_i z_i z_i^\top.
+```
+
+Since each `z_i z_i^T` has expectation `I`, the expected tail matrix is
+
+```tex
+(\sum_{i>k}\lambda_i) I.
+```
+
+But concentration has an error governed by the largest tail weight, `lambda_{k+1}`, times the sample dimension `n`. So the tail behaves like a scalar matrix only when the total tail mass dominates that largest tail weight times `n`:
+
+```tex
+\sum_{i>k}\lambda_i >> n\lambda_{k+1}.
+```
+
+This is the first effective-rank condition:
+
+```tex
+r_k(\Sigma) = \frac{\sum_{i>k}\lambda_i}{\lambda_{k+1}}.
+```
+
+When `k` is below a constant fraction of `n` and `r_k(Sigma) >= b n`, the tail Gram matrix has all its eigenvalues within constant factors of its mean scale. That is the formal meaning of "many low-variance directions." The tail is not merely small; it is wide enough to look isotropic in the `n`-dimensional sample space.
+
+I let `k^*` be the first index where this happens:
+
+```tex
+k^* = \min\{k : r_k(\Sigma) >= b n\}.
+```
+
+If there is no such index, I read `k^*` as infinity. If `k^*` is infinite or at least a constant fraction of `n`, then too many costly directions appear before the reservoir starts. The noise has no early cheap place to spread, and the trace stays bounded below by a constant. That recovers the harmful interpolation threshold.
+
+If `k^*` is small, I can bound the trace by splitting again at some `l <= k^*`. The leading `l` terms each cost on the order of `1/n`, because the denominator in the Sherman-Morrison expression is stabilized by the isotropic tail. They contribute `l/n`. The remaining tail terms cost
+
+```tex
+n \frac{\sum_{i>l}\lambda_i^2}
+{(\lambda_{k^*+1} r_{k^*}(\Sigma))^2}.
+```
+
+The denominator is the squared tail mass, because
+
+```tex
+\lambda_{k^*+1} r_{k^*}(\Sigma)
+= \sum_{i>k^*}\lambda_i.
+```
+
+Optimizing over `l` puts the split at `k^*`. The tail term becomes
+
+```tex
+n \frac{\sum_{i>k^*}\lambda_i^2}
+{(\sum_{i>k^*}\lambda_i)^2}.
+```
+
+That ratio needs a second effective rank:
+
+```tex
+R_k(\Sigma)
+  =
+\frac{(\sum_{i>k}\lambda_i)^2}{\sum_{i>k}\lambda_i^2}.
+```
+
+Now the variance cost is
+
+```tex
+tr(C) \asymp k^*/n + n/R_{k^*}(\Sigma),
+```
+
+up to constants, with a matching lower bound. The first term is the price of the important directions before the reservoir. The second term is the price of how balanced the reservoir is. If the tail consists of many comparable tiny eigenvalues, `R_{k^*}` is large and the noise is diluted. If one tail eigenvalue dominates, the noise concentrates and the cost remains visible.
+
+This finally explains why one effective rank is not enough. `r_k` answers whether the low-variance reservoir starts early enough and is wide enough to stabilize the sample Gram matrix. `R_k` answers whether the reservoir is balanced enough to dilute noise. A large raw dimension does not guarantee either property.
+
+The sufficient benign condition now has three parts. The signal scale must be controlled:
+
+```tex
+r_0(\Sigma_n)/n -> 0.
+```
+
+The reservoir must start before a linear fraction of the sample size:
+
+```tex
+k_n^*/n -> 0.
+```
+
+And the reservoir must be balanced enough:
+
+```tex
+n/R_{k_n^*}(\Sigma_n) -> 0.
+```
+
+I also have to keep the converse straight. If `r_0(Sigma)/(n log(1+r_0(Sigma)))` is large, some signal vector of the same norm must have visible excess risk. So I should not pretend the signal side is an exact if-and-only-if at the finite-sample level. The sharp matching story is clearest for the two tail quantities controlling noise absorption.
+
+This is more than observing double descent. Double descent says risk may go down after interpolation. This explains when and why it goes down: the minimum-norm bias separates signal from noise, the covariance metric makes some directions prediction-cheap, and a high-dimensional balanced tail lets the interpolant hide noise where future prediction barely sees it.
+
+The eigenvalue examples make the geometry concrete. In a fixed infinite-dimensional space, the eigenvalues have to decay almost exactly at the boundary of summability. If they decay too slowly, the signal scale is too large. If they decay too quickly, the low-variance tail is too thin to dilute noise. A sequence like `lambda_k = k^{-1} log^{-\beta}(k+1)` with `beta > 1` threads that needle.
+
+In a large finite-dimensional space, the story is less fragile. A small isotropic floor over many dimensions creates a broad flat reservoir. Then even a rapidly decaying signal spectrum can coexist with harmless interpolation, provided the dimension grows faster than the sample size and the total floor mass is small but not exponentially tiny. That is the scientific lesson: finite but very high dimension is not a minor technical variant of infinite dimension; it changes how easy it is for exact interpolation to be harmless.

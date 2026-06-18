@@ -3,61 +3,69 @@
 ## Problem
 
 Gradient descent on a neural network's parameters minimizes a highly non-convex
-parameter-space loss, yet wide networks reliably reach zero training loss and
-generalize. The Neural Tangent Kernel (NTK) explains this by describing what
-gradient descent does to the *function* the network computes, in function space
-where the cost is convex.
+parameter-space loss, yet wide networks often reach zero training loss and
+generalize. In the infinite-width NTK parameterization, this behavior can be
+described by following the *function* computed by the network instead of the
+weights.
 
 ## Key idea
 
-Track the network function f_theta instead of the weights. Under gradient flow
-theta_dot = -grad_theta (C ∘ F), the chain rule makes the function evolve as
-kernel gradient descent,
+Track the realization map `F(theta)=f_theta`. Under gradient flow
+`theta_dot = -grad_theta (C o F)`, with `partial_f C` represented by
+`<d, .>_{p_in}`, the chain rule gives
 
-    partial_t f_theta = - nabla_Theta C,
+    partial_t f_theta(x) = - E_{x'~p_in}[Theta(x, x') d(x')],
 
-against the tangent kernel
+where the tangent kernel is
 
-    Theta(x, x') = sum_p partial_{theta_p} f_theta(x) ⊗ partial_{theta_p} f_theta(x')
-                 = < grad_theta f_theta(x), grad_theta f_theta(x') >.
+    Theta(x, x') = sum_p partial_{theta_p} f_theta(x) partial_{theta_p} f_theta(x')^T.
 
-For squared-error loss this is the linear-on-data ODE f_dot = -Theta (f - f*).
-In the NTK parametrization (pre-activation = (1/sqrt(n_in)) W a + beta b, with
-W, b iid N(0,1)), two facts hold as the hidden widths go to infinity:
+For squared loss on `N` samples this is
 
-1. **Deterministic at initialization.** Theta converges in probability to an
-   explicit kernel Theta^(L)_inf ⊗ Id, given by a layer-wise recursion alongside
-   the NNGP covariance Sigma:
+    f_dot_i = -(1/N) sum_j Theta(x_i, x_j) (f_j - y_j),
 
-        Sigma^(1)(x,x')      = x^T x' / n0 + beta^2
-        Sigma^(L+1)(x,x')    = E_{f~N(0,Sigma^(L))}[ sigma(f(x)) sigma(f(x')) ] + beta^2
-        Sigma_dot^(L+1)(x,x')= E_{f~N(0,Sigma^(L))}[ sigma'(f(x)) sigma'(f(x')) ]
-        Theta^(1)_inf        = Sigma^(1)
-        Theta^(L+1)_inf      = Theta^(L)_inf * Sigma_dot^(L+1) + Sigma^(L+1).
+or `f_dot = -Pi(f-y)` if `Pi` denotes the empirical kernel operator including
+the `1/N` average.
 
-   It depends only on depth, nonlinearity, and initialization variance.
+With preactivations
 
-2. **Constant during training.** Each weight and activation moves at rate
-   O(1/sqrt(width)) (a coupled Grönwall bound), so Theta(t) -> Theta^(L)_inf
-   uniformly on [0, T]. Per-neuron motion vanishes, but the collective effect of
-   the width-many neurons keeps the lower layers learning (the
-   Theta^(L)_inf * Sigma_dot term).
+    alpha_tilde^(l+1) = (1/sqrt(n_l)) W^(l) alpha^(l) + beta b^(l),
+
+iid standard Gaussian parameters, and hidden widths tending to infinity, the
+kernel has a deterministic limit
+
+    Sigma^(1)(x,x')       = x^T x' / n0 + beta^2
+    Sigma^(L+1)(x,x')     = E[sigma(f(x)) sigma(f(x'))] + beta^2
+    dotSigma^(L+1)(x,x')  = E[sigma'(f(x)) sigma'(f(x'))]
+    Theta_inf^(1)         = Sigma^(1)
+    Theta_inf^(L+1)       = Theta_inf^(L) dotSigma^(L+1) + Sigma^(L+1).
+
+The training-time constancy theorem assumes a Lipschitz twice-differentiable
+activation with bounded second derivative and a stochastically bounded
+`int_0^T ||d_t||_{p_in} dt`; then `Theta(t) -> Theta_inf^(L) tensor Id`
+uniformly on finite time intervals. Each individual hidden preactivation and
+scaled weight displacement is small, while the aggregate of many small tangent
+features remains order one.
 
 ## Consequences
 
-- Training becomes a linear ODE in function space against a fixed kernel:
-  f_t = f* + e^{-t Pi}(f_0 - f*), with Pi the kernel integral operator.
-- For non-polynomial Lipschitz sigma and L >= 2, Theta^(L)_inf is positive
-  definite on the sphere (via Daniely's Hermite dual + the Schoenberg/Gneiting
-  criterion), so training converges to the global optimum of the function-space
-  cost.
-- The function relaxes along kernel principal components at rate e^{-lambda_i t};
-  large eigenvalues (top components) converge first, motivating early stopping.
-- At t -> infinity the mean predictor is ridgeless kernel regression with
-  Theta^(L)_inf (equivalently the GP-MAP estimate): a wide trained network
-  generalizes exactly as a kernel machine.
+- Least-squares training becomes the fixed-kernel linear ODE
+  `f_t = f* + exp(-t Pi)(f_0 - f*)`.
+- For `beta > 0`, depth `L >= 2`, and non-polynomial Lipschitz `sigma`, the
+  limiting kernel is positive definite on the unit sphere; the proof uses
+  Daniely's Hermite dual and the Schoenberg/Gneiting sphere criterion.
+- Components along kernel principal directions decay as `exp(-lambda_i t)`, so
+  large-eigenvalue directions are fit first.
+- At convergence, the mean predictor is ridgeless kernel regression with
+  `Theta_inf^(L)`; the residual Gaussian fluctuation is pinned to zero on the
+  training points.
 
 ## Code
+
+This is the scalar fully connected ReLU specialization of the Neural Tangents
+`stax.Dense(..., parameterization="ntk", W_std=1, b_std=beta)` plus `Relu`
+recursion, and the empirical kernel mirrors Neural Tangents'
+Jacobian-contraction NTK.
 
 ```python
 import numpy as np
@@ -65,46 +73,57 @@ import torch
 
 
 def relu_dual(cov_xx, cov_xpxp, cov_xxp):
-    """Gaussian expectations for ReLU (arc-cosine kernels, Cho & Saul 2009):
-    E[relu(X)relu(X')] = Sigma (minus bias) and E[relu'(X)relu'(X')] = Sigma_dot."""
+    """Return E[ReLU(X)ReLU(X')] and E[ReLU'(X)ReLU'(X')]."""
     denom = np.sqrt(cov_xx * cov_xpxp)
     rho = np.clip(cov_xxp / np.maximum(denom, 1e-12), -1.0, 1.0)
-    theta = np.arccos(rho)
-    nngp = denom / (2 * np.pi) * (np.sin(theta) + (np.pi - theta) * np.cos(theta))
-    nngp_dot = (np.pi - theta) / (2 * np.pi)
+    angle = np.arccos(rho)
+    nngp = denom / (2.0 * np.pi) * (
+        np.sin(angle) + (np.pi - angle) * np.cos(angle)
+    )
+    nngp_dot = (np.pi - angle) / (2.0 * np.pi)
     return nngp, nngp_dot
 
 
 def infinite_ntk(X, Xp, depth, beta=0.1):
-    """Analytic infinite-width NTK Theta_inf^(L) and NNGP Sigma^(L) for ReLU."""
+    """Compute (Theta_inf^(L), Sigma^(L)) for a depth-L ReLU MLP."""
+    if depth < 1:
+        raise ValueError("depth counts affine layers and must be at least 1")
     n0 = X.shape[1]
-    sig = X @ Xp.T / n0 + beta ** 2
-    sig_xx = (X * X).sum(1) / n0 + beta ** 2
-    sig_pp = (Xp * Xp).sum(1) / n0 + beta ** 2
+    beta2 = beta ** 2
+    sig = X @ Xp.T / n0 + beta2
+    sig_xx = (X * X).sum(axis=1) / n0 + beta2
+    sig_pp = (Xp * Xp).sum(axis=1) / n0 + beta2
     theta = sig.copy()
+
     for _ in range(depth - 1):
         nngp, nngp_dot = relu_dual(sig_xx[:, None], sig_pp[None, :], sig)
-        sig_xx, _ = relu_dual(sig_xx, sig_xx, sig_xx); sig_xx += beta ** 2
-        sig_pp, _ = relu_dual(sig_pp, sig_pp, sig_pp); sig_pp += beta ** 2
-        theta = theta * nngp_dot + (nngp + beta ** 2)   # Theta^(L+1) recursion
-        sig = nngp + beta ** 2
+        sig_xx = relu_dual(sig_xx, sig_xx, sig_xx)[0] + beta2
+        sig_pp = relu_dual(sig_pp, sig_pp, sig_pp)[0] + beta2
+        sig = nngp + beta2
+        theta = theta * nngp_dot + sig
     return theta, sig
 
 
 class WideMLP(torch.nn.Module):
-    """Finite-width net in the NTK parametrization."""
+    """Finite-width MLP in the NTK parameterization."""
     def __init__(self, n0, width, depth, beta=0.1):
         super().__init__()
+        if depth < 1:
+            raise ValueError("depth counts affine layers and must be at least 1")
         self.beta = beta
         sizes = [n0] + [width] * (depth - 1) + [1]
-        self.Ws = torch.nn.ParameterList(torch.nn.Parameter(torch.randn(o, i))
-                                         for i, o in zip(sizes[:-1], sizes[1:]))
-        self.bs = torch.nn.ParameterList(torch.nn.Parameter(torch.randn(o))
-                                         for o in sizes[1:])
-        self.scales = [1.0 / np.sqrt(i) for i in sizes[:-1]]
+        self.Ws = torch.nn.ParameterList(
+            torch.nn.Parameter(torch.randn(out_dim, in_dim))
+            for in_dim, out_dim in zip(sizes[:-1], sizes[1:])
+        )
+        self.bs = torch.nn.ParameterList(
+            torch.nn.Parameter(torch.randn(out_dim)) for out_dim in sizes[1:]
+        )
+        self.scales = [in_dim ** -0.5 for in_dim in sizes[:-1]]
 
     def forward(self, x):
-        a, last = x, len(self.Ws) - 1
+        a = x
+        last = len(self.Ws) - 1
         for i, (W, b) in enumerate(zip(self.Ws, self.bs)):
             a = self.scales[i] * (a @ W.T) + self.beta * b
             if i != last:
@@ -112,33 +131,25 @@ class WideMLP(torch.nn.Module):
         return a.squeeze(-1)
 
 
-def empirical_ntk(net, X):
-    """Finite-width NTK Theta(x,x') = sum_p d_theta f(x) . d_theta f(x')."""
+def _jacobian_rows(net, X):
     params = list(net.parameters())
-    J = []
+    rows = []
     for xi in X:
         out = net(xi.unsqueeze(0)).squeeze()
-        g = torch.autograd.grad(out, params, retain_graph=True)
-        J.append(torch.cat([gi.reshape(-1) for gi in g]))
-    J = torch.stack(J)
-    return (J @ J.T).detach().numpy()
+        grads = torch.autograd.grad(out, params)
+        rows.append(torch.cat([g.reshape(-1) for g in grads]))
+    return torch.stack(rows)
+
+
+def empirical_ntk(net, X, Xp=None):
+    """Finite NTK: J_theta f(X) J_theta f(Xp)^T."""
+    J = _jacobian_rows(net, X)
+    Jp = J if Xp is None else _jacobian_rows(net, Xp)
+    return (J @ Jp.T).detach().cpu().numpy()
 
 
 def kernel_regression(K_train, K_test, y, ridge=0.0):
-    """t->infinity mean predictor = ridgeless kernel regression."""
+    """Ridgeless kernel-regression mean; use ridge > 0 for conditioning."""
     A = K_train + ridge * np.eye(K_train.shape[0])
     return K_test @ np.linalg.solve(A, y)
-
-
-if __name__ == "__main__":
-    np.random.seed(0); torch.manual_seed(0)
-    X = np.random.randn(8, 4)
-    theta_inf, _ = infinite_ntk(X, X, depth=3)
-    acc = sum(empirical_ntk(WideMLP(4, 4000, 3).double(),
-                            torch.tensor(X)) for _ in range(20)) / 20
-    print(np.linalg.norm(acc - theta_inf) / np.linalg.norm(theta_inf))  # ~0.01
 ```
-
-The analytic infinite-width NTK and the empirical NTK of a wide network (averaged
-over initializations) agree to about 1% relative error, confirming the recursion
-and the parametrization.

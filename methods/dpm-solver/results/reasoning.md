@@ -70,11 +70,11 @@ and the integral splits into a sum of terms each of the form ε̂_θ^{(n)} times
 
   x_{t_{i-1}→t_i} = (α_{t_i}/α_{t_{i-1}}) x̃_{t_{i-1}} − α_{t_i} Σ_{n=0}^{k-1} ε̂_θ^{(n)} ∫_{λ_{t_{i-1}}}^{λ_{t_i}} e^{−λ} ((λ − λ_{t_{i-1}})^n/n!) dλ + O(h_i^{k+1}).
 
-Those scalar integrals are elementary — integrate by parts n times and they close in elementary functions. Let me set up the standard book-keeping for them. Substitute λ = λ_{t_{i-1}} + δ·(−h)... actually let me just define the functions that come out. The exponential-integrator people define
+Those scalar integrals are elementary — integrate by parts n times and they close in elementary functions. Let me set up the standard book-keeping for them. Substitute λ = λ_{t_{i-1}} + δh, and remember that λ_t is the right endpoint of the step. The exponential-integrator people define
 
   φ_k(z) := ∫_0^1 e^{(1−δ)z} δ^{k-1}/(k-1)! dδ,   φ_0(z) = e^z,
 
-with the convenient facts φ_k(0) = 1/k! and the recurrence φ_{k+1}(z) = (φ_k(z) − φ_k(0))/z. Carrying the substitution through, the integral against e^{−λ} of the n-th Taylor monomial produces an h^{n+1} φ_{n+1}(h) with an extra e^{−λ_{t_{i-1}}}-type factor that I can fold into the prefactor. Concretely the whole expansion lands as
+with the convenient facts φ_k(0) = 1/k! and the recurrence φ_{k+1}(z) = (φ_k(z) − φ_k(0))/z. Carrying the substitution through, the integral against e^{−λ} of the n-th Taylor monomial produces e^{−λ_t}h^{n+1}φ_{n+1}(h). Concretely the whole expansion lands as
 
   x_t = (α_t/α_s) x_s − σ_t Σ_{k=0}^{n} h^{k+1} φ_{k+1}(h) ε̂_θ^{(k)}(x̂_{λ_s}, λ_s) + O(h^{n+2}),
 
@@ -147,129 +147,12 @@ Second, when the network was trained at a discrete set of time indices rather th
 
 One numerical nit before code: I keep computing e^h − 1 with h small, where naive exp(h) − 1 loses precision catastrophically. Use expm1(h) instead — it's built for exactly this.
 
-Now the code. The structure mirrors the math one-to-one: a noise-schedule object that knows α_t, σ_t, λ_t and the inverse t_λ; a wrapper turning a trained model into ε_θ(x, t); and the solver whose per-step update is precisely the φ-expansion I derived.
+Now the code should mirror the derivation without silently switching algorithms. I keep the noise schedule object responsible for log α_t, σ_t, λ_t, and t_λ, including the discrete-time interpolation case and the linear continuous-time closed form. I wrap every trained model type into a noise-prediction function, because this original branch approximates an integral of ε_θ; if I instead convert to a data-prediction function I have moved into the later ++ branch with different signs and different propagation factors.
 
-```python
-import torch
+Inside the solver, I name the branch explicitly as `algorithm_type="dpmsolver"`. Then the first-order update uses `phi_1 = expm1(h)` and returns `(α_t/α_s)x - σ_t phi_1 ε_s`. The second-order singlestep update evaluates the first-order predictor at `λ_s + r_1 h` and, for the recommended `solver_type="dpmsolver"`, returns the base first-order step minus `(0.5/r_1)σ_t phi_1(ε_{s1}-ε_s)`. With `r_1=1/2` this collapses to the simple midpoint-looking formula that uses the intermediate noise prediction in the whole nonlinear correction.
 
-class NoiseScheduleVP:
-    """Knows the schedule and everything derived from it: alpha_t, sigma_t,
-    lambda_t = log(alpha_t) - log(sigma_t), and the inverse t_lambda."""
-    def marginal_log_mean_coeff(self, t):   # log(alpha_t)
-        return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0  # linear VP schedule
-    def marginal_alpha(self, t):
-        return torch.exp(self.marginal_log_mean_coeff(t))
-    def marginal_std(self, t):              # sigma_t = sqrt(1 - alpha_t^2) for VP
-        return torch.sqrt(1. - torch.exp(2. * self.marginal_log_mean_coeff(t)))
-    def marginal_lambda(self, t):           # lambda_t (half log-SNR), the integration variable
-        log_mean = self.marginal_log_mean_coeff(t)
-        log_std = 0.5 * torch.log(1. - torch.exp(2. * log_mean))
-        return log_mean - log_std
-    def inverse_lambda(self, lamb):         # t_lambda: closed form for the linear VP schedule
-        tmp = 2. * (self.beta_1 - self.beta_0) * torch.logaddexp(-2. * lamb, torch.zeros((1,)).to(lamb))
-        Delta = self.beta_0**2 + tmp
-        return tmp / (torch.sqrt(Delta) + self.beta_0) / (self.beta_1 - self.beta_0)
+The third-order singlestep update uses `r_1=1/3`, `r_2=2/3`, `phi_22 = expm1(r_2 h)/(r_2 h)-1`, and `phi_2 = expm1(h)/h-1`. Its second intermediate point subtracts `(r_2/r_1)σ_{s2}phi_22(ε_{s1}-ε_s)`, and its final correction subtracts `(1/r_2)σ_t phi_2(ε_{s2}-ε_s)`. Those signs are exactly the noise-prediction branch; the data-prediction branch would have `expm1(-h)`, `σ_t/σ_s`, and opposite-looking correction signs.
 
-
-class DPM_Solver:
-    def __init__(self, eps_theta, noise_schedule):
-        self.model = eps_theta          # eps_theta(x, t): predicted noise
-        self.ns = noise_schedule
-
-    def get_time_steps(self, t_T, t_0, N, device):
-        # Uniform grid in lambda (the half-log-SNR), then invert to get t for the network.
-        lam_T = self.ns.marginal_lambda(torch.tensor(t_T).to(device))
-        lam_0 = self.ns.marginal_lambda(torch.tensor(t_0).to(device))
-        lam = torch.linspace(lam_T.item(), lam_0.item(), N + 1).to(device)
-        return self.ns.inverse_lambda(lam)
-
-    def first_update(self, x, s, t, model_s=None):
-        # DPM-Solver-1 (== DDIM): linear part exact, network frozen at the left endpoint.
-        ns = self.ns
-        lam_s, lam_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
-        h = lam_t - lam_s
-        log_a_s, log_a_t = ns.marginal_log_mean_coeff(s), ns.marginal_log_mean_coeff(t)
-        sigma_t = ns.marginal_std(t)
-        phi_1 = torch.expm1(h)                          # e^h - 1, stable
-        if model_s is None:
-            model_s = self.model(x, s)
-        return torch.exp(log_a_t - log_a_s) * x - sigma_t * phi_1 * model_s
-
-    def second_update(self, x, s, t, r1=0.5, model_s=None):
-        # DPM-Solver-2: one intermediate node at lambda_s + r1*h; finite-difference the
-        # first lambda-derivative of the network.
-        ns = self.ns
-        lam_s, lam_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
-        h = lam_t - lam_s
-        lam_s1 = lam_s + r1 * h
-        s1 = ns.inverse_lambda(lam_s1)
-        log_a_s, log_a_s1, log_a_t = (ns.marginal_log_mean_coeff(s),
-                                      ns.marginal_log_mean_coeff(s1),
-                                      ns.marginal_log_mean_coeff(t))
-        sigma_s1, sigma_t = ns.marginal_std(s1), ns.marginal_std(t)
-        phi_11 = torch.expm1(r1 * h)
-        phi_1 = torch.expm1(h)
-        if model_s is None:
-            model_s = self.model(x, s)
-        # predictor at the intermediate node (a first-order sub-step)
-        x_s1 = torch.exp(log_a_s1 - log_a_s) * x - sigma_s1 * phi_11 * model_s
-        model_s1 = self.model(x_s1, s1)
-        # full step: 1st-order term + the (1/(2 r1)) finite-difference correction
-        return (torch.exp(log_a_t - log_a_s) * x
-                - sigma_t * phi_1 * model_s
-                - (0.5 / r1) * sigma_t * phi_1 * (model_s1 - model_s))
-
-    def third_update(self, x, s, t, r1=1./3., r2=2./3., model_s=None):
-        # DPM-Solver-3: two intermediate nodes; recover the first and second lambda-derivatives.
-        ns = self.ns
-        lam_s, lam_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
-        h = lam_t - lam_s
-        lam_s1, lam_s2 = lam_s + r1 * h, lam_s + r2 * h
-        s1, s2 = ns.inverse_lambda(lam_s1), ns.inverse_lambda(lam_s2)
-        log_a_s, log_a_s1, log_a_s2, log_a_t = (ns.marginal_log_mean_coeff(s),
-                                                ns.marginal_log_mean_coeff(s1),
-                                                ns.marginal_log_mean_coeff(s2),
-                                                ns.marginal_log_mean_coeff(t))
-        sigma_s1, sigma_s2, sigma_t = ns.marginal_std(s1), ns.marginal_std(s2), ns.marginal_std(t)
-        phi_11 = torch.expm1(r1 * h)
-        phi_12 = torch.expm1(r2 * h)
-        phi_1 = torch.expm1(h)
-        phi_22 = torch.expm1(r2 * h) / (r2 * h) - 1.     # (e^{r2 h}-1)/(r2 h) - 1, a phi_2-type factor
-        phi_2 = phi_1 / h - 1.                            # (e^h - 1)/h - 1
-        if model_s is None:
-            model_s = self.model(x, s)
-        x_s1 = torch.exp(log_a_s1 - log_a_s) * x - sigma_s1 * phi_11 * model_s
-        model_s1 = self.model(x_s1, s1)
-        D1 = model_s1 - model_s
-        x_s2 = (torch.exp(log_a_s2 - log_a_s) * x
-                - sigma_s2 * phi_12 * model_s
-                - (r2 / r1) * sigma_s2 * phi_22 * D1)
-        model_s2 = self.model(x_s2, s2)
-        D2 = model_s2 - model_s
-        return (torch.exp(log_a_t - log_a_s) * x
-                - sigma_t * phi_1 * model_s
-                - (1. / r2) * sigma_t * phi_2 * D2)
-
-    def sample(self, x_T, steps, t_T, t_0, order=3, device='cuda'):
-        # Use the budget on as many order-3 steps as fit, finishing with one order-2/1 step.
-        x = x_T
-        if order == 3:
-            K = steps // 3 + 1
-            if steps % 3 == 0:   orders = [3] * (K - 2) + [2, 1]
-            elif steps % 3 == 1: orders = [3] * (K - 1) + [1]
-            else:                orders = [3] * (K - 1) + [2]
-        elif order == 2:
-            K = steps // 2 + (steps % 2)
-            orders = [2] * (steps // 2) + ([1] if steps % 2 else [])
-        else:
-            K, orders = steps, [1] * steps
-        ts = self.get_time_steps(t_T, t_0, K, device)
-        for i, o in enumerate(orders):
-            s, t = ts[i], ts[i + 1]
-            if o == 1:   x = self.first_update(x, s, t)
-            elif o == 2: x = self.second_update(x, s, t)
-            else:        x = self.third_update(x, s, t)
-        return x
-```
+For a fixed NFE budget I combine orders the same way as the implementation: if `steps % 3 == 0`, use third-order steps, then one second-order step and one first-order step; if the remainder is 1, finish with one first-order step; if the remainder is 2, finish with one second-order step. The time grid that reproduces the paper is uniform in log-SNR, implemented as uniform λ followed by `inverse_lambda`, although the maintained implementation also exposes uniform-time and quadratic-time schedules for practical tuning.
 
 The causal chain, end to end: sampling a DPM is solving its probability-flow ODE; that ODE is semi-linear, so variation of constants solves the linear half exactly and seals every approximation inside one integral; rewriting g² as −2σ²(dλ/dt) and changing the integration variable to the half-log-SNR λ collapses all the schedule coefficients into a single analytic e^{−λ}, leaving an exponentially-weighted integral of the network alone; Taylor-expanding the network in λ and integrating against e^{−λ} term by term yields the φ-functions and an order-k method, DPM-Solver-k; order 1 is exactly DDIM, revealing why DDIM beat plain Euler; orders 2 and 3 add one and two intermediate evaluations whose finite differences recover the λ-derivatives, with r_1 = 1/2 and r_2 = 2/3 pinned by the order conditions; gridding uniformly in λ and spending the budget on order-3 steps gives high-quality samples in around ten network evaluations, training-free.

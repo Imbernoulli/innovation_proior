@@ -2,104 +2,95 @@
 
 ## Problem
 
-Learn good general-purpose visual features by training a convnet end-to-end with no labels, at scale. Classical clustering assumes fixed features, and naively coupling a convnet with k-means collapses to a trivial solution (zero features, one cluster).
+Train a convnet end-to-end on unlabeled images so its features transfer to downstream visual tasks. A direct joint convnet+k-means objective is degenerate: the representation can collapse and the clusters can become uninformative.
 
-## Key idea
+## Method
 
-Bootstrap the weak signal already present in a convnet (a random convnet scores ~12% on ImageNet vs 0.1% chance, thanks to its convolutional prior) by **alternating** two steps each epoch:
+Alternate between clustering the current features and training the network to predict the resulting cluster assignments.
 
-1. **Cluster** the current features `f_θ(x_n)` with k-means to produce **pseudo-labels**; keep only the assignments, discard the centroids.
-2. **Train** the convnet to predict those pseudo-labels with the ordinary supervised objective (multinomial logistic loss, mini-batch SGD).
+Supervised template:
 
-Each round, better features give a better clustering and a better clustering trains better features. k-means objective:
-`min_{C ∈ ℝ^{d×k}} (1/N) Σ_n min_{y_n ∈ {0,1}^k} ‖f_θ(x_n) − C y_n‖₂²` s.t. `y_n^⊤ 1_k = 1`.
+`min_{theta,W} (1/N) sum_n ell(g_W(f_theta(x_n)), y_n)`
 
-## Avoiding trivial solutions
+where `ell` is multinomial logistic loss.
 
-Jointly learning a classifier and its labels is degenerate; two scalable, local fixes:
-- **Empty clusters.** During the k-means solve, when a cluster empties, copy a random non-empty cluster's centroid (with a small perturbation) and split that cluster's points between the two.
-- **Trivial parametrization.** Sample images **uniformly over clusters** (weight each image's loss by the inverse of its cluster size), so the network cannot collapse onto a few dominant clusters.
+k-means assignment step:
 
-Because each re-clustering yields an arbitrary permutation of cluster indices, the **final classification layer is reinitialized every round** (random Normal(0, 0.01) weights, zero bias) while the convnet backbone carries forward.
+`min_{C in R^{d x k}} (1/N) sum_n min_{y_n in {0,1}^k} ||f_theta(x_n) - C y_n||_2^2`
 
-## Other choices
+subject to `y_n^T 1_k = 1`.
 
-- **Sobel filtering** of inputs (remove color, increase local contrast) so features don't shortcut on color.
-- Features **PCA-reduced to 256 dims, whitened, L2-normalized** before k-means (so its Euclidean geometry is meaningful, and clustering is fast).
-- **Cluster central-cropped images; train with augmentation** (random flips, random-size/aspect crops) → augmentation invariance.
-- **Re-cluster every epoch** (features drift); nearly optimal on ImageNet.
-- **k = 10,000** clusters (over-segmentation beyond the 1000 true classes yields richer features).
-- AlexNet (5 conv: 96/256/384/384/256 filters, 3 FC; LRN removed, batch norm added) or VGG-16+BN; momentum 0.9, batch 256, L2 weight decay, dropout, constant step size; ~500 epochs.
+Use the optimal assignments `y_n*` as pseudo-labels and discard the centroids `C*`.
 
-## Code
+## Anti-Collapse Details
+
+- Empty clusters: during k-means, revive an empty cluster by perturbing a non-empty centroid and splitting that non-empty cluster's points.
+- Trivial parametrization: train with a sampler that is uniform over non-empty pseudo-labels, equivalent to inverse-cluster-size weighting.
+- Cluster-index permutation: reset the final classification layer at every reassignment; keep the backbone.
+
+## Canonical Implementation Shape
 
 ```python
-import numpy as np
-import faiss
-import torch
-from torch import nn
-
 def preprocess_features(npdata, pca=256):
     _, ndim = npdata.shape
-    npdata = npdata.astype('float32')
-    mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)        # whitening
-    mat.train(npdata); npdata = mat.apply_py(npdata)
-    npdata = npdata / np.linalg.norm(npdata, axis=1)[:, None]  # L2 normalize
-    return npdata
+    npdata = npdata.astype("float32")
+    mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)
+    mat.train(npdata)
+    npdata = mat.apply_py(npdata)
+    return npdata / np.linalg.norm(npdata, axis=1)[:, None]
 
 
-def run_kmeans(x, k, n_iter=20):
-    n, d = x.shape
+def run_kmeans(x, k, verbose=False):
+    n_data, d = x.shape
     clus = faiss.Clustering(d, k)
-    clus.niter = n_iter
+    clus.seed = np.random.randint(1234)
+    clus.niter = 20
     clus.max_points_per_centroid = 10_000_000
-    index = faiss.IndexFlatL2(d)
-    clus.train(x, index)                                      # empty clusters revived during solve
-    _, assignments = index.search(x, 1)
-    return assignments.reshape(-1)
+    res = faiss.StandardGpuResources()
+    cfg = faiss.GpuIndexFlatConfig()
+    cfg.useFloat16 = False
+    cfg.device = 0
+    index = faiss.GpuIndexFlatL2(res, d, cfg)
+    clus.train(x, index)
+    _, I = index.search(x, 1)
+    losses = faiss.vector_to_array(clus.obj)
+    return [int(n[0]) for n in I], losses[-1]
 
 
 class UnifLabelSampler(torch.utils.data.Sampler):
     def __init__(self, N, images_lists):
         self.N = N
         self.images_lists = images_lists
-    def __iter__(self):
-        nonempty = [c for c in self.images_lists if len(c) > 0]
-        per = int(self.N / len(nonempty)) + 1                 # uniform budget per cluster
-        res = np.concatenate([
-            np.random.choice(c, per, replace=(len(c) <= per)) for c in nonempty])
+        self.indexes = self.generate_indexes_epoch()
+
+    def generate_indexes_epoch(self):
+        non_empty = [xs for xs in self.images_lists if len(xs) != 0]
+        per_label = int(self.N / len(non_empty)) + 1
+        res = np.array([])
+        for xs in non_empty:
+            sample = np.random.choice(xs, per_label, replace=(len(xs) <= per_label))
+            res = np.concatenate((res, sample))
         np.random.shuffle(res)
-        return iter(res[: self.N].astype(int))
+        res = list(res.astype("int"))
+        if len(res) >= self.N:
+            return res[:self.N]
+        return res + res[: self.N - len(res)]
+
+    def __iter__(self):
+        return iter(self.indexes)
+
     def __len__(self):
-        return self.N
-
-
-def deepcluster_round(model, dataset, k, optimizer, optimizer_tl, fd):
-    feats = compute_features(model, dataset)                  # forward pass over all images
-    feats = preprocess_features(feats)
-    assignments = run_kmeans(feats, k)
-    images_lists = [[] for _ in range(k)]
-    for i, a in enumerate(assignments):
-        images_lists[a].append(i)
-
-    # cluster identities are arbitrary each round -> rebuild the head
-    model.top_layer = nn.Linear(fd, k)
-    model.top_layer.weight.data.normal_(0, 0.01)
-    model.top_layer.bias.data.zero_()
-
-    train_dataset = cluster_assign(images_lists, dataset.imgs)
-    sampler = UnifLabelSampler(len(train_dataset), images_lists)
-    loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, sampler=sampler)
-
-    crit = nn.CrossEntropyLoss()
-    for x, pseudo_y in loader:
-        loss = crit(model(x), pseudo_y)
-        optimizer.zero_grad(); optimizer_tl.zero_grad()
-        loss.backward()
-        optimizer.step(); optimizer_tl.step()
-
-
-# outer loop: one round per epoch
-# for epoch in range(500):
-#     deepcluster_round(model, dataset, k=10000, optimizer, optimizer_tl, fd)
+        return len(self.indexes)
 ```
+
+Reference training loop:
+
+1. Remove `top_layer` and the last classifier ReLU; compute full-dataset features from resized center crops.
+2. PCA-whiten to 256 dimensions and L2-normalize.
+3. Run FAISS k-means with `k=10000`, 20 iterations, and changing random seed.
+4. Build a reassigned dataset with random resized crop and horizontal flip.
+5. Use `UnifLabelSampler` for uniform sampling over pseudo-labels.
+6. Re-append the classifier ReLU, create a fresh `Linear(fd, k)` top layer, initialize weights with `Normal(0, 0.01)` and zero bias.
+7. Train with cross-entropy; backbone optimizer uses momentum 0.9 and weight decay `10^-5`, while the fresh top layer has its own SGD optimizer.
+
+The ECCV paper reports AlexNet training for 500 epochs with batch size 256, Sobel-filtered input, central-crop clustering, augmented training crops, and reclustering every epoch. The released repository defaults to 200 epochs but implements the same reassignment loop.

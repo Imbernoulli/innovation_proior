@@ -42,13 +42,15 @@ Actor (policy improvement), advantage-weighted MLE:
 Derivation: the Lagrangian `E_π[A] + λ(ε − KL(π‖π_β)) + α(1 − ∫π)` gives, on `∂/∂π = 0`,
 `π*(a|s) = (1/Z(s))·π_β(a|s)·exp(A/λ)`. Forward-KL projection
 `argmin_θ E_{π*}[−log π_θ]` is importance-sampled from the buffer, `E_{π*}[·] = E_{π_β}[(1/Z)exp(A/λ)·]`,
-canceling `π_β`. The per-state `Z(s) = E_{a~π_θ}[exp(A/λ)]` is dropped (estimating it empirically hurt,
+canceling `π_β`. The per-state `Z(s) = E_{a~π_β}[exp(A/λ)]` is dropped (estimating it empirically hurt,
 and it only reweights states, not actions) in favor of batch normalization. `λ` (the KL Lagrange
 multiplier) is a fixed temperature: small `λ` → greedier; large `λ` → closer to behavioral cloning.
 
-Hyperparameters: twin-SAC base; Adam lr 3e-4 (actor weight-decay 1e-4, critic 0); discount 0.99;
-Polyak `τ = 5e-3`; 4×256 ReLU nets; batch 1024; replay 1e6; 25000 offline pretraining steps; one train
-batch per online env step. `λ = 0.3` (manipulation), `λ = 1.0` (MuJoCo locomotion).
+Hyperparameters: twin-SAC base with AWAC examples setting entropy `α=0`; Adam lr 3e-4 (actor
+weight-decay 1e-4, critic 0); discount 0.99; Polyak `τ = 5e-3`; ReLU MLPs; batch 1024; replay 1e6;
+offline RL pretraining before online collection; one train batch per online env step. The paper reports
+`λ = 0.3` for manipulation and `λ = 1.0` for MuJoCo; rlkit names the same denominator `beta` and its
+example scripts sweep/use nearby values (`0.5` with clipping for hand, `2` for MuJoCo).
 
 ## Code
 
@@ -93,20 +95,25 @@ class GaussianPolicy(nn.Module):
         self.log_std = nn.Linear(hidden[-1], act_dim)
     def dist(self, s):
         h = self.trunk(s)
-        return Normal(self.mu(h), self.log_std(h).clamp(-6, 0).exp())
+        return Normal(torch.tanh(self.mu(h)), self.log_std(h).clamp(-6, 0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
+    def sample_and_log_prob(self, s):
+        dist = self.dist(s)
+        a = dist.rsample()
+        return a, dist.log_prob(a).sum(-1)
     def sample(self, s):
-        return self.dist(s).rsample()
+        return self.sample_and_log_prob(s)[0]
 
 
-def critic_td_loss(batch, critic, target_critic, policy, discount):
+def critic_td_loss(batch, critic, target_critic, policy, discount, alpha=0.0):
     s, a, r, s2, done = (batch["obs"], batch["act"], batch["rew"],
                          batch["obs2"], batch["done"])
     with torch.no_grad():
-        a2 = policy.sample(s2)                              # next action from current policy
+        a2, logp2 = policy.sample_and_log_prob(s2)           # next action from current policy
         tq1, tq2 = target_critic(s2, a2)
-        y = r + discount * (1.0 - done) * torch.min(tq1, tq2)
+        target_v = torch.min(tq1, tq2) - alpha * logp2       # AWAC configs set alpha=0
+        y = r + discount * (1.0 - done) * target_v
     q1, q2 = critic(s, a)
     return F.mse_loss(q1, y) + F.mse_loss(q2, y)
 
@@ -117,8 +124,7 @@ def actor_awac_loss(batch, critic, policy, lam):
         q = torch.min(*critic(s, a))                        # Q(s, a_data)
         v = torch.min(*critic(s, policy.sample(s)))         # V(s) = Q(s, a~pi)
         adv = q - v                                         # advantage
-        weight = torch.exp(adv / lam)                       # exp(A / lambda)
-        weight = weight / (weight.mean() + 1e-8)            # batch normalize (Z(s) dropped)
+        weight = torch.softmax(adv / lam, dim=0) * adv.numel()
     logp = policy.log_prob(s, a)                            # MLE on buffer actions -> implicit constraint
     return -(weight * logp).mean()
 
@@ -129,7 +135,8 @@ def polyak(critic, target_critic, tau):
 
 
 def update(batch, critic, target_critic, policy, opts, hp):
-    q_loss = critic_td_loss(batch, critic, target_critic, policy, hp["discount"])
+    q_loss = critic_td_loss(batch, critic, target_critic, policy,
+                            hp["discount"], hp.get("alpha", 0.0))
     opts["q"].zero_grad(); q_loss.backward(); opts["q"].step()
 
     pi_loss = actor_awac_loss(batch, critic, policy, hp["lam"])
@@ -155,6 +162,6 @@ def train_awac(env, buffer, critic, policy, hp,
         o = env.reset() if done else o2
         update(buffer.sample(hp["batch_size"]), critic, target_critic, policy, opts, hp)
 
-# hp = dict(discount=0.99, tau=5e-3, batch_size=1024, lam=0.3)   # manipulation
-# hp = dict(discount=0.99, tau=5e-3, batch_size=1024, lam=1.0)   # MuJoCo locomotion
+# hp = dict(discount=0.99, tau=5e-3, alpha=0.0, batch_size=1024, lam=0.3)  # manipulation
+# hp = dict(discount=0.99, tau=5e-3, alpha=0.0, batch_size=1024, lam=1.0)  # MuJoCo locomotion
 ```

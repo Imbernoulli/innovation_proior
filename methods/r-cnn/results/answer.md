@@ -1,148 +1,209 @@
 # R-CNN: Regions with CNN features
 
 ## Problem
-Carry the large gains that deep convolutional networks brought to image *classification* over to
-*object detection*, which additionally requires localizing possibly many objects per image — while
-training a high-capacity CNN from the small amount of box-annotated data available.
 
-## Key idea
-Decouple localization from recognition. Use a cheap, category-independent region proposer to
-generate ~2000 candidate boxes per image; classify each with a deep CNN (transferred from
-ImageNet); and refine boxes with a lightweight regressor. Two principles make it work:
-(1) supervised pre-training on a large auxiliary classification task (ImageNet) followed by
-domain-specific fine-tuning lets a high-capacity CNN be trained despite scarce detection data;
-(2) a CNN applied to bottom-up region proposals localizes and classifies objects without dense
-sliding windows.
+Turn a high-capacity CNN trained for image classification into an object detector: for each image, output class-labeled boxes, despite scarce box-level training data and a CNN architecture whose high-level features are too coarse for precise dense sliding-window localization.
 
-## The pipeline
-1. **Region proposals.** Selective search (fast mode) → ~2000 category-independent boxes.
-2. **Warp.** Dilate each proposal by p = 16 px of context, then anisotropically warp it to the
-   CNN's fixed 227×227 input (off-image pixels filled with the image mean).
-3. **Feature extraction.** Forward each warped region through a CNN pre-trained on ImageNet
-   classification (5 conv + 2 fc) → a 4096-d feature vector (shared across all classes).
-4. **Classification.** One linear SVM per class scores every feature vector (a single
-   2000×4096 by 4096×N matrix product).
-5. **Non-maximum suppression.** Greedy NMS per class removes duplicate detections.
-6. **Bounding-box regression.** A per-class ridge regressor on the conv features predicts a
-   scale-invariant correction that tightens each box.
+## Method
 
-## Training (three stages)
-- **Supervised pre-training:** train the CNN on ImageNet (ILSVRC2012) classification, image-level
-  labels only.
-- **Domain-specific fine-tuning:** replace the 1000-way head with a random (N+1)-way head (N
-  object classes + background), continue SGD on warped proposals at lr = 0.001 (1/10 of the
-  pre-training rate). Positives = proposals with ≥ 0.5 IoU to a ground-truth box (loose, to
-  manufacture ~30× more "jittered" positives); rest = background. Minibatch of 128 = 32 positives
-  + 96 background (biased toward rare positives).
-- **Per-class SVMs:** positives = ground-truth boxes only (strict); negatives = proposals with
-  < 0.3 IoU to every instance of the class (0.3 chosen by grid search; 0.5 → −5 mAP, 0 → −4 mAP);
-  the 0.3–1.0 grey zone is ignored. Trained with hard-negative mining (converges in ~1 pass).
-  SVMs beat using the fine-tuned softmax directly (54.2 → 50.9 mAP without them) because of the
-  precise positives and hard negatives.
+1. Generate category-independent region proposals, using selective search fast mode in the reference system.
+2. Expand each proposal to include `p = 16` pixels of target-frame context, then anisotropically warp it to the CNN's fixed `227 x 227` input.
+3. Forward each warped proposal through an ImageNet-pretrained CNN, fine-tuned on warped detection windows, and use the `fc7` feature as a 4096-dimensional region descriptor.
+4. Train one linear SVM per object class on those features.
+5. Score all proposals for all classes with one feature-by-weight matrix product, then run greedy NMS per class.
+6. Apply a class-specific bounding-box regressor from `pool5` features to tighten scored detections.
 
-## Bounding-box regression
-For a proposal P = (P_x, P_y, P_w, P_h) and target G = (G_x, G_y, G_w, G_h), learn four functions
-d_⋆(P) = w_⋆ᵀ φ₅(P), linear in the conv (pool5) features φ₅(P), to predict the refined box:
+## Training
 
-  Ĝ_x = P_w·d_x(P) + P_x,  Ĝ_y = P_h·d_y(P) + P_y,
-  Ĝ_w = P_w·exp(d_w(P)),   Ĝ_h = P_h·exp(d_h(P)).
+Pretrain the CNN on ImageNet classification with image-level labels. For detection fine-tuning, replace the 1000-way ImageNet head with an `(N+1)`-way head for `N` object classes plus background. Continue SGD on warped proposals with learning rate `0.001`, batch size `128`, and a foreground/background sampling split of `32/96`. A proposal is foreground for fine-tuning if its maximum IoU with a ground-truth box is at least `0.5`; otherwise it is background.
 
-The regression targets are scale-invariant (center shift normalized by box size) and log-space
-(width/height ratios):
+For SVM training, use a stricter class-specific rule. Positives for class `c` are only ground-truth boxes of class `c`. Negatives are proposals whose IoU with every instance of class `c` is below `0.3`; proposals in the grey zone are ignored for that class. Train with hard-negative mining.
 
-  t_x = (G_x − P_x)/P_w,  t_y = (G_y − P_y)/P_h,
-  t_w = log(G_w/P_w),     t_h = log(G_h/P_h).
+## Bounding-Box Regression
 
-Weights are fit per class by ridge regression,
-  w_⋆ = argmin_ŵ Σ_i (t_⋆^i − ŵᵀφ₅(P^i))² + λ‖ŵ‖²,  with λ = 1000,
-solved in closed form. Only proposals with max-IoU > 0.6 to a ground-truth box are used as
-training pairs (a far-away proposal gives a hopeless target). Applied once per detection at test
-time (iterating does not help).
+For proposal `P = (P_x, P_y, P_w, P_h)` and matched ground-truth box `G = (G_x, G_y, G_w, G_h)`, define targets
 
-## Why it is efficient
-All CNN computation is shared across classes; the only per-class cost is a matrix product against
-the SVM weights plus NMS. Because the feature is just 4096-d (vs. ~360k-d for spatial-pyramid
-encodings), the approach scales to thousands of classes with no approximation.
+```text
+t_x = (G_x - P_x) / P_w
+t_y = (G_y - P_y) / P_h
+t_w = log(G_w / P_w)
+t_h = log(G_h / P_h)
+```
 
-## Code
+Learn four class-specific linear functions `d_*(P) = w_*^T phi_5(P)` from `pool5` features by ridge regression:
+
+```text
+w_* = argmin_w sum_i (t_*^i - w^T phi_5(P_i))^2 + lambda ||w||^2,
+lambda = 1000.
+```
+
+Invert the transform as
+
+```text
+Ghat_x = P_w d_x(P) + P_x
+Ghat_y = P_h d_y(P) + P_y
+Ghat_w = P_w exp(d_w(P))
+Ghat_h = P_h exp(d_h(P)).
+```
+
+The signs and constants are fixed by exact inversion: if `d_* = t_*`, then `Ghat = G`. Train regressors only on proposals whose max IoU with a ground-truth box is greater than `0.6`, once per class. At test time, apply the regressor once, clip the adjusted box to the image, and keep the original SVM score.
+
+## Reference-Faithful Pseudocode
+
 ```python
 import numpy as np
 
-def prepare_region(image, box, pad=16, size=227):
-    """Dilate by `pad` px of context, then anisotropically warp to size x size;
-    off-image pixels filled with the image mean (subtracted before the CNN)."""
-    x1, y1, x2, y2 = box
-    w, h = x2 - x1, y2 - y1
-    cx_pad, cy_pad = pad * w / size, pad * h / size
-    src = clip_to_image(x1 - cx_pad, y1 - cy_pad, x2 + cx_pad, y2 + cy_pad, image, fill="mean")
-    return anisotropic_resize(src, (size, size))
+
+def prepare_region(image, box, image_mean, crop_size=227, padding=16):
+    """Match the R-CNN warp crop rule.
+
+    `padding` is measured in the transformed 227 x 227 frame. Missing
+    off-image pixels are mean-valued before mean subtraction, represented
+    as zeros after subtraction.
+    """
+    x1, y1, x2, y2 = map(float, box)
+
+    if padding > 0:
+        scale = crop_size / float(crop_size - 2 * padding)
+        w = x2 - x1
+        h = y2 - y1
+        cx = x1 + 0.5 * w
+        cy = y1 + 0.5 * h
+        half_w = 0.5 * w * scale
+        half_h = 0.5 * h * scale
+        src = np.round([cx - half_w, cy - half_h,
+                        cx + half_w, cy + half_h]).astype(int)
+    else:
+        src = np.round([x1, y1, x2, y2]).astype(int)
+
+    clipped = clip_box_to_image(src, image.shape)
+    patch = image[clipped.y1:clipped.y2, clipped.x1:clipped.x2]
+
+    sx = crop_size / float(src[2] - src[0])
+    sy = crop_size / float(src[3] - src[1])
+    pad_left = int(round(max(0, -src[0]) * sx))
+    pad_top = int(round(max(0, -src[1]) * sy))
+    crop_w = min(crop_size - pad_left, int(round(patch.shape[1] * sx)))
+    crop_h = min(crop_size - pad_top, int(round(patch.shape[0] * sy)))
+
+    resized = resize_bilinear_no_antialias(patch, (crop_h, crop_w))
+    resized = resized - image_mean[pad_top:pad_top + crop_h,
+                                   pad_left:pad_left + crop_w]
+    window = np.zeros((crop_size, crop_size, 3), dtype=np.float32)
+    window[pad_top:pad_top + crop_h, pad_left:pad_left + crop_w] = resized
+    return window
 
 
-def finetune(cnn, dataset, num_classes, lr=0.001, n_pos=32, n_bg=96):
-    cnn.replace_head(num_classes + 1)            # drop 1000-way, add random (N+1)-way head
-    opt = SGD(cnn.parameters(), lr=lr)           # 1/10 pretraining LR
-    for images, proposals, gts, gt_cls in dataset:
-        lab = np.zeros(len(proposals), dtype=int)
-        for i, p in enumerate(proposals):
-            ious = np.array([iou(p, g) for g in gts] or [0.0])
-            if ious.max() >= 0.5:                # LOOSE positives
-                lab[i] = gt_cls[ious.argmax()] + 1
-        pos, bg = np.where(lab > 0)[0], np.where(lab == 0)[0]
-        idx = np.r_[sample(pos, n_pos), sample(bg, n_bg)]   # bias toward positives
-        x = np.stack([prepare_region(images, proposals[j]) for j in idx])
-        step(opt, cross_entropy(cnn.classify(x), lab[idx]))
-    return cnn
+def finetune_labels(proposals, gt_boxes, gt_classes):
+    labels = np.zeros(len(proposals), dtype=np.int32)  # 0 = background
+    for i, box in enumerate(proposals):
+        overlaps = np.array([iou(box, gt) for gt in gt_boxes])
+        if len(overlaps) and overlaps.max() >= 0.5:
+            labels[i] = gt_classes[overlaps.argmax()] + 1
+    return labels
 
 
-def train_svms(feat_cache, proposals, gts, gt_cls, num_classes):
-    svms = []
-    for c in range(num_classes):
-        X_pos = features_of(feat_cache, gts, cls=c)                  # GT-only positives
-        X_neg = features_of(feat_cache, proposals, cls=c, rule="iou<0.3")
-        w = init_linear_svm()
-        for _ in range(num_passes):                                 # hard-negative mining
-            w = fit_linear_svm(np.vstack([X_pos, X_neg]),
-                               np.r_[np.ones(len(X_pos)), -np.ones(len(X_neg))])
-            X_neg = np.vstack([X_neg, X_neg[score(w, X_neg) > -1.0]])
-        svms.append(w)
-    return np.stack(svms)                                           # (num_classes, 4096)
+def train_svms(feature_cache, roidb, classes, feat_norm_mean):
+    svms = {}
+    for c in classes:
+        X_pos = gt_box_features(feature_cache, roidb, c, layer="fc7")
+        X_pos = scale_features(X_pos, feat_norm_mean)
+
+        cache = NegativeCache()
+        initialized = False
+        for image_id in roidb.image_ids:
+            feats, overlaps = proposal_features(feature_cache, image_id,
+                                                layer="fc7")
+            feats = scale_features(feats, feat_norm_mean)
+
+            if not initialized:
+                neg = np.where(overlaps[:, c] < 0.3)[0]
+            else:
+                scores = feats @ svms[c].w + svms[c].b
+                neg = np.where((overlaps[:, c] < 0.3) &
+                               (scores > -1.0001))[0]
+
+            cache.add_unique(image_id, neg, feats[neg])
+            if cache.needs_retrain() or roidb.is_last(image_id):
+                svms[c] = fit_linear_svm(X_pos, cache.features())
+                cache.evict_easy(svms[c], threshold=-1.2)
+                initialized = True
+    return svms
 
 
-def bbox_reg_targets(P, G):                       # P,G = (cx,cy,w,h)
-    return np.array([(G[0]-P[0])/P[2], (G[1]-P[1])/P[3],
-                     np.log(G[2]/P[2]), np.log(G[3]/P[3])])
+def bbox_targets(src_box, gt_box):
+    sx1, sy1, sx2, sy2 = map(float, src_box)
+    gx1, gy1, gx2, gy2 = map(float, gt_box)
+    sw, sh = sx2 - sx1 + np.finfo(float).eps, sy2 - sy1 + np.finfo(float).eps
+    gw, gh = gx2 - gx1 + np.finfo(float).eps, gy2 - gy1 + np.finfo(float).eps
+    scx, scy = sx1 + 0.5 * sw, sy1 + 0.5 * sh
+    gcx, gcy = gx1 + 0.5 * gw, gy1 + 0.5 * gh
+    return np.array([(gcx - scx) / sw, (gcy - scy) / sh,
+                     np.log(gw / sw), np.log(gh / sh)])
 
 
-def fit_bbox_regressors(pool5, proposals, gts, gt_cls, num_classes, lam=1000.0):
+def train_bbox_regressors(pool5_cache, roidb, classes, feat_norm_mean,
+                          lam=1000.0):
     regs = {}
-    for c in range(num_classes):
-        X, T = [], []
-        for f, p in zip(pool5, proposals):
-            cand = [g for g in gts if gt_cls_of(g) == c]
-            if cand and max(iou(p, g) for g in cand) > 0.6:         # NEARBY proposals only
-                X.append(f); T.append(bbox_reg_targets(to_cwh(p), to_cwh(nearest_gt(p, cand))))
-        if X:
-            regs[c] = ridge_solve(np.array(X), np.array(T), lam)    # closed-form ridge
+    for c in classes:
+        X, Y = [], []
+        for image_id in roidb.image_ids:
+            feats, boxes, gt_boxes = pool5_cache[image_id]
+            for feat, box in zip(feats, boxes):
+                gt, ov = nearest_gt_of_class(box, gt_boxes, c)
+                if gt is not None and ov > 0.6:
+                    X.append(feat)
+                    Y.append(bbox_targets(box, gt))
+        if not X:
+            continue
+
+        X = scale_features(np.asarray(X), feat_norm_mean)
+        X = np.c_[X, np.ones(len(X))]  # bias feature, as in the MATLAB code
+        Y = np.asarray(Y)
+        mu = Y.mean(axis=0)
+        Y0 = Y - mu
+        T, T_inv = target_whitener(Y0)
+        beta = ridge_solve(X, Y0 @ T, lam)
+        regs[c] = (beta, mu, T_inv)
     return regs
 
 
-def apply_bbox_reg(W_c, feat, P):
-    d = feat @ W_c
-    cx, cy, w, h = to_cwh(P)
-    return [w*d[0] + cx, h*d[1] + cy, w*np.exp(d[2]), h*np.exp(d[3])]
+def apply_bbox_regressor(reg, feat, box):
+    beta, mu, T_inv = reg
+    y = (np.r_[feat, 1.0] @ beta) @ T_inv + mu
+    dx, dy, dw, dh = y
+
+    x1, y1, x2, y2 = map(float, box)
+    w, h = x2 - x1 + np.finfo(float).eps, y2 - y1 + np.finfo(float).eps
+    cx, cy = x1 + 0.5 * w, y1 + 0.5 * h
+    pred_cx = dx * w + cx
+    pred_cy = dy * h + cy
+    pred_w = np.exp(dw) * w
+    pred_h = np.exp(dh) * h
+    return np.array([pred_cx - 0.5 * pred_w, pred_cy - 0.5 * pred_h,
+                     pred_cx + 0.5 * pred_w, pred_cy + 0.5 * pred_h])
 
 
-def detect(image, cnn, svms, regs, num_classes, nms_iou=0.3):
-    boxes = selective_search(image, mode="fast")          # ~2000 proposals
-    inp = np.stack([prepare_region(image, b) for b in boxes])
-    feats = cnn_forward(inp, layer="fc7")                 # 2000 x 4096 (shared)
-    pool5 = cnn_forward(inp, layer="pool5")
-    scores = feats @ svms.T                               # 2000 x num_classes
-    dets = []
-    for c in range(num_classes):
-        refined = np.array([apply_bbox_reg(regs[c], pool5[i], boxes[i]) if c in regs
-                            else to_cwh(boxes[i]) for i in range(len(boxes))])
-        keep = nms(cwh_to_xyxy(refined), scores[:, c], nms_iou)
-        dets += [(c, scores[i, c], refined[i]) for i in keep]
-    return dets
+def detect(image, cnn, svms, bbox_regs, svm_feat_norm_mean,
+           bbox_feat_norm_mean, image_mean):
+    boxes = selective_search(image, mode="fast")
+    crops = np.stack([prepare_region(image, b, image_mean) for b in boxes])
+    fc7 = scale_features(cnn_forward(crops, layer="fc7"), svm_feat_norm_mean)
+    pool5 = scale_features(cnn_forward(crops, layer="pool5"),
+                           bbox_feat_norm_mean)
+
+    detections = []
+    for c, svm in svms.items():
+        scores = fc7 @ svm.w + svm.b
+        candidate_boxes = boxes.copy()
+        if c in bbox_regs:
+            candidate_boxes = np.vstack([
+                apply_bbox_regressor(bbox_regs[c], pool5[i], boxes[i])
+                for i in range(len(boxes))
+            ])
+            candidate_boxes = clip_boxes_to_image(candidate_boxes, image.shape)
+
+        keep = nms(candidate_boxes, scores, iou_thresh=0.3)
+        detections.extend((c, scores[i], candidate_boxes[i]) for i in keep)
+    return detections
 ```

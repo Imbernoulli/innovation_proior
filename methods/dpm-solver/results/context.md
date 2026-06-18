@@ -1,5 +1,3 @@
-# Context: Fast Sampling for Diffusion Probabilistic Models
-
 ## Research question
 
 Diffusion probabilistic models (DPMs) produce excellent samples, but generating a single sample
@@ -88,8 +86,8 @@ the ability to query the score at arbitrary times. Analytic and trajectory-learn
 ~50 evaluations.
 
 **Adaptive-step ODE/SDE solver (Jolicoeur-Martineau et al. 2021).** An adaptive step-size controller for
-diffusion differential equations, comparing a lower- and higher-order estimate to size the next step. It
-is the template for adaptive step-size control used as one schedule option here.
+diffusion differential equations, comparing a lower- and higher-order estimate to size the next step.
+It is a relevant prior design for deciding step sizes in diffusion samplers.
 
 **Exponential integrators / exponential Runge–Kutta (Hochbruck & Ostermann 2005, 2010).** A family of
 numerical-ODE methods developed in the general-purpose ODE literature, used as an alternative to plain
@@ -127,8 +125,7 @@ class NoiseSchedule:
     def marginal_std(self, t):             # sigma_t
         ...
     # The monotone half-log-SNR lambda_t = log(alpha_t) - log(sigma_t) and its inverse.
-    # We know these are well-defined because SNR is monotone in t; whether they will be
-    # the right variable to integrate in is not yet decided.
+    # These are available schedule coordinates because SNR is monotone in t.
     def marginal_lambda(self, t):
         ...
     def inverse_lambda(self, lamb):
@@ -151,12 +148,12 @@ class ProbabilityFlowSampler:
     def get_time_steps(self, t_T, t_0, N, device):
         # A monotone sequence of N+1 times from T down to the end time.
         # The right spacing (uniform in t? in some derived variable?) is part of what we must decide.
-        raise NotImplementedError  # TODO
+        raise NotImplementedError
 
     def step(self, x, s, t, **kwargs):
         # Advance the ODE solution from time s to time t (t < s).
         # This is the slot the method fills in: how to discretize dx/dt = f(t)x + (g^2/2 sigma) eps_theta.
-        raise NotImplementedError  # TODO
+        raise NotImplementedError
 
     def sample(self, x_T, steps, t_T, t_0, device):
         ts = self.get_time_steps(t_T, t_0, steps, device)

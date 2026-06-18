@@ -1,191 +1,295 @@
-# Progressive Growing of GANs
+# Progressive Growing Of GANs
 
-## Problem
+Train one generator and one discriminator from 4x4 upward, adding one resolution block at a time. All existing layers remain trainable. Each new block is faded in smoothly, so a just-added random block cannot abruptly replace a lower-resolution solution.
 
-Train an adversarial image generator at high resolution (up to 1024×1024) that is sharp, varied, and stable to train. The core obstacle: at high resolution the discriminator becomes near-perfect almost immediately (millions of pixels expose every flaw of a generated image), and a near-perfect discriminator on two barely-overlapping distributions returns a vanishing or near-random gradient to the generator. Memory limits also force small minibatches at high resolution, further hurting stability; and generators tend to drop variation and to enter a magnitude-escalation spiral with the discriminator.
+The key convention is the reference implementation's `lod`:
 
-## Key idea
+```text
+top_stage  = max_stage - floor(lod)
+old_weight = lod - floor(lod)
+new_weight = 1 - old_weight
+```
 
-Do not learn the latent→megapixel map all at once. **Grow** mirror-image generator G and discriminator D in synchrony, starting at 4×4 and adding one resolution stage at a time (8×8, 16×16, …, 1024×1024). Each stage is a small, local refinement (add the next octave of detail), the discriminator always compares distributions at the current — still-overlapping — resolution, and most iterations run cheaply at low resolution. Bring each new stage in with a smooth **fade-in** so the trained lower layers are never shocked. Add three parameter-free ingredients: a **minibatch-standard-deviation** feature in D for variation, **pixelwise feature normalization** in G to cap signal magnitudes, and **equalized learning rate** so all layers learn at the same effective rate. Train with the WGAN-GP loss.
+For a 1024x1024 model, stable 4x4 has `lod=8`; during the fade to 8x8, `lod` decreases from 8 to 7. Therefore `old_weight` is almost 1 at the start of a transition and 0 at the end.
 
-## The pieces
+## Fade-In
 
-**Progressive growing.** G and D are mirror stacks of per-resolution blocks; all layers stay trainable. A `lod` (level-of-detail) scalar tracks training progress: its integer part selects the current top resolution, its fractional part is the fade weight α ∈ [0,1).
+Generator, when introducing resolution `2R`:
 
-**Fade-in.** Each resolution has a 1×1 `toRGB` (features→RGB) in G and `fromRGB` (RGB→features) in D. When introducing resolution 2R, treat the new block as a residual branch:
+```text
+image = new_weight * toRGB_2R(block(features_R))
+      + old_weight * upscale(toRGB_R(features_R)).
+```
 
-  G:  image = (1−α)·upsample(toRGB_R(features)) + α·toRGB_{2R}(block(features))
-  D:  feat  = (1−α)·fromRGB_R(downsample(x))    + α·downblock(fromRGB_{2R}(x))
+In the fixed-output implementation, this current-resolution RGB image is then upscaled by `2^floor(lod)` so G always returns the final tensor size.
 
-with α ramped 0→1 over a phase. Real images are blended between the two resolutions by the same α so D never gets a spurious high-frequency tell.
+Discriminator, at the matching transition:
 
-**Minibatch standard deviation.** Per feature and spatial location, compute the std across the (group of the) minibatch; average to one scalar; tile to a constant [N,1,H,W] feature map and concatenate near the end of D (at 4×4). Parameter-free; lets D detect and punish low-variation batches.
+```text
+active_input = downscale(full_resolution_input, 2^floor(lod))
+feat = new_weight * downblock(fromRGB_2R(active_input))
+     + old_weight * fromRGB_R(downscale(active_input)).
+```
 
-**Pixelwise feature normalization (G).** After each conv in G, normalize each pixel's feature vector to unit RMS:
+Real images are faded by the same old-path weight:
 
-  b_{x,y} = a_{x,y} / sqrt( (1/N) Σ_{j} (a^j_{x,y})² + ε ),  ε = 1e-8, N = #feature maps.
+```text
+x_faded = (1 - old_weight) * x + old_weight * upscale(downscale(x)).
+```
 
-Parameter-free; prevents the magnitudes in G and D from spiraling during competition. Not used in D.
+## Normalization And Variation
 
-**Equalized learning rate.** Initialize all weights ∼ N(0,1); at runtime use ŵ = w·c with c = gain/√(fan_in) the He constant (gain = √2 for leaky ReLU). The forward pass matches a He-initialized net, but the *trained* weights all share unit scale, so Adam/RMSProp's scale-invariant update moves every layer at the same effective rate.
+Pixelwise feature normalization in the generator:
 
-**Loss & training.** WGAN-GP: L_D = E[D(fake)] − E[D(real)] + λ·E_{x̂}[(‖∇_{x̂}D(x̂)‖₂ − 1)²] + ε_drift·E[D(real)²], with λ=10, ε_drift=1e-3, x̂ on lines between real/fake; L_G = −E[D(fake)]. Alternate one D and one G step per minibatch (n_critic=1). Adam α=1e-3, β1=0, β2=0.99. Leaky-ReLU 0.2 everywhere except linear outputs; no batch/layer/weight norm. 512-d latent on the hypersphere. Nearest-neighbor 2× upsample, average-pool downsample. EMA of G weights (decay 0.999) for evaluation sampling. ~800k images per fade-in and per stabilize phase; minibatch shrinks with resolution (16 → 3 at 1024²).
+```text
+b_{x,y} = a_{x,y} / sqrt(mean_j (a^j_{x,y})^2 + epsilon),  epsilon = 1e-8.
+```
 
-## Code
+Minibatch standard deviation in the discriminator: split the minibatch into groups, compute standard deviation over the group axis for each feature and spatial location, average to one scalar per group, tile it as a constant `[N,1,H,W]` feature map, and concatenate it at 4x4 before the final discriminator layers.
+
+Equalized learning rate:
+
+```text
+w ~ N(0, 1)
+w_eff = w * c
+c = gain / sqrt(fan_in)
+```
+
+The paper text describes this as applying the He scale dynamically; the official TensorFlow code implements it as runtime multiplication by `std = gain/sqrt(fan_in)`.
+
+## Loss And Schedule
+
+WGAN-GP with drift:
+
+```text
+L_D = E[D(fake)] - E[D(real)]
+    + 10 * E[(||grad_xhat D(xhat)||_2 - 1)^2]
+    + 0.001 * E[D(real)^2]
+
+L_G = -E[D(fake)]
+```
+
+`xhat` lies on straight-line interpolates between real and fake images. The ordinary unsupervised setup uses one discriminator update per generator update. Adam uses `lr=0.001`, `beta1=0`, `beta2=0.99`, `epsilon=1e-8`. The paper's CelebA-HQ schedule uses 800k real images at the initial 4x4 stage, then 800k images to fade in each new block and 800k to stabilize it; the public code exposes these as `lod_training_kimg` and `lod_transition_kimg` schedule parameters.
+
+## Faithful PyTorch Skeleton
 
 ```python
+import math
 import numpy as np
-import torch, torch.nn as nn, torch.nn.functional as F
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-def leaky_relu(x, a=0.2): return torch.maximum(x * a, x)
-def upscale2d(x, f=2):
-    N, C, H, W = x.shape
-    return x.view(N, C, H, 1, W, 1).expand(N, C, H, f, W, f).reshape(N, C, H*f, W*f)
-def downscale2d(x, f=2): return F.avg_pool2d(x, f)
+def leaky_relu(x, alpha=0.2):
+    return F.leaky_relu(x, negative_slope=alpha)
 
-# ---- equalized learning rate: N(0,1) weights scaled by the He constant at runtime ----
-class EqConv2d(nn.Module):
-    def __init__(self, cin, cout, k, gain=np.sqrt(2)):
-        super().__init__()
-        self.w = nn.Parameter(torch.randn(cout, cin, k, k))
-        self.b = nn.Parameter(torch.zeros(cout))
-        self.c = gain / np.sqrt(cin * k * k); self.pad = k // 2
-    def forward(self, x): return F.conv2d(x, self.w * self.c, self.b, padding=self.pad)
+def upscale2d(x, factor=2):
+    return x.repeat_interleave(factor, dim=2).repeat_interleave(factor, dim=3)
 
-class EqLinear(nn.Module):
-    def __init__(self, cin, cout, gain=np.sqrt(2)):
-        super().__init__()
-        self.w = nn.Parameter(torch.randn(cout, cin)); self.b = nn.Parameter(torch.zeros(cout))
-        self.c = gain / np.sqrt(cin)
-    def forward(self, x): return F.linear(x, self.w * self.c, self.b)
+def downscale2d(x, factor=2):
+    return F.avg_pool2d(x, factor)
 
-# ---- pixelwise feature normalization (generator) ----
 def pixel_norm(x, eps=1e-8):
-    return x * torch.rsqrt(x.pow(2).mean(dim=1, keepdim=True) + eps)
+    return x * torch.rsqrt(x.square().mean(dim=1, keepdim=True) + eps)
 
-# ---- minibatch standard deviation (discriminator) ----
-def minibatch_stddev(x, group_size=4):
-    N, C, H, W = x.shape; G = min(group_size, N)
-    y = x.view(G, -1, C, H, W)
-    y = y - y.mean(0, keepdim=True)
-    y = (y.pow(2).mean(0) + 1e-8).sqrt()           # [M,C,H,W] per-group stddev
-    y = y.mean([1, 2, 3], keepdim=True)            # [M,1,1,1] avg over features+pixels
-    y = y.view(-1, 1, 1, 1).expand(N, 1, H, W)
+def minibatch_stddev(x, group_size=4, eps=1e-8):
+    n, c, h, w = x.shape
+    g = min(group_size, n)
+    while n % g != 0:
+        g -= 1
+    y = x.view(g, -1, c, h, w).float()
+    y = y - y.mean(dim=0, keepdim=True)
+    y = torch.sqrt(y.square().mean(dim=0) + eps)
+    y = y.mean(dim=(1, 2, 3), keepdim=True).to(x.dtype)
+    y = y.repeat(g, 1, h, w)
     return torch.cat([x, y], dim=1)
 
-def toRGB(cin):   return EqConv2d(cin, 3, 1, gain=1)
-def fromRGB(cout): return EqConv2d(3, cout, 1)
+class EqConv2d(nn.Module):
+    def __init__(self, cin, cout, kernel, gain=math.sqrt(2)):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(cout, cin, kernel, kernel))
+        self.bias = nn.Parameter(torch.zeros(cout))
+        self.scale = gain / math.sqrt(cin * kernel * kernel)
+        self.pad = kernel // 2
+
+    def forward(self, x):
+        return F.conv2d(x, self.weight * self.scale, self.bias, padding=self.pad)
+
+class EqLinear(nn.Module):
+    def __init__(self, cin, cout, gain=math.sqrt(2)):
+        super().__init__()
+        self.weight = nn.Parameter(torch.randn(cout, cin))
+        self.bias = nn.Parameter(torch.zeros(cout))
+        self.scale = gain / math.sqrt(cin)
+
+    def forward(self, x):
+        return F.linear(x, self.weight * self.scale, self.bias)
 
 class GBlock(nn.Module):
     def __init__(self, cin, cout, first=False):
-        super().__init__(); self.first = first; self.cout = cout
+        super().__init__()
+        self.first = first
+        self.cout = cout
         if first:
-            self.dense = EqLinear(cin, cout * 16, gain=np.sqrt(2) / 4)
-            self.conv  = EqConv2d(cout, cout, 3)
+            self.dense = EqLinear(cin, cout * 4 * 4, gain=math.sqrt(2) / 4)
+            self.conv = EqConv2d(cout, cout, 3)
         else:
-            self.conv0 = EqConv2d(cin, cout, 3); self.conv1 = EqConv2d(cout, cout, 3)
+            self.conv0 = EqConv2d(cin, cout, 3)
+            self.conv1 = EqConv2d(cout, cout, 3)
+
     def forward(self, x):
         if self.first:
             x = pixel_norm(x)
-            x = pixel_norm(leaky_relu(self.dense(x).view(-1, self.cout, 4, 4)))
+            x = self.dense(x).view(-1, self.cout, 4, 4)
+            x = pixel_norm(leaky_relu(x))
             x = pixel_norm(leaky_relu(self.conv(x)))
-        else:
-            x = upscale2d(x)
-            x = pixel_norm(leaky_relu(self.conv0(x)))
-            x = pixel_norm(leaky_relu(self.conv1(x)))
+            return x
+        x = upscale2d(x)
+        x = pixel_norm(leaky_relu(self.conv0(x)))
+        x = pixel_norm(leaky_relu(self.conv1(x)))
         return x
 
-class DBlock(nn.Module):
-    def __init__(self, cin, cout, last=False, label_size=0):
-        super().__init__(); self.last = last
-        if last:
-            self.conv   = EqConv2d(cin + 1, cin, 3)
-            self.dense0 = EqLinear(cin * 16, cout)
-            self.dense1 = EqLinear(cout, 1 + label_size, gain=1)
-        else:
-            self.conv0 = EqConv2d(cin, cin, 3); self.conv1 = EqConv2d(cin, cout, 3)
+class DStage(nn.Module):
+    def __init__(self, cin, cout):
+        super().__init__()
+        self.conv0 = EqConv2d(cin, cin, 3)
+        self.conv1 = EqConv2d(cin, cout, 3)
+
     def forward(self, x):
-        if self.last:
-            x = minibatch_stddev(x)
-            x = leaky_relu(self.conv(x))
-            x = leaky_relu(self.dense0(x.flatten(1)))
-            return self.dense1(x)
-        x = leaky_relu(self.conv0(x)); x = leaky_relu(self.conv1(x))
+        x = leaky_relu(self.conv0(x))
+        x = leaky_relu(self.conv1(x))
         return downscale2d(x)
 
-# ---- progressive generator with fade-in ----
+class DHead(nn.Module):
+    def __init__(self, channels, label_size=0):
+        super().__init__()
+        self.conv = EqConv2d(channels + 1, channels, 3)
+        self.dense0 = EqLinear(channels * 4 * 4, channels)
+        self.dense1 = EqLinear(channels, 1 + label_size, gain=1)
+
+    def forward(self, x):
+        x = minibatch_stddev(x)
+        x = leaky_relu(self.conv(x))
+        x = leaky_relu(self.dense0(x.flatten(1)))
+        return self.dense1(x)
+
+def lod_parts(lod, max_stage):
+    lod_value = float(lod)
+    lod_floor = int(np.floor(lod_value))
+    top = max_stage - lod_floor
+    old_weight = lod_value - lod_floor
+    new_weight = 1.0 - old_weight
+    return top, old_weight, new_weight
+
+def lod_downscale_factor(lod):
+    return int(2 ** np.floor(float(lod)))
+
 class Generator(nn.Module):
-    def __init__(self, nf):                         # nf[i] = #feature maps at stage i (4x4 -> top)
+    def __init__(self, nf, latent_size=512):
         super().__init__()
         self.blocks = nn.ModuleList(
-            [GBlock(512, nf[0], first=True)] + [GBlock(nf[i-1], nf[i]) for i in range(1, len(nf))])
-        self.torgb = nn.ModuleList([toRGB(c) for c in nf])
-    def forward(self, z, lod):
-        top = (len(self.blocks) - 1) - int(np.floor(lod))   # current top stage index
-        alpha = lod - np.floor(lod)
-        x = self.blocks[0](z); prev = x
-        for i in range(1, top + 1):
-            prev = x; x = self.blocks[i](x)
-        img = self.torgb[top](x)
-        if alpha > 0 and top >= 1:
-            old = upscale2d(self.torgb[top - 1](prev))       # faded-out lower-res path
-            img = (1 - alpha) * old + alpha * img
-        return img
+            [GBlock(latent_size, nf[0], first=True)] +
+            [GBlock(nf[i - 1], nf[i]) for i in range(1, len(nf))]
+        )
+        self.torgb = nn.ModuleList([EqConv2d(c, 3, 1, gain=1) for c in nf])
 
-# ---- progressive discriminator with fade-in ----
+    def forward(self, z, lod):
+        top, old_weight, new_weight = lod_parts(lod, len(self.blocks) - 1)
+        x = self.blocks[0](z)
+        if top == 0:
+            img = self.torgb[0](x)
+            factor = lod_downscale_factor(lod)
+            return upscale2d(img, factor) if factor > 1 else img
+
+        prev = x
+        for stage in range(1, top + 1):
+            prev = x
+            x = self.blocks[stage](x)
+
+        img = self.torgb[top](x)
+        if old_weight > 0.0:
+            old = upscale2d(self.torgb[top - 1](prev))
+            img = new_weight * img + old_weight * old
+        factor = lod_downscale_factor(lod)
+        return upscale2d(img, factor) if factor > 1 else img
+
 class Discriminator(nn.Module):
     def __init__(self, nf, label_size=0):
         super().__init__()
-        self.blocks = nn.ModuleList(
-            [DBlock(nf[i], nf[i-1]) for i in range(len(nf) - 1, 0, -1)] +
-            [DBlock(nf[0], nf[0], last=True, label_size=label_size)])
-        self.fromrgb = nn.ModuleList([fromRGB(c) for c in nf])   # indexed by stage
-    def forward(self, x, lod):
-        top = (len(self.fromrgb) - 1) - int(np.floor(lod))
-        alpha = lod - np.floor(lod)
-        h = leaky_relu(self.fromrgb[top](x))
-        first = len(self.blocks) - 1 - top                       # index into self.blocks
-        h = self.blocks[first](h)
-        if alpha > 0 and top >= 1:
-            old = leaky_relu(self.fromrgb[top - 1](downscale2d(x)))
-            h = (1 - alpha) * old + alpha * h
-        for i in range(first + 1, len(self.blocks)):
-            h = self.blocks[i](h)
-        return h
+        self.fromrgb = nn.ModuleList([EqConv2d(3, c, 1) for c in nf])
+        self.stages = nn.ModuleList([DStage(nf[i], nf[i - 1]) for i in range(1, len(nf))])
+        self.head = DHead(nf[0], label_size=label_size)
 
-# ---- training schedule, real-image processing, and one step ----
-def training_schedule(images_seen, max_lod, train_kimg=800, transition_kimg=800):
-    # within each phase: stabilize for train_kimg, then fade the next stage in over transition_kimg.
-    phase = (train_kimg + transition_kimg) * 1000
-    phase_idx = images_seen // phase
-    phase_pos = (images_seen % phase) / 1000.0          # kimg into the current phase
-    lod = max_lod - phase_idx
-    lod -= max(phase_pos - train_kimg, 0.0) / transition_kimg   # fractional part = fade-in
-    return max(lod, 0.0)
+    def forward(self, x, lod):
+        top, old_weight, new_weight = lod_parts(lod, len(self.fromrgb) - 1)
+        factor = lod_downscale_factor(lod)
+        x = downscale2d(x, factor) if factor > 1 else x
+        if top == 0:
+            return self.head(leaky_relu(self.fromrgb[0](x)))
+
+        h_new = self.stages[top - 1](leaky_relu(self.fromrgb[top](x)))
+        if old_weight > 0.0:
+            h_old = leaky_relu(self.fromrgb[top - 1](downscale2d(x)))
+            h = new_weight * h_new + old_weight * h_old
+        else:
+            h = h_new
+
+        for stage in range(top - 1, 0, -1):
+            h = self.stages[stage - 1](h)
+        return self.head(h)
 
 def process_reals(x, lod):
-    alpha = lod - np.floor(lod)
-    if alpha > 0:
-        blur = upscale2d(downscale2d(x))            # lower-octave version
-        x = (1 - alpha) * blur + alpha * x
-    f = int(2 ** np.floor(lod))                     # upscale to network working size
-    return upscale2d(x, f) if f > 1 else x
+    # Matches the official pipeline: the dataset loader has already selected
+    # the current resolution implied by lod.
+    old_weight = float(lod - np.floor(lod))
+    if old_weight > 0.0:
+        blurred = upscale2d(downscale2d(x))
+        x = (1.0 - old_weight) * x + old_weight * blurred
+    factor = int(2 ** np.floor(lod))
+    return upscale2d(x, factor) if factor > 1 else x
 
-def train_step(G, D, G_opt, D_opt, reals, lod, lam=10.0, drift=1e-3):
-    z = torch.randn(reals.size(0), 512, device=reals.device)
-    z = z / z.norm(dim=1, keepdim=True)             # latent on the hypersphere
+def training_schedule(images_seen, max_lod, train_kimg=800, transition_kimg=800):
+    phase = (train_kimg + transition_kimg) * 1000
+    phase_idx = images_seen // phase
+    phase_pos = (images_seen % phase) / 1000.0
+    lod = max_lod - phase_idx
+    if transition_kimg > 0:
+        lod -= max(phase_pos - train_kimg, 0.0) / transition_kimg
+    return max(lod, 0.0)
+
+def train_step(G, D, G_opt, D_opt, reals, lod, lam=10.0, drift=0.001):
+    batch = reals.shape[0]
+    z = torch.randn(batch, 512, device=reals.device)
+    z = z / z.norm(dim=1, keepdim=True)
     reals = process_reals(reals, lod)
 
     fake = G(z, lod).detach()
-    d_real, d_fake = D(reals, lod), D(fake, lod)
-    eps = torch.rand(reals.size(0), 1, 1, 1, device=reals.device)
-    xhat = (eps * reals + (1 - eps) * fake).requires_grad_(True)
-    g = torch.autograd.grad(D(xhat, lod).sum(), xhat, create_graph=True)[0]
-    gp = (g.flatten(1).norm(dim=1) - 1).pow(2).mean()
-    d_loss = d_fake.mean() - d_real.mean() + lam * gp + drift * d_real.pow(2).mean()
-    D_opt.zero_grad(); d_loss.backward(); D_opt.step()
+    d_real = D(reals, lod)[:, :1]
+    d_fake = D(fake, lod)[:, :1]
 
-    g_loss = -D(G(z, lod), lod).mean()
-    G_opt.zero_grad(); g_loss.backward(); G_opt.step()
-    # maintain an EMA copy of G (decay 0.999) for evaluation sampling.
+    eps = torch.rand(batch, 1, 1, 1, device=reals.device)
+    xhat = (eps * reals + (1.0 - eps) * fake).requires_grad_(True)
+    d_hat = D(xhat, lod)[:, :1].sum()
+    grad = torch.autograd.grad(d_hat, xhat, create_graph=True)[0]
+    gp = (grad.flatten(1).norm(dim=1) - 1.0).square().mean()
+
+    d_loss = d_fake.mean() - d_real.mean() + lam * gp + drift * d_real.square().mean()
+    D_opt.zero_grad()
+    d_loss.backward()
+    D_opt.step()
+
+    z = torch.randn(batch, 512, device=reals.device)
+    z = z / z.norm(dim=1, keepdim=True)
+    g_loss = -D(G(z, lod), lod)[:, :1].mean()
+    G_opt.zero_grad()
+    g_loss.backward()
+    G_opt.step()
 ```
+
+For the 1024x1024 CelebA-HQ feature-map ladder, use:
+
+```python
+nf = [512, 512, 512, 512, 256, 128, 64, 32, 16]  # 4, 8, ..., 1024
+```
+
+The paper also introduces a patch-distribution metric, sliced Wasserstein distance on Laplacian-pyramid patches: sample 16384 images, 128 descriptors per pyramid level, descriptors of size `7x7x3`, normalize per color channel, and compute a randomized sliced Wasserstein estimate using 512 projections. Lower is better because generated local-patch distributions are closer to training local-patch distributions at each scale.

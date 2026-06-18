@@ -25,7 +25,7 @@ Both halves are necessary: without the top-down path the semantic gap across bot
     M_k = conv1x1(C_k) + upsample_2x_nearest(M_{k+1})
     P_k = conv3x3(M_k)        for k = 4, 3, 2
 
-**RPN front-end:** the same 3×3-conv + two sibling 1×1-conv head on every level; a single anchor scale per level — areas {32², 64², 128², 256², 512²} on {P2,P3,P4,P5,P6} — with aspect ratios {1:2, 1:1, 2:1} (15 anchors total). P6 = stride-2 subsample of P5 (only to host the 512² anchor; not used by the region detector). Anchor labels by IoU as usual (>0.7 positive, <0.3 negative); ground-truth scale is not used to route anchors to levels.
+**RPN front-end:** the same 3×3-conv + two sibling 1×1-conv head on every level; a single anchor scale per level — areas {32², 64², 128², 256², 512²} on {P2,P3,P4,P5,P6} — with aspect ratios {1:2, 1:1, 2:1} (15 anchors total). P6 = stride-2 subsample of P5 (only to host the 512² anchor; not used by the region detector). Anchor labels by IoU as usual: positive if the anchor has the highest IoU for a ground-truth box or IoU > 0.7 with any ground-truth box, negative if IoU < 0.3 for every ground-truth box. Ground-truth scale is not used to route anchors to levels.
 
 **Region-detector (Fast R-CNN) front-end:** RoIPool to 7×7, then a light 2×1024-d fc head with ReLU + cls/reg layers (conv5 is consumed by the pyramid, so it is not reused as the head). Each RoI of width w, height h is pooled from level
 
@@ -33,14 +33,13 @@ Both halves are necessary: without the top-down path the semantic gap across bot
 
 (224 = canonical ImageNet pretrain size; k0=4 = the level a single-scale ResNet detector uses, C4). A smaller RoI → finer/higher-resolution level. Clamp k to the available levels. Heads shared across all levels.
 
-**Dense segmentation-proposal front-end:** use the same pyramid with P2–P6 and a lighter width d=128. Define mask scale as max(width, height): scales {32, 64, 128, 256, 512} map to {P2, P3, P4, P5, P6}. A 5×5 fully convolutional MLP predicts a 14×14 mask and objectness score for integer octaves; a second 7×7 MLP handles half-octaves because 7 ≈ 5√2. With 25% padding, the 5×5 mask windows correspond to image regions {40, 80, 160, 320, 640}; the 7×7 windows cover √2 larger regions. A location at level k is responsible for masks whose center lies within 2^k input pixels of that location; negatives train only the score branch.
+**Dense segmentation-proposal front-end:** use the same pyramid with P2–P6 and a lighter width d=128. Define mask scale as max(width, height): scales {32, 64, 128, 256, 512} map to {P2, P3, P4, P5, P6}, with intermediate scales mapped to the nearest scale in log space. A 5×5 fully convolutional MLP predicts a 14×14 mask and objectness score for integer octaves; a second 7×7 MLP handles half-octaves because 7 ≈ 5√2. With 25% padding, the 5×5 mask windows correspond to image regions {40, 80, 160, 320, 640}; the 7×7 windows cover √2 larger regions. A location at level k is responsible for masks whose center lies within 2^k input pixels of that location; negatives train only the score branch.
 
 ## Code
 
 Pyramid builder:
 
 ```python
-import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -90,12 +89,24 @@ def assign_roi_to_level(
     max_level=5,
     canonical_level=4,
     canonical_box_size=224.0,
+    eps=1e-6,
+    legacy_plus_one=True,
 ):
-    """boxes: (N,4) as (x1,y1,x2,y2) in input-image pixels. Returns level index per box."""
-    w = boxes[:, 2] - boxes[:, 0]
-    h = boxes[:, 3] - boxes[:, 1]
+    """Return the FPN level for each RoI.
+
+    `legacy_plus_one=True` matches original Detectron/Faster-R-CNN pixel-index
+    boxes, where width and height are computed as x2 - x1 + 1 and y2 - y1 + 1.
+    Set it to False only if the whole detector uses continuous boxes.
+    """
+    if boxes.numel() == 0:
+        return torch.empty((0,), dtype=torch.int64, device=boxes.device)
+    offset = 1.0 if legacy_plus_one else 0.0
+    w = boxes[:, 2] - boxes[:, 0] + offset
+    h = boxes[:, 3] - boxes[:, 1] + offset
+    if ((w <= 0) | (h <= 0)).any():
+        raise ValueError("boxes must have positive width and height")
     box_sizes = torch.sqrt(w * h)
-    level = torch.floor(canonical_level + torch.log2(box_sizes / canonical_box_size + 1e-8))
+    level = torch.floor(canonical_level + torch.log2(box_sizes / canonical_box_size + eps))
     level = torch.clamp(level, min=min_level, max=max_level)
     return level.to(torch.int64)
 ```

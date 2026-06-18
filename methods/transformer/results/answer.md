@@ -13,12 +13,12 @@ Map a source sequence `(x_1, …, x_n)` to a target `(y_1, …, y_m)` autoregres
 3. **Three uses of the same block.** Encoder self-attention (Q,K,V from the previous encoder layer); masked decoder self-attention (Q,K,V from the previous decoder layer, future positions set to `−∞` before the softmax → `exp(−∞)=0`, preserving autoregression while keeping the single-matmul parallelism); encoder-decoder cross-attention (queries from the decoder, keys/values from the encoder output — Bahdanau's setup in the same mechanism).
 4. **Position-wise feed-forward.** `FFN(x) = max(0, xW_1 + b_1)W_2 + b_2`, applied identically per position, `512 → 2048 → 512`. Attention's value mixing is essentially linear with a single softmax nonlinearity; the FFN is the only per-position nonlinear compute. The 4× inner width gives the ReLU room to carve real features before projecting back; it holds most of each layer's parameters.
 5. **Positional encoding.** Pure attention is permutation-equivariant, so order must be injected. Add sinusoids to the input embeddings rather than concatenating position channels, because concatenation only buys separate first-layer projections while widening every downstream matrix: `PE(pos,2i)=sin(pos/10000^{2i/d})`, `PE(pos,2i+1)=cos(pos/10000^{2i/d})`. For any fixed offset `k`, `PE_{pos+k}` is a position-independent rotation of `PE_{pos}`, so heads can attend by relative position; sinusoids are defined for any `pos`, allowing extrapolation beyond training length (a learned table cannot). Embeddings are scaled by `√d_model` so their amplitude matches the `O(1)` sinusoids.
-6. **Deep-stack glue.** The architectural wrap is `LayerNorm(x + Sublayer(x))`: the residual's `I + F'` derivative keeps a magnitude-1 gradient path through depth, and LayerNorm is used instead of BatchNorm because batch statistics are unreliable on variable-length padded sequences and at one-token-at-a-time decoding. The code below mirrors the canonical Annotated-Transformer implementation's norm-first variant, `x + Sublayer(LayerNorm(x))`, for code simplicity, with a final norm at each stack output. `N=6` layers each in encoder and decoder; with a shared source-target vocabulary, the source embedding, target embedding, and pre-softmax projection share one weight matrix.
+6. **Deep-stack glue.** The architecture writes each sublayer as `LayerNorm(x + Sublayer(x))`: at the residual sum, before normalization, the local Jacobian contains the direct term `I + J_Sublayer`, and LayerNorm then controls scale across the token's features. LayerNorm is used instead of BatchNorm because batch statistics are unreliable on variable-length padded sequences and at one-token-at-a-time decoding. The code below mirrors the Annotated Transformer PyTorch variant, `x + Sublayer(LayerNorm(x))`, with a final norm at each stack output, so the code path has an explicit identity branch around the normalized sublayer. `N=6` layers each in encoder and decoder. The reported shared-vocabulary setup shares the source embedding, target embedding, and pre-softmax matrix; the PyTorch code block keeps the ordinary `Generator(d_model, vocab)` used by the annotated code.
 7. **Training.** Adam (`β_1=0.9, β_2=0.98, ε=1e-9`) with warmup-then-inverse-sqrt learning rate `lrate = d_model^{−0.5} · min(step^{−0.5}, step·warmup^{−1.5})`, `warmup=4000` — warmup keeps early steps small while Adam's early second-moment estimate and the attention logits settle; `d_model^{−0.5}` shrinks the peak rate for wider models. Dropout `0.1` on sublayer outputs and embedding sums; label smoothing `ε_ls=0.1` discourages overconfident one-hot targets even if it raises perplexity. Inputs are subword tokens (BPE / word-piece).
 
 ## Working code
 
-Grounded in a standard PyTorch implementation, with weight tying and LayerNorm variance made explicit.
+Grounded in the Annotated Transformer PyTorch implementation, with the architectural constants kept explicit.
 
 ```python
 import math, copy, torch, torch.nn as nn
@@ -89,8 +89,8 @@ class LayerNorm(nn.Module):
         self.eps = eps
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
-        var = x.var(-1, keepdim=True, unbiased=False)
-        return self.a_2 * (x - mean) / torch.sqrt(var + self.eps) + self.b_2
+        std = x.std(-1, keepdim=True)
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
 class SublayerConnection(nn.Module):
     "Norm-first residual connection, as in the canonical code for simplicity."
@@ -150,6 +150,22 @@ def subsequent_mask(size):
     "Causal mask: position i attends only to positions <= i."
     return torch.triu(torch.ones(1, size, size), diagonal=1).type(torch.uint8) == 0
 
+class Batch:
+    "Hold source/target tensors and build padding + causal masks."
+    def __init__(self, src, tgt=None, pad=2):
+        self.src = src
+        self.src_mask = (src != pad).unsqueeze(-2)
+        if tgt is not None:
+            self.tgt = tgt[:, :-1]
+            self.tgt_y = tgt[:, 1:]
+            self.tgt_mask = self.make_std_mask(self.tgt, pad)
+            self.ntokens = (self.tgt_y != pad).data.sum()
+    @staticmethod
+    def make_std_mask(tgt, pad):
+        tgt_mask = (tgt != pad).unsqueeze(-2)
+        tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data)
+        return tgt_mask
+
 class Embeddings(nn.Module):
     def __init__(self, d_model, vocab):
         super().__init__()
@@ -159,12 +175,10 @@ class Embeddings(nn.Module):
         return self.lut(x) * math.sqrt(self.d_model)
 
 class Generator(nn.Module):
-    "Final projection shares the unscaled token matrix used by the embeddings."
-    def __init__(self, tied_embedding):
+    "Define standard linear + log-softmax generation step."
+    def __init__(self, d_model, vocab):
         super().__init__()
-        vocab, d_model = tied_embedding.lut.weight.shape
-        self.proj = nn.Linear(d_model, vocab, bias=False)
-        self.proj.weight = tied_embedding.lut.weight
+        self.proj = nn.Linear(d_model, vocab)
     def forward(self, x):
         return log_softmax(self.proj(x), dim=-1)
 
@@ -183,25 +197,17 @@ class EncoderDecoder(nn.Module):
     def forward(self, src, tgt, src_mask, tgt_mask):
         return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
 
-def make_model(src_vocab, tgt_vocab=None, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
-    if tgt_vocab is None:
-        tgt_vocab = src_vocab
-    if src_vocab != tgt_vocab:
-        raise ValueError("three-way weight tying requires a shared source-target vocabulary")
+def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
     c = copy.deepcopy
     attn = MultiHeadedAttention(h, d_model)
     ff = PositionwiseFeedForward(d_model, d_ff, dropout)
     position = PositionalEncoding(d_model, dropout)
-    src_embedding = Embeddings(d_model, src_vocab)
-    tgt_embedding = Embeddings(d_model, tgt_vocab)
-    tgt_embedding.lut.weight = src_embedding.lut.weight
-    generator = Generator(tgt_embedding)
     model = EncoderDecoder(
         Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
         Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N),
-        nn.Sequential(src_embedding, c(position)),
-        nn.Sequential(tgt_embedding, c(position)),
-        generator,
+        nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
+        nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
+        Generator(d_model, tgt_vocab),
     )
     for p in model.parameters():
         if p.dim() > 1:
@@ -227,6 +233,7 @@ class LabelSmoothing(nn.Module):
         self.confidence = 1.0 - smoothing
         self.smoothing = smoothing
         self.size = size
+        self.true_dist = None
     def forward(self, x, target):
         assert x.size(1) == self.size
         true_dist = x.data.clone()
@@ -236,6 +243,7 @@ class LabelSmoothing(nn.Module):
         mask = torch.nonzero(target.data == self.padding_idx)
         if mask.dim() > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
+        self.true_dist = true_dist
         return self.criterion(x, true_dist.clone().detach())
 ```
 

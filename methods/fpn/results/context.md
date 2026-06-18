@@ -4,7 +4,7 @@
 
 Recognizing objects across a wide range of scales is a core difficulty in detection. The same object class can appear as a 20-pixel speck or fill the frame, and a detector must localize and classify it in both cases. The question is how to build a feature representation that is **strong at every scale** — so that a small object and a large object are each described by features rich enough to recognize and localize them — while paying only a **marginal** compute and memory cost over a plain single-pass forward of the backbone, and while remaining **trainable end-to-end** (the same computation at train and test time).
 
-The two standard ways of getting multi-scale features each fail one of these requirements. Featurizing a pyramid of resized images gives strong features at every scale but is several times slower and is too memory-heavy to train end-to-end, so it is relegated to test time only. Running a single deep feature map is fast and end-to-end trainable but is coarse, so small objects are poorly represented. A solution would have to deliver the accuracy of the former at close to the cost of the latter.
+The two standard ways of getting multi-scale features each fail one of these requirements. Featurizing a pyramid of resized images gives strong features at every scale but is several times slower and is too memory-heavy to train end-to-end, so it is relegated to test time only. Running a single deep feature map is fast and end-to-end trainable but is coarse, so small objects are poorly represented. A solution would have to keep the scale coverage of the former at close to the cost of the latter.
 
 ## Background
 
@@ -20,7 +20,7 @@ The crucial diagnostic fact about this hierarchy is a **semantic gap across leve
 
 **Featurized image pyramid.** Resize the input to several scales, run the backbone on each, detect on each level's features, combine. *Core property:* all levels are semantically strong, so one shared head applies at every scale. *Gap:* multiplicative inference cost; memory-infeasible to train end-to-end; used only at test time.
 
-**Single-scale region-based detection (Fast / Faster R-CNN; Girshick 2015; Ren et al. 2015).** SPPnet (He et al. 2014) showed region-based detection can run on features from a single image scale by pooling per-region features from a shared feature map, instead of re-running the net per region. Fast R-CNN pools RoI features (RoIPool to a fixed 7×7) from one map and classifies/regresses with a small head. Faster R-CNN adds a Region Proposal Network: a 3×3 conv plus two sibling 1×1 convs (objectness and box regression) slid over a single feature map, with multi-scale, multi-aspect-ratio *anchors* as reference boxes; positives/negatives are assigned by IoU with ground truth (≥0.7 positive, <0.3 negative). A ResNet realization uses C4 as the single map and the conv5 stack as the head. *Gap:* one coarse map (stride 16 or 32) represents all object sizes; small objects are under-resolved, so accuracy on small objects is weak. Choosing a deeper single map trades resolution for semantics and does not resolve the conflict.
+**Single-scale region-based detection (Fast / Faster R-CNN; Girshick 2015; Ren et al. 2015).** SPPnet (He et al. 2014) showed region-based detection can run on features from a single image scale by pooling per-region features from a shared feature map, instead of re-running the net per region. Fast R-CNN pools RoI features (RoIPool to a fixed 7×7) from one map and classifies/regresses with a small head. Faster R-CNN adds a Region Proposal Network: a 3×3 conv plus two sibling 1×1 convs (objectness and box regression) slid over a single feature map, with multi-scale, multi-aspect-ratio *anchors* as reference boxes; positives/negatives are assigned by IoU with ground truth (>0.7 positive, <0.3 negative, plus the best-IoU anchor for each ground-truth box). A ResNet realization uses C4 as the single map and the conv5 stack as the head. *Gap:* one coarse map (stride 16 or 32) represents all object sizes; small objects are under-resolved, so accuracy on small objects is weak. Choosing a deeper single map trades resolution for semantics and does not resolve the conflict.
 
 **In-network pyramidal-feature detection (SSD; Liu et al. 2016).** SSD predicts from several layers of the ConvNet feature hierarchy directly, treating them as if they were a featurized image pyramid — and so reuses maps already computed in the forward pass, which is cheap. *Gap:* to avoid the semantically weak shallow maps, SSD starts its pyramid high in the network (around conv4_3 of VGG) and *adds new layers* below, rather than reusing the existing high-resolution early maps. It therefore skips exactly the high-resolution features that matter for small objects, and its levels still differ in semantic strength.
 
@@ -57,6 +57,7 @@ def roi_pool(feature_map, boxes, output_size=7):
 # --- already exists: RPN head (Faster R-CNN), one feature map in ---
 class RPNHead(nn.Module):
     def __init__(self, in_channels, num_anchors):
+        super().__init__()
         self.conv = nn.Conv2d(in_channels, in_channels, 3, padding=1)
         self.cls = nn.Conv2d(in_channels, num_anchors, 1)
         self.bbox = nn.Conv2d(in_channels, num_anchors * 4, 1)
@@ -67,6 +68,7 @@ class RPNHead(nn.Module):
 # --- already exists: Fast R-CNN detection head ---
 class FastRCNNHead(nn.Module):
     def __init__(self, in_channels, num_classes):
+        super().__init__()
         ...  # pooled features -> hidden layers -> (cls_score, bbox_pred)
     def forward(self, pooled):
         ...

@@ -8,9 +8,9 @@ range `chmin` to a fully covered node without opening it. Each node stores:
 - `cnt`: the number of entries equal to `M`;
 - `S`: the interval sum.
 
-For a chmin by `x`, the node has three cases. If `x >= M`, no value changes. If
+For a chmin by `x`, the node has three cases. If `M <= x`, no value changes. If
 `m < x < M`, the only values above `x` are the `cnt` copies of `M`, so the node is
-updated in constant time: `S -= cnt * (M - x)` and `M = x`. The strict inequality
+updated in constant time: `S += cnt * (x - M)` and `M = x`. The strict inequality
 is essential: when `x == m`, the old maximum falls onto an existing level and the
 new maximum count is not known from this summary, so the update must recurse. If
 `x <= m`, recurse into the children and recompute the node.
@@ -19,9 +19,9 @@ The merge rule is exact: when child maxima tie, add their counts and take the
 larger child second maximum; when one child maximum wins, the losing child's
 maximum is a candidate for the parent's strict second maximum. The amortized cost
 is `O((n + q) log n)`: every extra descent past a fully covered node with
-`x <= m` merges at least two distinct value levels in that node into one, dropping
-the distinct-value potential for that node by at least one, while each update can
-introduce the new cap value only along `O(log n)` partially covered boundary nodes.
+`x <= m` drops that node's distinct-value count by at least one after the update
+inside it completes, while each update can introduce the new cap value only along
+`O(log n)` partially covered boundary nodes.
 
 ```python
 import sys

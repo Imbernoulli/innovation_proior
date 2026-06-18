@@ -1,97 +1,46 @@
-# Context: taming multistage decision processes
+# Context: Multistage Choice Before a General Theory
 
-## Research question
+## Research Question
 
-A wide and growing class of problems share one shape: a system evolves through a sequence of stages, and at each stage we must make a decision that changes the system's state and earns some return, with the goal of maximizing a function of the whole trajectory. Inventory ordering month after month; allocating a budget across competing activities and then re-allocating what remains; deciding when to replace aging machinery; scheduling patients or jobs; steering a continuous physical system optimally over a time interval; two players spending money to ruin each other. In every case the unknown is not a single number but a whole *sequence* of decisions, and the decisions interact across time — what is best now depends on what will be best later, which depends on where now leaves us.
+A system evolves through a sequence of stages. At each stage a decision changes the state of the system and affects the eventual return. The object is not a single action but an entire way of acting over time: how much to order this month and next month, how to allocate a resource now and after it shrinks, when to replace equipment, how to operate a reservoir, how to steer a controlled trajectory, or how to choose moves in a repeated uncertain environment.
 
-The precise problem: given a system whose state at any time is a vector of state variables, a set of allowable decisions at each stage (each decision being a transformation of the state), and a return that accumulates over the stages, find the decisions that maximize the total (or, when the dynamics are random, the expected) return. A genuine solution has to do three things the obvious approach cannot: it must scale to many stages without the work exploding combinatorially in the number of stages; it must handle *stochastic* transitions, where committing in advance to a fixed sequence of actions is not even well defined; and it must accommodate constraints (an allocation can't exceed what's on hand) that break the smooth machinery of the classical continuous theory.
+The mathematical question is: given a current state, feasible decisions, transition rules, and a return criterion, how can one find a decision rule that maximizes total or expected return over the whole process? A satisfactory answer must work when the horizon is finite or indefinite, when the state evolves deterministically or randomly, and when feasibility constraints such as nonnegative inventory or bounded allocation restrict the decision at each stage.
+
+The hard part is temporal coupling. A decision made now changes which future states are possible. A future decision cannot be evaluated without knowing where earlier decisions leave the system. The problem is therefore global in time even when each individual decision looks simple.
 
 ## Background
 
-The prevailing way to attack such a problem is direct enumeration: regard a *policy* as a complete sequence of decisions, one per stage; for each feasible policy compute the resulting return; then maximize over the set of all feasible policies. This is correct and conceptually simple. Its cost is the difficulty. For a process of $N$ stages with even a moderate number $k$ of choices at each stage, the number of feasible sequences is on the order of $k^{N}$, and the maximization is over a space whose dimension grows with the number of stages. For continuous processes — where a decision must be made at every instant of a time interval — the policy is a *function* of time and the maximization is over a function space. The dimension of the resulting optimization is uncomfortably high; the price of this excessive dimensionality can make even a fast computing machine cringe.
+The direct formulation treats a policy as a complete sequence of decisions. In a deterministic finite process this is at least meaningful: choose a first action, a second action, and so on, then compute the resulting return. In a process with `N` stages and `k` choices at each stage, this already means considering about `k^N` sequences. With continuous controls, the candidate policy is a whole function of time, so the maximization is over a function space rather than a finite list.
 
-There is a deeper failure for random processes. When a decision determines only a *distribution* over next states rather than a single next state, it is meaningless to fix a sequence of decisions in advance: you cannot decide your stage-3 action before you know what stage-2 actually produced. The enumerative, fixed-sequence view is "virtually impossible" in the stochastic case.
+Random transitions make the fixed-sequence formulation worse. If the next state is drawn from a distribution, the action to take at stage three depends on the state actually reached after stages one and two. A precommitted list of future actions ignores information that will be observed before those actions are taken. The natural object should respond to the realized state, but the direct enumeration view does not make that object primary.
 
-Several lines of prior work had, in their own corners, hit upon recursing backwards through the stages:
+Several earlier fields had fragments of a backward-looking idea. Sequential analysis treated decisions about whether to continue sampling. Extensive-form games were solved from terminal moves back toward the start. Reservoir and inventory models used problem-specific recursions. These examples showed that some multistage problems had a useful tail structure, but each instance remained tied to its own notation and application.
 
-- In statistical decision theory, **Wald (1947,** *Sequential Analysis*) generalized the gambler's-ruin problem and introduced the sequential probability ratio test, deciding when to stop sampling so as to minimize the expected number of observations. The backward-recursive structure is present but partly implicit.
-- **Arrow, Blackwell, and Girshick (1949)** made it explicit: for the optimal-stopping statistical-decision problem they characterized the best rule "by induction backwards," approximating the optimum among all procedures using no more than $N$ observations and then letting $N$ grow.
-- **von Neumann and Morgenstern (1944)**, in game theory, solved extensive-form games by starting at the last move and working back through the tree — what we would now call finding subgame-perfect equilibria.
-- **Massé (1944)** on reservoir management and **Arrow, Harris, and Marschak (1951)** on optimal inventory each solved a specific multistage optimization by backward recursion.
-
-The common thread — start at the end, work backwards, and at each stage make the locally best continuation — is visible across all of these, but each is tied to its own problem (when to stop sampling, this game tree, this reservoir, this inventory). None abstracts the shared structure into a single object and a single equation that all of them are instances of.
-
-For the *continuous* deterministic case the relevant body of theory is the **calculus of variations**. To maximize $\int_0^T F(x,y)\,dt$ subject to a dynamics $dx/dt = G(x,y)$, the classical technique treats the optimizing trajectory as a point in function space and characterizes it by variational conditions, chiefly the **Euler equation**; the associated **Hamilton–Jacobi** theory expresses the optimal value as the solution of a first-order partial differential equation. This is powerful but limited: it describes the extremal as a function of *time* (an open-loop description); it relies on free variation, so inequality constraints of the form $0\le y\le x$ — exactly the constraints that pervade allocation and inventory problems — break it, because the extremum is then attained on a boundary where equalities become inequalities; and it has no purchase at all on stochastic transitions.
-
-So the field state is: a clean enumerative formulation that does not scale and cannot handle randomness; a scattering of problem-specific backward recursions that nobody has unified; and a continuous theory (Euler / Hamilton–Jacobi) that is open-loop and deterministic-only. The observed, before-the-fact pain points — exponential blow-up of policy enumeration in the number of stages, the meaninglessness of fixed action sequences under uncertainty, and the breakdown of the variational calculus under inequality constraints — are the facts a method has to confront.
+The continuous deterministic tradition was the calculus of variations. It characterized an optimal path through extremal equations and Hamilton-Jacobi theory. That approach was powerful for smooth, unconstrained problems, but it was less natural for state feedback, inequality constraints, and stochastic transitions.
 
 ## Baselines
 
-- **Exhaustive policy enumeration.** Enumerate all $k^{N}$ feasible decision sequences, evaluate each, take the max. Core idea: brute force over policy space. Math: $\max_{(T_1,\dots,T_N)} R\big(T_N(\cdots T_1(p)\cdots)\big)$. Gap: cost grows like $k^{N}$ (exponential in the number of stages); for continuous processes the maximization is over a function space; and for stochastic processes a fixed sequence is undefined, so the method does not even apply.
+**Enumerate complete decision sequences.** List every feasible sequence of actions, simulate the resulting state path, compute return, and choose the best sequence. This is conceptually correct for small deterministic problems. Its failure is combinatorial growth in the number of stages, and it has no natural interpretation when later actions should depend on random states not yet observed.
 
-- **Backward induction on a fixed problem (Wald 1947; Arrow–Blackwell–Girshick 1949; von Neumann–Morgenstern 1944; Massé 1944; Arrow–Harris–Marschak 1951).** Core idea: solve the last stage, then the second-to-last given the worth of the last, and so on. Math (stopping example): pick the best continuation at each node, working from the final stage back. Gap: each instance is bound to its own problem — when to stop a sequential test, the moves of one game tree, one reservoir's release schedule, one inventory rule. The technique is rediscovered case by case rather than recognized as one reusable idea, and nothing in this prior work abstracts the shared structure across the instances.
+**Optimize over continuous paths.** Treat the control trajectory as an unknown function and derive first-order extremal conditions. This can solve important deterministic smooth problems, but the resulting path is open loop. Boundary decisions and inequality constraints require special treatment, and randomness is outside the basic formulation.
 
-- **Calculus of variations / Euler equation / Hamilton–Jacobi theory.** Core idea: for continuous deterministic optimization, characterize the optimal trajectory by variational stationarity. Math: extremals satisfy the Euler equation $\frac{d}{dt}\frac{\partial F}{\partial \dot y} = \frac{\partial F}{\partial y}$; the optimal value solves a first-order Hamilton–Jacobi PDE. Gap: the description is open-loop (a function of time, not of the current state); inequality constraints with non-free variation are not handled; stochastic dynamics are out of scope entirely.
+**Problem-specific backward induction.** In sequential testing, finite game trees, reservoir control, and inventory models, one can sometimes work from the last stage backward. These are important precedents, but the method has not yet been isolated as a general state-based theory for multistage decision processes.
 
-## Evaluation settings
+**Static constrained optimization over strategies.** One can regard a whole strategy as the decision variable, especially in stochastic settings where a strategy maps histories to actions. This is formally broad but computationally unwieldy: the strategy is a sequence of functions over expanding histories.
 
-The natural testbeds are the very problems that motivate the question, each with its own state, decisions, and return:
+## Pressure Points
 
-- **Allocation / investment.** A quantity $x>0$ is split into parts; each part yields a return and is then shrunk by a known factor; the process repeats with the new total. Metric: total return accumulated over the process.
-- **Optimal inventory.** Stock is ordered each period against random demand; metric: expected discounted ordering-plus-holding-plus-shortage cost.
-- **Equipment replacement / reservoir management / job scheduling.** Multistage operational problems with a per-stage cost or yield; metric: total or expected cost over the horizon.
-- **Stochastic "gold-mining."** Two mines and one fragile machine; each use either succeeds (mining a fixed fraction) or destroys the machine; metric: expected gold mined before the machine breaks.
-- **Continuous control / calculus of variations.** Maximize $\int_0^T F(x,y)\,dt$ subject to $dx/dt=G(x,y)$, $x(0)=c$, possibly with constraints $0\le y\le x$; metric: the integral return.
-- **Games of survival.** Two players with bankrolls $x,y$ play a repeated zero-sum game to ruin; metric: probability one ruins the other.
+Any general answer has to say what information must be carried from the past into the next decision. A full history is always enough, but it is usually too large. A bare clock time is usually too small. The useful description has to preserve exactly the variables that affect feasible choices, transition behavior, and the return still at stake.
 
-The yardstick for any successful approach is whether it recovers the right optimum and an optimal rule on each of these, including the cases (stochastic transitions, inequality constraints) where the enumerative and variational baselines fail outright.
+The answer also has to separate deterministic from stochastic cases without changing the whole problem language. In deterministic examples, a proposed sequence can be checked after the fact. In stochastic examples, later decisions should depend on states that are not yet known when earlier decisions are chosen.
 
-## Code framework
+Finally, constraints must stay inside the decision problem. Nonnegative inventory, limited resources, bounded controls, and stopping choices cannot be treated as afterthoughts; they change which current decisions are feasible and can make boundary choices optimal.
 
-A bare scaffold for a finite multistage decision process, written purely in terms already present in the problem: a state, a per-stage set of allowable decisions, a transition, a per-stage return, and the brute-force objective that maximizes over the *entire* decision sequence. The one empty slot is a placeholder for whatever, if anything, could avoid enumerating whole sequences.
+## Evaluation Settings
 
-```python
-from typing import Hashable, Iterable
+The motivating cases include resource allocation, inventory, equipment replacement, scheduling, reservoir operation, stochastic search or mining, continuous control, and repeated games. Each setting has a state, a feasible action set, a transition law, and a return criterion, but each packages these ingredients differently.
 
-State = Hashable
-Decision = Hashable
+A satisfactory theory should recover the correct optimum and an actionable rule in finite deterministic examples, finite stochastic examples, stationary infinite-horizon examples with discounting or shrinkage, constrained allocation examples, and continuous-control examples that overlap with the calculus of variations.
 
-# --- the multistage decision process, as it is given to us ---
+It should also explain where computation becomes hard. Avoiding enumeration over full histories is not enough if the replacement object is impossible to represent. The relevant complexity should be visible in the structure of the state and decision spaces.
 
-def decisions(state: State, stage: int) -> Iterable[Decision]:
-    """Allowable decisions at this state and stage (the choice set)."""
-    ...
-
-def transition(state: State, decision: Decision, stage: int) -> State:
-    """Deterministic case: the new state after applying the decision."""
-    ...
-
-def reward(state: State, decision: Decision, stage: int) -> float:
-    """Return earned at this stage for taking this decision in this state."""
-    ...
-
-def terminal_reward(state: State) -> float:
-    """Return credited to the final state."""
-    ...
-
-# --- the baseline that is on the table: enumerate every policy ---
-
-def total_return(initial: State, policy_sequence) -> float:
-    """Score one fixed sequence of decisions (one open-loop policy)."""
-    s, total = initial, 0.0
-    for stage, d in enumerate(policy_sequence):
-        total += reward(s, d, stage)
-        s = transition(s, d, stage)
-    return total + terminal_reward(s)
-
-def best_by_enumeration(initial: State, horizon: int) -> float:
-    """Maximize over ALL feasible decision sequences. Correct but costs ~k**N."""
-    # enumerate every sequence (T_1, ..., T_N), score each, take the max
-    ...  # exponential in the number of stages; undefined under random transitions
-
-# --- the unanswered slot ---
-
-def unresolved(*args, **kwargs):
-    """# TODO: whatever, if anything, lets us avoid enumerating whole sequences."""
-    ...
-```

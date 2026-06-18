@@ -1,27 +1,34 @@
 # Mistral 7B
 
-## Problem
+## Method
 
-Make a compact (~7B) decoder language model that is genuinely cheap to *serve*: cut the two costs of autoregressive Transformer inference — the key/value cache that is streamed every decode step (limits throughput/batch) and the attention that is $O(n^2)$ compute and $O(n)$ cache in sequence length $n$ — without losing the ability to use long-range context.
+Use a LLaMA-style decoder with RMSNorm, RoPE, SwiGLU, 32 layers, hidden size 4096, head dimension 128, 32 query heads, 8 key/value heads, and window size 4096. The serving-side method is the composition of:
 
-## Key idea
+- **Grouped-query attention:** project queries to 32 heads, keys and values to 8 heads, cache only the 8 KV heads, then repeat each KV head 4 times after cache read so attention has 32 query-compatible heads.
+- **Sliding-window attention:** each query attends to at most `W=4096` recent keys. Dense prefill cost changes from $O(n^2)$ to $O(nW)$ for fixed $W$.
+- **Depth-expanded receptive field:** local attention is stacked, so after `k` layers information can move about `kW` positions. With 32 layers and `W=4096`, the theoretical span is `32 * 4096 = 131072` tokens.
+- **Rolling KV cache:** each layer stores at most `W` key/value positions per sequence. Absolute position `i` writes to slot `i mod W`; after wraparound the cache is unrotated before interleaving with a later prompt chunk.
+- **Chunked prefill:** first prefill, later prefill chunks, and one-token decode use different masks so the attention-visible keys match the fixed local window exactly.
 
-A LLaMA-style decoder (pre-norm RMSNorm blocks, SwiGLU FFN, RoPE) with four inference mechanisms:
+The released table configuration is `dim=4096`, `n_layers=32`, `head_dim=128`, `hidden_dim=14336`, `n_heads=32`, `n_kv_heads=8`, `window_size=4096`, `context_len=8192`, and `vocab_size=32000`.
 
-- **Grouped-query attention (GQA).** Keep all $h=32$ query heads but use only $n_{kv}=8$ key/value heads, each shared by $h/n_{kv}=4$ query heads. The cache stores 8 heads (4× smaller and 4× less decode bandwidth); the 8 heads are repeated to 32 *after* loading, just before the score matmul, so quality stays near full multi-head while only 8 heads are cached.
-- **Sliding-window attention (SWA).** Each token at layer $k$ attends only to positions $[i-W, i]$ of the previous layer ($W=4096$), making attention $O(n\,W)$ instead of $O(n^2)$. Long-range information is preserved because local attention *stacks*: by induction, after $k$ layers a position's receptive field is $\approx kW$. With 32 layers and $W=4096$, the last layer reaches back $\approx 131$K tokens.
-- **Rolling buffer cache.** A fixed window means any key/value at position $\le i-W$ is never attended to again, so the cache is capped at size $W$. Position $i$ is stored at slot $i \bmod W$; once $i\ge W$ this overwrites position $i-W$, which has just left every window. At sequence length 32k with $W=4096$ this is an 8× cache-memory reduction with no quality impact. The ring is "unrotated" into chronological order before attention.
-- **Pre-fill and chunking.** The prompt is known in advance, so pre-fill the cache in one parallel pass; chunk long prompts at size $W$. Each chunk attends causally to itself, within-window to the cache, and not at all to tokens older than $W$.
+## Code Artifact
 
-Config: `dim=4096`, `n_layers=32`, `head_dim=128`, `hidden_dim=14336`, `n_heads=32`, `n_kv_heads=8`, `window=4096`, `vocab=32000`.
-
-## Code
+This is the core implementation structure, matching the canonical `mistral_inference` attention and cache mechanics.
 
 ```python
+from dataclasses import dataclass
+from typing import List, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
-from typing import Optional
-from dataclasses import dataclass
+from xformers.ops.fmha import memory_efficient_attention
+from xformers.ops.fmha.attn_bias import (
+    AttentionBias,
+    BlockDiagonalCausalMask,
+    BlockDiagonalCausalWithOffsetPaddedKeysMask,
+    BlockDiagonalMask,
+)
 
 
 @dataclass
@@ -37,114 +44,252 @@ class ModelArgs:
     norm_eps: float = 1e-5
 
 
-def repeat_kv(keys, values, repeats, dim):
-    keys = torch.repeat_interleave(keys, repeats=repeats, dim=dim)
-    values = torch.repeat_interleave(values, repeats=repeats, dim=dim)
-    return keys, values
+def repeat_kv(
+    keys: torch.Tensor,
+    values: torch.Tensor,
+    repeats: int,
+    dim: int,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    return (
+        torch.repeat_interleave(keys, repeats=repeats, dim=dim),
+        torch.repeat_interleave(values, repeats=repeats, dim=dim),
+    )
 
 
 class Attention(nn.Module):
-    def __init__(self, args):
+    def __init__(self, args: ModelArgs):
         super().__init__()
         self.n_heads = args.n_heads
         self.n_kv_heads = args.n_kv_heads
         self.head_dim = args.head_dim
         self.repeats = self.n_heads // self.n_kv_heads
-        self.sliding_window = args.sliding_window
-        self.scale = self.head_dim ** -0.5
         self.wq = nn.Linear(args.dim, args.n_heads * args.head_dim, bias=False)
         self.wk = nn.Linear(args.dim, args.n_kv_heads * args.head_dim, bias=False)
         self.wv = nn.Linear(args.dim, args.n_kv_heads * args.head_dim, bias=False)
         self.wo = nn.Linear(args.n_heads * args.head_dim, args.dim, bias=False)
 
-    def forward(self, x, freqs_cis, cache):
+    def forward(
+        self,
+        x: torch.Tensor,
+        freqs_cis: torch.Tensor,
+        cache: Optional["CacheView"] = None,
+        mask: Optional[BlockDiagonalMask] = None,
+    ) -> torch.Tensor:
+        assert mask is None or cache is None
         seqlen_sum, _ = x.shape
-        xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
-        xq = xq.view(seqlen_sum, self.n_heads, self.head_dim)
-        xk = xk.view(seqlen_sum, self.n_kv_heads, self.head_dim)
-        xv = xv.view(seqlen_sum, self.n_kv_heads, self.head_dim)
+
+        xq = self.wq(x).view(seqlen_sum, self.n_heads, self.head_dim)
+        xk = self.wk(x).view(seqlen_sum, self.n_kv_heads, self.head_dim)
+        xv = self.wv(x).view(seqlen_sum, self.n_kv_heads, self.head_dim)
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
         if cache is None:
             key, val = xk, xv
+            attn_mask = mask
         elif cache.prefill:
             key, val = cache.interleave_kv(xk, xv)
             cache.update(xk, xv)
+            attn_mask = cache.mask
         else:
             cache.update(xk, xv)
             key, val = cache.key, cache.value
-            key = key.view(seqlen_sum * cache.sliding_window, self.n_kv_heads, self.head_dim)
-            val = val.view(seqlen_sum * cache.sliding_window, self.n_kv_heads, self.head_dim)
+            key = key.view(seqlen_sum * cache.max_seq_len, self.n_kv_heads, self.head_dim)
+            val = val.view(seqlen_sum * cache.max_seq_len, self.n_kv_heads, self.head_dim)
+            attn_mask = cache.mask
 
         key, val = repeat_kv(key, val, self.repeats, dim=1)
-        xq, key, val = xq[None, ...], key[None, ...], val[None, ...]
-        output = memory_efficient_attention(xq, key, val, None if cache is None else cache.mask)
-        return self.wo(output.view_as(x))
+        out = memory_efficient_attention(xq[None, ...], key[None, ...], val[None, ...], attn_mask)
+        out = out.view(seqlen_sum, self.n_heads * self.head_dim)
+        return self.wo(out)
+```
+
+```python
+@dataclass
+class CacheInputMetadata:
+    positions: torch.Tensor
+    to_cache_mask: torch.Tensor
+    cached_elements: torch.Tensor
+    cache_positions: torch.Tensor
+    prefill: bool
+    mask: AttentionBias
+    seqlens: List[int]
 
 
-def unrotate(cache, seqlen):
+def get_cache_sizes(
+    n_layers: int,
+    max_seq_len: int,
+    sliding_window: Optional[Union[int, List[Optional[int]]]],
+) -> List[int]:
+    if sliding_window is None:
+        return n_layers * [max_seq_len]
+    if isinstance(sliding_window, int):
+        return n_layers * [sliding_window]
+    assert n_layers % len(sliding_window) == 0
+    repeats = n_layers // len(sliding_window)
+    return repeats * [w if w is not None else max_seq_len for w in sliding_window]
+
+
+def unrotate(cache: torch.Tensor, seqlen: int) -> torch.Tensor:
+    # cache has shape (W, H, D); return chronological order.
     position = seqlen % cache.shape[0]
     if seqlen < cache.shape[0]:
         return cache[:seqlen]
-    elif position == 0:
+    if position == 0:
         return cache
-    else:
-        return torch.cat([cache[position:], cache[:position]], dim=0)
+    return torch.cat([cache[position:], cache[:position]], dim=0)
 
 
-class RotatingBufferCache:
-    def __init__(self, n_layers, max_batch_size, sliding_window, n_kv_heads, head_dim):
-        self.sliding_window = sliding_window
-        shape = (n_layers, max_batch_size, sliding_window, n_kv_heads, head_dim)
-        self.cache_k = torch.empty(shape)
-        self.cache_v = torch.empty(shape)
-        self.kv_seqlens = None
+class CacheView:
+    def __init__(
+        self,
+        cache_k: torch.Tensor,
+        cache_v: torch.Tensor,
+        metadata: CacheInputMetadata,
+        kv_seqlens: torch.Tensor,
+    ):
+        self.cache_k = cache_k
+        self.cache_v = cache_v
+        self.metadata = metadata
+        self.kv_seqlens = kv_seqlens
 
-    def cache_positions(self, positions):
-        return positions % self.sliding_window          # slot i mod W; overwrites i - W
+    def update(self, xk: torch.Tensor, xv: torch.Tensor) -> None:
+        n_kv_heads, head_dim = self.cache_k.shape[-2:]
+        flat_k = self.cache_k.view(-1, n_kv_heads, head_dim)
+        flat_v = self.cache_v.view(-1, n_kv_heads, head_dim)
+        flat_k.index_copy_(0, self.metadata.cache_positions, xk[self.metadata.to_cache_mask])
+        flat_v.index_copy_(0, self.metadata.cache_positions, xv[self.metadata.to_cache_mask])
 
-    def to_cache_mask(self, seqlen):
-        return torch.tensor([x >= seqlen - self.sliding_window for x in range(seqlen)])
+    def interleave_kv(self, xk: torch.Tensor, xv: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        if all(s == 0 for s in self.metadata.seqlens):
+            return xk, xv
+        split_k = torch.split(xk, self.metadata.seqlens)
+        split_v = torch.split(xv, self.metadata.seqlens)
+        cache_k = [unrotate(t, s) for t, s in zip(self.cache_k, self.kv_seqlens)]
+        cache_v = [unrotate(t, s) for t, s in zip(self.cache_v, self.kv_seqlens)]
+        interleaved_k = [x for pair in zip(cache_k, split_k) for x in pair]
+        interleaved_v = [x for pair in zip(cache_v, split_v) for x in pair]
+        return torch.cat(interleaved_k, dim=0), torch.cat(interleaved_v, dim=0)
 
+    @property
+    def max_seq_len(self) -> int:
+        return self.cache_k.shape[1]
 
-class FeedForward(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.w1 = nn.Linear(args.dim, args.hidden_dim, bias=False)
-        self.w2 = nn.Linear(args.hidden_dim, args.dim, bias=False)
-        self.w3 = nn.Linear(args.dim, args.hidden_dim, bias=False)
-    def forward(self, x):
-        return self.w2(nn.functional.silu(self.w1(x)) * self.w3(x))
+    @property
+    def key(self) -> torch.Tensor:
+        return self.cache_k[: len(self.kv_seqlens)]
 
+    @property
+    def value(self) -> torch.Tensor:
+        return self.cache_v[: len(self.kv_seqlens)]
 
-class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-6):
-        super().__init__()
-        self.eps = eps
-        self.weight = nn.Parameter(torch.ones(dim))
-    def _norm(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
-    def forward(self, x):
-        return self._norm(x.float()).type_as(x) * self.weight
+    @property
+    def prefill(self) -> bool:
+        return self.metadata.prefill
 
-
-class TransformerBlock(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.attention = Attention(args)
-        self.feed_forward = FeedForward(args)
-        self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.ffn_norm = RMSNorm(args.dim, eps=args.norm_eps)
-    def forward(self, x, freqs_cis, cache):
-        h = x + self.attention(self.attention_norm(x), freqs_cis, cache)
-        return h + self.feed_forward(self.ffn_norm(h))
-
-
-class Transformer(nn.Module):
-    def __init__(self, args):
-        super().__init__()
-        self.tok_embeddings = nn.Embedding(args.vocab_size, args.dim)
-        self.layers = nn.ModuleList(TransformerBlock(args) for _ in range(args.n_layers))
-        self.norm = RMSNorm(args.dim, eps=args.norm_eps)
-        self.output = nn.Linear(args.dim, args.vocab_size, bias=False)
+    @property
+    def mask(self) -> AttentionBias:
+        return self.metadata.mask
 ```
+
+```python
+class BufferCache:
+    def __init__(
+        self,
+        n_layers: int,
+        max_batch_size: int,
+        max_seq_len: int,
+        n_kv_heads: int,
+        head_dim: int,
+        sliding_window: Optional[Union[int, List[Optional[int]]]] = None,
+    ):
+        self.cache_sizes = get_cache_sizes(n_layers, max_seq_len, sliding_window)
+        self.cache_k = {
+            i: torch.empty((max_batch_size, cache_size, n_kv_heads, head_dim))
+            for i, cache_size in enumerate(self.cache_sizes)
+        }
+        self.cache_v = {
+            i: torch.empty((max_batch_size, cache_size, n_kv_heads, head_dim))
+            for i, cache_size in enumerate(self.cache_sizes)
+        }
+        self.kv_seqlens: Optional[torch.Tensor] = None
+
+    @property
+    def device(self) -> torch.device:
+        return self.cache_k[0].device
+
+    def get_view(self, layer_id: int, metadata: CacheInputMetadata) -> CacheView:
+        assert self.kv_seqlens is not None
+        return CacheView(self.cache_k[layer_id], self.cache_v[layer_id], metadata, self.kv_seqlens)
+
+    def init_kvseqlens(self, batch_size: int) -> None:
+        self.kv_seqlens = torch.zeros((batch_size,), device=self.device, dtype=torch.long)
+
+    def update_seqlens(self, seqlens: List[int]) -> None:
+        assert self.kv_seqlens is not None
+        self.kv_seqlens += torch.tensor(seqlens, device=self.device, dtype=torch.long)
+
+    def get_input_metadata(self, seqlens: List[int]) -> List[CacheInputMetadata]:
+        if self.kv_seqlens is None:
+            self.init_kvseqlens(len(seqlens))
+        assert self.kv_seqlens is not None
+        seqpos = self.kv_seqlens.tolist()
+        return [self._get_input_metadata_layer(size, seqlens, seqpos) for size in self.cache_sizes]
+
+    def _get_input_metadata_layer(
+        self,
+        cache_size: int,
+        seqlens: List[int],
+        seqpos: List[int],
+    ) -> CacheInputMetadata:
+        masks = [[x >= seqlen - cache_size for x in range(seqlen)] for seqlen in seqlens]
+        to_cache_mask = torch.tensor(sum(masks, []), device=self.device, dtype=torch.bool)
+        cached_elements = torch.tensor([sum(mask) for mask in masks], device=self.device, dtype=torch.long)
+        positions = torch.cat(
+            [torch.arange(pos, pos + seqlen) for pos, seqlen in zip(seqpos, seqlens)]
+        ).to(device=self.device, dtype=torch.long)
+        batch_idx = torch.tensor(
+            sum([[i] * seqlen for i, seqlen in enumerate(seqlens)], []),
+            device=self.device,
+            dtype=torch.long,
+        )
+        cache_positions = positions % cache_size + batch_idx * cache_size
+
+        first_prefill = seqpos[0] == 0
+        subsequent_prefill = any(seqlen > 1 for seqlen in seqlens)
+        if first_prefill:
+            assert all(pos == 0 for pos in seqpos)
+            mask = BlockDiagonalCausalMask.from_seqlens(seqlens).make_local_attention(cache_size)
+        elif subsequent_prefill:
+            assert self.kv_seqlens is not None
+            kv_seqlen = [
+                s + cached_s.clamp(max=cache_size).item()
+                for s, cached_s in zip(seqlens, self.kv_seqlens)
+            ]
+            mask = BlockDiagonalMask.from_seqlens(q_seqlen=seqlens, kv_seqlen=kv_seqlen)
+            mask = mask.make_local_attention_from_bottomright(cache_size)
+        else:
+            assert self.kv_seqlens is not None
+            mask = BlockDiagonalCausalWithOffsetPaddedKeysMask.from_seqlens(
+                q_seqlen=seqlens,
+                kv_padding=cache_size,
+                kv_seqlen=(self.kv_seqlens + cached_elements).clamp(max=cache_size).tolist(),
+            )
+
+        return CacheInputMetadata(
+            positions=positions,
+            to_cache_mask=to_cache_mask,
+            cached_elements=cached_elements,
+            cache_positions=cache_positions[to_cache_mask],
+            prefill=first_prefill or subsequent_prefill,
+            mask=mask,
+            seqlens=seqlens,
+        )
+```
+
+## Correctness Checks
+
+- GQA cache factor: `n_heads / n_kv_heads = 32 / 8 = 4`; K and V are both reduced by this same factor, so the total KV cache is 4x smaller, not 8x.
+- Window boundary: the implementation stores and masks at most `W` keys per query. Writing position `i` to `i mod W` overwrites the entry that has just left the local window.
+- Receptive span: the local window is per layer; the theoretical long-range route is transitive across layers, giving about `kW`, not direct single-layer attention to `kW` tokens.
+- Cache length reduction: for 32K tokens and `W=4096`, dense cache length divided by rolling cache length is `32768 / 4096 = 8`.
+- RoPE positions remain absolute; only storage slots are modulo the cache size.

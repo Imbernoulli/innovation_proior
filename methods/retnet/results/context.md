@@ -70,10 +70,11 @@ multiplying a head's input by a scalar leaves the normalized output and its grad
 
 **The diagnostic that frames the problem.** Laying the candidate architectures side by side
 on the three axes makes the gap concrete: a Transformer has training parallelism and strong
-performance but \(O(N)\)-per-step inference with an \(O(N^2)\) memory footprint over a long
-sequence; a recurrent network has \(O(1)\) inference but no training parallelism and weaker
-performance; the efficient attention variants each recover one missing corner while losing
-another. No existing primitive occupies all three corners simultaneously.
+performance but \(O(N)\)-per-step decode work with an \(O(N)\) key-value cache, while its
+full-sequence attention map is quadratic for long-sequence training; a recurrent network has
+\(O(1)\) inference but no training parallelism and weaker performance; the efficient attention
+variants each recover one missing corner while losing another. No existing primitive occupies
+all three corners simultaneously.
 
 ## Baselines
 

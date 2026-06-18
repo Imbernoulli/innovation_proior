@@ -34,7 +34,8 @@ Content-loss options:
 
 where `φ_{i,j}` is the feature map from the `j`-th convolution (after activation) before the `i`-th
 maxpool of a frozen VGG19. The photo-realistic variant uses the deep `φ_{5,4}` (VGG54). VGG features
-are rescaled (≈ `1/12.75`) to match the MSE scale.
+are rescaled by `1/12.75`; equivalently, the squared VGG loss is multiplied by
+`1/(12.75²) ≈ 0.006` to match the MSE scale.
 
 Adversarial (non-saturating, for good gradients): `l^SR_Gen = Σ_n −log D(G(I^LR_n))`, the generator
 side of the minimax game
@@ -117,7 +118,7 @@ class Discriminator(nn.Module):
             layers += [nn.LeakyReLU(0.2)]; cin = cout
         self.features = nn.Sequential(*layers)
         self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d(6), nn.Flatten(),
+            nn.Flatten(),                                      # 96x96 HR crop -> 512x6x6
             nn.Linear(512 * 6 * 6, 1024), nn.LeakyReLU(0.2), nn.Linear(1024, 1))
     def forward(self, img): return self.classifier(self.features(img))
 
@@ -134,18 +135,26 @@ def truncated_vgg(i=5, j=4):
 
 vgg54 = truncated_vgg(5, 4)
 mse, bce = nn.MSELoss(), nn.BCEWithLogitsLoss()
-VGG_RESCALE = 1 / 12.75 ** 2
+VGG_LOSS_SCALE = 1.0 / (12.75 ** 2)
+
+def vgg_input_from_tanh(x):
+    x = (x + 1.0) / 2.0
+    mean = x.new_tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+    std = x.new_tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+    return (x - mean) / std
 
 def content_loss(sr, hr):
-    return VGG_RESCALE * mse(vgg54(sr), vgg54(hr))
+    return VGG_LOSS_SCALE * mse(vgg54(vgg_input_from_tanh(sr)), vgg54(vgg_input_from_tanh(hr)))
 
 def train_step(lr, hr, G, D, opt_g, opt_d):
-    sr = G(lr)
+    with torch.no_grad():
+        sr_for_d = G(lr)
     opt_d.zero_grad()
-    d_real, d_fake = D(hr), D(sr.detach())
+    d_real, d_fake = D(hr), D(sr_for_d)
     (bce(d_real, torch.ones_like(d_real)) + bce(d_fake, torch.zeros_like(d_fake))).backward()
     opt_d.step()
     opt_g.zero_grad()
+    sr = G(lr)
     adversarial = bce(D(sr), torch.ones_like(d_fake))           # non-saturating -log D(G(LR))
     g_loss = content_loss(sr, hr) + 1e-3 * adversarial
     g_loss.backward(); opt_g.step()

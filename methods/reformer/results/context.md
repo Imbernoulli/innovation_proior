@@ -13,7 +13,7 @@ $L = 64\text{K}$ on one device, while matching the quality of the unmodified
 architecture.
 
 The difficulty is not the parameter count. A back-of-the-envelope estimate makes
-this concrete: the largest reported attention layer holds $\approx 0.5\text{B}$
+this concrete: the largest reported Transformer layer holds $\approx 0.5\text{B}$
 parameters $\approx 2\text{GB}$; the input activations for $64\text{K}$ tokens at
 embedding width $1024$ and batch $8$ are $64\text{K}\times 1\text{K}\times 8
 \approx 0.5\text{B}$ floats $\approx 2\text{GB}$. Per-layer, a large model on a

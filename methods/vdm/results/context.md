@@ -32,10 +32,10 @@ signal-to-noise ratio `SNR(t) = α_t²/σ_t²`, monotonically decreasing in `t`.
 maximizes an evidence lower bound `log p(x) ≥ E_q[log p(x|z)] − KL(q(z|x)‖p(z))`, using the
 reparameterization trick to get low-variance gradients through the Gaussian latent. A corruption process with
 a learned reverse process is exactly a VAE in which the inference network is *fixed* (it is the known Gaussian
-`q`) and the latent is *deep* — a long Markov chain `z_0, z_1, …, z_1` rather than a single layer. This makes
+`q`) and the latent is *deep* — a long Markov chain of progressively noisier latents rather than a single layer. This makes
 the ELBO decompose, layer by layer, into a sum of KL terms — one per transition — plus a reconstruction term
-and a prior term. The depth of the chain is a free hyperparameter, and one can ask what happens as it goes to
-infinity.
+and a prior term. The depth of the chain is a free hyperparameter, from a finite grid
+`z_0, z_{1/T}, ..., z_1` to a possible continuous limit.
 
 **Denoising score matching and the score view.** Vincent (2011) established that fitting a model to the score
 `∇ log q(z_t|x)` of the single-example corruption is equivalent, up to an `x`-independent constant, to fitting

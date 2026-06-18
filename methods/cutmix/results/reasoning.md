@@ -34,7 +34,7 @@ Why a contiguous rectangle, and not, say, Mixup's blend or a scatter of pixels f
 
 Why apply this at the pixel level and not on a feature map? The phenomenon I'm fixing — "the net bets on one discriminative patch, occlude it and it dies" — is a statement about the function of the *input image*: occlusion, decision-boundary behavior near real images, where the object is. If I mix feature maps instead, the network gets to choose a representation that makes the constraint easy to dodge, and the occlusion no longer corresponds to a spatial occlusion of the object. The cleanest place to impose it is the rawest one, the input. (I'd expect feature-level mixing to still help somewhat — it's still a regularizer — but input-level to be best.)
 
-Which Beta? λ ~ Beta(α, α). At α = 1, Beta(1,1) is Uniform(0,1), so the area fraction is uniform — every patch size equally likely, maximally diverse occlusions, from a sliver to nearly the whole image. Small α piles mass at 0 and 1 (almost-no-mix or almost-full-swap); large α concentrates near half-and-half. Uniform is the natural default and it's the one knob; I'll sweep α to confirm but expect α = 1 to be the sweet spot for maximally diverse patches.
+Which Beta? λ ~ Beta(α, α). At α = 1, Beta(1,1) is Uniform(0,1), so the area fraction is uniform — every patch size equally likely, maximally diverse occlusions, from a sliver to nearly the whole image. Small α piles mass at 0 and 1 (almost-no-mix or almost-full-swap); large α concentrates near half-and-half. Uniform is the natural default and it's the one knob; I'll sweep α to confirm but expect α = 1 to be the sweet spot for maximally diverse patches. The probability of applying the operation is a separate training knob; for the CIFAR scaffold below I use 0.5, while the large ImageNet run can use 1.0.
 
 Now implementation, and there are two things to get right. First, the pairing: I don't need a second data loader to get image B. Within a minibatch the examples are already i.i.d. draws, so I can pair the batch with a shuffled copy of itself — one random permutation of the batch indices gives me a random partner B for every A, free of extra I/O. Same trick Mixup uses.
 
@@ -66,15 +66,16 @@ transform_train = transforms.Compose([
 ])
 trainset = datasets.CIFAR100(root='~/data', train=True, download=False,
                              transform=transform_train)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128,
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=64,
                                            shuffle=True, num_workers=8)
 
 net = build_network()                       # e.g. a ResNet / PyramidNet
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+optimizer = optim.SGD(net.parameters(), lr=0.25, momentum=0.9, weight_decay=1e-4,
+                      nesterov=True)
 net = net.cuda()
 mix_strength = 1.0                          # alpha; 1.0 -> lambda ~ Uniform(0,1)
-mix_prob = 1.0                              # fraction of iterations CutMix is applied
+mix_prob = 0.5                              # official CIFAR example; ImageNet uses 1.0
 
 
 def rand_bbox(size, lam):

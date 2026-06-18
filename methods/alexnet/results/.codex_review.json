@@ -1,9 +1,10 @@
 {
   "method": "alexnet",
-  "codex_reviewed": false,
-  "outcome": "errored",
-  "reviewed_at": null,
-  "reviewer": null,
-  "evidence": "session:rollout-2026-05-30T23-57-19-019e799a-a788-7eb3-9d81-f05f1ab7a373.jsonl",
-  "reason": "Codex task started but never produced a changelog/edits (indeterminate, no completion captured)"
+  "codex_reviewed": true,
+  "outcome": "failed",
+  "reviewed_at": "2026-06-18T07:49:53Z",
+  "reviewer": "gpt-5.5",
+  "effort": "xhigh",
+  "evidence": "this-run-rereview",
+  "reason": "Codex (gpt-5.5, xhigh) genuinely ran with --write and applied edits, and its math/source verification was sound (it cloned the original cuda-convnet AlexNet source and grounded LRN/PCA/SGD constants against layers-145.cfg). But the rewrite FAILED re-verification: it deleted every runnable python code block from answer.md, reasoning.md, and the context.md scaffold (replacing them with prose + plain-text pseudocode), so the answer no longer contains a python block to ast-parse and no longer ends in working code like every peer method. It also rewrote the first-person in-frame reasoning into an out-of-frame 'strict artifact' that introduces exactly the posterior/source-reference leaks the audit is meant to remove (references to 'the released cuda-convnet parser', 'conv1a/conv1b', 'archived layers-145.cfg', 'modern single-stream PyTorch model', 'torchvision'), and added section headers when restructuring context.md. Because the transformation regressed the deliverables rather than fixing them in place, the three result files plus notes/synthesis.md were reverted to their exact pre-review state (sha256 verified identical to originals). No faithful in-place fix was produced."
 }

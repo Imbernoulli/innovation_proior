@@ -18,7 +18,7 @@ Crucially, these optimizations help *prediction* a lot — inference memory can 
 
 **Naive allocation (no optimization).** Allocate fresh memory for every node's output and gradient. Training activation memory `O(n)`, with the largest constant. The reference point.
 
-**In-place + sharing (liveness analysis).** Apply in-place operations and memory sharing via the `O(n)` liveness heuristic. Reduces memory by a constant factor (measured 2–3× on deep ResNets) and shrinks inference to near `O(1)`. Gap: training memory is still `O(n)` — linear in depth — because gradient operators hold the forward feature maps alive; a 2–3× constant does not change the asymptotic ceiling, so very deep nets still run out of memory.
+**In-place + sharing (liveness analysis).** Apply in-place operations and memory sharing via the `O(n)` liveness heuristic. This can substantially reduce constants and shrink inference to near `O(1)`. Gap: training memory is still `O(n)` — linear in depth — because gradient operators hold the forward feature maps alive; a constant-factor reduction does not change the asymptotic ceiling, so very deep nets still run out of memory.
 
 **CPU↔GPU memory swapping / model parallelism.** Move activations to CPU or split the model across devices to fit larger models. Gap: these spend communication bandwidth (PCIe, inter-device) and do not reduce the fundamental amount of activation memory.
 

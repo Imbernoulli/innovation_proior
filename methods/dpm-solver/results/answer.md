@@ -2,177 +2,210 @@
 
 ## Problem
 
-Sampling from a diffusion probabilistic model (DPM) means numerically solving its probability-flow ODE
-from t=T to t=0, calling a large network ε_θ once per evaluation. Generic ODE solvers need ~50–1000
-evaluations; the goal is a training-free solver that reaches comparable quality in around 10. DPM-Solver
-is a dedicated solver that exploits the structure of the diffusion ODE to do exactly that.
+Sampling a diffusion probabilistic model means solving the probability-flow ODE from a high-noise time `T`
+to a small end time `epsilon`, calling a trained noise-prediction network `epsilon_theta(x, t)` at each
+evaluation. Generic ODE solvers and ancestral samplers spend tens to thousands of network evaluations. The
+goal is a training-free solver that uses the existing model and reaches good quality in roughly 10 to 20
+network evaluations.
 
-## Key idea
+## Core derivation
 
-The diffusion ODE
+The diffusion ODE is
 
-  dx_t/dt = f(t) x_t + (g²(t) / 2σ_t) ε_θ(x_t, t),   f(t)=d log α_t/dt,   g²(t)=dσ_t²/dt − 2(d log α_t/dt)σ_t²
+  dx_t/dt = f(t)x_t + (g^2(t)/(2 sigma_t)) epsilon_theta(x_t,t),
+  f(t)=d log alpha_t/dt,
+  g^2(t)=d sigma_t^2/dt - 2(d log alpha_t/dt)sigma_t^2.
 
-is *semi-linear*: an exactly-solvable linear term plus a nonlinear network term. Generic solvers discretize
-both and waste accuracy on the linear part (whose exact solution is exponential, so its discretization error
-can blow up). DPM-Solver solves the linear part exactly via variation of constants and approximates only the
-network term.
+It is semi-linear: the `f(t)x_t` part is exactly solvable, while the neural network part is not. Variation of
+constants gives, for `t < s`,
 
-1. **Variation of constants** gives the exact solution from time s to t:
-   x_t = (α_t/α_s) x_s + ∫_s^t (α_t/α_τ)(g²(τ)/2σ_τ) ε_θ(x_τ,τ) dτ.
+  x_t = (alpha_t/alpha_s)x_s + int_s^t (alpha_t/alpha_tau)(g^2(tau)/(2 sigma_tau))
+        epsilon_theta(x_tau,tau) d tau.
 
-2. **Change of variable to the half-log-SNR** λ_t := log(α_t/σ_t) (strictly decreasing in t). Using
-   g²(t) = −2σ_t² dλ_t/dt and σ_τ/α_τ = e^{−λ}, the solution collapses to an exponentially weighted integral
-   of the network alone:
+Define the half-log-SNR
 
-   **x_t = (α_t/α_s) x_s − α_t ∫_{λ_s}^{λ_t} e^{−λ} ε̂_θ(x̂_λ, λ) dλ.**
+  lambda_t = log(alpha_t/sigma_t).
 
-   All noise-schedule dependence becomes the analytic factor e^{−λ}; only the integral of ε̂_θ is approximated.
+Since the SNR decreases with forward time, `lambda_t` is strictly decreasing in `t` and is invertible. Also
 
-3. **Taylor-expand** ε̂_θ in λ around the left endpoint and integrate term by term. The scalar integrals are
-   the exponential-integrator φ-functions:
-   φ_1(h)=(e^h−1)/h, φ_2(h)=(e^h−h−1)/h², φ_3(h)=(e^h−h²/2−h−1)/h³, with h = λ_t − λ_s. Keeping k terms gives
-   a k-th order method, DPM-Solver-k (k network evaluations per step). DPM-Solver-k is provably order k for
-   k=1,2,3: error at t=0 is O(h_max^k).
+  g^2(t) = -2 sigma_t^2 d lambda_t/dt.
 
-**DPM-Solver-1 = DDIM.** With h_i = λ_{t_i} − λ_{t_{i-1}}:
-  x̃_{t_i} = (α_{t_i}/α_{t_{i-1}}) x̃_{t_{i-1}} − σ_{t_i}(e^{h_i} − 1) ε_θ(x̃_{t_{i-1}}, t_{i-1}).
-Substituting σ_t/α_t = e^{−λ_t} into the DDIM update recovers this exactly, explaining why DDIM (alone among
-first-order ODE samplers) makes full use of the semi-linearity.
+Substituting this identity and changing variables from `tau` to `lambda` yields the exact solution
 
-## Algorithm
+  x_t = (alpha_t/alpha_s)x_s - alpha_t int_{lambda_s}^{lambda_t}
+        e^{-lambda} eps_hat_theta(x_hat_lambda,lambda) d lambda.
 
-Steps are placed uniformly in λ (not in t): λ_{t_i} = λ_T + (i/M)(λ_0 − λ_T), inverting λ to recover t for the
-network input (closed form for linear/cosine VP schedules). For a fixed budget K, take as many DPM-Solver-3
-steps as fit and finish with one order-2 or order-1 step. With h = λ_t − λ_s:
+All schedule-dependent coefficients have collapsed into the known exponential weight and endpoint factors.
+The solver only approximates the network inside this weighted integral.
 
-- **Order 1:** x_t = (α_t/α_s)x_s − σ_t(e^h−1)ε_θ(x_s,s).
-- **Order 2** (r_1=1/2): intermediate node s_1 = t_λ(λ_s + r_1 h);
-  u = (α_{s_1}/α_s)x_s − σ_{s_1}(e^{r_1 h}−1)ε_θ(x_s,s);
-  x_t = (α_t/α_s)x_s − σ_t(e^h−1)ε_θ(x_s,s) − (σ_t/(2r_1))(e^h−1)(ε_θ(u,s_1) − ε_θ(x_s,s)).
-- **Order 3** (r_1=1/3, r_2=2/3): two nodes; D_1 = ε_θ(u_1,s_1)−ε_θ(x_s,s),
-  u_2 = (α_{s_2}/α_s)x_s − σ_{s_2}(e^{r_2 h}−1)ε_θ(x_s,s) − (σ_{s_2}r_2/r_1)((e^{r_2 h}−1)/(r_2 h) − 1)D_1,
-  D_2 = ε_θ(u_2,s_2)−ε_θ(x_s,s),
-  x_t = (α_t/α_s)x_s − σ_t(e^h−1)ε_θ(x_s,s) − (σ_t/r_2)((e^h−1)/h − 1)D_2.
+Taylor-expand `eps_hat_theta` in `lambda` at the left endpoint. With
 
-Use expm1(h) for e^h−1. Discrete-time models are wrapped to continuous time. Classifier guidance: replace
-ε_θ(x,t) by ε_θ(x,t) − s·σ_t ∇_x log p_t(y|x).
+  h = lambda_t - lambda_s > 0,
+  phi_k(z) = int_0^1 exp((1-delta)z) delta^{k-1}/(k-1)! d delta,
 
-## Code
+the exact step expansion is
+
+  x_t = (alpha_t/alpha_s)x_s
+        - sigma_t sum_{j=0}^n h^{j+1} phi_{j+1}(h)
+          eps_hat_theta^{(j)}(x_hat_{lambda_s},lambda_s)
+        + O(h^{n+2}),
+
+where `phi_1(h)=(e^h-1)/h`, `phi_2(h)=(e^h-h-1)/h^2`, and
+`phi_3(h)=(e^h-h^2/2-h-1)/h^3`.
+
+## Single-step updates
+
+Let `s` be the current, noisier time and `t` the next, cleaner time.
+
+**Order 1.**
+
+  x_t = (alpha_t/alpha_s)x_s - sigma_t(e^h-1)epsilon_theta(x_s,s).
+
+This is exactly DDIM after substituting `sigma/alpha = exp(-lambda)`.
+
+**Order 2.** For `r1 in (0,1)`, set `s1 = t_lambda(lambda_s + r1 h)` and
+
+  u = (alpha_s1/alpha_s)x_s - sigma_s1(e^{r1 h}-1)epsilon_theta(x_s,s).
+
+The recommended single-step branch is
+
+  x_t = (alpha_t/alpha_s)x_s
+        - sigma_t(e^h-1)epsilon_theta(x_s,s)
+        - (sigma_t/(2r1))(e^h-1)(epsilon_theta(u,s1)-epsilon_theta(x_s,s)).
+
+For the paper default `r1=1/2`, this is equivalently
+
+  x_t = (alpha_t/alpha_s)x_s - sigma_t(e^h-1)epsilon_theta(u,s1).
+
+**Order 3.** With `r1=1/3`, `r2=2/3`,
+
+  s1 = t_lambda(lambda_s + r1 h),   s2 = t_lambda(lambda_s + r2 h),
+  u1 = (alpha_s1/alpha_s)x_s - sigma_s1(e^{r1 h}-1)epsilon_theta(x_s,s),
+  D1 = epsilon_theta(u1,s1) - epsilon_theta(x_s,s),
+  u2 = (alpha_s2/alpha_s)x_s - sigma_s2(e^{r2 h}-1)epsilon_theta(x_s,s)
+       - (sigma_s2 r2/r1)((e^{r2 h}-1)/(r2 h)-1)D1,
+  D2 = epsilon_theta(u2,s2) - epsilon_theta(x_s,s),
+  x_t = (alpha_t/alpha_s)x_s - sigma_t(e^h-1)epsilon_theta(x_s,s)
+        - (sigma_t/r2)((e^h-1)/h - 1)D2.
+
+Under the paper's smoothness and Lipschitz assumptions, the global error is `O(h_max^k)` for orders
+`k=1,2,3`.
+
+## Implementation
+
+The canonical implementation is `LuChengTHU/dpm-solver/dpm_solver_pytorch.py`. The original paper branch is
+`algorithm_type="dpmsolver"`; the later `dpmsolver++` branch uses data prediction, `sigma_t/sigma_s`, and
+`expm1(-h)`, so it is not the branch below.
 
 ```python
 import torch
 
-class NoiseScheduleVP:
-    """alpha_t, sigma_t, lambda_t = log(alpha_t) - log(sigma_t), and the inverse t_lambda
-    for a variance-preserving linear schedule."""
-    def __init__(self, beta_0=0.1, beta_1=20.):
-        self.beta_0, self.beta_1 = beta_0, beta_1
-
-    def marginal_log_mean_coeff(self, t):   # log(alpha_t)
-        return -0.25 * t**2 * (self.beta_1 - self.beta_0) - 0.5 * t * self.beta_0
-
-    def marginal_alpha(self, t):
-        return torch.exp(self.marginal_log_mean_coeff(t))
-
-    def marginal_std(self, t):              # sigma_t = sqrt(1 - alpha_t^2)
-        return torch.sqrt(1. - torch.exp(2. * self.marginal_log_mean_coeff(t)))
-
-    def marginal_lambda(self, t):           # half log-SNR (the integration variable)
-        log_mean = self.marginal_log_mean_coeff(t)
-        log_std = 0.5 * torch.log(1. - torch.exp(2. * log_mean))
-        return log_mean - log_std
-
-    def inverse_lambda(self, lamb):         # t as a function of lambda (closed form)
-        tmp = 2. * (self.beta_1 - self.beta_0) * torch.logaddexp(-2. * lamb, torch.zeros((1,)).to(lamb))
-        Delta = self.beta_0**2 + tmp
-        return tmp / (torch.sqrt(Delta) + self.beta_0) / (self.beta_1 - self.beta_0)
-
 
 class DPM_Solver:
-    def __init__(self, eps_theta, noise_schedule):
-        self.model = eps_theta          # eps_theta(x, t) -> predicted noise
-        self.ns = noise_schedule
+    def __init__(self, model_fn, noise_schedule, algorithm_type="dpmsolver"):
+        assert algorithm_type == "dpmsolver"
+        self.model_fn = model_fn              # noise prediction epsilon_theta(x, t)
+        self.noise_schedule = noise_schedule  # marginal_log_mean_coeff/std/lambda/inverse_lambda
 
-    def get_time_steps(self, t_T, t_0, N, device):
-        lam_T = self.ns.marginal_lambda(torch.tensor(t_T).to(device))
-        lam_0 = self.ns.marginal_lambda(torch.tensor(t_0).to(device))
-        lam = torch.linspace(lam_T.item(), lam_0.item(), N + 1).to(device)   # uniform in lambda
-        return self.ns.inverse_lambda(lam)
+    def get_time_steps(self, skip_type, t_T, t_0, N, device):
+        if skip_type == "logSNR":
+            lambda_T = self.noise_schedule.marginal_lambda(torch.tensor(t_T).to(device))
+            lambda_0 = self.noise_schedule.marginal_lambda(torch.tensor(t_0).to(device))
+            lambdas = torch.linspace(lambda_T.item(), lambda_0.item(), N + 1).to(device)
+            return self.noise_schedule.inverse_lambda(lambdas)
+        if skip_type == "time_uniform":
+            return torch.linspace(t_T, t_0, N + 1).to(device)
+        if skip_type == "time_quadratic":
+            return torch.linspace(t_T ** 0.5, t_0 ** 0.5, N + 1).pow(2).to(device)
+        raise ValueError("skip_type must be logSNR, time_uniform, or time_quadratic")
 
-    def first_update(self, x, s, t, model_s=None):                            # DPM-Solver-1 (= DDIM)
-        ns = self.ns
-        lam_s, lam_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
-        h = lam_t - lam_s
-        log_a_s, log_a_t = ns.marginal_log_mean_coeff(s), ns.marginal_log_mean_coeff(t)
+    def get_orders_and_timesteps_for_singlestep_solver(self, steps, order, skip_type, t_T, t_0, device):
+        if order == 3:
+            K = steps // 3 + 1
+            if steps % 3 == 0:
+                orders = [3] * (K - 2) + [2, 1]
+            elif steps % 3 == 1:
+                orders = [3] * (K - 1) + [1]
+            else:
+                orders = [3] * (K - 1) + [2]
+        elif order == 2:
+            K = steps // 2 if steps % 2 == 0 else steps // 2 + 1
+            orders = [2] * K if steps % 2 == 0 else [2] * (K - 1) + [1]
+        elif order == 1:
+            K, orders = steps, [1] * steps
+        else:
+            raise ValueError("order must be 1, 2, or 3")
+
+        if skip_type == "logSNR":
+            timesteps = self.get_time_steps(skip_type, t_T, t_0, K, device)
+        else:
+            base = self.get_time_steps(skip_type, t_T, t_0, steps, device)
+            timesteps = base[torch.cumsum(torch.tensor([0] + orders), 0).to(device)]
+        return timesteps, orders
+
+    def dpm_solver_first_update(self, x, s, t, model_s=None):
+        ns = self.noise_schedule
+        lambda_s, lambda_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
+        h = lambda_t - lambda_s
+        log_alpha_s = ns.marginal_log_mean_coeff(s)
+        log_alpha_t = ns.marginal_log_mean_coeff(t)
         sigma_t = ns.marginal_std(t)
+        if model_s is None:
+            model_s = self.model_fn(x, s)
         phi_1 = torch.expm1(h)
-        if model_s is None:
-            model_s = self.model(x, s)
-        return torch.exp(log_a_t - log_a_s) * x - sigma_t * phi_1 * model_s
+        return torch.exp(log_alpha_t - log_alpha_s) * x - sigma_t * phi_1 * model_s
 
-    def second_update(self, x, s, t, r1=0.5, model_s=None):                   # DPM-Solver-2
-        ns = self.ns
-        lam_s, lam_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
-        h = lam_t - lam_s
-        s1 = ns.inverse_lambda(lam_s + r1 * h)
-        log_a_s, log_a_s1, log_a_t = (ns.marginal_log_mean_coeff(s),
-                                      ns.marginal_log_mean_coeff(s1),
-                                      ns.marginal_log_mean_coeff(t))
+    def singlestep_dpm_solver_second_update(self, x, s, t, r1=0.5, model_s=None):
+        ns = self.noise_schedule
+        lambda_s, lambda_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
+        h = lambda_t - lambda_s
+        s1 = ns.inverse_lambda(lambda_s + r1 * h)
+        log_alpha_s = ns.marginal_log_mean_coeff(s)
+        log_alpha_s1 = ns.marginal_log_mean_coeff(s1)
+        log_alpha_t = ns.marginal_log_mean_coeff(t)
         sigma_s1, sigma_t = ns.marginal_std(s1), ns.marginal_std(t)
-        phi_11, phi_1 = torch.expm1(r1 * h), torch.expm1(h)
         if model_s is None:
-            model_s = self.model(x, s)
-        x_s1 = torch.exp(log_a_s1 - log_a_s) * x - sigma_s1 * phi_11 * model_s
-        model_s1 = self.model(x_s1, s1)
-        return (torch.exp(log_a_t - log_a_s) * x
+            model_s = self.model_fn(x, s)
+        phi_11, phi_1 = torch.expm1(r1 * h), torch.expm1(h)
+        x_s1 = torch.exp(log_alpha_s1 - log_alpha_s) * x - sigma_s1 * phi_11 * model_s
+        model_s1 = self.model_fn(x_s1, s1)
+        return (torch.exp(log_alpha_t - log_alpha_s) * x
                 - sigma_t * phi_1 * model_s
                 - (0.5 / r1) * sigma_t * phi_1 * (model_s1 - model_s))
 
-    def third_update(self, x, s, t, r1=1./3., r2=2./3., model_s=None):        # DPM-Solver-3
-        ns = self.ns
-        lam_s, lam_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
-        h = lam_t - lam_s
-        s1, s2 = ns.inverse_lambda(lam_s + r1 * h), ns.inverse_lambda(lam_s + r2 * h)
-        log_a_s, log_a_s1, log_a_s2, log_a_t = (ns.marginal_log_mean_coeff(s),
-                                                ns.marginal_log_mean_coeff(s1),
-                                                ns.marginal_log_mean_coeff(s2),
-                                                ns.marginal_log_mean_coeff(t))
+    def singlestep_dpm_solver_third_update(self, x, s, t, r1=1.0 / 3.0, r2=2.0 / 3.0, model_s=None):
+        ns = self.noise_schedule
+        lambda_s, lambda_t = ns.marginal_lambda(s), ns.marginal_lambda(t)
+        h = lambda_t - lambda_s
+        s1 = ns.inverse_lambda(lambda_s + r1 * h)
+        s2 = ns.inverse_lambda(lambda_s + r2 * h)
+        log_alpha_s = ns.marginal_log_mean_coeff(s)
+        log_alpha_s1 = ns.marginal_log_mean_coeff(s1)
+        log_alpha_s2 = ns.marginal_log_mean_coeff(s2)
+        log_alpha_t = ns.marginal_log_mean_coeff(t)
         sigma_s1, sigma_s2, sigma_t = ns.marginal_std(s1), ns.marginal_std(s2), ns.marginal_std(t)
-        phi_11, phi_12, phi_1 = torch.expm1(r1 * h), torch.expm1(r2 * h), torch.expm1(h)
-        phi_22 = torch.expm1(r2 * h) / (r2 * h) - 1.
-        phi_2 = phi_1 / h - 1.
         if model_s is None:
-            model_s = self.model(x, s)
-        x_s1 = torch.exp(log_a_s1 - log_a_s) * x - sigma_s1 * phi_11 * model_s
-        model_s1 = self.model(x_s1, s1)
-        D1 = model_s1 - model_s
-        x_s2 = (torch.exp(log_a_s2 - log_a_s) * x
-                - sigma_s2 * phi_12 * model_s
-                - (r2 / r1) * sigma_s2 * phi_22 * D1)
-        model_s2 = self.model(x_s2, s2)
-        D2 = model_s2 - model_s
-        return (torch.exp(log_a_t - log_a_s) * x
-                - sigma_t * phi_1 * model_s
-                - (1. / r2) * sigma_t * phi_2 * D2)
+            model_s = self.model_fn(x, s)
+        phi_11 = torch.expm1(r1 * h)
+        phi_12 = torch.expm1(r2 * h)
+        phi_1 = torch.expm1(h)
+        phi_22 = torch.expm1(r2 * h) / (r2 * h) - 1.0
+        phi_2 = phi_1 / h - 1.0
 
-    def sample(self, x_T, steps, t_T=1.0, t_0=1e-3, order=3, device='cuda'):
-        x = x_T
-        if order == 3:
-            K = steps // 3 + 1
-            if steps % 3 == 0:   orders = [3] * (K - 2) + [2, 1]
-            elif steps % 3 == 1: orders = [3] * (K - 1) + [1]
-            else:                orders = [3] * (K - 1) + [2]
-        elif order == 2:
-            orders = [2] * (steps // 2) + ([1] if steps % 2 else [])
-            K = len(orders)
-        else:
-            K, orders = steps, [1] * steps
-        ts = self.get_time_steps(t_T, t_0, K, device)
-        for i, o in enumerate(orders):
-            s, t = ts[i], ts[i + 1]
-            x = (self.first_update if o == 1 else
-                 self.second_update if o == 2 else
-                 self.third_update)(x, s, t)
-        return x
+        x_s1 = torch.exp(log_alpha_s1 - log_alpha_s) * x - sigma_s1 * phi_11 * model_s
+        model_s1 = self.model_fn(x_s1, s1)
+        x_s2 = (torch.exp(log_alpha_s2 - log_alpha_s) * x
+                - sigma_s2 * phi_12 * model_s
+                - (r2 / r1) * sigma_s2 * phi_22 * (model_s1 - model_s))
+        model_s2 = self.model_fn(x_s2, s2)
+        return (torch.exp(log_alpha_t - log_alpha_s) * x
+                - sigma_t * phi_1 * model_s
+                - (1.0 / r2) * sigma_t * phi_2 * (model_s2 - model_s))
 ```
+
+Use `torch.expm1` for every `e^h-1` term. For classifier guidance, the noise prediction function is replaced by
+
+  epsilon_theta(x,t,y) = epsilon_theta(x,t) - scale * sigma_t * grad_x log p_t(y|x).
+
+For discrete-time models, the implementation first wraps the model so continuous `t` is mapped to the time label
+expected by the trained network.

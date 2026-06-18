@@ -1,91 +1,155 @@
-The thing I want is an exploration bonus for the genuinely hard sparse-reward games — Montezuma's Revenge, where positive rewards are hundreds of steps apart and a plain PPO agent on the extrinsic reward almost never sees a single one. The bonus has to make the agent seek out *novel* states, $r_t=e_t+i_t$ with $i_t$ large where the agent hasn't been. And because the regime that actually works in modern RL is massive parallelism — hundreds of environments, billions of frames — the bonus has to be *cheap* and *scalable*. That immediately makes me nervous about the count-style and density-model bonuses: pseudo-counts need a learned density model over images, and prediction-improvement / learning-progress bonuses need to track how much a model got better per datapoint — both are heavy and fiddly to run across thousands of actors. So I'd like something I can compute with a single forward pass of a network on a batch.
+I need a novelty signal, not a surprise signal. A forward model is tempting because its error is
+cheap: train on the stream of transitions, reward states or transitions where the model is wrong.
+But the target of forward prediction is the next observation, and the next observation is exactly
+where environment randomness enters. If a screen region contains random static, or if sticky actions
+make a doorway crossing uncertain, then no amount of data removes the prediction error. The agent can
+learn to harvest that permanent error. So raw forward error confuses the error I want, "I have not
+seen enough data here," with errors I do not want, "the answer is random" or "the inputs do not
+determine the answer."
 
-The cheap idea is prediction error: train a model on the agent's experience, and where its error is high, the state is novel — because neural networks have lower error on inputs similar to what they've trained on. The obvious instantiation is a forward dynamics model: predict the next observation (or its features) from the current observation and action, and reward the agent by the prediction error. Let me think about whether that actually behaves, by walking the agent into the worst case. Put a television showing white-noise static in the room. The next-frame content of the static is, by construction, random — no model can predict it. So the forward-prediction error on those transitions is *irreducible*: it never decays no matter how long the agent stares. The bonus stays high forever, and a reward-maximizing agent will simply park itself in front of the TV, or by a coin flip, or — and this is the version that actually bites in Atari — at a transition whose outcome is randomized by sticky actions, like a room boundary where one extra step might or might not cross. The agent oscillates there, farming the irreducible error, and stops exploring. That's the noisy-TV problem, and it's fatal for naive prediction-error curiosity.
+Let me separate the causes. Prediction error can come from lack of nearby training data, stochastic
+targets, misspecification, or optimizer dynamics. The first one is novelty. The second is the
+noisy-TV trap. The third appears whenever I ask for a prediction that is not determined by the
+inputs. The fourth never fully disappears, but I can at least avoid making it the main signal. The
+right move is therefore to choose the prediction problem, rather than inherit it from the environment.
 
-Let me be precise about *why* the forward model fails, because the diagnosis points at the fix. A prediction error can come from four things: (1) too little training data near this input — the predictor hasn't seen states like this, which is *epistemic* uncertainty and is exactly the novelty signal I want; (2) the target being predicted is genuinely *stochastic* — *aleatoric* uncertainty, which is the noisy-TV source; (3) the model being misspecified — it lacks the inputs or the capacity to represent the target; (4) the optimizer failing to fit a target the model class actually contains. I want a bonus driven by (1) alone. The forward model gets clobbered by (2): the next observation is a stochastic function of the current one whenever the environment has any randomness, so factor (2) is baked into the very prediction problem. Prediction-improvement methods try to subtract off (2) and (3) by measuring learning progress instead of raw error, but that's the expensive route I'm trying to avoid.
+The cleanest possible target is deterministic. Take the current observation and pass it through a
+function that never changes. If the target has no randomness, aleatoric error is gone. If the target
+depends only on the observation being fed to the predictor, there is no hidden transition variable or
+missing action history. The target also has to be rich enough that different images do not all look
+the same. A randomly initialized convolutional network gives me that: arbitrary but fixed features of
+the observation.
 
-So instead of fighting the stochasticity of the forward problem, what if I *choose a prediction problem whose answer is deterministic*? If the target I'm predicting is a fixed deterministic function of the current observation, then factor (2) is gone by construction — there's no randomness in the answer. And if I also make sure the target is *inside the predictor's own model class* — something the predictor can in principle represent exactly — then factor (3) is gone too. What deterministic function of the observation can I conjure that has nothing to do with the (irrelevant) dynamics and everything to do with "have I seen states like this"? Take a second neural network, initialize it randomly, and *freeze it*. Call it the target $f:\mathcal{O}\to\mathbb{R}^k$. Its output on an observation is a fixed, deterministic, arbitrary embedding. Now train a *predictor* network $\hat f:\mathcal{O}\to\mathbb{R}^k$, by gradient descent on the agent's collected observations, to mimic the target:
-$$\min_{\theta_{\hat f}}\;\mathbb{E}_x\big\|\hat f(x;\theta_{\hat f})-f(x)\big\|^2.$$
-This is *distilling* a randomly initialized network into a trained one. The intrinsic reward is just the leftover error on the new observation,
-$$i_t=\big\|\hat f(s_{t+1})-f(s_{t+1})\big\|^2.$$
-Check it against the four factors. The target $f$ is deterministic, so no aleatoric (2). The target is a neural network and I can make the predictor at least as expressive, so $f$ lives inside the predictor's model class — no misspecification (3). What's left to drive the error is (1): on observations the predictor has trained on (and ones similar to them) the distillation error is small, because gradient descent has pulled $\hat f$ toward $f$ there; on *novel* observations the predictor hasn't been pulled toward $f$ yet, so the error is high. The error *is* a novelty signal, purely from the amount of relevant training data. And it's exactly as cheap as I wanted: one forward pass each of two small networks.
+So I freeze a random target network \(f:\mathcal O \to R^k\), train a predictor
+\(\hat f_\theta:\mathcal O \to R^k\) on observations the agent has actually visited, and use the
+prediction error on the next observation as intrinsic reward:
+\[
+\ell_{\text{pred}}(x;\theta)=\frac{1}{k}\sum_{j=1}^k
+(\hat f_\theta(x)_j-\operatorname{sg}[f(x)_j])^2,\qquad
+i_t=\ell_{\text{pred}}(s_{t+1};\theta).
+\]
+I can write the same error either as a squared norm or as a mean over feature dimensions. That
+distinction is only a constant factor before reward normalization, but if the code uses a
+per-feature MSE then the artifact should use the mean.
 
-Now I have to confront the obvious objection: if the predictor is powerful enough, couldn't gradient descent just make it mimic $f$ *everywhere*, including on states it's never seen — collapsing the error to zero globally? In the limit $f$ itself is a perfect predictor of $f$, so a perfect mimic exists. If the predictor found it, the bonus would die everywhere and exploration would stop. The question is empirical — does SGD *overgeneralize* like that? I can settle it with a toy on MNIST: train a predictor to match a random target on a dataset that is mostly zeros plus a few examples of some target class, vary the proportion, and measure test error on held-out target-class images. The zeros stand in for states seen many times; the target class for states seen rarely. If the predictor overgeneralized, the test error on the rare class would be low regardless. What I'd expect — and the reason I trust this works — is that the test error *decreases as the number of target-class training examples increases*: the predictor only becomes accurate on a region once it has seen enough examples *from that region*. So SGD does not overgeneralize in the harmful way; the error stays high on the genuinely unseen, which is precisely the behavior a novelty detector needs.
+Now I need to be honest about misspecification. The ideal argument is that I can choose the target to
+be inside the predictor class, so the residual error is not caused by an impossible prediction task.
+The practical implementation follows that spirit by making the target simple -- convolutional torso
+plus one linear layer -- and the predictor at least as flexible -- the same torso shape plus extra
+fully connected layers. That does not prove SGD finds a global imitation of the target everywhere.
+In fact I do not want global imitation from data in one region. What I need is local fitting:
+visited-like states should lose error as the predictor trains, while unseen regions remain high
+until the agent gathers similar observations. A small supervised check with class-imbalanced images
+is the sanity test: error on a rare class should fall as examples of that class are added, not vanish
+just because the predictor saw many other images.
 
-There's a clean way to see *what* this error is estimating, which also tells me the predictor should be a bit *deeper* than the target. Consider Osband's randomized-prior trick for uncertainty: an ensemble $g_\theta=f_\theta+f_{\theta^*}$ with $\theta^*$ drawn from a prior, each member fit by minimizing $\mathbb{E}\|f_\theta(x)+f_{\theta^*}(x)-y\|^2$ plus a prior regularizer; the spread of the ensemble approximates the posterior, hence predictive uncertainty. Specialize the regression targets to $y=0$: then minimizing $\mathbb{E}\|f_\theta(x)+f_{\theta^*}(x)\|^2$ is exactly distilling the random function $f_{\theta^*}$ (the predictor $f_\theta$ learns to cancel it where it has data). Each output coordinate of my predictor/target pair is then like one ensemble member with shared parameters, and the MSE between predictor and target is an estimate of the *predictive variance* — the uncertainty in predicting the constant-zero function. So RND's distillation error is a cheap uncertainty estimate, and I want the predictor to have *extra* trainable layers beyond the target's structure so it can actually fit the target on visited data (rather than being a frozen mirror), while still being unable to fit it on data it hasn't seen.
+This also explains the relation to randomized priors. If a random function \(f_{\theta^*}\) is added
+as a prior and a trainable function learns to cancel it on observed data, then the remaining ensemble
+spread is an uncertainty estimate for a zero target. Here the output coordinates share parameters,
+so it is not a literal independent ensemble, but the mean squared mismatch plays the same role:
+where the data have constrained the predictor, uncertainty is low; where they have not, it is high.
 
-Now I need to feed this bonus into a policy optimizer, and there's a subtlety about *episodes* I should think through before just adding $i_t$ to $e_t$. Imagine the agent attempting a risky maneuver to reach a suspected secret room — high chance of a game over, but high curiosity payoff if it succeeds. If I treat the intrinsic return as *episodic* (truncated at game over), then a game over zeroes out all future intrinsic return, so the agent learns to be *risk-averse* about exactly the dangerous-but-novel maneuvers I want it to attempt. But the real cost of a game over isn't "all future novelty is gone forever" — it's just the opportunity cost of replaying the (now-boring) start of the game. So the intrinsic return should be *non-episodic*: it should reflect all the novel states the agent could find in the future, regardless of episode boundaries. (Episodic intrinsic reward also leaks task information through the episode structure.) But I can't make the *extrinsic* return non-episodic — that would be exploitable by an agent that grabs an early reward, deliberately gets a game over, and farms that reward in an endless cycle. So I want the intrinsic stream non-episodic and the extrinsic stream episodic — two streams with genuinely different structure.
+The next issue is the reward stream. Intrinsic reward should not reset its horizon at game over.
+Suppose a dangerous jump might reveal a new room. If death truncates all future intrinsic return, the
+agent becomes conservative about exactly the risky attempts that exploration needs. The real cost of
+death for curiosity is replaying familiar states, not losing all future novelty. So I should compute
+intrinsic returns as non-episodic: ignore done flags in the intrinsic GAE recursion.
 
-How do I value two streams with different episodicity (and, I'll want, different discounts)? The return is *linear* in the rewards, so it decomposes as $R=R_E+R_I$. That means I can fit *two separate value heads*, $V_E$ trained on the episodic extrinsic returns and $V_I$ trained on the non-episodic intrinsic returns, and recombine $V=V_E+V_I$ when I need a value. The same linearity lets each stream carry its own discount: the extrinsic reward needs a long horizon because rewards are far apart, so $\gamma_E=0.999$; the intrinsic reward works better at $\gamma_I=0.99$ (a higher intrinsic discount empirically hurts — the bonus is transient and stepping-stone-like, so a shorter horizon for it is fine). I compute advantages per stream and add them, $A=A_I+A_E$, and run PPO on the combined advantage. Two heads also just give the value function more supervisory signal, and there's a structural reason they help here: the extrinsic reward function is *stationary* while the intrinsic one is *non-stationary* (the bonus decays as the predictor learns), so it's cleaner to fit them separately than to force one head to track a moving target plus a fixed one.
+Extrinsic reward cannot use the same rule. If environment reward is made non-episodic, an agent can
+take an early reward, die on purpose, and repeat. So extrinsic returns must remain episodic. The
+linear return identity lets me keep both: estimate separate returns \(R_I\) and \(R_E\), train
+separate heads \(V_I\) and \(V_E\), and add the resulting advantages with coefficients. The
+implementation computes
+\[
+\delta^I_t=\tilde i_t+\gamma_I V_I(s_{t+1})-V_I(s_t)
+\]
+with no done mask, and
+\[
+\delta^E_t=e_t+\gamma_E(1-d_{t+1})V_E(s_{t+1})-V_E(s_t)
+\]
+with the done mask. Then PPO receives \(A_t=c_I A^I_t+c_E A^E_t\). The tuned constants are
+\(c_I=1\), \(c_E=2\), \(\gamma_I=0.99\), \(\gamma_E=0.999\), and \(\lambda=0.95\).
 
-Two normalization issues will make or break this in practice, and the second is specific to using a *random frozen* target. First, the intrinsic reward's scale varies wildly across games and across time (it's an MSE of arbitrary embeddings that shrinks as learning proceeds), so a fixed bonus coefficient won't transfer. Normalize $i_t$ by dividing by a running estimate of the standard deviation of the intrinsic *returns*, keeping the bonus on a consistent scale. Second — and this is the one that's easy to miss — the target network's parameters are *frozen at random init*, so unlike a normal trained network it *cannot adapt to the scale of the input observations*. If the observations come in at some arbitrary scale, the random target can squash them into a tiny output range and the embedding ends up nearly constant, carrying almost no information about the input, and then the distillation error is meaningless. So I have to normalize the *observations* feeding the predictor and target: whiten each dimension by subtracting a running mean and dividing by a running std, then clip to $[-5,5]$. I initialize these normalization statistics by stepping a *random* agent in the environment for a few steps before training starts, so the stats are sane from the first update. This observation normalization is applied to the predictor and target but *not* to the policy network (which has its own simple $x/255$ scaling and a 4-frame stack); the predictor/target see a single normalized frame.
+The frozen random target makes input scale unusually important. A trained network can adapt its
+first layer to the observation scale, but a frozen target cannot. If the pixel scale drives the
+random activations into a nearly constant range, the feature target stops carrying useful image
+information. Therefore the target and predictor should not receive the policy's four-frame
+\(x/255\) stack. They receive a single grayscale frame, whitened by running mean and standard
+deviation, then clipped to \([-5,5]\). Those statistics need a random-agent warmup before training
+so the first target features are not degenerate. The policy/value network keeps the ordinary four
+stacked frames scaled by \(1/255\).
 
-Putting the loop together: initialize the observation-normalization stats with a random rollout; then repeatedly collect rollouts under the current PPO policy, computing $i_t=\|\hat f(s_{t+1})-f(s_{t+1})\|^2$ for each step and updating the reward-normalization stats; per rollout, normalize the intrinsic rewards, compute non-episodic intrinsic returns/advantages and episodic extrinsic returns/advantages, sum the advantages, update the observation stats; then for a few epochs jointly optimize the policy by the PPO loss and the predictor by the distillation loss. The bonus is optimizer-agnostic — I use PPO because it's robust and needs little tuning. Now the code.
+The intrinsic reward scale also moves during training because the predictor is learning the target.
+A fixed bonus coefficient would mean different things across games and across training time. The
+implementation handles this by filtering intrinsic rewards into discounted intrinsic returns,
+tracking the running variance of those returns, and dividing the raw intrinsic rewards by the return
+standard deviation. That is not min-max scaling and not extrinsic reward normalization. Extrinsic
+rewards are clipped by sign in Atari preprocessing and then left unnormalized.
+
+The last scaling trap is the predictor update rate. If I increase the number of parallel actors, the
+policy gets more data per update. If I also train the predictor on every extra observation, the
+intrinsic reward decays faster and the policy may miss the transient stepping stones. So when using
+128 environments, keep only a random quarter of examples for the predictor loss; with more actors,
+drop more. The code implements this as a Bernoulli mask on per-example prediction losses and divides
+by the number of kept examples, clamped to at least one.
+
+Putting the pieces together, the method is not "reward what is hard to predict" in general. It is
+"reward error on a deterministic synthetic target whose only reason to remain high should be lack of
+nearby data," then value that stream with the right episode semantics. The target network is frozen
+and random; the predictor distills it only on visited observations; the bonus is the mean squared
+feature error on \(s_{t+1}\); the policy update sees a weighted sum of intrinsic and extrinsic
+advantages while the two value heads are trained on their own returns.
 
 ```python
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-K = 512  # embedding dimension of target/predictor
 
-class RND(nn.Module):
-    # target: frozen random net (deterministic target, in predictor's model class).
-    # predictor: trained to distill the target on visited observations; DEEPER so it can fit
-    # the target on seen data but does not trivially copy it everywhere.
+K = 512
+
+
+class ConvTorso(nn.Module):
     def __init__(self):
         super().__init__()
-        def conv():
-            return nn.Sequential(
-                nn.Conv2d(1, 32, 8, stride=4), nn.LeakyReLU(),
-                nn.Conv2d(32, 64, 4, stride=2), nn.LeakyReLU(),
-                nn.Conv2d(64, 64, 3, stride=1), nn.LeakyReLU(), nn.Flatten())
-        self.target = nn.Sequential(conv(), nn.Linear(3136, K))                 # single dense, frozen
-        self.predictor = nn.Sequential(conv(), nn.Linear(3136, K), nn.ReLU(),
-                                       nn.Linear(K, K), nn.ReLU(), nn.Linear(K, K))  # deeper, trainable
+        self.net = nn.Sequential(
+            nn.Conv2d(1, 32, 8, stride=4), nn.LeakyReLU(inplace=True),
+            nn.Conv2d(32, 64, 4, stride=2), nn.LeakyReLU(inplace=True),
+            nn.Conv2d(64, 64, 3, stride=1), nn.LeakyReLU(inplace=True),
+            nn.Flatten(),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class RNDBonus(nn.Module):
+    def __init__(self, feature_dim=K):
+        super().__init__()
+        self.target = nn.Sequential(ConvTorso(), nn.Linear(3136, feature_dim))
+        self.predictor = nn.Sequential(
+            ConvTorso(),
+            nn.Linear(3136, feature_dim), nn.ReLU(inplace=True),
+            nn.Linear(feature_dim, feature_dim), nn.ReLU(inplace=True),
+            nn.Linear(feature_dim, feature_dim),
+        )
         for p in self.target.parameters():
-            p.requires_grad = False                                              # target is frozen
+            p.requires_grad_(False)
 
-    def forward(self, obs):                          # obs: single normalized+clipped frame
-        return self.predictor(obs), self.target(obs)
-
-    def intrinsic_reward(self, next_obs):
+    def forward(self, normalized_single_frame):
+        pred = self.predictor(normalized_single_frame)
         with torch.no_grad():
-            pred, tgt = self.forward(next_obs)
-            return (pred - tgt).pow(2).sum(dim=1)    # i_t = ||f_hat - f||^2  (per state)
+            target = self.target(normalized_single_frame)
+        return pred, target
 
-    def distillation_loss(self, obs):
-        pred, tgt = self.forward(obs)
-        return (pred - tgt.detach()).pow(2).sum(dim=1).mean()   # train predictor toward frozen target
+    @torch.no_grad()
+    def reward(self, normalized_next_frame):
+        pred, target = self.forward(normalized_next_frame)
+        return F.mse_loss(pred, target, reduction="none").mean(dim=1)
 
-class RunningNorm:
-    # running mean/std for observation whitening and for intrinsic-return std.
-    def __init__(self, shape):
-        self.mean = torch.zeros(shape); self.var = torch.ones(shape); self.count = 1e-4
-    def update(self, x):
-        b_mean, b_var, b_n = x.mean(0), x.var(0), x.shape[0]
-        delta = b_mean - self.mean; tot = self.count + b_n
-        self.mean += delta * b_n / tot
-        self.var = (self.var * self.count + b_var * b_n + delta**2 * self.count * b_n / tot) / tot
-        self.count = tot
-
-def normalize_obs(x, stats):                         # predictor/target input only (NOT policy)
-    return ((x - stats.mean) / (stats.var.sqrt() + 1e-8)).clamp(-5.0, 5.0)
-
-# --- training loop sketch (PPO + RND), two value heads, two reward streams ---
-# init: step a RANDOM agent for M steps, update obs-norm stats.
-# per rollout of length 128 over 128 envs:
-#   for each step: a_t ~ pi; observe s_{t+1}, e_t (clipped [-1,1])
-#                  i_t = rnd.intrinsic_reward(normalize_obs(s_{t+1}, obs_stats))
-#                  update intrinsic-return-std stats with i_t
-#   normalize intrinsic rewards:  i_t /= ret_std          # consistent bonus scale
-#   R_I, A_I  from i_t  NON-EPISODIC, gamma_I = 0.99       # intrinsic value head V_I
-#   R_E, A_E  from e_t  EPISODIC,     gamma_E = 0.999      # extrinsic value head V_E
-#   A = c_I * A_I + c_E * A_E                              # c_I = 1, c_E = 2
-#   update obs-norm stats with the rollout
-#   for epoch in range(4), minibatch in range(4):
-#       optimize theta_pi by PPO clip-loss on (A, R_E, R_I) with V = V_E + V_I, Adam lr 1e-4
-#       optimize theta_predictor by distillation_loss on 25% of the batch (keep prob 0.25)
+    def loss(self, normalized_frames, keep_probability=0.25):
+        pred, target = self.forward(normalized_frames)
+        per_example = F.mse_loss(pred, target.detach(), reduction="none").mean(dim=1)
+        mask = (torch.rand_like(per_example) < keep_probability).float()
+        return (per_example * mask).sum() / mask.sum().clamp_min(1.0)
 ```
-
-The causal chain in one breath: sparse-reward games need a cheap, scalable, directed-exploration bonus → prediction error is cheap but a forward-dynamics bonus is captured forever by irreducible *aleatoric* error (the noisy-TV trap) → so pick a prediction problem with a *deterministic* answer *inside the predictor's model class*: distill a fixed randomly-initialized target network, $i_t=\|\hat f(s_{t+1})-f(s_{t+1})\|^2$, whose error is driven only by lack of nearby training data — i.e. novelty (and is an uncertainty estimate, à la randomized priors, which is why the predictor is made deeper than the target) → feed it to PPO, but split the streams: the intrinsic return non-episodic (so the agent isn't risk-averse about dangerous-but-novel maneuvers) and the extrinsic return episodic (so it can't suicide-farm rewards), valued by *two heads* $V=V_E+V_I$ with separate discounts $\gamma_E=0.999>\gamma_I=0.99$ and summed advantages → normalize the intrinsic reward by a running return-std, and crucially whiten+clip the *observations* into the frozen random target so its embedding carries information at all.

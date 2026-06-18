@@ -57,7 +57,7 @@ at higher output resolution (~56×56). Same per-region spatial branch, loss matc
 
 ## Code
 
-Grounded in the standard torchvision implementation.
+The original paper released Detectron as its reference code. The compact PyTorch artifact below mirrors the modern torchvision implementation of the same head/loss/inference semantics, with Detectron used as the original-code cross-check.
 
 ```python
 import torch
@@ -66,7 +66,7 @@ import torch.nn.functional as F
 from torchvision.ops import roi_align, MultiScaleRoIAlign
 
 
-# ---- RoIAlign: aligned region-feature extraction (no quantization, bilinear) ----
+# ---- RoIAlign-style region-feature extraction (continuous coordinates + bilinear sampling) ----
 # output_size 14 for masks (deconv -> 28), 7 for the box head; sampling_ratio=2 points/axis.
 mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"],
                                    output_size=14, sampling_ratio=2)
@@ -131,6 +131,7 @@ def fastrcnn_loss(class_logits, box_regression, labels, regression_targets):
 
 
 def project_masks_on_boxes(gt_masks, boxes, matched_idxs, M):
+    # matched_idxs selects which GT-mask plane each positive proposal is cropped from.
     rois = torch.cat([matched_idxs.to(boxes)[:, None], boxes], dim=1)
     gt_masks = gt_masks[:, None].to(rois)
     return roi_align(gt_masks, rois, (M, M), 1.0)[:, 0]

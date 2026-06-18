@@ -18,7 +18,7 @@ Now the real problem. What network computes p(x_t | x_{<t})? Two hard constraint
 
 The obvious tool for "sequence with long memory" is an RNN — an LSTM carries state forward indefinitely, in principle. But think about what training one on raw audio costs. The recurrence is sequential: backpropagation through time has to unroll step by step, t = 1, 2, 3, …, and you can't parallelize across t because step t needs the hidden state from t−1. On sequences of 10^5 or 10^6 steps that's punishing. And the memory I was promised doesn't really materialize — gradients through an LSTM struggle to carry dependencies past a few hundred steps in practice. So the RNN is slow to train *and* short-memoried on exactly the regime I need. That's the wall: I want long memory and parallel training, and the RNN gives me neither.
 
-Let me flip to convolutions. A convolutional model of p(x_t | x_{<t}) has a lovely property the RNN lacks: at training time, since the whole ground-truth waveform is known, I can compute the conditionals for *all* t in a single parallel forward pass — no unrolling. (Generation is still sequential, sample fed back in, but training is the bottleneck and training parallelizes.) To respect causality I make the convolution *causal*: each output at t depends only on inputs at t and earlier. For images that's a masked 2-D kernel; for a 1-D signal it's even simpler — take a normal convolution and shift its output forward by a few steps, equivalently left-pad the input and drop the tail, so the filter at position t never reaches past t. No recurrence, so no sequential training. 
+Let me flip to convolutions. A convolutional model of p(x_t | x_{<t}) has a lovely property the RNN lacks: at training time, since the whole ground-truth waveform is known, I can compute the conditionals for *all* t in a single parallel forward pass — no unrolling. (Generation is still sequential, sample fed back in, but training is the bottleneck and training parallelizes.) I just have to be precise about indexing. If an output is labelled as predicting x_t, it must not see x_t. A simpler implementation is to feed the prefix x_1,…,x_{T-1}: the causal output at position t may read x_1,…,x_t, and I train it against x_{t+1}. That is exactly p(x_{t+1} | x_1,…,x_t), with no target leakage. For images the equivalent is a masked 2-D kernel; for a 1-D signal I can left-pad the input so the filter at position t never reaches past t. No recurrence, so no sequential training.
 
 But now the memory question comes back in a different form: what's the receptive field of a stack of causal convolutions? Stack L layers, each with filter width k. Layer 1 sees k inputs; each subsequent layer extends the reach by (k−1). So the receptive field is
 
@@ -38,7 +38,7 @@ Plug in the doubling pattern d = 1, 2, 4, …, 512 (ten layers) and k = 2. Then 
 
   RF = (2−1)·1023 + 1 = 1024.
 
-Ten layers, receptive field 1024. The same 1024 that needed a thousand plain layers. The sum of a doubling sequence is geometric, ≈ 2^(number of layers), so the receptive field grows *exponentially* with depth while the cost — number of layers, number of multiply-adds — grows only linearly. That's the whole game: exponential reach at linear cost. Each 1,2,4,…,512 block is, in effect, a nonlinear, far cheaper stand-in for a single width-1024 convolution. And if 1024 samples isn't enough context, I don't need to keep doubling to gigantic dilations (which would leave huge holes and miss fine structure); I just *repeat the block*: 1,2,4,…,512, 1,2,4,…,512, 1,2,4,…,512. Stacking M of these blocks adds capacity and, by the same formula, multiplies the receptive field — RF ≈ (k−1)·M·(2^N − 1) + 1 for M blocks of an N-deep doubling. Repeating restarts at dilation 1 each block so the fine, adjacent-sample structure keeps getting modeled at every block, not just at the bottom.
+Ten layers, receptive field 1024. The same 1024 that needed a thousand plain layers. The sum of a doubling sequence is geometric, so the receptive field grows *exponentially* with depth while the cost — number of layers, number of multiply-adds — grows only linearly. That's the whole game: exponential reach at linear cost. Each 1,2,4,…,512 block is, in effect, a nonlinear, far cheaper stand-in for a single width-1024 convolution. And if 1024 samples isn't enough context, I don't need to keep doubling to gigantic dilations (which would leave huge holes and miss fine structure); I just *repeat the block*: 1,2,4,…,512, 1,2,4,…,512, 1,2,4,…,512. Stacking M of these blocks adds capacity and, by the same formula, gives RF = (k−1)·M·(2^N − 1) + 1 for the dilated stack. Repeating restarts at dilation 1 each block so the fine, adjacent-sample structure keeps getting modeled at every block, not just at the bottom.
 
 So the skeleton is: μ-law to 256 levels, one-hot, an initial causal conv, then a stack of dilated causal conv layers with doubling-and-repeating dilations, then read out a 256-way softmax per timestep. Let me now get the *inside* of each layer right, because there are two more choices that matter.
 
@@ -92,7 +92,7 @@ def mu_law_encode(audio, mu=QUANT - 1):
 
 
 class CausalConv1d(nn.Module):
-    # depend only on current + PAST inputs: left-pad by (k-1)*dilation, drop tail
+    # output[t] depends only on input[:t+1]; the loss shifts targets by one sample
     def __init__(self, in_ch, out_ch, kernel_size=2, dilation=1):
         super().__init__()
         self.pad = (kernel_size - 1) * dilation
@@ -128,8 +128,8 @@ class ResidualBlock(nn.Module):
 
 
 class WaveNet(nn.Module):
-    def __init__(self, n_blocks=3, n_layers=10,
-                 res_ch=32, dil_ch=32, skip_ch=256, cond_ch=None):
+    def __init__(self, n_blocks=5, n_layers=10,
+                 res_ch=32, dil_ch=32, skip_ch=512, cond_ch=None):
         super().__init__()
         self.input_conv = CausalConv1d(QUANT, res_ch, 2, 1)
         # doubling-and-repeating dilations: 1,2,4,...,512 repeated n_blocks times.
@@ -146,8 +146,7 @@ class WaveNet(nn.Module):
     @property
     def receptive_field(self):
         # dilated stack: RF = (k-1) * sum(dilations) + 1, with k=2.
-        # one 1..512 block: 1*(1+2+...+512)+1 = 1024; n_blocks of them stack up.
-        # + (k-1) for the initial causal conv (width 2).
+        # then add (k-1) for the initial width-2 causal conv, as in the reference code.
         return (2 - 1) * sum(self.dilations) + 1 + (2 - 1)
 
     def forward(self, x_onehot, cond=None):
@@ -156,14 +155,19 @@ class WaveNet(nn.Module):
         for block in self.blocks:
             x, skip = block(x, cond)
             skips = skips + skip            # sum skip contributions from every depth
-        return self.head(skips)             # (B, QUANT, T) logits
+        return self.head(skips)             # logits aligned with input positions
 
 
 def loss_fn(model, waveform, cond=None):
-    # predict each sample from its past; cross-entropy == -Σ log p(x_t | x_<t)
+    # output t reads waveform[:t+1] and predicts waveform[t+1]
     x = F.one_hot(waveform[:, :-1], QUANT).float().transpose(1, 2)
+    target = waveform[:, 1:]
     logits = model(x, cond)
-    return F.cross_entropy(logits, waveform[:, 1:])
+    # match the reference implementation: ignore positions before the full receptive field
+    warmup = model.receptive_field - 1
+    if target.size(1) <= warmup:
+        raise ValueError("waveform must be longer than the model receptive field")
+    return F.cross_entropy(logits[:, :, warmup:], target[:, warmup:])
 ```
 
-So the chain is: I wanted to model raw audio directly as p(x) = Π_t p(x_t | x_{<t}), and a categorical softmax over μ-law-companded 8-bit samples gives a tractable, shape-free output. The RNN's sequential training and short memory ruled it out for million-sample sequences, so I went to causal convolutions for parallel training — but their receptive field grows only linearly in depth, an absurd thousand layers for a sixteenth of a second. Dilating the convolutions and doubling the dilation made the receptive field grow exponentially in depth at linear cost — RF = (k−1)·Σ d_ℓ + 1, a single 1,2,…,512 block reaching 1024 samples in ten layers — and repeating the block extends it further while keeping fine structure modeled at every stage. A gated tanh/sigmoid activation gave each layer a learned, input-conditioned mask that beat ReLU on audio; residual connections made the deep stack trainable and parameterized skip connections fed every timescale directly to a small softmax head. Finally, injecting a projected conditioning signal into both gates — broadcast for a global speaker code, upsampled by a transposed conv for a local linguistic time-series — turns the babbling p(x) into a controllable p(x | h).
+So the chain is: I wanted to model raw audio directly as p(x) = Π_t p(x_t | x_{<t}), and a categorical softmax over μ-law-companded 8-bit samples gives a tractable, shape-free output. The RNN's sequential training and short memory ruled it out for million-sample sequences, so I went to causal convolutions for parallel training — with a one-sample target shift so the output that sees x_1,…,x_t predicts x_{t+1}. Plain causal stacks grow their receptive field only linearly in depth, an absurd thousand layers for a sixteenth of a second. Dilating the convolutions and doubling the dilation made the receptive field grow exponentially in depth at linear cost — RF = (k−1)·Σ d_ℓ + 1, a single 1,2,…,512 block reaching 1024 samples in ten layers — and repeating the block extends it further while keeping fine structure modeled at every stage. A gated tanh/sigmoid activation gave each layer a learned, input-conditioned mask that beat ReLU on audio; residual connections made the deep stack trainable and parameterized skip connections fed every timescale directly to a small softmax head. Finally, injecting a projected conditioning signal into both gates — broadcast for a global speaker code, upsampled by a transposed conv for a local linguistic time-series — turns the babbling p(x) into a controllable p(x | h).

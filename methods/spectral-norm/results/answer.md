@@ -2,153 +2,174 @@
 
 ## Problem
 
-In a GAN the generator learns only through the discriminator's gradient, so the
-discriminator's function class controls training stability. An unconstrained discriminator can
-become arbitrarily sharp; in the (generic) case of nearly disjoint supports between the data
-and generator distributions, the optimal discriminator separates them perfectly and has zero
-input-gradient almost everywhere, which kills the generator's learning signal. The cure is to
-restrict the discriminator to K-Lipschitz functions — but cheaply, with essentially no tuning,
-and without crippling the discriminator's capacity.
+GAN training depends on the discriminator's input gradients. If the discriminator score can become arbitrarily sharp, then in the nearly disjoint-support regime it can separate real and generated samples while giving the generator a useless or vanishing gradient. The fix is to restrict the discriminator score network to a controlled Lipschitz family, cheaply and without reducing it to a low-rank critic.
 
-## Key idea
+## Method
 
-The Lipschitz constant of a linear layer g(h) = Wh equals the **spectral norm** σ(W) — the
-largest singular value of W. By sub-multiplicativity of the Lipschitz constant under
-composition and the fact that ReLU/leaky-ReLU activations are 1-Lipschitz, the whole network
-satisfies
+For a differentiable map, local stretch is controlled by the spectral norm of the Jacobian. For a linear layer `g(h) = W h`,
 
-    ‖f‖_Lip ≤ Π_l σ(W^l).
+    ||g||_Lip = sigma(W),
 
-**Spectral normalization** sets each layer's spectral norm to 1 by dividing the weight by its
-own spectral norm,
+where `sigma(W)` is the largest singular value. With 1-Lipschitz activations,
 
-    W̄_SN = W / σ(W),    so    σ(W̄_SN) = 1   and   ‖f‖_Lip ≤ 1.
+    ||f||_Lip <= product_l sigma(W^l).
 
-Because only the largest singular value is touched, the rest of the spectrum (the rank, the
-number of usable features) is left free — unlike weight clipping, weight normalization, or
-Frobenius normalization, all of which constrain Σ_t σ_t^2 and thereby push the weight toward
-rank one ("capacity underuse"), and unlike orthonormal regularization, which forces all
-singular values to 1 and erases the spectrum.
+Normalize each weight matrix by its own spectral norm:
 
-## Fast σ(W) by power iteration
+    W_bar_SN = W / sigma(W).
 
-A full SVD per layer per step is too expensive. Only the top singular value is needed, so it
-is estimated by power iteration. Keeping a persistent left vector u̅ per layer and running a
-single iteration per update (warm-started from the previous step, since W moves little under
-SGD) is enough:
+For matrix layers this sets `sigma(W_bar_SN) = 1`; for convolutional kernels the implementation uses the proxy matrix `d_out x (d_in * k_h * k_w)`, with stride/padding effects absorbed into architecture constants.
 
-    v̅ ← W^T u̅ / ‖W^T u̅‖_2,    u̅ ← W v̅ / ‖W v̅‖_2,    σ(W) ≈ u̅^T W v̅.
+## Power Iteration
 
-Cost is two matrix–vector products per layer — negligible versus the forward/backward pass,
-and far cheaper than WGAN-GP's gradient-of-gradient penalty. For a convolutional weight
-W ∈ R^{d_out×d_in×kh×kw}, reshape to a 2-D matrix d_out × (d_in·kh·kw) before taking σ.
+A full SVD per layer per update is too expensive. Store a persistent estimate `u_l` for each layer and run one or more warm-started power iterations:
 
-## Gradient of the normalized weight
+    v_l <- (W^l)^T u_l / ||(W^l)^T u_l||_2
+    u_l <- W^l v_l / ||W^l v_l||_2
+    sigma(W^l) ~= u_l^T W^l v_l.
 
-Using ∂σ(W)/∂W = u_1 v_1^T,
+The layer persists `u`; `v` is recomputed during the `W_bar` calculation.
 
-    ∂W̄_SN/∂W_{ij} = (1/σ)( E_{ij} − [u_1 v_1^T]_{ij} W̄_SN ),
+## Gradient
 
-and with δ := (∂V/∂(W̄_SN h))^T the loss gradient with respect to the raw weight is
+For a simple top singular value,
 
-    ∂V/∂W = (1/σ(W)) ( Ê[δ h^T] − λ u_1 v_1^T ),    λ := Ê[δ^T W̄_SN h].
+    d sigma(W) / dW = u_1 v_1^T,
 
-The first term is the ordinary unnormalized gradient; the second is an adaptive penalty (λ>0
-when δ and W̄_SN h align) that prevents the column space from concentrating into one direction
-— a built-in guard against the rank collapse the method was designed to avoid.
+so
 
-## Algorithm (per update, per layer l)
+    d W_bar_SN / d W_ij
+      = (1/sigma(W)) (E_ij - [u_1 v_1^T]_ij W_bar_SN).
 
-1. v̅_l ← (W^l)^T u̅_l / ‖(W^l)^T u̅_l‖,   u̅_l ← W^l v̅_l / ‖W^l v̅_l‖.
-2. σ(W^l) = u̅_l^T W^l v̅_l;   W̄_SN^l = W^l / σ(W^l).
-3. Update raw W^l by SGD/Adam on the loss using W̄_SN^l in the forward pass.
+With `delta := (dV / d(W_bar_SN h))^T`,
 
-The persistent u̅_l (and v̅_l) carry across updates; one power iteration per step suffices. The
-only hyper-parameter is the target Lipschitz constant, which is normally just 1.
+    dV/dW = (1/sigma(W)) ( Ehat[delta h^T] - lambda u_1 v_1^T ),
+    lambda = Ehat[delta^T W_bar_SN h].
 
-## Code
+The correction term has a negative sign in the leading singular direction. It is an adaptive pressure against over-growing that direction, not a guarantee that every training trajectory avoids rank collapse.
+
+## Canonical-Code Shape
+
+The canonical code is Chainer layer code, not a PyTorch hook. A faithful minimal artifact follows the same structure: raw `W` stays trainable; a persistent `u` tracks the top left singular vector; `W_bar` computes `sigma` and calls the underlying layer with `W / sigma`.
 
 ```python
-import torch
-import torch.nn as nn
-from torch.nn.functional import normalize
+import chainer
+import chainer.functions as F
+import numpy as np
+from chainer import cuda
+from chainer.functions.array.broadcast import broadcast_to
+from chainer.functions.connection import convolution_2d, linear
+from chainer.links.connection.convolution_2d import Convolution2D
+from chainer.links.connection.linear import Linear
 
-class SpectralNorm:
-    """Forward pre-hook: replace `weight` by weight / sigma(weight) each forward pass,
-    with sigma estimated by one warm-started power-iteration step."""
-    def __init__(self, name='weight', n_power_iterations=1, dim=0, eps=1e-12):
-        self.name = name
-        self.dim = dim
+
+def _l2normalize(x, eps=1e-12):
+    xp = cuda.get_array_module(x)
+    return x / (xp.sqrt((x * x).sum()) + eps)
+
+
+def max_singular_value(W, u=None, n_power_iterations=1):
+    if n_power_iterations < 1:
+        raise ValueError("n_power_iterations must be positive")
+    xp = cuda.get_array_module(W.data)
+    if u is None:
+        u = xp.random.normal(size=(1, W.shape[0])).astype(xp.float32)
+    u_hat = u
+    for _ in range(n_power_iterations):
+        v_hat = _l2normalize(xp.dot(u_hat, W.data))
+        u_hat = _l2normalize(xp.dot(v_hat, W.data.T))
+    sigma = F.sum(F.linear(u_hat, F.transpose(W)) * v_hat)
+    return sigma, u_hat, v_hat
+
+
+class SNLinear(Linear):
+    def __init__(self, in_size, out_size, nobias=False, initialW=None,
+                 initial_bias=None, use_gamma=False, n_power_iterations=1,
+                 factor=None):
         self.n_power_iterations = n_power_iterations
-        self.eps = eps
+        self.use_gamma = use_gamma
+        self.factor = factor
+        super().__init__(in_size, out_size, nobias, initialW, initial_bias)
+        self.u = np.random.normal(size=(1, out_size)).astype("f")
+        self.register_persistent("u")
 
-    def reshape_weight_to_matrix(self, weight):
-        w = weight
-        if self.dim != 0:
-            w = w.permute(self.dim, *[d for d in range(w.dim()) if d != self.dim])
-        return w.reshape(w.size(0), -1)
-
-    def compute_weight(self, module, do_power_iteration):
-        W     = getattr(module, self.name + '_orig')   # raw trainable weight
-        u     = getattr(module, self.name + '_u')        # persistent buffers (warm start)
-        v     = getattr(module, self.name + '_v')
-        W_mat = self.reshape_weight_to_matrix(W)
-        if do_power_iteration:
-            with torch.no_grad():
-                for _ in range(self.n_power_iterations):
-                    v = normalize(torch.mv(W_mat.t(), u), dim=0, eps=self.eps, out=v)
-                    u = normalize(torch.mv(W_mat,     v), dim=0, eps=self.eps, out=u)
-                if self.n_power_iterations > 0:
-                    u = u.clone(memory_format=torch.contiguous_format)
-                    v = v.clone(memory_format=torch.contiguous_format)
-        sigma = torch.dot(u, torch.mv(W_mat, v))        # sigma(W) ~= u^T W v
-        return W / sigma                                 # gradient flows through sigma
-
-    def __call__(self, module, inputs):
-        setattr(module, self.name,
-                self.compute_weight(module, do_power_iteration=module.training))
-
-    @staticmethod
-    def apply(module, name='weight', n_power_iterations=1, dim=0, eps=1e-12):
-        fn = SpectralNorm(name, n_power_iterations, dim, eps)
-        weight = module._parameters[name]
-        with torch.no_grad():
-            W_mat = fn.reshape_weight_to_matrix(weight)
-            h, w = W_mat.size()
-            u = normalize(weight.new_empty(h).normal_(0, 1), dim=0, eps=fn.eps)
-            v = normalize(weight.new_empty(w).normal_(0, 1), dim=0, eps=fn.eps)
-        delattr(module, name)
-        module.register_parameter(name + '_orig', weight)
-        setattr(module, name, weight.data)
-        module.register_buffer(name + '_u', u)
-        module.register_buffer(name + '_v', v)
-        module.register_forward_pre_hook(fn)
-        return fn
-
-def spectral_norm(module, name='weight', n_power_iterations=1, dim=None, eps=1e-12):
-    if dim is None:
-        dim = 0
-    SpectralNorm.apply(module, name, n_power_iterations, dim, eps)
-    return module
-
-
-def D_conv(in_ch, out_ch, k, s, p):
-    return spectral_norm(nn.Conv2d(in_ch, out_ch, k, s, p))
-
-class Discriminator(nn.Module):
-    def __init__(self, ch=64):
-        super().__init__()
-        self.net = nn.Sequential(
-            D_conv(3,    ch,   3, 1, 1), nn.LeakyReLU(0.1),
-            D_conv(ch,   ch*2, 4, 2, 1), nn.LeakyReLU(0.1),
-            D_conv(ch*2, ch*4, 4, 2, 1), nn.LeakyReLU(0.1),
-            D_conv(ch*4, ch*8, 4, 2, 1), nn.LeakyReLU(0.1),
+    @property
+    def W_bar(self):
+        sigma, u_hat, _ = max_singular_value(
+            self.W, self.u, self.n_power_iterations
         )
-        self.fc = spectral_norm(nn.Linear(ch*8*4*4, 1))
-    def forward(self, x):
-        return self.fc(self.net(x).flatten(1))
+        if self.factor is not None:
+            sigma = sigma / self.factor
+        self.u[:] = u_hat
+        sigma = broadcast_to(sigma.reshape((1, 1)), self.W.shape)
+        W_bar = self.W / sigma
+        if hasattr(self, "gamma"):
+            W_bar = broadcast_to(self.gamma, self.W.shape) * W_bar
+        return W_bar
+
+    def _initialize_params(self, in_size):
+        super()._initialize_params(in_size)
+        if self.use_gamma:
+            _, s, _ = np.linalg.svd(self.W.data)
+            with self.init_scope():
+                self.gamma = chainer.Parameter(s[0], (1, 1))
+
+    def __call__(self, x):
+        if self.W.data is None:
+            self._initialize_params(x.size // x.shape[0])
+        return linear.linear(x, self.W_bar, self.b)
+
+
+class SNConvolution2D(Convolution2D):
+    def __init__(self, in_channels, out_channels, ksize, stride=1, pad=0,
+                 nobias=False, initialW=None, initial_bias=None,
+                 use_gamma=False, n_power_iterations=1, factor=None):
+        self.n_power_iterations = n_power_iterations
+        self.use_gamma = use_gamma
+        self.factor = factor
+        super().__init__(
+            in_channels, out_channels, ksize, stride, pad,
+            nobias, initialW, initial_bias
+        )
+        self.u = np.random.normal(size=(1, out_channels)).astype("f")
+        self.register_persistent("u")
+
+    @property
+    def W_bar(self):
+        W_mat = self.W.reshape(self.W.shape[0], -1)
+        sigma, u_hat, _ = max_singular_value(
+            W_mat, self.u, self.n_power_iterations
+        )
+        if self.factor is not None:
+            sigma = sigma / self.factor
+        if chainer.config.train:
+            self.u[:] = u_hat
+        sigma = broadcast_to(sigma.reshape((1, 1, 1, 1)), self.W.shape)
+        W_bar = self.W / sigma
+        if hasattr(self, "gamma"):
+            W_bar = broadcast_to(self.gamma, self.W.shape) * W_bar
+        return W_bar
+
+    def _initialize_params(self, in_size):
+        super()._initialize_params(in_size)
+        if self.use_gamma:
+            W_mat = self.W.data.reshape(self.W.shape[0], -1)
+            _, s, _ = np.linalg.svd(W_mat)
+            with self.init_scope():
+                self.gamma = chainer.Parameter(s[0], (1, 1, 1, 1))
+
+    def __call__(self, x):
+        if self.W.data is None:
+            self._initialize_params(x.shape[1])
+        return convolution_2d.convolution_2d(
+            x, self.W_bar, self.b, self.stride, self.pad
+        )
 ```
 
-An optional reparametrization W̃ = γ W̄_SN with a single learned scalar γ relaxes the strict
-1-Lipschitz constraint by one degree of freedom; it is useful when combined with another
-Lipschitz control (e.g. a gradient penalty) rather than relying on the normalization alone.
+## Optional Reparametrization
+
+The relaxation
+
+    W_tilde = gamma W_bar_SN
+
+learns a scalar scale `gamma`. It gives up the per-layer fixed 1-Lipschitz matrix scale, so it should be paired with another Lipschitz control such as a gradient penalty.

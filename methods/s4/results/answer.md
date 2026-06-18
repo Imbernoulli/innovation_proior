@@ -16,7 +16,7 @@ The same DPLR structure also gives an O(N)-per-step recurrence (the inverse of a
 
 ## Final algorithm (kernel)
 
-Given DPLR parameters Λ, P, Q (=P for LegS), B, C̃ ∈ ℂ^N and step size Δ:
+Given DPLR parameters Λ, P, Q, B, C̃ ∈ ℂ^N and step size Δ (rank 1 for HiPPO-LegS; the public half-state implementation uses a stabilized conjugate convention with Q = P.conj()):
 
 ```
 omega_k = exp(-2*pi*i*k/L),  k = 0..L-1
@@ -30,9 +30,9 @@ y       = K̄ * u   (via FFT)                   # + D u skip
 
 Discretization recurrence (bilinear):
 Ā = (I − Δ/2·A)^{-1}(I + Δ/2·A), B̄ = (I − Δ/2·A)^{-1} ΔB, C̄ = C.
-DPLR recurrence step: Ā = A_1 A_0 with A_0 = (2/Δ)I + (Λ − PQ^*), A_1 = (2/Δ)[D − DP(1+Q^*DP)^{-1}Q^*D], D = ((2/Δ) − Λ)^{-1}; both O(N) matrix-vector products.
+DPLR recurrence step: A_0 = (2/Δ)I + (Λ − PQ^*), D = ((2/Δ) − Λ)^{-1}, A_1 = D − DP(1+Q^*DP)^{-1}Q^*D; then Ā = A_1 A_0 and B̄ = 2A_1B. Equivalently, (I − Δ/2·A)^{-1} = (2/Δ)A_1, and both factors are O(N) matrix-vector products.
 
-Per 1-D SSM: ~5N parameters (Λ, P, B, C̃, Δ). A model uses H independent copies + position-wise linear channel mixing; nonlinearity, norm, residual between layers. Step size Δ is a learned per-feature timescale (init log-uniform in [10^{-3}, 10^{-1}]), enabling multi-timescale memory and test-time resolution change. A stored as conjugate pairs (half size); SSM parameters trained with lower lr and no weight decay.
+Per 1-D SSM: O(N) DPLR parameters (paper: Λ, P, Q, B, C̃, Δ; public S4 stores half conjugate pairs and ties Q to P.conj() in the stabilized DPLR kernel). A model uses H independent copies + position-wise linear channel mixing; nonlinearity, norm, residual between layers. Step size Δ is a learned per-feature timescale (init log-uniform in [10^{-3}, 10^{-1}]), enabling multi-timescale memory and test-time resolution change. SSM parameters train with lower lr and no weight decay.
 
 ## Code
 
@@ -41,65 +41,73 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-def cauchy_naive(v, z, w):
-    """Cauchy matrix-vector product: out_i = sum_n v_n / (z_i - w_n)."""
-    # v, w: (..., N) ; z: (..., L)  ->  (..., L)
-    cauchy = v.unsqueeze(-1) / (z.unsqueeze(-2) - w.unsqueeze(-1))  # (..., N, L)
-    return cauchy.sum(dim=-2)
+def cauchy_naive(v, z, w, conj=True):
+    """Sum_n v_n / (z_i - w_n), with S4's conjugate-pair expansion."""
+    if conj:
+        v = torch.cat([v, v.conj()], dim=-1)
+        w = torch.cat([w, w.conj()], dim=-1)
+    return (v.unsqueeze(-1) / (z.unsqueeze(-2) - w.unsqueeze(-1))).sum(dim=-2)
 
 def hippo_legs_nplr(N):
-    """HiPPO-LegS A, B, then its NPLR/DPLR form A = Lambda - P P^* (unitary V)."""
+    """HiPPO-LegS -> half-state DPLR parameters, following state-spaces/s4."""
     q = np.arange(N, dtype=np.float64)
     col, row = np.meshgrid(q, q)
     r = 2 * q + 1
-    M = -(np.where(row >= col, r, 0) - np.diag(q))         # the (signed) LegS matrix
+    M = -(np.where(row >= col, r, 0) - np.diag(q))
     T = np.sqrt(np.diag(2 * q + 1))
-    A = T @ M @ np.linalg.inv(T)                            # symmetrized HiPPO-LegS
-    B = np.diag(T)[:, None]                                 # HiPPO B
-    A = torch.as_tensor(A); B = torch.as_tensor(B)[:, 0]
-    P = torch.sqrt(0.5 + torch.arange(N))                   # rank-1 correction: A + P P^* is skew
-    AP = A + P[:, None] * P[None, :]                        # = (1/2) I + S, S skew-symmetric
-    # eigen-decompose the skew part S (unitary V): A_P = V (i*Imag) V^*
-    w, V = torch.linalg.eig(AP - 0.5 * torch.eye(N))        # eigenvalues pure imaginary
-    Lambda = w - 0.5                                        # diagonal of DPLR A = Lambda - P P^*
-    Vc = V.conj().transpose(-1, -2)
-    P = Vc @ P.to(V.dtype); B = Vc @ B.to(V.dtype)          # rotate P, B into the V basis
-    return Lambda, P, B, V
+    A = torch.as_tensor(T @ M @ np.linalg.inv(T), dtype=torch.float64)
+    B = torch.as_tensor(np.diag(T).copy(), dtype=torch.float64)
+
+    P = torch.sqrt(0.5 + torch.arange(N, dtype=torch.float64))
+    AP = A + P[:, None] * P[None, :]                 # -1/2 I + skew
+    w_re = torch.diagonal(AP).mean()
+    skew = AP - w_re * torch.eye(N, dtype=torch.float64)
+    w_im, V = torch.linalg.eigh((-1j * skew).to(torch.cdouble))
+    Lambda = w_re.to(torch.cdouble) + 1j * w_im
+
+    idx = torch.argsort(Lambda.imag)
+    Lambda, V = Lambda[idx][: N // 2], V[:, idx][:, : N // 2]
+    B = V.conj().T @ B.to(torch.cdouble)
+    P = V.conj().T @ P.to(torch.cdouble)
+    return Lambda.to(torch.cfloat), P.to(torch.cfloat), B.to(torch.cfloat)
 
 class S4Kernel(nn.Module):
-    """Global convolution kernel for H independent DPLR SSMs (A = Lambda - P P^*)."""
+    """Global S4 kernel for H independent half-state DPLR SSMs."""
     def __init__(self, H, N=64, dt_min=1e-3, dt_max=1e-1):
         super().__init__()
-        Lambda, P, B, _ = hippo_legs_nplr(N)
-        Lambda = Lambda.unsqueeze(0).expand(H, N).contiguous()  # (H, N)
-        P = P.unsqueeze(0).expand(H, N).contiguous()
-        B = B.unsqueeze(0).expand(H, N).contiguous()
-        C = torch.randn(H, N, dtype=torch.cfloat)               # learns C-tilde directly
+        Lambda, P, B = hippo_legs_nplr(N)
+        Lambda = Lambda.unsqueeze(0).expand(H, -1).contiguous()
+        P = P.unsqueeze(0).expand(H, -1).contiguous()
+        B = B.unsqueeze(0).expand(H, -1).contiguous()
+        C_tilde_star = torch.randn(H, N // 2, dtype=torch.cfloat)
         log_dt = torch.rand(H) * (np.log(dt_max) - np.log(dt_min)) + np.log(dt_min)
-        self.log_dt = nn.Parameter(log_dt)
+
         self.Lambda = nn.Parameter(torch.view_as_real(Lambda))
-        self.P      = nn.Parameter(torch.view_as_real(P))
-        self.B      = nn.Parameter(torch.view_as_real(B))
-        self.C      = nn.Parameter(torch.view_as_real(C))
+        self.P = nn.Parameter(torch.view_as_real(P))
+        self.B = nn.Parameter(torch.view_as_real(B))
+        self.C = nn.Parameter(torch.view_as_real(C_tilde_star))
+        self.log_dt = nn.Parameter(log_dt)
 
     def forward(self, L):
-        dt = torch.exp(self.log_dt)[:, None]                    # (H, 1)
         Lambda = torch.view_as_complex(self.Lambda)
-        P = torch.view_as_complex(self.P); Q = P.conj()
-        B = torch.view_as_complex(self.B); C = torch.view_as_complex(self.C)
+        P = torch.view_as_complex(self.P)
+        B = torch.view_as_complex(self.B)
+        C = torch.view_as_complex(self.C)       # stored as C_tilde^*
+        Q = P.conj()                            # stabilized public-code convention
+        dt = torch.exp(self.log_dt)[:, None]
 
-        omega = torch.exp(-2j * np.pi * torch.arange(L // 2 + 1) / L)   # roots of unity (rfft half)
-        g = (2.0 / dt) * (1 - omega) / (1 + omega)              # bilinear node g(z), (H, L//2+1)
+        omega = torch.exp(
+            -2j * torch.pi * torch.arange(L // 2 + 1, device=Lambda.device) / L
+        )
+        z = 2 * (1 - omega) / (1 + omega)
+        A = dt * Lambda                         # equivalent to using g(z)
 
-        # four Cauchy multiplies = four bilinear forms u^* R(z) v
-        k_CB = cauchy_naive(C.conj() * B, g, Lambda)
-        k_CP = cauchy_naive(C.conj() * P, g, Lambda)
-        k_QB = cauchy_naive(Q.conj() * B, g, Lambda)
-        k_QP = cauchy_naive(Q.conj() * P, g, Lambda)
-
-        K_hat = (2.0 / (1 + omega)) * (k_CB - k_CP * k_QB / (1 + k_QP))   # rank-1 Woodbury
-        K = torch.fft.irfft(K_hat, n=L)                         # K-bar, (H, L)
-        return K
+        r00 = cauchy_naive(dt * C * B, z, A)
+        r01 = cauchy_naive(dt * C * P, z, A)
+        r10 = cauchy_naive(dt * Q * B, z, A)
+        r11 = cauchy_naive(dt * Q * P, z, A)
+        K_hat = (2 / (1 + omega)) * (r00 - r01 * r10 / (1 + r11))
+        return torch.fft.irfft(K_hat, n=L)
 
 class S4Layer(nn.Module):
     def __init__(self, H, N=64):
@@ -111,21 +119,26 @@ class S4Layer(nn.Module):
 
     def forward(self, u):                                       # u: (B, H, L)
         L = u.size(-1)
-        K = self.kernel(L)                                      # (H, L)
+        K = self.kernel(L)                        # (H, L)
         K_f = torch.fft.rfft(K, n=2 * L)
         u_f = torch.fft.rfft(u, n=2 * L)
-        y = torch.fft.irfft(u_f * K_f, n=2 * L)[..., :L]        # non-circular conv
-        y = y + u * self.D[:, None]                             # D u skip
+        y = torch.fft.irfft(u_f * K_f, n=2 * L)[..., :L]
+        y = y + u * self.D[:, None]
         return self.out(self.activation(y))
+
+    def step(self, u_k, state):
+        # Reference recurrent mode uses A_bar = A1 @ A0 and B_bar = 2 A1 B,
+        # where both A0 and A1 are DPLR/Woodbury matrix-vector applies.
+        ...
 
 class S4Model(nn.Module):
     """Encoder -> stack of (S4Layer + LayerNorm + residual + dropout) -> mean pool -> decoder."""
     def __init__(self, d_input, d_output, d_model=128, n_layers=4, dropout=0.1):
         super().__init__()
         self.encoder = nn.Linear(d_input, d_model)
-        self.layers = nn.ModuleList(S4Layer(d_model) for _ in range(n_layers))
-        self.norms  = nn.ModuleList(nn.LayerNorm(d_model) for _ in range(n_layers))
-        self.drops  = nn.ModuleList(nn.Dropout(dropout) for _ in range(n_layers))
+        self.layers = nn.ModuleList([S4Layer(d_model) for _ in range(n_layers)])
+        self.norms  = nn.ModuleList([nn.LayerNorm(d_model) for _ in range(n_layers)])
+        self.drops  = nn.ModuleList([nn.Dropout(dropout) for _ in range(n_layers)])
         self.decoder = nn.Linear(d_model, d_output)
 
     def forward(self, x):                                       # x: (B, L, d_input)
@@ -138,7 +151,7 @@ class S4Model(nn.Module):
         return self.decoder(x)
 ```
 
-Optimizer: AdamW with cosine schedule; SSM parameters (Λ, P, B, Δ) get a smaller learning rate (~1e-3) and no weight decay; other parameters use the standard learning rate and weight decay. (A later refinement replaces Λ − PQ^* with Λ − PP^* to keep eigenvalues stable.)
+Optimizer: AdamW with cosine schedule; DPLR/SSM parameters (Λ, P/Q, B, C̃, Δ) get a smaller learning rate (~1e-3) and no weight decay; other parameters use the standard learning rate and weight decay. The paper derivation is the general Λ − PQ^* form, while the public S4 DPLR kernel stores half conjugate pairs and uses Q = P.conj() in its stabilized path.
 
 ## Complexity
 

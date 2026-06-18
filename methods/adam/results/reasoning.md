@@ -84,7 +84,7 @@ Let me write the algorithm as a loop, because I want it trivially droppable into
     v_hat = v_t/(1−beta_2^t)
     theta_t = theta_{t−1} − alpha·m_hat/(sqrt(v_hat)+eps)
 
-Two extra vectors the size of theta, a handful of elementwise ops, first-order only — memory and compute linear in the parameters, which clears the GPU constraint that killed the quasi-Newton route. One efficiency note I can fold in almost all the way: instead of materializing m_hat and v_hat explicitly each step, push both corrections into the scalar step size. Define alpha_t = alpha·sqrt(1−beta_2^t)/(1−beta_1^t). If eps is zero, then alpha_t·m_t/sqrt(v_t) = alpha·[sqrt(1−beta_2^t)/(1−beta_1^t)]·m_t/sqrt(v_t) = alpha·[m_t/(1−beta_1^t)] / [sqrt(v_t)/sqrt(1−beta_2^t)] = alpha·m_hat/sqrt(v_hat) exactly. With eps present, exact algebra would put the denominator at sqrt(v_t)+eps·sqrt(1−beta_2^t). The practical tensor update I want keeps the PyTorch-style denominator sqrt(v_t)+eps after the raw square root, so the folded form is exact for the bias-correction part and uses a fixed numerical floor rather than the time-scaled eps. Since eps is deliberately tiny, this is the right implementation tradeoff: one scalar step_size per iteration, two in-place EMA updates, one fused divide-and-add, and a stable denominator floor.
+Two extra vectors the size of theta, a handful of elementwise ops, first-order only — memory and compute linear in the parameters, which clears the GPU constraint that killed the quasi-Newton route. One efficiency note I can fold in almost all the way: instead of materializing m_hat and v_hat explicitly each step, push both corrections into the scalar step size. Define alpha_t = alpha·sqrt(1−beta_2^t)/(1−beta_1^t). If eps is zero, then alpha_t·m_t/sqrt(v_t) = alpha·[sqrt(1−beta_2^t)/(1−beta_1^t)]·m_t/sqrt(v_t) = alpha·[m_t/(1−beta_1^t)] / [sqrt(v_t)/sqrt(1−beta_2^t)] = alpha·m_hat/sqrt(v_hat) exactly. With eps present, exact algebra would put the denominator at sqrt(v_t)+eps·sqrt(1−beta_2^t). The practical tensor update I want keeps the library-style denominator sqrt(v_t)+eps after the raw square root, so the folded form is exact for the bias-correction part and uses a fixed numerical floor rather than the time-scaled eps. Since eps is deliberately tiny, this is the right implementation tradeoff: one scalar step_size per iteration, two in-place EMA updates, one fused divide-and-add, and a stable denominator floor.
 
 Now I want theory, because I'm claiming this is principled and not just three good ideas stapled together. The natural language is online convex optimization: an adversary hands me convex cost functions f_1,...,f_T one at a time; before seeing f_t I must commit to theta_t; I measure myself by regret against the best fixed point for the whole sequence,
 
@@ -202,59 +202,6 @@ With beta_2 very close to 1 this envelope is essentially one, and with the defau
 
 One more practical thought: the last iterate of any stochastic method is noisy — it rattles around the optimum at the noise floor — and Polyak–Ruppert averaging of the iterates is known to improve stochastic-approximation convergence (Polyak & Juditsky 1992; Ruppert 1988; Moulines & Bach 2011 for the non-asymptotic story). I can fold an EMA of the parameters themselves — theta_bar_t = beta_2·theta_bar_{t−1} + (1−beta_2)·theta_t, de-biased by the same 1/(1−beta_2^t) — into the same loop with a single extra line, weighting recent iterates more heavily than a uniform Polyak average. Cheap, and worth checking whether the averaged iterate generalizes better.
 
-So let me put the whole reasoning into the code I'd actually ship, filling the one empty slot in the optimizer harness — the per-parameter update rule. Two state vectors per parameter, the elementwise EMAs, the folded bias correction, the fused divide-and-add step:
-
-```python
-import math
-import torch
-
-
-class Optimizer:
-    """The harness from before: owns per-parameter state, applies an update in step()."""
-
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
-        self.params = list(params)
-        self.lr, self.betas, self.eps, self.weight_decay = lr, betas, eps, weight_decay
-        self.state = {id(p): {} for p in self.params}
-
-    def zero_grad(self):
-        for p in self.params:
-            p.grad = None
-
-    @torch.no_grad()
-    def step(self):
-        beta1, beta2 = self.betas
-        for p in self.params:
-            if p.grad is None:
-                continue
-            grad = p.grad                            # g_t = grad of stochastic objective f_t
-            state = self.state[id(p)]
-            if len(state) == 0:                      # initialize m_0 = v_0 = 0, t = 0
-                state['step'] = 0
-                state['exp_avg'] = torch.zeros_like(p)      # m: first-moment EMA (momentum)
-                state['exp_avg_sq'] = torch.zeros_like(p)   # v: second-raw-moment EMA (denom)
-            exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-            state['step'] += 1
-            t = state['step']
-
-            if self.weight_decay != 0:               # optional L2 penalty folded into the gradient
-                grad = grad.add(p, alpha=self.weight_decay)
-
-            # m_t = beta1*m_{t-1} + (1-beta1)*g_t    (smoothed first moment)
-            exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-            # v_t = beta2*v_{t-1} + (1-beta2)*g_t^2  (smoothed second raw moment, elementwise)
-            exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-
-            denom = exp_avg_sq.sqrt().add_(self.eps)        # sqrt(v_t) + eps  (floors zero-grad coords)
-
-            bias_correction1 = 1 - beta1 ** t        # (1 - beta1^t): undoes m's zero-init bias
-            bias_correction2 = 1 - beta2 ** t        # (1 - beta2^t): undoes v's zero-init bias
-            # fold both corrections into one scalar:
-            # PyTorch-style folded bias correction; exact for eps=0, with eps kept as a fixed floor.
-            step_size = self.lr * math.sqrt(bias_correction2) / bias_correction1
-
-            # theta_t = theta_{t-1} - alpha_t * m_t / (sqrt(v_t) + eps)  (trust-region / SNR step)
-            p.addcdiv_(exp_avg, denom, value=-step_size)
-```
+So the implementation shape is now forced, filling the one empty slot in the optimizer harness. I keep two state vectors per parameter and one integer timestep. On each step I optionally fold an L2 penalty into the gradient, update the first EMA and the second-raw-moment EMA in place, build the denominator as the square root of the second buffer plus eps, compute `step_size = alpha * sqrt(1−beta_2^t)/(1−beta_1^t)`, and add the fused elementwise update `−step_size * m_t/(sqrt(v_t)+eps)`. That is the whole computational artifact: two linear-memory buffers, scalar bias corrections, and one per-coordinate divide. For the infinity-norm sibling I swap the second buffer for `u_t = max(beta_2 u_{t−1}, |g_t|)` with a tiny practical floor in code, bias-correct only the first moment, and use the slightly larger default step size.
 
 I now have the causal chain. I started stuck with SGD's single global learning rate on noisy, sparse, non-stationary gradients, knowing it's structurally wrong because different layers need different scales. Momentum gave me a smoothed first-moment direction that averages noise and damps oscillation, but no per-parameter scale. AdaGrad gave me per-parameter scale by dividing by accumulated squared gradients — provably great on sparse data — but its monotonically growing sum decays the effective learning rate to zero, killing learning on the non-stationary problems I care about. RMSProp fixed that by forgetting, with an EMA of squared gradients, but had no bias correction, so pushing beta_2 near 1 — which sparsity demands, to average a rare signal over a long window — biases the zero-initialized estimate toward zero and blows up the first steps. Unrolling the EMA and taking its expectation showed the bias is exactly the multiplicative factor (1−beta_2^t), so dividing by it de-biases the estimate and makes the near-1 beta_2 regime safe; the same argument with (1−beta_1^t) de-biases the first moment. The resulting ratio m_hat/sqrt(v_hat) turned out scale-invariant (so alpha is a parameter-space trust region, |Delta| ⪅ alpha), and a signal-to-noise ratio that self-anneals as the optimum nears. AdaGrad and RMSProp both reappear as limiting cases — beta_1 = 0 for the latter, infinitesimal (1−beta_2) plus annealed alpha for the former — confirming I found the right generalization rather than a fourth competitor. The decay-rate defaults follow from EMA window lengths (short, responsive window for the numerator; long, smooth window for the noisier denominator I divide by); eps is the divide-by-zero floor sized below any healthy gradient RMS. The online-convex regret analysis gives the clean O(sqrt(T)) bound when the sharper gradient-summation and monotone-preconditioner controls hold, and the unconditional Cauchy fallback still gives vanishing average regret with a logarithmic factor in this proof route. The infinity-norm limit of the same construction collapses the power-EMA into a clean running max that needs no bias correction on that denominator and gives an alpha-scale envelope. And the whole thing drops into the standard minibatch training loop as two EMA vectors and a handful of elementwise ops, first-order, memory linear in the parameters.

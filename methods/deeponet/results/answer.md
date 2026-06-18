@@ -1,30 +1,33 @@
 # DeepONet
 
-**Problem.** Learn a nonlinear *operator* G: u ↦ G(u) — a map from an input function to an output function (e.g. the solution map of an ODE/PDE, an integral operator) — from data, accurately and with small generalization error, covering both non-local and differential operators without restricting inputs/outputs to a grid.
+DeepONet learns an operator \(G:u\mapsto G(u)\) by representing the input function with fixed sensor values and evaluating the output at query points. For sensor values \([u(x_1),\ldots,u(x_m)]\) and query coordinate \(y\), it uses two networks:
 
-**Key idea.** Encode the input function u by its values at m fixed "sensors" [u(x₁), …, u(x_m)], and take the output query location y as a second input; the target is the scalar G(u)(y). The operator universal-approximation theorem (Chen & Chen 1995) gives an explicit factorized form — a sum of p products of (a network of the sensor values) and (a function of y). DeepONet realizes this with two sub-networks: a **branch** net that maps the sensor values to coefficients [b₁, …, b_p], and a **trunk** net that maps y to basis functions [t₁, …, t_p], merged by a dot product:
+\[
+b(u)=\operatorname{branch}(u(x_1),\ldots,u(x_m))\in\mathbb{R}^p,\qquad
+t(y)=\sigma(\operatorname{trunk}(y))\in\mathbb{R}^p.
+\]
 
-  G(u)(y) ≈ Σ_{k=1}^{p} b_k(u) · t_k(y) + b₀.
+The scalar prediction is the inner product plus a learned bias:
 
-The branch handles *which function*, the trunk handles *where*; this branch/trunk split is the inductive bias that makes the model generalize far better than a fully-connected network on the concatenated input [u(x₁), …, u(x_m), y].
+\[
+\widehat{G}(u)(y)=\sum_{k=1}^{p} b_k(u)t_k(y)+b_0.
+\]
 
-**Universal approximation theorem for operators (the seed).** For σ continuous non-polynomial, V a compact set of input functions, G a nonlinear continuous operator, and any ε > 0, there exist n, p, m and constants such that
+The stacked form uses \(p\) separate branch networks, one per coefficient. The unstacked form uses one branch network with \(p\) outputs; it is the practical default because it shares features, uses fewer parameters, and preserves the same inner-product operator form. The generalized approximation statement is:
 
-|G(u)(y) − Σ_{k=1}^{p} [Σ_{i=1}^{n} c_iᵏ σ(Σ_{j=1}^{m} ξ_{ij}ᵏ u(x_j) + θ_iᵏ)] · [σ(w_k·y + ζ_k)]| < ε
+\[
+|G(u)(y)-\langle g(u(x_1),\ldots,u(x_m)),f(y)\rangle|<\varepsilon
+\]
 
-for all u ∈ V and y in the output domain. The first bracket is the branch (a net of the sensor values → scalar), the second is the trunk (a neuron of y).
+for continuous \(G:V\to C(K_2)\) on compact sets, with suitable sensors and continuous vector functions \(g:\mathbb{R}^m\to\mathbb{R}^p\), \(f:\mathbb{R}^d\to\mathbb{R}^p\). Neural networks satisfying ordinary universal approximation can instantiate \(g\) and \(f\).
 
-**Architecture choices.**
-- *Two sub-nets, dot-product merge.* Directly the theorem's sum-of-products; the trunk's t_k are a learned basis in y, the branch's b_k are input-dependent coefficients.
-- *Deep sub-nets.* The theorem only needs shallow nets; deepening both adds expressivity (lower approximation error).
-- *Trunk activates its last layer*, so the t_k are basis-function outputs (matching σ(w_k·y + ζ_k)).
-- *Bias b₀ (and branch last-layer bias).* Not required by the theorem; reduces generalization error and training variance.
-- *Stacked vs unstacked.* Stacked = the literal theorem: one trunk + p separate branch nets (one scalar b_k each). Unstacked = one trunk + a single branch net emitting all of [b₁, …, b_p]. Since p ≳ 10, the unstacked form has far fewer parameters, trains faster, uses less memory, and — despite a slightly larger training error — has *smaller* generalization/test error (tighter, near-linear train–test correlation). Use unstacked with bias.
-- *Sub-net type.* FNN by default (no grid needed); CNN if sensors lie on a grid; attention for general settings.
+For an ODE solution operator with input interpolation error \(\kappa(m,V)\) and Lipschitz constant \(c\), the finite-sensor error obeys
 
-**Number of sensors.** A compactness argument (V compact ⇒ the reconstructed-function sets and their unions are compact ⇒ G of them is compact) shows a finite sensor count m suffices to reach any accuracy ε; the required m grows with the richness of the input-function space, with error falling fast as sensors are added and then plateauing once u is resolved.
+\[
+\|G(u)(d)-G(u_m)(d)\|_2\le c(b-a)\kappa(m,V)e^{c(b-a)}.
+\]
 
-**Code (PyTorch, unstacked with bias).**
+For squared-exponential Gaussian random fields, \(\kappa(m,V)=O(1/(m^2l^2))\), so rougher input functions need more sensors.
 
 ```python
 import torch
@@ -32,38 +35,40 @@ import torch.nn as nn
 
 
 class FNN(nn.Module):
-    def __init__(self, layer_sizes, activation=nn.Tanh(), last_activation=False):
+    def __init__(self, layer_sizes, activation=nn.Tanh()):
         super().__init__()
         self.linears = nn.ModuleList(
-            nn.Linear(layer_sizes[i], layer_sizes[i + 1]) for i in range(len(layer_sizes) - 1)
+            nn.Linear(layer_sizes[i], layer_sizes[i + 1])
+            for i in range(len(layer_sizes) - 1)
         )
         self.activation = activation
-        self.last_activation = last_activation
 
     def forward(self, x):
-        for i, lin in enumerate(self.linears):
-            x = lin(x)
-            if i < len(self.linears) - 1 or self.last_activation:
+        for i, linear in enumerate(self.linears):
+            x = linear(x)
+            if i < len(self.linears) - 1:
                 x = self.activation(x)
         return x
 
 
 class DeepONet(nn.Module):
-    def __init__(self, m, p, branch_layers, trunk_layers, activation=nn.Tanh()):
+    def __init__(self, branch_layers, trunk_layers, activation=nn.Tanh()):
         super().__init__()
-        self.branch = FNN([m] + branch_layers + [p], activation)               # [u(x_1..m)] -> [b_1..b_p]
-        self.trunk = FNN(trunk_layers + [p], activation, last_activation=True)  # y -> [t_1..t_p]
-        self.b0 = nn.Parameter(torch.zeros(1))                                  # overall bias
+        if branch_layers[-1] != trunk_layers[-1]:
+            raise ValueError("branch and trunk output widths must match")
+        self.branch = FNN(branch_layers, activation)
+        self.trunk = FNN(trunk_layers, activation)
+        self.activation = activation
+        self.bias = nn.Parameter(torch.tensor(0.0))
 
     def forward(self, u_sensors, y):
-        b = self.branch(u_sensors)                 # [batch, p]
-        t = self.trunk(y)                          # [batch, p]
-        out = torch.einsum("bi,bi->b", b, t)       # sum_k b_k t_k
-        return out + self.b0                        # [batch]
+        b = self.branch(u_sensors)
+        t = self.activation(self.trunk(y))
+        out = torch.einsum("bi,bi->b", b, t).unsqueeze(1)
+        return out + self.bias
 
-    def forward_grid(self, u_sensors, y):
-        # one set of input functions evaluated at all query points y
-        b = self.branch(u_sensors)                 # [batch, p]
-        t = self.trunk(y)                          # [n_y, p]
-        return torch.einsum("bi,ni->bn", b, t) + self.b0   # [batch, n_y]
+    def forward_grid(self, u_sensors, y_grid):
+        b = self.branch(u_sensors)
+        t = self.activation(self.trunk(y_grid))
+        return torch.einsum("bi,ni->bn", b, t) + self.bias
 ```

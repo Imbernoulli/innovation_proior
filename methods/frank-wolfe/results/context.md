@@ -1,178 +1,106 @@
-# Context: minimizing a smooth convex function over a constraint set
+## Research Question
 
-## Research question
+The problem is to minimize a differentiable convex objective over a compact convex feasible set:
 
-The problem is to minimize a continuously differentiable convex function over a constraint set,
+```text
+minimize f(x) subject to x in D.
+```
 
-  minimize f(x)  subject to  x ∈ D,
+The feasible set may be a polytope, a simplex, an l1 or nuclear-norm ball, a convex hull of structured atoms, or another compact convex set that is easy to describe but not necessarily easy to project onto. The objective is accessed through a first-order oracle: at a feasible point we can evaluate the value and gradient, but we do not assume Hessians, exact global minimization of the objective, or a cheap dense representation of all feasible points.
 
-where D ⊆ Rⁿ is a compact convex set and f is convex with a gradient ∇f that we can evaluate. We
-only have first-order access to f: at any feasible point x we can read off f(x) and ∇f(x), nothing
-more. This is the workhorse setting behind least-squares with a constraint, support-vector training,
-matrix-completion under a trace-norm budget, density estimation over a mixture simplex, and the
-convex relaxations of combinatorial "sparsity" problems, where D is the convex hull of a structured
-set of atoms (sparse vectors, low-rank matrices, permutation matrices).
+The direct gradient idea has an immediate defect. A step such as `x - eta grad f(x)` need not lie in `D`. A constrained method therefore needs a way to keep every iterate feasible. It also needs a per-iteration primitive that is cheaper than solving the original problem, a useful stopping certificate despite not knowing `f(x*)`, and, on atomic domains, iterates that remain sparse or low-rank rather than becoming dense ambient vectors.
 
-What a solution must achieve is concrete. (i) Every iterate has to stay **feasible** — the gradient
-points wherever it likes, generally straight out of D, so the raw step x − η∇f(x) leaves the set and
-must somehow be brought back. (ii) Each iteration must be **cheap** on the domains that matter in
-practice. The natural way to enforce feasibility is Euclidean projection onto D, but on a trace-norm
-ball that projection is a full singular-value decomposition, on the Birkhoff polytope it is a
-quadratic program over n! vertices, on a structured atomic norm it can be as hard as the original
-problem — so a method whose per-step cost is dominated by projection inherits exactly the cost we are
-trying to avoid. (iii) On these atomic domains we would like the **iterate itself to be cheap to
-represent** — sparse, or low-rank — not a dense point in a huge ambient space. And (iv) since f(x*)
-is unknown, we would like a **computable certificate** of how far the current point is from optimal,
-to know when to stop.
+The central pressure is computational rather than merely formal. Euclidean projection back to `D` is itself an optimization problem:
 
-## Background
+```text
+Pi_D(y) = argmin_{z in D} ||z - y||^2.
+```
 
-**Convexity and the supporting linearization.** For a differentiable convex f, the first-order
-condition says the tangent plane at any point lies below the graph:
+On simple boxes or Euclidean balls this is harmless. On spectral, assignment, and general atomic domains it can be the dominant cost of the iteration.
 
-  f(y) ≥ f(x) + ⟨y − x, ∇f(x)⟩   for all x, y.
+## Mathematical Tools
 
-This is the single most-used fact about convex functions: the linear model L_x(y) = f(x) + ⟨y − x,
-∇f(x)⟩ is a global underestimator of f. Among many consequences, minimizing f over D has its optimum
-characterized by the variational inequality ⟨x* − x, ∇f(x*)⟩ ≥ 0 for all x ∈ D.
+Convexity gives a global lower model at every point:
 
-**Smoothness (Lipschitz gradient) and the descent lemma.** A function is β-smooth in a norm ‖·‖ if
-‖∇f(x) − ∇f(y)‖_* ≤ β‖x − y‖, with ‖·‖_* the dual norm. Smoothness gives the upper companion to the
-convex lower bound (Nesterov, *Introductory Lectures on Convex Optimization*, 2004, Lemma 1.2.3):
+```text
+f(y) >= f(x) + <y - x, grad f(x)> for all x,y.
+```
 
-  f(y) ≤ f(x) + ⟨y − x, ∇f(x)⟩ + (β/2)‖y − x‖².
+This tangent inequality is the main certificate mechanism available from first-order information. If `x*` is optimal, substituting `y = x*` compares the current value to the unknown optimum using only a linear expression involving `grad f(x)`.
 
-So a smooth convex f is sandwiched between its tangent plane and a quadratic. This quadratic
-over-estimate is what lets a first-order method take a definite step and *guarantee* a decrease,
-rather than only hoping for one; it is the engine behind every O(1/k)-type rate for smooth problems.
+Smoothness gives the companion upper model. If the gradient is `L`-Lipschitz in a chosen norm, then
 
-**Extreme points and linear optimization over D.** A linear functional ⟨·, c⟩ minimized over a
-compact convex set has an extreme-point minimizer — for a polytope, a vertex. The
-operation
+```text
+f(y) <= f(x) + <y - x, grad f(x)> + (L/2)||y - x||^2.
+```
 
-  s = argmin_{s ∈ D} ⟨s, c⟩,
+This is what turns a local linear prediction into a guaranteed descent statement once the step length is controlled.
 
-minimizing a *linear* functional over D, is exactly linear programming when D is a polytope given by
-linear constraints; it is the support function −Ω*_D(−c) of the set. On the structured domains above
-it has closed forms or fast combinatorial routines: over an ℓ_p-ball it is closed-form (a single
-coordinate or a normalized vector, via Hölder duality); over the simplex it is "pick the smallest
-coordinate"; over the trace-norm ball it is a single top singular-vector pair; over the Birkhoff
-polytope it is the Hungarian assignment algorithm in O(n³); over a submodular polyhedron it is
-Edmonds' greedy algorithm in O(n log n). When a face of minimizers exists, it can be
-tie-broken to return an extreme point.
+Compact convex sets also make linear optimization meaningful. A linear functional over a compact convex set attains its minimum, and over a polytope it may be chosen at a vertex. In many structured domains, minimizing a linear functional is much cheaper than projecting: on the simplex it is a coordinate choice; on a nuclear-norm ball it is a top singular-vector computation; on the Birkhoff polytope it is an assignment problem; on many atomic hulls it is exactly the available combinatorial oracle.
 
-**The cost-of-projection observation.** The empirical/structural fact that motivates everything: on
-the domains above, the projection Π_D(y) = argmin_{z ∈ D} ‖z − y‖² is itself a nontrivial convex
-program. For an Euclidean ball or an ℓ₁-ball it has a fast combinatorial solution, but for a
-trace-norm ball it needs the full SVD, for a general polytope it is a QP, and for atomic/structured
-norms it can be as expensive as the problem we set out to solve. Whenever the bottleneck of a
-constrained first-order method is the projection, the method is only as practical as that projection
-is cheap.
-
-**Caratheodory and sparse representations.** Any point of the convex hull of a set of vertices is a
-convex combination of at most n + 1 of them, and a point that is a convex combination of only k ≪ n
-vertices is correspondingly sparse (or low-rank) relative to a generic point of D. There is also a
-hardness floor relating sparsity to accuracy: for f(x) = ‖x‖² on the simplex Δ_n, any x supported on
-k coordinates has f(x) − f(x*) ≥ 1/k − 1/n, so no scheme building its iterate from k vertices can do
-better than O(1/k) accuracy at sparsity k.
+Sparse representation is another geometric fact in the background. A point in a convex hull can be represented as a convex combination of atoms, and a point assembled from only a few atoms is sparse or low-rank relative to a generic feasible point.
 
 ## Baselines
 
-**Projected (sub)gradient descent.** The standard constrained first-order method (analysis as in
-Nesterov 2004; Bubeck, *Convex Optimization: Algorithms and Complexity*, 2014). It iterates a
-gradient step followed by a projection back onto D:
+Projected gradient descent first moves in the negative-gradient direction and then repairs feasibility:
 
-  y_{t+1} = x_t − η ∇f(x_t),   x_{t+1} = Π_D(y_{t+1}),   Π_D(y) = argmin_{z ∈ D} ‖z − y‖².
+```text
+y_{t+1} = x_t - eta grad f(x_t)
+x_{t+1} = Pi_D(y_{t+1})
+```
 
-For Lipschitz f it gives the dimension-free rate f(x̄_t) − f(x*) ≤ RL/√t (Θ(1/ε²) oracle calls); for
-β-smooth f, projected gradient with η = 1/β converges at O(1/t). Its analysis is intrinsically
-Euclidean — it leans on the non-expansiveness of the Euclidean projection, ‖Π_D(y) − x‖ ≤ ‖y − x‖ for
-x ∈ D — and its rate constants depend on the Euclidean geometry of D. **Gap it leaves open:** the
-per-step bottleneck is the projection, which on trace-norm balls, the Birkhoff polytope, and
-structured atomic norms is a full QP/SVD — as costly as the original problem. The iterates are also
-generically dense, with no built-in sparsity or low-rank structure, and the method offers no
-by-product optimality certificate.
+For smooth convex objectives it has the familiar `O(1/t)` type rate under standard assumptions. Its weak point is the projection. If `Pi_D` is a quadratic program, a full singular-value decomposition, or another expensive inner solve, then each outer first-order step inherits that cost. The projection step also does not by itself preserve a sparse atomic decomposition.
 
-**Mirror descent / proximal methods.** Replace the Euclidean projection by a Bregman projection
-adapted to the geometry of D (entropic mirror map on the simplex, etc.). This improves the dependence
-on the geometry/dimension for some domains, but it still requires solving a prox/projection
-subproblem each step, and on spectral or combinatorial domains that subproblem remains expensive.
-**Gap it leaves open:** same structural issue — a nontrivial projection-like solve per iteration, and
-no automatic sparse/low-rank iterate.
+Mirror and proximal methods replace Euclidean projection by a Bregman or prox subproblem better matched to the domain geometry. This can be excellent on domains with a cheap prox, such as the simplex with entropy, but it still requires a projection-like subproblem each iteration. When the prox is the expensive part, the same bottleneck remains.
 
-**Second-order and interior-point methods.** Newton-type and interior-point methods converge in very
-few iterations (log(1/ε) accuracy) but require solving linear systems / handling the Hessian, and
-their per-iteration cost and memory scale poorly with dimension; their behavior is tied to the
-conditioning (the "distortion") of the problem. **Gap it leaves open:** not viable when n is large or
-when D is only accessible through a linear oracle rather than an explicit constraint description.
+Second-order and interior-point methods can converge in fewer iterations, but they require linear-system solves, Hessian or barrier structure, and explicit constraint representations. They are not the right primitive when the feasible set is exposed mainly through an optimization oracle and the dimension is large.
 
-**The original quadratic-programming setting.** Linear programming over polyhedra was, by the
-mid-1950s, solved efficiently by the simplex method, but minimizing a *quadratic* objective subject
-to linear inequality constraints had no comparably practical algorithm. **Gap it
-leaves open:** the mature, efficient LP machinery does not apply directly to a nonlinear (quadratic)
-objective, and no practical algorithm for the constrained-quadratic case had emerged from it.
+The older quadratic-programming setting adds a historical version of the same gap. Linear programming tools can optimize a linear objective over linear constraints, but a convex quadratic objective over those constraints is not itself a linear program. A useful method would exploit the mature linear subproblem machinery without making every iteration a full quadratic solve.
 
-## Evaluation settings
+## Evaluation Settings
 
-Natural problem classes for this setting include:
+Important test settings include convex quadratic programs over polyhedra, constrained least squares over an l1 ball, optimization over the probability simplex, nuclear-norm constrained matrix problems, and combinatorial polytopes such as assignment or flow polytopes.
 
-- **Constrained quadratic programs:** minimize a convex quadratic subject to linear inequality
-  constraints (the polyhedral setting), where the linearized subproblem is an LP.
-- **Constrained least squares / LASSO-type problems:** min ‖Y − Dx‖² subject to ‖x‖₁ ≤ s, i.e.
-  optimization over an ℓ₁-ball, including the structured-dictionary case where the dictionary is
-  huge (size exponential in n) but admits a polynomial-time linear oracle (e.g. incidence vectors of
-  spanning trees, optimized by a greedy algorithm).
-- **Optimization over the unit simplex** Δ_n: density estimation, boosting, support-vector / minimum
-  enclosing ball problems, where the linear oracle is a single argmin over coordinates.
-- **Trace-norm / nuclear-norm constrained matrix problems** (matrix completion, low-rank recovery),
-  where the linear oracle is a top singular-vector computation and the alternative — projection —
-  needs a full SVD.
-- **Combinatorial polytopes:** the Birkhoff polytope of doubly-stochastic matrices (permutation
-  problems), rotation matrices, submodular polyhedra.
+The relevant measurements are:
 
-The yardsticks are: convergence rate in the primal error f(x_k) − f(x*) as a function of iteration
-count k, the cost of one iteration on each domain (projection/SVD vs. linear oracle), and the
-sparsity / rank of the produced iterate.
+- primal error `f(x_k) - f(x*)`;
+- a computable certificate or duality gap;
+- cost of one feasibility-preserving step;
+- whether the domain primitive is projection, prox, separation, or linear minimization;
+- sparsity, atom count, or rank of the iterate;
+- robustness of the rate to affine reparameterizations and scaling of the feasible set.
 
-## Code framework
+The ideal method should use the cheapest available structured primitive, never leave the feasible region, and produce an explicit certificate that can stop the run before the optimum value is known.
 
-The scaffold is a generic constrained-optimization harness: a smooth convex objective exposing value
-and gradient, a feasible set exposing whatever oracle it can support, a step-size rule, and an outer
-loop. The open slot is how to use ∇f to produce the next feasible iterate.
+## Code Framework
+
+The implementation scaffold has a smooth convex objective and a feasible set. It deliberately exposes the competing feasibility primitives without deciding which one the outer loop should build around.
 
 ```python
 import numpy as np
 
 class SmoothConvexObjective:
-    """A differentiable convex f: provides value and gradient (first-order oracle only)."""
     def value(self, x):
         raise NotImplementedError
+
     def grad(self, x):
         raise NotImplementedError
 
 class FeasibleSet:
-    """The compact convex constraint set D. Exposes whatever oracle(s) D can support.
-
-    Euclidean projection is the classical primitive but may be as hard as the whole problem
-    on many D. Implementations fill in whatever operations the domain affords.
-    """
     def project(self, y):
-        # argmin_{z in D} ||z - y||^2  -- may be expensive (QP / SVD) or unavailable.
+        """Return argmin_{z in D} ||z - y||^2, if this is cheap."""
         raise NotImplementedError
 
-def step_size(k):
-    # TODO: choose a step-size schedule for the outer loop.
-    raise NotImplementedError
+    def linear_optimize(self, c):
+        """Return an optimizer of a linear objective over D, if this is cheap."""
+        raise NotImplementedError
 
 def minimize(objective: SmoothConvexObjective, domain: FeasibleSet, x0, max_iter):
-    """Outer loop: from x_k and grad f(x_k), produce the next FEASIBLE iterate x_{k+1}.
-
-    The body is the open question. The classical fill-in is gradient-step-then-project.
-    """
     x = np.array(x0, dtype=float)
     for k in range(max_iter):
         g = objective.grad(x)
-        # TODO: use g to move to the next feasible point.
+        # The design problem: use g and the available domain primitive
+        # to produce a new feasible point without an expensive inner solve.
         pass
     return x
 ```

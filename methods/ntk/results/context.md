@@ -81,10 +81,11 @@ positive-definiteness of dot-product kernels. Daniely et al. (2016) give the
 "dual" of a function under a Gaussian: if mu = sum_i a_i h_i in Hermite
 polynomials, then E_{(X,Y) ~ N(0, [[1, rho],[rho, 1]])}[mu(X) mu(Y)] =
 sum_i a_i^2 rho^i. Gneiting (2013), generalizing Schoenberg, states that a
-kernel f(x^T x') on the unit sphere S^{n0-1} is positive-definite for every n0
-iff f's power-series coefficients are strictly positive for infinitely many even
-and infinitely many odd powers. High-dimensional data motivates the sphere: data
-points often share roughly the same norm, so the dot product carries the signal.
+dot-product kernel f(x^T x') on spheres is strictly positive definite across
+all dimensions exactly when its power-series coefficients are positive for
+infinitely many even and infinitely many odd powers. High-dimensional data
+motivates the sphere: data points often share roughly the same norm, so the dot
+product carries the signal.
 
 ## Baselines
 
@@ -135,9 +136,9 @@ points often share roughly the same norm, so the dot product carries the signal.
 
 ## Code framework
 
-The primitives that already exist: numpy/torch tensors, autograd for Jacobians,
-a Gaussian-expectation evaluation for a nonlinearity, and a linear solver. The
-slots the method will fill:
+The primitives that already exist: numpy/torch tensors, automatic
+differentiation, Gaussian-expectation evaluation for a nonlinearity, and a
+linear solver. The slots the method will fill:
 
 ```python
 import numpy as np
@@ -180,7 +181,7 @@ class Net(torch.nn.Module):
 
 def finite_net_probe(net, X, Xp):
     """A finite-net counterpart of limit_object, computed from the network's
-    parameter Jacobians via autograd, to compare against the large-width limit."""
+    automatic-differentiation data, to compare against the large-width limit."""
     # TODO
     pass
 

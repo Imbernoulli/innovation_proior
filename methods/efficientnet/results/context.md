@@ -152,8 +152,7 @@ The prior methods a new scaling rule would be measured against, or would build o
 - **Training recipe available at the time.** RMSProp optimizer (decay and momentum ~0.9), batch-norm
   momentum 0.99, weight decay 1e-5, a learning rate that warms to ~0.25 and decays geometrically;
   the smooth activation x·σ(x); AutoAugment data augmentation; stochastic depth (drop whole residual
-  branches with some survival probability); dropout before the classifier, increased for larger
-  models.
+  branches with some survival probability); dropout before the classifier.
 
 ## Code framework
 

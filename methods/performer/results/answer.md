@@ -2,142 +2,151 @@
 
 ## Problem
 
-Regular softmax self-attention forms an `L × L` score matrix, costing `O(L²d)` time and `O(L² + Ld)` memory in the sequence length `L`. This is prohibitive for long sequences. The goal is to approximate the **same** full, dense softmax attention in **linear** time and memory, with provable accuracy, and without assuming sparsity or low rank.
+Softmax attention computes
 
-## Key idea
+    A = exp(QK^T / sqrt(d)),   D = diag(A 1_L),   Att(Q,K,V) = D^{-1} A V.
 
-Softmax attention is `Att(Q,K,V) = D⁻¹ A V`, `A = exp(QKᵀ/√d)`, `D = diag(A 1_L)`. The `L²` cost is only there because `A` is built before multiplying by `V`. If the score is a dot product of feature maps, `A(i,j) = φ(q_i)ᵀφ(k_j)`, associativity removes the `L²` object:
+The `L x L` matrix `A` costs `O(L^2 d)` time and `O(L^2 + Ld)` memory. The target is still dense softmax attention, not a sparse, local, or low-rank replacement.
 
-    Att̂(Q,K,V) = D̂⁻¹ (Q'((K')ᵀ V)),   D̂ = diag(Q'((K')ᵀ 1_L)),
+## Method
 
-where `Q', K' ∈ R^{L×m}` stack the feature rows `φ(q_i)ᵀ, φ(k_j)ᵀ`. Computing `(K')ᵀV` (an `m×d` matrix) then `Q'·(…)` costs `O(Lmd)` time and `O(Lm + Ld + md)` memory — linear in `L`.
+If the score matrix can be approximated by feature-map inner products,
 
-The feature map comes from **FAVOR+** (Fast Attention Via positive Orthogonal Random features):
+    A(i,j) ~= phi(q_i)^T phi(k_j),
 
-- **Positive random features (R+).** The softmax kernel `SM(x,y) = exp(xᵀy)` is, by completing the square in a Gaussian integral,
-  `SM(x,y) = E_{ω∼N(0,I)}[ exp(ωᵀx − ‖x‖²/2) · exp(ωᵀy − ‖y‖²/2) ]`,
-  giving the unbiased, strictly **non-negative** feature map
-  `φ⁺(u) = (exp(−‖u‖²/2)/√m)(exp(ω_1ᵀu), …, exp(ω_mᵀu))`.
-  Non-negativity keeps `D̂` a positive normalizer. Its MSE is `(1/m)exp(‖x+y‖²)·SM(x,y)²·(1−exp(−‖x+y‖²))`, which **→ 0** as `SM → 0` — the opposite of the trigonometric (sin/cos) feature map, whose MSE carries a factor `SM⁻²` and **diverges** as `SM → 0`, producing negative/blown-up normalizers and unstable training. A symmetrized `cosh` variant (`f = exp(±u)`) lowers the variance further.
+then attention can be evaluated without forming `A`:
 
-- **Orthogonal random features (O).** Sampling `ω_1,…,ω_m` (with `m ≤ d`) exactly orthogonal — Gram-Schmidt on a Gaussian block, which leaves each marginal `N(0,I)` so the estimator stays unbiased — reduces MSE by an explicit, strictly positive gap that holds for **every** dimension `d`:
-  `MSE(orthogonal) ≤ MSE(iid) − (2(m−1)/(m(d+2)))·(SM(x,y) − exp(−(‖x‖²+‖y‖²)/2))²`.
-  Positivity of the feature coefficients is what makes this gap non-negative.
+    Att_hat(Q,K,V) = D_hat^{-1} Q'((K')^T V),
+    D_hat = diag(Q'((K')^T 1_L)).
 
-- **Causal case via prefix sums.** Masking to `j ≤ i` turns the global sum `Σ_j φ(k_j)(v_j,1)ᵀ` into a running prefix sum `G_i = Σ_{j≤i} φ(k_j)(v_j,1)ᵀ`; the output row is `φ(q_i)ᵀG_i`. This is a cumulative sum: `O(L)` work, `O(log L)` parallel depth, no `L×L` matrix.
+This costs `O(Lmd)` time and `O(Lm + Ld + md)` memory for `m` features.
 
-- **Generalized attention.** Any non-negative feature `φ(x) = f(ωᵀx) + ε` works; `f = ReLU` is a strong, numerically clean default.
+FAVOR+ chooses `phi` by positive orthogonal random features:
 
-The number of random features needed for a uniform `ε`-approximation of `A` is `m = Θ(d log d)`, **independent of `L`**.
+    SM(x,y) = exp(x^T y)
+            = E_{omega ~ N(0,I)}[
+                exp(omega^T x - ||x||^2/2)
+                exp(omega^T y - ||y||^2/2)
+              ],
 
-## Algorithm
+so
 
-Inputs `Q, K, V ∈ R^{L×d}`, feature count `m`, orthogonal projection `W ∈ R^{m×d}`:
+    phi_+(u) = m^{-1/2} exp(-||u||^2/2)
+               (exp(omega_1^T u), ..., exp(omega_m^T u)).
 
-1. `Q' = φ(Q)`, `K' = φ(K)` rowwise, with `φ` either the positive softmax map (`exp`, with `d^{-1/4}` scaling and a max-subtraction for stability) or the generalized map (`ReLU(Wu)+ε`).
-2. Append a ones column: `C = [V | 1_L]`.
-3. **Bidirectional:** `Buf = Q'((K')ᵀC) ∈ R^{L×(d+1)}`. **Causal:** `Buf_i = G_i^{PS} Q'_i` with `G_i^{PS} = Σ_{j≤i} K'_j C_jᵀ` (prefix sum).
-4. Split `Buf = [AV̂ | D̂]`; return `diag(D̂)⁻¹ AV̂`.
+This estimates each softmax-kernel entry unbiasedly and keeps every estimated score nonnegative. The row-normalized output `D_hat^{-1} A_hat V` is a ratio estimator, so the exact unbiasedness claim belongs to the kernel/attention-matrix entries before row normalization.
 
-Periodically redraw `W` to avoid an unlucky projection.
+For independent samples, the paper's MSE identities are
 
-## Code
+    MSE(SM_hat_trig) =
+      (1/(2m)) exp(||x+y||^2) SM(x,y)^{-2}
+      (1 - exp(-||x-y||^2))^2,
+
+    MSE(SM_hat_+) =
+      (1/m) exp(||x+y||^2) SM(x,y)^2
+      (1 - exp(-||x+y||^2)),
+
+    MSE(SM_hat_hyp+) =
+      (1/2)(1 - exp(-||x+y||^2)) MSE(SM_hat_+).
+
+Thus trigonometric features become high-variance as `SM(x,y) -> 0`, while positive features become low-variance in that regime.
+
+Orthogonal sampling reduces MSE further. For `m <= d` within an orthogonal block,
+
+    MSE(SM_hat_ort+) <= MSE(SM_hat_+)
+      - 2(m-1)/(m(d+2))
+        (SM(x,y) - exp(-(||x||^2 + ||y||^2)/2))^2.
+
+Implementations with `m > d` stack independent `d x d` orthogonal blocks plus a partial final block. The uniform convergence theorem gives `m = Theta((d/delta^2) log(4 d^{3/4} R / delta))`, with query/key norms bounded by `R` and `delta` set by the desired entrywise error; the dependence is on `d`, `R`, and precision, not on sequence length `L`.
+
+For causal attention, replace the global sum by a prefix sum:
+
+    G_i = sum_{j <= i} phi(k_j) [v_j, 1]^T,
+    output_i = phi(q_i)^T G_i,
+
+which costs `O(Lmd)` and never forms the lower-triangular `L x L` mask.
+
+## Canonical Implementation
+
+The paper points to `google-research/google-research/performer/fast_attention`; the local reference checkout is under `methods/performer/code/google-research` at commit `4fde028f6017e16aefcbc2b6d3f77f70b9f6b421`. The following is a compact, faithful skeleton of the JAX implementation defaults and tensor operations:
 
 ```python
 import math
-from functools import partial
-import torch
-import torch.nn as nn
-from einops import repeat
+import jax
+from jax import random
+import jax.numpy as jnp
 
-# Orthogonal Gaussian projection (the "O" of FAVOR+): orthogonal rows with
-# chi-distributed lengths, so each row is marginally N(0, I_d) -> unbiased.
-def orthogonal_block(d, device=None):
-    g = torch.randn((d, d), device=device)
-    q, _ = torch.linalg.qr(g)
-    return q.t()
+SOFTMAX_DEFAULTS = dict(
+    renormalize_attention=True,
+    numerical_stabilizer=1e-6,
+    nb_features=256,
+    ortho_features=True,
+    ortho_scaling=0,
+    redraw_features=True,
+)
 
-def gaussian_orthogonal_matrix(m, d, scaling=0, device=None):
-    blocks = [orthogonal_block(d, device) for _ in range(m // d)]
-    rem = m - (m // d) * d
-    if rem > 0:
-        blocks.append(orthogonal_block(d, device)[:rem])
-    W = torch.cat(blocks)
+GENERALIZED_DEFAULTS = dict(
+    renormalize_attention=True,
+    numerical_stabilizer=0.0,
+    nb_features=256,
+    features_type="deterministic",
+    kernel_fn=jax.nn.relu,
+    kernel_epsilon=1e-3,
+    redraw_features=False,
+)
+
+def gaussian_orthogonal_random_matrix(key, nb_rows, nb_columns, scaling=0):
+    blocks = []
+    rng = key
+    for _ in range(nb_rows // nb_columns):
+        rng, block_key = random.split(rng)
+        q, _ = jnp.linalg.qr(random.normal(block_key, (nb_columns, nb_columns)))
+        blocks.append(q.T)
+    remaining = nb_rows - len(blocks) * nb_columns
+    if remaining:
+        rng, block_key = random.split(rng)
+        q, _ = jnp.linalg.qr(random.normal(block_key, (nb_columns, nb_columns)))
+        blocks.append(q.T[:remaining])
+
+    matrix = jnp.vstack(blocks)
     if scaling == 0:
-        mult = torch.randn((m, d), device=device).norm(dim=1)   # ||N(0,I_d)||
+        multiplier = jnp.linalg.norm(random.normal(key, (nb_rows, nb_columns)), axis=1)
+    elif scaling == 1:
+        multiplier = math.sqrt(float(nb_columns)) * jnp.ones((nb_rows,))
     else:
-        mult = math.sqrt(d) * torch.ones((m,), device=device)   # SMREG sphere
-    return torch.diag(mult) @ W
+        raise ValueError("scaling must be 0 or 1")
+    return jnp.diag(multiplier) @ matrix
 
-# Positive softmax features (the "R+"): unbiased, non-negative, low variance
-# as the kernel -> 0. d^{-1/4} folds softmax's 1/sqrt(d); max-subtraction
-# (cancels in D^{-1}AV) keeps exp() in range.
-def softmax_kernel(data, projection, is_query, eps=1e-4):
-    b, h, *_ = data.shape
-    norm = data.shape[-1] ** -0.25
-    ratio = projection.shape[0] ** -0.5
-    W = repeat(projection, 'm d -> b h m d', b=b, h=h).type_as(data)
-    data_dash = torch.einsum('...id,...md->...im', norm * data, W)
-    diag = (data ** 2).sum(dim=-1, keepdim=True) * (norm ** 2) / 2.0
+def softmax_features(data, projection_matrix, is_query, attention_axes=(-2,), eps=1e-6):
+    data_normalizer = data.shape[-1] ** -0.25
+    ratio = projection_matrix.shape[0] ** -0.5
+    data_dash = jnp.einsum("...d,md->...m", data_normalizer * data, projection_matrix)
+    diag = jnp.sum(data ** 2, axis=-1, keepdims=True) * (data_normalizer ** 2) / 2.0
     if is_query:
-        data_dash = ratio * (torch.exp(data_dash - diag
-                     - data_dash.amax(dim=-1, keepdim=True).detach()) + eps)
+        max_term = jnp.max(data_dash, axis=-1, keepdims=True)
     else:
-        data_dash = ratio * (torch.exp(data_dash - diag
-                     - data_dash.amax(dim=(-1, -2), keepdim=True).detach()) + eps)
-    return data_dash.type_as(data)
+        max_term = jnp.max(data_dash, axis=(-1,) + attention_axes, keepdims=True)
+    return ratio * (jnp.exp(data_dash - diag - max_term) + eps)
 
-# Generalized features: phi(u) = f(W u) + eps, default f = ReLU.
-def generalized_kernel(data, projection, kernel_fn=nn.ReLU(), eps=1e-3):
-    b, h, *_ = data.shape
-    norm = data.shape[-1] ** -0.25
-    W = repeat(projection, 'm d -> b h m d', b=b, h=h).type_as(data)
-    data_dash = torch.einsum('...id,...md->...im', norm * data, W)
-    return (kernel_fn(data_dash) + eps).type_as(data)
+def generalized_features(data, projection_matrix=None, kernel_fn=jax.nn.relu, eps=1e-3):
+    if projection_matrix is None:
+        return kernel_fn(data) + eps
+    return kernel_fn(jnp.einsum("...d,md->...m", data, projection_matrix)) + eps
 
-# Reassociation: (K'^T V) first, then Q' times it. Never builds L x L.
-def linear_attention(q, k, v):
-    k_sum = k.sum(dim=-2)
-    D_inv = 1.0 / torch.einsum('...id,...d->...i', q, k_sum)
-    context = torch.einsum('...id,...ie->...de', k, v)        # K'^T V
-    return torch.einsum('...de,...id,...i->...ie', context, q, D_inv)
+def noncausal_favor(q_prime, k_prime, value, eps=1e-6):
+    z = jnp.einsum("...lm,...ld->...md", k_prime, value)
+    w = jnp.einsum("...lm,...md->...ld", q_prime, z)
+    normalizer = jnp.einsum("...lm,...m->...l", q_prime, k_prime.sum(axis=-2))
+    normalizer = normalizer + 2 * eps * (jnp.abs(normalizer) <= eps)
+    return w / normalizer[..., None]
 
-# Causal: prefix-sum so token i sees only j <= i.
-def causal_linear_attention(q, k, v, chunk=128, eps=1e-6):
-    last_k, last_ctx, outs = 0, 0, []
-    for q_, k_, v_ in zip(*(t.chunk(chunk, dim=-2) for t in (q, k, v))):
-        k_cumsum = last_k + k_.cumsum(dim=-2)
-        D_inv = 1.0 / torch.einsum('...id,...id->...i', q_, k_cumsum + eps)
-        ctx = torch.einsum('...id,...ie->...ide', k_, v_)
-        ctx_cumsum = last_ctx + ctx.cumsum(dim=-3)
-        outs.append(torch.einsum('...ide,...id,...i->...ie', ctx_cumsum, q_, D_inv))
-        last_k, last_ctx = k_cumsum[..., -1:, :], ctx_cumsum[..., -1:, :, :]
-    return torch.cat(outs, dim=-2)
-
-class FastAttention(nn.Module):
-    def __init__(self, dim_heads, nb_features=None, causal=False,
-                 generalized=False, kernel_fn=nn.ReLU(), ortho_scaling=0):
-        super().__init__()
-        nb_features = nb_features or int(dim_heads * math.log(dim_heads))  # m = Theta(d log d)
-        self.create_proj = partial(gaussian_orthogonal_matrix,
-                                   m=nb_features, d=dim_heads, scaling=ortho_scaling)
-        self.register_buffer('projection', self.create_proj())
-        self.causal, self.generalized, self.kernel_fn = causal, generalized, kernel_fn
-
-    @torch.no_grad()
-    def redraw(self, device):
-        self.projection.copy_(self.create_proj(device=device))
-
-    def forward(self, q, k, v):
-        if self.generalized:
-            feat = partial(generalized_kernel, projection=self.projection,
-                           kernel_fn=self.kernel_fn)
-            q, k = feat(q), feat(k)
-        else:
-            feat = partial(softmax_kernel, projection=self.projection)
-            q, k = feat(q, is_query=True), feat(k, is_query=False)
-        attn = causal_linear_attention if self.causal else linear_attention
-        return attn(q, k, v)
+def causal_favor(q_prime, k_prime, value, eps=1e-6):
+    kv_prefix = jnp.cumsum(jnp.einsum("...lm,...ld->...lmd", k_prime, value), axis=-3)
+    k_prefix = jnp.cumsum(k_prime, axis=-2)
+    w = jnp.einsum("...lm,...lmd->...ld", q_prime, kv_prefix)
+    normalizer = jnp.einsum("...lm,...lm->...l", q_prime, k_prefix)
+    normalizer = normalizer + 2 * eps * (jnp.abs(normalizer) <= eps)
+    return w / normalizer[..., None]
 ```
 
-`FastAttention` is a drop-in replacement for the scaled-dot-product attention inside a standard multi-head block: project to `q, k, v`, call `FastAttention.forward`, recombine heads. The rest of the Transformer is unchanged, so a pretrained softmax model can be converted with light finetuning.
+For softmax attention, use `softmax_features` for queries and keys with a redrawn orthogonal matrix when configured, then call `noncausal_favor` or `causal_favor`. For generalized attention, the reference default is deterministic `ReLU(data) + 1e-3`; iid/orthogonal projected generalized features are optional, not the default.

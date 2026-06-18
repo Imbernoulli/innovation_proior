@@ -46,7 +46,7 @@ This is a weighted maximum-likelihood — supervised learning — on samples dra
 
 Now contrast the *reverse* KL, KL(π_θ ‖ π*), to be sure forward was the right call. Reverse KL = E_{a~π_θ}[log π_θ − log π*] = E_{a~π_θ}[log π_θ − log π_β − A/λ + log Z]. This needs two things I'm trying to avoid: it evaluates log π_β — a density model — and it samples actions from π_θ, which when offline are exactly the possibly-out-of-distribution actions that make Q extrapolate. So reverse KL drags both the behavior model and the OOD-Q-query back into the loop, the two things that broke the prior methods. Forward KL needs neither. (And the two aren't unrelated: for a discrete policy bounded below by α_θ, Pinsker gives KL(π*‖π_θ) ≤ (2/α_θ)D_TV² ≤ (1/α_θ)KL(π_θ‖π*), so minimizing the reverse KL also bounds the forward one — they're loosely interchangeable in objective, but only the forward direction lets me sample from the buffer and cancel π_β.)
 
-There's the per-state normalizer Z(s) = ∫_a π_θ(a|s) exp(A/λ) da = E_{a~π_θ}[exp(A/λ)] sitting in the weight. Do I need it? Try to keep it and you have to estimate that expectation — say K=10 samples per batch element — and empirically that makes things *worse*: pen falls from 98% to 84%, door from 95% to 0%, relocate from 54% to 0% when I weight by an estimated Z(s). The estimation error hurts more than the normalization helps. There's also a clean argument for why dropping it is benign: Z(s) is a per-*state* factor, so it only reweights how much different *states* count in the objective, not how different *actions* compete within a state. The buffer's state distribution already differs from the one π_θ will visit, so faithfully preserving it is low-value, while a noisy Z(s) estimate just injects variance like a degenerate importance weight. (If I wanted bounds, Cauchy-Schwarz gives Z(s) ≤ √(∫π² ∫g²) with g = exp(A/λ), and the reverse Cauchy-Schwarz of Polya-Szego gives a matching lower bound, so Z(s) ∈ [C2, C1] — but the bounds are loose and not worth the trouble.) So drop Z(s) and instead just normalize the weights across the minibatch.
+There's the per-state normalizer Z(s) = ∫_a π_β(a|s) exp(A/λ) da = E_{a~π_β}[exp(A/λ)] sitting in the weight. Do I need it? Try to keep it and I have to estimate that expectation from a fitted buffer-policy sampler — say K=10 samples per batch element — and empirically that makes things *worse*: pen falls from 98% to 84%, door from 95% to 0%, relocate from 54% to 0% when I weight by an estimated Z(s). The estimation error hurts more than the normalization helps. There's also a clean argument for why dropping it is benign: Z(s) is a per-*state* factor, so it only reweights how much different *states* count in the objective, not how different *actions* compete within a state. The buffer's state distribution already differs from the one π_θ will visit, so faithfully preserving it is low-value, while a noisy Z(s) estimate just injects variance like a degenerate importance weight. (If I wanted bounds, Cauchy-Schwarz gives Z(s) ≤ √(∫π_β² ∫g²) with g = exp(A/λ), and the reverse Cauchy-Schwarz of Polya-Szego gives a matching lower bound, so Z(s) ∈ [C2, C1] — but the bounds are loose and not worth the trouble.) So drop Z(s) and instead just normalize the weights across the minibatch.
 
 That leaves the critic, the policy-evaluation half. Here I want efficiency, so off-policy temporal-difference bootstrapping of the *current* policy's Q^π — not Monte-Carlo, not the behavior policy's value. This is the second key difference from the advantage-weighted-regression methods: AWR estimates V^{π_β}, the *behavior* policy's value, by Monte-Carlo or TD(λ), which is slow and only supports a single step of improvement away from π_β; I bootstrap Q^π of the *current* policy, which reuses off-policy data and improves iteratively. I'll build the critic on twin Q-functions with a min target and a Polyak target network to control the overestimation that bootstrapping induces (TD3/SAC machinery):
 
@@ -99,20 +99,25 @@ class GaussianPolicy(nn.Module):
         self.log_std = nn.Linear(hidden[-1], act_dim)
     def dist(self, s):
         h = self.trunk(s)
-        return Normal(self.mu(h), self.log_std(h).clamp(-6, 0).exp())
+        return Normal(torch.tanh(self.mu(h)), self.log_std(h).clamp(-6, 0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
+    def sample_and_log_prob(self, s):
+        dist = self.dist(s)
+        a = dist.rsample()
+        return a, dist.log_prob(a).sum(-1)
     def sample(self, s):
-        return self.dist(s).rsample()
+        return self.sample_and_log_prob(s)[0]
 
 
-def critic_td_loss(batch, critic, target_critic, policy, discount):
+def critic_td_loss(batch, critic, target_critic, policy, discount, alpha=0.0):
     s, a, r, s2, done = (batch["obs"], batch["act"], batch["rew"],
                          batch["obs2"], batch["done"])
     with torch.no_grad():
-        a2 = policy.sample(s2)                              # next action from CURRENT policy (off-policy TD)
+        a2, logp2 = policy.sample_and_log_prob(s2)           # next action from CURRENT policy (off-policy TD)
         tq1, tq2 = target_critic(s2, a2)
-        y = r + discount * (1.0 - done) * torch.min(tq1, tq2)   # min of twin targets
+        target_v = torch.min(tq1, tq2) - alpha * logp2        # optional entropy term; alpha=0 here
+        y = r + discount * (1.0 - done) * target_v            # min of twin targets
     q1, q2 = critic(s, a)
     return F.mse_loss(q1, y) + F.mse_loss(q2, y)
 
@@ -126,8 +131,7 @@ def actor_awac_loss(batch, critic, policy, lam):
         v1, v2 = critic(s, v_a)
         v = torch.min(v1, v2)                               # V(s) = Q(s, a~pi)
         adv = q - v                                         # advantage A(s, a_data)
-        weight = torch.exp(adv / lam)                       # exp(A / lambda); lambda is the KL multiplier
-        weight = weight / (weight.mean() + 1e-8)            # normalize over the batch (drop per-state Z(s))
+        weight = torch.softmax(adv / lam, dim=0) * adv.numel()  # batch-softmax weights (Z(s) dropped)
     logp = policy.log_prob(s, a)                            # MLE on BUFFER actions only -> implicit constraint
     return -(weight * logp).mean()
 
@@ -138,7 +142,8 @@ def polyak(critic, target_critic, tau):
 
 
 def update(batch, critic, target_critic, policy, opts, hp):
-    q_loss = critic_td_loss(batch, critic, target_critic, policy, hp["discount"])
+    q_loss = critic_td_loss(batch, critic, target_critic, policy,
+                            hp["discount"], hp.get("alpha", 0.0))
     opts["q"].zero_grad(); q_loss.backward(); opts["q"].step()
 
     pi_loss = actor_awac_loss(batch, critic, policy, hp["lam"])
@@ -168,8 +173,8 @@ def train_awac(env, buffer, critic, policy, hp,
         o = env.reset() if done else o2
         update(buffer.sample(hp["batch_size"]), critic, target_critic, policy, opts, hp)
 
-# hp: discount=0.99, tau=5e-3, batch_size=1024,
+# hp: discount=0.99, tau=5e-3, batch_size=1024, alpha=0.0,
 #     lam=0.3 (manipulation) or 1.0 (MuJoCo locomotion)
 ```
 
-The chain, end to end: pre-training from offline data then fine-tuning online demands one algorithm that is data-efficient, stable on a static dataset, and still improvable online. Off-policy actor-critic is efficient but, applied naively offline, bootstraps its target at out-of-distribution policy actions and accumulates error; the offline-RL fix — constrain to an explicitly-fit behavior model π̂_β — is stable offline but stalls online because the behavior model can't be fit accurately on streaming multi-modal data. Solving the KL-constrained improvement max_π E_π[A] s.t. KL(π‖π_β)≤ε exactly gives π* ∝ π_β·exp(A/λ); projecting it onto the parametric policy by *forward* KL and importance-sampling from the buffer cancels the π_β factor, yielding an advantage-weighted maximum-likelihood actor update θ ← argmax E_{(s,a)~β}[log π_θ(a|s)·exp(A/λ)] that constrains the policy *implicitly* — only buffer actions, no behavior model, never querying Q at a proposed OOD action during improvement. The per-state Z(s) is dropped (estimating it hurt; it only reweights states) in favor of batch normalization. The advantage uses an off-policy bootstrapped Q^π of the *current* policy (twin-Q, min target, Polyak) rather than a Monte-Carlo V^{π_β}, which is what makes it efficient and lets it improve past one step. The same update runs unchanged offline and online, so pre-training flows directly into fine-tuning.
+The chain, end to end: pre-training from offline data then fine-tuning online demands one algorithm that is data-efficient, stable on a static dataset, and still improvable online. Off-policy actor-critic is efficient but, applied naively offline, bootstraps its target at out-of-distribution policy actions and accumulates error; the offline-RL fix — constrain to an explicitly-fit behavior model π̂_β — is stable offline but stalls online because the behavior model can't be fit accurately on streaming multi-modal data. Solving the KL-constrained improvement max_π E_π[A] s.t. KL(π‖π_β)≤ε exactly gives π* ∝ π_β·exp(A/λ); projecting it onto the parametric policy by *forward* KL and importance-sampling from the buffer cancels the π_β factor, yielding an advantage-weighted maximum-likelihood actor update θ ← argmax E_{(s,a)~β}[log π_θ(a|s)·exp(A/λ)] that constrains the policy *implicitly* — only buffer actions, no behavior model, never querying Q at a proposed OOD action during improvement. The per-state Z(s)=E_{a~π_β}[exp(A/λ)] is dropped (estimating it hurt; it only reweights states) in favor of batch normalization. The advantage uses an off-policy bootstrapped Q^π of the *current* policy (twin-Q, min target, Polyak) rather than a Monte-Carlo V^{π_β}, which is what makes it efficient and lets it improve past one step. The same update runs unchanged offline and online, so pre-training flows directly into fine-tuning.

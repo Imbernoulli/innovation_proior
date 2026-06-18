@@ -24,13 +24,13 @@ where \((\gamma e^{i\theta})^{n-m}\) acts coordinate-wise. Now split the relativ
 \[
 o_n = \sum_{m=1}^n \big(q_n(\gamma e^{i\theta})^{n}\big)\big(k_m(\gamma e^{i\theta})^{-m}\big)^\top v_m.
 \]
-Look at what each factor is. \(q_n(\gamma e^{i\theta})^n\) is the query, scaled in magnitude by \(\gamma^n\) and rotated in phase by \(e^{in\theta}\); \(k_m(\gamma e^{i\theta})^{-m}\) is the key with \(\gamma^{-m}\) and \(e^{-im\theta}\). The phase part is exactly rotary position embedding — \(q\) gets \(e^{in\theta}\), \(k\) gets \(e^{-im\theta}\), so their product depends on \(n-m\) — and with the magnitude term \(\gamma^{\pm}\) layered on, this is precisely the xPos form: a relative position embedding with a decay. So the position encoding I'd normally bolt on by hand falls out of the recurrence's state matrix. That's a good sign — it means the decay-and-rotation isn't an arbitrary add-on, it's what \(A^{n-m}\) *is* once diagonalized.
+Look at what each factor is. \(q_n(\gamma e^{i\theta})^n\) is the query, scaled in magnitude by \(\gamma^n\) and rotated by \(e^{in\theta}\); \(k_m(\gamma e^{i\theta})^{-m}\) carries the inverse magnitude and phase on the key side. That is the xPos shape: query and key receive reciprocal position-dependent factors so their interaction depends on the relative offset. So the position encoding I'd normally bolt on by hand falls out of the recurrence's state matrix. That's a good sign — it means the decay-and-rotation isn't an arbitrary add-on, it's what \(A^{n-m}\) *is* once diagonalized.
 
 Carrying a separate magnitude \(\gamma_i\) per dimension is more bookkeeping than I want, and the \(\gamma^{-m}\) on the key grows unboundedly as \(m\) shrinks, which is numerically ugly. Let me simplify \(\gamma\) from a per-dimension vector to a single scalar (per head). Then \(\gamma^{n-m}\) pulls out of the per-coordinate structure entirely, and I can keep just the phase rotation inside the query/key factors:
 \[
 o_n = \sum_{m=1}^n \gamma^{n-m}\,\big(q_n e^{in\theta}\big)\big(k_m e^{im\theta}\big)^\dagger v_m,
 \]
-with \(\dagger\) the conjugate transpose. The scalar \(\gamma^{n-m}\) is now a clean per-distance decay multiplying a rotary-encoded content score. This is fully parallelizable: every term in the sum is an independent product, no nonlinearity coupling positions, no softmax. I started from a recurrence and I've landed on a parallel, position-aware, content-based weighted sum. Let me name this operator — call it retention, since it's literally a state that *retains* a decaying summary of the past — and pin down its three faces.
+with \(\dagger\) the conjugate transpose. This is the sign-sensitive point: I rotate the key by the same positive phase before taking the conjugate inner product, so the score contains the relative phase \(e^{i(n-m)\theta}\). In a real implementation, rotating both \(q\) and \(k\) with the same RoPE map and then taking an ordinary dot product supplies the same conjugate effect through \(R(n)^\top R(m)\). The scalar \(\gamma^{n-m}\) is now a clean per-distance decay multiplying a rotary-encoded content score. This is fully parallelizable: every term in the sum is an independent product, no nonlinearity coupling positions, no softmax. I started from a recurrence and I've landed on a parallel, position-aware, content-based weighted sum. Let me name this operator — call it retention, since it's literally a state that *retains* a decaying summary of the past — and pin down its three faces.
 
 The parallel face, for training. Pack the rotation into the projections: \(Q = (XW_Q)\odot\Theta\), \(K=(XW_K)\odot\overline{\Theta}\), \(V=XW_V\), with \(\Theta_n = e^{in\theta}\) and \(\overline\Theta\) its conjugate. The decay-and-causality go into one matrix:
 \[
@@ -88,7 +88,7 @@ There's a second thing I lost when I deleted the softmax: a nonlinearity. Softma
 \]
 The gate gives a multiplicative, data-dependent nonlinearity — the missing expressiveness — and \(W_O\) mixes the heads back to model dimension.
 
-Now numerics, because in practice the scores \(QK^\top\odot D\) can have a wide dynamic range — \(\gamma^{n-m}\) decays geometrically, and summing many terms can blow up or underflow. Here the GroupNorm I just added pays off in an unexpected way: it's scale-invariant, \(\mathrm{GroupNorm}(\alpha\cdot\mathrm{head}) = \mathrm{GroupNorm}(\mathrm{head})\), so I can multiply the retention scores by *any* convenient scalar before the norm and the function — forward and gradient — is unchanged. That buys three free stabilizers. First, scale the content scores like attention does: use \(QK^\top/\sqrt{d}\) so the dot products don't grow with head dimension. Second, row-normalize the decay mask, \(\tilde D_{nm} = D_{nm}/\sqrt{\sum_{i=1}^n D_{ni}}\), so a row's total decay weight doesn't explode for late positions. Third, normalize the full score matrix by its row-magnitude: with \(R = QK^\top\odot D\), use \(\tilde R_{nm} = R_{nm}/\max(|\sum_i R_{ni}|,1)\) and then \(\mathrm{Retention} = \tilde R V\). The \(\max(\cdot,1)\) clamps so I never amplify a small row. None of these change the result — that's exactly what scale-invariance guarantees — they just keep the forward and backward passes in a safe numeric range.
+Now numerics, because in practice the scores \(QK^\top\odot D\) can have a wide dynamic range — \(\gamma^{n-m}\) decays geometrically, and summing many terms can blow up or underflow. Here the per-head normalization I just added pays off in an unexpected way: it is scale-invariant, \(\mathrm{GroupNorm}(\alpha\cdot\mathrm{head}) = \mathrm{GroupNorm}(\mathrm{head})\), and I can implement the same per-head scale invariance with RMSNorm. That means I can multiply a head's pre-normalization output by convenient scalar factors without changing the normalized result. That buys three stabilizers. First, scale the content scores like attention does: use \(QK^\top/\sqrt{d}\), implemented by scaling \(K\), so dot products don't grow with head dimension. Second, row-normalize the decay mask, \(\tilde D_{nm} = D_{nm}/\sqrt{\sum_{i=1}^n D_{ni}}\), so a row's total decay weight doesn't explode for late positions. Third, normalize the full score matrix by row magnitude: with \(R = QK^\top\odot D\), divide by a clamped row absolute sum before multiplying by \(V\). In the recurrent and chunkwise paths the same idea appears as explicit scale tracking and scale alignment; it is not the bare mathematical recurrence, but it is the same function after the per-head normalization.
 
 Stack it into the architecture. A block, pre-norm and residual like a Transformer block but with multi-scale retention where attention used to be, then a feed-forward:
 \[
@@ -96,7 +96,7 @@ Y^l = \mathrm{MSR}(\mathrm{LN}(X^l)) + X^l,\qquad X^{l+1} = \mathrm{FFN}(\mathrm
 \]
 with \(\mathrm{FFN}(X) = \mathrm{gelu}(XW_1)W_2\). One more bookkeeping detail to keep comparisons fair: I should match parameter counts to a Transformer. Attention uses \(W_Q,W_K,W_V,W_O\in\mathbb{R}^{d\times d}\) (\(\approx 4d^2\)) and an FFN with intermediate \(4d\) (\(\approx 8d^2\)). Retention adds the gate \(W_G\) and widens the value head; setting \(W_Q,W_K\in\mathbb{R}^{d\times d}\), \(W_G,W_V\in\mathbb{R}^{d\times 2d}\), \(W_O\in\mathbb{R}^{2d\times d}\) gives \(\approx 8d^2\) in retention, so to keep the total matched I shrink the FFN intermediate to \(2d\). Widening \(V\) to twice the \(Q/K\) dimension also makes sense from the recurrent view: the state \(S\) is \(d_k\times d_v\), so a bigger \(d_v\) is literally more memory capacity in the hidden state.
 
-Now write it as code, three computation paths sharing the same projections and the same rotation-and-decay, so that the parallel path trains, the recurrent path decodes, and the chunkwise path handles long sequences — and they all compute the one retention function I proved equivalent above.
+Now write it as code, three computation paths sharing the same projections and the same rotation-and-decay, so that the parallel path trains, the recurrent path decodes, and the chunkwise path handles long sequences — and they all compute the one retention function I proved equivalent above, with the stabilizing scale terms included rather than hidden.
 
 ```python
 import torch
@@ -104,118 +104,167 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+class RMSNorm(nn.Module):
+    # the per-head norm I settled on: RMS (no mean-subtract), still scale-invariant
+    def __init__(self, dim, eps=1e-6, elementwise_affine=True):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim)) if elementwise_affine else None
+
+    def forward(self, x):
+        x = x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return x if self.weight is None else x * self.weight
+
+
 def rotate_every_two(x):
-    # implements multiplication by e^{i*theta} as a real 2x2 rotation per pair
     x1 = x[:, :, :, ::2]
     x2 = x[:, :, :, 1::2]
-    x = torch.stack((-x2, x1), dim=-1)
-    return x.flatten(-2)
+    return torch.stack((-x2, x1), dim=-1).flatten(-2)
 
 
 def theta_shift(x, sin, cos):
-    # rotary position: q_n -> q_n e^{i n theta}, k_m -> k_m e^{i m theta}
     return (x * cos) + (rotate_every_two(x) * sin)
 
 
 class RetNetRelPos(nn.Module):
-    """Builds the rotation (sin, cos) and the per-head decay gamma / decay mask D."""
-    def __init__(self, embed_dim, num_heads, chunk_size):
+    def __init__(self, embed_dim, num_heads, chunk_size=512):
         super().__init__()
-        # rotary angles theta (the e^{i theta} phase) shared across heads
+        # rotary angles theta (the e^{i theta} phase), shared across heads
         angle = 1.0 / (10000 ** torch.linspace(0, 1, embed_dim // num_heads // 2))
         angle = angle.unsqueeze(-1).repeat(1, 2).flatten()
-        # multi-scale decay: a different gamma per head, geometrically spaced
-        # stored in log space; gamma_h = 1 - 2^{-5-h}
+        # multi-scale decay: gamma_h = 1 - 2^{-5-h}, one per head, kept in log space
         decay = torch.log(1 - 2 ** (-5 - torch.arange(num_heads, dtype=torch.float)))
         self.register_buffer("angle", angle)
         self.register_buffer("decay", decay)
-        self.chunk_size = chunk_size
+        self.recurrent_chunk_size = chunk_size
 
     def forward(self, slen, activate_recurrent=False, chunkwise_recurrent=False):
         if activate_recurrent:
-            # inference: only need the rotation at the current step and gamma
             sin = torch.sin(self.angle * (slen - 1))
             cos = torch.cos(self.angle * (slen - 1))
             return (sin, cos), self.decay.exp()
+
         index = torch.arange(slen).to(self.decay)
         sin = torch.sin(index[:, None] * self.angle[None, :])
         cos = torch.cos(index[:, None] * self.angle[None, :])
-        # D_{nm} = gamma^{n-m} for n>=m else 0, per head, built in log space
+
+        if chunkwise_recurrent:
+            b = self.recurrent_chunk_size
+            block_index = torch.arange(b).to(self.decay)
+            tri = torch.tril(torch.ones(b, b).to(self.decay))
+            raw = torch.masked_fill(
+                block_index[:, None] - block_index[None, :],
+                ~tri.bool(),
+                float("inf"),
+            )
+            raw = torch.nan_to_num(torch.exp(raw * self.decay[:, None, None]))
+            value_inner_decay = raw[:, -1] / raw[:, -1].sum(dim=-1, keepdim=True)
+            value_inner_decay = value_inner_decay.unsqueeze(-1)
+            scale = raw.sum(dim=-1, keepdim=True).sqrt()
+            inner_mask = raw / scale
+            cross_decay = torch.exp(self.decay * b)[:, None, None]
+            query_inner_decay = torch.exp(self.decay[:, None] * (block_index + 1))
+            query_inner_decay = query_inner_decay[:, :, None] / (
+                scale / raw[:, -1].sum(dim=-1)[:, None, None]
+            )
+            return (sin, cos), (
+                inner_mask,
+                cross_decay,
+                query_inner_decay,
+                value_inner_decay,
+            )
+
         mask = torch.tril(torch.ones(slen, slen).to(self.decay))
         mask = torch.masked_fill(index[:, None] - index[None, :], ~mask.bool(), float("inf"))
-        mask = torch.exp(mask * self.decay[:, None, None])     # gamma^{n-m}
-        mask = torch.nan_to_num(mask)
-        mask = mask / mask.sum(dim=-1, keepdim=True).sqrt()     # row-normalize D (stabilizer 2)
+        mask = torch.nan_to_num(torch.exp(mask * self.decay[:, None, None]))
+        mask = mask / mask.sum(dim=-1, keepdim=True).sqrt()
         return (sin, cos), mask
 
 
 class MultiScaleRetention(nn.Module):
-    def __init__(self, embed_dim, value_dim, num_heads):
+    def __init__(self, embed_dim, value_dim, num_heads, gate_fn="swish", layernorm_eps=1e-6):
         super().__init__()
         self.embed_dim = embed_dim
-        self.value_dim = value_dim          # value width = 2 * embed_dim in practice
+        self.value_dim = value_dim
         self.num_heads = num_heads
-        self.key_dim = embed_dim // num_heads
         self.head_dim = value_dim // num_heads
-        self.scaling = self.key_dim ** -0.5   # the 1/sqrt(d) score scaling (stabilizer 1)
-
+        self.key_dim = embed_dim // num_heads
+        self.scaling = self.key_dim ** -0.5
+        self.gate_fn = F.silu if gate_fn == "swish" else F.gelu
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.k_proj = nn.Linear(embed_dim, embed_dim, bias=False)
         self.v_proj = nn.Linear(embed_dim, value_dim, bias=False)
-        self.g_proj = nn.Linear(embed_dim, value_dim, bias=False)   # the swish gate
+        self.g_proj = nn.Linear(embed_dim, value_dim, bias=False)
         self.out_proj = nn.Linear(value_dim, embed_dim, bias=False)
-        # per-head GroupNorm: balances the different-gamma heads' variances,
-        # and its scale-invariance is what makes the score normalization free
-        self.group_norm = nn.GroupNorm(num_heads, num_heads, affine=False)
+        self.group_norm = RMSNorm(
+            self.head_dim, eps=layernorm_eps, elementwise_affine=False
+        )
 
     def parallel_forward(self, qr, kr, v, mask):
-        # training path: Retention(X) = (QK^T (.) D) V, all positions at once
         bsz, tgt_len, _ = v.size()
         vr = v.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2)
-        qk = qr @ kr.transpose(-1, -2)              # content scores QK^T
-        qk = qk * mask                              # (.) D : causal mask + decay
-        # stabilizer 3: divide by row magnitude, clamped (free via GroupNorm scale-invariance)
+        qk = (qr @ kr.transpose(-1, -2)) * mask
         qk = qk / qk.detach().abs().sum(dim=-1, keepdim=True).clamp(min=1, max=5e4)
-        out = qk @ vr
-        return out.transpose(1, 2)
+        return (qk @ vr).transpose(1, 2)
 
-    def recurrent_forward(self, qr, kr, v, decay, state):
-        # inference path: S_n = gamma S_{n-1} + K_n^T V_n ; out = Q_n S_n  -> O(1)/step
+    def recurrent_forward(self, qr, kr, v, decay, incremental_state):
         bsz = v.size(0)
         v = v.view(bsz, self.num_heads, self.head_dim, 1)
-        kv = kr * v                                 # rank-one K_n^T V_n
-        if "prev" in state:
-            kv = state["prev"] * decay.view(self.num_heads, 1, 1) + kv   # gamma S_{n-1} + .
-        state["prev"] = kv
-        return torch.sum(qr * kv, dim=3)            # Q_n S_n
+        kv = kr * v
+        if "prev_key_value" in incremental_state:
+            prev_kv = incremental_state["prev_key_value"]
+            prev_scale = incremental_state["scale"]
+            scale = prev_scale * decay + 1
+            old = prev_kv * (prev_scale.sqrt() * decay / scale.sqrt()).view(
+                self.num_heads, 1, 1
+            )
+            new = kv / scale.sqrt().view(self.num_heads, 1, 1)
+            kv = old + new
+        else:
+            scale = torch.ones_like(decay)
+        incremental_state["prev_key_value"] = kv
+        incremental_state["scale"] = scale
+        return torch.sum(qr * kv, dim=3)
 
     def chunk_recurrent_forward(self, qr, kr, v, inner_mask):
-        # long-sequence path: parallel inside each chunk, recurrent across chunks
         mask, cross_decay, query_inner_decay, value_inner_decay = inner_mask
         bsz, tgt_len, _ = v.size()
         chunk_len = mask.size(1)
+        assert tgt_len % chunk_len == 0
         num_chunks = tgt_len // chunk_len
         qr = qr.view(bsz, self.num_heads, num_chunks, chunk_len, self.key_dim).transpose(1, 2)
         kr = kr.view(bsz, self.num_heads, num_chunks, chunk_len, self.key_dim).transpose(1, 2)
         v = v.view(bsz, num_chunks, chunk_len, self.num_heads, self.head_dim).transpose(2, 3)
 
-        # inner-chunk: (Q K^T (.) D) V within the chunk
-        qk = (qr @ kr.transpose(-1, -2)) * mask
-        inner = qk @ v
-        # fold chunk into the running state R_i, pre-weighting values by zeta = gamma^{B-1-j}
-        kv = kr.transpose(-1, -2) @ (v * value_inner_decay)
-        R = torch.zeros(bsz, self.num_heads, self.key_dim, self.head_dim).to(v)
-        R_list = []
-        for i in range(num_chunks):
-            R_list.append(R)                        # R_{i-1} is what chunk i reads
-            R = R * cross_decay + kv[:, i]          # R_i = gamma^B R_{i-1} + K^T(V (.) zeta)
-        R_recurrent = torch.stack(R_list, dim=1)
-        # cross-chunk: (Q R_{i-1}) (.) xi, xi_j = gamma^{j+1}
-        cross = (qr * query_inner_decay) @ R_recurrent
-        out = inner + cross
-        return out.transpose(2, 3)
+        kr_t = kr.transpose(-1, -2)
+        qk = (qr @ kr_t) * mask
+        inner_scale = qk.detach().abs().sum(dim=-1, keepdim=True).clamp(min=1)
+        inner = (qk / inner_scale) @ v
 
-    def forward(self, x, rel_pos, chunkwise_recurrent=False, state=None):
+        kv = kr_t @ (v * value_inner_decay)
+        kv_state = torch.zeros(bsz, self.num_heads, self.key_dim, self.head_dim).to(v)
+        kv_scale = torch.ones(bsz, self.num_heads, 1, 1).to(v)
+        kv_recurrent, cross_scale = [], []
+        for i in range(num_chunks):
+            kv_recurrent.append(kv_state / kv_scale)
+            cross_scale.append(kv_scale)
+            kv_state = kv_state * cross_decay + kv[:, i]
+            kv_scale = (
+                kv_state.detach()
+                .abs()
+                .sum(dim=-2, keepdim=True)
+                .max(dim=-1, keepdim=True)
+                .values
+                .clamp(min=1)
+            )
+        kv_recurrent = torch.stack(kv_recurrent, dim=1)
+        cross_scale = torch.stack(cross_scale, dim=1)
+        all_scale = torch.maximum(inner_scale, cross_scale)
+        cross = (qr * query_inner_decay) @ kv_recurrent
+        output = inner / (all_scale / inner_scale) + cross / (all_scale / cross_scale)
+        return output.transpose(2, 3)
+
+    def forward(self, x, rel_pos, chunkwise_recurrent=False, incremental_state=None):
         bsz, tgt_len, _ = x.size()
         (sin, cos), inner_mask = rel_pos
         q, k, v, g = self.q_proj(x), self.k_proj(x), self.v_proj(x), self.g_proj(x)
@@ -225,21 +274,15 @@ class MultiScaleRetention(nn.Module):
         qr = theta_shift(q, sin, cos)               # q e^{i n theta}
         kr = theta_shift(k, sin, cos)               # k e^{i m theta}
 
-        if state is not None:
-            out = self.recurrent_forward(qr, kr, v, inner_mask, state)
+        if incremental_state is not None:
+            out = self.recurrent_forward(qr, kr, v, inner_mask, incremental_state)
         elif chunkwise_recurrent:
             out = self.chunk_recurrent_forward(qr, kr, v, inner_mask)
         else:
             out = self.parallel_forward(qr, kr, v, inner_mask)
 
-        out = self.group_norm(out.reshape(-1, self.num_heads, self.head_dim).transpose(1, 2))
-        out = out.transpose(1, 2).reshape(bsz, tgt_len, self.head_dim * self.num_heads)
-        out = self.gate_then_project(g, out)
-        return out
-
-    def gate_then_project(self, g, out):
-        # MSR(X) = (swish(X W_G) (.) Y) W_O : restore the nonlinearity softmax used to provide
-        return self.out_proj(F.silu(g) * out)
+        out = self.group_norm(out).reshape(bsz, tgt_len, self.head_dim * self.num_heads)
+        return self.out_proj(self.gate_fn(g) * out)
 ```
 
-So the chain, end to end. Attention trains in parallel because it forms the whole \(N\times N\) score matrix at once, but that same matrix makes autoregressive decoding \(O(n)\) per step with a key–value cache that grows without bound; an RNN decodes in \(O(1)\) but won't parallelize for training, and the existing efficient variants each give up either quality or content-awareness. Starting instead from a linear recurrence with a state matrix and unrolling it shows the recurrence *already is* a causal weighted sum over the past — the bridge to attention — so making the query/key projections content-aware and diagonalizing the state matrix turns its powers into a per-distance scalar decay \(\gamma^{n-m}\) times a rotary phase, which is exactly an xPos-style relative position encoding falling out for free. That yields the retention operator with three provably equivalent faces: a parallel form \((QK^\top\odot D)V\) with the decay-and-causal matrix \(D\) for training; a recurrent form \(S_n=\gamma S_{n-1}+K_n^\top V_n,\;o_n=Q_n S_n\) for \(O(1)\) inference (equal because \(S_n\) unrolls to \(\sum_{m\le n}\gamma^{n-m}K_m^\top V_m\)); and a chunkwise form that runs the parallel face inside chunks and carries the state recurrently across them, with the within-chunk decay-to-boundary \(\gamma^{B-1-j}\) and boundary-to-query decay \(\gamma^{j+1}\) summing back to the true relative decay, giving linear-time long-sequence training. Using a different \(\gamma\) per head makes the memory multi-scale, per-head GroupNorm balances the resulting variances and — being scale-invariant — makes the numeric stabilizers free, and a swish gate restores the nonlinearity that deleting softmax removed.
+So the chain, end to end. Attention trains in parallel because it forms the whole \(N\times N\) score matrix at once, but that same matrix makes autoregressive decoding \(O(n)\) per step with a key–value cache that grows without bound; an RNN decodes in \(O(1)\) but won't parallelize for training, and the existing efficient variants each give up either quality or content-awareness. Starting instead from a linear recurrence with a state matrix and unrolling it shows the recurrence *already is* a causal weighted sum over the past — the bridge to attention — so making the query/key projections content-aware and diagonalizing the state matrix turns its powers into a per-distance scalar decay \(\gamma^{n-m}\) times a rotary relative phase, which is exactly an xPos-style position factor falling out for free. That yields the retention operator with three equivalent faces: a parallel form \((QK^\top\odot D)V\) with the decay-and-causal matrix \(D\) for training; a recurrent form \(S_n=\gamma S_{n-1}+K_n^\top V_n,\;o_n=Q_n S_n\) for \(O(1)\) inference (equal because \(S_n\) unrolls to \(\sum_{m\le n}\gamma^{n-m}K_m^\top V_m\)); and a chunkwise form that runs the parallel face inside chunks and carries the state recurrently across them, with the key-to-boundary exponent \(B-1-j'\) and the boundary-to-query exponent \(j+1\) adding back to the true relative distance \(B+j-j'\). Using a different \(\gamma\) per head makes the memory multi-scale, per-head normalization balances the resulting variances and makes the numeric stabilizers harmless after normalization, and a swish gate restores the nonlinearity that deleting softmax removed.

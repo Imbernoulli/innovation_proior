@@ -2,90 +2,87 @@
 
 ## Research question
 
-How can a convolutional network be trained *end-to-end* to produce good general-purpose visual features with *no supervision at all*, in a way that scales to internet-sized image collections?
+How can a convolutional network be trained end-to-end to produce transferable visual features from a large image collection with no human labels?
 
-Supervised pre-training on ImageNet has driven most of computer vision, but it is hitting limits: classifier performance on ImageNet is largely saturating (little error is left to resolve), and ImageNet is small by modern standards — a million images, curated for object classification. Pushing forward by building a far larger, more diverse dataset (potentially billions of images) would require an infeasible amount of manual annotation; replacing labels with raw metadata (hashtags and the like) injects biases into the learned representations with unpredictable effects. So a method is needed that trains a convnet from images alone. The difficulty is concrete: classical unsupervised tools were built for *linear* models on *fixed* features, and they break when the features must be learned at the same time — most starkly, naively coupling a convnet with k-means collapses to a trivial solution where the features go to zero and every cluster merges into one.
+The motivation is practical. Supervised pretraining on ImageNet has become the default source of reusable visual features, but ImageNet is small by modern standards, curated for object classification, and manually labeled. Scaling that recipe to billions of diverse internet images would require annotation at a scale that is not realistic. Replacing labels with raw metadata such as tags is not the same solution: metadata is biased, noisy, and distributed very unevenly. The target is therefore a label-free training procedure that can reuse standard convnet optimization machinery, can run at ImageNet/YFCC scale, and does not depend on hand-designing a semantic pretext task for every new domain.
+
+The hard part is not merely "run clustering." Classical unsupervised objectives assume fixed descriptors. When the descriptor itself is a convnet being learned at the same time, a naive joint objective has easy degenerate optima: the representation can become uninformative, or a discriminative learner can put nearly all images into a tiny set of labels and still minimize its local loss.
 
 ## Background
 
-**Convnets and features.** A convnet `f_θ` maps a raw image to a fixed-dimensional feature vector; given a training set of `N` images, the goal is a parameter `θ*` such that `f_{θ*}` yields good general-purpose features. Supervised training pairs each image `x_n` with a label `y_n ∈ {0,1}^k` and learns a classifier `g_W` on top of the features by minimizing the multinomial logistic loss
-`min_{θ,W} (1/N) Σ_n ℓ(g_W(f_θ(x_n)), y_n)`,
-with mini-batch SGD and backpropagation. This pipeline — batch normalization (Ioffe & Szegedy, 2015), dropout (Srivastava et al., 2014), momentum, data augmentation — is mature and reliable; an unsupervised method that could reuse it would inherit all of that.
+**Supervised convnet training.** A convnet `f_theta` maps an image to a feature vector, and a classifier `g_W` maps that feature to class logits. With labels `y_n in {0,1}^k`, the standard objective is
 
-**Random convnets already carry signal.** A convnet whose parameters are sampled from a Gaussian, with no training at all, produces features far above chance: a multilayer perceptron on the last convolutional layer of a *random* AlexNet reaches about 12% accuracy on ImageNet, versus 0.1% chance. This good behavior of random convnets is tied to the convolutional structure itself, which is a strong prior on natural-image input. That weak but real signal is something a method could try to bootstrap.
+`min_{theta,W} (1/N) sum_n ell(g_W(f_theta(x_n)), y_n)`,
 
-**Classical unsupervised learning.** Clustering, dimensionality reduction, and density estimation are long-standing (k-means, spectral clustering, PCA). They apply to any domain or modality without labels — the bag-of-features model, for instance, clusters handcrafted local descriptors into image-level features. But they were designed for linear models on top of *fixed* descriptors; they scarcely work when the features are being learned simultaneously, and they had not been adapted to end-to-end convnet training at scale.
+where `ell` is the multinomial logistic loss. This pipeline already has robust engineering support: minibatch SGD, backpropagation, momentum, weight decay, dropout, batch normalization, and data augmentation.
 
-**Discriminative clustering and its trivial solutions.** Any method that *jointly* learns a discriminative classifier and the labels it predicts is prone to degenerate solutions — this is known even for linear discriminative clustering (Xu et al., 2005). An optimal decision boundary can assign every input to a single cluster; or, if most points fall into a few clusters, the model learns to discriminate only those, and in the extreme (all but one cluster singletons) predicts a constant output. Classical remedies constrain or penalize the minimum number of points per cluster (Bach & Harchaoui, 2008; Joulin et al., 2012), but those terms are computed over the whole dataset and do not fit mini-batch training of convnets at scale.
+**A weak architectural signal already exists.** Random convnets are poor feature extractors, but not chance-level ones. A classifier trained over the last convolutional layer of a random AlexNet reaches about 12% ImageNet accuracy, while chance is 0.1%. The convolutional prior supplies a weak signal that a method might be able to amplify without labels.
 
-**Faiss k-means and empty-cluster handling.** Large-scale k-means libraries (Johnson et al., 2017) include a standard trick for empty clusters during optimization: reassign an empty cluster's centroid from a non-empty one with a small perturbation.
+**Clustering and dimensionality reduction.** k-means, PCA, spectral methods, and density estimation work well as unsupervised tools over fixed descriptors; bag-of-features vision pipelines use clustering over handcrafted local descriptors. These methods are domain-agnostic, which is attractive, but they were not designed for an end-to-end convnet whose feature space changes during training.
+
+**Discriminative clustering degeneracy.** Methods that learn both labels and a discriminative boundary are known to need balance or minimum-cluster-size constraints. Classical relaxations impose constraints over the whole dataset, which is awkward for minibatch convnet training on millions of images. Large-scale clustering libraries also contain practical machinery for keeping empty clusters from breaking a k-means run.
 
 ## Baselines
 
-**Self-supervised learning (Doersch et al., 2015; Noroozi & Favaro, 2016; Pathak et al., 2016; colorization, video coherence, etc.).** Replace human labels with *pseudo-labels* derived from a hand-designed pretext task — predicting the relative position of patches, solving jigsaw puzzles, inpainting missing pixels, predicting color, exploiting temporal coherence. Strength: a real supervisory signal computed from raw data; strong transfer features. Gap: each is *domain-dependent* and requires expert design of a pretext task that happens to yield transferable features.
+**Self-supervised pretext tasks.** Patch-position prediction, jigsaw puzzles, inpainting, colorization, video coherence, and related tasks compute labels from the raw input itself. They provide real supervision and can transfer well, but each task is hand-designed and domain-specific.
 
-**Generative models for features (VAE, Kingma & Welling, 2013; GAN, Goodfellow et al., 2014; BiGAN/ALI, Donahue et al., 2016; Dumoulin et al., 2016).** Learn a mapping between noise and images; the GAN discriminator (or an added encoder) can produce features. Gap: features are a by-product, not the objective; plain GAN-discriminator features are relatively disappointing, and competitive features require adding an encoder.
+**Generative feature learning.** Autoencoders, VAEs, GANs, BiGAN/ALI-style encoders, and reconstruction losses learn image models from unlabeled data. Their representations can be useful, but the feature extractor is often a by-product rather than the direct objective, and plain GAN-discriminator features had not matched the strongest discriminative self-supervised features.
 
-**Clustering coupled with convnets (Coates & Ng, 2012; Yang et al., 2016; Bojanowski & Joulin, 2017).** Coates & Ng pre-train with k-means but layer-by-layer bottom-up rather than end-to-end. Yang et al. iteratively learn features and clusters in a recurrent framework — promising on small datasets but hard to scale to the image counts convnets need. Bojanowski & Joulin learn features with an information-preserving loss that discriminates between individual images (like exemplar SVM). Gap: none had been tested at the scale and on the modern architectures needed for a thorough study, and the naive coupling of convnet + k-means collapses to a trivial solution.
+**Earlier clustering with neural networks.** Some methods use k-means for layerwise pretraining, jointly learn clusters and features on smaller datasets, or learn discriminative features with information-preserving losses. The open gap is a simple end-to-end convnet procedure that can be studied at large image scale and with standard architectures.
 
 ## Evaluation settings
 
-- **Datasets.** ImageNet (1.3M images, 1000 classes) for training by default; YFCC100M Flickr images as an uncured alternative distribution. Transfer benchmarks: Pascal VOC classification, detection, and segmentation; image-retrieval benchmarks for instance-level information.
-- **Metrics.** Downstream transfer accuracy (linear or fine-tuned classifiers on frozen/transferred features), measured with no fine-tuning on Pascal VOC for hyperparameter selection. Normalized Mutual Information, `NMI(A;B) = I(A;B) / √(H(A)·H(B))` (0 if independent, 1 if one is deterministic given the other), as a diagnostic — to gauge how cluster assignments relate to ground-truth labels and how stable the clusters are between successive rounds.
-- **Protocol.** Train the convnet on images alone. Preprocess with a fixed Sobel filtering (remove color, increase local contrast). Per round: cluster the features of the central-cropped images, then train on the network with data augmentation (random flips, random-size/aspect crops). AlexNet (with batch norm, LRN removed) and VGG-16 (with batch norm); momentum 0.9, batch 256, L2 weight decay, dropout, constant step size. Features for clustering are PCA-reduced to 256 dimensions, whitened, and L2-normalized.
+- **Pretraining data.** ImageNet training images with labels withheld; an uncured Flickr/YFCC-style image distribution as a stress test for scale and dataset bias.
+- **Transfer tasks.** Pascal VOC classification, detection, and semantic segmentation; ImageNet and Places linear probes over frozen convolutional features; instance-level image retrieval for information beyond class labels.
+- **Diagnostics.** Normalized Mutual Information, `NMI(A;B) = I(A;B) / sqrt(H(A) H(B))`, to measure how learned partitions relate to ground-truth labels when labels are used only for analysis, and how stable successive partitions are over training.
+- **Architecture controls.** AlexNet for comparability with earlier unsupervised work; deeper VGG-style convnets to test whether the method benefits from a stronger backbone.
 
 ## Code framework
 
-Pre-existing primitives: PyTorch convnet backbones (AlexNet, VGG), the supervised training loop with a softmax classifier and cross-entropy, mini-batch SGD with momentum, a faiss k-means with PCA/whitening, and a `Sampler` interface for the data loader. The supervised pipeline exists in full; the unsupervised setting it would have to run in does not.
+The existing ingredients are a supervised convnet training loop, an unlabeled image dataset, feature extraction over the full dataset, a scalable clustering primitive, and a `Sampler` interface. The missing pieces are how to turn unlabeled features into a stable training target, how to avoid degenerate targets, and how to keep the classifier attached to changing unsupervised targets.
 
 ```python
+import numpy as np
 import torch
 from torch import nn
-import numpy as np
-import faiss
 
-def preprocess_features(npdata, pca=256):
-    # PCA-reduce, whiten, L2-normalize features before clustering (standard pre-clustering recipe)
-    _, ndim = npdata.shape
-    npdata = npdata.astype('float32')
-    mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)   # whitening via eigen_power = -0.5
-    mat.train(npdata); npdata = mat.apply_py(npdata)
-    npdata = npdata / np.linalg.norm(npdata, axis=1)[:, None]
-    return npdata
-
-def run_kmeans(x, k):
-    # faiss k-means; returns a cluster assignment per row
-    # TODO
-    pass
-
-class PseudoLabelSampler(torch.utils.data.Sampler):
-    # TODO
-    def __init__(self, N, images_lists):
-        pass
-    def __iter__(self):
-        pass
 
 class Backbone(nn.Module):
-    # convnet feature extractor + a classification head on top
     def __init__(self):
         super().__init__()
-        self.features = None       # AlexNet/VGG conv+fc trunk (exists)
-        self.classifier = None     # exists
-        self.top_layer = None      # final linear layer -> one logit per (pseudo-)class
-    def forward(self, x):
-        pass
+        self.features = ...
+        self.classifier = ...
+        self.top_layer = ...
 
-# one round of unsupervised training
-def training_round(model, dataset, k, optimizer):
-    feats = compute_features(model, dataset)          # forward pass over the whole dataset
-    feats = preprocess_features(feats)
-    assignments = run_kmeans(feats, k)                # cluster assignments
-    # TODO
-    train_dataset = assign_pseudolabels(dataset, assignments)
-    sampler = PseudoLabelSampler(len(train_dataset), assignments)
-    loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, sampler=sampler)
-    crit = nn.CrossEntropyLoss()
-    for x, pseudo_y in loader:
-        loss = crit(model(x), pseudo_y)
-        optimizer.zero_grad(); loss.backward(); optimizer.step()
+    def forward(self, x):
+        z = self.features(x)
+        z = self.classifier(z)
+        if self.top_layer is not None:
+            z = self.top_layer(z)
+        return z
+
+
+def extract_features(model, image_loader):
+    # TODO: decide which view of each image should define the unsupervised target.
+    pass
+
+
+def make_unsupervised_targets(features):
+    # TODO: produce one training target per image without using human labels.
+    pass
+
+
+def make_training_sampler(targets):
+    # TODO: prevent target imbalance from dominating minibatch training.
+    pass
+
+
+def train_with_targets(model, dataset, targets, sampler, optimizer):
+    criterion = nn.CrossEntropyLoss()
+    loader = torch.utils.data.DataLoader(dataset, batch_size=256, sampler=sampler)
+    for x, y in loader:
+        loss = criterion(model(x), y)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 ```

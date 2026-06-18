@@ -69,13 +69,13 @@ while not converged:
     theta_t <- theta_{t-1} - alpha * m_hat / (sqrt(v_hat) + eps)
 ```
 
-PyTorch-style efficient form (fold both corrections into one scalar):
+Reference-code efficient form (fold both corrections into one scalar):
 `alpha_t = alpha * sqrt(1 - beta_2^t) / (1 - beta_1^t)`, then
 `theta_t = theta_{t-1} - alpha_t * m_t / (sqrt(v_t) + eps)`.
 
 This is algebraically exact for the bias corrections when `eps = 0`. With the algorithmic
 denominator `sqrt(v_hat) + eps`, exact folding would use `sqrt(v_t) + eps * sqrt(1 - beta_2^t)`;
-the standard PyTorch form keeps `eps` after `sqrt(v_t)` as a fixed numerical floor.
+the reference implementation keeps `eps` after `sqrt(v_t)` as a fixed numerical floor.
 
 ## Theory (online convex optimization)
 
@@ -101,9 +101,9 @@ sparse, since it is written in per-coordinate gradient norms rather than `d·G_i
 
 ## Relation to prior methods
 
-- **RMSProp** = this method without bias correction and with momentum on the rescaled
-  gradient (here the moment estimates are kept clean and separate, and the zero-init bias is
-  corrected).
+- **RMSProp** = the same EMA-of-squared-gradient denominator idea, but without the zero-init
+  bias correction. The momentum variant of RMSProp puts momentum on the already-rescaled
+  gradient; here the first and second moments are estimated separately and then combined.
 - **AdaGrad** = this method with `beta_1 = 0`, infinitesimal `(1 - beta_2)`, and `alpha`
   replaced by the annealed `alpha·t^{-1/2}` (then `v_hat_t -> t^{-1} sum g^2`). The
   correspondence only holds *with* bias correction.
@@ -113,13 +113,17 @@ sparse, since it is written in per-coordinate gradient norms rather than `d·G_i
   m_t / u_t`. No bias correction is needed for `u` because a max does not average in the zero
   init. For `beta_1 < beta_2`, the exact all-sequence envelope is
   `|Delta_t|/alpha <= ((1-beta_1)/(1-beta_1^t)) * (1-(beta_1/beta_2)^t)/(1-beta_1/beta_2)`,
-  which is alpha-scale and essentially one for `beta_2` near 1; the implementation adds `eps`
-  inside the max as the zero-denominator floor. Good default `alpha = 0.002`.
+  which is alpha-scale and essentially one for `beta_2` near 1. The looser cap `|Delta_t| <=
+  alpha` also holds but is slightly conservative; the exact envelope above is the tight bound.
+  The implementation adds `eps` inside the max as the zero-denominator floor. Good default
+  `alpha = 0.002`.
 
 ## Working code
 
 Filling the `step()` slot of the first-order harness, with per-parameter buffers
-`exp_avg = m`, `exp_avg_sq = v` and the folded bias-correction `step_size`:
+`exp_avg = m`, `exp_avg_sq = v` and the folded bias-correction `step_size`. This follows the
+clean PyTorch v0.3.1 reference update; it rejects framework sparse tensors even though the math
+is designed to work well when feature gradients are sparse:
 
 ```python
 import math
@@ -176,7 +180,7 @@ class Adam:
 
             bias_correction1 = 1 - beta1 ** t                # (1 - beta1^t)
             bias_correction2 = 1 - beta2 ** t                # (1 - beta2^t)
-            # PyTorch-style folded bias correction; exact for eps=0, with eps kept as a fixed floor.
+            # Folded bias correction; exact for eps=0, with eps kept as a fixed floor.
             step_size = self.lr * math.sqrt(bias_correction2) / bias_correction1
 
             # theta_t = theta_{t-1} - alpha_t * m_t / (sqrt(v_t) + eps)

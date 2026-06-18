@@ -100,8 +100,8 @@ point and the slope of online improvement. A controlled diagnostic on HalfCheeta
 ## Code framework
 
 The primitives that already exist: an MLP builder, twin state-action critics with target copies, a
-tanh-squashed Gaussian stochastic policy, Adam, a Polyak target-update, a replay buffer shared between
-offline data and online transitions, and an off-policy training loop. What does not yet exist is the
+diagonal Gaussian stochastic policy whose mean is bounded with `tanh`, Adam, a Polyak target-update,
+a replay buffer shared between offline data and online transitions, and an off-policy training loop. What does not yet exist is the
 policy-improvement step itself. That is the stub.
 
 ```python
@@ -144,7 +144,7 @@ class GaussianPolicy(nn.Module):
         self.log_std = nn.Linear(hidden[-1], act_dim)
     def dist(self, s):
         h = self.trunk(s)
-        return Normal(self.mu(h), self.log_std(h).clamp(-6, 0).exp())
+        return Normal(torch.tanh(self.mu(h)), self.log_std(h).clamp(-6, 0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
     def sample(self, s):

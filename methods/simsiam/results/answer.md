@@ -2,69 +2,67 @@
 
 ## Problem
 
-Learn visual representations from unlabeled images with a Siamese "two views should agree"
-objective, *without* collapsing to a constant — and do it without the machinery that prior methods
-use to prevent collapse: no negative pairs, no momentum encoder, no large batches.
-
-## Key idea
-
-Take the bare Siamese network — a *single* encoder `f` with weights shared between the two
-branches (no momentum) — add a prediction MLP `h` on one branch, use the symmetrized negative-
-cosine loss, and apply a **stop-gradient** on the target branch. Empirically the stop-gradient is
-the one ingredient that is *necessary and sufficient* to prevent collapse; removing it (with
-everything else fixed) sends the loss to its minimum `-1` and the output std to zero. Negatives,
-the momentum encoder, large batches, BN, symmetrization, and the cosine form all affect accuracy
-or optimization but are *not* what prevents collapse.
+Learn visual representations from unlabeled images with a Siamese "two augmented views should agree" objective, without relying on explicit negative pairs, online clustering, a momentum encoder, or large batches.
 
 ## Method
 
-Two augmented views `x1, x2` of image `x`. Encoder `f` (backbone + 3-layer projection MLP),
-predictor `h` (2-layer bottleneck MLP). With `p1 = h(f(x1))`, `z2 = f(x2)`, the per-term distance
-is the negative cosine similarity
+Draw two augmentations \(x_1,x_2\) of image \(x\). A shared encoder \(f\), consisting of a backbone plus a 3-layer projection MLP, produces \(z_1=f(x_1)\) and \(z_2=f(x_2)\). A 2-layer bottleneck predictor \(h\) produces \(p_1=h(z_1)\) and \(p_2=h(z_2)\).
 
-    D(p, z) = - (p/‖p‖₂) · (z/‖z‖₂),
+The per-direction loss is negative cosine similarity:
 
-equal to the MSE of `ℓ₂`-normalized vectors up to a factor of 2. The symmetrized loss with
-stop-gradient (`sg`) on the targets:
+\[
+D(p,z)=-{p\over \|p\|_2}\cdot {z\over \|z\|_2}.
+\]
 
-    L = ½ D(p1, sg(z2)) + ½ D(p2, sg(z1)),     min value −1.
+The squared distance between normalized vectors is \(2+2D(p,z)\), so the cosine form is equivalent to normalized squared error up to a positive scale and additive constant. The symmetrized training loss is
 
-The target branch (`z`) is treated as a constant; the prediction branch (`p`) is trained.
+\[
+L={1\over2}D(p_1,\operatorname{sg}(z_2))+
+  {1\over2}D(p_2,\operatorname{sg}(z_1)),
+\]
 
-**Why it works (alternating-optimization / EM hypothesis).** Introduce a per-image target set `η`
-(one vector per image, not a network output) and consider
+where \(\operatorname{sg}\) is stop-gradient. The minimum possible loss is \(-1\). In the paper's controlled ablation, removing only stop-gradient sends the loss to \(-1\), collapses the l2-normalized output std to zero, and gives chance ImageNet linear evaluation; keeping it yields non-collapsed outputs and about 67.7% top-1 at 100 epochs.
 
-    L(θ, η) = E_{x, T} ‖ F_θ(T(x)) − η_x ‖²,   solve  min_{θ, η} L(θ, η)
+## Why It Works
 
-by alternating (analogous to k-means: `θ` ↔ centers, `η_x` ↔ assignments):
+The paper's hypothesis is an EM-like alternating optimization. Introduce one free target vector per image:
 
-    θ^t ← argmin_θ L(θ, η^{t−1})      # SGD; η^{t−1} fixed ⇒ stop-gradient is the consequence
-    η^t ← argmin_η L(θ^t, η)          # per image: η^t_x = E_T[ F_{θ^t}(T(x)) ]  (the mean)
+\[
+\mathcal L(\theta,\eta)=
+\mathbb E_{x,T}\left[\|F_\theta(T(x))-\eta_x\|_2^2\right].
+\]
 
-One-step alternation = SimSiam: approximate `η^t_x ≈ F_{θ^t}(T'(x))` by sampling one augmentation
-`T'` (the "other view"), substitute, and take a single SGD step on `θ` — yielding a shared-weight
-Siamese net with stop-gradient. The predictor `h` approximates the dropped expectation `E_T[·]`
-(its optimum is `h(z1) = E_T[f(T(x))]`); symmetrization is denser sampling of the expectation.
-The constant solution exists but the alternating optimizer, starting from a scattered random init
-and updating each `η_x` independently (never a joint gradient over all images), does not fall into
-it.
+Alternate between
 
-## Design choices
+\[
+\theta^t\leftarrow\arg\min_\theta \mathcal L(\theta,\eta^{t-1})
+\]
 
-- **Stop-gradient on the target branch** — the load-bearing piece; the natural consequence of
-  holding `η` fixed in the alternation.
-- **Predictor `h` is required** — for the symmetric loss, removing `h` makes the gradient equal to
-  that of `D(z1, z2)` scaled by ½, rendering stop-gradient vacuous → collapse. `h` is a 2-layer
-  **bottleneck** (hidden = dim/4) and uses a **constant (non-decayed) lr** so it keeps adapting to
-  the moving representation.
-- **No momentum encoder / no negatives / SGD at ordinary batch sizes** — none are needed for
-  collapse prevention; works from batch 64 to 2048 (4096 hurts via large-batch SGD, not collapse).
-- **BN** on projection hidden+output and predictor hidden (none on predictor output); helps
-  optimization, not collapse prevention. Projection output BN has no affine.
-- **Defaults:** ResNet-50; dim 2048, predictor hidden 512; SGD lr `0.05×bs/256`, cosine decay,
-  momentum 0.9, weight decay 1e-4.
+and
 
-## Code
+\[
+\eta^t\leftarrow\arg\min_\eta \mathcal L(\theta^t,\eta).
+\]
+
+When solving for \(\theta\), \(\eta^{t-1}\) is fixed, so the target branch receives no gradient. For MSE, the \(\eta\) update is
+
+\[
+\eta_x^t=\mathbb E_T[F_{\theta^t}(T(x))].
+\]
+
+Approximating this expectation with one sampled augmentation \(T'\) gives the other Siamese view:
+
+\[
+\eta_x^t\approx F_{\theta^t}(T'(x)).
+\]
+
+Taking one SGD step on the resulting \(\theta\) subproblem yields the SimSiam update. The predictor \(h\) is interpreted as a learned approximation to the missing augmentation expectation: as a regression map, its optimum is a conditional mean \(h^*(z_1)=\mathbb E[z_2\mid z_1]\), which the paper relates to \(\mathbb E_T[f(T(x))]\) for the same image. Symmetrization is denser sampling of the augmentation expectation.
+
+This is a hypothesis about the optimization being followed, not a proof that collapse is impossible. The constant solution still exists; non-collapse is an empirical observation explained by the altered alternating trajectory.
+
+## Canonical Code
+
+This is the core of the archived FAIR PyTorch implementation, with distributed training boilerplate omitted.
 
 ```python
 import math
@@ -74,36 +72,43 @@ import torchvision.models as models
 
 
 class SimSiam(nn.Module):
-    """SimSiam: shared encoder f (backbone + projection MLP) and predictor h."""
+    """Shared encoder f and predictor h."""
+
     def __init__(self, base_encoder=models.resnet50, dim=2048, pred_dim=512):
         super().__init__()
-        # encoder f: backbone with its fc replaced by a 3-layer projection MLP
+
         self.encoder = base_encoder(num_classes=dim, zero_init_residual=True)
         prev_dim = self.encoder.fc.weight.shape[1]
+
         self.encoder.fc = nn.Sequential(
             nn.Linear(prev_dim, prev_dim, bias=False),
-            nn.BatchNorm1d(prev_dim), nn.ReLU(inplace=True),
+            nn.BatchNorm1d(prev_dim),
+            nn.ReLU(inplace=True),
             nn.Linear(prev_dim, prev_dim, bias=False),
-            nn.BatchNorm1d(prev_dim), nn.ReLU(inplace=True),
+            nn.BatchNorm1d(prev_dim),
+            nn.ReLU(inplace=True),
             self.encoder.fc,
-            nn.BatchNorm1d(dim, affine=False))          # output BN, no affine
-        self.encoder.fc[6].bias.requires_grad = False    # bias absorbed by BN
+            nn.BatchNorm1d(dim, affine=False),
+        )
+        self.encoder.fc[6].bias.requires_grad = False
 
-        # predictor h: 2-layer bottleneck MLP (hidden = dim/4)
         self.predictor = nn.Sequential(
             nn.Linear(dim, pred_dim, bias=False),
-            nn.BatchNorm1d(pred_dim), nn.ReLU(inplace=True),
-            nn.Linear(pred_dim, dim))
+            nn.BatchNorm1d(pred_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(pred_dim, dim),
+        )
 
     def forward(self, x1, x2):
         z1 = self.encoder(x1)
         z2 = self.encoder(x2)
         p1 = self.predictor(z1)
         p2 = self.predictor(z2)
-        return p1, p2, z1.detach(), z2.detach()          # stop-gradient on targets
+        return p1, p2, z1.detach(), z2.detach()
 
 
-criterion = nn.CosineSimilarity(dim=1)                   # D(p, z) = -(p̂ · ẑ)
+criterion = nn.CosineSimilarity(dim=1)
+
 
 def simsiam_loss(p1, p2, z1, z2):
     return -(criterion(p1, z2).mean() + criterion(p2, z1).mean()) * 0.5
@@ -113,27 +118,40 @@ def build_optimizer(model, base_lr=0.05, batch_size=512,
                     momentum=0.9, weight_decay=1e-4):
     init_lr = base_lr * batch_size / 256
     param_groups = [
-        {'params': model.encoder.parameters(),   'fix_lr': False},
-        {'params': model.predictor.parameters(), 'fix_lr': True},   # constant lr
+        {"params": model.encoder.parameters(), "fix_lr": False},
+        {"params": model.predictor.parameters(), "fix_lr": True},
     ]
-    opt = torch.optim.SGD(param_groups, init_lr,
-                          momentum=momentum, weight_decay=weight_decay)
-    return opt, init_lr
+    optimizer = torch.optim.SGD(
+        param_groups,
+        init_lr,
+        momentum=momentum,
+        weight_decay=weight_decay,
+    )
+    return optimizer, init_lr
 
 
 def adjust_learning_rate(optimizer, init_lr, epoch, total_epochs):
     cur_lr = init_lr * 0.5 * (1.0 + math.cos(math.pi * epoch / total_epochs))
-    for g in optimizer.param_groups:
-        g['lr'] = init_lr if g.get('fix_lr', False) else cur_lr   # predictor: no decay
+    for group in optimizer.param_groups:
+        group["lr"] = init_lr if group.get("fix_lr", False) else cur_lr
 
 
 def train_one_epoch(loader, model, optimizer, init_lr, epoch, total_epochs):
     adjust_learning_rate(optimizer, init_lr, epoch, total_epochs)
     model.train()
-    for images, _ in loader:                  # images = [view1, view2]
+    for images, _ in loader:
         p1, p2, z1, z2 = model(images[0], images[1])
         loss = simsiam_loss(p1, p2, z1, z2)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 ```
+
+## Load-Bearing Details
+
+- **Stop-gradient:** the controlled collapse switch in the reported baseline; target projections are constants within each loss term.
+- **Predictor:** required for the default method. Without it, the symmetric stop-gradient loss has the same gradient direction as the no-stop-gradient agreement loss, scaled by \(1/2\).
+- **Predictor learning rate:** kept constant in the canonical recipe because the predictor must keep adapting to the moving representation.
+- **Projection head:** 3-layer MLP; BN after every fully connected layer including the output; no ReLU on the output; output BN has no affine.
+- **Predictor head:** 2-layer bottleneck MLP; BN and ReLU only on the hidden layer; output layer has bias and no BN/ReLU.
+- **Optimizer:** SGD, base lr \(0.05\times\mathrm{BatchSize}/256\), momentum 0.9, weight decay \(10^{-4}\), cosine decay on the encoder, non-decayed predictor lr.

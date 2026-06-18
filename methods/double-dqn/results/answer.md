@@ -2,136 +2,116 @@
 
 ## Problem
 
-Q-learning, and its deep-network instantiation DQN, learns the optimal action
-value by regressing $Q(S_t,A_t)$ toward a bootstrap target that contains a
-maximization over estimated next-state values,
+DQN uses the target
 $$
-Y^{\text{DQN}}_t = R_{t+1} + \gamma \max_a Q(S_{t+1}, a; \theta^-).
+Y_t^{\mathrm{DQN}} =
+R_{t+1}+\gamma\max_a Q(S_{t+1},a;\theta_t^-)
+=R_{t+1}+\gamma Q\left(S_{t+1},
+\arg\max_a Q(S_{t+1},a;\theta_t^-);\theta_t^-\right).
 $$
-Because the same estimates are used both to *select* the greedy next action and
-to *evaluate* it, and because $\max$ is convex, the target is biased *upward*
-whenever the estimates carry error: by Jensen,
-$\mathbb{E}[\max_a Q(s',a)] \ge \max_a \mathbb{E}[Q(s',a)]$. The bias is
-non-uniform across states, so it distorts the relative value ordering the greedy
-policy reads off, and bootstrapping propagates it. Empirically the predicted
-value of the greedy policy runs far above its realized return, and on some tasks
-diverges while the score collapses.
+The target-network values both select the next greedy action and evaluate it.
+With estimation error this max tends to select positively mistaken values, so
+the target is biased upward. The bias is non-uniform, so it can alter the
+greedy policy rather than merely shift all values.
 
-## Key idea
+## Key Idea
 
-The overestimation comes from coupling selection and evaluation. **Decouple
-them**: let one estimator pick the greedy action and a different one score it.
-Reuse the target network — already present in DQN — as the second estimator, so
-nothing new is added. The online network $\theta$ selects; the target network
-$\theta^-$ evaluates:
+Separate action selection from action evaluation while leaving the rest of DQN
+unchanged. Use the online network to select the next action and the target
+network to evaluate that selected action:
 $$
-Y^{\text{DoubleDQN}}_t = R_{t+1} + \gamma\, Q\big(S_{t+1},\ \arg\max_a Q(S_{t+1}, a; \theta),\ \theta^-\big).
+Y_t^{\mathrm{DoubleDQN}} =
+R_{t+1}+\gamma Q\left(S_{t+1},
+\arg\max_a Q(S_{t+1},a;\theta_t);\theta_t^-\right).
 $$
-This is the minimal change to DQN: everything else (network, replay, $\epsilon$-greedy,
-periodic target copy) is untouched. It reduces but does not perfectly remove the
-bias, because $\theta^-$ is a stale copy of $\theta$ (so their errors are
-correlated, and right after a target refresh $\theta^-=\theta$ and the target
-reverts to plain Q-learning). A longer target-update period $\tau$ decouples them
-further.
+This reuses the target network already present in DQN. It adds no new value
+network and does not change replay, acting, the target-copy rule, or the DQN
+optimizer/loss machinery.
 
-## Why it works
+## Math Check
 
-In a state where all true optimal values are equal, $Q_*(s,a)=V_*(s)$, with
-estimates that are balanced ($\sum_a(Q_t(s,a)-V_*(s))=0$) and have mean-squared
-error $C>0$ over $m\ge2$ actions, the single-estimator max overshoots by at least
+If all true action values in a state are tied at $V_*(s)$, the estimates are
+balanced,
 $$
-\max_a Q_t(s,a) \ge V_*(s) + \sqrt{\tfrac{C}{m-1}},
+\sum_a(Q_t(s,a)-V_*(s))=0,
 $$
-and this is tight (attained by $\epsilon_a=\sqrt{C/(m-1)}$ for $m-1$ actions and
-$\epsilon_m=-\sqrt{(m-1)C}$); no independence assumption is needed. Under the
-decoupled estimate the lower bound on the absolute error is $0$ — an independent
-evaluator can be exactly right on the selected action. (Typical-case, with errors
-i.i.d. uniform on $[-1,1]$, $\mathbb{E}[\max_a\epsilon_a]=\frac{m-1}{m+1}$, which
-*increases* with the number of actions.)
+and their mean squared error over $m\ge2$ actions is $C>0$, then
+$$
+\max_a Q_t(s,a)\ge V_*(s)+\sqrt{\frac{C}{m-1}}.
+$$
+The bound is tight at
+$$
+\epsilon_a=\sqrt{\frac{C}{m-1}}\quad(a=1,\ldots,m-1),\qquad
+\epsilon_m=-\sqrt{(m-1)C}.
+$$
+For i.i.d. uniform errors in $[-1,1]$,
+$$
+\mathbb E[\max_a\epsilon_a]=\frac{m-1}{m+1},
+$$
+so the discounted uniform-error overestimation term is
+$\gamma\epsilon(m-1)/(m+1)$ for errors scaled to
+$[-\epsilon,\epsilon]$.
 
 ## Algorithm
 
-Identical to DQN except for the target.
+For each replay transition $(S_t,A_t,R_{t+1},S_{t+1})$:
 
-1. Act $\epsilon$-greedily w.r.t. $Q(\cdot;\theta)$; store
-   $(S_t,A_t,R_{t+1},S_{t+1},\text{done})$ in a uniform replay buffer.
-2. Every few steps, sample a minibatch. For each transition compute
-   $a^\star = \arg\max_a Q(S_{t+1},a;\theta)$ (online selection),
-   $y = R_{t+1} + \gamma\,(1-\text{done})\,Q(S_{t+1},a^\star;\theta^-)$ (target evaluation).
-3. Take a gradient step on $\big(y - Q(S_t,A_t;\theta)\big)^2$ w.r.t. $\theta$.
-4. Every $\tau$ steps copy $\theta^- \leftarrow \theta$.
+1. Select the next action with the online network:
+   $$a^*=\arg\max_a Q(S_{t+1},a;\theta_t).$$
+2. Evaluate that action with the target network:
+   $$v=Q(S_{t+1},a^*;\theta_t^-).$$
+3. Form the one-step target:
+   $$y=R_{t+1}+\gamma_t v,$$
+   where $\gamma_t=0$ on terminal transitions and $\gamma_t=\gamma$ otherwise.
+4. Update $\theta_t$ from the TD error
+   $$\delta_t=y-Q(S_t,A_t;\theta_t).$$
+5. Copy $\theta^-\leftarrow\theta$ on the same schedule as DQN.
+
+The untuned Atari condition keeps $\tau=10{,}000$ target-copy steps. The tuned
+condition increases this to $30{,}000$ and also changes exploration and the final
+layer bias, so those are tuning choices rather than the core method.
 
 ## Code
 
-Grounded in a standard DQN-Atari training loop; only the target computation
-differs from DQN (one line: the argmax uses the online network).
+The faithful implementation is the target/loss slot. The rest of the DQN
+training loop remains unchanged.
 
 ```python
-import torch, torch.nn as nn, torch.nn.functional as F, torch.optim as optim
+import torch
 
 
-class QNetwork(nn.Module):
-    """Stacked-frame state -> vector of action values (online and target share this)."""
-    def __init__(self, num_actions):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(4, 32, 8, stride=4), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(3136, 512), nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
+def double_dqn_target(rewards, discounts, next_obs, online_net, target_net):
+    """Return y = r + discount * Q_target(s', argmax_a Q_online(s', a)).
 
-    def forward(self, x):
-        return self.net(x / 255.0)
+    `discounts` is gamma for nonterminal transitions and 0 for terminal ones.
+    """
+    with torch.no_grad():
+        selector_q = online_net(next_obs)
+        next_actions = selector_q.argmax(dim=1, keepdim=True)
+        evaluator_q = target_net(next_obs)
+        next_q = evaluator_q.gather(1, next_actions).squeeze(1)
+        return rewards + discounts * next_q
+
+
+def clipped_td_error_loss(td_error, grad_error_bound=1.0):
+    """Huber/clipped-error loss matching the DQN clipped TD-error gradient."""
+    abs_error = td_error.abs()
+    quadratic = torch.minimum(
+        abs_error, torch.full_like(abs_error, grad_error_bound)
+    )
+    linear = abs_error - quadratic
+    return (0.5 * quadratic.pow(2) + grad_error_bound * linear).mean()
 
 
 def double_dqn_loss(batch, gamma, online_net, target_net):
     obs, actions, rewards, next_obs, dones = batch
-    with torch.no_grad():
-        # online net SELECTS the greedy next action (vs DQN: target_net.argmax)
-        next_actions = online_net(next_obs).argmax(dim=1, keepdim=True)
-        # target net EVALUATES the selected action
-        next_q = target_net(next_obs).gather(1, next_actions).squeeze(1)
-        td_target = rewards + gamma * next_q * (1.0 - dones)
-    q_sa = online_net(obs).gather(1, actions).squeeze(1)   # Q(S_t, A_t; theta)
-    return F.mse_loss(td_target, q_sa)
-
-
-def train(envs, num_actions, total_timesteps=10_000_000, gamma=0.99,
-          batch_size=32, lr=1e-4, target_update=10_000, train_freq=4,
-          learning_starts=80_000, buffer=None, device="cpu"):
-    online_net = QNetwork(num_actions).to(device)
-    target_net = QNetwork(num_actions).to(device)
-    target_net.load_state_dict(online_net.state_dict())
-    optimizer = optim.Adam(online_net.parameters(), lr=lr)
-
-    obs = envs.reset()
-    for step in range(total_timesteps):
-        epsilon = linear_schedule(1.0, 0.01, 0.1 * total_timesteps, step)
-        if random.random() < epsilon:
-            actions = envs.sample_actions()
-        else:
-            with torch.no_grad():
-                q = online_net(torch.as_tensor(obs, device=device))
-            actions = q.argmax(dim=1).cpu().numpy()
-
-        next_obs, rewards, dones, _ = envs.step(actions)
-        buffer.add(obs, actions, rewards, next_obs, dones)
-        obs = next_obs
-
-        if step > learning_starts and step % train_freq == 0:
-            batch = buffer.sample(batch_size)
-            loss = double_dqn_loss(batch, gamma, online_net, target_net)
-            optimizer.zero_grad(); loss.backward(); optimizer.step()
-
-        if step % target_update == 0:
-            target_net.load_state_dict(online_net.state_dict())
+    discounts = gamma * (1.0 - dones.float())
+    target = double_dqn_target(rewards, discounts, next_obs, online_net, target_net)
+    q_sa = online_net(obs).gather(1, actions.long().view(-1, 1)).squeeze(1)
+    td_error = target - q_sa
+    return clipped_td_error_loss(td_error)
 ```
 
-Standard Atari settings: $84\times84$ gray-scale, 4-frame stack, action repeat 4,
-rewards clipped to $[-1,1]$, replay buffer $10^6$, batch 32, $\gamma=0.99$,
-$\tau=10{,}000$ target updates (raise to $30{,}000$ for the tuned variant),
-$\epsilon$ decaying $1\to0.1$. The only difference from DQN is the
-`online_net(next_obs).argmax(...)` selection inside `double_dqn_loss`.
+Compared with DQN, the only target-side change is that the `argmax` is computed
+from `online_net(next_obs)` while the selected value is gathered from
+`target_net(next_obs)`.

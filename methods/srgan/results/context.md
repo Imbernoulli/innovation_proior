@@ -112,56 +112,42 @@ The benchmarks, datasets, metrics, and protocol that form the natural yardstick:
 ## Code framework
 
 The available substrate is a deep-learning library with convolutions, residual blocks, batch
-normalization, sub-pixel-convolution upscaling, an adversarial-training harness, and a frozen,
-pre-trained VGG19 feature extractor. What exists: a residual super-resolution generator that maps an
-LR image to an HR estimate, a convolutional discriminator, and a fixed VGG network to extract features.
-What is missing: the *objective* — what loss to train the generator on so that the output is sharp and
-photo-realistic rather than smooth.
+normalization, learned upscaling layers, pre-trained image classifiers, and ordinary supervised
+training machinery. What exists is a strong residual SISR model that maps an LR image to an HR
+estimate and can be trained with pixel MSE. What is missing is the *objective*: the loss must keep the
+output tied to the specific low-resolution input while avoiding the pixel-average solution that gives
+high PSNR but poor texture.
 
 ```python
 import torch
 import torch.nn as nn
-import torchvision
 
 upscale_factor = 4
 
-class Generator(nn.Module):
+class SuperResolutionNet(nn.Module):
     # LR image -> HR estimate (deep residual network with learned upscaling)
     def __init__(self, n_blocks=16):
         super().__init__()
-        # TODO: first conv; n_blocks residual blocks with a long skip; sub-pixel upscaling; output conv
+        # TODO: first conv; n_blocks residual blocks; learned upscaling; output conv
         self.net = None
     def forward(self, lr):
         pass
 
-class Discriminator(nn.Module):
-    # HR image -> probability "this is a real photograph"
-    def __init__(self):
-        super().__init__()
-        # strided-conv / leaky-ReLU / batchnorm classifier, no pooling
-        self.net = None
-    def forward(self, img):
-        pass
+def pixel_mse(sr, hr):
+    return ((sr - hr) ** 2).mean()
 
-# frozen feature extractor available for measuring similarity in feature space
-vgg = torchvision.models.vgg19(pretrained=True).features.eval()
-for p in vgg.parameters():
-    p.requires_grad = False
-
-def content_loss(sr, hr):
-    # TODO: how should generator output be compared to ground truth?
+def sr_objective(sr, hr, lr):
+    # TODO: replace or augment pixel MSE so the result is faithful but not texture-averaged
     pass
 
-def generator_objective(sr, hr, d_pred_on_sr):
-    # TODO: the objective that makes the output sharp and photo-realistic
-    #       rather than the smooth pixel-wise average of plausible solutions
-    pass
-
-def train_step(lr, hr, opt_g, opt_d):
-    # alternate: update D (real HR vs generated SR), then update G on its objective
-    pass
+def train_step(lr, hr, model, opt):
+    sr = model(lr)
+    loss = sr_objective(sr, hr, lr)
+    opt.zero_grad()
+    loss.backward()
+    opt.step()
 ```
 
-This harness can run a residual generator inside an adversarial game with a VGG feature extractor on
-hand, but the choice of objective — pixel versus feature space, and how to incorporate the adversarial
-signal — is the open problem.
+This scaffold can express the competing design choices from the background, but it does not decide
+which loss should replace pixel MSE. The open problem is to formulate that objective without handing
+the model the smooth conditional mean as its safest answer.

@@ -62,57 +62,64 @@ Design choices and reasons:
 - **Share token + positional embeddings only**: $G$'s full-vocab softmax densely
   updates the whole embedding table, making it a better teacher; tying all
   weights would force $G$ and $D$ to be the same size.
-- **$G$ at 1/4–1/2 of $D$'s width**: a too-strong $G$ makes detection unlearnable
-  and forces $D$ to spend capacity modeling $G$; same-size $G$ doubles compute.
+- **$G$ smaller than $D$**: the paper finds 1/4–1/2 width works best
+  (Small/Large use 1/4; Base uses 1/3). A too-strong $G$ makes detection
+  unlearnable and forces $D$ to spend capacity modeling $G$; same-size $G$
+  doubles compute.
 - **Joint training**: provides a curriculum — $G$ starts weak (easy fakes) and
   sharpens — avoiding the cold-start collapse of staged training.
 
 ## Code
 
-The generator/discriminator construction, Gumbel-max sampling with
-stop-gradient, the outcome-keyed labels, and the weighted combined loss:
+The paper equations above define $D$ as probability "real." The released
+TensorFlow implementation uses the equivalent opposite convention in code:
+the discriminator sigmoid is trained with `labels = is_fake_tokens`, so it is
+probability "fake." The core ELECTRA path is:
 
 ```python
 import tensorflow as tf
 import collections
 
 
-class PretrainingModel:
-    """Replaced-token-detection pre-training: small generator + discriminator."""
+class PretrainingModel(object):
+    """Transformer pre-training using replaced-token detection."""
 
     def __init__(self, config, features, is_training):
         self._config = config
-        self._bert_config = get_bert_config(config)          # discriminator config
-        embedding_size = config.embedding_size or self._bert_config.hidden_size
+        self._bert_config = training_utils.get_bert_config(config)
+        embedding_size = (self._bert_config.hidden_size
+                          if config.embedding_size is None
+                          else config.embedding_size)
 
-        # Corrupt: pick mask_prob (=0.15) of positions, place [MASK].
-        inputs = features_to_inputs(features)
-        masked_inputs = mask(config, inputs, config.mask_prob)
+        # Dynamic masking records original ids; the helper masks 85% of the
+        # selected positions and leaves the remaining selected positions unchanged.
+        unmasked_inputs = pretrain_data.features_to_inputs(features)
+        masked_inputs = pretrain_helpers.mask(
+            config, unmasked_inputs, config.mask_prob)
 
-        # Generator = a small masked LM; embeddings tied with the discriminator.
-        gen_config = get_generator_config(config, self._bert_config)
+        # Default ELECTRA path: a smaller, untied generator with tied embeddings.
+        generator_config = get_generator_config(config, self._bert_config)
         generator = build_transformer(
-            config, masked_inputs, is_training, gen_config,
-            embedding_size=embedding_size, scope="generator")
+            config, masked_inputs, is_training, generator_config,
+            embedding_size=(None if config.untied_generator_embeddings
+                            else embedding_size),
+            untied_embeddings=config.untied_generator_embeddings,
+            scope="generator")
         mlm_output = self._get_masked_lm_output(masked_inputs, generator)
 
-        # Sample replacements and splice them in -> x^corrupt.
         fake_data = self._get_fake_data(masked_inputs, mlm_output.logits)
 
-        # Discriminator labels every position real/replaced.
+        self.total_loss = config.gen_weight * mlm_output.loss
         discriminator = build_transformer(
             config, fake_data.inputs, is_training, self._bert_config,
-            embedding_size=embedding_size, scope="discriminator")
+            reuse=not config.untied_generator, embedding_size=embedding_size)
         disc_output = self._get_discriminator_output(
             fake_data.inputs, discriminator, fake_data.is_fake_tokens)
-
-        # Combined loss: gen_weight=1.0, disc_weight=50.0.
-        self.total_loss = (config.gen_weight * mlm_output.loss
-                           + config.disc_weight * disc_output.loss)
+        self.total_loss += config.disc_weight * disc_output.loss
 
     def _get_masked_lm_output(self, inputs, model):
-        reprs = gather_positions(model.get_sequence_output(),
-                                 inputs.masked_lm_positions)
+        reprs = pretrain_helpers.gather_positions(
+            model.get_sequence_output(), inputs.masked_lm_positions)
         logits = get_token_logits(reprs, model.get_embedding_table(),
                                   self._bert_config)
         return get_softmax_output(logits, inputs.masked_lm_ids,
@@ -120,39 +127,47 @@ class PretrainingModel:
                                   self._bert_config.vocab_size)
 
     def _get_fake_data(self, inputs, mlm_logits):
-        inputs = unmask(inputs)
-        sampled = tf.stop_gradient(                          # no gradient to G via the sample
-            sample_from_softmax(mlm_logits / self._config.temperature))
-        sampled_ids = tf.argmax(sampled, -1, output_type=tf.int32)
-        updated_ids, masked = scatter_update(
+        inputs = pretrain_helpers.unmask(inputs)
+        disallow = tf.one_hot(
+            inputs.masked_lm_ids, depth=self._bert_config.vocab_size,
+            dtype=tf.float32) if self._config.disallow_correct else None
+        sampled_tokens = tf.stop_gradient(pretrain_helpers.sample_from_softmax(
+            mlm_logits / self._config.temperature, disallow=disallow))
+        sampled_ids = tf.argmax(sampled_tokens, -1, output_type=tf.int32)
+        updated_ids, masked = pretrain_helpers.scatter_update(
             inputs.input_ids, sampled_ids, inputs.masked_lm_positions)
-        # "Replaced" only where the sampled token differs from the original.
-        is_fake = masked * (1 - tf.cast(
+        # Outcome-keyed label: a correct resample is real, not fake.
+        labels = masked * (1 - tf.cast(
             tf.equal(updated_ids, inputs.input_ids), tf.int32))
         FakedData = collections.namedtuple(
-            "FakedData", ["inputs", "is_fake_tokens"])
+            "FakedData", ["inputs", "is_fake_tokens", "sampled_tokens"])
         return FakedData(
-            inputs=get_updated_inputs(inputs, input_ids=updated_ids),
-            is_fake_tokens=is_fake)
+            inputs=pretrain_data.get_updated_inputs(inputs, input_ids=updated_ids),
+            is_fake_tokens=labels,
+            sampled_tokens=sampled_tokens)
 
     def _get_discriminator_output(self, inputs, discriminator, labels):
         hidden = tf.layers.dense(
             discriminator.get_sequence_output(),
             units=self._bert_config.hidden_size,
-            activation=get_activation(self._bert_config.hidden_act))
+            activation=modeling.get_activation(self._bert_config.hidden_act),
+            kernel_initializer=modeling.create_initializer(
+                self._bert_config.initializer_range))
         logits = tf.squeeze(tf.layers.dense(hidden, units=1), -1)
-        labels_real = 1.0 - tf.cast(labels, tf.float32)      # 1 = original, 0 = replaced
-        weights = tf.cast(inputs.input_mask, tf.float32)     # ignore padding
+        labelsf = tf.cast(labels, tf.float32)      # 1 = replaced/fake, 0 = original
+        weights = tf.cast(inputs.input_mask, tf.float32)
         losses = tf.nn.sigmoid_cross_entropy_with_logits(
-            logits=logits, labels=labels_real) * weights
+            logits=logits, labels=labelsf) * weights
         loss = tf.reduce_sum(losses) / (1e-6 + tf.reduce_sum(weights))
         DiscOutput = collections.namedtuple("DiscOutput", ["loss"])
         return DiscOutput(loss=loss)
 
 
-def sample_from_softmax(logits):
+def sample_from_softmax(logits, disallow=None):
     """Exact categorical sample from softmax(logits) via the Gumbel-max trick."""
-    u = tf.random.uniform(get_shape_list(logits), minval=0, maxval=1)
+    if disallow is not None:
+        logits -= 1000.0 * disallow
+    u = tf.random.uniform(modeling.get_shape_list(logits), minval=0, maxval=1)
     gumbel = -tf.log(-tf.log(u + 1e-9) + 1e-9)
     return tf.one_hot(
         tf.argmax(tf.nn.softmax(logits + gumbel), -1, output_type=tf.int32),
@@ -160,10 +175,12 @@ def sample_from_softmax(logits):
 
 
 def get_generator_config(config, bert_config):
-    """Generator is narrower than the discriminator (~1/4 hidden width)."""
-    gen = bert_config.copy()
+    """Scale generator depth and width relative to the discriminator."""
+    gen = modeling.BertConfig.from_dict(bert_config.to_dict())
     gen.hidden_size = int(round(bert_config.hidden_size
-                                * config.generator_hidden_size))   # 0.25
+                                * config.generator_hidden_size))
+    gen.num_hidden_layers = int(round(bert_config.num_hidden_layers
+                                      * config.generator_layers))
     gen.intermediate_size = 4 * gen.hidden_size
     gen.num_attention_heads = max(1, gen.hidden_size // 64)
     return gen

@@ -72,6 +72,8 @@ class Highway(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([nn.Linear(size, 2 * size) for _ in range(num_layers)])
         self.activation = activation
+        for layer in self.layers:
+            layer.bias.data[size:].fill_(1.0)
 
     def forward(self, x):
         for layer in self.layers:
@@ -121,20 +123,25 @@ class StackedProjectedLSTM(nn.Module):
     def __init__(self, input_dim, cell_dim=4096, proj_dim=512, n_layers=2, residual=True):
         super().__init__()
         self.layers = nn.ModuleList()
-        self.projections = nn.ModuleList()
         self.residual = residual
         dim = input_dim
         for _ in range(n_layers):
-            self.layers.append(nn.LSTM(dim, cell_dim, batch_first=True))
-            self.projections.append(nn.Linear(cell_dim, proj_dim))
+            self.layers.append(nn.LSTM(dim, cell_dim, batch_first=True, proj_size=proj_dim))
             dim = proj_dim
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         outputs = []
         inp = x
-        for layer_index, (lstm, projection) in enumerate(zip(self.layers, self.projections)):
-            out, _ = lstm(inp)
-            out = projection(out)
+        lengths = mask.sum(dim=1).clamp_min(1).cpu() if mask is not None else None
+        for layer_index, lstm in enumerate(self.layers):
+            if lengths is None:
+                out, _ = lstm(inp)
+            else:
+                packed = nn.utils.rnn.pack_padded_sequence(
+                    inp, lengths, batch_first=True, enforce_sorted=False)
+                out, _ = lstm(packed)
+                out, _ = nn.utils.rnn.pad_packed_sequence(
+                    out, batch_first=True, total_length=x.size(1))
             if self.residual and layer_index != 0:
                 out = out + inp
             outputs.append(out)
@@ -156,9 +163,10 @@ class BidirectionalLanguageModel(nn.Module):
 
     def forward(self, char_ids):                  # (B, T, max_chars)
         x, mask = self.char_encoder(char_ids)      # layer-0 token rep, both directions
-        fwd_layers = self.forward_lm(x)             # list of L states (left context)
-        bwd_layers = self.backward_lm(x.flip(1))    # run on reversed sequence
-        bwd_layers = [h.flip(1) for h in bwd_layers]
+        fwd_layers = self.forward_lm(x, mask)       # list of L states (left context)
+        bwd_input = self._reverse_sequences(x, mask)
+        bwd_layers = self.backward_lm(bwd_input, mask)
+        bwd_layers = [self._reverse_sequences(h, mask) for h in bwd_layers]
         # R_k: layer 0 is the token rep (duplicated across directions);
         # each biLSTM layer is the concat of the two directions.
         layers = [torch.cat([x, x], dim=-1) * mask.unsqueeze(-1).float()]
@@ -170,12 +178,24 @@ class BidirectionalLanguageModel(nn.Module):
         # jointly maximize forward + backward log-likelihood; softmax (Theta_s)
         # and char encoder (Theta_x) shared across both directions. targets_fwd
         # and targets_bwd are pre-shifted next/previous-token ids.
-        x, _ = self.char_encoder(char_ids)
-        f_top = self.forward_lm(x)[-1]
-        b_top = self.backward_lm(x.flip(1))[-1].flip(1)
-        loss_f = F.cross_entropy(self.softmax(f_top).transpose(1, 2), targets_fwd)
-        loss_b = F.cross_entropy(self.softmax(b_top).transpose(1, 2), targets_bwd)
-        return loss_f + loss_b
+        x, mask = self.char_encoder(char_ids)
+        f_top = self.forward_lm(x, mask)[-1]
+        b_top = self.backward_lm(self._reverse_sequences(x, mask), mask)[-1]
+        b_top = self._reverse_sequences(b_top, mask)
+        loss_f = F.cross_entropy(
+            self.softmax(f_top).transpose(1, 2), targets_fwd, ignore_index=0)
+        loss_b = F.cross_entropy(
+            self.softmax(b_top).transpose(1, 2), targets_bwd, ignore_index=0)
+        return 0.5 * (loss_f + loss_b)
+
+    @staticmethod
+    def _reverse_sequences(x, mask):
+        if mask is None:
+            return x.flip(1)
+        y = x.clone()
+        for batch_index, length in enumerate(mask.sum(dim=1).tolist()):
+            y[batch_index, :length] = x[batch_index, :length].flip(0)
+        return y
 
 
 class LayerCombination(nn.Module):

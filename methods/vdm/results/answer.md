@@ -3,7 +3,7 @@
 ## Problem
 
 Gaussian-corruption generative models produce excellent samples but trail autoregressive models on
-likelihood (bits/dim). VDM makes such a model a state-of-the-art *likelihood* model by (1) optimizing the
+likelihood (bits/dim). VDM makes such a model a competitive *likelihood* model by (1) optimizing the
 exact variational bound rather than a quality-weighted surrogate, (2) learning the noise schedule, and
 (3) adding Fourier input features for fine-scale detail.
 
@@ -34,13 +34,14 @@ exact variational bound rather than a quality-weighted surrogate, (2) learning t
    (use `expm1` → stable in fp32). Consistency holds via denoising score matching: at the optimum
    `s_θ^* = ∇ log q(z_t)`.
 
-6. **Learn the schedule for variance, not loss.** Endpoints `γ_0,γ_1` are trained against the VLB; the
-   interior of the monotone schedule `γ_η(t)` is trained to minimize the estimator variance via SGD on the
+6. **Learn the schedule for variance, not loss.** In the continuous-time schedule argument, endpoints
+   `γ_0,γ_1` are trained against the VLB; the interior of the monotone schedule `γ_η(t)` is trained to minimize the estimator variance via SGD on the
    **squared** loss (since `E[L^{MC}²] = L² + Var` and `L²` is interior-independent,
    `∇_η E[L^{MC}²] = ∇_η Var`), plus low-discrepancy/antithetic `t` sampling.
 
-7. **Fourier features.** Append `sin(2^n π z), cos(2^n π z)` (`n∈{6,7}`, i.e. `range(6,8)` in the implementation) so the denoiser can fit fine pixel
-   detail; lets `SNR_max` go high and improves likelihood substantially.
+7. **Fourier features.** Append `sin(2^n π z), cos(2^n π z)` for frequencies `n∈{7,8}`. The released
+   code uses `range(6,8)` because its multiplier is `2π`, giving the same two frequencies. These features let
+   the denoiser fit fine pixel detail and make high `SNR_max` useful.
 
 8. **Weighted loss / connections.** `L_∞(x,w)=½E∫ w(v)‖x−x̃_θ‖² dv`; `w=1` is the VLB. The "simple"
    noise-MSE objective corresponds to `w=1/γ'(t)` (more weight on low SNR → better FID, worse likelihood).
@@ -62,7 +63,14 @@ class VDM(nn.Module):
     def setup(self):
         self.encdec = EncDec(self.config)
         self.score_model = ScoreUNet(self.config)     # predicts eps_hat(z_t, gamma_t)
-        self.gamma = NoiseSchedule_NNet(self.config)  # monotone gamma(t) = -log SNR(t)
+        if self.config.gamma_type == "learnable_nnet":
+            self.gamma = NoiseSchedule_NNet(self.config)
+        elif self.config.gamma_type == "fixed":
+            self.gamma = NoiseSchedule_FixedLinear(self.config)
+        elif self.config.gamma_type == "learnable_scalar":
+            self.gamma = NoiseSchedule_Scalar(self.config)
+        else:
+            raise ValueError("unknown gamma_type")
 
     def __call__(self, images, conditioning, deterministic=True):
         g_0, g_1 = self.gamma(0.), self.gamma(1.)
@@ -82,8 +90,11 @@ class VDM(nn.Module):
 
         # 3) diffusion loss
         rng1 = self.make_rng("sample")
-        t0 = jax.random.uniform(rng1)
-        t = jnp.mod(t0 + jnp.arange(0., 1., step=1. / n_batch), 1.)   # antithetic / low-discrepancy
+        if self.config.antithetic_time_sampling:
+            t0 = jax.random.uniform(rng1)
+            t = jnp.mod(t0 + jnp.arange(0., 1., step=1. / n_batch), 1.)   # antithetic / low-discrepancy
+        else:
+            t = jax.random.uniform(rng1, shape=(n_batch,))
         T = self.config.sm_n_timesteps
         if T > 0:
             t = jnp.ceil(t * T) / T
@@ -171,4 +182,6 @@ def loss_fn(model, params, batch, rng):
 (`logprob` = log-softmax of `-0.5((z - x_vals)·e^{-g_0/2})²` over the value grid). `ScoreUNet` is a U-Net
 that concatenates `Base2FourierFeatures(z)` to `z`, conditions on `γ_t` via a sinusoidal embedding, and
 predicts `ε̂` (with a `+z` base-measure skip). The diffusion-loss branches implement
-`½γ'(t)‖ε−ε̂‖²` (continuous) and `½T·expm1(γ_t−γ_s)‖ε−ε̂‖²` (discrete).
+`½γ'(t)‖ε−ε̂‖²` (continuous) and `½T·expm1(γ_t−γ_s)‖ε−ε̂‖²` (discrete). In the simplest training loop the
+summed BPD loss is optimized through the configured schedule class directly (the `γ'(t)` factor carries the
+gradient into the schedule), without a separate squared-loss variance-gradient path for the schedule interior.

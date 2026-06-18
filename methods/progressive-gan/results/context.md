@@ -1,111 +1,90 @@
-# Context: training adversarial image generators at high resolution
+## Research Question
 
-## Research question
+High-resolution adversarial image synthesis has a specific failure mode: the samples can be sharp at modest resolution, but training becomes brittle, slow, and low-variety as the target resolution approaches megapixel scale. The goal is to train a generator that produces convincing and varied natural images up to 1024x1024, while keeping the adversarial game stable enough to finish.
 
-Adversarial generative models produce sharp images, but only at fairly small resolutions (32²–256²) and with limited variation, and even there the training is fragile. The goal is to generate high-resolution images — up to 1024×1024 — that are both convincing in fine detail and varied across the dataset, with a training procedure that does not collapse or stall. Reaching megapixel output requires a method that survives at high resolution rather than merely scaling up an existing low-resolution recipe.
+Two constraints define the problem. First, the generator receives its learning signal only through the discriminator or critic. If the generated and real distributions are easy to separate, that signal can stop being useful. Second, memory grows quadratically with image side length, so the highest-resolution stages force small minibatches and noisier optimization exactly where the game is already hardest.
 
-Two facts make this hard. First, the gradient the generator receives from the discriminator becomes useless precisely when the two image distributions are easy to tell apart, and *higher resolution makes them easier to tell apart* — more pixels expose more telltale statistics, so the discriminator becomes near-perfect faster and the gradient it hands back points in nearly random directions. Generating directly at 1024² is therefore the worst case for this failure mode. Second, memory limits force smaller minibatches at high resolution, which further degrades the stability of training. On top of this, adversarial generators tend to capture only a subset of the variation in the data (mode collapse), and the two networks can enter an escalation where signal magnitudes spiral out of control.
+The wanted artifact is not just a larger convolutional network. It has to make the high-resolution optimization tractable, keep the critic from becoming a useless near-perfect separator, encourage coverage of the data variation, and prevent the two networks from escalating signal magnitudes during the adversarial competition.
 
-A solution would have to: make the optimization tractable at high resolution; supply the generator with a usable gradient throughout training; actively encourage variation; and prevent the magnitude escalation between the two networks — all without delicate per-dataset tuning.
+## Background Facts
 
-## Background
+In the original GAN objective, a generator G maps a latent code z to an image and a discriminator D estimates whether an image is real:
 
-**The adversarial game.** A generator G maps a latent code z ∼ p(z) (conventionally N(0, I) or uniform) to an image; a discriminator (critic) D scores images. The original objective (Goodfellow et al. 2014) is the two-player minimax
+```text
+min_G max_D E_{x~P_data}[log D(x)] + E_z[log(1 - D(G(z)))].
+```
 
-  min_G max_D  E_{x∼data}[log D(x)] + E_{z}[log(1 − D(G(z)))],
+At the inner optimum this corresponds to a Jensen-Shannon divergence. Arjovsky and Bottou's diagnosis is that when real and generated samples lie on low-dimensional manifolds with little overlap, a discriminator can separate them essentially perfectly; as it approaches that separator, the generator can receive vanishing or unstable directions rather than a reliable path toward the data distribution.
 
-whose inner optimum corresponds to minimizing the Jensen–Shannon divergence between the data and the generated distribution. The generator is the object of interest; the discriminator is an adaptive loss that is discarded after training. Networks are convolutional in the DCGAN style (Radford et al. 2015): strided / transposed convolutions, BatchNorm, (leaky) ReLU, weights initialized from N(0, 0.02²).
+Wasserstein GAN replaces the saturating classifier view with a critic whose objective estimates the Wasserstein-1 distance. The critic must be Lipschitz. WGAN-GP avoids crude weight clipping by penalizing the critic's input-gradient norm on interpolates between real and fake images:
 
-**Why the gradient dies at high resolution.** Arjovsky & Bottou (2017) showed that when the data manifold and the generated manifold have negligible overlap — generic for two low-dimensional manifolds embedded in a high-dimensional pixel space — a near-perfect discriminator exists, and the gradient it passes back to G either vanishes or points in essentially arbitrary directions. Odena et al. (2017) observed that increasing the output resolution makes generated images *easier* to distinguish from real ones, which drives the discriminator toward that near-perfect regime sooner. The two facts compound: the higher the resolution, the worse the gradient pathology.
+```text
+L_D = E[D(fake)] - E[D(real)] + lambda E[(||grad_xhat D(xhat)||_2 - 1)^2],
+L_G = -E[D(fake)].
+```
 
-**Stabilizing by changing the distance.** One line of work replaces the JS objective with a distance that stays informative even when the supports are disjoint. The Wasserstein (earth-mover) distance (Arjovsky et al. 2017) is continuous and differentiable almost everywhere in the generator's parameters under mild conditions, and is estimated by a critic D constrained to be 1-Lipschitz; the critic is *not* saturated by a perfect classifier and keeps producing a usable gradient. The improved variant (Gulrajani et al. 2017) enforces the Lipschitz constraint with a gradient penalty rather than weight clipping: it samples points x̂ on straight lines between real and generated images and penalizes the deviation of ‖∇_{x̂} D(x̂)‖₂ from 1,
+This supplies a more useful loss, but it does not by itself make a generator learn global layout and fine texture in one shot.
 
-  L_D = E_{z}[D(G(z))] − E_{x∼data}[D(x)] + λ · E_{x̂}[ (‖∇_{x̂} D(x̂)‖₂ − 1)² ],
+Convolutional GAN practice before this point uses DCGAN-style stacks: strided or fractional-strided convolutions, BatchNorm in the generator, leaky ReLU in the discriminator, and small random weight initialization. These ingredients make lower-resolution image generation reproducible, but they do not remove the high-resolution separation problem.
 
-with the generator minimizing −E_z[D(G(z))]. Other objectives in the same spirit are least-squares (Mao et al. 2016) and margin-based variants. These improvements are largely orthogonal to *how* the networks are built and grown.
+GANs also tend to drop variation. Minibatch discrimination lets the discriminator inspect cross-sample statistics by learning a projection tensor and comparing feature vectors across the minibatch. It helps with collapse, but it adds learned parameters, placement choices, and hyperparameters to an already sensitive game.
 
-**Variation and mode collapse.** Generators routinely cover only part of the data's variation. Salimans et al. (2016) proposed minibatch discrimination: let the discriminator look at statistics *across* the minibatch rather than at each image in isolation, so that a batch of near-identical generated images is detectable. Concretely, each feature vector f(x_i) is multiplied by a learned tensor T to give matrices M_i; for each sample one computes c(x_i) = Σ_j exp(−‖M_i − M_j‖_{L1}) summed over the batch, and these cross-sample statistics are concatenated to D's features. It helps but adds a learned tensor, extra hyperparameters, and a placement choice. Other routes include unrolling the discriminator (Metz et al. 2016) and a repelling regularizer (Zhao et al. 2016) that pushes the generator to orthogonalize feature vectors within a minibatch.
+## Baselines And Gaps
 
-**Normalization and signal magnitudes.** Mode collapse often begins abruptly — within a dozen minibatches — when the discriminator overshoots, producing exaggerated gradients, after which signal magnitudes escalate in both networks. Most generators borrow BatchNorm (Ioffe & Szegedy 2015) — normalize each activation by minibatch mean/variance — sometimes with LayerNorm (Ba et al. 2016) or WeightNorm (Salimans & Kingma 2016) in the discriminator; these were introduced to combat internal covariate shift, and they carry learnable scale/shift parameters and a dependence on batch statistics. A related primitive is local response normalization (Krizhevsky et al. 2012), which divides each activation by an aggregate over neighboring feature channels at the same spatial location.
+**Direct high-resolution GAN training.** Enlarge the generator and discriminator to the final image size and train from random initialization. The gap is that the critic immediately sees many high-frequency defects, while the generator has to learn every scale of structure at once.
 
-**Initialization for deep nets.** He et al. (2015) showed that initializing weights from N(0, gain²/fan_in) (gain = √2 for ReLU/leaky-ReLU) keeps activation variance roughly constant through depth, which is needed to train deep convolutional stacks. Adaptive optimizers — RMSProp (Tieleman & Hinton) and Adam (Kingma & Ba 2015) — normalize each parameter's update by a running estimate of its gradient's standard deviation, which makes the update step invariant to the overall scale of that parameter.
+**DCGAN-style normalization.** BatchNorm and related normalizers can stabilize ordinary deep networks, but their original motivation is internal covariate shift. In adversarial training the observed failure can instead be magnitude escalation between the two players, and high-resolution minibatches are often too small for comfortable batch-statistic dependence.
 
-**Curriculum and multi-scale ideas.** Learning easy cases before hard ones (curriculum learning) and building images coarse-to-fine via image pyramids (Burt & Adelson 1987; Laplacian-pyramid generators, Denton et al. 2015) are long-standing tools; multi-scale generator/discriminator setups (Durugkar et al. 2016; Ghosh et al. 2017; Wang et al. 2017) attach discriminators at several resolutions.
+**WGAN-GP.** A stronger loss that keeps gradients informative under support mismatch. The gap is architectural and procedural: the objective is better behaved, but a randomly initialized full-resolution generator still faces a very hard map from latent vector to image.
 
-## Baselines
+**Minibatch discrimination.** A direct anti-collapse signal. The gap is complexity: the learned projection tensor and extra choices are not ideal when the training recipe is already fragile.
 
-- **GAN (Goodfellow et al. 2014).** The minimax JS-divergence game. Sharp samples but brittle training and low resolution; the gradient vanishes when D becomes confident. No mechanism for variation.
+## Evaluation Setup
 
-- **DCGAN (Radford et al. 2015).** The convolutional G/D backbone with BatchNorm and (leaky) ReLU that made low-resolution adversarial training reproducible. Gap: does not reach high-resolution, high-variation synthesis; stability degrades as resolution grows.
+A candidate solution should be judged by both fidelity and variation. Existing choices include Inception Score for class-confident, class-diverse samples, and MS-SSIM for measuring similarity among generated images. MS-SSIM can expose severe lack of variation, but it does not compare generated images to the training distribution and can miss small-scale texture or color defects.
 
-- **WGAN-GP (Gulrajani et al. 2017).** ResNet- or DCGAN-style critic trained with the Wasserstein distance and a gradient penalty enforcing 1-Lipschitzness. Supplies a usable gradient even when supports barely overlap — the strongest available stabilizer and a natural loss to build on. Gap: it fixes the *loss* but not the underlying difficulty that, at high resolution, learning the entire latent→image map at once is a very hard optimization problem with a near-perfect discriminator from the start; demonstrated mainly at modest resolution.
+High-resolution claims need datasets whose native quality supports the target resolution. CelebA, LSUN categories, and CIFAR-10 cover different regimes: faces at high resolution, scene categories at moderate to high resolution, and a low-resolution benchmark with established Inception Score comparisons.
 
-- **Minibatch discrimination (Salimans et al. 2016).** Adds cross-minibatch statistics to the discriminator to combat mode collapse via a learned projection tensor. Gap: introduces learned parameters and hyperparameters, requires choosing where to insert it, and in practice the gain in variation is limited.
+An implementation-faithful check should verify the exact adversarial loss signs, the gradient-penalty target and coefficient, the Adam hyperparameters, the latent normalization, the image dynamic range, and all resolution-dependent batch-size and schedule choices.
 
-The standard high-resolution attempt is to take a DCGAN/WGAN-GP setup, enlarge it to the target resolution, and train end-to-end. The gaps that leaves open: training is unstable and slow at high resolution; small minibatches (forced by memory) make it worse; variation is weak; and signal magnitudes escalate between the two networks.
+## Starting Code
 
-## Evaluation settings
-
-- **Datasets.** CelebA (face images) and LSUN categories (e.g. bedroom) for unsupervised image generation, typically at 128². CIFAR-10 (10 classes, 32×32) for inception-score comparison. The aspiration is output resolutions up to 1024², for which a sufficiently varied high-quality dataset must exist.
-
-- **Metrics.** Inception Score (Salimans et al. 2016), IS = exp(E_x KL(p(y|x) ‖ p(y))) using a pretrained classifier, rewarding confident per-image class posteriors and a diverse class marginal. Multi-scale structural similarity, MS-SSIM (Odena et al. 2017; Wang et al. 2003), which measures variation *among generated outputs* but not similarity to the training set. Earth-mover / Wasserstein distance between local-patch distributions across scales is an available primitive for comparing appearance and variation at each spatial frequency.
-
-- **Protocol.** Train the generator, then sample many images and compute the metrics against dataset statistics; optionally use an exponential moving average of the generator's weights when sampling for evaluation, which yields smoother results.
-
-## Code framework
-
-The primitives below already exist: a convolution and a dense layer, leaky ReLU, an Adam optimizer, the WGAN-GP discriminator/generator losses, nearest-neighbor upsampling and average-pool downsampling, and latent/real-image samplers. What does *not* exist yet is how to build and train the networks so that high-resolution synthesis is stable and varied. That is the stub below.
+The scaffold already has convolution and dense layers, leaky ReLU, nearest-neighbor upsampling, average-pool downsampling, WGAN-GP losses, Adam optimizers, latent sampling, real-image loading, and a training loop slot. What remains open is the architecture and training procedure that make high-resolution adversarial synthesis stable and varied.
 
 ```python
-import numpy as np
-import torch, torch.nn as nn, torch.nn.functional as F
-
-# --- existing primitives -------------------------------------------------
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 def leaky_relu(x, alpha=0.2):
-    return torch.maximum(x * alpha, x)
+    return F.leaky_relu(x, negative_slope=alpha)
 
-def upscale2d(x, factor=2):           # nearest-neighbor (element replication)
-    N, C, H, W = x.shape
-    x = x.view(N, C, H, 1, W, 1).expand(N, C, H, factor, W, factor)
-    return x.reshape(N, C, H * factor, W * factor)
+def upscale2d(x, factor=2):
+    return x.repeat_interleave(factor, dim=2).repeat_interleave(factor, dim=3)
 
-def downscale2d(x, factor=2):         # average pooling
+def downscale2d(x, factor=2):
     return F.avg_pool2d(x, factor)
 
 def wgan_gp_d_loss(D, real, fake, lam=10.0):
-    # E[D(fake)] - E[D(real)] + lam*(||grad_xhat D||_2 - 1)^2
+    # E[D(fake)] - E[D(real)] + lam * (||grad_xhat D(xhat)||_2 - 1)^2
     ...
 
 def wgan_g_loss(D, fake):
     return -D(fake).mean()
 
-def sample_latents(batch, dim_z, device):
-    z = torch.randn(batch, dim_z, device=device)
-    return z
-
-def sample_reals(batch):
-    ...
-
-# --- empty slot the method will fill -------------------------------------
-
 class Generator(nn.Module):
-    """TODO: how to build the generator."""
-    def __init__(self, *a, **k):
+    """TODO: produce images at the requested resolution."""
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        pass
-    def forward(self, *a, **k):
-        pass
+
+    def forward(self, z, *args, **kwargs):
+        raise NotImplementedError
 
 class Discriminator(nn.Module):
-    """TODO: how to build the discriminator; outputs a scalar critic score."""
-    def __init__(self, *a, **k):
+    """TODO: score images with a scalar critic value."""
+    def __init__(self, *args, **kwargs):
         super().__init__()
-        pass
-    def forward(self, *a, **k):
-        pass
 
-def train_step(G, D, G_opt, D_opt, cfg):
-    # TODO: one D step (wgan_gp_d_loss), one G step (wgan_g_loss).
-    pass
+    def forward(self, x, *args, **kwargs):
+        raise NotImplementedError
 ```

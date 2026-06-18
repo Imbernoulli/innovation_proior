@@ -28,7 +28,7 @@ The question is whether the "attend to the whole object" benefit of regional dro
 
 ## Evaluation settings
 
-The yardsticks are image-classification benchmarks: CIFAR-10 and CIFAR-100 (50k train / 10k test, 32×32, 10 and 100 classes) and ImageNet-2012 (1.28M train, 1000 classes, top-1/top-5 error). Standard backbones are residual networks — ResNet-50/101, PyramidNet-200, Wide-ResNet, ResNeXt — trained with SGD-with-momentum 0.9, weight decay, step-decayed learning rate, batch size 128 (CIFAR) to 256 (ImageNet), with the usual pad-crop + horizontal-flip + per-channel normalization underneath. Beyond clean accuracy, the relevant probes are: weakly-supervised object localization (CUB200-2011 and ImageNet) scored by class-activation-map overlap with ground-truth boxes; transfer to Pascal VOC detection (mAP) and MS-COCO captioning (BLEU) from a pretrained backbone; robustness to occlusion and to adversarial (FGSM) perturbations; and out-of-distribution detection. Cutout and Mixup are the natural augmentation comparison points.
+The yardsticks are image-classification benchmarks: CIFAR-10 and CIFAR-100 (50k train / 10k test, 32×32, 10 and 100 classes) and ImageNet-2012 (1.28M train, 1000 classes, top-1/top-5 error). Standard backbones are residual networks — ResNet-50/101, PyramidNet-200, Wide-ResNet, ResNeXt — trained with SGD-with-momentum 0.9, weight decay, step-decayed learning rate, batch size 64 (CIFAR) to 256 (ImageNet), with the usual pad-crop + horizontal-flip + per-channel normalization underneath. Beyond clean accuracy, the relevant probes are: weakly-supervised object localization (CUB200-2011 and ImageNet) scored by class-activation-map overlap with ground-truth boxes; transfer to Pascal VOC detection (mAP) and MS-COCO captioning (BLEU) from a pretrained backbone; robustness to occlusion and to adversarial (FGSM) perturbations; and out-of-distribution detection. Cutout and Mixup are the natural augmentation comparison points.
 
 ## Code framework
 
@@ -50,12 +50,13 @@ transform_train = transforms.Compose([
 ])
 trainset = datasets.CIFAR100(root='~/data', train=True, download=False,
                              transform=transform_train)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128,
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=64,
                                            shuffle=True, num_workers=8)
 
 net = build_network()                       # e.g. a ResNet / PyramidNet
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+optimizer = optim.SGD(net.parameters(), lr=0.25, momentum=0.9, weight_decay=1e-4,
+                      nesterov=True)
 net = net.cuda()
 mix_strength = 0.0
 

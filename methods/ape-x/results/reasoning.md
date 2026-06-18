@@ -10,11 +10,11 @@ So flip both. What if the thing I distribute isn't gradient computation at all, 
 
 So here's the architecture taking shape. Decouple acting from learning, like Gorila — but instead of many bundles each with a private uniform replay feeding gradients to a server, I want **many actors all feeding one shared replay**, and **one learner** reading from that shared replay and doing all the gradient work. Hundreds of cheap CPU actors generating experience as fast as they can; a single GPU learner consuming it.
 
-Now I have to decide how the learner picks what to train on, because it's drinking from a firehose — hundreds of actors at ~50K frames per second between them. It cannot and should not train on all of it; the learner's update rate is fixed by its single GPU, independent of how many actors I add. So out of this enormous incoming stream the learner must *select* the most useful transitions. And I already know the tool for that: prioritized replay (Schaul et al. 2016). Sample transition k with probability P(k) = p_k^α / Σ_j p_j^α, priority p_k = |δ_k| the absolute TD error, so the learner spends its limited updates on the transitions it's most wrong about. Correct the sampling bias with an importance weight w_k = (N·P(k))^{−β}, normalized by the max in the batch so weights only ever scale steps down. Sum-tree for O(log N) sampling and update, min-tree for the max weight. And it's not a side feature — the Rainbow ablation found prioritization the single most important ingredient in a value-based agent. In a distributed setting it becomes even more central: because the replay is *shared*, priorities are *global*. That rare transition actor 7 found doesn't sit quarantined in a local buffer anymore — it lands in the one shared memory with a high priority, and the single learner immediately preferentially samples it. A valuable discovery by *any* actor benefits the *whole* system. The quarantine problem is gone, and prioritization is what dissolves it.
+Now I have to decide how the learner picks what to train on, because it's drinking from a firehose — hundreds of actors at ~50K frames per second between them. It cannot and should not train on all of it; the learner's update rate is fixed by its single GPU, independent of how many actors I add. So out of this enormous incoming stream the learner must *select* the most useful transitions. And I already know the tool for that: prioritized replay (Schaul et al. 2016). Sample transition k with probability P(k) = p_k^α / Σ_j p_j^α, priority p_k = |δ_k| the absolute TD error, so the learner spends its limited updates on the transitions it's most wrong about. Correct the sampling bias with an importance weight w_k = (N·P(k))^{−β}, normalized by the largest possible weight in the current replay so weights only ever scale steps down. Sum-tree for O(log N) sampling and update, min-tree for the smallest sampling probability and therefore the max weight. And it's not a side feature — the Rainbow ablation found prioritization the single most important ingredient in a value-based agent. In a distributed setting it becomes even more central: because the replay is *shared*, priorities are *global*. That rare transition actor 7 found doesn't sit quarantined in a local buffer anymore — it lands in the one shared memory with a high priority, and the single learner immediately preferentially samples it. A valuable discovery by *any* actor benefits the *whole* system. The quarantine problem is gone, and prioritization is what dissolves it.
 
 Good — but now a scaling problem with prioritized replay surfaces that didn't exist on a single machine. In single-machine prioritized DQN, a brand-new transition has no TD error computed yet, so the rule is: insert it at the *maximum* priority seen so far, and only refine that priority the first time the learner happens to sample it. That guarantees every new transition is seen at least once. On one machine, where a single slow actor produces new transitions at the same rate the learner consumes them, this is fine. But picture it with hundreds of actors. New transitions pour in, *all* stamped with maximum priority by construction. The top of the priority distribution is now permanently flooded with the freshest data, faster than the single learner can ever sample-and-refine them. The learner ends up myopically training on only the most recent transitions, because recency and max-priority have become the same thing. The "insert at max, refine on first sample" rule silently collapses into "always train on the newest data" — which throws away the whole point of prioritizing by *informativeness*.
 
-So I need real priorities on new transitions *before* they enter the shared buffer — I can't wait for the learner. Where would those come from? Here's the thing: the actors are already evaluating their local copy of the network at every step to choose actions — they compute the Q-values anyway. The TD error of a transition is built from exactly those Q-values. So let the actors compute the initial priority themselves, online, from the Q-values they already have in hand. It costs essentially nothing extra, and now data enters the shared replay with an *accurate* priority reflecting how surprising it actually is, not a placeholder maximum. The flood-the-top failure mode is eliminated at its source. (One caveat I'll keep in mind: the actor computes that priority from *its* copy of the parameters, which is slightly behind the learner's — but that's exactly the off-policy slack I already decided to tolerate.)
+So I need real priorities on new transitions *before* they enter the shared buffer — I can't wait for the learner. Where would those come from? Here's the thing: the actors are already evaluating their local copy of the network at every step to choose actions — they compute the Q-values anyway. The TD error of a transition is built from exactly those Q-values. So let the actors compute the initial priority themselves, online, from the Q-values they already have in hand. It costs essentially nothing extra, and now data enters the shared replay with an informative priority reflecting the actor's current surprise, not a placeholder maximum. The flood-the-top failure mode is eliminated at its source. (One caveat I'll keep in mind: the actor computes that priority from *its* copy of the parameters, which is slightly behind the learner's — but that's exactly the off-policy slack I already decided to tolerate.)
 
 Now, why bother with hundreds of actors at all if the learner's update count is fixed? If I'm not doing more gradient steps, what does more data even buy me? Let me think about a failure mode that's everywhere in deep RL: the policy settles into a local optimum in parameter space — a behavior that's locally good but globally mediocre — usually because it never explored the action that would have revealed something better. A single ε-greedy actor explores at one fixed rate, and that rate is a compromise: low ε exploits and digs deep into the environment but rarely tries anything new; high ε tries lots of new things but never commits long enough to see a long-horizon payoff. You can't get both from one ε. But I don't have one actor — I have hundreds, and I'm off-policy, so I'm free to let each actor run a *different* behavior policy. Give actor i its own exploration rate. Let a few actors run very low ε so they exploit and probe deep into the environment, and let others run high ε so the population keeps trying fresh things and nobody over-specializes. The whole population sweeps a spectrum of exploration simultaneously, and prioritized shared replay does the rest: when *any* actor's exploration pays off and produces a surprising, high-error transition, it enters the shared buffer at high priority and the learner pounces on it. Diverse generation plus prioritized selection — generate widely, then identify and learn from the most useful events. That's why more actors help even with a fixed learning rate.
 
@@ -23,11 +23,11 @@ What spread of ε do I want across N actors? I want most actors clustered at fai
 Now let me pin down the learner's actual update, because I want it to be a strong value-based rule, not vanilla DQN. The bootstrap target should not take a plain max — that overestimates, because the same noisy network both picks and evaluates the bootstrap action. Decouple them: pick the action with the online net, evaluate it with the target net θ⁻ (double Q-learning). And reward propagates faster if I bootstrap after n steps instead of one, summing n discounted rewards first (multi-step return). And I'll use a dueling head as the approximator, Q = V + (A − mean_a A), since it estimates state value and per-action advantage separately. Put together, the loss for a sampled transition starting at (S_t, A_t) is
 
   l_t(θ) = ½ ( G_t − q(S_t, A_t, θ) )²,
-  G_t = R_{t+1} + γ R_{t+2} + … + γ^{n−1} R_{t+n} + γⁿ · q( S_{t+n}, argmax_a q(S_{t+n}, a, θ), θ⁻ ),
+  G_t = R_{t+1} + γ R_{t+2} + … + γ^{n−1} R_{t+n} + Γ_t · q( S_{t+n}, argmax_a q(S_{t+n}, a, θ), θ⁻ ),
 
-with the multi-step return truncated if the episode ends within n steps. There's a known sin here I should name: I'm using an n-step return on off-policy data with *no* importance correction for the intermediate actions, which in principle biases the value estimate. But in practice it's mild and the speed of credit propagation is worth it — and I'm relying on the prioritization to surface whatever transitions matter regardless. I'll use n = 3.
+where Γ_t is γⁿ unless the episode ends inside the n-step window, in which case the return is truncated and Γ_t is 0. There's a known sin here I should name: I'm using an n-step return on off-policy data with *no* importance correction for the intermediate actions, which in principle biases the value estimate. But in practice it's mild and the speed of credit propagation is worth it — and I'm relying on the prioritization to surface whatever transitions matter regardless. I'll use n = 3.
 
-The priority that goes with this transition is its absolute n-step TD error, p = |G_t − q(S_t, A_t)| + ε_p, with a tiny ε_p so nothing ever drops to exactly zero probability. And crucially, the actor can compute this G_t and q(S_t, A_t) from the Q-value estimates it already produced while acting — it stored q(S_t, ·) and q(S_{t+n}, ·) as it stepped — so the initial priority is genuinely free on the actor side. For numerical robustness on the learner I'll regress with a Huber loss on the TD error rather than pure squared error (½δ² for |δ|<1, |δ|−½ otherwise), and weight each transition's loss by its IS weight w_k.
+The priority that goes with this transition is its absolute n-step TD error, p = |G_t − q(S_t, A_t)| + ε_p, with a tiny ε_p so nothing ever drops to exactly zero probability. And crucially, the actor can compute the initial version of this error from the Q-value estimates it already produced while acting — it stored q(S_t, ·) and q(S_{t+n}, ·) as it stepped, and uses its own bootstrap estimate for q(S_{t+n}, ·) rather than waiting for the learner's target network. For numerical robustness on the learner I'll regress with a Huber loss on the TD error rather than pure squared error (½δ² for |δ|<1, |δ|−½ otherwise), and weight each transition's loss by its IS weight w_k.
 
 One hyperparameter has to move relative to single-machine prioritized DQN, and it's the same reasoning as before: prioritization deliberately oversamples high-|δ| transitions, so the typical gradient magnitude per batch goes *up*. If I keep the old learning rate the effective rate is now too hot and training destabilizes. So cut the learning rate. The single-machine value was 0.00025; I'll use 0.00025/4 = 6.25×10⁻⁵. (I'll also use a large batch — with this many actors feeding data, bigger batches help; sweeping {32,…,1024} the benefit holds up to 512, beyond which raising the rate to compensate destabilized some games. So batch 512, centered RMSProp, decay 0.95, ε 1.5e-7, no momentum, gradient norm clipped to 40, target net copied every 2500 learner batches.)
 
@@ -37,13 +37,13 @@ The shared replay has finite capacity, and with hundreds of actors it fills and 
 
 Let me also confirm the framework isn't secretly DQN-specific, because if "decouple acting from learning, share a prioritized replay, compute priorities on the actor" is a real architecture it should accept any off-policy update. Swap the DQN learner for a continuous-control one: a DDPG-style actor-critic. Now an actor carries an explicit policy network π(s,φ) in addition to the critic q(s,a,ψ). The critic trains by the same multi-step TD regression, except the bootstrap action comes from the (target) policy instead of an argmax:
 
-  G_t = R_{t+1} + … + γ^{n−1} R_{t+n} + γⁿ · q( S_{t+n}, π(S_{t+n}, φ⁻), ψ⁻ ),
+  G_t = R_{t+1} + … + γ^{n−1} R_{t+n} + Γ_t · q( S_{t+n}, π(S_{t+n}, φ⁻), ψ⁻ ),
 
 and the policy is updated by ascending the critic, ∇_φ q(S_t, π(S_t, φ), ψ) — the gradient that flows back into φ only through the action π(S_t, φ) fed into the critic. The priority is still the critic's absolute TD error. Everything else — shared prioritized replay, actor-computed priorities, diverse exploration (here, additive Gaussian action noise rather than ε-greedy), batched communication — carries over unchanged. The fact that it slots in cleanly is the evidence that I built an *architecture*, not a one-off DQN trick.
 
 Let me put the pieces down as real code, organized exactly as the architecture splits the work: a model, an actor-side n-step storage that also emits the initial priority, a shared prioritized buffer (the sum-tree/min-tree machinery from prioritized replay), the learner's loss, and the two loops.
 
-The dueling network the actors and learner share, with an `act` that returns both the chosen action and the Q-values the actor will reuse to compute priorities:
+The dueling network the actors and learner share, with a Q-value call that the actor reuses both for action selection and for initial priorities:
 
 ```python
 import random
@@ -73,15 +73,18 @@ class DuelingDQN(nn.Module):
         v = self.value(x)
         return v + a - a.mean(1, keepdim=True)            # Q = V + (A - mean A)
 
-    def act(self, state, epsilon):
+    def q_values(self, state):
         with torch.no_grad():
             q = self.forward(state.unsqueeze(0))
-            action = (q.max(1)[1].item() if random.random() > epsilon
-                      else random.randrange(self.num_actions))
-        return action, q.numpy()[0]                       # return Q-values too: free priorities later
+        return q.cpu().numpy()[0]
+
+    def select_action_from_q(self, q_values, epsilon):
+        if random.random() < epsilon:
+            return random.randrange(self.num_actions)
+        return int(np.argmax(q_values))
 ```
 
-The actor-side storage: it folds a run of steps into an n-step transition and — because it kept the Q-values from `act` — computes the absolute n-step TD error as the initial priority without re-running the network:
+The actor-side storage: it folds a run of steps into n-step transitions, flushes all shorter terminal tails, and — because it kept Q-values for the start and bootstrap states — computes the initial absolute n-step TD error without re-running the network:
 
 ```python
 from collections import deque
@@ -90,45 +93,45 @@ class BatchStorage:
     """Per-actor n-step accumulator that also produces initial priorities."""
     def __init__(self, n_steps, gamma=0.99):
         self.n_steps, self.gamma = n_steps, gamma
-        self.state_d  = deque(maxlen=n_steps); self.action_d = deque(maxlen=n_steps)
-        self.reward_d = deque(maxlen=n_steps); self.qval_d   = deque(maxlen=n_steps)
-        self.reset()
+        self.pending = deque()
+        self.ready = []
 
-    def reset(self):
-        self.states=[]; self.actions=[]; self.rewards=[]; self.next_states=[]
-        self.dones=[]; self.q_values=[]; self.next_q_values=[]
+    def __len__(self):
+        return len(self.ready)
 
-    def multi_step_reward(self, *rewards):
-        return sum(r * self.gamma ** i for i, r in enumerate(rewards))   # sum_k gamma^k R_{t+1+k}
+    def _emit_one(self):
+        m = min(self.n_steps, len(self.pending))
+        ret = sum((self.gamma ** i) * self.pending[i]["reward"] for i in range(m))
+        terminal = any(self.pending[i]["done"] for i in range(m))
+        discount = 0.0 if terminal else self.gamma ** m
+        first, last = self.pending[0], self.pending[m - 1]
+        self.ready.append((first["state"], first["action"], ret, discount,
+                           last["next_state"], first["q_values"], last["next_q_values"]))
+        self.pending.popleft()
 
-    def add(self, state, reward, action, done, q_values):
-        if len(self.state_d) == self.n_steps or done:                   # window full -> emit one n-step transition
-            self.states.append(self.state_d[0])
-            self.actions.append(self.action_d[0])
-            self.rewards.append(self.multi_step_reward(*self.reward_d, reward))
-            self.next_states.append(state)
-            self.dones.append(np.float32(done))
-            self.q_values.append(self.qval_d[0])                        # q(S_t, .) kept from act()
-            self.next_q_values.append(q_values)                         # q(S_{t+n}, .)
-        if done:
-            self.state_d.clear(); self.reward_d.clear()
-            self.action_d.clear(); self.qval_d.clear()
-        else:
-            self.state_d.append(state); self.reward_d.append(reward)
-            self.action_d.append(action); self.qval_d.append(q_values)
+    def add(self, state, action, reward, next_state, done, q_values, next_q_values):
+        self.pending.append(dict(state=state, action=action, reward=reward,
+                                 next_state=next_state, done=done,
+                                 q_values=q_values, next_q_values=next_q_values))
+        while self.pending and (len(self.pending) >= self.n_steps or done):
+            self._emit_one()
 
     def compute_priorities(self):
-        actions = np.array(self.actions); rewards = np.array(self.rewards)
-        dones = np.array(self.dones)
-        q = np.stack(self.q_values); nq = np.stack(self.next_q_values)
+        actions = np.array([x[1] for x in self.ready])
+        rewards = np.array([x[2] for x in self.ready], dtype=np.float32)
+        discounts = np.array([x[3] for x in self.ready], dtype=np.float32)
+        q = np.stack([x[5] for x in self.ready])
+        nq = np.stack([x[6] for x in self.ready])
         q_a = q[range(len(q)), actions]                                 # q(S_t, A_t)
         next_q_a = nq.max(1)                                            # bootstrap value, actor-side
-        target = rewards + (self.gamma ** self.n_steps) * next_q_a * (1 - dones)
+        target = rewards + discounts * next_q_a
         return np.abs(target - q_a) + 1e-6                              # |n-step TD error| + eps
 
     def make_batch(self):
         prios = self.compute_priorities()
-        batch = [self.states, self.actions, self.rewards, self.next_states, self.dones]
+        states, actions, rewards, discounts, next_states, _, _ = zip(*self.ready)
+        batch = [list(states), list(actions), list(rewards), list(discounts), list(next_states)]
+        self.ready.clear()
         return batch, prios
 ```
 
@@ -147,9 +150,9 @@ class CustomPrioritizedReplayBuffer:
         self._it_min = MinSegmentTree(cap)        # holds p_i ** alpha
         self._max_priority = 1.0
 
-    def add(self, state, action, reward, next_state, done, priority):
+    def add(self, state, action, reward, discount, next_state, priority):
         idx = self._next_idx
-        data = (state, action, reward, next_state, done)
+        data = (state, action, reward, discount, next_state)
         if idx >= len(self._storage): self._storage.append(data)
         else: self._storage[idx] = data
         self._next_idx = (self._next_idx + 1) % self._maxsize
@@ -158,7 +161,7 @@ class CustomPrioritizedReplayBuffer:
         self._max_priority = max(self._max_priority, priority)
 
     def _sample_proportional(self, batch_size):
-        res = []; p_total = self._it_sum.sum(0, len(self._storage) - 1)
+        res = []; p_total = self._it_sum.sum(0, len(self._storage))
         seg = p_total / batch_size
         for i in range(batch_size):                          # stratified: one draw per segment
             res.append(self._it_sum.find_prefixsum_idx(random.random() * seg + i * seg))
@@ -185,14 +188,15 @@ The learner's loss — multi-step double-Q target, Huber error, IS-weighted, and
 
 ```python
 def compute_loss(model, tgt_model, batch, n_steps, gamma=0.99):
-    states, actions, rewards, next_states, dones, weights = batch
+    states, actions, rewards, discounts, next_states, weights = batch
     q_a = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)        # q(S_t, A_t)
     next_actions = model(next_states).max(1)[1].unsqueeze(1)             # argmax by ONLINE net (double-Q)
     next_q_a = tgt_model(next_states).gather(1, next_actions).squeeze(1) # evaluate by TARGET net
-    target = rewards + (gamma ** n_steps) * next_q_a * (1 - dones)        # multi-step bootstrap
-    td = torch.abs(target.detach() - q_a)
-    prios = (td + 1e-6).data.cpu().numpy()                               # refreshed priority = |delta| + eps
-    loss = torch.where(td < 1, 0.5 * td ** 2, td - 0.5)                  # Huber on the TD error
+    target = rewards + discounts * next_q_a                              # discount is gamma^n, or 0 at terminal
+    delta = target.detach() - q_a
+    abs_delta = delta.abs()
+    prios = (abs_delta + 1e-6).data.cpu().numpy()                        # refreshed priority = |delta| + eps
+    loss = torch.where(abs_delta < 1, 0.5 * delta ** 2, abs_delta - 0.5)  # Huber on signed TD error
     return (loss * weights).mean(), prios                                # IS-weighted scalar loss
 ```
 
@@ -203,20 +207,25 @@ def actor_loop(env, model, shared_buffer, param_source, actor_id, n_actors, args
     epsilon = args.eps_base ** (1 + actor_id / (n_actors - 1) * args.eps_alpha)   # ε_i, fixed per actor
     storage = BatchStorage(args.n_steps, args.gamma)
     model.load_state_dict(param_source.latest())
-    state = env.reset(); step = 0
+    state = env.reset()
+    q_values = model.q_values(torch.FloatTensor(np.array(state)))
+    step = 0
     while True:
-        action, q_values = model.act(torch.FloatTensor(np.array(state)), epsilon)
+        action = model.select_action_from_q(q_values, epsilon)
         next_state, reward, done, _ = env.step(action)
-        storage.add(state, reward, action, done, q_values)               # accumulate n-step + keep Q-values
+        next_q_values = (np.zeros_like(q_values) if done
+                         else model.q_values(torch.FloatTensor(np.array(next_state))))
+        storage.add(state, action, reward, next_state, done, q_values, next_q_values)
         state = env.reset() if done else next_state
+        q_values = model.q_values(torch.FloatTensor(np.array(state))) if done else next_q_values
         step += 1
         if step % args.update_interval == 0:                             # refresh params periodically (~400 frames)
             model.load_state_dict(param_source.latest())
+            q_values = model.q_values(torch.FloatTensor(np.array(state)))
         if len(storage) >= args.send_interval:                           # ship a batch (B=50) with priorities
             batch, prios = storage.make_batch()
             for sample, p in zip(zip(*batch), prios):
                 shared_buffer.add(*sample, p)                            # priced at insert, no placeholder max
-            storage.reset()
 
 
 def learner_loop(model, tgt_model, shared_buffer, optimizer, param_sink, args):
@@ -242,4 +251,4 @@ optimizer = torch.optim.RMSprop(model.parameters(), lr=0.00025 / 4,       # cut 
                                 alpha=0.95, eps=1.5e-7, centered=True)
 ```
 
-The chain, end to end: supervised learning scales with compute+data, so deep RL should too, but the default move — distributed SGD passing gradients to a parameter server, as Gorila does with per-bundle local uniform replay — distributes the quantity that goes stale fastest and quarantines each actor's discoveries in its own buffer. Off-policy Q-learning tolerates old data, so experience ages far slower than gradients; shipping experience instead of gradients lets latency be traded for throughput, batched and even cross-datacenter. Decouple acting from learning into hundreds of CPU actors feeding one shared replay read by one GPU learner; make that replay prioritized so the learner spends its fixed update budget on the most surprising transitions, and because the replay is shared the priorities are global — any actor's rare find is immediately exploited by everyone. At scale the single-machine "insert at max priority, refine on first sample" rule floods the top with fresh data and collapses into training-on-newest, so have the actors compute initial |n-step TD error| priorities online from the Q-values they already produce — accurate priorities at insert, for free. Give each actor a different fixed ε_i = ε^{1+(i/(N−1))α} so the population explores at every scale at once, and let prioritized shared replay pick out whichever exploration paid off — generate widely, then learn from the most useful events. The learner runs a multi-step double-Q dueling update with a Huber, IS-weighted loss, writes refreshed priorities back, and publishes parameters to the actors periodically; the learning rate is cut 4× because prioritization enlarges the typical gradient. The same skeleton, with a DDPG critic+policy in place of the DQN head, handles continuous control unchanged — which is the sign it's an architecture, not a trick.
+The chain, end to end: supervised learning scales with compute+data, so deep RL should too, but the default move — distributed SGD passing gradients to a parameter server, as Gorila does with per-bundle local uniform replay — distributes the quantity that goes stale fastest and quarantines each actor's discoveries in its own buffer. Off-policy Q-learning tolerates old data, so experience ages far slower than gradients; shipping experience instead of gradients lets latency be traded for throughput, batched and even cross-datacenter. Decouple acting from learning into hundreds of CPU actors feeding one shared replay read by one GPU learner; make that replay prioritized so the learner spends its fixed update budget on the most surprising transitions, and because the replay is shared the priorities are global — any actor's rare find is immediately exploited by everyone. At scale the single-machine "insert at max priority, refine on first sample" rule floods the top with fresh data and collapses into training-on-newest, so have the actors compute initial |n-step TD error| priorities online from the Q-values they already produce — informative priorities at insert, for free. Give each actor a different fixed ε_i = ε^{1+(i/(N−1))α} so the population explores at every scale at once, and let prioritized shared replay pick out whichever exploration paid off — generate widely, then learn from the most useful events. The learner runs a multi-step double-Q dueling update with a Huber, IS-weighted loss, writes refreshed priorities back, and publishes parameters to the actors periodically; the learning rate is cut 4× because prioritization enlarges the typical gradient. The same skeleton, with a DDPG critic+policy in place of the DQN head, handles continuous control unchanged — which is the sign it's an architecture, not a trick.

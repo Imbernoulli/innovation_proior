@@ -40,18 +40,20 @@ batched and latency-tolerant — actors and learner can even run in different da
 ## Algorithm
 
 Learner update (Ape-X DQN): multi-step double-Q target with a dueling network `q(·,·,θ)`, target net
-`θ⁻`, and importance-sampling-weighted Huber loss.
+`θ⁻`, cumulative bootstrap discount `Γₜ` (`γⁿ` unless the episode terminates inside the window, then
+0), and importance-sampling-weighted Huber loss.
 
-  Gₜ = R_{t+1} + γ R_{t+2} + … + γⁿ⁻¹ R_{t+n} + γⁿ · q( S_{t+n}, argmaxₐ q(S_{t+n}, a, θ), θ⁻ )
+  Gₜ = R_{t+1} + γ R_{t+2} + … + γⁿ⁻¹ R_{t+n} + Γₜ · q( S_{t+n}, argmaxₐ q(S_{t+n}, a, θ), θ⁻ )
   per-transition TD error  δ = Gₜ − q(Sₜ, Aₜ, θ)
   loss = mean_k [ wₖ · Huber(δₖ) ],  priority pₖ = |δₖ| + ε_p
 
 Sampling: `P(k) = pₖ^α / Σ_j p_j^α` via a sum-tree; IS weight `wₖ = (N·P(k))^{−β}` normalized by the
-batch max via a min-tree. Atari settings: n = 3, γ = 0.99, α = 0.6, β = 0.4, replay soft-cap 2M with
-periodic FIFO eviction, batch 512, centered RMSProp at lr = 0.00025/4 = 6.25e-5 (decay 0.95,
-eps 1.5e-7, no momentum), gradient-norm clip 40, target update every 2500 learner batches, params
-refreshed on actors every 400 frames, learning starts after 50k transitions. The learning rate is
-cut 4× versus single-machine DQN because prioritization enlarges the typical gradient.
+largest possible current replay weight, obtained from the min-tree's smallest sampling probability.
+Atari settings: n = 3, γ = 0.99, α = 0.6, β = 0.4, replay soft-cap 2M with periodic FIFO eviction,
+batch 512, centered RMSProp at lr = 0.00025/4 = 6.25e-5 (decay 0.95, eps 1.5e-7, no momentum),
+gradient-norm clip 40, target update every 2500 learner batches, params refreshed on actors every
+400 frames, learning starts after 50k transitions. The learning rate is cut 4× versus single-machine
+DQN because prioritization enlarges the typical gradient.
 
 Ape-X DPG (continuous control): replace the DQN head with a DDPG-style critic `q(s,a,ψ)` and policy
 `π(s,φ)`; the critic uses the same multi-step TD target with the bootstrap action from the target
@@ -90,12 +92,15 @@ class DuelingDQN(nn.Module):
         a, v = self.advantage(x), self.value(x)
         return v + a - a.mean(1, keepdim=True)
 
-    def act(self, state, epsilon):
+    def q_values(self, state):
         with torch.no_grad():
             q = self.forward(state.unsqueeze(0))
-            action = (q.max(1)[1].item() if random.random() > epsilon
-                      else random.randrange(self.num_actions))
-        return action, q.numpy()[0]              # Q-values reused for actor-side priorities
+        return q.cpu().numpy()[0]
+
+    def select_action_from_q(self, q_values, epsilon):
+        if random.random() < epsilon:
+            return random.randrange(self.num_actions)
+        return int(np.argmax(q_values))
 
 
 # ---- O(log N) segment trees (sum for sampling, min for the max IS weight) ----
@@ -147,9 +152,9 @@ class CustomPrioritizedReplayBuffer:
         self._it_sum = SumSegmentTree(cap); self._it_min = MinSegmentTree(cap)
         self._max_priority = 1.0
     def __len__(self): return len(self._storage)
-    def add(self, state, action, reward, next_state, done, priority):
+    def add(self, state, action, reward, discount, next_state, priority):
         idx = self._next_idx
-        data = (state, action, reward, next_state, done)
+        data = (state, action, reward, discount, next_state)
         if idx >= len(self._storage): self._storage.append(data)
         else: self._storage[idx] = data
         self._next_idx = (self._next_idx + 1) % self._maxsize
@@ -158,10 +163,10 @@ class CustomPrioritizedReplayBuffer:
         self._max_priority = max(self._max_priority, priority)
     def _encode_sample(self, idxes):
         cols = list(zip(*[self._storage[i] for i in idxes]))
-        s, a, r, s2, d = cols
-        return (list(s), np.array(a), np.array(r), list(s2), np.array(d))
+        s, a, r, disc, s2 = cols
+        return (list(s), np.array(a), np.array(r), np.array(disc), list(s2))
     def _sample_proportional(self, batch_size):
-        res = []; p_total = self._it_sum.sum(0, len(self._storage) - 1)
+        res = []; p_total = self._it_sum.sum(0, len(self._storage))
         seg = p_total / batch_size
         for i in range(batch_size):
             res.append(self._it_sum.find_prefixsum_idx(random.random() * seg + i * seg))
@@ -186,48 +191,51 @@ class CustomPrioritizedReplayBuffer:
 class BatchStorage:
     def __init__(self, n_steps, gamma=0.99):
         self.n_steps, self.gamma = n_steps, gamma
-        self.state_d = deque(maxlen=n_steps); self.action_d = deque(maxlen=n_steps)
-        self.reward_d = deque(maxlen=n_steps); self.qval_d = deque(maxlen=n_steps)
-        self.reset()
-    def reset(self):
-        self.states=[]; self.actions=[]; self.rewards=[]; self.next_states=[]
-        self.dones=[]; self.q_values=[]; self.next_q_values=[]
-    def __len__(self): return len(self.states)
-    def multi_step_reward(self, *rewards):
-        return sum(r * self.gamma ** i for i, r in enumerate(rewards))
-    def add(self, state, reward, action, done, q_values):
-        if len(self.state_d) == self.n_steps or done:
-            self.states.append(self.state_d[0]); self.actions.append(self.action_d[0])
-            self.rewards.append(self.multi_step_reward(*self.reward_d, reward))
-            self.next_states.append(state); self.dones.append(np.float32(done))
-            self.q_values.append(self.qval_d[0]); self.next_q_values.append(q_values)
-        if done:
-            self.state_d.clear(); self.reward_d.clear()
-            self.action_d.clear(); self.qval_d.clear()
-        else:
-            self.state_d.append(state); self.reward_d.append(reward)
-            self.action_d.append(action); self.qval_d.append(q_values)
+        self.pending = deque()
+        self.ready = []
+    def __len__(self): return len(self.ready)
+    def _emit_one(self):
+        m = min(self.n_steps, len(self.pending))
+        ret = sum((self.gamma ** i) * self.pending[i]["reward"] for i in range(m))
+        terminal = any(self.pending[i]["done"] for i in range(m))
+        discount = 0.0 if terminal else self.gamma ** m
+        first, last = self.pending[0], self.pending[m - 1]
+        self.ready.append((first["state"], first["action"], ret, discount,
+                           last["next_state"], first["q_values"], last["next_q_values"]))
+        self.pending.popleft()
+    def add(self, state, action, reward, next_state, done, q_values, next_q_values):
+        self.pending.append(dict(state=state, action=action, reward=reward,
+                                 next_state=next_state, done=done,
+                                 q_values=q_values, next_q_values=next_q_values))
+        while self.pending and (len(self.pending) >= self.n_steps or done):
+            self._emit_one()
     def compute_priorities(self):
-        actions = np.array(self.actions); rewards = np.array(self.rewards); dones = np.array(self.dones)
-        q = np.stack(self.q_values); nq = np.stack(self.next_q_values)
+        actions = np.array([x[1] for x in self.ready])
+        rewards = np.array([x[2] for x in self.ready], dtype=np.float32)
+        discounts = np.array([x[3] for x in self.ready], dtype=np.float32)
+        q = np.stack([x[5] for x in self.ready]); nq = np.stack([x[6] for x in self.ready])
         q_a = q[range(len(q)), actions]; next_q_a = nq.max(1)
-        target = rewards + (self.gamma ** self.n_steps) * next_q_a * (1 - dones)
+        target = rewards + discounts * next_q_a
         return np.abs(target - q_a) + 1e-6
     def make_batch(self):
         prios = self.compute_priorities()
-        return [self.states, self.actions, self.rewards, self.next_states, self.dones], prios
+        states, actions, rewards, discounts, next_states, _, _ = zip(*self.ready)
+        batch = [list(states), list(actions), list(rewards), list(discounts), list(next_states)]
+        self.ready.clear()
+        return batch, prios
 
 
 # ---- learner loss: multi-step double-Q, IS-weighted Huber, refreshed priorities ----
 def compute_loss(model, tgt_model, batch, n_steps, gamma=0.99):
-    states, actions, rewards, next_states, dones, weights = batch
+    states, actions, rewards, discounts, next_states, weights = batch
     q_a = model(states).gather(1, actions.unsqueeze(1)).squeeze(1)
     next_actions = model(next_states).max(1)[1].unsqueeze(1)             # select: online net
     next_q_a = tgt_model(next_states).gather(1, next_actions).squeeze(1) # evaluate: target net
-    target = rewards + (gamma ** n_steps) * next_q_a * (1 - dones)
-    td = torch.abs(target.detach() - q_a)
-    prios = (td + 1e-6).data.cpu().numpy()
-    loss = torch.where(td < 1, 0.5 * td ** 2, td - 0.5)
+    target = rewards + discounts * next_q_a
+    delta = target.detach() - q_a
+    abs_delta = delta.abs()
+    prios = (abs_delta + 1e-6).data.cpu().numpy()
+    loss = torch.where(abs_delta < 1, 0.5 * delta ** 2, abs_delta - 0.5)
     return (loss * weights).mean(), prios
 
 
@@ -236,20 +244,25 @@ def actor_loop(env, model, shared_buffer, param_source, actor_id, n_actors, args
     epsilon = args.eps_base ** (1 + actor_id / (n_actors - 1) * args.eps_alpha)
     storage = BatchStorage(args.n_steps, args.gamma)
     model.load_state_dict(param_source.latest())
-    state = env.reset(); step = 0
+    state = env.reset()
+    q_values = model.q_values(torch.FloatTensor(np.array(state)))
+    step = 0
     while True:
-        action, q_values = model.act(torch.FloatTensor(np.array(state)), epsilon)
+        action = model.select_action_from_q(q_values, epsilon)
         next_state, reward, done, _ = env.step(action)
-        storage.add(state, reward, action, done, q_values)
+        next_q_values = (np.zeros_like(q_values) if done
+                         else model.q_values(torch.FloatTensor(np.array(next_state))))
+        storage.add(state, action, reward, next_state, done, q_values, next_q_values)
         state = env.reset() if done else next_state
+        q_values = model.q_values(torch.FloatTensor(np.array(state))) if done else next_q_values
         step += 1
         if step % args.update_interval == 0:
             model.load_state_dict(param_source.latest())
+            q_values = model.q_values(torch.FloatTensor(np.array(state)))
         if len(storage) >= args.send_interval:
             batch, prios = storage.make_batch()
             for sample, p in zip(zip(*batch), prios):
                 shared_buffer.add(*sample, p)
-            storage.reset()
 
 
 def learner_loop(model, tgt_model, shared_buffer, optimizer, param_sink, args):

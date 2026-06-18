@@ -1,229 +1,102 @@
-Let me start from the thing that actually hurts. I have $K$ arms, each returns rewards i.i.d. from an unknown distribution with unknown mean $\mu_i$, I get $n$ pulls, and I want to lose as little as possible relative to someone who knew the best arm and pulled it every time. The loss is the regret
+I start from the regret identity because it strips away the distracting language of experimentation. If the best mean is `mu*` and arm `i` is worse by `Delta_i`, then every pull of that arm costs `Delta_i` in expectation, and
 
-$$ R_n = n\mu^\* - \mathbb{E}\Big[\sum_t X_{I_t,t}\Big]. $$
-
-The first move is just algebra, but it reorganizes everything. Each round I pull some arm $I_t$ with mean $\mu_{I_t}$, and I am charged $\mu^\* - \mu_{I_t}$ against the imaginary oracle. Group the rounds by which arm was pulled: if $T_i(n)$ is the number of pulls of arm $i$, then
-
-$$ R_n = \sum_{i} (\mu^\*-\mu_i)\,\mathbb{E}[T_i(n)] = \sum_{i:\,\mu_i<\mu^\*} \Delta_i\,\mathbb{E}[T_i(n)], $$
-
-with $\Delta_i = \mu^\*-\mu_i$ the gap. The gaps are fixed by the instance; the only thing I control is how often I pull each bad arm. So the entire problem — both "how small can regret be" and "what rule achieves it" — collapses to controlling the expected pull counts $\mathbb{E}[T_i(n)]$ of the suboptimal arms. Good. That is the quantity to fight over.
-
-What's on the table for actually choosing arms? Thompson, twenty years before Robbins, had the Bayesian instinct: put a prior on each arm's success probability, and after seeing the data compute the posterior probability that arm 1 beats arm 2 — for Bernoulli arms with a uniform prior that's an integral of Beta densities — then allocate future pulls *in proportion* to that probability. His argument for not committing immediately is sharp: if you commit to one treatment, the expected sacrifice on each future subject is $1-P$ where $P$ is the chance you committed correctly; if instead you split a fraction $P$ to one and $1-P$ to the other, the expected sacrifice is $P(1-P)+(1-P)P = 2PQ$, and $2PQ \le \tfrac12$ always, strictly less whenever there's a real difference. So matching saves. That's a genuinely good idea, but it doesn't answer my question. It gives no rate — it never tells me how $R_n$ grows with $n$ — and it never claims to be optimal; it's a heuristic riding on a prior I have to invent.
-
-Robbins makes it frequentist: two populations, maximize $\mathbb{E}[S_n]$, no prior, $F$ and $G$ known only to lie in some class. He studies concrete rules — his $R_1$ is "stay on the arm after a win, switch after a loss," and he grinds out the Markov chain to get the long-run head-probability. But he's honest that these are reasonable rules, not optimal ones; "optimum solutions to these problems are not known." So I have heuristics on both sides and no theory of the floor. Before I design a clever rule, I should figure out what the floor even *is* — otherwise I won't know when I've succeeded.
-
-So: how small can $\mathbb{E}[T_i(n)]$ be for a suboptimal arm $i$? My first instinct is "as small as a constant" — surely a good enough rule pulls a bad arm only $O(1)$ times and then never again? Let me see if that's possible.
-
-Suppose I have a rule that's genuinely good on *every* instance — meaning its regret is sub-polynomial, $R_n = o(n^p)$ for all $p>0$. (That's a weak, reasonable demand: even the naive annealed-exploration rules manage it. Call such a rule *consistent*.) Now take my instance $\nu$ where arm $i$ is suboptimal with distribution $P_i$. I'm going to ask: can the rule pull arm $i$ very few times and still be safe?
-
-The danger is a *neighbor instance*. Imagine a second world $\nu'$ that's identical to mine except arm $i$'s distribution is nudged to $P_i'$ with mean just above $\mu^\*$ — so in $\nu'$, arm $i$ is the *best* arm. If my rule barely pulls arm $i$ in my world, then it collects almost no data from arm $i$, and so it cannot tell my world from $\nu'$. But in $\nu'$ it had better pull arm $i$ a lot — pulling anything else is now the mistake, and consistency forbids large regret in $\nu'$ too. So the rule is trapped: to be safe in $\nu'$ it must pull arm $i$ enough to *distinguish* $\nu'$ from $\nu$, and that minimum number of distinguishing pulls is a floor that applies in my world as well.
-
-How many samples does it take to distinguish $P_i$ from $P_i'$? This is a hypothesis-testing question, and the answer lives in the likelihood ratio. Let me make it concrete with the rewards from arm $i$. Write the observations $X_{i,1},\dots,X_{i,n}$ and form the log-likelihood ratio after $s$ of them,
-
-$$ \widehat{\mathrm{kl}}_s = \sum_{t=1}^{s} \log\frac{p_i(X_{i,t})}{p_i'(X_{i,t})}, $$
-
-the (un-normalized) log-likelihood of "data came from $P_i$" against "data came from $P_i'$." Under $P_i$ this is a sum of i.i.d. terms with mean $\mathbb{E}_{P_i}[\log(p_i/p_i')] = D(P_i\Vert P_i')$ — the KL divergence. There it is. The likelihood ratio drifts at exactly the divergence rate.
-
-Now the change-of-measure identity that makes this rigorous. For any event $A$ in the full history generated by the adaptive actions and rewards up to time $n$,
-
-$$ \mathbb{P}_{\nu}(A) = \mathbb{E}_{\nu'}\!\big[\mathbf 1_A \exp(\widehat{\mathrm{kl}}_{T_i(n)})\big], $$
-
-because the action probabilities are the same conditional functions of the observed history in both worlds, the reward laws of the other arms are unchanged, and the only remaining likelihood ratio is the product over the realized samples from arm $i$.
-
-Pick $\varepsilon>0$ and choose $P_i'$ with mean above $\mu^\*$ and $D(P_i\Vert P_i')$ within $\varepsilon$ of the smallest possible such divergence. Define the event I'm worried about,
-
-$$ C_n = \Big\{\, T_i(n) < \tfrac{1-\varepsilon}{D(P_i\Vert P_i')}\log n \ \ \text{and}\ \ \widehat{\mathrm{kl}}_{T_i(n)} \le (1-\tfrac\varepsilon2)\log n \,\Big\}, $$
-
-"arm $i$ pulled too few times AND the likelihood ratio not yet decisive." On $C_n$, the change of measure gives the usable direction:
-
-$$ \mathbb{P}_\nu(C_n) = \mathbb{E}_{\nu'}\big[\mathbf 1_{C_n}\exp(\widehat{\mathrm{kl}}_{T_i(n)})\big] \le e^{(1-\varepsilon/2)\log n}\,\mathbb{P}_{\nu'}(C_n). $$
-
-So the whole question becomes whether $C_n$ is rare fast enough in the neighboring world. In $\nu'$, arm $i$ is the unique best arm. If $\gamma=\mu_i'-\max_{j\ne i}\mu_j>0$, then every pull not assigned to arm $i$ costs at least $\gamma$ regret, so consistency in $\nu'$ gives $\mathbb{E}_{\nu'}[n - T_i(n)] = o(n^a)$ for every $a>0$. The first clause of $C_n$ forces $T_i(n)$ small, i.e. $n-T_i(n)$ large; by Markov,
-
-$$ \mathbb{P}_{\nu'}(C_n) \le \mathbb{P}_{\nu'}\!\Big(T_i(n) < \tfrac{1-\varepsilon}{D}\log n\Big) \le \frac{\mathbb{E}_{\nu'}[\,n-T_i(n)\,]}{\,n - \frac{1-\varepsilon}{D}\log n\,} = o(n^{a-1}) $$
-
-for every $a>0$, where $D=D(P_i\Vert P_i')$. Choosing $a<\varepsilon/2$ makes
-
-$$ \mathbb{P}_\nu(C_n) \le n^{1-\varepsilon/2}\mathbb{P}_{\nu'}(C_n)=o(n^{a-\varepsilon/2})\to0. $$
-
-Now strip $C_n$ apart in my own world $\nu$. I've shown the *conjunction* is rare. The second clause — the likelihood ratio being not-yet-decisive — is actually *typical* when $T_i(n)$ is below the threshold, and that's the point. Set $f_n = \frac{1-\varepsilon}{D(P_i\Vert P_i')}\log n$. Consider the event $\{T_i(n) < f_n\}$. On it, $T_i(n)$ samples of arm $i$ have been taken with $T_i(n)<f_n$; the maximal version of the strong law of large numbers says $\max_{m\le M}\widehat{\mathrm{kl}}_m/M \to D(P_i\Vert P_i')$ a.s. as $M\to\infty$, so with $M=f_n$,
-
-$$ \max_{m\le f_n}\widehat{\mathrm{kl}}_m \approx f_n\, D(P_i\Vert P_i') = (1-\varepsilon)\log n < (1-\tfrac\varepsilon2)\log n $$
-
-with probability $\to 1$. Therefore $\{T_i(n)<f_n\}$ is, up to a vanishing-probability remainder, contained in $C_n$:
-
-$$ \mathbb{P}_\nu(T_i(n) < f_n) \le \mathbb{P}_\nu(C_n) + o(1) = o(1). $$
-
-So a consistent rule pulls arm $i$ at least $f_n = \frac{1-\varepsilon}{D(P_i\Vert P_i')}\log n$ times with probability tending to one, hence
-
-$$ \mathbb{E}_\nu[T_i(n)] \ge (1-o(1))\,\frac{1-\varepsilon}{D(P_i\Vert P_i')}\log n. $$
-
-Finally I get to choose $P_i'$. I wanted it to make arm $i$ optimal with the *smallest* divergence; as I shrink the mean of $P_i'$ down toward the boundary mean $\mu^\*$, $D(P_i\Vert P_i') \to D(P_i\Vert P^\*)$. Letting $\varepsilon\to 0$,
-
-$$ \liminf_{n\to\infty} \frac{\mathbb{E}[T_i(n)]}{\log n} \ge \frac{1}{D(P_i\Vert P^\*)}, \qquad\text{so}\qquad \liminf_{n\to\infty}\frac{R_n}{\log n} \ge \sum_{i:\,\Delta_i>0}\frac{\Delta_i}{D(P_i\Vert P^\*)}. $$
-
-This is the floor. Two things land at once and I want to sit with them. First, the order is $\log n$, not constant — my naive hope that a bad arm gets pulled $O(1)$ times was wrong; the cost of *learning* an arm is suboptimal grows logarithmically and is unavoidable. Second, the constant is $1/D(P_i\Vert P^\*)$, an information quantity, and now I see why: it's the rate at which a likelihood-ratio test accumulates evidence, so $\log n / D$ is exactly the number of samples needed before the test is sure enough — at confidence scaling like $1/n$ — that arm $i$ is the inferior one. The harder it is to statistically distinguish a bad arm from the best one (small $D$), the more pulls you must waste confirming it's bad. The KL divergence isn't decoration; it's the literal currency of the floor.
-
-Let me sanity-check the constant on a tractable case. For two Bernoulli arms it's $1/d(\mu_i,\mu^\*)$ with $d$ the Bernoulli KL; for unit-variance Gaussians, $D(\mathcal N(\mu_i,1)\Vert\mathcal N(\mu^\*,1)) = \Delta_i^2/2$, so the floor is $2/\Delta_i^2$ pulls of arm $i$, i.e. $\liminf R_n/\log n \ge \sum_i 2/\Delta_i$. Hold onto that number $2/\Delta_i^2$; I'll want to see how close a real rule gets.
-
-Now the constructive half: a rule that actually attains $\Theta(\log n)$. The lower-bound argument quietly tells me what a good rule must do — it must pull a bad arm until it's confident, at confidence tightening like $1/n$, then stop. So I want, for each arm, a running statement of the form "the true mean is at most *this*, with high confidence," and I should play the arm that looks best under that optimistic reading.
-
-Why optimistic? Think about what greedy does. Greedy plays the arm with the largest empirical mean. If the true best arm gets unlucky on its first few pulls and looks bad, greedy abandons it and never returns — no mechanism forces it to collect the data that would correct the mistake, so it can suffer linear regret. The cure isn't to explore blindly (constant $\varepsilon$-exploration spends a constant fraction of pulls on bad arms, also linear). The cure is to let an arm's *uncertainty* speak for it: an arm I've barely pulled could plausibly be much better than its noisy empirical mean suggests, so I should give it the benefit of the doubt. Act as if each arm is as good as it could plausibly be, and play the best of those optimistic values. This is self-correcting in exactly the right way. If the optimistic value of the true best arm is honestly an overestimate of $\mu^\*$, then a suboptimal arm only gets played when *its* optimistic value rises above $\mu^\*$ — and that requires either that I haven't pulled it much (wide uncertainty) or that it got lucky (high empirical mean). Either way, every pull of it adds data, which shrinks its uncertainty and pulls its empirical mean toward the truth, so its optimistic value eventually drops below $\mu^\*$ and it stops being chosen. Exploration and exploitation aren't traded off by hand; the single optimistic index does both.
-
-So the index for arm $i$ should be its empirical mean plus a *width* that captures how far the truth could plausibly sit above the estimate. What's the width? This is where concentration enters. After $s$ samples, $\bar X_{i,s}$ deviates from $\mu_i$ by at most order $1/\sqrt s$, and quantitatively, for $[0,1]$-bounded rewards Hoeffding gives $\mathbb{P}(\bar X_{i,s} \le \mu_i - a) \le e^{-2sa^2}$, equivalently $\mathbb{P}(\mu_i \ge \bar X_{i,s} + a) \le e^{-2sa^2}$. Set the failure probability to $\delta$: $e^{-2sa^2}=\delta \Rightarrow a = \sqrt{\log(1/\delta)/(2s)}$. So
-
-$$ \text{with probability} \ge 1-\delta,\qquad \mu_i \le \bar X_{i,s} + \sqrt{\tfrac{\log(1/\delta)}{2s}}. $$
-
-The width is $\sqrt{\log(1/\delta)/(2s)}$: shrinks like $1/\sqrt s$ as I gather data (so a well-explored arm has a tight index), and grows with the confidence demand $\log(1/\delta)$. That $\sqrt{\cdot}$ and that $1/\sqrt s$ are forced by the concentration rate, not chosen.
-
-(If I don't want to assume boundedness, the same step goes through abstractly: $\mathbb{P}(\bar X_{i,s}-\mu_i>\varepsilon)\le e^{-s\psi^\*(\varepsilon)}$ for a convex $\psi$ controlling the moment generating function, giving width $(\psi^\*)^{-1}(\log(1/\delta)/s)$. For $[0,1]$, $\psi(\lambda)=\lambda^2/8$ so $\psi^\*(\varepsilon)=2\varepsilon^2$ and $(\psi^\*)^{-1}(u)=\sqrt{u/2}$ — exactly $\sqrt{\log(1/\delta)/(2s)}$ again. Reassuring that the general machine collapses to the bound I just wrote.)
-
-What confidence level $\delta$? The lower bound said tighten like $1/n$. Let me be a little careful, because the failure case is dangerous: if the optimal arm's index ever drops below its true mean, I might stop playing it and bleed linearly. So I want the chance of that failure, summed over the horizon, to stay $O(1)$. The natural move is to let $\delta$ shrink with time — use $\delta = t^{-\alpha}$ at round $t$ for some $\alpha$ to be pinned down, so $\log(1/\delta) = \alpha\log t$, giving width $\sqrt{\alpha\log t/(2s)}$. Then the index is
-
-$$ \text{index}_i(t) = \bar X_{i,T_i(t-1)} + \sqrt{\frac{\alpha\log t}{2\,T_i(t-1)}}, $$
-
-play each arm once to start (the index is undefined with zero samples), then at each round pull $\arg\max_i \text{index}_i(t)$. Call it UCB. The $\log t$ in the numerator means the confidence keeps tightening as the horizon grows, but only logarithmically — slowly enough that under-explored arms still get revisited.
-
-Now I have to actually prove this attains $\Theta(\log n)$, and the proof will tell me what $\alpha$ to use. Fix a suboptimal arm $i$ and bound $\mathbb{E}[T_i(n)]$. Write $c_{t,s} = \sqrt{2\log t/s}$ for the width (I'll take $\alpha$ to settle the constant — let me carry the clean choice $\alpha$ corresponding to confidence $t^{-4}$, i.e. $c_{t,s}=\sqrt{2\log t/s}$ which is $\delta=t^{-4}$ since $e^{-2s c_{t,s}^2}=e^{-4\log t}=t^{-4}$; I'll see why $-4$ in a moment).
-
-Arm $i$ is pulled at round $t$ only if its index beats the optimal arm's index. Let $\ell$ be a positive integer threshold to be chosen. Counting pulls past the threshold,
-
-$$ T_i(n) = 1 + \sum_{t=K+1}^{n}\mathbf 1\{I_t = i\} \le \ell + \sum_{t=K+1}^{n}\mathbf 1\{I_t=i,\ T_i(t-1)\ge \ell\}. $$
-
-When $I_t=i$, the index of $i$ at its current sample count is at least the optimal arm's index, so dropping below the running argmax,
-
-$$ \bar X^\*_{T^\*(t-1)} + c_{t-1,T^\*(t-1)} \le \bar X_{i,T_i(t-1)} + c_{t-1,T_i(t-1)}. $$
-
-I don't know the random sample counts, so I bound over all of their possible values $1\le s \le t$ for the optimal arm and $\ell \le s_i < t$ for arm $i$:
-
-$$ T_i(n) \le \ell + \sum_{t=1}^{\infty}\sum_{s=1}^{t-1}\sum_{s_i=\ell}^{t-1} \mathbf 1\big\{ \bar X^\*_s + c_{t,s} \le \bar X_{i,s_i} + c_{t,s_i}\big\}. $$
-
-Now the key dissection. The inequality $\bar X^\*_s + c_{t,s} \le \bar X_{i,s_i} + c_{t,s_i}$ cannot hold unless at least one of three things is true:
-
-$$ \text{(7)}\ \ \bar X^\*_s \le \mu^\* - c_{t,s}, \qquad \text{(8)}\ \ \bar X_{i,s_i} \ge \mu_i + c_{t,s_i}, \qquad \text{(9)}\ \ \mu^\* < \mu_i + 2c_{t,s_i}. $$
-
-Why? If all three fail, then $\bar X^\*_s > \mu^\* - c_{t,s}$, and $\bar X_{i,s_i} < \mu_i + c_{t,s_i}$, and $\mu^\* \ge \mu_i + 2c_{t,s_i}$, so
-
-$$ \bar X^\*_s + c_{t,s} > \mu^\* \ge \mu_i + 2c_{t,s_i} > \bar X_{i,s_i} + c_{t,s_i}, $$
-
-contradicting the inequality. So at least one of (7), (8), (9) holds — a clean partition into "the optimal arm's mean was *under*estimated," "arm $i$'s mean was *over*estimated," and "arm $i$ hasn't been pulled enough for the widths to separate the gap."
-
-Events (7) and (8) are concentration failures, and Hoeffding kills them. With $c_{t,s}=\sqrt{2\log t/s}$,
-
-$$ \mathbb{P}\{\bar X^\*_s \le \mu^\* - c_{t,s}\} \le e^{-2s\,c_{t,s}^2} = e^{-2s\cdot 2\log t/s} = e^{-4\log t} = t^{-4}, $$
-
-and identically $\mathbb{P}\{\bar X_{i,s_i}\ge \mu_i + c_{t,s_i}\} \le t^{-4}$. That's why I wanted the $\sqrt 2$ in the width: it makes the exponent $-4$, and I'm about to sum $t^{-4}$ over a triple index $(t,s,s_i)$, which costs me up to $t^2$ terms, leaving $t^{-2}$ — summable. If the width were smaller, the exponent would be too weak to survive the union bound; if larger, I'd over-explore. The width is set by the requirement that the failure probabilities beat the union bound.
-
-Event (9) is the deterministic one, and choosing $\ell$ makes it impossible. (9) says $\mu^\* - \mu_i - 2c_{t,s_i} < 0$, i.e. $\Delta_i < 2\sqrt{2\log t/s_i}$. With $t\le n$ this is implied by $\Delta_i < 2\sqrt{2\log n/s_i}$, which fails — (9) is false — as soon as $s_i \ge 8\log n/\Delta_i^2$. So set
-
-$$ \ell = \left\lceil \frac{8\log n}{\Delta_i^2}\right\rceil. $$
-
-Then for $s_i \ge \ell$, event (9) never fires, and only (7) or (8) can. Plugging back,
-
-$$ \mathbb{E}[T_i(n)] \le \frac{8\log n}{\Delta_i^2} + 1 + \sum_{t=1}^{\infty}\sum_{s=1}^{t}\sum_{s_i=1}^{t}\Big(\mathbb{P}\{(7)\} + \mathbb{P}\{(8)\}\Big) \le \frac{8\log n}{\Delta_i^2} + 1 + \sum_{t=1}^{\infty}\sum_{s=1}^{t}\sum_{s_i=1}^{t} 2t^{-4}. $$
-
-The triple sum is at most $\sum_{t=1}^\infty t^2 \cdot 2t^{-4} = 2\sum_{t=1}^\infty t^{-2} = 2\cdot\frac{\pi^2}{6} = \frac{\pi^2}{3}$. So
-
-$$ \boxed{\ \mathbb{E}[T_i(n)] \le \frac{8\log n}{\Delta_i^2} + 1 + \frac{\pi^2}{3}.\ } $$
-
-A suboptimal arm is pulled at most $\frac{8\log n}{\Delta_i^2}$ times plus a constant. Multiply by the gaps:
-
-$$ R_n = \sum_{i:\Delta_i>0}\Delta_i\,\mathbb{E}[T_i(n)] \le \sum_{i:\Delta_i>0}\frac{8\log n}{\Delta_i} + \Big(1+\frac{\pi^2}{3}\Big)\sum_{i=1}^K \Delta_i. $$
-
-Logarithmic regret, uniformly over $n$ — the order matches the floor. And crucially this needed no advance knowledge of the gaps, no prior, no horizon: the rule is just $\bar X_i + \sqrt{2\log t/T_i}$.
-
-Let me compare the leading constant to the floor and be honest about the gap. The lower bound asked for $\sum_i \Delta_i/D(P_i\Vert P^\*)$. Here I have $\sum_i 8/\Delta_i$ — i.e. per-arm constant $8/\Delta_i^2$ pulls versus the floor's $1/D(P_i\Vert P^\*)$. For bounded rewards, Pinsker gives the useful quadratic scale $D(P_i\Vert P^\*) \ge 2\Delta_i^2$, and in the hard small-gap Bernoulli cases where $D\approx 2\Delta_i^2$, the information floor is about $1/(2\Delta_i^2)$ pulls. UCB1 pays $8/\Delta_i^2$ on that scale: the order is right, the constant is not. The visible slack comes from two places: the union bound over the triple index $(t,s,s_i)$ forced the strong confidence $\delta=t^{-4}$, and I demanded the optimal arm's index never underestimate $\mu^\*$ at all, rather than allowing a slack of $\varepsilon$ below it.
-
-That second observation is the lever to close the gap in the Gaussian, 1-subgaussian normalization. I don't need $\bar X^\*_s + c \ge \mu^\*$; I only need it to stay above $\mu^\* - \varepsilon$ for small $\varepsilon$, which lets me shrink the width and so the leading constant. With the tail $\mathbb{P}(\bar X_s-\mu\ge a)\le e^{-sa^2/2}$, choosing $\delta(t)=1/f(t)$ with $f(t)=1+t\log^2t$ gives the width $\sqrt{2\log f(t)/s}$. Running the split at threshold $\mu^\*-\varepsilon$ instead of $\mu^\*$, and summing more carefully, gives for the suboptimal arm
-
-$$ \mathbb{E}[T_i(n)] \le 1+\frac{5}{\varepsilon^2}+\frac{2}{(\Delta_i-\varepsilon)^2}\big(\log f(n) + \sqrt{\pi\log f(n)} + 1\big), $$
-
-where the first sum counts rounds where arm $i$'s index exceeds $\mu^\*-\varepsilon$ (concentration of arm $i$, threshold $\Delta_i-\varepsilon$) and the second counts rounds where the optimal arm's index falls below $\mu^\*-\varepsilon$ (a tail sum $\sum_s e^{-s\varepsilon^2/2}\cdot$ const that the choice of $f$ keeps $O(1/\varepsilon^2)$). Dividing by $\log n$ and sending $n\to\infty$ then $\varepsilon\to 0$,
-
-$$ \limsup_{n\to\infty}\frac{R_n}{\log n} \le \sum_{i:\Delta_i>0}\frac{2}{\Delta_i}, $$
-
-which for unit-variance Gaussian arms is *exactly* the floor $\sum_i \Delta_i/D = \sum_i \Delta_i/(\Delta_i^2/2) = \sum_i 2/\Delta_i$. So in that Gaussian normalization, optimism with the confidence dialed to $1/f(t)$ meets the Lai–Robbins floor asymptotically — the floor is not just a barrier, it's achievable, and the same one-line principle (play the arm with the highest plausible mean) attains it.
-
-One more honesty check on the lower-bound proof, because the $\liminf$ argument is the part most likely to hide a sign error. The change-of-measure version above is the likelihood-ratio route; there's a slicker route through a single information inequality that I can use to cross-check the constant. The divergence between the two worlds, under any fixed policy, decomposes over arms: writing $\mathbb{P}_\nu, \mathbb{P}_{\nu'}$ for the laws of the whole interaction,
-
-$$ D(\mathbb{P}_\nu \Vert \mathbb{P}_{\nu'}) = \sum_{j} \mathbb{E}_\nu[T_j(n)]\, D(P_j\Vert P_j'). $$
-
-This is just the chain rule for KL applied round by round: at each round the policy's action distribution is identical in both worlds (it sees the same history), so only the reward kernel differs, and the reward kernel differs only on arm $i$ — hence the sum collapses to $\mathbb{E}_\nu[T_i(n)]\,D(P_i\Vert P_i')$. Now use the Bretagnolle–Huber inequality: for any event $A$, $\mathbb{P}_\nu(A) + \mathbb{P}_{\nu'}(A^c) \ge \tfrac12\exp(-D(\mathbb{P}_\nu\Vert\mathbb{P}_{\nu'}))$. Take $A = \{T_i(n) > n/2\}$. In world $\nu$, arm $i$ is bad, so
-
-$$ R_n \ge \frac{n}{2}\Delta_i\,\mathbb{P}_\nu(A). $$
-
-In world $\nu'$, arm $i$ is best; if $A^c$ holds, at least $n/2$ pulls go to arms whose means are at most $\mu^\*$, so with $\gamma'=\mu_i'-\mu^\*>0$,
-
-$$ R_n' \ge \frac{n}{2}\gamma'\,\mathbb{P}_{\nu'}(A^c). $$
-
-Let $\gamma=\min\{\Delta_i,\gamma'\}$. Adding,
-
-$$ R_n + R_n' \ge \frac{n\gamma}{4}\exp\!\big(-\mathbb{E}_\nu[T_i(n)]\,D(P_i\Vert P_i')\big). $$
-
-Rearrange it. For every $p>0$, consistency gives $R_n+R_n'=o(n^p)$, so eventually $R_n+R_n'\le n^p$. Therefore
-
-$$ \mathbb{E}_\nu[T_i(n)]\,D(P_i\Vert P_i') \ge (1-p)\log n + O(1). $$
-
-Divide by $\log n$, take $\liminf$, and then let $p\downarrow0$:
-
-$$ \liminf_{n}\frac{\mathbb{E}_\nu[T_i(n)]}{\log n} \ge \frac{1}{D(P_i\Vert P_i')} \xrightarrow{\ P_i'\to\text{boundary}\ } \frac{1}{D(P_i\Vert P^\*)}. $$
-
-Same constant. Good — the two routes agree, the $1/D$ is real, and the regret floor
-
-$$ \liminf_{n\to\infty}\frac{R_n}{\log n} \ge \sum_{i:\Delta_i>0}\frac{\Delta_i}{D(P_i\Vert P^\*)} $$
-
-stands. Bernoulli arms give $1/d(\mu_i,\mu^\*)$; Gaussians give $2/\Delta_i^2$; and UCB tuned with confidence $\sim 1/(t\log^2 t)$ rises to meet it.
-
-So the whole arc, in one breath: the regret is the gaps times the pull counts, so everything is about how few times a good rule can afford to pull a bad arm; a change-of-measure argument shows that to be safe against a neighboring world where the bad arm is secretly best, any consistent rule must pull each bad arm at least $\log n / D(P_i\Vert P^\*)$ times, which makes $\Theta(\log n)$ regret with a KL constant the unbeatable floor; and acting optimistically — playing the arm whose empirical mean plus a $\sqrt{2\log t/T_i}$ confidence width is largest, the width forced by Hoeffding and the union bound — pulls each bad arm only $O(\log n/\Delta_i^2)$ times, attaining that floor's order, with the Gaussian constant reached by tuning the confidence to $1/(t\log^2 t)$.
-
-```python
-import numpy as np
-
-class BanditEnv:
-    """K arms; pulling arm i returns an i.i.d. reward with unknown mean mu[i]."""
-    def __init__(self, means, rng):
-        self.means = np.asarray(means, float)
-        self.rng = rng
-        self.mu_star = self.means.max()
-
-    def pull(self, i):
-        return float(self.rng.random() < self.means[i])
-
-class ArmStats:
-    """Running sufficient statistics per arm: pull count and empirical mean."""
-    def __init__(self, K):
-        self.counts = np.zeros(K, int)
-        self.means  = np.zeros(K, float)
-
-    def update(self, i, reward):
-        self.counts[i] += 1
-        n = self.counts[i]
-        self.means[i] += (reward - self.means[i]) / n
-
-def select_arm(stats, t):
-    """UCB1: empirical mean plus sqrt(2 ln t / T_i)."""
-    unplayed = np.flatnonzero(stats.counts == 0)
-    if unplayed.size:
-        return int(unplayed[0])
-    index = stats.means + np.sqrt(2.0 * np.log(t) / stats.counts)
-    return int(np.argmax(index))
-
-def select_arm_asymptotically_optimal(stats, t):
-    """1-subgaussian/Gaussian variant with f(t)=1+t log^2(t)."""
-    unplayed = np.flatnonzero(stats.counts == 0)
-    if unplayed.size:
-        return int(unplayed[0])
-    f_t = 1.0 + t * np.log(t) ** 2
-    index = stats.means + np.sqrt(2.0 * np.log(f_t) / stats.counts)
-    return int(np.argmax(index))
-
-def run(env, n, K, selector=select_arm):
-    stats = ArmStats(K)
-    regret = 0.0
-    for t in range(1, n + 1):
-        i = selector(stats, t)
-        reward = env.pull(i)
-        stats.update(i, reward)
-        regret += env.mu_star - env.means[i]
-    return regret
+```text
+R_n = sum_{i: Delta_i > 0} Delta_i E[T_i(n)].
 ```
+
+So the problem is not first "which arm do I like?" It is "how many times must I pay for each arm that is not best?" If I can answer that question from below, I know the unavoidable cost of learning; if I can answer it from above with a rule, I know how close the rule is to optimal.
+
+My first hope is that a bad arm should only need a constant number of samples. I try to imagine a very clever policy that tests each arm just enough, recognizes the inferior ones, and then never returns. But that thought is too local. It treats the current instance as if the policy is allowed to know that it is the current instance. A valid policy has to work on nearby instances too.
+
+The obstruction is a neighboring world. Fix a suboptimal arm `i` with law `P_i`. Now build another world that is identical except that arm `i` has law `P_i'` with mean just above the current best mean. In the real world, arm `i` is bad. In the neighboring world, arm `i` is best. If my policy samples arm `i` only a few times in the real world, then the observed history contains only a few pieces of evidence about the one distribution that changed. But in the neighboring world, consistency demands that the policy learn to play arm `i` almost all the time. The same policy cannot be safe in both worlds unless it gathers enough information from arm `i` to tell the two worlds apart.
+
+This turns exploration into a hypothesis-testing problem. Samples from arm `i` generate a log-likelihood ratio
+
+```text
+sum log(dP_i / dP_i')
+```
+
+and under the real law its expectation grows at rate `D(P_i || P_i')` per sample. After `T_i(n)` pulls, the expected information separating the two worlds is therefore `T_i(n) D(P_i || P_i')`. If the policy wants the probability of confusing the two worlds to be small on the scale needed over `n` rounds, it needs evidence on the order of `log n`. That already suggests
+
+```text
+T_i(n) about log n / D(P_i || P_i').
+```
+
+I can make the intuition precise in two equivalent ways. The likelihood-ratio route says that, for an event `A` in the interaction history, probabilities under the two worlds differ only through the likelihood ratio of the samples collected from arm `i`. If I define the event that arm `i` has been sampled fewer than `(1-epsilon) log n / D(P_i || P_i')` times and the likelihood ratio has not yet grown to about `log n`, then this event cannot have large probability in the real world. In the modified world the arm is optimal, so consistency makes the complementary behavior rare; in the real world the strong law says the likelihood ratio cannot usually exceed its drift when the sample count is below that threshold. The event "too few samples" disappears.
+
+The information-inequality route is cleaner. The KL divergence between the full histories under the two bandit worlds decomposes as
+
+```text
+D(P_nu || P_nu') = sum_j E_nu[T_j(n)] D(P_j || P_j').
+```
+
+Only arm `i` changes, so this becomes `E_nu[T_i(n)] D(P_i || P_i')`. Bretagnolle-Huber then says no event can reliably separate the two histories unless this divergence is large. Taking the event that arm `i` receives more than half the horizon, one of the two worlds must pay regret unless the divergence is at least nearly `log n`. Consistency rules out polynomial regret in either world, so the sample count must satisfy
+
+```text
+liminf E[T_i(n)] / log n >= 1 / D(P_i || P_i').
+```
+
+Now I let the alternative law move down to the boundary where arm `i` just becomes optimal, while staying inside the allowed model class for that arm. This gives the sharp information constant:
+
+```text
+liminf E[T_i(n)] / log n >= 1 / d_inf(P_i, mu*, M_i),
+```
+
+or, in a one-parameter family,
+
+```text
+liminf R_n / log n >= sum_{i: Delta_i > 0} Delta_i / KL(theta_i, theta*).
+```
+
+For Bernoulli arms the denominator is `kl(mu_i, mu*)`. For Gaussian rewards with known variance `sigma^2`, it is `Delta_i^2/(2 sigma^2)`, so the necessary number of pulls of arm `i` is `2 sigma^2 log n / Delta_i^2`. In the unit-variance case this is `2 log n / Delta_i^2`.
+
+This is the main insight. Exploration is not an ad hoc tax I choose by taste. Every inferior arm has to be sampled until the policy has accumulated about `log n` units of evidence against the closest world where that arm is best. The denominator is not a decorative information-theory constant; it is the rate at which evidence arrives from samples of that arm.
+
+Now I ask what kind of rule naturally pays that cost and stops. Greedy is too brittle because it pretends each empirical mean is already the truth. A barely sampled arm can be underestimated and then never repaired. Uniform random exploration is too blunt because it keeps paying for arms after the evidence is already decisive. I need a rule whose desire to sample an arm shrinks automatically as evidence accumulates.
+
+The lower-bound picture suggests optimism. For each arm, I maintain the largest mean that is still plausible given its data, and I play the arm with the largest plausible mean. A lightly sampled arm receives a wide allowance because the data cannot yet rule out a favorable world. A heavily sampled bad arm receives a narrow allowance, so once its estimate settles below the best mean it stops attracting pulls. The same number is doing both jobs: it exploits high empirical means and explores high uncertainty.
+
+For bounded rewards, Hoeffding's inequality tells me the size of the allowance. After `s` samples,
+
+```text
+P(hat_mu_s >= mu + a) <= exp(-2 s a^2),
+P(hat_mu_s <= mu - a) <= exp(-2 s a^2).
+```
+
+Solving `exp(-2 s a^2) = delta` gives a one-sided width `sqrt(log(1/delta)/(2s))`. If I choose a time-dependent confidence level strong enough to survive a union bound over times and sample counts, I get the simple index
+
+```text
+hat_mu_i + sqrt(2 log t / T_i(t-1)).
+```
+
+The rule samples each arm once, then always selects the arm with the largest index.
+
+The proof of its logarithmic regret has the same structure as the intuition. Fix a bad arm `i`. If arm `i` is chosen after it has already been sampled at least `ell` times, its index must beat the optimal arm's index. That can only happen if one of three things is true: the optimal arm's empirical mean is unusually low, arm `i`'s empirical mean is unusually high, or the confidence radius for arm `i` is still so large that the gap has not been separated. Hoeffding makes the first two events summable. The third is deterministic; it becomes false once
+
+```text
+T_i >= 8 log n / Delta_i^2.
+```
+
+Therefore
+
+```text
+E[T_i(n)] <= 8 log n / Delta_i^2 + 1 + pi^2/3.
+```
+
+Multiplying by `Delta_i` gives logarithmic regret. The constant is not the information constant in general. The proof spends slack in the quadratic Hoeffding radius and the union bound. But the order is right, and the mechanism matches the lower-bound obstruction: keep an arm alive exactly while the data still permit it to be the best.
+
+This simple rule is not the original 1985 Lai-Robbins allocation rule; it is the later finite-time UCB1 index. It is still the clean constructive face of the same optimism idea, and it is faithful to the Auer-Cesa-Bianchi-Fischer pseudocode. To close the asymptotic constant for Gaussian rewards, I can tune the confidence schedule more carefully. In the 1-subgaussian normalization, a later anytime index with
+
+```text
+sqrt(2 log(1 + t log^2 t) / T_i(t-1))
+```
+
+has asymptotic regret at most
+
+```text
+sum_{i: Delta_i > 0} 2 log n / Delta_i,
+```
+
+which matches the lower bound for unit-variance Gaussians because `D(N(mu_i,1) || N(mu*,1)) = Delta_i^2/2`. In Bernoulli and exponential-family settings, the same lesson points to KL-shaped confidence sets rather than the quadratic Hoeffding radius: choose the largest mean whose KL divergence from the empirical model is still within the exploration budget.
+
+So the discovery is not "put confidence intervals on a bandit." The deeper step is first proving that every good policy is secretly running a sequential test against neighboring worlds, with an unavoidable evidence bill of `log n / KL`. The confidence index is then the constructive face of that proof: it is an implementable way to keep sampling exactly those arms for which the favorable neighboring world has not yet been statistically ruled out.

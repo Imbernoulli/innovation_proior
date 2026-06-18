@@ -1,120 +1,50 @@
 # Context
 
-## Research question
+## Research Question
 
-We want to learn good visual representations from images *without any labels*, and the structure
-that has come to dominate this problem is the **Siamese network**: take one image, produce two
-randomly augmented views, push their features to agree. Agreement alone, however, has a trivial
-minimizer — map *every* image (and every view) to the same constant vector. Agreement is perfect,
-information is zero. This is **collapse**, and it is the central obstacle: any method built on
-"two views should match" must carry some additional mechanism whose job is to keep the solution
-off that constant.
+We want to learn visual representations from images without labels. The common shape is a Siamese network: take one image, draw two random augmentations, encode both views, and make the two outputs agree. The obstacle is collapse. If every input maps to one constant vector, the two views agree perfectly while the representation contains no usable information.
 
-Every successful recipe pays for collapse prevention with substantial machinery — a large pile of
-negative examples, or an online clustering step with a balance constraint, or a second
-slowly-updated encoder. The precise question is: *which* of those moving parts is actually
-responsible for preventing collapse? Is any of them necessary? Concretely, can a bare Siamese
-network — one encoder with weights shared between the two branches, ordinary batch sizes, no
-negatives, no second encoder — learn meaningful representations without collapsing, and if so,
-what is the minimal ingredient that makes that possible?
+The question is how little machinery is actually needed to avoid that failure. Existing successful systems add explicit repulsion, online clustering, a second slowly updated encoder, or large-batch infrastructure. Are those components intrinsically necessary, or can a direct shared-weight Siamese network learn nontrivial image features if the right minimal asymmetry is present?
 
 ## Background
 
-**The Siamese principle and the collapse failure mode.** A Siamese network applies the *same*
-weight-sharing function to two or more inputs and compares the outputs. Used for label-free
-representation learning, the two inputs are two augmentations of one image and the objective
-maximizes their similarity. The well-known degenerate solution is that all outputs collapse to a
-constant: the similarity objective is then trivially maximized while the representation carries no
-information. Diagnostically, collapse is visible in two signatures at once — the training loss
-races to its minimum possible value, and the per-channel standard deviation of the
-ℓ₂-normalized outputs goes to zero (all samples map to the same unit vector). As a
-reference point, if the outputs were instead a zero-mean isotropic Gaussian, the std of the
-ℓ₂-normalized output would sit near \(1/\sqrt{d}\) for output dimension \(d\); a healthy,
-non-collapsed model should hover near that value rather than at zero.
+A Siamese network applies weight-sharing functions to multiple inputs and compares the outputs. In self-supervised vision, the inputs are two augmentations of the same image, so the objective asks the representation to become invariant to the augmentation distribution. Collapse is the degenerate fixed point: agreement is maximized because all samples receive the same code.
 
-**Negatives as the classical anti-collapse device.** Contrastive learning (Hadsell et al. 2006)
-attracts positive pairs (two views of one image) and repulses negative pairs (views of different
-images). The negatives are what excludes the constant solution: if all images mapped to one point,
-the repulsion term would be maximally violated. The InfoNCE / NT-Xent loss writes this as a
-softmax over similarities, and empirically the representation improves with the *number* of
-negatives — which is exactly why surrounding machinery exists to supply many of them.
+Contrastive learning prevents that fixed point by using negative pairs. Two views of one image are pulled together, and views from different images are pushed apart. If every image mapped to one point, the negative terms would be violated. This makes the number and quality of negatives central.
 
-**Clustering as the other classical device.** Instead of pairwise repulsion, group images and use
-the group as a target (DeepCluster, Caron et al. 2018). The cross-entropy over \(K\) clusters
-implicitly contrasts. Collapse here is "all images into one cluster"; the standard guard is a
-balanced-partition constraint, e.g. via the entropy-regularized optimal-transport / Sinkhorn-Knopp
-solution that forces assignment mass to spread evenly across clusters.
+Clustering-based self-supervision avoids pairwise negatives but introduces another anti-collapse mechanism. It assigns images to prototypes or clusters and prevents all samples from choosing the same cluster through balanced assignment constraints or repeated re-clustering.
 
-**Batch normalization, projection heads, predictor heads.** Three architectural primitives are in
-the air. BN (Ioffe & Szegedy 2015) stabilizes optimization of deep nets. A *projection MLP* head
-placed before the loss (popularized in the contrastive setting) improves the learned features. A
-*prediction MLP* head on one branch — a small network that transforms one view's embedding to
-match the other — was introduced in the momentum-target line. Whether any of these has anything to
-do with *collapse* (as opposed to plain optimization quality) is an open, testable question.
+Momentum-target methods remove explicit negatives and instead make an online network predict targets produced by a second network. The target network changes slowly, so the prediction target is more stable than the online branch. A prediction MLP on the online side is part of this recipe, but the moving-average target and the target-side training rule are coupled together.
 
-**Augmentations carry the invariances.** The transformation set — random resized crop, color
-jitter, grayscale, Gaussian blur, horizontal flip — defines what the representation becomes
-invariant to. The augmentation distribution is the implicit supervision.
+Batch normalization, projection heads, predictor heads, and strong augmentations are also in the design space. BN can stabilize deep optimization. Projection heads improve the representation learned before the loss. Predictor heads introduce an asymmetry between the two branches. Augmentations define the invariances being learned.
 
-**Alternating optimization / k-means / EM.** A separate, classical tool: when a loss couples two
-sets of variables, one can minimize by *alternating* — fix one set and solve for the other, then
-swap. k-means is the canonical instance (alternate cluster centers and assignments); EM is the
-probabilistic version (E-step computes expected assignments, M-step updates parameters).
+Alternating optimization is a separate classical tool. When an objective has two blocks of variables, one can fix one block while optimizing the other, then swap. k-means alternates assignments and cluster centers; EM alternates latent-variable estimates and model parameters.
 
 ## Baselines
 
-**SimCLR (Chen et al. 2020).** Siamese network with *direct weight-sharing* between branches.
-Negatives are the other elements of the current batch; NT-Xent loss with temperature \(\tau\), a
-projection MLP head before the loss, strong augmentation. Collapse is prevented by the negatives.
-*Gap:* needs *very large batches* (e.g. 4096) to have enough negatives, and a large-batch
-optimizer (LARS).
+**Contrastive loss / DrLIM.** Hadsell, Chopra, and LeCun formulate a Siamese-style loss with similar pairs attracted and dissimilar pairs repelled by a margin. The dissimilar term prevents the all-constant solution.
 
-**MoCo (He et al. 2019).** Siamese network with *indirect* weight-sharing: one branch is a
-**momentum encoder** (an exponential moving average of the trained encoder), and a **queue** of
-~65k features from recent batches supplies a large, consistent negative set without a huge batch.
-*Gap:* a second encoder plus a long queue — extra memory and moving parts; still fundamentally
-relies on negative pairs.
+**SimCLR.** A direct weight-sharing Siamese network uses two augmented views per image and the NT-Xent loss. Other views in the minibatch act as negatives. A nonlinear projection head before the contrastive loss improves representation quality. The recipe benefits from very large batches, commonly 4096 examples, and LARS.
 
-**Clustering / SwAV (Caron et al. 2020).** Incorporates online clustering into a Siamese network:
-compute a cluster assignment ("code") from one view and predict it from the other. The assignment
-is solved per batch under a balanced-partition constraint via the Sinkhorn-Knopp transform, which
-prevents collapse; stop-gradient is applied on the assignment (target) branch. No explicit
-negative exemplars, but the cluster centers act as negative prototypes. *Gap:* requires enough
-samples per assignment — large batches (4096) or a queue — and carries the online-clustering /
-Sinkhorn machinery.
+**MoCo.** A query encoder is trained with a contrastive loss against a large dictionary of keys. The dictionary is maintained as a queue, and a momentum encoder keeps queued keys relatively consistent. The queue decouples the negative set size from the current minibatch size.
 
-**BYOL (Grill et al. 2020).** Drops negatives entirely. Directly predicts the output of one view
-from the other using a **prediction MLP** head on the online branch, and the target branch is a
-**momentum encoder**; the loss is the (symmetrized) negative cosine similarity of ℓ₂-
-normalized vectors, equivalently the MSE of normalized vectors up to a scale of 2. It does not
-collapse. The reported account attributes this to the momentum encoder: removing it is reported to
-fail badly (0.3% accuracy in that work's ablation). *Gap:* the explanation is given at the level of
-the momentum encoder as a whole, and the method still carries a full second encoder and large
-batches.
+**DeepCluster and SwAV.** DeepCluster alternates between clustering image features and training a network to predict the cluster assignments. SwAV makes clustering online by predicting assignments between views and computing batch assignments with a Sinkhorn-Knopp balanced partition. The assignment machinery is the nontrivial anti-collapse device.
 
-## Evaluation settings
+**BYOL.** An online branch predicts the projection of a target branch for another augmented view. The target branch uses a moving average of the online parameters, and the prediction MLP is applied only on the online branch. BYOL shows that explicit negatives are not required, but leaves open which part of the target-side machinery is doing the essential work.
 
-- **Pre-training data:** the 1000-class ImageNet training set, used *without labels*.
-- **Primary protocol — linear evaluation:** freeze the pre-trained backbone (features from the
-  global average pooling layer), train a supervised linear classifier on top on the training set,
-  report top-1 accuracy on the validation set (center crop).
-- **Progress monitor:** a k-nearest-neighbor classifier on frozen features, used during
-  pre-training to track learning cheaply.
-- **Collapse diagnostics:** the training-loss curve (does it hit the minimum possible value?) and
-  the per-channel std of the ℓ₂-normalized output (does it go to zero, vs. the \(1/\sqrt{d}\)
-  reference?).
-- **Transfer:** fine-tune the pre-trained backbone for VOC object detection (Faster R-CNN) and
-  COCO detection / instance segmentation (Mask R-CNN, C4 backbone).
-- **Backbone & recipe yardsticks:** ResNet-50; SGD vs. large-batch optimizers (LARS); linear lr
-  scaling \(lr \times \text{BatchSize}/256\); cosine decay schedule; batch sizes from 64 to 4096.
+## Evaluation Settings
 
-## Code framework
+The standard pretraining data is the ImageNet training set without labels. Representation quality is measured by freezing the pretrained backbone, taking features from the global average pooling layer, training a supervised linear classifier on ImageNet train, and reporting top-1 accuracy on ImageNet validation.
 
-The pre-method primitives that already exist: a ResNet backbone, MLP heads built from
-`Linear`/`BatchNorm1d`/`ReLU`, an `ℓ₂`-normalized cosine similarity, an SGD optimizer with
-cosine-decayed learning rate, and a two-view augmentation pipeline. The data loader yields two
-independently augmented views per image. The model and loss are left as the empty slot the method
-will fill.
+During pretraining, a k-nearest-neighbor classifier on frozen features can monitor progress cheaply. Collapse is diagnosed by both the loss curve and the per-channel standard deviation of the l2-normalized outputs. A collapsed constant representation has per-channel std near zero; a scattered unit-sphere representation is near the isotropic reference value \(1/\sqrt{d}\) for output dimension \(d\).
+
+Transfer quality is checked by fine-tuning the pretrained backbone on downstream detection and segmentation tasks, including VOC with Faster R-CNN and COCO with Mask R-CNN.
+
+The common recipe yardsticks are ResNet-50, two 224x224 augmented views, SGD or LARS depending on the method, linear learning-rate scaling by batch size, cosine learning-rate decay, and batch sizes ranging from ordinary minibatches to thousands of images.
+
+## Code Framework
+
+The empty slot is a shared-weight two-view model and a loss. The framework already has a ResNet backbone, MLP heads built from linear layers, batch normalization, ReLU, an l2-normalized cosine comparison, SGD with cosine learning-rate scheduling, and a two-view augmentation pipeline.
 
 ```python
 import torch
@@ -124,6 +54,7 @@ class TwoCropsTransform:
     """Take one image, return two independently augmented views."""
     def __init__(self, base_transform):
         self.base_transform = base_transform
+
     def __call__(self, x):
         return [self.base_transform(x), self.base_transform(x)]
 
@@ -132,7 +63,7 @@ class SiameseModel(nn.Module):
     def __init__(self, base_encoder, dim=2048):
         super().__init__()
         self.encoder = base_encoder(num_classes=dim)
-        # TODO: define the model.
+        # TODO: define the projection/prediction structure.
 
     def forward(self, x1, x2):
         # TODO: process both views with the shared encoder.

@@ -1,4 +1,4 @@
-# Research question
+## Research question
 
 We have a directed probabilistic model with a continuous latent variable per datapoint: a value `z` is drawn from a prior `p(z)`, then the observation `x` is drawn from a conditional likelihood `p(x|z)`. We want `p(x|z)` to be an arbitrarily flexible function of `z` — concretely a neural network with one or more nonlinear hidden layers, mapping `z` to the parameters of the distribution over `x`. This is precisely the regime in which the field, around 2013, has no good tool.
 
@@ -15,7 +15,7 @@ Two properties make this hard and form the crux of the problem:
 
 The goal is a single estimator of the training objective that is (a) differentiable, (b) low-variance, (c) computable on a minibatch, and (d) able to pass gradients through a neural-network approximate posterior — so that the generative model and the inference machinery train jointly under ordinary gradient ascent.
 
-# Background
+## Background
 
 The standard object for learning a latent-variable model is the marginal log-likelihood `log p(x)`. For *any* distribution `q(z)` it decomposes exactly as
 
@@ -39,7 +39,7 @@ A second structural idea is **amortized inference**. Classical variational infer
 
 The prevailing wisdom around 2013 is that deep directed generative models with continuous latents and neural-network likelihoods are attractive but effectively untrainable: exact EM is impossible (no closed-form posterior), mean-field needs a conjugacy a network destroys, generic black-box variational gradients are too noisy, sampling-based EM is too slow per datapoint, and the one online competitor optimizes two objectives that do not jointly bound the likelihood. Meanwhile the practical substrate is mature: stochastic gradient descent with backpropagation through multilayer perceptrons is routine, GPUs make minibatch training cheap, and adaptive step-size methods (Adagrad; Duchi et al. 2010) are available — so the obstacle lies in the estimation of the objective and its gradients, not in hardware or in the available network classes.
 
-# Baselines
+## Baselines
 
 **EM (Dempster et al. 1977; linear-Gaussian instance via Roweis & Ghahramani 1999).**
 EM maximizes `log p(x)` by alternating: the E-step sets `q(z) = p(z|x; θ_old)`, which makes `KL = 0` and the bound tight; the M-step maximizes `E_q[log p(x,z|θ)]` over `θ` (the complete-data log-likelihood, with the log *inside* the expectation). Its core requirement is a tractable posterior `p(z|x)` for the E-step. Roweis & Ghahramani showed PCA is the ML solution of a special linear-Gaussian model (`p(z)=N(0,I)`, `p(x|z)=N(Wz, εI)` as `ε→0`), establishing the lineage from linear autoencoders to generative latent-variable models — but only for linear/Gaussian models with a closed-form posterior. **Gap:** for a nonlinear-network likelihood the E-step posterior has no closed form, so EM cannot even start.
@@ -53,8 +53,8 @@ Drop the conjugacy requirement: estimate the ELBO gradient directly with the sco
 **Wake-sleep / the Helmholtz machine (Hinton, Dayan, Frey & Neal 1995).**
 The only prior online method for this same general class of continuous-latent directed models. It already introduces a separate **recognition network** `q(z|x)` (an "encoder") that approximates the posterior, trained alongside a **generative network** `p(x|z)`. The *wake* phase samples `z ~ q(z|x)` and updates the generative weights to raise `log p(x,z)`; the *sleep* phase "dreams" `(x,z) ~ p` and updates the recognition weights to predict `z` from `x`. **Gap:** it optimizes two distinct objectives that do not jointly correspond to optimizing one bound on `log p(x)` — the sleep phase minimizes a reversed KL on fantasy data rather than the KL of the recognition model from the true posterior on real data — so there is no single coherent objective and no guarantee of improving the marginal likelihood. (Worth noting: wake-sleep also handles discrete latents.)
 
-**Closest prior use of a reparameterization-style trick (Salimans & Knowles 2013).**
-Within a fixed-form stochastic variational inference scheme, they used a reparameterization-like change of variables to learn the natural parameters of exponential-family approximating distributions. **Gap:** it is tied to exponential-family natural parameters, not a general neural-network recognition model, so it does not deliver an amortized, network-based posterior trainable jointly with a nonlinear generative model.
+**Closest prior use of a stochastic change-of-variables device (Salimans & Knowles 2013).**
+Within a fixed-form stochastic variational inference scheme, they used a change of variables to learn the natural parameters of exponential-family approximating distributions. **Gap:** it is tied to exponential-family natural parameters, not a general neural-network recognition model, so it does not deliver an amortized, network-based posterior trainable jointly with a nonlinear generative model.
 
 **Sampling-based EM baseline (Monte Carlo EM with Hybrid/Hamiltonian Monte Carlo; Duane et al. 1987).**
 When the E-step posterior is intractable, sample from it with gradient-based MCMC using `∇_z log p(z|x) = ∇_z log p(z) + ∇_z log p(x|z)` (computable because the normalizer drops out), then take M-step updates. **Gap:** it runs a sampling chain per datapoint, so it is not an online algorithm and does not scale to a large dataset — usable only as a small-scale reference.
@@ -62,7 +62,7 @@ When the E-step posterior is intractable, sample from it with gradient-based MCM
 **Autoencoder lineage (the "auto-encoding" half of the eventual picture).**
 Denoising / contractive / sparse autoencoders (Vincent et al. 2010; Bengio et al. 2013) train an encoder-decoder by reconstruction plus an *ad hoc* regularizer; under an infomax reading (Linsker 1989), reconstruction lower-bounds the mutual information `I(X;Z)`. Predictive sparse decomposition (Kavukcuoglu et al. 2008) is a predictive encoder for sparse coding. **Gap:** reconstruction alone does not yield useful representations, and the regularizers carry nuisance hyperparameters with no probabilistic meaning; there is no marginal-likelihood objective behind them.
 
-# Evaluation settings
+## Evaluation settings
 
 The natural yardstick is generative modeling of images on two pre-existing datasets:
 
@@ -79,7 +79,7 @@ p(x) ≈ ( (1/L) Σ_l  q(z^(l)) / [ p(z) p(x|z^(l)) ] )^{-1},   z^(l) ~ p(z|x),
 
 which follows from `1/p(x) = ∫ p(z|x) · q(z)/p(x,z) dz`. A practical low-dimensional scoring run estimates marginal likelihood on the first 1000 train and test points, sampling ~50 posterior values per point with HMC (≈4 leapfrog steps). The Monte Carlo EM reference uses ~10 HMC leapfrog steps with step size auto-tuned to ~90% acceptance, followed by 5 weight updates per acquired sample, under the same Adagrad schedule.
 
-# Code framework
+## Code framework
 
 The implementation substrate is a standard deep-learning stack, illustrated with PyTorch: a minibatch data pipeline, multilayer-perceptron layers with reverse-mode autodiff, and an adaptive stochastic optimizer. The model is a directed latent-variable model with a simple prior `p(z)=N(0,I)` and a neural observation model mapping latent samples to the parameters of `p(x|z)`. A small optional module may map an observation to latent-side quantities so per-datapoint inference can be amortized instead of solved from scratch.
 

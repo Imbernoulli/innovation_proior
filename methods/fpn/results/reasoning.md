@@ -16,7 +16,7 @@ Upsample, then. Take C5, which is strong and coarse, and upsample it by 2× so i
 
 But wait — I *have* a map at C4's resolution whose localization is excellent: C4 itself, fresh from the bottom-up pass, subsampled fewer times, spatially crisp. It's just semantically weaker. And the upsampled C5 is semantically strong but spatially smeared. These two are complementary at the *same resolution*. So merge them: add the upsampled-C5 (strong, smeared) to C4 (weak, crisp), element-wise. The sum has the strong semantics from above *and* the precise localization from the side. The semantics flow down through the network's depth via the top-down path; the spatial precision is injected sideways from the bottom-up map at each level — a lateral connection.
 
-There's a dimension mismatch to fix before I can add. The bottom-up maps have stage-dependent channel counts (256, 512, 1024, 2048 for a ResNet), and the top-down stream I want to keep at a single uniform width. So put a 1×1 convolution on the lateral connection to project the bottom-up map to the common channel count. And notice this is exactly the right operation for preserving localization: a 1×1 conv mixes channels at each spatial location independently — it does not blend neighboring positions — so it can't smear the crisp localization I'm reaching for. A 3×3 here would start mixing space and partly defeat the purpose; 1×1 is the minimal channel-matcher that leaves the grid untouched.
+There's a dimension mismatch to fix before I can add. The bottom-up maps have stage-dependent channel counts (256, 512, 1024, 2048 for a ResNet), and the top-down stream I want to keep at a single uniform width. So put a 1×1 convolution on the lateral connection to project the bottom-up map to the common channel count. And notice why that operation is enough: a 1×1 conv mixes channels at each spatial location independently, so it changes representation width without changing the spatial grid. I can leave local spatial mixing to the separate 3×3 output convolution after the merge.
 
 Now iterate it. This is a recursion: I have a merged map at level k; to get level k−1 I upsample the merged map 2×, lateral-1×1 the bottom-up map at k−1, add. C5→merge with C4→merge with C3→merge with C2. Each step pushes the strong semantics one resolution finer and re-anchors the localization with the bottom-up map at that resolution. To *start* the recursion I need a top map: just put a 1×1 conv on C5 (no map above it to add) to get the coarsest level at the common width. So the whole top-down stream is seeded from C5 and walks downward.
 
@@ -40,7 +40,7 @@ Should the head share weights across levels? I'll share. And it's a real test of
 
 Now the region-based detector — Fast R-CNN style. Here it's different: instead of sliding a head densely, I have a set of RoIs (boxes), and for each I pool a fixed 7×7 grid of features and run a small head. The question that didn't exist for the single-map detector: *which* pyramid level do I pool each RoI from? A big RoI obviously wants the coarse, strong, low-res level; a small RoI wants a fine, high-res level. I want a rule that mimics what an image pyramid would do — in an image pyramid, an object lands on whichever level rescales it to the canonical size the network was trained on.
 
-Let me derive that rule. The backbone was pretrained on ImageNet at a canonical size of 224, so a region whose size is ~224 is exactly what the "default" feature map is tuned for. In the single-scale ResNet detector that default map is C4 — stride 16, the natural level for a canonical object. So set a canonical level k0 = 4: a 224-sized RoI should be pooled from P4. Now, if an RoI is smaller, it should move to a finer (higher-resolution, lower-index) level, and by how much should scale logarithmically, because pyramid levels are spaced by factors of 2. Measure RoI size by √(wh) (geometric mean of width and height — the side of an equal-area square). Then the offset from the canonical level is log2(√(wh)/224): when √(wh)=224 the offset is 0 (level k0); when the RoI is half-size, 112, the ratio is 1/2, log2 is −1, so it drops one level finer to k=3; double size goes one level coarser. Floor it to land on an integer level:
+Let me derive that rule. The backbone was pretrained on ImageNet at a canonical size of 224, so a region whose size is ~224 is exactly what the "default" feature map is tuned for. In the single-scale ResNet detector that default map is C4 — stride 16, the natural level for a canonical object. So set a canonical level k0 = 4: a 224-sized RoI should be pooled from P4. Now, if an RoI is smaller, it should move to a finer (higher-resolution, lower-index) level, and by how much should scale logarithmically, because pyramid levels are spaced by factors of 2. Measure RoI size by √(wh) (geometric mean of width and height — the side of an equal-area square). I need to be consistent about box coordinates: the old detector code treats pixel-index boxes as inclusive and computes w = x2 − x1 + 1, h = y2 − y1 + 1; a continuous-coordinate implementation can use x2 − x1 and y2 − y1 instead, but it must train and test with the same convention. Then the offset from the canonical level is log2(√(wh)/224): when √(wh)=224 the offset is 0 (level k0); when the RoI is half-size, 112, the ratio is 1/2, log2 is −1, so it drops one level finer to k=3; double size goes one level coarser. Floor it to land on an integer level:
 
   k = ⌊ k0 + log2(√(wh)/224) ⌋,  with k0 = 4.
 
@@ -110,12 +110,18 @@ def assign_roi_to_level(
     max_level=5,
     canonical_level=4,
     canonical_box_size=224.0,
+    eps=1e-6,
+    legacy_plus_one=True,
 ):
-    # boxes: (N, 4) as (x1, y1, x2, y2) in input-image pixels
-    w = boxes[:, 2] - boxes[:, 0]
-    h = boxes[:, 3] - boxes[:, 1]
+    # boxes: (N, 4) as (x1, y1, x2, y2) in input-image pixels.
+    # legacy_plus_one matches the original Detectron/Faster-R-CNN pixel-index convention.
+    offset = 1.0 if legacy_plus_one else 0.0
+    w = boxes[:, 2] - boxes[:, 0] + offset
+    h = boxes[:, 3] - boxes[:, 1] + offset
+    if ((w <= 0) | (h <= 0)).any():
+        raise ValueError("boxes must have positive width and height")
     s = torch.sqrt(w * h)                                   # sqrt(area) = sqrt(wh)
-    k = torch.floor(canonical_level + torch.log2(s / canonical_box_size + 1e-8))
+    k = torch.floor(canonical_level + torch.log2(s / canonical_box_size + eps))
     k = torch.clamp(k, min=min_level, max=max_level)        # stay on the available levels
     return k.to(torch.int64)
 ```

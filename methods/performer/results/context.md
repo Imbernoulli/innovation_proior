@@ -4,7 +4,7 @@
 
 Self-attention is the engine of the modern sequence model, but it carries a cost that scales with the square of the sequence length. For an input of `L` tokens with hidden dimension `d`, the attention operation forms an `L × L` matrix of pairwise interaction scores, normalizes it, and uses it to mix value vectors. Building and storing that matrix costs `O(L²d)` time and `O(L² + Ld)` memory. For `L` in the hundreds this is fine; for `L` in the thousands to tens of thousands — protein chains of length 8192, images flattened to 12288 pixels, book-length text — the quadratic term dominates and the model simply runs out of memory or time.
 
-The question is whether attention can be made to scale **linearly** in `L`, in both time and memory, **without** changing what it computes — that is, while still (provably) approximating the same full, dense softmax attention, and without assuming the attention pattern is sparse or low-rank. A solution would have to: (a) avoid ever materializing the `L × L` score matrix; (b) come with a guarantee that the cheap computation is close to the exact one; (c) be numerically stable enough to train end-to-end; and (d) drop into an existing architecture without bespoke kernels or retraining from scratch.
+The question is whether attention can be made to scale **linearly** in `L`, in both time and memory, while keeping full dense softmax attention as the approximation target rather than imposing a sparse or low-rank pattern. A solution would have to: (a) avoid ever materializing the `L × L` score matrix; (b) come with a guarantee that the cheap computation is close to the exact one; (c) be numerically stable enough to train end-to-end; and (d) drop into an existing architecture without specialized kernels or full retraining.
 
 ## Background
 
@@ -18,7 +18,7 @@ where `exp` is elementwise and `1_L` is the all-ones vector. Row `i` of the outp
 
 **Random features for kernels.** Rahimi & Recht (2007) showed that a shift-invariant kernel `K(x-y)` is the Fourier transform of a probability density, hence an expectation `K(x,y) = E_{ω∼p}[ζ_ω(x)ζ_ω(y)]` over random frequencies `ω`. Drawing `m` frequencies and forming a randomized feature map `φ(x) ∈ R^m` gives `K(x,y) ≈ φ(x)ᵀφ(y)`, an unbiased estimate whose variance falls as `1/m`. For the Gaussian kernel the classical map uses trigonometric functions: with `ω ∼ N(0,I)`, `φ(x) = (1/√m)(sin(ω_1ᵀx), cos(ω_1ᵀx), …)` because `E[cos(ωᵀ(x-y))]` reproduces the Gaussian kernel. This is the template: pick `ω_i`, pick scalar functions `f_l`, and set `φ(x) = (h(x)/√m)(f_1(ω_1ᵀx),…,f_l(ω_mᵀx))`.
 
-**Orthogonal random features.** Yu et al. (2016) observed that if the sampling distribution is isotropic, one can entangle the `m` random vectors `ω_i` to be **exactly orthogonal** (e.g. by Gram-Schmidt on a Gaussian block) while leaving each marginal distribution unchanged. This keeps the estimator unbiased but reduces its variance versus independent sampling. Prior guarantees for this variance reduction were asymptotic — they held only for large enough dimension `d`.
+**Orthogonal random features.** Yu et al. (2016) observed that if the sampling distribution is isotropic, one can entangle random vectors `ω_i` to be **exactly orthogonal** within a block (e.g. by Gram-Schmidt on a Gaussian matrix) while leaving each marginal distribution unchanged. This keeps the estimator unbiased but reduces its variance versus independent sampling. Prior guarantees for this variance reduction were asymptotic — they held only for large enough dimension `d`.
 
 **Diagnostic facts about cheap-attention attempts.** One observation about existing approximations sets up the problem: methods that swap softmax for an arbitrary feature map `φ(q)ᵀφ(k)` (e.g. `φ = elu(·)+1`) to get linear cost are observed to train unstably — exploding gradients and `NaN` losses — even when the underlying associativity that buys the linear cost is implemented correctly.
 
@@ -46,36 +46,26 @@ The comparison points are the exact softmax Transformer and the efficient-attent
 
 ## Code framework
 
-The pieces that already exist: a standard Transformer training stack (data pipeline, token embedding, an Adam optimizer, cross-entropy loss, a residual+layernorm block harness), and the kernel-approximation primitives — sampling random projections and forming randomized feature maps in the style of random Fourier features. What does **not** yet exist is the attention computation itself; that is the slot to fill. A pre-method scaffold:
+The pieces that already exist: a standard Transformer training stack (data pipeline, token embedding, optimizer, cross-entropy loss, residual connections, layer normalization, and the usual query/key/value projections). What does **not** yet exist is a replacement for the attention kernel that avoids storing an `L × L` matrix while still using the same `Q, K, V` interface. A pre-method scaffold:
 
 ```python
 import torch, torch.nn as nn
 
-def random_projection(num_features, dim):
-    # draw an m x d projection matrix of random directions
-    pass  # TODO: which distribution? independent or entangled rows?
-
-def feature_map(x, projection):
-    # map a token vector x in R^d to a feature vector in R^r
-    # so that <feature_map(q), feature_map(k)> approximates the
-    # similarity score the attention mechanism needs
-    pass  # TODO: which scalar nonlinearity / scaling makes this faithful and stable?
-
-def attention(Q, K, V, projection, causal):
+def attention(Q, K, V, causal):
     # Q, K, V : [..., L, d]
-    # must produce the same thing as the normalized score-weighted
-    # combination of V, but WITHOUT building an L x L matrix
-    pass  # TODO: rearrange the computation to avoid the L x L object
+    # exact implementation would build exp(QK^T/sqrt(d)) and normalize rows
+    # TODO: produce a close normalized score-weighted combination of V
+    # without storing any [..., L, L] tensor
+    pass
 
 class FastAttention(nn.Module):
     def __init__(self, dim_heads, num_features, causal=False):
         super().__init__()
-        # TODO: store / register the random projection; redraw policy
+        # TODO: choose any internal state needed by attention()
         pass
 
     def forward(self, q, k, v):
-        # TODO: features for q and k, then the rearranged combination
-        pass
+        return attention(q, k, v, causal=False)
 ```
 
-The final method fills `random_projection`, `feature_map`, and `attention` (and `FastAttention`) so that `attention` provably matches softmax attention while costing `O(L·r·d)`.
+The slot to fill is the attention computation itself: the surrounding Transformer block should not need to know whether the replacement uses algebra, sampling, scans, or some other device internally.

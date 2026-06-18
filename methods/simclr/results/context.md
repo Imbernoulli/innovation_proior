@@ -50,7 +50,7 @@ Pretraining (learning the encoder without labels) is done primarily on **ImageNe
 
 ## Code framework
 
-The substrate is TensorFlow targeting data-parallel accelerators (many cores), which is what makes large batch sizes feasible at all. A bare self-supervised harness contains a standard encoder, an augmentation slot, a training-signal slot, an optimizer with its schedule, a training loop, and the linear-probe yardstick.
+The substrate is TensorFlow targeting data-parallel accelerators. A bare self-supervised harness contains a standard encoder, an input-transformation slot, a training-signal slot, an optimizer with its schedule, a training loop, and the linear-probe yardstick.
 
 ```python
 import tensorflow.compat.v1 as tf
@@ -60,26 +60,26 @@ import tensorflow.compat.v1 as tf
 encoder = resnet_v1(resnet_depth=50, width_multiplier=1)   # He et al. 2016
 
 
-# --- Augmentation: the transformation that turns an image into a training view. ---
+# --- Input transformation: the unlabeled training inputs we will construct. ---
 def augment(image, height, width):
-    # TODO: fill in the unlabeled-view generator.
+    # TODO: fill in the unlabeled input generator.
     pass
 
 
 # --- Training signal: the self-supervised objective. ---
 class RepresentationObjective(object):
     def __call__(self, encoder, batch, is_training):
-        # TODO: consume a minibatch of views and produce a scalar loss.
+        # TODO: consume a minibatch and produce a scalar loss.
         pass
 
 
-# --- Optimizer + schedule: standard large-batch machinery. ---
+# --- Optimizer + schedule: standard training machinery. ---
 def learning_rate_schedule(base_lr, num_examples):
-    # linear warmup then cosine decay; LR scaled with batch size
+    # warmup/decay machinery already used by large-scale supervised training
     ...
 
 def make_optimizer(learning_rate):
-    # a momentum / large-batch SGD-style optimizer (existing)
+    # an existing SGD-style optimizer slot
     ...
 
 
@@ -93,11 +93,11 @@ def linear_probe_eval(encoder, labeled_data):
 # --- Training loop: an ordinary minibatch loop. ---
 def train(dataset, num_examples):
     objective = RepresentationObjective()
-    lr = learning_rate_schedule(base_lr=0.3, num_examples=num_examples)
+    lr = learning_rate_schedule(base_lr=base_learning_rate, num_examples=num_examples)
     optimizer = make_optimizer(lr)
-    for batch in dataset:                       # a raw minibatch of images
-        views = augment(batch, height, width)   # turn images into training views
-        loss = objective(encoder, views, is_training=True)
-        optimizer.minimize(loss)                # update the encoder (+ any extra params)
-    return encoder                              # keep for linear_probe_eval
+    for batch in dataset:                                  # a raw minibatch of images
+        training_inputs = augment(batch, height, width)
+        loss = objective(encoder, training_inputs, is_training=True)
+        optimizer.minimize(loss)                           # update trainable parameters
+    return encoder                                         # keep for linear_probe_eval
 ```

@@ -10,7 +10,7 @@ The inner sum `Σ_j φ(k_j) v_jᵀ` is an `r × d` matrix that *does not depend 
 
 and the parentheses are the entire point: `(K')ᵀV` first (an `r × d` matrix), then `Q'` times that. Time `O(Lrd)`, memory `O(Lr + Ld + rd)`. Linear in `L`. So the question is not "how do I speed up attention" — it's "can I write `exp(q_iᵀk_j)` as a dot product `φ(q_i)ᵀφ(k_j)`?" If I can, I'm done with the complexity problem in one line.
 
-Can I? `exp(xᵀy)` is not literally a finite dot product — it's a positive-definite kernel, and a kernel is an inner product in some feature space, but that space is infinite-dimensional. The Gaussian kernel `exp(-‖x-y‖²/2)` has the same issue. But there's a standard escape hatch: don't represent the kernel exactly, represent it *in expectation*. Rahimi and Recht's random features: a shift-invariant kernel is the Fourier transform of a probability density, so `K(x,y) = E_{ω∼p}[ζ_ω(x) \overline{ζ_ω(y)}]`. Draw `m` random frequencies `ω_1,…,ω_m`, form a finite feature map, and the dot product of those maps is an *unbiased* estimate of the kernel with variance falling like `1/m`. That's exactly the form I want — a dot product `φ(x)ᵀφ(y)` whose *mean* is the kernel. If I plug a random-feature `φ` into the reassociation above, I get an *unbiased estimator of attention* at linear cost. The bias question and the cost question separate cleanly: cost is handled by the dot-product structure, accuracy is handled by `m`.
+Can I? `exp(xᵀy)` is not literally a finite dot product — it's a positive-definite kernel, and a kernel is an inner product in some feature space, but that space is infinite-dimensional. The Gaussian kernel `exp(-‖x-y‖²/2)` has the same issue. But there's a standard escape hatch: don't represent the kernel exactly, represent it *in expectation*. Rahimi and Recht's random features: a shift-invariant kernel is the Fourier transform of a probability density, so `K(x,y) = E_{ω∼p}[ζ_ω(x) \overline{ζ_ω(y)}]`. Draw `m` random frequencies `ω_1,…,ω_m`, form a finite feature map, and the dot product of those maps is an *unbiased* estimate of the kernel with variance falling like `1/m`. That's exactly the form I want — a dot product `φ(x)ᵀφ(y)` whose *mean* is the kernel. If I plug a random-feature `φ` into the reassociation above, I get an unbiased estimate of the unnormalized kernel matrix entries and a cheap normalized attention ratio. I should be careful: the ratio `D̂⁻¹ÂV` is not, in general, an unbiased estimator of `D⁻¹AV`; the clean unbiasedness I get is for the kernel/attention matrix entries before row renormalization, and the normalized output I have to control through approximation quality and stability instead.
 
 Let me make the kernel connection concrete first. My score, dropping the `√d` by folding it into `q,k`, is the softmax kernel `SM(x,y) = exp(xᵀy)`. Pull the norms out:
 
@@ -22,7 +22,7 @@ The textbook random feature for the Gaussian kernel is trigonometric. The genera
 
     φ(x) = (h(x)/√m)(f_1(ω_1ᵀx),…,f_1(ω_mᵀx),…,f_l(ω_1ᵀx),…,f_l(ω_mᵀx)),
 
-with `ω_i ∼ N(0,I_d)`. Taking `l=2`, `f_1=sin`, `f_2=cos`, `h=1` gives the Gaussian kernel because `E_ω[cos(ωᵀ(x-y))] = exp(-‖x-y‖²/2)` (the real part of the characteristic function of a standard Gaussian). To get the softmax kernel I just absorb the norm reweighting into `h`: set `h(x) = exp(‖x‖²/2)`, keep `sin/cos`, and I have an unbiased estimator of `SM(x,y)`. Call it `SM̂_trig`. Drop it into the reassociation and I have linear attention that, in expectation, *is* softmax attention.
+with `ω_i ∼ N(0,I_d)`. Taking `l=2`, `f_1=sin`, `f_2=cos`, `h=1` gives the Gaussian kernel because `E_ω[cos(ωᵀ(x-y))] = exp(-‖x-y‖²/2)` (the real part of the characteristic function of a standard Gaussian). To get the softmax kernel I just absorb the norm reweighting into `h`: set `h(x) = exp(‖x‖²/2)`, keep `sin/cos`, and I have an unbiased estimator of `SM(x,y)`. Call it `SM̂_trig`. Drop it into the reassociation and I have a linear-time estimator whose score matrix entries are correct in expectation, before the row-normalized ratio is formed.
 
 Let me actually try to run this in my head, because something feels off. The output row is `D̂⁻¹ (A V)_i`, and `D̂(i) = φ(q_i)ᵀ(Σ_j φ(k_j))`. The exact `D(i) = Σ_j exp(q_iᵀk_j)` is a sum of positive numbers — it's a positive normalizer, and `D⁻¹` makes each attention row a probability distribution over the value vectors. That positivity is not incidental; it's what "attention" *is*: a convex combination of values. Now my estimate `φ(q_i)ᵀφ(k_j)` uses `sin` and `cos`, which take values in `[-1,1]`. Individual estimated scores can be **negative**. And `D̂(i)`, a sum of these, can be negative or near zero. Then `D̂⁻¹` flips sign or explodes, and the "convex combination" is garbage. I'd expect this to show up as wildly unstable training — losses diverging, `NaN`s — and that is exactly the failure mode I'd predict for a feature map that doesn't respect the non-negativity of the scores.
 
@@ -72,7 +72,7 @@ Compare to the trig MSE, which had `SM⁻²` out front. This one has `SM²` out 
 
 Can I push the variance down further for free? The estimator uses `exp(ωᵀz)`. Since `ω` and `-ω` have the same distribution (Gaussian is symmetric), I could symmetrize: use both `exp(ωᵀz)` and `exp(-ωᵀz)`, i.e. set `l=2` with `f_1=exp(u)`, `f_2=exp(-u)`, and `h(u) = exp(-‖u‖²/2)/√2`. The estimator becomes proportional to `cosh(ωᵀz)`, still positive, still unbiased (the cross terms in expectation give the same `SM`). Its MSE: averaging `½(e^{ωᵀz} + e^{-ωᵀz})` and using that the two have equal variance and a *negative* covariance, the variance of the average is below the variance of either alone. Working it out, `MSE(SM̂^{hyp+}) = ½(1 - exp(-‖z‖²)) MSE(SM̂⁺)`. Since `½(1-exp(-‖z‖²)) ≤ ½`, this is strictly better than the plain positive estimator — in fact better than `SM̂⁺` with twice as many features. A free factor from a symmetry I already had.
 
-Now the second lever. I'm drawing `m` independent Gaussian directions `ω_i`. Independence is wasteful — independent random directions in high dimensions cluster and waste samples. If I instead force `ω_1,…,ω_m` to be *exactly orthogonal*, I cover the sphere more evenly. And I can do this without breaking unbiasedness: for an isotropic distribution like `N(0,I)`, I can sample a Gaussian block and run Gram-Schmidt, which keeps each `ω_i`'s marginal distribution the same (still `N(0,I)` directionally with chi-distributed length) while making them pairwise orthogonal. The marginals are unchanged, so each individual feature is still unbiased, so the average is still unbiased. The only constraint is `m ≤ d` (can't have more than `d` orthogonal vectors in `R^d`). Does it actually reduce variance, and by how much?
+Now the second lever. I'm drawing `m` independent Gaussian directions `ω_i`. Independence is wasteful — independent random directions in high dimensions cluster and waste samples. If I instead force `ω_1,…,ω_m` to be *exactly orthogonal*, I cover the sphere more evenly. And I can do this without breaking unbiasedness: for an isotropic distribution like `N(0,I)`, I can sample a Gaussian block and run Gram-Schmidt, which keeps each `ω_i`'s marginal distribution the same (still `N(0,I)` directionally with chi-distributed length) while making rows pairwise orthogonal inside a block. The marginals are unchanged, so each individual feature is still unbiased, so the average is still unbiased. A single orthogonal block has at most `d` rows; if I want more than `d` features, I stack independent `d × d` orthogonal blocks and a final partial block. Does orthogonality actually reduce variance, and by how much?
 
 Let me set up the general object, because the same argument will cover softmax, its symmetrized version, and the Gaussian kernel at once. All of these have the form
 
@@ -98,9 +98,9 @@ Two facts pin it down. First, any monomial with an *odd* `d_i` contributes zero 
 
     MSE(F̂^ort) ≤ MSE(F̂^iid) - (1 - 1/m)(2/(d+2))(F(z) - a_0)²,
 
-where `a_0 = g(0)` is the constant term (for `exp`, `a_0 = 1`). Translating back to the softmax kernel via `F(z) = SM(x,y)exp((‖x‖²+‖y‖²)/2)` and the `exp(-(‖x‖²+‖y‖²))` prefactor, the gap is `(2(m-1)/(m(d+2)))(SM(x,y) - exp(-(‖x‖²+‖y‖²)/2))²`. And note: this holds for **every** `d > 0`, not just asymptotically — orthogonality helps even in low dimension, which earlier orthogonal-feature analyses couldn't claim. The same power-series machinery, applied to the moment generating function rather than the second moment, gives exponentially small tail bounds for the orthogonal estimator that are strictly tighter than the independent ones — same mechanism, the `θ⁴ m(m-1)/(4(d+2))` correction subtracted off the iid MGF bound.
+where `a_0 = g(0)` is the constant term (for `exp`, `a_0 = 1`). Translating back to the softmax kernel via `F(z) = SM(x,y)exp((‖x‖²+‖y‖²)/2)` and the `exp(-(‖x‖²+‖y‖²))` prefactor, the gap is `(2(m-1)/(m(d+2)))(SM(x,y) - exp(-(‖x‖²+‖y‖²)/2))²`. And note: this holds for **every** `d > 0`, not just asymptotically — orthogonality helps even in low dimension, which earlier orthogonal-feature analyses couldn't claim. The same power-series machinery, applied to the moment generating function rather than the second moment, gives exponentially small tail bounds for the regularized-softmax estimator that subtract an explicit positive correction from the iid bound.
 
-So the recipe is set: positive (`R+`) features for non-negativity and vanishing variance near zero, orthogonal (`O`) sampling for a further provable variance cut. Together — fast attention via positive orthogonal random features. Stack them into the reassociation and I have an unbiased, stable, linear-time approximation of full softmax attention with `m ≤ d` random features.
+So the recipe is set: positive (`R+`) features for non-negativity and vanishing variance near zero, orthogonal (`O`) sampling for a further provable variance cut. Together — fast attention via positive orthogonal random features. Stack them into the reassociation and I have a stable, linear-time approximation whose softmax kernel entries are unbiased and whose normalized attention output avoids the negative-normalizer failure mode.
 
 One more variant worth deriving, because the unbounded `exp` makes me slightly nervous about numerical range. What if I sample `ω` not from `N(0,I)` but uniformly from the sphere of radius `√d` — i.e. replace `ω` by `√d · ω/‖ω‖`? Call the resulting kernel `SMREG`, the regularized softmax kernel. It's the same construction with a different isotropic `Ω`, so all the orthogonality results carry over. How close is `SMREG` to `SM`? Expand `SM` and `SMREG` in the Taylor series of the exponential. For `SM`, `F(z) = Σ_k (1/(2k)!)‖z‖^{2k} d^k E[(ω̂ᵀe_1)^{2k}]` after using isotropy to kill odd terms and writing `ω = ‖ω‖ω̂`. The angular moment `A(2k,d) = E[(ω̂ᵀe_1)^{2k}] = (2k-1)!! / [(d+2k-2)(d+2k-4)⋯d]`, which I can get by integrating `sin^{d-2}θ` against `cos^{2k}θ` and a partial-integration recursion `F(k,d) = (k-1)/(d+1) F(k-2,d+2)`. The ratio of the `k`-th terms is `f(k,d) = d^k/[(d+2k-2)⋯d] ≤ 1` for `k ≥ 1`, with equality at `k=0`. So `SMREG ≤ SM` term by term — `SMREG` is a universal lower bound on the softmax kernel. And bounding the tail with a Poisson concentration argument (the partial sums of `w^k/k!` are a Poisson CDF, `w = ‖z‖²/2`), the ratio satisfies
 
@@ -108,112 +108,94 @@ One more variant worth deriving, because the unbounded `exp` makes me slightly n
 
 so for the dimensions I actually use, `SMREG` tracks `SM` to within a vanishing relative gap while being bounded and a clean lower bound. A safe drop-in proxy.
 
-Now the causal case, because half of what I care about is autoregressive. There, `A` is masked to its lower triangle: token `i` attends only to `j ≤ i`. The reassociation I love relies on summing `Σ_j φ(k_j)v_jᵀ` over *all* `j`; with masking I instead need, for each `i`, the *prefix* sum over `j ≤ i`. So define the running outer-product accumulator `G_i = Σ_{j≤i} φ(k_j) (v_j, 1)ᵀ`, an `r × (d+1)` matrix (I append a `1` so the same machinery computes the normalizer `D̂` alongside `AV`). Then the `i`-th output row is `φ(q_i)ᵀ G_i`. Computing `G_i` from `G_{i-1}` is a single addition of one outer product, so the whole pass is a prefix-sum (cumulative sum) over the sequence: `O(L)` total work, `O(d r)` state, and `O(log L)` depth if I parallelize the scan. I never form the `L × L` mask; causality is just "use the running sum so far." Linear, and exactly the same features.
+Now the causal case, because half of what I care about is autoregressive. There, `A` is masked to its lower triangle: token `i` attends only to `j ≤ i`. The reassociation I love relies on summing `Σ_j φ(k_j)v_jᵀ` over *all* `j`; with masking I instead need, for each `i`, the *prefix* sum over `j ≤ i`. So define the running outer-product accumulator `G_i = Σ_{j≤i} φ(k_j) (v_j, 1)ᵀ`, an `r × (d+1)` matrix (I append a `1` so the same machinery computes the normalizer `D̂` alongside `AV`). Then the `i`-th output row is `φ(q_i)ᵀ G_i`. Computing `G_i` from `G_{i-1}` adds one `r × d` outer product, so the whole pass is `O(Lrd)` work, `O(rd)` streaming state if I scan sequentially, and `O(log L)` parallel depth if I materialize a prefix-sum tensor. I never form the `L × L` mask; causality is just "use the running sum so far." Linear in `L`, and exactly the same features.
 
-A last generalization falls out for free. Nothing in the reassociation needed the feature map to come from the softmax kernel specifically — it only needed `φ(x) ≥ 0` so the normalizer stays positive, and some `φ` that produces a sensible similarity. So I can take `φ(x) = f(ω_iᵀx) + ε` for any non-negative `f` and treat the choice of `f` as a hyperparameter — a *generalized* kernelizable attention. `f = ReLU` is a natural one: cheap, non-negative, and empirically the best-behaved on long sequences (no normalization fuss, no risk of `exp` overflow). The softmax estimator is then one option (`f = exp` with the norm-correction) and ReLU another, both at linear cost.
+A last generalization falls out for free. Nothing in the reassociation needed the feature map to come from the softmax kernel specifically — it only needed `φ(x) ≥ 0` so the normalizer stays positive, and some `φ` that produces a sensible similarity. So I can take `φ(x) = f(x) + ε` directly, or optionally `φ(x)=f(Wx)+ε` with random features, for any non-negative `f` and treat the choice of `f` as a hyperparameter — a *generalized* kernelizable attention. I'll make `f = ReLU` the default: deterministic features applied straight to `x` (no projection unless I ask for one), no softmax norm correction, and a small additive `ε = 10^{-3}` for numerical safety. The softmax estimator is then one option (`f = exp` with the norm-correction and redrawn orthogonal projections) and ReLU another, both at linear cost.
 
-Let me write the code, grounded in how this is actually implemented. The pieces are: drawing an orthogonal Gaussian projection block; the positive softmax feature map (with a log-sum-exp-style max subtraction for numerical safety, and a small `ε`); the ReLU generalized feature map; and the reassociated linear attention, non-causal as a single matrix product and causal as a chunked prefix-sum.
+Let me write the code, grounded in how this actually has to run. Softmax attention builds nonnegative random features with `d^{-1/4}` normalization, orthogonal Gaussian projection blocks, a per-query/per-key max subtraction for range safety, redrawing of the projection enabled by default, and a denominator stabilizer; generalized attention instead defaults to deterministic ReLU features with `ε = 10^{-3}` and no redraw.
 
 ```python
 import math
-from functools import partial
-import torch
-import torch.nn as nn
-from einops import repeat
+import jax
+from jax import random
+import jax.numpy as jnp
 
-# --- Orthogonal random projection (the "O" of FAVOR+) ---------------------
-# Build an m x d matrix whose rows are exactly orthogonal within each d x d
-# block (QR of a Gaussian block: marginals stay Gaussian, rows orthogonal),
-# then rescale each row's length by an independent chi-distributed norm so the
-# marginal of every row is exactly N(0, I_d). Unbiasedness is preserved.
-def orthogonal_block(d, device=None):
-    g = torch.randn((d, d), device=device)
-    q, _ = torch.linalg.qr(g)            # columns orthonormal
-    return q.t()                         # rows orthonormal
+SOFTMAX_DEFAULTS = dict(
+    renormalize_attention=True,
+    numerical_stabilizer=1e-6,
+    nb_features=256,
+    ortho_features=True,
+    ortho_scaling=0,
+    redraw_features=True,
+)
+GENERALIZED_DEFAULTS = dict(
+    renormalize_attention=True,
+    numerical_stabilizer=0.0,
+    nb_features=256,
+    features_type="deterministic",
+    kernel_fn=jax.nn.relu,
+    kernel_epsilon=1e-3,
+    redraw_features=False,
+)
 
-def gaussian_orthogonal_matrix(m, d, scaling=0, device=None):
-    blocks = [orthogonal_block(d, device) for _ in range(m // d)]
-    rem = m - (m // d) * d
-    if rem > 0:
-        blocks.append(orthogonal_block(d, device)[:rem])
-    W = torch.cat(blocks)                # [m, d], orthogonal within blocks
-    if scaling == 0:                     # row norms ~ chi_d, i.e. ||N(0,I_d)||
-        mult = torch.randn((m, d), device=device).norm(dim=1)
-    else:                                # all rows length sqrt(d): the SMREG sphere
-        mult = math.sqrt(d) * torch.ones((m,), device=device)
-    return torch.diag(mult) @ W
+def gaussian_orthogonal_random_matrix(key, nb_rows, nb_columns, scaling=0):
+    blocks = []
+    rng = key
+    for _ in range(nb_rows // nb_columns):
+        rng, block_key = random.split(rng)
+        q, _ = jnp.linalg.qr(random.normal(block_key, (nb_columns, nb_columns)))
+        blocks.append(q.T)
+    remaining = nb_rows - len(blocks) * nb_columns
+    if remaining:
+        rng, block_key = random.split(rng)
+        q, _ = jnp.linalg.qr(random.normal(block_key, (nb_columns, nb_columns)))
+        blocks.append(q.T[:remaining])
 
-# --- Positive softmax features (the "R+"): unbiased, non-negative ----------
-# phi(u) = exp(-||u||^2/2)/sqrt(m) * exp(W u), with W u = data_dash.
-# d^{-1/4} per-vector scaling folds the 1/sqrt(d) of softmax into q,k.
-# Subtracting the running max keeps exp() in range (it cancels in D^{-1} A V).
-def softmax_kernel(data, projection, is_query, eps=1e-4):
-    b, h, *_ = data.shape
-    norm = data.shape[-1] ** -0.25
-    ratio = projection.shape[0] ** -0.5
-    W = repeat(projection, 'm d -> b h m d', b=b, h=h).type_as(data)
-    data_dash = torch.einsum('...id,...md->...im', norm * data, W)   # W u
-    diag = (data ** 2).sum(dim=-1, keepdim=True) * (norm ** 2) / 2.0  # ||u||^2/2
-    if is_query:                          # stabilize per-query
-        data_dash = ratio * (torch.exp(data_dash - diag
-                     - data_dash.amax(dim=-1, keepdim=True).detach()) + eps)
-    else:                                 # stabilize over all keys
-        data_dash = ratio * (torch.exp(data_dash - diag
-                     - data_dash.amax(dim=(-1, -2), keepdim=True).detach()) + eps)
-    return data_dash.type_as(data)
+    matrix = jnp.vstack(blocks)
+    if scaling == 0:
+        multiplier = jnp.linalg.norm(random.normal(key, (nb_rows, nb_columns)), axis=1)
+    elif scaling == 1:
+        multiplier = math.sqrt(float(nb_columns)) * jnp.ones((nb_rows,))
+    else:
+        raise ValueError("scaling must be 0 or 1")
+    return jnp.diag(multiplier) @ matrix
 
-# --- Generalized features: phi(u) = f(W u) + eps, e.g. f = ReLU -----------
-def generalized_kernel(data, projection, kernel_fn=nn.ReLU(), eps=1e-3):
-    b, h, *_ = data.shape
-    norm = data.shape[-1] ** -0.25
-    W = repeat(projection, 'm d -> b h m d', b=b, h=h).type_as(data)
-    data_dash = torch.einsum('...id,...md->...im', norm * data, W)
-    return (kernel_fn(data_dash) + eps).type_as(data)
+def nonnegative_softmax_features(data, projection_matrix, is_query,
+                                 attention_axes=(-2,), eps=1e-6,
+                                 normalize_data=True):
+    # data layout is batch/nonattention/head/attention/channels.
+    normalizer = data.shape[-1] ** -0.25 if normalize_data else 1.0
+    ratio = projection_matrix.shape[0] ** -0.5
+    data_dash = jnp.einsum("...d,md->...m", normalizer * data, projection_matrix)
+    diag = jnp.sum(data ** 2, axis=-1, keepdims=True) * (normalizer ** 2) / 2.0
+    if is_query:
+        max_term = jnp.max(data_dash, axis=-1, keepdims=True)
+    else:
+        max_term = jnp.max(data_dash, axis=(-1,) + attention_axes, keepdims=True)
+    return ratio * (jnp.exp(data_dash - diag - max_term) + eps)
 
-# --- The reassociation: never build the L x L matrix ----------------------
-# Non-causal: (K'^T V) first (r x d), then Q' times it.  D^{-1} from K'^T 1_L.
-def linear_attention(q, k, v):
-    k_sum = k.sum(dim=-2)                                   # K'^T 1_L
-    D_inv = 1.0 / torch.einsum('...id,...d->...i', q, k_sum)
-    context = torch.einsum('...id,...ie->...de', k, v)      # K'^T V  (r x d)
-    return torch.einsum('...de,...id,...i->...ie', context, q, D_inv)
+def generalized_features(data, projection_matrix=None, kernel_fn=jax.nn.relu,
+                         kernel_epsilon=1e-3, normalize_data=False):
+    normalizer = data.shape[-1] ** -0.25 if normalize_data else 1.0
+    if projection_matrix is None:
+        return kernel_fn(normalizer * data) + kernel_epsilon
+    data_dash = jnp.einsum("...d,md->...m", normalizer * data, projection_matrix)
+    return kernel_fn(data_dash) + kernel_epsilon
 
-# Causal: prefix-sum over the sequence so token i sees only j <= i.
-def causal_linear_attention(q, k, v, chunk=128, eps=1e-6):
-    last_k, last_ctx, outs = 0, 0, []
-    for q_, k_, v_ in zip(*(t.chunk(chunk, dim=-2) for t in (q, k, v))):
-        k_cumsum = last_k + k_.cumsum(dim=-2)               # running sum of phi(k)
-        D_inv = 1.0 / torch.einsum('...id,...id->...i', q_, k_cumsum + eps)
-        ctx = torch.einsum('...id,...ie->...ide', k_, v_)   # outer products
-        ctx_cumsum = last_ctx + ctx.cumsum(dim=-3)          # running sum G_i
-        outs.append(torch.einsum('...ide,...id,...i->...ie', ctx_cumsum, q_, D_inv))
-        last_k, last_ctx = k_cumsum[..., -1:, :], ctx_cumsum[..., -1:, :, :]
-    return torch.cat(outs, dim=-2)
+def noncausal_favor(q_prime, k_prime, value, eps=1e-6):
+    z = jnp.einsum("...lm,...ld->...md", k_prime, value)
+    w = jnp.einsum("...lm,...md->...ld", q_prime, z)
+    t = jnp.einsum("...lm,...m->...l", q_prime, k_prime.sum(axis=-2))
+    t = t + 2 * eps * (jnp.abs(t) <= eps)
+    return w / t[..., None]
 
-class FastAttention(nn.Module):
-    def __init__(self, dim_heads, nb_features=None, causal=False,
-                 generalized=False, kernel_fn=nn.ReLU(), ortho_scaling=0):
-        super().__init__()
-        nb_features = nb_features or int(dim_heads * math.log(dim_heads))  # m = Theta(d log d)
-        self.create_proj = partial(gaussian_orthogonal_matrix,
-                                   m=nb_features, d=dim_heads, scaling=ortho_scaling)
-        self.register_buffer('projection', self.create_proj())
-        self.causal, self.generalized, self.kernel_fn = causal, generalized, kernel_fn
-
-    @torch.no_grad()
-    def redraw(self, device):            # periodically resample to avoid unlucky W
-        self.projection.copy_(self.create_proj(device=device))
-
-    def forward(self, q, k, v):
-        if self.generalized:
-            feat = partial(generalized_kernel, projection=self.projection,
-                           kernel_fn=self.kernel_fn)
-            q, k = feat(q), feat(k)
-        else:
-            feat = partial(softmax_kernel, projection=self.projection)
-            q, k = feat(q, is_query=True), feat(k, is_query=False)
-        attn = causal_linear_attention if self.causal else linear_attention
-        return attn(q, k, v)
+def causal_favor(q_prime, k_prime, value, eps=1e-6):
+    kv_prefix = jnp.cumsum(jnp.einsum("...lm,...ld->...lmd", k_prime, value), axis=-3)
+    k_prefix = jnp.cumsum(k_prime, axis=-2)
+    w = jnp.einsum("...lm,...lmd->...ld", q_prime, kv_prefix)
+    t = jnp.einsum("...lm,...lm->...l", q_prime, k_prefix)
+    t = t + 2 * eps * (jnp.abs(t) <= eps)
+    return w / t[..., None]
 ```
 
-The causal chain in one breath: softmax attention is quadratic only because I build `A` before multiplying by `V`; the fix is to write `exp(q_iᵀk_j) = φ(q_i)ᵀφ(k_j)` so I can reassociate and never form `A`; an unbiased such `φ` comes from random features, but the textbook trigonometric map can go negative and has variance exploding as the kernel goes to zero, which destroys the normalizer and training; completing the square in the Gaussian integral turns `exp(xᵀy)` into an expectation of a product of `exp`s, giving a strictly positive feature map whose variance instead *vanishes* as the kernel goes to zero; sampling those random directions orthogonally cuts the variance further by a provable `2/(d+2)` gap that holds at every dimension precisely because the feature coefficients are non-negative; and the same reassociation, run as a prefix-sum, handles the causal mask in linear time — so full softmax attention becomes an unbiased, stable, `O(Lmd)` computation.
+The causal chain in one breath: softmax attention is quadratic only because I build `A` before multiplying by `V`; the fix is to approximate `exp(q_iᵀk_j)` by `φ(q_i)ᵀφ(k_j)` so I can reassociate and never form `A`; an unbiased kernel estimator comes from random features, but the textbook trigonometric map can go negative and has variance exploding as the kernel goes to zero, which destroys the normalizer and training; completing the square in the Gaussian integral turns `exp(xᵀy)` into an expectation of a product of `exp`s, giving a strictly positive feature map whose variance instead *vanishes* as the kernel goes to zero; sampling those random directions orthogonally cuts the variance further by a provable `2/(d+2)` gap that holds at every dimension precisely because the feature coefficients are non-negative; and the same reassociation, run as a prefix-sum, handles the causal mask in `O(Lmd)` time — so dense softmax-kernel attention gets a stable linear-time random-feature approximation.

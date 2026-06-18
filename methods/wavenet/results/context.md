@@ -16,7 +16,7 @@ and to model each conditional with a neural network sharing parameters across po
 
 Two design findings from that line are load-bearing. First, **the output distribution.** Even when the data is implicitly continuous (pixel intensities, audio amplitudes), a *categorical* softmax over a discretized value works better than a parametric continuous density such as a mixture density network (Bishop, 1994) or a mixture of conditional Gaussian scale mixtures (Theis & Bethge, 2015): the categorical makes no assumption about the shape of the distribution and can model arbitrary, multimodal shapes (van den Oord et al., 2016). Second, **the nonlinearity.** Gated PixelCNN (van den Oord et al., 2016) replaced the rectified-linear activation inside the model with a *gated* unit — a tanh "content" path multiplied elementwise by a sigmoid "gate" path — and found it modeled images significantly better.
 
-**Ordering constraints in convolutional autoregressive models.** For the chain-rule factorization to be valid, the network computing `p(x_t | x_{<t})` must not peek at `x_t` or any later sample. In a convolutional model this is enforced by *masking* the convolution so each output position only depends on earlier input positions; for images this is a masked 2-D convolution (van den Oord et al., 2016). The convenience of the convolutional form is that, at training time, all positions' conditionals can be computed *in parallel* in a single forward pass over the ground-truth sequence (the future is masked out), whereas generation is unavoidably sequential — each sample is drawn and fed back before the next.
+**Ordering constraints in convolutional autoregressive models.** For the chain-rule factorization to be valid, the logits used for `p(x_t | x_{<t})` must not depend on `x_t` or any later sample. In a convolutional model this can be enforced either by masking out the present and future, or by a one-step target shift: let the causal output at position `t` read only `x_1,…,x_t`, then use that output for `p(x_{t+1} | x_1,…,x_t)`. For images this is a masked 2-D convolution (van den Oord et al., 2016). The convenience of the convolutional form is that, at training time, all positions' conditionals can be computed *in parallel* in a single forward pass over the ground-truth sequence, whereas generation is unavoidably sequential — each sample is drawn and fed back before the next.
 
 **Recurrent models and the cost of sequential training.** Recurrent networks (LSTMs; Hochreiter & Schmidhuber, 1997) are the standard tool for sequence modeling and carry, in principle, unbounded memory through their hidden state. But two problems surface on raw audio. Training is inherently *sequential*: backpropagation through time unrolls step by step, which is very slow when the sequence is hundreds of thousands of steps long. And in practice the effective memory is limited — gradients struggle to carry dependencies across more than a few hundred steps — so the long-range context audio needs is hard to retain.
 
@@ -42,11 +42,11 @@ Two design findings from that line are load-bearing. First, **the output distrib
 
 - **Datasets.** A multi-speaker English corpus (CSTR VCTK, 109 speakers, ~44 h) for free-form (text-unconditioned) speech generation; single-speaker professional North American English (~24.6 h) and Mandarin Chinese (~34.8 h) corpora — the same data used to build production TTS systems — for text-to-speech; music corpora (the MagnaTagATune set of tagged ~29 s clips, ~200 h; a ~60 h solo-piano set from public videos); and the TIMIT corpus for a phoneme-recognition probe.
 - **Metrics.** Tractable log-likelihood on held-out audio for model selection and over/underfitting checks. For TTS quality, subjective human listening tests: paired-comparison preference tests (listeners choose which of two samples they prefer, or "neutral") and mean-opinion-score tests (naturalness rated 1–5), run blind and crowdsourced over sentences not seen in training. For the recognition probe, phone error rate.
-- **Protocol.** Train the autoregressive model by maximum likelihood with a gradient optimizer; conditionals for all timesteps computed in parallel over ground-truth audio at training time, sampling sequential at generation time. For TTS, the model is conditioned on linguistic features (and optionally `log F0`) derived from text, with external models predicting phone durations and `F0`; baselines (LSTM parametric, HMM concatenative) are built from the *same* datasets and linguistic features so the comparison is fair. Audio is μ-law companded to 8 bits before modeling.
+- **Protocol.** Train candidate autoregressive waveform models by maximum likelihood with a gradient optimizer; compute conditionals in parallel over ground-truth audio at training time, then sample sequentially at generation time. For TTS, candidate direct-waveform systems may receive linguistic features derived from text, with external duration and `F0` predictors used only as declared conditioning inputs. Baselines (LSTM parametric, HMM concatenative) should be built from the *same* datasets and linguistic features so the comparison is fair; any quantization or companding choice should also be evaluated against natural-speech controls processed the same way.
 
 ## Code framework
 
-Before the method exists, the pieces below are already standard: a μ-law companding transform with coarse quantization, a one-hot encoding of the quantized samples, a causal (mask-shifted) 1-D convolution primitive that forbids dependence on future samples, an optimizer, a categorical cross-entropy loss, and a training loop that computes all timesteps' conditionals in parallel over a ground-truth waveform. What does not yet exist is the network that maps the (causally-masked) sample history to the parameters of the next-sample distribution with a large enough receptive field — that is the one empty slot.
+Before the method exists, the pieces below are already standard: a μ-law companding transform with coarse quantization, a one-hot encoding of the quantized samples, a causal 1-D convolution primitive whose outputs can be aligned to next-sample targets, an optimizer, a categorical cross-entropy loss, and a training loop that computes all timesteps' conditionals in parallel over a ground-truth waveform. What does not yet exist is the network that maps the available sample history to the parameters of the next-sample distribution with a large enough receptive field — that is the one empty slot.
 
 ```python
 import numpy as np
@@ -72,15 +72,15 @@ def mu_law_decode(quantized, mu=QUANT - 1):
 
 
 def causal_conv1d(x, weight, dilation):
-    # 1-D convolution that depends only on current and PAST inputs:
-    # left-pad by (k-1)*dilation and drop the tail so output[t] sees x[<=t] only.
+    # left-pad by (k-1)*dilation so output[t] sees only x[<=t].
+    # Use output[t] for the next-sample target x[t+1], never for x[t].
     pass  # known primitive
 
 
 class SequenceModel(nn.Module):
     """The architecture we will design: maps a causally-masked waveform history
-    to the parameters of p(x_t | x_{<t}). It must reach a receptive field of
-    thousands of samples while staying cheap to train. This is the empty slot."""
+    to the parameters of p(x_{t+1} | x_{<=t}). It must reach a receptive field
+    of thousands of samples while staying cheap to train. This is the empty slot."""
 
     def __init__(self):
         super().__init__()
@@ -92,11 +92,11 @@ class SequenceModel(nn.Module):
 
 
 def train_step(model, waveform, optimizer):
-    # waveform: int waveform in [0, QUANT); predict each sample from its past
+    # waveform: int waveform in [0, QUANT); output position t predicts sample t+1
     x = F.one_hot(waveform[:, :-1], QUANT).float().transpose(1, 2)
     target = waveform[:, 1:]
     logits = model(x)                       # (B, QUANT, T-1)
-    loss = F.cross_entropy(logits, target)  # maximize Σ log p(x_t | x_{<t})
+    loss = F.cross_entropy(logits, target)  # maximize next-sample log-likelihood
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()

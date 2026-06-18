@@ -18,7 +18,7 @@ with the **soft value** the log-partition (a soft maximum over actions, → hard
 
 `V*_soft(s) = α log ∫_A exp( Q*_soft(s,a')/α ) da'`,
 
-obeying the **soft Bellman equation** `Q*_soft(s,a) = r + γ E_{s'~p}[ V*_soft(s') ]`. The backup operator `T Q = r + γ E[ α log∫exp(Q/α) ]` is a γ-contraction in sup-norm, so the fixed point is unique.
+obeying the **soft Bellman equation** `Q*_soft(s,a) = r + γ E_{s'~p}[ V*_soft(s') ]`. The backup operator `TQ = r + γ E[α log∫exp(Q/α)]` is a `γ`-contraction in sup-norm: the `α` cancels the `1/α` in the log-sum-exp Lipschitz bound.
 
 ## Final algorithm
 
@@ -29,11 +29,11 @@ Two intractabilities — the value integral and sampling from the EBM policy —
    `J_Q(θ) = E_{s,a}[ ½ ( Q̂^{θ̄}_soft(s,a) − Q^θ_soft(s,a) )² ]`, `Q̂^{θ̄}_soft = r + γ E_{s'}[V^{θ̄}_soft(s')]`, with delayed target params `θ̄`.
 3. **Amortized SVGD sampler/actor.** Train a stochastic net `a = f^φ(ξ;s)`, `ξ~N(0,I)`, to minimize `KL(π^φ ‖ exp((Q−V)/α))`. The Stein descent direction for a particle `a`:
    `Δf^φ = E_{a~π^φ}[ κ(a, f^φ) ∇_{a'}Q_soft(s,a')|_a + α ∇_{a'}κ(a', f^φ)|_a ]`,
-   (first term = pull toward high-Q actions; second = repulsion that spreads particles across modes), backpropagated into `φ` via `∂J_π/∂φ ∝ E_ξ[ Δf^φ · ∂f^φ/∂φ ]`.
+   (first term = pull toward high-Q actions; second = repulsion that spreads particles across modes). In implementation this is optimized as a surrogate whose gradient ascent moves sampler outputs along `Δf^φ`.
 
 The sampler is the actor; the critic update is an actor-critic backbone. DDPG is recovered by dropping the `α∇κ` repulsion (keeping only the MAP particle) and using a hard critic.
 
-**Defaults (canonical implementation):** ADAM, Q-lr `3e-4`, policy-lr `3e-4`; replay `1e6`; minibatch `128`; two hidden layers of `128`, ReLU; target hard-copy (`τ=1`) every `1000` steps; `16` SVGD kernel particles (kernel_update_ratio `0.5`), `16` value particles; RBF kernel `κ(a,a')=exp(−‖a−a'‖²/h)`, `h = median_sq / log K` (clamped); `reward_scale` is the temperature knob (e.g. 30 for swimmer/hopper/walker, 300 for ant); tanh squashing with `Σ log(1−a²)` change-of-variables correction.
+**Defaults.** ADAM with Q-lr `1e-3`, sampler-lr `1e-4`; replay `1e6`; start training after `10000` samples; minibatch `64`; two `200`-unit ReLU layers; target hard-copy (`τ=1`) every `1000` steps (`5000` for swimmer); `K=M=32` SVGD particles (`100` for multi-goal), `K_V=50` value particles; RBF `κ(a,a')=exp(-||a-a'||²/h)` with `h=d/(2 log(M+1))`; entropy coefficients `α=10` for multi-goal and `α=0.1` for swimmer/maze/pretraining. A leaner configuration that also works: Q/policy lr `3e-4`, minibatch `128`, two `128`-unit layers, `16`/`16` particles, `kernel_update_ratio=0.5`, hard target copy every `1000` steps, with task-specific `reward_scale` (e.g. `30` for swimmer/hopper/half-cheetah, `300` for ant). Scaling rewards implements the inverse-temperature knob (`reward_scale ≈ 1/α`). Tanh squashing uses the `Σ log(1-a²+ε)` correction in the SVGD target log-density.
 
 ## Code
 
@@ -83,8 +83,9 @@ def adaptive_isotropic_gaussian_kernel(xs, ys, h_min=1e-3):
 
 class SQL:
     def _create_td_update(self):
-        target_actions = tf.random_uniform((1, self._value_n_particles, self._action_dim), -1, 1)
-        q_value_targets = self.qf.output_for(self._next_observations_ph[:, None, :], target_actions)
+        with tf.variable_scope('target'):
+            target_actions = tf.random_uniform((1, self._value_n_particles, self._action_dim), -1, 1)
+            q_value_targets = self.qf.output_for(self._next_observations_ph[:, None, :], target_actions)
         self._q_values = self.qf.output_for(self._observations_ph, self._actions_pl, reuse=True)
         next_value = tf.reduce_logsumexp(q_value_targets, axis=1)
         next_value -= tf.log(tf.cast(self._value_n_particles, tf.float32))   # − log N
@@ -95,6 +96,11 @@ class SQL:
         if self._train_qf:
             self._training_ops.append(tf.train.AdamOptimizer(self._qf_lr).minimize(
                 bellman_residual, var_list=self.qf.get_params_internal()))
+
+    def _create_target_ops(self):
+        source_params = self.qf.get_params_internal()
+        target_params = self.qf.get_params_internal(scope='target')
+        self._target_ops = [tf.assign(tgt, src) for tgt, src in zip(target_params, source_params)]
 
     def _create_svgd_update(self):
         actions = self.policy.actions_for(self._observations_ph,

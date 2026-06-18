@@ -106,7 +106,7 @@ That handles initialization. The harder claim is that Theta doesn't move during 
 
     theta_dot_p = <partial_{theta_p} F^(L), d_t>_{pin},
 
-which for gradient descent is d_t = -d|_{f_theta} = -(f - f*) for squared error, but I'll keep it general (it could come from another network, as in adversarial training). The only assumption I need is that the accumulated forcing integral_0^T ||d_t||_{pin} dt stays stochastically bounded as width grows. For squared error this is automatic: ||d_t||_{pin} = ||f - f*||_{pin} is strictly decreasing, so its integral is controlled. Good.
+which for gradient descent is d_t = -d|_{f_theta} = -(f - f*) for squared error, but I'll keep it general (it could come from another network, as in adversarial training). The only assumption I need is that the accumulated forcing integral_0^T ||d_t||_{pin} dt stays stochastically bounded as width grows. For squared error on any fixed finite interval this is automatic: ||d_t||_{pin} = ||f - f*||_{pin} is decreasing, so the integral is at most T times its initial value. Good.
 
 Now I want: as n_1, ..., n_{L-1} -> infinity, Theta(t) -> Theta^(L)_inf uniformly on [0, T]. Induction on depth again. L = 1: Theta = Sigma^(1) does not depend on the parameters, so it's literally constant in time. Done. For L+1, split off the last layer as before. The first-L subnetwork is being driven by a back-propagated direction; differentiating through the last layer, the smaller network sees
 
@@ -187,7 +187,7 @@ with Q a positive-coefficient polynomial; and using a^(k)(t) <= a^(k)(0) + c a-t
 
     partial_t A(t) <= (1/sqrt(min{n})) Q-tilde( A(t) ) ||d_t||.
 
-At t = 0, A(0) is stochastically bounded in the sequential limit (each w^(ell)(0) -> 0 because (1/sqrt(n))||W(0)||_op stays bounded while... no — more carefully, w^(ell)(0) -> 0 and a^(ell)(0) converges by the Gaussian-process limit). The 1/sqrt(min n) prefactor and a nonlinear Grönwall inequality then keep A(t) uniformly bounded on [0, tau] with tau -> T as min n -> infinity, and force partial_t A -> 0 uniformly, so A(t) -> A(0). In particular every w-tilde^(ell)(t) -> 0: every layer's weights, scaled by 1/sqrt(n_ell), barely move. That's the lemma, and it's exactly what I borrowed above to bound the top layer's operator norm.
+At t = 0, A(0) is stochastically bounded in the width limit: the scaled Gaussian operator norms w^(ell)(0) are tight, and the normalized activations a^(ell)(0) converge by the Gaussian-process limit. I do not need those operator norms to vanish; boundedness is the load-bearing fact. The 1/sqrt(min n) prefactor and a nonlinear Grönwall inequality then keep A(t) uniformly bounded on [0, tau] with tau -> T as min n -> infinity, and force partial_t A -> 0 uniformly, so A(t) -> A(0). In particular every w-tilde^(ell)(t) -> 0: every layer's weights, scaled by 1/sqrt(n_ell), barely move relative to initialization. That's the lemma, and it's exactly what I borrowed above to bound the top layer's operator norm.
 
 One thing I want to make sure I believe, because it sounds wrong: I've just argued each hidden activation barely changes during training. Isn't the whole point of hidden layers to learn representations? Resolve it by counting. Each individual a^(ell)_i drifts at 1/sqrt(n_ell), but there are n_ell of them, and the network function depends on their *aggregate* through the 1/sqrt(n_ell)-weighted sums. A 1/sqrt(n) drift in each of n coordinates, combined coherently, is an O(1) effect on the function — that is precisely the first summand Theta^(L)_inf Sigma-dot^(L+1) in the kernel recursion, the lower layers' collective contribution to learning. So the lower layers do learn, in aggregate, even though no single neuron's preactivation moves appreciably. (A side consequence: since the preactivations stay near their initial Gaussian, they remain Gaussian throughout training, with the same covariance Sigma.)
 
@@ -207,7 +207,7 @@ Rescale to unit variance: with mu(z) = sigma(z sqrt(1/n0 + beta^2)), the pair (X
 
     Sigma^(2)(x, x') = mu-hat(rho) + beta^2,
 
-where mu-hat is the Gaussian dual of mu in the sense of Daniely et al. (2016): expand mu = sum_i a_i h_i in Hermite polynomials, then mu-hat(rho) = sum_i a_i^2 rho^i. Because sigma is non-polynomial, mu is non-polynomial, so infinitely many a_i are nonzero; hence mu-hat is a power series in rho with infinitely many strictly positive coefficients — and in particular infinitely many at even powers and infinitely many at odd powers (a non-polynomial function has nonzero Hermite coefficients of arbitrarily high order; they cannot all be even-indexed or all odd-indexed). Writing Sigma^(2)(x, x') = nu(x^T x') as a power series in the dot product, nu inherits infinitely many nonzero even and infinitely many nonzero odd coefficients. By the Schoenberg/Gneiting criterion (Gneiting, 2013) — a dot-product kernel on S^{n0-1} is positive definite for every n0 iff its power-series coefficients are strictly positive for infinitely many even and infinitely many odd powers — Sigma^(2) is positive definite on the sphere. Climbing back up, all Sigma^(L) for L >= 2 are positive definite, hence so are all Theta^(L)_inf for L >= 2. (The non-polynomial condition is sharp: a polynomial sigma gives only finitely many nonzero coefficients and the kernel fails to be PD for some input dimensions.) So for L >= 2 with a non-polynomial nonlinearity, training converges to a global optimum of the function-space cost.
+where mu-hat is the Gaussian dual of mu in the sense of Daniely et al. (2016): expand mu = sum_i a_i h_i in Hermite polynomials, then mu-hat(rho) = sum_i a_i^2 rho^i. Because sigma is non-polynomial, mu is non-polynomial, so infinitely many a_i are nonzero and the dual has infinitely many positive coefficients before the final change of variables. I have to be careful about parity here: non-polynomial alone does not mean the Hermite support itself has both even and odd indices (an even sigma would give only even-indexed coefficients). What rescues the Schoenberg step is the beta > 0 shift. Substituting rho = (n0 beta^2 + x^T x')/(n0 beta^2 + 1), every nonzero high-degree term a_i^2 rho^i expands as a positive binomial polynomial in x^T x' with powers of both parities below i, because the shift n0 beta^2 is positive. Infinitely many nonzero Hermite coefficients therefore give the dot-product series nu(x^T x') infinitely many positive even and positive odd coefficients. By the Schoenberg/Gneiting criterion (Gneiting, 2013) — a dot-product kernel on S^{n0-1} is positive definite for every n0 iff its power-series coefficients are strictly positive for infinitely many even and infinitely many odd powers — Sigma^(2) is positive definite on the sphere. Climbing back up, all Sigma^(L) for L >= 2 are positive definite, hence so are all Theta^(L)_inf for L >= 2. (The non-polynomial condition is sharp: a polynomial sigma gives only finitely many nonzero coefficients and the kernel fails to be PD for some input dimensions.) So for beta > 0 and L >= 2 with a non-polynomial nonlinearity, training converges to a global optimum of the function-space cost.
 
 Now I can actually solve the dynamics for least squares and read off generalization. With C(f) = (1/2) ||f - f*||^2_{pin}, the function obeys
 
@@ -242,47 +242,56 @@ import torch
 
 
 def relu_dual(cov_xx, cov_xpxp, cov_xxp):
-    # Gaussian expectations for ReLU: E[relu(X)relu(X')] and E[relu'(X)relu'(X')]
-    # (the arc-cosine kernels). These are the closed-form Sigma and Sigma_dot.
+    # Gaussian expectations for ReLU: E[relu(X)relu(X')] and E[relu'(X)relu'(X')].
     denom = np.sqrt(cov_xx * cov_xpxp)
     rho = np.clip(cov_xxp / np.maximum(denom, 1e-12), -1.0, 1.0)
-    theta = np.arccos(rho)
-    nngp = denom / (2 * np.pi) * (np.sin(theta) + (np.pi - theta) * np.cos(theta))
-    nngp_dot = (np.pi - theta) / (2 * np.pi)
+    angle = np.arccos(rho)
+    nngp = denom / (2.0 * np.pi) * (
+        np.sin(angle) + (np.pi - angle) * np.cos(angle)
+    )
+    nngp_dot = (np.pi - angle) / (2.0 * np.pi)
     return nngp, nngp_dot
 
 
 def infinite_ntk(X, Xp, depth, beta=0.1):
-    # Theta^(1) = Sigma^(1); Theta^(L+1) = Theta^(L) * Sigma_dot^(L+1) + Sigma^(L+1)
+    # Scalar fully connected ReLU specialization of the Neural Tangents Dense/Relu recursion.
+    if depth < 1:
+        raise ValueError("depth counts affine layers and must be at least 1")
     n0 = X.shape[1]
-    sig = X @ Xp.T / n0 + beta ** 2                # Sigma^(1)
-    sig_xx = (X * X).sum(1) / n0 + beta ** 2       # variances, fed to the dual
-    sig_pp = (Xp * Xp).sum(1) / n0 + beta ** 2
-    theta = sig.copy()                             # Theta^(1)
+    beta2 = beta ** 2
+    sig = X @ Xp.T / n0 + beta2
+    sig_xx = (X * X).sum(axis=1) / n0 + beta2
+    sig_pp = (Xp * Xp).sum(axis=1) / n0 + beta2
+    theta = sig.copy()
     for _ in range(depth - 1):
         nngp, nngp_dot = relu_dual(sig_xx[:, None], sig_pp[None, :], sig)
-        sig_xx, _ = relu_dual(sig_xx, sig_xx, sig_xx); sig_xx += beta ** 2
-        sig_pp, _ = relu_dual(sig_pp, sig_pp, sig_pp); sig_pp += beta ** 2
-        theta = theta * nngp_dot + (nngp + beta ** 2)   # the recursion
-        sig = nngp + beta ** 2
+        sig_xx = relu_dual(sig_xx, sig_xx, sig_xx)[0] + beta2
+        sig_pp = relu_dual(sig_pp, sig_pp, sig_pp)[0] + beta2
+        sig = nngp + beta2
+        theta = theta * nngp_dot + sig
     return theta, sig
 
 
 class WideMLP(torch.nn.Module):
-    # NTK parametrization: preactivation = (1/sqrt(n_in)) W a + beta b, W,b ~ N(0,1).
-    # The 1/sqrt(n_in) is what shrinks each weight's gradient and freezes the kernel.
+    # NTK parametrization: preactivation = (1/sqrt(n_in)) W a + beta b.
     def __init__(self, n0, width, depth, beta=0.1):
         super().__init__()
+        if depth < 1:
+            raise ValueError("depth counts affine layers and must be at least 1")
         self.beta = beta
         sizes = [n0] + [width] * (depth - 1) + [1]
-        self.Ws = torch.nn.ParameterList(torch.nn.Parameter(torch.randn(o, i))
-                                         for i, o in zip(sizes[:-1], sizes[1:]))
-        self.bs = torch.nn.ParameterList(torch.nn.Parameter(torch.randn(o))
-                                         for o in sizes[1:])
-        self.scales = [1.0 / np.sqrt(i) for i in sizes[:-1]]
+        self.Ws = torch.nn.ParameterList(
+            torch.nn.Parameter(torch.randn(out_dim, in_dim))
+            for in_dim, out_dim in zip(sizes[:-1], sizes[1:])
+        )
+        self.bs = torch.nn.ParameterList(
+            torch.nn.Parameter(torch.randn(out_dim)) for out_dim in sizes[1:]
+        )
+        self.scales = [in_dim ** -0.5 for in_dim in sizes[:-1]]
 
     def forward(self, x):
-        a, last = x, len(self.Ws) - 1
+        a = x
+        last = len(self.Ws) - 1
         for i, (W, b) in enumerate(zip(self.Ws, self.bs)):
             a = self.scales[i] * (a @ W.T) + self.beta * b
             if i != last:
@@ -290,23 +299,27 @@ class WideMLP(torch.nn.Module):
         return a.squeeze(-1)
 
 
-def empirical_ntk(net, X):
-    # Theta(x,x') = sum_p d_theta f(x) . d_theta f(x') -- the finite-width object
-    # whose width->infinity limit is infinite_ntk; barely moves for wide nets.
+def _jacobian_rows(net, X):
     params = list(net.parameters())
-    J = []
+    rows = []
     for xi in X:
         out = net(xi.unsqueeze(0)).squeeze()
-        g = torch.autograd.grad(out, params, retain_graph=True)
-        J.append(torch.cat([gi.reshape(-1) for gi in g]))
-    J = torch.stack(J)
-    return (J @ J.T).detach().numpy()
+        grads = torch.autograd.grad(out, params)
+        rows.append(torch.cat([g.reshape(-1) for g in grads]))
+    return torch.stack(rows)
+
+
+def empirical_ntk(net, X, Xp=None):
+    # Jacobian contraction, matching the canonical empirical NTK definition.
+    J = _jacobian_rows(net, X)
+    Jp = J if Xp is None else _jacobian_rows(net, Xp)
+    return (J @ Jp.T).detach().cpu().numpy()
 
 
 def kernel_regression(K_train, K_test, y, ridge=0.0):
-    # f_inf = K(x*,X) K(X,X)^{-1} y : the t->infinity mean = ridgeless kernel regression
+    # f_inf = K(x*, X) K(X, X)^{-1} y; set ridge > 0 only for conditioning.
     A = K_train + ridge * np.eye(K_train.shape[0])
     return K_test @ np.linalg.solve(A, y)
 ```
 
-The recap, as a single causal chain: I stopped tracking the weights and tracked the function, and gradient flow on theta turned into partial_t f = -Theta (f - f*), kernel gradient descent against the tangent kernel Theta = sum_p grad_theta f ⊗ grad_theta f. With the 1/sqrt(width) parametrization, two things happen as width grows — Theta at initialization concentrates on a deterministic kernel given by the layer recursion Theta^(L+1)_inf = Theta^(L)_inf Sigma-dot^(L+1) + Sigma^(L+1), and Theta stays frozen during training because every weight and activation drifts only at rate 1/sqrt(width) (Grönwall on the coupled drift). So training is a linear ODE in function space against a fixed positive-definite kernel; it converges globally, fastest along the top kernel principal components (hence early stopping), and at convergence the network function is ridgeless kernel regression with Theta^(L)_inf — which is what its generalization is.
+The recap, as a single causal chain: I stopped tracking the weights and tracked the function, and gradient flow on theta turned into kernel gradient descent against the tangent kernel Theta = sum_p grad_theta f ⊗ grad_theta f; on a finite dataset the empirical operator includes the 1/N average over training points. With the 1/sqrt(width) parametrization, two things happen as width grows — Theta at initialization concentrates on a deterministic kernel given by the layer recursion Theta^(L+1)_inf = Theta^(L)_inf Sigma-dot^(L+1) + Sigma^(L+1), and Theta stays frozen during training because every hidden preactivation and scaled weight displacement is small (Grönwall on the coupled drift). So least-squares training is a linear ODE in function space against a fixed kernel; when the sphere positive-definiteness condition applies, it converges globally, fastest along the top kernel principal components, and at convergence the mean predictor is ridgeless kernel regression with Theta^(L)_inf.

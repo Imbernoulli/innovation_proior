@@ -62,8 +62,9 @@ two-layer biLSTM. After training, freeze the encoder and use its TOP-layer hidde
 vectors, concatenated with GloVe and fed into downstream task models (e.g., a biattentive classification
 network for sentiment, an entailment model). This genuinely makes word vectors context-dependent and improves
 several tasks. Gaps: (1) it needs *parallel* translation data, which is far scarcer than monolingual text, so
-the encoder is trained on a comparatively small corpus; (2) it uses only the top encoder layer, discarding the
-lower-layer (more syntactic) information; (3) the supervised MT objective may bias the representations.
+the encoder is trained on a comparatively small corpus; (2) it exposes only one depth level of the encoder, so
+the task cannot inspect whether other internal levels carry useful information; (3) the supervised MT objective
+may bias the representations.
 
 **TagLM / biLM features for tagging (Peters et al., 2017).** Core idea: pretrain a *bidirectional* LM (forward
 and backward LMs, independently parameterized) on unlabeled text; concatenate the TOP-layer biLM hidden state
@@ -123,6 +124,8 @@ class Highway(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList([nn.Linear(size, 2 * size) for _ in range(num_layers)])
         self.activation = activation
+        for layer in self.layers:
+            layer.bias.data[size:].fill_(1.0)
 
     def forward(self, x):
         for layer in self.layers:

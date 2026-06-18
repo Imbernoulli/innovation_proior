@@ -1,4 +1,4 @@
-OK, let me think this through from scratch. The thing eating me alive is wall-clock time: pre-training a deep transformer takes three days on sixteen accelerator chips, and a deep image classifier takes the better part of a day. I have a pod with hundreds of chips sitting there. Why can't I just throw all of them at the problem and finish in an hour?
+I start from the wall-clock problem: pre-training a deep transformer takes three days on sixteen accelerator chips, and a deep image classifier takes the better part of a day. I have a pod with hundreds of chips sitting there. Why can't I just throw all of them at the problem and finish in an hour?
 
 The answer is that SGD is sequential. Update `t+1` waits on update `t`. The only thing I can parallelize *within* a step is the gradient computation: split a mini-batch of `b` examples across many devices, each computes part of `g = (1/b) Σ ∇ℓ(x, s)`, sum the partials. So more devices buys me a bigger batch, not more steps. Double the chips, double `b`. Fine — so what does doubling `b` actually buy me?
 
@@ -20,7 +20,7 @@ Why normalize away the magnitude entirely? At small batch I'd be nervous — the
 
 Now `φ`. Take `φ(z) = z` first, the identity. Then the per-layer multiplier in front of the unit direction is `‖x^(i)‖/‖u^(i)‖`. Is there a reading of that? If `u^(i)` is roughly the gradient, then `‖x^(i)‖/‖u^(i)‖` is a step size that's large when the weights are large relative to the gradient and small when they're not — and `1/(step size)` looks like a curvature. In fact, if layer `i` is `L_i`-smooth, the textbook safe step for gradient descent is `1/L_i`, and `‖x^(i)‖/‖∇_i f‖` is a cheap running *estimate* of `1/L_i`. So the trust ratio isn't arbitrary; with `φ = id` it's a per-layer estimate of the inverse local smoothness. That's reassuring — it says the scheme is automatically doing per-layer second-order-ish step sizing without any Hessian.
 
-But pure identity is dangerous at the extremes. If a layer's weights are huge, `‖x^(i)‖` is huge and the step explodes; if the update norm `‖u^(i)‖` is near zero, same thing. So clip it: `φ(z) = min(max(z, γ_l), γ_u)`. Identity in the middle, flat at the ends — a clipped identity. In practice clamping the weight-norm into something like `[0, 10]` keeps a single oversized layer from hijacking the step. So `φ` is the safety rail on an otherwise-`1/L_i` heuristic.
+But pure identity is dangerous at the extremes. If a layer's weights are huge, `‖x^(i)‖` is huge and the step explodes; if the update norm `‖u^(i)‖` is near zero, same thing. So the mathematical strategy allows clipping: `φ(z) = min(max(z, γ_l), γ_u)`. Identity in the middle, flat at the ends — a clipped identity. The convergence theorem assumes a positive lower and upper bound `α_l ≤ φ ≤ α_u`; the Google and TensorFlow Addons reference code uses the unclipped identity `φ(z)=z` with a zero-norm fallback, while some PyTorch variants add an upper cap such as `10`. So clipping is a valid implementation choice, but not the canonical Google/TFA core.
 
 Good — this is a *strategy*, not yet an algorithm, because I haven't said what the base optimizer `A` is. Let me instantiate it. The most natural first try: `A` = momentum SGD, `u_t = m_t` with `m_t = β₁ m_{t-1} + (1−β₁)(g_t + λ x_t)`. Plug in:
 
@@ -43,7 +43,7 @@ One more thing to fold in: weight decay. On transformers I want decoupled decay 
 
 `x_{t+1}^(i) = x_t^(i) − η_t · (φ(‖x_t^(i)‖)/‖r_t^(i) + λ x_t^(i)‖) · (r_t^(i) + λ x_t^(i))`.
 
-Now the decay rides inside the same unit-norm-and-rescale machinery as the gradient part, so its magnitude stays commensurate with the layer's step. That's the update. Let me note a sanity-check special case: set `β₁ = 0` and `β₂ = 0`. Then `m̂ = g`, `v̂ = g²`, and `r_j = g_j/(|g_j| + ε) ≈ sign(g_j)`. The layer update becomes a normalized sign vector — `sign(g)` divided by its norm `√(d_i)` — i.e. signSGD scaled by the square root of the layer dimension. So the method degenerates to a known sign method in that corner, which is a good smell.
+Now the decay rides inside the same unit-norm-and-rescale machinery as the gradient part, so its magnitude stays commensurate with the layer's step. That's the update. Let me note a sanity-check special case: set `β₁ = 0` and `β₂ = 0`. Then `m̂ = g`, `v̂ = g²`, and `r_j = g_j/(|g_j| + ε)`, which is the sign of `g_j` up to the numerical `ε`. The layer update becomes a normalized sign vector — `sign(g)` divided by its norm `√(d_i)` — i.e. signSGD scaled by the square root of the layer dimension.
 
 Now I owe myself the thing the heuristic scheme never had: a convergence guarantee, and a precise statement of *when* this beats SGD. Let me set up the nonconvex stochastic problem `min_x f(x) = E_s[ℓ(x, s)] + (λ/2)‖x‖²`. Assume `ℓ` is `L_i`-smooth in the layer-`i` block: `‖∇_i ℓ(x) − ∇_i ℓ(y)‖ ≤ L_i ‖x^(i) − y^(i)‖`. Collect `L = (L_1, …, L_h)`, write `L_∞ = max_i L_i`, `L_avg = (1/h) Σ_i L_i`, `‖L‖_1 = Σ_i L_i`. Bounded per-layer gradient variance `E‖∇_i ℓ − ∇_i f‖² ≤ σ_i²`, per-dimension version `σ̃`, and a coordinatewise gradient bound `|[∇ℓ]_j| ≤ G`. The benchmark I'm trying to beat is SGD with `b = T`, whose standard nonconvex rate is `E‖∇f‖² ≤ O((f(x_1) − f*)L_∞/T + ‖σ‖²/T)`. Note that `L_∞`. The whole network's rate is hostage to its single worst-conditioned layer. If my layerwise scheme can replace `L_∞` by `L_avg`, that's a real, structural win whenever curvature is uneven across layers.
 
@@ -86,7 +86,7 @@ Split the sum over `j` into sign-agreement and sign-disagreement. On agreement c
 
 `T_1 ≤ −η_t Σ_i Σ_j √((1−β₂)/(G²d_i)) φ(‖x^(i)‖) [∇_i f]_j g_j − η_t Σ_i Σ_j φ(‖x^(i)‖) [∇_i f]_j (r_j/‖r^(i)‖) 𝟙(sign[∇_i f]_j ≠ sign r_j)`.
 
-On the disagreement coordinates I just want an upper bound on the (positive) penalty: `|φ [∇_i f]_j r_j/‖r^(i)‖| ≤ α_u |[∇_i f]_j|` since `|r_j|/‖r^(i)‖ ≤ 1`. Take expectations. The first term, `E[g_j] = [∇f]_j` so `E[[∇_i f]_j g_j] = [∇_i f]_j²` (the agreement structure makes this the gradient-norm signal). The disagreement term is bounded by `α_u |[∇_i f]_j| · P(sign[∇_i f]_j ≠ sign g_j)`. And here's where the signSGD device earns its keep: by Markov on the bounded-variance gradient, the probability a stochastic coordinate's sign flips relative to the true gradient is `P(sign g_j ≠ sign ∇f_j) ≤ σ_{i,j}/(√b |[∇_i f]_j|)`. The `|[∇_i f]_j|` cancels, leaving `α_u σ_{i,j}/√b` per coordinate. Summing the agreement term over coordinates gives the squared full gradient norm:
+On the disagreement coordinates I just want an upper bound on the (positive) penalty: `|φ [∇_i f]_j r_j/‖r^(i)‖| ≤ α_u |[∇_i f]_j|` since `|r_j|/‖r^(i)‖ ≤ 1`. Take expectations. The first term is over all coordinates, and unbiasedness gives `E[g_j] = [∇f]_j`, so `E[[∇_i f]_j g_j] = [∇_i f]_j²`. The disagreement term is bounded by `α_u |[∇_i f]_j| · P(sign[∇_i f]_j ≠ sign g_j)`. And here's where the signSGD device earns its keep: by Markov on the bounded-variance gradient, the probability a stochastic coordinate's sign flips relative to the true gradient is `P(sign g_j ≠ sign ∇f_j) ≤ σ_{i,j}/(√b |[∇_i f]_j|)`. The `|[∇_i f]_j|` cancels, leaving `α_u σ_{i,j}/√b` per coordinate. Summing the signal term over coordinates gives the squared full gradient norm:
 
 `E[T_1] ≤ −η_t α_l √(h(1−β₂)/(G²d)) ‖∇f(x_t)‖² + η_t α_u ‖σ̃‖_1/√b`,
 
@@ -98,13 +98,13 @@ and solving for `E‖∇f‖²` pulls the `√(G²d/(h(1−β₂)))` to the othe
 `E‖∇f(x_a)‖² ≤ O( √(G²d/(h(1−β₂))) · [ √(2(f(x_1)−f*)‖L‖_1/T) + ‖σ̃‖_1/√T ] )`.
 For `β₂ = 0` the coordinate bound sharpens — the agreement term carries `√(1/d_i) φ |[∇_i f]_j|` directly — and the same telescoping yields `(E (1/√d)‖∇f(x_a)‖_1)² ≤ O((f(x_1)−f*)L_avg/T + ‖σ̃‖_1²/(Th))`, the same `L_avg`-not-`L_∞` shape as the trust-ratio scheme.
 
-So both versions provably converge to a stationary point, and the `β₂ = 0` rate carries `L_avg`. But is `L_avg` actually a *win* over SGD's `L_∞`? Not unconditionally — the convergence *criterion* changed too (I'm bounding `(Σ_i ‖∇_i f‖)²` or `‖∇f‖_1²`, not `‖∇f‖²`), so I have to compare like with like. Borrow the signSGD-style density bookkeeping. Define `(Σ_i ‖∇_i f‖)² = ψ_g · d‖∇f‖²/h`, `‖L‖_1² ≤ ψ_L · d²L_∞²/h²`, `‖σ‖_1² = ψ_σ · d‖σ‖²/h`, where each `ψ` measures how *dense* (spread out) that quantity is across coordinates. Substituting, the layerwise rate rewrites as `O((f(x_1)−f*)L_∞/T · ψ_L/ψ_g² + ‖σ‖²/T · ψ_σ²/ψ_g²)`. So I beat SGD exactly when `ψ_L ≪ ψ_g²` and `ψ_σ ≪ ψ_g²` — when the **gradient is denser than the curvature and the noise**. That's the precise condition. The layerwise trust ratio helps when the signal is spread across many coordinates/layers while the curvature and stochasticity are concentrated; it does *not* help when curvature is as dense as the gradient. Good — now I know when this earns its place, not just that it converges.
+So both versions provably converge to a stationary point, but only the trust-ratio theorem and the `β₂ = 0` LAMB theorem have the clean `L_avg` dependence. The `β₂ > 0` LAMB theorem is looser: it carries `√(G²d/(h(1−β₂)))` times a term involving `‖L‖_1`. Is `L_avg` actually a *win* over SGD's `L_∞` in the clean cases? Not unconditionally — the convergence *criterion* changed too (I'm bounding `(Σ_i ‖∇_i f‖)²` or `‖∇f‖_1²`, not `‖∇f‖²`), so I have to compare like with like. Borrow the signSGD-style density bookkeeping. Define `(Σ_i ‖∇_i f‖)² = ψ_g · d‖∇f‖²/h`, `‖L‖_1² ≤ ψ_L · d²L_∞²/h²`, `‖σ‖_1² = ψ_σ · d‖σ‖²/h`, where each `ψ` measures how *dense* (spread out) that quantity is across coordinates. Substituting, the layerwise rate rewrites as `O((f(x_1)−f*)L_∞/T · ψ_L/ψ_g² + ‖σ‖²/T · ψ_σ²/ψ_g²)`. So I beat SGD exactly when `ψ_L ≪ ψ_g²` and `ψ_σ ≪ ψ_g²` — when the **gradient is denser than the curvature and the noise**. That's the precise condition. The layerwise trust ratio helps when the signal is spread across many coordinates/layers while the curvature and stochasticity are concentrated; it does *not* help when curvature is as dense as the gradient.
 
-A couple of practical things the derivation suggests. The debiasing `m̂ = m/(1−β₁^t)`, `v̂ = v/(1−β₂^t)` multiplies the effective learning rate by `√(1−β₂^t)/(1−β₁^t)`, which starts small and rises to 1 — i.e. it *is* a learning-rate warmup baked into the optimizer. If I'm already running an explicit warmup schedule, the two do the same job, so I can drop the debiasing entirely without hurting anything. And for the per-layer norm in the trust ratio I've been writing `ℓ2`; in principle any norm would do, and swapping it barely moves the result, so `ℓ2` it is for simplicity. The clip `φ(z) = min(max(z, γ_l), γ_u)` — in code a clamp of the weight norm into something like `[0, 10]` — keeps a single fat layer from grabbing an unbounded step, which matters because at the very largest batches a single bad layer is exactly what diverged the momentum-based scheme.
+A couple of practical things the derivation suggests. The debiasing `m̂ = m/(1−β₁^t)`, `v̂ = v/(1−β₂^t)` changes the effective learning-rate schedule by the familiar Adam correction factor, so if I am already running an explicit warmup schedule, the two mechanisms overlap and the correction can be removed in practice. For the per-layer norm in the trust ratio I've been writing `ℓ2`; in principle any norm would do, and swapping it barely moves the result, so `ℓ2` is the default. The clipped form `φ(z) = min(max(z, γ_l), γ_u)` is the mathematical guardrail when I want bounded trust-ratio numerators, while the Google/TFA implementation uses the unclipped identity and relies on the zero-norm fallback; PyTorch variants may add an upper clamp as an engineering choice.
 
 Let me also make sure the across-batch-size story needs no per-task tuning. Since the gradient variance falls as `1/b`, the natural learning-rate knob is `√b` scaling, paired with a warmup whose length grows with the number of steps (linear-epoch warmup). With the layerwise trust ratio absorbing the per-layer geometry, I shouldn't have to re-tune as I sweep batch 512 → 32k — set the base `η` once, scale by `√b`, warm up proportionally. That's the whole point: the trust ratio is what makes a single recipe survive the sweep.
 
-Now the code. Per parameter group ("layer"): maintain Adam's two EMAs, form the Adam direction `r = m̂/(√v̂ + ε)`, fold in decoupled decay `r + λx`, compute the layer's weight norm (clamped) and the direction norm, take their ratio as the trust ratio (defaulting to 1 if either norm is zero so a dead layer just gets plain Adam), and step by `−η · trust_ratio · direction`. Debiasing shown as a toggle.
+Now the code. Per parameter group ("layer"): maintain Adam's two EMAs, form the Adam direction, fold in decoupled decay `r + λx`, compute the layer's weight norm and the direction norm, take their ratio as the trust ratio (defaulting to 1 if either norm is zero so a dead layer just gets the base Adam direction), and step by `−η · trust_ratio · direction`. The TensorFlow Addons reference uses bias correction exactly as the paper writes it; the Google ALBERT/BERT-side implementation omits bias correction and relies on explicit warmup. I can show that as a toggle without changing the update order.
 
 ```python
 import torch
@@ -113,14 +113,17 @@ from torch.optim import Optimizer
 class Lamb(Optimizer):
     # Layerwise-adaptive Adam for the large-batch regime.
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-6,
-                 weight_decay=0.0, clamp_value=10.0, debias=False):
+                 weight_decay=0.0, debias=False):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
-        self.clamp_value = clamp_value   # gamma_u for phi = clipped identity
-        self.debias = debias             # adam-correction == LR warmup; off by default
+        self.debias = debias             # TFA/paper correction; Google code omits it
         super().__init__(params, defaults)
 
+    @torch.no_grad()
     def step(self, closure=None):
-        loss = closure() if closure is not None else None
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
         for group in self.param_groups:
             beta1, beta2 = group['betas']
             for p in group['params']:
@@ -140,19 +143,18 @@ class Lamb(Optimizer):
                 v.mul_(beta2).addcmul_(g, g, value=1 - beta2)
 
                 step_size = group['lr']
-                if self.debias:  # m_hat / v_hat  ==  baked-in warmup
+                if self.debias:
                     bc1 = 1 - beta1 ** state['step']
                     bc2 = 1 - beta2 ** state['step']
-                    step_size *= (bc2 ** 0.5) / bc1
-
-                # Adam direction r = m / (sqrt(v) + eps)
-                r = m / (v.sqrt().add(group['eps']))
+                    r = (m / bc1) / ((v / bc2).sqrt().add(group['eps']))
+                else:
+                    r = m / (v.sqrt().add(group['eps']))
                 # decoupled weight decay inside the trust-ratio direction: r + lambda*x
                 if group['weight_decay'] != 0:
                     r = r.add(p.data, alpha=group['weight_decay'])
 
-                # trust ratio: phi(||x||) / ||r + lambda x||, phi = clipped identity
-                weight_norm = p.data.pow(2).sum().sqrt().clamp(0, self.clamp_value)
+                # Google/TFA core uses phi(||x||)=||x||; PyTorch variants may clamp it.
+                weight_norm = p.data.pow(2).sum().sqrt()
                 r_norm = r.pow(2).sum().sqrt()
                 if weight_norm == 0 or r_norm == 0:
                     trust_ratio = 1.0          # dead layer -> plain Adam step
@@ -164,4 +166,4 @@ class Lamb(Optimizer):
         return loss
 ```
 
-The causal chain, end to end: I want hardware-parallel speed, which forces large batches; large batches cut the step count, which forces a bigger learning rate; a single global learning rate is wrong because layers have wildly different weight-to-update ratios, so it destabilizes the worst-matched layer; the fix is to give each layer its own effective step — normalize the per-layer update to a unit direction and rescale it by the layer's weight norm via a (clipped-identity) trust ratio `φ(‖x^(i)‖)/‖u^(i)‖`, which decouples the global rate from per-layer geometry and reads as a `1/L_i` estimate; choosing the base optimizer fixes the algorithm — momentum gives the trust-ratio scheme but fails on attention models because it lacks per-coordinate adaptivity, while Adam-as-base supplies that, yielding the two-fold (per-dimension × per-layer) update `x^(i) ← x^(i) − η φ(‖x^(i)‖)/‖r^(i)+λx^(i)‖ (r^(i)+λx^(i))`; and the nonconvex analysis confirms it converges to a stationary point with the network's *average* smoothness `L_avg` in place of the worst-layer `L_∞`, beating SGD whenever the gradient is denser than the curvature and the noise — which is what lets the batch scale to 32k with a single `√b`-plus-warmup recipe.
+The causal chain, end to end: I want hardware-parallel speed, which forces large batches; large batches cut the step count, which forces a bigger learning rate; a single global learning rate is wrong because layers have wildly different weight-to-update ratios, so it destabilizes the worst-matched layer; the fix is to give each layer its own effective step — normalize the per-layer update to a unit direction and rescale it by the layer's weight norm via a (possibly clipped) trust ratio `φ(‖x^(i)‖)/‖u^(i)‖`, which decouples the global rate from per-layer geometry and reads as a `1/L_i` estimate; choosing the base optimizer fixes the algorithm — momentum gives the trust-ratio scheme but fails on attention models because it lacks per-coordinate adaptivity, while Adam-as-base supplies that, yielding the two-fold (per-dimension × per-layer) update `x^(i) ← x^(i) − η φ(‖x^(i)‖)/‖r^(i)+λx^(i)‖ (r^(i)+λx^(i))`; and the nonconvex analysis confirms convergence, with the clean `L_avg`-rather-than-`L_∞` comparison in the trust-ratio and `β₂=0` LAMB cases, and a looser but still stationary-point guarantee for `β₂>0`. That is the technical reason the method can scale BERT to very large batches with a single `√b`-plus-warmup recipe.

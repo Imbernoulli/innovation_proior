@@ -1,0 +1,168 @@
+I start with the part that makes this different from ordinary adversarial PGD. If the budget is `L_inf`, I know what to do: maximize a loss, take a sign-gradient step, and clip back into a box. The projection is continuous and cheap. If the budget is spatial `L0`, the projection is a top-`k` support choice. That means the operation I would need after every dense gradient step is not a gentle clip; it is a discrete decision about which pixels exist in the perturbation at all. So a direct "step, top-k project, repeat" attack can keep jumping between supports, and the coordinates that get removed from the support are not being treated as live candidates for the next support. The real problem is not the pixel values. Once I choose a pixel, every channel can move anywhere in the image box. The real problem is learning the support.
+
+So I split the problem into the two things it really contains. Let `p` be the dense value tensor, the same shape as the image, and let `m` be a binary spatial mask, shape `1 x H x W`. The perturbation is `delta = p * m`, with the mask broadcast over channels. The value tensor handles "what color should this selected pixel become?" The mask handles "which pixels are selected?" The constraints now separate cleanly: `p` must stay in `[-x, 1-x]` so `x + p` is a valid image, while `m` must contain at most `k` ones. If I can update both variables with gradients and then make `m` feasible, every forward candidate will be valid.
+
+The mask is still binary, and optimizing a binary top-`k` mask directly is the wall. I need a continuous object behind it. I introduce logits `u` and form a soft mask `s = sigmoid(u)`. The actual forward mask is still hard: `m = top_k_project(s)`, which sets the `k` largest entries of `s` to one and the rest to zero. The sigmoid does not change the ordering, so the top-`k` support could be chosen from `u` or from `s`; using `s` keeps the backward scale controlled. The forward pass uses the hard mask because the attack must be feasible. The backward pass cannot use the literal derivative of the top-`k` projection, because that derivative is zero almost everywhere and undefined at ties. I approximate the projection derivative by passing gradient to the soft mask instead. In other words, I keep the hard decision in the forward pass and use a straight-through-style backward pass.
+
+Now I have to be precise about signs. I want an untargeted attack, so I choose a loss whose larger value means a worse classification for the true label. With cross-entropy, that means I want the correct class to look worse, so I step in the positive gradient direction. The magnitude update is therefore `p <- Pi_Sp(p + alpha * sign(g_p))`, not a descent step, as long as `g_p` is the gradient of the attack loss. If I instead choose the margin `f_y - max_{r != y} f_r` and minimize it, I can get an equivalent direction, but then every sentence and line of code has to use that negated convention consistently. I keep the maximize-loss convention throughout because it matches ordinary adversarial PGD.
+
+For the value tensor, the projected-gradient case is the chain rule through the actual hard mask: `g_p = dL/delta * m`. Only selected pixels update, so it is faithful to the forward candidate but sparse. The unprojected-gradient case deliberately uses the soft mask in this backward route: `g_p = dL/delta * sigmoid(u)`. That updates `p` densely, with larger updates where the current soft mask is larger. It is less faithful to the hard forward support, but it explores better because values outside the current top-`k` support are not frozen. I keep both cases: one is exploitative and consistent with the forward support, while the other is exploratory and dense.
+
+For the mask logits, I need the gradient that says whether raising a pixel's score would help the attack. The hard forward perturbation is `delta = p * top_k(sigmoid(u))`. I discard the derivative of the top-`k` projection and keep the derivative through the sigmoid. For a spatial mask shared by channels, the gradient to the soft mask at one pixel is the channel sum of `dL/ddelta_c * p_c`, and autograd through `sigmoid(u)` multiplies by `sigmoid(u)(1 - sigmoid(u))`. So the update direction for `u` is the projected-gradient approximation
+
+```text
+g_u ~= sum_c (dL/ddelta_c * p_c) * sigmoid(u) * (1 - sigmoid(u)).
+```
+
+This is the key support signal. Even if a pixel is not currently selected by the hard top-`k`, `dL/ddelta` exists at that output coordinate and the straight-through backward route gives it a mask-logit gradient. That is what the naive projected `L0` step lacks: the support can move because unselected pixels still receive evidence about whether their scores should rise.
+
+The scale of the two updates should not be the same kind of step. The value tensor `p` is box-constrained, like an `L_inf` perturbation, so a sign step is natural. The mask logits are not constrained to a box; their purpose is ranking. If I take a sign step on every mask coordinate, the ranking can thrash and the step size depends badly on dimension. So I normalize the mask gradient and scale the step by the square root of the number of mask entries. In the unstructured pixel case, the mask has one channel, so the step is `beta * sqrt(H*W) * g_u / ||g_u||_2`. With `beta = 0.25`, the actual unstructured mask step is `0.25 * sqrt(H*W)`.
+
+The constants now line up. The selected-pixel magnitude range is the full image range, so the value bound is `eps_inf = 1` or `255/255`. The default magnitude step is `alpha = 0.25 * eps_inf`. The default mask coefficient is `beta = 0.25`, applied as `0.25 * sqrt(H*W)`. I also need a small-gradient guard for the mask update: if `||g_u||_2` is effectively zero, I should not divide by it or push saturated logits farther. In code I divide by `grad_norm + 1e-10` and zero the step when the norm is below a tiny threshold.
+
+The projection for `p` is also two clamps, not a final image clip. First clamp the value tensor to the chosen magnitude range, `[-eps_inf, eps_inf]`. Then clamp it to `[-x, 1 - x]`, which guarantees `0 <= x + p <= 1` before the mask is applied. Multiplying by the mask cannot violate the box because it either keeps a valid `p` entry or zeroes it. The top-`k` projection guarantees at most `k` changed spatial locations; I can check this by counting nonzero entries in `proj_mask.sum(1)`, which counts selected spatial positions after the one-channel mask is broadcast.
+
+For the loss, the clean default is cross-entropy: maximize it and the correct class gets pushed down relative to alternatives. Near the decision boundary, I can also use the equivalent attack-side margin `max_other - f_y`; it has the same sign convention because it is larger when the image is more adversarial. What I cannot do is mix this with the opposite margin `f_y - max_other` without flipping every update and every best-candidate comparison.
+
+I also need to keep the "best" rule in the same sign convention. If I maximize attack loss, the best candidate is the one with larger loss, not smaller loss. If a sample is already successfully attacked, I record that adversarial image even if a later loss comparison would be noisy. A compact implementation can skip active-batch shrinking for readability, but it must still keep the candidate with the maximum attack loss and always save successful current candidates.
+
+The support can still stall. Because the hard mask changes only when the ordering of the soft scores changes, the logits can move for a few steps while the top-`k` support remains identical. If the sample is still correctly classified and the projected mask is unchanged for `patience` consecutive iterations, I randomize that sample's mask logits and clear its stale counter. I do not need to randomize `p`; the values remain valid, and the fresh support can use them or revise them. For the unstructured attack, `patience = 3` is the default.
+
+The structured extension uses the same logic one level up. Instead of choosing individual pixels, I choose groups: rows, columns, patches, or a custom binary pattern. A binary group mask `v` is projected to `k` groups, then mapped to a spatial pixel mask by expansion or transposed convolution with the pattern kernel, followed by clipping to one. The backward route maps the pixel-mask gradient back to the group-mask grid by convolution and again ignores the nondifferentiable clipping. The group `L0` surrogate can overcount when groups overlap, but the true minimal group cover is no larger than the selected-group surrogate, and the approximation is tight when overlap is limited. For the core unstructured attack, the pattern kernel is just `1 x 1`, so the structured machinery reduces to the pixel case.
+
+So the method I arrive at is not "project a dense perturbation onto `L0`." It is "make the support a learned ranking variable and make the values a learned dense tensor." Forward feasibility comes from hard top-`k` on `sigmoid(u)` and clamps on `p`. Backward support learning comes from ignoring the top-`k` derivative and letting every pixel's logit see `dL/ddelta * p * sigmoid'(u)`. The two value-gradient routes are both useful: projected is exploitative and consistent with the forward mask; unprojected is exploratory and dense. The ensemble runs both, then Sparse-RS, in a cascade so success by one attack stops evaluation of that sample. That is why the method uses the gradient information Sparse-RS ignores while still respecting the fixed sparse budget at every forward pass.
+
+Here is the unstructured core as code. It uses the maximize-loss signs, the projected and unprojected backward cases, the native clamps, the default step scales, and the mask-stall reinitialization. It leaves out verbosity, targeted wrappers, and active-batch shrinking because those are harness details rather than the sparse update itself.
+
+```python
+import torch
+import torch.nn.functional as F
+
+
+class MaskingA(torch.autograd.Function):
+    """Unprojected p-gradient: forward uses hard top-k; backward routes p through the soft mask."""
+
+    @staticmethod
+    def forward(ctx, perturb, soft_mask, k):
+        b = soft_mask.shape[0]
+        flat = soft_mask.view(b, -1)
+        _, idx = torch.sort(flat, dim=1, descending=True)
+        hard = torch.zeros_like(flat).scatter_(1, idx[:, :k], 1.0).view_as(soft_mask)
+        ctx.save_for_backward(perturb, soft_mask)
+        return perturb * hard, hard
+
+    @staticmethod
+    def backward(ctx, grad_output, _grad_hard):
+        perturb, soft_mask = ctx.saved_tensors
+        grad_perturb = grad_output * soft_mask
+        grad_soft_mask = (grad_output * perturb).sum(dim=1, keepdim=True)
+        return grad_perturb, grad_soft_mask, None
+
+
+class MaskingB(torch.autograd.Function):
+    """Projected p-gradient: forward and p-backward both use the hard top-k mask."""
+
+    @staticmethod
+    def forward(ctx, perturb, soft_mask, k):
+        b = soft_mask.shape[0]
+        flat = soft_mask.view(b, -1)
+        _, idx = torch.sort(flat, dim=1, descending=True)
+        hard = torch.zeros_like(flat).scatter_(1, idx[:, :k], 1.0).view_as(soft_mask)
+        ctx.save_for_backward(perturb, hard)
+        return perturb * hard, hard
+
+    @staticmethod
+    def backward(ctx, grad_output, _grad_hard):
+        perturb, hard = ctx.saved_tensors
+        grad_perturb = grad_output * hard
+        grad_soft_mask = (grad_output * perturb).sum(dim=1, keepdim=True)
+        return grad_perturb, grad_soft_mask, None
+
+
+def ce_with_low_conf_margin(logits, y, threshold=0.5):
+    """Reference loss convention: maximize CE, except low-confidence samples use max_other - f_y."""
+    b = logits.shape[0]
+    u = torch.arange(b, device=logits.device)
+    correct = logits[u, y]
+    other_logits = logits.clone()
+    other_logits[u, y] = -float("inf")
+    other = other_logits.max(dim=1).values
+    low_conf = (correct - other) < threshold
+
+    loss = F.cross_entropy(logits, y, reduction="none")
+    loss[low_conf] = other[low_conf] - correct[low_conf]
+    return loss
+
+
+def project_mask(mask_logits, k):
+    soft = torch.sigmoid(mask_logits)
+    b = soft.shape[0]
+    flat = soft.view(b, -1)
+    _, idx = torch.sort(flat, dim=1, descending=True)
+    return torch.zeros_like(flat).scatter_(1, idx[:, :k], 1.0).view_as(soft)
+
+
+def sparse_pgd_core(model, images, labels, k, steps=10000, eps_inf=1.0, alpha=0.25,
+                    beta=0.25, patience=3, unprojected_gradient=True,
+                    zero_grad_threshold=2e-10):
+    model.eval()
+    x = images.detach()
+    y = labels.detach()
+    b, c, h, w = x.shape
+    alpha_step = alpha * eps_inf
+    mask_step = beta * (h * w) ** 0.5
+    masking = MaskingA.apply if unprojected_gradient else MaskingB.apply
+
+    perturb = x.new_empty(x.shape).uniform_(-eps_inf, eps_inf)
+    perturb = torch.min(torch.max(perturb, -x), 1 - x)
+    mask_logits = torch.randn(b, 1, h, w, device=x.device, dtype=x.dtype)
+    unchanged = torch.zeros(b, dtype=torch.long, device=x.device)
+
+    best = x.clone()
+    best_loss = torch.full((b,), -float("inf"), device=x.device)
+
+    for _ in range(steps):
+        prev_hard = project_mask(mask_logits.detach(), k)
+        perturb = perturb.detach().requires_grad_(True)
+        mask_logits = mask_logits.detach().requires_grad_(True)
+
+        proj_perturb, hard = masking(perturb, torch.sigmoid(mask_logits), k)
+        logits = model(x + proj_perturb)
+        loss = ce_with_low_conf_margin(logits, y)
+        loss.sum().backward()
+
+        with torch.no_grad():
+            current = x + proj_perturb
+            improve = loss >= best_loss
+            success = logits.argmax(dim=1) != y
+            save = improve | success
+            best_loss[improve] = loss[improve]
+            best[save] = current[save]
+
+            perturb_next = perturb + alpha_step * perturb.grad.sign()
+            perturb_next = perturb_next.clamp(-eps_inf, eps_inf)
+            perturb_next = torch.min(torch.max(perturb_next, -x), 1 - x)
+
+            grad_mask = mask_logits.grad
+            grad_norm = grad_mask.flatten(1).norm(p=2, dim=1).view(b, 1, 1, 1)
+            direction = grad_mask / (grad_norm + 1e-10)
+            active_step = torch.full((b, 1, 1, 1), mask_step, device=x.device, dtype=x.dtype)
+            active_step[grad_norm < zero_grad_threshold] = 0.0
+            mask_next = mask_logits + active_step * direction
+
+            hard_next = project_mask(mask_next, k)
+            same = ((hard_next - prev_hard).abs().sum(dim=(1, 2, 3)) == 0) & (~success)
+            unchanged[same] += 1
+            unchanged[~same] = 0
+            reinit = unchanged >= patience
+            if reinit.any():
+                mask_next[reinit] = torch.randn_like(mask_next[reinit])
+                unchanged[reinit] = 0
+
+            perturb = perturb_next
+            mask_logits = mask_next
+
+    return best.detach()
+```
+
+The two sign checks I care about are now explicit. If `loss` is cross-entropy or `max_other - f_y`, the update is gradient ascent: plus signs for both `p` and `u`. If a separate implementation chooses `f_y - max_other` as the loss, the signs must flip everywhere and the best-candidate comparison must become "smaller is better." Mixing those conventions is the easiest way to produce a plausible but wrong sparse attack.

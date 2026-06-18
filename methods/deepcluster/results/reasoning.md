@@ -1,119 +1,146 @@
-OK, let me think about what I actually need. I want general-purpose visual features — the kind of convnet representation that transfers to detection, segmentation, retrieval — but learned with *no labels at all*, and learned at a scale that could eventually mean billions of images. The reason this matters now: supervised ImageNet pre-training is running out of room. The error left on ImageNet is small, performance is saturating across new architectures, and ImageNet itself is only a million images curated for object classification. If I want better features, the obvious move is a much bigger, more diverse dataset — but labeling billions of images by hand is hopeless, and if I substitute raw metadata like hashtags for labels I import all the biases of that metadata into the representation. So I need to learn from the *images alone*.
+I want a convnet feature extractor without labels, but I do not want to throw away the supervised training machinery that already works. The supervised pipeline is clean: an image goes through `f_theta`, a classifier `g_W` maps the feature to logits, and I minimize a negative log-softmax against a one-hot label. Batch norm, dropout, augmentation, momentum SGD, weight decay, all of that already exists. The missing object is only the label.
 
-Let me survey the unsupervised toolbox and find where each piece breaks, because the cracks will tell me what to build.
+The first temptation is to make the representation itself satisfy a clustering objective. Take the current features, learn centroids, and move features toward their centroid. But if `theta` is free, that objective has a stupid solution: set every feature to the same point, even zero, and the geometry collapses. That is not a training signal; it is an invitation to destroy the representation. So I should not backpropagate through a k-means reconstruction objective as if k-means were the final loss.
 
-Classical unsupervised learning — clustering, dimensionality reduction, density estimation — is appealing because it needs no labels and works on any domain (satellite, medical, depth). The bag-of-features model, for instance, clusters handcrafted descriptors into image-level features. But every one of these was designed for a *linear* model sitting on top of *fixed* features. The moment I want the features themselves to be learned by the convnet *at the same time* as I cluster, the whole thing falls apart. Concretely: suppose I try to train a convnet jointly with k-means — push images through `f_θ`, cluster the outputs, and use "be close to your centroid" as the training signal. What does the optimizer discover? That it can drive the features to *zero* and collapse every cluster into a single point. The loss is trivially minimized and the features are useless. So naive convnet-plus-clustering is degenerate. That degeneracy is the wall I have to get around; everything below is in service of it.
+There is still a useful clue. A random convnet is bad, but it is not random in the statistical sense. Its convolutional structure already gives a weak visual prior; a classifier over a random AlexNet's last convolutional layer gets about 12% ImageNet accuracy, far above 0.1% chance. That means the starting feature space has some structure. If I can read a rough partition out of that structure, then train the network to predict the partition, the feature space may sharpen; a sharper feature space gives a better partition; then I repeat. I do not need the initial partition to be semantically correct. I need it to be consistent enough to bootstrap.
 
-What about self-supervised learning? It's the popular alternative: invent a *pretext* task whose labels can be computed from the raw data — predict the relative position of two image patches, solve a jigsaw of shuffled patches, inpaint a missing region, predict color from grayscale, exploit temporal coherence in video. These give a genuine supervisory signal and good transfer features. But notice what they all share: each is a *hand-designed* task, domain-specific, requiring expert intuition about which artificial task will happen to force the network to learn transferable structure. I'd rather not bet the representation on cleverly guessing a pretext. I want something that needs almost no domain knowledge.
+So I will split the process into two phases and only backpropagate through the supervised phase. First, freeze the current network long enough to compute features for all images and cluster those features. Second, treat the resulting cluster index for each image as a pseudo-label and train the convnet with the ordinary classification loss. The supervised objective is
 
-Generative models are another route — a VAE or GAN learns a mapping from noise to images, and the GAN discriminator (or an added encoder) yields features. But the features are a side effect, not the objective, and plain discriminator features have been disappointing. So that's indirect.
+`min_{theta,W} (1/N) sum_n ell(g_W(f_theta(x_n)), y_n)`,
 
-And the few prior attempts to marry clustering with convnets each stop short: one pre-trains with k-means but layer by layer, bottom-up, not end-to-end; another learns features and clusters jointly in a recurrent scheme that's promising on small data but hard to scale to the image counts convnets need; another uses an information-preserving loss that discriminates between individual images. None had been pushed to the scale and the modern architectures where I could actually study whether clustering works.
+where `ell` is the multinomial logistic loss. The only change is that `y_n` now comes from a clustering step rather than a human annotation.
 
-Now let me look for the thread to pull. Here is the observation that reframes everything: a convnet with *random* weights — sampled from a Gaussian, never trained — already produces features well above chance. Put an MLP on the last convolutional layer of a random AlexNet and it reaches around 12% on ImageNet, against 0.1% chance. That's not nothing; that's a hundredfold over chance. Where does it come from? From the convolutional architecture itself — weight sharing, locality, hierarchy — which is a strong prior on natural images even before any learning. So there is *already* a weak discriminative signal sitting in the untrained network. What if I could bootstrap it — use that weak signal to produce a rough grouping of images, then train the network to reproduce that grouping, which sharpens the features, which gives a better grouping, and iterate?
+For the clustering step I can use k-means because it is simple and scalable. With `k` clusters and a `d x k` centroid matrix `C`, the assignment problem is
 
-That's the whole idea, and it lets me reuse the machinery I trust. The supervised convnet pipeline is
+`min_{C in R^{d x k}} (1/N) sum_n min_{y_n in {0,1}^k} ||f_theta(x_n) - C y_n||_2^2`
 
-  min_{θ,W} (1/N) Σ_n ℓ( g_W(f_θ(x_n)), y_n ),
+subject to `y_n^T 1_k = 1`. The shape matters: each column of `C` is a centroid, `y_n` is one-hot, and `C y_n` selects the assigned centroid. Once k-means returns `C*` and the assignments `y_n*`, I keep the assignments and discard the centroids. The centroids are useful only to name the current groups; the object I am trying to improve is the convnet feature map, not a stored codebook.
 
-with `ℓ` the multinomial logistic loss, trained by mini-batch SGD and backprop, dressed up with batch norm, dropout, momentum, augmentation. The only thing it's missing in my setting is the labels `y_n`. So *manufacture* the labels by clustering, and then run exactly this pipeline. Alternate two steps: cluster the current features to get pseudo-labels, then train the network to predict those pseudo-labels. Each round, better features yield a better clustering, and a better clustering trains better features.
+This gives me the main loop: cluster features into pseudo-labels, train the convnet to classify those pseudo-labels, then cluster again. But I have not solved collapse yet. I have merely moved it into two concrete places where I can patch it.
 
-For the clustering step I'll use k-means — it's standard, it scales (there are billion-scale implementations), and preliminary checks suggest the exact algorithm isn't crucial (power-iteration clustering works too). k-means jointly learns a `d×k` centroid matrix `C` and a one-hot assignment `y_n` for each image:
+The first collapse is in the clustering step. If a cluster becomes empty, then the pseudo-label set loses capacity, and in the extreme everything can fall into one cluster. Discriminative clustering has exactly this pathology: if the method is allowed to choose labels and a boundary together, a one-cluster assignment can be optimal unless balance constraints intervene. Whole-dataset convex balance constraints are not something I want inside minibatch convnet training. A practical k-means fix is enough here: when a cluster is empty, choose a non-empty cluster, create the empty centroid as a small perturbation of that non-empty centroid, and split the old cluster's points between the two. That keeps all clusters alive during the k-means solve without adding a global penalty to the neural training loss.
 
-  min_{C ∈ ℝ^{d×k}} (1/N) Σ_n min_{y_n ∈ {0,1}^k} ‖ f_θ(x_n) − C y_n ‖₂²,  subject to  y_n^⊤ 1_k = 1.
+The second collapse is in the convnet training step. Suppose k-means technically returns many non-empty clusters, but most images are in a few huge ones. If I sample images uniformly, the gradient mostly sees those huge clusters. The classifier can learn to discriminate only the dominant groups, and in the worst case the feature extractor can drift toward an almost input-independent output. This is just severe class imbalance, except the classes are pseudo-classes. The fix is to sample uniformly over pseudo-labels: give each non-empty cluster roughly the same number of training examples per epoch, sampling with replacement for small clusters. In loss terms, this is equivalent to weighting an image by the inverse of the size of its assigned cluster.
 
-It returns optimal assignments `y_n*` and centroids `C*`. I'll keep *only the assignments* as pseudo-labels and throw the centroids away — my goal is the features, and the classifier `g_W` will relearn a decision boundary from the pseudo-labels each round; the centroids are scaffolding I don't need to carry.
+There is another subtlety. Cluster indices have no identity across reclustering. Cluster 17 this epoch is not "the same class" as cluster 17 next epoch. If I keep the final classifier head across reassignments, its weights are tied to an arbitrary old permutation of labels. The backbone should persist, because it carries visual features; the top classification layer should not. So each time I make a fresh set of pseudo-labels, I throw away and reinitialize the final linear layer. The official code is even more precise: before extracting features it removes `top_layer` and drops the last classifier ReLU, then after clustering it appends the ReLU back, creates a new `Linear(fd, k)`, initializes weights from `Normal(0, 0.01)`, zeroes the bias, and trains that layer with its own optimizer.
 
-But I haven't solved the degeneracy yet — I've only named it. Alternating between learning a classifier and learning the labels it predicts is *exactly* the setup that's prone to trivial solutions; discriminative clustering hits this even with linear models. The classical fixes constrain or penalize the minimum number of points per cluster, but those terms are computed over the whole dataset, which I can't do inside mini-batch SGD on a million-plus images. I need scalable, local workarounds. Let me trace the two distinct ways the thing can collapse and patch each.
+Now I need to make k-means see a feature geometry that is not dominated by arbitrary feature scales. Before clustering I reduce the features to 256 dimensions with PCA, whiten them by using eigenvalue power `-0.5`, and L2-normalize each row. Then Euclidean k-means is closer to a meaningful angular/geometric partition, and the clustering pass is much cheaper.
 
-The first collapse is on the *k-means* side: empty clusters. A discriminative objective is happiest assigning everything to one cluster — an optimal decision boundary can simply lump all inputs together, leaving the other clusters empty, and nothing in plain k-means prevents that. If clusters keep emptying out, the pseudo-labels carry no information. The fix is local and cheap, borrowed from large-scale feature quantization: during the k-means optimization, whenever a cluster goes empty, pick a non-empty cluster at random, copy its centroid with a small random perturbation to serve as the empty cluster's new centroid, and split the points of that non-empty cluster between the two. This keeps all `k` clusters alive without any global penalty term.
+I also need to decide which image view defines the target and which views train the invariance. For the clustering pass, I want a stable descriptor, so I use a resized center crop. For the classification pass, I want invariance, so I train with random resized crops and horizontal flips. That means the target is computed from one canonical view, while the convnet learns to predict it from augmented views. Cropping is not decoration here; it is part of what makes the representation useful.
 
-The second collapse is on the *convnet* side: trivial parametrization. Even with all clusters populated, suppose the vast majority of images land in a handful of clusters. Then when I train the network to predict pseudo-labels, `θ` only ever needs to discriminate those few dominant clusters; in the worst case, with all but one cluster reduced to singletons, minimizing the classification loss drives the convnet to predict the same output regardless of the input — useless features again. This is the same pathology supervised classification has under severe class imbalance, and imbalance is the default for unsupervised pseudo-labels (cluster sizes are wildly uneven). The fix: don't sample training images uniformly over *images*; sample uniformly over *clusters*. Equivalently, weight each image's contribution to the loss by the inverse of the size of its assigned cluster. Now a giant cluster doesn't get to dominate the gradient, and the network is forced to discriminate the small clusters too, so it can't collapse to a constant.
+Color is a cheap shortcut. If unsupervised clusters can be balanced by color alone, the model may learn attractive but low-level partitions. I will remove much of that shortcut with a fixed Sobel transform: grayscale the input with a `1/3` channel average, then apply horizontal and vertical derivative filters. Those filters are fixed, not learned. The network now has to build on edge and local-contrast structure rather than raw RGB color.
 
-There's a subtlety the alternation forces that I should pin down before writing code. Each round I re-run k-means from scratch on the new features. The cluster *indices* are arbitrary — cluster "5" this round has no relationship to cluster "5" last round; the labeling is a fresh, permuted partition. So the final classification layer `g_W` — the linear head that maps features to one logit per pseudo-class — learned a mapping to *this round's* arbitrary indices, which are meaningless next round. If I kept that head, I'd be fighting a relabeling every round. So at the start of each round I *reinitialize the top classification layer* (random Gaussian weights, zero bias) to match the new, arbitrary cluster identities, while keeping the convnet backbone, which is the thing I actually want to improve and which carries over meaningfully. The backbone persists; the head is reborn each round.
+For the number of clusters, I should not force the pseudo-labels to mimic the 1000 ImageNet classes. Finer groups can ask the convnet to discriminate more visual detail, so I choose over-segmentation, `k = 10000`. The paper-level training recipe uses 256-image minibatches, momentum 0.9, weight decay `10^-5`, a constant step size, and repeated full-dataset reclustering; the reported AlexNet training runs for 500 epochs. The released code defaults to 200 epochs, but the algorithmic loop is the same.
 
-A few more choices the setup demands. Unsupervised feature learning is notorious for latching onto *color* as a cheap shortcut — color is low-level and too easy, and it doesn't force the shape and texture structure I want. So I strip color out up front with a fixed Sobel filtering, which removes color and boosts local contrast, leaving the network to learn from edges and structure. Before clustering, I PCA-reduce the features to 256 dimensions, whiten them, and L2-normalize them — whitening decorrelates and equalizes the feature scales so that the Euclidean geometry k-means assumes is meaningful, and the reduction makes the clustering fast. I cluster the features of *central-cropped* images (a stable view) but train the network with data augmentation — random flips and random-size, random-aspect crops — which makes the features invariant to those augmentations, a property I want. And I re-cluster every epoch: the features drift as training proceeds, so the pseudo-labels need to be refreshed; on ImageNet, re-clustering once per epoch turns out to be nearly optimal, and the clustering itself costs about a third of the time mostly because it needs a forward pass over the whole dataset.
-
-The last knob is the number of clusters `k`. I'm training on ImageNet, which has 1000 classes, so the reflexive choice is `k = 1000`. But there's no reason the pseudo-classes should match the true classes — and intuitively, *over-segmenting* (more clusters than true classes) gives the network finer distinctions to learn, which should produce richer features. So I'd expect a larger `k` to help, and I'll use `k = 10000`: ten times the number of true classes, betting that the extra granularity in the pseudo-labels forces a more discriminative representation.
-
-Let me write the pieces. The feature preprocessing before k-means — PCA-whiten to 256 dims, then L2-normalize:
+Putting the faithful code skeleton together, the core pieces look like this:
 
 ```python
 import numpy as np
 import faiss
 import torch
 from torch import nn
+import torchvision.transforms as transforms
+
 
 def preprocess_features(npdata, pca=256):
     _, ndim = npdata.shape
-    npdata = npdata.astype('float32')
-    mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)   # eigen_power=-0.5 => whitening
-    mat.train(npdata); npdata = mat.apply_py(npdata)
-    npdata = npdata / np.linalg.norm(npdata, axis=1)[:, None]   # L2 normalize each row
-    return npdata
-```
+    npdata = npdata.astype("float32")
+    mat = faiss.PCAMatrix(ndim, pca, eigen_power=-0.5)
+    mat.train(npdata)
+    npdata = mat.apply_py(npdata)
+    row_sums = np.linalg.norm(npdata, axis=1)
+    return npdata / row_sums[:, np.newaxis]
 
-The clustering returns one pseudo-label per image; empty clusters are reassigned during the k-means solve so the partition never degenerates:
 
-```python
-def run_kmeans(x, k, n_iter=20):
-    n, d = x.shape
+def run_kmeans(x, k, verbose=False):
+    n_data, d = x.shape
     clus = faiss.Clustering(d, k)
-    clus.niter = n_iter
-    clus.max_points_per_centroid = 10_000_000           # don't subsample; empty clusters handled by faiss
-    index = faiss.IndexFlatL2(d)
-    clus.train(x, index)                                # solves the k-means objective; revives empty clusters
-    _, assignments = index.search(x, 1)                 # nearest centroid = pseudo-label
-    return assignments.reshape(-1)
-```
+    clus.seed = np.random.randint(1234)
+    clus.niter = 20
+    clus.max_points_per_centroid = 10_000_000
+    res = faiss.StandardGpuResources()
+    config = faiss.GpuIndexFlatConfig()
+    config.useFloat16 = False
+    config.device = 0
+    index = faiss.GpuIndexFlatL2(res, d, config)
+    clus.train(x, index)
+    _, I = index.search(x, 1)
+    losses = faiss.vector_to_array(clus.obj)
+    if verbose:
+        print("k-means loss evolution: {0}".format(losses))
+    return [int(n[0]) for n in I], losses[-1]
 
-The sampler that prevents convnet collapse — draw images so that clusters are represented uniformly, i.e. inverse-size weighting:
 
-```python
+class Kmeans:
+    def __init__(self, k):
+        self.k = k
+        self.images_lists = None
+
+    def cluster(self, features, verbose=False):
+        xb = preprocess_features(features)
+        assignments, loss = run_kmeans(xb, self.k, verbose=verbose)
+        self.images_lists = [[] for _ in range(self.k)]
+        for i, a in enumerate(assignments):
+            self.images_lists[a].append(i)
+        return loss
+
+
 class UnifLabelSampler(torch.utils.data.Sampler):
-    def __init__(self, N, images_lists):                # images_lists[c] = indices in cluster c
+    def __init__(self, N, images_lists):
         self.N = N
         self.images_lists = images_lists
-    def __iter__(self):
-        nonempty = [c for c in self.images_lists if len(c) > 0]
-        per = int(self.N / len(nonempty)) + 1           # equal budget per cluster -> uniform over clusters
-        res = np.concatenate([
-            np.random.choice(c, per, replace=(len(c) <= per)) for c in nonempty])
+        self.indexes = self.generate_indexes_epoch()
+
+    def generate_indexes_epoch(self):
+        non_empty = [c for c in self.images_lists if len(c) != 0]
+        size_per = int(self.N / len(non_empty)) + 1
+        res = np.array([])
+        for images in non_empty:
+            chosen = np.random.choice(images, size_per, replace=(len(images) <= size_per))
+            res = np.concatenate((res, chosen))
         np.random.shuffle(res)
-        return iter(res[: self.N].astype(int))
+        res = list(res.astype("int"))
+        if len(res) >= self.N:
+            return res[:self.N]
+        return res + res[: self.N - len(res)]
+
+    def __iter__(self):
+        return iter(self.indexes)
+
     def __len__(self):
-        return self.N
+        return len(self.indexes)
 ```
 
-And the round: compute features over the whole dataset, cluster to pseudo-labels, *reinitialize the top layer* because cluster identities are arbitrary this round, then train the supervised objective with the uniform sampler:
+And the epoch choreography is the part I cannot skip:
 
 ```python
-def deepcluster_round(model, dataset, k, optimizer, optimizer_tl, fd):
-    feats = compute_features(model, dataset)                 # forward pass over all images
-    feats = preprocess_features(feats)
-    assignments = run_kmeans(feats, k)                       # pseudo-labels
-    images_lists = [[] for _ in range(k)]
-    for i, a in enumerate(assignments):
-        images_lists[a].append(i)
+def one_epoch(model, dataset, feature_loader, deepcluster, optimizer, fd, args):
+    # Feature extraction uses the backbone/classifier feature, not the old pseudo-label head.
+    model.top_layer = None
+    model.classifier = nn.Sequential(*list(model.classifier.children())[:-1])
+    features = compute_features(feature_loader, model, len(dataset))
 
-    # cluster indices are arbitrary every round -> rebuild the classification head
-    model.top_layer = nn.Linear(fd, k)
+    deepcluster.cluster(features, verbose=args.verbose)
+
+    train_dataset = cluster_assign(deepcluster.images_lists, dataset.imgs)
+    sampler = UnifLabelSampler(int(args.reassign * len(train_dataset)),
+                               deepcluster.images_lists)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=args.batch, sampler=sampler,
+        num_workers=args.workers, pin_memory=True,
+    )
+
+    mlp = list(model.classifier.children())
+    mlp.append(nn.ReLU(inplace=True).cuda())
+    model.classifier = nn.Sequential(*mlp)
+    model.top_layer = nn.Linear(fd, len(deepcluster.images_lists)).cuda()
     model.top_layer.weight.data.normal_(0, 0.01)
     model.top_layer.bias.data.zero_()
 
-    train_dataset = cluster_assign(images_lists, dataset.imgs)   # attach pseudo-labels (with augmentation)
-    sampler = UnifLabelSampler(len(train_dataset), images_lists) # uniform over clusters
-    loader = torch.utils.data.DataLoader(train_dataset, batch_size=256, sampler=sampler)
-
-    crit = nn.CrossEntropyLoss()                             # multinomial logistic loss
-    for x, pseudo_y in loader:
-        out = model(x)
-        loss = crit(out, pseudo_y)
-        optimizer.zero_grad(); optimizer_tl.zero_grad()
-        loss.backward()
-        optimizer.step(); optimizer_tl.step()                # update backbone and new head
+    optimizer_tl = torch.optim.SGD(
+        model.top_layer.parameters(), lr=args.lr, weight_decay=10 ** args.wd
+    )
+    train(train_loader, model, nn.CrossEntropyLoss().cuda(), optimizer, optimizer_tl)
 ```
 
-The convnet itself is a standard AlexNet (five conv layers with 96, 256, 384, 384, 256 filters and three fully-connected layers), with the local response normalization removed and batch norm added; the input is the Sobel-filtered image. Outer loop: run `deepcluster_round` each epoch for a few hundred epochs, with momentum 0.9, L2 weight decay, dropout, and a constant step size.
-
-So the causal chain, end to end: I want label-free, scalable visual features, but classical clustering assumes fixed features and naive convnet-plus-k-means collapses to zero features in one cluster. The opening is that a random convnet already encodes a weak signal (≈12% on ImageNet vs 0.1% chance) from its convolutional prior — so I bootstrap it by alternating between clustering the features into pseudo-labels (k-means, keeping only the assignments) and training the convnet to predict those pseudo-labels with the ordinary supervised pipeline. Because jointly learning a classifier and its labels is degenerate, I patch the two collapse modes locally and scalably: revive empty clusters by splitting a perturbed non-empty centroid, and sample uniformly over clusters (inverse-size weighting) so the network can't collapse onto a few dominant clusters. Since each re-clustering produces an arbitrary permutation of cluster indices, I reinitialize the classification head every round while carrying the backbone forward, strip color with Sobel so the features don't shortcut on it, PCA-whiten and L2-normalize before k-means so its Euclidean geometry is meaningful, re-cluster every epoch as the features drift, and over-segment with `k = 10000` so the finer pseudo-classes force a richer representation.
+The whole construction is therefore a bootstrapping loop. A random convnet gives weak structure; k-means turns the current structure into pseudo-labels; the supervised loss makes the convnet predict those labels under augmentation; empty-cluster reassignment and uniform pseudo-label sampling keep the two collapse modes from taking over; and the top layer is reset each round because the labels are only temporary names for the current partition. The centroids disappear after assignment, but the backbone survives and gradually becomes the useful representation.

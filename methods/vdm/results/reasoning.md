@@ -148,7 +148,7 @@ where I deliberately wrote the coefficient as `exp(γ(t)−γ(s)) − 1`. Why th
 
 The other two ELBO terms I should make concrete. The prior loss is `KL(q(z_1|x)‖N(0,I))`, closed form for two Gaussians: with `var_1 = sigmoid(γ(1))` and mean `√(1−var_1) x`, it's `(1/2) Σ ( (1−var_1)x² + var_1 − log var_1 − 1 )`. The reconstruction loss handles the discrete 8-bit data: choose `p(x_i|z_{0,i}) ∝ q(z_{0,i}|x_i)`, normalized over the 256 possible pixel values — a discretized Gaussian decoder. With large `SNR(0)` this is a tight approximation to `q(x|z_0)` and is exact to the extent dimensions are independent. So `−log p(x|z_0)` is just a categorical log-likelihood read off Gaussian logits over the discrete grid.
 
-There's one empirical wall I keep hitting in my head that this clean theory doesn't address: fine-scale detail. Likelihood is brutally sensitive to the exact low-order bits of each pixel, and my reconstruction decoder `p(x|z_0)` is deliberately weak — so the burden of nailing the fine detail falls on the denoiser `x̂_θ` at the *low-noise* end. But at low noise, `q(z_t)` is sharply peaked, because the underlying 8-bit data is discrete; a stack of smooth convolutions has a hard time fitting those sharp, high-frequency variations of `z_t`. The denoiser is essentially blind to small changes in its input there. So I need to *amplify* small input changes before they enter the network. Fourier features: append channels `sin(2^n π z)` and `cos(2^n π z)` for a few integer `n`. These are high-frequency periodic functions of the input — a tiny change in `z` produces a large, learnable change in `sin/cos(2^n π z)`. The useful band is a couple of high frequencies (I take `n ∈ {6, 7}`, i.e. `range(6, 8)`, in the implementation): lower frequencies the network can already synthesize from `z` itself, and higher frequencies aren't present in the data and would just be noise for likelihood. With these features the network tolerates a much higher `SNR_max` (log-SNR around 13 instead of ~8), and combined with *learning* the endpoints that's where the likelihood gains come from. Interesting that the same features did nothing for autoregressive models — there the decoder is already strong at fine detail, so there's nothing to rescue.
+There's one wall this clean theory doesn't address: fine-scale detail. Likelihood is brutally sensitive to the exact low-order bits of each pixel, and my reconstruction decoder `p(x|z_0)` is deliberately weak, so the burden of fine detail falls on the denoiser `x̂_θ` at the low-noise end. But at low noise, `q(z_t)` is sharply peaked because the underlying 8-bit data is discrete; a smooth convolutional stack can have a hard time reacting to tiny scalar changes in `z_t`. I need to amplify small input changes before they enter the network. Fourier features do exactly that: append channels `sin(2^n π z)` and `cos(2^n π z)` for high integer `n`. The frequencies I want are `n ∈ {7, 8}`; if an implementation helper multiplies by `2π`, then the same band appears as `range(6, 8)`, because `2^6·2π = 2^7π` and `2^7·2π = 2^8π`. If these features let the denoiser carry the low-noise detail, then the high-SNR endpoint can be pushed upward without asking a smooth network to infer discrete spikes from almost raw pixels.
 
 Let me also place the perceptual-quality recipes relative to my bound, because it clarifies why they trail on likelihood. Write a weighted version,
 
@@ -158,7 +158,13 @@ which in `γ`-form is `(1/2) E ∫_0^1 γ'(t) w(exp(−γ(t))) ‖ε − ε̂_θ
 
 One more reassurance before code: is this objective even consistent — does minimizing it recover the true marginal? The score view says yes. Predicting `ε` is predicting `∇ log q(z_t|x)` up to the `−1/σ_t` factor, and the denoising-score-matching identity says, for any positive weighting `c`, that `(1/2)E_{q(z_t)}‖√c(∇log q(z_t) − s_θ)‖²` equals `(1/2)E_{q(x,z_t)}‖√c(∇log q(z_t|x) − s_θ)‖²` plus a constant independent of `θ` — the cross terms match after pulling the gradient through `q(z_t)=∫q(z_t|x)q(x)dx` and using `∇q = q∇log q`. So at the optimum `s_θ^*(z_t) = ∇log q(z_t)`: the trained model recovers the true marginal score at every noise level. Good — the bound I derived is the right thing to chase.
 
-Now to code, grounding everything in a JAX/Flax denoiser. The center of gravity is one forward call that returns the three loss terms, with the continuous-time branch (`T=0`) using an autodiff `jvp` to get `γ'(t)` and the discrete branch using `expm1`.
+Now I need the implementation to respect every sign and square root I just derived. In the variance-preserving parameterization, I must sample `z_t` as `sqrt(1 - sigmoid(γ_t)) x + sqrt(sigmoid(γ_t)) ε`, not as the variances themselves times `x` and `ε`. The reconstruction path samples `z_0` the same way and then passes the rescaled value `z_0 / sqrt(1 - var_0) = x + exp(0.5γ_0)ε` to the discrete decoder. The prior KL is the diagonal-Gaussian expression `0.5 Σ[(1 - var_1)x² + var_1 - log var_1 - 1]`.
+
+The forward pass now has the right center of gravity: it returns `loss_recon`, `loss_klz`, and `loss_diff`; antithetic time sampling draws a single offset and tiles the minibatch across `[0,1]`; the continuous branch uses a directional derivative through `γ(t)` to get `γ'(t)` and forms `0.5 γ'(t)‖ε - ε̂‖²`; the discrete branch snaps `t` to the grid, sets `s=t-1/T`, and forms `0.5 T expm1(γ_t - γ_s)‖ε - ε̂‖²`. The sampler has to use the opposite stable difference, `c=-expm1(γ_s-γ_t)`, then step with `sqrt(sigmoid(-γ_s)/sigmoid(-γ_t)) (z_t - sqrt(sigmoid(γ_t)) c ε̂) + sqrt((1 - sigmoid(-γ_s))c)ε`. The signs now agree: `γ_t>γ_s`, so the training coefficient `expm1(γ_t-γ_s)` is positive; `γ_s-γ_t<0`, so `c` is also positive.
+
+For schedule learning I need to keep two roles separate. The endpoints move the actual bound, so they belong in the ordinary VLB gradient. The interior shape does not move the continuous-time objective, so if I use the full monotone schedule there, its natural job is variance reduction through the squared Monte Carlo loss. A simpler implementation can still train a scalar or fixed schedule through the summed BPD objective, but that is an implementation choice, not the reason the endpoint-invariance argument works.
+
+Putting it together in JAX/Flax, the center of gravity is one forward call returning the three loss terms, with the continuous-time branch (`T=0`) using an autodiff `jvp` for `γ'(t)` and the discrete branch using `expm1`:
 
 ```python
 import jax, jax.numpy as jnp
@@ -260,7 +266,8 @@ class DenseMonotone(nn.Dense):
 
 
 class Base2FourierFeatures(nn.Module):
-    """Append sin/cos(2^n * pi * z) channels to amplify fine pixel-level detail."""
+    """Append sin/cos(2^n * pi * z) channels to amplify fine pixel-level detail.
+    The multiplier is 2*pi, so start=6, stop=8 yields the n in {7, 8} band of sin(2^n pi z)."""
     start: int = 6; stop: int = 8; step: int = 1
 
     @nn.compact
@@ -272,7 +279,7 @@ class Base2FourierFeatures(nn.Module):
         return jnp.concatenate([jnp.sin(h), jnp.cos(h)], axis=-1)
 ```
 
-And the training objective just sums the three terms (converted to bits/dim), with the endpoint scalars optimized against this bound and the schedule's interior optimized against the squared diffusion loss to cut estimator variance:
+And the training objective sums the three terms, converted to bits/dim; the endpoint scalars are optimized against this bound while the schedule interior is optimized to cut estimator variance:
 
 ```python
 def loss_fn(params, batch, rng):

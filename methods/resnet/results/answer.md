@@ -20,10 +20,10 @@ y = F(x, {W_i}) + x
 ```
 
 Why this is well-conditioned:
-- **Identity becomes free.** If the optimal mapping for a block is the identity, the solver only has to push `F → 0` (drive the conv weights toward zero) — the easiest target there is, and exactly where weight decay already pushes. Previously, fitting an identity *from scratch* through nonlinear layers was the hard case; now it is the easy one.
+- **Identity becomes free.** If the optimal mapping for a block is the identity, the solver only has to push `F → 0` (zero conv weights, with zero BN shift, make the residual branch output zero) — the easiest target there is, and exactly where weight decay already pushes the learned weights. Previously, fitting an identity *from scratch* through nonlinear layers was the hard case; now it is the easy one.
 - **Near-identity is preconditioned.** If the optimal mapping is close to identity, the block learns a *small perturbation referenced to x* ("here is x, nudge it"), not the whole function from scratch.
 - **Controlled comparison.** Matched-dimension identity shortcuts add **no parameters and no meaningful compute**, so the pure identity/zero-pad comparison can match a plain net at identical depth / width / params / FLOPs. Projection shortcuts in option B do add a small 1×1+BN path at stage transitions; they are isolated shape matchers, not the source of the residual mechanism.
-- **Gradient path (a bonus, not the explanation).** Stacking `y = F(x) + x` makes `dy/dx = F'(x) + 1`, and across L blocks the input→output Jacobian always carries an additive identity term that survives even when the `F'` factors are tiny. This is welcome, but the load-bearing claim is *conditioning*, not gradient rescue — BN already keeps the plain net's gradients healthy.
+- **Gradient path (a bonus, not the explanation).** For the pre-activation sum `s = F(x) + x`, the exact Jacobian is `∂s/∂x = J_F(x) + I`; the post-add ReLU then left-multiplies by its activation mask. The identity term gives a direct local path when units are active, but the load-bearing claim is *conditioning*, not gradient rescue — BN already keeps the plain net's gradients healthy.
 
 ## Design decisions and their reasons
 
@@ -166,4 +166,4 @@ def resnet101(): return ResNet(Bottleneck, [3, 4, 23, 3])
 def resnet152(): return ResNet(Bottleneck, [3, 8, 36, 3])
 ```
 
-The structure keeps the compact PyTorch implementation style while using the bottleneck downsampling convention above. The entire method reduces to one line in each block: `out += identity`.
+The structure keeps the compact PyTorch implementation style while using the original paper/author-code bottleneck downsampling convention above. The entire method reduces to one line in each block: `out += identity`.

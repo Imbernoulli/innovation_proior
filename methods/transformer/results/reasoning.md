@@ -49,11 +49,11 @@ The rotation matrix depends only on `k`, *not on `pos`*. So `PE_{pos+k}` is a fi
 
 One scaling subtlety surfaces here. The sinusoidal components are `O(1)` — sines and cosines live in `[−1, 1]`. Meanwhile a freshly-initialized embedding row, with the usual variance-preserving init, has components of size roughly `O(1/√d)`. So the raw embedding would be a *whisper* next to the `O(1)` positional sinusoids, and position would drown content at the very bottom of the stack. To put the two signals on the same footing I multiply the embedding by `√d_model`: each component becomes `O(1)`, amplitude-matched to `PE`, so the sum carries both at similar strength rather than one swamping the other. That's the reason for the `√d_model` embedding scaling — amplitude-matching, not arbitrary.
 
-While I'm on the embeddings, a parameter-count thought: the input embedding maps a token id to a `d`-vector, and the pre-softmax projection in the generator scores a decoder state against each token's vector — these are the *same* token↔vector correspondence used in two directions (lookup vs scoring). Since they're the same geometry, I can tie the input embedding, the target embedding, and the pre-softmax projection to one shared matrix (following Press & Wolf 2016). That cuts a large block of parameters — the vocabulary is tens of thousands of rows times `d` — and ties the two views of each token together, which regularizes. The `√d_model` scaling is applied at the embedding *forward* call so the lookup is amplitude-matched, while the tied matrix in the output projection sees the unscaled geometry it needs for sensible logits.
+While I'm on the embeddings, a parameter-count thought: the input embedding maps a token id to a `d`-vector, and the pre-softmax projection in the generator scores a decoder state against each token's vector — these are the *same* token↔vector correspondence used in two directions (lookup vs scoring). If the source and target share a vocabulary, I can tie the input embedding, the target embedding, and the pre-softmax projection to one shared matrix (following Press & Wolf 2016). That cuts a large block of parameters — the vocabulary is tens of thousands of rows times `d` — and ties the two views of each token together, which regularizes. The `√d_model` scaling is applied at the embedding *forward* call so the lookup is amplitude-matched, while the output projection uses the unscaled geometry it needs for sensible logits. The clean PyTorch code I will mirror below keeps the ordinary untied `Generator(d_model, vocab)`, so I should not silently smuggle tying into that code block.
 
 Two structural pieces are still missing. Attention mixes information *across* positions, but within a position it's a fairly weak transformation: the value is a softmax-weighted *linear* combination of other positions' values, and the only nonlinearity in the whole attention sublayer is the softmax on the *weights* — there's no per-position nonlinear processing of the content itself. The model needs somewhere to take the mixed representation at position `i` and transform it nonlinearly. So between attention sublayers I put a feed-forward net applied identically and independently to every position. How wide and how deep? A single `d→d` linear adds nothing the value-projection couldn't already do, so the point is a genuine nonlinear map — and a ReLU MLP's expressive power scales with its hidden width: more hidden units means more linear regions, more distinct features it can carve out of the `d`-dimensional input before projecting back. So expand to a wide hidden layer, ReLU, project back: `FFN(x) = max(0, xW_1 + b_1) W_2 + b_2`, with `d_model = 512 → d_ff = 2048 → 512`. Why 4× specifically? Width is per-position capacity and this sublayer holds the majority of the layer's parameters; 4× is the capacity-vs-compute knee that gives real nonlinear headroom without letting the FFN dominate the cost. (Equivalently it's two kernel-1 convolutions — same weights at every position, which is what "position-wise" means.) And a sanity check that this belongs in the same family: `ReLU(xW_1)W_2` has the shape of `compat(x, K)V` with the rows of `W_1` as keys and rows of `W_2` as values and ReLU as the compatibility function — it's attention over a fixed set of *learned parameters* instead of over the sequence.
 
-The other structural piece is what lets me actually stack these. I want `N` layers deep, and deep stacks of anything don't train naively — gradients vanish or explode through the depth. So I want each sublayer to leave a clean, undiminished path for the gradient. Wrap each sublayer as `x + Sublayer(x)` rather than `Sublayer(x)` (He et al. 2016): then `∂/∂x [x + F(x)] = I + F'(x)`, and the identity term `I` means the upstream gradient reaches `x` undiminished no matter how small `F'` is — a magnitude-1 path back through every sublayer, so the signal can't vanish through depth. It also reframes each sublayer as learning a *residual* correction to the identity, which is easier than learning a full transformation from scratch. Then normalize, because the residual sum's scale would otherwise drift across the stack: every sublayer becomes `LayerNorm(x + Sublayer(x))`.
+The other structural piece is what lets me actually stack these. I want `N` layers deep, and deep stacks of anything don't train naively — gradients vanish or explode through the depth. So I want each sublayer to have a direct residual branch. Wrap the sublayer computation as `x + Sublayer(x)` rather than just `Sublayer(x)` (He et al. 2016): at that sum, `∂/∂x [x + F(x)] = I + J_F(x)`, so the local Jacobian contains a direct identity term. It also reframes each sublayer as learning a *residual* correction to the identity, which is easier than learning a full transformation from scratch. Then normalize, because the residual sum's scale would otherwise drift across the stack: the architecture statement is `LayerNorm(x + Sublayer(x))`. The exact Jacobian of that block includes the LayerNorm derivative after the sum; the identity-branch argument applies to the residual sum itself. In the clean PyTorch code, the norm is moved before the sublayer and a final stack norm is added, so the output is `x + Sublayer(LayerNorm(x))` and the identity branch is explicit in the code path.
 
 Which normalizer, though? The batch dimension is the wrong axis to normalize over *here*. BatchNorm normalizes each feature across the batch, using the batch's mean and variance — but my sequences are variable-length and padded, so the set of real tokens at a given position varies across the batch and the padding injects spurious zeros, making the per-position batch statistics fluctuate wildly and unreliable as a normalizer. Worse, BatchNorm keeps running statistics for inference, and my decoder runs autoregressively, one token at a time, where there is no meaningful batch to normalize over — a built-in train/test mismatch. The axis that *is* stable is the feature axis of a single token: normalize each token's vector across its own `d` features, independently of every other token and of the batch. That is LayerNorm (Ba et al. 2016) — batch-size invariant (works with a batch of one), identical at training and at one-token-at-a-time decoding, immune to padding because each token is normalized alone. So: `LayerNorm(x + Sublayer(x))` around every attention and every FFN, all sublayers and embeddings at width `d = 512` so the residual sums line up, `N = 6` layers in the encoder (each: self-attention, FFN) and `N = 6` in the decoder (each: masked self-attention, cross-attention, FFN). That completes the `SequenceModel` slot — the whole thing is now attention, position-wise FFNs, residual-plus-LayerNorm glue, and positional codes, with no recurrence anywhere.
 
@@ -63,7 +63,7 @@ with `warmup = 4000`, under Adam (`β_1=0.9, β_2=0.98, ε=1e-9`). The `β_2` va
 
 Two regularizers finish the recipe. The densest, most co-adaptation-prone points in the network are the sublayer outputs and the summed embedding+positional input, so that's where I put dropout (Srivastava et al. 2014) — on the output of each sublayer *before* the residual add (dropping the sublayer output, not the residual path, keeps the identity gradient highway intact), and on the embedding sum. Rate `0.1`. And the loss: a plain one-hot cross-entropy pushes the model to drive the gold logit to `+∞` and all others to `−∞`, which is both unattainable and overconfident — it makes the model brittle and miscalibrated, and translation has many acceptable outputs, so overconfidence on one of them hurts. Soften the target instead: put `1 − ε_ls` on the gold token and spread `ε_ls` over the rest of the vocabulary, and train against it with KL divergence. This is label smoothing (Szegedy et al. 2015) at `ε_ls = 0.1`; it may raise perplexity because the model is deliberately less peaked, but that is the trade I want for less brittle sequence choices. So the harness's plain cross-entropy becomes this label-smoothed KL.
 
-Let me put it in real code, mirroring a clean implementation, each block tied to the step that forced it. One implementation detail has to stay explicit: the architecture I just derived normalizes after the residual sum, `LayerNorm(x + Sublayer(x))`, while the canonical clean PyTorch code puts the norm first, `x + Sublayer(LayerNorm(x))`, for code simplicity and then applies a final norm at the end of each stack. This fills the `SequenceModel` slot and the surrounding places the harness left adjustable: target masking, the tied embedding/generator weights, the loss, and the optimizer schedule.
+Let me put it in real code, mirroring a clean implementation, each block tied to the step that forced it. One implementation detail has to stay explicit: the architecture I just derived normalizes after the residual sum, `LayerNorm(x + Sublayer(x))`, while the clean PyTorch code puts the norm first, `x + Sublayer(LayerNorm(x))`, for code simplicity and then applies a final norm at the end of each stack. This fills the `SequenceModel` slot and the surrounding places the harness left adjustable: target offsetting and masking, the loss, and the optimizer schedule. I keep the code's ordinary generator here; weight tying remains a training detail for shared vocabularies, not a change to this reference-shaped code.
 
 ```python
 import math, copy, torch, torch.nn as nn
@@ -73,10 +73,10 @@ def clones(module, N):
     "N identical layers — the encoder/decoder are stacks of these."
     return nn.ModuleList([copy.deepcopy(module) for _ in range(N)])
 
-# --- the primitive: scaled dot-product attention ---
-# softmax(QK^T / sqrt(d_k)) V. The 1/sqrt(d_k) is the variance fix: raw q.k has
-# variance d_k, which saturates the softmax (near one-hot) so its Jacobian -> 0
-# and the attention weights stop receiving gradient.
+    # --- the primitive: scaled dot-product attention ---
+    # softmax(QK^T / sqrt(d_k)) V. The 1/sqrt(d_k) is the variance fix: raw q.k has
+    # variance d_k, which saturates the softmax (near one-hot) so its Jacobian -> 0
+    # and the attention weights stop receiving gradient.
 def attention(query, key, value, mask=None, dropout=None):
     d_k = query.size(-1)
     scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
@@ -87,9 +87,9 @@ def attention(query, key, value, mask=None, dropout=None):
         p_attn = dropout(p_attn)
     return torch.matmul(p_attn, value), p_attn
 
-# --- multi-head: h parallel attentions in d/h-dim subspaces so one average
-#     doesn't blur distinct relations together; W^O mixes the heads back into one
-#     d_model vector; total cost ~ one full-width attention ---
+    # --- multi-head: h parallel attentions in d/h-dim subspaces so one average
+    #     doesn't blur distinct relations together; W^O mixes the heads back into one
+    #     d_model vector; total cost ~ one full-width attention ---
 class MultiHeadedAttention(nn.Module):
     def __init__(self, h, d_model, dropout=0.1):
         super().__init__()
@@ -110,8 +110,8 @@ class MultiHeadedAttention(nn.Module):
         x = x.transpose(1, 2).contiguous().view(nb, -1, self.h * self.d_k)  # concat heads
         return self.linears[-1](x)         # final W^O mixes heads + maps to d_model
 
-# --- per-position FFN: the only per-position nonlinear compute; 512->2048->512
-#     so the ReLU has width to carve real features before projecting back ---
+    # --- per-position FFN: the only per-position nonlinear compute; 512->2048->512
+    #     so the ReLU has width to carve real features before projecting back ---
 class PositionwiseFeedForward(nn.Module):
     def __init__(self, d_model, d_ff, dropout=0.1):
         super().__init__()
@@ -121,9 +121,9 @@ class PositionwiseFeedForward(nn.Module):
     def forward(self, x):
         return self.w_2(self.dropout(self.w_1(x).relu()))
 
-# --- positional encoding: inject order (attention is permutation-equivariant);
-#     sinusoids so a shift by k is a fixed, position-independent rotation, and so
-#     positions beyond training length still have a code (extrapolation) ---
+    # --- positional encoding: inject order (attention is permutation-equivariant);
+    #     sinusoids so a shift by k is a fixed, position-independent rotation, and so
+    #     positions beyond training length still have a code (extrapolation) ---
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, dropout, max_len=5000):
         super().__init__()
@@ -148,12 +148,12 @@ class LayerNorm(nn.Module):
         self.eps = eps
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
-        var = x.var(-1, keepdim=True, unbiased=False)
-        return self.a_2 * (x - mean) / torch.sqrt(var + self.eps) + self.b_2
+        std = x.std(-1, keepdim=True)
+        return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
-# --- norm-first residual wrapper, matching the clean PyTorch implementation's
-#     code-simplicity ordering; the +x path keeps gradients flowing, and dropout
-#     touches the sublayer output rather than the identity path ---
+    # --- norm-first residual wrapper, matching the clean PyTorch implementation's
+    #     code-simplicity ordering; the +x path keeps gradients flowing, and dropout
+    #     touches the sublayer output rather than the identity path ---
 class SublayerConnection(nn.Module):
     def __init__(self, size, dropout):
         super().__init__()
@@ -209,16 +209,21 @@ def subsequent_mask(size):
     "Causal mask: position i may attend only to <= i — the extra target-side mask."
     return torch.triu(torch.ones(1, size, size), diagonal=1).type(torch.uint8) == 0
 
-# --- this is what fills the SequenceModel slot from the scaffold: it takes the
-#     embedded source + target and emits per-target-position features ---
-class SequenceModel(nn.Module):
-    def __init__(self, encoder, decoder):
-        super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-    def forward(self, src, src_mask, tgt, tgt_mask):
-        memory = self.encoder(src, src_mask)
-        return self.decoder(tgt, memory, src_mask, tgt_mask)
+class Batch:
+    "Holds a batch and constructs the exact padding-and-future mask."
+    def __init__(self, src, tgt=None, pad=2):
+        self.src = src
+        self.src_mask = (src != pad).unsqueeze(-2)
+        if tgt is not None:
+            self.tgt = tgt[:, :-1]
+            self.tgt_y = tgt[:, 1:]
+            self.tgt_mask = self.make_std_mask(self.tgt, pad)
+            self.ntokens = (self.tgt_y != pad).data.sum()
+    @staticmethod
+    def make_std_mask(tgt, pad):
+        tgt_mask = (tgt != pad).unsqueeze(-2)
+        tgt_mask = tgt_mask & subsequent_mask(tgt.size(-1)).type_as(tgt_mask.data)
+        return tgt_mask
 
 class Embeddings(nn.Module):             # scale by sqrt(d_model) to match PE amplitude
     def __init__(self, d_model, vocab):
@@ -229,22 +234,43 @@ class Embeddings(nn.Module):             # scale by sqrt(d_model) to match PE am
         return self.lut(x) * math.sqrt(self.d_model)
 
 class Generator(nn.Module):
-    # tied to the unscaled token matrix; Embeddings.forward applies sqrt(d_model)
-    # only on lookup, not on the output scores.
-    def __init__(self, tied_embedding):
+    def __init__(self, d_model, vocab):
         super().__init__()
-        vocab, d_model = tied_embedding.lut.weight.shape
-        self.proj = nn.Linear(d_model, vocab, bias=False)
-        self.proj.weight = tied_embedding.lut.weight
+        self.proj = nn.Linear(d_model, vocab)
     def forward(self, x):
         return log_softmax(self.proj(x), dim=-1)
 
-def tied_embeddings_and_generator(vocab, d_model):
-    src_embed = Embeddings(d_model, vocab)
-    tgt_embed = Embeddings(d_model, vocab)
-    tgt_embed.lut.weight = src_embed.lut.weight
-    generator = Generator(tgt_embed)
-    return src_embed, tgt_embed, generator
+class EncoderDecoder(nn.Module):
+    def __init__(self, encoder, decoder, src_embed, tgt_embed, generator):
+        super().__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.src_embed = src_embed
+        self.tgt_embed = tgt_embed
+        self.generator = generator
+    def encode(self, src, src_mask):
+        return self.encoder(self.src_embed(src), src_mask)
+    def decode(self, memory, src_mask, tgt, tgt_mask):
+        return self.decoder(self.tgt_embed(tgt), memory, src_mask, tgt_mask)
+    def forward(self, src, tgt, src_mask, tgt_mask):
+        return self.decode(self.encode(src, src_mask), src_mask, tgt, tgt_mask)
+
+def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0.1):
+    c = copy.deepcopy
+    attn = MultiHeadedAttention(h, d_model)
+    ff = PositionwiseFeedForward(d_model, d_ff, dropout)
+    position = PositionalEncoding(d_model, dropout)
+    model = EncoderDecoder(
+        Encoder(EncoderLayer(d_model, c(attn), c(ff), dropout), N),
+        Decoder(DecoderLayer(d_model, c(attn), c(attn), c(ff), dropout), N),
+        nn.Sequential(Embeddings(d_model, src_vocab), c(position)),
+        nn.Sequential(Embeddings(d_model, tgt_vocab), c(position)),
+        Generator(d_model, tgt_vocab),
+    )
+    for p in model.parameters():
+        if p.dim() > 1:
+            nn.init.xavier_uniform_(p)
+    return model
 ```
 
 And the two places the surrounding harness changes — the warmup-then-inverse-sqrt schedule the optimization wall forced, and the loss that becomes label-smoothed KL:
@@ -265,6 +291,7 @@ class LabelSmoothing(nn.Module):
         self.confidence = 1.0 - smoothing
         self.smoothing = smoothing
         self.size = size
+        self.true_dist = None
     def forward(self, x, target):
         true_dist = x.data.clone()
         true_dist.fill_(self.smoothing / (self.size - 2))
@@ -273,7 +300,8 @@ class LabelSmoothing(nn.Module):
         mask = torch.nonzero(target.data == self.padding_idx)
         if mask.dim() > 0:
             true_dist.index_fill_(0, mask.squeeze(), 0.0)
+        self.true_dist = true_dist
         return self.criterion(x, true_dist.clone().detach())
 ```
 
-So the causal chain, start to finish: the pain was the `O(n)` sequential depth of recurrence, which hardware can't parallelize away and which long sequences make worse. Attention had already shown that any-to-any routing in `O(1)` path length is possible, and dot-product scoring makes it one hardware-friendly matmul, but attention was always parasitic on an RNN; the convolutional alternatives killed the recurrence but reintroduced a path length that grows with distance. Demanding *both* `O(1)` sequential ops and `O(1)` path length points to one cell — self-attention over the sequence itself — cheaper than recurrence whenever `n < d`, which subword vocabularies guarantee. Committing to build the entire encoder and decoder from it surfaces a cascade of forced choices: the dot-product variance of `d_k` saturates the softmax and collapses its Jacobian, forcing the `1/√d_k` scaling; a single average blurs distinct relations, forcing `h` parallel heads in `d/h`-dim subspaces with a `W^O` to mix them, all at the cost of one full-width head; pure attention is order-blind, forcing positional codes, which I *add* (not concatenate, to avoid widening every matrix) and build from sinusoids (so a relative shift is a position-independent rotation and the code extends past training length), amplitude-matched to the embedding by `√d_model`. Wrap every attention and FFN — the FFN wide so it has real per-position nonlinear capacity — in residual-plus-LayerNorm glue, conceptually `LayerNorm(x + Sublayer(x))` and in the clean code `x + Sublayer(LayerNorm(x))` for code simplicity, stack six, mask the decoder's self-attention with `−∞` to preserve autoregression, tie the shared token matrix across source lookup, target lookup, and output scoring, and train under Adam with a warmup-then-inverse-sqrt schedule that defuses the early softmax-saturation-into-Adam-variance trap, plus dropout and label smoothing. And the recurrence is gone entirely, replaced by attention all the way down.
+So the causal chain, start to finish: the pain was the `O(n)` sequential depth of recurrence, which hardware can't parallelize away and which long sequences make worse. Attention had already shown that any-to-any routing in `O(1)` path length is possible, and dot-product scoring makes it one hardware-friendly matmul, but attention was always parasitic on an RNN; the convolutional alternatives killed the recurrence but reintroduced a path length that grows with distance. Demanding *both* `O(1)` sequential ops and `O(1)` path length points to one cell — self-attention over the sequence itself — cheaper than recurrence whenever `n < d`, which subword vocabularies guarantee. Committing to build the entire encoder and decoder from it surfaces a cascade of forced choices: the dot-product variance of `d_k` saturates the softmax and collapses its Jacobian, forcing the `1/√d_k` scaling; a single average blurs distinct relations, forcing `h` parallel heads in `d/h`-dim subspaces with a `W^O` to mix them, all at the cost of one full-width head; pure attention is order-blind, forcing positional codes, which I *add* (not concatenate, to avoid widening every matrix) and build from sinusoids (so a relative shift is a position-independent rotation and the code extends past training length), amplitude-matched to the embedding by `√d_model`. Wrap every attention and FFN — the FFN wide so it has real per-position nonlinear capacity — in residual-plus-LayerNorm glue, conceptually `LayerNorm(x + Sublayer(x))` in the architecture and `x + Sublayer(LayerNorm(x))` in the clean PyTorch code, stack six, offset the target and combine padding with the lower-triangular mask to preserve autoregression, use the shared embedding/projection matrix when the vocabulary setup permits it, and train under Adam with a warmup-then-inverse-sqrt schedule that defuses the early softmax-saturation-into-Adam-variance trap, plus dropout and label smoothing. And the recurrence is gone entirely, replaced by attention all the way down.

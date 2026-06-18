@@ -16,19 +16,19 @@ The relevant prior work is the lineage of methods for training very deep nets an
 
 **Better initialization and Batch Normalization.** Early efforts attacked vanishing gradients with greedy layer-wise pretraining and careful initialization (Glorot & Bengio 2010). Batch Normalization (Ioffe & Szegedy 2015) standardizes the mean and variance of hidden activations per mini-batch, which reduces vanishing gradients and has a regularizing effect; it is the default in modern deep nets.
 
-**Skip connections.** Highway Networks (Srivastava et al. 2015) added parameterized gated skip connections — "information highways" whose learned gates control how much signal bypasses a block, possibly crossing several layers. ResNets (He et al. 2016) simplified this by making the skip an identity. A residual block computes H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})), where f_ℓ is a small stack (e.g. Conv-BN-ReLU-Conv-BN) and id is identity (or a linear projection when dimensions change). The identity path lets gradients and features pass between layers unimpeded, which is what makes hundred-plus-layer training feasible. A motivating diagnostic that produced ResNets: plain deep networks exhibit *higher training error* as depth grows — a degradation that more parameters should not cause, attributed to optimization difficulty when signals propagate through many layers.
+**Skip connections.** Highway Networks (Srivastava et al. 2015) added parameterized gated skip connections — "information highways" whose learned gates control how much signal bypasses a block, possibly crossing several layers. ResNets (He et al. 2015/2016) simplified this by making the skip parameter-free whenever shapes match. A residual block computes H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})), where f_ℓ is a small stack (e.g. Conv-BN-ReLU-Conv-BN) and s_ℓ is identity in same-shape blocks, average-pool plus zero-padding in CIFAR transition blocks, or a projection shortcut in ImageNet-style bottleneck transitions. The shortcut path lets gradients and features pass between layers with little obstruction, which is what makes hundred-plus-layer training feasible. A motivating diagnostic that produced ResNets: plain deep networks exhibit *higher training error* as depth grows — a degradation that more parameters should not cause, attributed to optimization difficulty when signals propagate through many layers.
 
-**Stochastic regularization.** Dropout (Srivastava et al. 2014) multiplies each hidden activation by an independent Bernoulli variable during training, reducing co-adaptation of units and acting like training an ensemble of exponentially many thinned subnetworks; at test time the activations are scaled by the keep probability. Follow-ups include DropConnect (Wan et al. 2013, which drops weights instead of activations), Maxout, and DropIn.
+**Stochastic regularization.** Dropout (Srivastava et al. 2014) multiplies each hidden activation by an independent Bernoulli variable during training, reducing co-adaptation of units and acting like training an ensemble of exponentially many thinned subnetworks; in the original test-time rule, the retained outgoing weights are scaled by the keep probability, equivalently matching the expected contribution of each unit. Follow-ups include DropConnect (Wan et al. 2013, which drops weights instead of activations), Maxout, and DropIn.
 
 Two diagnostic facts about existing systems that frame the work:
 - Dropout's regularizing benefit is known to weaken when combined with Batch Normalization; experiments on 110-layer ResNets with BN show essentially no improvement from Dropout at various rates. So a different stochastic mechanism is needed for deep BN-ResNets.
 - He et al.'s record-setting results came partly from an *ensemble* of ResNets of varying depth.
 
-A structural fact about the architecture: in these ResNets the input to a residual block is always non-negative, because it is the output of a preceding ReLU (or, for the first block, of an initial Conv-BN-ReLU stem).
+A structural fact about the CIFAR/SVHN architecture: the input to a residual block is always non-negative, because it is the output of a preceding ReLU (or, for the first block, of an initial Conv-BN-ReLU stem). Same-shape identity shortcuts and average-pool/zero-pad transition shortcuts preserve non-negativity; learned projection shortcuts need to be treated as the shortcut branch, not as a literal identity.
 
 ## Baselines
 
-**Constant-depth ResNet.** The network as built: L residual blocks, each H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})), all blocks active every iteration. Strong, but its training cost scales with the full depth L, and very deep variants (1000+ layers) suffer vanishing gradients / diminishing feature reuse and overfit. Gap: every layer is paid for in full on every iteration, so training cost and the gradient/forward chain length are locked to the deployed depth.
+**Constant-depth ResNet.** The network as built: L residual blocks, each H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})), all blocks active every iteration. Strong, but its training cost scales with the full depth L, and very deep variants (1000+ layers) suffer vanishing gradients / diminishing feature reuse and overfit. Gap: every layer is paid for in full on every iteration, so training cost and the gradient/forward chain length are locked to the deployed depth.
 
 **Dropout on a deep ResNet.** Add Dropout inside or around the blocks for regularization. Gap: it masks individual activations, leaving the depth of the gradient/forward chains untouched, and its benefit largely vanishes in the presence of Batch Normalization.
 
@@ -43,7 +43,7 @@ A structural fact about the architecture: in these ResNets the input to a residu
 
 ## Code framework
 
-The primitive that exists is a ResNet built from residual blocks, each with a transformation branch f_ℓ and an identity/projection skip, composed into a deep stack with a classifier head. The block exposes an unused per-block hyper-parameter slot whose role and use are the open design question.
+The primitive that exists is a ResNet built from residual blocks, each with a transformation branch f_ℓ and a shape-aware shortcut s_ℓ, composed into a deep stack with a classifier head. The block exposes an unused per-block hyper-parameter slot whose role and use are the open design question.
 
 ```python
 import torch
@@ -51,7 +51,7 @@ import torch.nn as nn
 
 class ResidualBlock(nn.Module):
     """H = ReLU(f(H_prev) + skip(H_prev)).
-    f = Conv-BN-ReLU-Conv-BN; skip = identity (or projection/pool when shape changes).
+    f = Conv-BN-ReLU-Conv-BN; skip = identity, pool+pad, or projection.
     The block carries a scalar hyper-parameter whose role is the open design question."""
     def __init__(self, in_ch, out_ch, stride=1, block_hparam=None):
         super().__init__()

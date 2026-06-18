@@ -55,9 +55,9 @@ The entropy term and the expected-Q term combine into exactly the log-normalizer
 
 It's the ordinary Bellman equation with the hard `max` over next actions replaced by a log-sum-exp. Now: can I solve this by iteration the way I solve ordinary Q-learning? Define the soft backup operator `T Q(s,a) = r + γ E_{s'}[ α log ∫ exp(Q(s',a')/α) da' ]`. I need this to be a contraction or the iteration won't converge. Let me check in the sup-norm. Let `ε = ‖Q_1 − Q_2‖_∞ = max_{s,a}|Q_1 − Q_2|`. Then `Q_1 ≤ Q_2 + ε` pointwise, so
 
-`log ∫ exp(Q_1(s',a')) da' ≤ log ∫ exp(Q_2(s',a') + ε) da' = ε + log ∫ exp(Q_2(s',a')) da'`,
+`α log ∫ exp(Q_1(s',a')/α) da' ≤ α log ∫ exp((Q_2(s',a') + ε)/α) da' = ε + α log ∫ exp(Q_2(s',a')/α) da'`,
 
-and symmetrically `≥ −ε + log ∫ exp(Q_2)`. The constant `ε` pulls straight out of the log-sum-exp. So the soft value of `Q_1` and `Q_2` differ by at most `ε` everywhere, and after the `γ` discount, `‖T Q_1 − T Q_2‖_∞ ≤ γ ε = γ ‖Q_1 − Q_2‖_∞`. It's a `γ`-contraction, so there's a unique fixed point and `Q ← TQ` converges to it — call this soft Q-iteration. (This contraction is the same one Fox et al. 2015 used for G-learning.)
+and symmetrically it is at least `−ε + α log ∫ exp(Q_2/α)`. The `α` outside cancels the `1/α` inside the exponent, so the soft values differ by at most `ε` everywhere. After the `γ` discount, `‖T Q_1 − T Q_2‖_∞ ≤ γ ε = γ ‖Q_1 − Q_2‖_∞`. It's a `γ`-contraction, so there's a unique fixed point and `Q ← TQ` converges to it — call this soft Q-iteration. (This contraction is the same one Fox et al. 2015 used for G-learning.)
 
 So in tabular form I'd be done: iterate
 
@@ -93,7 +93,7 @@ Look at the two terms. The first is `κ`-weighted score: each particle drags its
 
 with `α` now multiplying the repulsion. The balance is right: more temperature `α` → stronger repulsion → broader, higher-entropy spread, which is exactly what a larger entropy weight should do.
 
-But `Δf^φ` perturbs the particle *positions*; I have a *network* `f^φ` whose weights I want to train. That's the amortized step (Feng, Wang & Liu): treat the SVGD direction as the gradient of the loss with respect to the network's *output*, `∂J_π/∂a ∝ −Δf^φ`, and push it back through the network by the chain rule:
+But `Δf^φ` perturbs the particle *positions*; I have a *network* `f^φ` whose weights I want to train. That's the amortized step (Feng, Wang & Liu): choose a surrogate whose gradient update moves the network output along the SVGD direction, equivalently using `-Δf^φ` as the loss gradient for gradient descent or maximizing a surrogate with gradient `Δf^φ`. The chain rule gives the update direction
 
 `∂J_π(φ;s)/∂φ ∝ E_ξ[ Δf^φ(ξ;s) · ∂f^φ(ξ;s)/∂φ ]`.
 
@@ -115,7 +115,7 @@ The `V` estimate, concretely, with a *uniform* proposal on `[-1,1]^d`: `q_{a'} =
 
 The kernel: a radial basis function `κ(a,a') = exp( −‖a − a'‖² / h )` with a *median heuristic* bandwidth `h`. The idea (Liu & Wang) is to set `h` so that each particle's kernel-weighted neighborhood holds about the right number of other particles — use `h = (median of pairwise squared distances) / log K` where `K` is the particle count, clamped to a floor. With this `h`, `∇_a κ = −2 (a − a')/h · κ`. The bandwidth adapts per state, which matters because the action cloud's scale changes as training progresses.
 
-For the SVGD update itself I need two expectations — one over the particles I'm *moving* and one over the particles whose kernel/score I'm *evaluating against*. So I draw a single set of `K` particles per state and split it: `n_fixed` "fixed" particles (indexed `j`, the ones in the expectation, gradient stopped) and `n_updated` particles (indexed `i`, the ones whose positions I'm nudging). The empirical Stein direction at state `s` is
+For the SVGD update itself I need two expectations — one over the score/kernel particles and one over the particles whose network outputs I am moving. So I draw a single set of particles per state and split it: `n_fixed` fixed particles `a_i` (gradient stopped, used for the score and the first kernel argument) and `n_updated` particles `ã_j` (the sampler outputs that receive the backpropagated direction). The empirical Stein direction at state `s` is
 
 `∇̂_φ J_π(φ;s) = (1/KM) Σ_j Σ_i ( κ(a_i, ã_j) ∇_{a'} Q(s,a')|_{a_i} + ∇_{a'} κ(a', ã_j)|_{a_i} ) ∇_φ f^φ(ξ̃_j; s)`,
 
@@ -186,11 +186,12 @@ EPS = 1e-6
 class SQL:
     def _create_td_update(self):
         # soft value of the next state via importance sampling with a UNIFORM proposal
-        target_actions = tf.random_uniform(
-            (1, self._value_n_particles, self._action_dim), -1, 1)
-        q_value_targets = self.qf.output_for(
-            observations=self._next_observations_ph[:, None, :],
-            actions=target_actions)
+        with tf.variable_scope('target'):
+            target_actions = tf.random_uniform(
+                (1, self._value_n_particles, self._action_dim), -1, 1)
+            q_value_targets = self.qf.output_for(
+                observations=self._next_observations_ph[:, None, :],
+                actions=target_actions)
         self._q_values = self.qf.output_for(
             self._observations_ph, self._actions_pl, reuse=True)
 
@@ -209,10 +210,15 @@ class SQL:
                 tf.train.AdamOptimizer(self._qf_lr).minimize(
                     bellman_residual, var_list=self.qf.get_params_internal()))
 
+    def _create_target_ops(self):
+        source_params = self.qf.get_params_internal()
+        target_params = self.qf.get_params_internal(scope='target')
+        self._target_ops = [tf.assign(tgt, src) for tgt, src in zip(target_params, source_params)]
+
     def _create_svgd_update(self):
         actions = self.policy.actions_for(self._observations_ph,
                                           n_action_samples=self._kernel_n_particles, reuse=True)
-        # split the K particles: "fixed" (j, in the expectation) and "updated" (i, being moved)
+        # split particles: fixed a_i for score/kernel expectation, updated a~_j receive gradients
         n_updated = int(self._kernel_n_particles * self._kernel_update_ratio)
         n_fixed = self._kernel_n_particles - n_updated
         fixed_actions, updated_actions = tf.split(actions, [n_fixed, n_updated], axis=1)

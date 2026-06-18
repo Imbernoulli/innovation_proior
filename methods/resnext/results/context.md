@@ -50,6 +50,7 @@ The available code is a residual-network image-classification harness (following
 ```python
 import torch
 import torch.nn as nn
+import math
 
 
 def conv1x1(in_planes, out_planes, stride=1):
@@ -99,9 +100,12 @@ class Net(nn.Module):
         self.fc = nn.Linear(512 * block.expansion, num_classes)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                nn.init.normal_(m.weight, 0, math.sqrt(2.0 / n))
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1); nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None

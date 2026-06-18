@@ -117,7 +117,7 @@ adaptive rate, and are orthogonal to it.
 The natural yardsticks for an optimizer at this time, spanning the regimes where warmup is known to
 matter:
 
-- **Neural machine translation.** Transformer encoder-decoder on IWSLT'14 De→En (small) and WMT'14
+- **Neural machine translation.** Transformer encoder-decoder on IWSLT'14 De↔En (small) and WMT'16
   En→De (large), via a standard sequence-to-sequence toolkit; tokenized text, label-smoothed
   cross-entropy, BLEU for evaluation, with the Adam-plus-warmup recipe as the reference protocol.
 - **Language modeling.** Word-level LSTM language models (e.g. on the One Billion Word benchmark) with

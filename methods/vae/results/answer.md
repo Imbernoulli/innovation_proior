@@ -62,7 +62,7 @@ repeat
 until convergence
 ```
 
-## Working code (PyTorch, MNIST, Bernoulli decoder)
+## Working code core (PyTorch MNIST reference)
 
 ```python
 import torch
@@ -127,7 +127,7 @@ def sample(n=64):
 
 ## Implementation notes
 
-- The canonical implementation uses ReLU activations and Adam (faster to converge); the original formulation used `tanh`/`sigmoid` MLPs with Adagrad/SGD — interchangeable choices of nonlinearity and optimizer over the same objective.
+- The PyTorch reference implementation uses ReLU activations, default batch size 128, and Adam at `1e-3`; the original formulation used `tanh`/`sigmoid` MLPs with Adagrad/SGD. These are optimizer and nonlinearity choices over the same objective, not changes to the estimator.
 - For continuous data (e.g. Frey Faces) the decoder becomes a Gaussian MLP (`μ = W₄h + b₄`, `log σ² = W₅h + b₅`, `h = tanh(W₃z + b₃)`), with the output mean squashed to `(0,1)` by a sigmoid; the reconstruction term becomes a Gaussian log-likelihood while the analytic Gaussian KL term is unchanged.
 - A diagonal-covariance Gaussian `q` is a simplifying choice (cheap sampling/KL, linear in `J`), not a limitation; richer posteriors can be substituted at the cost of a harder KL.
 - The framework extends to full variational Bayes over the global parameters `θ` using separate variational parameters `λ` for `q_λ(θ)` and `φ` for `q_φ(z|x)`. A second reparameterization `θ = h_λ(ζ)`, `ζ ~ p(ζ)`, gives two analytic Gaussian KLs when the priors/posteriors are Gaussian: `KL(q_λ(θ)||p(θ))` and `KL(q_φ(z|x)||p(z))`. The main algorithm uses MAP point estimation of `θ` for simplicity.

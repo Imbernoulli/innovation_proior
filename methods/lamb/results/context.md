@@ -18,7 +18,7 @@ The problem is that this promise does not hold naively. At a fixed number of tra
 
 **Nonconvex first-order guarantees.** The yardstick for an optimizer on a smooth nonconvex objective `f` is how fast the expected gradient norm `E‖∇f(x)‖²` shrinks toward zero (a stationary point). For SGD with a large batch `b = T` and an appropriate constant step, Ghadimi & Lan (2013) give
 `E‖∇f(x_a)‖² ≤ O((f(x_1) − f*)·L_∞ / T + ‖σ‖² / T)`,
-where `x_a` is a uniformly random iterate, `σ` collects the per-coordinate gradient standard deviations, and `L_∞ = max_i L_i` is the **largest** per-layer smoothness constant. The dependence on `L_∞` is pessimistic: a single badly-conditioned layer sets the rate for the whole network, even when most layers are far better conditioned.
+where `x_a` is a uniformly random iterate, `σ` collects stochastic-gradient noise at the layer/block level, and `L_∞ = max_i L_i` is the **largest** per-layer smoothness constant. The dependence on `L_∞` is pessimistic: a single badly-conditioned layer sets the rate for the whole network, even when most layers are far better conditioned.
 
 ## Baselines
 
@@ -36,7 +36,7 @@ where `φ` is a (typically clipped-identity) scaling function. The multiplier `�
 
 ## Evaluation settings
 
-The natural yardsticks already exist before any new optimizer. **Language model pre-training**: a deep bidirectional transformer pre-trained on a concatenation of Wikipedia (~2.5B words) and BooksCorpus (~800M words), in two phases — most epochs at sequence length 128, a final tenth at sequence length 512 — with downstream quality measured by the **F1 score on the SQuAD-v1** question-answering task. The standard schedule runs ~1M iterations at batch 512 over ~3 days on 16 accelerator chips, with a polynomially decaying learning rate. **Image classification**: ResNet-50 on ImageNet, **top-1 / top-5 validation accuracy** over a fixed 90-epoch budget, with the Goyal et al. (2017) recipe (5-epoch warmup, ×0.1 learning-rate drops at epochs 30/60/80) as the baseline schedule; small-scale checks on CIFAR-10 (a 9-layer residual net) and MNIST (LeNet). Hardware is accelerator pods whose memory caps the per-step batch (the largest sequence-512 batch fits ~32k). Optimizers are compared at matched epochs across a batch-size sweep (512 → 32k), reporting accuracy/F1, number of steps, and wall-clock time. Baseline optimizers are tuned by grid search over learning rate (and weight decay where applicable). A practical caveat observed at large batch: validation *loss* is unreliable — a lower loss can accompany lower accuracy — so accuracy/F1 is the reported metric.
+The natural yardsticks already exist before any new optimizer. **Language model pre-training**: a deep bidirectional transformer pre-trained on a concatenation of Wikipedia (~2.5B words) and BooksCorpus (~800M words), in two phases — most epochs at sequence length 128, a final tenth at sequence length 512 — with downstream quality measured by the **F1 score on the SQuAD-v1** question-answering task. The standard schedule runs ~1M iterations at batch 512 over ~3 days on 16 accelerator chips, with a polynomially decaying learning rate. **Image classification**: ResNet-50 on ImageNet, **top-1 / top-5 validation accuracy** over a fixed 90-epoch budget, with the Goyal et al. (2017) recipe (5-epoch warmup, ×0.1 learning-rate drops at epochs 30/60/80) as the baseline schedule; small-scale checks on CIFAR-10 (a 9-layer residual net) and MNIST (LeNet). Hardware is accelerator pods whose memory caps the per-step batch (the largest sequence-512 batch fits ~32k). Optimizers are compared at matched epochs across a batch-size sweep (512 → 32k), reporting accuracy/F1, number of steps, and wall-clock time. Baseline optimizers are tuned by grid search over learning rate (and weight decay where applicable), and model quality is judged by the task metric rather than by optimizer-internal loss alone.
 
 ## Code framework
 
@@ -50,7 +50,7 @@ class LargeBatchOptimizer(Optimizer):
     """Optimizer for the large-batch regime.
 
     Maintains per-parameter state and applies an update. The body is the
-    contribution.
+    missing optimizer logic.
     """
     def __init__(self, params, lr, betas=(0.9, 0.999), eps=1e-6, weight_decay=0.0):
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)

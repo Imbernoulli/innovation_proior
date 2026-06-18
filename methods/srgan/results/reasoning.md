@@ -34,7 +34,7 @@ Assemble the full objective. It's a weighted sum of a content loss and the adver
 
     l^SR = l^SR_X + 10⁻³ · l^SR_{Gen},
 
-with `l^SR_X` the chosen content loss (the deep VGG loss for the photo-realistic variant). The adversarial weight is small, `10⁻³`. The content term has to dominate — it's what keeps the output a faithful super-resolution of *this* input — while the adversarial term is a comparatively gentle nudge toward the manifold; let it dominate and the generator drifts toward pretty-but-unfaithful images. One scale issue to handle: the VGG feature activations live on a different numerical scale than pixel intensities, so I rescale the VGG loss (by a fixed factor, ≈ `1/12.75`) to bring it onto a scale comparable to the MSE loss, so the `10⁻³` weighting means the same thing across content choices.
+with `l^SR_X` the chosen content loss (the deep VGG loss for the photo-realistic variant). The adversarial weight is small, `10⁻³`. The content term has to dominate — it's what keeps the output a faithful super-resolution of *this* input — while the adversarial term is a comparatively gentle nudge toward the manifold; let it dominate and the generator drifts toward pretty-but-unfaithful images. One scale issue to handle: the VGG feature activations live on a different numerical scale than pixel intensities, so I rescale the VGG feature maps by `1/12.75`; because the feature loss squares differences, that is equivalent to multiplying the VGG loss by `1/(12.75²) ≈ 0.006`, bringing it onto a scale comparable to the pixel MSE loss before the `10⁻³` adversarial weight is applied.
 
 With the objective settled, design the generator. I want it *deep*, because the mapping from low-res to plausible high-res texture is complex, and depth is what models complex mappings — but deep plain networks are hard to train. Residual blocks with skip connections fix that: a skip connection lets a block default to the identity and only learn the residual, so the optimizer isn't forced to represent the trivial identity mapping through a stack of convolutions, and depth becomes trainable. So make the generator a deep residual network. Each residual block: a `3×3` convolution with 64 feature maps, batch normalization, a Parametric ReLU (the negative-slope is learned rather than fixed — a small extra degree of freedom in the activation), then another `3×3`/64 convolution and batch norm, then an elementwise sum with the block's input. Stack `B = 16` such blocks. After the block stack, one more `3×3`/64 convolution and batch norm, and then a *long* skip connection that adds back the features from *before* the block stack — so the residual blocks collectively learn a correction on top of the early features, the same identity-relief logic applied at the whole-stack scale.
 
@@ -111,13 +111,12 @@ class Discriminator(nn.Module):        # DCGAN-style: strided conv, leaky-ReLU, 
             cin = cout
         self.features = nn.Sequential(*layers)
         self.classifier = nn.Sequential(
-            nn.AdaptiveAvgPool2d(6), nn.Flatten(),
+            nn.Flatten(),                                                # 96x96 HR crop -> 512x6x6
             nn.Linear(512 * 6 * 6, 1024), nn.LeakyReLU(0.2),
             nn.Linear(1024, 1))                                       # sigmoid folded into BCEWithLogits
     def forward(self, img):
         return self.classifier(self.features(img))
 
-# frozen VGG19 truncated at phi_{5,4}: the j=4 convolution (after activation) before the i=5 maxpool
 def truncated_vgg(i=5, j=4):
     vgg = torchvision.models.vgg19(pretrained=True).features
     maxpools, convs, cut = 0, 0, None
@@ -133,20 +132,30 @@ def truncated_vgg(i=5, j=4):
 vgg54 = truncated_vgg(5, 4)
 mse = nn.MSELoss()
 bce = nn.BCEWithLogitsLoss()
-VGG_RESCALE = 1 / 12.75 ** 2   # bring VGG-feature MSE onto the scale of pixel MSE
+VGG_LOSS_SCALE = 1.0 / (12.75 ** 2)   # feature maps are rescaled by 1/12.75
+
+def vgg_input_from_tanh(x):
+    # SR/HR tensors stay in [-1, 1]; torchvision VGG expects ImageNet-normalized RGB.
+    x = (x + 1.0) / 2.0
+    mean = x.new_tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1)
+    std = x.new_tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
+    return (x - mean) / std
 
 def content_loss(sr, hr):
-    return VGG_RESCALE * mse(vgg54(sr), vgg54(hr))   # feature-space, not pixel-space
+    return VGG_LOSS_SCALE * mse(vgg54(vgg_input_from_tanh(sr)),
+                                vgg54(vgg_input_from_tanh(hr)))   # feature-space, not pixel-space
 
 def train_step(lr, hr, G, D, opt_g, opt_d):
     # --- D: real HR vs generated SR ---
-    sr = G(lr)
+    with torch.no_grad():
+        sr_for_d = G(lr)
     opt_d.zero_grad()
-    d_real = D(hr); d_fake = D(sr.detach())
+    d_real = D(hr); d_fake = D(sr_for_d)
     d_loss = bce(d_real, torch.ones_like(d_real)) + bce(d_fake, torch.zeros_like(d_fake))
     d_loss.backward(); opt_d.step()
     # --- G: perceptual loss = content (VGG feature space) + 1e-3 * non-saturating adversarial ---
     opt_g.zero_grad()
+    sr = G(lr)
     d_fake = D(sr)
     adversarial = bce(d_fake, torch.ones_like(d_fake))   # non-saturating: -log D(G(LR))
     g_loss = content_loss(sr, hr) + 1e-3 * adversarial

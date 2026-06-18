@@ -163,64 +163,48 @@ The natural yardsticks already in use:
   training cost over early epochs and over a longer run. Weight sharing makes per-layer
   gradient scales differ sharply, stressing per-parameter adaptation.
 - **Variational autoencoder** (Kingma & Welling 2013), single hidden layer of 500 softplus
-  units, 50-dim spherical-Gaussian latent — used as a setting to sweep the decay rates and
-  `log10(alpha)` over a dense grid and observe the effect of design choices on training loss.
-- Protocol: identical parameter initialization across optimizers; learning rate / momentum
-  searched over a dense grid; comparisons read off the best hyperparameter setting.
+  units, 50-dim spherical-Gaussian latent — a stochastic generative-model objective where
+  minibatch noise and latent-variable estimation stress any first-order optimizer.
+- Protocol: identical parameter initialization across optimizers; method-specific step-size and
+  momentum/adaptation hyperparameters searched over a dense grid; comparisons read off the best
+  setting for each baseline.
 
 ## Code framework
 
-The optimizer plugs into the same minibatch-SGD training harness already used for the
-baselines. Nothing about the per-parameter update rule is settled yet — that rule is exactly
-what is to be designed — so the substrate is only the generic first-order stochastic
-optimization machinery that already exists: an `Optimizer` object that owns per-parameter
-state and exposes a `step()` that consumes the freshly computed gradients and writes a small
-update back into the parameters, and an outer training loop that draws a minibatch, runs the
-existing model and loss, backpropagates to fill in each parameter's gradient, and calls
-`step()`. The single empty slot is the update rule itself.
+The optimizer plugs into the same minibatch-SGD training harness already used for the baselines.
+Nothing about the per-parameter update rule is settled yet — that rule is exactly what is to be
+designed — so the substrate is only the generic first-order stochastic-optimization machinery that
+already exists: an optimizer object owns any per-parameter state it chooses to keep, receives the
+fresh stochastic gradient for each parameter, and writes an update back into that parameter. The
+outer training loop draws a minibatch, evaluates the existing model and loss, backpropagates one
+gradient sample per parameter, and calls the optimizer.
 
 ```python
-import torch
-
-
 class Optimizer:
-    """Generic first-order stochastic optimizer. Owns per-parameter state and
-    applies a per-parameter update from the current gradient. Memory must stay
-    ~linear in the number of parameters (no theta x theta matrix, no Hessian)."""
+    """Generic first-order stochastic optimizer.
 
-    def __init__(self, params, lr):
+    It may keep O(number_of_parameters) state, but it cannot form a Hessian,
+    a theta-by-theta matrix, or any minibatch-partition curvature table.
+    """
+
+    def __init__(self, params, step_size):
         self.params = list(params)
-        self.lr = lr
-        # lazily-initialized per-parameter buffers, if the update rule needs any
-        self.state = {id(p): {} for p in self.params}
+        self.step_size = step_size
+        self.state = {id(param): {} for param in self.params}
 
-    def zero_grad(self):
-        for p in self.params:
-            p.grad = None
-
-    @torch.no_grad()
-    def step(self):
-        for p in self.params:
-            if p.grad is None:
-                continue
-            g = p.grad                       # one noisy gradient sample for this parameter
-            state = self.state[id(p)]
-            # TODO: the per-parameter update rule we will design.
-            #       Given the stream of noisy gradients g (and any per-parameter
-            #       state we choose to keep), compute the update and apply it:
-            #       p += <update>(g, state)
+    def step(self, gradients):
+        for param, grad in zip(self.params, gradients):
+            slot = self.state[id(param)]
+            # TODO: design the per-parameter first-order update rule.
+            # param <- param + update(grad, slot, step_size)
             pass
 
 
-# existing minibatch training loop the optimizer plugs into
-def train(model, loss_fn, data_loader, optimizer):
-    for inputs, targets in data_loader:        # draw a minibatch
-        optimizer.zero_grad()
-        outputs = model(inputs)                # forward through the existing model
-        loss = loss_fn(outputs, targets)       # existing loss (may include dropout noise)
-        loss.backward()                        # backprop fills p.grad for every parameter
-        optimizer.step()                       # apply the per-parameter update rule
+def train(model, loss_fn, data_stream, optimizer):
+    for inputs, targets in data_stream:
+        loss = loss_fn(model(inputs), targets)
+        gradients = backward(loss, model.parameters())
+        optimizer.step(gradients)
 ```
 
-The outer loop supplies one gradient sample per parameter; `step()` is where the
-per-parameter rule will live.
+The outer loop supplies one noisy gradient sample per parameter; `step()` is the only empty slot.

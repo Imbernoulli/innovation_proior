@@ -1,111 +1,79 @@
-# UCB and the Lai–Robbins lower bound
+# Lai-Robbins Lower Bound And UCB
 
-## Problem
+## Source Status
 
-A $K$-armed stochastic bandit: arm $i$ returns rewards i.i.d. from an unknown distribution $P_i$ with mean $\mu_i$; $\mu^\* = \max_i \mu_i$, gap $\Delta_i = \mu^\*-\mu_i$. Over $n$ pulls, minimize the regret
+The original 1985 Lai-Robbins article remains a strict primary-source blocker: it was identified by DOI and metadata, but no local full-text PDF was retrieved. The formulas below are therefore grounded in later faithful sources that explicitly restate or derive the Lai-Robbins lower bound, plus Auer-Cesa-Bianchi-Fischer's finite-time UCB1 theorem.
 
-$$ R_n = n\mu^\* - \mathbb{E}\Big[\sum_t X_{I_t,t}\Big] = \sum_{i:\Delta_i>0}\Delta_i\,\mathbb{E}[T_i(n)], $$
+## Lower Bound
 
-where $T_i(n)$ is the number of pulls of arm $i$. The whole problem reduces to controlling the suboptimal pull counts $\mathbb{E}[T_i(n)]$.
+For an unstructured stochastic bandit class `E = M_1 x ... x M_K`, any policy consistent over `E`, and any suboptimal arm `i`,
 
-## Key idea
+```text
+liminf_{n -> infinity} E[T_i(n)] / log n >= 1 / d_inf(P_i, mu*, M_i),
+d_inf(P_i, mu*, M_i) = inf { D(P_i || Q) : Q in M_i and mean(Q) > mu* }.
+```
 
-Two matched results pin the answer.
+For a regular one-parameter family with a unique optimal parameter `theta*`, this gives
 
-- **A floor of $\Theta(\log n)$ with a KL constant.** No "consistent" policy (one with $R_n=o(n^p)$ for every $p>0$) can beat logarithmic regret, and the leading constant is governed by the Kullback–Leibler divergence to the optimal arm. This is the **Lai–Robbins lower bound**, proved by a change-of-measure argument: a bad arm must be pulled enough to statistically distinguish the instance from a neighboring one in which that arm is secretly best.
-- **Optimism attains the logarithmic order.** The **Upper Confidence Bound (UCB)** rule assigns each arm an optimistic value — its empirical mean plus a confidence width — and plays the largest. Hoeffding's inequality fixes the width; the union bound fixes the confidence schedule; the per-arm pull count is then $O(\log n/\Delta_i^2)$. In the unit-variance Gaussian case, a tuned 1-subgaussian variant reaches the exact $2/\Delta_i$ regret constant.
+```text
+liminf_{n -> infinity} R_n / log n
+  >= sum_{i: Delta_i > 0} Delta_i / KL(theta_i, theta*).
+```
 
-## The Lai–Robbins lower bound
+Interpretation: a bad arm must be sampled until the policy accumulates about `log n` likelihood-ratio evidence against the closest alternative world where that arm is best.
 
-For any consistent policy, on any instance, every suboptimal arm satisfies
+For Bernoulli arms the denominator is `kl(mu_i, mu*)`. For Gaussian rewards with known variance `sigma^2`, the denominator is `Delta_i^2/(2 sigma^2)`, so the pull-count lower-bound constant is `2 sigma^2 / Delta_i^2`.
 
-$$ \liminf_{n\to\infty}\frac{\mathbb{E}[T_i(n)]}{\log n} \ge \frac{1}{D(P_i\Vert P^\*)}, \qquad\text{hence}\qquad \liminf_{n\to\infty}\frac{R_n}{\log n} \ge \sum_{i:\Delta_i>0}\frac{\Delta_i}{D(P_i\Vert P^\*)}. $$
+## UCB1 Rule
 
-**Proof (change of measure).** Fix suboptimal arm $i$. Build a twin instance $\nu'$ identical except $P_i\to P_i'$ with mean above $\mu^\*$ (so arm $i$ is optimal in $\nu'$) and $D(P_i\Vert P_i')$ within $\varepsilon$ of $\inf\{D(P_i\Vert P'):\mu(P')>\mu^\*\}$. Two routes give the same constant:
+The simple finite-time rule here is Auer-Cesa-Bianchi-Fischer UCB1, not the cyclic Lai-Robbins 1985 allocation rule. Sample each arm once. At round `t`, choose
 
-*Likelihood-ratio route.* With $\widehat{\mathrm{kl}}_s = \sum_{t\le s}\log\frac{p_i(X_{i,t})}{p_i'(X_{i,t})}$ (mean $D(P_i\Vert P_i')$ under $P_i$), the full-history change-of-measure identity is
-$$ \mathbb{P}_\nu(A)=\mathbb{E}_{\nu'}[\mathbf 1_A e^{\widehat{\mathrm{kl}}_{T_i(n)}}]. $$
-Let $f_n=(1-\varepsilon)\log n/D(P_i\Vert P_i')$ and $C_n=\{T_i(n)<f_n,\ \widehat{\mathrm{kl}}_{T_i(n)}\le(1-\varepsilon/2)\log n\}$. On $C_n$, $e^{\widehat{\mathrm{kl}}}\le n^{1-\varepsilon/2}$, so $\mathbb{P}_\nu(C_n)\le n^{1-\varepsilon/2}\mathbb{P}_{\nu'}(C_n)$. Consistency in $\nu'$ gives $\mathbb{E}_{\nu'}[n-T_i(n)]=o(n^a)$ for every $a>0$, hence $\mathbb{P}_{\nu'}(C_n)=o(n^{a-1})$; choosing $a<\varepsilon/2$ gives $\mathbb{P}_\nu(C_n)\to0$. The maximal SLLN makes the likelihood-ratio clause typical on $\{T_i(n)<f_n\}$, so $\mathbb{P}_\nu(T_i(n)<f_n)\to0$ and $\mathbb{E}_\nu[T_i(n)]\ge(1-o(1))f_n$.
+```text
+argmax_i hat_mu_i + sqrt(2 log t / T_i(t-1)).
+```
 
-*Information-inequality route.* The chain rule gives
-$$ D(\mathbb{P}_\nu\Vert\mathbb{P}_{\nu'}) = \sum_j \mathbb{E}_\nu[T_j(n)]\,D(P_j\Vert P_j') = \mathbb{E}_\nu[T_i(n)]\,D(P_i\Vert P_i'), $$
-because the policy action kernel is the same in both worlds and only arm $i$ differs. Bretagnolle–Huber gives $\mathbb{P}_\nu(A)+\mathbb{P}_{\nu'}(A^c)\ge\frac12 e^{-D(\mathbb{P}_\nu\Vert\mathbb{P}_{\nu'})}$. With $A=\{T_i(n)>n/2\}$ and $\gamma=\min\{\Delta_i,\mu_i'-\mu^\*\}$,
-$$ R_n+R_n' \ge \frac{n\gamma}{4}\exp\{-\mathbb{E}_\nu[T_i(n)]D(P_i\Vert P_i')\}. $$
-Since consistency makes $R_n+R_n'=o(n^p)$ for every $p>0$, rearranging gives $\mathbb{E}_\nu[T_i(n)]D(P_i\Vert P_i')\ge(1-p)\log n+O(1)$, then $p\downarrow0$.
+For rewards in `[0,1]`,
 
-Send $P_i'$ to the boundary ($D(P_i\Vert P_i')\to D(P_i\Vert P^\*)$) and $\varepsilon\to0$. Bernoulli: constant $1/d(\mu_i,\mu^\*)$. Unit-variance Gaussian: $D=\Delta_i^2/2$, constant $2/\Delta_i^2$.
+```text
+E[T_i(n)] <= 8 log n / Delta_i^2 + 1 + pi^2/3,
+R_n <= sum_{i: Delta_i > 0} 8 log n / Delta_i
+       + (1 + pi^2/3) sum_i Delta_i.
+```
 
-## UCB and its finite-time upper bound
+A refined 1-subgaussian anytime UCB index from later analyses uses `f(t)=1+t log^2(t)` and satisfies
 
-**Index.** After playing each arm once, at round $t$ play
+```text
+limsup R_n / log n <= sum_{i: Delta_i > 0} 2 / Delta_i,
+```
 
-$$ I_t = \arg\max_i\ \bar X_{i,T_i(t-1)} + \sqrt{\frac{2\log t}{T_i(t-1)}}. $$
+matching the information lower-bound constant for unit-variance Gaussian rewards.
 
-The width $\sqrt{2\log t/s}$ is the inverted Hoeffding tail: $\mathbb{P}(\mu_i\ge\bar X_{i,s}+a)\le e^{-2sa^2}$, set to $\delta=t^{-4}$.
+For Bernoulli or exponential-family rewards, closing the Lai-Robbins information constant generally requires KL-shaped confidence sets such as KL-UCB rather than this quadratic Hoeffding radius.
 
-**Theorem (finite-time, $[0,1]$ rewards).** For every suboptimal arm,
-
-$$ \mathbb{E}[T_i(n)] \le \frac{8\log n}{\Delta_i^2} + 1 + \frac{\pi^2}{3}, \qquad R_n \le \sum_{i:\Delta_i>0}\frac{8\log n}{\Delta_i} + \Big(1+\frac{\pi^2}{3}\Big)\sum_{i=1}^K\Delta_i. $$
-
-**Proof.** With $c_{t,s}=\sqrt{2\log t/s}$ and threshold $\ell=\lceil 8\log n/\Delta_i^2\rceil$,
-$$ T_i(n)\le \ell + \sum_{t}\sum_{s=1}^{t-1}\sum_{s_i=\ell}^{t-1}\mathbf 1\{\bar X^\*_s + c_{t,s}\le \bar X_{i,s_i}+c_{t,s_i}\}. $$
-That inequality forces at least one of (7) $\bar X^\*_s\le\mu^\*-c_{t,s}$, (8) $\bar X_{i,s_i}\ge\mu_i+c_{t,s_i}$, (9) $\mu^\*<\mu_i+2c_{t,s_i}$. Hoeffding gives $\mathbb{P}(7),\mathbb{P}(8)\le e^{-4\log t}=t^{-4}$; (9) is impossible once $s_i\ge 8\log n/\Delta_i^2$ (since $\Delta_i-2\sqrt{2\log t/s_i}\ge 0$ for $t\le n$). Hence
-$$ \mathbb{E}[T_i(n)]\le \frac{8\log n}{\Delta_i^2}+1+\sum_t\sum_{s}\sum_{s_i}2t^{-4}\le \frac{8\log n}{\Delta_i^2}+1+2\sum_t t^{-2}= \frac{8\log n}{\Delta_i^2}+1+\frac{\pi^2}{3}. $$
-
-**Matching the constant.** For bounded rewards, Pinsker gives the quadratic scale $D(P_i\Vert P^\*)\ge 2\Delta_i^2$, so UCB1 has the right $\log n/\Delta_i^2$ order but not the sharp KL constant. In the 1-subgaussian/Gaussian normalization, tightening the confidence to $\delta(t)=1/f(t)$ with $f(t)=1+t\log^2 t$ and splitting at $\mu^\*-\varepsilon$ gives
-$$ \mathbb{E}[T_i(n)]\le 1+\frac{5}{\varepsilon^2}+\frac{2(\log f(n)+\sqrt{\pi\log f(n)}+1)}{(\Delta_i-\varepsilon)^2}, \qquad \limsup_{n}\frac{R_n}{\log n}\le \sum_{i:\Delta_i>0}\frac{2}{\Delta_i}, $$
-which for unit-variance Gaussian arms equals the Lai–Robbins floor $\sum_i\Delta_i/D(P_i\Vert P^\*)$ exactly.
-
-## Implementation
+## Code Artifact
 
 ```python
 import numpy as np
 
-class BanditEnv:
-    """K arms; pulling arm i returns an i.i.d. reward with unknown mean mu[i]."""
-    def __init__(self, means, rng):
-        self.means = np.asarray(means, float)
-        self.rng = rng
-        self.mu_star = self.means.max()
+def select_ucb1(stats, t):
+    """Auer-Cesa-Bianchi-Fischer UCB1 selector.
 
-    def pull(self, i):
-        return float(self.rng.random() < self.means[i])
-
-class ArmStats:
-    """Running sufficient statistics per arm: pull count and empirical mean."""
-    def __init__(self, K):
-        self.counts = np.zeros(K, int)
-        self.means  = np.zeros(K, float)
-
-    def update(self, i, reward):
-        self.counts[i] += 1
-        n = self.counts[i]
-        self.means[i] += (reward - self.means[i]) / n
-
-def select_arm(stats, t):
-    """UCB1: empirical mean plus sqrt(2 ln t / T_i)."""
+    `t` is the 1-based current round, and `stats` contains observations
+    from the previous `t-1` rounds.
+    """
     unplayed = np.flatnonzero(stats.counts == 0)
     if unplayed.size:
         return int(unplayed[0])
     index = stats.means + np.sqrt(2.0 * np.log(t) / stats.counts)
     return int(np.argmax(index))
 
-def select_arm_asymptotically_optimal(stats, t):
-    """1-subgaussian/Gaussian variant with f(t)=1+t log^2(t)."""
+def select_asymptotic_ucb(stats, t):
+    """Later 1-subgaussian asymptotic UCB with f(t)=1+t log^2(t)."""
     unplayed = np.flatnonzero(stats.counts == 0)
     if unplayed.size:
         return int(unplayed[0])
-    f_t = 1.0 + t * np.log(t) ** 2
+    log_t = np.log(max(t, 2))
+    f_t = 1.0 + t * log_t * log_t
     index = stats.means + np.sqrt(2.0 * np.log(f_t) / stats.counts)
     return int(np.argmax(index))
-
-def run(env, n, K, selector=select_arm):
-    stats = ArmStats(K)
-    regret = 0.0
-    for t in range(1, n + 1):
-        i = selector(stats, t)
-        reward = env.pull(i)
-        stats.update(i, reward)
-        regret += env.mu_star - env.means[i]
-    return regret
 ```

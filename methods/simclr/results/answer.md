@@ -25,15 +25,15 @@ The total loss averages ℓ over both directions of every positive pair. This is
 
   ∂ℓ/∂u = −(1/τ)(1 − p⁺) v⁺ + (1/τ) Σ_{v⁻} p⁻ v⁻,   p = softmax probability,
 
-so the descent step pushes each negative away with weight equal to its own softmax probability p⁻ ∝ exp(uᵀv⁻/τ): **hard negatives are up-weighted automatically**, with no semi-hard mining (which triplet/logistic losses require, because their gradients don't weight negatives by hardness). τ sets the sharpness of this weighting; ℓ2-normalization bounds similarity to [−1,1] so τ is a clean knob and the model can't game the loss via vector magnitude. More candidates raise the log N ceiling of the standard bound I ≥ log N − L_N, motivating large batches.
+so the descent step pushes each negative away with weight equal to its own softmax probability p⁻ ∝ exp(uᵀv⁻/τ): **hard negatives are up-weighted automatically, relative to the other candidates in the same denominator**, with no semi-hard mining (triplet and pairwise logistic losses do not supply this candidate-set softmax weighting). τ sets the sharpness of this weighting; ℓ2-normalization bounds similarity to [−1,1] so τ is a clean knob and the model can't game the loss via vector magnitude. More candidates raise the log N ceiling of the standard bound I ≥ log N − L_N, motivating large batches.
 
 ## Default configuration
 
 - **Augmentation:** Inception random resized crop to 224×224 (+50% horizontal flip), color distortion (brightness/contrast/saturation/hue + probabilistic grayscale, strength s), Gaussian blur (σ∈[0.1,2.0], kernel ≈10% of image side).
 - **Encoder:** ResNet-50 (h = post-average-pool output); unconstrained.
-- **Projection head:** MLP with hidden Linear→BN→ReLU layers and a final Linear→BN layer with no bias/center and no ReLU, producing a 128-d z.
+- **Projection head:** paper default is a 2-layer MLP, `Linear→BN→ReLU` then final `Linear→BN` with no bias/center and no ReLU, producing a 128-d z. The released code generalizes this with `FLAGS.num_proj_layers`.
 - **Loss:** NT-Xent, τ≈0.1 (ImageNet) / ≈0.5 (CIFAR), ℓ2-normalized embeddings.
-- **Optimization:** LARS, LR = 0.3·BatchSize/256, weight decay 1e-6 (excluding BN/bias), 10-epoch linear warmup + cosine decay, batch size up to 4096–8192, **global BN** (BN statistics aggregated across all devices to remove the local-batch-statistics shortcut).
+- **Optimization:** paper default is LARS, LR = 0.3·BatchSize/256, weight decay 1e-6, 10-epoch linear warmup + cosine decay, batch size 4096 for the main ablations and up to 8192 in the batch-size study. BN and bias are excluded from LARS weight decay in the released code. **Global BN** aggregates BN statistics across all devices to remove the local-batch-statistics shortcut.
 
 ## Algorithm
 
@@ -108,6 +108,43 @@ def add_contrastive_loss(hidden, hidden_norm=True, temperature=1.0,
     loss_a = tf.losses.softmax_cross_entropy(labels, tf.concat([logits_ab, logits_aa], 1), weights=weights)
     loss_b = tf.losses.softmax_cross_entropy(labels, tf.concat([logits_ba, logits_bb], 1), weights=weights)
     return loss_a + loss_b, logits_ab, labels
+```
+
+Augmentation is implemented as crop/resize, optional flip, color jitter with probabilistic grayscale, and batched blur. In the TF1 code, `FLAGS.color_jitter_strength=1.0`, `use_blur=True`, jitter is applied with probability 0.8, grayscale with probability 0.2, and blur with probability 0.5.
+
+```python
+def color_jitter(image, strength, random_order=True, impl='simclrv2'):
+    brightness = 0.8 * strength
+    contrast = 0.8 * strength
+    saturation = 0.8 * strength
+    hue = 0.2 * strength
+    if random_order:
+        return color_jitter_rand(image, brightness, contrast, saturation, hue, impl=impl)
+    return color_jitter_nonrand(image, brightness, contrast, saturation, hue, impl=impl)
+
+def random_color_jitter(image, p=1.0, impl='simclrv2'):
+    def _transform(image):
+        jitter = functools.partial(
+            color_jitter, strength=FLAGS.color_jitter_strength, impl=impl)
+        image = random_apply(jitter, p=0.8, x=image)
+        return random_apply(to_grayscale, p=0.2, x=image)
+    return random_apply(_transform, p=p, x=image)
+
+def random_blur(image, height, width, p=1.0):
+    del width
+    def _transform(image):
+        sigma = tf.random.uniform([], 0.1, 2.0, dtype=tf.float32)
+        return gaussian_blur(image, kernel_size=height // 10, sigma=sigma, padding='SAME')
+    return random_apply(_transform, p=p, x=image)
+
+def preprocess_for_train(image, height, width, color_distort=True, crop=True, flip=True, impl='simclrv2'):
+    if crop:
+        image = random_crop_with_resize(image, height, width)
+    if flip:
+        image = tf.image.random_flip_left_right(image)
+    if color_distort:
+        image = random_color_jitter(image, impl=impl)
+    return tf.clip_by_value(tf.reshape(image, [height, width, 3]), 0., 1.)
 ```
 
 Projection head (keep h = the layer before the head for downstream); global BN; LARS. `linear_layer` is the local helper that applies `tf.layers.dense` followed by optional batch norm.

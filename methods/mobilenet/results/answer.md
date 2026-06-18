@@ -1,101 +1,106 @@
-# MobileNet, distilled
+# MobileNet v1
 
-## Problem
+## Core formula
 
-Run accurate image recognition in real time on mobile/embedded hardware under tight compute, memory, and power budgets — and give a developer a simple way to trade accuracy for latency/size to hit any target budget. The obstacle is that a standard convolution's cost is multiplicative in four factors (kernel size, input channels, output channels, spatial resolution), so naive shrinking is costly.
+For an input `D_F x D_F x M`, output depth `N`, and `D_K x D_K` kernel, a standard convolution costs
 
-## Key idea
-
-Replace each standard convolution with a **depthwise separable convolution**, which factors the convolution's two entangled jobs — spatial filtering and channel mixing — into two cheaper steps:
-
-1. **Depthwise convolution** — one `D_K × D_K` spatial filter per input channel, no cross-channel mixing. Cost `D_K · D_K · M · D_F · D_F`.
-2. **Pointwise convolution** — a `1 × 1` convolution mixing the `M` channels into `N`. Cost `M · N · D_F · D_F`.
-
-Each followed by BatchNorm + ReLU. Where a standard conv costs `D_K · D_K · M · N · D_F · D_F` (the channel-mixing factor `N` and the kernel factor `D_K²` *multiply*), the separable version costs the *sum* `D_K² · M · D_F² + M · N · D_F²`. The reduction ratio is
-
-```
-(D_K²·M·D_F² + M·N·D_F²) / (D_K²·M·N·D_F²) = 1/N + 1/D_K².
+```text
+D_K^2 M N D_F^2.
 ```
 
-For `3 × 3` kernels (`D_K² = 9`) and the usual `N ≥ 64`, this is ≈ `1/9`: **8–9× less computation** at a small accuracy cost. Almost all remaining compute sits in the `1 × 1` convolutions, which are dense matrix multiplies (GEMM, no `im2col`), so the savings translate to real latency.
+A depthwise separable block replaces it with:
+
+```text
+depthwise: D_K^2 M D_F^2
+pointwise: M N D_F^2
+total:     D_K^2 M D_F^2 + M N D_F^2
+ratio:     1/N + 1/D_K^2
+```
+
+With `3 x 3` kernels and typical `N >= 64`, this is about `8x` to `9x` less computation. Width and resolution multipliers give the combined cost
+
+```text
+D_K^2 alpha M (rho D_F)^2 + alpha M alpha N (rho D_F)^2.
+```
+
+The depthwise term is linear in `alpha`; the dominant pointwise term is quadratic. Resolution `rho` changes compute by `rho^2` and does not change parameter count.
 
 ## Architecture
 
-- First layer: a **full** `3 × 3` conv, `3 → 32` channels, stride 2 (the input has only 3 channels — nothing to separate yet).
-- Body: 13 depthwise-separable blocks. Channel schedule `32 → 64 → 128 → 128 → 256 → 256 → 512 → (×6 at 512) → 1024 → 1024`. Downsampling is folded into stride-2 depthwise convs: `224 → 112 → 56 → 28 → 14 → 7`.
-- Every conv (full, depthwise, pointwise) is followed by BatchNorm + ReLU, except the final fully-connected layer.
-- Global `7 × 7` average pool → FC `1024 → 1000` → softmax. 28 layers counting depthwise and pointwise separately.
+The network uses one full `3 x 3` stride-2 stem, then 13 depthwise-separable blocks:
 
-Two global hyper-parameters dial the budget:
+```text
+(64,1), (128,2), (128,1), (256,2), (256,1),
+(512,2), (512,1), (512,1), (512,1), (512,1), (512,1),
+(1024,2), (1024,1)
+```
 
-- **Width multiplier `α ∈ (0, 1]`** (typical `1, 0.75, 0.5, 0.25`): scale every channel count `M → αM`, `N → αN`. The dominant pointwise term scales as `α²`, so compute and parameters drop ≈ `α²`. Defines a new, thinner model trained from scratch.
-- **Resolution multiplier `ρ ∈ (0, 1]`**, set implicitly by input resolution (`224, 192, 160, 128`): scales every spatial map, so compute drops ≈ `ρ²`. Parameters are unaffected (they don't depend on feature-map size).
+Each tuple is `(output_channels, stride)`, and the stride is applied in the depthwise convolution. The final `1024` block is stride 1, matching the canonical implementation and the retained `7 x 7` feature map. The head is average pooling to `1 x 1`, dropout, and a `1 x 1` logits layer; softmax is a prediction function over logits.
 
-Combined per-layer cost: `D_K² · αM · (ρD_F)² + αM · αN · (ρD_F)²`.
-
-Training: RMSProp with asynchronous gradient descent; *less* augmentation/regularization than large models (small models overfit less) — no auxiliary heads, no label smoothing, reduced crop distortion, and little/no weight decay on the depthwise filters (they hold very few parameters).
-
-## Code
+## Faithful PyTorch transcription
 
 ```python
 import torch
 import torch.nn as nn
 
 
-def conv_bn_relu(in_ch, out_ch, kernel, stride, padding, groups=1):
+def conv_bn_relu6(in_ch, out_ch, kernel, stride, padding, groups=1):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel, stride, padding, groups=groups, bias=False),
         nn.BatchNorm2d(out_ch),
-        nn.ReLU(inplace=True),
+        nn.ReLU6(inplace=True),
     )
 
 
 class DepthwiseSeparableBlock(nn.Module):
     def __init__(self, in_ch, out_ch, stride=1):
         super().__init__()
-        # Depthwise: one 3x3 filter per channel (groups == in_ch). Stride downsamples here.
-        self.depthwise = conv_bn_relu(in_ch, in_ch, 3, stride, 1, groups=in_ch)
-        # Pointwise: 1x1 channel mixing; dense GEMM, carries ~all the compute.
-        self.pointwise = conv_bn_relu(in_ch, out_ch, 1, 1, 0)
+        self.depthwise = conv_bn_relu6(
+            in_ch, in_ch, kernel=3, stride=stride, padding=1, groups=in_ch
+        )
+        self.pointwise = conv_bn_relu6(
+            in_ch, out_ch, kernel=1, stride=1, padding=0
+        )
 
     def forward(self, x):
         return self.pointwise(self.depthwise(x))
 
 
-class MobileNet(nn.Module):
-    # (output_channels, stride) per separable block.
-    cfg = [(64, 1), (128, 2), (128, 1), (256, 2), (256, 1),
-           (512, 2), (512, 1), (512, 1), (512, 1), (512, 1), (512, 1),
-           (1024, 2), (1024, 1)]
+class MobileNetV1(nn.Module):
+    cfg = [
+        (64, 1), (128, 2), (128, 1), (256, 2), (256, 1),
+        (512, 2), (512, 1), (512, 1), (512, 1), (512, 1), (512, 1),
+        (1024, 2), (1024, 1),
+    ]
 
-    def __init__(self, num_classes=1000, width_mult=1.0):
+    def __init__(self, num_classes=1000, width_mult=1.0, min_depth=8,
+                 dropout_keep_prob=0.999):
         super().__init__()
 
-        def c(ch):
-            return max(8, int(ch * width_mult))   # width multiplier alpha
+        def depth(ch):
+            return max(int(ch * width_mult), min_depth)
 
-        in_ch = c(32)
-        self.stem = conv_bn_relu(3, in_ch, 3, stride=2, padding=1)  # full conv stem
+        in_ch = depth(32)
+        self.stem = conv_bn_relu6(3, in_ch, kernel=3, stride=2, padding=1)
 
         blocks = []
         for out_ch, stride in self.cfg:
-            out_ch = c(out_ch)
+            out_ch = depth(out_ch)
             blocks.append(DepthwiseSeparableBlock(in_ch, out_ch, stride))
             in_ch = out_ch
-        self.blocks = nn.Sequential(*blocks)
+        self.features = nn.Sequential(*blocks)
 
         self.pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Linear(in_ch, num_classes)
+        self.dropout = nn.Dropout(p=1.0 - dropout_keep_prob)
+        self.logits = nn.Conv2d(in_ch, num_classes, kernel_size=1)
 
     def forward(self, x):
         x = self.stem(x)
-        x = self.blocks(x)
-        x = self.pool(x).flatten(1)
-        return self.fc(x)
-
-
-# Resolution multiplier rho is just the input image size: 224 / 192 / 160 / 128.
-# e.g. MobileNet(width_mult=0.5) on 160x160 inputs == "0.5 MobileNet-160".
+        x = self.features(x)
+        x = self.pool(x)
+        x = self.dropout(x)
+        x = self.logits(x)
+        return torch.flatten(x, 1)
 ```
 
-The reference TensorFlow-Slim implementation expresses the depthwise step as `separable_conv2d(..., filters=None, depth_multiplier=1)` and the pointwise step as `conv2d(..., [1, 1])`, with the width multiplier applied as `depth = max(int(d · α), 8)` per layer; the PyTorch form above uses a grouped convolution (`groups = in_channels`) for the depthwise step, which is the same operation.
+The official TF-Slim code represents the same block as `slim.separable_conv2d(net, None, [3, 3], depth_multiplier=1, stride=s)` for the depthwise step, followed by `slim.conv2d(net, depth, [1, 1], stride=1)` for pointwise mixing. Its width multiplier is named `depth_multiplier` in code and applies `depth = max(int(d * depth_multiplier), min_depth)`. The arg scope uses batch normalization, `tf.nn.relu6`, and no depthwise weight regularizer by default.

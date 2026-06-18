@@ -6,10 +6,11 @@ Depth makes networks expressive but hard to train: vanishing gradients, diminish
 
 ## Key idea
 
-In a ResNet, a block is H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})). Gate the transformation with a per-mini-batch Bernoulli b_ℓ ∈ {0,1}, Pr(b_ℓ=1) = p_ℓ (survival probability):
+In a ResNet, a block is H_ℓ = ReLU(f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})), where s_ℓ is the shortcut: identity for same-shape blocks, average-pool plus zero-pad for CIFAR/SVHN transition blocks, or a projection shortcut in ImageNet-style transitions. Gate only the transformation with a per-mini-batch Bernoulli b_ℓ ∈ {0,1}, Pr(b_ℓ=1) = p_ℓ (survival probability):
 
-**Training:** H_ℓ = ReLU(b_ℓ · f_ℓ(H_{ℓ-1}) + id(H_{ℓ-1})).
-- b_ℓ=1 → original block; b_ℓ=0 → H_ℓ = ReLU(H_{ℓ-1}) = H_{ℓ-1}, an exact identity (the block input is non-negative, being the output of a prior ReLU / the initial Conv-BN-ReLU stem, so ReLU acts as identity). A dropped block needs no forward/backward computation.
+**Training:** H_ℓ = ReLU(b_ℓ · f_ℓ(H_{ℓ-1}) + s_ℓ(H_{ℓ-1})).
+- b_ℓ=1 → original block.
+- b_ℓ=0 → residual branch removed. For same-shape identity shortcuts, H_ℓ = H_{ℓ-1} exactly because the block input is non-negative, so ReLU acts as identity. For transition blocks, the output is the shortcut alone (downsample/pad or projection), not a literal same-tensor identity. In all cases the expensive f_ℓ branch has no forward/backward computation and no parameter update.
 
 **Survival schedule (linear decay):** anchor p_0=1, decay to p_L at the last block:
 p_ℓ = 1 − (ℓ/L)(1 − p_L).
@@ -20,7 +21,7 @@ E(L̃) = Σ_{ℓ=1}^L [1 − ℓ/(2L)] = L − (L+1)/4 = (3L − 1)/4 ≈ 3L/4.
 For a 110-layer CIFAR ResNet (L=54 blocks), E(L̃) ≈ 40 — train ~40 blocks, test with 54. Roughly 25% of training time is saved (more with smaller p_L).
 
 **Test:** all blocks active, with each transformation recalibrated by its survival probability (Dropout-style scaling):
-H_ℓ^Test = ReLU(p_ℓ · f_ℓ(H_{ℓ-1}^Test) + H_{ℓ-1}^Test).
+H_ℓ^Test = ReLU(p_ℓ · f_ℓ(H_{ℓ-1}^Test) + s_ℓ(H_{ℓ-1}^Test)).
 
 **Why test error also drops:** (1) shorter expected training depth ⇒ shorter gradient chains ⇒ stronger gradients in early layers; (2) the 2^L on/off block subsets form an implicit ensemble of depth-varying networks with shared weights, combined at test by the survival-weighted forward rule. It regularizes even with Batch Normalization (unlike Dropout, which gives little benefit on deep BN-ResNets) because it shortens the network rather than thinning it.
 
@@ -32,10 +33,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class ResidualDropBlock(nn.Module):
-    """H = ReLU( b * f(x) + skip(x) ), b ~ Bernoulli(survival_prob) per mini-batch."""
-    def __init__(self, in_ch, out_ch, stride=1, survival_prob=1.0):
+    """H = ReLU(skip(x) + gate * f(x)); one gate is sampled per mini-batch."""
+    def __init__(self, in_ch, out_ch, stride=1, death_rate=0.0):
         super().__init__()
-        self.survival_prob = survival_prob
+        self.death_rate = death_rate
         self.stride, self.in_ch, self.out_ch = stride, in_ch, out_ch
         self.f = nn.Sequential(
             nn.Conv2d(in_ch, out_ch, 3, stride=stride, padding=1, bias=False),
@@ -49,16 +50,17 @@ class ResidualDropBlock(nn.Module):
         if self.stride > 1:
             x = F.avg_pool2d(x, self.stride, self.stride)
         if self.out_ch > self.in_ch:
-            x = F.pad(x, (0, 0, 0, 0, 0, self.out_ch - self.in_ch))  # zero-pad channels (option A)
+            zeros = x.new_zeros(x.size(0), self.out_ch - self.in_ch, x.size(2), x.size(3))
+            x = torch.cat([x, zeros], dim=1)           # zero-pad channels (option A)
         return x
 
     def forward(self, x):
         skip = self.skip(x)
         if self.training:
-            if torch.rand(1).item() < self.survival_prob:
+            if torch.rand((), device=x.device).item() >= self.death_rate:
                 return self.relu(self.f(x) + skip)
-            return self.relu(skip)                      # dropped block: identity, no f compute
-        return self.relu(self.survival_prob * self.f(x) + skip)
+            return self.relu(skip)                      # dropped block: shortcut only, no f compute
+        return self.relu((1.0 - self.death_rate) * self.f(x) + skip)
 
 class StochasticDepthResNet(nn.Module):
     def __init__(self, block_chs, num_classes=10, p_L=0.5):
@@ -70,8 +72,8 @@ class StochasticDepthResNet(nn.Module):
         L = len(block_chs)
         blocks = []
         for ell, (in_ch, out_ch, stride) in enumerate(block_chs, start=1):
-            p_ell = 1.0 - (ell / L) * (1.0 - p_L)       # linear decay
-            blocks.append(ResidualDropBlock(in_ch, out_ch, stride, survival_prob=p_ell))
+            death_rate = (ell / L) * (1.0 - p_L)        # deathRate = 1 - p_ell
+            blocks.append(ResidualDropBlock(in_ch, out_ch, stride, death_rate=death_rate))
         self.blocks = nn.Sequential(*blocks)
         self.pool = nn.AdaptiveAvgPool2d(1)
         self.fc = nn.Linear(block_chs[-1][1], num_classes)
@@ -83,4 +85,4 @@ class StochasticDepthResNet(nn.Module):
         return self.fc(x)
 ```
 
-The basic two-conv block is used on CIFAR/SVHN; the bottleneck block on ImageNet. A 110-layer CIFAR net has L=54 blocks; the method also trains nets beyond 1000 layers on CIFAR. (The original implementation gates per block with `gate = rand < deathRate`, deathRate = 1 − p_ℓ, and scales by 1 − deathRate = p_ℓ at test.)
+The basic two-conv block is used on CIFAR/SVHN; the bottleneck block on ImageNet. A 110-layer CIFAR net has L=54 blocks; the method also trains nets beyond 1000 layers on CIFAR. The original Torch implementation stores `deathRate = 1 - p_ℓ`, sets linear decay as `deathRate_ell = (ell/L) * opt.deathRate`, closes a block when `rand < deathRate`, skips residual-branch gradient computation when closed, and scales by `1 - deathRate = p_ℓ` at test.

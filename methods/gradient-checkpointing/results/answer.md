@@ -2,63 +2,48 @@
 
 ## Problem
 
-Backpropagation needs each layer's forward activations to compute its gradients, so the standard training loop stores all `n` layers' activations until the backward pass consumes them — `O(n)` activation memory, linear in depth (or in RNN unrolling length). In conv/recurrent nets these feature maps dominate memory and cap how deep/long a model can be trained. In-place operation and memory sharing (liveness analysis) only reduce this by a constant factor for training, because the activations' lifetimes all overlap the backward pass. Goal: reduce training activation memory below `O(n)` with exact gradients and little extra compute.
+Backpropagation needs forward activations later in the reverse pass. A standard `n`-layer training run therefore stores `O(n)` feature maps, and ordinary liveness optimizations only reduce constants because those activation lifetimes overlap the backward pass. The target is exact gradients with sublinear activation memory.
 
-## Key idea
+## Method
 
-Trade computation for memory: **drop** most forward activations and **recompute** them during backprop from a small set of stored checkpoints, instead of storing them all. Cutting an `n`-layer net into `k` segments and keeping only segment-boundary activations gives memory `O(n/k) + O(k)`; choosing `k = √n` minimizes this to `O(√n)`, at the cost of one extra forward pass per minibatch.
+Store a small set of checkpoint activations and drop the rest. During backward, reload the nearest stored checkpoint, rerun the forward computation for that segment, use the regenerated activations to compute gradients, and then free them.
 
-## Final method
+For `k` equal segments of an `n`-layer chain, peak feature-map memory has two terms:
 
-Split the network into segments. Store only each segment's boundary (input) activation; drop everything inside a segment after the forward pass uses it. In the backward pass, for each segment in reverse: reload its stored input, re-run the forward through that segment to regenerate its internal activations, backprop through the segment, free the regenerated activations.
+`cost(k) = max_i cost(segment_i) + O(k) = O(n/k) + O(k)`.
 
-**Memory–compute trade.** With `k` equal segments of `n/k` layers:
-`cost = max_i cost-of-segment(i) + O(k) = O(n/k) + O(k)`.
-Minimizing `n/k + k` gives `k = √n` and `cost = 2√n = O(√n)`. Each layer's forward runs at most twice (once originally, once on recompute), so the extra cost is exactly one forward pass; since backward ≈ 2× forward, the measured slowdown is ~30%.
+The derivative of `n/k + k` is `-n/k^2 + 1`; the continuous minimizer is `k = sqrt(n)`, giving `2sqrt(n) = O(sqrt(n))` memory. Each forward operation is recomputed at most once, so the one-level scheme adds one extra forward pass. Recursing the same idea gives `g(n)=k+g(n/(k+1))`, hence `g(n)=k log_{k+1} n`; `k=1` gives `O(log n)` memory with logarithmic recomputation overhead.
 
-**Recursion to `O(log n)`.** Apply the scheme recursively inside each segment: storing `k` intermediates and recursing on sub-paths of length `n/(k+1)` gives `g(n) = k + g(n/(k+1))`, solving to `g(n) = k·log_{k+1}(n)`. With `k=1`, `g(n) = log_2 n` memory, at `O(n log n)` forward cost.
-
-**General graphs.** A per-node mirror count `m(v)` marks each node as kept (`m=0`, a boundary) or dropped/recomputed (`m≥1`); a dropped node is duplicated ("mirrored") into the backward region. A greedy budget planner sweeps in topological order accumulating output sizes; when the running total exceeds budget `B` at a candidate split, it marks a boundary and resets — searching `B` (around `√(x·y)`) balances the two memory terms for non-uniform layer costs.
-
-**Cheap special case.** Drop low-cost ops, keep expensive ones — e.g. in `Conv-BatchNorm-Activation`, keep the conv output, recompute BN/activation/pooling.
-
-**Correctness.** Recompute must reproduce exact activations, so the RNG state of the original forward is restored before recomputation (so dropout/noise masks match); gradients are then identical to full-storage backprop — no approximation. Composes with in-place and sharing optimizations.
+For general graphs, use a mirror plan: `m(v)=0` keeps node `v`'s output as a boundary, `m(v)=1` drops it and mirrors the node into the backward region, and larger counts encode recursive recomputation. A budgeted greedy planner chooses boundaries by accumulating output sizes until a candidate split crosses budget `B`, then static allocation measures the exact peak for each candidate plan. Cheap ops can be dropped preferentially while expensive ops such as convolutions or matrix multiplies are kept.
 
 ## Code
 
 ```python
+from math import ceil, sqrt
+
 import torch
+import torch.nn as nn
 import torch.utils.checkpoint as cp
 
-def run_segment(layers, start, end):
-    def forward(x):
-        for i in range(start, end + 1):
-            x = layers[i](x)
-        return x
-    return forward
 
-def checkpoint_sequential(layers, segments, x):
-    n = len(layers)
-    seg = n // segments
-    end = -1
-    for start in range(0, seg * (segments - 1), seg):
-        end = start + seg - 1
-        # forward runs without storing this segment's activations;
-        # backward recomputes them from the saved segment input.
-        x = cp.checkpoint(run_segment(layers, start, end), x, use_reentrant=False)
-    return run_segment(layers, end + 1, n - 1)(x)   # last segment: no checkpoint
-
-class CheckpointedDeepNet(torch.nn.Module):
+class CheckpointedDeepNet(nn.Module):
     def __init__(self, layers):
         super().__init__()
-        self.layers = torch.nn.ModuleList(layers)
-        self.segments = max(1, int(len(layers) ** 0.5))   # k = sqrt(n) -> O(sqrt(n)) memory
+        self.layers = nn.ModuleList(layers)
+        n = len(self.layers)
+        self.segments = 0 if n == 0 else max(1, min(n, ceil(sqrt(n))))
 
     def forward(self, x):
-        return checkpoint_sequential(list(self.layers), self.segments, x)
+        if len(self.layers) == 0:
+            return x
 
-# A single checkpointed block (the primitive checkpoint_sequential is built from):
-#   y = cp.checkpoint(block_fn, x, use_reentrant=False)
-# forward: run block_fn(x) without saving internals, save only x.
-# backward: re-run block_fn(x) to rebuild the local graph, then backprop.
+        return cp.checkpoint_sequential(
+            list(self.layers),
+            self.segments,
+            x,
+            use_reentrant=False,
+            preserve_rng_state=True,
+        )
 ```
+
+`checkpoint_sequential` is the faithful modern primitive for the sequential case: it divides the layer list into chunks, checkpoints all chunks except the last, saves each checkpointed chunk's input, and recomputes that chunk during backward. `preserve_rng_state=True` keeps stochastic layers aligned with the original forward; `use_reentrant=False` selects the current recommended PyTorch implementation.

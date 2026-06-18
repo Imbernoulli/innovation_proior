@@ -88,7 +88,7 @@ So I have two balancing losses with the same `CV²` shape: `L_importance` equali
 
 One more thing about the noise that I almost missed. At the very start of training, before either balancing loss has had time to act, a random initial imbalance could already overload one expert and blow past its memory budget — an out-of-memory crash before the soft constraints even engage. The fix is in the initialization: set both `W_g` and `W_noise` to zero. Then at step zero the clean logits are all zero and the only thing distinguishing experts is the noise — pure symmetric randomness — so every expert gets roughly equal load from the outset, and the balancing losses take over from a safe starting point.
 
-There's a subtlety I should pin down for the implementation of `P(x, i)`. The threshold an expert must clear depends on whether it's *currently* in the top-k or not. If expert `i` is not currently in the top-k, to get in it must beat the `k`-th best of the others — and the `k`-th best of the others is just the current `k`-th best overall. If expert `i` *is* currently in the top-k, then to stay in it must beat the `(k+1)`-th best overall (because excluding itself, the `k`-th best of the rest is the element just below the current top-k). So I compute the top `k+1` noisy values, and for each example I take two thresholds: the value at position `k` (the threshold "if I were out") and the value at position `k+1`, i.e. one past it (the threshold "if I'm in"), and I pick which one applies based on whether the expert's own noisy value currently sits in the top-k. Then `P` is `Φ((clean − threshold)/stddev)` with the appropriate threshold. That's why the code grabs `k+1` values rather than `k`.
+There's a subtlety I should pin down for the implementation of `P(x, i)`. The threshold an expert must clear depends on whether it's *currently* in the top-k or not. If expert `i` is not currently in the top-k, to get in it must beat the `k`-th best value overall, because that is also the `k`-th best value among the other experts. If expert `i` *is* currently in the top-k, then excluding it drops the bar to the `(k+1)`-th best value overall, because the `k`-th best of the rest is the element just below the current top-k. So I compute the top `k+1` noisy values. In 0-based code, `top[k - 1]` is the "if I were out" threshold and `top[k]` is the "if I were in" threshold. Then `P` is `Φ((clean − threshold)/stddev)` with the appropriate threshold. That's why the code grabs `k+1` values rather than `k`.
 
 Now back to the performance wall I deferred — the shrinking batch. If the gate sends `k` of `n` experts per example, then over a batch of `b` examples each expert sees only about `kb/n` examples, which for large `n` is `≪ b`. The experts are starved of the big batches that make the hardware efficient. Making `n` bigger makes this worse. So I need each expert's batch to be large in absolute terms even though it's a small fraction.
 
@@ -125,25 +125,24 @@ class SparseDispatcher:
     def __init__(self, num_experts, gates):
         self._gates = gates
         self._num_experts = num_experts
-        # list the (example, expert) pairs with nonzero gate, sorted by expert
-        sorted_experts, index_sorted_experts = torch.nonzero(gates).sort(0)
-        _, self._expert_index = sorted_experts.split(1, dim=1)
-        self._batch_index = torch.nonzero(gates)[index_sorted_experts[:, 1], 0]
+        # Tensor2Tensor orders pairs from transpose(gates): expert-major,
+        # then batch-major within each expert.
+        where = torch.nonzero(gates.t() > 0, as_tuple=False)
+        self._expert_index = where[:, 0]
+        self._batch_index = where[:, 1]
         self._part_sizes = (gates > 0).sum(0).tolist()      # examples per expert
-        gates_exp = gates[self._batch_index.flatten()]
-        self._nonzero_gates = torch.gather(gates_exp, 1, self._expert_index)
+        self._nonzero_gates = gates[self._batch_index, self._expert_index].unsqueeze(1)
 
     def dispatch(self, inp):
         # gather each expert's slice; split into one tensor per expert
-        inp_exp = inp[self._batch_index].squeeze(1)
+        inp_exp = inp[self._batch_index]
         return torch.split(inp_exp, self._part_sizes, dim=0)
 
     def combine(self, expert_out, multiply_by_gates=True):
         stitched = torch.cat(expert_out, 0)
         if multiply_by_gates:                                # weight by G(x)_i
             stitched = stitched.mul(self._nonzero_gates)
-        zeros = torch.zeros(self._gates.size(0), expert_out[-1].size(1),
-                            requires_grad=True, device=stitched.device)
+        zeros = stitched.new_zeros(self._gates.size(0), stitched.size(1))
         # y[b] = sum over its selected experts of G(x)_i * E_i(x)
         return zeros.index_add(0, self._batch_index, stitched.float())
 
@@ -187,9 +186,10 @@ class MoE(nn.Module):
     def cv_squared(self, x):
         # squared coefficient of variation = var / mean^2; zero iff all equal
         eps = 1e-10
-        if x.shape[0] == 1:
+        if x.numel() <= 1:
             return torch.tensor([0], device=x.device, dtype=x.dtype)
-        return x.float().var() / (x.float().mean() ** 2 + eps)
+        x = x.float()
+        return x.var(unbiased=False) / (x.mean() ** 2 + eps)
 
     def _gates_to_load(self, gates):
         return (gates > 0).sum(0)                            # true discrete count
@@ -221,14 +221,12 @@ class MoE(nn.Module):
             logits = noisy_logits                            # H(x): clean + N(0,1)*softplus
         else:
             logits = clean_logits
-        logits = self.softmax(logits)
         top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim=1)
         top_k_logits = top_logits[:, :self.k]
         top_k_indices = top_indices[:, :self.k]
-        top_k_gates = top_k_logits / (top_k_logits.sum(1, keepdim=True) + 1e-6)
+        top_k_gates = self.softmax(top_k_logits)
         # KeepTopK: zero everywhere except the k selected experts
-        gates = torch.zeros_like(logits, requires_grad=True).scatter(
-            1, top_k_indices, top_k_gates)
+        gates = torch.zeros_like(clean_logits).scatter(1, top_k_indices, top_k_gates)
         if self.noisy_gating and self.k < self.num_experts and train:
             load = self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev,
                                        top_logits).sum(0)    # smooth Load(X)_i

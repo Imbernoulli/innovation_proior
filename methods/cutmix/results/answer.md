@@ -57,15 +57,16 @@ transform_train = transforms.Compose([
 ])
 trainset = datasets.CIFAR100(root='~/data', train=True, download=False,
                              transform=transform_train)
-trainloader = torch.utils.data.DataLoader(trainset, batch_size=128,
+trainloader = torch.utils.data.DataLoader(trainset, batch_size=64,
                                            shuffle=True, num_workers=8)
 
 net = build_network()                       # e.g. a ResNet / PyramidNet
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.SGD(net.parameters(), lr=0.1, momentum=0.9, weight_decay=1e-4)
+optimizer = optim.SGD(net.parameters(), lr=0.25, momentum=0.9, weight_decay=1e-4,
+                      nesterov=True)
 net = net.cuda()
 beta = 1.0                                  # alpha; 1.0 -> lambda ~ Uniform(0,1)
-cutmix_prob = 1.0                           # fraction of iterations CutMix is applied
+cutmix_prob = 0.5                           # official CIFAR example; ImageNet uses 1.0
 
 
 def rand_bbox(size, lam):
@@ -104,4 +105,4 @@ def train(epoch):
         optimizer.step()
 ```
 
-Typical settings: ImageNet with ResNet-50/101, α = 1 and a cutmix probability of 1.0 (applied every iteration); CIFAR-100 with PyramidNet-200 or ResNet, α = 1 and a cutmix probability of 0.5, SGD momentum 0.9 with weight decay and step-decayed learning rate, standard crop/flip/normalize underneath. Adds negligible compute and leaves the architecture, optimizer, and loss otherwise unchanged.
+Typical settings: CIFAR-100 with PyramidNet-200 or ResNet, α = 1 and cutmix probability 0.5; ImageNet with ResNet-50/101, α = 1 and cutmix probability 1.0 (applied every iteration). Both use SGD momentum 0.9 with weight decay and step-decayed learning rate, standard crop/flip/normalize underneath. Adds negligible compute and leaves the architecture, optimizer, and loss otherwise unchanged.

@@ -24,18 +24,18 @@ F(x) = Σ_{i=1}^{C} T_i(x),     y = x + Σ_{i=1}^{C} T_i(x)
 2. **(b) Concatenation:** `C` paths of `1×1→3×3`, concatenate the `d`-dim outputs into `C·d`, one shared `1×1 (C·d→256)`. Proof of (a)≡(b): `A_1B_1 + A_2B_2 = [A_1,A_2]·[B_1;B_2]` (horizontal concat of last-layer weights, vertical concat of second-last responses).
 3. **(c) Grouped convolution:** fuse the `C` input-1×1s into one `1×1 (256→C·d)`; the `3×3` becomes a grouped conv with `C` groups (each group convolves its own `d` channels); then `1×1 (C·d→256)`. Looks like a bottleneck but the wide `3×3` is sparsely connected.
 
-All three are strictly equivalent (with BN/ReLU placed consistently); reformulations are nontrivial only for path depth ≥ 3. Implement form (c) — most succinct and fastest. Aggregating jointly-trained transformations is *not* ensembling (ensemble members train independently).
+For this homogeneous bottleneck template, all three are strictly equivalent when BN/ReLU are placed consistently; the reformulations are not guaranteed for arbitrary heterogeneous `T_i`, and are nontrivial only for path depth ≥ 3. Implement form (c) — most succinct and fastest. Aggregating jointly-trained transformations is *not* ensembling (ensemble members train independently).
 
 ## Capacity / matched complexity
 
-A path costs `256·d + 9·d² + 256·d`; `C` of them give `C·(256·d + 9·d² + 256·d)` parameters (FLOPs proportional). The ResNet bottleneck baseline is `256·64 + 9·64² + 64·256 ≈ 70k`. Trade per-path width `d` (isolated from block I/O, fixed at 256-d) against `C` to hold ~70k:
+A path costs `256·d + 9·d² + 256·d`; `C` of them give `C·(256·d + 9·d² + 256·d)` parameters (FLOPs proportional). The ResNet bottleneck baseline is `256·64 + 9·64² + 64·256 ≈ 70k`. Trade per-path width `d` (isolated from the fixed 256-channel block I/O) against `C` to hold ~70k:
 
 | cardinality C | 1 | 2 | 4 | 8 | 32 |
 |---|---|---|---|---|---|
 | bottleneck width d | 64 | 40 | 24 | 14 | 4 |
 | grouped-conv width C·d | 64 | 80 | 96 | 112 | 128 |
 
-Default: **C=32, d=4** (`32·(1024+144+1024) ≈ 70k`). Keep `d ≥ 4`: accuracy saturates as width shrinks below that. The decisive test is *training* error — cardinality lowers it, so the gain is stronger representation, not regularization.
+Default: **C=32, d=4** (`32·(1024+144+1024) ≈ 70k`). Adopt no bottleneck width smaller than `4d` because the preserved-complexity sweep saturates as `d` gets tiny. The decisive test is *training* error — cardinality lowers it, so the gain is stronger representation, not regularization.
 
 ## The architecture (ResNeXt-50, 32×4d)
 
@@ -47,9 +47,12 @@ VGG/ResNet template rules (same map → same width; halve map → double width).
 
 ## Working code
 
+The canonical release is Torch/Lua with `-bottleneckType resnext_C`; this is a faithful PyTorch transliteration of its form-C block: same `D = floor(planes·baseWidth/64)`, same grouped 3×3 stride placement, same type-B projections, and the same conv/BN/linear-bias initialization.
+
 ```python
 import torch
 import torch.nn as nn
+import math
 
 
 def conv1x1(in_planes, out_planes, stride=1):
@@ -104,9 +107,12 @@ class ResNeXt(nn.Module):
         self.fc = nn.Linear(512 * ResNeXtBottleneck.expansion, num_classes)
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                nn.init.normal_(m.weight, 0, math.sqrt(2.0 / n))
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1); nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, planes, blocks, stride=1):
         block = ResNeXtBottleneck

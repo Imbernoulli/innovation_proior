@@ -97,23 +97,23 @@ class SparseDispatcher:
     def __init__(self, num_experts, gates):
         self._gates = gates
         self._num_experts = num_experts
-        sorted_experts, index_sorted_experts = torch.nonzero(gates).sort(0)
-        _, self._expert_index = sorted_experts.split(1, dim=1)
-        self._batch_index = torch.nonzero(gates)[index_sorted_experts[:, 1], 0]
+        # Tensor2Tensor orders pairs from transpose(gates): expert-major,
+        # then batch-major within each expert.
+        where = torch.nonzero(gates.t() > 0, as_tuple=False)
+        self._expert_index = where[:, 0]
+        self._batch_index = where[:, 1]
         self._part_sizes = (gates > 0).sum(0).tolist()
-        gates_exp = gates[self._batch_index.flatten()]
-        self._nonzero_gates = torch.gather(gates_exp, 1, self._expert_index)
+        self._nonzero_gates = gates[self._batch_index, self._expert_index].unsqueeze(1)
 
     def dispatch(self, inp):
-        inp_exp = inp[self._batch_index].squeeze(1)
+        inp_exp = inp[self._batch_index]
         return torch.split(inp_exp, self._part_sizes, dim=0)
 
     def combine(self, expert_out, multiply_by_gates=True):
         stitched = torch.cat(expert_out, 0)
         if multiply_by_gates:
             stitched = stitched.mul(self._nonzero_gates)
-        zeros = torch.zeros(self._gates.size(0), expert_out[-1].size(1),
-                            requires_grad=True, device=stitched.device)
+        zeros = stitched.new_zeros(self._gates.size(0), stitched.size(1))
         return zeros.index_add(0, self._batch_index, stitched.float())
 
     def expert_to_gates(self):
@@ -150,9 +150,10 @@ class MoE(nn.Module):
 
     def cv_squared(self, x):
         eps = 1e-10
-        if x.shape[0] == 1:
+        if x.numel() <= 1:
             return torch.tensor([0], device=x.device, dtype=x.dtype)
-        return x.float().var() / (x.float().mean() ** 2 + eps)
+        x = x.float()
+        return x.var(unbiased=False) / (x.mean() ** 2 + eps)
 
     def _gates_to_load(self, gates):
         return (gates > 0).sum(0)
@@ -182,13 +183,11 @@ class MoE(nn.Module):
             logits = noisy_logits
         else:
             logits = clean_logits
-        logits = self.softmax(logits)
         top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim=1)
         top_k_logits = top_logits[:, :self.k]
         top_k_indices = top_indices[:, :self.k]
-        top_k_gates = top_k_logits / (top_k_logits.sum(1, keepdim=True) + 1e-6)
-        gates = torch.zeros_like(logits, requires_grad=True).scatter(
-            1, top_k_indices, top_k_gates)
+        top_k_gates = self.softmax(top_k_logits)
+        gates = torch.zeros_like(clean_logits).scatter(1, top_k_indices, top_k_gates)
         if self.noisy_gating and self.k < self.num_experts and train:
             load = self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev,
                                        top_logits).sum(0)
